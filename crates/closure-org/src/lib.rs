@@ -246,8 +246,28 @@ pub fn parse(src: &str) -> Result<OrgDoc, ParseError> {
     Ok(OrgDoc {
         source,
         preamble,
-        roots,
+        roots: nest(roots),
     })
+}
+
+/// Restructure a flat list of headlines into a tree by level. A heading
+/// with level N becomes a child of the nearest preceding heading with
+/// level < N; otherwise it is a root. Level jumps (e.g. 1 → 3) are
+/// accepted and the deeper heading is attached to the nearest
+/// lower-level ancestor.
+fn nest(flat: Vec<Headline>) -> Vec<Headline> {
+    let mut roots: Vec<Headline> = Vec::new();
+    for h in flat {
+        attach(&mut roots, h);
+    }
+    roots
+}
+
+fn attach(siblings: &mut Vec<Headline>, h: Headline) {
+    match siblings.last_mut() {
+        Some(last) if last.level < h.level => attach(&mut last.children, h),
+        _ => siblings.push(h),
+    }
 }
 
 /// Serialise an org document back to its source text. Concatenates each

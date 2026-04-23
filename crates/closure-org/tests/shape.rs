@@ -84,3 +84,80 @@ fn headline_title_excludes_stars_and_leading_space() {
     assert_eq!(h.level(), 3);
     assert_eq!(h.title(), "Three stars title");
 }
+
+#[test]
+fn nested_heading_becomes_child() {
+    let doc = parse("* Parent\n** Child\n").expect("parse");
+    assert_eq!(doc.roots().len(), 1);
+    let parent = &doc.roots()[0];
+    assert_eq!(parent.title(), "Parent");
+    assert_eq!(parent.children().len(), 1);
+    assert_eq!(parent.children()[0].title(), "Child");
+    assert_eq!(parent.children()[0].level(), 2);
+}
+
+#[test]
+fn three_level_deep_nesting() {
+    let doc = parse("* Parent\n** Child\n*** Grandchild\n").expect("parse");
+    assert_eq!(doc.roots().len(), 1);
+    let p = &doc.roots()[0];
+    assert_eq!(p.children().len(), 1);
+    let c = &p.children()[0];
+    assert_eq!(c.children().len(), 1);
+    assert_eq!(c.children()[0].title(), "Grandchild");
+    assert_eq!(c.children()[0].level(), 3);
+}
+
+#[test]
+fn mixed_levels_build_correct_tree() {
+    let src = "* A\n** A.1\n** A.2\n*** A.2.a\n* B\n** B.1\n";
+    let doc = parse(src).expect("parse");
+    assert_eq!(doc.roots().len(), 2);
+    let a = &doc.roots()[0];
+    assert_eq!(a.title(), "A");
+    assert_eq!(a.children().len(), 2);
+    assert_eq!(a.children()[0].title(), "A.1");
+    assert_eq!(a.children()[1].title(), "A.2");
+    assert_eq!(a.children()[1].children().len(), 1);
+    assert_eq!(a.children()[1].children()[0].title(), "A.2.a");
+    let b = &doc.roots()[1];
+    assert_eq!(b.title(), "B");
+    assert_eq!(b.children().len(), 1);
+    assert_eq!(b.children()[0].title(), "B.1");
+}
+
+#[test]
+fn level_jump_descends_to_nearest_parent() {
+    // * One → root
+    // *** Three skipping two → child of One (nearest lower-level ancestor)
+    // ** Back to two → sibling of Three under One
+    let src = "* One\n*** Three skipping two\n** Back to two\n";
+    let doc = parse(src).expect("parse");
+    assert_eq!(doc.roots().len(), 1);
+    let one = &doc.roots()[0];
+    assert_eq!(one.children().len(), 2);
+    assert_eq!(one.children()[0].title(), "Three skipping two");
+    assert_eq!(one.children()[0].level(), 3);
+    assert_eq!(one.children()[1].title(), "Back to two");
+    assert_eq!(one.children()[1].level(), 2);
+}
+
+#[test]
+fn sibling_at_same_level_does_not_nest() {
+    let doc = parse("* First\n* Second\n").expect("parse");
+    assert_eq!(doc.roots().len(), 2);
+    assert!(doc.roots()[0].children().is_empty());
+    assert!(doc.roots()[1].children().is_empty());
+}
+
+#[test]
+fn body_lines_attach_to_preceding_heading_even_under_nesting() {
+    let src = "* Parent\nparent body\n** Child\nchild body\n";
+    let doc = parse(src).expect("parse");
+    let parent = &doc.roots()[0];
+    assert_eq!(parent.body().len(), 1);
+    assert_eq!(parent.body()[0].source(), "parent body\n");
+    let child = &parent.children()[0];
+    assert_eq!(child.body().len(), 1);
+    assert_eq!(child.body()[0].source(), "child body\n");
+}
