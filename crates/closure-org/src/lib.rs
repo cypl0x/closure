@@ -75,6 +75,50 @@ enum NodeMeta {
         args_span: Option<Span>,
         content_span: Span,
     },
+    ListItem {
+        indent: usize,
+        marker: ListMarker,
+        checkbox: Option<Checkbox>,
+        content_span: Span,
+    },
+}
+
+/// List item marker kind.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ListMarker {
+    /// `-` bullet.
+    Dash,
+    /// `+` bullet.
+    Plus,
+    /// `N.` ordered marker.
+    OrderedDot,
+    /// `N)` ordered marker.
+    OrderedParen,
+}
+
+/// Checkbox state on a list item (`[ ]`, `[X]`, `[-]`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Checkbox {
+    /// Unchecked `[ ]`.
+    Unchecked,
+    /// Checked `[X]` or `[x]`.
+    Checked,
+    /// Partial `[-]`.
+    Partial,
+}
+
+/// Structural view of a [`NodeKind::ListItem`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ListItemView<'a> {
+    /// Leading indent width in columns (space/tab counted as 1 each).
+    pub indent: usize,
+    /// Bullet / ordered marker.
+    pub marker: ListMarker,
+    /// Checkbox if one is present after the marker.
+    pub checkbox: Option<Checkbox>,
+    /// Item content following the marker (and checkbox), with trailing
+    /// newline stripped.
+    pub content: &'a str,
 }
 
 /// Coarse classification of a [`Node`]. Structured fields per kind arrive
@@ -91,6 +135,11 @@ pub enum NodeKind {
     Paragraph,
     /// A `#+BEGIN_SRC` / `#+END_SRC` fenced block.
     CodeBlock,
+    /// A single list item line (`-`, `+`, `1.`, `1)`, optionally with
+    /// leading indent and `[ ]` / `[X]` / `[-]` checkbox).
+    ListItem,
+    /// A `| a | b |` table row (including the `|---|` separator rows).
+    TableRow,
 }
 
 /// Structural view of a [`Node`] classified as [`NodeKind::CodeBlock`].
@@ -159,17 +208,40 @@ impl Node {
     /// Structural view when this node is a [`NodeKind::CodeBlock`].
     #[must_use]
     pub fn as_code_block(&self) -> Option<CodeBlockView<'_>> {
-        match &self.meta {
-            NodeMeta::CodeBlock {
-                lang_span,
-                args_span,
-                content_span,
-            } => Some(CodeBlockView {
+        if let NodeMeta::CodeBlock {
+            lang_span,
+            args_span,
+            content_span,
+        } = &self.meta
+        {
+            Some(CodeBlockView {
                 language: lang_span.map(|s| &self.source[s.start..s.end]),
                 args: args_span.map(|s| &self.source[s.start..s.end]),
                 content: &self.source[content_span.start..content_span.end],
-            }),
-            NodeMeta::None => None,
+            })
+        } else {
+            None
+        }
+    }
+
+    /// Structural view when this node is a [`NodeKind::ListItem`].
+    #[must_use]
+    pub fn as_list_item(&self) -> Option<ListItemView<'_>> {
+        if let NodeMeta::ListItem {
+            indent,
+            marker,
+            checkbox,
+            content_span,
+        } = self.meta
+        {
+            Some(ListItemView {
+                indent,
+                marker,
+                checkbox,
+                content: &self.source[content_span.start..content_span.end],
+            })
+        } else {
+            None
         }
     }
 }
@@ -399,6 +471,26 @@ pub fn parse(src: &str) -> Result<OrgDoc, ParseError> {
             continue;
         }
 
+        if let Some((kind, meta)) = classify_special_line(line, span) {
+            flush_paragraph(
+                &source,
+                &mut paragraph,
+                target_nodes(&mut roots, &mut preamble),
+            );
+            push_node(
+                &mut roots,
+                &mut preamble,
+                Node {
+                    source: Arc::clone(&source),
+                    kind,
+                    span,
+                    meta,
+                },
+            );
+            i += 1;
+            continue;
+        }
+
         match classify_line(line) {
             LineKind::Paragraph => match &mut paragraph {
                 Some(p) => p.end = span.end,
@@ -511,6 +603,112 @@ fn scan_property_drawer(
         return None; // malformed
     }
     None
+}
+
+fn classify_special_line(line: &str, span: Span) -> Option<(NodeKind, NodeMeta)> {
+    if let Some(meta) = classify_list_item(line, span) {
+        return Some((NodeKind::ListItem, meta));
+    }
+    if classify_table_row(line) {
+        return Some((NodeKind::TableRow, NodeMeta::None));
+    }
+    None
+}
+
+fn classify_list_item(line: &str, span: Span) -> Option<NodeMeta> {
+    let body = line.strip_suffix('\n').unwrap_or(line);
+    let indent = body.len() - body.trim_start_matches([' ', '\t']).len();
+    let rest = &body[indent..];
+    if rest.is_empty() {
+        return None;
+    }
+    let bytes = rest.as_bytes();
+
+    // Determine marker and its consumed length.
+    let (marker, marker_len) =
+        if bytes[0] == b'-' && bytes.get(1).is_some_and(|b| *b == b' ' || *b == b'\t') {
+            (ListMarker::Dash, 1)
+        } else if bytes[0] == b'+' && bytes.get(1).is_some_and(|b| *b == b' ' || *b == b'\t') {
+            (ListMarker::Plus, 1)
+        } else if bytes[0].is_ascii_digit() {
+            // Ordered: digits followed by '.' or ')'.
+            let mut j = 0;
+            while j < bytes.len() && bytes[j].is_ascii_digit() {
+                j += 1;
+            }
+            if j >= bytes.len() {
+                return None;
+            }
+            let delim = bytes[j];
+            if delim != b'.' && delim != b')' {
+                return None;
+            }
+            let after_delim = bytes.get(j + 1);
+            if !matches!(after_delim, Some(b' ' | b'\t')) {
+                return None;
+            }
+            let m = if delim == b'.' {
+                ListMarker::OrderedDot
+            } else {
+                ListMarker::OrderedParen
+            };
+            (m, j + 1)
+        } else {
+            return None;
+        };
+
+    let after_marker = &rest[marker_len..];
+    let ws = after_marker.len() - after_marker.trim_start_matches([' ', '\t']).len();
+    let after_ws = &after_marker[ws..];
+
+    // Optional checkbox.
+    let (checkbox, after_cb_len) = if after_ws.len() >= 3
+        && &after_ws[..1] == "["
+        && &after_ws[2..3] == "]"
+    {
+        let mark = after_ws.as_bytes()[1];
+        let cb = match mark {
+            b' ' => Some(Checkbox::Unchecked),
+            b'X' | b'x' => Some(Checkbox::Checked),
+            b'-' => Some(Checkbox::Partial),
+            _ => None,
+        };
+        match cb {
+            Some(_) => {
+                let after_box = &after_ws[3..];
+                if after_box.is_empty() || after_box.starts_with(' ') || after_box.starts_with('\t')
+                {
+                    let skip_ws = after_box.len() - after_box.trim_start_matches([' ', '\t']).len();
+                    (cb, 3 + skip_ws)
+                } else {
+                    (None, 0)
+                }
+            }
+            None => (None, 0),
+        }
+    } else {
+        (None, 0)
+    };
+
+    let content_rel_start = indent + marker_len + ws + after_cb_len;
+    let content_end = indent + rest.len();
+    let content_span = Span {
+        start: span.start + content_rel_start,
+        end: span.start + content_end,
+    };
+
+    Some(NodeMeta::ListItem {
+        indent,
+        marker,
+        checkbox,
+        content_span,
+    })
+}
+
+fn classify_table_row(line: &str) -> bool {
+    let body = line.strip_suffix('\n').unwrap_or(line);
+    let trimmed = body.trim_start_matches([' ', '\t']);
+    trimmed.starts_with('|')
 }
 
 fn scan_code_block(

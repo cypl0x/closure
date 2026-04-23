@@ -356,3 +356,88 @@ fn unterminated_link_is_ignored() {
     let links = closure_org::find_links("broken [[unfinished text");
     assert!(links.is_empty());
 }
+
+#[test]
+fn unordered_list_items_classified() {
+    let src = "- first\n- second\n";
+    let doc = parse(src).expect("parse");
+    assert_eq!(doc.preamble().len(), 2);
+    assert_eq!(doc.preamble()[0].kind(), NodeKind::ListItem);
+    let li = doc.preamble()[0].as_list_item().expect("list item");
+    assert_eq!(li.marker, closure_org::ListMarker::Dash);
+    assert_eq!(li.content, "first");
+    assert!(li.checkbox.is_none());
+}
+
+#[test]
+fn plus_marker_list() {
+    let doc = parse("+ hi\n").expect("parse");
+    let li = doc.preamble()[0].as_list_item().expect("list item");
+    assert_eq!(li.marker, closure_org::ListMarker::Plus);
+    assert_eq!(li.content, "hi");
+}
+
+#[test]
+fn ordered_list_dot_marker() {
+    let doc = parse("1. a\n2. b\n").expect("parse");
+    let li = doc.preamble()[0].as_list_item().expect("list item");
+    assert_eq!(li.marker, closure_org::ListMarker::OrderedDot);
+    assert_eq!(li.content, "a");
+}
+
+#[test]
+fn ordered_list_paren_marker() {
+    let doc = parse("1) a\n").expect("parse");
+    let li = doc.preamble()[0].as_list_item().expect("list item");
+    assert_eq!(li.marker, closure_org::ListMarker::OrderedParen);
+}
+
+#[test]
+fn checkbox_unchecked_checked_partial() {
+    let doc = parse("- [ ] todo\n- [X] done\n- [-] partial\n").expect("parse");
+    assert_eq!(
+        doc.preamble()[0].as_list_item().expect("li").checkbox,
+        Some(closure_org::Checkbox::Unchecked)
+    );
+    assert_eq!(
+        doc.preamble()[1].as_list_item().expect("li").checkbox,
+        Some(closure_org::Checkbox::Checked)
+    );
+    assert_eq!(
+        doc.preamble()[2].as_list_item().expect("li").checkbox,
+        Some(closure_org::Checkbox::Partial)
+    );
+    assert_eq!(
+        doc.preamble()[0].as_list_item().expect("li").content,
+        "todo"
+    );
+}
+
+#[test]
+fn indented_list_item_tracks_indent() {
+    let doc = parse("  - nested\n").expect("parse");
+    let li = doc.preamble()[0].as_list_item().expect("li");
+    assert_eq!(li.indent, 2);
+    assert_eq!(li.content, "nested");
+}
+
+#[test]
+fn non_list_dash_not_classified() {
+    let doc = parse("-not a list\n").expect("parse");
+    assert_eq!(doc.preamble()[0].kind(), NodeKind::Paragraph);
+}
+
+#[test]
+fn table_row_classified() {
+    let doc = parse("| a | b |\n| c | d |\n").expect("parse");
+    assert_eq!(doc.preamble().len(), 2);
+    assert_eq!(doc.preamble()[0].kind(), NodeKind::TableRow);
+    assert_eq!(doc.preamble()[1].kind(), NodeKind::TableRow);
+    assert_eq!(doc.preamble()[0].source(), "| a | b |\n");
+}
+
+#[test]
+fn table_separator_row_is_also_table_row() {
+    let doc = parse("|---|---|\n").expect("parse");
+    assert_eq!(doc.preamble()[0].kind(), NodeKind::TableRow);
+}
