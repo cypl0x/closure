@@ -1,0 +1,6 @@
+* Heading with ID
+:PROPERTIES:
+:ID: 01HXQZ7F0000000000000000AA
+:CUSTOM: value
+:END:
+body text

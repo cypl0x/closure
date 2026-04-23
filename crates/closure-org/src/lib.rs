@@ -104,9 +104,66 @@ pub struct Headline {
     todo_span: Option<Span>,
     priority_span: Option<Span>,
     tag_spans: Vec<Span>,
+    properties: Option<Properties>,
     level: u8,
     body: Vec<Node>,
     children: Vec<Self>,
+}
+
+/// Parsed `:PROPERTIES:` ... `:END:` drawer attached to a [`Headline`].
+/// Entry order is preserved from the source.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Properties {
+    source: Arc<str>,
+    drawer_span: Span,
+    entries: Vec<PropertyEntry>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct PropertyEntry {
+    key_span: Span,
+    value_span: Span,
+}
+
+impl Properties {
+    /// Lookup a property value by key name (case-sensitive). Returns the
+    /// raw value slice without surrounding whitespace.
+    #[must_use]
+    pub fn get(&self, key: &str) -> Option<&str> {
+        self.entries
+            .iter()
+            .find(|e| &self.source[e.key_span.start..e.key_span.end] == key)
+            .map(|e| &self.source[e.value_span.start..e.value_span.end])
+    }
+
+    /// Shorthand for `get("ID")`. Invariant I2 pins stable ULID block IDs
+    /// into this property.
+    #[must_use]
+    pub fn id(&self) -> Option<&str> {
+        self.get("ID")
+    }
+
+    /// Number of entries in the drawer.
+    #[must_use]
+    pub const fn len(&self) -> usize {
+        self.entries.len()
+    }
+
+    /// Whether the drawer has zero entries.
+    #[must_use]
+    pub const fn is_empty(&self) -> bool {
+        self.entries.is_empty()
+    }
+
+    /// Iterate `(key, value)` pairs in source order.
+    pub fn iter(&self) -> impl Iterator<Item = (&str, &str)> {
+        self.entries.iter().map(move |e| {
+            (
+                &self.source[e.key_span.start..e.key_span.end],
+                &self.source[e.value_span.start..e.value_span.end],
+            )
+        })
+    }
 }
 
 impl Headline {
@@ -165,6 +222,12 @@ impl Headline {
             .map(|s| &self.source[s.start..s.end])
             .collect()
     }
+
+    /// The headline's `:PROPERTIES:` drawer if one was parsed.
+    #[must_use]
+    pub const fn properties(&self) -> Option<&Properties> {
+        self.properties.as_ref()
+    }
 }
 
 /// Failure mode while parsing an org document.
@@ -176,20 +239,30 @@ impl Headline {
 pub enum ParseError {}
 
 /// Parse an org document. See [`OrgDoc`] for the tree shape.
-#[allow(clippy::must_use_candidate)]
+#[allow(clippy::must_use_candidate, clippy::too_many_lines)]
 pub fn parse(src: &str) -> Result<OrgDoc, ParseError> {
     let source: Arc<str> = Arc::from(src);
     let mut preamble: Vec<Node> = Vec::new();
     let mut roots: Vec<Headline> = Vec::new();
     let mut paragraph: Option<Span> = None;
-    let mut cursor: usize = 0;
 
-    for line in src.split_inclusive('\n') {
-        let span = Span {
-            start: cursor,
-            end: cursor + line.len(),
-        };
-        cursor += line.len();
+    let lines: Vec<(&str, Span)> = {
+        let mut v = Vec::new();
+        let mut cursor = 0usize;
+        for line in src.split_inclusive('\n') {
+            let s = Span {
+                start: cursor,
+                end: cursor + line.len(),
+            };
+            cursor += line.len();
+            v.push((line, s));
+        }
+        v
+    };
+
+    let mut i = 0;
+    while i < lines.len() {
+        let (line, span) = lines[i];
 
         if let Some(head) = classify_heading(line, span) {
             flush_paragraph(
@@ -204,10 +277,30 @@ pub fn parse(src: &str) -> Result<OrgDoc, ParseError> {
                 todo_span: head.todo_span,
                 priority_span: head.priority_span,
                 tag_spans: head.tag_spans,
+                properties: None,
                 level: head.level,
                 body: Vec::new(),
                 children: Vec::new(),
             });
+            i += 1;
+            continue;
+        }
+
+        // Property drawer: immediately after a heading (body empty, no
+        // drawer yet), a `:PROPERTIES:` / `:END:` block with `:KEY: value`
+        // entries between is captured structurally and excluded from the
+        // headline's body.
+        if paragraph.is_none()
+            && let Some(h) = roots.last()
+            && h.body.is_empty()
+            && h.properties.is_none()
+            && trimmed_line(line) == ":PROPERTIES:"
+            && let Some((drawer, next_i)) = scan_property_drawer(&lines, i, &source)
+        {
+            if let Some(h_mut) = roots.last_mut() {
+                h_mut.properties = Some(drawer);
+            }
+            i = next_i;
             continue;
         }
 
@@ -265,6 +358,7 @@ pub fn parse(src: &str) -> Result<OrgDoc, ParseError> {
                 );
             }
         }
+        i += 1;
     }
     flush_paragraph(
         &source,
@@ -276,6 +370,78 @@ pub fn parse(src: &str) -> Result<OrgDoc, ParseError> {
         source,
         preamble,
         roots: nest(roots),
+    })
+}
+
+fn trimmed_line(line: &str) -> &str {
+    line.strip_suffix('\n').unwrap_or(line).trim()
+}
+
+/// Scan `lines[start..]` for a well-formed `:PROPERTIES:` / `:END:`
+/// drawer. Returns the drawer and the index of the line after `:END:`,
+/// or `None` if the structure isn't a valid drawer.
+fn scan_property_drawer(
+    lines: &[(&str, Span)],
+    start: usize,
+    source: &Arc<str>,
+) -> Option<(Properties, usize)> {
+    let (_, start_span) = lines[start];
+    let mut entries: Vec<PropertyEntry> = Vec::new();
+    let mut j = start + 1;
+    while j < lines.len() {
+        let (ln, sp) = lines[j];
+        let trim = trimmed_line(ln);
+        if trim == ":END:" {
+            let drawer_span = Span {
+                start: start_span.start,
+                end: sp.end,
+            };
+            return Some((
+                Properties {
+                    source: Arc::clone(source),
+                    drawer_span,
+                    entries,
+                },
+                j + 1,
+            ));
+        }
+        if let Some(entry) = parse_property_entry(ln, sp) {
+            entries.push(entry);
+            j += 1;
+            continue;
+        }
+        return None; // malformed
+    }
+    None
+}
+
+fn parse_property_entry(line: &str, span: Span) -> Option<PropertyEntry> {
+    let body = line.strip_suffix('\n').unwrap_or(line);
+    let rest = body.strip_prefix(':')?;
+    let colon_pos = rest.find(':')?;
+    let key_str = &rest[..colon_pos];
+    if key_str.is_empty()
+        || !key_str
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+    {
+        return None;
+    }
+    let key_span = Span {
+        start: span.start + 1,
+        end: span.start + 1 + colon_pos,
+    };
+    let after_colon_pos = 1 + colon_pos + 1;
+    let after_colon = &body[after_colon_pos..];
+    let leading_ws = after_colon.len() - after_colon.trim_start_matches([' ', '\t']).len();
+    let value_content = after_colon.trim_matches([' ', '\t']);
+    let value_span = Span {
+        start: span.start + after_colon_pos + leading_ws,
+        end: span.start + after_colon_pos + leading_ws + value_content.len(),
+    };
+    Some(PropertyEntry {
+        key_span,
+        value_span,
     })
 }
 
@@ -316,6 +482,9 @@ pub fn print(doc: &OrgDoc) -> String {
 
 fn print_headline(doc: &OrgDoc, h: &Headline, out: &mut String) {
     out.push_str(doc.source_of(h.header_span));
+    if let Some(p) = &h.properties {
+        out.push_str(doc.source_of(p.drawer_span));
+    }
     for n in &h.body {
         out.push_str(doc.source_of(n.span));
     }

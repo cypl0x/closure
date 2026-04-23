@@ -236,3 +236,33 @@ fn no_tags_is_empty_vec() {
     let doc = parse("* Hello\n").expect("parse");
     assert!(doc.roots()[0].tags().is_empty());
 }
+
+#[test]
+fn property_drawer_parsed() {
+    let src = "* H\n:PROPERTIES:\n:ID: abc123\n:CUSTOM: xyz\n:END:\n";
+    let doc = parse(src).expect("parse");
+    let h = &doc.roots()[0];
+    let p = h.properties().expect("properties present");
+    assert_eq!(p.get("ID"), Some("abc123"));
+    assert_eq!(p.get("CUSTOM"), Some("xyz"));
+    assert_eq!(p.id(), Some("abc123"));
+    assert_eq!(p.len(), 2);
+}
+
+#[test]
+fn no_property_drawer_returns_none() {
+    let doc = parse("* H\nbody\n").expect("parse");
+    assert!(doc.roots()[0].properties().is_none());
+}
+
+#[test]
+fn property_drawer_not_in_headline_body() {
+    // The drawer lines must not also appear in body nodes.
+    let src = "* H\n:PROPERTIES:\n:ID: x\n:END:\nbody\n";
+    let doc = parse(src).expect("parse");
+    let h = &doc.roots()[0];
+    assert!(h.properties().is_some());
+    // Body should only contain the "body\n" paragraph, not the drawer.
+    let body_sources: String = h.body().iter().map(closure_org::Node::source).collect();
+    assert_eq!(body_sources, "body\n");
+}
