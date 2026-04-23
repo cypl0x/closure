@@ -161,3 +161,78 @@ fn body_lines_attach_to_preceding_heading_even_under_nesting() {
     assert_eq!(child.body().len(), 1);
     assert_eq!(child.body()[0].source(), "child body\n");
 }
+
+#[test]
+fn todo_keyword_extracted() {
+    let doc = parse("* TODO Fix bug\n").expect("parse");
+    let h = &doc.roots()[0];
+    assert_eq!(h.todo(), Some("TODO"));
+    assert_eq!(h.title(), "Fix bug");
+}
+
+#[test]
+fn done_keyword_extracted() {
+    let doc = parse("* DONE Ship feature\n").expect("parse");
+    let h = &doc.roots()[0];
+    assert_eq!(h.todo(), Some("DONE"));
+    assert_eq!(h.title(), "Ship feature");
+}
+
+#[test]
+fn non_keyword_starting_word_is_title() {
+    let doc = parse("* Hello World\n").expect("parse");
+    let h = &doc.roots()[0];
+    assert_eq!(h.todo(), None);
+    assert_eq!(h.title(), "Hello World");
+}
+
+#[test]
+fn priority_extracted() {
+    let doc = parse("* [#A] Urgent\n").expect("parse");
+    let h = &doc.roots()[0];
+    assert_eq!(h.priority(), Some('A'));
+    assert_eq!(h.title(), "Urgent");
+}
+
+#[test]
+fn todo_and_priority_together() {
+    let doc = parse("* TODO [#B] Review PR\n").expect("parse");
+    let h = &doc.roots()[0];
+    assert_eq!(h.todo(), Some("TODO"));
+    assert_eq!(h.priority(), Some('B'));
+    assert_eq!(h.title(), "Review PR");
+}
+
+#[test]
+fn tags_extracted() {
+    let doc = parse("* Task :work:urgent:\n").expect("parse");
+    let h = &doc.roots()[0];
+    assert_eq!(h.tags(), vec!["work", "urgent"]);
+    assert_eq!(h.title(), "Task");
+}
+
+#[test]
+fn todo_priority_title_and_tags_all_together() {
+    let doc = parse("* TODO [#A] Urgent task :work:urgent:\n").expect("parse");
+    let h = &doc.roots()[0];
+    assert_eq!(h.todo(), Some("TODO"));
+    assert_eq!(h.priority(), Some('A'));
+    assert_eq!(h.title(), "Urgent task");
+    assert_eq!(h.tags(), vec!["work", "urgent"]);
+}
+
+#[test]
+fn priority_without_todo_with_tags() {
+    let doc = parse("* [#A] Urgent task :work:urgent:\n").expect("parse");
+    let h = &doc.roots()[0];
+    assert_eq!(h.todo(), None);
+    assert_eq!(h.priority(), Some('A'));
+    assert_eq!(h.title(), "Urgent task");
+    assert_eq!(h.tags(), vec!["work", "urgent"]);
+}
+
+#[test]
+fn no_tags_is_empty_vec() {
+    let doc = parse("* Hello\n").expect("parse");
+    assert!(doc.roots()[0].tags().is_empty());
+}

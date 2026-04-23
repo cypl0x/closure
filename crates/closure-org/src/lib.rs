@@ -101,6 +101,9 @@ pub struct Headline {
     source: Arc<str>,
     header_span: Span,
     title_span: Span,
+    todo_span: Option<Span>,
+    priority_span: Option<Span>,
+    tag_spans: Vec<Span>,
     level: u8,
     body: Vec<Node>,
     children: Vec<Self>,
@@ -139,6 +142,29 @@ impl Headline {
     pub fn children(&self) -> &[Self] {
         &self.children
     }
+
+    /// TODO keyword if present (e.g. `"TODO"`, `"DONE"`).
+    #[must_use]
+    pub fn todo(&self) -> Option<&str> {
+        self.todo_span.map(|s| &self.source[s.start..s.end])
+    }
+
+    /// Priority letter if present. For `[#A]` returns `Some('A')`.
+    #[must_use]
+    pub fn priority(&self) -> Option<char> {
+        let span = self.priority_span?;
+        let slice = &self.source[span.start..span.end];
+        slice.strip_prefix("[#")?.chars().next()
+    }
+
+    /// Trailing headline tags in source order.
+    #[must_use]
+    pub fn tags(&self) -> Vec<&str> {
+        self.tag_spans
+            .iter()
+            .map(|s| &self.source[s.start..s.end])
+            .collect()
+    }
 }
 
 /// Failure mode while parsing an org document.
@@ -175,6 +201,9 @@ pub fn parse(src: &str) -> Result<OrgDoc, ParseError> {
                 source: Arc::clone(&source),
                 header_span: head.header_span,
                 title_span: head.title_span,
+                todo_span: head.todo_span,
+                priority_span: head.priority_span,
+                tag_spans: head.tag_spans,
                 level: head.level,
                 body: Vec::new(),
                 children: Vec::new(),
@@ -306,8 +335,13 @@ enum LineKind {
 struct HeadInfo {
     header_span: Span,
     title_span: Span,
+    todo_span: Option<Span>,
+    priority_span: Option<Span>,
+    tag_spans: Vec<Span>,
     level: u8,
 }
+
+const TODO_KEYWORDS: &[&str] = &["TODO", "DONE"];
 
 #[allow(clippy::ptr_arg)]
 fn target_nodes<'a>(
@@ -338,7 +372,10 @@ fn flush_paragraph(source: &Arc<str>, paragraph: &mut Option<Span>, out: &mut Ve
 
 /// Recognise a heading line. A heading is `*+` at column 0 followed by
 /// either end-of-line (empty title) or at least one space/tab (title
-/// follows).
+/// follows). If a title is present, the content between the stars and
+/// the end of the line (before the newline) is further split into:
+/// optional leading TODO keyword, optional `[#X]` priority, title, and
+/// optional trailing `:tag:tag:` list.
 fn classify_heading(line: &str, span: Span) -> Option<HeadInfo> {
     let body = line.strip_suffix('\n').unwrap_or(line);
     let stars = body.chars().take_while(|&c| c == '*').count();
@@ -350,21 +387,170 @@ fn classify_heading(line: &str, span: Span) -> Option<HeadInfo> {
         return None;
     }
     let level = u8::try_from(stars).unwrap_or(u8::MAX);
-    let title_skip = after
+
+    let ws_skip = after
         .chars()
         .take_while(|c| *c == ' ' || *c == '\t')
         .count();
-    let title_start_offset = stars + title_skip;
-    let title_end_offset = stars + after.len();
+    // Content region: between the stars+space and the end of body.
+    let content_start = span.start + stars + ws_skip;
+    let content_end = span.start + stars + after.len();
+    let content = &body[stars + ws_skip..stars + after.len()];
+
+    // Strip trailing tags first (right-to-left).
+    let (content_before_tags_end, tag_spans) =
+        strip_trailing_tags(content, content_start, content_end);
+
+    // After trimming trailing whitespace before tags, the TODO+priority+title
+    // live in [content_start, title_trim_end).
+    let pre_tags = &content[..(content_before_tags_end - content_start)];
+    let title_trim_end = content_start + pre_tags.trim_end_matches([' ', '\t']).len();
+    let working = &content[..(title_trim_end - content_start)];
+
+    // Parse TODO keyword from left.
+    let (todo_span, after_todo_str, after_todo_pos) = strip_leading_todo(working, content_start);
+
+    // Parse priority `[#X]` from left.
+    let (priority_span, after_prio_str, after_prio_pos) =
+        strip_leading_priority(after_todo_str, after_todo_pos);
+
+    // Remainder is the title; trim leading whitespace.
+    let title_leading_ws =
+        after_prio_str.len() - after_prio_str.trim_start_matches([' ', '\t']).len();
+    let title_start = after_prio_pos + title_leading_ws;
+    let title_end = title_trim_end;
     let title_span = Span {
-        start: span.start + title_start_offset,
-        end: span.start + title_end_offset,
+        start: title_start,
+        end: title_end,
     };
+
     Some(HeadInfo {
         header_span: span,
         title_span,
+        todo_span,
+        priority_span,
+        tag_spans,
         level,
     })
+}
+
+/// Right-to-left strip a trailing `:tag:tag:` list from the content line.
+/// Returns `(end_position_before_tags, tag_spans)` where `tag_spans`
+/// cover the individual tag names (not the colons) in source order. The
+/// tag list requires at least one whitespace character before its
+/// opening `:` for validity.
+fn strip_trailing_tags(
+    content: &str,
+    content_start: usize,
+    content_end: usize,
+) -> (usize, Vec<Span>) {
+    let trimmed = content.trim_end_matches([' ', '\t']);
+    if !trimmed.ends_with(':') || trimmed.len() < 2 {
+        return (content_end, Vec::new());
+    }
+    let bytes = trimmed.as_bytes();
+    let mut cursor = trimmed.len() - 1; // position of trailing ':'
+    let mut tags_rev: Vec<(usize, usize)> = Vec::new();
+
+    loop {
+        // cursor points at a ':'. Walk leftward over tag-chars for the name.
+        let name_end = cursor;
+        let mut name_start = cursor;
+        while name_start > 0 && is_tag_char(bytes[name_start - 1] as char) {
+            name_start -= 1;
+        }
+        if name_start == name_end {
+            // Empty name: the ':' at cursor has no tag chars before it.
+            // Either the tag list is degenerate (abort and treat as title)
+            // or we have already collected tags and hit the structure
+            // boundary. If nothing collected, abort.
+            if tags_rev.is_empty() {
+                return (content_end, Vec::new());
+            }
+            break;
+        }
+        tags_rev.push((name_start, name_end));
+
+        if name_start == 0 {
+            // Tag list starts at content start — no preceding whitespace,
+            // so this isn't a well-formed trailing tag block.
+            return (content_end, Vec::new());
+        }
+        match bytes[name_start - 1] {
+            b':' => {
+                cursor = name_start - 1;
+            }
+            b' ' | b'\t' => break,
+            _ => return (content_end, Vec::new()),
+        }
+    }
+
+    if tags_rev.is_empty() {
+        return (content_end, Vec::new());
+    }
+
+    // Earliest name_start is the last element of tags_rev.
+    let first_name_start = tags_rev.last().map_or(content.len(), |t| t.0);
+    // The opening ':' of the tag list sits at first_name_start - 1.
+    let first_colon_pos = first_name_start.saturating_sub(1);
+    let before_tags_trim = content[..first_colon_pos]
+        .trim_end_matches([' ', '\t'])
+        .len();
+
+    tags_rev.reverse();
+    let tag_spans = tags_rev
+        .into_iter()
+        .map(|(s, e)| Span {
+            start: content_start + s,
+            end: content_start + e,
+        })
+        .collect();
+    (content_start + before_tags_trim, tag_spans)
+}
+
+const fn is_tag_char(c: char) -> bool {
+    matches!(c, 'A'..='Z' | 'a'..='z' | '0'..='9' | '_' | '@' | '#' | '%')
+}
+
+/// Try to strip a leading TODO keyword. Returns the matched span (if any)
+/// plus the remaining substring and its absolute start position.
+fn strip_leading_todo(working: &str, base: usize) -> (Option<Span>, &str, usize) {
+    for &kw in TODO_KEYWORDS {
+        if let Some(rest) = working.strip_prefix(kw)
+            && (rest.is_empty() || rest.starts_with([' ', '\t']))
+        {
+            return (
+                Some(Span {
+                    start: base,
+                    end: base + kw.len(),
+                }),
+                rest,
+                base + kw.len(),
+            );
+        }
+    }
+    (None, working, base)
+}
+
+/// Try to strip a leading priority `[#X]` (after optional whitespace).
+fn strip_leading_priority(working: &str, base: usize) -> (Option<Span>, &str, usize) {
+    let ws = working.len() - working.trim_start_matches([' ', '\t']).len();
+    let after_ws = &working[ws..];
+    let prio_start = base + ws;
+    if after_ws.len() >= 4 && after_ws.starts_with("[#") && after_ws.as_bytes()[3] == b']' {
+        let inside = after_ws.as_bytes()[2];
+        if inside.is_ascii_alphabetic() {
+            return (
+                Some(Span {
+                    start: prio_start,
+                    end: prio_start + 4,
+                }),
+                &after_ws[4..],
+                prio_start + 4,
+            );
+        }
+    }
+    (None, working, base)
 }
 
 fn classify_line(line: &str) -> LineKind {
