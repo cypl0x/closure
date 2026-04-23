@@ -163,6 +163,164 @@ pub struct LinkView<'a> {
     pub description: Option<&'a str>,
 }
 
+/// Borrowed view of a timestamp `<YYYY-MM-DD ...>` (active) or
+/// `[YYYY-MM-DD ...]` (inactive).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TimestampView<'a> {
+    /// Whether this timestamp is active (angle brackets).
+    pub active: bool,
+    /// The content between the delimiters (e.g. `2026-05-01 Fri 14:30`).
+    pub content: &'a str,
+}
+
+/// Scan `text` for `<YYYY-MM-DD ...>` (active) and `[YYYY-MM-DD ...]`
+/// (inactive) timestamps. Returns them in source order. Malformed
+/// brackets without a leading date are skipped.
+#[must_use]
+pub fn find_timestamps(text: &str) -> Vec<TimestampView<'_>> {
+    let mut out: Vec<TimestampView<'_>> = Vec::new();
+    let bytes = text.as_bytes();
+    let mut i = 0usize;
+    while i < bytes.len() {
+        let b = bytes[i];
+        if b == b'<' || b == b'[' {
+            let close = if b == b'<' { b'>' } else { b']' };
+            if let Some(end_rel) = text[i + 1..].find(close as char) {
+                let inner = &text[i + 1..i + 1 + end_rel];
+                if is_timestamp_content(inner) {
+                    out.push(TimestampView {
+                        active: b == b'<',
+                        content: inner,
+                    });
+                    i = i + 1 + end_rel + 1;
+                    continue;
+                }
+            }
+        }
+        i += 1;
+    }
+    out
+}
+
+fn is_timestamp_content(s: &str) -> bool {
+    // Require leading `YYYY-MM-DD`.
+    if s.len() < 10 {
+        return false;
+    }
+    let b = s.as_bytes();
+    b[0].is_ascii_digit()
+        && b[1].is_ascii_digit()
+        && b[2].is_ascii_digit()
+        && b[3].is_ascii_digit()
+        && b[4] == b'-'
+        && b[5].is_ascii_digit()
+        && b[6].is_ascii_digit()
+        && b[7] == b'-'
+        && b[8].is_ascii_digit()
+        && b[9].is_ascii_digit()
+}
+
+/// Inline markup kind.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MarkupKind {
+    /// `*bold*`
+    Bold,
+    /// `/italic/`
+    Italic,
+    /// `=code=`
+    Code,
+    /// `~verbatim~`
+    Verbatim,
+    /// `+strike+`
+    Strikethrough,
+    /// `_under_`
+    Underline,
+}
+
+/// Borrowed view of an inline markup run.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct MarkupView<'a> {
+    /// Kind of markup.
+    pub kind: MarkupKind,
+    /// Content between the markers (markers excluded).
+    pub content: &'a str,
+}
+
+/// Scan `text` for inline markup runs.
+///
+/// A run is `MARKER NON-WS ... NON-WS MARKER` where MARKER is one of
+/// `*/=~+_` and the neighbouring characters (outside the markers) must
+/// be non-alphanumeric, whitespace, or string boundaries so the marker
+/// isn't inside a word.
+#[must_use]
+pub fn find_markup(text: &str) -> Vec<MarkupView<'_>> {
+    const MARKERS: &[(u8, MarkupKind)] = &[
+        (b'*', MarkupKind::Bold),
+        (b'/', MarkupKind::Italic),
+        (b'=', MarkupKind::Code),
+        (b'~', MarkupKind::Verbatim),
+        (b'+', MarkupKind::Strikethrough),
+        (b'_', MarkupKind::Underline),
+    ];
+    let bytes = text.as_bytes();
+    let mut out: Vec<MarkupView<'_>> = Vec::new();
+    let mut i = 0usize;
+    while i < bytes.len() {
+        let b = bytes[i];
+        let Some(&(_, kind)) = MARKERS.iter().find(|(m, _)| *m == b) else {
+            i += 1;
+            continue;
+        };
+        // Left boundary: start of string, or preceding char is non-word.
+        let left_ok = i == 0 || !is_word_byte(bytes[i - 1]);
+        if !left_ok {
+            i += 1;
+            continue;
+        }
+        // Require at least one non-ws char after marker.
+        if i + 1 >= bytes.len() {
+            break;
+        }
+        let after = bytes[i + 1];
+        if after == b' ' || after == b'\t' || after == b'\n' || after == b {
+            i += 1;
+            continue;
+        }
+        // Find closing marker on same line.
+        let mut j = i + 1;
+        let mut found: Option<usize> = None;
+        while j < bytes.len() {
+            let c = bytes[j];
+            if c == b'\n' {
+                break;
+            }
+            if c == b && bytes[j - 1] != b' ' && bytes[j - 1] != b'\t' {
+                // Right boundary: next char is non-word (or end).
+                let right_ok = j + 1 >= bytes.len() || !is_word_byte(bytes[j + 1]);
+                if right_ok {
+                    found = Some(j);
+                    break;
+                }
+            }
+            j += 1;
+        }
+        if let Some(end) = found {
+            out.push(MarkupView {
+                kind,
+                content: &text[i + 1..end],
+            });
+            i = end + 1;
+            continue;
+        }
+        i += 1;
+    }
+    out
+}
+
+const fn is_word_byte(b: u8) -> bool {
+    b.is_ascii_alphanumeric() || b == b'_'
+}
+
 /// Scan `text` for inline `[[target][desc]]` / `[[target]]` links.
 /// Returns them in source order. Unterminated `[[` is skipped without
 /// panicking (I5).

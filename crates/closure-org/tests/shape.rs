@@ -441,3 +441,67 @@ fn table_separator_row_is_also_table_row() {
     let doc = parse("|---|---|\n").expect("parse");
     assert_eq!(doc.preamble()[0].kind(), NodeKind::TableRow);
 }
+
+#[test]
+fn active_timestamp_found() {
+    let ts = closure_org::find_timestamps("Meeting at <2026-05-01 Fri 14:30>.");
+    assert_eq!(ts.len(), 1);
+    assert!(ts[0].active);
+    assert_eq!(ts[0].content, "2026-05-01 Fri 14:30");
+}
+
+#[test]
+fn inactive_timestamp_found() {
+    let ts = closure_org::find_timestamps("Due [2026-05-15].");
+    assert_eq!(ts.len(), 1);
+    assert!(!ts[0].active);
+    assert_eq!(ts[0].content, "2026-05-15");
+}
+
+#[test]
+fn timestamp_range() {
+    let ts = closure_org::find_timestamps("<2026-06-01>--<2026-06-10>");
+    assert_eq!(ts.len(), 2);
+    assert_eq!(ts[0].content, "2026-06-01");
+    assert_eq!(ts[1].content, "2026-06-10");
+}
+
+#[test]
+fn non_date_brackets_ignored() {
+    let ts = closure_org::find_timestamps("Link [[target]] not a timestamp.");
+    assert!(ts.is_empty());
+}
+
+#[test]
+fn bold_italic_code_markup_found() {
+    let m = closure_org::find_markup("*bold* /italic/ =code=");
+    assert_eq!(m.len(), 3);
+    assert_eq!(m[0].kind, closure_org::MarkupKind::Bold);
+    assert_eq!(m[0].content, "bold");
+    assert_eq!(m[1].kind, closure_org::MarkupKind::Italic);
+    assert_eq!(m[1].content, "italic");
+    assert_eq!(m[2].kind, closure_org::MarkupKind::Code);
+    assert_eq!(m[2].content, "code");
+}
+
+#[test]
+fn verbatim_strike_under_markup() {
+    let m = closure_org::find_markup("~verbatim~ +strike+ _under_");
+    assert_eq!(m.len(), 3);
+    assert_eq!(m[0].kind, closure_org::MarkupKind::Verbatim);
+    assert_eq!(m[1].kind, closure_org::MarkupKind::Strikethrough);
+    assert_eq!(m[2].kind, closure_org::MarkupKind::Underline);
+}
+
+#[test]
+fn markup_inside_word_ignored() {
+    // `foo*bar*baz` — left boundary fails (alphanum before *).
+    let m = closure_org::find_markup("foo*bar*baz");
+    assert!(m.is_empty());
+}
+
+#[test]
+fn markup_with_space_after_open_marker_ignored() {
+    let m = closure_org::find_markup("* not bold*");
+    assert!(m.is_empty());
+}
