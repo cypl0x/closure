@@ -44,9 +44,49 @@ impl OrgDoc {
         &self.roots
     }
 
+    /// The document's full source text.
+    #[must_use]
+    pub fn source(&self) -> &str {
+        &self.source
+    }
+
     fn source_of(&self, span: Span) -> &str {
         &self.source[span.start..span.end]
     }
+}
+
+/// Failure mode for structure-preserving rewrites.
+#[derive(Debug, Error)]
+pub enum RewriteError {
+    /// No headline exists at the given path.
+    #[error("no headline at the given path")]
+    NotFound,
+    /// Rewriting produced source the parser could not accept.
+    #[error("rewrite produced unparsable source")]
+    Parse,
+}
+
+/// Rewrite a headline's title in-place and return a freshly parsed
+/// [`OrgDoc`]. Byte-exact roundtrip holds on the unchanged portion of
+/// the source; only the `title_span` is replaced.
+pub fn rewrite_headline_title(
+    doc: &OrgDoc,
+    path: &[usize],
+    new_title: &str,
+) -> Result<OrgDoc, RewriteError> {
+    let target = navigate_headline(doc, path).ok_or(RewriteError::NotFound)?;
+    let mut src = doc.source().to_owned();
+    src.replace_range(target.title_span.start..target.title_span.end, new_title);
+    parse(&src).map_err(|_| RewriteError::Parse)
+}
+
+fn navigate_headline<'a>(doc: &'a OrgDoc, path: &[usize]) -> Option<&'a Headline> {
+    let first = *path.first()?;
+    let mut cur = doc.roots.get(first)?;
+    for &i in &path[1..] {
+        cur = cur.children.get(i)?;
+    }
+    Some(cur)
 }
 
 /// Byte range into [`OrgDoc::source`]. Crate-internal by design: exposing

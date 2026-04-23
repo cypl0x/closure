@@ -3,15 +3,16 @@
 //!
 //! This crate defines the frontend-agnostic API surface (spec invariant
 //! I7): shells and adapters consume [`Document`], [`BlockId`], and the
-//! future command registry. They never reach into `closure-org`
-//! directly, and they never see byte offsets / spans.
+//! command registry. They never reach into `closure-org` directly, and
+//! they never see byte offsets / spans.
 
 #![forbid(unsafe_code)]
 
 use std::collections::HashMap;
+use std::str::FromStr;
 use std::sync::Arc;
 
-use closure_org::{Headline, OrgDoc, parse};
+use closure_org::{Headline, OrgDoc, parse, rewrite_headline_title};
 use thiserror::Error;
 use ulid::Ulid;
 
@@ -62,6 +63,7 @@ pub struct Document {
     org: OrgDoc,
     headlines: Vec<DocHeadline>,
     by_id: HashMap<BlockId, usize>,
+    history: Vec<Edit>,
 }
 
 /// Flat headline record with stable id and path back into the `OrgDoc`
@@ -112,19 +114,56 @@ impl Document {
     /// Load a document from an in-memory source string.
     pub fn load_str(src: &str) -> Result<Self, LoadError> {
         let org = parse(src).map_err(|_| LoadError::Parse)?;
+        let (headlines, by_id) = build_index(&org);
+        Ok(Self {
+            org,
+            headlines,
+            by_id,
+            history: Vec::new(),
+        })
+    }
+
+    fn rebuild_index(&mut self) {
+        let old: HashMap<Vec<usize>, BlockId> = self
+            .headlines
+            .iter()
+            .map(|h| (h.path.clone(), h.id.clone()))
+            .collect();
         let mut headlines: Vec<DocHeadline> = Vec::new();
-        for (i, root) in org.roots().iter().enumerate() {
-            collect_headlines(root, &[i], &mut headlines);
+        for (i, root) in self.org.roots().iter().enumerate() {
+            collect_preserving(root, &[i], &mut headlines, &old);
         }
         let mut by_id: HashMap<BlockId, usize> = HashMap::with_capacity(headlines.len());
         for (idx, h) in headlines.iter().enumerate() {
             by_id.insert(h.id.clone(), idx);
         }
-        Ok(Self {
-            org,
-            headlines,
-            by_id,
-        })
+        self.headlines = headlines;
+        self.by_id = by_id;
+    }
+
+    /// Record an edit in the history log.
+    pub fn push_history(&mut self, e: Edit) {
+        self.history.push(e);
+    }
+
+    /// Number of edits currently in the history.
+    #[must_use]
+    pub const fn history_len(&self) -> usize {
+        self.history.len()
+    }
+
+    /// Undo the most recent edit, if any.
+    pub fn undo(&mut self) -> Result<(), UndoError> {
+        let Some(edit) = self.history.pop() else {
+            return Err(UndoError::Empty);
+        };
+        edit.reverse(self).map_err(|_| UndoError::ReverseFailed)
+    }
+
+    /// Path from `roots()` to the headline identified by `id`, if any.
+    #[must_use]
+    pub fn path_of(&self, id: &BlockId) -> Option<Vec<usize>> {
+        self.by_id.get(id).map(|&i| self.headlines[i].path.clone())
     }
 
     /// Byte-exact source text (carries I1 forward from `closure-org`).
@@ -183,5 +222,237 @@ fn collect_headlines(h: &Headline, path: &[usize], out: &mut Vec<DocHeadline>) {
         let mut child_path = path.to_vec();
         child_path.push(i);
         collect_headlines(c, &child_path, out);
+    }
+}
+
+fn build_index(org: &OrgDoc) -> (Vec<DocHeadline>, HashMap<BlockId, usize>) {
+    let mut headlines: Vec<DocHeadline> = Vec::new();
+    for (i, root) in org.roots().iter().enumerate() {
+        collect_headlines(root, &[i], &mut headlines);
+    }
+    let mut by_id: HashMap<BlockId, usize> = HashMap::with_capacity(headlines.len());
+    for (idx, h) in headlines.iter().enumerate() {
+        by_id.insert(h.id.clone(), idx);
+    }
+    (headlines, by_id)
+}
+
+fn collect_preserving(
+    h: &Headline,
+    path: &[usize],
+    out: &mut Vec<DocHeadline>,
+    old: &HashMap<Vec<usize>, BlockId>,
+) {
+    let id = h.properties().and_then(|p| p.id()).map_or_else(
+        || old.get(path).cloned().unwrap_or_else(BlockId::fresh),
+        BlockId::from_existing,
+    );
+    out.push(DocHeadline {
+        id,
+        path: path.to_vec(),
+        title: h.title().to_owned(),
+        level: h.level(),
+    });
+    for (i, c) in h.children().iter().enumerate() {
+        let mut cp = path.to_vec();
+        cp.push(i);
+        collect_preserving(c, &cp, out, old);
+    }
+}
+
+/// Parsed key chord (e.g. `C-c C-x`, `SPC f f`).
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct KeyChord(Vec<String>);
+
+impl KeyChord {
+    /// Construct from a list of key strokes.
+    #[must_use]
+    pub fn from_strokes(strokes: &[&str]) -> Self {
+        Self(strokes.iter().map(|s| (*s).to_owned()).collect())
+    }
+}
+
+impl FromStr for KeyChord {
+    type Err = ChordParseError;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        if s.trim().is_empty() {
+            return Err(ChordParseError::Empty);
+        }
+        Ok(Self(s.split_whitespace().map(str::to_owned).collect()))
+    }
+}
+
+impl std::fmt::Display for KeyChord {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0.join(" "))
+    }
+}
+
+/// Chord parse error.
+#[derive(Debug, Error)]
+pub enum ChordParseError {
+    /// Empty string or only whitespace.
+    #[error("empty chord")]
+    Empty,
+}
+
+/// An edit record in the undo log. Each command's `apply` produces an
+/// `Edit` and an inverse operation so undo can replay it.
+#[derive(Debug, Clone)]
+pub struct Edit {
+    inverse: Inverse,
+}
+
+#[derive(Debug, Clone)]
+enum Inverse {
+    RenameHeadline { id: BlockId, old_title: String },
+}
+
+impl Edit {
+    /// Whether this edit carries enough information to undo itself.
+    #[must_use]
+    pub const fn is_reversible(&self) -> bool {
+        matches!(self.inverse, Inverse::RenameHeadline { .. })
+    }
+
+    fn reverse(self, doc: &mut Document) -> Result<(), CommandError> {
+        match self.inverse {
+            Inverse::RenameHeadline { id, old_title } => {
+                let path = doc.path_of(&id).ok_or(CommandError::BlockNotFound)?;
+                let org = rewrite_headline_title(doc.org(), &path, &old_title)
+                    .map_err(|_| CommandError::Rewrite)?;
+                doc.org = org;
+                doc.rebuild_index();
+                Ok(())
+            }
+        }
+    }
+}
+
+/// Failure mode during a command execution.
+#[derive(Debug, Error)]
+pub enum CommandError {
+    /// Referenced block doesn't exist.
+    #[error("block id not found")]
+    BlockNotFound,
+    /// Underlying rewrite failed.
+    #[error("rewrite failed")]
+    Rewrite,
+}
+
+/// Failure mode during undo.
+#[derive(Debug, Error)]
+pub enum UndoError {
+    /// History is empty.
+    #[error("nothing to undo")]
+    Empty,
+    /// Inverse rewrite failed.
+    #[error("reverse edit failed")]
+    ReverseFailed,
+}
+
+/// A registered command.
+pub trait Command {
+    /// Stable identifier for this command (kebab-case).
+    fn name(&self) -> &str;
+    /// Default keybindings (I4).
+    fn keys(&self) -> &[KeyChord];
+    /// Apply the command to the document, producing an [`Edit`] that
+    /// the undo-tree can replay in reverse.
+    fn apply(&self, doc: &mut Document) -> Result<Edit, CommandError>;
+}
+
+/// The command registry: name → command.
+#[derive(Default)]
+pub struct Registry {
+    by_name: HashMap<String, Box<dyn Command + Send + Sync>>,
+}
+
+impl std::fmt::Debug for Registry {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Registry")
+            .field("commands", &self.by_name.keys().collect::<Vec<_>>())
+            .finish()
+    }
+}
+
+impl Registry {
+    /// Fresh, empty registry.
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Register a command.
+    pub fn register(&mut self, cmd: Box<dyn Command + Send + Sync>) {
+        self.by_name.insert(cmd.name().to_owned(), cmd);
+    }
+
+    /// Lookup a command by name.
+    #[must_use]
+    pub fn get(&self, name: &str) -> Option<&(dyn Command + Send + Sync)> {
+        self.by_name.get(name).map(std::convert::AsRef::as_ref)
+    }
+}
+
+/// Command: rename a headline's title.
+pub struct RenameHeadline {
+    id: BlockId,
+    new_title: String,
+    keys: Vec<KeyChord>,
+}
+
+impl RenameHeadline {
+    /// Build a rename command for a specific block id and new title.
+    #[must_use]
+    pub fn new(id: BlockId, new_title: String) -> Self {
+        Self {
+            id,
+            new_title,
+            keys: vec![KeyChord::from_strokes(&["C-c", "C-x", "r"])],
+        }
+    }
+
+    /// Placeholder instance used for registry discovery and key
+    /// introspection before the user has picked a target/title.
+    #[must_use]
+    pub fn new_placeholder() -> Self {
+        Self {
+            id: BlockId::from_existing(""),
+            new_title: String::new(),
+            keys: vec![KeyChord::from_strokes(&["C-c", "C-x", "r"])],
+        }
+    }
+}
+
+impl Command for RenameHeadline {
+    #[allow(clippy::unnecessary_literal_bound)]
+    fn name(&self) -> &str {
+        "rename-headline"
+    }
+
+    fn keys(&self) -> &[KeyChord] {
+        &self.keys
+    }
+
+    fn apply(&self, doc: &mut Document) -> Result<Edit, CommandError> {
+        let path = doc.path_of(&self.id).ok_or(CommandError::BlockNotFound)?;
+        let old_title = doc
+            .headline_by_id(&self.id)
+            .ok_or(CommandError::BlockNotFound)?
+            .title()
+            .to_owned();
+        let org = rewrite_headline_title(doc.org(), &path, &self.new_title)
+            .map_err(|_| CommandError::Rewrite)?;
+        doc.org = org;
+        doc.rebuild_index();
+        let edit = Edit {
+            inverse: Inverse::RenameHeadline {
+                id: self.id.clone(),
+                old_title,
+            },
+        };
+        doc.push_history(edit.clone());
+        Ok(edit)
     }
 }
