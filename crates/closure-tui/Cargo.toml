@@ -1,0 +1,25 @@
+[package]
+name = "closure-tui"
+description = "ratatui + crossterm terminal shell for the closure kernel."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+closure-core = { path = "../closure-core" }
+closure-org = { path = "../closure-org" }
+closure-query = { path = "../closure-query" }
+closure-store = { path = "../closure-store" }
+closure-undo = { path = "../closure-undo" }
+crossterm.workspace = true
+ratatui.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+insta.workspace = true

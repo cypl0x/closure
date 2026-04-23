@@ -1,0 +1,20 @@
+[package]
+name = "closure-undo"
+description = "Branching undo-tree (DAG of edits) persisted per closure vault."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+closure-core = { path = "../closure-core" }
+thiserror.workspace = true
+ulid.workspace = true
+
+[dev-dependencies]
+proptest.workspace = true

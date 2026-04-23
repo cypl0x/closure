@@ -1,0 +1,18 @@
+[package]
+name = "closure-store"
+description = "Vault loader, file watcher, atomic writes, and cross-file indices for closure."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+closure-core = { path = "../closure-core" }
+closure-org = { path = "../closure-org" }
+notify.workspace = true
+thiserror.workspace = true

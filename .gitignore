@@ -1,0 +1,25 @@
+/target
+/result
+/result-*
+/.direnv
+/.env
+/.envrc.local
+
+# per-crate
+**/target
+
+# IDE
+/.idea
+/.vscode
+*.swp
+*.swo
+
+# coverage / bench artifacts
+/tarpaulin-report.html
+/coverage
+/criterion
+
+# fuzz
+/fuzz/target
+/fuzz/corpus
+/fuzz/artifacts

@@ -1,0 +1,26 @@
+[package]
+name = "closure-cli"
+description = "`closure` command-line entrypoint — subcommands for TUI, check, fmt, parse, query."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[[bin]]
+name = "closure"
+path = "src/main.rs"
+
+[lints]
+workspace = true
+
+[dependencies]
+closure-core = { path = "../closure-core" }
+closure-org = { path = "../closure-org" }
+closure-query = { path = "../closure-query" }
+closure-store = { path = "../closure-store" }
+closure-tui = { path = "../closure-tui" }
+closure-undo = { path = "../closure-undo" }
+clap.workspace = true
+thiserror.workspace = true

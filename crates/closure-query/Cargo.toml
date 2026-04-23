@@ -1,0 +1,18 @@
+[package]
+name = "closure-query"
+description = "Tree, tag, text, and backlink queries over a closure vault."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+closure-core = { path = "../closure-core" }
+closure-org = { path = "../closure-org" }
+closure-store = { path = "../closure-store" }
+thiserror.workspace = true

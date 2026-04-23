@@ -1,0 +1,12 @@
+#+TITLE: Notes
+
+intro paragraph
+continues
+
+* First section
+body of first section
+
+** Subsection
+more body
+
+* Second section
