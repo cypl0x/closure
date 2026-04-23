@@ -7,9 +7,8 @@
 //! The parser is a hand-written line-cursor classifier that captures each
 //! region's source span into a shared `Arc<str>` held by the document.
 //! Printing slices back into that source, so unedited documents roundtrip
-//! by construction. As structured editing lands in later M1 cycles,
-//! mutated nodes will set a dirty flag and re-serialize from structured
-//! fields; unedited nodes continue to roundtrip byte-exactly.
+//! by construction. Later cycles add structured editing where mutated
+//! nodes set a dirty flag and re-serialize from structured fields.
 //!
 //! `Span` is deliberately `pub(crate)`. Nothing outside `closure-org` ever
 //! sees a byte offset — that's the firewall that keeps CRDT, shells, and
@@ -22,21 +21,27 @@ use thiserror::Error;
 
 /// A parsed org document.
 ///
-/// The document owns its source text once (via [`Arc<str>`]) and every
-/// `Node` references a slice of it by `Span`. Cycle 3 will add a `roots`
-/// field for parsed headlines.
+/// Owns its source once (via [`Arc<str>`]) and every [`Node`] or
+/// [`Headline`] references a slice of it by span.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OrgDoc {
     source: Arc<str>,
     preamble: Vec<Node>,
+    roots: Vec<Headline>,
 }
 
 impl OrgDoc {
-    /// Nodes preceding any headline. In the current M1 cycle every node
-    /// lives here; headline parsing arrives in a later cycle.
+    /// Nodes preceding the first headline.
     #[must_use]
     pub fn preamble(&self) -> &[Node] {
         &self.preamble
+    }
+
+    /// Top-level headlines. In the current cycle they are siblings; the
+    /// nesting cycle restructures into a tree.
+    #[must_use]
+    pub fn roots(&self) -> &[Headline] {
+        &self.roots
     }
 
     fn source_of(&self, span: Span) -> &str {
@@ -46,25 +51,23 @@ impl OrgDoc {
 
 /// Byte range into [`OrgDoc::source`]. Crate-internal by design: exposing
 /// byte offsets to the kernel or shells would break the span firewall
-/// described in `docs/architecture.md`. The type is `pub(crate)` and no
-/// public API accepts or returns one.
+/// described in `docs/architecture.md`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct Span {
     pub(crate) start: usize,
     pub(crate) end: usize,
 }
 
-/// A top-level construct in an org file. [`Node::kind`] exposes the
-/// classification; the source bytes are retrieved through [`OrgDoc`] (not
-/// yet exposed — will land with structured editing).
+/// A line-level construct. [`Node::kind`] exposes the classification.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Node {
+    source: Arc<str>,
     kind: NodeKind,
     span: Span,
 }
 
 /// Coarse classification of a [`Node`]. Structured fields per kind arrive
-/// in later M1 cycles.
+/// in later cycles.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum NodeKind {
     /// A whitespace-only line (possibly empty).
@@ -78,14 +81,63 @@ pub enum NodeKind {
 }
 
 impl Node {
-    /// The coarse classification of this node.
+    /// Classification of this node.
     #[must_use]
     pub const fn kind(&self) -> NodeKind {
         self.kind
     }
 
-    pub(crate) const fn span(&self) -> Span {
-        self.span
+    /// The verbatim source slice that produced this node.
+    #[must_use]
+    pub fn source(&self) -> &str {
+        &self.source[self.span.start..self.span.end]
+    }
+}
+
+/// A parsed headline with its title, level, body, and (post-nesting)
+/// children.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Headline {
+    source: Arc<str>,
+    header_span: Span,
+    title_span: Span,
+    level: u8,
+    body: Vec<Node>,
+    children: Vec<Self>,
+}
+
+impl Headline {
+    /// Nesting level (number of leading `*`).
+    #[must_use]
+    pub const fn level(&self) -> u8 {
+        self.level
+    }
+
+    /// The title text, excluding leading stars and the separating space,
+    /// and the trailing newline.
+    #[must_use]
+    pub fn title(&self) -> &str {
+        &self.source[self.title_span.start..self.title_span.end]
+    }
+
+    /// Verbatim source of the header line (including trailing newline if
+    /// any).
+    #[must_use]
+    pub fn header(&self) -> &str {
+        &self.source[self.header_span.start..self.header_span.end]
+    }
+
+    /// Nodes in this headline's body (after header, before children or
+    /// next sibling).
+    #[must_use]
+    pub fn body(&self) -> &[Node] {
+        &self.body
+    }
+
+    /// Child headlines (populated once nesting lands).
+    #[must_use]
+    pub fn children(&self) -> &[Self] {
+        &self.children
     }
 }
 
@@ -102,6 +154,7 @@ pub enum ParseError {}
 pub fn parse(src: &str) -> Result<OrgDoc, ParseError> {
     let source: Arc<str> = Arc::from(src);
     let mut preamble: Vec<Node> = Vec::new();
+    let mut roots: Vec<Headline> = Vec::new();
     let mut paragraph: Option<Span> = None;
     let mut cursor: usize = 0;
 
@@ -112,37 +165,89 @@ pub fn parse(src: &str) -> Result<OrgDoc, ParseError> {
         };
         cursor += line.len();
 
-        match classify(line) {
+        if let Some(head) = classify_heading(line, span) {
+            flush_paragraph(
+                &source,
+                &mut paragraph,
+                target_nodes(&mut roots, &mut preamble),
+            );
+            roots.push(Headline {
+                source: Arc::clone(&source),
+                header_span: head.header_span,
+                title_span: head.title_span,
+                level: head.level,
+                body: Vec::new(),
+                children: Vec::new(),
+            });
+            continue;
+        }
+
+        match classify_line(line) {
             LineKind::Paragraph => match &mut paragraph {
                 Some(p) => p.end = span.end,
                 None => paragraph = Some(span),
             },
             LineKind::Blank => {
-                flush_paragraph(&mut paragraph, &mut preamble);
-                preamble.push(Node {
-                    kind: NodeKind::BlankLine,
-                    span,
-                });
+                flush_paragraph(
+                    &source,
+                    &mut paragraph,
+                    target_nodes(&mut roots, &mut preamble),
+                );
+                push_node(
+                    &mut roots,
+                    &mut preamble,
+                    Node {
+                        source: Arc::clone(&source),
+                        kind: NodeKind::BlankLine,
+                        span,
+                    },
+                );
             }
             LineKind::Comment => {
-                flush_paragraph(&mut paragraph, &mut preamble);
-                preamble.push(Node {
-                    kind: NodeKind::Comment,
-                    span,
-                });
+                flush_paragraph(
+                    &source,
+                    &mut paragraph,
+                    target_nodes(&mut roots, &mut preamble),
+                );
+                push_node(
+                    &mut roots,
+                    &mut preamble,
+                    Node {
+                        source: Arc::clone(&source),
+                        kind: NodeKind::Comment,
+                        span,
+                    },
+                );
             }
             LineKind::Keyword => {
-                flush_paragraph(&mut paragraph, &mut preamble);
-                preamble.push(Node {
-                    kind: NodeKind::Keyword,
-                    span,
-                });
+                flush_paragraph(
+                    &source,
+                    &mut paragraph,
+                    target_nodes(&mut roots, &mut preamble),
+                );
+                push_node(
+                    &mut roots,
+                    &mut preamble,
+                    Node {
+                        source: Arc::clone(&source),
+                        kind: NodeKind::Keyword,
+                        span,
+                    },
+                );
             }
         }
     }
-    flush_paragraph(&mut paragraph, &mut preamble);
+    flush_paragraph(
+        &source,
+        &mut paragraph,
+        target_nodes(&mut roots, &mut preamble),
+    );
 
-    Ok(OrgDoc { source, preamble })
+    Ok(OrgDoc {
+        source,
+        preamble,
+        roots,
+    })
 }
 
 /// Serialise an org document back to its source text. Concatenates each
@@ -150,16 +255,24 @@ pub fn parse(src: &str) -> Result<OrgDoc, ParseError> {
 /// unedited documents by construction.
 #[must_use]
 pub fn print(doc: &OrgDoc) -> String {
-    let total: usize = doc
-        .preamble
-        .iter()
-        .map(|n| n.span().end - n.span().start)
-        .sum();
-    let mut out = String::with_capacity(total);
+    let mut out = String::with_capacity(doc.source.len());
     for n in &doc.preamble {
-        out.push_str(doc.source_of(n.span()));
+        out.push_str(doc.source_of(n.span));
+    }
+    for h in &doc.roots {
+        print_headline(doc, h, &mut out);
     }
     out
+}
+
+fn print_headline(doc: &OrgDoc, h: &Headline, out: &mut String) {
+    out.push_str(doc.source_of(h.header_span));
+    for n in &h.body {
+        out.push_str(doc.source_of(n.span));
+    }
+    for c in &h.children {
+        print_headline(doc, c, out);
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -170,18 +283,71 @@ enum LineKind {
     Paragraph,
 }
 
-fn flush_paragraph(paragraph: &mut Option<Span>, out: &mut Vec<Node>) {
+struct HeadInfo {
+    header_span: Span,
+    title_span: Span,
+    level: u8,
+}
+
+#[allow(clippy::ptr_arg)]
+fn target_nodes<'a>(
+    roots: &'a mut Vec<Headline>,
+    preamble: &'a mut Vec<Node>,
+) -> &'a mut Vec<Node> {
+    if let Some(last) = roots.last_mut() {
+        &mut last.body
+    } else {
+        preamble
+    }
+}
+
+#[allow(clippy::ptr_arg)]
+fn push_node(roots: &mut Vec<Headline>, preamble: &mut Vec<Node>, node: Node) {
+    target_nodes(roots, preamble).push(node);
+}
+
+fn flush_paragraph(source: &Arc<str>, paragraph: &mut Option<Span>, out: &mut Vec<Node>) {
     if let Some(span) = paragraph.take() {
         out.push(Node {
+            source: Arc::clone(source),
             kind: NodeKind::Paragraph,
             span,
         });
     }
 }
 
-fn classify(line: &str) -> LineKind {
-    // Strip terminator newline for classification only; callers keep the
-    // full original bytes including the terminator in the span.
+/// Recognise a heading line. A heading is `*+` at column 0 followed by
+/// either end-of-line (empty title) or at least one space/tab (title
+/// follows).
+fn classify_heading(line: &str, span: Span) -> Option<HeadInfo> {
+    let body = line.strip_suffix('\n').unwrap_or(line);
+    let stars = body.chars().take_while(|&c| c == '*').count();
+    if stars == 0 {
+        return None;
+    }
+    let after = &body[stars..];
+    if !(after.is_empty() || after.starts_with(' ') || after.starts_with('\t')) {
+        return None;
+    }
+    let level = u8::try_from(stars).unwrap_or(u8::MAX);
+    let title_skip = after
+        .chars()
+        .take_while(|c| *c == ' ' || *c == '\t')
+        .count();
+    let title_start_offset = stars + title_skip;
+    let title_end_offset = stars + after.len();
+    let title_span = Span {
+        start: span.start + title_start_offset,
+        end: span.start + title_end_offset,
+    };
+    Some(HeadInfo {
+        header_span: span,
+        title_span,
+        level,
+    })
+}
+
+fn classify_line(line: &str) -> LineKind {
     let body = line.strip_suffix('\n').unwrap_or(line);
 
     if body.trim().is_empty() {
@@ -201,9 +367,6 @@ fn classify(line: &str) -> LineKind {
 }
 
 /// Recognise the body of a `#+KEY:` header (the text following `#+`).
-/// Returns true when the text matches `NAME:...` where `NAME` is one or
-/// more ASCII alphanumerics, underscores, or hyphens and begins with a
-/// letter or underscore.
 fn is_keyword_header(rest: &str) -> bool {
     let mut chars = rest.chars();
     let Some(first) = chars.next() else {
@@ -229,7 +392,7 @@ mod tests {
     use super::*;
 
     fn roundtrip(src: &str) {
-        let parsed = parse(src).expect("parse is infallible in M1 cycle 1");
+        let parsed = parse(src).expect("parse is infallible");
         assert_eq!(print(&parsed), src, "roundtrip mismatch for {src:?}");
     }
 
@@ -237,6 +400,7 @@ mod tests {
     fn empty_input_parses_to_empty_doc() {
         let doc = parse("").expect("parse");
         assert!(doc.preamble().is_empty());
+        assert!(doc.roots().is_empty());
         roundtrip("");
     }
 
@@ -268,20 +432,20 @@ mod tests {
 
     #[test]
     fn comment_requires_column_zero() {
-        assert_eq!(classify("# hi\n"), LineKind::Comment);
-        assert_eq!(classify("#\n"), LineKind::Comment);
-        assert_eq!(classify("#\ttab-comment\n"), LineKind::Comment);
-        assert_eq!(classify("  # hi\n"), LineKind::Paragraph);
-        assert_eq!(classify("#foo\n"), LineKind::Paragraph);
+        assert_eq!(classify_line("# hi\n"), LineKind::Comment);
+        assert_eq!(classify_line("#\n"), LineKind::Comment);
+        assert_eq!(classify_line("#\ttab-comment\n"), LineKind::Comment);
+        assert_eq!(classify_line("  # hi\n"), LineKind::Paragraph);
+        assert_eq!(classify_line("#foo\n"), LineKind::Paragraph);
     }
 
     #[test]
     fn keyword_requires_column_zero_and_colon() {
-        assert_eq!(classify("#+TITLE: x\n"), LineKind::Keyword);
-        assert_eq!(classify("#+FILETAGS: :t:\n"), LineKind::Keyword);
-        assert_eq!(classify("#+AUTHOR:\n"), LineKind::Keyword);
-        assert_eq!(classify("#+TITLE x\n"), LineKind::Paragraph);
-        assert_eq!(classify("  #+TITLE: x\n"), LineKind::Paragraph);
+        assert_eq!(classify_line("#+TITLE: x\n"), LineKind::Keyword);
+        assert_eq!(classify_line("#+FILETAGS: :t:\n"), LineKind::Keyword);
+        assert_eq!(classify_line("#+AUTHOR:\n"), LineKind::Keyword);
+        assert_eq!(classify_line("#+TITLE x\n"), LineKind::Paragraph);
+        assert_eq!(classify_line("  #+TITLE: x\n"), LineKind::Paragraph);
     }
 
     #[test]
@@ -292,11 +456,15 @@ mod tests {
     }
 
     #[test]
-    fn span_covers_full_line_including_newline() {
-        let doc = parse("   \n").expect("parse");
-        assert_eq!(doc.preamble().len(), 1);
-        let n = &doc.preamble()[0];
-        assert_eq!(n.kind(), NodeKind::BlankLine);
-        assert_eq!(doc.source_of(n.span()), "   \n");
+    fn heading_basic_roundtrips() {
+        roundtrip("* Hello\n");
+        roundtrip("* First\n* Second\n* Third\n");
+        roundtrip("*\n");
+        roundtrip("**\n");
+    }
+
+    #[test]
+    fn heading_with_body_roundtrips() {
+        roundtrip("* Hello\nbody\n");
     }
 }
