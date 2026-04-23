@@ -105,6 +105,44 @@ pub struct CodeBlockView<'a> {
     pub content: &'a str,
 }
 
+/// Borrowed view of an inline link `[[target][description]]` or `[[target]]`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct LinkView<'a> {
+    /// Link target (URL, id, file path, etc.) before the optional `][`.
+    pub target: &'a str,
+    /// Optional human-readable description.
+    pub description: Option<&'a str>,
+}
+
+/// Scan `text` for inline `[[target][desc]]` / `[[target]]` links.
+/// Returns them in source order. Unterminated `[[` is skipped without
+/// panicking (I5).
+#[must_use]
+pub fn find_links(text: &str) -> Vec<LinkView<'_>> {
+    let mut out: Vec<LinkView<'_>> = Vec::new();
+    let bytes = text.as_bytes();
+    let mut i = 0usize;
+    while i + 1 < bytes.len() {
+        if bytes[i] == b'[' && bytes[i + 1] == b'[' {
+            let after = &text[i + 2..];
+            if let Some(end_rel) = after.find("]]") {
+                let inner = &after[..end_rel];
+                let (target, description) = inner.find("][").map_or((inner, None), |mid| {
+                    (&inner[..mid], Some(&inner[mid + 2..]))
+                });
+                out.push(LinkView {
+                    target,
+                    description,
+                });
+                i = i + 2 + end_rel + 2;
+                continue;
+            }
+        }
+        i += 1;
+    }
+    out
+}
+
 impl Node {
     /// Classification of this node.
     #[must_use]

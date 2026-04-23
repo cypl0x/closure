@@ -1,0 +1,2 @@
+Visit [[https://example.com][example]] or [[wiki:Home]].
+Also see [[id:01HXQZ7F][a linked note]].

@@ -324,3 +324,35 @@ fn unclosed_code_block_falls_back_to_keyword_line() {
         "no CodeBlock when unclosed"
     );
 }
+
+#[test]
+fn link_with_description_parsed() {
+    let links = closure_org::find_links("Visit [[https://example.com][example]]!");
+    assert_eq!(links.len(), 1);
+    assert_eq!(links[0].target, "https://example.com");
+    assert_eq!(links[0].description, Some("example"));
+}
+
+#[test]
+fn link_without_description_parsed() {
+    let links = closure_org::find_links("See [[wiki:Home]] soon.");
+    assert_eq!(links.len(), 1);
+    assert_eq!(links[0].target, "wiki:Home");
+    assert_eq!(links[0].description, None);
+}
+
+#[test]
+fn multiple_links_in_text() {
+    let links = closure_org::find_links("[[a]] and [[b][B]] and [[c]]");
+    assert_eq!(links.len(), 3);
+    assert_eq!(links[0].target, "a");
+    assert_eq!(links[1].target, "b");
+    assert_eq!(links[1].description, Some("B"));
+    assert_eq!(links[2].target, "c");
+}
+
+#[test]
+fn unterminated_link_is_ignored() {
+    let links = closure_org::find_links("broken [[unfinished text");
+    assert!(links.is_empty());
+}
