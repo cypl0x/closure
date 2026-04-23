@@ -266,3 +266,61 @@ fn property_drawer_not_in_headline_body() {
     let body_sources: String = h.body().iter().map(closure_org::Node::source).collect();
     assert_eq!(body_sources, "body\n");
 }
+
+#[test]
+fn code_block_recognised_as_single_node() {
+    let src = "#+BEGIN_SRC rust\nfn main() {}\n#+END_SRC\n";
+    let doc = parse(src).expect("parse");
+    assert_eq!(doc.preamble().len(), 1);
+    let n = &doc.preamble()[0];
+    assert_eq!(n.kind(), NodeKind::CodeBlock);
+    let cb = n.as_code_block().expect("code block");
+    assert_eq!(cb.language, Some("rust"));
+    assert_eq!(cb.content, "fn main() {}\n");
+}
+
+#[test]
+fn code_block_lowercase_directives_accepted() {
+    let src = "#+begin_src python :results output\nprint(\"hi\")\n#+end_src\n";
+    let doc = parse(src).expect("parse");
+    assert_eq!(doc.preamble().len(), 1);
+    let cb = doc.preamble()[0].as_code_block().expect("code block");
+    assert_eq!(cb.language, Some("python"));
+    assert_eq!(cb.args, Some(":results output"));
+    assert_eq!(cb.content, "print(\"hi\")\n");
+}
+
+#[test]
+fn code_block_no_language() {
+    let src = "#+BEGIN_SRC\nline one\nline two\n#+END_SRC\n";
+    let doc = parse(src).expect("parse");
+    let cb = doc.preamble()[0].as_code_block().expect("code block");
+    assert_eq!(cb.language, None);
+    assert_eq!(cb.args, None);
+    assert_eq!(cb.content, "line one\nline two\n");
+}
+
+#[test]
+fn code_block_content_preserves_internals_verbatim() {
+    // Inside a code block, `* stars` must not be parsed as a heading.
+    let src = "#+BEGIN_SRC org\n* not a heading\n#+END_SRC\n";
+    let doc = parse(src).expect("parse");
+    assert!(doc.roots().is_empty());
+    assert_eq!(doc.preamble().len(), 1);
+    let cb = doc.preamble()[0].as_code_block().expect("code block");
+    assert_eq!(cb.content, "* not a heading\n");
+}
+
+#[test]
+fn unclosed_code_block_falls_back_to_keyword_line() {
+    // No #+END_SRC anywhere. The #+BEGIN_SRC line is just a keyword
+    // and the remainder are paragraph lines.
+    let src = "#+BEGIN_SRC rust\nfn main() {}\n";
+    let doc = parse(src).expect("parse");
+    assert!(
+        doc.preamble()
+            .iter()
+            .all(|n| n.kind() != NodeKind::CodeBlock),
+        "no CodeBlock when unclosed"
+    );
+}

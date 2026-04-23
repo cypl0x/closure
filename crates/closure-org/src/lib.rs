@@ -64,6 +64,17 @@ pub struct Node {
     source: Arc<str>,
     kind: NodeKind,
     span: Span,
+    meta: NodeMeta,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum NodeMeta {
+    None,
+    CodeBlock {
+        lang_span: Option<Span>,
+        args_span: Option<Span>,
+        content_span: Span,
+    },
 }
 
 /// Coarse classification of a [`Node`]. Structured fields per kind arrive
@@ -78,6 +89,20 @@ pub enum NodeKind {
     Keyword,
     /// One or more adjacent non-blank, non-comment, non-keyword lines.
     Paragraph,
+    /// A `#+BEGIN_SRC` / `#+END_SRC` fenced block.
+    CodeBlock,
+}
+
+/// Structural view of a [`Node`] classified as [`NodeKind::CodeBlock`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CodeBlockView<'a> {
+    /// Language identifier if one was specified on the begin line.
+    pub language: Option<&'a str>,
+    /// Raw header arguments after the language (e.g. `:results output`).
+    pub args: Option<&'a str>,
+    /// Verbatim content between begin and end lines, including trailing
+    /// newline on each line.
+    pub content: &'a str,
 }
 
 impl Node {
@@ -91,6 +116,23 @@ impl Node {
     #[must_use]
     pub fn source(&self) -> &str {
         &self.source[self.span.start..self.span.end]
+    }
+
+    /// Structural view when this node is a [`NodeKind::CodeBlock`].
+    #[must_use]
+    pub fn as_code_block(&self) -> Option<CodeBlockView<'_>> {
+        match &self.meta {
+            NodeMeta::CodeBlock {
+                lang_span,
+                args_span,
+                content_span,
+            } => Some(CodeBlockView {
+                language: lang_span.map(|s| &self.source[s.start..s.end]),
+                args: args_span.map(|s| &self.source[s.start..s.end]),
+                content: &self.source[content_span.start..content_span.end],
+            }),
+            NodeMeta::None => None,
+        }
     }
 }
 
@@ -304,6 +346,21 @@ pub fn parse(src: &str) -> Result<OrgDoc, ParseError> {
             continue;
         }
 
+        // Code block: `#+BEGIN_SRC [lang [args...]]` ... `#+END_SRC`. Case
+        // insensitive on the directive. Content between is verbatim and
+        // never classified as heading/drawer/etc. Unclosed blocks fall
+        // through to the normal line classifier.
+        if let Some((node, next_i)) = scan_code_block(&lines, i, &source) {
+            flush_paragraph(
+                &source,
+                &mut paragraph,
+                target_nodes(&mut roots, &mut preamble),
+            );
+            push_node(&mut roots, &mut preamble, node);
+            i = next_i;
+            continue;
+        }
+
         match classify_line(line) {
             LineKind::Paragraph => match &mut paragraph {
                 Some(p) => p.end = span.end,
@@ -322,6 +379,7 @@ pub fn parse(src: &str) -> Result<OrgDoc, ParseError> {
                         source: Arc::clone(&source),
                         kind: NodeKind::BlankLine,
                         span,
+                        meta: NodeMeta::None,
                     },
                 );
             }
@@ -338,6 +396,7 @@ pub fn parse(src: &str) -> Result<OrgDoc, ParseError> {
                         source: Arc::clone(&source),
                         kind: NodeKind::Comment,
                         span,
+                        meta: NodeMeta::None,
                     },
                 );
             }
@@ -354,6 +413,7 @@ pub fn parse(src: &str) -> Result<OrgDoc, ParseError> {
                         source: Arc::clone(&source),
                         kind: NodeKind::Keyword,
                         span,
+                        meta: NodeMeta::None,
                     },
                 );
             }
@@ -411,6 +471,96 @@ fn scan_property_drawer(
             continue;
         }
         return None; // malformed
+    }
+    None
+}
+
+fn scan_code_block(
+    lines: &[(&str, Span)],
+    start: usize,
+    source: &Arc<str>,
+) -> Option<(Node, usize)> {
+    let (line, span) = lines[start];
+    let body = line.strip_suffix('\n').unwrap_or(line);
+    // Directive must start at column 0.
+    let rest = body.strip_prefix("#+")?;
+    // Match `begin_src` case-insensitive followed by space/EOL/colon.
+    let directive_len = 9; // "begin_src" or "BEGIN_SRC"
+    if rest.len() < directive_len {
+        return None;
+    }
+    if !rest[..directive_len].eq_ignore_ascii_case("begin_src") {
+        return None;
+    }
+    let after = &rest[directive_len..];
+    if !(after.is_empty() || after.starts_with(' ') || after.starts_with('\t')) {
+        return None;
+    }
+
+    // Parse `lang` and `args` from header.
+    let header_rest = after.trim_start_matches([' ', '\t']);
+    let header_offset = (body.len() - header_rest.len()) + span.start;
+    let (lang_span, args_span) = if header_rest.is_empty() {
+        (None, None)
+    } else {
+        let lang_end = header_rest.find([' ', '\t']).unwrap_or(header_rest.len());
+        let lang = &header_rest[..lang_end];
+        let lang_span = if lang.is_empty() {
+            None
+        } else {
+            Some(Span {
+                start: header_offset,
+                end: header_offset + lang.len(),
+            })
+        };
+        let after_lang = &header_rest[lang_end..];
+        let args_trim = after_lang.trim_start_matches([' ', '\t']);
+        let args_offset = header_offset + (header_rest.len() - args_trim.len());
+        let args_trimmed = args_trim.trim_end_matches([' ', '\t']);
+        let args_span = if args_trimmed.is_empty() {
+            None
+        } else {
+            Some(Span {
+                start: args_offset,
+                end: args_offset + args_trimmed.len(),
+            })
+        };
+        (lang_span, args_span)
+    };
+
+    // Scan forward for `#+END_SRC` at column 0.
+    let content_start = span.end;
+    let mut j = start + 1;
+    while j < lines.len() {
+        let (ln, _) = lines[j];
+        let ln_body = ln.strip_suffix('\n').unwrap_or(ln);
+        if let Some(rest) = ln_body.strip_prefix("#+")
+            && rest.eq_ignore_ascii_case("end_src")
+        {
+            let (_, end_span) = lines[j];
+            let node_span = Span {
+                start: span.start,
+                end: end_span.end,
+            };
+            let content_span = Span {
+                start: content_start,
+                end: end_span.start,
+            };
+            return Some((
+                Node {
+                    source: Arc::clone(source),
+                    kind: NodeKind::CodeBlock,
+                    span: node_span,
+                    meta: NodeMeta::CodeBlock {
+                        lang_span,
+                        args_span,
+                        content_span,
+                    },
+                },
+                j + 1,
+            ));
+        }
+        j += 1;
     }
     None
 }
@@ -535,6 +685,7 @@ fn flush_paragraph(source: &Arc<str>, paragraph: &mut Option<Span>, out: &mut Ve
             source: Arc::clone(source),
             kind: NodeKind::Paragraph,
             span,
+            meta: NodeMeta::None,
         });
     }
 }

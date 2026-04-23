@@ -1,0 +1,5 @@
+#+BEGIN_SRC rust
+fn main() {
+    println!("hi");
+}
+#+END_SRC
