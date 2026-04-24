@@ -1,0 +1,17 @@
+[package]
+name = "closure-sync"
+description = "File / git / P2P sync for closure vaults (Layer 3). Pluggable transports."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+closure-store = { path = "../closure-store" }
+closure-crdt = { path = "../closure-crdt" }
+thiserror.workspace = true

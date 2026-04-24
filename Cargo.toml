@@ -2,6 +2,8 @@
 resolver = "2"
 members = [
   "crates/closure-org",
+  "crates/closure-markdown",
+  "crates/closure-tree-sitter",
   "crates/closure-core",
   "crates/closure-store",
   "crates/closure-query",
@@ -11,6 +13,19 @@ members = [
   "crates/closure-config",
   "crates/closure-input",
   "crates/closure-whichkey",
+  "crates/closure-eval",
+  "crates/closure-crdt",
+  "crates/closure-sync",
+  "crates/closure-llm",
+  "crates/closure-mcp",
+  "crates/closure-lsp",
+  "crates/closure-acp",
+  "crates/closure-a2a",
+  "crates/closure-cron",
+  "crates/closure-plugin-host",
+  "crates/closure-sniffer",
+  "crates/closure-shell-egui",
+  "crates/closure-shell-web",
 ]
 
 [workspace.package]

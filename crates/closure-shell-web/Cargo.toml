@@ -1,6 +1,6 @@
 [package]
-name = "closure-whichkey"
-description = "Auto-generated which-key popup content from the command registry (I4)."
+name = "closure-shell-web"
+description = "Self-contained HTML + localhost web shell (Layer 5). Consumes closure-core only (I7)."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -13,8 +13,5 @@ workspace = true
 
 [dependencies]
 closure-core = { path = "../closure-core" }
-closure-input = { path = "../closure-input" }
+closure-store = { path = "../closure-store" }
 thiserror.workspace = true
-
-[dev-dependencies]
-closure-config = { path = "../closure-config" }

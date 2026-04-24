@@ -1,6 +1,6 @@
 [package]
-name = "closure-whichkey"
-description = "Auto-generated which-key popup content from the command registry (I4)."
+name = "closure-sniffer"
+description = "Network sniffer / mitmproxy-like observation tool — own binary, shares config with the kernel."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -12,9 +12,5 @@ authors.workspace = true
 workspace = true
 
 [dependencies]
-closure-core = { path = "../closure-core" }
-closure-input = { path = "../closure-input" }
-thiserror.workspace = true
-
-[dev-dependencies]
 closure-config = { path = "../closure-config" }
+thiserror.workspace = true
