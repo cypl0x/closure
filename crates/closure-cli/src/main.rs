@@ -16,7 +16,11 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use clap::{Parser, Subcommand};
-use closure_core::Document;
+use closure_config::InputMode;
+use closure_core::{Document, Registry, RenameHeadline};
+use closure_eval::{Backend, ShellBackend};
+use closure_input::Dispatcher;
+use closure_org::{NodeKind, parse};
 use closure_store::Vault;
 
 #[derive(Parser, Debug)]
@@ -65,6 +69,18 @@ enum Cmd {
         #[arg(long)]
         level: Option<u8>,
     },
+    /// Print which-key bindings for the default registry.
+    Whichkey {
+        /// Optional prefix filter (e.g. `C-c`).
+        #[arg(long)]
+        prefix: Option<String>,
+    },
+    /// Evaluate every shell code block in the given file and print its
+    /// output.
+    Eval {
+        /// Path to a `*.org` file.
+        file: PathBuf,
+    },
 }
 
 fn main() -> ExitCode {
@@ -97,7 +113,54 @@ fn run(cmd: &Cmd) -> Result<(), String> {
             title.as_deref(),
             *level,
         ),
+        Cmd::Whichkey { prefix } => cmd_whichkey(prefix.as_deref()),
+        Cmd::Eval { file } => cmd_eval(file),
     }
+}
+
+fn default_registry() -> Registry {
+    let mut r = Registry::new();
+    r.register(Box::new(RenameHeadline::new_placeholder()));
+    r
+}
+
+#[allow(clippy::unnecessary_wraps)]
+fn cmd_whichkey(prefix: Option<&str>) -> Result<(), String> {
+    let reg = default_registry();
+    let disp = Dispatcher::from_registry(&reg, InputMode::Doom);
+    let out = prefix.map_or_else(
+        || closure_whichkey::render(&disp),
+        |p| closure_whichkey::render_prefix(&disp, p),
+    );
+    print!("{out}");
+    Ok(())
+}
+
+fn cmd_eval(path: &Path) -> Result<(), String> {
+    let src = fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))?;
+    let doc = parse(&src).map_err(|e| format!("{e}"))?;
+    let sh = ShellBackend;
+    let mut ran = 0usize;
+    for n in doc.preamble() {
+        if n.kind() == NodeKind::CodeBlock
+            && let Some(cb) = n.as_code_block()
+            && (cb.language == Some("shell") || cb.language == Some("sh") || cb.language.is_none())
+        {
+            let out = sh.eval(cb.content).map_err(|e| format!("{e}"))?;
+            println!("---- block #{ran} exit={} ----", out.exit);
+            if !out.stdout.is_empty() {
+                print!("{}", out.stdout);
+            }
+            if !out.stderr.is_empty() {
+                eprint!("{}", out.stderr);
+            }
+            ran += 1;
+        }
+    }
+    if ran == 0 {
+        eprintln!("no shell code blocks found");
+    }
+    Ok(())
 }
 
 fn cmd_tui(vault: &Path) -> Result<(), String> {

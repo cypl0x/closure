@@ -239,12 +239,16 @@ name = "closure-cli"
 version = "0.0.0"
 dependencies = [
  "clap",
+ "closure-config",
  "closure-core",
+ "closure-eval",
+ "closure-input",
  "closure-org",
  "closure-query",
  "closure-store",
  "closure-tui",
  "closure-undo",
+ "closure-whichkey",
  "thiserror 2.0.18",
 ]
 

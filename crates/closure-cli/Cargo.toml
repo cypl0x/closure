@@ -22,5 +22,9 @@ closure-query = { path = "../closure-query" }
 closure-store = { path = "../closure-store" }
 closure-tui = { path = "../closure-tui" }
 closure-undo = { path = "../closure-undo" }
+closure-config = { path = "../closure-config" }
+closure-input = { path = "../closure-input" }
+closure-whichkey = { path = "../closure-whichkey" }
+closure-eval = { path = "../closure-eval" }
 clap.workspace = true
 thiserror.workspace = true
