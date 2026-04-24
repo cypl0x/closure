@@ -17,7 +17,7 @@ use std::process::ExitCode;
 
 use clap::{Parser, Subcommand};
 use closure_config::InputMode;
-use closure_core::{Document, Registry, RenameHeadline};
+use closure_core::{BlockId, Command, Document, EnsureId, Registry, RenameHeadline};
 use closure_eval::{Backend, ShellBackend};
 use closure_input::Dispatcher;
 use closure_org::{NodeKind, parse};
@@ -81,6 +81,19 @@ enum Cmd {
         /// Path to a `*.org` file.
         file: PathBuf,
     },
+    /// Print headlines that link to the given block id.
+    Backlinks {
+        /// Path to the vault directory.
+        vault: PathBuf,
+        /// ULID of the target block.
+        id: String,
+    },
+    /// Ensure every headline in the given file has a persisted `:ID:`
+    /// property. Writes a fresh drawer when absent.
+    Id {
+        /// Path to a `*.org` file.
+        file: PathBuf,
+    },
 }
 
 fn main() -> ExitCode {
@@ -115,7 +128,35 @@ fn run(cmd: &Cmd) -> Result<(), String> {
         ),
         Cmd::Whichkey { prefix } => cmd_whichkey(prefix.as_deref()),
         Cmd::Eval { file } => cmd_eval(file),
+        Cmd::Backlinks { vault, id } => cmd_backlinks(vault, id),
+        Cmd::Id { file } => cmd_id(file),
     }
+}
+
+fn cmd_backlinks(vault: &Path, id: &str) -> Result<(), String> {
+    let v = Vault::open(vault).map_err(|e| format!("{e}"))?;
+    let bid = BlockId::from_existing(id);
+    for m in closure_query::backlinks(&v, &bid) {
+        println!(
+            "{}:{}:{}",
+            m.path.display(),
+            m.headline.level(),
+            m.headline.title()
+        );
+    }
+    Ok(())
+}
+
+fn cmd_id(path: &Path) -> Result<(), String> {
+    let src = fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))?;
+    let mut doc = Document::load_str(&src).map_err(|e| format!("{e}"))?;
+    let ids: Vec<BlockId> = doc.all_block_ids();
+    for id in ids {
+        let cmd = EnsureId::new(id);
+        Command::apply(&cmd, &mut doc).map_err(|e| format!("{e}"))?;
+    }
+    fs::write(path, doc.source()).map_err(|e| format!("write: {e}"))?;
+    Ok(())
 }
 
 fn default_registry() -> Registry {
