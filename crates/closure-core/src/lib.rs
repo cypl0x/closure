@@ -12,7 +12,7 @@ use std::collections::HashMap;
 use std::str::FromStr;
 use std::sync::Arc;
 
-use closure_org::{Headline, OrgDoc, parse, rewrite_headline_title};
+use closure_org::{Headline, OrgDoc, parse, rewrite_headline_ensure_id, rewrite_headline_title};
 use thiserror::Error;
 use ulid::Ulid;
 
@@ -347,6 +347,7 @@ pub struct Edit {
 #[derive(Debug, Clone)]
 enum Inverse {
     RenameHeadline { id: BlockId, old_title: String },
+    Noop,
 }
 
 impl Edit {
@@ -366,6 +367,7 @@ impl Edit {
                 doc.rebuild_index();
                 Ok(())
             }
+            Inverse::Noop => Ok(()),
         }
     }
 }
@@ -502,5 +504,56 @@ impl Command for RenameHeadline {
         };
         doc.push_history(edit.clone());
         Ok(edit)
+    }
+}
+
+/// Command: persist a fresh ULID into the headline's `:ID:` property.
+/// Existing ids are never overwritten (I2).
+pub struct EnsureId {
+    id: BlockId,
+    keys: Vec<KeyChord>,
+}
+
+impl EnsureId {
+    /// Ensure the headline with the given (possibly in-memory) id has
+    /// its id written to disk.
+    #[must_use]
+    pub fn new(id: BlockId) -> Self {
+        Self {
+            id,
+            keys: vec![KeyChord::from_strokes(&["C-c", "C-x", "i"])],
+        }
+    }
+
+    /// Placeholder for registry introspection.
+    #[must_use]
+    pub fn new_placeholder() -> Self {
+        Self {
+            id: BlockId::from_existing(""),
+            keys: vec![KeyChord::from_strokes(&["C-c", "C-x", "i"])],
+        }
+    }
+}
+
+impl Command for EnsureId {
+    #[allow(clippy::unnecessary_literal_bound)]
+    fn name(&self) -> &str {
+        "ensure-id"
+    }
+
+    fn keys(&self) -> &[KeyChord] {
+        &self.keys
+    }
+
+    fn apply(&self, doc: &mut Document) -> Result<Edit, CommandError> {
+        let path = doc.path_of(&self.id).ok_or(CommandError::BlockNotFound)?;
+        let org = rewrite_headline_ensure_id(doc.org(), &path, self.id.as_str())
+            .map_err(|_| CommandError::Rewrite)?;
+        doc.org = org;
+        doc.rebuild_index();
+        // EnsureId is not a mutation the user should undo; no history entry.
+        Ok(Edit {
+            inverse: Inverse::Noop,
+        })
     }
 }

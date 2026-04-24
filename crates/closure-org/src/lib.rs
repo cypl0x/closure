@@ -80,6 +80,44 @@ pub fn rewrite_headline_title(
     parse(&src).map_err(|_| RewriteError::Parse)
 }
 
+/// Ensure the headline at `path` has an `:ID:` property.
+///
+/// If the drawer is absent, a fresh one is inserted immediately after
+/// the headline's header line. If the drawer exists without an `:ID:`
+/// entry, one is inserted at the top of the drawer. If the drawer
+/// already has a different `:ID:`, this is a no-op — existing ids are
+/// never replaced (I2).
+pub fn rewrite_headline_ensure_id(
+    doc: &OrgDoc,
+    path: &[usize],
+    id: &str,
+) -> Result<OrgDoc, RewriteError> {
+    let target = navigate_headline(doc, path).ok_or(RewriteError::NotFound)?;
+    let mut src = doc.source().to_owned();
+    if let Some(p) = &target.properties {
+        if p.entries
+            .iter()
+            .any(|e| &src[e.key_span.start..e.key_span.end] == "ID")
+        {
+            return Ok(doc.clone());
+        }
+        let after_open = find_line_end(&src, p.drawer_span.start).ok_or(RewriteError::Parse)?;
+        let insert = format!(":ID: {id}\n");
+        src.insert_str(after_open, &insert);
+    } else {
+        let after_header = target.header_span.end;
+        let insert = format!(":PROPERTIES:\n:ID: {id}\n:END:\n");
+        src.insert_str(after_header, &insert);
+    }
+    parse(&src).map_err(|_| RewriteError::Parse)
+}
+
+fn find_line_end(src: &str, from: usize) -> Option<usize> {
+    let rest = src.get(from..)?;
+    let nl = rest.find('\n')?;
+    Some(from + nl + 1)
+}
+
 fn navigate_headline<'a>(doc: &'a OrgDoc, path: &[usize]) -> Option<&'a Headline> {
     let first = *path.first()?;
     let mut cur = doc.roots.get(first)?;

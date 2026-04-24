@@ -6,7 +6,7 @@
 
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
-use closure_core::{Document, KeyChord, Registry, RenameHeadline};
+use closure_core::{Document, EnsureId, KeyChord, Registry, RenameHeadline};
 
 #[test]
 fn registry_stores_command_by_name() {
@@ -63,4 +63,28 @@ fn undo_reverses_rename() {
 fn keychord_from_str_parses_c_c() {
     let k: KeyChord = "C-c C-x".parse().expect("parse");
     assert_eq!(k.to_string(), "C-c C-x");
+}
+
+#[test]
+fn ensure_id_writes_id_to_property_drawer() {
+    let mut doc = Document::load_str("* Hello\n").expect("load");
+    let id = doc.roots()[0].id().clone();
+    let cmd = EnsureId::new(id.clone());
+    let _ = closure_core::Command::apply(&cmd, &mut doc).expect("apply");
+    let src = doc.source();
+    assert!(src.contains(":PROPERTIES:"));
+    assert!(src.contains(&format!(":ID: {id}")));
+    assert!(src.contains(":END:"));
+}
+
+#[test]
+fn ensure_id_is_noop_when_id_already_present() {
+    let pinned = "01HXQZ7F0000000000000000AA";
+    let src = format!("* H\n:PROPERTIES:\n:ID: {pinned}\n:END:\n");
+    let mut doc = Document::load_str(&src).expect("load");
+    let id = doc.roots()[0].id().clone();
+    assert_eq!(id.as_str(), pinned);
+    let cmd = EnsureId::new(id);
+    closure_core::Command::apply(&cmd, &mut doc).expect("apply");
+    assert_eq!(doc.source(), src);
 }
