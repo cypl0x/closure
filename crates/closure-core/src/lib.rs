@@ -434,6 +434,13 @@ impl Registry {
     pub fn get(&self, name: &str) -> Option<&(dyn Command + Send + Sync)> {
         self.by_name.get(name).map(std::convert::AsRef::as_ref)
     }
+
+    /// Iterate registered `(name, command)` pairs.
+    pub fn entries(&self) -> impl Iterator<Item = (&str, &(dyn Command + Send + Sync))> {
+        self.by_name
+            .iter()
+            .map(|(k, v)| (k.as_str(), v.as_ref() as &(dyn Command + Send + Sync)))
+    }
 }
 
 /// Command: rename a headline's title.

@@ -1,0 +1,17 @@
+[package]
+name = "closure-input"
+description = "Emacs / Vim / Doom / Helix / Notion input modes over the command registry."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+closure-core = { path = "../closure-core" }
+closure-config = { path = "../closure-config" }
+thiserror.workspace = true

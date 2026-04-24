@@ -233,6 +233,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "closure-config"
+version = "0.0.0"
+dependencies = [
+ "closure-org",
+ "thiserror 2.0.18",
+]
+
+[[package]]
 name = "closure-core"
 version = "0.0.0"
 dependencies = [
@@ -240,6 +248,15 @@ dependencies = [
  "proptest",
  "thiserror 2.0.18",
  "ulid",
+]
+
+[[package]]
+name = "closure-input"
+version = "0.0.0"
+dependencies = [
+ "closure-config",
+ "closure-core",
+ "thiserror 2.0.18",
 ]
 
 [[package]]
@@ -296,6 +313,16 @@ dependencies = [
  "proptest",
  "thiserror 2.0.18",
  "ulid",
+]
+
+[[package]]
+name = "closure-whichkey"
+version = "0.0.0"
+dependencies = [
+ "closure-config",
+ "closure-core",
+ "closure-input",
+ "thiserror 2.0.18",
 ]
 
 [[package]]

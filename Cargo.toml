@@ -8,6 +8,9 @@ members = [
   "crates/closure-undo",
   "crates/closure-tui",
   "crates/closure-cli",
+  "crates/closure-config",
+  "crates/closure-input",
+  "crates/closure-whichkey",
 ]
 
 [workspace.package]
