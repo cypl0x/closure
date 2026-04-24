@@ -28,6 +28,11 @@ struct Cli {
 
 #[derive(Subcommand, Debug)]
 enum Cmd {
+    /// Launch the TUI shell against a vault.
+    Tui {
+        /// Path to the vault directory.
+        vault: PathBuf,
+    },
     /// Parse a single org file and print a summary.
     Parse {
         /// Path to a `*.org` file.
@@ -75,6 +80,7 @@ fn main() -> ExitCode {
 
 fn run(cmd: &Cmd) -> Result<(), String> {
     match cmd {
+        Cmd::Tui { vault } => cmd_tui(vault),
         Cmd::Parse { file } => cmd_parse(file),
         Cmd::Fmt { file } => cmd_fmt(file),
         Cmd::Check { vault } => cmd_check(vault),
@@ -92,6 +98,11 @@ fn run(cmd: &Cmd) -> Result<(), String> {
             *level,
         ),
     }
+}
+
+fn cmd_tui(vault: &Path) -> Result<(), String> {
+    let v = Vault::open(vault).map_err(|e| format!("{e}"))?;
+    closure_tui::run(&v).map_err(|e| format!("{e}"))
 }
 
 fn cmd_parse(path: &Path) -> Result<(), String> {
