@@ -83,6 +83,16 @@ impl Vault {
         v
     }
 
+    /// Iterate the stored file paths as borrowed references (no order).
+    pub fn paths_iter(&self) -> impl Iterator<Item = &Path> {
+        self.documents.keys().map(PathBuf::as_path)
+    }
+
+    /// Iterate `(path, document)` pairs.
+    pub fn iter(&self) -> impl Iterator<Item = (&Path, &Document)> {
+        self.documents.iter().map(|(p, d)| (p.as_path(), d))
+    }
+
     /// Lookup a document by its full filesystem path.
     #[must_use]
     pub fn document(&self, path: &Path) -> Option<&Document> {

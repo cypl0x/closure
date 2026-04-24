@@ -74,6 +74,10 @@ pub struct DocHeadline {
     path: Vec<usize>,
     title: String,
     level: u8,
+    todo: Option<String>,
+    priority: Option<char>,
+    tags: Vec<String>,
+    link_targets: Vec<String>,
 }
 
 impl DocHeadline {
@@ -99,6 +103,31 @@ impl DocHeadline {
     #[must_use]
     pub const fn level(&self) -> u8 {
         self.level
+    }
+
+    /// TODO keyword if one is set.
+    #[must_use]
+    pub fn todo(&self) -> Option<&str> {
+        self.todo.as_deref()
+    }
+
+    /// Priority letter if set.
+    #[must_use]
+    pub const fn priority(&self) -> Option<char> {
+        self.priority
+    }
+
+    /// Tags attached to this headline in source order.
+    #[must_use]
+    pub fn tags(&self) -> &[String] {
+        &self.tags
+    }
+
+    /// Link targets (URLs, `id:`, `wiki:`) found inside the headline's
+    /// title and body. Used by backlink queries.
+    #[must_use]
+    pub fn link_targets(&self) -> &[String] {
+        &self.link_targets
     }
 }
 
@@ -212,16 +241,33 @@ fn collect_headlines(h: &Headline, path: &[usize], out: &mut Vec<DocHeadline>) {
         .properties()
         .and_then(|p| p.id())
         .map_or_else(BlockId::fresh, BlockId::from_existing);
-    out.push(DocHeadline {
-        id,
-        path: path.to_vec(),
-        title: h.title().to_owned(),
-        level: h.level(),
-    });
+    out.push(make_doc_headline(h, path, id));
     for (i, c) in h.children().iter().enumerate() {
         let mut child_path = path.to_vec();
         child_path.push(i);
         collect_headlines(c, &child_path, out);
+    }
+}
+
+fn make_doc_headline(h: &Headline, path: &[usize], id: BlockId) -> DocHeadline {
+    let mut link_targets: Vec<String> = closure_org::find_links(h.title())
+        .into_iter()
+        .map(|l| l.target.to_owned())
+        .collect();
+    for n in h.body() {
+        for l in closure_org::find_links(n.source()) {
+            link_targets.push(l.target.to_owned());
+        }
+    }
+    DocHeadline {
+        id,
+        path: path.to_vec(),
+        title: h.title().to_owned(),
+        level: h.level(),
+        todo: h.todo().map(str::to_owned),
+        priority: h.priority(),
+        tags: h.tags().into_iter().map(str::to_owned).collect(),
+        link_targets,
     }
 }
 
@@ -247,12 +293,7 @@ fn collect_preserving(
         || old.get(path).cloned().unwrap_or_else(BlockId::fresh),
         BlockId::from_existing,
     );
-    out.push(DocHeadline {
-        id,
-        path: path.to_vec(),
-        title: h.title().to_owned(),
-        level: h.level(),
-    });
+    out.push(make_doc_headline(h, path, id));
     for (i, c) in h.children().iter().enumerate() {
         let mut cp = path.to_vec();
         cp.push(i);
