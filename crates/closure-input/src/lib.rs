@@ -93,4 +93,45 @@ pub enum InputError {
     /// A chord was pressed that has no bound command.
     #[error("unbound chord: {0}")]
     Unbound(String),
+    /// Vim-style chord notation could not be parsed.
+    #[error("invalid chord notation: {0}")]
+    BadChord(String),
+}
+
+/// Parse vim-style chord notation `<leader>ff`, `<C-c>`, `<Esc>`,
+/// `<SPC>` into a [`KeyChord`] of its constituent strokes.
+///
+/// Examples:
+/// - `"<leader>ff"`     → `["<leader>", "f", "f"]`
+/// - `"<C-c><C-x>r"`    → `["<C-c>", "<C-x>", "r"]`
+/// - `"abc"`            → `["a", "b", "c"]`
+#[allow(clippy::missing_errors_doc)]
+pub fn parse_vim_chord(s: &str) -> Result<KeyChord, InputError> {
+    let mut strokes: Vec<String> = Vec::new();
+    let bytes = s.as_bytes();
+    let mut i = 0usize;
+    while i < bytes.len() {
+        if bytes[i] == b'<' {
+            let Some(close) = s[i..].find('>') else {
+                return Err(InputError::BadChord(s.to_owned()));
+            };
+            strokes.push(s[i..=i + close].to_owned());
+            i += close + 1;
+        } else {
+            // Skip ASCII whitespace silently.
+            if bytes[i] == b' ' || bytes[i] == b'\t' {
+                i += 1;
+                continue;
+            }
+            // Single ASCII / UTF-8 char.
+            let ch = s[i..].chars().next().unwrap_or('\0');
+            strokes.push(ch.to_string());
+            i += ch.len_utf8();
+        }
+    }
+    if strokes.is_empty() {
+        return Err(InputError::BadChord(s.to_owned()));
+    }
+    let refs: Vec<&str> = strokes.iter().map(String::as_str).collect();
+    Ok(KeyChord::from_strokes(&refs))
 }
