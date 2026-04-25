@@ -405,6 +405,7 @@ version = "0.0.0"
 dependencies = [
  "closure-crdt",
  "closure-store",
+ "tempfile",
  "thiserror 2.0.18",
 ]
 
