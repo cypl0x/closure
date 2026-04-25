@@ -57,25 +57,56 @@ impl Backend for ShellBackend {
     }
 
     fn eval(&self, src: &str) -> Result<Output, EvalError> {
-        let mut child = Command::new("/bin/sh")
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
-            .map_err(|e| EvalError::Spawn(e.to_string()))?;
-        if let Some(mut stdin) = child.stdin.take() {
-            use std::io::Write as _;
-            stdin
-                .write_all(src.as_bytes())
-                .map_err(|e| EvalError::Io(e.to_string()))?;
-        }
-        let out = child
-            .wait_with_output()
-            .map_err(|e| EvalError::Io(e.to_string()))?;
-        Ok(Output {
-            stdout: String::from_utf8_lossy(&out.stdout).into_owned(),
-            stderr: String::from_utf8_lossy(&out.stderr).into_owned(),
-            exit: out.status.code().unwrap_or(-1),
-        })
+        run_via_stdin("/bin/sh", &[], src)
     }
+}
+
+/// Python backend: runs the source through `python3` via stdin.
+#[derive(Debug, Default, Clone, Copy)]
+pub struct PythonBackend;
+
+impl Backend for PythonBackend {
+    #[allow(clippy::unnecessary_literal_bound)]
+    fn language(&self) -> &str {
+        "python"
+    }
+
+    fn eval(&self, src: &str) -> Result<Output, EvalError> {
+        run_via_stdin("python3", &[], src)
+    }
+}
+
+/// Pick a backend for a language identifier (case-insensitive). Returns
+/// `None` if no backend is registered for the language.
+#[must_use]
+pub fn backend_for(lang: &str) -> Option<Box<dyn Backend>> {
+    match lang.to_ascii_lowercase().as_str() {
+        "shell" | "sh" | "bash" => Some(Box::new(ShellBackend)),
+        "python" | "py" => Some(Box::new(PythonBackend)),
+        _ => None,
+    }
+}
+
+fn run_via_stdin(prog: &str, args: &[&str], src: &str) -> Result<Output, EvalError> {
+    let mut child = Command::new(prog)
+        .args(args)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|e| EvalError::Spawn(e.to_string()))?;
+    if let Some(mut stdin) = child.stdin.take() {
+        use std::io::Write as _;
+        stdin
+            .write_all(src.as_bytes())
+            .map_err(|e| EvalError::Io(e.to_string()))?;
+    }
+    let out = child
+        .wait_with_output()
+        .map_err(|e| EvalError::Io(e.to_string()))?;
+    Ok(Output {
+        stdout: String::from_utf8_lossy(&out.stdout).into_owned(),
+        stderr: String::from_utf8_lossy(&out.stderr).into_owned(),
+        exit: out.status.code().unwrap_or(-1),
+    })
 }

@@ -24,3 +24,13 @@ fn shell_backend_captures_stderr() {
     assert_eq!(out.exit, 0);
     assert_eq!(out.stderr.trim_end(), "err");
 }
+
+#[test]
+fn backend_for_known_languages() {
+    assert!(closure_eval::backend_for("shell").is_some());
+    assert!(closure_eval::backend_for("sh").is_some());
+    assert!(closure_eval::backend_for("BASH").is_some());
+    assert!(closure_eval::backend_for("python").is_some());
+    assert!(closure_eval::backend_for("py").is_some());
+    assert!(closure_eval::backend_for("rust").is_none());
+}

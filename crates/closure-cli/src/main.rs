@@ -18,7 +18,7 @@ use std::process::ExitCode;
 use clap::{Parser, Subcommand};
 use closure_config::InputMode;
 use closure_core::{BlockId, Command, Document, EnsureId, Registry, RenameHeadline};
-use closure_eval::{Backend, ShellBackend};
+use closure_eval::{Backend, ShellBackend, backend_for};
 use closure_input::Dispatcher;
 use closure_org::{NodeKind, parse};
 use closure_store::Vault;
@@ -180,26 +180,41 @@ fn cmd_whichkey(prefix: Option<&str>) -> Result<(), String> {
 fn cmd_eval(path: &Path) -> Result<(), String> {
     let src = fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))?;
     let doc = parse(&src).map_err(|e| format!("{e}"))?;
-    let sh = ShellBackend;
     let mut ran = 0usize;
     for n in doc.preamble() {
-        if n.kind() == NodeKind::CodeBlock
-            && let Some(cb) = n.as_code_block()
-            && (cb.language == Some("shell") || cb.language == Some("sh") || cb.language.is_none())
-        {
-            let out = sh.eval(cb.content).map_err(|e| format!("{e}"))?;
-            println!("---- block #{ran} exit={} ----", out.exit);
-            if !out.stdout.is_empty() {
-                print!("{}", out.stdout);
-            }
-            if !out.stderr.is_empty() {
-                eprint!("{}", out.stderr);
-            }
-            ran += 1;
+        if n.kind() != NodeKind::CodeBlock {
+            continue;
         }
+        let Some(cb) = n.as_code_block() else {
+            continue;
+        };
+        let backend: Box<dyn Backend> = if let Some(lang) = cb.language {
+            if let Some(b) = backend_for(lang) {
+                b
+            } else {
+                eprintln!("---- block #{ran} skipped (no backend for `{lang}`) ----");
+                ran += 1;
+                continue;
+            }
+        } else {
+            Box::new(ShellBackend)
+        };
+        let out = backend.eval(cb.content).map_err(|e| format!("{e}"))?;
+        println!(
+            "---- block #{ran} {lang} exit={} ----",
+            out.exit,
+            lang = cb.language.unwrap_or("shell")
+        );
+        if !out.stdout.is_empty() {
+            print!("{}", out.stdout);
+        }
+        if !out.stderr.is_empty() {
+            eprint!("{}", out.stderr);
+        }
+        ran += 1;
     }
     if ran == 0 {
-        eprintln!("no shell code blocks found");
+        eprintln!("no code blocks found");
     }
     Ok(())
 }
