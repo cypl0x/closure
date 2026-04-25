@@ -70,3 +70,67 @@ fn parse_field(s: &str) -> Result<Field, CronError> {
         .map(Field::Exact)
         .map_err(|_| CronError::Number(s.into()))
 }
+
+/// Test whether `spec` matches a `(minute, hour, dom, month, dow)`
+/// tuple. Used by [`Scheduler`] each tick to decide which jobs fire.
+#[must_use]
+pub const fn matches_time(spec: &CronSpec, m: u8, h: u8, d: u8, mo: u8, dw: u8) -> bool {
+    field_matches(&spec.minute, m)
+        && field_matches(&spec.hour, h)
+        && field_matches(&spec.dom, d)
+        && field_matches(&spec.month, mo)
+        && field_matches(&spec.dow, dw)
+}
+
+const fn field_matches(f: &Field, v: u8) -> bool {
+    match f {
+        Field::Any => true,
+        Field::Exact(x) => *x == v,
+    }
+}
+
+/// In-process cron scheduler. Holds a list of `(spec, callback)`
+/// pairs and `tick(time)` fires every callback whose spec matches.
+///
+/// Wiring `tick` to a timer thread that wakes once per minute is left
+/// to the embedder so this crate stays free of `std::thread` /
+/// `std::time` plumbing in tests.
+pub struct Scheduler {
+    jobs: Vec<(CronSpec, Box<dyn FnMut() + Send>)>,
+}
+
+impl Default for Scheduler {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl std::fmt::Debug for Scheduler {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Scheduler")
+            .field("jobs", &self.jobs.len())
+            .finish()
+    }
+}
+
+impl Scheduler {
+    /// New, empty scheduler.
+    #[must_use]
+    pub const fn new() -> Self {
+        Self { jobs: Vec::new() }
+    }
+
+    /// Register a `(spec, callback)`.
+    pub fn add<F: FnMut() + Send + 'static>(&mut self, spec: CronSpec, cb: F) {
+        self.jobs.push((spec, Box::new(cb)));
+    }
+
+    /// Run every callback whose spec matches the supplied time tuple.
+    pub fn tick(&mut self, m: u8, h: u8, d: u8, mo: u8, dw: u8) {
+        for (spec, cb) in &mut self.jobs {
+            if matches_time(spec, m, h, d, mo, dw) {
+                cb();
+            }
+        }
+    }
+}
