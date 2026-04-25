@@ -94,6 +94,14 @@ enum Cmd {
         /// Path to a `*.org` file.
         file: PathBuf,
     },
+    /// Serve the vault on a localhost HTTP port (read-only).
+    Serve {
+        /// Path to the vault directory.
+        vault: PathBuf,
+        /// `host:port` to bind. Defaults to `127.0.0.1:7878`.
+        #[arg(long, default_value = "127.0.0.1:7878")]
+        addr: String,
+    },
 }
 
 fn main() -> ExitCode {
@@ -130,7 +138,14 @@ fn run(cmd: &Cmd) -> Result<(), String> {
         Cmd::Eval { file } => cmd_eval(file),
         Cmd::Backlinks { vault, id } => cmd_backlinks(vault, id),
         Cmd::Id { file } => cmd_id(file),
+        Cmd::Serve { vault, addr } => cmd_serve(vault, addr),
     }
+}
+
+fn cmd_serve(vault: &Path, addr: &str) -> Result<(), String> {
+    let v = Vault::open(vault).map_err(|e| format!("{e}"))?;
+    eprintln!("closure serve: listening on http://{addr}");
+    closure_shell_web::serve(&v, addr).map_err(|e| format!("{e}"))
 }
 
 fn cmd_backlinks(vault: &Path, id: &str) -> Result<(), String> {

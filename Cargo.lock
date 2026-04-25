@@ -245,6 +245,7 @@ dependencies = [
  "closure-input",
  "closure-org",
  "closure-query",
+ "closure-shell-web",
  "closure-store",
  "closure-tui",
  "closure-undo",

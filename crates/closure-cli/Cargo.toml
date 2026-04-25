@@ -26,5 +26,6 @@ closure-config = { path = "../closure-config" }
 closure-input = { path = "../closure-input" }
 closure-whichkey = { path = "../closure-whichkey" }
 closure-eval = { path = "../closure-eval" }
+closure-shell-web = { path = "../closure-shell-web" }
 clap.workspace = true
 thiserror.workspace = true
