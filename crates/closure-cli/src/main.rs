@@ -94,6 +94,12 @@ enum Cmd {
         /// Path to a `*.org` file.
         file: PathBuf,
     },
+    /// Print a Notion-style table view (id, level, title, todo) for
+    /// every headline in the vault.
+    Db {
+        /// Path to the vault directory.
+        vault: PathBuf,
+    },
     /// Serve the vault on a localhost HTTP port (read-only).
     Serve {
         /// Path to the vault directory.
@@ -138,8 +144,19 @@ fn run(cmd: &Cmd) -> Result<(), String> {
         Cmd::Eval { file } => cmd_eval(file),
         Cmd::Backlinks { vault, id } => cmd_backlinks(vault, id),
         Cmd::Id { file } => cmd_id(file),
+        Cmd::Db { vault } => cmd_db(vault),
         Cmd::Serve { vault, addr } => cmd_serve(vault, addr),
     }
+}
+
+fn cmd_db(vault: &Path) -> Result<(), String> {
+    let v = Vault::open(vault).map_err(|e| format!("{e}"))?;
+    let view = closure_query::DatabaseView::default_view(closure_query::all_headlines(&v));
+    println!("{}", view.columns.join("\t"));
+    for row in view.cells() {
+        println!("{}", row.join("\t"));
+    }
+    Ok(())
 }
 
 fn cmd_serve(vault: &Path, addr: &str) -> Result<(), String> {
