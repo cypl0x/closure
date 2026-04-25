@@ -247,6 +247,7 @@ dependencies = [
  "closure-query",
  "closure-shell-web",
  "closure-store",
+ "closure-sync",
  "closure-tui",
  "closure-undo",
  "closure-whichkey",

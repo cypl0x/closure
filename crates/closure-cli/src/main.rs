@@ -108,6 +108,18 @@ enum Cmd {
         #[arg(long, default_value = "127.0.0.1:7878")]
         addr: String,
     },
+    /// Sync the vault via git: push (commit and push) or pull
+    /// (`git pull --rebase`).
+    Sync {
+        /// Path to the vault directory.
+        vault: PathBuf,
+        /// One of `push` or `pull`.
+        #[arg(long, default_value = "push")]
+        op: String,
+        /// Optional commit message (push only).
+        #[arg(long)]
+        message: Option<String>,
+    },
 }
 
 fn main() -> ExitCode {
@@ -146,6 +158,20 @@ fn run(cmd: &Cmd) -> Result<(), String> {
         Cmd::Id { file } => cmd_id(file),
         Cmd::Db { vault } => cmd_db(vault),
         Cmd::Serve { vault, addr } => cmd_serve(vault, addr),
+        Cmd::Sync { vault, op, message } => cmd_sync(vault, op, message.as_deref()),
+    }
+}
+
+fn cmd_sync(vault: &Path, op: &str, message: Option<&str>) -> Result<(), String> {
+    use closure_sync::Transport;
+    let mut t = closure_sync::GitTransport::new(vault.to_path_buf());
+    if let Some(m) = message {
+        m.clone_into(&mut t.commit_message);
+    }
+    match op {
+        "push" => t.push().map_err(|e| format!("{e}")),
+        "pull" => t.pull().map_err(|e| format!("{e}")),
+        other => Err(format!("unknown sync op: {other}")),
     }
 }
 
