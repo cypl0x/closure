@@ -81,3 +81,42 @@ pub fn backlinks<'a>(vault: &'a Vault, target: &BlockId) -> Vec<Match<'a>> {
         })
         .collect()
 }
+
+/// Notion-style column projection over a query result: each column is
+/// a function from a [`DocHeadline`] to a string.
+pub struct DatabaseView<'a> {
+    /// Column header names.
+    pub columns: Vec<&'static str>,
+    /// Per-column extractor.
+    pub extractors: Vec<fn(&DocHeadline) -> String>,
+    /// Materialised matches.
+    pub rows: Vec<Match<'a>>,
+}
+
+impl<'a> DatabaseView<'a> {
+    /// Build a view over `rows` with the four default columns
+    /// (id, level, title, todo).
+    #[must_use]
+    pub fn default_view(rows: Vec<Match<'a>>) -> Self {
+        Self {
+            columns: vec!["id", "level", "title", "todo"],
+            extractors: vec![
+                |h| h.id().to_string(),
+                |h| h.level().to_string(),
+                |h| h.title().to_owned(),
+                |h| h.todo().unwrap_or("").to_owned(),
+            ],
+            rows,
+        }
+    }
+
+    /// Render each row as `Vec<String>` using the configured
+    /// extractors.
+    #[must_use]
+    pub fn cells(&self) -> Vec<Vec<String>> {
+        self.rows
+            .iter()
+            .map(|m| self.extractors.iter().map(|f| f(m.headline)).collect())
+            .collect()
+    }
+}

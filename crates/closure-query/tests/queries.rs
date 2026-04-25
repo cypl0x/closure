@@ -75,3 +75,16 @@ fn backlinks_find_id_link_references() {
     assert_eq!(back.len(), 1);
     assert_eq!(back[0].headline.title(), "Source");
 }
+
+#[test]
+fn database_view_renders_default_columns() {
+    let td = build_vault(&[("t.org", "* TODO Fix\n* DONE Ship\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    let view = closure_query::DatabaseView::default_view(closure_query::all_headlines(&v));
+    let cells = view.cells();
+    assert_eq!(cells.len(), 2);
+    assert_eq!(cells[0][2], "Fix");
+    assert_eq!(cells[0][3], "TODO");
+    assert_eq!(cells[1][2], "Ship");
+    assert_eq!(cells[1][3], "DONE");
+}
