@@ -8,13 +8,26 @@
 
 use thiserror::Error;
 
-/// Configured filter.
+/// Configured filter rule.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Rule {
     /// Human-readable identifier.
     pub id: String,
-    /// Match pattern.
+    /// Glob pattern (`*` wildcards) applied to the candidate string.
     pub pattern: String,
+    /// What the rule does on a match.
+    pub action: Action,
+}
+
+/// What a rule does when its pattern matches.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Action {
+    /// Allow the request.
+    Allow,
+    /// Block the request.
+    Block,
+    /// Log the request (continue allowed by default).
+    Log,
 }
 
 /// Sniffer error.
@@ -23,4 +36,44 @@ pub enum SnifferError {
     /// Binding a socket failed.
     #[error("bind: {0}")]
     Bind(String),
+}
+
+/// Match `candidate` against the first rule whose pattern matches.
+/// Returns the action of that rule, or `None` if no rule matched.
+#[must_use]
+pub fn match_first<'a>(candidate: &str, rules: &'a [Rule]) -> Option<&'a Rule> {
+    rules.iter().find(|r| glob_matches(&r.pattern, candidate))
+}
+
+/// Tiny glob matcher: `*` matches any run of characters; everything
+/// else is literal. No `?`, no `[abc]`, no escaping. Sufficient for
+/// host/path patterns.
+#[must_use]
+pub fn glob_matches(pattern: &str, candidate: &str) -> bool {
+    glob_inner(pattern.as_bytes(), candidate.as_bytes())
+}
+
+fn glob_inner(pat: &[u8], cand: &[u8]) -> bool {
+    if pat.is_empty() {
+        return cand.is_empty();
+    }
+    if pat[0] == b'*' {
+        // Match zero or more of any byte.
+        if pat.len() == 1 {
+            return true;
+        }
+        for i in 0..=cand.len() {
+            if glob_inner(&pat[1..], &cand[i..]) {
+                return true;
+            }
+        }
+        return false;
+    }
+    if cand.is_empty() {
+        return false;
+    }
+    if pat[0] == cand[0] {
+        return glob_inner(&pat[1..], &cand[1..]);
+    }
+    false
 }
