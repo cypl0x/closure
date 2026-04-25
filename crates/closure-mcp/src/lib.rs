@@ -3,25 +3,94 @@
 //! Exposes the command registry as MCP tools. External MCP-speaking
 //! clients (agents, IDEs) invoke commands through this bridge only —
 //! never reaching the Document directly (I8).
+//!
+//! M7 skeleton: a text-mode stdio dispatcher that accepts one
+//! `<command-name> [args...]` per line. The full JSON-RPC framing
+//! lands behind a feature flag once a JSON dependency is picked.
 
 #![forbid(unsafe_code)]
 
+use std::io::{BufRead, BufReader};
+
+use closure_core::Registry;
 use thiserror::Error;
-
-/// Placeholder MCP server handle.
-#[derive(Debug, Default)]
-pub struct Server;
-
-/// Start a server binding on a unix socket path.
-#[allow(clippy::missing_errors_doc)]
-pub const fn serve(_socket_path: &str) -> Result<Server, McpError> {
-    Ok(Server)
-}
 
 /// MCP bridge error.
 #[derive(Debug, Error)]
 pub enum McpError {
-    /// Socket bind failed.
-    #[error("bind: {0}")]
-    Bind(String),
+    /// Transport error.
+    #[error("transport: {0}")]
+    Transport(String),
+}
+
+/// Result of looking up a command name in the registry.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DispatchOutcome {
+    /// The named command exists.
+    Found(String),
+    /// No command matches the name.
+    Unknown(String),
+    /// The line was blank or a comment.
+    Skip,
+}
+
+/// Resolve a single text-protocol line.
+///
+/// The line may be `<name>` or `<name> args...`; the name is matched
+/// against `registry`. Returns the matched command name when found,
+/// the requested name when not, and [`DispatchOutcome::Skip`] for
+/// blank lines / `# comments`.
+#[must_use]
+pub fn resolve_line(registry: &Registry, line: &str) -> DispatchOutcome {
+    let trimmed = line.trim();
+    if trimmed.is_empty() || trimmed.starts_with('#') {
+        return DispatchOutcome::Skip;
+    }
+    let name = trimmed.split_whitespace().next().unwrap_or("");
+    if registry.get(name).is_some() {
+        DispatchOutcome::Found(name.to_owned())
+    } else {
+        DispatchOutcome::Unknown(name.to_owned())
+    }
+}
+
+/// Run the stdio dispatcher loop.
+///
+/// Reads from `input`, writes outcomes to `output`. Each line of
+/// input produces one line of output: `OK <name>`, `UNKNOWN <name>`,
+/// or nothing for blank / comment lines.
+pub fn run<R: BufRead, W: std::io::Write>(
+    registry: &Registry,
+    mut input: R,
+    output: &mut W,
+) -> Result<(), McpError> {
+    let mut line = String::new();
+    loop {
+        line.clear();
+        let n = input
+            .read_line(&mut line)
+            .map_err(|e| McpError::Transport(e.to_string()))?;
+        if n == 0 {
+            break;
+        }
+        match resolve_line(registry, &line) {
+            DispatchOutcome::Found(name) => {
+                writeln!(output, "OK {name}").map_err(|e| McpError::Transport(e.to_string()))?;
+            }
+            DispatchOutcome::Unknown(name) => {
+                writeln!(output, "UNKNOWN {name}")
+                    .map_err(|e| McpError::Transport(e.to_string()))?;
+            }
+            DispatchOutcome::Skip => {}
+        }
+    }
+    Ok(())
+}
+
+/// Wrap stdin/stdout for the typical CLI invocation.
+pub fn run_stdio(registry: &Registry) -> Result<(), McpError> {
+    let stdin = std::io::stdin();
+    let mut stdout = std::io::stdout();
+    let reader = BufReader::new(stdin.lock());
+    run(registry, reader, &mut stdout)
 }
