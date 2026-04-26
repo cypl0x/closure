@@ -64,10 +64,12 @@ pub fn run<R: BufRead, W: std::io::Write>(
         }
         match resolve_line(registry, &line) {
             Outcome::Found(name) => {
-                writeln!(output, "OK {name}").map_err(|e| AcpError::Transport(e.to_string()))?
+                writeln!(output, "OK {name}").map_err(|e| AcpError::Transport(e.to_string()))?;
             }
-            Outcome::Unknown(name) => writeln!(output, "UNKNOWN {name}")
-                .map_err(|e| AcpError::Transport(e.to_string()))?,
+            Outcome::Unknown(name) => {
+                writeln!(output, "UNKNOWN {name}")
+                    .map_err(|e| AcpError::Transport(e.to_string()))?;
+            }
             Outcome::Skip => {}
         }
     }
