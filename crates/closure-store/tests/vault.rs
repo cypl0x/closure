@@ -84,3 +84,24 @@ fn vault_save_writes_byte_exact_source() {
     let on_disk = fs::read_to_string(td.path().join("x.org")).expect("read");
     assert_eq!(on_disk, "* Original\n");
 }
+
+#[test]
+fn vault_watcher_observes_modify() {
+    let td = write_vault(&[("x.org", "* A\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    let watcher = v.watch().expect("watch");
+    // Give inotify a moment to register.
+    std::thread::sleep(std::time::Duration::from_millis(50));
+    fs::write(td.path().join("x.org"), "* B\n").expect("rewrite");
+    // Wait up to a few seconds for the event.
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+    let mut saw = false;
+    while std::time::Instant::now() < deadline {
+        if watcher.try_recv().is_some() {
+            saw = true;
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    assert!(saw, "expected at least one watcher event");
+}

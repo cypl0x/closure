@@ -1,5 +1,5 @@
-//! Vault-level storage: directory loader and cross-file block-id index.
-//! File watcher and backlink index arrive in later milestones.
+//! Vault-level storage: directory loader, cross-file block-id index,
+//! and a recursive file watcher.
 
 #![forbid(unsafe_code)]
 
@@ -7,8 +7,10 @@ use std::collections::HashMap;
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
+use std::sync::mpsc::{Receiver, Sender, channel};
 
 use closure_core::{BlockId, Document};
+use notify::{EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use thiserror::Error;
 
 /// A loaded vault: every `*.org` file under a directory parsed into
@@ -32,6 +34,9 @@ pub enum VaultError {
         /// The file that failed.
         path: PathBuf,
     },
+    /// Watcher subsystem error.
+    #[error("watch: {0}")]
+    Watch(String),
 }
 
 impl Vault {
@@ -116,6 +121,74 @@ impl Vault {
         fs::rename(&tmp, path)?;
         Ok(())
     }
+
+    /// Start a recursive file watcher rooted at the vault. Returns a
+    /// [`VaultWatcher`] whose `recv` blocks for the next change event.
+    /// The watcher must be kept alive — dropping it stops the inotify
+    /// (or platform equivalent) listener.
+    pub fn watch(&self) -> Result<VaultWatcher, VaultError> {
+        let (tx, rx): (Sender<VaultEvent>, Receiver<VaultEvent>) = channel();
+        let watcher = notify::recommended_watcher(move |res: notify::Result<notify::Event>| {
+            let Ok(event) = res else { return };
+            for path in event.paths {
+                if path.extension().and_then(|e| e.to_str()) != Some("org") {
+                    continue;
+                }
+                let kind = match event.kind {
+                    EventKind::Create(_) => VaultEventKind::Created,
+                    EventKind::Modify(_) => VaultEventKind::Modified,
+                    EventKind::Remove(_) => VaultEventKind::Removed,
+                    _ => continue,
+                };
+                let _ = tx.send(VaultEvent { path, kind });
+            }
+        })
+        .map_err(|e| VaultError::Watch(e.to_string()))?;
+        let mut w = watcher;
+        w.watch(&self.root, RecursiveMode::Recursive)
+            .map_err(|e| VaultError::Watch(e.to_string()))?;
+        Ok(VaultWatcher { _watcher: w, rx })
+    }
+}
+
+/// Active file-watcher handle. Drop to stop watching.
+pub struct VaultWatcher {
+    _watcher: RecommendedWatcher,
+    rx: Receiver<VaultEvent>,
+}
+
+impl VaultWatcher {
+    /// Block for the next event.
+    #[allow(clippy::missing_errors_doc)]
+    pub fn recv(&self) -> Result<VaultEvent, VaultError> {
+        self.rx.recv().map_err(|e| VaultError::Watch(e.to_string()))
+    }
+
+    /// Try to receive an event without blocking.
+    #[must_use]
+    pub fn try_recv(&self) -> Option<VaultEvent> {
+        self.rx.try_recv().ok()
+    }
+}
+
+/// A change event for an `*.org` file in the vault.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct VaultEvent {
+    /// Affected file.
+    pub path: PathBuf,
+    /// What happened.
+    pub kind: VaultEventKind,
+}
+
+/// Coarse classification of a vault file event.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum VaultEventKind {
+    /// File created.
+    Created,
+    /// File modified.
+    Modified,
+    /// File removed.
+    Removed,
 }
 
 fn walk_org<F>(dir: &Path, f: &mut F) -> io::Result<()>
