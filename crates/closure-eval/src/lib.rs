@@ -36,6 +36,9 @@ pub enum EvalError {
     /// Writing the program to the interpreter's stdin failed.
     #[error("io: {0}")]
     Io(String),
+    /// Backend exceeded the per-call timeout and was killed.
+    #[error("timeout after {0:?}")]
+    Timeout(std::time::Duration),
 }
 
 /// A language backend.
@@ -44,6 +47,16 @@ pub trait Backend {
     fn language(&self) -> &str;
     /// Execute `src` and return captured output.
     fn eval(&self, src: &str) -> Result<Output, EvalError>;
+    /// Execute `src` with a wall-clock timeout. The default
+    /// implementation falls back to [`Self::eval`] when the backend
+    /// doesn't support timeouts; concrete backends override.
+    fn eval_with_timeout(
+        &self,
+        src: &str,
+        _timeout: std::time::Duration,
+    ) -> Result<Output, EvalError> {
+        self.eval(src)
+    }
 }
 
 /// Shell backend: pipes the source into `/bin/sh` on stdin.
@@ -57,7 +70,15 @@ impl Backend for ShellBackend {
     }
 
     fn eval(&self, src: &str) -> Result<Output, EvalError> {
-        run_via_stdin("/bin/sh", &[], src)
+        run_via_stdin("/bin/sh", &[], src, None)
+    }
+
+    fn eval_with_timeout(
+        &self,
+        src: &str,
+        timeout: std::time::Duration,
+    ) -> Result<Output, EvalError> {
+        run_via_stdin("/bin/sh", &[], src, Some(timeout))
     }
 }
 
@@ -72,7 +93,15 @@ impl Backend for PythonBackend {
     }
 
     fn eval(&self, src: &str) -> Result<Output, EvalError> {
-        run_via_stdin("python3", &[], src)
+        run_via_stdin("python3", &[], src, None)
+    }
+
+    fn eval_with_timeout(
+        &self,
+        src: &str,
+        timeout: std::time::Duration,
+    ) -> Result<Output, EvalError> {
+        run_via_stdin("python3", &[], src, Some(timeout))
     }
 }
 
@@ -87,7 +116,12 @@ pub fn backend_for(lang: &str) -> Option<Box<dyn Backend>> {
     }
 }
 
-fn run_via_stdin(prog: &str, args: &[&str], src: &str) -> Result<Output, EvalError> {
+fn run_via_stdin(
+    prog: &str,
+    args: &[&str],
+    src: &str,
+    timeout: Option<std::time::Duration>,
+) -> Result<Output, EvalError> {
     let mut child = Command::new(prog)
         .args(args)
         .stdin(Stdio::piped())
@@ -101,6 +135,25 @@ fn run_via_stdin(prog: &str, args: &[&str], src: &str) -> Result<Output, EvalErr
             .write_all(src.as_bytes())
             .map_err(|e| EvalError::Io(e.to_string()))?;
     }
+
+    if let Some(t) = timeout {
+        let deadline = std::time::Instant::now() + t;
+        loop {
+            match child.try_wait() {
+                Ok(Some(_)) => break,
+                Ok(None) => {
+                    if std::time::Instant::now() >= deadline {
+                        let _ = child.kill();
+                        let _ = child.wait();
+                        return Err(EvalError::Timeout(t));
+                    }
+                    std::thread::sleep(std::time::Duration::from_millis(10));
+                }
+                Err(e) => return Err(EvalError::Io(e.to_string())),
+            }
+        }
+    }
+
     let out = child
         .wait_with_output()
         .map_err(|e| EvalError::Io(e.to_string()))?;
