@@ -50,3 +50,34 @@ fn vim_chord_unmatched_bracket_is_error() {
     let err = closure_input::parse_vim_chord("<C-c").unwrap_err();
     let _ = err;
 }
+
+#[test]
+fn chord_trie_resolves_two_step_chord() {
+    let mut t = closure_input::ChordTrie::build(&[("C-c C-x r", "rename-headline")]);
+    assert!(matches!(t.step("C-c"), closure_input::TrieStep::Pending(_)));
+    assert!(matches!(t.step("C-x"), closure_input::TrieStep::Pending(_)));
+    let last = t.step("r");
+    assert_eq!(
+        last,
+        closure_input::TrieStep::Resolved("rename-headline".into())
+    );
+}
+
+#[test]
+fn chord_trie_unbound_resets_cursor() {
+    let mut t = closure_input::ChordTrie::build(&[("a b", "foo"), ("a c", "bar")]);
+    let _ = t.step("a");
+    assert_eq!(t.step("z"), closure_input::TrieStep::Unbound);
+    // Trie is back at root → next "a" is again Pending.
+    assert!(matches!(t.step("a"), closure_input::TrieStep::Pending(_)));
+}
+
+#[test]
+fn chord_trie_pending_lists_alternatives() {
+    let mut t = closure_input::ChordTrie::build(&[("a b", "x"), ("a c", "y")]);
+    let step = t.step("a");
+    let closure_input::TrieStep::Pending(opts) = step else {
+        panic!("expected Pending, got {step:?}");
+    };
+    assert_eq!(opts, vec!["b".to_owned(), "c".to_owned()]);
+}

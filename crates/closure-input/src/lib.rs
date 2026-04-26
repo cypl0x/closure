@@ -98,6 +98,80 @@ pub enum InputError {
     BadChord(String),
 }
 
+/// Outcome of feeding one stroke into a [`ChordTrie`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TrieStep {
+    /// The stroke completed a full chord; carries the bound command
+    /// name and resets the input state.
+    Resolved(String),
+    /// The stroke is a valid prefix; the vector lists the stroke
+    /// alternatives that can extend it (sorted).
+    Pending(Vec<String>),
+    /// The stroke is unbound; input state resets.
+    Unbound,
+}
+
+/// A chord-prefix trie. Build it once from a flat list of
+/// `(chord, command-name)` pairs; feed strokes one at a time via
+/// [`Self::step`].
+#[derive(Debug, Default, Clone)]
+pub struct ChordTrie {
+    nodes: Vec<TrieNode>,
+    cursor: usize,
+}
+
+#[derive(Debug, Default, Clone)]
+struct TrieNode {
+    children: HashMap<String, usize>,
+    command: Option<String>,
+}
+
+impl ChordTrie {
+    /// Build a trie from `(chord, command)` pairs.
+    #[must_use]
+    pub fn build(bindings: &[(&str, &str)]) -> Self {
+        let mut nodes: Vec<TrieNode> = vec![TrieNode::default()];
+        for (chord, cmd) in bindings {
+            let mut idx = 0usize;
+            for stroke in chord.split_whitespace() {
+                idx = nodes[idx].children.get(stroke).copied().unwrap_or_else(|| {
+                    let new_idx = nodes.len();
+                    nodes.push(TrieNode::default());
+                    nodes[idx].children.insert(stroke.to_owned(), new_idx);
+                    new_idx
+                });
+            }
+            nodes[idx].command = Some((*cmd).to_owned());
+        }
+        Self { nodes, cursor: 0 }
+    }
+
+    /// Reset the cursor to the root.
+    pub const fn reset(&mut self) {
+        self.cursor = 0;
+    }
+
+    /// Feed one stroke. [`TrieStep::Resolved`] and
+    /// [`TrieStep::Unbound`] both reset the cursor.
+    pub fn step(&mut self, stroke: &str) -> TrieStep {
+        let here = &self.nodes[self.cursor];
+        let Some(&next) = here.children.get(stroke) else {
+            self.cursor = 0;
+            return TrieStep::Unbound;
+        };
+        self.cursor = next;
+        let here = &self.nodes[self.cursor];
+        if let Some(cmd) = &here.command {
+            let cmd = cmd.clone();
+            self.cursor = 0;
+            return TrieStep::Resolved(cmd);
+        }
+        let mut next_strokes: Vec<String> = here.children.keys().cloned().collect();
+        next_strokes.sort();
+        TrieStep::Pending(next_strokes)
+    }
+}
+
 /// Parse vim-style chord notation `<leader>ff`, `<C-c>`, `<Esc>`,
 /// `<SPC>` into a [`KeyChord`] of its constituent strokes.
 ///
