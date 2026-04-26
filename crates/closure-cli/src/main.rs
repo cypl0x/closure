@@ -17,7 +17,7 @@ use std::process::ExitCode;
 
 use clap::{Parser, Subcommand};
 use closure_config::InputMode;
-use closure_core::{BlockId, Command, Document, EnsureId, Registry, RenameHeadline};
+use closure_core::{BlockId, Command, Document, EnsureId, Registry, RenameHeadline, SetTodo};
 use closure_eval::{Backend, ShellBackend, backend_for};
 use closure_input::Dispatcher;
 use closure_org::{NodeKind, parse};
@@ -120,6 +120,24 @@ enum Cmd {
         #[arg(long)]
         message: Option<String>,
     },
+    /// Rename the headline with the given block id.
+    Rename {
+        /// Path to a `*.org` file.
+        file: PathBuf,
+        /// Block id of the target headline.
+        id: String,
+        /// New title text.
+        title: String,
+    },
+    /// Set or clear the TODO keyword on the headline with the given id.
+    SetTodo {
+        /// Path to a `*.org` file.
+        file: PathBuf,
+        /// Block id of the target headline.
+        id: String,
+        /// Keyword to set (empty string clears).
+        keyword: String,
+    },
 }
 
 fn main() -> ExitCode {
@@ -159,7 +177,34 @@ fn run(cmd: &Cmd) -> Result<(), String> {
         Cmd::Db { vault } => cmd_db(vault),
         Cmd::Serve { vault, addr } => cmd_serve(vault, addr),
         Cmd::Sync { vault, op, message } => cmd_sync(vault, op, message.as_deref()),
+        Cmd::Rename { file, id, title } => cmd_rename(file, id, title),
+        Cmd::SetTodo { file, id, keyword } => cmd_set_todo(file, id, keyword),
     }
+}
+
+fn cmd_rename(path: &Path, id: &str, title: &str) -> Result<(), String> {
+    let src = fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))?;
+    let mut doc = Document::load_str(&src).map_err(|e| format!("{e}"))?;
+    let bid = BlockId::from_existing(id);
+    let cmd = RenameHeadline::new(bid, title.to_owned());
+    Command::apply(&cmd, &mut doc).map_err(|e| format!("{e}"))?;
+    fs::write(path, doc.source()).map_err(|e| format!("write: {e}"))?;
+    Ok(())
+}
+
+fn cmd_set_todo(path: &Path, id: &str, keyword: &str) -> Result<(), String> {
+    let src = fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))?;
+    let mut doc = Document::load_str(&src).map_err(|e| format!("{e}"))?;
+    let bid = BlockId::from_existing(id);
+    let new = if keyword.is_empty() {
+        None
+    } else {
+        Some(keyword.to_owned())
+    };
+    let cmd = SetTodo::new(bid, new);
+    Command::apply(&cmd, &mut doc).map_err(|e| format!("{e}"))?;
+    fs::write(path, doc.source()).map_err(|e| format!("write: {e}"))?;
+    Ok(())
 }
 
 fn cmd_sync(vault: &Path, op: &str, message: Option<&str>) -> Result<(), String> {
