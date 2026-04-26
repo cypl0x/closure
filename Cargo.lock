@@ -267,6 +267,7 @@ name = "closure-core"
 version = "0.0.0"
 dependencies = [
  "closure-org",
+ "closure-undo",
  "proptest",
  "thiserror 2.0.18",
  "ulid",
@@ -437,7 +438,6 @@ dependencies = [
 name = "closure-undo"
 version = "0.0.0"
 dependencies = [
- "closure-core",
  "proptest",
  "thiserror 2.0.18",
  "ulid",

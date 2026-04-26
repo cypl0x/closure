@@ -56,7 +56,20 @@ fn undo_reverses_rename() {
     assert_eq!(doc.headline_by_id(&id).expect("lookup").title(), "Changed");
     doc.undo().expect("undo");
     assert_eq!(doc.headline_by_id(&id).expect("lookup").title(), "Original");
-    assert_eq!(doc.history_len(), 0);
+    // UndoTree retains the node; history_len stays 1 because the
+    // edit can still be redone.
+    assert_eq!(doc.history_len(), 1);
+}
+
+#[test]
+fn redo_after_undo_replays_edit() {
+    let mut doc = Document::load_str("* Original\n").expect("load");
+    let id = doc.roots()[0].id().clone();
+    let cmd = RenameHeadline::new(id.clone(), "Changed".into());
+    let _ = closure_core::Command::apply(&cmd, &mut doc).expect("apply");
+    doc.undo().expect("undo");
+    doc.redo(None).expect("redo");
+    assert_eq!(doc.headline_by_id(&id).expect("lookup").title(), "Changed");
 }
 
 #[test]

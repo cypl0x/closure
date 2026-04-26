@@ -13,6 +13,7 @@ use std::str::FromStr;
 use std::sync::Arc;
 
 use closure_org::{Headline, OrgDoc, parse, rewrite_headline_ensure_id, rewrite_headline_title};
+use closure_undo::{NodeId as UndoNodeId, UndoTree};
 use thiserror::Error;
 use ulid::Ulid;
 
@@ -63,7 +64,7 @@ pub struct Document {
     org: OrgDoc,
     headlines: Vec<DocHeadline>,
     by_id: HashMap<BlockId, usize>,
-    history: Vec<Edit>,
+    history: UndoTree<Edit>,
 }
 
 /// Flat headline record with stable id and path back into the `OrgDoc`
@@ -148,7 +149,7 @@ impl Document {
             org,
             headlines,
             by_id,
-            history: Vec::new(),
+            history: UndoTree::new(),
         })
     }
 
@@ -170,23 +171,46 @@ impl Document {
         self.by_id = by_id;
     }
 
-    /// Record an edit in the history log.
-    pub fn push_history(&mut self, e: Edit) {
-        self.history.push(e);
+    /// Record an edit in the history log. Branching: a new edit
+    /// applied after `undo` becomes a sibling rather than overwriting
+    /// redo history.
+    pub fn push_history(&mut self, e: Edit) -> UndoNodeId {
+        self.history.apply(e)
     }
 
-    /// Number of edits currently in the history.
+    /// Number of nodes in the history tree.
     #[must_use]
     pub const fn history_len(&self) -> usize {
         self.history.len()
     }
 
-    /// Undo the most recent edit, if any.
+    /// Undo the current edit. Reverses the active node's payload and
+    /// moves the cursor to its parent. Returns `UndoError::Empty` when
+    /// at the root.
     pub fn undo(&mut self) -> Result<(), UndoError> {
-        let Some(edit) = self.history.pop() else {
+        let Some(current) = self.history.current() else {
             return Err(UndoError::Empty);
         };
-        edit.reverse(self).map_err(|_| UndoError::ReverseFailed)
+        let edit = self
+            .history
+            .node(current)
+            .map(|n| n.payload.clone())
+            .ok_or(UndoError::Empty)?;
+        edit.reverse(self).map_err(|_| UndoError::ReverseFailed)?;
+        self.history.undo().map_err(|_| UndoError::ReverseFailed)?;
+        Ok(())
+    }
+
+    /// Re-apply an undone edit. Without `branch`, picks the most
+    /// recently created child of the current node.
+    pub fn redo(&mut self, branch: Option<UndoNodeId>) -> Result<(), UndoError> {
+        let next = self.history.redo(branch).map_err(|_| UndoError::Empty)?;
+        let edit = self
+            .history
+            .node(next)
+            .map(|n| n.payload.clone())
+            .ok_or(UndoError::Empty)?;
+        edit.replay(self).map_err(|_| UndoError::ReverseFailed)
     }
 
     /// Path from `roots()` to the headline identified by `id`, if any.
@@ -337,16 +361,23 @@ pub enum ChordParseError {
     Empty,
 }
 
-/// An edit record in the undo log. Each command's `apply` produces an
-/// `Edit` and an inverse operation so undo can replay it.
+/// An edit record in the undo tree. Each command's `apply` produces an
+/// `Edit` whose `reverse` rolls the document back and whose `replay`
+/// re-applies the change after a `redo`.
 #[derive(Debug, Clone)]
-pub struct Edit {
-    inverse: Inverse,
-}
-
-#[derive(Debug, Clone)]
-enum Inverse {
-    RenameHeadline { id: BlockId, old_title: String },
+pub enum Edit {
+    /// A title rename, with both before and after states so both
+    /// directions are addressable.
+    RenameHeadline {
+        /// Block whose title was renamed.
+        id: BlockId,
+        /// Title before the edit.
+        old_title: String,
+        /// Title after the edit.
+        new_title: String,
+    },
+    /// Idempotent edit (e.g. ensure-id) — undo / redo are no-ops at
+    /// the kernel level.
     Noop,
 }
 
@@ -354,20 +385,34 @@ impl Edit {
     /// Whether this edit carries enough information to undo itself.
     #[must_use]
     pub const fn is_reversible(&self) -> bool {
-        matches!(self.inverse, Inverse::RenameHeadline { .. })
+        matches!(self, Self::RenameHeadline { .. })
     }
 
-    fn reverse(self, doc: &mut Document) -> Result<(), CommandError> {
-        match self.inverse {
-            Inverse::RenameHeadline { id, old_title } => {
-                let path = doc.path_of(&id).ok_or(CommandError::BlockNotFound)?;
-                let org = rewrite_headline_title(doc.org(), &path, &old_title)
+    fn reverse(&self, doc: &mut Document) -> Result<(), CommandError> {
+        match self {
+            Self::RenameHeadline { id, old_title, .. } => {
+                let path = doc.path_of(id).ok_or(CommandError::BlockNotFound)?;
+                let org = rewrite_headline_title(doc.org(), &path, old_title)
                     .map_err(|_| CommandError::Rewrite)?;
                 doc.org = org;
                 doc.rebuild_index();
                 Ok(())
             }
-            Inverse::Noop => Ok(()),
+            Self::Noop => Ok(()),
+        }
+    }
+
+    fn replay(&self, doc: &mut Document) -> Result<(), CommandError> {
+        match self {
+            Self::RenameHeadline { id, new_title, .. } => {
+                let path = doc.path_of(id).ok_or(CommandError::BlockNotFound)?;
+                let org = rewrite_headline_title(doc.org(), &path, new_title)
+                    .map_err(|_| CommandError::Rewrite)?;
+                doc.org = org;
+                doc.rebuild_index();
+                Ok(())
+            }
+            Self::Noop => Ok(()),
         }
     }
 }
@@ -496,11 +541,10 @@ impl Command for RenameHeadline {
             .map_err(|_| CommandError::Rewrite)?;
         doc.org = org;
         doc.rebuild_index();
-        let edit = Edit {
-            inverse: Inverse::RenameHeadline {
-                id: self.id.clone(),
-                old_title,
-            },
+        let edit = Edit::RenameHeadline {
+            id: self.id.clone(),
+            old_title,
+            new_title: self.new_title.clone(),
         };
         doc.push_history(edit.clone());
         Ok(edit)
@@ -552,8 +596,6 @@ impl Command for EnsureId {
         doc.org = org;
         doc.rebuild_index();
         // EnsureId is not a mutation the user should undo; no history entry.
-        Ok(Edit {
-            inverse: Inverse::Noop,
-        })
+        Ok(Edit::Noop)
     }
 }

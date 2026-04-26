@@ -12,7 +12,6 @@ authors.workspace = true
 workspace = true
 
 [dependencies]
-closure-core = { path = "../closure-core" }
 thiserror.workspace = true
 ulid.workspace = true
 
