@@ -15,3 +15,6 @@ workspace = true
 closure-core = { path = "../closure-core" }
 closure-store = { path = "../closure-store" }
 thiserror.workspace = true
+
+[dev-dependencies]
+tempfile = "3"
