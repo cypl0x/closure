@@ -80,6 +80,50 @@ pub fn rewrite_headline_title(
     parse(&src).map_err(|_| RewriteError::Parse)
 }
 
+/// Set or clear the TODO keyword on a headline.
+///
+/// `keyword: Some("TODO")` sets the keyword (replaces the existing one
+/// if present); `keyword: None` removes it. The rest of the header
+/// line (priority, title, tags) is preserved verbatim.
+pub fn rewrite_headline_set_todo(
+    doc: &OrgDoc,
+    path: &[usize],
+    keyword: Option<&str>,
+) -> Result<OrgDoc, RewriteError> {
+    let target = navigate_headline(doc, path).ok_or(RewriteError::NotFound)?;
+    // Determine the current "header content" region: between stars+space
+    // and the trailing `\n`. Replace the leading TODO+space (if any) and
+    // re-emit with the new keyword.
+    let header = &doc.source()[target.header_span.start..target.header_span.end];
+    let body = header.strip_suffix('\n').unwrap_or(header);
+    let stars = body.chars().take_while(|&c| c == '*').count();
+    let after_stars = &body[stars..];
+    let ws_skip = after_stars
+        .chars()
+        .take_while(|c| *c == ' ' || *c == '\t')
+        .count();
+    let content = &after_stars[ws_skip..];
+
+    let stripped = target.todo_span.map_or(content, |span| {
+        let kw_len = span.end - span.start;
+        let after_kw = &content[kw_len..];
+        after_kw.strip_prefix(' ').unwrap_or(after_kw)
+    });
+
+    let stars_str = "*".repeat(stars);
+    let new_header = keyword.map_or_else(
+        || format!("{stars_str} {stripped}\n"),
+        |k| format!("{stars_str} {k} {stripped}\n"),
+    );
+
+    let mut src = doc.source().to_owned();
+    src.replace_range(
+        target.header_span.start..target.header_span.end,
+        &new_header,
+    );
+    parse(&src).map_err(|_| RewriteError::Parse)
+}
+
 /// Ensure the headline at `path` has an `:ID:` property.
 ///
 /// If the drawer is absent, a fresh one is inserted immediately after

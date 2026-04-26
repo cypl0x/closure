@@ -6,7 +6,7 @@
 
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
-use closure_core::{Document, EnsureId, KeyChord, Registry, RenameHeadline};
+use closure_core::{Document, EnsureId, KeyChord, Registry, RenameHeadline, SetTodo};
 
 #[test]
 fn registry_stores_command_by_name() {
@@ -100,4 +100,44 @@ fn ensure_id_is_noop_when_id_already_present() {
     let cmd = EnsureId::new(id);
     closure_core::Command::apply(&cmd, &mut doc).expect("apply");
     assert_eq!(doc.source(), src);
+}
+
+#[test]
+fn set_todo_adds_keyword() {
+    let mut doc = Document::load_str("* Fix bug\n").expect("load");
+    let id = doc.roots()[0].id().clone();
+    let cmd = SetTodo::new(id.clone(), Some("TODO".into()));
+    closure_core::Command::apply(&cmd, &mut doc).expect("apply");
+    assert_eq!(
+        doc.headline_by_id(&id).expect("lookup").todo(),
+        Some("TODO")
+    );
+    assert!(doc.source().starts_with("* TODO Fix bug"));
+}
+
+#[test]
+fn set_todo_clears_keyword() {
+    let mut doc = Document::load_str("* TODO Fix bug\n").expect("load");
+    let id = doc.roots()[0].id().clone();
+    let cmd = SetTodo::new(id.clone(), None);
+    closure_core::Command::apply(&cmd, &mut doc).expect("apply");
+    assert!(doc.headline_by_id(&id).expect("lookup").todo().is_none());
+    assert!(doc.source().starts_with("* Fix bug"));
+}
+
+#[test]
+fn set_todo_undo_restores_keyword() {
+    let mut doc = Document::load_str("* TODO Fix\n").expect("load");
+    let id = doc.roots()[0].id().clone();
+    let cmd = SetTodo::new(id.clone(), Some("DONE".into()));
+    closure_core::Command::apply(&cmd, &mut doc).expect("apply");
+    assert_eq!(
+        doc.headline_by_id(&id).expect("lookup").todo(),
+        Some("DONE")
+    );
+    doc.undo().expect("undo");
+    assert_eq!(
+        doc.headline_by_id(&id).expect("lookup").todo(),
+        Some("TODO")
+    );
 }

@@ -12,7 +12,10 @@ use std::collections::HashMap;
 use std::str::FromStr;
 use std::sync::Arc;
 
-use closure_org::{Headline, OrgDoc, parse, rewrite_headline_ensure_id, rewrite_headline_title};
+use closure_org::{
+    Headline, OrgDoc, parse, rewrite_headline_ensure_id, rewrite_headline_set_todo,
+    rewrite_headline_title,
+};
 use closure_undo::{NodeId as UndoNodeId, UndoTree};
 use thiserror::Error;
 use ulid::Ulid;
@@ -376,6 +379,15 @@ pub enum Edit {
         /// Title after the edit.
         new_title: String,
     },
+    /// Set or clear the TODO keyword on a headline.
+    SetTodo {
+        /// Block whose TODO keyword changed.
+        id: BlockId,
+        /// Keyword before the edit (`None` if absent).
+        old: Option<String>,
+        /// Keyword after the edit (`None` if cleared).
+        new: Option<String>,
+    },
     /// Idempotent edit (e.g. ensure-id) — undo / redo are no-ops at
     /// the kernel level.
     Noop,
@@ -398,6 +410,14 @@ impl Edit {
                 doc.rebuild_index();
                 Ok(())
             }
+            Self::SetTodo { id, old, .. } => {
+                let path = doc.path_of(id).ok_or(CommandError::BlockNotFound)?;
+                let org = rewrite_headline_set_todo(doc.org(), &path, old.as_deref())
+                    .map_err(|_| CommandError::Rewrite)?;
+                doc.org = org;
+                doc.rebuild_index();
+                Ok(())
+            }
             Self::Noop => Ok(()),
         }
     }
@@ -407,6 +427,14 @@ impl Edit {
             Self::RenameHeadline { id, new_title, .. } => {
                 let path = doc.path_of(id).ok_or(CommandError::BlockNotFound)?;
                 let org = rewrite_headline_title(doc.org(), &path, new_title)
+                    .map_err(|_| CommandError::Rewrite)?;
+                doc.org = org;
+                doc.rebuild_index();
+                Ok(())
+            }
+            Self::SetTodo { id, new, .. } => {
+                let path = doc.path_of(id).ok_or(CommandError::BlockNotFound)?;
+                let org = rewrite_headline_set_todo(doc.org(), &path, new.as_deref())
                     .map_err(|_| CommandError::Rewrite)?;
                 doc.org = org;
                 doc.rebuild_index();
@@ -545,6 +573,66 @@ impl Command for RenameHeadline {
             id: self.id.clone(),
             old_title,
             new_title: self.new_title.clone(),
+        };
+        doc.push_history(edit.clone());
+        Ok(edit)
+    }
+}
+
+/// Command: set or clear the TODO keyword on a headline.
+pub struct SetTodo {
+    id: BlockId,
+    new: Option<String>,
+    keys: Vec<KeyChord>,
+}
+
+impl SetTodo {
+    /// Set TODO keyword to `new` (or clear with `None`).
+    #[must_use]
+    pub fn new(id: BlockId, new: Option<String>) -> Self {
+        Self {
+            id,
+            new,
+            keys: vec![KeyChord::from_strokes(&["C-c", "C-t"])],
+        }
+    }
+
+    /// Placeholder for registry introspection.
+    #[must_use]
+    pub fn new_placeholder() -> Self {
+        Self {
+            id: BlockId::from_existing(""),
+            new: None,
+            keys: vec![KeyChord::from_strokes(&["C-c", "C-t"])],
+        }
+    }
+}
+
+impl Command for SetTodo {
+    #[allow(clippy::unnecessary_literal_bound)]
+    fn name(&self) -> &str {
+        "set-todo"
+    }
+
+    fn keys(&self) -> &[KeyChord] {
+        &self.keys
+    }
+
+    fn apply(&self, doc: &mut Document) -> Result<Edit, CommandError> {
+        let path = doc.path_of(&self.id).ok_or(CommandError::BlockNotFound)?;
+        let old = doc
+            .headline_by_id(&self.id)
+            .ok_or(CommandError::BlockNotFound)?
+            .todo()
+            .map(str::to_owned);
+        let org = rewrite_headline_set_todo(doc.org(), &path, self.new.as_deref())
+            .map_err(|_| CommandError::Rewrite)?;
+        doc.org = org;
+        doc.rebuild_index();
+        let edit = Edit::SetTodo {
+            id: self.id.clone(),
+            old,
+            new: self.new.clone(),
         };
         doc.push_history(edit.clone());
         Ok(edit)
