@@ -138,6 +138,11 @@ enum Cmd {
         /// Keyword to set (empty string clears).
         keyword: String,
     },
+    /// Watch the vault for `*.org` file changes and stream events.
+    Watch {
+        /// Path to the vault directory.
+        vault: PathBuf,
+    },
 }
 
 fn main() -> ExitCode {
@@ -179,6 +184,17 @@ fn run(cmd: &Cmd) -> Result<(), String> {
         Cmd::Sync { vault, op, message } => cmd_sync(vault, op, message.as_deref()),
         Cmd::Rename { file, id, title } => cmd_rename(file, id, title),
         Cmd::SetTodo { file, id, keyword } => cmd_set_todo(file, id, keyword),
+        Cmd::Watch { vault } => cmd_watch(vault),
+    }
+}
+
+fn cmd_watch(vault: &Path) -> Result<(), String> {
+    let v = Vault::open(vault).map_err(|e| format!("{e}"))?;
+    let watcher = v.watch().map_err(|e| format!("{e}"))?;
+    eprintln!("closure watch: streaming events from {}", vault.display());
+    loop {
+        let event = watcher.recv().map_err(|e| format!("{e}"))?;
+        println!("{:?} {}", event.kind, event.path.display());
     }
 }
 
