@@ -14,12 +14,16 @@ use notify::{EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use thiserror::Error;
 
 /// A loaded vault: every `*.org` file under a directory parsed into
-/// [`Document`]s with a shared block-id index.
+/// [`Document`]s with a shared block-id index plus a precomputed
+/// inverted backlink index.
 #[derive(Debug)]
 pub struct Vault {
     root: PathBuf,
     documents: HashMap<PathBuf, Document>,
     by_id: HashMap<BlockId, PathBuf>,
+    /// Inverted index: target id (or full URL) → set of (path, source-id)
+    /// pairs whose headline links to it.
+    backlinks: HashMap<String, Vec<(PathBuf, BlockId)>>,
 }
 
 /// Errors while operating on a vault.
@@ -45,12 +49,28 @@ impl Vault {
         let root = root.to_path_buf();
         let mut documents: HashMap<PathBuf, Document> = HashMap::new();
         let mut by_id: HashMap<BlockId, PathBuf> = HashMap::new();
+        let mut backlinks: HashMap<String, Vec<(PathBuf, BlockId)>> = HashMap::new();
         walk_org(&root, &mut |path| {
             let src = fs::read_to_string(path)?;
             let doc =
                 Document::load_str(&src).map_err(|_| VaultError::Parse { path: path.into() })?;
-            for id in doc.all_block_ids() {
-                by_id.insert(id, path.to_path_buf());
+            for h in doc.all_headlines() {
+                let id = h.id().clone();
+                by_id.insert(id.clone(), path.to_path_buf());
+                for target in h.link_targets() {
+                    backlinks
+                        .entry(target.clone())
+                        .or_default()
+                        .push((path.to_path_buf(), id.clone()));
+                    // Also index `id:<ULID>` links by the bare id so
+                    // callers can pass either form.
+                    if let Some(stripped) = target.strip_prefix("id:") {
+                        backlinks
+                            .entry(stripped.to_owned())
+                            .or_default()
+                            .push((path.to_path_buf(), id.clone()));
+                    }
+                }
             }
             documents.insert(path.to_path_buf(), doc);
             Ok(())
@@ -59,7 +79,17 @@ impl Vault {
             root,
             documents,
             by_id,
+            backlinks,
         })
+    }
+
+    /// Inverted backlink lookup. Returns every `(file, source-id)`
+    /// whose headline links to `target`. Both `id:<ULID>` and bare
+    /// ULID forms are accepted.
+    #[must_use]
+    pub fn backlinks_of(&self, target: &str) -> &[(PathBuf, BlockId)] {
+        static EMPTY: Vec<(PathBuf, BlockId)> = Vec::new();
+        self.backlinks.get(target).map_or(&EMPTY, Vec::as_slice)
     }
 
     /// Root directory of the vault.

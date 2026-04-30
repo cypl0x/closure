@@ -86,6 +86,26 @@ fn vault_save_writes_byte_exact_source() {
 }
 
 #[test]
+fn vault_backlinks_index_finds_linkers() {
+    let td = write_vault(&[
+        (
+            "target.org",
+            "* T\n:PROPERTIES:\n:ID: 01HXTGTTARGET0000000000AA\n:END:\n",
+        ),
+        (
+            "src.org",
+            "* Source\nSee [[id:01HXTGTTARGET0000000000AA][T]].\n",
+        ),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    // Either form (with or without `id:` prefix) should work.
+    let bare = v.backlinks_of("01HXTGTTARGET0000000000AA");
+    assert_eq!(bare.len(), 1);
+    let prefixed = v.backlinks_of("id:01HXTGTTARGET0000000000AA");
+    assert_eq!(prefixed.len(), 1);
+}
+
+#[test]
 fn vault_watcher_observes_modify() {
     let td = write_vault(&[("x.org", "* A\n")]);
     let v = Vault::open(td.path()).expect("open");
