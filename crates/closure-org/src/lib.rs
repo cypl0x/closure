@@ -224,6 +224,65 @@ pub fn rewrite_headline_set_tags(
     parse(&src).map_err(|_| RewriteError::Parse)
 }
 
+/// Insert a new sibling headline immediately after the subtree
+/// rooted at `path`, with the same level.
+pub fn rewrite_add_sibling_after(
+    doc: &OrgDoc,
+    path: &[usize],
+    title: &str,
+) -> Result<OrgDoc, RewriteError> {
+    let target = navigate_headline(doc, path).ok_or(RewriteError::NotFound)?;
+    let end = subtree_end(target);
+    let stars = "*".repeat(usize::from(target.level));
+    let insert = format!("{stars} {title}\n");
+    let mut src = doc.source().to_owned();
+    src.insert_str(end, &insert);
+    parse(&src).map_err(|_| RewriteError::Parse)
+}
+
+/// Insert a sibling headline with a pre-pinned `:ID:` so the kernel
+/// can address it deterministically across rebuilds.
+pub fn rewrite_add_sibling_after_with_id(
+    doc: &OrgDoc,
+    path: &[usize],
+    title: &str,
+    id: &str,
+) -> Result<OrgDoc, RewriteError> {
+    let target = navigate_headline(doc, path).ok_or(RewriteError::NotFound)?;
+    let end = subtree_end(target);
+    let stars = "*".repeat(usize::from(target.level));
+    let insert = format!("{stars} {title}\n:PROPERTIES:\n:ID: {id}\n:END:\n");
+    let mut src = doc.source().to_owned();
+    src.insert_str(end, &insert);
+    parse(&src).map_err(|_| RewriteError::Parse)
+}
+
+/// Remove the subtree rooted at `path` from the document. The header,
+/// any property drawer, body nodes, and recursive children are all
+/// dropped; the resulting source remains a valid org document.
+pub fn rewrite_remove_subtree(doc: &OrgDoc, path: &[usize]) -> Result<OrgDoc, RewriteError> {
+    let target = navigate_headline(doc, path).ok_or(RewriteError::NotFound)?;
+    let start = target.header_span.start;
+    let end = subtree_end(target);
+    let mut src = doc.source().to_owned();
+    src.replace_range(start..end, "");
+    parse(&src).map_err(|_| RewriteError::Parse)
+}
+
+fn subtree_end(h: &Headline) -> usize {
+    let mut end = h.header_span.end;
+    if let Some(p) = &h.properties {
+        end = end.max(p.drawer_span.end);
+    }
+    for n in &h.body {
+        end = end.max(n.span.end);
+    }
+    if let Some(last) = h.children.last() {
+        end = end.max(subtree_end(last));
+    }
+    end
+}
+
 /// Decrease (promote) the headline's level by one.
 ///
 /// Returns `RewriteError::Parse` if the headline is already at level 1

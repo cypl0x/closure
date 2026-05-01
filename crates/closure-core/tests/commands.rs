@@ -7,8 +7,8 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
 use closure_core::{
-    Demote, Document, EnsureId, KeyChord, Promote, Registry, RenameHeadline, SetPriority, SetTags,
-    SetTodo,
+    AddSibling, Demote, Document, EnsureId, KeyChord, Promote, Registry, RenameHeadline,
+    SetPriority, SetTags, SetTodo,
 };
 
 #[test]
@@ -221,4 +221,40 @@ fn demote_undo_returns_to_original_level() {
     assert_eq!(doc.headline_by_id(&id).expect("h").level(), 2);
     doc.undo().expect("undo");
     assert_eq!(doc.headline_by_id(&id).expect("h").level(), 1);
+}
+
+#[test]
+fn add_sibling_inserts_new_headline_with_id() {
+    let mut doc = Document::load_str("* First\n").expect("load");
+    let first_id = doc.roots()[0].id().clone();
+    let cmd = AddSibling::new(first_id.clone(), "Second".into());
+    closure_core::Command::apply(&cmd, &mut doc).expect("apply");
+    assert_eq!(doc.roots().len(), 2);
+    assert_eq!(doc.roots()[1].title(), "Second");
+    assert_ne!(doc.roots()[1].id(), &first_id);
+}
+
+#[test]
+fn add_sibling_undo_removes_inserted_headline() {
+    let mut doc = Document::load_str("* First\n").expect("load");
+    let first_id = doc.roots()[0].id().clone();
+    let cmd = AddSibling::new(first_id, "Second".into());
+    closure_core::Command::apply(&cmd, &mut doc).expect("apply");
+    assert_eq!(doc.roots().len(), 2);
+    doc.undo().expect("undo");
+    assert_eq!(doc.roots().len(), 1);
+    assert_eq!(doc.roots()[0].title(), "First");
+}
+
+#[test]
+fn add_sibling_redo_reinserts_with_same_id() {
+    let mut doc = Document::load_str("* First\n").expect("load");
+    let first_id = doc.roots()[0].id().clone();
+    let cmd = AddSibling::new(first_id, "Second".into());
+    closure_core::Command::apply(&cmd, &mut doc).expect("apply");
+    let new_id = doc.roots()[1].id().clone();
+    doc.undo().expect("undo");
+    doc.redo(None).expect("redo");
+    assert_eq!(doc.roots()[1].id(), &new_id);
+    assert_eq!(doc.roots()[1].title(), "Second");
 }

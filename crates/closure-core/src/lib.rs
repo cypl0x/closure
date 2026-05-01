@@ -13,9 +13,10 @@ use std::str::FromStr;
 use std::sync::Arc;
 
 use closure_org::{
-    Headline, OrgDoc, parse, rewrite_headline_demote, rewrite_headline_ensure_id,
-    rewrite_headline_promote, rewrite_headline_set_priority, rewrite_headline_set_tags,
-    rewrite_headline_set_todo, rewrite_headline_title,
+    Headline, OrgDoc, parse, rewrite_add_sibling_after_with_id, rewrite_headline_demote,
+    rewrite_headline_ensure_id, rewrite_headline_promote, rewrite_headline_set_priority,
+    rewrite_headline_set_tags, rewrite_headline_set_todo, rewrite_headline_title,
+    rewrite_remove_subtree,
 };
 use closure_undo::{NodeId as UndoNodeId, UndoTree};
 use thiserror::Error;
@@ -417,6 +418,15 @@ pub enum Edit {
         /// Block whose level changed.
         id: BlockId,
     },
+    /// Insert a sibling headline.
+    AddSibling {
+        /// Block id of the headline this sibling sits after.
+        after_id: BlockId,
+        /// Newly-allocated id pinned into the inserted headline.
+        new_id: BlockId,
+        /// Title given to the new headline.
+        title: String,
+    },
     /// Idempotent edit (e.g. ensure-id) — undo / redo are no-ops at
     /// the kernel level.
     Noop,
@@ -481,6 +491,14 @@ impl Edit {
                 doc.rebuild_index();
                 Ok(())
             }
+            Self::AddSibling { new_id, .. } => {
+                let path = doc.path_of(new_id).ok_or(CommandError::BlockNotFound)?;
+                let org =
+                    rewrite_remove_subtree(doc.org(), &path).map_err(|_| CommandError::Rewrite)?;
+                doc.org = org;
+                doc.rebuild_index();
+                Ok(())
+            }
             Self::Noop => Ok(()),
         }
     }
@@ -532,6 +550,19 @@ impl Edit {
                 let path = doc.path_of(id).ok_or(CommandError::BlockNotFound)?;
                 let org =
                     rewrite_headline_demote(doc.org(), &path).map_err(|_| CommandError::Rewrite)?;
+                doc.org = org;
+                doc.rebuild_index();
+                Ok(())
+            }
+            Self::AddSibling {
+                after_id,
+                new_id,
+                title,
+            } => {
+                let path = doc.path_of(after_id).ok_or(CommandError::BlockNotFound)?;
+                let org =
+                    rewrite_add_sibling_after_with_id(doc.org(), &path, title, new_id.as_str())
+                        .map_err(|_| CommandError::Rewrite)?;
                 doc.org = org;
                 doc.rebuild_index();
                 Ok(())
@@ -947,6 +978,64 @@ impl Command for Demote {
         doc.rebuild_index();
         let edit = Edit::Demote {
             id: self.id.clone(),
+        };
+        doc.push_history(edit.clone());
+        Ok(edit)
+    }
+}
+
+/// Command: insert a new sibling headline after the given block.
+pub struct AddSibling {
+    after_id: BlockId,
+    title: String,
+    keys: Vec<KeyChord>,
+}
+
+impl AddSibling {
+    /// Insert a new sibling after the headline with `after_id`.
+    #[must_use]
+    pub fn new(after_id: BlockId, title: String) -> Self {
+        Self {
+            after_id,
+            title,
+            keys: vec![KeyChord::from_strokes(&["M-<return>"])],
+        }
+    }
+
+    /// Placeholder.
+    #[must_use]
+    pub fn new_placeholder() -> Self {
+        Self {
+            after_id: BlockId::from_existing(""),
+            title: String::new(),
+            keys: vec![KeyChord::from_strokes(&["M-<return>"])],
+        }
+    }
+}
+
+impl Command for AddSibling {
+    #[allow(clippy::unnecessary_literal_bound)]
+    fn name(&self) -> &str {
+        "add-sibling"
+    }
+
+    fn keys(&self) -> &[KeyChord] {
+        &self.keys
+    }
+
+    fn apply(&self, doc: &mut Document) -> Result<Edit, CommandError> {
+        let path = doc
+            .path_of(&self.after_id)
+            .ok_or(CommandError::BlockNotFound)?;
+        let new_id = BlockId::fresh();
+        let org = rewrite_add_sibling_after_with_id(doc.org(), &path, &self.title, new_id.as_str())
+            .map_err(|_| CommandError::Rewrite)?;
+        doc.org = org;
+        doc.rebuild_index();
+        let edit = Edit::AddSibling {
+            after_id: self.after_id.clone(),
+            new_id,
+            title: self.title.clone(),
         };
         doc.push_history(edit.clone());
         Ok(edit)
