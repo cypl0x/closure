@@ -13,8 +13,9 @@ use std::str::FromStr;
 use std::sync::Arc;
 
 use closure_org::{
-    Headline, OrgDoc, parse, rewrite_headline_ensure_id, rewrite_headline_set_priority,
-    rewrite_headline_set_tags, rewrite_headline_set_todo, rewrite_headline_title,
+    Headline, OrgDoc, parse, rewrite_headline_demote, rewrite_headline_ensure_id,
+    rewrite_headline_promote, rewrite_headline_set_priority, rewrite_headline_set_tags,
+    rewrite_headline_set_todo, rewrite_headline_title,
 };
 use closure_undo::{NodeId as UndoNodeId, UndoTree};
 use thiserror::Error;
@@ -406,6 +407,16 @@ pub enum Edit {
         /// Tags after the edit.
         new: Vec<String>,
     },
+    /// Promote a headline (decrease level by 1).
+    Promote {
+        /// Block whose level changed.
+        id: BlockId,
+    },
+    /// Demote a headline (increase level by 1).
+    Demote {
+        /// Block whose level changed.
+        id: BlockId,
+    },
     /// Idempotent edit (e.g. ensure-id) — undo / redo are no-ops at
     /// the kernel level.
     Noop,
@@ -453,6 +464,23 @@ impl Edit {
                 doc.rebuild_index();
                 Ok(())
             }
+            // Reverse of Promote = Demote (and vice versa).
+            Self::Promote { id } => {
+                let path = doc.path_of(id).ok_or(CommandError::BlockNotFound)?;
+                let org =
+                    rewrite_headline_demote(doc.org(), &path).map_err(|_| CommandError::Rewrite)?;
+                doc.org = org;
+                doc.rebuild_index();
+                Ok(())
+            }
+            Self::Demote { id } => {
+                let path = doc.path_of(id).ok_or(CommandError::BlockNotFound)?;
+                let org = rewrite_headline_promote(doc.org(), &path)
+                    .map_err(|_| CommandError::Rewrite)?;
+                doc.org = org;
+                doc.rebuild_index();
+                Ok(())
+            }
             Self::Noop => Ok(()),
         }
     }
@@ -488,6 +516,22 @@ impl Edit {
                 let refs: Vec<&str> = new.iter().map(String::as_str).collect();
                 let org = rewrite_headline_set_tags(doc.org(), &path, &refs)
                     .map_err(|_| CommandError::Rewrite)?;
+                doc.org = org;
+                doc.rebuild_index();
+                Ok(())
+            }
+            Self::Promote { id } => {
+                let path = doc.path_of(id).ok_or(CommandError::BlockNotFound)?;
+                let org = rewrite_headline_promote(doc.org(), &path)
+                    .map_err(|_| CommandError::Rewrite)?;
+                doc.org = org;
+                doc.rebuild_index();
+                Ok(())
+            }
+            Self::Demote { id } => {
+                let path = doc.path_of(id).ok_or(CommandError::BlockNotFound)?;
+                let org =
+                    rewrite_headline_demote(doc.org(), &path).map_err(|_| CommandError::Rewrite)?;
                 doc.org = org;
                 doc.rebuild_index();
                 Ok(())
@@ -805,6 +849,104 @@ impl Command for SetTags {
             id: self.id.clone(),
             old,
             new: self.new.clone(),
+        };
+        doc.push_history(edit.clone());
+        Ok(edit)
+    }
+}
+
+/// Command: promote a headline (decrease level by 1).
+pub struct Promote {
+    id: BlockId,
+    keys: Vec<KeyChord>,
+}
+
+impl Promote {
+    /// Promote the headline with this id.
+    #[must_use]
+    pub fn new(id: BlockId) -> Self {
+        Self {
+            id,
+            keys: vec![KeyChord::from_strokes(&["M-S-<left>"])],
+        }
+    }
+
+    /// Placeholder.
+    #[must_use]
+    pub fn new_placeholder() -> Self {
+        Self {
+            id: BlockId::from_existing(""),
+            keys: vec![KeyChord::from_strokes(&["M-S-<left>"])],
+        }
+    }
+}
+
+impl Command for Promote {
+    #[allow(clippy::unnecessary_literal_bound)]
+    fn name(&self) -> &str {
+        "promote-headline"
+    }
+
+    fn keys(&self) -> &[KeyChord] {
+        &self.keys
+    }
+
+    fn apply(&self, doc: &mut Document) -> Result<Edit, CommandError> {
+        let path = doc.path_of(&self.id).ok_or(CommandError::BlockNotFound)?;
+        let org = rewrite_headline_promote(doc.org(), &path).map_err(|_| CommandError::Rewrite)?;
+        doc.org = org;
+        doc.rebuild_index();
+        let edit = Edit::Promote {
+            id: self.id.clone(),
+        };
+        doc.push_history(edit.clone());
+        Ok(edit)
+    }
+}
+
+/// Command: demote a headline (increase level by 1).
+pub struct Demote {
+    id: BlockId,
+    keys: Vec<KeyChord>,
+}
+
+impl Demote {
+    /// Demote the headline with this id.
+    #[must_use]
+    pub fn new(id: BlockId) -> Self {
+        Self {
+            id,
+            keys: vec![KeyChord::from_strokes(&["M-S-<right>"])],
+        }
+    }
+
+    /// Placeholder.
+    #[must_use]
+    pub fn new_placeholder() -> Self {
+        Self {
+            id: BlockId::from_existing(""),
+            keys: vec![KeyChord::from_strokes(&["M-S-<right>"])],
+        }
+    }
+}
+
+impl Command for Demote {
+    #[allow(clippy::unnecessary_literal_bound)]
+    fn name(&self) -> &str {
+        "demote-headline"
+    }
+
+    fn keys(&self) -> &[KeyChord] {
+        &self.keys
+    }
+
+    fn apply(&self, doc: &mut Document) -> Result<Edit, CommandError> {
+        let path = doc.path_of(&self.id).ok_or(CommandError::BlockNotFound)?;
+        let org = rewrite_headline_demote(doc.org(), &path).map_err(|_| CommandError::Rewrite)?;
+        doc.org = org;
+        doc.rebuild_index();
+        let edit = Edit::Demote {
+            id: self.id.clone(),
         };
         doc.push_history(edit.clone());
         Ok(edit)

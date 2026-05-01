@@ -7,7 +7,8 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
 use closure_core::{
-    Document, EnsureId, KeyChord, Registry, RenameHeadline, SetPriority, SetTags, SetTodo,
+    Demote, Document, EnsureId, KeyChord, Promote, Registry, RenameHeadline, SetPriority, SetTags,
+    SetTodo,
 };
 
 #[test]
@@ -192,4 +193,32 @@ fn set_tags_clears_block() {
     let cmd = SetTags::new(id.clone(), Vec::new());
     closure_core::Command::apply(&cmd, &mut doc).expect("apply");
     assert!(doc.headline_by_id(&id).expect("h").tags().is_empty());
+}
+
+#[test]
+fn demote_then_promote_round_trips() {
+    let mut doc = Document::load_str("* Hello\n").expect("load");
+    let id = doc.roots()[0].id().clone();
+    closure_core::Command::apply(&Demote::new(id.clone()), &mut doc).expect("demote");
+    assert_eq!(doc.headline_by_id(&id).expect("h").level(), 2);
+    closure_core::Command::apply(&Promote::new(id.clone()), &mut doc).expect("promote");
+    assert_eq!(doc.headline_by_id(&id).expect("h").level(), 1);
+}
+
+#[test]
+fn promote_at_level_one_is_error() {
+    let mut doc = Document::load_str("* Hello\n").expect("load");
+    let id = doc.roots()[0].id().clone();
+    let err = closure_core::Command::apply(&Promote::new(id), &mut doc).unwrap_err();
+    let _ = err;
+}
+
+#[test]
+fn demote_undo_returns_to_original_level() {
+    let mut doc = Document::load_str("* Hello\n").expect("load");
+    let id = doc.roots()[0].id().clone();
+    closure_core::Command::apply(&Demote::new(id.clone()), &mut doc).expect("demote");
+    assert_eq!(doc.headline_by_id(&id).expect("h").level(), 2);
+    doc.undo().expect("undo");
+    assert_eq!(doc.headline_by_id(&id).expect("h").level(), 1);
 }

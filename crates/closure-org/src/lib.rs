@@ -224,6 +224,45 @@ pub fn rewrite_headline_set_tags(
     parse(&src).map_err(|_| RewriteError::Parse)
 }
 
+/// Decrease (promote) the headline's level by one.
+///
+/// Returns `RewriteError::Parse` if the headline is already at level 1
+/// (cannot promote further). Children are NOT promoted; the caller
+/// passes a level adjustment for the whole subtree separately if
+/// desired.
+pub fn rewrite_headline_promote(doc: &OrgDoc, path: &[usize]) -> Result<OrgDoc, RewriteError> {
+    let target = navigate_headline(doc, path).ok_or(RewriteError::NotFound)?;
+    if target.level <= 1 {
+        return Err(RewriteError::Parse);
+    }
+    rewrite_stars(doc, target, target.level - 1)
+}
+
+/// Increase (demote) the headline's level by one. The new level is
+/// capped at `u8::MAX`.
+pub fn rewrite_headline_demote(doc: &OrgDoc, path: &[usize]) -> Result<OrgDoc, RewriteError> {
+    let target = navigate_headline(doc, path).ok_or(RewriteError::NotFound)?;
+    let new_level = target.level.saturating_add(1);
+    rewrite_stars(doc, target, new_level)
+}
+
+fn rewrite_stars(doc: &OrgDoc, target: &Headline, new_level: u8) -> Result<OrgDoc, RewriteError> {
+    let header = &doc.source()[target.header_span.start..target.header_span.end];
+    let (body, trailer) = header
+        .strip_suffix('\n')
+        .map_or((header, ""), |b| (b, "\n"));
+    let stars = body.chars().take_while(|&c| c == '*').count();
+    let after_stars = &body[stars..];
+    let new_stars = "*".repeat(usize::from(new_level));
+    let new_header = format!("{new_stars}{after_stars}{trailer}");
+    let mut src = doc.source().to_owned();
+    src.replace_range(
+        target.header_span.start..target.header_span.end,
+        &new_header,
+    );
+    parse(&src).map_err(|_| RewriteError::Parse)
+}
+
 /// Ensure the headline at `path` has an `:ID:` property.
 ///
 /// If the drawer is absent, a fresh one is inserted immediately after
