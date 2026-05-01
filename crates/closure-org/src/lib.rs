@@ -124,6 +124,106 @@ pub fn rewrite_headline_set_todo(
     parse(&src).map_err(|_| RewriteError::Parse)
 }
 
+/// Set or clear the `[#X]` priority on a headline.
+///
+/// `Some('A')` inserts a priority cookie immediately after the optional
+/// TODO keyword; `None` removes any existing cookie. Title and tags
+/// are preserved verbatim.
+pub fn rewrite_headline_set_priority(
+    doc: &OrgDoc,
+    path: &[usize],
+    priority: Option<char>,
+) -> Result<OrgDoc, RewriteError> {
+    let target = navigate_headline(doc, path).ok_or(RewriteError::NotFound)?;
+    let header = &doc.source()[target.header_span.start..target.header_span.end];
+    let body = header.strip_suffix('\n').unwrap_or(header);
+    let stars = body.chars().take_while(|&c| c == '*').count();
+    let after_stars = &body[stars..];
+    let ws = after_stars
+        .chars()
+        .take_while(|c| *c == ' ' || *c == '\t')
+        .count();
+    let content = &body[stars + ws..];
+
+    let mut prefix = String::new();
+    let mut rest: &str = target.todo_span.map_or(content, |span| {
+        let kw_len = span.end - span.start;
+        prefix.push_str(&content[..kw_len]);
+        prefix.push(' ');
+        let after = &content[kw_len..];
+        after.strip_prefix(' ').unwrap_or(after)
+    });
+
+    // Strip any existing `[#X]` priority cookie from `rest`.
+    if rest.starts_with("[#") && rest.len() >= 4 && rest.as_bytes()[3] == b']' {
+        let after = &rest[4..];
+        rest = after.strip_prefix(' ').unwrap_or(after);
+    }
+
+    if let Some(p) = priority {
+        use std::fmt::Write as _;
+        let _ = write!(prefix, "[#{p}] ");
+    }
+
+    let stars_str = "*".repeat(stars);
+    let new_header = format!("{stars_str} {prefix}{rest}\n");
+
+    let mut src = doc.source().to_owned();
+    src.replace_range(
+        target.header_span.start..target.header_span.end,
+        &new_header,
+    );
+    parse(&src).map_err(|_| RewriteError::Parse)
+}
+
+/// Set the trailing tag list on a headline.
+///
+/// `tags: &[]` clears the tag block. Otherwise the trailing
+/// `:tag1:tag2:` block is replaced wholesale (or appended if absent).
+/// Title, TODO, and priority are preserved.
+pub fn rewrite_headline_set_tags(
+    doc: &OrgDoc,
+    path: &[usize],
+    tags: &[&str],
+) -> Result<OrgDoc, RewriteError> {
+    let target = navigate_headline(doc, path).ok_or(RewriteError::NotFound)?;
+    let header = &doc.source()[target.header_span.start..target.header_span.end];
+    let body = header.strip_suffix('\n').unwrap_or(header);
+
+    // Determine where the trailing tag block sits in `body`.
+    let trim_end = target.tag_spans.first().map_or_else(
+        || body.trim_end_matches([' ', '\t']).len(),
+        |first_tag| {
+            let start_in_body = first_tag.start - target.header_span.start;
+            // The opening `:` lives at start_in_body - 1; trim
+            // whitespace before it to drop the separator.
+            body[..start_in_body - 1]
+                .trim_end_matches([' ', '\t'])
+                .len()
+        },
+    );
+
+    let title_part = &body[..trim_end];
+
+    let new_header = if tags.is_empty() {
+        format!("{title_part}\n")
+    } else {
+        let block: String = tags.iter().fold(String::from(":"), |mut s, t| {
+            s.push_str(t);
+            s.push(':');
+            s
+        });
+        format!("{title_part} {block}\n")
+    };
+
+    let mut src = doc.source().to_owned();
+    src.replace_range(
+        target.header_span.start..target.header_span.end,
+        &new_header,
+    );
+    parse(&src).map_err(|_| RewriteError::Parse)
+}
+
 /// Ensure the headline at `path` has an `:ID:` property.
 ///
 /// If the drawer is absent, a fresh one is inserted immediately after

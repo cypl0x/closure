@@ -13,8 +13,8 @@ use std::str::FromStr;
 use std::sync::Arc;
 
 use closure_org::{
-    Headline, OrgDoc, parse, rewrite_headline_ensure_id, rewrite_headline_set_todo,
-    rewrite_headline_title,
+    Headline, OrgDoc, parse, rewrite_headline_ensure_id, rewrite_headline_set_priority,
+    rewrite_headline_set_tags, rewrite_headline_set_todo, rewrite_headline_title,
 };
 use closure_undo::{NodeId as UndoNodeId, UndoTree};
 use thiserror::Error;
@@ -388,6 +388,24 @@ pub enum Edit {
         /// Keyword after the edit (`None` if cleared).
         new: Option<String>,
     },
+    /// Set or clear the `[#X]` priority on a headline.
+    SetPriority {
+        /// Block whose priority changed.
+        id: BlockId,
+        /// Priority before the edit.
+        old: Option<char>,
+        /// Priority after the edit.
+        new: Option<char>,
+    },
+    /// Replace the trailing tag list on a headline.
+    SetTags {
+        /// Block whose tags changed.
+        id: BlockId,
+        /// Tags before the edit.
+        old: Vec<String>,
+        /// Tags after the edit.
+        new: Vec<String>,
+    },
     /// Idempotent edit (e.g. ensure-id) — undo / redo are no-ops at
     /// the kernel level.
     Noop,
@@ -418,6 +436,23 @@ impl Edit {
                 doc.rebuild_index();
                 Ok(())
             }
+            Self::SetPriority { id, old, .. } => {
+                let path = doc.path_of(id).ok_or(CommandError::BlockNotFound)?;
+                let org = rewrite_headline_set_priority(doc.org(), &path, *old)
+                    .map_err(|_| CommandError::Rewrite)?;
+                doc.org = org;
+                doc.rebuild_index();
+                Ok(())
+            }
+            Self::SetTags { id, old, .. } => {
+                let path = doc.path_of(id).ok_or(CommandError::BlockNotFound)?;
+                let refs: Vec<&str> = old.iter().map(String::as_str).collect();
+                let org = rewrite_headline_set_tags(doc.org(), &path, &refs)
+                    .map_err(|_| CommandError::Rewrite)?;
+                doc.org = org;
+                doc.rebuild_index();
+                Ok(())
+            }
             Self::Noop => Ok(()),
         }
     }
@@ -435,6 +470,23 @@ impl Edit {
             Self::SetTodo { id, new, .. } => {
                 let path = doc.path_of(id).ok_or(CommandError::BlockNotFound)?;
                 let org = rewrite_headline_set_todo(doc.org(), &path, new.as_deref())
+                    .map_err(|_| CommandError::Rewrite)?;
+                doc.org = org;
+                doc.rebuild_index();
+                Ok(())
+            }
+            Self::SetPriority { id, new, .. } => {
+                let path = doc.path_of(id).ok_or(CommandError::BlockNotFound)?;
+                let org = rewrite_headline_set_priority(doc.org(), &path, *new)
+                    .map_err(|_| CommandError::Rewrite)?;
+                doc.org = org;
+                doc.rebuild_index();
+                Ok(())
+            }
+            Self::SetTags { id, new, .. } => {
+                let path = doc.path_of(id).ok_or(CommandError::BlockNotFound)?;
+                let refs: Vec<&str> = new.iter().map(String::as_str).collect();
+                let org = rewrite_headline_set_tags(doc.org(), &path, &refs)
                     .map_err(|_| CommandError::Rewrite)?;
                 doc.org = org;
                 doc.rebuild_index();
@@ -630,6 +682,126 @@ impl Command for SetTodo {
         doc.org = org;
         doc.rebuild_index();
         let edit = Edit::SetTodo {
+            id: self.id.clone(),
+            old,
+            new: self.new.clone(),
+        };
+        doc.push_history(edit.clone());
+        Ok(edit)
+    }
+}
+
+/// Command: set or clear the `[#X]` priority on a headline.
+pub struct SetPriority {
+    id: BlockId,
+    new: Option<char>,
+    keys: Vec<KeyChord>,
+}
+
+impl SetPriority {
+    /// Set priority cookie to `new` (or clear with `None`).
+    #[must_use]
+    pub fn new(id: BlockId, new: Option<char>) -> Self {
+        Self {
+            id,
+            new,
+            keys: vec![KeyChord::from_strokes(&["C-c", ","])],
+        }
+    }
+
+    /// Placeholder.
+    #[must_use]
+    pub fn new_placeholder() -> Self {
+        Self {
+            id: BlockId::from_existing(""),
+            new: None,
+            keys: vec![KeyChord::from_strokes(&["C-c", ","])],
+        }
+    }
+}
+
+impl Command for SetPriority {
+    #[allow(clippy::unnecessary_literal_bound)]
+    fn name(&self) -> &str {
+        "set-priority"
+    }
+
+    fn keys(&self) -> &[KeyChord] {
+        &self.keys
+    }
+
+    fn apply(&self, doc: &mut Document) -> Result<Edit, CommandError> {
+        let path = doc.path_of(&self.id).ok_or(CommandError::BlockNotFound)?;
+        let old = doc
+            .headline_by_id(&self.id)
+            .ok_or(CommandError::BlockNotFound)?
+            .priority();
+        let org = rewrite_headline_set_priority(doc.org(), &path, self.new)
+            .map_err(|_| CommandError::Rewrite)?;
+        doc.org = org;
+        doc.rebuild_index();
+        let edit = Edit::SetPriority {
+            id: self.id.clone(),
+            old,
+            new: self.new,
+        };
+        doc.push_history(edit.clone());
+        Ok(edit)
+    }
+}
+
+/// Command: replace the trailing tag list on a headline.
+pub struct SetTags {
+    id: BlockId,
+    new: Vec<String>,
+    keys: Vec<KeyChord>,
+}
+
+impl SetTags {
+    /// Replace tags wholesale.
+    #[must_use]
+    pub fn new(id: BlockId, new: Vec<String>) -> Self {
+        Self {
+            id,
+            new,
+            keys: vec![KeyChord::from_strokes(&["C-c", "C-q"])],
+        }
+    }
+
+    /// Placeholder.
+    #[must_use]
+    pub fn new_placeholder() -> Self {
+        Self {
+            id: BlockId::from_existing(""),
+            new: Vec::new(),
+            keys: vec![KeyChord::from_strokes(&["C-c", "C-q"])],
+        }
+    }
+}
+
+impl Command for SetTags {
+    #[allow(clippy::unnecessary_literal_bound)]
+    fn name(&self) -> &str {
+        "set-tags"
+    }
+
+    fn keys(&self) -> &[KeyChord] {
+        &self.keys
+    }
+
+    fn apply(&self, doc: &mut Document) -> Result<Edit, CommandError> {
+        let path = doc.path_of(&self.id).ok_or(CommandError::BlockNotFound)?;
+        let old: Vec<String> = doc
+            .headline_by_id(&self.id)
+            .ok_or(CommandError::BlockNotFound)?
+            .tags()
+            .to_vec();
+        let refs: Vec<&str> = self.new.iter().map(String::as_str).collect();
+        let org = rewrite_headline_set_tags(doc.org(), &path, &refs)
+            .map_err(|_| CommandError::Rewrite)?;
+        doc.org = org;
+        doc.rebuild_index();
+        let edit = Edit::SetTags {
             id: self.id.clone(),
             old,
             new: self.new.clone(),

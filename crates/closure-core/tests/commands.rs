@@ -6,7 +6,9 @@
 
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
-use closure_core::{Document, EnsureId, KeyChord, Registry, RenameHeadline, SetTodo};
+use closure_core::{
+    Document, EnsureId, KeyChord, Registry, RenameHeadline, SetPriority, SetTags, SetTodo,
+};
 
 #[test]
 fn registry_stores_command_by_name() {
@@ -140,4 +142,54 @@ fn set_todo_undo_restores_keyword() {
         doc.headline_by_id(&id).expect("lookup").todo(),
         Some("TODO")
     );
+}
+
+#[test]
+fn set_priority_adds_cookie() {
+    let mut doc = Document::load_str("* Urgent task\n").expect("load");
+    let id = doc.roots()[0].id().clone();
+    let cmd = SetPriority::new(id.clone(), Some('A'));
+    closure_core::Command::apply(&cmd, &mut doc).expect("apply");
+    assert_eq!(doc.headline_by_id(&id).expect("h").priority(), Some('A'));
+    assert!(doc.source().starts_with("* [#A] Urgent task"));
+}
+
+#[test]
+fn set_priority_with_existing_todo() {
+    let mut doc = Document::load_str("* TODO Urgent\n").expect("load");
+    let id = doc.roots()[0].id().clone();
+    let cmd = SetPriority::new(id.clone(), Some('B'));
+    closure_core::Command::apply(&cmd, &mut doc).expect("apply");
+    assert_eq!(doc.headline_by_id(&id).expect("h").priority(), Some('B'));
+    assert!(doc.source().starts_with("* TODO [#B] Urgent"));
+}
+
+#[test]
+fn set_priority_undo_clears_cookie() {
+    let mut doc = Document::load_str("* X\n").expect("load");
+    let id = doc.roots()[0].id().clone();
+    let cmd = SetPriority::new(id.clone(), Some('A'));
+    closure_core::Command::apply(&cmd, &mut doc).expect("apply");
+    doc.undo().expect("undo");
+    assert!(doc.headline_by_id(&id).expect("h").priority().is_none());
+}
+
+#[test]
+fn set_tags_replaces_block() {
+    let mut doc = Document::load_str("* Hello :old:\n").expect("load");
+    let id = doc.roots()[0].id().clone();
+    let cmd = SetTags::new(id.clone(), vec!["work".into(), "urgent".into()]);
+    closure_core::Command::apply(&cmd, &mut doc).expect("apply");
+    let h = doc.headline_by_id(&id).expect("h");
+    assert_eq!(h.tags(), &["work".to_owned(), "urgent".to_owned()]);
+    assert!(doc.source().contains(":work:urgent:"));
+}
+
+#[test]
+fn set_tags_clears_block() {
+    let mut doc = Document::load_str("* Hello :old:\n").expect("load");
+    let id = doc.roots()[0].id().clone();
+    let cmd = SetTags::new(id.clone(), Vec::new());
+    closure_core::Command::apply(&cmd, &mut doc).expect("apply");
+    assert!(doc.headline_by_id(&id).expect("h").tags().is_empty());
 }
