@@ -18,7 +18,8 @@ use std::process::ExitCode;
 use clap::{Parser, Subcommand};
 use closure_config::InputMode;
 use closure_core::{
-    BlockId, Command, Document, EnsureId, Registry, RenameHeadline, SetPriority, SetTags, SetTodo,
+    BlockId, Command, Demote, Document, EnsureId, Promote, Registry, RenameHeadline, SetPriority,
+    SetTags, SetTodo,
 };
 use closure_eval::{Backend, ShellBackend, backend_for};
 use closure_input::Dispatcher;
@@ -163,6 +164,20 @@ enum Cmd {
         /// Comma-separated tags (empty clears).
         tags: String,
     },
+    /// Promote (decrease level) the headline with the given id.
+    Promote {
+        /// Path to a `*.org` file.
+        file: PathBuf,
+        /// Block id of the target headline.
+        id: String,
+    },
+    /// Demote (increase level) the headline with the given id.
+    Demote {
+        /// Path to a `*.org` file.
+        file: PathBuf,
+        /// Block id of the target headline.
+        id: String,
+    },
 }
 
 fn main() -> ExitCode {
@@ -207,7 +222,29 @@ fn run(cmd: &Cmd) -> Result<(), String> {
         Cmd::Watch { vault } => cmd_watch(vault),
         Cmd::SetPriority { file, id, priority } => cmd_set_priority(file, id, priority),
         Cmd::SetTags { file, id, tags } => cmd_set_tags(file, id, tags),
+        Cmd::Promote { file, id } => cmd_promote(file, id),
+        Cmd::Demote { file, id } => cmd_demote(file, id),
     }
+}
+
+fn cmd_promote(path: &Path, id: &str) -> Result<(), String> {
+    let src = fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))?;
+    let mut doc = Document::load_str(&src).map_err(|e| format!("{e}"))?;
+    let bid = BlockId::from_existing(id);
+    let cmd = Promote::new(bid);
+    Command::apply(&cmd, &mut doc).map_err(|e| format!("{e}"))?;
+    fs::write(path, doc.source()).map_err(|e| format!("write: {e}"))?;
+    Ok(())
+}
+
+fn cmd_demote(path: &Path, id: &str) -> Result<(), String> {
+    let src = fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))?;
+    let mut doc = Document::load_str(&src).map_err(|e| format!("{e}"))?;
+    let bid = BlockId::from_existing(id);
+    let cmd = Demote::new(bid);
+    Command::apply(&cmd, &mut doc).map_err(|e| format!("{e}"))?;
+    fs::write(path, doc.source()).map_err(|e| format!("write: {e}"))?;
+    Ok(())
 }
 
 fn cmd_set_priority(path: &Path, id: &str, priority: &str) -> Result<(), String> {
