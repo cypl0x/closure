@@ -17,7 +17,9 @@ use std::process::ExitCode;
 
 use clap::{Parser, Subcommand};
 use closure_config::InputMode;
-use closure_core::{BlockId, Command, Document, EnsureId, Registry, RenameHeadline, SetTodo};
+use closure_core::{
+    BlockId, Command, Document, EnsureId, Registry, RenameHeadline, SetPriority, SetTags, SetTodo,
+};
 use closure_eval::{Backend, ShellBackend, backend_for};
 use closure_input::Dispatcher;
 use closure_org::{NodeKind, parse};
@@ -143,6 +145,24 @@ enum Cmd {
         /// Path to the vault directory.
         vault: PathBuf,
     },
+    /// Set or clear the `[#X]` priority on a headline.
+    SetPriority {
+        /// Path to a `*.org` file.
+        file: PathBuf,
+        /// Block id of the target headline.
+        id: String,
+        /// Priority letter (`A`..`Z`); empty string clears.
+        priority: String,
+    },
+    /// Replace the trailing tag list on a headline.
+    SetTags {
+        /// Path to a `*.org` file.
+        file: PathBuf,
+        /// Block id of the target headline.
+        id: String,
+        /// Comma-separated tags (empty clears).
+        tags: String,
+    },
 }
 
 fn main() -> ExitCode {
@@ -185,7 +205,35 @@ fn run(cmd: &Cmd) -> Result<(), String> {
         Cmd::Rename { file, id, title } => cmd_rename(file, id, title),
         Cmd::SetTodo { file, id, keyword } => cmd_set_todo(file, id, keyword),
         Cmd::Watch { vault } => cmd_watch(vault),
+        Cmd::SetPriority { file, id, priority } => cmd_set_priority(file, id, priority),
+        Cmd::SetTags { file, id, tags } => cmd_set_tags(file, id, tags),
     }
+}
+
+fn cmd_set_priority(path: &Path, id: &str, priority: &str) -> Result<(), String> {
+    let src = fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))?;
+    let mut doc = Document::load_str(&src).map_err(|e| format!("{e}"))?;
+    let bid = BlockId::from_existing(id);
+    let new = priority.chars().next();
+    let cmd = SetPriority::new(bid, new);
+    Command::apply(&cmd, &mut doc).map_err(|e| format!("{e}"))?;
+    fs::write(path, doc.source()).map_err(|e| format!("write: {e}"))?;
+    Ok(())
+}
+
+fn cmd_set_tags(path: &Path, id: &str, tags: &str) -> Result<(), String> {
+    let src = fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))?;
+    let mut doc = Document::load_str(&src).map_err(|e| format!("{e}"))?;
+    let bid = BlockId::from_existing(id);
+    let new: Vec<String> = if tags.is_empty() {
+        Vec::new()
+    } else {
+        tags.split(',').map(|s| s.trim().to_owned()).collect()
+    };
+    let cmd = SetTags::new(bid, new);
+    Command::apply(&cmd, &mut doc).map_err(|e| format!("{e}"))?;
+    fs::write(path, doc.source()).map_err(|e| format!("write: {e}"))?;
+    Ok(())
 }
 
 fn cmd_watch(vault: &Path) -> Result<(), String> {
