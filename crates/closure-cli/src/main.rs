@@ -18,8 +18,8 @@ use std::process::ExitCode;
 use clap::{Parser, Subcommand};
 use closure_config::InputMode;
 use closure_core::{
-    AddSibling, BlockId, Command, Demote, Document, EnsureId, Promote, Registry, RenameHeadline,
-    SetPriority, SetTags, SetTodo,
+    AddSibling, BlockId, Command, Demote, Document, EnsureId, Promote, Registry, RemoveSubtree,
+    RenameHeadline, SetPriority, SetTags, SetTodo,
 };
 use closure_eval::{Backend, ShellBackend, backend_for};
 use closure_input::Dispatcher;
@@ -187,6 +187,14 @@ enum Cmd {
         /// Title for the new headline.
         title: String,
     },
+    /// Remove the subtree rooted at the given headline id (header,
+    /// body, drawer, and descendants).
+    Remove {
+        /// Path to a `*.org` file.
+        file: PathBuf,
+        /// Block id of the target headline.
+        id: String,
+    },
 }
 
 fn main() -> ExitCode {
@@ -238,7 +246,18 @@ fn run(cmd: &Cmd) -> Result<(), String> {
             after_id,
             title,
         } => cmd_add_sibling(file, after_id, title),
+        Cmd::Remove { file, id } => cmd_remove(file, id),
     }
+}
+
+fn cmd_remove(path: &Path, id: &str) -> Result<(), String> {
+    let src = fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))?;
+    let mut doc = Document::load_str(&src).map_err(|e| format!("{e}"))?;
+    let bid = BlockId::from_existing(id);
+    let cmd = RemoveSubtree::new(bid);
+    Command::apply(&cmd, &mut doc).map_err(|e| format!("{e}"))?;
+    fs::write(path, doc.source()).map_err(|e| format!("write: {e}"))?;
+    Ok(())
 }
 
 fn cmd_add_sibling(path: &Path, after_id: &str, title: &str) -> Result<(), String> {
