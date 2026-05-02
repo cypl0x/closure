@@ -7,8 +7,8 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
 use closure_core::{
-    AddSibling, Demote, Document, EnsureId, KeyChord, Promote, Registry, RenameHeadline,
-    SetPriority, SetTags, SetTodo,
+    AddSibling, Demote, Document, EnsureId, KeyChord, Promote, Registry, RemoveSubtree,
+    RenameHeadline, SetPriority, SetTags, SetTodo,
 };
 
 #[test]
@@ -257,4 +257,14 @@ fn add_sibling_redo_reinserts_with_same_id() {
     doc.redo(None).expect("redo");
     assert_eq!(doc.roots()[1].id(), &new_id);
     assert_eq!(doc.roots()[1].title(), "Second");
+}
+
+#[test]
+fn remove_subtree_drops_headline_and_descendants() {
+    let mut doc = Document::load_str("* A\n** A.1\n** A.2\n* B\n").expect("load");
+    let a_id = doc.roots()[0].id().clone();
+    let cmd = RemoveSubtree::new(a_id);
+    closure_core::Command::apply(&cmd, &mut doc).expect("apply");
+    assert_eq!(doc.roots().len(), 1);
+    assert_eq!(doc.roots()[0].title(), "B");
 }

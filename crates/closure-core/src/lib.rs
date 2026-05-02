@@ -984,6 +984,58 @@ impl Command for Demote {
     }
 }
 
+/// Command: remove the subtree rooted at the given block.
+///
+/// Currently irreversible at the kernel level — the deleted source
+/// is not retained for `undo` / `redo`. A reversible variant lands
+/// once the `Edit::RemoveSubtree` payload carries the saved subtree
+/// text.
+pub struct RemoveSubtree {
+    id: BlockId,
+    keys: Vec<KeyChord>,
+}
+
+impl RemoveSubtree {
+    /// Remove the subtree rooted at `id`.
+    #[must_use]
+    pub fn new(id: BlockId) -> Self {
+        Self {
+            id,
+            keys: vec![KeyChord::from_strokes(&["C-c", "C-w"])],
+        }
+    }
+
+    /// Placeholder.
+    #[must_use]
+    pub fn new_placeholder() -> Self {
+        Self {
+            id: BlockId::from_existing(""),
+            keys: vec![KeyChord::from_strokes(&["C-c", "C-w"])],
+        }
+    }
+}
+
+impl Command for RemoveSubtree {
+    #[allow(clippy::unnecessary_literal_bound)]
+    fn name(&self) -> &str {
+        "remove-subtree"
+    }
+
+    fn keys(&self) -> &[KeyChord] {
+        &self.keys
+    }
+
+    fn apply(&self, doc: &mut Document) -> Result<Edit, CommandError> {
+        let path = doc.path_of(&self.id).ok_or(CommandError::BlockNotFound)?;
+        let org = closure_org::rewrite_remove_subtree(doc.org(), &path)
+            .map_err(|_| CommandError::Rewrite)?;
+        doc.org = org;
+        doc.rebuild_index();
+        // Irreversible at kernel level for now.
+        Ok(Edit::Noop)
+    }
+}
+
 /// Command: insert a new sibling headline after the given block.
 pub struct AddSibling {
     after_id: BlockId,
