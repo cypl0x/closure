@@ -18,8 +18,8 @@ use std::process::ExitCode;
 use clap::{Parser, Subcommand};
 use closure_config::InputMode;
 use closure_core::{
-    BlockId, Command, Demote, Document, EnsureId, Promote, Registry, RenameHeadline, SetPriority,
-    SetTags, SetTodo,
+    AddSibling, BlockId, Command, Demote, Document, EnsureId, Promote, Registry, RenameHeadline,
+    SetPriority, SetTags, SetTodo,
 };
 use closure_eval::{Backend, ShellBackend, backend_for};
 use closure_input::Dispatcher;
@@ -178,6 +178,15 @@ enum Cmd {
         /// Block id of the target headline.
         id: String,
     },
+    /// Insert a new sibling headline after the given id.
+    AddSibling {
+        /// Path to a `*.org` file.
+        file: PathBuf,
+        /// Block id of the headline this sibling sits after.
+        after_id: String,
+        /// Title for the new headline.
+        title: String,
+    },
 }
 
 fn main() -> ExitCode {
@@ -224,7 +233,22 @@ fn run(cmd: &Cmd) -> Result<(), String> {
         Cmd::SetTags { file, id, tags } => cmd_set_tags(file, id, tags),
         Cmd::Promote { file, id } => cmd_promote(file, id),
         Cmd::Demote { file, id } => cmd_demote(file, id),
+        Cmd::AddSibling {
+            file,
+            after_id,
+            title,
+        } => cmd_add_sibling(file, after_id, title),
     }
+}
+
+fn cmd_add_sibling(path: &Path, after_id: &str, title: &str) -> Result<(), String> {
+    let src = fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))?;
+    let mut doc = Document::load_str(&src).map_err(|e| format!("{e}"))?;
+    let bid = BlockId::from_existing(after_id);
+    let cmd = AddSibling::new(bid, title.to_owned());
+    Command::apply(&cmd, &mut doc).map_err(|e| format!("{e}"))?;
+    fs::write(path, doc.source()).map_err(|e| format!("write: {e}"))?;
+    Ok(())
 }
 
 fn cmd_promote(path: &Path, id: &str) -> Result<(), String> {
