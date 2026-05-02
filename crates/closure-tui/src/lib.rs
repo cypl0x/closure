@@ -83,7 +83,25 @@ fn run_loop(
                     let mut s = String::new();
                     for h in doc.all_headlines() {
                         let indent = "  ".repeat(usize::from(h.level()).saturating_sub(1));
-                        let _ = writeln!(s, "{indent}* {}", h.title());
+                        let mut prefix = String::new();
+                        if let Some(t) = h.todo() {
+                            prefix.push_str(t);
+                            prefix.push(' ');
+                        }
+                        if let Some(p) = h.priority() {
+                            let _ = write!(prefix, "[#{p}] ");
+                        }
+                        let tags = if h.tags().is_empty() {
+                            String::new()
+                        } else {
+                            format!(" :{}:", h.tags().join(":"))
+                        };
+                        let _ = writeln!(
+                            s,
+                            "{indent}* {prefix}{title}{tags}    [{id}]",
+                            title = h.title(),
+                            id = h.id()
+                        );
                     }
                     s
                 });
