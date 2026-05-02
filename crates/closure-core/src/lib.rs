@@ -427,6 +427,17 @@ pub enum Edit {
         /// Title given to the new headline.
         title: String,
     },
+    /// Remove a subtree, retaining the deleted source text and the
+    /// byte offset it sat at so undo can splice it back.
+    RemoveSubtree {
+        /// Stable id of the removed headline (also embedded in
+        /// `removed_source` via its `:PROPERTIES:` drawer).
+        id: BlockId,
+        /// Verbatim source text of the subtree as it appeared on disk.
+        removed_source: String,
+        /// Byte offset in the document where the subtree started.
+        insert_at: usize,
+    },
     /// Idempotent edit (e.g. ensure-id) — undo / redo are no-ops at
     /// the kernel level.
     Noop,
@@ -499,6 +510,19 @@ impl Edit {
                 doc.rebuild_index();
                 Ok(())
             }
+            Self::RemoveSubtree {
+                removed_source,
+                insert_at,
+                ..
+            } => {
+                let mut src = doc.org().source().to_owned();
+                let pos = (*insert_at).min(src.len());
+                src.insert_str(pos, removed_source);
+                let org = closure_org::parse(&src).map_err(|_| CommandError::Rewrite)?;
+                doc.org = org;
+                doc.rebuild_index();
+                Ok(())
+            }
             Self::Noop => Ok(()),
         }
     }
@@ -563,6 +587,14 @@ impl Edit {
                 let org =
                     rewrite_add_sibling_after_with_id(doc.org(), &path, title, new_id.as_str())
                         .map_err(|_| CommandError::Rewrite)?;
+                doc.org = org;
+                doc.rebuild_index();
+                Ok(())
+            }
+            Self::RemoveSubtree { id, .. } => {
+                let path = doc.path_of(id).ok_or(CommandError::BlockNotFound)?;
+                let org =
+                    rewrite_remove_subtree(doc.org(), &path).map_err(|_| CommandError::Rewrite)?;
                 doc.org = org;
                 doc.rebuild_index();
                 Ok(())
@@ -1026,14 +1058,70 @@ impl Command for RemoveSubtree {
     }
 
     fn apply(&self, doc: &mut Document) -> Result<Edit, CommandError> {
+        // Ensure the headline has an :ID: drawer so the captured
+        // source carries enough info for replay.
         let path = doc.path_of(&self.id).ok_or(CommandError::BlockNotFound)?;
-        let org = closure_org::rewrite_remove_subtree(doc.org(), &path)
+        let with_id = closure_org::rewrite_headline_ensure_id(doc.org(), &path, self.id.as_str())
+            .map_err(|_| CommandError::Rewrite)?;
+        // Compute insertion point and saved source from the with-id
+        // version, then remove from it.
+        let (insert_at, removed_source) = capture_subtree(&with_id, &path)?;
+        let org = closure_org::rewrite_remove_subtree(&with_id, &path)
             .map_err(|_| CommandError::Rewrite)?;
         doc.org = org;
         doc.rebuild_index();
-        // Irreversible at kernel level for now.
-        Ok(Edit::Noop)
+        let edit = Edit::RemoveSubtree {
+            id: self.id.clone(),
+            removed_source,
+            insert_at,
+        };
+        doc.push_history(edit.clone());
+        Ok(edit)
     }
+}
+
+fn capture_subtree(doc: &OrgDoc, path: &[usize]) -> Result<(usize, String), CommandError> {
+    let mut node = doc
+        .roots()
+        .get(*path.first().ok_or(CommandError::BlockNotFound)?);
+    let mut current = node.ok_or(CommandError::BlockNotFound)?;
+    for &i in &path[1..] {
+        node = current.children().get(i);
+        current = node.ok_or(CommandError::BlockNotFound)?;
+    }
+    let src = doc.source();
+    let header = current.header();
+    let start = src.find(header).ok_or(CommandError::Rewrite)?;
+    // Determine end via header + body + recursive children.
+    let end = subtree_end_offset(src, current, start);
+    Ok((start, src[start..end].to_owned()))
+}
+
+fn subtree_end_offset(src: &str, h: &closure_org::Headline, begin: usize) -> usize {
+    let after_header = begin + h.header().len();
+    let level = h.level();
+    let mut cursor = after_header;
+    while cursor < src.len() {
+        let line_end = src[cursor..]
+            .find('\n')
+            .map_or(src.len(), |n| cursor + n + 1);
+        let line = &src[cursor..line_end];
+        let nstars = line.chars().take_while(|&c| c == '*').count();
+        if nstars > 0
+            && nstars <= usize::from(level)
+            && line
+                .as_bytes()
+                .get(nstars)
+                .is_some_and(|b| *b == b' ' || *b == b'\n')
+        {
+            break;
+        }
+        cursor = line_end;
+        if line_end == src.len() {
+            break;
+        }
+    }
+    cursor
 }
 
 /// Command: insert a new sibling headline after the given block.

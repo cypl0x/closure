@@ -268,3 +268,17 @@ fn remove_subtree_drops_headline_and_descendants() {
     assert_eq!(doc.roots().len(), 1);
     assert_eq!(doc.roots()[0].title(), "B");
 }
+
+#[test]
+fn remove_subtree_undo_restores_headline() {
+    let mut doc = Document::load_str("* A\n** A.1\n* B\n").expect("load");
+    let a_id = doc.roots()[0].id().clone();
+    let cmd = RemoveSubtree::new(a_id);
+    closure_core::Command::apply(&cmd, &mut doc).expect("apply");
+    assert_eq!(doc.roots().len(), 1);
+    doc.undo().expect("undo");
+    assert_eq!(doc.roots().len(), 2);
+    let titles: Vec<&str> = doc.roots().iter().map(|h| h.title()).collect();
+    assert!(titles.contains(&"A"));
+    assert!(titles.contains(&"B"));
+}
