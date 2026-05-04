@@ -195,6 +195,11 @@ enum Cmd {
         /// Block id of the target headline.
         id: String,
     },
+    /// Print summary statistics for a vault.
+    Stats {
+        /// Path to the vault directory.
+        vault: PathBuf,
+    },
 }
 
 fn main() -> ExitCode {
@@ -247,7 +252,48 @@ fn run(cmd: &Cmd) -> Result<(), String> {
             title,
         } => cmd_add_sibling(file, after_id, title),
         Cmd::Remove { file, id } => cmd_remove(file, id),
+        Cmd::Stats { vault } => cmd_stats(vault),
     }
+}
+
+fn cmd_stats(vault: &Path) -> Result<(), String> {
+    use std::collections::BTreeMap;
+    let v = Vault::open(vault).map_err(|e| format!("{e}"))?;
+    let mut by_level: BTreeMap<u8, usize> = BTreeMap::new();
+    let mut by_todo: BTreeMap<String, usize> = BTreeMap::new();
+    let mut by_tag: BTreeMap<String, usize> = BTreeMap::new();
+    let mut total = 0usize;
+    for (_, doc) in v.iter() {
+        for h in doc.all_headlines() {
+            total += 1;
+            *by_level.entry(h.level()).or_insert(0) += 1;
+            if let Some(t) = h.todo() {
+                *by_todo.entry(t.to_owned()).or_insert(0) += 1;
+            }
+            for tag in h.tags() {
+                *by_tag.entry(tag.clone()).or_insert(0) += 1;
+            }
+        }
+    }
+    println!("files:     {}", v.len());
+    println!("headlines: {total}");
+    println!("by level:");
+    for (lvl, n) in &by_level {
+        println!("  L{lvl}: {n}");
+    }
+    if !by_todo.is_empty() {
+        println!("by todo:");
+        for (k, n) in &by_todo {
+            println!("  {k}: {n}");
+        }
+    }
+    if !by_tag.is_empty() {
+        println!("by tag:");
+        for (k, n) in &by_tag {
+            println!("  {k}: {n}");
+        }
+    }
+    Ok(())
 }
 
 fn cmd_remove(path: &Path, id: &str) -> Result<(), String> {
