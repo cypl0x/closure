@@ -16,7 +16,7 @@ use closure_org::{
     Headline, OrgDoc, parse, rewrite_add_sibling_after_with_id, rewrite_headline_demote,
     rewrite_headline_ensure_id, rewrite_headline_promote, rewrite_headline_set_priority,
     rewrite_headline_set_tags, rewrite_headline_set_todo, rewrite_headline_title,
-    rewrite_remove_subtree,
+    rewrite_remove_subtree, rewrite_splice_subtree_after,
 };
 use closure_undo::{NodeId as UndoNodeId, UndoTree};
 use thiserror::Error;
@@ -438,6 +438,17 @@ pub enum Edit {
         /// Byte offset in the document where the subtree started.
         insert_at: usize,
     },
+    /// Move a subtree to immediately after a target headline.
+    MoveSubtree {
+        /// Block being moved (id pinned in `subtree_source`).
+        id: BlockId,
+        /// Verbatim subtree source (with pinned `:ID:`).
+        subtree_source: String,
+        /// Predecessor headline id at the original location, if any.
+        old_after_id: Option<BlockId>,
+        /// Predecessor headline id at the new location.
+        new_after_id: BlockId,
+    },
     /// Idempotent edit (e.g. ensure-id) — undo / redo are no-ops at
     /// the kernel level.
     Noop,
@@ -523,6 +534,26 @@ impl Edit {
                 doc.rebuild_index();
                 Ok(())
             }
+            Self::MoveSubtree {
+                id,
+                subtree_source,
+                old_after_id,
+                ..
+            } => {
+                // Remove from current (new) location, splice back at
+                // old location.
+                let path = doc.path_of(id).ok_or(CommandError::BlockNotFound)?;
+                let intermediate =
+                    rewrite_remove_subtree(doc.org(), &path).map_err(|_| CommandError::Rewrite)?;
+                let after_id = old_after_id.as_ref().ok_or(CommandError::Rewrite)?;
+                let after_path =
+                    path_of_in(&intermediate, after_id).ok_or(CommandError::BlockNotFound)?;
+                let org = rewrite_splice_subtree_after(&intermediate, &after_path, subtree_source)
+                    .map_err(|_| CommandError::Rewrite)?;
+                doc.org = org;
+                doc.rebuild_index();
+                Ok(())
+            }
             Self::Noop => Ok(()),
         }
     }
@@ -599,9 +630,58 @@ impl Edit {
                 doc.rebuild_index();
                 Ok(())
             }
+            Self::MoveSubtree {
+                id,
+                subtree_source,
+                new_after_id,
+                ..
+            } => {
+                let path = doc.path_of(id).ok_or(CommandError::BlockNotFound)?;
+                let intermediate =
+                    rewrite_remove_subtree(doc.org(), &path).map_err(|_| CommandError::Rewrite)?;
+                let after_path =
+                    path_of_in(&intermediate, new_after_id).ok_or(CommandError::BlockNotFound)?;
+                let org = rewrite_splice_subtree_after(&intermediate, &after_path, subtree_source)
+                    .map_err(|_| CommandError::Rewrite)?;
+                doc.org = org;
+                doc.rebuild_index();
+                Ok(())
+            }
             Self::Noop => Ok(()),
         }
     }
+}
+
+/// Lookup a headline path by `BlockId` in a freshly-parsed `OrgDoc`,
+/// without going through a full `Document` index. Used by
+/// `Edit::MoveSubtree` reverse / replay where the kernel hands an
+/// intermediate state to closure-org without rebuilding the index in
+/// between.
+fn path_of_in(org: &OrgDoc, id: &BlockId) -> Option<Vec<usize>> {
+    fn walk(h: &Headline, target: &str, path: &[usize], out: &mut Option<Vec<usize>>) {
+        if out.is_some() {
+            return;
+        }
+        if let Some(p) = h.properties()
+            && p.id() == Some(target)
+        {
+            *out = Some(path.to_vec());
+            return;
+        }
+        for (i, c) in h.children().iter().enumerate() {
+            let mut child_path = path.to_vec();
+            child_path.push(i);
+            walk(c, target, &child_path, out);
+        }
+    }
+    let mut out: Option<Vec<usize>> = None;
+    for (i, root) in org.roots().iter().enumerate() {
+        walk(root, id.as_str(), &[i], &mut out);
+        if out.is_some() {
+            break;
+        }
+    }
+    out
 }
 
 /// Failure mode during a command execution.
@@ -1014,6 +1094,131 @@ impl Command for Demote {
         doc.push_history(edit.clone());
         Ok(edit)
     }
+}
+
+/// Command: move the subtree rooted at `id` to immediately after the
+/// subtree of `new_after_id`. Both before and after positions are
+/// reachable through the registered `Edit::MoveSubtree`.
+///
+/// Currently does not support moving the very first headline of a
+/// document (where no predecessor exists). Such moves return
+/// `CommandError::Rewrite`.
+pub struct MoveSubtree {
+    id: BlockId,
+    new_after_id: BlockId,
+    keys: Vec<KeyChord>,
+}
+
+impl MoveSubtree {
+    /// Move headline `id` to right after `new_after_id`'s subtree.
+    #[must_use]
+    pub fn new(id: BlockId, new_after_id: BlockId) -> Self {
+        Self {
+            id,
+            new_after_id,
+            keys: vec![KeyChord::from_strokes(&["M-S-<down>"])],
+        }
+    }
+
+    /// Placeholder.
+    #[must_use]
+    pub fn new_placeholder() -> Self {
+        Self {
+            id: BlockId::from_existing(""),
+            new_after_id: BlockId::from_existing(""),
+            keys: vec![KeyChord::from_strokes(&["M-S-<down>"])],
+        }
+    }
+}
+
+impl Command for MoveSubtree {
+    #[allow(clippy::unnecessary_literal_bound)]
+    fn name(&self) -> &str {
+        "move-subtree"
+    }
+
+    fn keys(&self) -> &[KeyChord] {
+        &self.keys
+    }
+
+    fn apply(&self, doc: &mut Document) -> Result<Edit, CommandError> {
+        // Pin :ID: drawers on every headline whose path we need to
+        // address through path_of_in after intermediate rewrites:
+        // moving headline, new predecessor, AND old predecessor (so
+        // undo can find it).
+        let move_path = doc.path_of(&self.id).ok_or(CommandError::BlockNotFound)?;
+        let after_path_initial = doc
+            .path_of(&self.new_after_id)
+            .ok_or(CommandError::BlockNotFound)?;
+        // Predecessor's id (in-memory): look it up before any rewrite.
+        let old_pred_id: Option<BlockId> = doc_predecessor(doc, &move_path);
+
+        let mut org = doc.org().clone();
+        org = rewrite_headline_ensure_id(&org, &move_path, self.id.as_str())
+            .map_err(|_| CommandError::Rewrite)?;
+        org = rewrite_headline_ensure_id(&org, &after_path_initial, self.new_after_id.as_str())
+            .map_err(|_| CommandError::Rewrite)?;
+        if let Some(pid) = &old_pred_id {
+            let pred_path = doc.path_of(pid).ok_or(CommandError::BlockNotFound)?;
+            org = rewrite_headline_ensure_id(&org, &pred_path, pid.as_str())
+                .map_err(|_| CommandError::Rewrite)?;
+        }
+
+        let path = path_of_in(&org, &self.id).ok_or(CommandError::BlockNotFound)?;
+        let (_, subtree_source) = capture_subtree(&org, &path)?;
+        let intermediate =
+            rewrite_remove_subtree(&org, &path).map_err(|_| CommandError::Rewrite)?;
+        let after_path =
+            path_of_in(&intermediate, &self.new_after_id).ok_or(CommandError::BlockNotFound)?;
+        let org = rewrite_splice_subtree_after(&intermediate, &after_path, &subtree_source)
+            .map_err(|_| CommandError::Rewrite)?;
+        doc.org = org;
+        doc.rebuild_index();
+        let edit = Edit::MoveSubtree {
+            id: self.id.clone(),
+            subtree_source,
+            old_after_id: old_pred_id,
+            new_after_id: self.new_after_id.clone(),
+        };
+        doc.push_history(edit.clone());
+        Ok(edit)
+    }
+}
+
+/// Predecessor's id in document order. Looks at the previous sibling
+/// path (last path component - 1) and returns that `DocHeadline`'s id.
+fn doc_predecessor(doc: &Document, path: &[usize]) -> Option<BlockId> {
+    let last = *path.last()?;
+    if last == 0 {
+        return None;
+    }
+    let mut prev = path.to_vec();
+    prev.pop();
+    prev.push(last - 1);
+    doc.headlines
+        .iter()
+        .find(|h| h.path == prev)
+        .map(|h| h.id.clone())
+}
+
+/// Find the previous sibling's id (in tree order) for the headline at
+/// `path` within `org`. Returns `None` for first-child or root[0].
+#[allow(dead_code)]
+fn predecessor_id(org: &OrgDoc, path: &[usize]) -> Option<BlockId> {
+    let last = *path.last()?;
+    if last == 0 {
+        return None;
+    }
+    let mut parent_path = path.to_vec();
+    parent_path.pop();
+    parent_path.push(last - 1);
+    // Navigate to the previous sibling.
+    let mut node = org.roots().get(*parent_path.first()?)?;
+    for &i in &parent_path[1..] {
+        node = node.children().get(i)?;
+    }
+    let id_str = node.properties().and_then(|p| p.id())?;
+    Some(BlockId::from_existing(id_str))
 }
 
 /// Command: remove the subtree rooted at the given block.

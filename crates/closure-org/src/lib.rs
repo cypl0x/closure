@@ -240,6 +240,21 @@ pub fn rewrite_add_sibling_after(
     parse(&src).map_err(|_| RewriteError::Parse)
 }
 
+/// Splice a pre-formatted subtree source verbatim immediately after
+/// the subtree rooted at `after_path`. Used by move/cut/paste paths
+/// that already have a captured source string.
+pub fn rewrite_splice_subtree_after(
+    doc: &OrgDoc,
+    after_path: &[usize],
+    subtree_source: &str,
+) -> Result<OrgDoc, RewriteError> {
+    let target = navigate_headline(doc, after_path).ok_or(RewriteError::NotFound)?;
+    let end = subtree_end(target);
+    let mut src = doc.source().to_owned();
+    src.insert_str(end, subtree_source);
+    parse(&src).map_err(|_| RewriteError::Parse)
+}
+
 /// Insert a sibling headline with a pre-pinned `:ID:` so the kernel
 /// can address it deterministically across rebuilds.
 pub fn rewrite_add_sibling_after_with_id(

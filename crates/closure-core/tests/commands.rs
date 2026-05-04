@@ -7,8 +7,8 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
 use closure_core::{
-    AddSibling, Demote, Document, EnsureId, KeyChord, Promote, Registry, RemoveSubtree,
-    RenameHeadline, SetPriority, SetTags, SetTodo,
+    AddSibling, Demote, Document, EnsureId, KeyChord, MoveSubtree, Promote, Registry,
+    RemoveSubtree, RenameHeadline, SetPriority, SetTags, SetTodo,
 };
 
 #[test]
@@ -281,4 +281,30 @@ fn remove_subtree_undo_restores_headline() {
     let titles: Vec<&str> = doc.roots().iter().map(|h| h.title()).collect();
     assert!(titles.contains(&"A"));
     assert!(titles.contains(&"B"));
+}
+
+#[test]
+fn move_subtree_relocates_headline() {
+    let mut doc = Document::load_str("* A\n* B\n* C\n").expect("load");
+    let a_id = doc.roots()[0].id().clone();
+    let c_id = doc.roots()[2].id().clone();
+    let cmd = MoveSubtree::new(a_id.clone(), c_id);
+    closure_core::Command::apply(&cmd, &mut doc).expect("apply");
+    let titles: Vec<&str> = doc.roots().iter().map(|h| h.title()).collect();
+    assert_eq!(titles, vec!["B", "C", "A"]);
+    assert!(doc.headline_by_id(&a_id).is_some());
+}
+
+#[test]
+fn move_subtree_undo_restores_position() {
+    let mut doc = Document::load_str("* A\n* B\n* C\n").expect("load");
+    let b_id = doc.roots()[1].id().clone();
+    let c_id = doc.roots()[2].id().clone();
+    let cmd = MoveSubtree::new(b_id, c_id);
+    closure_core::Command::apply(&cmd, &mut doc).expect("apply");
+    let titles_after: Vec<&str> = doc.roots().iter().map(|h| h.title()).collect();
+    assert_eq!(titles_after, vec!["A", "C", "B"]);
+    doc.undo().expect("undo");
+    let titles_back: Vec<&str> = doc.roots().iter().map(|h| h.title()).collect();
+    assert_eq!(titles_back, vec!["A", "B", "C"]);
 }
