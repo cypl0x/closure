@@ -44,6 +44,16 @@ pub enum VaultError {
 }
 
 impl Vault {
+    /// Reload the vault from disk: re-walks the root, re-parses every
+    /// `*.org` file, and rebuilds the id and backlink indices.
+    pub fn reload(&mut self) -> Result<(), VaultError> {
+        let fresh = Self::open(&self.root)?;
+        self.documents = fresh.documents;
+        self.by_id = fresh.by_id;
+        self.backlinks = fresh.backlinks;
+        Ok(())
+    }
+
     /// Open the vault at `root`, loading every `*.org` file underneath.
     pub fn open(root: &Path) -> Result<Self, VaultError> {
         let root = root.to_path_buf();

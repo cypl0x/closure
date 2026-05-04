@@ -86,6 +86,16 @@ fn vault_save_writes_byte_exact_source() {
 }
 
 #[test]
+fn vault_reload_picks_up_new_file() {
+    let td = write_vault(&[("a.org", "* A\n")]);
+    let mut v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.len(), 1);
+    fs::write(td.path().join("b.org"), "* B\n").expect("write");
+    v.reload().expect("reload");
+    assert_eq!(v.len(), 2);
+}
+
+#[test]
 fn vault_backlinks_index_finds_linkers() {
     let td = write_vault(&[
         (
