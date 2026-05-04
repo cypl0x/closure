@@ -18,8 +18,8 @@ use std::process::ExitCode;
 use clap::{Parser, Subcommand};
 use closure_config::InputMode;
 use closure_core::{
-    AddSibling, BlockId, Command, Demote, Document, EnsureId, Promote, Registry, RemoveSubtree,
-    RenameHeadline, SetPriority, SetTags, SetTodo,
+    AddSibling, BlockId, Command, Demote, Document, EnsureId, MoveSubtree, Promote, Registry,
+    RemoveSubtree, RenameHeadline, SetPriority, SetTags, SetTodo,
 };
 use closure_eval::{Backend, ShellBackend, backend_for};
 use closure_input::Dispatcher;
@@ -200,6 +200,15 @@ enum Cmd {
         /// Path to the vault directory.
         vault: PathBuf,
     },
+    /// Move the subtree of `id` to immediately after `after_id`.
+    Move {
+        /// Path to a `*.org` file.
+        file: PathBuf,
+        /// Block id of the headline being moved.
+        id: String,
+        /// Block id of the new predecessor.
+        after_id: String,
+    },
 }
 
 fn main() -> ExitCode {
@@ -253,7 +262,17 @@ fn run(cmd: &Cmd) -> Result<(), String> {
         } => cmd_add_sibling(file, after_id, title),
         Cmd::Remove { file, id } => cmd_remove(file, id),
         Cmd::Stats { vault } => cmd_stats(vault),
+        Cmd::Move { file, id, after_id } => cmd_move(file, id, after_id),
     }
+}
+
+fn cmd_move(path: &Path, id: &str, after_id: &str) -> Result<(), String> {
+    let src = fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))?;
+    let mut doc = Document::load_str(&src).map_err(|e| format!("{e}"))?;
+    let cmd = MoveSubtree::new(BlockId::from_existing(id), BlockId::from_existing(after_id));
+    Command::apply(&cmd, &mut doc).map_err(|e| format!("{e}"))?;
+    fs::write(path, doc.source()).map_err(|e| format!("write: {e}"))?;
+    Ok(())
 }
 
 fn cmd_stats(vault: &Path) -> Result<(), String> {
