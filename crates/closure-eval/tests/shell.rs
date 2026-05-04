@@ -53,3 +53,15 @@ fn shell_backend_completes_within_timeout() {
     assert_eq!(out.exit, 0);
     assert_eq!(out.stdout.trim_end(), "ok");
 }
+
+#[test]
+fn eval_cache_hits_skip_backend() {
+    let mut cache = closure_eval::EvalCache::new();
+    let b = ShellBackend;
+    // First call runs `date +%N` which produces nanosecond precision.
+    let a = cache.eval_cached(&b, "echo run-$$").expect("first eval");
+    // Same source should hit the cache and return the same output.
+    let b_out = cache.eval_cached(&b, "echo run-$$").expect("cached eval");
+    assert_eq!(a, b_out);
+    assert_eq!(cache.len(), 1);
+}

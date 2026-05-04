@@ -116,6 +116,46 @@ pub fn backend_for(lang: &str) -> Option<Box<dyn Backend>> {
     }
 }
 
+/// In-memory result cache keyed by `(language, source)`. Avoids
+/// re-running unchanged code blocks across successive evaluations.
+#[derive(Debug, Default)]
+pub struct EvalCache {
+    entries: std::collections::HashMap<(String, String), Output>,
+}
+
+impl EvalCache {
+    /// Fresh empty cache.
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Number of cached results.
+    #[must_use]
+    pub fn len(&self) -> usize {
+        self.entries.len()
+    }
+
+    /// Whether the cache is empty.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.entries.is_empty()
+    }
+
+    /// Run `backend.eval(src)` if the result isn't cached, otherwise
+    /// return the cached output. The cache is keyed by
+    /// `(backend.language(), src)`.
+    pub fn eval_cached(&mut self, backend: &dyn Backend, src: &str) -> Result<Output, EvalError> {
+        let key = (backend.language().to_owned(), src.to_owned());
+        if let Some(out) = self.entries.get(&key) {
+            return Ok(out.clone());
+        }
+        let out = backend.eval(src)?;
+        self.entries.insert(key, out.clone());
+        Ok(out)
+    }
+}
+
 fn run_via_stdin(
     prog: &str,
     args: &[&str],
