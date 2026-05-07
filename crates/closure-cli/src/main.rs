@@ -218,6 +218,13 @@ enum Cmd {
         /// New body text (use empty string to clear).
         body: String,
     },
+    /// Full-text search across the vault (title + body).
+    Search {
+        /// Path to the vault directory.
+        vault: PathBuf,
+        /// Substring to look for (case-sensitive).
+        needle: String,
+    },
 }
 
 fn main() -> ExitCode {
@@ -273,7 +280,21 @@ fn run(cmd: &Cmd) -> Result<(), String> {
         Cmd::Stats { vault } => cmd_stats(vault),
         Cmd::Move { file, id, after_id } => cmd_move(file, id, after_id),
         Cmd::SetBody { file, id, body } => cmd_set_body(file, id, body),
+        Cmd::Search { vault, needle } => cmd_search(vault, needle),
     }
+}
+
+fn cmd_search(vault: &Path, needle: &str) -> Result<(), String> {
+    let v = Vault::open(vault).map_err(|e| format!("{e}"))?;
+    for m in closure_query::full_text(&v, needle) {
+        println!(
+            "{}:{}:{}",
+            m.path.display(),
+            m.headline.level(),
+            m.headline.title()
+        );
+    }
+    Ok(())
 }
 
 fn cmd_set_body(path: &Path, id: &str, body: &str) -> Result<(), String> {
