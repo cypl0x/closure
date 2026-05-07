@@ -84,6 +84,7 @@ pub struct DocHeadline {
     priority: Option<char>,
     tags: Vec<String>,
     link_targets: Vec<String>,
+    body_text: String,
 }
 
 impl DocHeadline {
@@ -134,6 +135,13 @@ impl DocHeadline {
     #[must_use]
     pub fn link_targets(&self) -> &[String] {
         &self.link_targets
+    }
+
+    /// Concatenated body text (drawer excluded), useful for full-text
+    /// search.
+    #[must_use]
+    pub fn body_text(&self) -> &str {
+        &self.body_text
     }
 }
 
@@ -283,10 +291,12 @@ fn make_doc_headline(h: &Headline, path: &[usize], id: BlockId) -> DocHeadline {
         .into_iter()
         .map(|l| l.target.to_owned())
         .collect();
+    let mut body_text = String::new();
     for n in h.body() {
         for l in closure_org::find_links(n.source()) {
             link_targets.push(l.target.to_owned());
         }
+        body_text.push_str(n.source());
     }
     DocHeadline {
         id,
@@ -297,6 +307,7 @@ fn make_doc_headline(h: &Headline, path: &[usize], id: BlockId) -> DocHeadline {
         priority: h.priority(),
         tags: h.tags().into_iter().map(str::to_owned).collect(),
         link_targets,
+        body_text,
     }
 }
 

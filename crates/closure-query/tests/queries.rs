@@ -77,6 +77,30 @@ fn backlinks_find_id_link_references() {
 }
 
 #[test]
+fn full_text_finds_body_match() {
+    let td = build_vault(&[("a.org", "* Headline\nthis body has the word kangaroo\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    let matches = closure_query::full_text(&v, "kangaroo");
+    assert_eq!(matches.len(), 1);
+    assert_eq!(matches[0].headline.title(), "Headline");
+}
+
+#[test]
+fn full_text_finds_title_match() {
+    let td = build_vault(&[("a.org", "* About kangaroos\nbody\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    let matches = closure_query::full_text(&v, "kangaroo");
+    assert_eq!(matches.len(), 1);
+}
+
+#[test]
+fn full_text_misses_when_neither_matches() {
+    let td = build_vault(&[("a.org", "* H\nbody\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert!(closure_query::full_text(&v, "nonexistent").is_empty());
+}
+
+#[test]
 fn database_view_renders_default_columns() {
     let td = build_vault(&[("t.org", "* TODO Fix\n* DONE Ship\n")]);
     let v = Vault::open(td.path()).expect("open");

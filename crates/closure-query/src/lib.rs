@@ -58,6 +58,16 @@ pub fn by_title_substring<'a>(vault: &'a Vault, needle: &str) -> Vec<Match<'a>> 
         .collect()
 }
 
+/// Full-text search: headlines whose title OR body contains `needle`
+/// (case-sensitive).
+#[must_use]
+pub fn full_text<'a>(vault: &'a Vault, needle: &str) -> Vec<Match<'a>> {
+    all_headlines(vault)
+        .into_iter()
+        .filter(|m| m.headline.title().contains(needle) || m.headline.body_text().contains(needle))
+        .collect()
+}
+
 /// Headlines at a specific nesting level.
 #[must_use]
 pub fn by_level(vault: &Vault, level: u8) -> Vec<Match<'_>> {
