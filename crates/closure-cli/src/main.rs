@@ -19,7 +19,7 @@ use clap::{Parser, Subcommand};
 use closure_config::InputMode;
 use closure_core::{
     AddSibling, BlockId, Command, Demote, Document, EnsureId, MoveSubtree, Promote, Registry,
-    RemoveSubtree, RenameHeadline, SetPriority, SetTags, SetTodo,
+    RemoveSubtree, RenameHeadline, SetBody, SetPriority, SetTags, SetTodo,
 };
 use closure_eval::{Backend, ShellBackend, backend_for};
 use closure_input::Dispatcher;
@@ -209,6 +209,15 @@ enum Cmd {
         /// Block id of the new predecessor.
         after_id: String,
     },
+    /// Replace a headline's body wholesale.
+    SetBody {
+        /// Path to a `*.org` file.
+        file: PathBuf,
+        /// Block id of the target headline.
+        id: String,
+        /// New body text (use empty string to clear).
+        body: String,
+    },
 }
 
 fn main() -> ExitCode {
@@ -263,7 +272,17 @@ fn run(cmd: &Cmd) -> Result<(), String> {
         Cmd::Remove { file, id } => cmd_remove(file, id),
         Cmd::Stats { vault } => cmd_stats(vault),
         Cmd::Move { file, id, after_id } => cmd_move(file, id, after_id),
+        Cmd::SetBody { file, id, body } => cmd_set_body(file, id, body),
     }
+}
+
+fn cmd_set_body(path: &Path, id: &str, body: &str) -> Result<(), String> {
+    let src = fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))?;
+    let mut doc = Document::load_str(&src).map_err(|e| format!("{e}"))?;
+    let cmd = SetBody::new(BlockId::from_existing(id), body.to_owned());
+    Command::apply(&cmd, &mut doc).map_err(|e| format!("{e}"))?;
+    fs::write(path, doc.source()).map_err(|e| format!("write: {e}"))?;
+    Ok(())
 }
 
 fn cmd_move(path: &Path, id: &str, after_id: &str) -> Result<(), String> {
