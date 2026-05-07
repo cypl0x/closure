@@ -240,6 +240,31 @@ pub fn rewrite_add_sibling_after(
     parse(&src).map_err(|_| RewriteError::Parse)
 }
 
+/// Replace a headline's body (the text between its `:PROPERTIES:`
+/// drawer and its first child or subtree end) with `new_body`.
+///
+/// `new_body` is appended verbatim. Pass an empty string to clear the
+/// body. The properties drawer, header line, and recursive children
+/// are preserved.
+pub fn rewrite_headline_set_body(
+    doc: &OrgDoc,
+    path: &[usize],
+    new_body: &str,
+) -> Result<OrgDoc, RewriteError> {
+    let target = navigate_headline(doc, path).ok_or(RewriteError::NotFound)?;
+    let body_start = target
+        .properties
+        .as_ref()
+        .map_or(target.header_span.end, |p| p.drawer_span.end);
+    let body_end = target
+        .children
+        .first()
+        .map_or_else(|| subtree_end(target), |c| c.header_span.start);
+    let mut src = doc.source().to_owned();
+    src.replace_range(body_start..body_end, new_body);
+    parse(&src).map_err(|_| RewriteError::Parse)
+}
+
 /// Splice a pre-formatted subtree source verbatim immediately after
 /// the subtree rooted at `after_path`. Used by move/cut/paste paths
 /// that already have a captured source string.

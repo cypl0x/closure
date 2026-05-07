@@ -8,7 +8,7 @@
 
 use closure_core::{
     AddSibling, Demote, Document, EnsureId, KeyChord, MoveSubtree, Promote, Registry,
-    RemoveSubtree, RenameHeadline, SetPriority, SetTags, SetTodo,
+    RemoveSubtree, RenameHeadline, SetBody, SetPriority, SetTags, SetTodo,
 };
 
 #[test]
@@ -293,6 +293,28 @@ fn move_subtree_relocates_headline() {
     let titles: Vec<&str> = doc.roots().iter().map(|h| h.title()).collect();
     assert_eq!(titles, vec!["B", "C", "A"]);
     assert!(doc.headline_by_id(&a_id).is_some());
+}
+
+#[test]
+fn set_body_replaces_paragraph() {
+    let mut doc = Document::load_str("* H\nold body\n").expect("load");
+    let id = doc.roots()[0].id().clone();
+    let cmd = SetBody::new(id, "new body\n".into());
+    closure_core::Command::apply(&cmd, &mut doc).expect("apply");
+    assert!(doc.source().contains("new body"));
+    assert!(!doc.source().contains("old body"));
+}
+
+#[test]
+fn set_body_undo_restores_old_body() {
+    let mut doc = Document::load_str("* H\nfirst version\n").expect("load");
+    let id = doc.roots()[0].id().clone();
+    let cmd = SetBody::new(id, "second version\n".into());
+    closure_core::Command::apply(&cmd, &mut doc).expect("apply");
+    assert!(doc.source().contains("second version"));
+    doc.undo().expect("undo");
+    assert!(doc.source().contains("first version"));
+    assert!(!doc.source().contains("second version"));
 }
 
 #[test]

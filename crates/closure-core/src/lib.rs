@@ -14,9 +14,9 @@ use std::sync::Arc;
 
 use closure_org::{
     Headline, OrgDoc, parse, rewrite_add_sibling_after_with_id, rewrite_headline_demote,
-    rewrite_headline_ensure_id, rewrite_headline_promote, rewrite_headline_set_priority,
-    rewrite_headline_set_tags, rewrite_headline_set_todo, rewrite_headline_title,
-    rewrite_remove_subtree, rewrite_splice_subtree_after,
+    rewrite_headline_ensure_id, rewrite_headline_promote, rewrite_headline_set_body,
+    rewrite_headline_set_priority, rewrite_headline_set_tags, rewrite_headline_set_todo,
+    rewrite_headline_title, rewrite_remove_subtree, rewrite_splice_subtree_after,
 };
 use closure_undo::{NodeId as UndoNodeId, UndoTree};
 use thiserror::Error;
@@ -438,6 +438,15 @@ pub enum Edit {
         /// Byte offset in the document where the subtree started.
         insert_at: usize,
     },
+    /// Replace a headline's body wholesale.
+    SetBody {
+        /// Block whose body changed.
+        id: BlockId,
+        /// Body before the edit.
+        old: String,
+        /// Body after the edit.
+        new: String,
+    },
     /// Move a subtree to immediately after a target headline.
     MoveSubtree {
         /// Block being moved (id pinned in `subtree_source`).
@@ -534,6 +543,14 @@ impl Edit {
                 doc.rebuild_index();
                 Ok(())
             }
+            Self::SetBody { id, old, .. } => {
+                let path = doc.path_of(id).ok_or(CommandError::BlockNotFound)?;
+                let org = rewrite_headline_set_body(doc.org(), &path, old)
+                    .map_err(|_| CommandError::Rewrite)?;
+                doc.org = org;
+                doc.rebuild_index();
+                Ok(())
+            }
             Self::MoveSubtree {
                 id,
                 subtree_source,
@@ -626,6 +643,14 @@ impl Edit {
                 let path = doc.path_of(id).ok_or(CommandError::BlockNotFound)?;
                 let org =
                     rewrite_remove_subtree(doc.org(), &path).map_err(|_| CommandError::Rewrite)?;
+                doc.org = org;
+                doc.rebuild_index();
+                Ok(())
+            }
+            Self::SetBody { id, new, .. } => {
+                let path = doc.path_of(id).ok_or(CommandError::BlockNotFound)?;
+                let org = rewrite_headline_set_body(doc.org(), &path, new)
+                    .map_err(|_| CommandError::Rewrite)?;
                 doc.org = org;
                 doc.rebuild_index();
                 Ok(())
@@ -1094,6 +1119,82 @@ impl Command for Demote {
         doc.push_history(edit.clone());
         Ok(edit)
     }
+}
+
+/// Command: replace the body of a headline (between drawer and first
+/// child) with new text.
+pub struct SetBody {
+    id: BlockId,
+    new: String,
+    keys: Vec<KeyChord>,
+}
+
+impl SetBody {
+    /// Replace body wholesale.
+    #[must_use]
+    pub fn new(id: BlockId, new: String) -> Self {
+        Self {
+            id,
+            new,
+            keys: vec![KeyChord::from_strokes(&["C-c", "C-b"])],
+        }
+    }
+
+    /// Placeholder.
+    #[must_use]
+    pub fn new_placeholder() -> Self {
+        Self {
+            id: BlockId::from_existing(""),
+            new: String::new(),
+            keys: vec![KeyChord::from_strokes(&["C-c", "C-b"])],
+        }
+    }
+}
+
+impl Command for SetBody {
+    #[allow(clippy::unnecessary_literal_bound)]
+    fn name(&self) -> &str {
+        "set-body"
+    }
+
+    fn keys(&self) -> &[KeyChord] {
+        &self.keys
+    }
+
+    fn apply(&self, doc: &mut Document) -> Result<Edit, CommandError> {
+        let path = doc.path_of(&self.id).ok_or(CommandError::BlockNotFound)?;
+        // Capture current body verbatim.
+        let with_id = rewrite_headline_ensure_id(doc.org(), &path, self.id.as_str())
+            .map_err(|_| CommandError::Rewrite)?;
+        let old = current_body(&with_id, &path)?;
+        let org = rewrite_headline_set_body(&with_id, &path, &self.new)
+            .map_err(|_| CommandError::Rewrite)?;
+        doc.org = org;
+        doc.rebuild_index();
+        let edit = Edit::SetBody {
+            id: self.id.clone(),
+            old,
+            new: self.new.clone(),
+        };
+        doc.push_history(edit.clone());
+        Ok(edit)
+    }
+}
+
+fn current_body(org: &OrgDoc, path: &[usize]) -> Result<String, CommandError> {
+    let mut node = org
+        .roots()
+        .get(*path.first().ok_or(CommandError::BlockNotFound)?);
+    let mut current = node.ok_or(CommandError::BlockNotFound)?;
+    for &i in &path[1..] {
+        node = current.children().get(i);
+        current = node.ok_or(CommandError::BlockNotFound)?;
+    }
+    let mut out = String::new();
+    for n in current.body() {
+        out.push_str(n.source());
+    }
+    Ok(out)
 }
 
 /// Command: move the subtree rooted at `id` to immediately after the
