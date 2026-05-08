@@ -86,6 +86,9 @@ pub struct DocHeadline {
     tags: Vec<String>,
     link_targets: Vec<String>,
     body_text: String,
+    scheduled: Option<String>,
+    deadline: Option<String>,
+    closed: Option<String>,
 }
 
 impl DocHeadline {
@@ -143,6 +146,24 @@ impl DocHeadline {
     #[must_use]
     pub fn body_text(&self) -> &str {
         &self.body_text
+    }
+
+    /// `SCHEDULED:` planning timestamp if set.
+    #[must_use]
+    pub fn scheduled(&self) -> Option<&str> {
+        self.scheduled.as_deref()
+    }
+
+    /// `DEADLINE:` planning timestamp if set.
+    #[must_use]
+    pub fn deadline(&self) -> Option<&str> {
+        self.deadline.as_deref()
+    }
+
+    /// `CLOSED:` planning timestamp if set.
+    #[must_use]
+    pub fn closed(&self) -> Option<&str> {
+        self.closed.as_deref()
     }
 }
 
@@ -299,6 +320,7 @@ fn make_doc_headline(h: &Headline, path: &[usize], id: BlockId) -> DocHeadline {
         }
         body_text.push_str(n.source());
     }
+    let planning = h.planning();
     DocHeadline {
         id,
         path: path.to_vec(),
@@ -309,6 +331,9 @@ fn make_doc_headline(h: &Headline, path: &[usize], id: BlockId) -> DocHeadline {
         tags: h.tags().into_iter().map(str::to_owned).collect(),
         link_targets,
         body_text,
+        scheduled: planning.and_then(|p| p.scheduled).map(str::to_owned),
+        deadline: planning.and_then(|p| p.deadline).map(str::to_owned),
+        closed: planning.and_then(|p| p.closed).map(str::to_owned),
     }
 }
 

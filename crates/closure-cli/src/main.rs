@@ -455,27 +455,37 @@ fn cmd_todos(vault: &Path) -> Result<(), String> {
 
 fn cmd_agenda(vault: &Path) -> Result<(), String> {
     let v = Vault::open(vault).map_err(|e| format!("{e}"))?;
-    let mut items: Vec<(char, String, String, String)> = Vec::new();
+    let mut items: Vec<(char, String, String, String, String)> = Vec::new();
     for (path, doc) in v.iter() {
         for h in doc.all_headlines() {
             if h.todo().is_some() {
+                let mut planning = String::new();
+                if let Some(s) = h.scheduled() {
+                    planning.push_str(" SCHEDULED:");
+                    planning.push_str(s);
+                }
+                if let Some(d) = h.deadline() {
+                    planning.push_str(" DEADLINE:");
+                    planning.push_str(d);
+                }
                 items.push((
                     h.priority().unwrap_or('Z'),
                     path.display().to_string(),
                     h.todo().unwrap_or("").to_owned(),
                     h.title().to_owned(),
+                    planning,
                 ));
             }
         }
     }
     items.sort();
-    for (prio, path, todo, title) in items {
+    for (prio, path, todo, title, planning) in items {
         let prio_marker = if prio == 'Z' {
             "    ".to_owned()
         } else {
             format!("[#{prio}]")
         };
-        println!("{prio_marker} {todo:5} {title}  ({path})");
+        println!("{prio_marker} {todo:5} {title}{planning}  ({path})");
     }
     Ok(())
 }
