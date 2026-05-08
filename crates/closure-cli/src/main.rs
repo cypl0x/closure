@@ -284,6 +284,12 @@ enum Cmd {
         /// New relative path inside the vault.
         to: PathBuf,
     },
+    /// Print every TODO headline across the vault, sorted by
+    /// priority (A first) then by file path.
+    Agenda {
+        /// Path to the vault directory.
+        vault: PathBuf,
+    },
 }
 
 fn main() -> ExitCode {
@@ -349,7 +355,35 @@ fn run(cmd: &Cmd) -> Result<(), String> {
         Cmd::Outline { file } => cmd_outline(file),
         Cmd::DeleteFile { vault, file } => cmd_delete_file(vault, file),
         Cmd::RenameFile { vault, from, to } => cmd_rename_file(vault, from, to),
+        Cmd::Agenda { vault } => cmd_agenda(vault),
     }
+}
+
+fn cmd_agenda(vault: &Path) -> Result<(), String> {
+    let v = Vault::open(vault).map_err(|e| format!("{e}"))?;
+    let mut items: Vec<(char, String, String, String)> = Vec::new();
+    for (path, doc) in v.iter() {
+        for h in doc.all_headlines() {
+            if h.todo().is_some() {
+                items.push((
+                    h.priority().unwrap_or('Z'),
+                    path.display().to_string(),
+                    h.todo().unwrap_or("").to_owned(),
+                    h.title().to_owned(),
+                ));
+            }
+        }
+    }
+    items.sort();
+    for (prio, path, todo, title) in items {
+        let prio_marker = if prio == 'Z' {
+            "    ".to_owned()
+        } else {
+            format!("[#{prio}]")
+        };
+        println!("{prio_marker} {todo:5} {title}  ({path})");
+    }
+    Ok(())
 }
 
 fn cmd_delete_file(vault: &Path, file: &Path) -> Result<(), String> {
