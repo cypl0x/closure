@@ -426,6 +426,11 @@ enum Cmd {
         /// Path to the vault directory.
         vault: PathBuf,
     },
+    /// Print TODO keyword occurrence counts ranked descending.
+    TodoCloud {
+        /// Path to the vault directory.
+        vault: PathBuf,
+    },
     /// Append a line to a headline's `:LOGBOOK:` drawer.
     LogbookAppend {
         /// Path to a `*.org` file.
@@ -609,6 +614,7 @@ fn run(cmd: &Cmd) -> Result<(), String> {
         Cmd::Depth { file } => cmd_depth(file),
         Cmd::Archived { vault } => cmd_archived(vault),
         Cmd::CommentList { vault } => cmd_comment_list(vault),
+        Cmd::TodoCloud { vault } => cmd_todo_cloud(vault),
         Cmd::Paths { vault } => cmd_paths(vault),
         Cmd::Hash { file } => cmd_hash(file),
         Cmd::Graph { vault } => cmd_graph(vault),
@@ -741,6 +747,14 @@ fn cmd_dead_links(vault: &Path) -> Result<(), String> {
                 }
             }
         }
+    }
+    Ok(())
+}
+
+fn cmd_todo_cloud(vault: &Path) -> Result<(), String> {
+    let v = Vault::open(vault).map_err(|e| format!("{e}"))?;
+    for (kw, n) in v.todo_counts() {
+        println!("{n:>4}  {kw}");
     }
     Ok(())
 }
