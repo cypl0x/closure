@@ -313,6 +313,11 @@ enum Cmd {
         /// Block id of the target headline.
         id: String,
     },
+    /// List every `:NAME:` ... `:END:` drawer in a file.
+    Drawers {
+        /// Path to a `*.org` file.
+        file: PathBuf,
+    },
     /// Toggle the checkbox on the Nth preamble list item.
     ToggleCheckbox {
         /// Path to a `*.org` file.
@@ -439,6 +444,7 @@ fn run(cmd: &Cmd) -> Result<(), String> {
         Cmd::Archive { file, id } => cmd_archive(file, id),
         Cmd::Comment { file, id } => cmd_comment(file, id),
         Cmd::ToggleCheckbox { file, index } => cmd_toggle_checkbox(file, *index),
+        Cmd::Drawers { file } => cmd_drawers(file),
         Cmd::SetProperty {
             file,
             id,
@@ -463,6 +469,16 @@ fn cmd_archive(path: &Path, id: &str) -> Result<(), String> {
     let cmd = ToggleArchive::new(BlockId::from_existing(id));
     Command::apply(&cmd, &mut doc).map_err(|e| format!("{e}"))?;
     fs::write(path, doc.source()).map_err(|e| format!("write: {e}"))?;
+    Ok(())
+}
+
+fn cmd_drawers(path: &Path) -> Result<(), String> {
+    let src = fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))?;
+    for d in closure_org::find_drawers(&src) {
+        let bytes = d.content.len();
+        let lines = d.content.lines().count();
+        println!(":{}:  {} lines, {} bytes", d.name, lines, bytes);
+    }
     Ok(())
 }
 
