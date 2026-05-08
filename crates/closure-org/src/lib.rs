@@ -50,6 +50,12 @@ impl OrgDoc {
         &self.source
     }
 
+    /// True iff the document has no preamble nodes and no headlines.
+    #[must_use]
+    pub const fn is_empty(&self) -> bool {
+        self.preamble.is_empty() && self.roots.is_empty()
+    }
+
     /// Total headline count (every level, recursive).
     #[must_use]
     pub fn headline_count(&self) -> usize {

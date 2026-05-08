@@ -688,6 +688,14 @@ fn max_depth_zero_when_no_headlines() {
 }
 
 #[test]
+fn is_empty_true_for_empty_source() {
+    let doc = parse("").expect("parse");
+    assert!(doc.is_empty());
+    let doc2 = parse("* hi\n").expect("parse");
+    assert!(!doc2.is_empty());
+}
+
+#[test]
 fn headline_count_walks_recursively() {
     let doc = parse("* A\n** B\n** C\n*** D\n").expect("parse");
     assert_eq!(doc.headline_count(), 4);
