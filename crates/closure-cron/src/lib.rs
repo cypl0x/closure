@@ -146,6 +146,24 @@ impl Job {
     }
 }
 
+/// Parse a multi-line cron block into a list of jobs. One spec per
+/// line. Blank lines and `#`-prefixed comments are ignored. The
+/// trailing `command` token of each spec becomes the job command.
+#[allow(clippy::missing_errors_doc)]
+pub fn parse_jobs(content: &str) -> Result<Vec<Job>, CronError> {
+    let mut out: Vec<Job> = Vec::new();
+    for line in content.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() || trimmed.starts_with('#') {
+            continue;
+        }
+        let spec = parse(trimmed)?;
+        let command = spec.command.clone();
+        out.push(Job::new(spec, command));
+    }
+    Ok(out)
+}
+
 /// Filter a slice of jobs to those that match `time`.
 #[must_use]
 pub fn jobs_matching(jobs: &[Job], m: u8, h: u8, d: u8, mo: u8, dw: u8) -> Vec<&Job> {

@@ -72,6 +72,15 @@ fn job_filters_by_time() {
 }
 
 #[test]
+fn parse_jobs_skips_blank_and_comment_lines() {
+    let block = "\n# header\n0 9 * * * morning\n# midday note\n30 12 * * * lunch\n";
+    let jobs = closure_cron::parse_jobs(block).unwrap();
+    assert_eq!(jobs.len(), 2);
+    assert_eq!(jobs[0].command, "morning");
+    assert_eq!(jobs[1].command, "lunch");
+}
+
+#[test]
 fn step_field_matches_multiples() {
     let s = parse("*/15 * * * * step").unwrap();
     assert_eq!(s.minute, Field::Step(15));
