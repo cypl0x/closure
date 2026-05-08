@@ -872,6 +872,19 @@ fn set_property_creates_drawer_if_absent() {
 }
 
 #[test]
+fn body_lines_iterates_all_lines() {
+    let doc = parse("* H\nfirst\nsecond\nthird\n").expect("parse");
+    let lines: Vec<&str> = doc.roots()[0].body_lines().collect();
+    assert_eq!(lines, vec!["first", "second", "third"]);
+}
+
+#[test]
+fn body_byte_count_sums_body_spans() {
+    let doc = parse("* H\nabc\ndef\n").expect("parse");
+    assert!(doc.roots()[0].body_byte_count() >= 8);
+}
+
+#[test]
 fn is_archived_method_recognises_archive_tag() {
     let doc = parse("* Old :ARCHIVE:\n* Live\n").expect("parse");
     assert!(doc.roots()[0].is_archived());

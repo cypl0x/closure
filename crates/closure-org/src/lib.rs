@@ -1787,6 +1787,21 @@ impl Headline {
         self.tags().contains(&"ARCHIVE")
     }
 
+    /// Sum of body bytes across this headline's body nodes (does not
+    /// recurse into children).
+    #[must_use]
+    pub fn body_byte_count(&self) -> usize {
+        self.body.iter().map(|n| n.span.end - n.span.start).sum()
+    }
+
+    /// Iterate every body line as a borrowed string slice.
+    pub fn body_lines(&self) -> impl Iterator<Item = &str> {
+        self.body.iter().flat_map(|n| {
+            let s = &self.source[n.span.start..n.span.end];
+            s.lines()
+        })
+    }
+
     /// Parse the planning line (`SCHEDULED:` / `DEADLINE:` / `CLOSED:`)
     /// that immediately follows the header line, if any. Returns `None`
     /// when no planning line is present.
