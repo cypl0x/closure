@@ -784,6 +784,9 @@ fn cmd_default_config() -> Result<(), String> {
     println!("theme = default");
     println!("# default_vault = ~/notes");
     println!("# todo_keywords = TODO, DOING, DONE");
+    println!("# priority_levels = A, B, C");
+    println!("# tag_inheritance = true");
+    println!("# agenda_files = inbox.org, projects.org");
     println!("#+END_SRC");
     Ok(())
 }
