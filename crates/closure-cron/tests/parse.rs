@@ -72,6 +72,16 @@ fn job_filters_by_time() {
 }
 
 #[test]
+fn step_field_matches_multiples() {
+    let s = parse("*/15 * * * * step").unwrap();
+    assert_eq!(s.minute, Field::Step(15));
+    assert!(closure_cron::matches_time(&s, 0, 0, 1, 1, 1));
+    assert!(closure_cron::matches_time(&s, 15, 0, 1, 1, 1));
+    assert!(closure_cron::matches_time(&s, 30, 0, 1, 1, 1));
+    assert!(!closure_cron::matches_time(&s, 7, 0, 1, 1, 1));
+}
+
+#[test]
 fn list_field_matches_each_value() {
     let s = parse("0,15,30,45 * * * * quarter").unwrap();
     assert_eq!(s.minute, Field::List(vec![0, 15, 30, 45]));

@@ -36,6 +36,8 @@ pub enum Field {
     List(Vec<u8>),
     /// Matches values in the inclusive range `start..=end`.
     Range(u8, u8),
+    /// Matches every Nth value (`*/N`).
+    Step(u8),
 }
 
 /// Cron parse error.
@@ -69,6 +71,15 @@ pub fn parse(s: &str) -> Result<CronSpec, CronError> {
 fn parse_field(s: &str) -> Result<Field, CronError> {
     if s == "*" {
         return Ok(Field::Any);
+    }
+    if let Some(rest) = s.strip_prefix("*/") {
+        let step = rest
+            .parse::<u8>()
+            .map_err(|_| CronError::Number(s.into()))?;
+        if step == 0 {
+            return Err(CronError::Number(s.into()));
+        }
+        return Ok(Field::Step(step));
     }
     if let Some((lo, hi)) = s.split_once('-') {
         let lo = lo.parse::<u8>().map_err(|_| CronError::Number(s.into()))?;
@@ -104,6 +115,7 @@ fn field_matches(f: &Field, v: u8) -> bool {
         Field::Exact(x) => *x == v,
         Field::List(xs) => xs.contains(&v),
         Field::Range(lo, hi) => v >= *lo && v <= *hi,
+        Field::Step(step) => *step != 0 && v.is_multiple_of(*step),
     }
 }
 
