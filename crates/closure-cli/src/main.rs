@@ -323,6 +323,11 @@ enum Cmd {
         /// Path to a `*.org` file.
         file: PathBuf,
     },
+    /// Print every list group (consecutive `-`/`+`/`1.` items) in a file.
+    Lists {
+        /// Path to a `*.org` file.
+        file: PathBuf,
+    },
     /// Print every link target found in a file.
     Links {
         /// Path to a `*.org` file.
@@ -576,6 +581,7 @@ fn run(cmd: &Cmd) -> Result<(), String> {
         Cmd::ToggleCheckbox { file, index } => cmd_toggle_checkbox(file, *index),
         Cmd::Drawers { file } => cmd_drawers(file),
         Cmd::Tables { file } => cmd_tables(file),
+        Cmd::Lists { file } => cmd_lists(file),
         Cmd::Links { file } => cmd_links(file),
         Cmd::Footnotes { file } => cmd_footnotes(file),
         Cmd::Timestamps { file } => cmd_timestamps(file),
@@ -978,6 +984,24 @@ fn cmd_footnotes(path: &Path) -> Result<(), String> {
         match f.definition {
             Some(d) => println!("[fn:{}]\t{d}", f.name),
             None => println!("[fn:{}]", f.name),
+        }
+    }
+    Ok(())
+}
+
+fn cmd_lists(path: &Path) -> Result<(), String> {
+    let src = fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))?;
+    let doc = closure_org::parse(&src).map_err(|e| format!("{e}"))?;
+    for (i, g) in doc.lists().iter().enumerate() {
+        println!("list #{i} ({} items)", g.items.len());
+        for item in &g.items {
+            let cb = match item.checkbox {
+                Some(closure_org::Checkbox::Checked) => "[X] ",
+                Some(closure_org::Checkbox::Unchecked) => "[ ] ",
+                Some(closure_org::Checkbox::Partial) => "[-] ",
+                None => "",
+            };
+            println!("  {cb}{}", item.content);
         }
     }
     Ok(())
