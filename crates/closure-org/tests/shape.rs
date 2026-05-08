@@ -602,6 +602,28 @@ fn set_planning_clear_removes_line() {
 }
 
 #[test]
+fn footnote_ref_detected() {
+    let f = closure_org::find_footnotes("See [fn:1] for details.");
+    assert_eq!(f.len(), 1);
+    assert_eq!(f[0].name, "1");
+    assert!(f[0].definition.is_none());
+}
+
+#[test]
+fn footnote_inline_definition_detected() {
+    let f = closure_org::find_footnotes("Note [fn:foo: inline body] there.");
+    assert_eq!(f.len(), 1);
+    assert_eq!(f[0].name, "foo");
+    assert_eq!(f[0].definition, Some("inline body"));
+}
+
+#[test]
+fn footnote_anonymous_skipped() {
+    let f = closure_org::find_footnotes("Just [fn::body] anonymous.");
+    assert!(f.is_empty());
+}
+
+#[test]
 fn all_keywords_lists_in_source_order() {
     let src = "#+TITLE: A\n#+AUTHOR: B\n#+CUSTOM: c\n* H\n";
     let doc = parse(src).expect("parse");

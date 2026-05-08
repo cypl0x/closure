@@ -760,6 +760,46 @@ pub enum CookieView {
     Percent(u32),
 }
 
+/// Inline footnote occurrence.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct FootnoteView<'a> {
+    /// Footnote name (the `1` in `[fn:1]` or `foo` in `[fn:foo]`).
+    pub name: &'a str,
+    /// Inline definition body if present (`[fn:name: body]`).
+    pub definition: Option<&'a str>,
+}
+
+/// Scan `text` for `[fn:NAME]` references and `[fn:NAME: body]`
+/// inline definitions. Anonymous footnotes (`[fn::body]`) are skipped
+/// — they do not have a stable name to reference.
+#[must_use]
+pub fn find_footnotes(text: &str) -> Vec<FootnoteView<'_>> {
+    let mut out: Vec<FootnoteView<'_>> = Vec::new();
+    let bytes = text.as_bytes();
+    let mut i = 0usize;
+    while i < bytes.len() {
+        if let Some(rest) = text.get(i..)
+            && rest.starts_with("[fn:")
+            && let Some(end) = rest.find(']')
+        {
+            let inner = &rest[4..end];
+            let (name, def) = inner.split_once(':').map_or((inner, None), |(n, d)| {
+                (n, Some(d.trim_start_matches(' ')))
+            });
+            if !name.is_empty() {
+                out.push(FootnoteView {
+                    name,
+                    definition: def,
+                });
+            }
+            i += end + 1;
+            continue;
+        }
+        i += 1;
+    }
+    out
+}
+
 /// Scan `text` for `[N/M]` and `[N%]` progress cookies in source
 /// order. Useful for headlines that summarise checkbox lists.
 #[must_use]
