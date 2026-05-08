@@ -69,20 +69,44 @@ fn handle(mut stream: TcpStream, vault: &Vault) -> std::io::Result<()> {
 fn render(vault: &Vault) -> String {
     let mut html = String::new();
     html.push_str("<!doctype html><html><head><meta charset=\"utf-8\">");
-    html.push_str("<title>closure vault</title></head><body>");
+    html.push_str("<title>closure vault</title>");
+    html.push_str(
+        "<style>body{font-family:sans-serif;max-width:48em;margin:2em auto;padding:0 1em}\
+         details{margin-left:1em}\
+         .id{color:#888;font-size:0.8em;font-family:monospace}\
+         .todo{color:#c00;font-weight:bold;margin-right:0.5em}\
+         .tag{background:#eef;padding:0 0.3em;border-radius:0.2em;margin-left:0.3em}</style>",
+    );
+    html.push_str("</head><body>");
     let _ = writeln!(html, "<h1>closure vault — {} file(s)</h1>", vault.len());
     for (path, doc) in vault.iter() {
-        let _ = writeln!(html, "<h2>{}</h2><ul>", path.display());
+        let _ = writeln!(html, "<details open><summary>{}</summary>", path.display());
+        let mut open_level: u8 = 0;
         for h in doc.all_headlines() {
+            while open_level >= h.level() && open_level > 0 {
+                html.push_str("</details>");
+                open_level -= 1;
+            }
+            html.push_str("<details open><summary>");
+            if let Some(t) = h.todo() {
+                let _ = write!(html, "<span class=\"todo\">{}</span>", escape_html(t));
+            }
+            let _ = write!(html, "{}", escape_html(h.title()));
+            for tag in h.tags() {
+                let _ = write!(html, "<span class=\"tag\">{}</span>", escape_html(tag));
+            }
             let _ = writeln!(
                 html,
-                "<li>L{} {} — <code>{}</code></li>",
-                h.level(),
-                escape_html(h.title()),
-                h.id()
+                " <span class=\"id\">{}</span></summary>",
+                escape_html(&h.id().to_string())
             );
+            open_level = h.level();
         }
-        html.push_str("</ul>");
+        while open_level > 0 {
+            html.push_str("</details>");
+            open_level -= 1;
+        }
+        html.push_str("</details>");
     }
     html.push_str("</body></html>");
     html
