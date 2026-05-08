@@ -883,6 +883,12 @@ fn set_property_creates_drawer_if_absent() {
 }
 
 #[test]
+fn body_word_count_counts_body_words() {
+    let doc = parse("* H\nfour words go here\n").expect("parse");
+    assert_eq!(doc.roots()[0].body_word_count(), 4);
+}
+
+#[test]
 fn descendant_count_counts_children_recursively() {
     let doc = parse("* Root\n** A\n*** A1\n** B\n").expect("parse");
     let root = &doc.roots()[0];

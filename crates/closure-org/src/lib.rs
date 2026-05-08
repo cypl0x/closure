@@ -1846,6 +1846,20 @@ impl Headline {
         self.children.iter().map(|c| 1 + c.descendant_count()).sum()
     }
 
+    /// Whitespace-separated word count over this headline's body (does
+    /// not recurse into children).
+    #[must_use]
+    pub fn body_word_count(&self) -> usize {
+        self.body
+            .iter()
+            .map(|n| {
+                self.source[n.span.start..n.span.end]
+                    .split_whitespace()
+                    .count()
+            })
+            .sum()
+    }
+
     /// Iterate every body line as a borrowed string slice.
     pub fn body_lines(&self) -> impl Iterator<Item = &str> {
         self.body.iter().flat_map(|n| {
