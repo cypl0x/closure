@@ -258,6 +258,11 @@ enum Cmd {
         #[arg(long, default_value = "claude-sonnet-4-6")]
         model: String,
     },
+    /// Print tag occurrence counts in descending order.
+    TagCloud {
+        /// Path to the vault directory.
+        vault: PathBuf,
+    },
 }
 
 fn main() -> ExitCode {
@@ -319,7 +324,27 @@ fn run(cmd: &Cmd) -> Result<(), String> {
         Cmd::DefaultConfig => cmd_default_config(),
         Cmd::New { vault, path, title } => cmd_new(vault, path, title),
         Cmd::Ask { prompt, model } => cmd_ask(prompt, model),
+        Cmd::TagCloud { vault } => cmd_tag_cloud(vault),
     }
+}
+
+fn cmd_tag_cloud(vault: &Path) -> Result<(), String> {
+    use std::collections::BTreeMap;
+    let v = Vault::open(vault).map_err(|e| format!("{e}"))?;
+    let mut counts: BTreeMap<String, usize> = BTreeMap::new();
+    for (_, doc) in v.iter() {
+        for h in doc.all_headlines() {
+            for t in h.tags() {
+                *counts.entry(t.clone()).or_insert(0) += 1;
+            }
+        }
+    }
+    let mut pairs: Vec<(&String, &usize)> = counts.iter().collect();
+    pairs.sort_by(|a, b| b.1.cmp(a.1).then_with(|| a.0.cmp(b.0)));
+    for (tag, n) in pairs {
+        println!("{n:>4}  {tag}");
+    }
+    Ok(())
 }
 
 fn cmd_ask(prompt: &str, model: &str) -> Result<(), String> {
