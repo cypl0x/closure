@@ -59,6 +59,42 @@ impl OrgDoc {
         self.roots.iter().map(walk).sum()
     }
 
+    /// Every distinct todo keyword used in the document, sorted.
+    #[must_use]
+    pub fn all_todos(&self) -> Vec<&str> {
+        fn walk_todos<'a>(h: &'a Headline, out: &mut std::collections::BTreeSet<&'a str>) {
+            if let Some(t) = h.todo() {
+                out.insert(t);
+            }
+            for c in h.children() {
+                walk_todos(c, out);
+            }
+        }
+        let mut seen: std::collections::BTreeSet<&str> = std::collections::BTreeSet::new();
+        for r in &self.roots {
+            walk_todos(r, &mut seen);
+        }
+        seen.into_iter().collect()
+    }
+
+    /// Every distinct tag used across all headlines, sorted.
+    #[must_use]
+    pub fn all_tags(&self) -> Vec<&str> {
+        fn walk_tags<'a>(h: &'a Headline, out: &mut std::collections::BTreeSet<&'a str>) {
+            for t in h.tags() {
+                out.insert(t);
+            }
+            for c in h.children() {
+                walk_tags(c, out);
+            }
+        }
+        let mut seen: std::collections::BTreeSet<&str> = std::collections::BTreeSet::new();
+        for r in &self.roots {
+            walk_tags(r, &mut seen);
+        }
+        seen.into_iter().collect()
+    }
+
     /// Maximum nesting depth across every headline (root level = 1).
     /// Empty documents return 0.
     #[must_use]

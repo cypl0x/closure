@@ -662,6 +662,20 @@ fn parse_block_args_no_value_drops_key() {
 }
 
 #[test]
+fn all_tags_aggregates_recursively() {
+    let doc = parse("* A :work:\n** B :urgent:\n* C :work:\n").expect("parse");
+    let tags = doc.all_tags();
+    assert_eq!(tags, vec!["urgent", "work"]);
+}
+
+#[test]
+fn all_todos_aggregates_recursively() {
+    let doc = parse("* TODO A\n** DONE B\n* TODO C\n").expect("parse");
+    let todos = doc.all_todos();
+    assert_eq!(todos, vec!["DONE", "TODO"]);
+}
+
+#[test]
 fn max_depth_picks_deepest_branch() {
     let doc = parse("* A\n** B\n*** C\n* D\n").expect("parse");
     assert_eq!(doc.max_depth(), 3);
