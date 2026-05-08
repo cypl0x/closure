@@ -259,6 +259,7 @@ name = "closure-config"
 version = "0.0.0"
 dependencies = [
  "closure-org",
+ "tempfile",
  "thiserror 2.0.18",
 ]
 

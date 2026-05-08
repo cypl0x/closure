@@ -45,3 +45,16 @@ fn unknown_input_mode_is_rejected() {
     let err = Config::from_org_source(src).unwrap_err();
     assert!(matches!(err, ConfigError::BadValue { .. }));
 }
+
+#[test]
+fn config_loads_from_path() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let path = dir.path().join("config.org");
+    std::fs::write(
+        &path,
+        "#+BEGIN_SRC closure-config\ninput_mode = helix\n#+END_SRC\n",
+    )
+    .expect("write");
+    let c = Config::from_path(&path).expect("load");
+    assert_eq!(c.input_mode, InputMode::Helix);
+}

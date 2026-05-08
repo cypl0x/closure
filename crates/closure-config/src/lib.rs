@@ -78,6 +78,14 @@ pub enum ConfigError {
 }
 
 impl Config {
+    /// Load a config from a `*.org` file on disk.
+    #[allow(clippy::missing_errors_doc)]
+    pub fn from_path(path: &std::path::Path) -> Result<Self, ConfigError> {
+        let src =
+            std::fs::read_to_string(path).map_err(|e| ConfigError::ParseOrg(e.to_string()))?;
+        Self::from_org_source(&src)
+    }
+
     /// Load a config from an org document containing a
     /// `#+BEGIN_SRC closure-config` block with `key = value` lines.
     pub fn from_org_source(src: &str) -> Result<Self, ConfigError> {
