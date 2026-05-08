@@ -401,6 +401,15 @@ enum Cmd {
     },
     /// Print every command name registered in the default registry.
     Commands,
+    /// Append a line to a headline's `:LOGBOOK:` drawer.
+    LogbookAppend {
+        /// Path to a `*.org` file.
+        file: PathBuf,
+        /// Block id of the target headline.
+        id: String,
+        /// Single-line entry to append (no trailing newline).
+        entry: String,
+    },
     /// Print every `*.org` file path in a vault, sorted.
     Paths {
         /// Path to the vault directory.
@@ -568,6 +577,7 @@ fn run(cmd: &Cmd) -> Result<(), String> {
         Cmd::Hubs { vault, limit } => cmd_hubs(vault, *limit),
         Cmd::Clock { file } => cmd_clock(file),
         Cmd::Commands => cmd_commands(),
+        Cmd::LogbookAppend { file, id, entry } => cmd_logbook_append(file, id, entry),
         Cmd::Paths { vault } => cmd_paths(vault),
         Cmd::Hash { file } => cmd_hash(file),
         Cmd::Graph { vault } => cmd_graph(vault),
@@ -702,6 +712,54 @@ fn cmd_dead_links(vault: &Path) -> Result<(), String> {
         }
     }
     Ok(())
+}
+
+fn cmd_logbook_append(path: &Path, id: &str, entry: &str) -> Result<(), String> {
+    let src = fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))?;
+    let doc = closure_org::parse(&src).map_err(|e| format!("{e}"))?;
+    let mut indices: Vec<usize> = Vec::new();
+    let bid = closure_core::BlockId::from_existing(id);
+    walk_for_id(&doc, &bid, &mut indices, &mut Vec::new())
+        .ok_or_else(|| "block id not found".to_owned())?;
+    let new = closure_org::rewrite_headline_append_logbook(&doc, &indices, entry)
+        .map_err(|e| format!("{e}"))?;
+    fs::write(path, closure_org::print(&new)).map_err(|e| format!("write: {e}"))?;
+    Ok(())
+}
+
+fn walk_for_id(
+    doc: &closure_org::OrgDoc,
+    target: &closure_core::BlockId,
+    out: &mut Vec<usize>,
+    cursor: &mut Vec<usize>,
+) -> Option<()> {
+    fn walk(
+        h: &closure_org::Headline,
+        target: &str,
+        cursor: &mut Vec<usize>,
+        out: &mut Vec<usize>,
+    ) -> bool {
+        if h.properties().and_then(closure_org::Properties::id) == Some(target) {
+            out.clone_from(cursor);
+            return true;
+        }
+        for (i, c) in h.children().iter().enumerate() {
+            cursor.push(i);
+            if walk(c, target, cursor, out) {
+                return true;
+            }
+            cursor.pop();
+        }
+        false
+    }
+    for (i, root) in doc.roots().iter().enumerate() {
+        cursor.clear();
+        cursor.push(i);
+        if walk(root, target.as_str(), cursor, out) {
+            return Some(());
+        }
+    }
+    None
 }
 
 #[allow(clippy::unnecessary_wraps)]
