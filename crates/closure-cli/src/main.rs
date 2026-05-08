@@ -263,6 +263,11 @@ enum Cmd {
         /// Path to the vault directory.
         vault: PathBuf,
     },
+    /// Print just the headline outline of an org file (no metadata).
+    Outline {
+        /// Path to a `*.org` file.
+        file: PathBuf,
+    },
 }
 
 fn main() -> ExitCode {
@@ -325,7 +330,19 @@ fn run(cmd: &Cmd) -> Result<(), String> {
         Cmd::New { vault, path, title } => cmd_new(vault, path, title),
         Cmd::Ask { prompt, model } => cmd_ask(prompt, model),
         Cmd::TagCloud { vault } => cmd_tag_cloud(vault),
+        Cmd::Outline { file } => cmd_outline(file),
     }
+}
+
+fn cmd_outline(path: &Path) -> Result<(), String> {
+    let src = fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))?;
+    let doc = Document::load_str(&src).map_err(|e| format!("{e}"))?;
+    for h in doc.all_headlines() {
+        let indent = "  ".repeat(usize::from(h.level()).saturating_sub(1));
+        let stars = "*".repeat(usize::from(h.level()));
+        println!("{indent}{stars} {}", h.title());
+    }
+    Ok(())
 }
 
 fn cmd_tag_cloud(vault: &Path) -> Result<(), String> {
