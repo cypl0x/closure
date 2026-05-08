@@ -68,6 +68,11 @@ impl OrgDoc {
         self.preamble.len()
     }
 
+    /// Iterate preamble nodes whose kind matches `target`.
+    pub fn nodes_by_kind(&self, target: NodeKind) -> impl Iterator<Item = &Node> {
+        self.preamble.iter().filter(move |n| n.kind == target)
+    }
+
     /// Histogram of preamble node kinds. Keys ordered alphabetically.
     #[must_use]
     pub fn preamble_kind_counts(&self) -> Vec<(NodeKind, usize)> {
