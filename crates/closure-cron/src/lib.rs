@@ -164,10 +164,11 @@ pub fn parse_jobs(content: &str) -> Result<Vec<Job>, CronError> {
     Ok(out)
 }
 
-/// Compute the next `(minute, hour)` after `now_min, now_hour` at
-/// which `spec` will match. Searches forward up to 24 hours; returns
-/// `None` if no match is found in that window. Day-of-month / month /
-/// day-of-week fields are ignored — caller drives them externally.
+/// Compute the next `(minute, hour)` after `now_min`, `now_hour`.
+///
+/// Searches forward up to 24 hours; returns `None` if no match is
+/// found in that window. Day-of-month / month / day-of-week fields
+/// are ignored — caller drives them externally.
 #[must_use]
 pub fn next_match_today(spec: &CronSpec, now_min: u8, now_hour: u8) -> Option<(u8, u8)> {
     for delta in 1..=(24u32 * 60) {
