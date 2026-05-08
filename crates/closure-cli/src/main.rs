@@ -388,6 +388,11 @@ enum Cmd {
         /// Path to a `*.org` file.
         file: PathBuf,
     },
+    /// Print per-file stats: headlines, depth, words, link count.
+    StatsFile {
+        /// Path to a `*.org` file.
+        file: PathBuf,
+    },
     /// Run the MCP stdio dispatcher (one command name per line; `LIST`
     /// to enumerate). Quits on EOF.
     Mcp,
@@ -626,6 +631,7 @@ fn run(cmd: &Cmd) -> Result<(), String> {
         Cmd::Keywords { file } => cmd_keywords(file),
         Cmd::Properties { file } => cmd_properties(file),
         Cmd::Validate { file } => cmd_validate(file),
+        Cmd::StatsFile { file } => cmd_stats_file(file),
         Cmd::Mcp => cmd_mcp(),
         Cmd::Orphans { vault } => cmd_orphans(vault),
         Cmd::DeadLinks { vault } => cmd_dead_links(vault),
@@ -975,6 +981,24 @@ fn cmd_orphans(vault: &Path) -> Result<(), String> {
             }
         }
     }
+    Ok(())
+}
+
+fn cmd_stats_file(path: &Path) -> Result<(), String> {
+    let src = fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))?;
+    let doc = Document::load_str(&src).map_err(|e| format!("{e}"))?;
+    let org = doc.org();
+    let total_links: usize = doc
+        .all_headlines()
+        .map(|h| h.link_targets().len())
+        .sum();
+    println!("file:       {}", path.display());
+    println!("headlines:  {}", org.headline_count());
+    println!("max depth:  {}", org.max_depth());
+    println!("words:      {}", doc.word_count());
+    println!("chars:      {}", doc.char_count());
+    println!("links:      {total_links}");
+    println!("hash:       {:016x}", doc.source_hash());
     Ok(())
 }
 
