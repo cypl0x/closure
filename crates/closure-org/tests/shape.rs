@@ -602,6 +602,17 @@ fn set_planning_clear_removes_line() {
 }
 
 #[test]
+fn all_keywords_lists_in_source_order() {
+    let src = "#+TITLE: A\n#+AUTHOR: B\n#+CUSTOM: c\n* H\n";
+    let doc = parse(src).expect("parse");
+    let kws = doc.all_keywords();
+    assert_eq!(kws.len(), 3);
+    assert_eq!(kws[0], ("TITLE", "A"));
+    assert_eq!(kws[1], ("AUTHOR", "B"));
+    assert_eq!(kws[2], ("CUSTOM", "c"));
+}
+
+#[test]
 fn doc_keywords_extracted_from_preamble() {
     let src = "#+TITLE: My Notes\n#+AUTHOR: Alice\n#+DATE: 2026-04-24\n#+FILETAGS: :work:home:\n* First\n";
     let doc = parse(src).expect("parse");

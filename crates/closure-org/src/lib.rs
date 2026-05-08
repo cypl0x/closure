@@ -100,6 +100,27 @@ impl OrgDoc {
             raw.split(':').filter(|s| !s.is_empty()).collect()
         })
     }
+
+    /// All `#+KEY: value` keyword lines in the preamble in source order.
+    /// Both key and value are returned trimmed of surrounding whitespace.
+    #[must_use]
+    pub fn all_keywords(&self) -> Vec<(&str, &str)> {
+        let mut out: Vec<(&str, &str)> = Vec::new();
+        for n in &self.preamble {
+            if n.kind != NodeKind::Keyword {
+                continue;
+            }
+            let text = &self.source[n.span.start..n.span.end];
+            let Some(body) = text.strip_prefix("#+") else {
+                continue;
+            };
+            let Some((k, v)) = body.split_once(':') else {
+                continue;
+            };
+            out.push((k.trim(), v.trim_matches([' ', '\t', '\n', '\r'])));
+        }
+        out
+    }
 }
 
 /// Failure mode for structure-preserving rewrites.
