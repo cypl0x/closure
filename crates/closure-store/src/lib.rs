@@ -152,6 +152,25 @@ impl Vault {
         seen.into_iter().collect()
     }
 
+    /// Total headline count across every document in the vault.
+    #[must_use]
+    pub fn headline_count(&self) -> usize {
+        self.documents
+            .values()
+            .map(|d| d.all_headlines().count())
+            .sum()
+    }
+
+    /// Total whitespace-separated word count across every source byte
+    /// in the vault.
+    #[must_use]
+    pub fn word_count(&self) -> usize {
+        self.documents
+            .values()
+            .map(|d| d.source().split_whitespace().count())
+            .sum()
+    }
+
     /// Every distinct TODO keyword used across the vault, sorted.
     #[must_use]
     pub fn all_todos(&self) -> Vec<String> {

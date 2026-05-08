@@ -75,6 +75,17 @@ fn vault_block_id_index_across_files() {
 }
 
 #[test]
+fn vault_headline_and_word_counts_aggregate() {
+    let td = write_vault(&[
+        ("a.org", "* One\n* Two\nbody words here\n"),
+        ("b.org", "* Three\nmore words\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.headline_count(), 3);
+    assert!(v.word_count() >= 7);
+}
+
+#[test]
 fn vault_all_tags_and_all_todos_aggregate() {
     let td = write_vault(&[
         ("a.org", "* TODO Fix :work:\n"),
