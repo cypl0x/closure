@@ -471,6 +471,14 @@ enum Cmd {
         /// Path to the vault directory.
         vault: PathBuf,
     },
+    /// List vault files sorted by mtime, most-recently-modified first.
+    Recent {
+        /// Path to the vault directory.
+        vault: PathBuf,
+        /// Number of entries to show (default 20).
+        #[arg(long, default_value_t = 20)]
+        limit: usize,
+    },
     /// Print the FNV-1a source hash of an org file (cache-keying).
     Hash {
         /// Path to a `*.org` file.
@@ -647,6 +655,7 @@ fn run(cmd: &Cmd) -> Result<(), String> {
         Cmd::Info { file, id } => cmd_info(file, id),
         Cmd::TodoCloud { vault } => cmd_todo_cloud(vault),
         Cmd::Paths { vault } => cmd_paths(vault),
+        Cmd::Recent { vault, limit } => cmd_recent(vault, *limit),
         Cmd::Hash { file } => cmd_hash(file),
         Cmd::Graph { vault } => cmd_graph(vault),
         Cmd::Random { vault, seed } => cmd_random(vault, seed),
@@ -747,6 +756,23 @@ fn cmd_hash(path: &Path) -> Result<(), String> {
     let src = fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))?;
     let doc = closure_org::parse(&src).map_err(|e| format!("{e}"))?;
     println!("{:016x}", doc.source_hash());
+    Ok(())
+}
+
+fn cmd_recent(vault: &Path, limit: usize) -> Result<(), String> {
+    let v = Vault::open(vault).map_err(|e| format!("{e}"))?;
+    let mut paths_with_mtime: Vec<(std::path::PathBuf, std::time::SystemTime)> = Vec::new();
+    for p in v.paths() {
+        if let Ok(md) = std::fs::metadata(&p)
+            && let Ok(mtime) = md.modified()
+        {
+            paths_with_mtime.push((p, mtime));
+        }
+    }
+    paths_with_mtime.sort_by(|a, b| b.1.cmp(&a.1));
+    for (p, _) in paths_with_mtime.into_iter().take(limit) {
+        println!("{}", p.display());
+    }
     Ok(())
 }
 
