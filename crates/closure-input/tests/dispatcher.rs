@@ -73,6 +73,18 @@ fn chord_trie_unbound_resets_cursor() {
 }
 
 #[test]
+fn emacs_chord_parsed() {
+    let chord = closure_input::parse_emacs_chord("C-c C-x r").unwrap();
+    assert_eq!(chord, KeyChord::from_strokes(&["C-c", "C-x", "r"]));
+}
+
+#[test]
+fn emacs_chord_empty_rejected() {
+    let err = closure_input::parse_emacs_chord("   ").unwrap_err();
+    let _ = err;
+}
+
+#[test]
 fn chord_trie_pending_lists_alternatives() {
     let mut t = closure_input::ChordTrie::build(&[("a b", "x"), ("a c", "y")]);
     let step = t.step("a");

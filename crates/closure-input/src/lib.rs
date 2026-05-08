@@ -176,6 +176,7 @@ impl ChordTrie {
 /// `<SPC>` into a [`KeyChord`] of its constituent strokes.
 ///
 /// Examples:
+///
 /// - `"<leader>ff"`     → `["<leader>", "f", "f"]`
 /// - `"<C-c><C-x>r"`    → `["<C-c>", "<C-x>", "r"]`
 /// - `"abc"`            → `["a", "b", "c"]`
@@ -208,4 +209,16 @@ pub fn parse_vim_chord(s: &str) -> Result<KeyChord, InputError> {
     }
     let refs: Vec<&str> = strokes.iter().map(String::as_str).collect();
     Ok(KeyChord::from_strokes(&refs))
+}
+
+/// Parse an Emacs-style chord like `C-c C-x r` (whitespace separated,
+/// no brackets). Returns a [`KeyChord`] where each stroke is one of
+/// `C-x`, `M-x`, `S-x`, or a bare key. Empty input is rejected.
+#[allow(clippy::missing_errors_doc)]
+pub fn parse_emacs_chord(s: &str) -> Result<KeyChord, InputError> {
+    let strokes: Vec<&str> = s.split_whitespace().collect();
+    if strokes.is_empty() {
+        return Err(InputError::BadChord(s.to_owned()));
+    }
+    Ok(KeyChord::from_strokes(&strokes))
 }
