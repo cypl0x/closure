@@ -318,6 +318,11 @@ enum Cmd {
         /// Path to a `*.org` file.
         file: PathBuf,
     },
+    /// Print every `|...|` table in a file with row/col counts.
+    Tables {
+        /// Path to a `*.org` file.
+        file: PathBuf,
+    },
     /// Toggle the checkbox on the Nth preamble list item.
     ToggleCheckbox {
         /// Path to a `*.org` file.
@@ -445,6 +450,7 @@ fn run(cmd: &Cmd) -> Result<(), String> {
         Cmd::Comment { file, id } => cmd_comment(file, id),
         Cmd::ToggleCheckbox { file, index } => cmd_toggle_checkbox(file, *index),
         Cmd::Drawers { file } => cmd_drawers(file),
+        Cmd::Tables { file } => cmd_tables(file),
         Cmd::SetProperty {
             file,
             id,
@@ -469,6 +475,23 @@ fn cmd_archive(path: &Path, id: &str) -> Result<(), String> {
     let cmd = ToggleArchive::new(BlockId::from_existing(id));
     Command::apply(&cmd, &mut doc).map_err(|e| format!("{e}"))?;
     fs::write(path, doc.source()).map_err(|e| format!("write: {e}"))?;
+    Ok(())
+}
+
+fn cmd_tables(path: &Path) -> Result<(), String> {
+    let src = fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))?;
+    let doc = closure_org::parse(&src).map_err(|e| format!("{e}"))?;
+    for (i, t) in doc.tables().iter().enumerate() {
+        let cols = t.rows.iter().map(|r| r.cells.len()).max().unwrap_or(0);
+        println!("table #{i}: {} rows, {} cols", t.rows.len(), cols);
+        for r in &t.rows {
+            if r.is_separator {
+                println!("  |---|");
+            } else {
+                println!("  | {} |", r.cells.join(" | "));
+            }
+        }
+    }
     Ok(())
 }
 
