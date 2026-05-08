@@ -760,6 +760,50 @@ pub enum CookieView {
     Percent(u32),
 }
 
+/// Org-mode macro invocation `{{{name(arg1,arg2)}}}`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MacroView<'a> {
+    /// Macro name.
+    pub name: &'a str,
+    /// Comma-separated argument list (empty when invoked without parens).
+    pub args: Vec<&'a str>,
+}
+
+/// Scan `text` for `{{{name(args)}}}` macro invocations in source order.
+/// Macros without arguments (`{{{name}}}`) yield an empty `args` vec.
+#[must_use]
+pub fn find_macros(text: &str) -> Vec<MacroView<'_>> {
+    let mut out: Vec<MacroView<'_>> = Vec::new();
+    let mut i = 0usize;
+    while let Some(start) = text[i..].find("{{{") {
+        let abs_start = i + start + 3;
+        let Some(end_rel) = text[abs_start..].find("}}}") else {
+            break;
+        };
+        let body = &text[abs_start..abs_start + end_rel];
+        if let Some(open) = body.find('(')
+            && let Some(close) = body.rfind(')')
+            && close > open
+        {
+            let name = &body[..open];
+            let args_raw = &body[open + 1..close];
+            let args: Vec<&str> = if args_raw.is_empty() {
+                Vec::new()
+            } else {
+                args_raw.split(',').map(str::trim).collect()
+            };
+            out.push(MacroView { name, args });
+        } else if !body.is_empty() && !body.contains(char::is_whitespace) {
+            out.push(MacroView {
+                name: body,
+                args: Vec::new(),
+            });
+        }
+        i = abs_start + end_rel + 3;
+    }
+    out
+}
+
 /// Inline footnote occurrence.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct FootnoteView<'a> {

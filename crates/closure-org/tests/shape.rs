@@ -602,6 +602,28 @@ fn set_planning_clear_removes_line() {
 }
 
 #[test]
+fn macro_simple_invocation() {
+    let m = closure_org::find_macros("Hello {{{name}}}!");
+    assert_eq!(m.len(), 1);
+    assert_eq!(m[0].name, "name");
+    assert!(m[0].args.is_empty());
+}
+
+#[test]
+fn macro_with_arguments() {
+    let m = closure_org::find_macros("{{{greet(world,42)}}}");
+    assert_eq!(m.len(), 1);
+    assert_eq!(m[0].name, "greet");
+    assert_eq!(m[0].args, vec!["world", "42"]);
+}
+
+#[test]
+fn macro_unclosed_ignored() {
+    let m = closure_org::find_macros("nothing here {{{ open");
+    assert!(m.is_empty());
+}
+
+#[test]
 fn footnote_ref_detected() {
     let f = closure_org::find_footnotes("See [fn:1] for details.");
     assert_eq!(f.len(), 1);
