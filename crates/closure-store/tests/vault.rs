@@ -75,6 +75,14 @@ fn vault_block_id_index_across_files() {
 }
 
 #[test]
+fn vault_find_by_title_case_insensitive() {
+    let td = write_vault(&[("a.org", "* Other\n* Target Headline\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    let hit = v.find_by_title("target headline").expect("found");
+    assert_eq!(hit.0.title(), "Target Headline");
+}
+
+#[test]
 fn vault_link_graph_maps_id_targets() {
     let td = write_vault(&[
         (

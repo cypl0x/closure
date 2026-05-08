@@ -260,6 +260,20 @@ impl Vault {
         self.documents.get(path)
     }
 
+    /// First headline whose title equals `needle` (case-insensitive).
+    /// Returns the matching headline and its containing file path.
+    #[must_use]
+    pub fn find_by_title(&self, needle: &str) -> Option<(&closure_core::DocHeadline, &Path)> {
+        for (path, doc) in self.iter() {
+            for h in doc.all_headlines() {
+                if h.title().eq_ignore_ascii_case(needle) {
+                    return Some((h, path));
+                }
+            }
+        }
+        None
+    }
+
     /// Lookup a headline and its owning file by block id.
     #[must_use]
     pub fn find_by_id(&self, id: &BlockId) -> Option<(&closure_core::DocHeadline, &Path)> {
