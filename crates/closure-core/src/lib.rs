@@ -17,7 +17,8 @@ use closure_org::{
     rewrite_headline_ensure_id, rewrite_headline_promote, rewrite_headline_set_body,
     rewrite_headline_set_planning, rewrite_headline_set_priority, rewrite_headline_set_property,
     rewrite_headline_set_tags, rewrite_headline_set_todo, rewrite_headline_title,
-    rewrite_headline_toggle_archive, rewrite_remove_subtree, rewrite_splice_subtree_after,
+    rewrite_headline_toggle_archive, rewrite_headline_toggle_comment, rewrite_remove_subtree,
+    rewrite_splice_subtree_after,
 };
 use closure_undo::{NodeId as UndoNodeId, UndoTree};
 use thiserror::Error;
@@ -90,6 +91,7 @@ pub struct DocHeadline {
     deadline: Option<String>,
     closed: Option<String>,
     properties: Vec<(String, String)>,
+    is_comment: bool,
 }
 
 impl DocHeadline {
@@ -181,6 +183,12 @@ impl DocHeadline {
             .iter()
             .find(|(k, _)| k == key)
             .map(|(_, v)| v.as_str())
+    }
+
+    /// True iff the headline carries the `COMMENT` keyword prefix.
+    #[must_use]
+    pub const fn is_comment(&self) -> bool {
+        self.is_comment
     }
 }
 
@@ -360,6 +368,7 @@ fn make_doc_headline(h: &Headline, path: &[usize], id: BlockId) -> DocHeadline {
         deadline: planning.and_then(|p| p.deadline).map(str::to_owned),
         closed: planning.and_then(|p| p.closed).map(str::to_owned),
         properties,
+        is_comment: h.is_comment(),
     }
 }
 
@@ -536,6 +545,11 @@ pub enum Edit {
         /// Block whose archive tag flipped.
         id: BlockId,
     },
+    /// Toggle the `COMMENT` keyword prefix. Reversible by re-applying.
+    ToggleComment {
+        /// Block whose comment state flipped.
+        id: BlockId,
+    },
     /// Set a `:KEY: value` entry in the properties drawer.
     SetProperty {
         /// Block whose property drawer changed.
@@ -658,6 +672,14 @@ impl Edit {
             Self::ToggleArchive { id } => {
                 let path = doc.path_of(id).ok_or(CommandError::BlockNotFound)?;
                 let org = rewrite_headline_toggle_archive(doc.org(), &path)
+                    .map_err(|_| CommandError::Rewrite)?;
+                doc.org = org;
+                doc.rebuild_index();
+                Ok(())
+            }
+            Self::ToggleComment { id } => {
+                let path = doc.path_of(id).ok_or(CommandError::BlockNotFound)?;
+                let org = rewrite_headline_toggle_comment(doc.org(), &path)
                     .map_err(|_| CommandError::Rewrite)?;
                 doc.org = org;
                 doc.rebuild_index();
@@ -802,6 +824,14 @@ impl Edit {
                 doc.rebuild_index();
                 Ok(())
             }
+            Self::ToggleComment { id } => {
+                let path = doc.path_of(id).ok_or(CommandError::BlockNotFound)?;
+                let org = rewrite_headline_toggle_comment(doc.org(), &path)
+                    .map_err(|_| CommandError::Rewrite)?;
+                doc.org = org;
+                doc.rebuild_index();
+                Ok(())
+            }
             Self::SetProperty { id, key, new, .. } => {
                 let path = doc.path_of(id).ok_or(CommandError::BlockNotFound)?;
                 let org = rewrite_headline_set_property(doc.org(), &path, key, new)
@@ -911,6 +941,7 @@ pub fn default_registry() -> Registry {
     r.register(Box::new(SetBody::new_placeholder()));
     r.register(Box::new(SetPlanning::new_placeholder()));
     r.register(Box::new(ToggleArchive::new_placeholder()));
+    r.register(Box::new(ToggleComment::new_placeholder()));
     r.register(Box::new(SetProperty::new_placeholder()));
     r.register(Box::new(Promote::new_placeholder()));
     r.register(Box::new(Demote::new_placeholder()));
@@ -1517,6 +1548,58 @@ fn navigate_in<'a>(org: &'a OrgDoc, path: &[usize]) -> Option<&'a Headline> {
         cur = cur.children().get(i)?;
     }
     Some(cur)
+}
+
+/// Command: flip the `COMMENT` keyword prefix on a headline.
+pub struct ToggleComment {
+    id: BlockId,
+    keys: Vec<KeyChord>,
+}
+
+impl ToggleComment {
+    /// Toggle COMMENT on `id`.
+    #[must_use]
+    pub fn new(id: BlockId) -> Self {
+        Self {
+            id,
+            keys: vec![KeyChord::from_strokes(&["C-c", "C-x", ";"])],
+        }
+    }
+
+    /// Placeholder for registry.
+    #[must_use]
+    pub fn new_placeholder() -> Self {
+        Self {
+            id: BlockId::from_existing(""),
+            keys: vec![KeyChord::from_strokes(&["C-c", "C-x", ";"])],
+        }
+    }
+}
+
+impl Command for ToggleComment {
+    #[allow(clippy::unnecessary_literal_bound)]
+    fn name(&self) -> &str {
+        "toggle-comment"
+    }
+
+    fn keys(&self) -> &[KeyChord] {
+        &self.keys
+    }
+
+    fn apply(&self, doc: &mut Document) -> Result<Edit, CommandError> {
+        let path = doc.path_of(&self.id).ok_or(CommandError::BlockNotFound)?;
+        let with_id = rewrite_headline_ensure_id(doc.org(), &path, self.id.as_str())
+            .map_err(|_| CommandError::Rewrite)?;
+        let org =
+            rewrite_headline_toggle_comment(&with_id, &path).map_err(|_| CommandError::Rewrite)?;
+        doc.org = org;
+        doc.rebuild_index();
+        let edit = Edit::ToggleComment {
+            id: self.id.clone(),
+        };
+        doc.push_history(edit.clone());
+        Ok(edit)
+    }
 }
 
 /// Command: flip the `ARCHIVE` tag on a headline.

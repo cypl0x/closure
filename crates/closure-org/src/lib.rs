@@ -292,6 +292,29 @@ pub fn rewrite_headline_set_tags(
     parse(&src).map_err(|_| RewriteError::Parse)
 }
 
+/// Toggle the `COMMENT` keyword on a headline. The keyword is a prefix
+/// to the title (`* COMMENT Foo`) that excludes the headline from
+/// agenda views, exports, and code-block evaluation in Emacs Org.
+pub fn rewrite_headline_toggle_comment(
+    doc: &OrgDoc,
+    path: &[usize],
+) -> Result<OrgDoc, RewriteError> {
+    let target = navigate_headline(doc, path).ok_or(RewriteError::NotFound)?;
+    let title = &doc.source()[target.title_span.start..target.title_span.end];
+    let new_title = if title == "COMMENT" || title.starts_with("COMMENT ") {
+        title
+            .strip_prefix("COMMENT")
+            .unwrap_or(title)
+            .trim_start()
+            .to_owned()
+    } else if title.is_empty() {
+        "COMMENT".to_owned()
+    } else {
+        format!("COMMENT {title}")
+    };
+    rewrite_headline_title(doc, path, &new_title)
+}
+
 /// Toggle the `ARCHIVE` tag on a headline. Adds it when absent,
 /// removes it when present. Other tags are preserved in source order.
 pub fn rewrite_headline_toggle_archive(
@@ -1318,6 +1341,15 @@ impl Headline {
     #[must_use]
     pub const fn properties(&self) -> Option<&Properties> {
         self.properties.as_ref()
+    }
+
+    /// True iff this headline starts with the `COMMENT` keyword
+    /// (`* COMMENT Foo` form). Comment headlines are excluded from
+    /// agenda views and code-block evaluation in Emacs Org.
+    #[must_use]
+    pub fn is_comment(&self) -> bool {
+        let t = self.title();
+        t == "COMMENT" || t.starts_with("COMMENT ")
     }
 
     /// Parse the planning line (`SCHEDULED:` / `DEADLINE:` / `CLOSED:`)

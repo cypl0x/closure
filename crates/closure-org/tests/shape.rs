@@ -602,6 +602,26 @@ fn set_planning_clear_removes_line() {
 }
 
 #[test]
+fn toggle_comment_adds_prefix() {
+    let src = "* Task\n";
+    let doc = parse(src).expect("parse");
+    let new = closure_org::rewrite_headline_toggle_comment(&doc, &[0]).expect("toggle");
+    let h = &new.roots()[0];
+    assert!(h.is_comment());
+    assert_eq!(h.title(), "COMMENT Task");
+}
+
+#[test]
+fn toggle_comment_removes_prefix() {
+    let src = "* COMMENT Task\n";
+    let doc = parse(src).expect("parse");
+    let new = closure_org::rewrite_headline_toggle_comment(&doc, &[0]).expect("toggle");
+    let h = &new.roots()[0];
+    assert!(!h.is_comment());
+    assert_eq!(h.title(), "Task");
+}
+
+#[test]
 fn set_property_adds_to_existing_drawer() {
     let src = "* Task\n:PROPERTIES:\n:ID: x\n:END:\n";
     let doc = parse(src).expect("parse");

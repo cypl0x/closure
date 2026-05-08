@@ -20,7 +20,7 @@ use closure_config::InputMode;
 use closure_core::{
     AddSibling, BlockId, Command, Demote, Document, EnsureId, MoveSubtree, Promote, Registry,
     RemoveSubtree, RenameHeadline, SetBody, SetPlanning, SetPriority, SetProperty, SetTags,
-    SetTodo, ToggleArchive,
+    SetTodo, ToggleArchive, ToggleComment,
 };
 use closure_eval::{Backend, ShellBackend, backend_for};
 use closure_input::Dispatcher;
@@ -313,6 +313,13 @@ enum Cmd {
         /// Block id of the target headline.
         id: String,
     },
+    /// Toggle the `COMMENT` keyword prefix on a headline.
+    Comment {
+        /// Path to a `*.org` file.
+        file: PathBuf,
+        /// Block id of the target headline.
+        id: String,
+    },
     /// Set a `:KEY: value` property on a headline.
     SetProperty {
         /// Path to a `*.org` file.
@@ -423,6 +430,7 @@ fn run(cmd: &Cmd) -> Result<(), String> {
         Cmd::Meta { file } => cmd_meta(file),
         Cmd::Wc { file } => cmd_wc(file),
         Cmd::Archive { file, id } => cmd_archive(file, id),
+        Cmd::Comment { file, id } => cmd_comment(file, id),
         Cmd::SetProperty {
             file,
             id,
@@ -445,6 +453,15 @@ fn cmd_archive(path: &Path, id: &str) -> Result<(), String> {
     let src = fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))?;
     let mut doc = Document::load_str(&src).map_err(|e| format!("{e}"))?;
     let cmd = ToggleArchive::new(BlockId::from_existing(id));
+    Command::apply(&cmd, &mut doc).map_err(|e| format!("{e}"))?;
+    fs::write(path, doc.source()).map_err(|e| format!("write: {e}"))?;
+    Ok(())
+}
+
+fn cmd_comment(path: &Path, id: &str) -> Result<(), String> {
+    let src = fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))?;
+    let mut doc = Document::load_str(&src).map_err(|e| format!("{e}"))?;
+    let cmd = ToggleComment::new(BlockId::from_existing(id));
     Command::apply(&cmd, &mut doc).map_err(|e| format!("{e}"))?;
     fs::write(path, doc.source()).map_err(|e| format!("write: {e}"))?;
     Ok(())
@@ -522,7 +539,7 @@ fn cmd_agenda(vault: &Path) -> Result<(), String> {
     let mut items: Vec<(char, String, String, String, String)> = Vec::new();
     for (path, doc) in v.iter() {
         for h in doc.all_headlines() {
-            if h.tags().iter().any(|t| t == "ARCHIVE") {
+            if h.tags().iter().any(|t| t == "ARCHIVE") || h.is_comment() {
                 continue;
             }
             if h.todo().is_some() {
