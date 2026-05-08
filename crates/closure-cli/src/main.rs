@@ -368,6 +368,14 @@ enum Cmd {
         /// Path to the vault directory.
         vault: PathBuf,
     },
+    /// Print a deterministic "random" headline picked from the vault.
+    /// Useful for daily-review prompts (`#+BEGIN: dynamic block` style).
+    Random {
+        /// Path to the vault directory.
+        vault: PathBuf,
+        /// Seed (e.g. today's date as `YYYY-MM-DD`); same seed = same pick.
+        seed: String,
+    },
     /// Toggle the checkbox on the Nth preamble list item.
     ToggleCheckbox {
         /// Path to a `*.org` file.
@@ -505,6 +513,7 @@ fn run(cmd: &Cmd) -> Result<(), String> {
         Cmd::Paths { vault } => cmd_paths(vault),
         Cmd::Hash { file } => cmd_hash(file),
         Cmd::Graph { vault } => cmd_graph(vault),
+        Cmd::Random { vault, seed } => cmd_random(vault, seed),
         Cmd::SetProperty {
             file,
             id,
@@ -549,6 +558,26 @@ fn cmd_cookies(path: &Path) -> Result<(), String> {
             closure_org::CookieView::Percent(n) => println!("[{n}%]"),
         }
     }
+    Ok(())
+}
+
+fn cmd_random(vault: &Path, seed: &str) -> Result<(), String> {
+    let v = Vault::open(vault).map_err(|e| format!("{e}"))?;
+    const OFFSET: u64 = 0xcbf2_9ce4_8422_2325;
+    const PRIME: u64 = 0x0000_0100_0000_01b3;
+    let mut h = OFFSET;
+    for b in seed.as_bytes() {
+        h ^= u64::from(*b);
+        h = h.wrapping_mul(PRIME);
+    }
+    let all: Vec<_> = v.iter().flat_map(|(_, d)| d.all_headlines()).collect();
+    if all.is_empty() {
+        return Err("vault has no headlines".into());
+    }
+    #[allow(clippy::cast_possible_truncation)]
+    let idx = (h as usize) % all.len();
+    let pick = all[idx];
+    println!("{}\t{}", pick.id(), pick.title());
     Ok(())
 }
 
