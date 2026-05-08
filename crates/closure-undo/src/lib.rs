@@ -188,7 +188,7 @@ impl<T> UndoTree<T> {
             .collect()
     }
 
-    /// Path of NodeIds from the root to `id`.
+    /// Path of [`NodeId`]s from the root to `id`.
     #[must_use]
     pub fn path_to(&self, id: NodeId) -> Vec<NodeId> {
         let mut out: Vec<NodeId> = Vec::new();
