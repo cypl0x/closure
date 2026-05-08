@@ -188,6 +188,13 @@ impl<T> UndoTree<T> {
             .collect()
     }
 
+    /// Drop every node and reset the cursor. After `clear`, the tree
+    /// is indistinguishable from a fresh `UndoTree::new`.
+    pub fn clear(&mut self) {
+        self.nodes.clear();
+        self.current = None;
+    }
+
     /// Path of [`NodeId`]s from the root to `id`.
     #[must_use]
     pub fn path_to(&self, id: NodeId) -> Vec<NodeId> {

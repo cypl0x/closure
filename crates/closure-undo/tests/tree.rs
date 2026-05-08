@@ -82,6 +82,16 @@ fn redo_missing_branch_is_error() {
 }
 
 #[test]
+fn clear_resets_tree() {
+    let mut t: UndoTree<i32> = UndoTree::new();
+    t.apply(1);
+    t.apply(2);
+    t.clear();
+    assert!(t.is_empty());
+    assert!(t.current().is_none());
+}
+
+#[test]
 fn depth_zero_for_root() {
     let mut t: UndoTree<i32> = UndoTree::new();
     let a = t.apply(1);
