@@ -353,6 +353,11 @@ enum Cmd {
         /// Path to a `*.org` file.
         file: PathBuf,
     },
+    /// Print code-block header args for every `#+BEGIN_SRC` block.
+    BlockArgs {
+        /// Path to a `*.org` file.
+        file: PathBuf,
+    },
     /// Print every `*.org` file path in a vault, sorted.
     Paths {
         /// Path to the vault directory.
@@ -510,6 +515,7 @@ fn run(cmd: &Cmd) -> Result<(), String> {
         Cmd::Cookies { file } => cmd_cookies(file),
         Cmd::Macros { file } => cmd_macros(file),
         Cmd::Ids { file } => cmd_ids(file),
+        Cmd::BlockArgs { file } => cmd_block_args(file),
         Cmd::Paths { vault } => cmd_paths(vault),
         Cmd::Hash { file } => cmd_hash(file),
         Cmd::Graph { vault } => cmd_graph(vault),
@@ -618,6 +624,26 @@ fn cmd_paths(vault: &Path) -> Result<(), String> {
     let v = Vault::open(vault).map_err(|e| format!("{e}"))?;
     for p in v.paths() {
         println!("{}", p.display());
+    }
+    Ok(())
+}
+
+fn cmd_block_args(path: &Path) -> Result<(), String> {
+    let src = fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))?;
+    let doc = closure_org::parse(&src).map_err(|e| format!("{e}"))?;
+    let mut idx = 0usize;
+    for n in doc.preamble() {
+        if n.kind() == closure_org::NodeKind::CodeBlock
+            && let Some(cb) = n.as_code_block()
+        {
+            let lang = cb.language.unwrap_or("?");
+            let args_str = cb.args.unwrap_or("");
+            println!("block #{idx} lang={lang}");
+            for (k, v) in closure_org::parse_block_args(args_str) {
+                println!("  {k} {v}");
+            }
+            idx += 1;
+        }
     }
     Ok(())
 }
