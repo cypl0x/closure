@@ -916,6 +916,7 @@ fn cmd_stats(vault: &Path) -> Result<(), String> {
     }
     println!("files:     {}", v.len());
     println!("headlines: {total}");
+    println!("words:     {}", v.word_count());
     println!("by level:");
     for (lvl, n) in &by_level {
         println!("  L{lvl}: {n}");
