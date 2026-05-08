@@ -96,6 +96,74 @@ impl Provider for CurlProvider {
     }
 }
 
+/// Configure a [`CurlProvider`] for an Anthropic `messages` endpoint.
+///
+/// `api_key` becomes the `x-api-key` header. The default body uses
+/// model `claude-sonnet-4-6` and a 1024-token max — callers needing a
+/// different model swap `provider.body` after construction. Extractor
+/// returns the response verbatim until a real JSON parser lands.
+#[must_use]
+pub fn anthropic(api_key: &str, _model: &str) -> CurlProvider {
+    CurlProvider {
+        url: "https://api.anthropic.com/v1/messages".into(),
+        headers: vec![
+            "content-type: application/json".into(),
+            "anthropic-version: 2023-06-01".into(),
+            format!("x-api-key: {api_key}"),
+        ],
+        body: anthropic_body,
+        extract: |s| Ok(s.to_owned()),
+    }
+}
+
+/// Configure a [`CurlProvider`] for an OpenAI-compatible
+/// `/v1/chat/completions` endpoint. Default model is `gpt-4o`.
+#[must_use]
+pub fn openai(api_key: &str, _model: &str) -> CurlProvider {
+    CurlProvider {
+        url: "https://api.openai.com/v1/chat/completions".into(),
+        headers: vec![
+            "content-type: application/json".into(),
+            format!("authorization: Bearer {api_key}"),
+        ],
+        body: openai_body,
+        extract: |s| Ok(s.to_owned()),
+    }
+}
+
+/// Configure a [`CurlProvider`] for a local Ollama server (no auth).
+/// Default model is `llama3`.
+#[must_use]
+pub fn ollama(host: &str, _model: &str) -> CurlProvider {
+    CurlProvider {
+        url: format!("{host}/api/generate"),
+        headers: vec!["content-type: application/json".into()],
+        body: ollama_body,
+        extract: |s| Ok(s.to_owned()),
+    }
+}
+
+fn anthropic_body(p: &str) -> String {
+    format!(
+        "{{\"model\":\"claude-sonnet-4-6\",\"max_tokens\":1024,\"messages\":[{{\"role\":\"user\",\"content\":{prompt}}}]}}",
+        prompt = json_string(p),
+    )
+}
+
+fn openai_body(p: &str) -> String {
+    format!(
+        "{{\"model\":\"gpt-4o\",\"messages\":[{{\"role\":\"user\",\"content\":{prompt}}}]}}",
+        prompt = json_string(p),
+    )
+}
+
+fn ollama_body(p: &str) -> String {
+    format!(
+        "{{\"model\":\"llama3\",\"prompt\":{prompt},\"stream\":false}}",
+        prompt = json_string(p),
+    )
+}
+
 /// Tiny JSON string escape — handles `\\`, `\"`, control chars; not
 /// general-purpose JSON, just enough for `prompt` payloads.
 #[must_use]
