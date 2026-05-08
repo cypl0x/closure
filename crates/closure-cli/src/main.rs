@@ -240,6 +240,15 @@ enum Cmd {
     Spec,
     /// Print a sample `#+BEGIN_SRC closure-config` block.
     DefaultConfig,
+    /// Create a new `*.org` file under a vault with one headline.
+    New {
+        /// Path to the vault directory.
+        vault: PathBuf,
+        /// Relative path of the new file (e.g. `notes/today.org`).
+        path: PathBuf,
+        /// Title of the initial headline.
+        title: String,
+    },
 }
 
 fn main() -> ExitCode {
@@ -299,7 +308,17 @@ fn run(cmd: &Cmd) -> Result<(), String> {
         Cmd::Config { path } => cmd_config(path),
         Cmd::Spec => cmd_spec(),
         Cmd::DefaultConfig => cmd_default_config(),
+        Cmd::New { vault, path, title } => cmd_new(vault, path, title),
     }
+}
+
+fn cmd_new(vault: &Path, path: &Path, title: &str) -> Result<(), String> {
+    let mut v = Vault::open(vault).map_err(|e| format!("{e}"))?;
+    let id = BlockId::fresh();
+    let source = format!("* {title}\n:PROPERTIES:\n:ID: {id}\n:END:\n");
+    let abs = v.create_file(path, &source).map_err(|e| format!("{e}"))?;
+    println!("{} ({})", abs.display(), id);
+    Ok(())
 }
 
 #[allow(clippy::unnecessary_wraps)]
