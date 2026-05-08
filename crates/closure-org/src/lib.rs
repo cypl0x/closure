@@ -292,6 +292,23 @@ pub fn rewrite_headline_set_tags(
     parse(&src).map_err(|_| RewriteError::Parse)
 }
 
+/// Toggle the `ARCHIVE` tag on a headline. Adds it when absent,
+/// removes it when present. Other tags are preserved in source order.
+pub fn rewrite_headline_toggle_archive(
+    doc: &OrgDoc,
+    path: &[usize],
+) -> Result<OrgDoc, RewriteError> {
+    let target = navigate_headline(doc, path).ok_or(RewriteError::NotFound)?;
+    let mut tags: Vec<String> = target.tags().into_iter().map(str::to_owned).collect();
+    if let Some(pos) = tags.iter().position(|t| t == "ARCHIVE") {
+        tags.remove(pos);
+    } else {
+        tags.push("ARCHIVE".to_owned());
+    }
+    let refs: Vec<&str> = tags.iter().map(String::as_str).collect();
+    rewrite_headline_set_tags(doc, path, &refs)
+}
+
 /// Insert a new sibling headline immediately after the subtree
 /// rooted at `path`, with the same level.
 pub fn rewrite_add_sibling_after(
@@ -827,9 +844,9 @@ pub fn find_footnotes(text: &str) -> Vec<FootnoteView<'_>> {
             && let Some(end) = rest.find(']')
         {
             let inner = &rest[4..end];
-            let (name, def) = inner.split_once(':').map_or((inner, None), |(n, d)| {
-                (n, Some(d.trim_start_matches(' ')))
-            });
+            let (name, def) = inner
+                .split_once(':')
+                .map_or((inner, None), |(n, d)| (n, Some(d.trim_start_matches(' '))));
             if !name.is_empty() {
                 out.push(FootnoteView {
                     name,

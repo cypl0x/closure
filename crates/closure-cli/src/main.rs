@@ -20,6 +20,7 @@ use closure_config::InputMode;
 use closure_core::{
     AddSibling, BlockId, Command, Demote, Document, EnsureId, MoveSubtree, Promote, Registry,
     RemoveSubtree, RenameHeadline, SetBody, SetPlanning, SetPriority, SetTags, SetTodo,
+    ToggleArchive,
 };
 use closure_eval::{Backend, ShellBackend, backend_for};
 use closure_input::Dispatcher;
@@ -305,6 +306,13 @@ enum Cmd {
         /// Path to a `*.org` file.
         file: PathBuf,
     },
+    /// Toggle the `:ARCHIVE:` tag on a headline.
+    Archive {
+        /// Path to a `*.org` file.
+        file: PathBuf,
+        /// Block id of the target headline.
+        id: String,
+    },
     /// Print document-level keywords (TITLE/AUTHOR/DATE/FILETAGS).
     Meta {
         /// Path to a `*.org` file.
@@ -403,7 +411,17 @@ fn run(cmd: &Cmd) -> Result<(), String> {
         } => cmd_set_planning(file, id, scheduled, deadline, closed),
         Cmd::Meta { file } => cmd_meta(file),
         Cmd::Wc { file } => cmd_wc(file),
+        Cmd::Archive { file, id } => cmd_archive(file, id),
     }
+}
+
+fn cmd_archive(path: &Path, id: &str) -> Result<(), String> {
+    let src = fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))?;
+    let mut doc = Document::load_str(&src).map_err(|e| format!("{e}"))?;
+    let cmd = ToggleArchive::new(BlockId::from_existing(id));
+    Command::apply(&cmd, &mut doc).map_err(|e| format!("{e}"))?;
+    fs::write(path, doc.source()).map_err(|e| format!("write: {e}"))?;
+    Ok(())
 }
 
 fn cmd_wc(path: &Path) -> Result<(), String> {

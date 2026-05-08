@@ -602,6 +602,26 @@ fn set_planning_clear_removes_line() {
 }
 
 #[test]
+fn toggle_archive_adds_tag() {
+    let src = "* TODO Old task :work:\n";
+    let doc = parse(src).expect("parse");
+    let new = closure_org::rewrite_headline_toggle_archive(&doc, &[0]).expect("toggle");
+    let h = &new.roots()[0];
+    assert!(h.tags().contains(&"ARCHIVE"));
+    assert!(h.tags().contains(&"work"));
+}
+
+#[test]
+fn toggle_archive_removes_tag_when_present() {
+    let src = "* TODO Old task :work:ARCHIVE:\n";
+    let doc = parse(src).expect("parse");
+    let new = closure_org::rewrite_headline_toggle_archive(&doc, &[0]).expect("toggle");
+    let h = &new.roots()[0];
+    assert!(!h.tags().contains(&"ARCHIVE"));
+    assert!(h.tags().contains(&"work"));
+}
+
+#[test]
 fn macro_simple_invocation() {
     let m = closure_org::find_macros("Hello {{{name}}}!");
     assert_eq!(m.len(), 1);

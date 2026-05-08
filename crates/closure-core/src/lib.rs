@@ -16,8 +16,8 @@ use closure_org::{
     Headline, OrgDoc, parse, rewrite_add_sibling_after_with_id, rewrite_headline_demote,
     rewrite_headline_ensure_id, rewrite_headline_promote, rewrite_headline_set_body,
     rewrite_headline_set_planning, rewrite_headline_set_priority, rewrite_headline_set_tags,
-    rewrite_headline_set_todo, rewrite_headline_title, rewrite_remove_subtree,
-    rewrite_splice_subtree_after,
+    rewrite_headline_set_todo, rewrite_headline_title, rewrite_headline_toggle_archive,
+    rewrite_remove_subtree, rewrite_splice_subtree_after,
 };
 use closure_undo::{NodeId as UndoNodeId, UndoTree};
 use thiserror::Error;
@@ -504,6 +504,12 @@ pub enum Edit {
         /// Predecessor headline id at the new location.
         new_after_id: BlockId,
     },
+    /// Toggle the `ARCHIVE` tag on a headline. Reversible by re-applying
+    /// the toggle.
+    ToggleArchive {
+        /// Block whose archive tag flipped.
+        id: BlockId,
+    },
     /// Idempotent edit (e.g. ensure-id) — undo / redo are no-ops at
     /// the kernel level.
     Noop,
@@ -608,6 +614,14 @@ impl Edit {
                     old.2.as_deref(),
                 )
                 .map_err(|_| CommandError::Rewrite)?;
+                doc.org = org;
+                doc.rebuild_index();
+                Ok(())
+            }
+            Self::ToggleArchive { id } => {
+                let path = doc.path_of(id).ok_or(CommandError::BlockNotFound)?;
+                let org = rewrite_headline_toggle_archive(doc.org(), &path)
+                    .map_err(|_| CommandError::Rewrite)?;
                 doc.org = org;
                 doc.rebuild_index();
                 Ok(())
@@ -731,6 +745,14 @@ impl Edit {
                 doc.rebuild_index();
                 Ok(())
             }
+            Self::ToggleArchive { id } => {
+                let path = doc.path_of(id).ok_or(CommandError::BlockNotFound)?;
+                let org = rewrite_headline_toggle_archive(doc.org(), &path)
+                    .map_err(|_| CommandError::Rewrite)?;
+                doc.org = org;
+                doc.rebuild_index();
+                Ok(())
+            }
             Self::MoveSubtree {
                 id,
                 subtree_source,
@@ -831,6 +853,7 @@ pub fn default_registry() -> Registry {
     r.register(Box::new(SetTags::new_placeholder()));
     r.register(Box::new(SetBody::new_placeholder()));
     r.register(Box::new(SetPlanning::new_placeholder()));
+    r.register(Box::new(ToggleArchive::new_placeholder()));
     r.register(Box::new(Promote::new_placeholder()));
     r.register(Box::new(Demote::new_placeholder()));
     r.register(Box::new(AddSibling::new_placeholder()));
@@ -1362,6 +1385,58 @@ impl Command for SetPlanning {
 
 /// Triple of optional `(scheduled, deadline, closed)` planning timestamps.
 type PlanningTriple = (Option<String>, Option<String>, Option<String>);
+
+/// Command: flip the `ARCHIVE` tag on a headline.
+pub struct ToggleArchive {
+    id: BlockId,
+    keys: Vec<KeyChord>,
+}
+
+impl ToggleArchive {
+    /// Toggle archive on `id`.
+    #[must_use]
+    pub fn new(id: BlockId) -> Self {
+        Self {
+            id,
+            keys: vec![KeyChord::from_strokes(&["C-c", "C-x", "a"])],
+        }
+    }
+
+    /// Placeholder for registry.
+    #[must_use]
+    pub fn new_placeholder() -> Self {
+        Self {
+            id: BlockId::from_existing(""),
+            keys: vec![KeyChord::from_strokes(&["C-c", "C-x", "a"])],
+        }
+    }
+}
+
+impl Command for ToggleArchive {
+    #[allow(clippy::unnecessary_literal_bound)]
+    fn name(&self) -> &str {
+        "toggle-archive"
+    }
+
+    fn keys(&self) -> &[KeyChord] {
+        &self.keys
+    }
+
+    fn apply(&self, doc: &mut Document) -> Result<Edit, CommandError> {
+        let path = doc.path_of(&self.id).ok_or(CommandError::BlockNotFound)?;
+        let with_id = rewrite_headline_ensure_id(doc.org(), &path, self.id.as_str())
+            .map_err(|_| CommandError::Rewrite)?;
+        let org =
+            rewrite_headline_toggle_archive(&with_id, &path).map_err(|_| CommandError::Rewrite)?;
+        doc.org = org;
+        doc.rebuild_index();
+        let edit = Edit::ToggleArchive {
+            id: self.id.clone(),
+        };
+        doc.push_history(edit.clone());
+        Ok(edit)
+    }
+}
 
 fn current_planning(org: &OrgDoc, path: &[usize]) -> Result<PlanningTriple, CommandError> {
     let mut current = org
