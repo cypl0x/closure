@@ -243,6 +243,7 @@ dependencies = [
  "closure-core",
  "closure-eval",
  "closure-input",
+ "closure-llm",
  "closure-org",
  "closure-query",
  "closure-shell-web",

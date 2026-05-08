@@ -249,6 +249,15 @@ enum Cmd {
         /// Title of the initial headline.
         title: String,
     },
+    /// Send a prompt to an Anthropic-compatible endpoint.
+    /// Reads `ANTHROPIC_API_KEY` from the environment.
+    Ask {
+        /// Prompt text to send.
+        prompt: String,
+        /// Model id (defaults to `claude-sonnet-4-6`).
+        #[arg(long, default_value = "claude-sonnet-4-6")]
+        model: String,
+    },
 }
 
 fn main() -> ExitCode {
@@ -309,7 +318,18 @@ fn run(cmd: &Cmd) -> Result<(), String> {
         Cmd::Spec => cmd_spec(),
         Cmd::DefaultConfig => cmd_default_config(),
         Cmd::New { vault, path, title } => cmd_new(vault, path, title),
+        Cmd::Ask { prompt, model } => cmd_ask(prompt, model),
     }
+}
+
+fn cmd_ask(prompt: &str, model: &str) -> Result<(), String> {
+    use closure_llm::Provider;
+    let key =
+        std::env::var("ANTHROPIC_API_KEY").map_err(|_| "ANTHROPIC_API_KEY not set".to_owned())?;
+    let provider = closure_llm::anthropic(&key, model);
+    let response = provider.complete(prompt).map_err(|e| format!("{e}"))?;
+    println!("{response}");
+    Ok(())
 }
 
 fn cmd_new(vault: &Path, path: &Path, title: &str) -> Result<(), String> {
