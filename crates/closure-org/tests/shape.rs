@@ -602,6 +602,26 @@ fn set_planning_clear_removes_line() {
 }
 
 #[test]
+fn tables_group_consecutive_rows() {
+    let src = "| a | b |\n|---|---|\n| 1 | 2 |\n| 3 | 4 |\n";
+    let doc = parse(src).expect("parse");
+    let tables = doc.tables();
+    assert_eq!(tables.len(), 1);
+    assert_eq!(tables[0].rows.len(), 4);
+    assert!(!tables[0].rows[0].is_separator);
+    assert!(tables[0].rows[1].is_separator);
+    assert_eq!(tables[0].rows[0].cells, vec!["a", "b"]);
+    assert_eq!(tables[0].rows[2].cells, vec!["1", "2"]);
+}
+
+#[test]
+fn tables_blank_line_breaks_table() {
+    let src = "| a |\n\n| b |\n";
+    let doc = parse(src).expect("parse");
+    assert_eq!(doc.tables().len(), 2);
+}
+
+#[test]
 fn find_drawers_logbook_in_text() {
     let text = ":LOGBOOK:\n- State \"DONE\" from \"TODO\" [2026-04-25]\n:END:\n";
     let d = closure_org::find_drawers(text);

@@ -101,6 +101,42 @@ impl OrgDoc {
         })
     }
 
+    /// Group consecutive table rows in the preamble into [`TableView`]s.
+    /// A blank line, headline, or any non-table node breaks the group.
+    #[must_use]
+    pub fn tables(&self) -> Vec<TableView<'_>> {
+        let mut out: Vec<TableView<'_>> = Vec::new();
+        let mut current: Vec<TableRowView<'_>> = Vec::new();
+        for n in &self.preamble {
+            if n.kind == NodeKind::TableRow {
+                let line = &self.source[n.span.start..n.span.end];
+                let trimmed = line.strip_suffix('\n').unwrap_or(line);
+                let is_separator = trimmed.starts_with("|-") || trimmed.starts_with("| -");
+                let cells: Vec<&str> = if is_separator {
+                    Vec::new()
+                } else {
+                    let inner = trimmed
+                        .strip_prefix('|')
+                        .and_then(|s| s.strip_suffix('|'))
+                        .unwrap_or(trimmed);
+                    inner.split('|').map(str::trim).collect()
+                };
+                current.push(TableRowView {
+                    is_separator,
+                    cells,
+                });
+            } else if !current.is_empty() {
+                out.push(TableView {
+                    rows: std::mem::take(&mut current),
+                });
+            }
+        }
+        if !current.is_empty() {
+            out.push(TableView { rows: current });
+        }
+        out
+    }
+
     /// All `#+KEY: value` keyword lines in the preamble in source order.
     /// Both key and value are returned trimmed of surrounding whitespace.
     #[must_use]
@@ -881,6 +917,23 @@ pub enum CookieView {
     },
     /// `[N%]` percentage.
     Percent(u32),
+}
+
+/// Group of consecutive `|...|` table rows.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TableView<'a> {
+    /// Rows in source order, including separator rows.
+    pub rows: Vec<TableRowView<'a>>,
+}
+
+/// One row in a [`TableView`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TableRowView<'a> {
+    /// Whether this row is a `|---|---|` separator. Separators have an
+    /// empty `cells` vec.
+    pub is_separator: bool,
+    /// Cell texts (trimmed of leading/trailing whitespace).
+    pub cells: Vec<&'a str>,
 }
 
 /// Generic Org drawer (`:NAME:` ... `:END:`).
