@@ -285,6 +285,14 @@ impl Document {
         closure_org::print(&self.org)
     }
 
+    /// Stable 64-bit FNV-1a hash of the document source. Useful as a
+    /// cache key (e.g. memoised query results, evaluator outputs) that
+    /// survives reparses but invalidates on any edit.
+    #[must_use]
+    pub fn source_hash(&self) -> u64 {
+        self.org.source_hash()
+    }
+
     /// Top-level headlines in the document (flat slice of the tree).
     #[must_use]
     pub fn roots(&self) -> Vec<&DocHeadline> {
