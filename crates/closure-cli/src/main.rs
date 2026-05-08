@@ -562,9 +562,9 @@ fn cmd_cookies(path: &Path) -> Result<(), String> {
 }
 
 fn cmd_random(vault: &Path, seed: &str) -> Result<(), String> {
-    let v = Vault::open(vault).map_err(|e| format!("{e}"))?;
     const OFFSET: u64 = 0xcbf2_9ce4_8422_2325;
     const PRIME: u64 = 0x0000_0100_0000_01b3;
+    let v = Vault::open(vault).map_err(|e| format!("{e}"))?;
     let mut h = OFFSET;
     for b in seed.as_bytes() {
         h ^= u64::from(*b);
