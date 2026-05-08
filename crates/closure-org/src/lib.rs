@@ -59,6 +59,16 @@ impl OrgDoc {
         self.roots.iter().map(walk).sum()
     }
 
+    /// Maximum nesting depth across every headline (root level = 1).
+    /// Empty documents return 0.
+    #[must_use]
+    pub fn max_depth(&self) -> u8 {
+        fn walk(h: &Headline) -> u8 {
+            h.children().iter().map(walk).max().unwrap_or(h.level()).max(h.level())
+        }
+        self.roots.iter().map(walk).max().unwrap_or(0)
+    }
+
     /// 64-bit FNV-1a hash of the source. Stable across runs and
     /// machines; intended for cache keying and change detection. Two
     /// byte-equal sources yield the same hash regardless of how they

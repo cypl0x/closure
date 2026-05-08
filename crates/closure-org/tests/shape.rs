@@ -662,6 +662,18 @@ fn parse_block_args_no_value_drops_key() {
 }
 
 #[test]
+fn max_depth_picks_deepest_branch() {
+    let doc = parse("* A\n** B\n*** C\n* D\n").expect("parse");
+    assert_eq!(doc.max_depth(), 3);
+}
+
+#[test]
+fn max_depth_zero_when_no_headlines() {
+    let doc = parse("just paragraph\n").expect("parse");
+    assert_eq!(doc.max_depth(), 0);
+}
+
+#[test]
 fn headline_count_walks_recursively() {
     let doc = parse("* A\n** B\n** C\n*** D\n").expect("parse");
     assert_eq!(doc.headline_count(), 4);
