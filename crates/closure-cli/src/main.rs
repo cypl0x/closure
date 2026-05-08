@@ -381,6 +381,19 @@ enum Cmd {
         /// Path to the vault directory.
         vault: PathBuf,
     },
+    /// Print `id:` links whose targets do not resolve inside the vault.
+    DeadLinks {
+        /// Path to the vault directory.
+        vault: PathBuf,
+    },
+    /// Print the top-N headlines by incoming `id:` link count.
+    Hubs {
+        /// Path to the vault directory.
+        vault: PathBuf,
+        /// Number of top hubs to print (default 10).
+        #[arg(long, default_value_t = 10)]
+        limit: usize,
+    },
     /// Print every `*.org` file path in a vault, sorted.
     Paths {
         /// Path to the vault directory.
@@ -544,6 +557,8 @@ fn run(cmd: &Cmd) -> Result<(), String> {
         Cmd::Validate { file } => cmd_validate(file),
         Cmd::Mcp => cmd_mcp(),
         Cmd::Orphans { vault } => cmd_orphans(vault),
+        Cmd::DeadLinks { vault } => cmd_dead_links(vault),
+        Cmd::Hubs { vault, limit } => cmd_hubs(vault, *limit),
         Cmd::Paths { vault } => cmd_paths(vault),
         Cmd::Hash { file } => cmd_hash(file),
         Cmd::Graph { vault } => cmd_graph(vault),
@@ -659,6 +674,46 @@ fn cmd_paths(vault: &Path) -> Result<(), String> {
 fn cmd_mcp() -> Result<(), String> {
     let registry = closure_core::default_registry();
     closure_mcp::run_stdio(&registry).map_err(|e| format!("{e}"))
+}
+
+fn cmd_dead_links(vault: &Path) -> Result<(), String> {
+    let v = Vault::open(vault).map_err(|e| format!("{e}"))?;
+    for (path, doc) in v.iter() {
+        for h in doc.all_headlines() {
+            for raw in h.link_targets() {
+                let Some(stripped) = raw.strip_prefix("id:") else {
+                    continue;
+                };
+                if v.find_by_id(&closure_core::BlockId::from_existing(stripped))
+                    .is_none()
+                {
+                    println!("{}\t{}\t{}", path.display(), h.id(), raw);
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+fn cmd_hubs(vault: &Path, limit: usize) -> Result<(), String> {
+    use std::collections::HashMap;
+    let v = Vault::open(vault).map_err(|e| format!("{e}"))?;
+    let graph = v.link_graph();
+    let mut counts: HashMap<closure_core::BlockId, usize> = HashMap::new();
+    for targets in graph.values() {
+        for t in targets {
+            *counts.entry(t.clone()).or_insert(0) += 1;
+        }
+    }
+    let mut ranked: Vec<_> = counts.into_iter().collect();
+    ranked.sort_by(|a, b| b.1.cmp(&a.1));
+    for (id, n) in ranked.into_iter().take(limit) {
+        let title = v
+            .find_by_id(&id)
+            .map_or_else(|| "?".to_owned(), |(h, _)| h.title().to_owned());
+        println!("{n}\t{id}\t{title}");
+    }
+    Ok(())
 }
 
 fn cmd_orphans(vault: &Path) -> Result<(), String> {
