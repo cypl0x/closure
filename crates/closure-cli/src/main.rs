@@ -363,6 +363,11 @@ enum Cmd {
         /// Path to a `*.org` file.
         file: PathBuf,
     },
+    /// Emit a Graphviz `dot` document of every `id:` link in a vault.
+    Graph {
+        /// Path to the vault directory.
+        vault: PathBuf,
+    },
     /// Toggle the checkbox on the Nth preamble list item.
     ToggleCheckbox {
         /// Path to a `*.org` file.
@@ -499,6 +504,7 @@ fn run(cmd: &Cmd) -> Result<(), String> {
         Cmd::Ids { file } => cmd_ids(file),
         Cmd::Paths { vault } => cmd_paths(vault),
         Cmd::Hash { file } => cmd_hash(file),
+        Cmd::Graph { vault } => cmd_graph(vault),
         Cmd::SetProperty {
             file,
             id,
@@ -543,6 +549,32 @@ fn cmd_cookies(path: &Path) -> Result<(), String> {
             closure_org::CookieView::Percent(n) => println!("[{n}%]"),
         }
     }
+    Ok(())
+}
+
+fn cmd_graph(vault: &Path) -> Result<(), String> {
+    let v = Vault::open(vault).map_err(|e| format!("{e}"))?;
+    println!("digraph closure {{");
+    println!("  rankdir=LR;");
+    for (_, doc) in v.iter() {
+        for h in doc.all_headlines() {
+            let label = h.title().replace('"', "\\\"");
+            println!("  \"{}\" [label=\"{label}\"];", h.id());
+        }
+    }
+    for (_, doc) in v.iter() {
+        for h in doc.all_headlines() {
+            for t in h.link_targets() {
+                let target = t.strip_prefix("id:").unwrap_or(t);
+                if v.find_by_id(&closure_core::BlockId::from_existing(target))
+                    .is_some()
+                {
+                    println!("  \"{}\" -> \"{target}\";", h.id());
+                }
+            }
+        }
+    }
+    println!("}}");
     Ok(())
 }
 
