@@ -164,6 +164,70 @@ fn ollama_body(p: &str) -> String {
     )
 }
 
+/// Crude extractor for an Anthropic `messages` response.
+///
+/// Returns the `content[0].text` field. Hand-rolled, naive —
+/// sufficient for well-formed responses but will not handle every
+/// JSON edge case until a real parser lands.
+#[must_use]
+pub fn extract_anthropic_content(body: &str) -> Option<String> {
+    extract_json_string_after(body, "\"text\":")
+}
+
+/// Crude extractor for an OpenAI `chat/completions` response: returns
+/// the `choices[0].message.content` field.
+#[must_use]
+pub fn extract_openai_content(body: &str) -> Option<String> {
+    extract_json_string_after(body, "\"content\":")
+}
+
+/// Crude extractor for an Ollama `/api/generate` response: returns
+/// the `response` field.
+#[must_use]
+pub fn extract_ollama_response(body: &str) -> Option<String> {
+    extract_json_string_after(body, "\"response\":")
+}
+
+fn extract_json_string_after(body: &str, key: &str) -> Option<String> {
+    let mut search_from = 0;
+    while let Some(pos) = body[search_from..].find(key) {
+        let after = body[search_from + pos + key.len()..].trim_start();
+        if let Some(stripped) = after.strip_prefix('"')
+            && let Some(value) = read_json_string(stripped)
+        {
+            return Some(value);
+        }
+        search_from += pos + key.len();
+    }
+    None
+}
+
+fn read_json_string(s: &str) -> Option<String> {
+    let mut out = String::new();
+    let mut chars = s.chars();
+    while let Some(c) = chars.next() {
+        match c {
+            '"' => return Some(out),
+            '\\' => match chars.next()? {
+                '"' => out.push('"'),
+                '\\' => out.push('\\'),
+                '/' => out.push('/'),
+                'n' => out.push('\n'),
+                'r' => out.push('\r'),
+                't' => out.push('\t'),
+                'u' => {
+                    let hex: String = chars.by_ref().take(4).collect();
+                    let code = u32::from_str_radix(&hex, 16).ok()?;
+                    out.push(char::from_u32(code).unwrap_or('?'));
+                }
+                other => out.push(other),
+            },
+            c => out.push(c),
+        }
+    }
+    None
+}
+
 /// Tiny JSON string escape — handles `\\`, `\"`, control chars; not
 /// general-purpose JSON, just enough for `prompt` payloads.
 #[must_use]

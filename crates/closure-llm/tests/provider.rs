@@ -39,3 +39,39 @@ fn ollama_provider_uses_local_host() {
     let p = closure_llm::ollama("http://127.0.0.1:11434", "llama3");
     assert_eq!(p.url, "http://127.0.0.1:11434/api/generate");
 }
+
+#[test]
+fn anthropic_extractor_finds_text_field() {
+    let body = r#"{"id":"msg","content":[{"type":"text","text":"hello world"}]}"#;
+    assert_eq!(
+        closure_llm::extract_anthropic_content(body),
+        Some("hello world".to_owned())
+    );
+}
+
+#[test]
+fn openai_extractor_finds_content_field() {
+    let body = r#"{"choices":[{"message":{"role":"assistant","content":"hi there"}}]}"#;
+    assert_eq!(
+        closure_llm::extract_openai_content(body),
+        Some("hi there".to_owned())
+    );
+}
+
+#[test]
+fn ollama_extractor_finds_response_field() {
+    let body = r#"{"model":"llama3","response":"yo","done":true}"#;
+    assert_eq!(
+        closure_llm::extract_ollama_response(body),
+        Some("yo".to_owned())
+    );
+}
+
+#[test]
+fn extractor_handles_escaped_quotes() {
+    let body = r#"{"content":"he said \"hi\""}"#;
+    assert_eq!(
+        closure_llm::extract_openai_content(body),
+        Some("he said \"hi\"".to_owned())
+    );
+}
