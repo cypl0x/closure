@@ -651,14 +651,11 @@ fn cmd_comment(path: &Path, id: &str) -> Result<(), String> {
 fn cmd_wc(path: &Path) -> Result<(), String> {
     let src = fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))?;
     let doc = Document::load_str(&src).map_err(|e| format!("{e}"))?;
-    let chars = src.chars().count();
-    let words = src.split_whitespace().count();
     let lines = src.lines().count();
-    let headlines = doc.all_headlines().count();
-    println!("chars: {chars}");
-    println!("words: {words}");
+    println!("chars: {}", doc.char_count());
+    println!("words: {}", doc.word_count());
     println!("lines: {lines}");
-    println!("headlines: {headlines}");
+    println!("headlines: {}", doc.all_headlines().count());
     Ok(())
 }
 

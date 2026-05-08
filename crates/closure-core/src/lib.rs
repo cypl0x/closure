@@ -293,6 +293,18 @@ impl Document {
         self.org.source_hash()
     }
 
+    /// Whitespace-separated word count over the document source.
+    #[must_use]
+    pub fn word_count(&self) -> usize {
+        self.org.source().split_whitespace().count()
+    }
+
+    /// Unicode character count over the document source.
+    #[must_use]
+    pub fn char_count(&self) -> usize {
+        self.org.source().chars().count()
+    }
+
     /// Top-level headlines in the document (flat slice of the tree).
     #[must_use]
     pub fn roots(&self) -> Vec<&DocHeadline> {
