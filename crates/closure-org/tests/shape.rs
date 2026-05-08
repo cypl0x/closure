@@ -718,6 +718,25 @@ fn format_inactive_timestamp() {
 }
 
 #[test]
+fn lists_group_consecutive_items() {
+    let src = "- a\n- b\n- c\n\n- d\n";
+    let doc = parse(src).expect("parse");
+    let lists = doc.lists();
+    assert_eq!(lists.len(), 2);
+    assert_eq!(lists[0].items.len(), 3);
+    assert_eq!(lists[1].items.len(), 1);
+}
+
+#[test]
+fn lists_group_mixed_markers_continue() {
+    let src = "- a\n+ b\n";
+    let doc = parse(src).expect("parse");
+    let lists = doc.lists();
+    assert_eq!(lists.len(), 1);
+    assert_eq!(lists[0].items.len(), 2);
+}
+
+#[test]
 fn tables_group_consecutive_rows() {
     let src = "| a | b |\n|---|---|\n| 1 | 2 |\n| 3 | 4 |\n";
     let doc = parse(src).expect("parse");

@@ -137,6 +137,29 @@ impl OrgDoc {
         })
     }
 
+    /// Group consecutive list items in the preamble into [`ListGroup`]s.
+    /// A blank line or any non-list node breaks the group.
+    #[must_use]
+    pub fn lists(&self) -> Vec<ListGroup<'_>> {
+        let mut out: Vec<ListGroup<'_>> = Vec::new();
+        let mut current: Vec<ListItemView<'_>> = Vec::new();
+        for n in &self.preamble {
+            if n.kind == NodeKind::ListItem
+                && let Some(view) = n.as_list_item()
+            {
+                current.push(view);
+            } else if !current.is_empty() {
+                out.push(ListGroup {
+                    items: std::mem::take(&mut current),
+                });
+            }
+        }
+        if !current.is_empty() {
+            out.push(ListGroup { items: current });
+        }
+        out
+    }
+
     /// Group consecutive table rows in the preamble into [`TableView`]s.
     /// A blank line, headline, or any non-table node breaks the group.
     #[must_use]
@@ -1116,6 +1139,13 @@ pub fn format_timestamp(content: &str, active: bool) -> String {
     } else {
         format!("[{content}]")
     }
+}
+
+/// Group of consecutive list items (any markers, any indent).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ListGroup<'a> {
+    /// Items in source order.
+    pub items: Vec<ListItemView<'a>>,
 }
 
 /// Group of consecutive `|...|` table rows.
