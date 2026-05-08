@@ -75,6 +75,17 @@ fn vault_block_id_index_across_files() {
 }
 
 #[test]
+fn vault_all_tags_and_all_todos_aggregate() {
+    let td = write_vault(&[
+        ("a.org", "* TODO Fix :work:\n"),
+        ("b.org", "* DONE Ship :work:urgent:\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.all_tags(), vec!["urgent".to_owned(), "work".to_owned()]);
+    assert_eq!(v.all_todos(), vec!["DONE".to_owned(), "TODO".to_owned()]);
+}
+
+#[test]
 fn vault_save_writes_byte_exact_source() {
     let td = write_vault(&[("x.org", "* Original\n")]);
     let v = Vault::open(td.path()).expect("open");

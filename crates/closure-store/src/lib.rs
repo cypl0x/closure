@@ -138,6 +138,34 @@ impl Vault {
         self.documents.iter().map(|(p, d)| (p.as_path(), d))
     }
 
+    /// Every distinct tag string used across the vault, sorted.
+    #[must_use]
+    pub fn all_tags(&self) -> Vec<String> {
+        let mut seen: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+        for (_, doc) in self.iter() {
+            for h in doc.all_headlines() {
+                for t in h.tags() {
+                    seen.insert(t.clone());
+                }
+            }
+        }
+        seen.into_iter().collect()
+    }
+
+    /// Every distinct TODO keyword used across the vault, sorted.
+    #[must_use]
+    pub fn all_todos(&self) -> Vec<String> {
+        let mut seen: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+        for (_, doc) in self.iter() {
+            for h in doc.all_headlines() {
+                if let Some(t) = h.todo() {
+                    seen.insert(t.to_owned());
+                }
+            }
+        }
+        seen.into_iter().collect()
+    }
+
     /// Lookup a document by its full filesystem path.
     #[must_use]
     pub fn document(&self, path: &Path) -> Option<&Document> {
