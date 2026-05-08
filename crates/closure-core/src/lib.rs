@@ -15,9 +15,9 @@ use std::sync::Arc;
 use closure_org::{
     Headline, OrgDoc, parse, rewrite_add_sibling_after_with_id, rewrite_headline_demote,
     rewrite_headline_ensure_id, rewrite_headline_promote, rewrite_headline_set_body,
-    rewrite_headline_set_planning, rewrite_headline_set_priority, rewrite_headline_set_tags,
-    rewrite_headline_set_todo, rewrite_headline_title, rewrite_headline_toggle_archive,
-    rewrite_remove_subtree, rewrite_splice_subtree_after,
+    rewrite_headline_set_planning, rewrite_headline_set_priority, rewrite_headline_set_property,
+    rewrite_headline_set_tags, rewrite_headline_set_todo, rewrite_headline_title,
+    rewrite_headline_toggle_archive, rewrite_remove_subtree, rewrite_splice_subtree_after,
 };
 use closure_undo::{NodeId as UndoNodeId, UndoTree};
 use thiserror::Error;
@@ -510,6 +510,17 @@ pub enum Edit {
         /// Block whose archive tag flipped.
         id: BlockId,
     },
+    /// Set a `:KEY: value` entry in the properties drawer.
+    SetProperty {
+        /// Block whose property drawer changed.
+        id: BlockId,
+        /// Property key.
+        key: String,
+        /// Previous value for `key` if any.
+        old: Option<String>,
+        /// New value.
+        new: String,
+    },
     /// Idempotent edit (e.g. ensure-id) — undo / redo are no-ops at
     /// the kernel level.
     Noop,
@@ -621,6 +632,18 @@ impl Edit {
             Self::ToggleArchive { id } => {
                 let path = doc.path_of(id).ok_or(CommandError::BlockNotFound)?;
                 let org = rewrite_headline_toggle_archive(doc.org(), &path)
+                    .map_err(|_| CommandError::Rewrite)?;
+                doc.org = org;
+                doc.rebuild_index();
+                Ok(())
+            }
+            Self::SetProperty { id, key, old, .. } => {
+                let path = doc.path_of(id).ok_or(CommandError::BlockNotFound)?;
+                let org = old
+                    .as_ref()
+                    .map_or(Err(closure_org::RewriteError::Parse), |prev| {
+                        rewrite_headline_set_property(doc.org(), &path, key, prev)
+                    })
                     .map_err(|_| CommandError::Rewrite)?;
                 doc.org = org;
                 doc.rebuild_index();
@@ -753,6 +776,14 @@ impl Edit {
                 doc.rebuild_index();
                 Ok(())
             }
+            Self::SetProperty { id, key, new, .. } => {
+                let path = doc.path_of(id).ok_or(CommandError::BlockNotFound)?;
+                let org = rewrite_headline_set_property(doc.org(), &path, key, new)
+                    .map_err(|_| CommandError::Rewrite)?;
+                doc.org = org;
+                doc.rebuild_index();
+                Ok(())
+            }
             Self::MoveSubtree {
                 id,
                 subtree_source,
@@ -854,6 +885,7 @@ pub fn default_registry() -> Registry {
     r.register(Box::new(SetBody::new_placeholder()));
     r.register(Box::new(SetPlanning::new_placeholder()));
     r.register(Box::new(ToggleArchive::new_placeholder()));
+    r.register(Box::new(SetProperty::new_placeholder()));
     r.register(Box::new(Promote::new_placeholder()));
     r.register(Box::new(Demote::new_placeholder()));
     r.register(Box::new(AddSibling::new_placeholder()));
@@ -1385,6 +1417,81 @@ impl Command for SetPlanning {
 
 /// Triple of optional `(scheduled, deadline, closed)` planning timestamps.
 type PlanningTriple = (Option<String>, Option<String>, Option<String>);
+
+/// Command: set a `:KEY: value` entry on a headline's properties drawer.
+pub struct SetProperty {
+    id: BlockId,
+    key: String,
+    new: String,
+    keys: Vec<KeyChord>,
+}
+
+impl SetProperty {
+    /// Set `key` to `value` on `id`.
+    #[must_use]
+    pub fn new(id: BlockId, key: String, new: String) -> Self {
+        Self {
+            id,
+            key,
+            new,
+            keys: vec![KeyChord::from_strokes(&["C-c", "C-x", "p"])],
+        }
+    }
+
+    /// Placeholder for registry.
+    #[must_use]
+    pub fn new_placeholder() -> Self {
+        Self {
+            id: BlockId::from_existing(""),
+            key: String::new(),
+            new: String::new(),
+            keys: vec![KeyChord::from_strokes(&["C-c", "C-x", "p"])],
+        }
+    }
+}
+
+impl Command for SetProperty {
+    #[allow(clippy::unnecessary_literal_bound)]
+    fn name(&self) -> &str {
+        "set-property"
+    }
+
+    fn keys(&self) -> &[KeyChord] {
+        &self.keys
+    }
+
+    fn apply(&self, doc: &mut Document) -> Result<Edit, CommandError> {
+        let path = doc.path_of(&self.id).ok_or(CommandError::BlockNotFound)?;
+        let with_id = rewrite_headline_ensure_id(doc.org(), &path, self.id.as_str())
+            .map_err(|_| CommandError::Rewrite)?;
+        let h = navigate_in(&with_id, &path).ok_or(CommandError::BlockNotFound)?;
+        let prev = h
+            .properties()
+            .and_then(|p| p.get(&self.key))
+            .map(str::to_owned);
+        let org = rewrite_headline_set_property(&with_id, &path, &self.key, &self.new)
+            .map_err(|_| CommandError::Rewrite)?;
+        doc.org = org;
+        doc.rebuild_index();
+        let edit = Edit::SetProperty {
+            id: self.id.clone(),
+            key: self.key.clone(),
+            old: prev,
+            new: self.new.clone(),
+        };
+        doc.push_history(edit.clone());
+        Ok(edit)
+    }
+}
+
+fn navigate_in<'a>(org: &'a OrgDoc, path: &[usize]) -> Option<&'a Headline> {
+    let first = *path.first()?;
+    let mut cur = org.roots().get(first)?;
+    for &i in &path[1..] {
+        cur = cur.children().get(i)?;
+    }
+    Some(cur)
+}
 
 /// Command: flip the `ARCHIVE` tag on a headline.
 pub struct ToggleArchive {

@@ -602,6 +602,39 @@ fn set_planning_clear_removes_line() {
 }
 
 #[test]
+fn set_property_adds_to_existing_drawer() {
+    let src = "* Task\n:PROPERTIES:\n:ID: x\n:END:\n";
+    let doc = parse(src).expect("parse");
+    let new = closure_org::rewrite_headline_set_property(&doc, &[0], "EFFORT", "2h").expect("set");
+    let h = &new.roots()[0];
+    let p = h.properties().expect("props");
+    assert_eq!(p.get("EFFORT"), Some("2h"));
+    assert_eq!(p.get("ID"), Some("x"));
+}
+
+#[test]
+fn set_property_replaces_existing_value() {
+    let src = "* Task\n:PROPERTIES:\n:EFFORT: 1h\n:END:\n";
+    let doc = parse(src).expect("parse");
+    let new = closure_org::rewrite_headline_set_property(&doc, &[0], "EFFORT", "3h").expect("set");
+    assert_eq!(
+        new.roots()[0].properties().expect("p").get("EFFORT"),
+        Some("3h")
+    );
+}
+
+#[test]
+fn set_property_creates_drawer_if_absent() {
+    let src = "* Task\n";
+    let doc = parse(src).expect("parse");
+    let new = closure_org::rewrite_headline_set_property(&doc, &[0], "EFFORT", "30m").expect("set");
+    assert_eq!(
+        new.roots()[0].properties().expect("p").get("EFFORT"),
+        Some("30m")
+    );
+}
+
+#[test]
 fn toggle_archive_adds_tag() {
     let src = "* TODO Old task :work:\n";
     let doc = parse(src).expect("parse");

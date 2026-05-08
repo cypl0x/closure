@@ -618,6 +618,48 @@ fn rewrite_stars(doc: &OrgDoc, target: &Headline, new_level: u8) -> Result<OrgDo
 /// entry, one is inserted at the top of the drawer. If the drawer
 /// already has a different `:ID:`, this is a no-op — existing ids are
 /// never replaced (I2).
+/// Set or replace a `:KEY: value` entry in the headline's properties
+/// drawer. Creates the drawer if absent. If `key` already exists, its
+/// value is overwritten in place; otherwise the entry is appended just
+/// before `:END:`.
+pub fn rewrite_headline_set_property(
+    doc: &OrgDoc,
+    path: &[usize],
+    key: &str,
+    value: &str,
+) -> Result<OrgDoc, RewriteError> {
+    let target = navigate_headline(doc, path).ok_or(RewriteError::NotFound)?;
+    let mut src = doc.source().to_owned();
+    if let Some(p) = &target.properties {
+        if let Some(e) = p
+            .entries
+            .iter()
+            .find(|e| &src[e.key_span.start..e.key_span.end] == key)
+        {
+            src.replace_range(e.value_span.start..e.value_span.end, value);
+        } else {
+            let end_marker = src[p.drawer_span.start..p.drawer_span.end]
+                .rfind(":END:")
+                .ok_or(RewriteError::Parse)?;
+            let insert_at = p.drawer_span.start + end_marker;
+            let insert = format!(":{key}: {value}\n");
+            src.insert_str(insert_at, &insert);
+        }
+    } else {
+        let after_header = target.header_span.end;
+        let insert = format!(":PROPERTIES:\n:{key}: {value}\n:END:\n");
+        src.insert_str(after_header, &insert);
+    }
+    parse(&src).map_err(|_| RewriteError::Parse)
+}
+
+/// Ensure the headline has a `:ID:` property pinned to `id`.
+///
+/// If the drawer is absent, a fresh one is inserted immediately after
+/// the headline's header line. If the drawer exists without an `:ID:`
+/// entry, one is inserted at the top of the drawer. If the drawer
+/// already has a different `:ID:`, this is a no-op — existing ids are
+/// never replaced (I2).
 pub fn rewrite_headline_ensure_id(
     doc: &OrgDoc,
     path: &[usize],

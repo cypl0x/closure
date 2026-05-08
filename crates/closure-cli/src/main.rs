@@ -19,8 +19,8 @@ use clap::{Parser, Subcommand};
 use closure_config::InputMode;
 use closure_core::{
     AddSibling, BlockId, Command, Demote, Document, EnsureId, MoveSubtree, Promote, Registry,
-    RemoveSubtree, RenameHeadline, SetBody, SetPlanning, SetPriority, SetTags, SetTodo,
-    ToggleArchive,
+    RemoveSubtree, RenameHeadline, SetBody, SetPlanning, SetPriority, SetProperty, SetTags,
+    SetTodo, ToggleArchive,
 };
 use closure_eval::{Backend, ShellBackend, backend_for};
 use closure_input::Dispatcher;
@@ -313,6 +313,17 @@ enum Cmd {
         /// Block id of the target headline.
         id: String,
     },
+    /// Set a `:KEY: value` property on a headline.
+    SetProperty {
+        /// Path to a `*.org` file.
+        file: PathBuf,
+        /// Block id of the target headline.
+        id: String,
+        /// Property key (e.g. `EFFORT`).
+        key: String,
+        /// Property value.
+        value: String,
+    },
     /// Print document-level keywords (TITLE/AUTHOR/DATE/FILETAGS).
     Meta {
         /// Path to a `*.org` file.
@@ -412,7 +423,22 @@ fn run(cmd: &Cmd) -> Result<(), String> {
         Cmd::Meta { file } => cmd_meta(file),
         Cmd::Wc { file } => cmd_wc(file),
         Cmd::Archive { file, id } => cmd_archive(file, id),
+        Cmd::SetProperty {
+            file,
+            id,
+            key,
+            value,
+        } => cmd_set_property(file, id, key, value),
     }
+}
+
+fn cmd_set_property(path: &Path, id: &str, key: &str, value: &str) -> Result<(), String> {
+    let src = fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))?;
+    let mut doc = Document::load_str(&src).map_err(|e| format!("{e}"))?;
+    let cmd = SetProperty::new(BlockId::from_existing(id), key.to_owned(), value.to_owned());
+    Command::apply(&cmd, &mut doc).map_err(|e| format!("{e}"))?;
+    fs::write(path, doc.source()).map_err(|e| format!("write: {e}"))?;
+    Ok(())
 }
 
 fn cmd_archive(path: &Path, id: &str) -> Result<(), String> {
