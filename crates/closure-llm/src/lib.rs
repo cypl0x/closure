@@ -112,7 +112,9 @@ pub fn anthropic(api_key: &str, _model: &str) -> CurlProvider {
             format!("x-api-key: {api_key}"),
         ],
         body: anthropic_body,
-        extract: |s| Ok(s.to_owned()),
+        extract: |s| {
+            extract_anthropic_content(s).ok_or_else(|| LlmError::Provider("no content".into()))
+        },
     }
 }
 
@@ -127,7 +129,9 @@ pub fn openai(api_key: &str, _model: &str) -> CurlProvider {
             format!("authorization: Bearer {api_key}"),
         ],
         body: openai_body,
-        extract: |s| Ok(s.to_owned()),
+        extract: |s| {
+            extract_openai_content(s).ok_or_else(|| LlmError::Provider("no content".into()))
+        },
     }
 }
 
@@ -139,7 +143,9 @@ pub fn ollama(host: &str, _model: &str) -> CurlProvider {
         url: format!("{host}/api/generate"),
         headers: vec!["content-type: application/json".into()],
         body: ollama_body,
-        extract: |s| Ok(s.to_owned()),
+        extract: |s| {
+            extract_ollama_response(s).ok_or_else(|| LlmError::Provider("no response".into()))
+        },
     }
 }
 
