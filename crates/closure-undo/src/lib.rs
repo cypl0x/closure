@@ -164,4 +164,40 @@ impl<T> UndoTree<T> {
     pub fn nodes(&self) -> &[UndoNode<T>] {
         &self.nodes
     }
+
+    /// Depth of `id` from the root (root nodes have depth 0).
+    /// Returns `None` if the id is unknown.
+    #[must_use]
+    pub fn depth(&self, id: NodeId) -> Option<usize> {
+        let mut depth = 0usize;
+        let mut cur = self.node(id)?;
+        while let Some(p) = cur.parent {
+            depth += 1;
+            cur = self.node(p)?;
+        }
+        Some(depth)
+    }
+
+    /// IDs of every leaf (no children) node in the tree.
+    #[must_use]
+    pub fn leaves(&self) -> Vec<NodeId> {
+        self.nodes
+            .iter()
+            .filter(|n| n.children.is_empty())
+            .map(|n| n.id)
+            .collect()
+    }
+
+    /// Path of NodeIds from the root to `id`.
+    #[must_use]
+    pub fn path_to(&self, id: NodeId) -> Vec<NodeId> {
+        let mut out: Vec<NodeId> = Vec::new();
+        let mut cur = self.node(id);
+        while let Some(node) = cur {
+            out.push(node.id);
+            cur = node.parent.and_then(|p| self.node(p));
+        }
+        out.reverse();
+        out
+    }
 }

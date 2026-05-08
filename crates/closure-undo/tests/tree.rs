@@ -80,3 +80,32 @@ fn redo_missing_branch_is_error() {
     let err = t.redo(Some(random));
     assert!(err.is_err());
 }
+
+#[test]
+fn depth_zero_for_root() {
+    let mut t: UndoTree<i32> = UndoTree::new();
+    let a = t.apply(1);
+    assert_eq!(t.depth(a), Some(0));
+    let b = t.apply(2);
+    assert_eq!(t.depth(b), Some(1));
+}
+
+#[test]
+fn leaves_are_siblings_after_branch() {
+    let mut t: UndoTree<i32> = UndoTree::new();
+    let _a = t.apply(1);
+    let _b = t.apply(2);
+    t.undo().expect("undo");
+    let _c = t.apply(3);
+    let leaves = t.leaves();
+    assert_eq!(leaves.len(), 2);
+}
+
+#[test]
+fn path_to_walks_from_root() {
+    let mut t: UndoTree<i32> = UndoTree::new();
+    let a = t.apply(1);
+    let b = t.apply(2);
+    let path = t.path_to(b);
+    assert_eq!(path, vec![a, b]);
+}
