@@ -769,7 +769,7 @@ fn cmd_recent(vault: &Path, limit: usize) -> Result<(), String> {
             paths_with_mtime.push((p, mtime));
         }
     }
-    paths_with_mtime.sort_by(|a, b| b.1.cmp(&a.1));
+    paths_with_mtime.sort_by_key(|(_, m)| std::cmp::Reverse(*m));
     for (p, _) in paths_with_mtime.into_iter().take(limit) {
         println!("{}", p.display());
     }
