@@ -348,6 +348,11 @@ enum Cmd {
         /// Path to a `*.org` file.
         file: PathBuf,
     },
+    /// Print every block id in a file with its title.
+    Ids {
+        /// Path to a `*.org` file.
+        file: PathBuf,
+    },
     /// Toggle the checkbox on the Nth preamble list item.
     ToggleCheckbox {
         /// Path to a `*.org` file.
@@ -481,6 +486,7 @@ fn run(cmd: &Cmd) -> Result<(), String> {
         Cmd::Timestamps { file } => cmd_timestamps(file),
         Cmd::Cookies { file } => cmd_cookies(file),
         Cmd::Macros { file } => cmd_macros(file),
+        Cmd::Ids { file } => cmd_ids(file),
         Cmd::SetProperty {
             file,
             id,
@@ -524,6 +530,15 @@ fn cmd_cookies(path: &Path) -> Result<(), String> {
             closure_org::CookieView::Count { done, total } => println!("[{done}/{total}]"),
             closure_org::CookieView::Percent(n) => println!("[{n}%]"),
         }
+    }
+    Ok(())
+}
+
+fn cmd_ids(path: &Path) -> Result<(), String> {
+    let src = fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))?;
+    let doc = Document::load_str(&src).map_err(|e| format!("{e}"))?;
+    for h in doc.all_headlines() {
+        println!("{}\t{}", h.id(), h.title());
     }
     Ok(())
 }
