@@ -348,10 +348,7 @@ pub fn rewrite_headline_set_tags(
 ///
 /// `[ ]` and `[-]` flip to `[X]`. `[X]` flips back to `[ ]`. List items
 /// without a checkbox return `RewriteError::NotFound`.
-pub fn rewrite_toggle_checkbox(
-    doc: &OrgDoc,
-    item_index: usize,
-) -> Result<OrgDoc, RewriteError> {
+pub fn rewrite_toggle_checkbox(doc: &OrgDoc, item_index: usize) -> Result<OrgDoc, RewriteError> {
     let mut idx = 0usize;
     let mut found: Option<(Span, Checkbox)> = None;
     for n in &doc.preamble {
@@ -972,10 +969,7 @@ pub fn parse_block_args(args: &str) -> Vec<(&str, &str)> {
 /// Counterpart to [`find_links`].
 #[must_use]
 pub fn format_link(target: &str, description: Option<&str>) -> String {
-    description.map_or_else(
-        || format!("[[{target}]]"),
-        |d| format!("[[{target}][{d}]]"),
-    )
+    description.map_or_else(|| format!("[[{target}]]"), |d| format!("[[{target}][{d}]]"))
 }
 
 /// Format a timestamp body (e.g. `"2026-04-25 Sat"`) as an active
