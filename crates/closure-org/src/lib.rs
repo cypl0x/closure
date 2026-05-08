@@ -1699,6 +1699,12 @@ impl Headline {
         t == "COMMENT" || t.starts_with("COMMENT ")
     }
 
+    /// True iff this headline carries the `:ARCHIVE:` tag.
+    #[must_use]
+    pub fn is_archived(&self) -> bool {
+        self.tags().contains(&"ARCHIVE")
+    }
+
     /// Parse the planning line (`SCHEDULED:` / `DEADLINE:` / `CLOSED:`)
     /// that immediately follows the header line, if any. Returns `None`
     /// when no planning line is present.

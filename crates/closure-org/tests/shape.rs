@@ -843,6 +843,13 @@ fn set_property_creates_drawer_if_absent() {
 }
 
 #[test]
+fn is_archived_method_recognises_archive_tag() {
+    let doc = parse("* Old :ARCHIVE:\n* Live\n").expect("parse");
+    assert!(doc.roots()[0].is_archived());
+    assert!(!doc.roots()[1].is_archived());
+}
+
+#[test]
 fn toggle_archive_adds_tag() {
     let src = "* TODO Old task :work:\n";
     let doc = parse(src).expect("parse");
