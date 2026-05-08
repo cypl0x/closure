@@ -32,6 +32,11 @@ fn backend_for_known_languages() {
     assert!(closure_eval::backend_for("BASH").is_some());
     assert!(closure_eval::backend_for("python").is_some());
     assert!(closure_eval::backend_for("py").is_some());
+    assert!(closure_eval::backend_for("javascript").is_some());
+    assert!(closure_eval::backend_for("js").is_some());
+    assert!(closure_eval::backend_for("node").is_some());
+    assert!(closure_eval::backend_for("ruby").is_some());
+    assert!(closure_eval::backend_for("rb").is_some());
     assert!(closure_eval::backend_for("rust").is_none());
 }
 

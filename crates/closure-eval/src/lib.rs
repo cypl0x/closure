@@ -105,6 +105,52 @@ impl Backend for PythonBackend {
     }
 }
 
+/// Node.js backend: runs the source through `node` via stdin.
+#[derive(Debug, Default, Clone, Copy)]
+pub struct NodeBackend;
+
+impl Backend for NodeBackend {
+    #[allow(clippy::unnecessary_literal_bound)]
+    fn language(&self) -> &str {
+        "javascript"
+    }
+
+    fn eval(&self, src: &str) -> Result<Output, EvalError> {
+        run_via_stdin("node", &[], src, None)
+    }
+
+    fn eval_with_timeout(
+        &self,
+        src: &str,
+        timeout: std::time::Duration,
+    ) -> Result<Output, EvalError> {
+        run_via_stdin("node", &[], src, Some(timeout))
+    }
+}
+
+/// Ruby backend: runs the source through `ruby` via stdin.
+#[derive(Debug, Default, Clone, Copy)]
+pub struct RubyBackend;
+
+impl Backend for RubyBackend {
+    #[allow(clippy::unnecessary_literal_bound)]
+    fn language(&self) -> &str {
+        "ruby"
+    }
+
+    fn eval(&self, src: &str) -> Result<Output, EvalError> {
+        run_via_stdin("ruby", &[], src, None)
+    }
+
+    fn eval_with_timeout(
+        &self,
+        src: &str,
+        timeout: std::time::Duration,
+    ) -> Result<Output, EvalError> {
+        run_via_stdin("ruby", &[], src, Some(timeout))
+    }
+}
+
 /// Pick a backend for a language identifier (case-insensitive). Returns
 /// `None` if no backend is registered for the language.
 #[must_use]
@@ -112,6 +158,8 @@ pub fn backend_for(lang: &str) -> Option<Box<dyn Backend>> {
     match lang.to_ascii_lowercase().as_str() {
         "shell" | "sh" | "bash" => Some(Box::new(ShellBackend)),
         "python" | "py" => Some(Box::new(PythonBackend)),
+        "javascript" | "js" | "node" => Some(Box::new(NodeBackend)),
+        "ruby" | "rb" => Some(Box::new(RubyBackend)),
         _ => None,
     }
 }
