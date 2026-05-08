@@ -290,6 +290,16 @@ enum Cmd {
         /// Path to the vault directory.
         vault: PathBuf,
     },
+    /// Print every distinct tag in the vault (sorted).
+    Tags {
+        /// Path to the vault directory.
+        vault: PathBuf,
+    },
+    /// Print every distinct TODO keyword in the vault (sorted).
+    Todos {
+        /// Path to the vault directory.
+        vault: PathBuf,
+    },
 }
 
 fn main() -> ExitCode {
@@ -356,7 +366,25 @@ fn run(cmd: &Cmd) -> Result<(), String> {
         Cmd::DeleteFile { vault, file } => cmd_delete_file(vault, file),
         Cmd::RenameFile { vault, from, to } => cmd_rename_file(vault, from, to),
         Cmd::Agenda { vault } => cmd_agenda(vault),
+        Cmd::Tags { vault } => cmd_tags(vault),
+        Cmd::Todos { vault } => cmd_todos(vault),
     }
+}
+
+fn cmd_tags(vault: &Path) -> Result<(), String> {
+    let v = Vault::open(vault).map_err(|e| format!("{e}"))?;
+    for t in v.all_tags() {
+        println!("{t}");
+    }
+    Ok(())
+}
+
+fn cmd_todos(vault: &Path) -> Result<(), String> {
+    let v = Vault::open(vault).map_err(|e| format!("{e}"))?;
+    for t in v.all_todos() {
+        println!("{t}");
+    }
+    Ok(())
 }
 
 fn cmd_agenda(vault: &Path) -> Result<(), String> {
