@@ -29,5 +29,6 @@ closure-eval = { path = "../closure-eval" }
 closure-shell-web = { path = "../closure-shell-web" }
 closure-sync = { path = "../closure-sync" }
 closure-llm = { path = "../closure-llm" }
+closure-mcp = { path = "../closure-mcp" }
 clap.workspace = true
 thiserror.workspace = true

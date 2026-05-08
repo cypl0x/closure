@@ -373,6 +373,9 @@ enum Cmd {
         /// Path to a `*.org` file.
         file: PathBuf,
     },
+    /// Run the MCP stdio dispatcher (one command name per line; `LIST`
+    /// to enumerate). Quits on EOF.
+    Mcp,
     /// Print every `*.org` file path in a vault, sorted.
     Paths {
         /// Path to the vault directory.
@@ -534,6 +537,7 @@ fn run(cmd: &Cmd) -> Result<(), String> {
         Cmd::Keywords { file } => cmd_keywords(file),
         Cmd::Properties { file } => cmd_properties(file),
         Cmd::Validate { file } => cmd_validate(file),
+        Cmd::Mcp => cmd_mcp(),
         Cmd::Paths { vault } => cmd_paths(vault),
         Cmd::Hash { file } => cmd_hash(file),
         Cmd::Graph { vault } => cmd_graph(vault),
@@ -644,6 +648,11 @@ fn cmd_paths(vault: &Path) -> Result<(), String> {
         println!("{}", p.display());
     }
     Ok(())
+}
+
+fn cmd_mcp() -> Result<(), String> {
+    let registry = closure_core::default_registry();
+    closure_mcp::run_stdio(&registry).map_err(|e| format!("{e}"))
 }
 
 fn cmd_validate(path: &Path) -> Result<(), String> {
