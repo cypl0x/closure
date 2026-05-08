@@ -445,9 +445,7 @@ pub fn rewrite_headline_append_logbook(
     if let Some(rel) = after.find(":LOGBOOK:\n") {
         let logbook_start = after_header + rel;
         let after_logbook = &src[logbook_start + ":LOGBOOK:\n".len()..];
-        let end_rel = after_logbook
-            .find(":END:")
-            .ok_or(RewriteError::Parse)?;
+        let end_rel = after_logbook.find(":END:").ok_or(RewriteError::Parse)?;
         let insert_at = logbook_start + ":LOGBOOK:\n".len() + end_rel;
         let mut buf = String::from(entry);
         buf.push('\n');
@@ -1051,7 +1049,9 @@ pub fn parse_logbook(body: &str) -> Vec<LogbookEntry<'_>> {
         }
         if let Some(rest) = trimmed.strip_prefix("- State ") {
             let new_state = quoted(rest);
-            let old_state = rest.split_once("from ").and_then(|(_, after)| quoted(after));
+            let old_state = rest
+                .split_once("from ")
+                .and_then(|(_, after)| quoted(after));
             let when = rest
                 .find('[')
                 .and_then(|i| rest[i + 1..].find(']').map(|j| &rest[i + 1..i + 1 + j]));
@@ -1843,10 +1843,7 @@ impl Headline {
     /// Total descendant headline count (children + grandchildren etc.).
     #[must_use]
     pub fn descendant_count(&self) -> usize {
-        self.children
-            .iter()
-            .map(|c| 1 + c.descendant_count())
-            .sum()
+        self.children.iter().map(|c| 1 + c.descendant_count()).sum()
     }
 
     /// Iterate every body line as a borrowed string slice.

@@ -48,7 +48,10 @@ fn known_languages_lists_every_alias() {
     assert!(langs.contains(&"javascript"));
     assert!(langs.contains(&"ruby"));
     for lang in langs {
-        assert!(closure_eval::backend_for(lang).is_some(), "alias {lang} should resolve");
+        assert!(
+            closure_eval::backend_for(lang).is_some(),
+            "alias {lang} should resolve"
+        );
     }
 }
 

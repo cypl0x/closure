@@ -621,8 +621,8 @@ fn rewrite_append_logbook_entry_creates_drawer() {
 fn rewrite_append_logbook_extends_existing_drawer() {
     let src = "* Task\n:LOGBOOK:\n- earlier entry\n:END:\n";
     let doc = parse(src).expect("parse");
-    let new = closure_org::rewrite_headline_append_logbook(&doc, &[0], "- new entry")
-        .expect("append");
+    let new =
+        closure_org::rewrite_headline_append_logbook(&doc, &[0], "- new entry").expect("append");
     let out = closure_org::print(&new);
     assert!(out.contains("- earlier entry"));
     assert!(out.contains("- new entry"));
