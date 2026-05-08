@@ -394,6 +394,11 @@ enum Cmd {
         #[arg(long, default_value_t = 10)]
         limit: usize,
     },
+    /// Print every CLOCK entry inside :LOGBOOK: drawers in a file.
+    Clock {
+        /// Path to a `*.org` file.
+        file: PathBuf,
+    },
     /// Print every `*.org` file path in a vault, sorted.
     Paths {
         /// Path to the vault directory.
@@ -559,6 +564,7 @@ fn run(cmd: &Cmd) -> Result<(), String> {
         Cmd::Orphans { vault } => cmd_orphans(vault),
         Cmd::DeadLinks { vault } => cmd_dead_links(vault),
         Cmd::Hubs { vault, limit } => cmd_hubs(vault, *limit),
+        Cmd::Clock { file } => cmd_clock(file),
         Cmd::Paths { vault } => cmd_paths(vault),
         Cmd::Hash { file } => cmd_hash(file),
         Cmd::Graph { vault } => cmd_graph(vault),
@@ -689,6 +695,23 @@ fn cmd_dead_links(vault: &Path) -> Result<(), String> {
                 {
                     println!("{}\t{}\t{}", path.display(), h.id(), raw);
                 }
+            }
+        }
+    }
+    Ok(())
+}
+
+fn cmd_clock(path: &Path) -> Result<(), String> {
+    let src = fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))?;
+    for d in closure_org::find_drawers(&src) {
+        if d.name != "LOGBOOK" {
+            continue;
+        }
+        for e in closure_org::parse_logbook(d.content) {
+            if e.kind == closure_org::LogbookKind::Clock
+                && let Some(w) = e.when
+            {
+                println!("{w}");
             }
         }
     }
