@@ -32,6 +32,10 @@ pub enum Field {
     Any,
     /// Matches only the given value.
     Exact(u8),
+    /// Matches any value in the list.
+    List(Vec<u8>),
+    /// Matches values in the inclusive range `start..=end`.
+    Range(u8, u8),
 }
 
 /// Cron parse error.
@@ -66,6 +70,18 @@ fn parse_field(s: &str) -> Result<Field, CronError> {
     if s == "*" {
         return Ok(Field::Any);
     }
+    if let Some((lo, hi)) = s.split_once('-') {
+        let lo = lo.parse::<u8>().map_err(|_| CronError::Number(s.into()))?;
+        let hi = hi.parse::<u8>().map_err(|_| CronError::Number(s.into()))?;
+        return Ok(Field::Range(lo, hi));
+    }
+    if s.contains(',') {
+        let parts: Result<Vec<u8>, _> = s
+            .split(',')
+            .map(|p| p.parse::<u8>().map_err(|_| CronError::Number(s.into())))
+            .collect();
+        return Ok(Field::List(parts?));
+    }
     s.parse::<u8>()
         .map(Field::Exact)
         .map_err(|_| CronError::Number(s.into()))
@@ -74,7 +90,7 @@ fn parse_field(s: &str) -> Result<Field, CronError> {
 /// Test whether `spec` matches a `(minute, hour, dom, month, dow)`
 /// tuple. Used by [`Scheduler`] each tick to decide which jobs fire.
 #[must_use]
-pub const fn matches_time(spec: &CronSpec, m: u8, h: u8, d: u8, mo: u8, dw: u8) -> bool {
+pub fn matches_time(spec: &CronSpec, m: u8, h: u8, d: u8, mo: u8, dw: u8) -> bool {
     field_matches(&spec.minute, m)
         && field_matches(&spec.hour, h)
         && field_matches(&spec.dom, d)
@@ -82,10 +98,12 @@ pub const fn matches_time(spec: &CronSpec, m: u8, h: u8, d: u8, mo: u8, dw: u8) 
         && field_matches(&spec.dow, dw)
 }
 
-const fn field_matches(f: &Field, v: u8) -> bool {
+fn field_matches(f: &Field, v: u8) -> bool {
     match f {
         Field::Any => true,
         Field::Exact(x) => *x == v,
+        Field::List(xs) => xs.contains(&v),
+        Field::Range(lo, hi) => v >= *lo && v <= *hi,
     }
 }
 
@@ -111,7 +129,7 @@ impl Job {
 
     /// Whether this job should fire at the given wall-clock tuple.
     #[must_use]
-    pub const fn matches(&self, m: u8, h: u8, d: u8, mo: u8, dw: u8) -> bool {
+    pub fn matches(&self, m: u8, h: u8, d: u8, mo: u8, dw: u8) -> bool {
         matches_time(&self.spec, m, h, d, mo, dw)
     }
 }

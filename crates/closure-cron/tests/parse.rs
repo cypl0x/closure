@@ -72,6 +72,24 @@ fn job_filters_by_time() {
 }
 
 #[test]
+fn list_field_matches_each_value() {
+    let s = parse("0,15,30,45 * * * * quarter").unwrap();
+    assert_eq!(s.minute, Field::List(vec![0, 15, 30, 45]));
+    assert!(closure_cron::matches_time(&s, 15, 0, 1, 1, 1));
+    assert!(!closure_cron::matches_time(&s, 14, 0, 1, 1, 1));
+}
+
+#[test]
+fn range_field_matches_inclusive_endpoints() {
+    let s = parse("* 9-17 * * * workhours").unwrap();
+    assert_eq!(s.hour, Field::Range(9, 17));
+    assert!(closure_cron::matches_time(&s, 0, 9, 1, 1, 1));
+    assert!(closure_cron::matches_time(&s, 0, 17, 1, 1, 1));
+    assert!(!closure_cron::matches_time(&s, 0, 8, 1, 1, 1));
+    assert!(!closure_cron::matches_time(&s, 0, 18, 1, 1, 1));
+}
+
+#[test]
 fn scheduler_skips_non_matching_job() {
     use std::sync::Arc;
     use std::sync::atomic::{AtomicUsize, Ordering};
