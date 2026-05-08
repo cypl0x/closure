@@ -72,6 +72,20 @@ fn job_filters_by_time() {
 }
 
 #[test]
+fn next_match_finds_upcoming_minute() {
+    let s = parse("30 9 * * * morning").unwrap();
+    let next = closure_cron::next_match_today(&s, 0, 9).expect("next");
+    assert_eq!(next, (30, 9));
+}
+
+#[test]
+fn next_match_wraps_to_next_day() {
+    let s = parse("0 8 * * * morning").unwrap();
+    let next = closure_cron::next_match_today(&s, 30, 9).expect("next");
+    assert_eq!(next, (0, 8));
+}
+
+#[test]
 fn parse_jobs_skips_blank_and_comment_lines() {
     let block = "\n# header\n0 9 * * * morning\n# midday note\n30 12 * * * lunch\n";
     let jobs = closure_cron::parse_jobs(block).unwrap();
