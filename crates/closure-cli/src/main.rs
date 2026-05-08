@@ -393,6 +393,11 @@ enum Cmd {
         /// Path to a `*.org` file.
         file: PathBuf,
     },
+    /// Print top-level vault summary: files, headlines, words, top tag.
+    VaultInfo {
+        /// Path to the vault directory.
+        vault: PathBuf,
+    },
     /// Run the MCP stdio dispatcher (one command name per line; `LIST`
     /// to enumerate). Quits on EOF.
     Mcp,
@@ -640,6 +645,7 @@ fn run(cmd: &Cmd) -> Result<(), String> {
         Cmd::Properties { file } => cmd_properties(file),
         Cmd::Validate { file } => cmd_validate(file),
         Cmd::StatsFile { file } => cmd_stats_file(file),
+        Cmd::VaultInfo { vault } => cmd_vault_info(vault),
         Cmd::Mcp => cmd_mcp(),
         Cmd::Orphans { vault } => cmd_orphans(vault),
         Cmd::DeadLinks { vault } => cmd_dead_links(vault),
@@ -1006,6 +1012,21 @@ fn cmd_orphans(vault: &Path) -> Result<(), String> {
                 println!("{}\t{}", h.id(), h.title());
             }
         }
+    }
+    Ok(())
+}
+
+fn cmd_vault_info(vault: &Path) -> Result<(), String> {
+    let v = Vault::open(vault).map_err(|e| format!("{e}"))?;
+    println!("root:       {}", v.root().display());
+    println!("files:      {}", v.len());
+    println!("headlines:  {}", v.headline_count());
+    println!("words:      {}", v.word_count());
+    if let Some((tag, n)) = v.tag_counts().into_iter().next() {
+        println!("top tag:    {tag} ({n})");
+    }
+    if let Some((kw, n)) = v.todo_counts().into_iter().next() {
+        println!("top todo:   {kw} ({n})");
     }
     Ok(())
 }
