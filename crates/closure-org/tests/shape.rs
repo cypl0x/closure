@@ -662,6 +662,12 @@ fn parse_block_args_no_value_drops_key() {
 }
 
 #[test]
+fn headline_count_walks_recursively() {
+    let doc = parse("* A\n** B\n** C\n*** D\n").expect("parse");
+    assert_eq!(doc.headline_count(), 4);
+}
+
+#[test]
 fn source_hash_is_deterministic() {
     let a = parse("* Hello\n").expect("parse");
     let b = parse("* Hello\n").expect("parse");

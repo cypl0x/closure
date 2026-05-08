@@ -50,6 +50,15 @@ impl OrgDoc {
         &self.source
     }
 
+    /// Total headline count (every level, recursive).
+    #[must_use]
+    pub fn headline_count(&self) -> usize {
+        fn walk(h: &Headline) -> usize {
+            1 + h.children().iter().map(walk).sum::<usize>()
+        }
+        self.roots.iter().map(walk).sum()
+    }
+
     /// 64-bit FNV-1a hash of the source. Stable across runs and
     /// machines; intended for cache keying and change detection. Two
     /// byte-equal sources yield the same hash regardless of how they
