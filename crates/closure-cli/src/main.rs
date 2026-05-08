@@ -300,6 +300,11 @@ enum Cmd {
         /// Path to the vault directory.
         vault: PathBuf,
     },
+    /// Count words / characters / headlines in an org file.
+    Wc {
+        /// Path to a `*.org` file.
+        file: PathBuf,
+    },
     /// Print document-level keywords (TITLE/AUTHOR/DATE/FILETAGS).
     Meta {
         /// Path to a `*.org` file.
@@ -397,7 +402,22 @@ fn run(cmd: &Cmd) -> Result<(), String> {
             closed,
         } => cmd_set_planning(file, id, scheduled, deadline, closed),
         Cmd::Meta { file } => cmd_meta(file),
+        Cmd::Wc { file } => cmd_wc(file),
     }
+}
+
+fn cmd_wc(path: &Path) -> Result<(), String> {
+    let src = fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))?;
+    let doc = Document::load_str(&src).map_err(|e| format!("{e}"))?;
+    let chars = src.chars().count();
+    let words = src.split_whitespace().count();
+    let lines = src.lines().count();
+    let headlines = doc.all_headlines().count();
+    println!("chars: {chars}");
+    println!("words: {words}");
+    println!("lines: {lines}");
+    println!("headlines: {headlines}");
+    Ok(())
 }
 
 fn cmd_meta(path: &Path) -> Result<(), String> {
