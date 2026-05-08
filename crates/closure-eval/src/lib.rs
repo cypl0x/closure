@@ -164,6 +164,24 @@ pub fn backend_for(lang: &str) -> Option<Box<dyn Backend>> {
     }
 }
 
+/// All recognised language identifiers in canonical form. Used by
+/// the CLI / shells to enumerate which backends are wired in.
+#[must_use]
+pub const fn known_languages() -> &'static [&'static str] {
+    &[
+        "shell",
+        "sh",
+        "bash",
+        "python",
+        "py",
+        "javascript",
+        "js",
+        "node",
+        "ruby",
+        "rb",
+    ]
+}
+
 /// In-memory result cache keyed by `(language, source)`. Avoids
 /// re-running unchanged code blocks across successive evaluations.
 #[derive(Debug, Default)]

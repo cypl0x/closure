@@ -41,6 +41,18 @@ fn backend_for_known_languages() {
 }
 
 #[test]
+fn known_languages_lists_every_alias() {
+    let langs = closure_eval::known_languages();
+    assert!(langs.contains(&"shell"));
+    assert!(langs.contains(&"python"));
+    assert!(langs.contains(&"javascript"));
+    assert!(langs.contains(&"ruby"));
+    for lang in langs {
+        assert!(closure_eval::backend_for(lang).is_some(), "alias {lang} should resolve");
+    }
+}
+
+#[test]
 fn shell_backend_respects_timeout() {
     let b = ShellBackend;
     let err = b
