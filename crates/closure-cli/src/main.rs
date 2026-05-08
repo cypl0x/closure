@@ -406,6 +406,11 @@ enum Cmd {
         /// Path to a `*.org` file.
         file: PathBuf,
     },
+    /// Print every archived headline (those carrying :ARCHIVE:) in a vault.
+    Archived {
+        /// Path to the vault directory.
+        vault: PathBuf,
+    },
     /// Append a line to a headline's `:LOGBOOK:` drawer.
     LogbookAppend {
         /// Path to a `*.org` file.
@@ -584,6 +589,7 @@ fn run(cmd: &Cmd) -> Result<(), String> {
         Cmd::Commands => cmd_commands(),
         Cmd::LogbookAppend { file, id, entry } => cmd_logbook_append(file, id, entry),
         Cmd::Depth { file } => cmd_depth(file),
+        Cmd::Archived { vault } => cmd_archived(vault),
         Cmd::Paths { vault } => cmd_paths(vault),
         Cmd::Hash { file } => cmd_hash(file),
         Cmd::Graph { vault } => cmd_graph(vault),
@@ -714,6 +720,18 @@ fn cmd_dead_links(vault: &Path) -> Result<(), String> {
                 {
                     println!("{}\t{}\t{}", path.display(), h.id(), raw);
                 }
+            }
+        }
+    }
+    Ok(())
+}
+
+fn cmd_archived(vault: &Path) -> Result<(), String> {
+    let v = Vault::open(vault).map_err(|e| format!("{e}"))?;
+    for (path, doc) in v.iter() {
+        for h in doc.all_headlines() {
+            if h.tags().iter().any(|t| t == "ARCHIVE") {
+                println!("{}\t{}\t{}", path.display(), h.id(), h.title());
             }
         }
     }
