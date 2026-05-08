@@ -162,6 +162,18 @@ impl Vault {
         Ok(())
     }
 
+    /// Atomically write with a `.bak` backup of the existing content.
+    /// If `path` exists, it is copied to `<name>.org.bak` before the
+    /// new write. The new write itself is atomic via the same
+    /// tmp-then-rename dance as [`Self::save`].
+    pub fn save_with_backup(&self, path: &Path, source: &str) -> Result<(), VaultError> {
+        if path.exists() {
+            let bak = path.with_extension("org.bak");
+            fs::copy(path, &bak)?;
+        }
+        self.save(path, source)
+    }
+
     /// Start a recursive file watcher rooted at the vault. Returns a
     /// [`VaultWatcher`] whose `recv` blocks for the next change event.
     /// The watcher must be kept alive — dropping it stops the inotify

@@ -86,6 +86,18 @@ fn vault_save_writes_byte_exact_source() {
 }
 
 #[test]
+fn vault_save_with_backup_writes_bak() {
+    let td = write_vault(&[("x.org", "* Original\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    let path = td.path().join("x.org");
+    v.save_with_backup(&path, "* Updated\n").expect("save");
+    let now = fs::read_to_string(&path).expect("read");
+    let bak = fs::read_to_string(td.path().join("x.org.bak")).expect("read bak");
+    assert_eq!(now, "* Updated\n");
+    assert_eq!(bak, "* Original\n");
+}
+
+#[test]
 fn vault_reload_picks_up_new_file() {
     let td = write_vault(&[("a.org", "* A\n")]);
     let mut v = Vault::open(td.path()).expect("open");
