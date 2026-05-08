@@ -99,6 +99,30 @@ fn vault_create_file_adds_new_document() {
 }
 
 #[test]
+fn vault_delete_file_drops_entry() {
+    let td = write_vault(&[("a.org", "* A\n"), ("b.org", "* B\n")]);
+    let mut v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.len(), 2);
+    let a = td.path().join("a.org");
+    v.delete_file(&a).expect("delete");
+    assert_eq!(v.len(), 1);
+    assert!(!a.exists());
+}
+
+#[test]
+fn vault_rename_file_updates_indexes() {
+    let td = write_vault(&[("a.org", "* A\n")]);
+    let mut v = Vault::open(td.path()).expect("open");
+    let from = td.path().join("a.org");
+    let to_rel = std::path::Path::new("renamed.org");
+    let new_path = v.rename_file(&from, to_rel).expect("rename");
+    assert!(!from.exists());
+    assert!(new_path.exists());
+    assert!(v.document(&new_path).is_some());
+    assert!(v.document(&from).is_none());
+}
+
+#[test]
 fn vault_create_file_refuses_to_overwrite() {
     let td = write_vault(&[("x.org", "* X\n")]);
     let mut v = Vault::open(td.path()).expect("open");

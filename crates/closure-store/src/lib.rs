@@ -174,6 +174,45 @@ impl Vault {
         self.save(path, source)
     }
 
+    /// Delete a `*.org` file from the vault. Removes the on-disk
+    /// file plus its entries in the documents and `by_id` maps.
+    /// Errors if the file isn't currently loaded.
+    pub fn delete_file(&mut self, path: &Path) -> Result<(), VaultError> {
+        if !self.documents.contains_key(path) {
+            return Err(VaultError::Io(io::Error::new(
+                io::ErrorKind::NotFound,
+                path.display().to_string(),
+            )));
+        }
+        fs::remove_file(path)?;
+        self.documents.remove(path);
+        self.by_id.retain(|_, p| p != path);
+        Ok(())
+    }
+
+    /// Rename a file inside the vault. Updates documents and `by_id`
+    /// maps to point at the new path.
+    pub fn rename_file(&mut self, from: &Path, to_relative: &Path) -> Result<PathBuf, VaultError> {
+        let to = self.root.join(to_relative);
+        let doc = self.documents.remove(from).ok_or_else(|| {
+            VaultError::Io(io::Error::new(
+                io::ErrorKind::NotFound,
+                from.display().to_string(),
+            ))
+        })?;
+        if let Some(parent) = to.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        fs::rename(from, &to)?;
+        for path in self.by_id.values_mut() {
+            if path == from {
+                path.clone_from(&to);
+            }
+        }
+        self.documents.insert(to.clone(), doc);
+        Ok(to)
+    }
+
     /// Create a new `*.org` file under `relative` (relative to the
     /// vault root) with `source`. Refuses to overwrite an existing
     /// file. Returns the absolute path.
