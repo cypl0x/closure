@@ -197,6 +197,17 @@ impl Vault {
             .sum()
     }
 
+    /// Map of `path → 64-bit FNV-1a content hash` for every loaded
+    /// document. Useful for change-detection caches that need to know
+    /// which files have shifted since a previous snapshot.
+    #[must_use]
+    pub fn source_hashes(&self) -> HashMap<PathBuf, u64> {
+        self.documents
+            .iter()
+            .map(|(p, d)| (p.clone(), d.source_hash()))
+            .collect()
+    }
+
     /// Every distinct TODO keyword used across the vault, sorted.
     #[must_use]
     pub fn all_todos(&self) -> Vec<String> {
