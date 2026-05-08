@@ -602,6 +602,31 @@ fn set_planning_clear_removes_line() {
 }
 
 #[test]
+fn doc_keywords_extracted_from_preamble() {
+    let src = "#+TITLE: My Notes\n#+AUTHOR: Alice\n#+DATE: 2026-04-24\n#+FILETAGS: :work:home:\n* First\n";
+    let doc = parse(src).expect("parse");
+    assert_eq!(doc.title(), Some("My Notes"));
+    assert_eq!(doc.author(), Some("Alice"));
+    assert_eq!(doc.date(), Some("2026-04-24"));
+    assert_eq!(doc.filetags(), vec!["work", "home"]);
+}
+
+#[test]
+fn doc_keywords_absent_returns_none() {
+    let doc = parse("* Just a heading\n").expect("parse");
+    assert_eq!(doc.title(), None);
+    assert_eq!(doc.author(), None);
+    assert_eq!(doc.date(), None);
+    assert!(doc.filetags().is_empty());
+}
+
+#[test]
+fn doc_keywords_case_insensitive() {
+    let doc = parse("#+title: lowercase\n").expect("parse");
+    assert_eq!(doc.title(), Some("lowercase"));
+}
+
+#[test]
 fn planning_view_reads_scheduled_and_deadline() {
     let src = "* TODO Task\nSCHEDULED: <2026-04-25 Sat> DEADLINE: <2026-05-01 Fri>\nbody\n";
     let doc = parse(src).expect("parse");

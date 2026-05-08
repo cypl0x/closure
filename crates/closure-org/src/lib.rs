@@ -53,6 +53,53 @@ impl OrgDoc {
     fn source_of(&self, span: Span) -> &str {
         &self.source[span.start..span.end]
     }
+
+    /// Lookup a document-level keyword (`#+KEY: value`) in the preamble.
+    /// Match is case-insensitive on the key. Returns the value with
+    /// surrounding whitespace trimmed. Returns the first match if a
+    /// keyword appears more than once.
+    #[must_use]
+    pub fn keyword(&self, key: &str) -> Option<&str> {
+        for n in &self.preamble {
+            if n.kind != NodeKind::Keyword {
+                continue;
+            }
+            let text = &self.source[n.span.start..n.span.end];
+            let body = text.strip_prefix("#+")?;
+            let (k, v) = body.split_once(':')?;
+            if k.eq_ignore_ascii_case(key) {
+                return Some(v.trim_matches([' ', '\t', '\n', '\r']));
+            }
+        }
+        None
+    }
+
+    /// `#+TITLE:` value if set in the preamble.
+    #[must_use]
+    pub fn title(&self) -> Option<&str> {
+        self.keyword("TITLE")
+    }
+
+    /// `#+AUTHOR:` value if set.
+    #[must_use]
+    pub fn author(&self) -> Option<&str> {
+        self.keyword("AUTHOR")
+    }
+
+    /// `#+DATE:` value if set.
+    #[must_use]
+    pub fn date(&self) -> Option<&str> {
+        self.keyword("DATE")
+    }
+
+    /// `#+FILETAGS:` parsed as a list of `:tag:` separated names. Returns
+    /// an empty `Vec` when the keyword is absent.
+    #[must_use]
+    pub fn filetags(&self) -> Vec<&str> {
+        self.keyword("FILETAGS").map_or_else(Vec::new, |raw| {
+            raw.split(':').filter(|s| !s.is_empty()).collect()
+        })
+    }
 }
 
 /// Failure mode for structure-preserving rewrites.

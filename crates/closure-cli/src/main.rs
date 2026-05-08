@@ -300,6 +300,11 @@ enum Cmd {
         /// Path to the vault directory.
         vault: PathBuf,
     },
+    /// Print document-level keywords (TITLE/AUTHOR/DATE/FILETAGS).
+    Meta {
+        /// Path to a `*.org` file.
+        file: PathBuf,
+    },
     /// Set or clear the planning line (SCHEDULED/DEADLINE/CLOSED).
     SetPlanning {
         /// Path to a `*.org` file.
@@ -391,7 +396,27 @@ fn run(cmd: &Cmd) -> Result<(), String> {
             deadline,
             closed,
         } => cmd_set_planning(file, id, scheduled, deadline, closed),
+        Cmd::Meta { file } => cmd_meta(file),
     }
+}
+
+fn cmd_meta(path: &Path) -> Result<(), String> {
+    let src = fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))?;
+    let doc = closure_org::parse(&src).map_err(|e| format!("{e}"))?;
+    if let Some(t) = doc.title() {
+        println!("title: {t}");
+    }
+    if let Some(a) = doc.author() {
+        println!("author: {a}");
+    }
+    if let Some(d) = doc.date() {
+        println!("date: {d}");
+    }
+    let tags = doc.filetags();
+    if !tags.is_empty() {
+        println!("filetags: {}", tags.join(", "));
+    }
+    Ok(())
 }
 
 fn cmd_set_planning(
