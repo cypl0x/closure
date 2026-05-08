@@ -238,6 +238,8 @@ enum Cmd {
     },
     /// Print the 10 spec invariants closure enforces.
     Spec,
+    /// Print a sample `#+BEGIN_SRC closure-config` block.
+    DefaultConfig,
 }
 
 fn main() -> ExitCode {
@@ -296,7 +298,21 @@ fn run(cmd: &Cmd) -> Result<(), String> {
         Cmd::Search { vault, needle } => cmd_search(vault, needle),
         Cmd::Config { path } => cmd_config(path),
         Cmd::Spec => cmd_spec(),
+        Cmd::DefaultConfig => cmd_default_config(),
     }
+}
+
+#[allow(clippy::unnecessary_wraps)]
+fn cmd_default_config() -> Result<(), String> {
+    println!("#+TITLE: closure config");
+    println!();
+    println!("#+BEGIN_SRC closure-config");
+    println!("input_mode = doom");
+    println!("theme = default");
+    println!("# default_vault = ~/notes");
+    println!("# todo_keywords = TODO, DOING, DONE");
+    println!("#+END_SRC");
+    Ok(())
 }
 
 #[allow(clippy::unnecessary_wraps)]
