@@ -433,6 +433,13 @@ enum Cmd {
         /// Path to the vault directory.
         vault: PathBuf,
     },
+    /// Find the first headline whose title matches (case-insensitive).
+    FindTitle {
+        /// Path to the vault directory.
+        vault: PathBuf,
+        /// Title to match.
+        title: String,
+    },
     /// Print TODO keyword occurrence counts ranked descending.
     TodoCloud {
         /// Path to the vault directory.
@@ -623,6 +630,7 @@ fn run(cmd: &Cmd) -> Result<(), String> {
         Cmd::Depth { file } => cmd_depth(file),
         Cmd::Archived { vault } => cmd_archived(vault),
         Cmd::CommentList { vault } => cmd_comment_list(vault),
+        Cmd::FindTitle { vault, title } => cmd_find_title(vault, title),
         Cmd::TodoCloud { vault } => cmd_todo_cloud(vault),
         Cmd::Paths { vault } => cmd_paths(vault),
         Cmd::Hash { file } => cmd_hash(file),
@@ -765,6 +773,13 @@ fn cmd_todo_cloud(vault: &Path) -> Result<(), String> {
     for (kw, n) in v.todo_counts() {
         println!("{n:>4}  {kw}");
     }
+    Ok(())
+}
+
+fn cmd_find_title(vault: &Path, title: &str) -> Result<(), String> {
+    let v = Vault::open(vault).map_err(|e| format!("{e}"))?;
+    let (h, path) = v.find_by_title(title).ok_or_else(|| "not found".to_owned())?;
+    println!("{}\t{}\t{}", path.display(), h.id(), h.title());
     Ok(())
 }
 
