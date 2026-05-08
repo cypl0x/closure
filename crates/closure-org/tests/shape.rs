@@ -602,6 +602,31 @@ fn set_planning_clear_removes_line() {
 }
 
 #[test]
+fn find_drawers_logbook_in_text() {
+    let text = ":LOGBOOK:\n- State \"DONE\" from \"TODO\" [2026-04-25]\n:END:\n";
+    let d = closure_org::find_drawers(text);
+    assert_eq!(d.len(), 1);
+    assert_eq!(d[0].name, "LOGBOOK");
+    assert!(d[0].content.contains("State"));
+}
+
+#[test]
+fn find_drawers_skips_properties() {
+    // PROPERTIES drawer should still match — it's a regular drawer.
+    let text = ":PROPERTIES:\n:ID: x\n:END:\n";
+    let d = closure_org::find_drawers(text);
+    assert_eq!(d.len(), 1);
+    assert_eq!(d[0].name, "PROPERTIES");
+}
+
+#[test]
+fn find_drawers_unclosed_ignored() {
+    let text = ":LOGBOOK:\nstuff\nno end\n";
+    let d = closure_org::find_drawers(text);
+    assert!(d.is_empty());
+}
+
+#[test]
 fn toggle_checkbox_unchecked_to_checked() {
     let src = "- [ ] task\n";
     let doc = parse(src).expect("parse");

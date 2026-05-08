@@ -883,6 +883,60 @@ pub enum CookieView {
     Percent(u32),
 }
 
+/// Generic Org drawer (`:NAME:` ... `:END:`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DrawerView<'a> {
+    /// Drawer name (without surrounding colons).
+    pub name: &'a str,
+    /// Drawer body between the opening line and the closing `:END:`,
+    /// excluding both lines themselves.
+    pub content: &'a str,
+}
+
+/// Scan `text` for `:NAME:` ... `:END:` drawers in source order.
+/// Drawer names match `[A-Z][A-Z0-9_]*`. Unclosed drawers are skipped.
+#[must_use]
+pub fn find_drawers(text: &str) -> Vec<DrawerView<'_>> {
+    let mut out: Vec<DrawerView<'_>> = Vec::new();
+    let mut cursor = 0usize;
+    while cursor < text.len() {
+        let Some(line_end) = text[cursor..].find('\n') else {
+            break;
+        };
+        let line = &text[cursor..cursor + line_end];
+        let trimmed = line.trim_start();
+        let after_first = cursor + line_end + 1;
+        if let Some(name) = drawer_name(trimmed)
+            && let Some(end_rel) = text[after_first..].find(":END:")
+        {
+            let body_end = after_first + end_rel;
+            let content = &text[after_first..body_end];
+            out.push(DrawerView { name, content });
+            let close_line_end = text[body_end..]
+                .find('\n')
+                .map_or(text.len(), |n| body_end + n + 1);
+            cursor = close_line_end;
+            continue;
+        }
+        cursor = after_first;
+    }
+    out
+}
+
+fn drawer_name(line: &str) -> Option<&str> {
+    let inner = line.strip_prefix(':')?.strip_suffix(':')?;
+    if inner.is_empty() || inner == "END" {
+        return None;
+    }
+    let bytes = inner.as_bytes();
+    let first_ok = bytes[0].is_ascii_uppercase();
+    let rest_ok = bytes
+        .iter()
+        .skip(1)
+        .all(|&b| b.is_ascii_uppercase() || b.is_ascii_digit() || b == b'_');
+    (first_ok && rest_ok).then_some(inner)
+}
+
 /// Org-mode macro invocation `{{{name(arg1,arg2)}}}`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MacroView<'a> {
