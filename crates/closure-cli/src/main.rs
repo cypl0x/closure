@@ -399,6 +399,8 @@ enum Cmd {
         /// Path to a `*.org` file.
         file: PathBuf,
     },
+    /// Print every command name registered in the default registry.
+    Commands,
     /// Print every `*.org` file path in a vault, sorted.
     Paths {
         /// Path to the vault directory.
@@ -565,6 +567,7 @@ fn run(cmd: &Cmd) -> Result<(), String> {
         Cmd::DeadLinks { vault } => cmd_dead_links(vault),
         Cmd::Hubs { vault, limit } => cmd_hubs(vault, *limit),
         Cmd::Clock { file } => cmd_clock(file),
+        Cmd::Commands => cmd_commands(),
         Cmd::Paths { vault } => cmd_paths(vault),
         Cmd::Hash { file } => cmd_hash(file),
         Cmd::Graph { vault } => cmd_graph(vault),
@@ -697,6 +700,17 @@ fn cmd_dead_links(vault: &Path) -> Result<(), String> {
                 }
             }
         }
+    }
+    Ok(())
+}
+
+#[allow(clippy::unnecessary_wraps)]
+fn cmd_commands() -> Result<(), String> {
+    let registry = closure_core::default_registry();
+    let mut names: Vec<&str> = registry.names().collect();
+    names.sort_unstable();
+    for n in names {
+        println!("{n}");
     }
     Ok(())
 }
