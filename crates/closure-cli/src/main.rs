@@ -333,6 +333,21 @@ enum Cmd {
         /// Path to a `*.org` file.
         file: PathBuf,
     },
+    /// Print every timestamp (active/inactive) in a file.
+    Timestamps {
+        /// Path to a `*.org` file.
+        file: PathBuf,
+    },
+    /// Print every progress cookie (`[N/M]`, `[N%]`) in a file.
+    Cookies {
+        /// Path to a `*.org` file.
+        file: PathBuf,
+    },
+    /// Print every macro invocation (`{{{name(args)}}}`) in a file.
+    Macros {
+        /// Path to a `*.org` file.
+        file: PathBuf,
+    },
     /// Toggle the checkbox on the Nth preamble list item.
     ToggleCheckbox {
         /// Path to a `*.org` file.
@@ -463,6 +478,9 @@ fn run(cmd: &Cmd) -> Result<(), String> {
         Cmd::Tables { file } => cmd_tables(file),
         Cmd::Links { file } => cmd_links(file),
         Cmd::Footnotes { file } => cmd_footnotes(file),
+        Cmd::Timestamps { file } => cmd_timestamps(file),
+        Cmd::Cookies { file } => cmd_cookies(file),
+        Cmd::Macros { file } => cmd_macros(file),
         Cmd::SetProperty {
             file,
             id,
@@ -487,6 +505,38 @@ fn cmd_archive(path: &Path, id: &str) -> Result<(), String> {
     let cmd = ToggleArchive::new(BlockId::from_existing(id));
     Command::apply(&cmd, &mut doc).map_err(|e| format!("{e}"))?;
     fs::write(path, doc.source()).map_err(|e| format!("write: {e}"))?;
+    Ok(())
+}
+
+fn cmd_timestamps(path: &Path) -> Result<(), String> {
+    let src = fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))?;
+    for t in closure_org::find_timestamps(&src) {
+        let kind = if t.active { "active" } else { "inactive" };
+        println!("{kind}\t{}", t.content);
+    }
+    Ok(())
+}
+
+fn cmd_cookies(path: &Path) -> Result<(), String> {
+    let src = fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))?;
+    for c in closure_org::find_cookies(&src) {
+        match c {
+            closure_org::CookieView::Count { done, total } => println!("[{done}/{total}]"),
+            closure_org::CookieView::Percent(n) => println!("[{n}%]"),
+        }
+    }
+    Ok(())
+}
+
+fn cmd_macros(path: &Path) -> Result<(), String> {
+    let src = fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))?;
+    for m in closure_org::find_macros(&src) {
+        if m.args.is_empty() {
+            println!("{{{{{{{}}}}}}}", m.name);
+        } else {
+            println!("{{{{{{{}({})}}}}}}", m.name, m.args.join(","));
+        }
+    }
     Ok(())
 }
 
