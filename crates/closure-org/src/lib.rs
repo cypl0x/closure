@@ -265,6 +265,36 @@ pub fn rewrite_headline_set_body(
     parse(&src).map_err(|_| RewriteError::Parse)
 }
 
+/// Replace the content of the Nth preamble code block with
+/// `new_content`. The fence lines (`#+BEGIN_SRC ...` and
+/// `#+END_SRC`) are preserved.
+pub fn rewrite_code_block_content(
+    doc: &OrgDoc,
+    block_index: usize,
+    new_content: &str,
+) -> Result<OrgDoc, RewriteError> {
+    let mut idx = 0usize;
+    let mut content_span: Option<Span> = None;
+    for n in doc.preamble() {
+        if n.kind() == NodeKind::CodeBlock {
+            if idx == block_index {
+                if let NodeMeta::CodeBlock {
+                    content_span: cs, ..
+                } = &n.meta
+                {
+                    content_span = Some(*cs);
+                }
+                break;
+            }
+            idx += 1;
+        }
+    }
+    let span = content_span.ok_or(RewriteError::NotFound)?;
+    let mut src = doc.source().to_owned();
+    src.replace_range(span.start..span.end, new_content);
+    parse(&src).map_err(|_| RewriteError::Parse)
+}
+
 /// Attach a `#+RESULTS:` block to the Nth preamble code block.
 ///
 /// The results lines are formatted as `: <line>` org-babel-style

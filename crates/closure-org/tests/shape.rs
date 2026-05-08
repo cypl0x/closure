@@ -368,6 +368,18 @@ fn attach_results_to_first_code_block() {
 }
 
 #[test]
+fn rewrite_code_block_content_swaps_body() {
+    let src = "#+BEGIN_SRC sh\necho old\n#+END_SRC\n";
+    let doc = parse(src).expect("parse");
+    let new = closure_org::rewrite_code_block_content(&doc, 0, "echo new\n").expect("rewrite");
+    let out = closure_org::print(&new);
+    assert!(out.contains("echo new"));
+    assert!(!out.contains("echo old"));
+    assert!(out.contains("#+BEGIN_SRC sh"));
+    assert!(out.contains("#+END_SRC"));
+}
+
+#[test]
 fn attach_results_replaces_existing_block() {
     let src = "#+BEGIN_SRC sh\necho hi\n#+END_SRC\n#+RESULTS:\n: old\n";
     let doc = parse(src).expect("parse");
