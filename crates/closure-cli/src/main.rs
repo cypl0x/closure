@@ -236,6 +236,8 @@ enum Cmd {
         /// closure-config` block.
         path: PathBuf,
     },
+    /// Print the 10 spec invariants closure enforces.
+    Spec,
 }
 
 fn main() -> ExitCode {
@@ -293,7 +295,28 @@ fn run(cmd: &Cmd) -> Result<(), String> {
         Cmd::SetBody { file, id, body } => cmd_set_body(file, id, body),
         Cmd::Search { vault, needle } => cmd_search(vault, needle),
         Cmd::Config { path } => cmd_config(path),
+        Cmd::Spec => cmd_spec(),
     }
+}
+
+#[allow(clippy::unnecessary_wraps)]
+fn cmd_spec() -> Result<(), String> {
+    let lines = [
+        "I1  byte-exact roundtrip on the golden corpus",
+        "I2  stable BlockId (ULID) survives parse/print/CRDT merges",
+        "I3  every mutation undoable via Edit + branching UndoTree",
+        "I4  every command carries a keybinding (whichkey reads registry)",
+        "I5  no panics in kernel crates (forbid unsafe, deny unwrap/expect, fuzz)",
+        "I6  determinism for parse/print/queries",
+        "I7  shells consume closure-core only; spans pub(crate) firewall",
+        "I8  command-registry is the only side-effect surface",
+        "I9  config validation at load, not at use (typed schema)",
+        "I10 deterministic / hermetic / reproducible builds (nix flake check)",
+    ];
+    for l in lines {
+        println!("{l}");
+    }
+    Ok(())
 }
 
 fn cmd_config(path: &Path) -> Result<(), String> {
