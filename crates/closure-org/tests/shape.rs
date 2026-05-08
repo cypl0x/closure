@@ -718,6 +718,17 @@ fn format_inactive_timestamp() {
 }
 
 #[test]
+fn find_anchor_targets_regular_and_radio() {
+    let text = "See <<topic-a>> and <<<radio-target>>> here.";
+    let a = closure_org::find_anchor_targets(text);
+    assert_eq!(a.len(), 2);
+    assert_eq!(a[0].name, "topic-a");
+    assert!(!a[0].is_radio);
+    assert_eq!(a[1].name, "radio-target");
+    assert!(a[1].is_radio);
+}
+
+#[test]
 fn find_named_blocks_returns_all() {
     let text = "#+BEGIN_QUOTE\nhello\n#+END_QUOTE\n#+BEGIN_EXAMPLE\nworld\n#+END_EXAMPLE\n";
     let blocks = closure_org::find_named_blocks(text);
