@@ -602,6 +602,33 @@ fn set_planning_clear_removes_line() {
 }
 
 #[test]
+fn rewrite_append_logbook_entry_creates_drawer() {
+    let src = "* Task\n";
+    let doc = parse(src).expect("parse");
+    let new = closure_org::rewrite_headline_append_logbook(
+        &doc,
+        &[0],
+        "- State \"DONE\" from \"TODO\" [2026-04-25]",
+    )
+    .expect("append");
+    let out = closure_org::print(&new);
+    assert!(out.contains(":LOGBOOK:"));
+    assert!(out.contains("State \"DONE\" from \"TODO\""));
+    assert!(out.contains(":END:"));
+}
+
+#[test]
+fn rewrite_append_logbook_extends_existing_drawer() {
+    let src = "* Task\n:LOGBOOK:\n- earlier entry\n:END:\n";
+    let doc = parse(src).expect("parse");
+    let new = closure_org::rewrite_headline_append_logbook(&doc, &[0], "- new entry")
+        .expect("append");
+    let out = closure_org::print(&new);
+    assert!(out.contains("- earlier entry"));
+    assert!(out.contains("- new entry"));
+}
+
+#[test]
 fn parse_logbook_state_change() {
     let body = "- State \"DONE\" from \"TODO\" [2026-04-25]\n- State \"TODO\" from \"DOING\" [2026-04-24]\n";
     let entries = closure_org::parse_logbook(body);

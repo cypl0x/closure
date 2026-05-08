@@ -382,6 +382,43 @@ pub fn rewrite_toggle_checkbox(doc: &OrgDoc, item_index: usize) -> Result<OrgDoc
     parse(&src).map_err(|_| RewriteError::Parse)
 }
 
+/// Append a line to the headline's `:LOGBOOK:` drawer. The drawer
+/// is created (immediately after the header line, before any other
+/// drawer) if absent. `entry` should be a single line without the
+/// trailing newline.
+pub fn rewrite_headline_append_logbook(
+    doc: &OrgDoc,
+    path: &[usize],
+    entry: &str,
+) -> Result<OrgDoc, RewriteError> {
+    let target = navigate_headline(doc, path).ok_or(RewriteError::NotFound)?;
+    let after_header = target.header_span.end;
+    let src = doc.source();
+    let after = &src[after_header..];
+    let after_drawer_start = after_header + after.find(":LOGBOOK:\n").unwrap_or(usize::MAX / 2);
+
+    let mut new_src = src.to_owned();
+    if let Some(rel) = after.find(":LOGBOOK:\n") {
+        let logbook_start = after_header + rel;
+        let after_logbook = &src[logbook_start + ":LOGBOOK:\n".len()..];
+        let end_rel = after_logbook
+            .find(":END:")
+            .ok_or(RewriteError::Parse)?;
+        let insert_at = logbook_start + ":LOGBOOK:\n".len() + end_rel;
+        let mut buf = String::from(entry);
+        buf.push('\n');
+        new_src.insert_str(insert_at, &buf);
+    } else {
+        let _ = after_drawer_start;
+        let mut buf = String::from(":LOGBOOK:\n");
+        buf.push_str(entry);
+        buf.push('\n');
+        buf.push_str(":END:\n");
+        new_src.insert_str(after_header, &buf);
+    }
+    parse(&new_src).map_err(|_| RewriteError::Parse)
+}
+
 /// Toggle the `COMMENT` keyword on a headline. The keyword is a prefix
 /// to the title (`* COMMENT Foo`) that excludes the headline from
 /// agenda views, exports, and code-block evaluation in Emacs Org.
