@@ -1141,6 +1141,58 @@ pub fn format_timestamp(content: &str, active: bool) -> String {
     }
 }
 
+/// `#+BEGIN_NAME` ... `#+END_NAME` named block (QUOTE, EXAMPLE, etc.).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct NamedBlockView<'a> {
+    /// Block name (uppercase, without `#+BEGIN_` prefix).
+    pub name: &'a str,
+    /// Body between begin and end lines (no fence lines).
+    pub content: &'a str,
+}
+
+/// Scan `text` for `#+BEGIN_NAME` / `#+END_NAME` blocks.
+///
+/// Matches are case-insensitive on the directive. SRC blocks are *not*
+/// returned here (use `as_code_block` on the parsed Node) — only
+/// QUOTE, EXAMPLE, VERSE, CENTER, EXPORT, and any other named block.
+#[must_use]
+pub fn find_named_blocks(text: &str) -> Vec<NamedBlockView<'_>> {
+    let mut out: Vec<NamedBlockView<'_>> = Vec::new();
+    let mut cursor = 0usize;
+    while cursor < text.len() {
+        let Some(line_end) = text[cursor..].find('\n') else {
+            break;
+        };
+        let line = &text[cursor..cursor + line_end];
+        let after_line = cursor + line_end + 1;
+        let upper = line.to_ascii_uppercase();
+        if let Some(name) = upper.strip_prefix("#+BEGIN_") {
+            if name == "SRC" || name.starts_with("SRC ") {
+                cursor = after_line;
+                continue;
+            }
+            let close_marker = format!("#+END_{name}");
+            if let Some(end_rel) = text[after_line..].to_ascii_uppercase().find(&close_marker) {
+                let body_end = after_line + end_rel;
+                let content = &text[after_line..body_end];
+                let name_len = name.len();
+                let name_in_src = &line[8..8 + name_len];
+                out.push(NamedBlockView {
+                    name: name_in_src,
+                    content,
+                });
+                let close_line_end = text[body_end..]
+                    .find('\n')
+                    .map_or(text.len(), |n| body_end + n + 1);
+                cursor = close_line_end;
+                continue;
+            }
+        }
+        cursor = after_line;
+    }
+    out
+}
+
 /// Group of consecutive list items (any markers, any indent).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ListGroup<'a> {

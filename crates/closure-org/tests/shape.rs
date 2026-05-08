@@ -718,6 +718,16 @@ fn format_inactive_timestamp() {
 }
 
 #[test]
+fn find_named_blocks_returns_all() {
+    let text = "#+BEGIN_QUOTE\nhello\n#+END_QUOTE\n#+BEGIN_EXAMPLE\nworld\n#+END_EXAMPLE\n";
+    let blocks = closure_org::find_named_blocks(text);
+    assert_eq!(blocks.len(), 2);
+    assert_eq!(blocks[0].name, "QUOTE");
+    assert_eq!(blocks[0].content.trim(), "hello");
+    assert_eq!(blocks[1].name, "EXAMPLE");
+}
+
+#[test]
 fn lists_group_consecutive_items() {
     let src = "- a\n- b\n- c\n\n- d\n";
     let doc = parse(src).expect("parse");
