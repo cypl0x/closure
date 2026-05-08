@@ -440,6 +440,13 @@ enum Cmd {
         /// Title to match.
         title: String,
     },
+    /// Print detailed information about a single headline.
+    Info {
+        /// Path to a `*.org` file.
+        file: PathBuf,
+        /// Block id of the target headline.
+        id: String,
+    },
     /// Print TODO keyword occurrence counts ranked descending.
     TodoCloud {
         /// Path to the vault directory.
@@ -631,6 +638,7 @@ fn run(cmd: &Cmd) -> Result<(), String> {
         Cmd::Archived { vault } => cmd_archived(vault),
         Cmd::CommentList { vault } => cmd_comment_list(vault),
         Cmd::FindTitle { vault, title } => cmd_find_title(vault, title),
+        Cmd::Info { file, id } => cmd_info(file, id),
         Cmd::TodoCloud { vault } => cmd_todo_cloud(vault),
         Cmd::Paths { vault } => cmd_paths(vault),
         Cmd::Hash { file } => cmd_hash(file),
@@ -772,6 +780,37 @@ fn cmd_todo_cloud(vault: &Path) -> Result<(), String> {
     let v = Vault::open(vault).map_err(|e| format!("{e}"))?;
     for (kw, n) in v.todo_counts() {
         println!("{n:>4}  {kw}");
+    }
+    Ok(())
+}
+
+fn cmd_info(path: &Path, id: &str) -> Result<(), String> {
+    let src = fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))?;
+    let doc = Document::load_str(&src).map_err(|e| format!("{e}"))?;
+    let bid = BlockId::from_existing(id);
+    let h = doc
+        .headline_by_id(&bid)
+        .ok_or_else(|| "block id not found".to_owned())?;
+    println!("id:        {}", h.id());
+    println!("title:     {}", h.title());
+    println!("level:     {}", h.level());
+    if let Some(t) = h.todo() {
+        println!("todo:      {t}");
+    }
+    if let Some(p) = h.priority() {
+        println!("priority:  {p}");
+    }
+    if !h.tags().is_empty() {
+        println!("tags:      {}", h.tags().join(", "));
+    }
+    if let Some(s) = h.scheduled() {
+        println!("scheduled: {s}");
+    }
+    if let Some(d) = h.deadline() {
+        println!("deadline:  {d}");
+    }
+    if let Some(c) = h.closed() {
+        println!("closed:    {c}");
     }
     Ok(())
 }
