@@ -353,6 +353,11 @@ enum Cmd {
         /// Path to a `*.org` file.
         file: PathBuf,
     },
+    /// Print every `*.org` file path in a vault, sorted.
+    Paths {
+        /// Path to the vault directory.
+        vault: PathBuf,
+    },
     /// Toggle the checkbox on the Nth preamble list item.
     ToggleCheckbox {
         /// Path to a `*.org` file.
@@ -487,6 +492,7 @@ fn run(cmd: &Cmd) -> Result<(), String> {
         Cmd::Cookies { file } => cmd_cookies(file),
         Cmd::Macros { file } => cmd_macros(file),
         Cmd::Ids { file } => cmd_ids(file),
+        Cmd::Paths { vault } => cmd_paths(vault),
         Cmd::SetProperty {
             file,
             id,
@@ -530,6 +536,14 @@ fn cmd_cookies(path: &Path) -> Result<(), String> {
             closure_org::CookieView::Count { done, total } => println!("[{done}/{total}]"),
             closure_org::CookieView::Percent(n) => println!("[{n}%]"),
         }
+    }
+    Ok(())
+}
+
+fn cmd_paths(vault: &Path) -> Result<(), String> {
+    let v = Vault::open(vault).map_err(|e| format!("{e}"))?;
+    for p in v.paths() {
+        println!("{}", p.display());
     }
     Ok(())
 }
