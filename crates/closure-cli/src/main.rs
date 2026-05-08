@@ -225,6 +225,13 @@ enum Cmd {
         /// Substring to look for (case-sensitive).
         needle: String,
     },
+    /// Load a closure-config block from an org file and print the
+    /// resolved settings.
+    Config {
+        /// Path to a `*.org` file containing a `#+BEGIN_SRC
+        /// closure-config` block.
+        path: PathBuf,
+    },
 }
 
 fn main() -> ExitCode {
@@ -281,7 +288,19 @@ fn run(cmd: &Cmd) -> Result<(), String> {
         Cmd::Move { file, id, after_id } => cmd_move(file, id, after_id),
         Cmd::SetBody { file, id, body } => cmd_set_body(file, id, body),
         Cmd::Search { vault, needle } => cmd_search(vault, needle),
+        Cmd::Config { path } => cmd_config(path),
     }
+}
+
+fn cmd_config(path: &Path) -> Result<(), String> {
+    let cfg = closure_config::Config::from_path(path).map_err(|e| format!("{e}"))?;
+    println!("input_mode:    {:?}", cfg.input_mode);
+    println!("theme:         {}", cfg.theme);
+    if let Some(v) = &cfg.default_vault {
+        println!("default_vault: {}", v.display());
+    }
+    println!("todo_keywords: {}", cfg.todo_keywords.join(", "));
+    Ok(())
 }
 
 fn cmd_search(vault: &Path, needle: &str) -> Result<(), String> {
