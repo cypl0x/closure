@@ -496,6 +496,9 @@ fn cmd_agenda(vault: &Path) -> Result<(), String> {
     let mut items: Vec<(char, String, String, String, String)> = Vec::new();
     for (path, doc) in v.iter() {
         for h in doc.all_headlines() {
+            if h.tags().iter().any(|t| t == "ARCHIVE") {
+                continue;
+            }
             if h.todo().is_some() {
                 let mut planning = String::new();
                 if let Some(s) = h.scheduled() {

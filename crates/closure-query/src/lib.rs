@@ -19,6 +19,21 @@ pub struct Match<'a> {
     pub headline: &'a DocHeadline,
 }
 
+/// True iff this headline carries the `ARCHIVE` tag.
+#[must_use]
+pub fn is_archived(h: &DocHeadline) -> bool {
+    h.tags().iter().any(|t| t == "ARCHIVE")
+}
+
+/// All non-archived headlines in the vault.
+#[must_use]
+pub fn not_archived(vault: &Vault) -> Vec<Match<'_>> {
+    all_headlines(vault)
+        .into_iter()
+        .filter(|m| !is_archived(m.headline))
+        .collect()
+}
+
 /// All headlines in the vault, depth-first per file.
 #[must_use]
 pub fn all_headlines(vault: &Vault) -> Vec<Match<'_>> {

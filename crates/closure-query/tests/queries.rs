@@ -101,6 +101,15 @@ fn full_text_misses_when_neither_matches() {
 }
 
 #[test]
+fn not_archived_filters_out_archived_headlines() {
+    let td = build_vault(&[("a.org", "* Live\n* Old :ARCHIVE:\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    let matches = closure_query::not_archived(&v);
+    assert_eq!(matches.len(), 1);
+    assert_eq!(matches[0].headline.title(), "Live");
+}
+
+#[test]
 fn database_view_renders_default_columns() {
     let td = build_vault(&[("t.org", "* TODO Fix\n* DONE Ship\n")]);
     let v = Vault::open(td.path()).expect("open");
