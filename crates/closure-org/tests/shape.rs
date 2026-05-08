@@ -602,6 +602,25 @@ fn set_planning_clear_removes_line() {
 }
 
 #[test]
+fn parse_logbook_state_change() {
+    let body = "- State \"DONE\" from \"TODO\" [2026-04-25]\n- State \"TODO\" from \"DOING\" [2026-04-24]\n";
+    let entries = closure_org::parse_logbook(body);
+    assert_eq!(entries.len(), 2);
+    assert_eq!(entries[0].new_state, Some("DONE"));
+    assert_eq!(entries[0].old_state, Some("TODO"));
+    assert_eq!(entries[0].when, Some("2026-04-25"));
+    assert_eq!(entries[1].new_state, Some("TODO"));
+}
+
+#[test]
+fn parse_logbook_clock_in_out() {
+    let body = "CLOCK: [2026-04-25 Sat 09:00]--[2026-04-25 Sat 10:30]\n";
+    let entries = closure_org::parse_logbook(body);
+    assert_eq!(entries.len(), 1);
+    assert!(entries[0].kind == closure_org::LogbookKind::Clock);
+}
+
+#[test]
 fn parse_block_args_simple() {
     let args = closure_org::parse_block_args(":results output :wrap example");
     assert_eq!(args.len(), 2);

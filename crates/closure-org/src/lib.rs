@@ -932,6 +932,83 @@ pub enum CookieView {
     Percent(u32),
 }
 
+/// Kind of `:LOGBOOK:` entry.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LogbookKind {
+    /// `- State "X" from "Y" [date]` TODO state change.
+    StateChange,
+    /// `CLOCK: [start]--[end]` clock-in/clock-out interval.
+    Clock,
+    /// Anything else (free-form note).
+    Note,
+}
+
+/// One parsed entry inside a `:LOGBOOK:` drawer.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct LogbookEntry<'a> {
+    /// Classification of this entry.
+    pub kind: LogbookKind,
+    /// New state on a `StateChange` (e.g. "DONE").
+    pub new_state: Option<&'a str>,
+    /// Previous state on a `StateChange`.
+    pub old_state: Option<&'a str>,
+    /// Inactive timestamp body (without brackets) attached to the entry.
+    pub when: Option<&'a str>,
+}
+
+/// Parse the body of a `:LOGBOOK:` drawer into one entry per line.
+///
+/// Empty lines are skipped. Recognises `- State "X" from "Y" [date]`
+/// transitions and `CLOCK:` clock entries; everything else is `Note`.
+#[must_use]
+pub fn parse_logbook(body: &str) -> Vec<LogbookEntry<'_>> {
+    let mut out: Vec<LogbookEntry<'_>> = Vec::new();
+    for line in body.lines() {
+        let trimmed = line.trim_start();
+        if trimmed.is_empty() {
+            continue;
+        }
+        if let Some(rest) = trimmed.strip_prefix("- State ") {
+            let new_state = quoted(rest);
+            let old_state = rest.split_once("from ").and_then(|(_, after)| quoted(after));
+            let when = rest
+                .find('[')
+                .and_then(|i| rest[i + 1..].find(']').map(|j| &rest[i + 1..i + 1 + j]));
+            out.push(LogbookEntry {
+                kind: LogbookKind::StateChange,
+                new_state,
+                old_state,
+                when,
+            });
+        } else if let Some(rest) = trimmed.strip_prefix("CLOCK:") {
+            let when = rest
+                .find('[')
+                .and_then(|i| rest[i + 1..].find(']').map(|j| &rest[i + 1..i + 1 + j]));
+            out.push(LogbookEntry {
+                kind: LogbookKind::Clock,
+                new_state: None,
+                old_state: None,
+                when,
+            });
+        } else {
+            out.push(LogbookEntry {
+                kind: LogbookKind::Note,
+                new_state: None,
+                old_state: None,
+                when: None,
+            });
+        }
+    }
+    out
+}
+
+fn quoted(s: &str) -> Option<&str> {
+    let start = s.find('"')? + 1;
+    let after = &s[start..];
+    let end = after.find('"')?;
+    Some(&after[..end])
+}
+
 /// Parse `#+BEGIN_SRC` header arguments into `(key, value)` tuples.
 ///
 /// Keys keep their leading colon; values run from after the key up to
