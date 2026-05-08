@@ -89,6 +89,7 @@ pub struct DocHeadline {
     scheduled: Option<String>,
     deadline: Option<String>,
     closed: Option<String>,
+    properties: Vec<(String, String)>,
 }
 
 impl DocHeadline {
@@ -164,6 +165,22 @@ impl DocHeadline {
     #[must_use]
     pub fn closed(&self) -> Option<&str> {
         self.closed.as_deref()
+    }
+
+    /// All `:KEY: value` entries from the properties drawer in source
+    /// order.
+    #[must_use]
+    pub fn properties(&self) -> &[(String, String)] {
+        &self.properties
+    }
+
+    /// Lookup a single property value by key (case-sensitive).
+    #[must_use]
+    pub fn property(&self, key: &str) -> Option<&str> {
+        self.properties
+            .iter()
+            .find(|(k, _)| k == key)
+            .map(|(_, v)| v.as_str())
     }
 }
 
@@ -321,6 +338,14 @@ fn make_doc_headline(h: &Headline, path: &[usize], id: BlockId) -> DocHeadline {
         body_text.push_str(n.source());
     }
     let planning = h.planning();
+    let properties: Vec<(String, String)> = h
+        .properties()
+        .map(|p| {
+            p.iter()
+                .map(|(k, v)| (k.to_owned(), v.to_owned()))
+                .collect()
+        })
+        .unwrap_or_default();
     DocHeadline {
         id,
         path: path.to_vec(),
@@ -334,6 +359,7 @@ fn make_doc_headline(h: &Headline, path: &[usize], id: BlockId) -> DocHeadline {
         scheduled: planning.and_then(|p| p.scheduled).map(str::to_owned),
         deadline: planning.and_then(|p| p.deadline).map(str::to_owned),
         closed: planning.and_then(|p| p.closed).map(str::to_owned),
+        properties,
     }
 }
 

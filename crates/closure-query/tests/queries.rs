@@ -101,6 +101,18 @@ fn full_text_misses_when_neither_matches() {
 }
 
 #[test]
+fn by_property_finds_headline_with_matching_value() {
+    let td = build_vault(&[(
+        "a.org",
+        "* Task\n:PROPERTIES:\n:EFFORT: 2h\n:END:\n* Other\n:PROPERTIES:\n:EFFORT: 1h\n:END:\n",
+    )]);
+    let v = Vault::open(td.path()).expect("open");
+    let m = closure_query::by_property(&v, "EFFORT", "2h");
+    assert_eq!(m.len(), 1);
+    assert_eq!(m[0].headline.title(), "Task");
+}
+
+#[test]
 fn not_archived_filters_out_archived_headlines() {
     let td = build_vault(&[("a.org", "* Live\n* Old :ARCHIVE:\n")]);
     let v = Vault::open(td.path()).expect("open");

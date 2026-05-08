@@ -46,6 +46,15 @@ pub fn all_headlines(vault: &Vault) -> Vec<Match<'_>> {
     out
 }
 
+/// Headlines whose properties drawer contains `key` with `value`.
+#[must_use]
+pub fn by_property<'a>(vault: &'a Vault, key: &str, value: &str) -> Vec<Match<'a>> {
+    all_headlines(vault)
+        .into_iter()
+        .filter(|m| m.headline.property(key) == Some(value))
+        .collect()
+}
+
 /// Headlines with a specific tag.
 #[must_use]
 pub fn by_tag<'a>(vault: &'a Vault, tag: &str) -> Vec<Match<'a>> {
