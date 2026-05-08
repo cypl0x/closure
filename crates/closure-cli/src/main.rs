@@ -411,6 +411,8 @@ enum Cmd {
     },
     /// Print every command name registered in the default registry.
     Commands,
+    /// Print every evaluator language alias the build supports.
+    Languages,
     /// Print the maximum headline nesting depth in a file.
     Depth {
         /// Path to a `*.org` file.
@@ -610,6 +612,7 @@ fn run(cmd: &Cmd) -> Result<(), String> {
         Cmd::Hubs { vault, limit } => cmd_hubs(vault, *limit),
         Cmd::Clock { file } => cmd_clock(file),
         Cmd::Commands => cmd_commands(),
+        Cmd::Languages => cmd_languages(),
         Cmd::LogbookAppend { file, id, entry } => cmd_logbook_append(file, id, entry),
         Cmd::Depth { file } => cmd_depth(file),
         Cmd::Archived { vault } => cmd_archived(vault),
@@ -836,6 +839,14 @@ fn walk_for_id(
         }
     }
     None
+}
+
+#[allow(clippy::unnecessary_wraps)]
+fn cmd_languages() -> Result<(), String> {
+    for lang in closure_eval::known_languages() {
+        println!("{lang}");
+    }
+    Ok(())
 }
 
 #[allow(clippy::unnecessary_wraps)]
