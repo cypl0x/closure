@@ -382,10 +382,11 @@ pub fn rewrite_toggle_checkbox(doc: &OrgDoc, item_index: usize) -> Result<OrgDoc
     parse(&src).map_err(|_| RewriteError::Parse)
 }
 
-/// Append a line to the headline's `:LOGBOOK:` drawer. The drawer
-/// is created (immediately after the header line, before any other
-/// drawer) if absent. `entry` should be a single line without the
-/// trailing newline.
+/// Append a line to the headline's `:LOGBOOK:` drawer.
+///
+/// The drawer is created (immediately after the header line, before
+/// any other drawer) if absent. `entry` should be a single line
+/// without the trailing newline.
 pub fn rewrite_headline_append_logbook(
     doc: &OrgDoc,
     path: &[usize],
