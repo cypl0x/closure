@@ -517,6 +517,7 @@ fn main() -> ExitCode {
     }
 }
 
+#[allow(clippy::too_many_lines)]
 fn run(cmd: &Cmd) -> Result<(), String> {
     match cmd {
         Cmd::Tui { vault } => cmd_tui(vault),
