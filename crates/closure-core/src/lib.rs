@@ -753,6 +753,26 @@ pub trait Command {
     fn apply(&self, doc: &mut Document) -> Result<Edit, CommandError>;
 }
 
+/// Build a registry with every built-in mutation command registered
+/// at its default chord. Shells get a complete which-key listing
+/// without hand-wiring every command name.
+#[must_use]
+pub fn default_registry() -> Registry {
+    let mut r = Registry::new();
+    r.register(Box::new(RenameHeadline::new_placeholder()));
+    r.register(Box::new(EnsureId::new_placeholder()));
+    r.register(Box::new(SetTodo::new_placeholder()));
+    r.register(Box::new(SetPriority::new_placeholder()));
+    r.register(Box::new(SetTags::new_placeholder()));
+    r.register(Box::new(SetBody::new_placeholder()));
+    r.register(Box::new(Promote::new_placeholder()));
+    r.register(Box::new(Demote::new_placeholder()));
+    r.register(Box::new(AddSibling::new_placeholder()));
+    r.register(Box::new(RemoveSubtree::new_placeholder()));
+    r.register(Box::new(MoveSubtree::new_placeholder()));
+    r
+}
+
 /// The command registry: name → command.
 #[derive(Default)]
 pub struct Registry {

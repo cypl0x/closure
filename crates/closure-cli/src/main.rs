@@ -531,9 +531,7 @@ fn cmd_id(path: &Path) -> Result<(), String> {
 }
 
 fn default_registry() -> Registry {
-    let mut r = Registry::new();
-    r.register(Box::new(RenameHeadline::new_placeholder()));
-    r
+    closure_core::default_registry()
 }
 
 #[allow(clippy::unnecessary_wraps)]
