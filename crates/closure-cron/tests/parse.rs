@@ -59,6 +59,19 @@ fn scheduler_fires_matching_job() {
 }
 
 #[test]
+fn job_filters_by_time() {
+    let spec_a = parse("0 9 * * * morning").unwrap();
+    let spec_b = parse("30 17 * * * evening").unwrap();
+    let jobs = vec![
+        closure_cron::Job::new(spec_a, "morning"),
+        closure_cron::Job::new(spec_b, "evening"),
+    ];
+    let m = closure_cron::jobs_matching(&jobs, 0, 9, 1, 1, 1);
+    assert_eq!(m.len(), 1);
+    assert_eq!(m[0].command, "morning");
+}
+
+#[test]
 fn scheduler_skips_non_matching_job() {
     use std::sync::Arc;
     use std::sync::atomic::{AtomicUsize, Ordering};

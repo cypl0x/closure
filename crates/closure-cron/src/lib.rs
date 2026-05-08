@@ -89,6 +89,39 @@ const fn field_matches(f: &Field, v: u8) -> bool {
     }
 }
 
+/// Bind a [`CronSpec`] to a registered command name. Drives the
+/// scheduler when the embedder owns a `closure_core::Registry`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Job {
+    /// When to fire.
+    pub spec: CronSpec,
+    /// Registry command name to invoke.
+    pub command: String,
+}
+
+impl Job {
+    /// Build a job from a parsed spec and a command name.
+    #[must_use]
+    pub fn new(spec: CronSpec, command: impl Into<String>) -> Self {
+        Self {
+            spec,
+            command: command.into(),
+        }
+    }
+
+    /// Whether this job should fire at the given wall-clock tuple.
+    #[must_use]
+    pub const fn matches(&self, m: u8, h: u8, d: u8, mo: u8, dw: u8) -> bool {
+        matches_time(&self.spec, m, h, d, mo, dw)
+    }
+}
+
+/// Filter a slice of jobs to those that match `time`.
+#[must_use]
+pub fn jobs_matching(jobs: &[Job], m: u8, h: u8, d: u8, mo: u8, dw: u8) -> Vec<&Job> {
+    jobs.iter().filter(|j| j.matches(m, h, d, mo, dw)).collect()
+}
+
 /// In-process cron scheduler. Holds a list of `(spec, callback)`
 /// pairs and `tick(time)` fires every callback whose spec matches.
 ///
