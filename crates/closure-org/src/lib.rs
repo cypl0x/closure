@@ -56,6 +56,18 @@ impl OrgDoc {
         self.preamble.is_empty() && self.roots.is_empty()
     }
 
+    /// Number of top-level headlines.
+    #[must_use]
+    pub const fn root_count(&self) -> usize {
+        self.roots.len()
+    }
+
+    /// Number of preamble nodes.
+    #[must_use]
+    pub const fn preamble_len(&self) -> usize {
+        self.preamble.len()
+    }
+
     /// Histogram of preamble node kinds. Keys ordered alphabetically.
     #[must_use]
     pub fn preamble_kind_counts(&self) -> Vec<(NodeKind, usize)> {
