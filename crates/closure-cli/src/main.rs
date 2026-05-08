@@ -83,6 +83,10 @@ enum Cmd {
     Eval {
         /// Path to a `*.org` file.
         file: PathBuf,
+        /// Write `#+RESULTS:` blocks back to the source file after
+        /// each evaluated code block.
+        #[arg(long)]
+        write: bool,
     },
     /// Print headlines that link to the given block id.
     Backlinks {
@@ -265,7 +269,7 @@ fn run(cmd: &Cmd) -> Result<(), String> {
             *level,
         ),
         Cmd::Whichkey { prefix } => cmd_whichkey(prefix.as_deref()),
-        Cmd::Eval { file } => cmd_eval(file),
+        Cmd::Eval { file, write } => cmd_eval(file, *write),
         Cmd::Backlinks { vault, id } => cmd_backlinks(vault, id),
         Cmd::Id { file } => cmd_id(file),
         Cmd::Db { vault } => cmd_db(vault),
@@ -546,10 +550,11 @@ fn cmd_whichkey(prefix: Option<&str>) -> Result<(), String> {
     Ok(())
 }
 
-fn cmd_eval(path: &Path) -> Result<(), String> {
+fn cmd_eval(path: &Path, write: bool) -> Result<(), String> {
     let src = fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))?;
     let doc = parse(&src).map_err(|e| format!("{e}"))?;
     let mut ran = 0usize;
+    let mut results: Vec<(usize, String)> = Vec::new();
     for n in doc.preamble() {
         if n.kind() != NodeKind::CodeBlock {
             continue;
@@ -580,10 +585,22 @@ fn cmd_eval(path: &Path) -> Result<(), String> {
         if !out.stderr.is_empty() {
             eprint!("{}", out.stderr);
         }
+        if write {
+            results.push((ran, out.stdout.clone()));
+        }
         ran += 1;
     }
     if ran == 0 {
         eprintln!("no code blocks found");
+        return Ok(());
+    }
+    if write {
+        let mut current = doc;
+        for (idx, output) in results {
+            current = closure_org::rewrite_attach_results_to_code_block(&current, idx, &output)
+                .map_err(|e| format!("attach results: {e}"))?;
+        }
+        fs::write(path, closure_org::print(&current)).map_err(|e| format!("write: {e}"))?;
     }
     Ok(())
 }
