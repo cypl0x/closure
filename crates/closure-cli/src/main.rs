@@ -363,6 +363,11 @@ enum Cmd {
         /// Path to a `*.org` file.
         file: PathBuf,
     },
+    /// Print properties drawer entries for every headline in a file.
+    Properties {
+        /// Path to a `*.org` file.
+        file: PathBuf,
+    },
     /// Print every `*.org` file path in a vault, sorted.
     Paths {
         /// Path to the vault directory.
@@ -522,6 +527,7 @@ fn run(cmd: &Cmd) -> Result<(), String> {
         Cmd::Ids { file } => cmd_ids(file),
         Cmd::BlockArgs { file } => cmd_block_args(file),
         Cmd::Keywords { file } => cmd_keywords(file),
+        Cmd::Properties { file } => cmd_properties(file),
         Cmd::Paths { vault } => cmd_paths(vault),
         Cmd::Hash { file } => cmd_hash(file),
         Cmd::Graph { vault } => cmd_graph(vault),
@@ -630,6 +636,21 @@ fn cmd_paths(vault: &Path) -> Result<(), String> {
     let v = Vault::open(vault).map_err(|e| format!("{e}"))?;
     for p in v.paths() {
         println!("{}", p.display());
+    }
+    Ok(())
+}
+
+fn cmd_properties(path: &Path) -> Result<(), String> {
+    let src = fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))?;
+    let doc = Document::load_str(&src).map_err(|e| format!("{e}"))?;
+    for h in doc.all_headlines() {
+        if h.properties().is_empty() {
+            continue;
+        }
+        println!("{} ({})", h.title(), h.id());
+        for (k, v) in h.properties() {
+            println!("  :{k}: {v}");
+        }
     }
     Ok(())
 }
