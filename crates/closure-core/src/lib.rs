@@ -1009,6 +1009,11 @@ impl Registry {
             .iter()
             .map(|(k, v)| (k.as_str(), v.as_ref() as &(dyn Command + Send + Sync)))
     }
+
+    /// Iterate registered command names.
+    pub fn names(&self) -> impl Iterator<Item = &str> {
+        self.by_name.keys().map(String::as_str)
+    }
 }
 
 /// Command: rename a headline's title.

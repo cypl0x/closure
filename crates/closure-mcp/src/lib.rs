@@ -32,6 +32,8 @@ pub enum DispatchOutcome {
     Unknown(String),
     /// The line was blank or a comment.
     Skip,
+    /// Caller asked for a registry listing (`LIST`).
+    List,
 }
 
 /// Resolve a single text-protocol line.
@@ -47,6 +49,9 @@ pub fn resolve_line(registry: &Registry, line: &str) -> DispatchOutcome {
         return DispatchOutcome::Skip;
     }
     let name = trimmed.split_whitespace().next().unwrap_or("");
+    if name == "LIST" {
+        return DispatchOutcome::List;
+    }
     if registry.get(name).is_some() {
         DispatchOutcome::Found(name.to_owned())
     } else {
@@ -82,6 +87,13 @@ pub fn run<R: BufRead, W: std::io::Write>(
                     .map_err(|e| McpError::Transport(e.to_string()))?;
             }
             DispatchOutcome::Skip => {}
+            DispatchOutcome::List => {
+                let mut names: Vec<&str> = registry.names().collect();
+                names.sort_unstable();
+                for n in names {
+                    writeln!(output, "{n}").map_err(|e| McpError::Transport(e.to_string()))?;
+                }
+            }
         }
     }
     Ok(())
