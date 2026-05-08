@@ -269,6 +269,11 @@ enum Cmd {
         /// Path to a `*.org` file.
         file: PathBuf,
     },
+    /// Print headline tree with todo/priority/tags annotations.
+    Tree {
+        /// Path to a `*.org` file.
+        file: PathBuf,
+    },
     /// Delete a `*.org` file from a vault.
     DeleteFile {
         /// Path to the vault directory.
@@ -612,6 +617,7 @@ fn run(cmd: &Cmd) -> Result<(), String> {
         Cmd::Ask { prompt, model } => cmd_ask(prompt, model),
         Cmd::TagCloud { vault } => cmd_tag_cloud(vault),
         Cmd::Outline { file } => cmd_outline(file),
+        Cmd::Tree { file } => cmd_tree(file),
         Cmd::DeleteFile { vault, file } => cmd_delete_file(vault, file),
         Cmd::RenameFile { vault, from, to } => cmd_rename_file(vault, from, to),
         Cmd::Agenda { vault } => cmd_agenda(vault),
@@ -1356,6 +1362,38 @@ fn cmd_outline(path: &Path) -> Result<(), String> {
         let indent = "  ".repeat(usize::from(h.level()).saturating_sub(1));
         let stars = "*".repeat(usize::from(h.level()));
         println!("{indent}{stars} {}", h.title());
+    }
+    Ok(())
+}
+
+fn cmd_tree(path: &Path) -> Result<(), String> {
+    let src = fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))?;
+    let doc = Document::load_str(&src).map_err(|e| format!("{e}"))?;
+    for h in doc.all_headlines() {
+        let indent = "  ".repeat(usize::from(h.level()).saturating_sub(1));
+        let stars = "*".repeat(usize::from(h.level()));
+        let mut prefix = String::new();
+        if let Some(t) = h.todo() {
+            prefix.push_str(t);
+            prefix.push(' ');
+        }
+        if let Some(p) = h.priority() {
+            use std::fmt::Write as _;
+            let _ = write!(prefix, "[#{p}] ");
+        }
+        let tags = if h.tags().is_empty() {
+            String::new()
+        } else {
+            format!("  :{}:", h.tags().join(":"))
+        };
+        let mark = if h.is_comment() {
+            " (COMMENT)"
+        } else if h.tags().iter().any(|t| t == "ARCHIVE") {
+            " (archived)"
+        } else {
+            ""
+        };
+        println!("{indent}{stars} {prefix}{}{tags}{mark}", h.title());
     }
     Ok(())
 }
