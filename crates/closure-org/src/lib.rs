@@ -615,6 +615,52 @@ pub struct CodeBlockView<'a> {
     pub content: &'a str,
 }
 
+/// Org-style progress cookie: `[N/M]` checkbox count or `[P%]` percent.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CookieView {
+    /// `[done/total]` count.
+    Count {
+        /// Done count.
+        done: u32,
+        /// Total count.
+        total: u32,
+    },
+    /// `[N%]` percentage.
+    Percent(u32),
+}
+
+/// Scan `text` for `[N/M]` and `[N%]` progress cookies in source
+/// order. Useful for headlines that summarise checkbox lists.
+#[must_use]
+pub fn find_cookies(text: &str) -> Vec<CookieView> {
+    let mut out: Vec<CookieView> = Vec::new();
+    let bytes = text.as_bytes();
+    let mut i = 0usize;
+    while i < bytes.len() {
+        if bytes[i] == b'['
+            && let Some(end) = text[i + 1..].find(']')
+        {
+            let inner = &text[i + 1..i + 1 + end];
+            if let Some(stripped) = inner.strip_suffix('%')
+                && let Ok(n) = stripped.parse::<u32>()
+            {
+                out.push(CookieView::Percent(n));
+                i += end + 2;
+                continue;
+            }
+            if let Some((d, t)) = inner.split_once('/')
+                && let (Ok(done), Ok(total)) = (d.parse::<u32>(), t.parse::<u32>())
+            {
+                out.push(CookieView::Count { done, total });
+                i += end + 2;
+                continue;
+            }
+        }
+        i += 1;
+    }
+    out
+}
+
 /// Borrowed view of an inline link `[[target][description]]` or `[[target]]`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct LinkView<'a> {

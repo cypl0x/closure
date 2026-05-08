@@ -368,6 +368,23 @@ fn attach_results_to_first_code_block() {
 }
 
 #[test]
+fn cookies_count_and_percent() {
+    let cookies = closure_org::find_cookies("Tasks [1/3] and progress [50%]");
+    assert_eq!(cookies.len(), 2);
+    assert_eq!(
+        cookies[0],
+        closure_org::CookieView::Count { done: 1, total: 3 }
+    );
+    assert_eq!(cookies[1], closure_org::CookieView::Percent(50));
+}
+
+#[test]
+fn cookies_ignore_non_numeric_brackets() {
+    let cookies = closure_org::find_cookies("[#A] is priority, not a cookie");
+    assert!(cookies.is_empty());
+}
+
+#[test]
 fn rewrite_code_block_content_swaps_body() {
     let src = "#+BEGIN_SRC sh\necho old\n#+END_SRC\n";
     let doc = parse(src).expect("parse");
