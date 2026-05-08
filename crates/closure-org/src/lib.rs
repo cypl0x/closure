@@ -1156,30 +1156,31 @@ pub fn find_anchor_targets(text: &str) -> Vec<AnchorTargetView<'_>> {
     let mut out: Vec<AnchorTargetView<'_>> = Vec::new();
     let mut i = 0usize;
     while i < text.len() {
-        if text[i..].starts_with("<<<") {
-            if let Some(end) = text[i + 3..].find(">>>") {
-                let name = &text[i + 3..i + 3 + end];
-                if !name.is_empty() {
-                    out.push(AnchorTargetView {
-                        name,
-                        is_radio: true,
-                    });
-                }
-                i += 3 + end + 3;
-                continue;
+        if text[i..].starts_with("<<<")
+            && let Some(end) = text[i + 3..].find(">>>")
+        {
+            let name = &text[i + 3..i + 3 + end];
+            if !name.is_empty() {
+                out.push(AnchorTargetView {
+                    name,
+                    is_radio: true,
+                });
             }
-        } else if text[i..].starts_with("<<") {
-            if let Some(end) = text[i + 2..].find(">>") {
-                let name = &text[i + 2..i + 2 + end];
-                if !name.is_empty() && !name.starts_with('<') {
-                    out.push(AnchorTargetView {
-                        name,
-                        is_radio: false,
-                    });
-                }
-                i += 2 + end + 2;
-                continue;
+            i += 3 + end + 3;
+            continue;
+        }
+        if text[i..].starts_with("<<")
+            && let Some(end) = text[i + 2..].find(">>")
+        {
+            let name = &text[i + 2..i + 2 + end];
+            if !name.is_empty() && !name.starts_with('<') {
+                out.push(AnchorTargetView {
+                    name,
+                    is_radio: false,
+                });
             }
+            i += 2 + end + 2;
+            continue;
         }
         i += text[i..].chars().next().map_or(1, char::len_utf8);
     }
