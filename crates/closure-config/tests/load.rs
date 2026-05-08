@@ -47,6 +47,34 @@ fn unknown_input_mode_is_rejected() {
 }
 
 #[test]
+fn priority_levels_loaded() {
+    let src = "#+BEGIN_SRC closure-config\npriority_levels = A, B, C, D\n#+END_SRC\n";
+    let c = Config::from_org_source(src).unwrap();
+    assert_eq!(c.priority_levels, vec!['A', 'B', 'C', 'D']);
+}
+
+#[test]
+fn priority_levels_lowercase_rejected() {
+    let src = "#+BEGIN_SRC closure-config\npriority_levels = a, b\n#+END_SRC\n";
+    let err = Config::from_org_source(src).unwrap_err();
+    assert!(matches!(err, ConfigError::BadValue { .. }));
+}
+
+#[test]
+fn tag_inheritance_loaded() {
+    let src = "#+BEGIN_SRC closure-config\ntag_inheritance = false\n#+END_SRC\n";
+    let c = Config::from_org_source(src).unwrap();
+    assert!(!c.tag_inheritance);
+}
+
+#[test]
+fn agenda_files_loaded() {
+    let src = "#+BEGIN_SRC closure-config\nagenda_files = a.org, b.org\n#+END_SRC\n";
+    let c = Config::from_org_source(src).unwrap();
+    assert_eq!(c.agenda_files.len(), 2);
+}
+
+#[test]
 fn config_loads_from_path() {
     let dir = tempfile::tempdir().expect("tempdir");
     let path = dir.path().join("config.org");

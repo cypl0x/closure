@@ -27,6 +27,13 @@ pub struct Config {
     pub theme: String,
     /// Custom TODO keywords (in order).
     pub todo_keywords: Vec<String>,
+    /// Priority letters in order of decreasing severity (default `A`,
+    /// `B`, `C`).
+    pub priority_levels: Vec<char>,
+    /// Whether tags are inherited from parent headlines.
+    pub tag_inheritance: bool,
+    /// Per-vault override files included in the agenda view.
+    pub agenda_files: Vec<PathBuf>,
 }
 
 impl Default for Config {
@@ -36,6 +43,9 @@ impl Default for Config {
             input_mode: InputMode::Doom,
             theme: "default".into(),
             todo_keywords: vec!["TODO".into(), "DONE".into()],
+            priority_levels: vec!['A', 'B', 'C'],
+            tag_inheritance: true,
+            agenda_files: Vec::new(),
         }
     }
 }
@@ -145,6 +155,45 @@ impl Config {
                         .split(',')
                         .map(|s| s.trim().to_owned())
                         .filter(|s| !s.is_empty())
+                        .collect();
+                }
+                "priority_levels" => {
+                    let levels: Vec<char> = value
+                        .split(',')
+                        .filter_map(|s| s.trim().chars().next())
+                        .collect();
+                    if levels.is_empty() {
+                        return Err(ConfigError::BadValue {
+                            key: key.into(),
+                            reason: "priority_levels requires at least one letter".into(),
+                        });
+                    }
+                    if !levels.iter().all(char::is_ascii_uppercase) {
+                        return Err(ConfigError::BadValue {
+                            key: key.into(),
+                            reason: "priority_levels must be ASCII uppercase letters".into(),
+                        });
+                    }
+                    cfg.priority_levels = levels;
+                }
+                "tag_inheritance" => {
+                    cfg.tag_inheritance = match value {
+                        "true" | "yes" | "1" => true,
+                        "false" | "no" | "0" => false,
+                        other => {
+                            return Err(ConfigError::BadValue {
+                                key: key.into(),
+                                reason: format!("expected boolean, got `{other}`"),
+                            });
+                        }
+                    };
+                }
+                "agenda_files" => {
+                    cfg.agenda_files = value
+                        .split(',')
+                        .map(|s| s.trim().to_owned())
+                        .filter(|s| !s.is_empty())
+                        .map(PathBuf::from)
                         .collect();
                 }
                 other => return Err(ConfigError::UnknownKey(other.into())),
