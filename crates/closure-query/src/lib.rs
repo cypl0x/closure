@@ -64,6 +64,24 @@ pub fn by_tag<'a>(vault: &'a Vault, tag: &str) -> Vec<Match<'a>> {
         .collect()
 }
 
+/// Headlines with a specific priority letter (`'A'`, `'B'`, etc).
+#[must_use]
+pub fn by_priority(vault: &Vault, priority: char) -> Vec<Match<'_>> {
+    all_headlines(vault)
+        .into_iter()
+        .filter(|m| m.headline.priority() == Some(priority))
+        .collect()
+}
+
+/// Headlines that have any priority cookie set.
+#[must_use]
+pub fn with_priority(vault: &Vault) -> Vec<Match<'_>> {
+    all_headlines(vault)
+        .into_iter()
+        .filter(|m| m.headline.priority().is_some())
+        .collect()
+}
+
 /// Headlines with a specific TODO keyword.
 #[must_use]
 pub fn by_todo<'a>(vault: &'a Vault, keyword: &str) -> Vec<Match<'a>> {

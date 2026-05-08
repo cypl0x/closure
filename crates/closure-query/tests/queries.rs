@@ -101,6 +101,22 @@ fn full_text_misses_when_neither_matches() {
 }
 
 #[test]
+fn by_priority_filters_to_letter() {
+    let td = build_vault(&[("a.org", "* [#A] Top\n* [#B] Mid\n* [#A] Top2\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    let m = closure_query::by_priority(&v, 'A');
+    assert_eq!(m.len(), 2);
+}
+
+#[test]
+fn with_priority_keeps_only_those_with_cookie() {
+    let td = build_vault(&[("a.org", "* No priority\n* [#A] With\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    let m = closure_query::with_priority(&v);
+    assert_eq!(m.len(), 1);
+}
+
+#[test]
 fn by_property_finds_headline_with_matching_value() {
     let td = build_vault(&[(
         "a.org",
