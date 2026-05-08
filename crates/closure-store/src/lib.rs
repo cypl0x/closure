@@ -174,6 +174,30 @@ impl Vault {
         self.save(path, source)
     }
 
+    /// Create a new `*.org` file under `relative` (relative to the
+    /// vault root) with `source`. Refuses to overwrite an existing
+    /// file. Returns the absolute path.
+    pub fn create_file(&mut self, relative: &Path, source: &str) -> Result<PathBuf, VaultError> {
+        let path = self.root.join(relative);
+        if path.exists() {
+            return Err(VaultError::Io(io::Error::new(
+                io::ErrorKind::AlreadyExists,
+                path.display().to_string(),
+            )));
+        }
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        fs::write(&path, source)?;
+        let doc =
+            Document::load_str(source).map_err(|_| VaultError::Parse { path: path.clone() })?;
+        for id in doc.all_block_ids() {
+            self.by_id.insert(id, path.clone());
+        }
+        self.documents.insert(path.clone(), doc);
+        Ok(path)
+    }
+
     /// Start a recursive file watcher rooted at the vault. Returns a
     /// [`VaultWatcher`] whose `recv` blocks for the next change event.
     /// The watcher must be kept alive — dropping it stops the inotify

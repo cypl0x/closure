@@ -86,6 +86,29 @@ fn vault_save_writes_byte_exact_source() {
 }
 
 #[test]
+fn vault_create_file_adds_new_document() {
+    let td = write_vault(&[("a.org", "* A\n")]);
+    let mut v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.len(), 1);
+    let p = v
+        .create_file(std::path::Path::new("b.org"), "* B\n")
+        .expect("create");
+    assert!(p.ends_with("b.org"));
+    assert_eq!(v.len(), 2);
+    assert!(v.document(&p).is_some());
+}
+
+#[test]
+fn vault_create_file_refuses_to_overwrite() {
+    let td = write_vault(&[("x.org", "* X\n")]);
+    let mut v = Vault::open(td.path()).expect("open");
+    let err = v
+        .create_file(std::path::Path::new("x.org"), "* New\n")
+        .unwrap_err();
+    let _ = err;
+}
+
+#[test]
 fn vault_save_with_backup_writes_bak() {
     let td = write_vault(&[("x.org", "* Original\n")]);
     let v = Vault::open(td.path()).expect("open");
