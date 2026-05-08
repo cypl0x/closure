@@ -19,7 +19,7 @@ use clap::{Parser, Subcommand};
 use closure_config::InputMode;
 use closure_core::{
     AddSibling, BlockId, Command, Demote, Document, EnsureId, MoveSubtree, Promote, Registry,
-    RemoveSubtree, RenameHeadline, SetBody, SetPriority, SetTags, SetTodo,
+    RemoveSubtree, RenameHeadline, SetBody, SetPlanning, SetPriority, SetTags, SetTodo,
 };
 use closure_eval::{Backend, ShellBackend, backend_for};
 use closure_input::Dispatcher;
@@ -300,6 +300,22 @@ enum Cmd {
         /// Path to the vault directory.
         vault: PathBuf,
     },
+    /// Set or clear the planning line (SCHEDULED/DEADLINE/CLOSED).
+    SetPlanning {
+        /// Path to a `*.org` file.
+        file: PathBuf,
+        /// Block id of the target headline.
+        id: String,
+        /// SCHEDULED timestamp (e.g. `<2026-04-25 Sat>`); empty to clear.
+        #[arg(long, default_value = "")]
+        scheduled: String,
+        /// DEADLINE timestamp; empty to clear.
+        #[arg(long, default_value = "")]
+        deadline: String,
+        /// CLOSED timestamp; empty to clear.
+        #[arg(long, default_value = "")]
+        closed: String,
+    },
 }
 
 fn main() -> ExitCode {
@@ -368,7 +384,32 @@ fn run(cmd: &Cmd) -> Result<(), String> {
         Cmd::Agenda { vault } => cmd_agenda(vault),
         Cmd::Tags { vault } => cmd_tags(vault),
         Cmd::Todos { vault } => cmd_todos(vault),
+        Cmd::SetPlanning {
+            file,
+            id,
+            scheduled,
+            deadline,
+            closed,
+        } => cmd_set_planning(file, id, scheduled, deadline, closed),
     }
+}
+
+fn cmd_set_planning(
+    path: &Path,
+    id: &str,
+    scheduled: &str,
+    deadline: &str,
+    closed: &str,
+) -> Result<(), String> {
+    let src = fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))?;
+    let mut doc = Document::load_str(&src).map_err(|e| format!("{e}"))?;
+    let s = (!scheduled.is_empty()).then(|| scheduled.to_owned());
+    let d = (!deadline.is_empty()).then(|| deadline.to_owned());
+    let c = (!closed.is_empty()).then(|| closed.to_owned());
+    let cmd = SetPlanning::new(BlockId::from_existing(id), s, d, c);
+    Command::apply(&cmd, &mut doc).map_err(|e| format!("{e}"))?;
+    fs::write(path, doc.source()).map_err(|e| format!("write: {e}"))?;
+    Ok(())
 }
 
 fn cmd_tags(vault: &Path) -> Result<(), String> {

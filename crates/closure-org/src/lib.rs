@@ -265,6 +265,69 @@ pub fn rewrite_headline_set_body(
     parse(&src).map_err(|_| RewriteError::Parse)
 }
 
+/// Set or clear the planning line (`SCHEDULED:`, `DEADLINE:`, `CLOSED:`)
+/// directly under the headline.
+///
+/// All three timestamp parameters are optional; pass `None` for any to
+/// omit it. Passing all three as `None` removes any existing planning
+/// line. Each timestamp string should already include its `<...>` or
+/// `[...]` brackets.
+pub fn rewrite_headline_set_planning(
+    doc: &OrgDoc,
+    path: &[usize],
+    scheduled: Option<&str>,
+    deadline: Option<&str>,
+    closed: Option<&str>,
+) -> Result<OrgDoc, RewriteError> {
+    let target = navigate_headline(doc, path).ok_or(RewriteError::NotFound)?;
+    let src = doc.source();
+    let after_header = target.header_span.end;
+    let line_end = src[after_header..]
+        .find('\n')
+        .map_or(src.len(), |n| after_header + n + 1);
+    let first_line = &src[after_header..line_end];
+    let existing_is_planning = is_planning_line(first_line);
+    let replace_end = if existing_is_planning {
+        line_end
+    } else {
+        after_header
+    };
+
+    let new_line = format_planning_line(scheduled, deadline, closed);
+    let mut new_src = src.to_owned();
+    new_src.replace_range(after_header..replace_end, &new_line);
+    parse(&new_src).map_err(|_| RewriteError::Parse)
+}
+
+fn is_planning_line(line: &str) -> bool {
+    let trimmed = line.trim_start();
+    trimmed.starts_with("SCHEDULED:")
+        || trimmed.starts_with("DEADLINE:")
+        || trimmed.starts_with("CLOSED:")
+}
+
+fn format_planning_line(
+    scheduled: Option<&str>,
+    deadline: Option<&str>,
+    closed: Option<&str>,
+) -> String {
+    let mut parts: Vec<String> = Vec::new();
+    if let Some(s) = scheduled {
+        parts.push(format!("SCHEDULED: {s}"));
+    }
+    if let Some(d) = deadline {
+        parts.push(format!("DEADLINE: {d}"));
+    }
+    if let Some(c) = closed {
+        parts.push(format!("CLOSED: {c}"));
+    }
+    if parts.is_empty() {
+        String::new()
+    } else {
+        format!("{}\n", parts.join(" "))
+    }
+}
+
 /// Replace the content of the Nth preamble code block with
 /// `new_content`. The fence lines (`#+BEGIN_SRC ...` and
 /// `#+END_SRC`) are preserved.
@@ -1045,6 +1108,55 @@ impl Headline {
     pub const fn properties(&self) -> Option<&Properties> {
         self.properties.as_ref()
     }
+
+    /// Parse the planning line (`SCHEDULED:` / `DEADLINE:` / `CLOSED:`)
+    /// that immediately follows the header line, if any. Returns `None`
+    /// when no planning line is present.
+    #[must_use]
+    pub fn planning(&self) -> Option<PlanningView<'_>> {
+        let after = self.header_span.end;
+        let rest = &self.source[after..];
+        let line_end = rest.find('\n').map_or(self.source.len(), |n| after + n);
+        let line = &self.source[after..line_end];
+        if !line.trim_start().starts_with("SCHEDULED:")
+            && !line.trim_start().starts_with("DEADLINE:")
+            && !line.trim_start().starts_with("CLOSED:")
+        {
+            return None;
+        }
+        Some(PlanningView {
+            scheduled: extract_keyword_ts(line, "SCHEDULED:"),
+            deadline: extract_keyword_ts(line, "DEADLINE:"),
+            closed: extract_keyword_ts(line, "CLOSED:"),
+        })
+    }
+}
+
+/// Parsed planning line on a headline.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PlanningView<'a> {
+    /// `SCHEDULED:` timestamp (verbatim, including brackets) if present.
+    pub scheduled: Option<&'a str>,
+    /// `DEADLINE:` timestamp if present.
+    pub deadline: Option<&'a str>,
+    /// `CLOSED:` timestamp if present.
+    pub closed: Option<&'a str>,
+}
+
+fn extract_keyword_ts<'a>(line: &'a str, keyword: &str) -> Option<&'a str> {
+    let idx = line.find(keyword)?;
+    let after = &line[idx + keyword.len()..];
+    let after = after.trim_start();
+    let (open, close) = if after.starts_with('<') {
+        ('<', '>')
+    } else if after.starts_with('[') {
+        ('[', ']')
+    } else {
+        return None;
+    };
+    let close_idx = after.find(close)?;
+    let _ = open;
+    Some(&after[..=close_idx])
 }
 
 /// Failure mode while parsing an org document.

@@ -15,8 +15,9 @@ use std::sync::Arc;
 use closure_org::{
     Headline, OrgDoc, parse, rewrite_add_sibling_after_with_id, rewrite_headline_demote,
     rewrite_headline_ensure_id, rewrite_headline_promote, rewrite_headline_set_body,
-    rewrite_headline_set_priority, rewrite_headline_set_tags, rewrite_headline_set_todo,
-    rewrite_headline_title, rewrite_remove_subtree, rewrite_splice_subtree_after,
+    rewrite_headline_set_planning, rewrite_headline_set_priority, rewrite_headline_set_tags,
+    rewrite_headline_set_todo, rewrite_headline_title, rewrite_remove_subtree,
+    rewrite_splice_subtree_after,
 };
 use closure_undo::{NodeId as UndoNodeId, UndoTree};
 use thiserror::Error;
@@ -449,6 +450,15 @@ pub enum Edit {
         /// Byte offset in the document where the subtree started.
         insert_at: usize,
     },
+    /// Replace a headline's planning line (SCHEDULED/DEADLINE/CLOSED).
+    SetPlanning {
+        /// Block whose planning line changed.
+        id: BlockId,
+        /// Previous (scheduled, deadline, closed) timestamps.
+        old: (Option<String>, Option<String>, Option<String>),
+        /// New (scheduled, deadline, closed) timestamps.
+        new: (Option<String>, Option<String>, Option<String>),
+    },
     /// Replace a headline's body wholesale.
     SetBody {
         /// Block whose body changed.
@@ -481,6 +491,7 @@ impl Edit {
         matches!(self, Self::RenameHeadline { .. })
     }
 
+    #[allow(clippy::too_many_lines)]
     fn reverse(&self, doc: &mut Document) -> Result<(), CommandError> {
         match self {
             Self::RenameHeadline { id, old_title, .. } => {
@@ -562,6 +573,20 @@ impl Edit {
                 doc.rebuild_index();
                 Ok(())
             }
+            Self::SetPlanning { id, old, .. } => {
+                let path = doc.path_of(id).ok_or(CommandError::BlockNotFound)?;
+                let org = rewrite_headline_set_planning(
+                    doc.org(),
+                    &path,
+                    old.0.as_deref(),
+                    old.1.as_deref(),
+                    old.2.as_deref(),
+                )
+                .map_err(|_| CommandError::Rewrite)?;
+                doc.org = org;
+                doc.rebuild_index();
+                Ok(())
+            }
             Self::MoveSubtree {
                 id,
                 subtree_source,
@@ -586,6 +611,7 @@ impl Edit {
         }
     }
 
+    #[allow(clippy::too_many_lines)]
     fn replay(&self, doc: &mut Document) -> Result<(), CommandError> {
         match self {
             Self::RenameHeadline { id, new_title, .. } => {
@@ -662,6 +688,20 @@ impl Edit {
                 let path = doc.path_of(id).ok_or(CommandError::BlockNotFound)?;
                 let org = rewrite_headline_set_body(doc.org(), &path, new)
                     .map_err(|_| CommandError::Rewrite)?;
+                doc.org = org;
+                doc.rebuild_index();
+                Ok(())
+            }
+            Self::SetPlanning { id, new, .. } => {
+                let path = doc.path_of(id).ok_or(CommandError::BlockNotFound)?;
+                let org = rewrite_headline_set_planning(
+                    doc.org(),
+                    &path,
+                    new.0.as_deref(),
+                    new.1.as_deref(),
+                    new.2.as_deref(),
+                )
+                .map_err(|_| CommandError::Rewrite)?;
                 doc.org = org;
                 doc.rebuild_index();
                 Ok(())
@@ -765,6 +805,7 @@ pub fn default_registry() -> Registry {
     r.register(Box::new(SetPriority::new_placeholder()));
     r.register(Box::new(SetTags::new_placeholder()));
     r.register(Box::new(SetBody::new_placeholder()));
+    r.register(Box::new(SetPlanning::new_placeholder()));
     r.register(Box::new(Promote::new_placeholder()));
     r.register(Box::new(Demote::new_placeholder()));
     r.register(Box::new(AddSibling::new_placeholder()));
@@ -1210,6 +1251,111 @@ impl Command for SetBody {
         doc.push_history(edit.clone());
         Ok(edit)
     }
+}
+
+/// Command: set or clear the planning line (`SCHEDULED:` /
+/// `DEADLINE:` / `CLOSED:`) on a headline. Pass `None` for any field
+/// to omit it; passing all three as `None` removes any existing
+/// planning line.
+pub struct SetPlanning {
+    id: BlockId,
+    scheduled: Option<String>,
+    deadline: Option<String>,
+    closed: Option<String>,
+    keys: Vec<KeyChord>,
+}
+
+impl SetPlanning {
+    /// Set planning to a new triple.
+    #[must_use]
+    pub fn new(
+        id: BlockId,
+        scheduled: Option<String>,
+        deadline: Option<String>,
+        closed: Option<String>,
+    ) -> Self {
+        Self {
+            id,
+            scheduled,
+            deadline,
+            closed,
+            keys: vec![KeyChord::from_strokes(&["C-c", "C-s"])],
+        }
+    }
+
+    /// Placeholder for registry.
+    #[must_use]
+    pub fn new_placeholder() -> Self {
+        Self {
+            id: BlockId::from_existing(""),
+            scheduled: None,
+            deadline: None,
+            closed: None,
+            keys: vec![KeyChord::from_strokes(&["C-c", "C-s"])],
+        }
+    }
+}
+
+impl Command for SetPlanning {
+    #[allow(clippy::unnecessary_literal_bound)]
+    fn name(&self) -> &str {
+        "set-planning"
+    }
+
+    fn keys(&self) -> &[KeyChord] {
+        &self.keys
+    }
+
+    fn apply(&self, doc: &mut Document) -> Result<Edit, CommandError> {
+        let path = doc.path_of(&self.id).ok_or(CommandError::BlockNotFound)?;
+        let with_id = rewrite_headline_ensure_id(doc.org(), &path, self.id.as_str())
+            .map_err(|_| CommandError::Rewrite)?;
+        let old = current_planning(&with_id, &path)?;
+        let org = rewrite_headline_set_planning(
+            &with_id,
+            &path,
+            self.scheduled.as_deref(),
+            self.deadline.as_deref(),
+            self.closed.as_deref(),
+        )
+        .map_err(|_| CommandError::Rewrite)?;
+        doc.org = org;
+        doc.rebuild_index();
+        let edit = Edit::SetPlanning {
+            id: self.id.clone(),
+            old,
+            new: (
+                self.scheduled.clone(),
+                self.deadline.clone(),
+                self.closed.clone(),
+            ),
+        };
+        doc.push_history(edit.clone());
+        Ok(edit)
+    }
+}
+
+/// Triple of optional `(scheduled, deadline, closed)` planning timestamps.
+type PlanningTriple = (Option<String>, Option<String>, Option<String>);
+
+fn current_planning(org: &OrgDoc, path: &[usize]) -> Result<PlanningTriple, CommandError> {
+    let mut current = org
+        .roots()
+        .get(*path.first().ok_or(CommandError::BlockNotFound)?)
+        .ok_or(CommandError::BlockNotFound)?;
+    for &i in &path[1..] {
+        current = current
+            .children()
+            .get(i)
+            .ok_or(CommandError::BlockNotFound)?;
+    }
+    Ok(current.planning().map_or((None, None, None), |p| {
+        (
+            p.scheduled.map(str::to_owned),
+            p.deadline.map(str::to_owned),
+            p.closed.map(str::to_owned),
+        )
+    }))
 }
 
 fn current_body(org: &OrgDoc, path: &[usize]) -> Result<String, CommandError> {

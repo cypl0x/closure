@@ -554,3 +554,59 @@ fn markup_with_space_after_open_marker_ignored() {
     let m = closure_org::find_markup("* not bold*");
     assert!(m.is_empty());
 }
+
+#[test]
+fn set_planning_inserts_scheduled_line() {
+    let src = "* TODO Task\nbody\n";
+    let doc = parse(src).expect("parse");
+    let new = closure_org::rewrite_headline_set_planning(
+        &doc,
+        &[0],
+        Some("<2026-04-25 Sat>"),
+        None,
+        None,
+    )
+    .expect("rewrite");
+    let out = closure_org::print(&new);
+    assert!(out.contains("SCHEDULED: <2026-04-25 Sat>"), "got: {out:?}");
+    assert!(out.contains("body"));
+}
+
+#[test]
+fn set_planning_replaces_existing_line() {
+    let src = "* TODO Task\nSCHEDULED: <2026-04-01 Wed>\nbody\n";
+    let doc = parse(src).expect("parse");
+    let new = closure_org::rewrite_headline_set_planning(
+        &doc,
+        &[0],
+        Some("<2026-05-01 Fri>"),
+        Some("<2026-05-15 Fri>"),
+        None,
+    )
+    .expect("rewrite");
+    let out = closure_org::print(&new);
+    assert!(out.contains("SCHEDULED: <2026-05-01 Fri>"));
+    assert!(out.contains("DEADLINE: <2026-05-15 Fri>"));
+    assert!(!out.contains("2026-04-01"));
+}
+
+#[test]
+fn set_planning_clear_removes_line() {
+    let src = "* TODO Task\nSCHEDULED: <2026-04-01 Wed>\nbody\n";
+    let doc = parse(src).expect("parse");
+    let new =
+        closure_org::rewrite_headline_set_planning(&doc, &[0], None, None, None).expect("rewrite");
+    let out = closure_org::print(&new);
+    assert!(!out.contains("SCHEDULED"));
+    assert!(out.contains("body"));
+}
+
+#[test]
+fn planning_view_reads_scheduled_and_deadline() {
+    let src = "* TODO Task\nSCHEDULED: <2026-04-25 Sat> DEADLINE: <2026-05-01 Fri>\nbody\n";
+    let doc = parse(src).expect("parse");
+    let p = doc.roots()[0].planning().expect("planning");
+    assert_eq!(p.scheduled, Some("<2026-04-25 Sat>"));
+    assert_eq!(p.deadline, Some("<2026-05-01 Fri>"));
+    assert!(p.closed.is_none());
+}
