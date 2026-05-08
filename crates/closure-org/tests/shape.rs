@@ -602,6 +602,20 @@ fn set_planning_clear_removes_line() {
 }
 
 #[test]
+fn source_hash_is_deterministic() {
+    let a = parse("* Hello\n").expect("parse");
+    let b = parse("* Hello\n").expect("parse");
+    assert_eq!(a.source_hash(), b.source_hash());
+}
+
+#[test]
+fn source_hash_changes_with_source() {
+    let a = parse("* A\n").expect("parse");
+    let b = parse("* B\n").expect("parse");
+    assert_ne!(a.source_hash(), b.source_hash());
+}
+
+#[test]
 fn format_link_with_description() {
     let s = closure_org::format_link("id:01ABC", Some("Target"));
     assert_eq!(s, "[[id:01ABC][Target]]");

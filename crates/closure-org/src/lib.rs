@@ -50,6 +50,22 @@ impl OrgDoc {
         &self.source
     }
 
+    /// 64-bit FNV-1a hash of the source. Stable across runs and
+    /// machines; intended for cache keying and change detection. Two
+    /// byte-equal sources yield the same hash regardless of how they
+    /// were parsed.
+    #[must_use]
+    pub fn source_hash(&self) -> u64 {
+        const OFFSET: u64 = 0xcbf2_9ce4_8422_2325;
+        const PRIME: u64 = 0x0000_0100_0000_01b3;
+        let mut h = OFFSET;
+        for b in self.source.as_bytes() {
+            h ^= u64::from(*b);
+            h = h.wrapping_mul(PRIME);
+        }
+        h
+    }
+
     fn source_of(&self, span: Span) -> &str {
         &self.source[span.start..span.end]
     }
