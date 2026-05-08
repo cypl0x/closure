@@ -56,6 +56,29 @@ impl OrgDoc {
         self.preamble.is_empty() && self.roots.is_empty()
     }
 
+    /// Histogram of preamble node kinds. Keys ordered alphabetically.
+    #[must_use]
+    pub fn preamble_kind_counts(&self) -> Vec<(NodeKind, usize)> {
+        let mut counts: std::collections::BTreeMap<&str, (NodeKind, usize)> =
+            std::collections::BTreeMap::new();
+        for n in &self.preamble {
+            let key = match n.kind {
+                NodeKind::BlankLine => "BlankLine",
+                NodeKind::Comment => "Comment",
+                NodeKind::Keyword => "Keyword",
+                NodeKind::Paragraph => "Paragraph",
+                NodeKind::CodeBlock => "CodeBlock",
+                NodeKind::ListItem => "ListItem",
+                NodeKind::TableRow => "TableRow",
+            };
+            counts
+                .entry(key)
+                .and_modify(|(_, c)| *c += 1)
+                .or_insert((n.kind, 1));
+        }
+        counts.into_values().collect()
+    }
+
     /// Total headline count (every level, recursive).
     #[must_use]
     pub fn headline_count(&self) -> usize {
@@ -1008,7 +1031,7 @@ pub struct ListItemView<'a> {
 
 /// Coarse classification of a [`Node`]. Structured fields per kind arrive
 /// in later cycles.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum NodeKind {
     /// A whitespace-only line (possibly empty).
     BlankLine,

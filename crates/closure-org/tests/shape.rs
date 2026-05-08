@@ -688,6 +688,18 @@ fn max_depth_zero_when_no_headlines() {
 }
 
 #[test]
+fn preamble_kind_counts_histogram() {
+    let doc = parse("hello\n\n# comment\n#+TITLE: t\n").expect("parse");
+    let counts = doc.preamble_kind_counts();
+    let by_kind: std::collections::HashMap<closure_org::NodeKind, usize> =
+        counts.into_iter().collect();
+    assert_eq!(by_kind.get(&closure_org::NodeKind::Paragraph), Some(&1));
+    assert_eq!(by_kind.get(&closure_org::NodeKind::Comment), Some(&1));
+    assert_eq!(by_kind.get(&closure_org::NodeKind::Keyword), Some(&1));
+    assert_eq!(by_kind.get(&closure_org::NodeKind::BlankLine), Some(&1));
+}
+
+#[test]
 fn is_empty_true_for_empty_source() {
     let doc = parse("").expect("parse");
     assert!(doc.is_empty());
