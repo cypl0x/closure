@@ -883,6 +883,13 @@ fn set_property_creates_drawer_if_absent() {
 }
 
 #[test]
+fn descendant_count_counts_children_recursively() {
+    let doc = parse("* Root\n** A\n*** A1\n** B\n").expect("parse");
+    let root = &doc.roots()[0];
+    assert_eq!(root.descendant_count(), 3);
+}
+
+#[test]
 fn body_lines_iterates_all_lines() {
     let doc = parse("* H\nfirst\nsecond\nthird\n").expect("parse");
     let lines: Vec<&str> = doc.roots()[0].body_lines().collect();

@@ -1840,6 +1840,15 @@ impl Headline {
         self.body.iter().map(|n| n.span.end - n.span.start).sum()
     }
 
+    /// Total descendant headline count (children + grandchildren etc.).
+    #[must_use]
+    pub fn descendant_count(&self) -> usize {
+        self.children
+            .iter()
+            .map(|c| 1 + c.descendant_count())
+            .sum()
+    }
+
     /// Iterate every body line as a borrowed string slice.
     pub fn body_lines(&self) -> impl Iterator<Item = &str> {
         self.body.iter().flat_map(|n| {
