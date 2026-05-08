@@ -161,6 +161,32 @@ impl Vault {
             .sum()
     }
 
+    /// Adjacency list: every (source-id → list of target-ids) link
+    /// inside the vault, restricted to `id:` targets that resolve to a
+    /// loaded headline. Useful for graph rendering / shortest-path
+    /// search across notes.
+    #[must_use]
+    pub fn link_graph(&self) -> HashMap<BlockId, Vec<BlockId>> {
+        let mut out: HashMap<BlockId, Vec<BlockId>> = HashMap::new();
+        for (_, doc) in self.iter() {
+            for h in doc.all_headlines() {
+                let src_id = h.id().clone();
+                let mut targets: Vec<BlockId> = Vec::new();
+                for raw in h.link_targets() {
+                    let candidate = raw.strip_prefix("id:").unwrap_or(raw);
+                    let bid = BlockId::from_existing(candidate);
+                    if self.by_id.contains_key(&bid) {
+                        targets.push(bid);
+                    }
+                }
+                if !targets.is_empty() {
+                    out.entry(src_id).or_default().extend(targets);
+                }
+            }
+        }
+        out
+    }
+
     /// Total whitespace-separated word count across every source byte
     /// in the vault.
     #[must_use]

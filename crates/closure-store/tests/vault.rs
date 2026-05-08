@@ -75,6 +75,26 @@ fn vault_block_id_index_across_files() {
 }
 
 #[test]
+fn vault_link_graph_maps_id_targets() {
+    let td = write_vault(&[
+        (
+            "a.org",
+            "* Source\n:PROPERTIES:\n:ID: 01HXSRC0000000000000000000\n:END:\n[[id:01HXTGT0000000000000000000][T]]\n",
+        ),
+        (
+            "b.org",
+            "* Target\n:PROPERTIES:\n:ID: 01HXTGT0000000000000000000\n:END:\n",
+        ),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    let g = v.link_graph();
+    let src = closure_core::BlockId::from_existing("01HXSRC0000000000000000000");
+    let edges = g.get(&src).expect("edges");
+    let tgt = closure_core::BlockId::from_existing("01HXTGT0000000000000000000");
+    assert!(edges.contains(&tgt));
+}
+
+#[test]
 fn vault_headline_and_word_counts_aggregate() {
     let td = write_vault(&[
         ("a.org", "* One\n* Two\nbody words here\n"),
