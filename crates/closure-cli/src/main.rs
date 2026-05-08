@@ -333,6 +333,11 @@ enum Cmd {
         /// Path to a `*.org` file.
         file: PathBuf,
     },
+    /// Print every `<<anchor>>` and `<<<radio>>>` target in a file.
+    Anchors {
+        /// Path to a `*.org` file.
+        file: PathBuf,
+    },
     /// Print every link target found in a file.
     Links {
         /// Path to a `*.org` file.
@@ -596,6 +601,7 @@ fn run(cmd: &Cmd) -> Result<(), String> {
         Cmd::Tables { file } => cmd_tables(file),
         Cmd::Lists { file } => cmd_lists(file),
         Cmd::Blocks { file } => cmd_blocks(file),
+        Cmd::Anchors { file } => cmd_anchors(file),
         Cmd::Links { file } => cmd_links(file),
         Cmd::Footnotes { file } => cmd_footnotes(file),
         Cmd::Timestamps { file } => cmd_timestamps(file),
@@ -1017,6 +1023,15 @@ fn cmd_footnotes(path: &Path) -> Result<(), String> {
             Some(d) => println!("[fn:{}]\t{d}", f.name),
             None => println!("[fn:{}]", f.name),
         }
+    }
+    Ok(())
+}
+
+fn cmd_anchors(path: &Path) -> Result<(), String> {
+    let src = fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))?;
+    for a in closure_org::find_anchor_targets(&src) {
+        let kind = if a.is_radio { "radio" } else { "anchor" };
+        println!("{kind}\t{}", a.name);
     }
     Ok(())
 }
