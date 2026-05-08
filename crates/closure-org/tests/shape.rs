@@ -602,6 +602,30 @@ fn set_planning_clear_removes_line() {
 }
 
 #[test]
+fn format_link_with_description() {
+    let s = closure_org::format_link("id:01ABC", Some("Target"));
+    assert_eq!(s, "[[id:01ABC][Target]]");
+}
+
+#[test]
+fn format_link_bare() {
+    let s = closure_org::format_link("https://example.com", None);
+    assert_eq!(s, "[[https://example.com]]");
+}
+
+#[test]
+fn format_active_timestamp() {
+    let s = closure_org::format_timestamp("2026-04-25 Sat", true);
+    assert_eq!(s, "<2026-04-25 Sat>");
+}
+
+#[test]
+fn format_inactive_timestamp() {
+    let s = closure_org::format_timestamp("2026-04-25", false);
+    assert_eq!(s, "[2026-04-25]");
+}
+
+#[test]
 fn tables_group_consecutive_rows() {
     let src = "| a | b |\n|---|---|\n| 1 | 2 |\n| 3 | 4 |\n";
     let doc = parse(src).expect("parse");

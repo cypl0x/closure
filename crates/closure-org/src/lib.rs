@@ -919,6 +919,27 @@ pub enum CookieView {
     Percent(u32),
 }
 
+/// Format a link as `[[target][description]]` or `[[target]]`.
+/// Counterpart to [`find_links`].
+#[must_use]
+pub fn format_link(target: &str, description: Option<&str>) -> String {
+    description.map_or_else(
+        || format!("[[{target}]]"),
+        |d| format!("[[{target}][{d}]]"),
+    )
+}
+
+/// Format a timestamp body (e.g. `"2026-04-25 Sat"`) as an active
+/// `<...>` or inactive `[...]` org timestamp.
+#[must_use]
+pub fn format_timestamp(content: &str, active: bool) -> String {
+    if active {
+        format!("<{content}>")
+    } else {
+        format!("[{content}]")
+    }
+}
+
 /// Group of consecutive `|...|` table rows.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TableView<'a> {
