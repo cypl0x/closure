@@ -323,6 +323,16 @@ enum Cmd {
         /// Path to a `*.org` file.
         file: PathBuf,
     },
+    /// Print every link target found in a file.
+    Links {
+        /// Path to a `*.org` file.
+        file: PathBuf,
+    },
+    /// Print every footnote (reference or inline definition) in a file.
+    Footnotes {
+        /// Path to a `*.org` file.
+        file: PathBuf,
+    },
     /// Toggle the checkbox on the Nth preamble list item.
     ToggleCheckbox {
         /// Path to a `*.org` file.
@@ -451,6 +461,8 @@ fn run(cmd: &Cmd) -> Result<(), String> {
         Cmd::ToggleCheckbox { file, index } => cmd_toggle_checkbox(file, *index),
         Cmd::Drawers { file } => cmd_drawers(file),
         Cmd::Tables { file } => cmd_tables(file),
+        Cmd::Links { file } => cmd_links(file),
+        Cmd::Footnotes { file } => cmd_footnotes(file),
         Cmd::SetProperty {
             file,
             id,
@@ -475,6 +487,28 @@ fn cmd_archive(path: &Path, id: &str) -> Result<(), String> {
     let cmd = ToggleArchive::new(BlockId::from_existing(id));
     Command::apply(&cmd, &mut doc).map_err(|e| format!("{e}"))?;
     fs::write(path, doc.source()).map_err(|e| format!("write: {e}"))?;
+    Ok(())
+}
+
+fn cmd_links(path: &Path) -> Result<(), String> {
+    let src = fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))?;
+    for l in closure_org::find_links(&src) {
+        match l.description {
+            Some(d) => println!("{}\t{d}", l.target),
+            None => println!("{}", l.target),
+        }
+    }
+    Ok(())
+}
+
+fn cmd_footnotes(path: &Path) -> Result<(), String> {
+    let src = fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))?;
+    for f in closure_org::find_footnotes(&src) {
+        match f.definition {
+            Some(d) => println!("[fn:{}]\t{d}", f.name),
+            None => println!("[fn:{}]", f.name),
+        }
+    }
     Ok(())
 }
 
