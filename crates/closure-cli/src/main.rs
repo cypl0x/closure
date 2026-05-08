@@ -358,6 +358,11 @@ enum Cmd {
         /// Path to the vault directory.
         vault: PathBuf,
     },
+    /// Print the FNV-1a source hash of an org file (cache-keying).
+    Hash {
+        /// Path to a `*.org` file.
+        file: PathBuf,
+    },
     /// Toggle the checkbox on the Nth preamble list item.
     ToggleCheckbox {
         /// Path to a `*.org` file.
@@ -493,6 +498,7 @@ fn run(cmd: &Cmd) -> Result<(), String> {
         Cmd::Macros { file } => cmd_macros(file),
         Cmd::Ids { file } => cmd_ids(file),
         Cmd::Paths { vault } => cmd_paths(vault),
+        Cmd::Hash { file } => cmd_hash(file),
         Cmd::SetProperty {
             file,
             id,
@@ -537,6 +543,13 @@ fn cmd_cookies(path: &Path) -> Result<(), String> {
             closure_org::CookieView::Percent(n) => println!("[{n}%]"),
         }
     }
+    Ok(())
+}
+
+fn cmd_hash(path: &Path) -> Result<(), String> {
+    let src = fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))?;
+    let doc = closure_org::parse(&src).map_err(|e| format!("{e}"))?;
+    println!("{:016x}", doc.source_hash());
     Ok(())
 }
 
