@@ -268,6 +268,22 @@ enum Cmd {
         /// Path to a `*.org` file.
         file: PathBuf,
     },
+    /// Delete a `*.org` file from a vault.
+    DeleteFile {
+        /// Path to the vault directory.
+        vault: PathBuf,
+        /// Path to the file to delete.
+        file: PathBuf,
+    },
+    /// Rename a `*.org` file inside a vault.
+    RenameFile {
+        /// Path to the vault directory.
+        vault: PathBuf,
+        /// Current path of the file.
+        from: PathBuf,
+        /// New relative path inside the vault.
+        to: PathBuf,
+    },
 }
 
 fn main() -> ExitCode {
@@ -331,7 +347,22 @@ fn run(cmd: &Cmd) -> Result<(), String> {
         Cmd::Ask { prompt, model } => cmd_ask(prompt, model),
         Cmd::TagCloud { vault } => cmd_tag_cloud(vault),
         Cmd::Outline { file } => cmd_outline(file),
+        Cmd::DeleteFile { vault, file } => cmd_delete_file(vault, file),
+        Cmd::RenameFile { vault, from, to } => cmd_rename_file(vault, from, to),
     }
+}
+
+fn cmd_delete_file(vault: &Path, file: &Path) -> Result<(), String> {
+    let mut v = Vault::open(vault).map_err(|e| format!("{e}"))?;
+    v.delete_file(file).map_err(|e| format!("{e}"))?;
+    Ok(())
+}
+
+fn cmd_rename_file(vault: &Path, from: &Path, to: &Path) -> Result<(), String> {
+    let mut v = Vault::open(vault).map_err(|e| format!("{e}"))?;
+    let new_path = v.rename_file(from, to).map_err(|e| format!("{e}"))?;
+    println!("{}", new_path.display());
+    Ok(())
 }
 
 fn cmd_outline(path: &Path) -> Result<(), String> {
