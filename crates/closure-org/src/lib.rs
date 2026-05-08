@@ -1991,6 +1991,25 @@ fn extract_keyword_ts<'a>(line: &'a str, keyword: &str) -> Option<&'a str> {
 #[derive(Debug, Error)]
 pub enum ParseError {}
 
+/// Read and parse an org file from disk in one call.
+#[allow(clippy::missing_errors_doc)]
+pub fn parse_path(path: &std::path::Path) -> Result<OrgDoc, ParseFromPathError> {
+    let src =
+        std::fs::read_to_string(path).map_err(|e| ParseFromPathError::Io(e.to_string()))?;
+    parse(&src).map_err(|_| ParseFromPathError::Parse)
+}
+
+/// Failure mode for [`parse_path`].
+#[derive(Debug, Error)]
+pub enum ParseFromPathError {
+    /// Filesystem error.
+    #[error("io: {0}")]
+    Io(String),
+    /// Parser rejected the source.
+    #[error("parse failed")]
+    Parse,
+}
+
 /// Parse an org document. See [`OrgDoc`] for the tree shape.
 #[allow(clippy::must_use_candidate, clippy::too_many_lines)]
 pub fn parse(src: &str) -> Result<OrgDoc, ParseError> {

@@ -700,6 +700,15 @@ fn preamble_kind_counts_histogram() {
 }
 
 #[test]
+fn parse_path_reads_from_disk() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let p = dir.path().join("a.org");
+    std::fs::write(&p, "* Hello\n").expect("write");
+    let doc = closure_org::parse_path(&p).expect("parse_path");
+    assert_eq!(doc.roots()[0].title(), "Hello");
+}
+
+#[test]
 fn is_empty_true_for_empty_source() {
     let doc = parse("").expect("parse");
     assert!(doc.is_empty());
