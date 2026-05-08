@@ -602,6 +602,33 @@ fn set_planning_clear_removes_line() {
 }
 
 #[test]
+fn toggle_checkbox_unchecked_to_checked() {
+    let src = "- [ ] task\n";
+    let doc = parse(src).expect("parse");
+    let new = closure_org::rewrite_toggle_checkbox(&doc, 0).expect("toggle");
+    let li = new.preamble()[0].as_list_item().expect("li");
+    assert_eq!(li.checkbox, Some(closure_org::Checkbox::Checked));
+}
+
+#[test]
+fn toggle_checkbox_checked_to_unchecked() {
+    let src = "- [X] task\n";
+    let doc = parse(src).expect("parse");
+    let new = closure_org::rewrite_toggle_checkbox(&doc, 0).expect("toggle");
+    let li = new.preamble()[0].as_list_item().expect("li");
+    assert_eq!(li.checkbox, Some(closure_org::Checkbox::Unchecked));
+}
+
+#[test]
+fn toggle_checkbox_partial_to_checked() {
+    let src = "- [-] task\n";
+    let doc = parse(src).expect("parse");
+    let new = closure_org::rewrite_toggle_checkbox(&doc, 0).expect("toggle");
+    let li = new.preamble()[0].as_list_item().expect("li");
+    assert_eq!(li.checkbox, Some(closure_org::Checkbox::Checked));
+}
+
+#[test]
 fn toggle_comment_adds_prefix() {
     let src = "* Task\n";
     let doc = parse(src).expect("parse");

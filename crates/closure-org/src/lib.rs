@@ -292,6 +292,47 @@ pub fn rewrite_headline_set_tags(
     parse(&src).map_err(|_| RewriteError::Parse)
 }
 
+/// Toggle the checkbox on the Nth preamble list item.
+///
+/// `[ ]` and `[-]` flip to `[X]`. `[X]` flips back to `[ ]`. List items
+/// without a checkbox return `RewriteError::NotFound`.
+pub fn rewrite_toggle_checkbox(
+    doc: &OrgDoc,
+    item_index: usize,
+) -> Result<OrgDoc, RewriteError> {
+    let mut idx = 0usize;
+    let mut found: Option<(Span, Checkbox)> = None;
+    for n in &doc.preamble {
+        if n.kind == NodeKind::ListItem {
+            if idx == item_index {
+                if let NodeMeta::ListItem { checkbox, .. } = &n.meta
+                    && let Some(cb) = checkbox
+                {
+                    found = Some((n.span, *cb));
+                }
+                break;
+            }
+            idx += 1;
+        }
+    }
+    let (line_span, current) = found.ok_or(RewriteError::NotFound)?;
+    let line = &doc.source()[line_span.start..line_span.end];
+    let cb_offset = line
+        .find("[ ]")
+        .or_else(|| line.find("[X]"))
+        .or_else(|| line.find("[x]"))
+        .or_else(|| line.find("[-]"))
+        .ok_or(RewriteError::Parse)?;
+    let new_marker = match current {
+        Checkbox::Checked => "[ ]",
+        Checkbox::Unchecked | Checkbox::Partial => "[X]",
+    };
+    let mut src = doc.source().to_owned();
+    let abs_start = line_span.start + cb_offset;
+    src.replace_range(abs_start..abs_start + 3, new_marker);
+    parse(&src).map_err(|_| RewriteError::Parse)
+}
+
 /// Toggle the `COMMENT` keyword on a headline. The keyword is a prefix
 /// to the title (`* COMMENT Foo`) that excludes the headline from
 /// agenda views, exports, and code-block evaluation in Emacs Org.

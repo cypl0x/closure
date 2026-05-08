@@ -313,6 +313,13 @@ enum Cmd {
         /// Block id of the target headline.
         id: String,
     },
+    /// Toggle the checkbox on the Nth preamble list item.
+    ToggleCheckbox {
+        /// Path to a `*.org` file.
+        file: PathBuf,
+        /// Zero-based list item index in the preamble.
+        index: usize,
+    },
     /// Toggle the `COMMENT` keyword prefix on a headline.
     Comment {
         /// Path to a `*.org` file.
@@ -431,6 +438,7 @@ fn run(cmd: &Cmd) -> Result<(), String> {
         Cmd::Wc { file } => cmd_wc(file),
         Cmd::Archive { file, id } => cmd_archive(file, id),
         Cmd::Comment { file, id } => cmd_comment(file, id),
+        Cmd::ToggleCheckbox { file, index } => cmd_toggle_checkbox(file, *index),
         Cmd::SetProperty {
             file,
             id,
@@ -455,6 +463,14 @@ fn cmd_archive(path: &Path, id: &str) -> Result<(), String> {
     let cmd = ToggleArchive::new(BlockId::from_existing(id));
     Command::apply(&cmd, &mut doc).map_err(|e| format!("{e}"))?;
     fs::write(path, doc.source()).map_err(|e| format!("write: {e}"))?;
+    Ok(())
+}
+
+fn cmd_toggle_checkbox(path: &Path, index: usize) -> Result<(), String> {
+    let src = fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))?;
+    let doc = closure_org::parse(&src).map_err(|e| format!("{e}"))?;
+    let new = closure_org::rewrite_toggle_checkbox(&doc, index).map_err(|e| format!("{e}"))?;
+    fs::write(path, closure_org::print(&new)).map_err(|e| format!("write: {e}"))?;
     Ok(())
 }
 
