@@ -328,6 +328,11 @@ enum Cmd {
         /// Path to a `*.org` file.
         file: PathBuf,
     },
+    /// Print every named block (`#+BEGIN_QUOTE`, `#+BEGIN_EXAMPLE`, etc.).
+    Blocks {
+        /// Path to a `*.org` file.
+        file: PathBuf,
+    },
     /// Print every link target found in a file.
     Links {
         /// Path to a `*.org` file.
@@ -582,6 +587,7 @@ fn run(cmd: &Cmd) -> Result<(), String> {
         Cmd::Drawers { file } => cmd_drawers(file),
         Cmd::Tables { file } => cmd_tables(file),
         Cmd::Lists { file } => cmd_lists(file),
+        Cmd::Blocks { file } => cmd_blocks(file),
         Cmd::Links { file } => cmd_links(file),
         Cmd::Footnotes { file } => cmd_footnotes(file),
         Cmd::Timestamps { file } => cmd_timestamps(file),
@@ -985,6 +991,15 @@ fn cmd_footnotes(path: &Path) -> Result<(), String> {
             Some(d) => println!("[fn:{}]\t{d}", f.name),
             None => println!("[fn:{}]", f.name),
         }
+    }
+    Ok(())
+}
+
+fn cmd_blocks(path: &Path) -> Result<(), String> {
+    let src = fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))?;
+    for b in closure_org::find_named_blocks(&src) {
+        let lines = b.content.lines().count();
+        println!("#+BEGIN_{}  {} lines", b.name, lines);
     }
     Ok(())
 }
