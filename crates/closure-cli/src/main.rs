@@ -1196,19 +1196,8 @@ fn cmd_outline(path: &Path) -> Result<(), String> {
 }
 
 fn cmd_tag_cloud(vault: &Path) -> Result<(), String> {
-    use std::collections::BTreeMap;
     let v = Vault::open(vault).map_err(|e| format!("{e}"))?;
-    let mut counts: BTreeMap<String, usize> = BTreeMap::new();
-    for (_, doc) in v.iter() {
-        for h in doc.all_headlines() {
-            for t in h.tags() {
-                *counts.entry(t.clone()).or_insert(0) += 1;
-            }
-        }
-    }
-    let mut pairs: Vec<(&String, &usize)> = counts.iter().collect();
-    pairs.sort_by(|a, b| b.1.cmp(a.1).then_with(|| a.0.cmp(b.0)));
-    for (tag, n) in pairs {
+    for (tag, n) in v.tag_counts() {
         println!("{n:>4}  {tag}");
     }
     Ok(())

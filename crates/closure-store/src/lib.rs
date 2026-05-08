@@ -208,6 +208,38 @@ impl Vault {
             .collect()
     }
 
+    /// Tag occurrence counts across the vault, sorted descending by count.
+    #[must_use]
+    pub fn tag_counts(&self) -> Vec<(String, usize)> {
+        let mut counts: HashMap<String, usize> = HashMap::new();
+        for (_, doc) in self.iter() {
+            for h in doc.all_headlines() {
+                for t in h.tags() {
+                    *counts.entry(t.clone()).or_insert(0) += 1;
+                }
+            }
+        }
+        let mut ranked: Vec<_> = counts.into_iter().collect();
+        ranked.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+        ranked
+    }
+
+    /// TODO keyword occurrence counts, sorted descending by count.
+    #[must_use]
+    pub fn todo_counts(&self) -> Vec<(String, usize)> {
+        let mut counts: HashMap<String, usize> = HashMap::new();
+        for (_, doc) in self.iter() {
+            for h in doc.all_headlines() {
+                if let Some(t) = h.todo() {
+                    *counts.entry(t.to_owned()).or_insert(0) += 1;
+                }
+            }
+        }
+        let mut ranked: Vec<_> = counts.into_iter().collect();
+        ranked.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+        ranked
+    }
+
     /// Every distinct TODO keyword used across the vault, sorted.
     #[must_use]
     pub fn all_todos(&self) -> Vec<String> {
