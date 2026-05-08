@@ -376,6 +376,11 @@ enum Cmd {
     /// Run the MCP stdio dispatcher (one command name per line; `LIST`
     /// to enumerate). Quits on EOF.
     Mcp,
+    /// Print headlines that have no incoming `id:` links.
+    Orphans {
+        /// Path to the vault directory.
+        vault: PathBuf,
+    },
     /// Print every `*.org` file path in a vault, sorted.
     Paths {
         /// Path to the vault directory.
@@ -538,6 +543,7 @@ fn run(cmd: &Cmd) -> Result<(), String> {
         Cmd::Properties { file } => cmd_properties(file),
         Cmd::Validate { file } => cmd_validate(file),
         Cmd::Mcp => cmd_mcp(),
+        Cmd::Orphans { vault } => cmd_orphans(vault),
         Cmd::Paths { vault } => cmd_paths(vault),
         Cmd::Hash { file } => cmd_hash(file),
         Cmd::Graph { vault } => cmd_graph(vault),
@@ -653,6 +659,26 @@ fn cmd_paths(vault: &Path) -> Result<(), String> {
 fn cmd_mcp() -> Result<(), String> {
     let registry = closure_core::default_registry();
     closure_mcp::run_stdio(&registry).map_err(|e| format!("{e}"))
+}
+
+fn cmd_orphans(vault: &Path) -> Result<(), String> {
+    use std::collections::HashSet;
+    let v = Vault::open(vault).map_err(|e| format!("{e}"))?;
+    let graph = v.link_graph();
+    let mut targeted: HashSet<closure_core::BlockId> = HashSet::new();
+    for targets in graph.values() {
+        for t in targets {
+            targeted.insert(t.clone());
+        }
+    }
+    for (_, doc) in v.iter() {
+        for h in doc.all_headlines() {
+            if !targeted.contains(h.id()) {
+                println!("{}\t{}", h.id(), h.title());
+            }
+        }
+    }
+    Ok(())
 }
 
 fn cmd_validate(path: &Path) -> Result<(), String> {
