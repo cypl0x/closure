@@ -265,6 +265,77 @@ pub fn rewrite_headline_set_body(
     parse(&src).map_err(|_| RewriteError::Parse)
 }
 
+/// Attach a `#+RESULTS:` block to the Nth preamble code block.
+///
+/// The results lines are formatted as `: <line>` org-babel-style
+/// verbatim output. If a `#+RESULTS:` block already follows the code
+/// block, it is replaced.
+pub fn rewrite_attach_results_to_code_block(
+    doc: &OrgDoc,
+    block_index: usize,
+    results: &str,
+) -> Result<OrgDoc, RewriteError> {
+    // Find the Nth CodeBlock node in the preamble, get its end span.
+    let mut idx = 0usize;
+    let mut block_end: Option<usize> = None;
+    for n in doc.preamble() {
+        if n.kind() == NodeKind::CodeBlock {
+            if idx == block_index {
+                block_end = Some(n.span.end);
+                break;
+            }
+            idx += 1;
+        }
+    }
+    let block_end = block_end.ok_or(RewriteError::NotFound)?;
+
+    let mut formatted = String::from("#+RESULTS:\n");
+    for line in results.lines() {
+        formatted.push_str(": ");
+        formatted.push_str(line);
+        formatted.push('\n');
+    }
+    if results.is_empty() {
+        formatted.push_str(":\n");
+    }
+
+    // If existing `#+RESULTS:` block immediately follows, replace it.
+    let src = doc.source();
+    let after = &src[block_end..];
+    let trimmed_lead = after.trim_start_matches([' ', '\t', '\n']);
+    let lead_skipped = after.len() - trimmed_lead.len();
+    let replace_end =
+        if trimmed_lead.starts_with("#+RESULTS:") || trimmed_lead.starts_with("#+results:") {
+            // Consume the `#+RESULTS:` line and following `: ...` lines.
+            let mut cursor = block_end + lead_skipped;
+            // Skip the `#+RESULTS:` line.
+            if let Some(nl) = src[cursor..].find('\n') {
+                cursor += nl + 1;
+            }
+            // Skip subsequent `: ...` lines.
+            loop {
+                let rest = &src[cursor..];
+                if rest.starts_with(": ") || rest.starts_with(":\n") || rest.starts_with(":\r\n") {
+                    if let Some(nl) = rest.find('\n') {
+                        cursor += nl + 1;
+                    } else {
+                        cursor = src.len();
+                        break;
+                    }
+                } else {
+                    break;
+                }
+            }
+            cursor
+        } else {
+            block_end
+        };
+
+    let mut new_src = doc.source().to_owned();
+    new_src.replace_range(block_end..replace_end, &formatted);
+    parse(&new_src).map_err(|_| RewriteError::Parse)
+}
+
 /// Splice a pre-formatted subtree source verbatim immediately after
 /// the subtree rooted at `after_path`. Used by move/cut/paste paths
 /// that already have a captured source string.

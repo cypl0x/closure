@@ -358,6 +358,26 @@ fn unterminated_link_is_ignored() {
 }
 
 #[test]
+fn attach_results_to_first_code_block() {
+    let src = "#+BEGIN_SRC sh\necho hi\n#+END_SRC\n";
+    let doc = parse(src).expect("parse");
+    let new = closure_org::rewrite_attach_results_to_code_block(&doc, 0, "hi\n").expect("attach");
+    let out = closure_org::print(&new);
+    assert!(out.contains("#+RESULTS:"));
+    assert!(out.contains(": hi"));
+}
+
+#[test]
+fn attach_results_replaces_existing_block() {
+    let src = "#+BEGIN_SRC sh\necho hi\n#+END_SRC\n#+RESULTS:\n: old\n";
+    let doc = parse(src).expect("parse");
+    let new = closure_org::rewrite_attach_results_to_code_block(&doc, 0, "new\n").expect("attach");
+    let out = closure_org::print(&new);
+    assert!(out.contains(": new"));
+    assert!(!out.contains(": old"));
+}
+
+#[test]
 fn unordered_list_items_classified() {
     let src = "- first\n- second\n";
     let doc = parse(src).expect("parse");
