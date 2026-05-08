@@ -602,6 +602,20 @@ fn set_planning_clear_removes_line() {
 }
 
 #[test]
+fn parse_block_args_simple() {
+    let args = closure_org::parse_block_args(":results output :wrap example");
+    assert_eq!(args.len(), 2);
+    assert_eq!(args[0], (":results", "output"));
+    assert_eq!(args[1], (":wrap", "example"));
+}
+
+#[test]
+fn parse_block_args_no_value_drops_key() {
+    let args = closure_org::parse_block_args(":noeval");
+    assert!(args.is_empty());
+}
+
+#[test]
 fn source_hash_is_deterministic() {
     let a = parse("* Hello\n").expect("parse");
     let b = parse("* Hello\n").expect("parse");

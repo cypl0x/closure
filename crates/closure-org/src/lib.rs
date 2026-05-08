@@ -935,6 +935,39 @@ pub enum CookieView {
     Percent(u32),
 }
 
+/// Parse `#+BEGIN_SRC` header arguments into `(key, value)` tuples.
+///
+/// Keys keep their leading colon; values run from after the key up to
+/// the next key (or end of input). Keys without a value are dropped.
+/// Example: `:results output :wrap example` →
+/// `[(":results", "output"), (":wrap", "example")]`.
+#[must_use]
+pub fn parse_block_args(args: &str) -> Vec<(&str, &str)> {
+    let mut out: Vec<(&str, &str)> = Vec::new();
+    let mut tokens = args.split_whitespace().peekable();
+    while let Some(key) = tokens.next() {
+        if !key.starts_with(':') {
+            continue;
+        }
+        let mut value: Vec<&str> = Vec::new();
+        while let Some(&peek) = tokens.peek() {
+            if peek.starts_with(':') {
+                break;
+            }
+            tokens.next();
+            value.push(peek);
+        }
+        if value.is_empty() {
+            continue;
+        }
+        let start = value[0].as_ptr() as usize - args.as_ptr() as usize;
+        let last = value[value.len() - 1];
+        let end = (last.as_ptr() as usize - args.as_ptr() as usize) + last.len();
+        out.push((key, &args[start..end]));
+    }
+    out
+}
+
 /// Format a link as `[[target][description]]` or `[[target]]`.
 /// Counterpart to [`find_links`].
 #[must_use]
