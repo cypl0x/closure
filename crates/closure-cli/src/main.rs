@@ -401,6 +401,11 @@ enum Cmd {
     },
     /// Print every command name registered in the default registry.
     Commands,
+    /// Print the maximum headline nesting depth in a file.
+    Depth {
+        /// Path to a `*.org` file.
+        file: PathBuf,
+    },
     /// Append a line to a headline's `:LOGBOOK:` drawer.
     LogbookAppend {
         /// Path to a `*.org` file.
@@ -578,6 +583,7 @@ fn run(cmd: &Cmd) -> Result<(), String> {
         Cmd::Clock { file } => cmd_clock(file),
         Cmd::Commands => cmd_commands(),
         Cmd::LogbookAppend { file, id, entry } => cmd_logbook_append(file, id, entry),
+        Cmd::Depth { file } => cmd_depth(file),
         Cmd::Paths { vault } => cmd_paths(vault),
         Cmd::Hash { file } => cmd_hash(file),
         Cmd::Graph { vault } => cmd_graph(vault),
@@ -711,6 +717,13 @@ fn cmd_dead_links(vault: &Path) -> Result<(), String> {
             }
         }
     }
+    Ok(())
+}
+
+fn cmd_depth(path: &Path) -> Result<(), String> {
+    let src = fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))?;
+    let doc = closure_org::parse(&src).map_err(|e| format!("{e}"))?;
+    println!("{}", doc.max_depth());
     Ok(())
 }
 
