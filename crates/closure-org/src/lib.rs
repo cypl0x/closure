@@ -64,7 +64,8 @@ impl OrgDoc {
     #[must_use]
     pub fn max_depth(&self) -> u8 {
         fn walk(h: &Headline) -> u8 {
-            h.children().iter().map(walk).max().unwrap_or(h.level()).max(h.level())
+            let child_max = h.children().iter().map(walk).max().unwrap_or(0);
+            h.level().max(child_max)
         }
         self.roots.iter().map(walk).max().unwrap_or(0)
     }
