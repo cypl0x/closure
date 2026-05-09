@@ -366,6 +366,12 @@ impl OrgDoc {
         self.find_headline(|h| h.title() == needle)
     }
 
+    /// Returns the first headline whose title matches case-insensitively.
+    #[must_use]
+    pub fn headline_by_title_ignore_case(&self, needle: &str) -> Option<&Headline> {
+        self.find_headline(|h| h.title().eq_ignore_ascii_case(needle))
+    }
+
     /// Returns every headline matching `pred` (depth-first).
     #[must_use]
     pub fn filter_headlines<F: Fn(&Headline) -> bool>(&self, pred: F) -> Vec<&Headline> {
