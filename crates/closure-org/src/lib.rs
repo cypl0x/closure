@@ -2535,6 +2535,16 @@ impl Headline {
         n
     }
 
+    /// Number of macro invocations in title + body.
+    #[must_use]
+    pub fn macro_count(&self) -> usize {
+        let mut n = find_macros(self.title()).len();
+        for node in &self.body {
+            n += find_macros(&self.source[node.span.start..node.span.end]).len();
+        }
+        n
+    }
+
     /// Total link count across title + body (does not recurse).
     #[must_use]
     pub fn link_count(&self) -> usize {
