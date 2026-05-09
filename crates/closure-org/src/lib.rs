@@ -236,6 +236,24 @@ impl OrgDoc {
         preamble + self.roots.iter().map(walk_tr).sum::<usize>()
     }
 
+    /// Total timestamp count across every headline (recursive).
+    #[must_use]
+    pub fn total_timestamp_count(&self) -> usize {
+        fn walk(h: &Headline) -> usize {
+            h.timestamp_count() + h.children().iter().map(walk).sum::<usize>()
+        }
+        self.roots.iter().map(walk).sum()
+    }
+
+    /// Total cookie count across every headline.
+    #[must_use]
+    pub fn total_cookie_count(&self) -> usize {
+        fn walk(h: &Headline) -> usize {
+            h.cookie_count() + h.children().iter().map(walk).sum::<usize>()
+        }
+        self.roots.iter().map(walk).sum()
+    }
+
     /// Whether any headline in the tree has `:ID: id`.
     #[must_use]
     pub fn contains_id(&self, id: &str) -> bool {
