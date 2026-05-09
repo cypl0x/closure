@@ -2248,6 +2248,12 @@ impl Properties {
         self.get(key).is_some()
     }
 
+    /// True iff `key` is present (case-insensitive).
+    #[must_use]
+    pub fn contains_key_ignore_case(&self, key: &str) -> bool {
+        self.get_ignore_case(key).is_some()
+    }
+
     /// Shorthand for `get("ID")`. Invariant I2 pins stable ULID block IDs
     /// into this property.
     #[must_use]
