@@ -344,6 +344,12 @@ impl OrgDoc {
         self.filter_headlines(|h| h.body_source().contains(needle))
     }
 
+    /// Returns every headline (title or body) containing `needle`.
+    #[must_use]
+    pub fn full_text<'a>(&'a self, needle: &str) -> Vec<&'a Headline> {
+        self.filter_headlines(|h| h.title().contains(needle) || h.body_source().contains(needle))
+    }
+
     /// Returns every headline matching `pred` (depth-first).
     #[must_use]
     pub fn filter_headlines<F: Fn(&Headline) -> bool>(&self, pred: F) -> Vec<&Headline> {
