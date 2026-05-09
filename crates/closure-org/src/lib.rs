@@ -2117,7 +2117,7 @@ impl Headline {
     /// True iff this headline carries `tag`.
     #[must_use]
     pub fn has_tag(&self, tag: &str) -> bool {
-        self.tags().iter().any(|t| *t == tag)
+        self.tags().contains(&tag)
     }
 
     /// All link targets in this headline's title and body (does not
