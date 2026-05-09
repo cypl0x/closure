@@ -2458,6 +2458,14 @@ impl Headline {
         self.children.iter().find(|c| c.title() == needle)
     }
 
+    /// First child whose `:ID:` property matches `id`.
+    #[must_use]
+    pub fn child_by_id(&self, id: &str) -> Option<&Self> {
+        self.children
+            .iter()
+            .find(|c| c.properties().and_then(Properties::id) == Some(id))
+    }
+
     /// First child whose title contains `needle` (case-sensitive).
     #[must_use]
     pub fn child_by_title_substring(&self, needle: &str) -> Option<&Self> {
