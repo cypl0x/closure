@@ -623,6 +623,13 @@ enum Cmd {
         /// Substring to search for (case-sensitive).
         needle: String,
     },
+    /// Case-insensitive variant of `grep`.
+    Grepi {
+        /// Path to the vault directory.
+        vault: PathBuf,
+        /// Substring to search for.
+        needle: String,
+    },
     /// List vault files sorted by mtime, most-recently-modified first.
     Recent {
         /// Path to the vault directory.
@@ -839,6 +846,7 @@ fn run(cmd: &Cmd) -> Result<(), String> {
         Cmd::Paths { vault } => cmd_paths(vault),
         Cmd::PathsWithTodos { vault } => cmd_paths_with_todos(vault),
         Cmd::Grep { vault, needle } => cmd_grep(vault, needle),
+        Cmd::Grepi { vault, needle } => cmd_grepi(vault, needle),
         Cmd::Recent { vault, limit } => cmd_recent(vault, *limit),
         Cmd::Hash { file } => cmd_hash(file),
         Cmd::Graph { vault } => cmd_graph(vault),
@@ -971,6 +979,14 @@ fn cmd_paths_with_todos(vault: &Path) -> Result<(), String> {
 fn cmd_grep(vault: &Path, needle: &str) -> Result<(), String> {
     let v = Vault::open(vault).map_err(|e| format!("{e}"))?;
     for p in v.paths_containing(needle) {
+        println!("{}", p.display());
+    }
+    Ok(())
+}
+
+fn cmd_grepi(vault: &Path, needle: &str) -> Result<(), String> {
+    let v = Vault::open(vault).map_err(|e| format!("{e}"))?;
+    for p in v.paths_containing_ignore_case(needle) {
         println!("{}", p.display());
     }
     Ok(())
