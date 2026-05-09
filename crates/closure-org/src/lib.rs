@@ -96,6 +96,12 @@ impl OrgDoc {
         self.roots.iter().any(|r| walk(r, letter))
     }
 
+    /// True iff any headline contains a link to `target`.
+    #[must_use]
+    pub fn has_link_to(&self, target: &str) -> bool {
+        !self.find_link_sources(target).is_empty()
+    }
+
     /// Count headlines matching a predicate, recursively.
     #[must_use]
     pub fn count_headlines_where<F: Fn(&Headline) -> bool>(&self, pred: F) -> usize {
