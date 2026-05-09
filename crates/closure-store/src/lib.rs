@@ -334,6 +334,24 @@ impl Vault {
         self.headline_count().checked_div(self.len()).unwrap_or(0)
     }
 
+    /// Largest file (path + byte count) in the vault.
+    #[must_use]
+    pub fn largest_file(&self) -> Option<(&Path, usize)> {
+        self.documents
+            .iter()
+            .map(|(p, d)| (p.as_path(), d.source().len()))
+            .max_by_key(|(_, n)| *n)
+    }
+
+    /// File with the most headlines.
+    #[must_use]
+    pub fn busiest_file(&self) -> Option<(&Path, usize)> {
+        self.documents
+            .iter()
+            .map(|(p, d)| (p.as_path(), d.all_headlines().count()))
+            .max_by_key(|(_, n)| *n)
+    }
+
     /// Map of `path → 64-bit FNV-1a content hash` for every loaded
     /// document. Useful for change-detection caches that need to know
     /// which files have shifted since a previous snapshot.
