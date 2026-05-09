@@ -2327,6 +2327,12 @@ impl Headline {
         self.planning().is_some_and(|p| p.closed.is_some())
     }
 
+    /// True iff this headline has any planning line.
+    #[must_use]
+    pub fn has_planning(&self) -> bool {
+        self.planning().is_some()
+    }
+
     /// Reconstructed display string `[TODO] [#P] Title :tag1:tag2:`.
     /// Useful for UI rendering without going back to source bytes.
     #[must_use]
