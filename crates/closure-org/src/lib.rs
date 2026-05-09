@@ -169,6 +169,15 @@ impl OrgDoc {
         self.preamble.len() + self.roots.iter().map(walk).sum::<usize>()
     }
 
+    /// Sum of body word counts across every headline (recursive).
+    #[must_use]
+    pub fn total_body_word_count(&self) -> usize {
+        fn walk(h: &Headline) -> usize {
+            h.body_word_count() + h.children().iter().map(walk).sum::<usize>()
+        }
+        self.roots.iter().map(walk).sum()
+    }
+
     /// Whether any headline in the tree has `:ID: id`.
     #[must_use]
     pub fn contains_id(&self, id: &str) -> bool {
