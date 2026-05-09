@@ -2278,6 +2278,15 @@ impl Headline {
             .sum()
     }
 
+    /// Number of links in the body (does not recurse).
+    #[must_use]
+    pub fn body_link_count(&self) -> usize {
+        self.body
+            .iter()
+            .map(|n| find_links(&self.source[n.span.start..n.span.end]).len())
+            .sum()
+    }
+
     /// Body word count over the entire subtree (self + descendants).
     #[must_use]
     pub fn subtree_word_count(&self) -> usize {
