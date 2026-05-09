@@ -1259,10 +1259,11 @@ pub fn parse_block_args(args: &str) -> Vec<(&str, &str)> {
     out
 }
 
-/// Format a `:PROPERTIES:` drawer from `(key, value)` pairs in source
-/// order. Returns `":PROPERTIES:\n:K: v\n...\n:END:\n"` ready to
-/// splice in after a headline's header line. Empty input returns an
-/// empty string.
+/// Format a `:PROPERTIES:` drawer from `(key, value)` pairs.
+///
+/// Pairs are emitted in source order. Returns
+/// `":PROPERTIES:\n:K: v\n...\n:END:\n"` ready to splice after a
+/// headline's header line. Empty input returns an empty string.
 #[must_use]
 pub fn format_property_drawer<I, K, V>(entries: I) -> String
 where
