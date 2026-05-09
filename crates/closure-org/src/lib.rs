@@ -2807,6 +2807,14 @@ impl Headline {
             .any(|c| c.has_tag(tag) || c.descendant_has_tag(tag))
     }
 
+    /// True iff any descendant has TODO `keyword`.
+    #[must_use]
+    pub fn descendant_has_todo(&self, keyword: &str) -> bool {
+        self.children.iter().any(|c| {
+            c.todo() == Some(keyword) || c.descendant_has_todo(keyword)
+        })
+    }
+
     /// Number of comment lines in the body.
     #[must_use]
     pub fn body_comment_count(&self) -> usize {
