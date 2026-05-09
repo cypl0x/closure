@@ -218,6 +218,12 @@ impl Vault {
         self.documents.get(path).map(|d| d.source().len())
     }
 
+    /// Total byte count across the vault.
+    #[must_use]
+    pub fn byte_count(&self) -> usize {
+        self.documents.values().map(|d| d.source().len()).sum()
+    }
+
     /// Map of `path → 64-bit FNV-1a content hash` for every loaded
     /// document. Useful for change-detection caches that need to know
     /// which files have shifted since a previous snapshot.
