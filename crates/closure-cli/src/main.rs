@@ -1376,16 +1376,15 @@ fn cmd_stats_file(path: &Path) -> Result<(), String> {
     let src = fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))?;
     let doc = Document::load_str(&src).map_err(|e| format!("{e}"))?;
     let org = doc.org();
-    let total_links: usize = doc
-        .all_headlines()
-        .map(|h| h.link_targets().len())
-        .sum();
     println!("file:       {}", path.display());
     println!("headlines:  {}", org.headline_count());
+    println!("todos:      {}", org.count_todos());
+    println!("priority:   {}", org.count_with_priority());
+    println!("planning:   {}", org.count_with_planning());
     println!("max depth:  {}", org.max_depth());
     println!("words:      {}", doc.word_count());
     println!("chars:      {}", doc.char_count());
-    println!("links:      {total_links}");
+    println!("links:      {}", org.total_link_count());
     println!("hash:       {:016x}", doc.source_hash());
     Ok(())
 }
