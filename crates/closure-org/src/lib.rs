@@ -435,6 +435,12 @@ impl OrgDoc {
             .collect()
     }
 
+    /// Total subtree byte count for `id`-tagged headline.
+    #[must_use]
+    pub fn subtree_byte_count_of(&self, id: &str) -> Option<usize> {
+        self.headline_by_id(id).map(Headline::subtree_byte_count)
+    }
+
     /// Returns every headline matching `pred` (depth-first).
     #[must_use]
     pub fn filter_headlines<F: Fn(&Headline) -> bool>(&self, pred: F) -> Vec<&Headline> {
