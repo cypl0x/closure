@@ -311,6 +311,17 @@ impl Vault {
             .sum()
     }
 
+    /// Mean body word count across the vault (rounded down).
+    #[must_use]
+    pub fn mean_body_word_count(&self) -> usize {
+        let total: usize = self
+            .documents
+            .values()
+            .map(|d| d.org().total_body_word_count())
+            .sum();
+        total.checked_div(self.headline_count()).unwrap_or(0)
+    }
+
     /// Map of `path → 64-bit FNV-1a content hash` for every loaded
     /// document. Useful for change-detection caches that need to know
     /// which files have shifted since a previous snapshot.
