@@ -2843,6 +2843,20 @@ impl Headline {
         None
     }
 
+    /// First descendant whose `:ID:` property equals `id`.
+    #[must_use]
+    pub fn descendant_by_id(&self, id: &str) -> Option<&Self> {
+        for c in &self.children {
+            if c.id_property() == Some(id) {
+                return Some(c);
+            }
+            if let Some(d) = c.descendant_by_id(id) {
+                return Some(d);
+            }
+        }
+        None
+    }
+
     /// Number of comment lines in the body.
     #[must_use]
     pub fn body_comment_count(&self) -> usize {
