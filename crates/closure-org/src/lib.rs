@@ -2324,6 +2324,11 @@ impl Headline {
                 .sum::<usize>()
     }
 
+    /// Iterate body nodes whose kind matches `kind`.
+    pub fn body_nodes_by_kind(&self, kind: NodeKind) -> impl Iterator<Item = &Node> {
+        self.body.iter().filter(move |n| n.kind == kind)
+    }
+
     /// Iterate every body line as a borrowed string slice.
     pub fn body_lines(&self) -> impl Iterator<Item = &str> {
         self.body.iter().flat_map(|n| {
