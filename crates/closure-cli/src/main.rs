@@ -442,6 +442,21 @@ enum Cmd {
         /// Path to the vault directory.
         vault: PathBuf,
     },
+    /// Print the deepest leaf headline title in a file.
+    DeepestLeaf {
+        /// Path to a `*.org` file.
+        file: PathBuf,
+    },
+    /// Print the headline with the most descendants in a file.
+    LargestSubtree {
+        /// Path to a `*.org` file.
+        file: PathBuf,
+    },
+    /// Print the headline with the most body words in a file.
+    LongestBody {
+        /// Path to a `*.org` file.
+        file: PathBuf,
+    },
     /// Run the MCP stdio dispatcher (one command name per line; `LIST`
     /// to enumerate). Quits on EOF.
     Mcp,
@@ -819,6 +834,9 @@ fn run(cmd: &Cmd) -> Result<(), String> {
         Cmd::Validate { file } => cmd_validate(file),
         Cmd::StatsFile { file } => cmd_stats_file(file),
         Cmd::VaultInfo { vault } => cmd_vault_info(vault),
+        Cmd::DeepestLeaf { file } => cmd_deepest_leaf(file),
+        Cmd::LargestSubtree { file } => cmd_largest_subtree(file),
+        Cmd::LongestBody { file } => cmd_longest_body(file),
         Cmd::Mcp => cmd_mcp(),
         Cmd::Orphans { vault } => cmd_orphans(vault),
         Cmd::DeadLinks { vault } => cmd_dead_links(vault),
@@ -1440,6 +1458,33 @@ fn cmd_orphans(vault: &Path) -> Result<(), String> {
                 println!("{}\t{}", h.id(), h.title());
             }
         }
+    }
+    Ok(())
+}
+
+fn cmd_deepest_leaf(path: &Path) -> Result<(), String> {
+    let src = fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))?;
+    let doc = closure_org::parse(&src).map_err(|e| format!("{e}"))?;
+    if let Some(h) = doc.deepest_leaf() {
+        println!("L{}\t{}", h.level(), h.title());
+    }
+    Ok(())
+}
+
+fn cmd_largest_subtree(path: &Path) -> Result<(), String> {
+    let src = fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))?;
+    let doc = closure_org::parse(&src).map_err(|e| format!("{e}"))?;
+    if let Some(h) = doc.largest_subtree() {
+        println!("{}\t{}", h.descendant_count(), h.title());
+    }
+    Ok(())
+}
+
+fn cmd_longest_body(path: &Path) -> Result<(), String> {
+    let src = fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))?;
+    let doc = closure_org::parse(&src).map_err(|e| format!("{e}"))?;
+    if let Some(h) = doc.longest_body() {
+        println!("{}\t{}", h.body_word_count(), h.title());
     }
     Ok(())
 }
