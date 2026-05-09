@@ -62,6 +62,13 @@ impl OrgDoc {
         !self.roots.is_empty()
     }
 
+    /// True iff the document source contains a `:NAME:` ... `:END:`
+    /// drawer with the given name (anywhere in the source).
+    #[must_use]
+    pub fn has_drawer(&self, name: &str) -> bool {
+        find_drawers(&self.source).iter().any(|d| d.name == name)
+    }
+
     /// Number of top-level headlines.
     #[must_use]
     pub const fn root_count(&self) -> usize {
