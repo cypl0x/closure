@@ -408,6 +408,18 @@ impl OrgDoc {
         self.find_headline(Headline::is_comment)
     }
 
+    /// Returns the first headline tagged with `tag`.
+    #[must_use]
+    pub fn first_tagged<'a>(&'a self, tag: &str) -> Option<&'a Headline> {
+        self.find_headline(|h| h.has_tag(tag))
+    }
+
+    /// Returns the first headline whose TODO matches `keyword`.
+    #[must_use]
+    pub fn first_with_todo<'a>(&'a self, keyword: &str) -> Option<&'a Headline> {
+        self.find_headline(|h| h.todo() == Some(keyword))
+    }
+
     /// Returns every headline matching `pred` (depth-first).
     #[must_use]
     pub fn filter_headlines<F: Fn(&Headline) -> bool>(&self, pred: F) -> Vec<&Headline> {
