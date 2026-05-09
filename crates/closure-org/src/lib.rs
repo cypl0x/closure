@@ -226,6 +226,16 @@ impl OrgDoc {
         self.roots.iter().map(walk).sum()
     }
 
+    /// Total table row count over preamble + every headline body.
+    #[must_use]
+    pub fn total_table_row_count(&self) -> usize {
+        fn walk_tr(h: &Headline) -> usize {
+            h.body_table_row_count() + h.children().iter().map(walk_tr).sum::<usize>()
+        }
+        let preamble = self.nodes_by_kind(NodeKind::TableRow).count();
+        preamble + self.roots.iter().map(walk_tr).sum::<usize>()
+    }
+
     /// Whether any headline in the tree has `:ID: id`.
     #[must_use]
     pub fn contains_id(&self, id: &str) -> bool {
