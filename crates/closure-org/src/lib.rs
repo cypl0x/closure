@@ -2515,6 +2515,16 @@ impl Headline {
         n
     }
 
+    /// Number of progress cookies (`[N/M]` / `[N%]`) in title + body.
+    #[must_use]
+    pub fn cookie_count(&self) -> usize {
+        let mut n = find_cookies(self.title()).len();
+        for node in &self.body {
+            n += find_cookies(&self.source[node.span.start..node.span.end]).len();
+        }
+        n
+    }
+
     /// Total link count across title + body (does not recurse).
     #[must_use]
     pub fn link_count(&self) -> usize {
