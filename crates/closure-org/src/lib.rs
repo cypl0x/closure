@@ -164,6 +164,11 @@ impl OrgDoc {
         self.preamble.len()
     }
 
+    /// Iterate preamble nodes.
+    pub fn iter_preamble(&self) -> impl Iterator<Item = &Node> {
+        self.preamble.iter()
+    }
+
     /// Total node count: preamble nodes plus every headline's body
     /// nodes (recursive). Headlines themselves are not included.
     #[must_use]
