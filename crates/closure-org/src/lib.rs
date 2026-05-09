@@ -96,6 +96,15 @@ impl OrgDoc {
         self.roots.iter().any(|r| walk(r, letter))
     }
 
+    /// Count headlines matching a predicate, recursively.
+    #[must_use]
+    pub fn count_headlines_where<F: Fn(&Headline) -> bool>(&self, pred: F) -> usize {
+        fn walk<F: Fn(&Headline) -> bool>(h: &Headline, pred: &F) -> usize {
+            usize::from(pred(h)) + h.children().iter().map(|c| walk(c, pred)).sum::<usize>()
+        }
+        self.roots.iter().map(|r| walk(r, &pred)).sum()
+    }
+
     /// Number of top-level headlines.
     #[must_use]
     pub const fn root_count(&self) -> usize {
