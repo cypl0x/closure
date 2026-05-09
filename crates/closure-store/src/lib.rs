@@ -301,6 +301,16 @@ impl Vault {
         self.by_id.contains_key(id)
     }
 
+    /// Every distinct path containing at least one headline tagged
+    /// :ARCHIVE:.
+    #[must_use]
+    pub fn archive_paths(&self) -> Vec<&Path> {
+        self.iter()
+            .filter(|(_, d)| d.all_headlines().any(|h| h.tags().iter().any(|t| t == "ARCHIVE")))
+            .map(|(p, _)| p)
+            .collect()
+    }
+
     /// Lookup a headline and its owning file by block id.
     #[must_use]
     pub fn find_by_id(&self, id: &BlockId) -> Option<(&closure_core::DocHeadline, &Path)> {
