@@ -209,6 +209,14 @@ impl OrgDoc {
             .unwrap_or(0)
     }
 
+    /// Mean body byte count over headlines (rounded down).
+    #[must_use]
+    pub fn mean_body_byte_count(&self) -> usize {
+        self.total_body_bytes()
+            .checked_div(self.headline_count())
+            .unwrap_or(0)
+    }
+
     /// Number of top-level headlines.
     #[must_use]
     pub const fn root_count(&self) -> usize {
