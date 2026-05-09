@@ -882,6 +882,13 @@ fn find_drawers_unclosed_ignored() {
 }
 
 #[test]
+fn unfinished_checkboxes_filters_correctly() {
+    let doc = parse("- [ ] todo\n- [X] done\n- [-] partial\n").expect("parse");
+    let pending = doc.unfinished_checkboxes();
+    assert_eq!(pending.len(), 2);
+}
+
+#[test]
 fn toggle_checkbox_unchecked_to_checked() {
     let src = "- [ ] task\n";
     let doc = parse(src).expect("parse");

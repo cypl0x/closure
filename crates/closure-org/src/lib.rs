@@ -124,6 +124,22 @@ impl OrgDoc {
         self.preamble.iter().filter(move |n| n.kind == target)
     }
 
+    /// Every preamble list item with a checkbox in the unchecked or
+    /// partial state.
+    #[must_use]
+    pub fn unfinished_checkboxes(&self) -> Vec<ListItemView<'_>> {
+        self.preamble
+            .iter()
+            .filter_map(Node::as_list_item)
+            .filter(|li| {
+                matches!(
+                    li.checkbox,
+                    Some(Checkbox::Unchecked | Checkbox::Partial)
+                )
+            })
+            .collect()
+    }
+
     /// Histogram of preamble node kinds. Keys ordered alphabetically.
     #[must_use]
     pub fn preamble_kind_counts(&self) -> Vec<(NodeKind, usize)> {
