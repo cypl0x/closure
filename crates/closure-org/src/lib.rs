@@ -195,6 +195,12 @@ impl OrgDoc {
         self.count_headlines_where(|h| h.level() == level)
     }
 
+    /// Count of leaf headlines tagged with `tag`.
+    #[must_use]
+    pub fn count_leaves_with_tag(&self, tag: &str) -> usize {
+        self.count_headlines_where(|h| h.is_leaf() && h.has_tag(tag))
+    }
+
     /// Number of top-level headlines.
     #[must_use]
     pub const fn root_count(&self) -> usize {
