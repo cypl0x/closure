@@ -188,6 +188,15 @@ impl OrgDoc {
         self.roots.iter().map(walk).sum()
     }
 
+    /// Total properties drawer entries across all headlines.
+    #[must_use]
+    pub fn total_property_count(&self) -> usize {
+        fn walk(h: &Headline) -> usize {
+            h.properties().map_or(0, Properties::len) + h.children().iter().map(walk).sum::<usize>()
+        }
+        self.roots.iter().map(walk).sum()
+    }
+
     /// Sum of body word counts across every headline (recursive).
     #[must_use]
     pub fn total_body_word_count(&self) -> usize {
