@@ -2424,6 +2424,12 @@ impl Headline {
             .sum()
     }
 
+    /// Number of links in the title.
+    #[must_use]
+    pub fn title_link_count(&self) -> usize {
+        find_links(self.title()).len()
+    }
+
     /// Body word count over the entire subtree (self + descendants).
     #[must_use]
     pub fn subtree_word_count(&self) -> usize {
