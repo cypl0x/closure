@@ -2472,6 +2472,18 @@ impl Headline {
         self.header().ends_with('\n')
     }
 
+    /// True iff the headline has a body (any kind).
+    #[must_use]
+    pub const fn has_body(&self) -> bool {
+        !self.body.is_empty()
+    }
+
+    /// True iff the headline has a properties drawer.
+    #[must_use]
+    pub const fn has_properties(&self) -> bool {
+        self.properties.is_some()
+    }
+
     /// First child whose title contains `needle` (case-sensitive).
     #[must_use]
     pub fn child_by_title_substring(&self, needle: &str) -> Option<&Self> {
