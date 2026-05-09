@@ -244,6 +244,24 @@ impl OrgDoc {
         sum.checked_div(total).unwrap_or(0)
     }
 
+    /// Returns the shortest title (in chars).
+    #[must_use]
+    pub fn shortest_title(&self) -> Option<&Headline> {
+        fn walk<'a>(h: &'a Headline, best: &mut Option<&'a Headline>) {
+            if best.is_none_or(|b| b.title().chars().count() > h.title().chars().count()) {
+                *best = Some(h);
+            }
+            for c in h.children() {
+                walk(c, best);
+            }
+        }
+        let mut best: Option<&Headline> = None;
+        for r in &self.roots {
+            walk(r, &mut best);
+        }
+        best
+    }
+
     /// Returns the longest title (in chars).
     #[must_use]
     pub fn longest_title(&self) -> Option<&Headline> {
