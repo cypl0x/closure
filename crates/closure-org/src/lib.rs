@@ -179,6 +179,15 @@ impl OrgDoc {
         self.preamble.len() + self.roots.iter().map(walk).sum::<usize>()
     }
 
+    /// Total tag occurrences across all headlines (recursive).
+    #[must_use]
+    pub fn total_tag_count(&self) -> usize {
+        fn walk(h: &Headline) -> usize {
+            h.tags().len() + h.children().iter().map(walk).sum::<usize>()
+        }
+        self.roots.iter().map(walk).sum()
+    }
+
     /// Sum of body word counts across every headline (recursive).
     #[must_use]
     pub fn total_body_word_count(&self) -> usize {
