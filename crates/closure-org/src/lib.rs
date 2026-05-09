@@ -2051,6 +2051,20 @@ impl Properties {
             )
         })
     }
+
+    /// Iterate keys in source order.
+    pub fn keys(&self) -> impl Iterator<Item = &str> {
+        self.entries
+            .iter()
+            .map(move |e| &self.source[e.key_span.start..e.key_span.end])
+    }
+
+    /// Iterate values in source order.
+    pub fn values(&self) -> impl Iterator<Item = &str> {
+        self.entries
+            .iter()
+            .map(move |e| &self.source[e.value_span.start..e.value_span.end])
+    }
 }
 
 impl Headline {
