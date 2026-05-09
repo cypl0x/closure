@@ -224,6 +224,18 @@ impl Vault {
         self.documents.values().map(|d| d.source().len()).sum()
     }
 
+    /// Total link count across every headline in the vault.
+    #[must_use]
+    pub fn link_count(&self) -> usize {
+        self.documents.values().map(|d| d.org().total_link_count()).sum()
+    }
+
+    /// Total timestamp count across every headline in the vault.
+    #[must_use]
+    pub fn timestamp_count(&self) -> usize {
+        self.documents.values().map(|d| d.org().total_timestamp_count()).sum()
+    }
+
     /// Map of `path → 64-bit FNV-1a content hash` for every loaded
     /// document. Useful for change-detection caches that need to know
     /// which files have shifted since a previous snapshot.
