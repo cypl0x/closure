@@ -2501,6 +2501,12 @@ impl Headline {
         self.body.iter().filter(move |n| n.kind == kind)
     }
 
+    /// Number of body nodes of a given kind.
+    #[must_use]
+    pub fn body_count_by_kind(&self, kind: NodeKind) -> usize {
+        self.body_nodes_by_kind(kind).count()
+    }
+
     /// Iterate every body line as a borrowed string slice.
     pub fn body_lines(&self) -> impl Iterator<Item = &str> {
         self.body.iter().flat_map(|n| {
