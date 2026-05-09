@@ -244,6 +244,24 @@ impl OrgDoc {
         sum.checked_div(total).unwrap_or(0)
     }
 
+    /// Returns every headline at exactly `level`.
+    #[must_use]
+    pub fn headlines_at_level(&self, level: u8) -> Vec<&Headline> {
+        self.filter_headlines(|h| h.level() == level)
+    }
+
+    /// Returns every TODO-marked headline.
+    #[must_use]
+    pub fn todo_headlines(&self) -> Vec<&Headline> {
+        self.filter_headlines(|h| h.todo().is_some())
+    }
+
+    /// Returns every leaf headline.
+    #[must_use]
+    pub fn leaf_headlines(&self) -> Vec<&Headline> {
+        self.filter_headlines(Headline::is_leaf)
+    }
+
     /// Returns every headline matching `pred` (depth-first).
     #[must_use]
     pub fn filter_headlines<F: Fn(&Headline) -> bool>(&self, pred: F) -> Vec<&Headline> {
