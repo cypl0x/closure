@@ -295,6 +295,12 @@ impl Vault {
         None
     }
 
+    /// True iff the vault contains a headline with the given id.
+    #[must_use]
+    pub fn has_id(&self, id: &BlockId) -> bool {
+        self.by_id.contains_key(id)
+    }
+
     /// Lookup a headline and its owning file by block id.
     #[must_use]
     pub fn find_by_id(&self, id: &BlockId) -> Option<(&closure_core::DocHeadline, &Path)> {
