@@ -204,12 +204,9 @@ impl OrgDoc {
     /// Mean body word count over headlines (rounded down).
     #[must_use]
     pub fn mean_body_word_count(&self) -> usize {
-        let total = self.headline_count();
-        if total == 0 {
-            0
-        } else {
-            self.total_body_word_count() / total
-        }
+        self.total_body_word_count()
+            .checked_div(self.headline_count())
+            .unwrap_or(0)
     }
 
     /// Number of top-level headlines.
