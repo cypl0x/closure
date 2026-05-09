@@ -105,6 +105,24 @@ impl OrgDoc {
         self.roots.iter().map(|r| walk(r, &pred)).sum()
     }
 
+    /// Count of TODO-marked headlines.
+    #[must_use]
+    pub fn count_todos(&self) -> usize {
+        self.count_headlines_where(|h| h.todo().is_some())
+    }
+
+    /// Count of headlines with priority cookies.
+    #[must_use]
+    pub fn count_with_priority(&self) -> usize {
+        self.count_headlines_where(|h| h.priority().is_some())
+    }
+
+    /// Count of headlines with planning lines.
+    #[must_use]
+    pub fn count_with_planning(&self) -> usize {
+        self.count_headlines_where(|h| h.planning().is_some())
+    }
+
     /// Number of top-level headlines.
     #[must_use]
     pub const fn root_count(&self) -> usize {
