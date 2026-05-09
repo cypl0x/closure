@@ -2695,6 +2695,11 @@ impl Headline {
         self.children.iter().filter(move |c| c.has_tag(tag))
     }
 
+    /// Iterate immediate children that are leaves.
+    pub fn iter_child_leaves(&self) -> impl Iterator<Item = &Self> {
+        self.children.iter().filter(|c| c.is_leaf())
+    }
+
     /// Number of comment lines in the body.
     #[must_use]
     pub fn body_comment_count(&self) -> usize {
