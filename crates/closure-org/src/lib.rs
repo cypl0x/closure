@@ -292,6 +292,18 @@ impl OrgDoc {
         self.filter_headlines(Headline::is_archived)
     }
 
+    /// Returns every headline carrying a SCHEDULED: timestamp.
+    #[must_use]
+    pub fn scheduled_headlines(&self) -> Vec<&Headline> {
+        self.filter_headlines(Headline::is_scheduled)
+    }
+
+    /// Returns every headline carrying a DEADLINE: timestamp.
+    #[must_use]
+    pub fn deadline_headlines(&self) -> Vec<&Headline> {
+        self.filter_headlines(Headline::has_deadline)
+    }
+
     /// Returns every headline matching `pred` (depth-first).
     #[must_use]
     pub fn filter_headlines<F: Fn(&Headline) -> bool>(&self, pred: F) -> Vec<&Headline> {
