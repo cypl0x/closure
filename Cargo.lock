@@ -241,6 +241,7 @@ dependencies = [
  "clap",
  "closure-config",
  "closure-core",
+ "closure-cron",
  "closure-eval",
  "closure-input",
  "closure-llm",

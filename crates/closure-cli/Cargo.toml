@@ -30,5 +30,6 @@ closure-shell-web = { path = "../closure-shell-web" }
 closure-sync = { path = "../closure-sync" }
 closure-llm = { path = "../closure-llm" }
 closure-mcp = { path = "../closure-mcp" }
+closure-cron = { path = "../closure-cron" }
 clap.workspace = true
 thiserror.workspace = true

@@ -446,6 +446,11 @@ enum Cmd {
     },
     /// Print every command name registered in the default registry.
     Commands,
+    /// Parse `#+BEGIN_SRC closure-cron` block of a file, print jobs.
+    CronList {
+        /// Path to a `*.org` file containing cron blocks.
+        file: PathBuf,
+    },
     /// Print the closure-cli crate version.
     Version,
     /// Print the keybinding(s) registered for a command name.
@@ -715,6 +720,7 @@ fn run(cmd: &Cmd) -> Result<(), String> {
         Cmd::Hubs { vault, limit } => cmd_hubs(vault, *limit),
         Cmd::Clock { file } => cmd_clock(file),
         Cmd::Commands => cmd_commands(),
+        Cmd::CronList { file } => cmd_cron_list(file),
         Cmd::Version => cmd_version(),
         Cmd::WhereIs { name } => cmd_where_is(name),
         Cmd::Languages => cmd_languages(),
@@ -1090,6 +1096,22 @@ fn cmd_where_is(name: &str) -> Result<(), String> {
         .ok_or_else(|| format!("unknown command: {name}"))?;
     for chord in cmd.keys() {
         println!("{chord}");
+    }
+    Ok(())
+}
+
+fn cmd_cron_list(path: &Path) -> Result<(), String> {
+    let src = fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))?;
+    let doc = closure_org::parse(&src).map_err(|e| format!("{e}"))?;
+    for n in doc.preamble() {
+        if n.kind() == closure_org::NodeKind::CodeBlock
+            && let Some(cb) = n.as_code_block()
+            && cb.language == Some("closure-cron")
+        {
+            for j in closure_cron::parse_jobs(cb.content).map_err(|e| format!("{e}"))? {
+                println!("{}", j.command);
+            }
+        }
     }
     Ok(())
 }
