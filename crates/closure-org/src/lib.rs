@@ -183,6 +183,12 @@ impl OrgDoc {
         self.count_headlines_where(|h| h.todo() == Some(keyword))
     }
 
+    /// Count of headlines whose title contains `needle` (recursive).
+    #[must_use]
+    pub fn count_title_contains(&self, needle: &str) -> usize {
+        self.count_headlines_where(|h| h.title().contains(needle))
+    }
+
     /// Number of top-level headlines.
     #[must_use]
     pub const fn root_count(&self) -> usize {
