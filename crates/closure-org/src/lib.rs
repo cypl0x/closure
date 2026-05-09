@@ -2865,6 +2865,14 @@ impl Headline {
             .any(|c| c.has_id() || c.descendant_has_id())
     }
 
+    /// True iff any descendant has property `key`.
+    #[must_use]
+    pub fn descendant_has_property(&self, key: &str) -> bool {
+        self.children
+            .iter()
+            .any(|c| c.has_property(key) || c.descendant_has_property(key))
+    }
+
     /// Number of comment lines in the body.
     #[must_use]
     pub fn body_comment_count(&self) -> usize {
