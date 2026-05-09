@@ -78,6 +78,15 @@ impl OrgDoc {
         self.roots.iter().any(|r| walk(r, tag))
     }
 
+    /// True iff any headline in the document has TODO `keyword`.
+    #[must_use]
+    pub fn has_todo(&self, keyword: &str) -> bool {
+        fn walk(h: &Headline, target: &str) -> bool {
+            h.todo() == Some(target) || h.children().iter().any(|c| walk(c, target))
+        }
+        self.roots.iter().any(|r| walk(r, keyword))
+    }
+
     /// Number of top-level headlines.
     #[must_use]
     pub const fn root_count(&self) -> usize {
