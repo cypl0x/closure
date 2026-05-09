@@ -254,6 +254,18 @@ impl Vault {
         self.documents.values().map(|d| d.org().total_macro_count()).sum()
     }
 
+    /// Count of headlines with an `:ID:` property across the vault.
+    #[must_use]
+    pub fn id_count(&self) -> usize {
+        self.documents.values().map(|d| d.org().count_with_id()).sum()
+    }
+
+    /// Count of TODO-marked headlines across the vault.
+    #[must_use]
+    pub fn todo_count(&self) -> usize {
+        self.documents.values().map(|d| d.org().count_todos()).sum()
+    }
+
     /// Map of `path → 64-bit FNV-1a content hash` for every loaded
     /// document. Useful for change-detection caches that need to know
     /// which files have shifted since a previous snapshot.
