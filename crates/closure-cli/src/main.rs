@@ -296,6 +296,13 @@ enum Cmd {
         /// Block id of the subtree root.
         id: String,
     },
+    /// Print combined subtree stats for a block id (bytes/words/desc).
+    SubtreeStats {
+        /// Path to a `*.org` file.
+        file: PathBuf,
+        /// Block id of the subtree root.
+        id: String,
+    },
     /// Delete a `*.org` file from a vault.
     DeleteFile {
         /// Path to the vault directory.
@@ -842,6 +849,7 @@ fn run(cmd: &Cmd) -> Result<(), String> {
         Cmd::Head { file, limit } => cmd_head(file, *limit),
         Cmd::Subtree { file, id } => cmd_subtree(file, id),
         Cmd::SubtreeBytes { file, id } => cmd_subtree_bytes(file, id),
+        Cmd::SubtreeStats { file, id } => cmd_subtree_stats(file, id),
         Cmd::DeleteFile { vault, file } => cmd_delete_file(vault, file),
         Cmd::RenameFile { vault, from, to } => cmd_rename_file(vault, from, to),
         Cmd::Agenda { vault } => cmd_agenda(vault),
@@ -2019,6 +2027,20 @@ fn cmd_outline(path: &Path) -> Result<(), String> {
         let stars = "*".repeat(usize::from(h.level()));
         println!("{indent}{stars} {}", h.title());
     }
+    Ok(())
+}
+
+fn cmd_subtree_stats(path: &Path, id: &str) -> Result<(), String> {
+    let src = fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))?;
+    let doc = closure_org::parse(&src).map_err(|e| format!("{e}"))?;
+    let bytes = doc.subtree_byte_count_of(id).ok_or("not found")?;
+    let words = doc.subtree_word_count_of(id).unwrap_or(0);
+    let desc = doc.descendant_count_of(id).unwrap_or(0);
+    let links = doc.subtree_link_count_of(id).unwrap_or(0);
+    println!("bytes:       {bytes}");
+    println!("words:       {words}");
+    println!("descendants: {desc}");
+    println!("links:       {links}");
     Ok(())
 }
 
