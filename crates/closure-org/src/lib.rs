@@ -2549,6 +2549,24 @@ impl Headline {
         self.body_nodes_by_kind(kind).count()
     }
 
+    /// Number of body paragraph nodes (does not recurse).
+    #[must_use]
+    pub fn body_paragraph_count(&self) -> usize {
+        self.body_count_by_kind(NodeKind::Paragraph)
+    }
+
+    /// Number of body keyword (`#+KEY:`) nodes.
+    #[must_use]
+    pub fn body_keyword_count(&self) -> usize {
+        self.body_count_by_kind(NodeKind::Keyword)
+    }
+
+    /// Number of blank lines in the body.
+    #[must_use]
+    pub fn body_blank_line_count(&self) -> usize {
+        self.body_count_by_kind(NodeKind::BlankLine)
+    }
+
     /// Number of code blocks in the body (does not recurse).
     #[must_use]
     pub fn body_code_block_count(&self) -> usize {
