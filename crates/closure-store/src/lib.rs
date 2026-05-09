@@ -320,6 +320,15 @@ impl Vault {
             .collect()
     }
 
+    /// Paths containing at least one headline with the given tag.
+    #[must_use]
+    pub fn paths_with_tag<'a>(&'a self, tag: &str) -> Vec<&'a Path> {
+        self.iter()
+            .filter(|(_, d)| d.all_headlines().any(|h| h.tags().iter().any(|t| t == tag)))
+            .map(|(p, _)| p)
+            .collect()
+    }
+
     /// Paths whose source contains the substring `needle` anywhere.
     #[must_use]
     pub fn paths_containing(&self, needle: &str) -> Vec<&Path> {
