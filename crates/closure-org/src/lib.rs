@@ -2202,6 +2202,12 @@ impl Headline {
         self.children.is_empty()
     }
 
+    /// Number of ancestor levels above this headline. Roots return 0.
+    #[must_use]
+    pub const fn ancestor_count(&self) -> usize {
+        self.level as usize - 1
+    }
+
     /// Number of immediate children.
     #[must_use]
     pub const fn child_count(&self) -> usize {
