@@ -2436,6 +2436,12 @@ impl Headline {
         self.title_link_count() + self.body_link_count()
     }
 
+    /// Total link count over the entire subtree (self + descendants).
+    #[must_use]
+    pub fn subtree_link_count(&self) -> usize {
+        self.link_count() + self.children.iter().map(Self::subtree_link_count).sum::<usize>()
+    }
+
     /// Body word count over the entire subtree (self + descendants).
     #[must_use]
     pub fn subtree_word_count(&self) -> usize {
