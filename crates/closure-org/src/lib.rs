@@ -2058,6 +2058,19 @@ impl Headline {
         self.body.iter().map(|n| n.span.end - n.span.start).sum()
     }
 
+    /// Verbatim body source as a single contiguous slice. Returns `""`
+    /// for headlines with no body.
+    #[must_use]
+    pub fn body_source(&self) -> &str {
+        let Some(first) = self.body.first() else {
+            return "";
+        };
+        let Some(last) = self.body.last() else {
+            return "";
+        };
+        &self.source[first.span.start..last.span.end]
+    }
+
     /// Total descendant headline count (children + grandchildren etc.).
     #[must_use]
     pub fn descendant_count(&self) -> usize {

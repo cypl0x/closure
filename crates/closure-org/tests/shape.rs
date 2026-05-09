@@ -1024,6 +1024,20 @@ fn descendant_count_counts_children_recursively() {
 }
 
 #[test]
+fn body_source_returns_contiguous_slice() {
+    let doc = parse("* H\nfirst\nsecond\n").expect("parse");
+    let body = doc.roots()[0].body_source();
+    assert!(body.contains("first"));
+    assert!(body.contains("second"));
+}
+
+#[test]
+fn body_source_empty_for_no_body() {
+    let doc = parse("* H\n").expect("parse");
+    assert_eq!(doc.roots()[0].body_source(), "");
+}
+
+#[test]
 fn body_lines_iterates_all_lines() {
     let doc = parse("* H\nfirst\nsecond\nthird\n").expect("parse");
     let lines: Vec<&str> = doc.roots()[0].body_lines().collect();
