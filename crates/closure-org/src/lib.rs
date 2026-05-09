@@ -244,6 +244,27 @@ impl OrgDoc {
         sum.checked_div(total).unwrap_or(0)
     }
 
+    /// Returns the highest-priority headline (`'A' < 'B' < ...`).
+    /// Headlines without priority cookies are skipped.
+    #[must_use]
+    pub fn highest_priority(&self) -> Option<&Headline> {
+        fn walk<'a>(h: &'a Headline, best: &mut Option<&'a Headline>) {
+            if let Some(p) = h.priority()
+                && best.is_none_or(|b| b.priority().is_none_or(|q| p < q))
+            {
+                *best = Some(h);
+            }
+            for c in h.children() {
+                walk(c, best);
+            }
+        }
+        let mut best: Option<&Headline> = None;
+        for r in &self.roots {
+            walk(r, &mut best);
+        }
+        best
+    }
+
     /// Returns the headline with the most outgoing links.
     #[must_use]
     pub fn most_linked(&self) -> Option<&Headline> {
