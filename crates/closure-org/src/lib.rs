@@ -2466,6 +2466,12 @@ impl Headline {
             .find(|c| c.properties().and_then(Properties::id) == Some(id))
     }
 
+    /// True iff the headline has a header line that ends with `\n`.
+    #[must_use]
+    pub fn header_ends_with_newline(&self) -> bool {
+        self.header().ends_with('\n')
+    }
+
     /// First child whose title contains `needle` (case-sensitive).
     #[must_use]
     pub fn child_by_title_substring(&self, needle: &str) -> Option<&Self> {
