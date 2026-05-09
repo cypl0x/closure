@@ -2815,6 +2815,20 @@ impl Headline {
         })
     }
 
+    /// First descendant carrying `tag` (depth-first).
+    #[must_use]
+    pub fn descendant_by_tag(&self, tag: &str) -> Option<&Self> {
+        for c in &self.children {
+            if c.has_tag(tag) {
+                return Some(c);
+            }
+            if let Some(d) = c.descendant_by_tag(tag) {
+                return Some(d);
+            }
+        }
+        None
+    }
+
     /// Number of comment lines in the body.
     #[must_use]
     pub fn body_comment_count(&self) -> usize {
