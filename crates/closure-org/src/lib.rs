@@ -2781,6 +2781,18 @@ impl Headline {
         self.children.iter().filter(|c| c.is_leaf())
     }
 
+    /// First child whose TODO keyword equals `keyword`.
+    #[must_use]
+    pub fn child_by_todo(&self, keyword: &str) -> Option<&Self> {
+        self.children.iter().find(|c| c.todo() == Some(keyword))
+    }
+
+    /// First child carrying `tag`.
+    #[must_use]
+    pub fn child_by_tag(&self, tag: &str) -> Option<&Self> {
+        self.children.iter().find(|c| c.has_tag(tag))
+    }
+
     /// Number of comment lines in the body.
     #[must_use]
     pub fn body_comment_count(&self) -> usize {
