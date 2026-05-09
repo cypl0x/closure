@@ -2291,6 +2291,12 @@ impl Headline {
         self.children.iter().find(|c| c.title() == needle)
     }
 
+    /// First child whose title contains `needle` (case-sensitive).
+    #[must_use]
+    pub fn child_by_title_substring(&self, needle: &str) -> Option<&Self> {
+        self.children.iter().find(|c| c.title().contains(needle))
+    }
+
     /// True iff this headline carries `tag`.
     #[must_use]
     pub fn has_tag(&self, tag: &str) -> bool {
