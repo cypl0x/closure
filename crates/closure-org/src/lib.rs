@@ -246,6 +246,26 @@ impl OrgDoc {
         preamble + self.roots.iter().map(walk_p).sum::<usize>()
     }
 
+    /// Total comment line count over preamble + every body.
+    #[must_use]
+    pub fn total_comment_count(&self) -> usize {
+        fn walk_c(h: &Headline) -> usize {
+            h.body_comment_count() + h.children().iter().map(walk_c).sum::<usize>()
+        }
+        let preamble = self.nodes_by_kind(NodeKind::Comment).count();
+        preamble + self.roots.iter().map(walk_c).sum::<usize>()
+    }
+
+    /// Total blank line count over preamble + every body.
+    #[must_use]
+    pub fn total_blank_line_count(&self) -> usize {
+        fn walk_b(h: &Headline) -> usize {
+            h.body_blank_line_count() + h.children().iter().map(walk_b).sum::<usize>()
+        }
+        let preamble = self.nodes_by_kind(NodeKind::BlankLine).count();
+        preamble + self.roots.iter().map(walk_b).sum::<usize>()
+    }
+
     /// Total timestamp count across every headline (recursive).
     #[must_use]
     pub fn total_timestamp_count(&self) -> usize {
