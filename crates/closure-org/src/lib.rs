@@ -2893,6 +2893,15 @@ impl Headline {
             .sum()
     }
 
+    /// Count of descendants carrying `tag`.
+    #[must_use]
+    pub fn count_descendant_tagged(&self, tag: &str) -> usize {
+        self.children
+            .iter()
+            .map(|c| usize::from(c.has_tag(tag)) + c.count_descendant_tagged(tag))
+            .sum()
+    }
+
     /// Number of comment lines in the body.
     #[must_use]
     pub fn body_comment_count(&self) -> usize {
