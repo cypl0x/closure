@@ -197,6 +197,26 @@ impl OrgDoc {
         self.roots.iter().map(walk).sum()
     }
 
+    /// Total code block count over preamble + every headline body.
+    #[must_use]
+    pub fn total_code_block_count(&self) -> usize {
+        let preamble = self.nodes_by_kind(NodeKind::CodeBlock).count();
+        fn walk(h: &Headline) -> usize {
+            h.body_code_block_count() + h.children().iter().map(walk).sum::<usize>()
+        }
+        preamble + self.roots.iter().map(walk).sum::<usize>()
+    }
+
+    /// Total list item count over preamble + every headline body.
+    #[must_use]
+    pub fn total_list_item_count(&self) -> usize {
+        let preamble = self.nodes_by_kind(NodeKind::ListItem).count();
+        fn walk(h: &Headline) -> usize {
+            h.body_list_item_count() + h.children().iter().map(walk).sum::<usize>()
+        }
+        preamble + self.roots.iter().map(walk).sum::<usize>()
+    }
+
     /// Sum of body word counts across every headline (recursive).
     #[must_use]
     pub fn total_body_word_count(&self) -> usize {
