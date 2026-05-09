@@ -2497,6 +2497,12 @@ impl Headline {
             .is_some_and(|p| p.id().is_some())
     }
 
+    /// `:ID:` property if set.
+    #[must_use]
+    pub fn id_property(&self) -> Option<&str> {
+        self.properties().and_then(Properties::id)
+    }
+
     /// First child whose title contains `needle` (case-sensitive).
     #[must_use]
     pub fn child_by_title_substring(&self, needle: &str) -> Option<&Self> {
