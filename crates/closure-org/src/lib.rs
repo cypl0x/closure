@@ -147,6 +147,24 @@ impl OrgDoc {
         self.count_headlines_where(Headline::is_comment)
     }
 
+    /// Count of headlines that carry an `:ID:` property.
+    #[must_use]
+    pub fn count_with_id(&self) -> usize {
+        self.count_headlines_where(Headline::has_id)
+    }
+
+    /// Count of headlines that carry a `SCHEDULED:` timestamp.
+    #[must_use]
+    pub fn count_scheduled(&self) -> usize {
+        self.count_headlines_where(Headline::is_scheduled)
+    }
+
+    /// Count of headlines that carry a `DEADLINE:` timestamp.
+    #[must_use]
+    pub fn count_with_deadline(&self) -> usize {
+        self.count_headlines_where(Headline::has_deadline)
+    }
+
     /// Number of top-level headlines.
     #[must_use]
     pub const fn root_count(&self) -> usize {
