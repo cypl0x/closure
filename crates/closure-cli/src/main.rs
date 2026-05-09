@@ -497,6 +497,11 @@ enum Cmd {
         /// Path to a `*.org` file.
         file: PathBuf,
     },
+    /// Print every root-level headline (level 1) in a file.
+    Roots {
+        /// Path to a `*.org` file.
+        file: PathBuf,
+    },
     /// Print every archived headline (those carrying :ARCHIVE:) in a vault.
     Archived {
         /// Path to the vault directory.
@@ -771,6 +776,7 @@ fn run(cmd: &Cmd) -> Result<(), String> {
         Cmd::LogbookAppend { file, id, entry } => cmd_logbook_append(file, id, entry),
         Cmd::Depth { file } => cmd_depth(file),
         Cmd::Leaves { file } => cmd_leaves(file),
+        Cmd::Roots { file } => cmd_roots(file),
         Cmd::Archived { vault } => cmd_archived(vault),
         Cmd::Tagged { vault, tags } => cmd_tagged(vault, tags),
         Cmd::TaggedAny { vault, tags } => cmd_tagged_any(vault, tags),
@@ -1060,6 +1066,15 @@ fn cmd_archived(vault: &Path) -> Result<(), String> {
                 println!("{}\t{}\t{}", path.display(), h.id(), h.title());
             }
         }
+    }
+    Ok(())
+}
+
+fn cmd_roots(path: &Path) -> Result<(), String> {
+    let src = fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))?;
+    let doc = closure_org::parse(&src).map_err(|e| format!("{e}"))?;
+    for r in doc.roots() {
+        println!("{}", r.title());
     }
     Ok(())
 }
