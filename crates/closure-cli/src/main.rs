@@ -497,6 +497,11 @@ enum Cmd {
         /// Path to the vault directory.
         vault: PathBuf,
     },
+    /// Print empty files (no headlines) in a vault.
+    EmptyFiles {
+        /// Path to the vault directory.
+        vault: PathBuf,
+    },
     /// Run the MCP stdio dispatcher (one command name per line; `LIST`
     /// to enumerate). Quits on EOF.
     Mcp,
@@ -885,6 +890,7 @@ fn run(cmd: &Cmd) -> Result<(), String> {
         Cmd::BusiestFile { vault } => cmd_busiest_file(vault),
         Cmd::SmallestFile { vault } => cmd_smallest_file(vault),
         Cmd::QuietestFile { vault } => cmd_quietest_file(vault),
+        Cmd::EmptyFiles { vault } => cmd_empty_files(vault),
         Cmd::Mcp => cmd_mcp(),
         Cmd::Orphans { vault } => cmd_orphans(vault),
         Cmd::DeadLinks { vault } => cmd_dead_links(vault),
@@ -1592,6 +1598,14 @@ fn cmd_quietest_file(vault: &Path) -> Result<(), String> {
     let v = Vault::open(vault).map_err(|e| format!("{e}"))?;
     if let Some((p, n)) = v.quietest_file() {
         println!("{n}\t{}", p.display());
+    }
+    Ok(())
+}
+
+fn cmd_empty_files(vault: &Path) -> Result<(), String> {
+    let v = Vault::open(vault).map_err(|e| format!("{e}"))?;
+    for p in v.empty_files() {
+        println!("{}", p.display());
     }
     Ok(())
 }
