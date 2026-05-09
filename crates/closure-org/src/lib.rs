@@ -2567,6 +2567,12 @@ impl Headline {
         self.body_count_by_kind(NodeKind::BlankLine)
     }
 
+    /// Number of comment lines in the body.
+    #[must_use]
+    pub fn body_comment_count(&self) -> usize {
+        self.body_count_by_kind(NodeKind::Comment)
+    }
+
     /// Number of code blocks in the body (does not recurse).
     #[must_use]
     pub fn body_code_block_count(&self) -> usize {
