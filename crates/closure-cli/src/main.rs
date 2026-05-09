@@ -282,6 +282,13 @@ enum Cmd {
         #[arg(long, default_value_t = 10)]
         limit: usize,
     },
+    /// Print the subtree source rooted at a block id (verbatim).
+    Subtree {
+        /// Path to a `*.org` file.
+        file: PathBuf,
+        /// Block id of the subtree root.
+        id: String,
+    },
     /// Delete a `*.org` file from a vault.
     DeleteFile {
         /// Path to the vault directory.
@@ -627,6 +634,7 @@ fn run(cmd: &Cmd) -> Result<(), String> {
         Cmd::Outline { file } => cmd_outline(file),
         Cmd::Tree { file } => cmd_tree(file),
         Cmd::Head { file, limit } => cmd_head(file, *limit),
+        Cmd::Subtree { file, id } => cmd_subtree(file, id),
         Cmd::DeleteFile { vault, file } => cmd_delete_file(vault, file),
         Cmd::RenameFile { vault, from, to } => cmd_rename_file(vault, from, to),
         Cmd::Agenda { vault } => cmd_agenda(vault),
@@ -1372,6 +1380,21 @@ fn cmd_outline(path: &Path) -> Result<(), String> {
         let stars = "*".repeat(usize::from(h.level()));
         println!("{indent}{stars} {}", h.title());
     }
+    Ok(())
+}
+
+fn cmd_subtree(path: &Path, id: &str) -> Result<(), String> {
+    let src = fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))?;
+    let doc = closure_org::parse(&src).map_err(|e| format!("{e}"))?;
+    let mut indices: Vec<usize> = Vec::new();
+    let bid = closure_core::BlockId::from_existing(id);
+    walk_for_id(&doc, &bid, &mut indices, &mut Vec::new())
+        .ok_or_else(|| "block id not found".to_owned())?;
+    let mut node = doc.roots().get(indices[0]).ok_or("no such root")?;
+    for &i in &indices[1..] {
+        node = node.children().get(i).ok_or("no such child")?;
+    }
+    print!("{}", node.subtree_source());
     Ok(())
 }
 
