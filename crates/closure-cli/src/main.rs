@@ -458,6 +458,11 @@ enum Cmd {
         /// Path to a `*.org` file.
         file: PathBuf,
     },
+    /// Print every leaf headline (no children) in a file.
+    Leaves {
+        /// Path to a `*.org` file.
+        file: PathBuf,
+    },
     /// Print every archived headline (those carrying :ARCHIVE:) in a vault.
     Archived {
         /// Path to the vault directory.
@@ -684,6 +689,7 @@ fn run(cmd: &Cmd) -> Result<(), String> {
         Cmd::Languages => cmd_languages(),
         Cmd::LogbookAppend { file, id, entry } => cmd_logbook_append(file, id, entry),
         Cmd::Depth { file } => cmd_depth(file),
+        Cmd::Leaves { file } => cmd_leaves(file),
         Cmd::Archived { vault } => cmd_archived(vault),
         Cmd::CommentList { vault } => cmd_comment_list(vault),
         Cmd::FindTitle { vault, title } => cmd_find_title(vault, title),
@@ -909,6 +915,23 @@ fn cmd_archived(vault: &Path) -> Result<(), String> {
                 println!("{}\t{}\t{}", path.display(), h.id(), h.title());
             }
         }
+    }
+    Ok(())
+}
+
+fn cmd_leaves(path: &Path) -> Result<(), String> {
+    let src = fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))?;
+    let doc = closure_org::parse(&src).map_err(|e| format!("{e}"))?;
+    fn walk(h: &closure_org::Headline) {
+        if h.is_leaf() {
+            println!("{}", h.title());
+        }
+        for c in h.children() {
+            walk(c);
+        }
+    }
+    for r in doc.roots() {
+        walk(r);
     }
     Ok(())
 }
