@@ -322,6 +322,18 @@ impl Vault {
         total.checked_div(self.headline_count()).unwrap_or(0)
     }
 
+    /// Mean file byte count across the vault (rounded down).
+    #[must_use]
+    pub fn mean_byte_count(&self) -> usize {
+        self.byte_count().checked_div(self.len()).unwrap_or(0)
+    }
+
+    /// Mean headline count per file across the vault (rounded down).
+    #[must_use]
+    pub fn mean_headlines_per_file(&self) -> usize {
+        self.headline_count().checked_div(self.len()).unwrap_or(0)
+    }
+
     /// Map of `path → 64-bit FNV-1a content hash` for every loaded
     /// document. Useful for change-detection caches that need to know
     /// which files have shifted since a previous snapshot.
