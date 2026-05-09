@@ -2857,6 +2857,14 @@ impl Headline {
         None
     }
 
+    /// True iff any descendant carries an `:ID:` property.
+    #[must_use]
+    pub fn descendant_has_id(&self) -> bool {
+        self.children
+            .iter()
+            .any(|c| c.has_id() || c.descendant_has_id())
+    }
+
     /// Number of comment lines in the body.
     #[must_use]
     pub fn body_comment_count(&self) -> usize {
