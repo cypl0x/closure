@@ -81,6 +81,16 @@ impl OrgDoc {
         self.preamble.len()
     }
 
+    /// Total node count: preamble nodes plus every headline's body
+    /// nodes (recursive). Headlines themselves are not included.
+    #[must_use]
+    pub fn total_node_count(&self) -> usize {
+        fn walk(h: &Headline) -> usize {
+            h.body().len() + h.children().iter().map(walk).sum::<usize>()
+        }
+        self.preamble.len() + self.roots.iter().map(walk).sum::<usize>()
+    }
+
     /// Whether any headline in the tree has `:ID: id`.
     #[must_use]
     pub fn contains_id(&self, id: &str) -> bool {
