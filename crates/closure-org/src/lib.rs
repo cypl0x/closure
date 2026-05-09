@@ -2307,6 +2307,11 @@ impl Headline {
         self.children.len()
     }
 
+    /// Iterate immediate child headlines.
+    pub fn iter_children(&self) -> impl Iterator<Item = &Self> {
+        self.children.iter()
+    }
+
     /// Lookup child at index `idx`.
     #[must_use]
     pub fn child_at(&self, idx: usize) -> Option<&Self> {
