@@ -2685,6 +2685,16 @@ impl Headline {
         self.children.iter().filter(|c| c.is_leaf()).count()
     }
 
+    /// Iterate immediate children that have a TODO keyword.
+    pub fn iter_child_todos(&self) -> impl Iterator<Item = &Self> {
+        self.children.iter().filter(|c| c.todo().is_some())
+    }
+
+    /// Iterate immediate children with a given tag.
+    pub fn iter_child_with_tag<'a>(&'a self, tag: &'a str) -> impl Iterator<Item = &'a Self> {
+        self.children.iter().filter(move |c| c.has_tag(tag))
+    }
+
     /// Number of comment lines in the body.
     #[must_use]
     pub fn body_comment_count(&self) -> usize {
