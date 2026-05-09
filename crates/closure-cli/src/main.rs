@@ -446,6 +446,11 @@ enum Cmd {
     },
     /// Print every command name registered in the default registry.
     Commands,
+    /// Print the keybinding(s) registered for a command name.
+    WhereIs {
+        /// Command name (e.g. `rename-headline`).
+        name: String,
+    },
     /// Print every evaluator language alias the build supports.
     Languages,
     /// Print the maximum headline nesting depth in a file.
@@ -675,6 +680,7 @@ fn run(cmd: &Cmd) -> Result<(), String> {
         Cmd::Hubs { vault, limit } => cmd_hubs(vault, *limit),
         Cmd::Clock { file } => cmd_clock(file),
         Cmd::Commands => cmd_commands(),
+        Cmd::WhereIs { name } => cmd_where_is(name),
         Cmd::Languages => cmd_languages(),
         Cmd::LogbookAppend { file, id, entry } => cmd_logbook_append(file, id, entry),
         Cmd::Depth { file } => cmd_depth(file),
@@ -966,6 +972,17 @@ fn walk_for_id(
 fn cmd_languages() -> Result<(), String> {
     for lang in closure_eval::known_languages() {
         println!("{lang}");
+    }
+    Ok(())
+}
+
+fn cmd_where_is(name: &str) -> Result<(), String> {
+    let registry = closure_core::default_registry();
+    let cmd = registry
+        .get(name)
+        .ok_or_else(|| format!("unknown command: {name}"))?;
+    for chord in cmd.keys() {
+        println!("{chord}");
     }
     Ok(())
 }
