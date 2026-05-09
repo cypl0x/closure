@@ -2799,6 +2799,14 @@ impl Headline {
         self.children.iter().find(|c| c.priority() == Some(letter))
     }
 
+    /// True iff any descendant carries `tag`.
+    #[must_use]
+    pub fn descendant_has_tag(&self, tag: &str) -> bool {
+        self.children
+            .iter()
+            .any(|c| c.has_tag(tag) || c.descendant_has_tag(tag))
+    }
+
     /// Number of comment lines in the body.
     #[must_use]
     pub fn body_comment_count(&self) -> usize {
