@@ -420,6 +420,11 @@ impl OrgDoc {
         self.find_headline(|h| h.todo() == Some(keyword))
     }
 
+    /// Iterate every headline depth-first.
+    pub fn iter_headlines(&self) -> Vec<&Headline> {
+        self.filter_headlines(|_| true)
+    }
+
     /// Returns every headline matching `pred` (depth-first).
     #[must_use]
     pub fn filter_headlines<F: Fn(&Headline) -> bool>(&self, pred: F) -> Vec<&Headline> {
