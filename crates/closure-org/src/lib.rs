@@ -2100,6 +2100,17 @@ impl Headline {
             .sum()
     }
 
+    /// Body word count over the entire subtree (self + descendants).
+    #[must_use]
+    pub fn subtree_word_count(&self) -> usize {
+        self.body_word_count()
+            + self
+                .children
+                .iter()
+                .map(Self::subtree_word_count)
+                .sum::<usize>()
+    }
+
     /// Iterate every body line as a borrowed string slice.
     pub fn body_lines(&self) -> impl Iterator<Item = &str> {
         self.body.iter().flat_map(|n| {
