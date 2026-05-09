@@ -2793,6 +2793,12 @@ impl Headline {
         self.children.iter().find(|c| c.has_tag(tag))
     }
 
+    /// Direct child whose priority letter equals `letter`.
+    #[must_use]
+    pub fn child_by_priority(&self, letter: char) -> Option<&Self> {
+        self.children.iter().find(|c| c.priority() == Some(letter))
+    }
+
     /// Number of comment lines in the body.
     #[must_use]
     pub fn body_comment_count(&self) -> usize {
