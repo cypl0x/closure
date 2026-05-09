@@ -284,6 +284,33 @@ impl Vault {
             .sum()
     }
 
+    /// Count of headlines with `SCHEDULED:` across the vault.
+    #[must_use]
+    pub fn scheduled_count(&self) -> usize {
+        self.documents
+            .values()
+            .map(|d| d.org().count_scheduled())
+            .sum()
+    }
+
+    /// Count of headlines with `DEADLINE:` across the vault.
+    #[must_use]
+    pub fn deadline_count(&self) -> usize {
+        self.documents
+            .values()
+            .map(|d| d.org().count_with_deadline())
+            .sum()
+    }
+
+    /// Count of headlines with `CLOSED:` across the vault.
+    #[must_use]
+    pub fn closed_count(&self) -> usize {
+        self.documents
+            .values()
+            .map(|d| d.org().count_closed())
+            .sum()
+    }
+
     /// Map of `path → 64-bit FNV-1a content hash` for every loaded
     /// document. Useful for change-detection caches that need to know
     /// which files have shifted since a previous snapshot.
