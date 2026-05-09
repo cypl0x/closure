@@ -153,6 +153,11 @@ impl OrgDoc {
         self.roots.len()
     }
 
+    /// Iterate top-level headlines.
+    pub fn iter_roots(&self) -> impl Iterator<Item = &Headline> {
+        self.roots.iter()
+    }
+
     /// Number of preamble nodes.
     #[must_use]
     pub const fn preamble_len(&self) -> usize {
