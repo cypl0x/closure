@@ -1447,6 +1447,9 @@ fn cmd_vault_info(vault: &Path) -> Result<(), String> {
     println!("words:      {}", v.word_count());
     println!("links:      {}", v.link_count());
     println!("timestamps: {}", v.timestamp_count());
+    println!("cookies:    {}", v.cookie_count());
+    println!("footnotes:  {}", v.footnote_count());
+    println!("macros:     {}", v.macro_count());
     if let Some((tag, n)) = v.tag_counts().into_iter().next() {
         println!("top tag:    {tag} ({n})");
     }
