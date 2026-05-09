@@ -378,6 +378,18 @@ impl OrgDoc {
         self.find_headline(Headline::is_leaf)
     }
 
+    /// Returns the first headline with a TODO keyword.
+    #[must_use]
+    pub fn first_todo(&self) -> Option<&Headline> {
+        self.find_headline(|h| h.todo().is_some())
+    }
+
+    /// Returns the first headline with priority cookie.
+    #[must_use]
+    pub fn first_priority(&self) -> Option<&Headline> {
+        self.find_headline(|h| h.priority().is_some())
+    }
+
     /// Returns every headline matching `pred` (depth-first).
     #[must_use]
     pub fn filter_headlines<F: Fn(&Headline) -> bool>(&self, pred: F) -> Vec<&Headline> {
