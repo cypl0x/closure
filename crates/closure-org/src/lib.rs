@@ -266,6 +266,16 @@ impl OrgDoc {
         preamble + self.roots.iter().map(walk_b).sum::<usize>()
     }
 
+    /// Total keyword line count over preamble + every body.
+    #[must_use]
+    pub fn total_keyword_count(&self) -> usize {
+        fn walk_k(h: &Headline) -> usize {
+            h.body_keyword_count() + h.children().iter().map(walk_k).sum::<usize>()
+        }
+        let preamble = self.nodes_by_kind(NodeKind::Keyword).count();
+        preamble + self.roots.iter().map(walk_k).sum::<usize>()
+    }
+
     /// Total timestamp count across every headline (recursive).
     #[must_use]
     pub fn total_timestamp_count(&self) -> usize {
