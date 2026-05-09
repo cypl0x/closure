@@ -189,6 +189,12 @@ impl OrgDoc {
         self.count_headlines_where(|h| h.title().contains(needle))
     }
 
+    /// Count of headlines at level `level`.
+    #[must_use]
+    pub fn count_at_level(&self, level: u8) -> usize {
+        self.count_headlines_where(|h| h.level() == level)
+    }
+
     /// Number of top-level headlines.
     #[must_use]
     pub const fn root_count(&self) -> usize {
