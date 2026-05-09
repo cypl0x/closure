@@ -1259,6 +1259,33 @@ pub fn parse_block_args(args: &str) -> Vec<(&str, &str)> {
     out
 }
 
+/// Format a `:PROPERTIES:` drawer from `(key, value)` pairs in source
+/// order. Returns `":PROPERTIES:\n:K: v\n...\n:END:\n"` ready to
+/// splice in after a headline's header line. Empty input returns an
+/// empty string.
+#[must_use]
+pub fn format_property_drawer<I, K, V>(entries: I) -> String
+where
+    I: IntoIterator<Item = (K, V)>,
+    K: AsRef<str>,
+    V: AsRef<str>,
+{
+    let mut iter = entries.into_iter().peekable();
+    if iter.peek().is_none() {
+        return String::new();
+    }
+    let mut out = String::from(":PROPERTIES:\n");
+    for (k, v) in iter {
+        out.push(':');
+        out.push_str(k.as_ref());
+        out.push_str(": ");
+        out.push_str(v.as_ref());
+        out.push('\n');
+    }
+    out.push_str(":END:\n");
+    out
+}
+
 /// Format a link as `[[target][description]]` or `[[target]]`.
 /// Counterpart to [`find_links`].
 #[must_use]

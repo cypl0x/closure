@@ -758,6 +758,21 @@ fn source_hash_changes_with_source() {
 }
 
 #[test]
+fn format_property_drawer_emits_full_block() {
+    let s = closure_org::format_property_drawer([("ID", "01ABC"), ("EFFORT", "2h")]);
+    assert!(s.starts_with(":PROPERTIES:\n"));
+    assert!(s.contains(":ID: 01ABC\n"));
+    assert!(s.contains(":EFFORT: 2h\n"));
+    assert!(s.ends_with(":END:\n"));
+}
+
+#[test]
+fn format_property_drawer_empty_returns_empty() {
+    let s = closure_org::format_property_drawer::<_, &str, &str>(std::iter::empty());
+    assert!(s.is_empty());
+}
+
+#[test]
 fn format_link_with_description() {
     let s = closure_org::format_link("id:01ABC", Some("Target"));
     assert_eq!(s, "[[id:01ABC][Target]]");
