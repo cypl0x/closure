@@ -530,6 +530,37 @@ pub fn rewrite_toggle_checkbox(doc: &OrgDoc, item_index: usize) -> Result<OrgDoc
     parse(&src).map_err(|_| RewriteError::Parse)
 }
 
+/// Remove a named drawer (`:NAME:` ... `:END:`) from a headline.
+///
+/// Searches the source from the header onwards for the first
+/// occurrence of `:NAME:\n` followed eventually by `:END:\n`. If
+/// found, that block is excised. No-op if the drawer is absent.
+pub fn rewrite_headline_clear_drawer(
+    doc: &OrgDoc,
+    path: &[usize],
+    name: &str,
+) -> Result<OrgDoc, RewriteError> {
+    let target = navigate_headline(doc, path).ok_or(RewriteError::NotFound)?;
+    let header_end = target.header_span.end;
+    let src = doc.source();
+    let after = &src[header_end..];
+    let needle = format!(":{name}:\n");
+    let Some(rel) = after.find(&needle) else {
+        return Ok(doc.clone());
+    };
+    let drawer_start = header_end + rel;
+    let after_open = drawer_start + needle.len();
+    let Some(end_rel) = src[after_open..].find(":END:") else {
+        return Err(RewriteError::Parse);
+    };
+    let close_line_end = src[after_open + end_rel..]
+        .find('\n')
+        .map_or(src.len(), |n| after_open + end_rel + n + 1);
+    let mut new_src = src.to_owned();
+    new_src.replace_range(drawer_start..close_line_end, "");
+    parse(&new_src).map_err(|_| RewriteError::Parse)
+}
+
 /// Append a line to the headline's `:LOGBOOK:` drawer.
 ///
 /// The drawer is created (immediately after the header line, before

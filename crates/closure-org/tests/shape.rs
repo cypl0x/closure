@@ -602,6 +602,27 @@ fn set_planning_clear_removes_line() {
 }
 
 #[test]
+fn rewrite_clear_drawer_removes_named_drawer() {
+    let src = "* Task\n:LOGBOOK:\n- old entry\n:END:\nbody\n";
+    let doc = parse(src).expect("parse");
+    let new = closure_org::rewrite_headline_clear_drawer(&doc, &[0], "LOGBOOK")
+        .expect("clear");
+    let out = closure_org::print(&new);
+    assert!(!out.contains(":LOGBOOK:"));
+    assert!(!out.contains("old entry"));
+    assert!(out.contains("body"));
+}
+
+#[test]
+fn rewrite_clear_drawer_no_op_if_absent() {
+    let src = "* Task\nbody\n";
+    let doc = parse(src).expect("parse");
+    let new = closure_org::rewrite_headline_clear_drawer(&doc, &[0], "LOGBOOK")
+        .expect("clear");
+    assert_eq!(closure_org::print(&new), src);
+}
+
+#[test]
 fn rewrite_append_logbook_entry_creates_drawer() {
     let src = "* Task\n";
     let doc = parse(src).expect("parse");
