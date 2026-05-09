@@ -2507,6 +2507,24 @@ impl Headline {
         self.body_nodes_by_kind(kind).count()
     }
 
+    /// Number of code blocks in the body (does not recurse).
+    #[must_use]
+    pub fn body_code_block_count(&self) -> usize {
+        self.body_count_by_kind(NodeKind::CodeBlock)
+    }
+
+    /// Number of list items in the body (does not recurse).
+    #[must_use]
+    pub fn body_list_item_count(&self) -> usize {
+        self.body_count_by_kind(NodeKind::ListItem)
+    }
+
+    /// Number of table rows in the body (does not recurse).
+    #[must_use]
+    pub fn body_table_row_count(&self) -> usize {
+        self.body_count_by_kind(NodeKind::TableRow)
+    }
+
     /// Iterate every body line as a borrowed string slice.
     pub fn body_lines(&self) -> impl Iterator<Item = &str> {
         self.body.iter().flat_map(|n| {
