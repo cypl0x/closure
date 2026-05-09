@@ -978,6 +978,17 @@ fn headline_by_id_walks_tree() {
 }
 
 #[test]
+fn flatten_returns_self_then_descendants() {
+    let doc = parse("* A\n** B\n*** C\n** D\n").expect("parse");
+    let flat = doc.roots()[0].flatten();
+    assert_eq!(flat.len(), 4);
+    assert_eq!(flat[0].title(), "A");
+    assert_eq!(flat[1].title(), "B");
+    assert_eq!(flat[2].title(), "C");
+    assert_eq!(flat[3].title(), "D");
+}
+
+#[test]
 fn subtree_source_includes_children() {
     let src = "* Parent\nbody\n** Child\nchild body\n* Sibling\n";
     let doc = parse(src).expect("parse");

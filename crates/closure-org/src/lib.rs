@@ -2026,6 +2026,21 @@ impl Headline {
         &self.source[start..end]
     }
 
+    /// Flatten this subtree (self + every descendant) into a Vec
+    /// in depth-first source order.
+    #[must_use]
+    pub fn flatten(&self) -> Vec<&Self> {
+        fn walk<'a>(h: &'a Headline, out: &mut Vec<&'a Headline>) {
+            out.push(h);
+            for c in h.children() {
+                walk(c, out);
+            }
+        }
+        let mut out: Vec<&Self> = Vec::new();
+        walk(self, &mut out);
+        out
+    }
+
     /// Whitespace-separated word count over this headline's body (does
     /// not recurse into children).
     #[must_use]
