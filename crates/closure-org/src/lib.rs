@@ -316,6 +316,16 @@ impl OrgDoc {
         self.filter_headlines(Headline::has_id)
     }
 
+    /// Returns every headline matching property `key` = `value`.
+    #[must_use]
+    pub fn headlines_with_property<'a>(&'a self, key: &str, value: &str) -> Vec<&'a Headline> {
+        self.filter_headlines(|h| {
+            h.properties()
+                .and_then(|p| p.get(key))
+                .is_some_and(|v| v == value)
+        })
+    }
+
     /// Returns every headline matching `pred` (depth-first).
     #[must_use]
     pub fn filter_headlines<F: Fn(&Headline) -> bool>(&self, pred: F) -> Vec<&Headline> {
