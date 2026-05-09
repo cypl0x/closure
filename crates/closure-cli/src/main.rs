@@ -478,6 +478,13 @@ enum Cmd {
         /// Command name (e.g. `rename-headline`).
         name: String,
     },
+    /// Print all tags on a single headline.
+    TagsOf {
+        /// Path to a `*.org` file.
+        file: PathBuf,
+        /// Block id of the target headline.
+        id: String,
+    },
     /// Print every evaluator language alias the build supports.
     Languages,
     /// Print the maximum headline nesting depth in a file.
@@ -752,6 +759,7 @@ fn run(cmd: &Cmd) -> Result<(), String> {
         } => cmd_cron_tick(file, *minute, *hour, *dom, *month, *dow),
         Cmd::Version => cmd_version(),
         Cmd::WhereIs { name } => cmd_where_is(name),
+        Cmd::TagsOf { file, id } => cmd_tags_of(file, id),
         Cmd::Languages => cmd_languages(),
         Cmd::LogbookAppend { file, id, entry } => cmd_logbook_append(file, id, entry),
         Cmd::Depth { file } => cmd_depth(file),
@@ -1114,6 +1122,19 @@ fn walk_for_id(
 fn cmd_languages() -> Result<(), String> {
     for lang in closure_eval::known_languages() {
         println!("{lang}");
+    }
+    Ok(())
+}
+
+fn cmd_tags_of(path: &Path, id: &str) -> Result<(), String> {
+    let src = fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))?;
+    let doc = Document::load_str(&src).map_err(|e| format!("{e}"))?;
+    let bid = BlockId::from_existing(id);
+    let h = doc
+        .headline_by_id(&bid)
+        .ok_or_else(|| "block id not found".to_owned())?;
+    for t in h.tags() {
+        println!("{t}");
     }
     Ok(())
 }
