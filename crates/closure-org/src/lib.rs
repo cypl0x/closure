@@ -2873,6 +2873,14 @@ impl Headline {
             .any(|c| c.has_property(key) || c.descendant_has_property(key))
     }
 
+    /// True iff any descendant has a planning line.
+    #[must_use]
+    pub fn descendant_has_planning(&self) -> bool {
+        self.children
+            .iter()
+            .any(|c| c.has_planning() || c.descendant_has_planning())
+    }
+
     /// Number of comment lines in the body.
     #[must_use]
     pub fn body_comment_count(&self) -> usize {
