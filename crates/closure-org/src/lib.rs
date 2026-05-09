@@ -274,6 +274,24 @@ impl OrgDoc {
         self.filter_headlines(|h| h.todo() == Some(keyword))
     }
 
+    /// Returns every headline with priority `letter`.
+    #[must_use]
+    pub fn headlines_with_priority(&self, letter: char) -> Vec<&Headline> {
+        self.filter_headlines(|h| h.priority() == Some(letter))
+    }
+
+    /// Returns every COMMENT-prefixed headline.
+    #[must_use]
+    pub fn comment_headlines(&self) -> Vec<&Headline> {
+        self.filter_headlines(Headline::is_comment)
+    }
+
+    /// Returns every archived headline.
+    #[must_use]
+    pub fn archived_headlines(&self) -> Vec<&Headline> {
+        self.filter_headlines(Headline::is_archived)
+    }
+
     /// Returns every headline matching `pred` (depth-first).
     #[must_use]
     pub fn filter_headlines<F: Fn(&Headline) -> bool>(&self, pred: F) -> Vec<&Headline> {
