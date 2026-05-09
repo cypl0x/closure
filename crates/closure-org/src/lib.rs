@@ -2114,6 +2114,12 @@ impl Headline {
         self.children.len()
     }
 
+    /// True iff this headline carries `tag`.
+    #[must_use]
+    pub fn has_tag(&self, tag: &str) -> bool {
+        self.tags().iter().any(|t| *t == tag)
+    }
+
     /// All link targets in this headline's title and body (does not
     /// recurse into children). Returns owned strings since
     /// [`find_links`] yields borrowed slices into the header / body
