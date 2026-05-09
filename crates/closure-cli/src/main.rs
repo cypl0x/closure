@@ -919,19 +919,20 @@ fn cmd_archived(vault: &Path) -> Result<(), String> {
     Ok(())
 }
 
+fn walk_leaves(h: &closure_org::Headline) {
+    if h.is_leaf() {
+        println!("{}", h.title());
+    }
+    for c in h.children() {
+        walk_leaves(c);
+    }
+}
+
 fn cmd_leaves(path: &Path) -> Result<(), String> {
     let src = fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))?;
     let doc = closure_org::parse(&src).map_err(|e| format!("{e}"))?;
-    fn walk(h: &closure_org::Headline) {
-        if h.is_leaf() {
-            println!("{}", h.title());
-        }
-        for c in h.children() {
-            walk(c);
-        }
-    }
     for r in doc.roots() {
-        walk(r);
+        walk_leaves(r);
     }
     Ok(())
 }
