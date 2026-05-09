@@ -390,6 +390,24 @@ impl OrgDoc {
         self.find_headline(|h| h.priority().is_some())
     }
 
+    /// Returns the first headline with a planning line.
+    #[must_use]
+    pub fn first_planning(&self) -> Option<&Headline> {
+        self.find_headline(Headline::has_planning)
+    }
+
+    /// Returns the first archived headline.
+    #[must_use]
+    pub fn first_archived(&self) -> Option<&Headline> {
+        self.find_headline(Headline::is_archived)
+    }
+
+    /// Returns the first COMMENT headline.
+    #[must_use]
+    pub fn first_comment(&self) -> Option<&Headline> {
+        self.find_headline(Headline::is_comment)
+    }
+
     /// Returns every headline matching `pred` (depth-first).
     #[must_use]
     pub fn filter_headlines<F: Fn(&Headline) -> bool>(&self, pred: F) -> Vec<&Headline> {
