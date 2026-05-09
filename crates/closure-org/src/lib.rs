@@ -2490,6 +2490,13 @@ impl Headline {
         self.properties().map_or(0, Properties::len)
     }
 
+    /// True iff this headline carries an `:ID:` property.
+    #[must_use]
+    pub fn has_id(&self) -> bool {
+        self.properties()
+            .is_some_and(|p| p.id().is_some())
+    }
+
     /// First child whose title contains `needle` (case-sensitive).
     #[must_use]
     pub fn child_by_title_substring(&self, needle: &str) -> Option<&Self> {
