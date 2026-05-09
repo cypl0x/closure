@@ -266,6 +266,24 @@ impl Vault {
         self.documents.values().map(|d| d.org().count_todos()).sum()
     }
 
+    /// Count of archived headlines across the vault.
+    #[must_use]
+    pub fn archived_count(&self) -> usize {
+        self.documents
+            .values()
+            .map(|d| d.org().count_archived())
+            .sum()
+    }
+
+    /// Count of COMMENT-prefixed headlines across the vault.
+    #[must_use]
+    pub fn comment_count(&self) -> usize {
+        self.documents
+            .values()
+            .map(|d| d.org().count_comments())
+            .sum()
+    }
+
     /// Map of `path → 64-bit FNV-1a content hash` for every loaded
     /// document. Useful for change-detection caches that need to know
     /// which files have shifted since a previous snapshot.
