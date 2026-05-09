@@ -457,6 +457,21 @@ enum Cmd {
         /// Path to a `*.org` file.
         file: PathBuf,
     },
+    /// Print the most-tagged headline in a file.
+    MostTagged {
+        /// Path to a `*.org` file.
+        file: PathBuf,
+    },
+    /// Print the most-propertied headline in a file.
+    MostPropertied {
+        /// Path to a `*.org` file.
+        file: PathBuf,
+    },
+    /// Print the most-linked headline in a file.
+    MostLinked {
+        /// Path to a `*.org` file.
+        file: PathBuf,
+    },
     /// Run the MCP stdio dispatcher (one command name per line; `LIST`
     /// to enumerate). Quits on EOF.
     Mcp,
@@ -837,6 +852,9 @@ fn run(cmd: &Cmd) -> Result<(), String> {
         Cmd::DeepestLeaf { file } => cmd_deepest_leaf(file),
         Cmd::LargestSubtree { file } => cmd_largest_subtree(file),
         Cmd::LongestBody { file } => cmd_longest_body(file),
+        Cmd::MostTagged { file } => cmd_most_tagged(file),
+        Cmd::MostPropertied { file } => cmd_most_propertied(file),
+        Cmd::MostLinked { file } => cmd_most_linked(file),
         Cmd::Mcp => cmd_mcp(),
         Cmd::Orphans { vault } => cmd_orphans(vault),
         Cmd::DeadLinks { vault } => cmd_dead_links(vault),
@@ -1485,6 +1503,33 @@ fn cmd_longest_body(path: &Path) -> Result<(), String> {
     let doc = closure_org::parse(&src).map_err(|e| format!("{e}"))?;
     if let Some(h) = doc.longest_body() {
         println!("{}\t{}", h.body_word_count(), h.title());
+    }
+    Ok(())
+}
+
+fn cmd_most_tagged(path: &Path) -> Result<(), String> {
+    let src = fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))?;
+    let doc = closure_org::parse(&src).map_err(|e| format!("{e}"))?;
+    if let Some(h) = doc.most_tagged() {
+        println!("{}\t{}", h.tag_count(), h.title());
+    }
+    Ok(())
+}
+
+fn cmd_most_propertied(path: &Path) -> Result<(), String> {
+    let src = fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))?;
+    let doc = closure_org::parse(&src).map_err(|e| format!("{e}"))?;
+    if let Some(h) = doc.most_propertied() {
+        println!("{}\t{}", h.property_count(), h.title());
+    }
+    Ok(())
+}
+
+fn cmd_most_linked(path: &Path) -> Result<(), String> {
+    let src = fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))?;
+    let doc = closure_org::parse(&src).map_err(|e| format!("{e}"))?;
+    if let Some(h) = doc.most_linked() {
+        println!("{}\t{}", h.link_count(), h.title());
     }
     Ok(())
 }
