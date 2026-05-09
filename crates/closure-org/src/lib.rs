@@ -453,6 +453,12 @@ impl OrgDoc {
         self.headline_by_id(id).map(Headline::descendant_count)
     }
 
+    /// Subtree link count for `id`-tagged headline.
+    #[must_use]
+    pub fn subtree_link_count_of(&self, id: &str) -> Option<usize> {
+        self.headline_by_id(id).map(Headline::subtree_link_count)
+    }
+
     /// Returns every headline matching `pred` (depth-first).
     #[must_use]
     pub fn filter_headlines<F: Fn(&Headline) -> bool>(&self, pred: F) -> Vec<&Headline> {
