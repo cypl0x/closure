@@ -350,6 +350,16 @@ impl OrgDoc {
         self.filter_headlines(|h| h.title().contains(needle) || h.body_source().contains(needle))
     }
 
+    /// Case-insensitive variant of [`full_text`].
+    #[must_use]
+    pub fn full_text_ignore_case<'a>(&'a self, needle: &str) -> Vec<&'a Headline> {
+        let lower = needle.to_lowercase();
+        self.filter_headlines(|h| {
+            h.title().to_lowercase().contains(&lower)
+                || h.body_source().to_lowercase().contains(&lower)
+        })
+    }
+
     /// Returns every headline matching `pred` (depth-first).
     #[must_use]
     pub fn filter_headlines<F: Fn(&Headline) -> bool>(&self, pred: F) -> Vec<&Headline> {
