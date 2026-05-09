@@ -368,6 +368,13 @@ enum Cmd {
         /// Path to a `*.org` file.
         file: PathBuf,
     },
+    /// Print headlines whose title/body links to `target` (in one file).
+    LinksTo {
+        /// Path to a `*.org` file.
+        file: PathBuf,
+        /// Target id (`id:<ULID>` or bare ULID).
+        target: String,
+    },
     /// Print every footnote (reference or inline definition) in a file.
     Footnotes {
         /// Path to a `*.org` file.
@@ -743,6 +750,7 @@ fn run(cmd: &Cmd) -> Result<(), String> {
         Cmd::Blocks { file } => cmd_blocks(file),
         Cmd::Anchors { file } => cmd_anchors(file),
         Cmd::Links { file } => cmd_links(file),
+        Cmd::LinksTo { file, target } => cmd_links_to(file, target),
         Cmd::Footnotes { file } => cmd_footnotes(file),
         Cmd::Timestamps { file } => cmd_timestamps(file),
         Cmd::Cookies { file } => cmd_cookies(file),
@@ -1409,6 +1417,15 @@ fn cmd_macros(path: &Path) -> Result<(), String> {
         } else {
             println!("{{{{{{{}({})}}}}}}", m.name, m.args.join(","));
         }
+    }
+    Ok(())
+}
+
+fn cmd_links_to(path: &Path, target: &str) -> Result<(), String> {
+    let src = fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))?;
+    let doc = closure_org::parse(&src).map_err(|e| format!("{e}"))?;
+    for h in doc.find_link_sources(target) {
+        println!("{}", h.title());
     }
     Ok(())
 }
