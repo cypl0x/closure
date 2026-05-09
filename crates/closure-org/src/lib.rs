@@ -236,6 +236,16 @@ impl OrgDoc {
         preamble + self.roots.iter().map(walk_tr).sum::<usize>()
     }
 
+    /// Total paragraph count over preamble + every headline body.
+    #[must_use]
+    pub fn total_paragraph_count(&self) -> usize {
+        fn walk_p(h: &Headline) -> usize {
+            h.body_paragraph_count() + h.children().iter().map(walk_p).sum::<usize>()
+        }
+        let preamble = self.nodes_by_kind(NodeKind::Paragraph).count();
+        preamble + self.roots.iter().map(walk_p).sum::<usize>()
+    }
+
     /// Total timestamp count across every headline (recursive).
     #[must_use]
     pub fn total_timestamp_count(&self) -> usize {
