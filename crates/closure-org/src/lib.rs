@@ -165,6 +165,12 @@ impl OrgDoc {
         self.count_headlines_where(Headline::has_deadline)
     }
 
+    /// Count of headlines that carry a `CLOSED:` timestamp.
+    #[must_use]
+    pub fn count_closed(&self) -> usize {
+        self.count_headlines_where(Headline::is_closed)
+    }
+
     /// Number of top-level headlines.
     #[must_use]
     pub const fn root_count(&self) -> usize {
