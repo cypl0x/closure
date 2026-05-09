@@ -260,6 +260,12 @@ impl Vault {
         self.documents.get(path)
     }
 
+    /// Lookup a document by a path relative to the vault root.
+    #[must_use]
+    pub fn document_relative(&self, relative: &Path) -> Option<&Document> {
+        self.documents.get(&self.root.join(relative))
+    }
+
     /// First headline whose title equals `needle` (case-insensitive).
     /// Returns the matching headline and its containing file path.
     #[must_use]

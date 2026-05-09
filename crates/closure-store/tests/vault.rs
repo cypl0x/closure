@@ -75,6 +75,16 @@ fn vault_block_id_index_across_files() {
 }
 
 #[test]
+fn vault_document_relative_lookup() {
+    let td = write_vault(&[("notes/x.org", "* From notes\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    let doc = v
+        .document_relative(std::path::Path::new("notes/x.org"))
+        .expect("found");
+    assert_eq!(doc.roots()[0].title(), "From notes");
+}
+
+#[test]
 fn vault_find_by_title_case_insensitive() {
     let td = write_vault(&[("a.org", "* Other\n* Target Headline\n")]);
     let v = Vault::open(td.path()).expect("open");
