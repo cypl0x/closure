@@ -538,6 +538,16 @@ enum Cmd {
         /// Path to the vault directory.
         vault: PathBuf,
     },
+    /// Print every headline with a SCHEDULED: timestamp in a vault.
+    Scheduled {
+        /// Path to the vault directory.
+        vault: PathBuf,
+    },
+    /// Print every headline with a DEADLINE: timestamp in a vault.
+    Deadlines {
+        /// Path to the vault directory.
+        vault: PathBuf,
+    },
     /// Find the first headline whose title matches (case-insensitive).
     FindTitle {
         /// Path to the vault directory.
@@ -795,6 +805,8 @@ fn run(cmd: &Cmd) -> Result<(), String> {
         Cmd::Tagged { vault, tags } => cmd_tagged(vault, tags),
         Cmd::TaggedAny { vault, tags } => cmd_tagged_any(vault, tags),
         Cmd::CommentList { vault } => cmd_comment_list(vault),
+        Cmd::Scheduled { vault } => cmd_scheduled(vault),
+        Cmd::Deadlines { vault } => cmd_deadlines(vault),
         Cmd::FindTitle { vault, title } => cmd_find_title(vault, title),
         Cmd::FindId { vault, id } => cmd_find_id(vault, id),
         Cmd::Info { file, id } => cmd_info(file, id),
@@ -1029,6 +1041,30 @@ fn cmd_find_title(vault: &Path, title: &str) -> Result<(), String> {
     let v = Vault::open(vault).map_err(|e| format!("{e}"))?;
     let (h, path) = v.find_by_title(title).ok_or_else(|| "not found".to_owned())?;
     println!("{}\t{}\t{}", path.display(), h.id(), h.title());
+    Ok(())
+}
+
+fn cmd_scheduled(vault: &Path) -> Result<(), String> {
+    let v = Vault::open(vault).map_err(|e| format!("{e}"))?;
+    for (path, doc) in v.iter() {
+        for h in doc.all_headlines() {
+            if let Some(s) = h.scheduled() {
+                println!("{}\t{s}\t{}", path.display(), h.title());
+            }
+        }
+    }
+    Ok(())
+}
+
+fn cmd_deadlines(vault: &Path) -> Result<(), String> {
+    let v = Vault::open(vault).map_err(|e| format!("{e}"))?;
+    for (path, doc) in v.iter() {
+        for h in doc.all_headlines() {
+            if let Some(d) = h.deadline() {
+                println!("{}\t{d}\t{}", path.display(), h.title());
+            }
+        }
+    }
     Ok(())
 }
 
