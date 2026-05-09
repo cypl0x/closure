@@ -360,6 +360,12 @@ impl OrgDoc {
         })
     }
 
+    /// Returns the first headline whose title equals `needle`.
+    #[must_use]
+    pub fn headline_by_title(&self, needle: &str) -> Option<&Headline> {
+        self.find_headline(|h| h.title() == needle)
+    }
+
     /// Returns every headline matching `pred` (depth-first).
     #[must_use]
     pub fn filter_headlines<F: Fn(&Headline) -> bool>(&self, pred: F) -> Vec<&Headline> {
