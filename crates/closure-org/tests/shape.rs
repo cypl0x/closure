@@ -932,6 +932,16 @@ fn body_word_count_counts_body_words() {
 }
 
 #[test]
+fn headline_by_id_walks_tree() {
+    let src = "* Outer\n** Inner\n:PROPERTIES:\n:ID: 01HXTAR0000000000000000000\n:END:\n";
+    let doc = parse(src).expect("parse");
+    let h = doc
+        .headline_by_id("01HXTAR0000000000000000000")
+        .expect("found");
+    assert_eq!(h.title(), "Inner");
+}
+
+#[test]
 fn subtree_source_includes_children() {
     let src = "* Parent\nbody\n** Child\nchild body\n* Sibling\n";
     let doc = parse(src).expect("parse");

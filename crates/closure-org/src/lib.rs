@@ -68,6 +68,29 @@ impl OrgDoc {
         self.preamble.len()
     }
 
+    /// Lookup a headline whose `:ID:` property equals `id`. Walks the
+    /// tree depth-first and returns the first match.
+    #[must_use]
+    pub fn headline_by_id(&self, id: &str) -> Option<&Headline> {
+        fn walk<'a>(h: &'a Headline, target: &str) -> Option<&'a Headline> {
+            if h.properties().and_then(Properties::id) == Some(target) {
+                return Some(h);
+            }
+            for c in h.children() {
+                if let Some(found) = walk(c, target) {
+                    return Some(found);
+                }
+            }
+            None
+        }
+        for r in &self.roots {
+            if let Some(found) = walk(r, id) {
+                return Some(found);
+            }
+        }
+        None
+    }
+
     /// Iterate preamble nodes whose kind matches `target`.
     pub fn nodes_by_kind(&self, target: NodeKind) -> impl Iterator<Item = &Node> {
         self.preamble.iter().filter(move |n| n.kind == target)
