@@ -201,6 +201,17 @@ impl OrgDoc {
         self.count_headlines_where(|h| h.is_leaf() && h.has_tag(tag))
     }
 
+    /// Mean body word count over headlines (rounded down).
+    #[must_use]
+    pub fn mean_body_word_count(&self) -> usize {
+        let total = self.headline_count();
+        if total == 0 {
+            0
+        } else {
+            self.total_body_word_count() / total
+        }
+    }
+
     /// Number of top-level headlines.
     #[must_use]
     pub const fn root_count(&self) -> usize {
