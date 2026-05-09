@@ -74,6 +74,15 @@ impl OrgDoc {
         self.headline_by_id(id).is_some()
     }
 
+    /// Sum of body bytes across every headline's body in the document.
+    #[must_use]
+    pub fn total_body_bytes(&self) -> usize {
+        fn walk(h: &Headline) -> usize {
+            h.body_byte_count() + h.children().iter().map(walk).sum::<usize>()
+        }
+        self.roots.iter().map(walk).sum()
+    }
+
     /// Lookup a headline whose `:ID:` property equals `id`. Walks the
     /// tree depth-first and returns the first match.
     #[must_use]
