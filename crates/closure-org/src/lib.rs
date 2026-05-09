@@ -2394,6 +2394,18 @@ impl Headline {
         self.tags().contains(&tag)
     }
 
+    /// True iff this headline has any tag at all.
+    #[must_use]
+    pub const fn has_any_tag(&self) -> bool {
+        !self.tag_spans.is_empty()
+    }
+
+    /// Number of tags on this headline.
+    #[must_use]
+    pub const fn tag_count(&self) -> usize {
+        self.tag_spans.len()
+    }
+
     /// True iff this headline has a `:KEY:` entry in its drawer.
     #[must_use]
     pub fn has_property(&self, key: &str) -> bool {
