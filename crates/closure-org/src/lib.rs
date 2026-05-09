@@ -171,6 +171,18 @@ impl OrgDoc {
         self.count_headlines_where(Headline::is_closed)
     }
 
+    /// Count of headlines tagged with `tag` (recursive).
+    #[must_use]
+    pub fn count_tagged(&self, tag: &str) -> usize {
+        self.count_headlines_where(|h| h.has_tag(tag))
+    }
+
+    /// Count of headlines with TODO `keyword` (recursive).
+    #[must_use]
+    pub fn count_todo(&self, keyword: &str) -> usize {
+        self.count_headlines_where(|h| h.todo() == Some(keyword))
+    }
+
     /// Number of top-level headlines.
     #[must_use]
     pub const fn root_count(&self) -> usize {
