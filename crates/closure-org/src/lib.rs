@@ -175,6 +175,13 @@ impl OrgDoc {
         self.headline_by_id(id).is_some()
     }
 
+    /// Total byte count of every subtree in the document. Roughly the
+    /// source length minus preamble bytes.
+    #[must_use]
+    pub fn total_subtree_bytes(&self) -> usize {
+        self.roots.iter().map(Headline::subtree_byte_count).sum()
+    }
+
     /// Sum of body bytes across every headline's body in the document.
     #[must_use]
     pub fn total_body_bytes(&self) -> usize {
