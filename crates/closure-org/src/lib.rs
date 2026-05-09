@@ -230,6 +230,20 @@ impl OrgDoc {
         sum.checked_div(total).unwrap_or(0)
     }
 
+    /// Mean child count across non-leaf headlines.
+    #[must_use]
+    pub fn mean_branching(&self) -> usize {
+        let total = self.count_headlines_where(|h| !h.is_leaf());
+        let sum: usize = {
+            fn walk(h: &Headline) -> usize {
+                let me = if h.is_leaf() { 0 } else { h.child_count() };
+                me + h.children().iter().map(walk).sum::<usize>()
+            }
+            self.roots.iter().map(walk).sum()
+        };
+        sum.checked_div(total).unwrap_or(0)
+    }
+
     /// Number of top-level headlines.
     #[must_use]
     pub const fn root_count(&self) -> usize {
