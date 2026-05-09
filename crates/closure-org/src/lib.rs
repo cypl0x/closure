@@ -2050,6 +2050,18 @@ impl Headline {
         out
     }
 
+    /// True iff this headline has zero children.
+    #[must_use]
+    pub const fn is_leaf(&self) -> bool {
+        self.children.is_empty()
+    }
+
+    /// Number of immediate children.
+    #[must_use]
+    pub const fn child_count(&self) -> usize {
+        self.children.len()
+    }
+
     /// All link targets in this headline's title and body (does not
     /// recurse into children). Returns owned strings since
     /// [`find_links`] yields borrowed slices into the header / body
