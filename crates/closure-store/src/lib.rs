@@ -329,6 +329,16 @@ impl Vault {
             .collect()
     }
 
+    /// Paths whose source contains `needle` (case-insensitive).
+    #[must_use]
+    pub fn paths_containing_ignore_case(&self, needle: &str) -> Vec<&Path> {
+        let lower = needle.to_lowercase();
+        self.iter()
+            .filter(|(_, d)| d.source().to_lowercase().contains(&lower))
+            .map(|(p, _)| p)
+            .collect()
+    }
+
     /// Lookup a headline and its owning file by block id.
     #[must_use]
     pub fn find_by_id(&self, id: &BlockId) -> Option<(&closure_core::DocHeadline, &Path)> {
