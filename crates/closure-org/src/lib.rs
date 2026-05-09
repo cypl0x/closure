@@ -2463,6 +2463,16 @@ impl Headline {
         find_links(self.title()).len()
     }
 
+    /// Number of timestamps found in title + body.
+    #[must_use]
+    pub fn timestamp_count(&self) -> usize {
+        let mut n = find_timestamps(self.title()).len();
+        for node in &self.body {
+            n += find_timestamps(&self.source[node.span.start..node.span.end]).len();
+        }
+        n
+    }
+
     /// Total link count across title + body (does not recurse).
     #[must_use]
     pub fn link_count(&self) -> usize {
