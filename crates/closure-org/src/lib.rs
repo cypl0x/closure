@@ -244,6 +244,27 @@ impl OrgDoc {
         sum.checked_div(total).unwrap_or(0)
     }
 
+    /// Returns the deepest leaf headline (max level among leaves).
+    #[must_use]
+    pub fn deepest_leaf(&self) -> Option<&Headline> {
+        fn walk<'a>(h: &'a Headline, best: &mut Option<&'a Headline>) {
+            if h.is_leaf() {
+                if best.is_none_or(|b| b.level() < h.level()) {
+                    *best = Some(h);
+                }
+            } else {
+                for c in h.children() {
+                    walk(c, best);
+                }
+            }
+        }
+        let mut best: Option<&Headline> = None;
+        for r in &self.roots {
+            walk(r, &mut best);
+        }
+        best
+    }
+
     /// Number of top-level headlines.
     #[must_use]
     pub const fn root_count(&self) -> usize {
