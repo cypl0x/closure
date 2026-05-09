@@ -2214,6 +2214,12 @@ impl Headline {
         self.children.len()
     }
 
+    /// Lookup child at index `idx`.
+    #[must_use]
+    pub fn child_at(&self, idx: usize) -> Option<&Self> {
+        self.children.get(idx)
+    }
+
     /// True iff this headline carries `tag`.
     #[must_use]
     pub fn has_tag(&self, tag: &str) -> bool {
