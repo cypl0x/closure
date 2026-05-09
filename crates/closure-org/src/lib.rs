@@ -2225,6 +2225,17 @@ impl Headline {
         self.children.iter().map(|c| 1 + c.descendant_count()).sum()
     }
 
+    /// Maximum depth in this subtree (own level + furthest descendant).
+    #[must_use]
+    pub fn max_depth(&self) -> u8 {
+        self.children
+            .iter()
+            .map(Self::max_depth)
+            .max()
+            .unwrap_or(self.level)
+            .max(self.level)
+    }
+
     /// Verbatim source of the entire subtree rooted at this headline,
     /// including header, properties drawer, body, and recursive
     /// children.
