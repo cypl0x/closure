@@ -2206,6 +2206,24 @@ impl Headline {
         self.properties().is_some_and(|p| p.get(key).is_some())
     }
 
+    /// True iff this headline has a `SCHEDULED:` planning timestamp.
+    #[must_use]
+    pub fn is_scheduled(&self) -> bool {
+        self.planning().is_some_and(|p| p.scheduled.is_some())
+    }
+
+    /// True iff this headline has a `DEADLINE:` planning timestamp.
+    #[must_use]
+    pub fn has_deadline(&self) -> bool {
+        self.planning().is_some_and(|p| p.deadline.is_some())
+    }
+
+    /// True iff this headline has a `CLOSED:` planning timestamp.
+    #[must_use]
+    pub fn is_closed(&self) -> bool {
+        self.planning().is_some_and(|p| p.closed.is_some())
+    }
+
     /// Reconstructed display string `[TODO] [#P] Title :tag1:tag2:`.
     /// Useful for UI rendering without going back to source bytes.
     #[must_use]
