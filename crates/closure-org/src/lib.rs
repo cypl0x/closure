@@ -2130,6 +2130,12 @@ impl Headline {
         self.tags().contains(&tag)
     }
 
+    /// True iff this headline has a `:KEY:` entry in its drawer.
+    #[must_use]
+    pub fn has_property(&self, key: &str) -> bool {
+        self.properties().is_some_and(|p| p.get(key).is_some())
+    }
+
     /// All link targets in this headline's title and body (does not
     /// recurse into children). Returns owned strings since
     /// [`find_links`] yields borrowed slices into the header / body
