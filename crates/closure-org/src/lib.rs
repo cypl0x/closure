@@ -2430,6 +2430,12 @@ impl Headline {
         find_links(self.title()).len()
     }
 
+    /// Total link count across title + body (does not recurse).
+    #[must_use]
+    pub fn link_count(&self) -> usize {
+        self.title_link_count() + self.body_link_count()
+    }
+
     /// Body word count over the entire subtree (self + descendants).
     #[must_use]
     pub fn subtree_word_count(&self) -> usize {
