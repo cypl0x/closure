@@ -69,6 +69,15 @@ impl OrgDoc {
         find_drawers(&self.source).iter().any(|d| d.name == name)
     }
 
+    /// True iff any headline in the document has `tag`.
+    #[must_use]
+    pub fn has_tag(&self, tag: &str) -> bool {
+        fn walk(h: &Headline, target: &str) -> bool {
+            h.has_tag(target) || h.children().iter().any(|c| walk(c, target))
+        }
+        self.roots.iter().any(|r| walk(r, tag))
+    }
+
     /// Number of top-level headlines.
     #[must_use]
     pub const fn root_count(&self) -> usize {
