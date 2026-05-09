@@ -441,6 +441,18 @@ impl OrgDoc {
         self.headline_by_id(id).map(Headline::subtree_byte_count)
     }
 
+    /// Subtree word count for `id`-tagged headline.
+    #[must_use]
+    pub fn subtree_word_count_of(&self, id: &str) -> Option<usize> {
+        self.headline_by_id(id).map(Headline::subtree_word_count)
+    }
+
+    /// Descendant count for `id`-tagged headline.
+    #[must_use]
+    pub fn descendant_count_of(&self, id: &str) -> Option<usize> {
+        self.headline_by_id(id).map(Headline::descendant_count)
+    }
+
     /// Returns every headline matching `pred` (depth-first).
     #[must_use]
     pub fn filter_headlines<F: Fn(&Headline) -> bool>(&self, pred: F) -> Vec<&Headline> {
