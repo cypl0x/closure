@@ -244,6 +244,28 @@ impl OrgDoc {
         sum.checked_div(total).unwrap_or(0)
     }
 
+    /// Returns the first headline that satisfies `pred` (depth-first).
+    #[must_use]
+    pub fn find_headline<F: Fn(&Headline) -> bool>(&self, pred: F) -> Option<&Headline> {
+        fn walk<'a, F: Fn(&Headline) -> bool>(h: &'a Headline, pred: &F) -> Option<&'a Headline> {
+            if pred(h) {
+                return Some(h);
+            }
+            for c in h.children() {
+                if let Some(found) = walk(c, pred) {
+                    return Some(found);
+                }
+            }
+            None
+        }
+        for r in &self.roots {
+            if let Some(found) = walk(r, &pred) {
+                return Some(found);
+            }
+        }
+        None
+    }
+
     /// Returns the shortest title (in chars).
     #[must_use]
     pub fn shortest_title(&self) -> Option<&Headline> {
