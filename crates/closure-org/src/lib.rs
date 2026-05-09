@@ -123,6 +123,24 @@ impl OrgDoc {
         self.count_headlines_where(|h| h.planning().is_some())
     }
 
+    /// Count of leaf headlines.
+    #[must_use]
+    pub fn count_leaves(&self) -> usize {
+        self.count_headlines_where(Headline::is_leaf)
+    }
+
+    /// Count of headlines tagged :ARCHIVE:.
+    #[must_use]
+    pub fn count_archived(&self) -> usize {
+        self.count_headlines_where(Headline::is_archived)
+    }
+
+    /// Count of headlines prefixed `COMMENT`.
+    #[must_use]
+    pub fn count_comments(&self) -> usize {
+        self.count_headlines_where(Headline::is_comment)
+    }
+
     /// Number of top-level headlines.
     #[must_use]
     pub const fn root_count(&self) -> usize {
