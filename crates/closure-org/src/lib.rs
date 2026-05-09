@@ -426,6 +426,15 @@ impl OrgDoc {
         self.filter_headlines(|_| true)
     }
 
+    /// Sum of subtree byte counts across all roots (recursive).
+    #[must_use]
+    pub fn root_subtree_bytes(&self) -> Vec<(usize, &Headline)> {
+        self.roots
+            .iter()
+            .map(|r| (r.subtree_byte_count(), r))
+            .collect()
+    }
+
     /// Returns every headline matching `pred` (depth-first).
     #[must_use]
     pub fn filter_headlines<F: Fn(&Headline) -> bool>(&self, pred: F) -> Vec<&Headline> {
