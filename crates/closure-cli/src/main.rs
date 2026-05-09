@@ -274,6 +274,14 @@ enum Cmd {
         /// Path to a `*.org` file.
         file: PathBuf,
     },
+    /// Print the first N headlines (titles only).
+    Head {
+        /// Path to a `*.org` file.
+        file: PathBuf,
+        /// Number of headlines to show (default 10).
+        #[arg(long, default_value_t = 10)]
+        limit: usize,
+    },
     /// Delete a `*.org` file from a vault.
     DeleteFile {
         /// Path to the vault directory.
@@ -618,6 +626,7 @@ fn run(cmd: &Cmd) -> Result<(), String> {
         Cmd::TagCloud { vault } => cmd_tag_cloud(vault),
         Cmd::Outline { file } => cmd_outline(file),
         Cmd::Tree { file } => cmd_tree(file),
+        Cmd::Head { file, limit } => cmd_head(file, *limit),
         Cmd::DeleteFile { vault, file } => cmd_delete_file(vault, file),
         Cmd::RenameFile { vault, from, to } => cmd_rename_file(vault, from, to),
         Cmd::Agenda { vault } => cmd_agenda(vault),
@@ -1362,6 +1371,15 @@ fn cmd_outline(path: &Path) -> Result<(), String> {
         let indent = "  ".repeat(usize::from(h.level()).saturating_sub(1));
         let stars = "*".repeat(usize::from(h.level()));
         println!("{indent}{stars} {}", h.title());
+    }
+    Ok(())
+}
+
+fn cmd_head(path: &Path, limit: usize) -> Result<(), String> {
+    let src = fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))?;
+    let doc = Document::load_str(&src).map_err(|e| format!("{e}"))?;
+    for h in doc.all_headlines().take(limit) {
+        println!("{}\t{}", h.id(), h.title());
     }
     Ok(())
 }
