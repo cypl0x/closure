@@ -2136,6 +2136,28 @@ impl Headline {
         self.properties().is_some_and(|p| p.get(key).is_some())
     }
 
+    /// Reconstructed display string `[TODO] [#P] Title :tag1:tag2:`.
+    /// Useful for UI rendering without going back to source bytes.
+    #[must_use]
+    pub fn display_title(&self) -> String {
+        let mut out = String::new();
+        if let Some(t) = self.todo() {
+            out.push_str(t);
+            out.push(' ');
+        }
+        if let Some(p) = self.priority() {
+            use std::fmt::Write as _;
+            let _ = write!(out, "[#{p}] ");
+        }
+        out.push_str(self.title());
+        if !self.tag_spans.is_empty() {
+            out.push_str("  :");
+            out.push_str(&self.tags().join(":"));
+            out.push(':');
+        }
+        out
+    }
+
     /// All link targets in this headline's title and body (does not
     /// recurse into children). Returns owned strings since
     /// [`find_links`] yields borrowed slices into the header / body
