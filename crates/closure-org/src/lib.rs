@@ -2533,6 +2533,12 @@ impl Headline {
         self.properties().and_then(Properties::id)
     }
 
+    /// First letter of priority cookie (`'A'` for `[#A]`), if any.
+    #[must_use]
+    pub fn priority_letter(&self) -> Option<char> {
+        self.priority()
+    }
+
     /// First child whose title contains `needle` (case-sensitive).
     #[must_use]
     pub fn child_by_title_substring(&self, needle: &str) -> Option<&Self> {
