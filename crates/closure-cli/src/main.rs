@@ -446,6 +446,8 @@ enum Cmd {
     },
     /// Print every command name registered in the default registry.
     Commands,
+    /// Print the closure-cli crate version.
+    Version,
     /// Print the keybinding(s) registered for a command name.
     WhereIs {
         /// Command name (e.g. `rename-headline`).
@@ -699,6 +701,7 @@ fn run(cmd: &Cmd) -> Result<(), String> {
         Cmd::Hubs { vault, limit } => cmd_hubs(vault, *limit),
         Cmd::Clock { file } => cmd_clock(file),
         Cmd::Commands => cmd_commands(),
+        Cmd::Version => cmd_version(),
         Cmd::WhereIs { name } => cmd_where_is(name),
         Cmd::Languages => cmd_languages(),
         Cmd::LogbookAppend { file, id, entry } => cmd_logbook_append(file, id, entry),
@@ -1052,6 +1055,12 @@ fn cmd_where_is(name: &str) -> Result<(), String> {
     for chord in cmd.keys() {
         println!("{chord}");
     }
+    Ok(())
+}
+
+#[allow(clippy::unnecessary_wraps)]
+fn cmd_version() -> Result<(), String> {
+    println!("{}", env!("CARGO_PKG_VERSION"));
     Ok(())
 }
 
