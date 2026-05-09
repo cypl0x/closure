@@ -472,6 +472,11 @@ enum Cmd {
         /// Path to a `*.org` file.
         file: PathBuf,
     },
+    /// Print the highest-priority headline in a file (`A < B < ...`).
+    HighestPriority {
+        /// Path to a `*.org` file.
+        file: PathBuf,
+    },
     /// Run the MCP stdio dispatcher (one command name per line; `LIST`
     /// to enumerate). Quits on EOF.
     Mcp,
@@ -855,6 +860,7 @@ fn run(cmd: &Cmd) -> Result<(), String> {
         Cmd::MostTagged { file } => cmd_most_tagged(file),
         Cmd::MostPropertied { file } => cmd_most_propertied(file),
         Cmd::MostLinked { file } => cmd_most_linked(file),
+        Cmd::HighestPriority { file } => cmd_highest_priority(file),
         Cmd::Mcp => cmd_mcp(),
         Cmd::Orphans { vault } => cmd_orphans(vault),
         Cmd::DeadLinks { vault } => cmd_dead_links(vault),
@@ -1530,6 +1536,19 @@ fn cmd_most_linked(path: &Path) -> Result<(), String> {
     let doc = closure_org::parse(&src).map_err(|e| format!("{e}"))?;
     if let Some(h) = doc.most_linked() {
         println!("{}\t{}", h.link_count(), h.title());
+    }
+    Ok(())
+}
+
+fn cmd_highest_priority(path: &Path) -> Result<(), String> {
+    let src = fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))?;
+    let doc = closure_org::parse(&src).map_err(|e| format!("{e}"))?;
+    if let Some(h) = doc.highest_priority() {
+        println!(
+            "[#{}]\t{}",
+            h.priority().unwrap_or('?'),
+            h.title()
+        );
     }
     Ok(())
 }
