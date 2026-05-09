@@ -311,6 +311,24 @@ impl Vault {
             .collect()
     }
 
+    /// Paths containing at least one TODO-marked headline.
+    #[must_use]
+    pub fn paths_with_todos(&self) -> Vec<&Path> {
+        self.iter()
+            .filter(|(_, d)| d.all_headlines().any(|h| h.todo().is_some()))
+            .map(|(p, _)| p)
+            .collect()
+    }
+
+    /// Paths whose source contains the substring `needle` anywhere.
+    #[must_use]
+    pub fn paths_containing(&self, needle: &str) -> Vec<&Path> {
+        self.iter()
+            .filter(|(_, d)| d.source().contains(needle))
+            .map(|(p, _)| p)
+            .collect()
+    }
+
     /// Lookup a headline and its owning file by block id.
     #[must_use]
     pub fn find_by_id(&self, id: &BlockId) -> Option<(&closure_core::DocHeadline, &Path)> {
