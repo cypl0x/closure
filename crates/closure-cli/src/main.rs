@@ -604,6 +604,18 @@ enum Cmd {
         /// Path to the vault directory.
         vault: PathBuf,
     },
+    /// Print vault paths containing at least one TODO headline.
+    PathsWithTodos {
+        /// Path to the vault directory.
+        vault: PathBuf,
+    },
+    /// Print vault paths whose source contains a substring.
+    Grep {
+        /// Path to the vault directory.
+        vault: PathBuf,
+        /// Substring to search for (case-sensitive).
+        needle: String,
+    },
     /// List vault files sorted by mtime, most-recently-modified first.
     Recent {
         /// Path to the vault directory.
@@ -817,6 +829,8 @@ fn run(cmd: &Cmd) -> Result<(), String> {
         Cmd::Body { file, id } => cmd_body(file, id),
         Cmd::TodoCloud { vault } => cmd_todo_cloud(vault),
         Cmd::Paths { vault } => cmd_paths(vault),
+        Cmd::PathsWithTodos { vault } => cmd_paths_with_todos(vault),
+        Cmd::Grep { vault, needle } => cmd_grep(vault, needle),
         Cmd::Recent { vault, limit } => cmd_recent(vault, *limit),
         Cmd::Hash { file } => cmd_hash(file),
         Cmd::Graph { vault } => cmd_graph(vault),
@@ -933,6 +947,22 @@ fn cmd_recent(vault: &Path, limit: usize) -> Result<(), String> {
     }
     paths_with_mtime.sort_by_key(|(_, m)| std::cmp::Reverse(*m));
     for (p, _) in paths_with_mtime.into_iter().take(limit) {
+        println!("{}", p.display());
+    }
+    Ok(())
+}
+
+fn cmd_paths_with_todos(vault: &Path) -> Result<(), String> {
+    let v = Vault::open(vault).map_err(|e| format!("{e}"))?;
+    for p in v.paths_with_todos() {
+        println!("{}", p.display());
+    }
+    Ok(())
+}
+
+fn cmd_grep(vault: &Path, needle: &str) -> Result<(), String> {
+    let v = Vault::open(vault).map_err(|e| format!("{e}"))?;
+    for p in v.paths_containing(needle) {
         println!("{}", p.display());
     }
     Ok(())
