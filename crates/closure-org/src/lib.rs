@@ -2881,6 +2881,18 @@ impl Headline {
             .any(|c| c.has_planning() || c.descendant_has_planning())
     }
 
+    /// Count of descendants with TODO `keyword`.
+    #[must_use]
+    pub fn count_descendant_todos(&self, keyword: &str) -> usize {
+        self.children
+            .iter()
+            .map(|c| {
+                let me = usize::from(c.todo() == Some(keyword));
+                me + c.count_descendant_todos(keyword)
+            })
+            .sum()
+    }
+
     /// Number of comment lines in the body.
     #[must_use]
     pub fn body_comment_count(&self) -> usize {
