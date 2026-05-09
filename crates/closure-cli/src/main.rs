@@ -477,6 +477,16 @@ enum Cmd {
         /// Path to a `*.org` file.
         file: PathBuf,
     },
+    /// Print the largest file (path + byte count) in a vault.
+    LargestFile {
+        /// Path to the vault directory.
+        vault: PathBuf,
+    },
+    /// Print the file with the most headlines in a vault.
+    BusiestFile {
+        /// Path to the vault directory.
+        vault: PathBuf,
+    },
     /// Run the MCP stdio dispatcher (one command name per line; `LIST`
     /// to enumerate). Quits on EOF.
     Mcp,
@@ -861,6 +871,8 @@ fn run(cmd: &Cmd) -> Result<(), String> {
         Cmd::MostPropertied { file } => cmd_most_propertied(file),
         Cmd::MostLinked { file } => cmd_most_linked(file),
         Cmd::HighestPriority { file } => cmd_highest_priority(file),
+        Cmd::LargestFile { vault } => cmd_largest_file(vault),
+        Cmd::BusiestFile { vault } => cmd_busiest_file(vault),
         Cmd::Mcp => cmd_mcp(),
         Cmd::Orphans { vault } => cmd_orphans(vault),
         Cmd::DeadLinks { vault } => cmd_dead_links(vault),
@@ -1536,6 +1548,22 @@ fn cmd_most_linked(path: &Path) -> Result<(), String> {
     let doc = closure_org::parse(&src).map_err(|e| format!("{e}"))?;
     if let Some(h) = doc.most_linked() {
         println!("{}\t{}", h.link_count(), h.title());
+    }
+    Ok(())
+}
+
+fn cmd_largest_file(vault: &Path) -> Result<(), String> {
+    let v = Vault::open(vault).map_err(|e| format!("{e}"))?;
+    if let Some((p, n)) = v.largest_file() {
+        println!("{n}\t{}", p.display());
+    }
+    Ok(())
+}
+
+fn cmd_busiest_file(vault: &Path) -> Result<(), String> {
+    let v = Vault::open(vault).map_err(|e| format!("{e}"))?;
+    if let Some((p, n)) = v.busiest_file() {
+        println!("{n}\t{}", p.display());
     }
     Ok(())
 }
