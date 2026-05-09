@@ -699,6 +699,16 @@ pub fn rewrite_headline_set_body(
     parse(&src).map_err(|_| RewriteError::Parse)
 }
 
+/// Remove any planning line (`SCHEDULED:` / `DEADLINE:` / `CLOSED:`)
+/// directly under the headline. Equivalent to calling
+/// [`rewrite_headline_set_planning`] with all `None`.
+pub fn rewrite_headline_remove_planning(
+    doc: &OrgDoc,
+    path: &[usize],
+) -> Result<OrgDoc, RewriteError> {
+    rewrite_headline_set_planning(doc, path, None, None, None)
+}
+
 /// Set or clear the planning line (`SCHEDULED:`, `DEADLINE:`, `CLOSED:`)
 /// directly under the headline.
 ///
