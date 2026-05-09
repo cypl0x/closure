@@ -332,6 +332,12 @@ impl OrgDoc {
         self.filter_headlines(|h| h.has_property(key))
     }
 
+    /// Returns every headline whose title contains `needle`.
+    #[must_use]
+    pub fn headlines_with_title_substring<'a>(&'a self, needle: &str) -> Vec<&'a Headline> {
+        self.filter_headlines(|h| h.title().contains(needle))
+    }
+
     /// Returns every headline matching `pred` (depth-first).
     #[must_use]
     pub fn filter_headlines<F: Fn(&Headline) -> bool>(&self, pred: F) -> Vec<&Headline> {
