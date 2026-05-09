@@ -1558,12 +1558,12 @@ fn cmd_comment(path: &Path, id: &str) -> Result<(), String> {
 
 fn cmd_wc(path: &Path) -> Result<(), String> {
     let src = fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))?;
-    let doc = Document::load_str(&src).map_err(|e| format!("{e}"))?;
-    let lines = src.lines().count();
-    println!("chars: {}", doc.char_count());
-    println!("words: {}", doc.word_count());
+    let doc = closure_org::parse(&src).map_err(|e| format!("{e}"))?;
+    let (chars, words, lines, headlines) = doc.wc();
+    println!("chars: {chars}");
+    println!("words: {words}");
     println!("lines: {lines}");
-    println!("headlines: {}", doc.all_headlines().count());
+    println!("headlines: {headlines}");
     Ok(())
 }
 
