@@ -549,6 +549,13 @@ enum Cmd {
         /// Block id of the target headline.
         id: String,
     },
+    /// Print body text of a single headline by id.
+    Body {
+        /// Path to a `*.org` file.
+        file: PathBuf,
+        /// Block id of the target headline.
+        id: String,
+    },
     /// Print TODO keyword occurrence counts ranked descending.
     TodoCloud {
         /// Path to the vault directory.
@@ -772,6 +779,7 @@ fn run(cmd: &Cmd) -> Result<(), String> {
         Cmd::FindId { vault, id } => cmd_find_id(vault, id),
         Cmd::Info { file, id } => cmd_info(file, id),
         Cmd::PathOf { file, id } => cmd_path_of(file, id),
+        Cmd::Body { file, id } => cmd_body(file, id),
         Cmd::TodoCloud { vault } => cmd_todo_cloud(vault),
         Cmd::Paths { vault } => cmd_paths(vault),
         Cmd::Recent { vault, limit } => cmd_recent(vault, *limit),
@@ -932,6 +940,17 @@ fn cmd_todo_cloud(vault: &Path) -> Result<(), String> {
     for (kw, n) in v.todo_counts() {
         println!("{n:>4}  {kw}");
     }
+    Ok(())
+}
+
+fn cmd_body(path: &Path, id: &str) -> Result<(), String> {
+    let src = fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))?;
+    let doc = Document::load_str(&src).map_err(|e| format!("{e}"))?;
+    let bid = BlockId::from_existing(id);
+    let h = doc
+        .headline_by_id(&bid)
+        .ok_or_else(|| "block id not found".to_owned())?;
+    print!("{}", h.body_text());
     Ok(())
 }
 
