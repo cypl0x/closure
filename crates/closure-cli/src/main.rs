@@ -1467,6 +1467,10 @@ fn cmd_stats_file(path: &Path) -> Result<(), String> {
     println!("words:      {}", doc.word_count());
     println!("chars:      {}", doc.char_count());
     println!("links:      {}", org.total_link_count());
+    println!("timestamps: {}", org.total_timestamp_count());
+    println!("cookies:    {}", org.total_cookie_count());
+    println!("footnotes:  {}", org.total_footnote_count());
+    println!("macros:     {}", org.total_macro_count());
     println!("hash:       {:016x}", doc.source_hash());
     Ok(())
 }
