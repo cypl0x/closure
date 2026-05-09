@@ -1452,6 +1452,8 @@ fn cmd_vault_info(vault: &Path) -> Result<(), String> {
     println!("headlines:  {}", v.headline_count());
     println!("words:      {}", v.word_count());
     println!("todos:      {}", v.todo_count());
+    println!("archived:   {}", v.archived_count());
+    println!("comments:   {}", v.comment_count());
     println!("ids:        {}", v.id_count());
     println!("links:      {}", v.link_count());
     println!("timestamps: {}", v.timestamp_count());
