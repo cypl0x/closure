@@ -2673,6 +2673,12 @@ impl Headline {
         self.body_count_by_kind(NodeKind::BlankLine)
     }
 
+    /// Number of children that have a TODO keyword.
+    #[must_use]
+    pub fn child_todo_count(&self) -> usize {
+        self.children.iter().filter(|c| c.todo().is_some()).count()
+    }
+
     /// Number of comment lines in the body.
     #[must_use]
     pub fn body_comment_count(&self) -> usize {
