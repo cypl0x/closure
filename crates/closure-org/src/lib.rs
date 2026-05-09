@@ -244,6 +244,24 @@ impl OrgDoc {
         sum.checked_div(total).unwrap_or(0)
     }
 
+    /// Returns the headline with the most body words.
+    #[must_use]
+    pub fn longest_body(&self) -> Option<&Headline> {
+        fn walk<'a>(h: &'a Headline, best: &mut Option<&'a Headline>) {
+            if best.is_none_or(|b| b.body_word_count() < h.body_word_count()) {
+                *best = Some(h);
+            }
+            for c in h.children() {
+                walk(c, best);
+            }
+        }
+        let mut best: Option<&Headline> = None;
+        for r in &self.roots {
+            walk(r, &mut best);
+        }
+        best
+    }
+
     /// Returns the headline with the largest subtree (most descendants).
     #[must_use]
     pub fn largest_subtree(&self) -> Option<&Headline> {
