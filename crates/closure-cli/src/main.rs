@@ -1442,6 +1442,7 @@ fn cmd_vault_info(vault: &Path) -> Result<(), String> {
     let v = Vault::open(vault).map_err(|e| format!("{e}"))?;
     println!("root:       {}", v.root().display());
     println!("files:      {}", v.len());
+    println!("bytes:      {}", v.byte_count());
     println!("headlines:  {}", v.headline_count());
     println!("words:      {}", v.word_count());
     if let Some((tag, n)) = v.tag_counts().into_iter().next() {
