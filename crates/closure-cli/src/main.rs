@@ -616,6 +616,13 @@ enum Cmd {
         /// Path to the vault directory.
         vault: PathBuf,
     },
+    /// Print vault paths containing at least one headline with `tag`.
+    PathsWithTag {
+        /// Path to the vault directory.
+        vault: PathBuf,
+        /// Tag to require.
+        tag: String,
+    },
     /// Print vault paths whose source contains a substring.
     Grep {
         /// Path to the vault directory.
@@ -845,6 +852,7 @@ fn run(cmd: &Cmd) -> Result<(), String> {
         Cmd::TodoCloud { vault } => cmd_todo_cloud(vault),
         Cmd::Paths { vault } => cmd_paths(vault),
         Cmd::PathsWithTodos { vault } => cmd_paths_with_todos(vault),
+        Cmd::PathsWithTag { vault, tag } => cmd_paths_with_tag(vault, tag),
         Cmd::Grep { vault, needle } => cmd_grep(vault, needle),
         Cmd::Grepi { vault, needle } => cmd_grepi(vault, needle),
         Cmd::Recent { vault, limit } => cmd_recent(vault, *limit),
@@ -971,6 +979,14 @@ fn cmd_recent(vault: &Path, limit: usize) -> Result<(), String> {
 fn cmd_paths_with_todos(vault: &Path) -> Result<(), String> {
     let v = Vault::open(vault).map_err(|e| format!("{e}"))?;
     for p in v.paths_with_todos() {
+        println!("{}", p.display());
+    }
+    Ok(())
+}
+
+fn cmd_paths_with_tag(vault: &Path, tag: &str) -> Result<(), String> {
+    let v = Vault::open(vault).map_err(|e| format!("{e}"))?;
+    for p in v.paths_with_tag(tag) {
         println!("{}", p.display());
     }
     Ok(())
