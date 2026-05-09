@@ -379,6 +379,12 @@ impl Vault {
             .collect()
     }
 
+    /// Number of empty files in the vault.
+    #[must_use]
+    pub fn empty_file_count(&self) -> usize {
+        self.empty_files().len()
+    }
+
     /// Map of `path → 64-bit FNV-1a content hash` for every loaded
     /// document. Useful for change-detection caches that need to know
     /// which files have shifted since a previous snapshot.
