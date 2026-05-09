@@ -217,6 +217,19 @@ impl OrgDoc {
             .unwrap_or(0)
     }
 
+    /// Mean depth across headlines (rounded down).
+    #[must_use]
+    pub fn mean_depth(&self) -> usize {
+        let total: usize = self.count_headlines_where(|_| true);
+        let sum: usize = {
+            fn walk(h: &Headline) -> usize {
+                usize::from(h.level()) + h.children().iter().map(walk).sum::<usize>()
+            }
+            self.roots.iter().map(walk).sum()
+        };
+        sum.checked_div(total).unwrap_or(0)
+    }
+
     /// Number of top-level headlines.
     #[must_use]
     pub const fn root_count(&self) -> usize {
