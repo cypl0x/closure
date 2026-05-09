@@ -2679,6 +2679,12 @@ impl Headline {
         self.children.iter().filter(|c| c.todo().is_some()).count()
     }
 
+    /// Number of children that are leaves.
+    #[must_use]
+    pub fn child_leaf_count(&self) -> usize {
+        self.children.iter().filter(|c| c.is_leaf()).count()
+    }
+
     /// Number of comment lines in the body.
     #[must_use]
     pub fn body_comment_count(&self) -> usize {
