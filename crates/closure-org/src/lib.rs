@@ -2525,6 +2525,16 @@ impl Headline {
         n
     }
 
+    /// Number of footnote references in title + body.
+    #[must_use]
+    pub fn footnote_count(&self) -> usize {
+        let mut n = find_footnotes(self.title()).len();
+        for node in &self.body {
+            n += find_footnotes(&self.source[node.span.start..node.span.end]).len();
+        }
+        n
+    }
+
     /// Total link count across title + body (does not recurse).
     #[must_use]
     pub fn link_count(&self) -> usize {
