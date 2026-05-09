@@ -124,6 +124,15 @@ impl OrgDoc {
         self.roots.iter().map(walk).sum()
     }
 
+    /// Total number of links across every headline (title + body).
+    #[must_use]
+    pub fn total_link_count(&self) -> usize {
+        fn walk(h: &Headline) -> usize {
+            h.link_targets().len() + h.children().iter().map(walk).sum::<usize>()
+        }
+        self.roots.iter().map(walk).sum()
+    }
+
     /// Lookup a headline whose `:ID:` property equals `id`. Walks the
     /// tree depth-first and returns the first match.
     #[must_use]
