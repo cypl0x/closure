@@ -370,6 +370,15 @@ impl Vault {
             .min_by_key(|(_, n)| *n)
     }
 
+    /// Empty files (no headlines).
+    #[must_use]
+    pub fn empty_files(&self) -> Vec<&Path> {
+        self.iter()
+            .filter(|(_, d)| d.all_headlines().count() == 0)
+            .map(|(p, _)| p)
+            .collect()
+    }
+
     /// Map of `path → 64-bit FNV-1a content hash` for every loaded
     /// document. Useful for change-detection caches that need to know
     /// which files have shifted since a previous snapshot.
