@@ -2087,6 +2087,15 @@ impl Properties {
         self.entries.is_empty()
     }
 
+    /// Lookup case-insensitive on the property key.
+    #[must_use]
+    pub fn get_ignore_case(&self, key: &str) -> Option<&str> {
+        self.entries
+            .iter()
+            .find(|e| self.source[e.key_span.start..e.key_span.end].eq_ignore_ascii_case(key))
+            .map(|e| &self.source[e.value_span.start..e.value_span.end])
+    }
+
     /// Iterate `(key, value)` pairs in source order.
     pub fn iter(&self) -> impl Iterator<Item = (&str, &str)> {
         self.entries.iter().map(move |e| {
