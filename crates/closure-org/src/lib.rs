@@ -262,6 +262,18 @@ impl OrgDoc {
         self.filter_headlines(Headline::is_leaf)
     }
 
+    /// Returns every headline tagged with `tag`.
+    #[must_use]
+    pub fn headlines_with_tag<'a>(&'a self, tag: &str) -> Vec<&'a Headline> {
+        self.filter_headlines(|h| h.has_tag(tag))
+    }
+
+    /// Returns every headline whose TODO matches `keyword`.
+    #[must_use]
+    pub fn headlines_with_todo<'a>(&'a self, keyword: &str) -> Vec<&'a Headline> {
+        self.filter_headlines(|h| h.todo() == Some(keyword))
+    }
+
     /// Returns every headline matching `pred` (depth-first).
     #[must_use]
     pub fn filter_headlines<F: Fn(&Headline) -> bool>(&self, pred: F) -> Vec<&Headline> {
