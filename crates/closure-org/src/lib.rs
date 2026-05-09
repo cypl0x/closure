@@ -2252,6 +2252,12 @@ impl Headline {
         &self.source[start..end]
     }
 
+    /// Subtree byte length (including header/drawer/body/children).
+    #[must_use]
+    pub fn subtree_byte_count(&self) -> usize {
+        self.subtree_source().len()
+    }
+
     /// Flatten this subtree (self + every descendant) into a Vec
     /// in depth-first source order.
     #[must_use]
