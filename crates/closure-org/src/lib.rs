@@ -465,6 +465,18 @@ impl OrgDoc {
         self.headline_by_id(id).map(Headline::title)
     }
 
+    /// Level for `id`-tagged headline.
+    #[must_use]
+    pub fn level_of(&self, id: &str) -> Option<u8> {
+        self.headline_by_id(id).map(Headline::level)
+    }
+
+    /// Tags for `id`-tagged headline.
+    #[must_use]
+    pub fn tags_of(&self, id: &str) -> Option<Vec<&str>> {
+        self.headline_by_id(id).map(Headline::tags)
+    }
+
     /// Returns every headline matching `pred` (depth-first).
     #[must_use]
     pub fn filter_headlines<F: Fn(&Headline) -> bool>(&self, pred: F) -> Vec<&Headline> {
