@@ -254,6 +254,24 @@ impl OrgDoc {
         self.roots.iter().map(walk).sum()
     }
 
+    /// Total footnote count across every headline.
+    #[must_use]
+    pub fn total_footnote_count(&self) -> usize {
+        fn walk(h: &Headline) -> usize {
+            h.footnote_count() + h.children().iter().map(walk).sum::<usize>()
+        }
+        self.roots.iter().map(walk).sum()
+    }
+
+    /// Total macro count across every headline.
+    #[must_use]
+    pub fn total_macro_count(&self) -> usize {
+        fn walk(h: &Headline) -> usize {
+            h.macro_count() + h.children().iter().map(walk).sum::<usize>()
+        }
+        self.roots.iter().map(walk).sum()
+    }
+
     /// Whether any headline in the tree has `:ID: id`.
     #[must_use]
     pub fn contains_id(&self, id: &str) -> bool {
