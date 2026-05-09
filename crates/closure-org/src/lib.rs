@@ -68,6 +68,12 @@ impl OrgDoc {
         self.preamble.len()
     }
 
+    /// Whether any headline in the tree has `:ID: id`.
+    #[must_use]
+    pub fn contains_id(&self, id: &str) -> bool {
+        self.headline_by_id(id).is_some()
+    }
+
     /// Lookup a headline whose `:ID:` property equals `id`. Walks the
     /// tree depth-first and returns the first match.
     #[must_use]
