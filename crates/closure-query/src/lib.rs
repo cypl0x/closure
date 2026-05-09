@@ -55,6 +55,30 @@ pub fn by_property<'a>(vault: &'a Vault, key: &str, value: &str) -> Vec<Match<'a
         .collect()
 }
 
+/// Headlines that have *every* tag in `tags` (AND filter).
+#[must_use]
+pub fn by_tags_all<'a>(vault: &'a Vault, tags: &[&str]) -> Vec<Match<'a>> {
+    all_headlines(vault)
+        .into_iter()
+        .filter(|m| {
+            tags.iter()
+                .all(|wanted| m.headline.tags().iter().any(|t| t == wanted))
+        })
+        .collect()
+}
+
+/// Headlines that have *any* tag in `tags` (OR filter).
+#[must_use]
+pub fn by_tags_any<'a>(vault: &'a Vault, tags: &[&str]) -> Vec<Match<'a>> {
+    all_headlines(vault)
+        .into_iter()
+        .filter(|m| {
+            tags.iter()
+                .any(|wanted| m.headline.tags().iter().any(|t| t == wanted))
+        })
+        .collect()
+}
+
 /// Headlines with a specific tag.
 #[must_use]
 pub fn by_tag<'a>(vault: &'a Vault, tag: &str) -> Vec<Match<'a>> {

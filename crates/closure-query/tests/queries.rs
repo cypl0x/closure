@@ -101,6 +101,26 @@ fn full_text_misses_when_neither_matches() {
 }
 
 #[test]
+fn by_tags_all_requires_every_tag() {
+    let td = build_vault(&[(
+        "a.org",
+        "* A :work:urgent:\n* B :work:\n* C :urgent:\n",
+    )]);
+    let v = Vault::open(td.path()).expect("open");
+    let m = closure_query::by_tags_all(&v, &["work", "urgent"]);
+    assert_eq!(m.len(), 1);
+    assert_eq!(m[0].headline.title(), "A");
+}
+
+#[test]
+fn by_tags_any_matches_either() {
+    let td = build_vault(&[("a.org", "* A :work:\n* B :urgent:\n* C :other:\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    let m = closure_query::by_tags_any(&v, &["work", "urgent"]);
+    assert_eq!(m.len(), 2);
+}
+
+#[test]
 fn by_priority_filters_to_letter() {
     let td = build_vault(&[("a.org", "* [#A] Top\n* [#B] Mid\n* [#A] Top2\n")]);
     let v = Vault::open(td.path()).expect("open");
