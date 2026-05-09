@@ -451,6 +451,21 @@ enum Cmd {
         /// Path to a `*.org` file containing cron blocks.
         file: PathBuf,
     },
+    /// Print jobs from a cron block that match the given wall-clock time.
+    CronTick {
+        /// Path to a `*.org` file containing cron blocks.
+        file: PathBuf,
+        /// Minute (0-59).
+        minute: u8,
+        /// Hour (0-23).
+        hour: u8,
+        /// Day-of-month (1-31).
+        dom: u8,
+        /// Month (1-12).
+        month: u8,
+        /// Day-of-week (0-6).
+        dow: u8,
+    },
     /// Print the closure-cli crate version.
     Version,
     /// Print the keybinding(s) registered for a command name.
@@ -721,6 +736,14 @@ fn run(cmd: &Cmd) -> Result<(), String> {
         Cmd::Clock { file } => cmd_clock(file),
         Cmd::Commands => cmd_commands(),
         Cmd::CronList { file } => cmd_cron_list(file),
+        Cmd::CronTick {
+            file,
+            minute,
+            hour,
+            dom,
+            month,
+            dow,
+        } => cmd_cron_tick(file, *minute, *hour, *dom, *month, *dow),
         Cmd::Version => cmd_version(),
         Cmd::WhereIs { name } => cmd_where_is(name),
         Cmd::Languages => cmd_languages(),
@@ -1096,6 +1119,30 @@ fn cmd_where_is(name: &str) -> Result<(), String> {
         .ok_or_else(|| format!("unknown command: {name}"))?;
     for chord in cmd.keys() {
         println!("{chord}");
+    }
+    Ok(())
+}
+
+fn cmd_cron_tick(
+    path: &Path,
+    m: u8,
+    h: u8,
+    d: u8,
+    mo: u8,
+    dw: u8,
+) -> Result<(), String> {
+    let src = fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))?;
+    let doc = closure_org::parse(&src).map_err(|e| format!("{e}"))?;
+    for n in doc.preamble() {
+        if n.kind() == closure_org::NodeKind::CodeBlock
+            && let Some(cb) = n.as_code_block()
+            && cb.language == Some("closure-cron")
+        {
+            let jobs = closure_cron::parse_jobs(cb.content).map_err(|e| format!("{e}"))?;
+            for j in closure_cron::jobs_matching(&jobs, m, h, d, mo, dw) {
+                println!("{}", j.command);
+            }
+        }
     }
     Ok(())
 }
