@@ -499,6 +499,11 @@ enum Cmd {
         /// Path to a `*.org` file.
         file: PathBuf,
     },
+    /// Print preamble + body node counts for a file.
+    Nodes {
+        /// Path to a `*.org` file.
+        file: PathBuf,
+    },
     /// Print every leaf headline (no children) in a file.
     Leaves {
         /// Path to a `*.org` file.
@@ -783,6 +788,7 @@ fn run(cmd: &Cmd) -> Result<(), String> {
         Cmd::Languages => cmd_languages(),
         Cmd::LogbookAppend { file, id, entry } => cmd_logbook_append(file, id, entry),
         Cmd::Depth { file } => cmd_depth(file),
+        Cmd::Nodes { file } => cmd_nodes(file),
         Cmd::Leaves { file } => cmd_leaves(file),
         Cmd::Roots { file } => cmd_roots(file),
         Cmd::Archived { vault } => cmd_archived(vault),
@@ -1102,6 +1108,14 @@ fn cmd_leaves(path: &Path) -> Result<(), String> {
     for r in doc.roots() {
         walk_leaves(r);
     }
+    Ok(())
+}
+
+fn cmd_nodes(path: &Path) -> Result<(), String> {
+    let src = fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))?;
+    let doc = closure_org::parse(&src).map_err(|e| format!("{e}"))?;
+    println!("preamble: {}", doc.preamble_len());
+    println!("total:    {}", doc.total_node_count());
     Ok(())
 }
 
