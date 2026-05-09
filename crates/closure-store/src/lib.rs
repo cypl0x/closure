@@ -197,6 +197,21 @@ impl Vault {
             .sum()
     }
 
+    /// Word count for a single file by path. Returns `None` if the
+    /// file isn't loaded.
+    #[must_use]
+    pub fn word_count_of(&self, path: &Path) -> Option<usize> {
+        self.documents
+            .get(path)
+            .map(|d| d.source().split_whitespace().count())
+    }
+
+    /// Headline count for a single file by path.
+    #[must_use]
+    pub fn headline_count_of(&self, path: &Path) -> Option<usize> {
+        self.documents.get(path).map(|d| d.all_headlines().count())
+    }
+
     /// Map of `path → 64-bit FNV-1a content hash` for every loaded
     /// document. Useful for change-detection caches that need to know
     /// which files have shifted since a previous snapshot.
