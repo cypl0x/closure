@@ -212,6 +212,12 @@ impl Vault {
         self.documents.get(path).map(|d| d.all_headlines().count())
     }
 
+    /// Source byte length for a single file by path.
+    #[must_use]
+    pub fn byte_count_of(&self, path: &Path) -> Option<usize> {
+        self.documents.get(path).map(|d| d.source().len())
+    }
+
     /// Map of `path → 64-bit FNV-1a content hash` for every loaded
     /// document. Useful for change-detection caches that need to know
     /// which files have shifted since a previous snapshot.
