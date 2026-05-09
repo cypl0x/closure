@@ -244,6 +244,28 @@ impl OrgDoc {
         sum.checked_div(total).unwrap_or(0)
     }
 
+    /// Returns every headline matching `pred` (depth-first).
+    #[must_use]
+    pub fn filter_headlines<F: Fn(&Headline) -> bool>(&self, pred: F) -> Vec<&Headline> {
+        fn walk<'a, F: Fn(&Headline) -> bool>(
+            h: &'a Headline,
+            pred: &F,
+            out: &mut Vec<&'a Headline>,
+        ) {
+            if pred(h) {
+                out.push(h);
+            }
+            for c in h.children() {
+                walk(c, pred, out);
+            }
+        }
+        let mut out: Vec<&Headline> = Vec::new();
+        for r in &self.roots {
+            walk(r, &pred, &mut out);
+        }
+        out
+    }
+
     /// Returns the first headline that satisfies `pred` (depth-first).
     #[must_use]
     pub fn find_headline<F: Fn(&Headline) -> bool>(&self, pred: F) -> Option<&Headline> {
