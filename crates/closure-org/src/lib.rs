@@ -1928,6 +1928,16 @@ impl Headline {
         self.children.iter().map(|c| 1 + c.descendant_count()).sum()
     }
 
+    /// Verbatim source of the entire subtree rooted at this headline,
+    /// including header, properties drawer, body, and recursive
+    /// children.
+    #[must_use]
+    pub fn subtree_source(&self) -> &str {
+        let start = self.header_span.start;
+        let end = subtree_end(self);
+        &self.source[start..end]
+    }
+
     /// Whitespace-separated word count over this headline's body (does
     /// not recurse into children).
     #[must_use]

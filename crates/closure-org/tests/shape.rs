@@ -932,6 +932,17 @@ fn body_word_count_counts_body_words() {
 }
 
 #[test]
+fn subtree_source_includes_children() {
+    let src = "* Parent\nbody\n** Child\nchild body\n* Sibling\n";
+    let doc = parse(src).expect("parse");
+    let parent = &doc.roots()[0];
+    let sub = parent.subtree_source();
+    assert!(sub.contains("Parent"));
+    assert!(sub.contains("Child"));
+    assert!(!sub.contains("Sibling"));
+}
+
+#[test]
 fn descendant_count_counts_children_recursively() {
     let doc = parse("* Root\n** A\n*** A1\n** B\n").expect("parse");
     let root = &doc.roots()[0];
