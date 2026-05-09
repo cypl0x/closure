@@ -56,6 +56,12 @@ impl OrgDoc {
         self.preamble.is_empty() && self.roots.is_empty()
     }
 
+    /// True iff the document has at least one headline.
+    #[must_use]
+    pub const fn has_headlines(&self) -> bool {
+        !self.roots.is_empty()
+    }
+
     /// Number of top-level headlines.
     #[must_use]
     pub const fn root_count(&self) -> usize {
