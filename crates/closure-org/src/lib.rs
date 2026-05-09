@@ -2242,6 +2242,12 @@ impl Properties {
             .map(|e| &self.source[e.value_span.start..e.value_span.end])
     }
 
+    /// True iff `key` is present in the drawer (case-sensitive).
+    #[must_use]
+    pub fn contains_key(&self, key: &str) -> bool {
+        self.get(key).is_some()
+    }
+
     /// Shorthand for `get("ID")`. Invariant I2 pins stable ULID block IDs
     /// into this property.
     #[must_use]
