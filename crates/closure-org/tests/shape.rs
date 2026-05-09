@@ -969,6 +969,15 @@ fn set_property_creates_drawer_if_absent() {
 }
 
 #[test]
+fn find_link_sources_returns_linkers() {
+    let src = "* Source\nlink to [[id:01TGT]]\n* Other\n";
+    let doc = parse(src).expect("parse");
+    let hits = doc.find_link_sources("01TGT");
+    assert_eq!(hits.len(), 1);
+    assert_eq!(hits[0].title(), "Source");
+}
+
+#[test]
 fn headline_link_targets_collects_title_and_body() {
     let src = "* See [[id:01TGT]]\nbody [[https://x.com][X]]\n";
     let doc = parse(src).expect("parse");

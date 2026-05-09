@@ -133,6 +133,29 @@ impl OrgDoc {
         self.roots.iter().map(walk).sum()
     }
 
+    /// Headlines whose title or body contains a link to `target`.
+    /// Both `id:<ULID>` and bare `<ULID>` are accepted.
+    #[must_use]
+    pub fn find_link_sources(&self, target: &str) -> Vec<&Headline> {
+        fn walk<'a>(h: &'a Headline, want: &str, bare: &str, out: &mut Vec<&'a Headline>) {
+            if h.link_targets()
+                .iter()
+                .any(|t| t == want || t == bare || t.strip_prefix("id:") == Some(bare))
+            {
+                out.push(h);
+            }
+            for c in h.children() {
+                walk(c, want, bare, out);
+            }
+        }
+        let bare = target.strip_prefix("id:").unwrap_or(target);
+        let mut out: Vec<&Headline> = Vec::new();
+        for r in &self.roots {
+            walk(r, target, bare, &mut out);
+        }
+        out
+    }
+
     /// Lookup a headline whose `:ID:` property equals `id`. Walks the
     /// tree depth-first and returns the first match.
     #[must_use]
