@@ -2829,6 +2829,20 @@ impl Headline {
         None
     }
 
+    /// First descendant whose title equals `needle` (depth-first).
+    #[must_use]
+    pub fn descendant_by_title(&self, needle: &str) -> Option<&Self> {
+        for c in &self.children {
+            if c.title() == needle {
+                return Some(c);
+            }
+            if let Some(d) = c.descendant_by_title(needle) {
+                return Some(d);
+            }
+        }
+        None
+    }
+
     /// Number of comment lines in the body.
     #[must_use]
     pub fn body_comment_count(&self) -> usize {
