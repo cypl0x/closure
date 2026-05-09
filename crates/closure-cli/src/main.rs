@@ -407,6 +407,11 @@ enum Cmd {
         /// Path to a `*.org` file.
         file: PathBuf,
     },
+    /// Print every headline whose `:ID:` property is set (drawer ID).
+    DrawerIds {
+        /// Path to a `*.org` file.
+        file: PathBuf,
+    },
     /// Print code-block header args for every `#+BEGIN_SRC` block.
     BlockArgs {
         /// Path to a `*.org` file.
@@ -807,6 +812,7 @@ fn run(cmd: &Cmd) -> Result<(), String> {
         Cmd::Cookies { file } => cmd_cookies(file),
         Cmd::Macros { file } => cmd_macros(file),
         Cmd::Ids { file } => cmd_ids(file),
+        Cmd::DrawerIds { file } => cmd_drawer_ids(file),
         Cmd::BlockArgs { file } => cmd_block_args(file),
         Cmd::Keywords { file } => cmd_keywords(file),
         Cmd::Properties { file } => cmd_properties(file),
@@ -1538,6 +1544,24 @@ fn cmd_block_args(path: &Path) -> Result<(), String> {
             }
             idx += 1;
         }
+    }
+    Ok(())
+}
+
+fn walk_drawer_ids(h: &closure_org::Headline) {
+    if let Some(id) = h.id_property() {
+        println!("{id}\t{}", h.title());
+    }
+    for c in h.children() {
+        walk_drawer_ids(c);
+    }
+}
+
+fn cmd_drawer_ids(path: &Path) -> Result<(), String> {
+    let src = fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))?;
+    let doc = closure_org::parse(&src).map_err(|e| format!("{e}"))?;
+    for r in doc.roots() {
+        walk_drawer_ids(r);
     }
     Ok(())
 }
