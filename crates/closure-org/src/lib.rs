@@ -279,6 +279,17 @@ impl OrgDoc {
         self.roots.iter().map(walk).max().unwrap_or(0)
     }
 
+    /// Bundled `(chars, words, lines, headlines)` counts.
+    #[must_use]
+    pub fn wc(&self) -> (usize, usize, usize, usize) {
+        (
+            self.source.chars().count(),
+            self.source.split_whitespace().count(),
+            self.source.lines().count(),
+            self.headline_count(),
+        )
+    }
+
     /// 64-bit FNV-1a hash of the source. Stable across runs and
     /// machines; intended for cache keying and change detection. Two
     /// byte-equal sources yield the same hash regardless of how they
