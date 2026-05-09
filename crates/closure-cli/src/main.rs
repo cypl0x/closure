@@ -1452,6 +1452,9 @@ fn cmd_vault_info(vault: &Path) -> Result<(), String> {
     println!("headlines:  {}", v.headline_count());
     println!("words:      {}", v.word_count());
     println!("todos:      {}", v.todo_count());
+    println!("scheduled:  {}", v.scheduled_count());
+    println!("deadlines:  {}", v.deadline_count());
+    println!("closed:     {}", v.closed_count());
     println!("archived:   {}", v.archived_count());
     println!("comments:   {}", v.comment_count());
     println!("ids:        {}", v.id_count());
