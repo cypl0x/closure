@@ -492,6 +492,11 @@ enum Cmd {
         /// Path to the vault directory.
         vault: PathBuf,
     },
+    /// Print the quietest file (fewest headlines) in a vault.
+    QuietestFile {
+        /// Path to the vault directory.
+        vault: PathBuf,
+    },
     /// Run the MCP stdio dispatcher (one command name per line; `LIST`
     /// to enumerate). Quits on EOF.
     Mcp,
@@ -879,6 +884,7 @@ fn run(cmd: &Cmd) -> Result<(), String> {
         Cmd::LargestFile { vault } => cmd_largest_file(vault),
         Cmd::BusiestFile { vault } => cmd_busiest_file(vault),
         Cmd::SmallestFile { vault } => cmd_smallest_file(vault),
+        Cmd::QuietestFile { vault } => cmd_quietest_file(vault),
         Cmd::Mcp => cmd_mcp(),
         Cmd::Orphans { vault } => cmd_orphans(vault),
         Cmd::DeadLinks { vault } => cmd_dead_links(vault),
@@ -1577,6 +1583,14 @@ fn cmd_busiest_file(vault: &Path) -> Result<(), String> {
 fn cmd_smallest_file(vault: &Path) -> Result<(), String> {
     let v = Vault::open(vault).map_err(|e| format!("{e}"))?;
     if let Some((p, n)) = v.smallest_file() {
+        println!("{n}\t{}", p.display());
+    }
+    Ok(())
+}
+
+fn cmd_quietest_file(vault: &Path) -> Result<(), String> {
+    let v = Vault::open(vault).map_err(|e| format!("{e}"))?;
+    if let Some((p, n)) = v.quietest_file() {
         println!("{n}\t{}", p.display());
     }
     Ok(())
