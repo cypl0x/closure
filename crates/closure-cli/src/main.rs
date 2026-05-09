@@ -496,6 +496,13 @@ enum Cmd {
         /// Title to match.
         title: String,
     },
+    /// Find the headline with `:ID:` matching across the vault.
+    FindId {
+        /// Path to the vault directory.
+        vault: PathBuf,
+        /// Block id to look up.
+        id: String,
+    },
     /// Print detailed information about a single headline.
     Info {
         /// Path to a `*.org` file.
@@ -712,6 +719,7 @@ fn run(cmd: &Cmd) -> Result<(), String> {
         Cmd::TaggedAny { vault, tags } => cmd_tagged_any(vault, tags),
         Cmd::CommentList { vault } => cmd_comment_list(vault),
         Cmd::FindTitle { vault, title } => cmd_find_title(vault, title),
+        Cmd::FindId { vault, id } => cmd_find_id(vault, id),
         Cmd::Info { file, id } => cmd_info(file, id),
         Cmd::TodoCloud { vault } => cmd_todo_cloud(vault),
         Cmd::Paths { vault } => cmd_paths(vault),
@@ -904,6 +912,14 @@ fn cmd_info(path: &Path, id: &str) -> Result<(), String> {
     if let Some(c) = h.closed() {
         println!("closed:    {c}");
     }
+    Ok(())
+}
+
+fn cmd_find_id(vault: &Path, id: &str) -> Result<(), String> {
+    let v = Vault::open(vault).map_err(|e| format!("{e}"))?;
+    let bid = closure_core::BlockId::from_existing(id);
+    let (h, path) = v.find_by_id(&bid).ok_or_else(|| "not found".to_owned())?;
+    println!("{}\t{}\t{}", path.display(), h.id(), h.title());
     Ok(())
 }
 
