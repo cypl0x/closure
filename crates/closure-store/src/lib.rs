@@ -236,6 +236,24 @@ impl Vault {
         self.documents.values().map(|d| d.org().total_timestamp_count()).sum()
     }
 
+    /// Total cookie count across the vault.
+    #[must_use]
+    pub fn cookie_count(&self) -> usize {
+        self.documents.values().map(|d| d.org().total_cookie_count()).sum()
+    }
+
+    /// Total footnote count across the vault.
+    #[must_use]
+    pub fn footnote_count(&self) -> usize {
+        self.documents.values().map(|d| d.org().total_footnote_count()).sum()
+    }
+
+    /// Total macro count across the vault.
+    #[must_use]
+    pub fn macro_count(&self) -> usize {
+        self.documents.values().map(|d| d.org().total_macro_count()).sum()
+    }
+
     /// Map of `path → 64-bit FNV-1a content hash` for every loaded
     /// document. Useful for change-detection caches that need to know
     /// which files have shifted since a previous snapshot.
