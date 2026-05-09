@@ -304,6 +304,18 @@ impl OrgDoc {
         self.filter_headlines(Headline::has_deadline)
     }
 
+    /// Returns every headline carrying a CLOSED: timestamp.
+    #[must_use]
+    pub fn closed_headlines(&self) -> Vec<&Headline> {
+        self.filter_headlines(Headline::is_closed)
+    }
+
+    /// Returns every headline carrying an `:ID:` property.
+    #[must_use]
+    pub fn id_headlines(&self) -> Vec<&Headline> {
+        self.filter_headlines(Headline::has_id)
+    }
+
     /// Returns every headline matching `pred` (depth-first).
     #[must_use]
     pub fn filter_headlines<F: Fn(&Headline) -> bool>(&self, pred: F) -> Vec<&Headline> {
