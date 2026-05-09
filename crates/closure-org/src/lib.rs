@@ -372,6 +372,12 @@ impl OrgDoc {
         self.find_headline(|h| h.title().eq_ignore_ascii_case(needle))
     }
 
+    /// Returns the first leaf descendant of any root.
+    #[must_use]
+    pub fn first_leaf(&self) -> Option<&Headline> {
+        self.find_headline(Headline::is_leaf)
+    }
+
     /// Returns every headline matching `pred` (depth-first).
     #[must_use]
     pub fn filter_headlines<F: Fn(&Headline) -> bool>(&self, pred: F) -> Vec<&Headline> {
