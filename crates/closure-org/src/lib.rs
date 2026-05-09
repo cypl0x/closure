@@ -2285,6 +2285,12 @@ impl Headline {
         self.children.get(idx)
     }
 
+    /// First child whose title equals `needle` (case-sensitive).
+    #[must_use]
+    pub fn child_by_title(&self, needle: &str) -> Option<&Self> {
+        self.children.iter().find(|c| c.title() == needle)
+    }
+
     /// True iff this headline carries `tag`.
     #[must_use]
     pub fn has_tag(&self, tag: &str) -> bool {
