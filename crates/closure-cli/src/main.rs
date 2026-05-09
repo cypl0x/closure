@@ -468,6 +468,13 @@ enum Cmd {
         /// Path to the vault directory.
         vault: PathBuf,
     },
+    /// Print headlines tagged with EVERY given tag (AND).
+    Tagged {
+        /// Path to the vault directory.
+        vault: PathBuf,
+        /// Tags (positional, one or more).
+        tags: Vec<String>,
+    },
     /// Print every COMMENT-prefixed headline in a vault.
     CommentList {
         /// Path to the vault directory.
@@ -691,6 +698,7 @@ fn run(cmd: &Cmd) -> Result<(), String> {
         Cmd::Depth { file } => cmd_depth(file),
         Cmd::Leaves { file } => cmd_leaves(file),
         Cmd::Archived { vault } => cmd_archived(vault),
+        Cmd::Tagged { vault, tags } => cmd_tagged(vault, tags),
         Cmd::CommentList { vault } => cmd_comment_list(vault),
         Cmd::FindTitle { vault, title } => cmd_find_title(vault, title),
         Cmd::Info { file, id } => cmd_info(file, id),
@@ -903,6 +911,20 @@ fn cmd_comment_list(vault: &Path) -> Result<(), String> {
                 println!("{}\t{}\t{}", path.display(), h.id(), h.title());
             }
         }
+    }
+    Ok(())
+}
+
+fn cmd_tagged(vault: &Path, tags: &[String]) -> Result<(), String> {
+    let v = Vault::open(vault).map_err(|e| format!("{e}"))?;
+    let refs: Vec<&str> = tags.iter().map(String::as_str).collect();
+    for m in closure_query::by_tags_all(&v, &refs) {
+        println!(
+            "{}\t{}\t{}",
+            m.path.display(),
+            m.headline.id(),
+            m.headline.title()
+        );
     }
     Ok(())
 }
