@@ -421,6 +421,7 @@ impl OrgDoc {
     }
 
     /// Iterate every headline depth-first.
+    #[must_use]
     pub fn iter_headlines(&self) -> Vec<&Headline> {
         self.filter_headlines(|_| true)
     }
