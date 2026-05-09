@@ -348,6 +348,11 @@ enum Cmd {
         /// Path to a `*.org` file.
         file: PathBuf,
     },
+    /// Print unfinished checkbox items across the vault.
+    Pending {
+        /// Path to the vault directory.
+        vault: PathBuf,
+    },
     /// Print every named block (`#+BEGIN_QUOTE`, `#+BEGIN_EXAMPLE`, etc.).
     Blocks {
         /// Path to a `*.org` file.
@@ -715,6 +720,7 @@ fn run(cmd: &Cmd) -> Result<(), String> {
         Cmd::Drawers { file } => cmd_drawers(file),
         Cmd::Tables { file } => cmd_tables(file),
         Cmd::Lists { file } => cmd_lists(file),
+        Cmd::Pending { vault } => cmd_pending(vault),
         Cmd::Blocks { file } => cmd_blocks(file),
         Cmd::Anchors { file } => cmd_anchors(file),
         Cmd::Links { file } => cmd_links(file),
@@ -1388,6 +1394,16 @@ fn cmd_blocks(path: &Path) -> Result<(), String> {
     for b in closure_org::find_named_blocks(&src) {
         let lines = b.content.lines().count();
         println!("#+BEGIN_{}  {} lines", b.name, lines);
+    }
+    Ok(())
+}
+
+fn cmd_pending(vault: &Path) -> Result<(), String> {
+    let v = Vault::open(vault).map_err(|e| format!("{e}"))?;
+    for (path, doc) in v.iter() {
+        for li in doc.org().unfinished_checkboxes() {
+            println!("{}\t{}", path.display(), li.content);
+        }
     }
     Ok(())
 }
