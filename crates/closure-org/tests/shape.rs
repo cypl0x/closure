@@ -962,6 +962,16 @@ fn set_property_creates_drawer_if_absent() {
 }
 
 #[test]
+fn headline_link_targets_collects_title_and_body() {
+    let src = "* See [[id:01TGT]]\nbody [[https://x.com][X]]\n";
+    let doc = parse(src).expect("parse");
+    let targets = doc.roots()[0].link_targets();
+    assert_eq!(targets.len(), 2);
+    assert!(targets.contains(&"id:01TGT".to_owned()));
+    assert!(targets.contains(&"https://x.com".to_owned()));
+}
+
+#[test]
 fn body_word_count_counts_body_words() {
     let doc = parse("* H\nfour words go here\n").expect("parse");
     assert_eq!(doc.roots()[0].body_word_count(), 4);

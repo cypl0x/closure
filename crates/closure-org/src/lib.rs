@@ -2050,6 +2050,24 @@ impl Headline {
         out
     }
 
+    /// All link targets in this headline's title and body (does not
+    /// recurse into children). Returns owned strings since
+    /// [`find_links`] yields borrowed slices into the header / body
+    /// regions rather than the headline source as a whole.
+    #[must_use]
+    pub fn link_targets(&self) -> Vec<String> {
+        let mut out: Vec<String> = find_links(self.title())
+            .into_iter()
+            .map(|l| l.target.to_owned())
+            .collect();
+        for n in &self.body {
+            for l in find_links(&self.source[n.span.start..n.span.end]) {
+                out.push(l.target.to_owned());
+            }
+        }
+        out
+    }
+
     /// Whitespace-separated word count over this headline's body (does
     /// not recurse into children).
     #[must_use]
