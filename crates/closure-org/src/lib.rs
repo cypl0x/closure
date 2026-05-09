@@ -2484,6 +2484,12 @@ impl Headline {
         self.properties.is_some()
     }
 
+    /// Number of properties drawer entries (0 if no drawer).
+    #[must_use]
+    pub fn property_count(&self) -> usize {
+        self.properties().map_or(0, Properties::len)
+    }
+
     /// First child whose title contains `needle` (case-sensitive).
     #[must_use]
     pub fn child_by_title_substring(&self, needle: &str) -> Option<&Self> {
