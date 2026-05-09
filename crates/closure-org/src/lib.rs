@@ -87,6 +87,15 @@ impl OrgDoc {
         self.roots.iter().any(|r| walk(r, keyword))
     }
 
+    /// True iff any headline carries the given priority letter.
+    #[must_use]
+    pub fn has_priority(&self, letter: char) -> bool {
+        fn walk(h: &Headline, target: char) -> bool {
+            h.priority() == Some(target) || h.children().iter().any(|c| walk(c, target))
+        }
+        self.roots.iter().any(|r| walk(r, letter))
+    }
+
     /// Number of top-level headlines.
     #[must_use]
     pub const fn root_count(&self) -> usize {
