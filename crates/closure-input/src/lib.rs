@@ -211,6 +211,18 @@ pub fn parse_vim_chord(s: &str) -> Result<KeyChord, InputError> {
     Ok(KeyChord::from_strokes(&refs))
 }
 
+/// Auto-detect chord syntax: if `s` contains `<`, route through
+/// [`parse_vim_chord`]; otherwise [`parse_emacs_chord`]. Lets callers
+/// accept both `C-c C-x r` and `<C-c><C-x>r` from the same option.
+#[allow(clippy::missing_errors_doc)]
+pub fn parse_chord(s: &str) -> Result<KeyChord, InputError> {
+    if s.contains('<') {
+        parse_vim_chord(s)
+    } else {
+        parse_emacs_chord(s)
+    }
+}
+
 /// Parse an Emacs-style chord like `C-c C-x r` (whitespace separated,
 /// no brackets). Returns a [`KeyChord`] where each stroke is one of
 /// `C-x`, `M-x`, `S-x`, or a bare key. Empty input is rejected.

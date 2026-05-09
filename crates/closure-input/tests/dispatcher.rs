@@ -73,6 +73,14 @@ fn chord_trie_unbound_resets_cursor() {
 }
 
 #[test]
+fn parse_chord_routes_by_syntax() {
+    let a = closure_input::parse_chord("C-c C-x r").unwrap();
+    let b = closure_input::parse_chord("<C-c><C-x>r").unwrap();
+    assert_eq!(a, KeyChord::from_strokes(&["C-c", "C-x", "r"]));
+    assert_eq!(b, KeyChord::from_strokes(&["<C-c>", "<C-x>", "r"]));
+}
+
+#[test]
 fn emacs_chord_parsed() {
     let chord = closure_input::parse_emacs_chord("C-c C-x r").unwrap();
     assert_eq!(chord, KeyChord::from_strokes(&["C-c", "C-x", "r"]));
