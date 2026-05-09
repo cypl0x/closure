@@ -480,6 +480,8 @@ enum Cmd {
     },
     /// Print the closure-cli crate version.
     Version,
+    /// Print build info: name, version, target triple.
+    Build,
     /// Print the keybinding(s) registered for a command name.
     WhereIs {
         /// Command name (e.g. `rename-headline`).
@@ -793,6 +795,7 @@ fn run(cmd: &Cmd) -> Result<(), String> {
             dow,
         } => cmd_cron_tick(file, *minute, *hour, *dom, *month, *dow),
         Cmd::Version => cmd_version(),
+        Cmd::Build => cmd_build(),
         Cmd::WhereIs { name } => cmd_where_is(name),
         Cmd::TagsOf { file, id } => cmd_tags_of(file, id),
         Cmd::Languages => cmd_languages(),
@@ -1285,6 +1288,14 @@ fn cmd_cron_list(path: &Path) -> Result<(), String> {
 #[allow(clippy::unnecessary_wraps)]
 fn cmd_version() -> Result<(), String> {
     println!("{}", env!("CARGO_PKG_VERSION"));
+    Ok(())
+}
+
+#[allow(clippy::unnecessary_wraps)]
+fn cmd_build() -> Result<(), String> {
+    println!("name:    {}", env!("CARGO_PKG_NAME"));
+    println!("version: {}", env!("CARGO_PKG_VERSION"));
+    println!("authors: {}", env!("CARGO_PKG_AUTHORS"));
     Ok(())
 }
 
