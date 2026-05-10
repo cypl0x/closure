@@ -893,6 +893,18 @@ impl OrgDoc {
         self.priority_counts().into_iter().max_by_key(|(_, n)| *n)
     }
 
+    /// Distinct tag count.
+    #[must_use]
+    pub fn distinct_tag_count(&self) -> usize {
+        self.tag_counts().len()
+    }
+
+    /// Distinct TODO keyword count.
+    #[must_use]
+    pub fn distinct_todo_count(&self) -> usize {
+        self.todo_counts().len()
+    }
+
     /// Level histogram across the document.
     #[must_use]
     pub fn level_counts(&self) -> std::collections::BTreeMap<u8, usize> {
