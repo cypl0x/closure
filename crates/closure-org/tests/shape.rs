@@ -2565,3 +2565,26 @@ fn doc_count_roots_with_id_counts_match() {
     let doc = parse(src).expect("parse");
     assert_eq!(doc.count_roots_with_id(), 2);
 }
+
+#[test]
+fn doc_roots_with_property_returns_match() {
+    let src = "* A\n:PROPERTIES:\n:K: 1\n:END:\n* B\n* C\n:PROPERTIES:\n:K: 2\n:END:\n";
+    let doc = parse(src).expect("parse");
+    let v = doc.roots_with_property("K");
+    assert_eq!(v.iter().map(|h| h.title()).collect::<Vec<_>>(), ["A", "C"]);
+}
+
+#[test]
+fn doc_count_roots_with_property_counts_match() {
+    let src = "* A\n:PROPERTIES:\n:K: 1\n:END:\n* B\n* C\n:PROPERTIES:\n:K: 2\n:END:\n";
+    let doc = parse(src).expect("parse");
+    assert_eq!(doc.count_roots_with_property("K"), 2);
+    assert_eq!(doc.count_roots_with_property("MISSING"), 0);
+}
+
+#[test]
+fn doc_root_titles_with_property_returns_strs() {
+    let src = "* A\n:PROPERTIES:\n:K: 1\n:END:\n* B\n* C\n:PROPERTIES:\n:K: 2\n:END:\n";
+    let doc = parse(src).expect("parse");
+    assert_eq!(doc.root_titles_with_property("K"), vec!["A", "C"]);
+}

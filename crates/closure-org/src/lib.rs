@@ -2141,6 +2141,27 @@ impl OrgDoc {
             .count()
     }
 
+    /// Roots carrying property `key`.
+    #[must_use]
+    pub fn roots_with_property(&self, key: &str) -> Vec<&Headline> {
+        self.roots.iter().filter(|h| h.has_property(key)).collect()
+    }
+
+    /// Count of roots carrying property `key`.
+    #[must_use]
+    pub fn count_roots_with_property(&self, key: &str) -> usize {
+        self.roots.iter().filter(|h| h.has_property(key)).count()
+    }
+
+    /// Titles of roots carrying property `key`.
+    #[must_use]
+    pub fn root_titles_with_property(&self, key: &str) -> Vec<&str> {
+        self.roots_with_property(key)
+            .into_iter()
+            .map(Headline::title)
+            .collect()
+    }
+
     fn collect_descendants_where<F: Fn(&Headline) -> bool>(
         &self,
         pred: F,
