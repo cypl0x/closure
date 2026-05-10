@@ -1824,6 +1824,15 @@ impl OrgDoc {
         self.roots.iter().filter(|h| h.has_tag(tag)).count()
     }
 
+    /// Descendant headline carrying `:ID: id`.
+    ///
+    /// Alias for [`Self::headline_by_id`] for parity with `descendant_*`
+    /// family naming.
+    #[must_use]
+    pub fn descendant_with_id(&self, id: &str) -> Option<&Headline> {
+        self.headline_by_id(id)
+    }
+
     /// Highest priority letter present (`'A'` is highest).
     #[must_use]
     pub fn max_priority_letter(&self) -> Option<char> {

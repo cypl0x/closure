@@ -2195,3 +2195,12 @@ fn doc_count_roots_with_tag_counts_match() {
     assert_eq!(doc.count_roots_with_tag("work"), 2);
     assert_eq!(doc.count_roots_with_tag("none"), 0);
 }
+
+#[test]
+fn doc_descendant_with_id_returns_match() {
+    let src = "* Top\n** Inner\n:PROPERTIES:\n:ID: target\n:END:\n";
+    let doc = parse(src).expect("parse");
+    let h = doc.descendant_with_id("target").expect("hit");
+    assert_eq!(h.title(), "Inner");
+    assert!(doc.descendant_with_id("missing").is_none());
+}
