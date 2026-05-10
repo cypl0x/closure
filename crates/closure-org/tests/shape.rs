@@ -1854,6 +1854,14 @@ fn doc_headline_index_of_returns_position() {
 }
 
 #[test]
+fn doc_position_of_id_returns_dfs_index() {
+    let src = "* A\n** B\n:PROPERTIES:\n:ID: x\n:END:\n* C\n";
+    let doc = parse(src).expect("parse");
+    assert_eq!(doc.position_of_id("x"), Some(1));
+    assert_eq!(doc.position_of_id("missing"), None);
+}
+
+#[test]
 fn descendant_count_counts_children_recursively() {
     let doc = parse("* Root\n** A\n*** A1\n** B\n").expect("parse");
     let root = &doc.roots()[0];

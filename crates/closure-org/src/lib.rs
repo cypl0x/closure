@@ -1738,6 +1738,12 @@ impl OrgDoc {
         self.iter_headlines().into_iter().position(pred)
     }
 
+    /// DFS index of the headline carrying `:ID: id`.
+    #[must_use]
+    pub fn position_of_id(&self, id: &str) -> Option<usize> {
+        self.headline_index_of(|h| h.id_property() == Some(id))
+    }
+
     /// Number of preamble nodes.
     #[must_use]
     pub const fn preamble_len(&self) -> usize {
