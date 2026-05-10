@@ -1007,6 +1007,22 @@ impl OrgDoc {
             .unwrap_or(0)
     }
 
+    /// Leaf-vs-headline ratio as a percentage.
+    #[must_use]
+    pub fn leaf_pct(&self) -> usize {
+        (self.count_leaves() * 100)
+            .checked_div(self.headline_count())
+            .unwrap_or(0)
+    }
+
+    /// Archived-vs-headline ratio as a percentage.
+    #[must_use]
+    pub fn archived_pct(&self) -> usize {
+        (self.count_archived() * 100)
+            .checked_div(self.headline_count())
+            .unwrap_or(0)
+    }
+
     /// Level histogram across the document.
     #[must_use]
     pub fn level_counts(&self) -> std::collections::BTreeMap<u8, usize> {
