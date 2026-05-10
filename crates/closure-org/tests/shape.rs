@@ -1945,6 +1945,18 @@ fn doc_position_predicate_returns_index() {
 }
 
 #[test]
+fn doc_max_priority_returns_highest_letter() {
+    let doc = parse("* [#A] x\n* [#B] y\n* [#C] z\n").expect("parse");
+    assert_eq!(doc.max_priority_letter(), Some('A'));
+}
+
+#[test]
+fn doc_min_priority_returns_lowest_letter() {
+    let doc = parse("* [#A] x\n* [#B] y\n* [#C] z\n").expect("parse");
+    assert_eq!(doc.min_priority_letter(), Some('C'));
+}
+
+#[test]
 fn descendant_count_counts_children_recursively() {
     let doc = parse("* Root\n** A\n*** A1\n** B\n").expect("parse");
     let root = &doc.roots()[0];

@@ -1768,6 +1768,25 @@ impl OrgDoc {
         self.roots.get(idx).or_else(|| self.roots.first())
     }
 
+    /// Highest priority letter present (`'A'` is highest).
+    #[must_use]
+    pub fn max_priority_letter(&self) -> Option<char> {
+        self.descendant_priorities_doc().into_iter().min()
+    }
+
+    /// Lowest priority letter present.
+    #[must_use]
+    pub fn min_priority_letter(&self) -> Option<char> {
+        self.descendant_priorities_doc().into_iter().max()
+    }
+
+    fn descendant_priorities_doc(&self) -> Vec<char> {
+        self.iter_headlines()
+            .into_iter()
+            .filter_map(Headline::priority)
+            .collect()
+    }
+
     /// Headline at the given DFS index.
     #[must_use]
     pub fn headline_at_index(&self, idx: usize) -> Option<&Headline> {
