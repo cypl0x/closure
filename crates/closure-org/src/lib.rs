@@ -1762,6 +1762,12 @@ impl OrgDoc {
         self.roots.iter().all(pred)
     }
 
+    /// Root at `idx`, falling back to first root when out of range.
+    #[must_use]
+    pub fn root_at_or_first(&self, idx: usize) -> Option<&Headline> {
+        self.roots.get(idx).or_else(|| self.roots.first())
+    }
+
     /// Headline at the given DFS index.
     #[must_use]
     pub fn headline_at_index(&self, idx: usize) -> Option<&Headline> {
