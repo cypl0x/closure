@@ -1075,6 +1075,26 @@ impl OrgDoc {
             .unwrap_or(0)
     }
 
+    /// Returns max tag count across headlines.
+    #[must_use]
+    pub fn max_tag_count(&self) -> usize {
+        self.iter_headlines()
+            .into_iter()
+            .map(Headline::tag_count)
+            .max()
+            .unwrap_or(0)
+    }
+
+    /// Returns max property count across headlines.
+    #[must_use]
+    pub fn max_property_count(&self) -> usize {
+        self.iter_headlines()
+            .into_iter()
+            .map(Headline::property_count)
+            .max()
+            .unwrap_or(0)
+    }
+
     /// Level histogram across the document.
     #[must_use]
     pub fn level_counts(&self) -> std::collections::BTreeMap<u8, usize> {
