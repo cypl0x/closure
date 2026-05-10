@@ -1476,6 +1476,22 @@ fn descendants_with_todo_returns_subtree() {
 }
 
 #[test]
+fn count_descendants_archived() {
+    let src = "* R\n** A :ARCHIVE:\n** B\n*** C :ARCHIVE:\n";
+    let doc = parse(src).expect("parse");
+    let root = &doc.roots()[0];
+    assert_eq!(root.count_descendants_archived(), 2);
+}
+
+#[test]
+fn count_descendants_commented() {
+    let src = "* R\n** COMMENT A\n** B\n*** COMMENT C\n";
+    let doc = parse(src).expect("parse");
+    let root = &doc.roots()[0];
+    assert_eq!(root.count_descendants_commented(), 2);
+}
+
+#[test]
 fn descendant_count_counts_children_recursively() {
     let doc = parse("* Root\n** A\n*** A1\n** B\n").expect("parse");
     let root = &doc.roots()[0];

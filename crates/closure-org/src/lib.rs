@@ -4549,6 +4549,24 @@ impl Headline {
         out
     }
 
+    /// Count of archived descendants.
+    #[must_use]
+    pub fn count_descendants_archived(&self) -> usize {
+        self.children
+            .iter()
+            .map(|c| usize::from(c.is_archived()) + c.count_descendants_archived())
+            .sum()
+    }
+
+    /// Count of COMMENT-prefixed descendants.
+    #[must_use]
+    pub fn count_descendants_commented(&self) -> usize {
+        self.children
+            .iter()
+            .map(|c| usize::from(c.is_comment()) + c.count_descendants_commented())
+            .sum()
+    }
+
     /// Number of comment lines in the body.
     #[must_use]
     pub fn body_comment_count(&self) -> usize {
