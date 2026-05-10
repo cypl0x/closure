@@ -863,6 +863,12 @@ impl OrgDoc {
         self.hub_ids().len()
     }
 
+    /// Number of ids that have a TODO descendant.
+    #[must_use]
+    pub fn ids_with_todo_descendant_count(&self) -> usize {
+        self.ids_with_todo_descendant().len()
+    }
+
     /// Returns ids whose subtree contains a TODO descendant.
     #[must_use]
     pub fn ids_with_todo_descendant(&self) -> Vec<&str> {
