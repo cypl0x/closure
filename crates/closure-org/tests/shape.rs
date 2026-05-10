@@ -2285,3 +2285,38 @@ fn doc_count_descendants_at_level_counts_all() {
     assert_eq!(doc.count_descendants_at_level(3), 1);
     assert_eq!(doc.count_descendants_at_level(4), 0);
 }
+
+#[test]
+fn doc_descendants_with_tag_returns_all() {
+    let src = "* A :work:\n** B :work:\n* C :home:\n";
+    let doc = parse(src).expect("parse");
+    let v = doc.descendants_with_tag("work");
+    assert_eq!(v.iter().map(|h| h.title()).collect::<Vec<_>>(), ["A", "B"]);
+}
+
+#[test]
+fn doc_descendants_with_todo_returns_all() {
+    let src = "* TODO A\n** DONE B\n* TODO C\n";
+    let doc = parse(src).expect("parse");
+    let v = doc.descendants_with_todo("TODO");
+    assert_eq!(v.iter().map(|h| h.title()).collect::<Vec<_>>(), ["A", "C"]);
+}
+
+#[test]
+fn doc_descendants_with_priority_returns_all() {
+    let src = "* [#A] One\n** [#B] Two\n* [#A] Three\n";
+    let doc = parse(src).expect("parse");
+    let v = doc.descendants_with_priority('A');
+    assert_eq!(
+        v.iter().map(|h| h.title()).collect::<Vec<_>>(),
+        ["One", "Three"]
+    );
+}
+
+#[test]
+fn doc_descendants_at_level_returns_all() {
+    let src = "* A\n** B\n** C\n*** D\n* E\n";
+    let doc = parse(src).expect("parse");
+    let v = doc.descendants_at_level(2);
+    assert_eq!(v.iter().map(|h| h.title()).collect::<Vec<_>>(), ["B", "C"]);
+}

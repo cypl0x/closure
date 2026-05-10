@@ -1881,6 +1881,53 @@ impl OrgDoc {
         self.count_descendants_where(|h| h.level() == level)
     }
 
+    /// Descendants (depth-first across roots) carrying `tag`.
+    #[must_use]
+    pub fn descendants_with_tag(&self, tag: &str) -> Vec<&Headline> {
+        self.collect_descendants_where(|h| h.has_tag(tag))
+    }
+
+    /// Descendants (depth-first across roots) with TODO keyword `kw`.
+    #[must_use]
+    pub fn descendants_with_todo(&self, kw: &str) -> Vec<&Headline> {
+        self.collect_descendants_where(|h| h.todo() == Some(kw))
+    }
+
+    /// Descendants (depth-first across roots) with priority letter `letter`.
+    #[must_use]
+    pub fn descendants_with_priority(&self, letter: char) -> Vec<&Headline> {
+        self.collect_descendants_where(|h| h.priority() == Some(letter))
+    }
+
+    /// Descendants (depth-first across roots) at exactly `level`.
+    #[must_use]
+    pub fn descendants_at_level(&self, level: u8) -> Vec<&Headline> {
+        self.collect_descendants_where(|h| h.level() == level)
+    }
+
+    fn collect_descendants_where<F: Fn(&Headline) -> bool>(
+        &self,
+        pred: F,
+    ) -> Vec<&Headline> {
+        fn walk<'a, F: Fn(&Headline) -> bool>(
+            h: &'a Headline,
+            pred: &F,
+            out: &mut Vec<&'a Headline>,
+        ) {
+            if pred(h) {
+                out.push(h);
+            }
+            for c in h.children() {
+                walk(c, pred, out);
+            }
+        }
+        let mut out = Vec::new();
+        for r in &self.roots {
+            walk(r, &pred, &mut out);
+        }
+        out
+    }
+
     fn count_descendants_where<F: Fn(&Headline) -> bool>(&self, pred: F) -> usize {
         fn walk<F: Fn(&Headline) -> bool>(h: &Headline, pred: &F) -> usize {
             let mut n = usize::from(pred(h));
