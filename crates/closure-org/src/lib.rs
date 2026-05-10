@@ -619,6 +619,20 @@ impl OrgDoc {
         Some(out - inc)
     }
 
+    /// Returns IDs that no headline references.
+    #[must_use]
+    pub fn orphan_ids(&self) -> Vec<&str> {
+        let mut out: Vec<&str> = Vec::new();
+        for h in self.iter_headlines() {
+            if let Some(id) = h.id_property()
+                && self.find_link_sources(id).is_empty()
+            {
+                out.push(id);
+            }
+        }
+        out
+    }
+
     /// Returns headlines whose body contains `needle` ignoring case.
     #[must_use]
     pub fn headlines_with_body_substring_ignore_case<'a>(
