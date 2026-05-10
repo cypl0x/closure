@@ -489,6 +489,18 @@ impl OrgDoc {
         self.headline_by_id(id).and_then(Headline::priority)
     }
 
+    /// Body source for `id`-tagged headline.
+    #[must_use]
+    pub fn body_of(&self, id: &str) -> Option<&str> {
+        self.headline_by_id(id).map(Headline::body_source)
+    }
+
+    /// Subtree source for `id`-tagged headline.
+    #[must_use]
+    pub fn subtree_of(&self, id: &str) -> Option<&str> {
+        self.headline_by_id(id).map(Headline::subtree_source)
+    }
+
     /// Returns every headline matching `pred` (depth-first).
     #[must_use]
     pub fn filter_headlines<F: Fn(&Headline) -> bool>(&self, pred: F) -> Vec<&Headline> {
