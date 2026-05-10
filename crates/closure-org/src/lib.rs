@@ -4621,6 +4621,26 @@ impl Headline {
         out
     }
 
+    /// Descendants matching a predicate.
+    #[must_use]
+    pub fn filter_descendants<F: Fn(&Self) -> bool>(&self, pred: F) -> Vec<&Self> {
+        fn walk<'a, F: Fn(&Headline) -> bool>(
+            h: &'a Headline,
+            pred: &F,
+            out: &mut Vec<&'a Headline>,
+        ) {
+            for c in h.children() {
+                if pred(c) {
+                    out.push(c);
+                }
+                walk(c, pred, out);
+            }
+        }
+        let mut out: Vec<&Self> = Vec::new();
+        walk(self, &pred, &mut out);
+        out
+    }
+
     /// Number of comment lines in the body.
     #[must_use]
     pub fn body_comment_count(&self) -> usize {

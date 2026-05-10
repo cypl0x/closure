@@ -1534,6 +1534,19 @@ fn descendants_with_title_substring_matches() {
 }
 
 #[test]
+fn descendants_filter_walks_with_predicate() {
+    let src = "* R\n** A :work:\n*** B :work:\n** C\n";
+    let doc = parse(src).expect("parse");
+    let root = &doc.roots()[0];
+    let titles: Vec<&str> = root
+        .filter_descendants(|h| h.has_tag("work"))
+        .iter()
+        .map(|h| h.title())
+        .collect();
+    assert_eq!(titles, vec!["A", "B"]);
+}
+
+#[test]
 fn descendant_count_counts_children_recursively() {
     let doc = parse("* Root\n** A\n*** A1\n** B\n").expect("parse");
     let root = &doc.roots()[0];
