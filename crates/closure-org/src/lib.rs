@@ -1956,6 +1956,18 @@ impl OrgDoc {
         self.count_descendants_where(|h| h.has_property(key))
     }
 
+    /// Descendants (depth-first across roots) carrying any `:ID:`.
+    #[must_use]
+    pub fn descendants_with_id(&self) -> Vec<&Headline> {
+        self.collect_descendants_where(|h| h.id_property().is_some())
+    }
+
+    /// Count of all descendants (across roots) carrying any `:ID:`.
+    #[must_use]
+    pub fn count_descendants_with_id(&self) -> usize {
+        self.count_descendants_where(|h| h.id_property().is_some())
+    }
+
     fn collect_descendants_where<F: Fn(&Headline) -> bool>(
         &self,
         pred: F,

@@ -2378,3 +2378,18 @@ fn doc_count_descendants_with_property_counts_all() {
     assert_eq!(doc.count_descendants_with_property("K"), 2);
     assert_eq!(doc.count_descendants_with_property("MISSING"), 0);
 }
+
+#[test]
+fn doc_descendants_with_id_returns_all() {
+    let src = "* A\n:PROPERTIES:\n:ID: a\n:END:\n* B\n:PROPERTIES:\n:ID: b\n:END:\n* C\n";
+    let doc = parse(src).expect("parse");
+    let v = doc.descendants_with_id();
+    assert_eq!(v.iter().map(|h| h.title()).collect::<Vec<_>>(), ["A", "B"]);
+}
+
+#[test]
+fn doc_count_descendants_with_id_counts_all() {
+    let src = "* A\n:PROPERTIES:\n:ID: a\n:END:\n* B\n* C\n:PROPERTIES:\n:ID: c\n:END:\n";
+    let doc = parse(src).expect("parse");
+    assert_eq!(doc.count_descendants_with_id(), 2);
+}
