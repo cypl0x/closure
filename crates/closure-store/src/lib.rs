@@ -476,6 +476,12 @@ impl Vault {
             .sum()
     }
 
+    /// Number of duplicate ids across the vault.
+    #[must_use]
+    pub fn duplicate_id_count(&self) -> usize {
+        self.duplicate_ids().len()
+    }
+
     /// Returns drawer ids appearing more than once across the vault.
     #[must_use]
     pub fn duplicate_ids(&self) -> Vec<String> {
