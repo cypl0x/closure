@@ -1773,6 +1773,12 @@ impl OrgDoc {
         self.roots.iter().position(pred)
     }
 
+    /// Root carrying `:ID: id`.
+    #[must_use]
+    pub fn root_with_id(&self, id: &str) -> Option<&Headline> {
+        self.roots.iter().find(|h| h.id_property() == Some(id))
+    }
+
     /// Highest priority letter present (`'A'` is highest).
     #[must_use]
     pub fn max_priority_letter(&self) -> Option<char> {

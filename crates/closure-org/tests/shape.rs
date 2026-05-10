@@ -1989,6 +1989,14 @@ fn doc_root_index_of_returns_position() {
 }
 
 #[test]
+fn doc_root_with_id_returns_match() {
+    let src = "* A\n:PROPERTIES:\n:ID: x\n:END:\n* B\n";
+    let doc = parse(src).expect("parse");
+    assert_eq!(doc.root_with_id("x").expect("h").title(), "A");
+    assert!(doc.root_with_id("missing").is_none());
+}
+
+#[test]
 fn descendant_count_counts_children_recursively() {
     let doc = parse("* Root\n** A\n*** A1\n** B\n").expect("parse");
     let root = &doc.roots()[0];
