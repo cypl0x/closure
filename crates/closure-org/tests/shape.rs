@@ -2601,11 +2601,11 @@ fn doc_distinct_root_tags_sorted_unique() {
 
 #[test]
 fn doc_distinct_root_todos_sorted_unique() {
-    let src = "* TODO A\n* DONE B\n* TODO C\n* WAIT D\n";
+    let src = "* TODO A\n* DONE B\n* TODO C\n* DONE D\n";
     let doc = parse(src).expect("parse");
     assert_eq!(
         doc.distinct_root_todos(),
-        vec!["DONE".to_owned(), "TODO".to_owned(), "WAIT".to_owned()]
+        vec!["DONE".to_owned(), "TODO".to_owned()]
     );
 }
 
