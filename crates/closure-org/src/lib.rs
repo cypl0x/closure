@@ -633,6 +633,23 @@ impl OrgDoc {
         out
     }
 
+    /// Returns `id:` link targets that don't resolve to any headline.
+    #[must_use]
+    pub fn dead_link_targets(&self) -> Vec<String> {
+        let mut out: Vec<String> = Vec::new();
+        for h in self.iter_headlines() {
+            for raw in h.link_targets() {
+                let Some(stripped) = raw.strip_prefix("id:") else {
+                    continue;
+                };
+                if !self.contains_id(stripped) {
+                    out.push(raw);
+                }
+            }
+        }
+        out
+    }
+
     /// Returns headlines whose body contains `needle` ignoring case.
     #[must_use]
     pub fn headlines_with_body_substring_ignore_case<'a>(
