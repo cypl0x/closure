@@ -863,6 +863,20 @@ impl OrgDoc {
         self.hub_ids().len()
     }
 
+    /// Returns ids whose subtree contains a TODO descendant.
+    #[must_use]
+    pub fn ids_with_todo_descendant(&self) -> Vec<&str> {
+        let mut out: Vec<&str> = Vec::new();
+        for h in self.iter_headlines() {
+            if let Some(id) = h.id_property()
+                && (h.todo().is_some() || h.descendant_has_todo("TODO"))
+            {
+                out.push(id);
+            }
+        }
+        out
+    }
+
     /// Returns ids that act as both source and sink.
     #[must_use]
     pub fn hub_ids(&self) -> Vec<&str> {
