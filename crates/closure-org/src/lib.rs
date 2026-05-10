@@ -4663,6 +4663,13 @@ impl Headline {
         self.filter_descendants(|_| true)
     }
 
+    /// Descendants `depth` levels below this headline (relative).
+    #[must_use]
+    pub fn descendants_at_depth(&self, depth: u8) -> Vec<&Self> {
+        let target = self.level + depth;
+        self.descendants_at_level(target)
+    }
+
     /// First descendant matching a predicate.
     #[must_use]
     pub fn find_descendant<F: Fn(&Self) -> bool>(&self, pred: F) -> Option<&Self> {
