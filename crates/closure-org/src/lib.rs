@@ -683,6 +683,21 @@ impl OrgDoc {
         out
     }
 
+    /// Reverse adjacency: target-id → list of source-ids that link to it.
+    #[must_use]
+    pub fn id_reverse_adjacency(&self) -> std::collections::BTreeMap<String, Vec<String>> {
+        let mut out: std::collections::BTreeMap<String, Vec<String>> =
+            std::collections::BTreeMap::new();
+        for (src, tgt) in self.id_edges() {
+            out.entry(tgt).or_default().push(src);
+        }
+        for v in out.values_mut() {
+            v.sort();
+            v.dedup();
+        }
+        out
+    }
+
     /// Returns every `(source_id, target_id)` `id:` edge inside the doc.
     #[must_use]
     pub fn id_edges(&self) -> Vec<(String, String)> {
