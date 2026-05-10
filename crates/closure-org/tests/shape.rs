@@ -1897,6 +1897,13 @@ fn doc_filter_roots_returns_matches() {
 }
 
 #[test]
+fn doc_map_roots_returns_mapped() {
+    let doc = parse("* A\n* B\n* C\n").expect("parse");
+    let titles: Vec<String> = doc.map_roots(|h| h.title().to_owned());
+    assert_eq!(titles, vec!["A", "B", "C"]);
+}
+
+#[test]
 fn descendant_count_counts_children_recursively() {
     let doc = parse("* Root\n** A\n*** A1\n** B\n").expect("parse");
     let root = &doc.roots()[0];

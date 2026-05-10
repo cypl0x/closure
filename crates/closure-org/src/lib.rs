@@ -1742,6 +1742,11 @@ impl OrgDoc {
         self.roots.iter().filter(|h| pred(h)).collect()
     }
 
+    /// Maps each root headline through `f`.
+    pub fn map_roots<T, F: Fn(&Headline) -> T>(&self, f: F) -> Vec<T> {
+        self.roots.iter().map(f).collect()
+    }
+
     /// Headline at the given DFS index.
     #[must_use]
     pub fn headline_at_index(&self, idx: usize) -> Option<&Headline> {
