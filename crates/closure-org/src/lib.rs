@@ -935,6 +935,12 @@ impl OrgDoc {
         self.count_headlines_where(Headline::has_body)
     }
 
+    /// Number of headlines with a properties drawer.
+    #[must_use]
+    pub fn with_properties_count(&self) -> usize {
+        self.count_headlines_where(Headline::has_properties)
+    }
+
     /// Level histogram across the document.
     #[must_use]
     pub fn level_counts(&self) -> std::collections::BTreeMap<u8, usize> {
