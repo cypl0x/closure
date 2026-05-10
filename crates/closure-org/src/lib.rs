@@ -959,6 +959,22 @@ impl OrgDoc {
         self.roots.iter().map(Headline::subtree_link_count).sum()
     }
 
+    /// Average tags per headline (0 if no headlines).
+    #[must_use]
+    pub fn mean_tags(&self) -> usize {
+        self.total_tag_count()
+            .checked_div(self.headline_count())
+            .unwrap_or(0)
+    }
+
+    /// Average properties per headline (0 if no headlines).
+    #[must_use]
+    pub fn mean_properties(&self) -> usize {
+        self.total_property_count()
+            .checked_div(self.headline_count())
+            .unwrap_or(0)
+    }
+
     /// Level histogram across the document.
     #[must_use]
     pub fn level_counts(&self) -> std::collections::BTreeMap<u8, usize> {
