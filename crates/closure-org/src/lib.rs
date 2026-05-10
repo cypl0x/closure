@@ -1145,6 +1145,17 @@ impl OrgDoc {
             .unwrap_or(0)
     }
 
+    /// Returns min body word count among non-empty bodies (0 if none).
+    #[must_use]
+    pub fn min_nonzero_body_word_count(&self) -> usize {
+        self.iter_headlines()
+            .into_iter()
+            .map(Headline::body_word_count)
+            .filter(|n| *n > 0)
+            .min()
+            .unwrap_or(0)
+    }
+
     /// Level histogram across the document.
     #[must_use]
     pub fn level_counts(&self) -> std::collections::BTreeMap<u8, usize> {
