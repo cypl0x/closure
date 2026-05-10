@@ -1669,6 +1669,32 @@ fn descendant_levels_collected() {
 }
 
 #[test]
+fn doc_distinct_priorities_test() {
+    let doc = parse("* [#A] x\n* [#A] y\n* [#C] z\n").expect("parse");
+    let mut p: Vec<char> = doc
+        .iter_headlines()
+        .into_iter()
+        .filter_map(closure_org::Headline::priority)
+        .collect();
+    p.sort_unstable();
+    p.dedup();
+    assert_eq!(p, vec!['A', 'C']);
+}
+
+#[test]
+fn descendants_filter_by_level_range() {
+    let src = "* R\n** A\n*** A1\n*** A2\n** B\n";
+    let doc = parse(src).expect("parse");
+    let root = &doc.roots()[0];
+    let titles: Vec<&str> = root
+        .descendants_in_level_range(3, 3)
+        .iter()
+        .map(|h| h.title())
+        .collect();
+    assert_eq!(titles, vec!["A1", "A2"]);
+}
+
+#[test]
 fn descendant_count_counts_children_recursively() {
     let doc = parse("* Root\n** A\n*** A1\n** B\n").expect("parse");
     let root = &doc.roots()[0];
