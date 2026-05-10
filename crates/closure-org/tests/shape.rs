@@ -1739,6 +1739,19 @@ fn all_descendants_predicate() {
 }
 
 #[test]
+fn doc_any_headline_predicate() {
+    let doc = parse("* A\n* B :match:\n").expect("parse");
+    assert!(doc.any_headline(|h| h.has_tag("match")));
+    assert!(!doc.any_headline(|h| h.has_tag("none")));
+}
+
+#[test]
+fn doc_all_headlines_predicate() {
+    let doc = parse("* A :work:\n* B :work:\n").expect("parse");
+    assert!(doc.all_headlines_match(|h| h.has_tag("work")));
+}
+
+#[test]
 fn descendant_count_counts_children_recursively() {
     let doc = parse("* Root\n** A\n*** A1\n** B\n").expect("parse");
     let root = &doc.roots()[0];

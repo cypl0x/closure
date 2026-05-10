@@ -1441,6 +1441,16 @@ impl OrgDoc {
         out
     }
 
+    /// True iff any headline matches the predicate.
+    pub fn any_headline<F: Fn(&Headline) -> bool>(&self, pred: F) -> bool {
+        self.iter_headlines().into_iter().any(pred)
+    }
+
+    /// True iff every headline matches the predicate.
+    pub fn all_headlines_match<F: Fn(&Headline) -> bool>(&self, pred: F) -> bool {
+        self.iter_headlines().into_iter().all(pred)
+    }
+
     /// Returns the first headline that satisfies `pred` (depth-first).
     #[must_use]
     pub fn find_headline<F: Fn(&Headline) -> bool>(&self, pred: F) -> Option<&Headline> {
