@@ -440,6 +440,26 @@ impl Vault {
         pairs
     }
 
+    /// Total dead-link count across the vault (id: targets that don't
+    /// resolve to any vault headline).
+    #[must_use]
+    pub fn dead_link_count(&self) -> usize {
+        let mut count = 0usize;
+        for (_, doc) in self.iter() {
+            for h in doc.all_headlines() {
+                for raw in h.link_targets() {
+                    let Some(stripped) = raw.strip_prefix("id:") else {
+                        continue;
+                    };
+                    if !self.has_id(&BlockId::from_existing(stripped)) {
+                        count += 1;
+                    }
+                }
+            }
+        }
+        count
+    }
+
     /// Map of `path → 64-bit FNV-1a content hash` for every loaded
     /// document. Useful for change-detection caches that need to know
     /// which files have shifted since a previous snapshot.
