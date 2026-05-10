@@ -1479,6 +1479,12 @@ impl OrgDoc {
             .collect()
     }
 
+    /// Titles of root headlines only (level 1).
+    #[must_use]
+    pub fn root_titles(&self) -> Vec<&str> {
+        self.roots.iter().map(Headline::title).collect()
+    }
+
     /// Returns the first headline that satisfies `pred` (depth-first).
     #[must_use]
     pub fn find_headline<F: Fn(&Headline) -> bool>(&self, pred: F) -> Option<&Headline> {

@@ -1778,6 +1778,12 @@ fn doc_levels_returns_all() {
 }
 
 #[test]
+fn doc_root_titles_returns_only_roots() {
+    let doc = parse("* A\n** B\n* C\n").expect("parse");
+    assert_eq!(doc.root_titles(), vec!["A", "C"]);
+}
+
+#[test]
 fn descendant_count_counts_children_recursively() {
     let doc = parse("* Root\n** A\n*** A1\n** B\n").expect("parse");
     let root = &doc.roots()[0];
