@@ -2234,6 +2234,28 @@ impl OrgDoc {
         s.into_iter().collect()
     }
 
+    /// Distinct levels across all descendants, sorted ascending.
+    #[must_use]
+    pub fn distinct_descendant_levels(&self) -> Vec<u8> {
+        let mut s: std::collections::BTreeSet<u8> = std::collections::BTreeSet::new();
+        for h in self.collect_descendants_where(|_| true) {
+            s.insert(h.level());
+        }
+        s.into_iter().collect()
+    }
+
+    /// Count of distinct tags across all descendants.
+    #[must_use]
+    pub fn distinct_descendant_tag_count(&self) -> usize {
+        self.distinct_descendant_tags().len()
+    }
+
+    /// Count of distinct priority letters across all descendants.
+    #[must_use]
+    pub fn distinct_descendant_priority_count(&self) -> usize {
+        self.distinct_descendant_priorities().len()
+    }
+
     fn collect_descendants_where<F: Fn(&Headline) -> bool>(
         &self,
         pred: F,

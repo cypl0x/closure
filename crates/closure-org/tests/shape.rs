@@ -2642,3 +2642,24 @@ fn doc_distinct_descendant_priorities_sorted_unique() {
     let doc = parse(src).expect("parse");
     assert_eq!(doc.distinct_descendant_priorities(), vec!['A', 'B']);
 }
+
+#[test]
+fn doc_distinct_descendant_levels_sorted_unique() {
+    let src = "* A\n** B\n*** C\n** D\n* E\n";
+    let doc = parse(src).expect("parse");
+    assert_eq!(doc.distinct_descendant_levels(), vec![1, 2, 3]);
+}
+
+#[test]
+fn doc_distinct_descendant_tag_count_match() {
+    let src = "* A :z:y:\n** B :a:y:\n* C :a:\n";
+    let doc = parse(src).expect("parse");
+    assert_eq!(doc.distinct_descendant_tag_count(), 3);
+}
+
+#[test]
+fn doc_distinct_descendant_priority_count_match() {
+    let src = "* [#A] One\n** [#B] Two\n* [#A] Three\n";
+    let doc = parse(src).expect("parse");
+    assert_eq!(doc.distinct_descendant_priority_count(), 2);
+}
