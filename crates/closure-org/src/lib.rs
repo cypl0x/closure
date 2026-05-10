@@ -2198,6 +2198,42 @@ impl OrgDoc {
         s.into_iter().collect()
     }
 
+    /// Distinct tags across all descendants, sorted.
+    #[must_use]
+    pub fn distinct_descendant_tags(&self) -> Vec<String> {
+        let mut s: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+        for h in self.collect_descendants_where(|_| true) {
+            for t in h.tags() {
+                s.insert(t.to_owned());
+            }
+        }
+        s.into_iter().collect()
+    }
+
+    /// Distinct TODO keywords across all descendants, sorted.
+    #[must_use]
+    pub fn distinct_descendant_todos(&self) -> Vec<String> {
+        let mut s: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+        for h in self.collect_descendants_where(|_| true) {
+            if let Some(t) = h.todo() {
+                s.insert(t.to_owned());
+            }
+        }
+        s.into_iter().collect()
+    }
+
+    /// Distinct priority letters across all descendants, sorted.
+    #[must_use]
+    pub fn distinct_descendant_priorities(&self) -> Vec<char> {
+        let mut s: std::collections::BTreeSet<char> = std::collections::BTreeSet::new();
+        for h in self.collect_descendants_where(|_| true) {
+            if let Some(p) = h.priority() {
+                s.insert(p);
+            }
+        }
+        s.into_iter().collect()
+    }
+
     fn collect_descendants_where<F: Fn(&Headline) -> bool>(
         &self,
         pred: F,

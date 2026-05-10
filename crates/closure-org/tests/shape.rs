@@ -2615,3 +2615,30 @@ fn doc_distinct_root_priorities_sorted_unique() {
     let doc = parse(src).expect("parse");
     assert_eq!(doc.distinct_root_priorities(), vec!['A', 'B', 'C']);
 }
+
+#[test]
+fn doc_distinct_descendant_tags_sorted_unique() {
+    let src = "* A :z:y:\n** B :a:y:\n* C :a:\n";
+    let doc = parse(src).expect("parse");
+    assert_eq!(
+        doc.distinct_descendant_tags(),
+        vec!["a".to_owned(), "y".to_owned(), "z".to_owned()]
+    );
+}
+
+#[test]
+fn doc_distinct_descendant_todos_sorted_unique() {
+    let src = "* TODO A\n** DONE B\n* TODO C\n";
+    let doc = parse(src).expect("parse");
+    assert_eq!(
+        doc.distinct_descendant_todos(),
+        vec!["DONE".to_owned(), "TODO".to_owned()]
+    );
+}
+
+#[test]
+fn doc_distinct_descendant_priorities_sorted_unique() {
+    let src = "* [#A] One\n** [#B] Two\n* [#A] Three\n";
+    let doc = parse(src).expect("parse");
+    assert_eq!(doc.distinct_descendant_priorities(), vec!['A', 'B']);
+}
