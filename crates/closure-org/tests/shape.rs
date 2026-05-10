@@ -1463,6 +1463,19 @@ fn descendant_priority_returns_subtree() {
 }
 
 #[test]
+fn descendants_with_todo_returns_subtree() {
+    let src = "* R\n** TODO A\n** DONE B\n*** TODO C\n";
+    let doc = parse(src).expect("parse");
+    let root = &doc.roots()[0];
+    let titles: Vec<&str> = root
+        .descendants_with_todo("TODO")
+        .iter()
+        .map(|h| h.title())
+        .collect();
+    assert_eq!(titles, vec!["A", "C"]);
+}
+
+#[test]
 fn descendant_count_counts_children_recursively() {
     let doc = parse("* Root\n** A\n*** A1\n** B\n").expect("parse");
     let root = &doc.roots()[0];

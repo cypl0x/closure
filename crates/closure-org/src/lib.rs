@@ -4536,6 +4536,19 @@ impl Headline {
         out
     }
 
+    /// Descendants whose TODO matches `keyword`.
+    #[must_use]
+    pub fn descendants_with_todo<'a>(&'a self, keyword: &str) -> Vec<&'a Self> {
+        let mut out: Vec<&Self> = Vec::new();
+        for c in &self.children {
+            if c.todo() == Some(keyword) {
+                out.push(c);
+            }
+            out.extend(c.descendants_with_todo(keyword));
+        }
+        out
+    }
+
     /// Number of comment lines in the body.
     #[must_use]
     pub fn body_comment_count(&self) -> usize {
