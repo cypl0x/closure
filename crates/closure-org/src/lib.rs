@@ -3996,6 +3996,12 @@ impl Headline {
             .collect()
     }
 
+    /// Returns levels of every descendant in DFS order.
+    #[must_use]
+    pub fn descendant_levels(&self) -> Vec<u8> {
+        self.descendants().into_iter().map(Self::level).collect()
+    }
+
     /// First child whose title equals `needle` (case-sensitive).
     #[must_use]
     pub fn child_by_title(&self, needle: &str) -> Option<&Self> {
