@@ -1964,6 +1964,24 @@ fn doc_max_min_level_endpoints() {
 }
 
 #[test]
+fn doc_max_priority_letter_returns_none_when_empty() {
+    let doc = parse("* A\n* B\n").expect("parse");
+    assert_eq!(doc.max_priority_letter(), None);
+    assert_eq!(doc.min_priority_letter(), None);
+}
+
+#[test]
+fn doc_first_root_with_priority_returns_match() {
+    let doc = parse("* A\n* [#A] B\n* [#B] C\n").expect("parse");
+    assert_eq!(
+        doc.first_root_matching(|h| h.priority() == Some('B'))
+            .expect("h")
+            .title(),
+        "C"
+    );
+}
+
+#[test]
 fn descendant_count_counts_children_recursively() {
     let doc = parse("* Root\n** A\n*** A1\n** B\n").expect("parse");
     let root = &doc.roots()[0];
