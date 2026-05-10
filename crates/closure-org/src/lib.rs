@@ -816,6 +816,12 @@ impl OrgDoc {
         self.duplicate_ids().len()
     }
 
+    /// Total number of distinct unique ids.
+    #[must_use]
+    pub fn unique_id_count(&self) -> usize {
+        self.id_set().len()
+    }
+
     /// Returns ids that appear more than once.
     #[must_use]
     pub fn duplicate_ids(&self) -> Vec<&str> {
