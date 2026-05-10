@@ -509,6 +509,16 @@ enum Cmd {
         /// Path to the vault directory.
         vault: PathBuf,
     },
+    /// Print files ranked by headline count (descending).
+    RankFiles {
+        /// Path to the vault directory.
+        vault: PathBuf,
+    },
+    /// Print files ranked by byte count (descending).
+    RankBytes {
+        /// Path to the vault directory.
+        vault: PathBuf,
+    },
     /// Run the MCP stdio dispatcher (one command name per line; `LIST`
     /// to enumerate). Quits on EOF.
     Mcp,
@@ -899,6 +909,8 @@ fn run(cmd: &Cmd) -> Result<(), String> {
         Cmd::SmallestFile { vault } => cmd_smallest_file(vault),
         Cmd::QuietestFile { vault } => cmd_quietest_file(vault),
         Cmd::EmptyFiles { vault } => cmd_empty_files(vault),
+        Cmd::RankFiles { vault } => cmd_rank_files(vault),
+        Cmd::RankBytes { vault } => cmd_rank_bytes(vault),
         Cmd::Mcp => cmd_mcp(),
         Cmd::Orphans { vault } => cmd_orphans(vault),
         Cmd::DeadLinks { vault } => cmd_dead_links(vault),
@@ -1614,6 +1626,22 @@ fn cmd_empty_files(vault: &Path) -> Result<(), String> {
     let v = Vault::open(vault).map_err(|e| format!("{e}"))?;
     for p in v.empty_files() {
         println!("{}", p.display());
+    }
+    Ok(())
+}
+
+fn cmd_rank_files(vault: &Path) -> Result<(), String> {
+    let v = Vault::open(vault).map_err(|e| format!("{e}"))?;
+    for (p, n) in v.files_by_headline_count() {
+        println!("{n}\t{}", p.display());
+    }
+    Ok(())
+}
+
+fn cmd_rank_bytes(vault: &Path) -> Result<(), String> {
+    let v = Vault::open(vault).map_err(|e| format!("{e}"))?;
+    for (p, n) in v.files_by_byte_count() {
+        println!("{n}\t{}", p.display());
     }
     Ok(())
 }
