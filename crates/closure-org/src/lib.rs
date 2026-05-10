@@ -1968,6 +1968,24 @@ impl OrgDoc {
         self.count_descendants_where(|h| h.id_property().is_some())
     }
 
+    /// Titles of all descendants with priority letter `letter`.
+    #[must_use]
+    pub fn descendant_titles_with_priority(&self, letter: char) -> Vec<&str> {
+        self.descendants_with_priority(letter)
+            .into_iter()
+            .map(Headline::title)
+            .collect()
+    }
+
+    /// Titles of all descendants tagged `:ARCHIVE:`.
+    #[must_use]
+    pub fn descendant_titles_archived(&self) -> Vec<&str> {
+        self.descendants_archived()
+            .into_iter()
+            .map(Headline::title)
+            .collect()
+    }
+
     fn collect_descendants_where<F: Fn(&Headline) -> bool>(
         &self,
         pred: F,

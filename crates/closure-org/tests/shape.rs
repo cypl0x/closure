@@ -2393,3 +2393,20 @@ fn doc_count_descendants_with_id_counts_all() {
     let doc = parse(src).expect("parse");
     assert_eq!(doc.count_descendants_with_id(), 2);
 }
+
+#[test]
+fn doc_descendant_titles_with_priority_returns_strs() {
+    let src = "* [#A] One\n** [#B] Two\n* [#A] Three\n";
+    let doc = parse(src).expect("parse");
+    assert_eq!(
+        doc.descendant_titles_with_priority('A'),
+        vec!["One", "Three"]
+    );
+}
+
+#[test]
+fn doc_descendant_titles_archived_returns_strs() {
+    let src = "* A :ARCHIVE:\n** B\n* C :ARCHIVE:\n";
+    let doc = parse(src).expect("parse");
+    assert_eq!(doc.descendant_titles_archived(), vec!["A", "C"]);
+}
