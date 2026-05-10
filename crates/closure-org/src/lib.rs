@@ -1461,6 +1461,24 @@ impl OrgDoc {
         self.iter_headlines().into_iter().fold(init, f)
     }
 
+    /// Titles of every headline in DFS order.
+    #[must_use]
+    pub fn titles(&self) -> Vec<&str> {
+        self.iter_headlines()
+            .into_iter()
+            .map(Headline::title)
+            .collect()
+    }
+
+    /// Levels of every headline in DFS order.
+    #[must_use]
+    pub fn levels(&self) -> Vec<u8> {
+        self.iter_headlines()
+            .into_iter()
+            .map(Headline::level)
+            .collect()
+    }
+
     /// Returns the first headline that satisfies `pred` (depth-first).
     #[must_use]
     pub fn find_headline<F: Fn(&Headline) -> bool>(&self, pred: F) -> Option<&Headline> {
