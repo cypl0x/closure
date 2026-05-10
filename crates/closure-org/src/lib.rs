@@ -555,6 +555,18 @@ impl OrgDoc {
         self.headline_by_id(id).map(Headline::is_comment)
     }
 
+    /// Body word count for `id`-tagged headline.
+    #[must_use]
+    pub fn body_word_count_of(&self, id: &str) -> Option<usize> {
+        self.headline_by_id(id).map(Headline::body_word_count)
+    }
+
+    /// Body byte count for `id`-tagged headline.
+    #[must_use]
+    pub fn body_byte_count_of(&self, id: &str) -> Option<usize> {
+        self.headline_by_id(id).map(Headline::body_byte_count)
+    }
+
     /// Returns every headline matching `pred` (depth-first).
     #[must_use]
     pub fn filter_headlines<F: Fn(&Headline) -> bool>(&self, pred: F) -> Vec<&Headline> {
