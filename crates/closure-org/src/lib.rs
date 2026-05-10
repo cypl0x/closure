@@ -1744,6 +1744,12 @@ impl OrgDoc {
         self.headline_index_of(|h| h.id_property() == Some(id))
     }
 
+    /// DFS index of the first headline whose title equals `needle`.
+    #[must_use]
+    pub fn position_of_title(&self, needle: &str) -> Option<usize> {
+        self.headline_index_of(|h| h.title() == needle)
+    }
+
     /// Number of preamble nodes.
     #[must_use]
     pub const fn preamble_len(&self) -> usize {
