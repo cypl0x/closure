@@ -4588,6 +4588,26 @@ impl Headline {
             .sum()
     }
 
+    /// Descendants with property `key` equal to `value`.
+    #[must_use]
+    pub fn descendants_with_property_value<'a>(
+        &'a self,
+        key: &str,
+        value: &str,
+    ) -> Vec<&'a Self> {
+        let mut out: Vec<&Self> = Vec::new();
+        for c in &self.children {
+            if c.properties()
+                .and_then(|p| p.get(key))
+                .is_some_and(|v| v == value)
+            {
+                out.push(c);
+            }
+            out.extend(c.descendants_with_property_value(key, value));
+        }
+        out
+    }
+
     /// Number of comment lines in the body.
     #[must_use]
     pub fn body_comment_count(&self) -> usize {
