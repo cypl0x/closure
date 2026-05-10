@@ -477,6 +477,18 @@ impl OrgDoc {
         self.headline_by_id(id).map(Headline::tags)
     }
 
+    /// TODO keyword for `id`-tagged headline.
+    #[must_use]
+    pub fn todo_of(&self, id: &str) -> Option<&str> {
+        self.headline_by_id(id).and_then(Headline::todo)
+    }
+
+    /// Priority for `id`-tagged headline.
+    #[must_use]
+    pub fn priority_of(&self, id: &str) -> Option<char> {
+        self.headline_by_id(id).and_then(Headline::priority)
+    }
+
     /// Returns every headline matching `pred` (depth-first).
     #[must_use]
     pub fn filter_headlines<F: Fn(&Headline) -> bool>(&self, pred: F) -> Vec<&Headline> {
