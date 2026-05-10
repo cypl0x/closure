@@ -2167,3 +2167,10 @@ fn doc_root_with_todo_returns_match() {
     assert_eq!(doc.root_with_todo("TODO").expect("h").title(), "B");
     assert!(doc.root_with_todo("WAIT").is_none());
 }
+
+#[test]
+fn doc_root_with_priority_returns_match() {
+    let doc = parse("* [#A] First\n* [#B] Second\n").expect("parse");
+    assert_eq!(doc.root_with_priority('B').expect("h").title(), "Second");
+    assert!(doc.root_with_priority('C').is_none());
+}

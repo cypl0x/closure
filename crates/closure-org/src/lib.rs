@@ -1797,6 +1797,12 @@ impl OrgDoc {
         self.roots.iter().find(|h| h.todo() == Some(kw))
     }
 
+    /// Root with priority letter equal to `letter`.
+    #[must_use]
+    pub fn root_with_priority(&self, letter: char) -> Option<&Headline> {
+        self.roots.iter().find(|h| h.priority() == Some(letter))
+    }
+
     /// Highest priority letter present (`'A'` is highest).
     #[must_use]
     pub fn max_priority_letter(&self) -> Option<char> {
