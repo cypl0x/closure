@@ -781,6 +781,23 @@ impl OrgDoc {
         self.dead_edges().len()
     }
 
+    /// Returns ids that have neither incoming nor outgoing edges.
+    #[must_use]
+    pub fn isolated_ids(&self) -> Vec<&str> {
+        let adj = self.id_adjacency();
+        let rev = self.id_reverse_adjacency();
+        let mut out: Vec<&str> = Vec::new();
+        for h in self.iter_headlines() {
+            if let Some(id) = h.id_property()
+                && !adj.contains_key(id)
+                && !rev.contains_key(id)
+            {
+                out.push(id);
+            }
+        }
+        out
+    }
+
     /// Reverse adjacency: target-id → list of source-ids that link to it.
     #[must_use]
     pub fn id_reverse_adjacency(&self) -> std::collections::BTreeMap<String, Vec<String>> {
