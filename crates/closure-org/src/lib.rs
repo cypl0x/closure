@@ -869,6 +869,19 @@ impl OrgDoc {
         self.ids_with_todo_descendant().len()
     }
 
+    /// Priority-letter counts across the document.
+    #[must_use]
+    pub fn priority_counts(&self) -> std::collections::BTreeMap<char, usize> {
+        let mut counts: std::collections::BTreeMap<char, usize> =
+            std::collections::BTreeMap::new();
+        for h in self.iter_headlines() {
+            if let Some(c) = h.priority() {
+                *counts.entry(c).or_insert(0) += 1;
+            }
+        }
+        counts
+    }
+
     /// TODO-keyword counts across the document.
     #[must_use]
     pub fn todo_counts(&self) -> std::collections::BTreeMap<String, usize> {
