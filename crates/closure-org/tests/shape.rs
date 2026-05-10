@@ -1982,6 +1982,13 @@ fn doc_first_root_with_priority_returns_match() {
 }
 
 #[test]
+fn doc_root_index_of_returns_position() {
+    let doc = parse("* A\n* B\n* C\n").expect("parse");
+    assert_eq!(doc.root_index_of(|h| h.title() == "B"), Some(1));
+    assert_eq!(doc.root_index_of(|h| h.title() == "Z"), None);
+}
+
+#[test]
 fn descendant_count_counts_children_recursively() {
     let doc = parse("* Root\n** A\n*** A1\n** B\n").expect("parse");
     let root = &doc.roots()[0];

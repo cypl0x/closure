@@ -1768,6 +1768,11 @@ impl OrgDoc {
         self.roots.get(idx).or_else(|| self.roots.first())
     }
 
+    /// Index of the first root matching `pred`.
+    pub fn root_index_of<F: Fn(&Headline) -> bool>(&self, pred: F) -> Option<usize> {
+        self.roots.iter().position(pred)
+    }
+
     /// Highest priority letter present (`'A'` is highest).
     #[must_use]
     pub fn max_priority_letter(&self) -> Option<char> {
