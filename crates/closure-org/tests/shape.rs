@@ -1911,6 +1911,20 @@ fn doc_fold_roots_aggregates() {
 }
 
 #[test]
+fn doc_any_root_predicate() {
+    let doc = parse("* A\n* B :match:\n").expect("parse");
+    assert!(doc.any_root(|h| h.has_tag("match")));
+    assert!(!doc.any_root(|h| h.has_tag("none")));
+}
+
+#[test]
+fn doc_all_roots_predicate() {
+    let doc = parse("* A :work:\n* B :work:\n").expect("parse");
+    assert!(doc.all_roots(|h| h.has_tag("work")));
+    assert!(!doc.all_roots(|h| h.title() == "A"));
+}
+
+#[test]
 fn descendant_count_counts_children_recursively() {
     let doc = parse("* Root\n** A\n*** A1\n** B\n").expect("parse");
     let root = &doc.roots()[0];

@@ -1752,6 +1752,16 @@ impl OrgDoc {
         self.roots.iter().fold(init, f)
     }
 
+    /// True iff any root matches the predicate.
+    pub fn any_root<F: Fn(&Headline) -> bool>(&self, pred: F) -> bool {
+        self.roots.iter().any(pred)
+    }
+
+    /// True iff every root matches the predicate.
+    pub fn all_roots<F: Fn(&Headline) -> bool>(&self, pred: F) -> bool {
+        self.roots.iter().all(pred)
+    }
+
     /// Headline at the given DFS index.
     #[must_use]
     pub fn headline_at_index(&self, idx: usize) -> Option<&Headline> {
