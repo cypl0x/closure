@@ -845,6 +845,18 @@ impl OrgDoc {
         out
     }
 
+    /// Number of source-only ids.
+    #[must_use]
+    pub fn source_only_count(&self) -> usize {
+        self.source_only_ids().len()
+    }
+
+    /// Number of sink-only ids.
+    #[must_use]
+    pub fn sink_only_count(&self) -> usize {
+        self.sink_only_ids().len()
+    }
+
     /// Returns ids that have incoming edges only (no outgoing).
     #[must_use]
     pub fn sink_only_ids(&self) -> Vec<&str> {
