@@ -1809,6 +1809,25 @@ fn doc_distinct_link_target_count_returns_count() {
 }
 
 #[test]
+fn doc_root_at_returns_root() {
+    let doc = parse("* A\n* B\n* C\n").expect("parse");
+    assert_eq!(doc.root_at(1).expect("h").title(), "B");
+    assert!(doc.root_at(99).is_none());
+}
+
+#[test]
+fn doc_first_root_returns_first() {
+    let doc = parse("* A\n* B\n").expect("parse");
+    assert_eq!(doc.first_root().expect("h").title(), "A");
+}
+
+#[test]
+fn doc_last_root_returns_last() {
+    let doc = parse("* A\n* B\n").expect("parse");
+    assert_eq!(doc.last_root().expect("h").title(), "B");
+}
+
+#[test]
 fn descendant_count_counts_children_recursively() {
     let doc = parse("* Root\n** A\n*** A1\n** B\n").expect("parse");
     let root = &doc.roots()[0];

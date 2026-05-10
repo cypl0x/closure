@@ -1709,6 +1709,24 @@ impl OrgDoc {
         self.roots.iter()
     }
 
+    /// Root headline at index `idx`.
+    #[must_use]
+    pub fn root_at(&self, idx: usize) -> Option<&Headline> {
+        self.roots.get(idx)
+    }
+
+    /// First root headline.
+    #[must_use]
+    pub fn first_root(&self) -> Option<&Headline> {
+        self.roots.first()
+    }
+
+    /// Last root headline.
+    #[must_use]
+    pub fn last_root(&self) -> Option<&Headline> {
+        self.roots.last()
+    }
+
     /// Number of preamble nodes.
     #[must_use]
     pub const fn preamble_len(&self) -> usize {
