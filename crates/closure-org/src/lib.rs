@@ -753,6 +753,16 @@ impl OrgDoc {
             .collect()
     }
 
+    /// Self-loop edges (source == target).
+    #[must_use]
+    pub fn self_loops(&self) -> Vec<String> {
+        self.id_edges()
+            .into_iter()
+            .filter(|(s, t)| s == t)
+            .map(|(s, _)| s)
+            .collect()
+    }
+
     /// Reverse adjacency: target-id → list of source-ids that link to it.
     #[must_use]
     pub fn id_reverse_adjacency(&self) -> std::collections::BTreeMap<String, Vec<String>> {
