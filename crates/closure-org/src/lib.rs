@@ -975,6 +975,22 @@ impl OrgDoc {
             .unwrap_or(0)
     }
 
+    /// Average links per headline (0 if no headlines).
+    #[must_use]
+    pub fn mean_links(&self) -> usize {
+        self.total_link_count()
+            .checked_div(self.headline_count())
+            .unwrap_or(0)
+    }
+
+    /// Average timestamps per headline (0 if no headlines).
+    #[must_use]
+    pub fn mean_timestamps(&self) -> usize {
+        self.total_timestamp_count()
+            .checked_div(self.headline_count())
+            .unwrap_or(0)
+    }
+
     /// Level histogram across the document.
     #[must_use]
     pub fn level_counts(&self) -> std::collections::BTreeMap<u8, usize> {
