@@ -1251,6 +1251,23 @@ fn first_archived_returns_first_match() {
 }
 
 #[test]
+fn first_with_priority_returns_match() {
+    let doc = parse("* A\n* [#A] B\n* [#B] C\n").expect("parse");
+    assert_eq!(doc.first_with_priority('A').expect("h").title(), "B");
+    assert_eq!(doc.first_with_priority('B').expect("h").title(), "C");
+}
+
+#[test]
+fn first_with_property_returns_match() {
+    let src = "* A\n* B\n:PROPERTIES:\n:EFFORT: 2h\n:END:\n* C\n";
+    let doc = parse(src).expect("parse");
+    assert_eq!(
+        doc.first_with_property("EFFORT").expect("h").title(),
+        "B"
+    );
+}
+
+#[test]
 fn descendant_count_counts_children_recursively() {
     let doc = parse("* Root\n** A\n*** A1\n** B\n").expect("parse");
     let root = &doc.roots()[0];

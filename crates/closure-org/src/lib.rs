@@ -420,6 +420,18 @@ impl OrgDoc {
         self.find_headline(|h| h.todo() == Some(keyword))
     }
 
+    /// Returns the first headline carrying priority `letter`.
+    #[must_use]
+    pub fn first_with_priority(&self, letter: char) -> Option<&Headline> {
+        self.find_headline(|h| h.priority() == Some(letter))
+    }
+
+    /// Returns the first headline carrying property `key`.
+    #[must_use]
+    pub fn first_with_property<'a>(&'a self, key: &str) -> Option<&'a Headline> {
+        self.find_headline(|h| h.has_property(key))
+    }
+
     /// Iterate every headline depth-first.
     #[must_use]
     pub fn iter_headlines(&self) -> Vec<&Headline> {
