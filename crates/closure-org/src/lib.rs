@@ -668,6 +668,21 @@ impl OrgDoc {
         self.id_edges().len()
     }
 
+    /// Edges keyed by source-id pointing to a sorted target list.
+    #[must_use]
+    pub fn id_adjacency(&self) -> std::collections::BTreeMap<String, Vec<String>> {
+        let mut out: std::collections::BTreeMap<String, Vec<String>> =
+            std::collections::BTreeMap::new();
+        for (src, tgt) in self.id_edges() {
+            out.entry(src).or_default().push(tgt);
+        }
+        for v in out.values_mut() {
+            v.sort();
+            v.dedup();
+        }
+        out
+    }
+
     /// Returns every `(source_id, target_id)` `id:` edge inside the doc.
     #[must_use]
     pub fn id_edges(&self) -> Vec<(String, String)> {
