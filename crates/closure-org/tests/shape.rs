@@ -1268,6 +1268,21 @@ fn first_with_property_returns_match() {
 }
 
 #[test]
+fn count_at_level_filters() {
+    let doc = parse("* A\n** B\n** C\n* D\n").expect("parse");
+    assert_eq!(doc.count_at_level(1), 2);
+    assert_eq!(doc.count_at_level(2), 2);
+    assert_eq!(doc.count_at_level(3), 0);
+}
+
+#[test]
+fn count_title_contains_substring() {
+    let doc = parse("* hello world\n* hello there\n* bye\n").expect("parse");
+    assert_eq!(doc.count_title_contains("hello"), 2);
+    assert_eq!(doc.count_title_contains("bye"), 1);
+}
+
+#[test]
 fn descendant_count_counts_children_recursively() {
     let doc = parse("* Root\n** A\n*** A1\n** B\n").expect("parse");
     let root = &doc.roots()[0];
