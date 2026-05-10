@@ -645,6 +645,11 @@ enum Cmd {
         /// Path to a `*.org` file.
         file: PathBuf,
     },
+    /// Print summary stats (means, maxes, distinct counts) for a file.
+    Summary {
+        /// Path to a `*.org` file.
+        file: PathBuf,
+    },
     /// Print every leaf headline (no children) in a file.
     Leaves {
         /// Path to a `*.org` file.
@@ -994,6 +999,7 @@ fn run(cmd: &Cmd) -> Result<(), String> {
         Cmd::LogbookAppend { file, id, entry } => cmd_logbook_append(file, id, entry),
         Cmd::Depth { file } => cmd_depth(file),
         Cmd::Nodes { file } => cmd_nodes(file),
+        Cmd::Summary { file } => cmd_summary(file),
         Cmd::Leaves { file } => cmd_leaves(file),
         Cmd::Roots { file } => cmd_roots(file),
         Cmd::Archived { vault } => cmd_archived(vault),
@@ -1383,6 +1389,27 @@ fn cmd_nodes(path: &Path) -> Result<(), String> {
     let doc = closure_org::parse(&src).map_err(|e| format!("{e}"))?;
     println!("preamble: {}", doc.preamble_len());
     println!("total:    {}", doc.total_node_count());
+    Ok(())
+}
+
+fn cmd_summary(path: &Path) -> Result<(), String> {
+    let src = fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))?;
+    let doc = closure_org::parse(&src).map_err(|e| format!("{e}"))?;
+    println!("headlines:        {}", doc.headline_count());
+    println!("max depth:        {}", doc.max_depth());
+    println!("min level:        {}", doc.min_level());
+    println!("distinct tags:    {}", doc.distinct_tag_count());
+    println!("distinct todos:   {}", doc.distinct_todo_count());
+    println!("distinct prio:    {}", doc.distinct_priority_count());
+    println!("mean tags:        {}", doc.mean_tags());
+    println!("mean links:       {}", doc.mean_links());
+    println!("max children:     {}", doc.max_child_count());
+    println!("max descendants:  {}", doc.max_descendant_count());
+    println!("max body words:   {}", doc.max_body_word_count());
+    println!("tag density:      {}%", doc.tag_density_pct());
+    println!("todo density:     {}%", doc.todo_density_pct());
+    println!("leaf pct:         {}%", doc.leaf_pct());
+    println!("id pct:           {}%", doc.id_pct());
     Ok(())
 }
 
