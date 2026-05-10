@@ -2248,3 +2248,21 @@ fn doc_descendant_with_priority_returns_match() {
     );
     assert!(doc.descendant_with_priority('Z').is_none());
 }
+
+#[test]
+fn doc_count_descendants_with_tag_counts_all() {
+    let src = "* A :work:\n** B :work:\n* C :home:\n";
+    let doc = parse(src).expect("parse");
+    assert_eq!(doc.count_descendants_with_tag("work"), 2);
+    assert_eq!(doc.count_descendants_with_tag("home"), 1);
+    assert_eq!(doc.count_descendants_with_tag("none"), 0);
+}
+
+#[test]
+fn doc_count_descendants_with_todo_counts_all() {
+    let src = "* TODO A\n** DONE B\n* TODO C\n";
+    let doc = parse(src).expect("parse");
+    assert_eq!(doc.count_descendants_with_todo("TODO"), 2);
+    assert_eq!(doc.count_descendants_with_todo("DONE"), 1);
+    assert_eq!(doc.count_descendants_with_todo("WAIT"), 0);
+}

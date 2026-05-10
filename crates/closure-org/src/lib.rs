@@ -1857,6 +1857,29 @@ impl OrgDoc {
         self.find_descendant(|h| h.priority() == Some(letter))
     }
 
+    /// Count of all descendants (across roots) carrying `tag`.
+    #[must_use]
+    pub fn count_descendants_with_tag(&self, tag: &str) -> usize {
+        self.count_descendants_where(|h| h.has_tag(tag))
+    }
+
+    /// Count of all descendants (across roots) with TODO keyword `kw`.
+    #[must_use]
+    pub fn count_descendants_with_todo(&self, kw: &str) -> usize {
+        self.count_descendants_where(|h| h.todo() == Some(kw))
+    }
+
+    fn count_descendants_where<F: Fn(&Headline) -> bool>(&self, pred: F) -> usize {
+        fn walk<F: Fn(&Headline) -> bool>(h: &Headline, pred: &F) -> usize {
+            let mut n = usize::from(pred(h));
+            for c in h.children() {
+                n += walk(c, pred);
+            }
+            n
+        }
+        self.roots.iter().map(|r| walk(r, &pred)).sum()
+    }
+
     fn find_descendant<F: Fn(&Headline) -> bool>(&self, pred: F) -> Option<&Headline> {
         fn walk<'a, F: Fn(&Headline) -> bool>(
             h: &'a Headline,
