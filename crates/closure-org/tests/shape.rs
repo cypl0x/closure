@@ -2266,3 +2266,22 @@ fn doc_count_descendants_with_todo_counts_all() {
     assert_eq!(doc.count_descendants_with_todo("DONE"), 1);
     assert_eq!(doc.count_descendants_with_todo("WAIT"), 0);
 }
+
+#[test]
+fn doc_count_descendants_with_priority_counts_all() {
+    let src = "* [#A] One\n** [#B] Two\n* [#A] Three\n";
+    let doc = parse(src).expect("parse");
+    assert_eq!(doc.count_descendants_with_priority('A'), 2);
+    assert_eq!(doc.count_descendants_with_priority('B'), 1);
+    assert_eq!(doc.count_descendants_with_priority('C'), 0);
+}
+
+#[test]
+fn doc_count_descendants_at_level_counts_all() {
+    let src = "* A\n** B\n** C\n*** D\n* E\n";
+    let doc = parse(src).expect("parse");
+    assert_eq!(doc.count_descendants_at_level(1), 2);
+    assert_eq!(doc.count_descendants_at_level(2), 2);
+    assert_eq!(doc.count_descendants_at_level(3), 1);
+    assert_eq!(doc.count_descendants_at_level(4), 0);
+}

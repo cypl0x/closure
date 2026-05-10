@@ -1869,6 +1869,18 @@ impl OrgDoc {
         self.count_descendants_where(|h| h.todo() == Some(kw))
     }
 
+    /// Count of all descendants (across roots) with priority letter `letter`.
+    #[must_use]
+    pub fn count_descendants_with_priority(&self, letter: char) -> usize {
+        self.count_descendants_where(|h| h.priority() == Some(letter))
+    }
+
+    /// Count of all descendants (across roots) at exactly `level`.
+    #[must_use]
+    pub fn count_descendants_at_level(&self, level: u8) -> usize {
+        self.count_descendants_where(|h| h.level() == level)
+    }
+
     fn count_descendants_where<F: Fn(&Headline) -> bool>(&self, pred: F) -> usize {
         fn walk<F: Fn(&Headline) -> bool>(h: &Headline, pred: &F) -> usize {
             let mut n = usize::from(pred(h));
