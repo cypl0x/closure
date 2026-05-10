@@ -1650,6 +1650,17 @@ fn descendant_todos_collected() {
 }
 
 #[test]
+fn descendant_priorities_collected() {
+    let src = "* R\n** [#A] A\n** [#B] B\n*** [#A] C\n";
+    let doc = parse(src).expect("parse");
+    let root = &doc.roots()[0];
+    let mut p: Vec<char> = root.descendant_priorities();
+    p.sort_unstable();
+    p.dedup();
+    assert_eq!(p, vec!['A', 'B']);
+}
+
+#[test]
 fn descendant_count_counts_children_recursively() {
     let doc = parse("* Root\n** A\n*** A1\n** B\n").expect("parse");
     let root = &doc.roots()[0];

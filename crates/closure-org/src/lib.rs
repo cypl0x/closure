@@ -3987,6 +3987,15 @@ impl Headline {
             .collect()
     }
 
+    /// Returns priority letters of every descendant carrying one.
+    #[must_use]
+    pub fn descendant_priorities(&self) -> Vec<char> {
+        self.descendants()
+            .into_iter()
+            .filter_map(Self::priority)
+            .collect()
+    }
+
     /// First child whose title equals `needle` (case-sensitive).
     #[must_use]
     pub fn child_by_title(&self, needle: &str) -> Option<&Self> {
