@@ -1105,6 +1105,26 @@ impl OrgDoc {
             .unwrap_or(0)
     }
 
+    /// Returns max descendant count across headlines.
+    #[must_use]
+    pub fn max_descendant_count(&self) -> usize {
+        self.iter_headlines()
+            .into_iter()
+            .map(Headline::descendant_count)
+            .max()
+            .unwrap_or(0)
+    }
+
+    /// Returns max subtree word count across headlines.
+    #[must_use]
+    pub fn max_subtree_word_count(&self) -> usize {
+        self.iter_headlines()
+            .into_iter()
+            .map(Headline::subtree_word_count)
+            .max()
+            .unwrap_or(0)
+    }
+
     /// Level histogram across the document.
     #[must_use]
     pub fn level_counts(&self) -> std::collections::BTreeMap<u8, usize> {
