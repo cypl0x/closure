@@ -544,6 +544,11 @@ enum Cmd {
         /// Path to the vault directory.
         vault: PathBuf,
     },
+    /// Print every drawer id in a file (no value).
+    AllIds {
+        /// Path to a `*.org` file.
+        file: PathBuf,
+    },
     /// Run the MCP stdio dispatcher (one command name per line; `LIST`
     /// to enumerate). Quits on EOF.
     Mcp,
@@ -941,6 +946,7 @@ fn run(cmd: &Cmd) -> Result<(), String> {
         Cmd::RankWords { vault } => cmd_rank_words(vault),
         Cmd::Edges { vault } => cmd_edges(vault),
         Cmd::DuplicateIds { vault } => cmd_duplicate_ids(vault),
+        Cmd::AllIds { file } => cmd_all_ids(file),
         Cmd::Mcp => cmd_mcp(),
         Cmd::Orphans { vault } => cmd_orphans(vault),
         Cmd::DeadLinks { vault } => cmd_dead_links(vault),
@@ -1711,6 +1717,15 @@ fn cmd_edges(vault: &Path) -> Result<(), String> {
 fn cmd_duplicate_ids(vault: &Path) -> Result<(), String> {
     let v = Vault::open(vault).map_err(|e| format!("{e}"))?;
     for id in v.duplicate_ids() {
+        println!("{id}");
+    }
+    Ok(())
+}
+
+fn cmd_all_ids(path: &Path) -> Result<(), String> {
+    let src = fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))?;
+    let doc = closure_org::parse(&src).map_err(|e| format!("{e}"))?;
+    for id in doc.all_ids() {
         println!("{id}");
     }
     Ok(())
