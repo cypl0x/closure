@@ -1224,6 +1224,33 @@ fn distinct_levels_sorted_unique() {
 }
 
 #[test]
+fn rename_first_root_via_path() {
+    let src = "* Old\n";
+    let doc = parse(src).expect("parse");
+    let new = closure_org::rewrite_headline_title(&doc, &[0], "New").expect("rewrite");
+    assert_eq!(new.roots()[0].title(), "New");
+}
+
+#[test]
+fn count_with_id_walks_tree() {
+    let src = "* A\n:PROPERTIES:\n:ID: x\n:END:\n* B\n** C\n:PROPERTIES:\n:ID: y\n:END:\n";
+    let doc = parse(src).expect("parse");
+    assert_eq!(doc.count_with_id(), 2);
+}
+
+#[test]
+fn first_todo_returns_first_match() {
+    let doc = parse("* A\n* TODO B\n* TODO C\n").expect("parse");
+    assert_eq!(doc.first_todo().expect("h").title(), "B");
+}
+
+#[test]
+fn first_archived_returns_first_match() {
+    let doc = parse("* A\n* B :ARCHIVE:\n").expect("parse");
+    assert_eq!(doc.first_archived().expect("h").title(), "B");
+}
+
+#[test]
 fn descendant_count_counts_children_recursively() {
     let doc = parse("* Root\n** A\n*** A1\n** B\n").expect("parse");
     let root = &doc.roots()[0];
