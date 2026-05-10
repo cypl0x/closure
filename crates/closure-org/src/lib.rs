@@ -3978,6 +3978,15 @@ impl Headline {
             .collect()
     }
 
+    /// Returns TODO keywords of every descendant carrying one.
+    #[must_use]
+    pub fn descendant_todo_keywords(&self) -> Vec<&str> {
+        self.descendants()
+            .into_iter()
+            .filter_map(Self::todo)
+            .collect()
+    }
+
     /// First child whose title equals `needle` (case-sensitive).
     #[must_use]
     pub fn child_by_title(&self, needle: &str) -> Option<&Self> {

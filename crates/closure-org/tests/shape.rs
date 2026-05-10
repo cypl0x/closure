@@ -1639,6 +1639,17 @@ fn descendant_tags_collected() {
 }
 
 #[test]
+fn descendant_todos_collected() {
+    let src = "* R\n** TODO A\n** DONE B\n*** TODO C\n";
+    let doc = parse(src).expect("parse");
+    let root = &doc.roots()[0];
+    let mut todos: Vec<&str> = root.descendant_todo_keywords();
+    todos.sort_unstable();
+    todos.dedup();
+    assert_eq!(todos, vec!["DONE", "TODO"]);
+}
+
+#[test]
 fn descendant_count_counts_children_recursively() {
     let doc = parse("* Root\n** A\n*** A1\n** B\n").expect("parse");
     let root = &doc.roots()[0];
