@@ -941,6 +941,12 @@ impl OrgDoc {
         self.count_headlines_where(Headline::has_properties)
     }
 
+    /// Number of empty-title headlines.
+    #[must_use]
+    pub fn empty_title_count(&self) -> usize {
+        self.count_headlines_where(|h| h.title().is_empty())
+    }
+
     /// Level histogram across the document.
     #[must_use]
     pub fn level_counts(&self) -> std::collections::BTreeMap<u8, usize> {
