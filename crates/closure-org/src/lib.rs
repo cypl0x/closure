@@ -875,6 +875,18 @@ impl OrgDoc {
         self.level_counts().into_iter().max_by_key(|(_, n)| *n)
     }
 
+    /// Returns the most common tag and its count.
+    #[must_use]
+    pub fn modal_tag(&self) -> Option<(String, usize)> {
+        self.tag_counts().into_iter().max_by_key(|(_, n)| *n)
+    }
+
+    /// Returns the most common TODO keyword and its count.
+    #[must_use]
+    pub fn modal_todo(&self) -> Option<(String, usize)> {
+        self.todo_counts().into_iter().max_by_key(|(_, n)| *n)
+    }
+
     /// Level histogram across the document.
     #[must_use]
     pub fn level_counts(&self) -> std::collections::BTreeMap<u8, usize> {
