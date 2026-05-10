@@ -2543,3 +2543,25 @@ fn doc_root_titles_commented_returns_strs() {
         vec!["COMMENT A", "COMMENT C"]
     );
 }
+
+#[test]
+fn doc_roots_with_id_returns_match() {
+    let src = "* A\n:PROPERTIES:\n:ID: a\n:END:\n* B\n* C\n:PROPERTIES:\n:ID: c\n:END:\n";
+    let doc = parse(src).expect("parse");
+    let v = doc.roots_with_id();
+    assert_eq!(v.iter().map(|h| h.title()).collect::<Vec<_>>(), ["A", "C"]);
+}
+
+#[test]
+fn doc_root_titles_with_id_returns_strs() {
+    let src = "* A\n:PROPERTIES:\n:ID: a\n:END:\n* B\n* C\n:PROPERTIES:\n:ID: c\n:END:\n";
+    let doc = parse(src).expect("parse");
+    assert_eq!(doc.root_titles_with_id(), vec!["A", "C"]);
+}
+
+#[test]
+fn doc_count_roots_with_id_counts_match() {
+    let src = "* A\n:PROPERTIES:\n:ID: a\n:END:\n* B\n* C\n:PROPERTIES:\n:ID: c\n:END:\n";
+    let doc = parse(src).expect("parse");
+    assert_eq!(doc.count_roots_with_id(), 2);
+}

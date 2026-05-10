@@ -2114,6 +2114,33 @@ impl OrgDoc {
             .collect()
     }
 
+    /// Roots carrying any `:ID:`.
+    #[must_use]
+    pub fn roots_with_id(&self) -> Vec<&Headline> {
+        self.roots
+            .iter()
+            .filter(|h| h.id_property().is_some())
+            .collect()
+    }
+
+    /// Titles of roots carrying any `:ID:`.
+    #[must_use]
+    pub fn root_titles_with_id(&self) -> Vec<&str> {
+        self.roots_with_id()
+            .into_iter()
+            .map(Headline::title)
+            .collect()
+    }
+
+    /// Count of roots carrying any `:ID:`.
+    #[must_use]
+    pub fn count_roots_with_id(&self) -> usize {
+        self.roots
+            .iter()
+            .filter(|h| h.id_property().is_some())
+            .count()
+    }
+
     fn collect_descendants_where<F: Fn(&Headline) -> bool>(
         &self,
         pred: F,
