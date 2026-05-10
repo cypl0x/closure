@@ -567,6 +567,18 @@ impl OrgDoc {
         self.headline_by_id(id).map(Headline::body_byte_count)
     }
 
+    /// Tag count for `id`-tagged headline.
+    #[must_use]
+    pub fn tag_count_of(&self, id: &str) -> Option<usize> {
+        self.headline_by_id(id).map(Headline::tag_count)
+    }
+
+    /// Property count for `id`-tagged headline.
+    #[must_use]
+    pub fn property_count_of(&self, id: &str) -> Option<usize> {
+        self.headline_by_id(id).map(Headline::property_count)
+    }
+
     /// Returns every headline matching `pred` (depth-first).
     #[must_use]
     pub fn filter_headlines<F: Fn(&Headline) -> bool>(&self, pred: F) -> Vec<&Headline> {
