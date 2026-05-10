@@ -1880,6 +1880,12 @@ fn doc_first_root_match_returns() {
 }
 
 #[test]
+fn doc_count_roots_with_predicate() {
+    let doc = parse("* TODO A\n* B\n* TODO C\n").expect("parse");
+    assert_eq!(doc.count_roots_matching(|h| h.todo().is_some()), 2);
+}
+
+#[test]
 fn descendant_count_counts_children_recursively() {
     let doc = parse("* Root\n** A\n*** A1\n** B\n").expect("parse");
     let root = &doc.roots()[0];

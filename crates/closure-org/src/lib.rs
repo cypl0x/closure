@@ -1732,6 +1732,11 @@ impl OrgDoc {
         self.roots.iter().find(|h| pred(h))
     }
 
+    /// Count of root headlines matching `pred`.
+    pub fn count_roots_matching<F: Fn(&Headline) -> bool>(&self, pred: F) -> usize {
+        self.roots.iter().filter(|h| pred(h)).count()
+    }
+
     /// Headline at the given DFS index.
     #[must_use]
     pub fn headline_at_index(&self, idx: usize) -> Option<&Headline> {
