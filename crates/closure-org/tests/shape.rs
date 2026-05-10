@@ -1170,6 +1170,36 @@ fn id_pct_returns_percent() {
 }
 
 #[test]
+fn longest_title_picks_widest() {
+    let doc = parse("* short\n* a much longer title here\n* mid\n").expect("parse");
+    assert_eq!(doc.longest_title().expect("h").title(), "a much longer title here");
+}
+
+#[test]
+fn shortest_title_picks_narrowest() {
+    let doc = parse("* longer\n* xx\n* mid\n").expect("parse");
+    assert_eq!(doc.shortest_title().expect("h").title(), "xx");
+}
+
+#[test]
+fn deepest_leaf_picks_max_level_leaf() {
+    let doc = parse("* A\n** B\n*** C\n* D\n").expect("parse");
+    assert_eq!(doc.deepest_leaf().expect("h").title(), "C");
+}
+
+#[test]
+fn largest_subtree_picks_most_descendants() {
+    let doc = parse("* A\n** B\n** C\n** D\n* E\n** F\n").expect("parse");
+    assert_eq!(doc.largest_subtree().expect("h").title(), "A");
+}
+
+#[test]
+fn longest_body_picks_max_words() {
+    let doc = parse("* A\nfew\n* B\none two three four\n").expect("parse");
+    assert_eq!(doc.longest_body().expect("h").title(), "B");
+}
+
+#[test]
 fn descendant_count_counts_children_recursively() {
     let doc = parse("* Root\n** A\n*** A1\n** B\n").expect("parse");
     let root = &doc.roots()[0];
