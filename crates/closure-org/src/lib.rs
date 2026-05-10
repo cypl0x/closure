@@ -4368,6 +4368,15 @@ impl Headline {
             .sum()
     }
 
+    /// Count of descendants exactly at `level`.
+    #[must_use]
+    pub fn count_descendants_at_level(&self, level: u8) -> usize {
+        self.children
+            .iter()
+            .map(|c| usize::from(c.level() == level) + c.count_descendants_at_level(level))
+            .sum()
+    }
+
     /// Number of comment lines in the body.
     #[must_use]
     pub fn body_comment_count(&self) -> usize {
