@@ -935,6 +935,12 @@ impl OrgDoc {
         self.priority_counts().into_keys().collect()
     }
 
+    /// Distinct level list, sorted ascending.
+    #[must_use]
+    pub fn distinct_levels(&self) -> Vec<u8> {
+        self.level_counts().into_keys().collect()
+    }
+
     /// Number of headlines that have at least one tag.
     #[must_use]
     pub fn tagged_count(&self) -> usize {

@@ -1218,6 +1218,12 @@ fn distinct_priorities_sorted_unique() {
 }
 
 #[test]
+fn distinct_levels_sorted_unique() {
+    let doc = parse("* A\n** B\n*** C\n** D\n").expect("parse");
+    assert_eq!(doc.distinct_levels(), vec![1, 2, 3]);
+}
+
+#[test]
 fn descendant_count_counts_children_recursively() {
     let doc = parse("* Root\n** A\n*** A1\n** B\n").expect("parse");
     let root = &doc.roots()[0];
