@@ -723,6 +723,18 @@ impl OrgDoc {
             .max_by_key(|(_, n)| *n)
     }
 
+    /// Number of distinct ids referenced as targets that resolve in-doc.
+    #[must_use]
+    pub fn resolved_target_count(&self) -> usize {
+        let mut s: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+        for (_, t) in self.id_edges() {
+            if self.contains_id(&t) {
+                s.insert(t);
+            }
+        }
+        s.len()
+    }
+
     /// Reverse adjacency: target-id → list of source-ids that link to it.
     #[must_use]
     pub fn id_reverse_adjacency(&self) -> std::collections::BTreeMap<String, Vec<String>> {
