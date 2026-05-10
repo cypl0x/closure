@@ -1727,6 +1727,11 @@ impl OrgDoc {
         self.roots.last()
     }
 
+    /// First root matching predicate.
+    pub fn first_root_matching<F: Fn(&Headline) -> bool>(&self, pred: F) -> Option<&Headline> {
+        self.roots.iter().find(|h| pred(h))
+    }
+
     /// Headline at the given DFS index.
     #[must_use]
     pub fn headline_at_index(&self, idx: usize) -> Option<&Headline> {

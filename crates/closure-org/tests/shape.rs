@@ -1869,6 +1869,17 @@ fn doc_position_of_title_returns_position() {
 }
 
 #[test]
+fn doc_first_root_match_returns() {
+    let doc = parse("* A\n* B\n* C\n").expect("parse");
+    assert_eq!(
+        doc.first_root_matching(|h| h.title() == "B")
+            .expect("h")
+            .title(),
+        "B"
+    );
+}
+
+#[test]
 fn descendant_count_counts_children_recursively() {
     let doc = parse("* Root\n** A\n*** A1\n** B\n").expect("parse");
     let root = &doc.roots()[0];
