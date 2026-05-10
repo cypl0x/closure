@@ -2162,6 +2162,42 @@ impl OrgDoc {
             .collect()
     }
 
+    /// Distinct tags across roots, sorted.
+    #[must_use]
+    pub fn distinct_root_tags(&self) -> Vec<String> {
+        let mut s: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+        for r in &self.roots {
+            for t in r.tags() {
+                s.insert(t.to_owned());
+            }
+        }
+        s.into_iter().collect()
+    }
+
+    /// Distinct TODO keywords across roots, sorted.
+    #[must_use]
+    pub fn distinct_root_todos(&self) -> Vec<String> {
+        let mut s: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+        for r in &self.roots {
+            if let Some(t) = r.todo() {
+                s.insert(t.to_owned());
+            }
+        }
+        s.into_iter().collect()
+    }
+
+    /// Distinct priority letters across roots, sorted.
+    #[must_use]
+    pub fn distinct_root_priorities(&self) -> Vec<char> {
+        let mut s: std::collections::BTreeSet<char> = std::collections::BTreeSet::new();
+        for r in &self.roots {
+            if let Some(p) = r.priority() {
+                s.insert(p);
+            }
+        }
+        s.into_iter().collect()
+    }
+
     fn collect_descendants_where<F: Fn(&Headline) -> bool>(
         &self,
         pred: F,
