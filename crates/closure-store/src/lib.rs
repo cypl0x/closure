@@ -418,6 +418,17 @@ impl Vault {
         pairs
     }
 
+    /// All `(path, link_count)` pairs sorted descending.
+    #[must_use]
+    pub fn files_by_link_count(&self) -> Vec<(&Path, usize)> {
+        let mut pairs: Vec<(&Path, usize)> = self
+            .iter()
+            .map(|(p, d)| (p, d.org().total_link_count()))
+            .collect();
+        pairs.sort_by_key(|(_, n)| std::cmp::Reverse(*n));
+        pairs
+    }
+
     /// Map of `path → 64-bit FNV-1a content hash` for every loaded
     /// document. Useful for change-detection caches that need to know
     /// which files have shifted since a previous snapshot.
