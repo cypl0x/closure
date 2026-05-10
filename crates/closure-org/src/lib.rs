@@ -3954,6 +3954,12 @@ impl Headline {
         self.children.iter().map(Self::title).collect()
     }
 
+    /// Returns titles of every descendant in DFS order.
+    #[must_use]
+    pub fn descendant_titles(&self) -> Vec<&str> {
+        self.descendants().into_iter().map(Self::title).collect()
+    }
+
     /// First child whose title equals `needle` (case-sensitive).
     #[must_use]
     pub fn child_by_title(&self, needle: &str) -> Option<&Self> {

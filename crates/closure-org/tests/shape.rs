@@ -1612,6 +1612,14 @@ fn child_titles_returns_immediate_titles() {
 }
 
 #[test]
+fn descendant_titles_dfs() {
+    let src = "* R\n** A\n*** A1\n** B\n";
+    let doc = parse(src).expect("parse");
+    let root = &doc.roots()[0];
+    assert_eq!(root.descendant_titles(), vec!["A", "A1", "B"]);
+}
+
+#[test]
 fn descendant_count_counts_children_recursively() {
     let doc = parse("* Root\n** A\n*** A1\n** B\n").expect("parse");
     let root = &doc.roots()[0];
