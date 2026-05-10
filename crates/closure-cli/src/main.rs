@@ -549,6 +549,16 @@ enum Cmd {
         /// Path to a `*.org` file.
         file: PathBuf,
     },
+    /// Print isolated ids (no incoming/outgoing edges) in a file.
+    IsolatedIds {
+        /// Path to a `*.org` file.
+        file: PathBuf,
+    },
+    /// Print hub ids (both source and sink) in a file.
+    HubIds {
+        /// Path to a `*.org` file.
+        file: PathBuf,
+    },
     /// Run the MCP stdio dispatcher (one command name per line; `LIST`
     /// to enumerate). Quits on EOF.
     Mcp,
@@ -947,6 +957,8 @@ fn run(cmd: &Cmd) -> Result<(), String> {
         Cmd::Edges { vault } => cmd_edges(vault),
         Cmd::DuplicateIds { vault } => cmd_duplicate_ids(vault),
         Cmd::AllIds { file } => cmd_all_ids(file),
+        Cmd::IsolatedIds { file } => cmd_isolated_ids(file),
+        Cmd::HubIds { file } => cmd_hub_ids(file),
         Cmd::Mcp => cmd_mcp(),
         Cmd::Orphans { vault } => cmd_orphans(vault),
         Cmd::DeadLinks { vault } => cmd_dead_links(vault),
@@ -1726,6 +1738,24 @@ fn cmd_all_ids(path: &Path) -> Result<(), String> {
     let src = fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))?;
     let doc = closure_org::parse(&src).map_err(|e| format!("{e}"))?;
     for id in doc.all_ids() {
+        println!("{id}");
+    }
+    Ok(())
+}
+
+fn cmd_isolated_ids(path: &Path) -> Result<(), String> {
+    let src = fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))?;
+    let doc = closure_org::parse(&src).map_err(|e| format!("{e}"))?;
+    for id in doc.isolated_ids() {
+        println!("{id}");
+    }
+    Ok(())
+}
+
+fn cmd_hub_ids(path: &Path) -> Result<(), String> {
+    let src = fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))?;
+    let doc = closure_org::parse(&src).map_err(|e| format!("{e}"))?;
+    for id in doc.hub_ids() {
         println!("{id}");
     }
     Ok(())
