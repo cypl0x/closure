@@ -4523,6 +4523,19 @@ impl Headline {
         out
     }
 
+    /// Descendants carrying priority `letter`.
+    #[must_use]
+    pub fn descendants_with_priority(&self, letter: char) -> Vec<&Self> {
+        let mut out: Vec<&Self> = Vec::new();
+        for c in &self.children {
+            if c.priority() == Some(letter) {
+                out.push(c);
+            }
+            out.extend(c.descendants_with_priority(letter));
+        }
+        out
+    }
+
     /// Number of comment lines in the body.
     #[must_use]
     pub fn body_comment_count(&self) -> usize {

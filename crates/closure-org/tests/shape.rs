@@ -1450,6 +1450,19 @@ fn descendants_commented_returns_subtree() {
 }
 
 #[test]
+fn descendant_priority_returns_subtree() {
+    let src = "* R\n** [#A] A\n** B\n*** [#A] C\n";
+    let doc = parse(src).expect("parse");
+    let root = &doc.roots()[0];
+    let titles: Vec<&str> = root
+        .descendants_with_priority('A')
+        .iter()
+        .map(|h| h.title())
+        .collect();
+    assert_eq!(titles, vec!["A", "C"]);
+}
+
+#[test]
 fn descendant_count_counts_children_recursively() {
     let doc = parse("* Root\n** A\n*** A1\n** B\n").expect("parse");
     let root = &doc.roots()[0];
