@@ -810,6 +810,22 @@ impl OrgDoc {
         all.len() != set.len()
     }
 
+    /// Returns ids that appear more than once.
+    #[must_use]
+    pub fn duplicate_ids(&self) -> Vec<&str> {
+        let all = self.all_ids();
+        let mut counts: std::collections::HashMap<&str, usize> =
+            std::collections::HashMap::new();
+        for id in &all {
+            *counts.entry(*id).or_insert(0) += 1;
+        }
+        counts
+            .into_iter()
+            .filter(|(_, n)| *n > 1)
+            .map(|(k, _)| k)
+            .collect()
+    }
+
     /// Returns ids that have neither incoming nor outgoing edges.
     #[must_use]
     pub fn isolated_ids(&self) -> Vec<&str> {
