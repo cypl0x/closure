@@ -3969,6 +3969,15 @@ impl Headline {
             .collect()
     }
 
+    /// Returns tags of every descendant in DFS order (with duplicates).
+    #[must_use]
+    pub fn descendant_tags(&self) -> Vec<&str> {
+        self.descendants()
+            .into_iter()
+            .flat_map(Self::tags)
+            .collect()
+    }
+
     /// First child whose title equals `needle` (case-sensitive).
     #[must_use]
     pub fn child_by_title(&self, needle: &str) -> Option<&Self> {

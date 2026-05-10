@@ -1628,6 +1628,17 @@ fn descendant_ids_returns_drawer_ids() {
 }
 
 #[test]
+fn descendant_tags_collected() {
+    let src = "* R\n** A :work:\n*** B :urgent:work:\n** C :home:\n";
+    let doc = parse(src).expect("parse");
+    let root = &doc.roots()[0];
+    let mut tags: Vec<&str> = root.descendant_tags();
+    tags.sort_unstable();
+    tags.dedup();
+    assert_eq!(tags, vec!["home", "urgent", "work"]);
+}
+
+#[test]
 fn descendant_count_counts_children_recursively() {
     let doc = parse("* Root\n** A\n*** A1\n** B\n").expect("parse");
     let root = &doc.roots()[0];
