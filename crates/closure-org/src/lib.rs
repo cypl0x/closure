@@ -1785,6 +1785,12 @@ impl OrgDoc {
         self.roots.iter().find(|h| h.title() == needle)
     }
 
+    /// Root carrying `tag`.
+    #[must_use]
+    pub fn root_with_tag(&self, tag: &str) -> Option<&Headline> {
+        self.roots.iter().find(|h| h.has_tag(tag))
+    }
+
     /// Highest priority letter present (`'A'` is highest).
     #[must_use]
     pub fn max_priority_letter(&self) -> Option<char> {
