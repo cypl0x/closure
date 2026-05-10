@@ -4657,6 +4657,12 @@ impl Headline {
         walk(self, &pred)
     }
 
+    /// Descendants in DFS order (excludes self).
+    #[must_use]
+    pub fn descendants(&self) -> Vec<&Self> {
+        self.filter_descendants(|_| true)
+    }
+
     /// First descendant matching a predicate.
     #[must_use]
     pub fn find_descendant<F: Fn(&Self) -> bool>(&self, pred: F) -> Option<&Self> {

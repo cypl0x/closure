@@ -1573,6 +1573,15 @@ fn flatten_yields_self_then_dfs() {
 }
 
 #[test]
+fn descendants_yields_dfs_without_self() {
+    let src = "* A\n** B\n*** C\n** D\n";
+    let doc = parse(src).expect("parse");
+    let root = &doc.roots()[0];
+    let titles: Vec<&str> = root.descendants().iter().map(|h| h.title()).collect();
+    assert_eq!(titles, vec!["B", "C", "D"]);
+}
+
+#[test]
 fn descendant_count_counts_children_recursively() {
     let doc = parse("* Root\n** A\n*** A1\n** B\n").expect("parse");
     let root = &doc.roots()[0];
