@@ -697,6 +697,14 @@ impl OrgDoc {
         s.len()
     }
 
+    /// Number of distinct target-ids referenced by edges.
+    #[must_use]
+    pub fn link_target_count(&self) -> usize {
+        let set: std::collections::BTreeSet<String> =
+            self.id_edges().into_iter().map(|(_, t)| t).collect();
+        set.len()
+    }
+
     /// Reverse adjacency: target-id → list of source-ids that link to it.
     #[must_use]
     pub fn id_reverse_adjacency(&self) -> std::collections::BTreeMap<String, Vec<String>> {
