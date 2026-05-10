@@ -857,6 +857,23 @@ impl OrgDoc {
         self.sink_only_ids().len()
     }
 
+    /// Returns ids that act as both source and sink.
+    #[must_use]
+    pub fn hub_ids(&self) -> Vec<&str> {
+        let adj = self.id_adjacency();
+        let rev = self.id_reverse_adjacency();
+        let mut out: Vec<&str> = Vec::new();
+        for h in self.iter_headlines() {
+            if let Some(id) = h.id_property()
+                && adj.contains_key(id)
+                && rev.contains_key(id)
+            {
+                out.push(id);
+            }
+        }
+        out
+    }
+
     /// Returns ids that have incoming edges only (no outgoing).
     #[must_use]
     pub fn sink_only_ids(&self) -> Vec<&str> {
