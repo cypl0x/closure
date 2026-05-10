@@ -476,6 +476,21 @@ impl Vault {
             .sum()
     }
 
+    /// Cross-vault resolved-edge count: edges whose target resolves
+    /// somewhere in the vault (possibly different file).
+    #[must_use]
+    pub fn cross_resolved_edge_count(&self) -> usize {
+        let mut count = 0usize;
+        for (_, doc) in self.iter() {
+            for (_, t) in doc.org().id_edges() {
+                if self.has_id(&BlockId::from_existing(&t)) {
+                    count += 1;
+                }
+            }
+        }
+        count
+    }
+
     /// Most-referenced id across the vault and its incoming count.
     #[must_use]
     pub fn most_referenced(&self) -> Option<(String, usize)> {
