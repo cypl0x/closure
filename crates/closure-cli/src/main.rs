@@ -1760,6 +1760,8 @@ fn cmd_vault_info(vault: &Path) -> Result<(), String> {
     println!("ids:        {}", v.id_count());
     println!("dead links: {}", v.dead_link_count());
     println!("id edges:   {}", v.id_edge_count());
+    println!("dup ids:    {}", v.duplicate_id_count());
+    println!("self loops: {}", v.self_loop_count());
     println!("mean bytes/file:    {}", v.mean_byte_count());
     println!("mean headlines/file: {}", v.mean_headlines_per_file());
     println!("links:      {}", v.link_count());
