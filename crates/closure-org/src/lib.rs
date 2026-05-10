@@ -1055,6 +1055,26 @@ impl OrgDoc {
             .unwrap_or(0)
     }
 
+    /// Returns max body word count across headlines.
+    #[must_use]
+    pub fn max_body_word_count(&self) -> usize {
+        self.iter_headlines()
+            .into_iter()
+            .map(Headline::body_word_count)
+            .max()
+            .unwrap_or(0)
+    }
+
+    /// Returns max link count across headlines.
+    #[must_use]
+    pub fn max_link_count(&self) -> usize {
+        self.iter_headlines()
+            .into_iter()
+            .map(Headline::link_count)
+            .max()
+            .unwrap_or(0)
+    }
+
     /// Level histogram across the document.
     #[must_use]
     pub fn level_counts(&self) -> std::collections::BTreeMap<u8, usize> {
