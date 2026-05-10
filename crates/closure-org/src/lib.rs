@@ -525,6 +525,18 @@ impl OrgDoc {
         self.headline_by_id(id).and_then(Headline::properties)
     }
 
+    /// Children of `id`-tagged headline.
+    #[must_use]
+    pub fn children_of(&self, id: &str) -> Option<&[Headline]> {
+        self.headline_by_id(id).map(Headline::children)
+    }
+
+    /// Child count of `id`-tagged headline.
+    #[must_use]
+    pub fn child_count_of(&self, id: &str) -> Option<usize> {
+        self.headline_by_id(id).map(Headline::child_count)
+    }
+
     /// Returns every headline matching `pred` (depth-first).
     #[must_use]
     pub fn filter_headlines<F: Fn(&Headline) -> bool>(&self, pred: F) -> Vec<&Headline> {
