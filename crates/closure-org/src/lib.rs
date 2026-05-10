@@ -543,6 +543,18 @@ impl OrgDoc {
         self.headline_by_id(id).map(Headline::is_leaf)
     }
 
+    /// Whether `id`-tagged headline is archived.
+    #[must_use]
+    pub fn is_archived_of(&self, id: &str) -> Option<bool> {
+        self.headline_by_id(id).map(Headline::is_archived)
+    }
+
+    /// Whether `id`-tagged headline is COMMENT-prefixed.
+    #[must_use]
+    pub fn is_comment_of(&self, id: &str) -> Option<bool> {
+        self.headline_by_id(id).map(Headline::is_comment)
+    }
+
     /// Returns every headline matching `pred` (depth-first).
     #[must_use]
     pub fn filter_headlines<F: Fn(&Headline) -> bool>(&self, pred: F) -> Vec<&Headline> {
