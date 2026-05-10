@@ -991,6 +991,22 @@ impl OrgDoc {
             .unwrap_or(0)
     }
 
+    /// Tag-vs-headline density as a percentage rounded down.
+    #[must_use]
+    pub fn tag_density_pct(&self) -> usize {
+        (self.tagged_count() * 100)
+            .checked_div(self.headline_count())
+            .unwrap_or(0)
+    }
+
+    /// TODO-vs-headline density as a percentage.
+    #[must_use]
+    pub fn todo_density_pct(&self) -> usize {
+        (self.count_todos() * 100)
+            .checked_div(self.headline_count())
+            .unwrap_or(0)
+    }
+
     /// Level histogram across the document.
     #[must_use]
     pub fn level_counts(&self) -> std::collections::BTreeMap<u8, usize> {
