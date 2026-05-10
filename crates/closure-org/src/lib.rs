@@ -869,6 +869,12 @@ impl OrgDoc {
         self.ids_with_todo_descendant().len()
     }
 
+    /// Returns the most common level (mode) and its count.
+    #[must_use]
+    pub fn modal_level(&self) -> Option<(u8, usize)> {
+        self.level_counts().into_iter().max_by_key(|(_, n)| *n)
+    }
+
     /// Level histogram across the document.
     #[must_use]
     pub fn level_counts(&self) -> std::collections::BTreeMap<u8, usize> {
