@@ -1595,6 +1595,15 @@ fn descendants_at_depth_below_self() {
 }
 
 #[test]
+fn count_descendants_at_depth_returns_count() {
+    let src = "* A\n** B\n*** C\n*** D\n** E\n";
+    let doc = parse(src).expect("parse");
+    let root = &doc.roots()[0];
+    assert_eq!(root.count_descendants_at_depth(1), 2);
+    assert_eq!(root.count_descendants_at_depth(2), 2);
+}
+
+#[test]
 fn descendant_count_counts_children_recursively() {
     let doc = parse("* Root\n** A\n*** A1\n** B\n").expect("parse");
     let root = &doc.roots()[0];

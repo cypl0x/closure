@@ -4670,6 +4670,13 @@ impl Headline {
         self.descendants_at_level(target)
     }
 
+    /// Count of descendants `depth` levels below this headline.
+    #[must_use]
+    pub fn count_descendants_at_depth(&self, depth: u8) -> usize {
+        let target = self.level + depth;
+        self.count_descendants_at_level(target)
+    }
+
     /// First descendant matching a predicate.
     #[must_use]
     pub fn find_descendant<F: Fn(&Self) -> bool>(&self, pred: F) -> Option<&Self> {
