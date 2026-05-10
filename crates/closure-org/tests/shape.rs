@@ -1802,6 +1802,13 @@ fn doc_distinct_link_targets_unique() {
 }
 
 #[test]
+fn doc_distinct_link_target_count_returns_count() {
+    let src = "* A [[id:T1]]\n* B [[id:T1]]\n* C [[id:T2]]\n";
+    let doc = parse(src).expect("parse");
+    assert_eq!(doc.distinct_link_target_count(), 2);
+}
+
+#[test]
 fn descendant_count_counts_children_recursively() {
     let doc = parse("* Root\n** A\n*** A1\n** B\n").expect("parse");
     let root = &doc.roots()[0];

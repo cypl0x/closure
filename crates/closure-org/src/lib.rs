@@ -1502,6 +1502,12 @@ impl OrgDoc {
         set.into_iter().collect()
     }
 
+    /// Number of distinct link targets across the document.
+    #[must_use]
+    pub fn distinct_link_target_count(&self) -> usize {
+        self.distinct_link_targets().len()
+    }
+
     /// Returns the first headline that satisfies `pred` (depth-first).
     #[must_use]
     pub fn find_headline<F: Fn(&Headline) -> bool>(&self, pred: F) -> Option<&Headline> {
