@@ -440,6 +440,15 @@ impl Vault {
         pairs
     }
 
+    /// All `(source_id, target_id)` edges across vault.
+    #[must_use]
+    pub fn id_edges(&self) -> Vec<(String, String)> {
+        self.documents
+            .values()
+            .flat_map(|d| d.org().id_edges())
+            .collect()
+    }
+
     /// Total dead-link count across the vault (id: targets that don't
     /// resolve to any vault headline).
     #[must_use]
