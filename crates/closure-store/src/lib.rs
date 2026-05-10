@@ -482,6 +482,18 @@ impl Vault {
         self.duplicate_ids().len()
     }
 
+    /// Total number of distinct drawer ids across the vault.
+    #[must_use]
+    pub fn unique_id_count(&self) -> usize {
+        let mut s: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+        for (_, doc) in self.iter() {
+            for id in doc.org().all_ids() {
+                s.insert(id.to_owned());
+            }
+        }
+        s.len()
+    }
+
     /// Returns drawer ids appearing more than once across the vault.
     #[must_use]
     pub fn duplicate_ids(&self) -> Vec<String> {
