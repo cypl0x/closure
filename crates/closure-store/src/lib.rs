@@ -476,6 +476,22 @@ impl Vault {
             .sum()
     }
 
+    /// Returns drawer ids appearing more than once across the vault.
+    #[must_use]
+    pub fn duplicate_ids(&self) -> Vec<String> {
+        let mut counts: HashMap<String, usize> = HashMap::new();
+        for (_, doc) in self.iter() {
+            for id in doc.org().all_ids() {
+                *counts.entry(id.to_owned()).or_insert(0) += 1;
+            }
+        }
+        counts
+            .into_iter()
+            .filter(|(_, n)| *n > 1)
+            .map(|(k, _)| k)
+            .collect()
+    }
+
     /// Cross-vault resolved-edge count: edges whose target resolves
     /// somewhere in the vault (possibly different file).
     #[must_use]
