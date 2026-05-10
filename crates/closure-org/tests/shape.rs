@@ -2174,3 +2174,10 @@ fn doc_root_with_priority_returns_match() {
     assert_eq!(doc.root_with_priority('B').expect("h").title(), "Second");
     assert!(doc.root_with_priority('C').is_none());
 }
+
+#[test]
+fn doc_count_roots_with_todo_counts_match() {
+    let doc = parse("* TODO A\n* DONE B\n* TODO C\n").expect("parse");
+    assert_eq!(doc.count_roots_with_todo("TODO"), 2);
+    assert_eq!(doc.count_roots_with_todo("WAIT"), 0);
+}

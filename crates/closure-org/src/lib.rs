@@ -1803,6 +1803,12 @@ impl OrgDoc {
         self.roots.iter().find(|h| h.priority() == Some(letter))
     }
 
+    /// Number of roots with TODO keyword equal to `kw`.
+    #[must_use]
+    pub fn count_roots_with_todo(&self, kw: &str) -> usize {
+        self.roots.iter().filter(|h| h.todo() == Some(kw)).count()
+    }
+
     /// Highest priority letter present (`'A'` is highest).
     #[must_use]
     pub fn max_priority_letter(&self) -> Option<char> {
