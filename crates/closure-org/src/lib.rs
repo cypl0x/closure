@@ -917,6 +917,24 @@ impl OrgDoc {
         self.level_counts().len()
     }
 
+    /// Distinct tag list, sorted.
+    #[must_use]
+    pub fn distinct_tags(&self) -> Vec<String> {
+        self.tag_counts().into_keys().collect()
+    }
+
+    /// Distinct TODO keyword list, sorted.
+    #[must_use]
+    pub fn distinct_todos(&self) -> Vec<String> {
+        self.todo_counts().into_keys().collect()
+    }
+
+    /// Distinct priority letter list, sorted.
+    #[must_use]
+    pub fn distinct_priorities(&self) -> Vec<char> {
+        self.priority_counts().into_keys().collect()
+    }
+
     /// Number of headlines that have at least one tag.
     #[must_use]
     pub fn tagged_count(&self) -> usize {

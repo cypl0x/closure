@@ -1200,6 +1200,24 @@ fn longest_body_picks_max_words() {
 }
 
 #[test]
+fn distinct_tags_sorted_unique() {
+    let doc = parse("* A :work:home:\n* B :work:urgent:\n").expect("parse");
+    assert_eq!(doc.distinct_tags(), vec!["home", "urgent", "work"]);
+}
+
+#[test]
+fn distinct_todos_sorted_unique() {
+    let doc = parse("* TODO A\n* DONE B\n* TODO C\n").expect("parse");
+    assert_eq!(doc.distinct_todos(), vec!["DONE", "TODO"]);
+}
+
+#[test]
+fn distinct_priorities_sorted_unique() {
+    let doc = parse("* [#A] x\n* [#B] y\n* [#A] z\n").expect("parse");
+    assert_eq!(doc.distinct_priorities(), vec!['A', 'B']);
+}
+
+#[test]
 fn descendant_count_counts_children_recursively() {
     let doc = parse("* Root\n** A\n*** A1\n** B\n").expect("parse");
     let root = &doc.roots()[0];
