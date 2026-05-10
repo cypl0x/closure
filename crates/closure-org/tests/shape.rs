@@ -1398,6 +1398,32 @@ fn descendants_with_id_returns_subtree() {
 }
 
 #[test]
+fn descendants_with_planning_returns_subtree() {
+    let src = "* R\n** A\nSCHEDULED: <2026-04-25 Sat>\n** B\n*** C\nDEADLINE: <2026-05-01 Fri>\n";
+    let doc = parse(src).expect("parse");
+    let root = &doc.roots()[0];
+    let titles: Vec<&str> = root
+        .descendants_with_planning()
+        .iter()
+        .map(|h| h.title())
+        .collect();
+    assert_eq!(titles, vec!["A", "C"]);
+}
+
+#[test]
+fn descendants_with_property_returns_subtree() {
+    let src = "* R\n** A\n:PROPERTIES:\n:EFFORT: 1h\n:END:\n** B\n*** C\n:PROPERTIES:\n:EFFORT: 2h\n:END:\n";
+    let doc = parse(src).expect("parse");
+    let root = &doc.roots()[0];
+    let titles: Vec<&str> = root
+        .descendants_with_property("EFFORT")
+        .iter()
+        .map(|h| h.title())
+        .collect();
+    assert_eq!(titles, vec!["A", "C"]);
+}
+
+#[test]
 fn descendant_count_counts_children_recursively() {
     let doc = parse("* Root\n** A\n*** A1\n** B\n").expect("parse");
     let root = &doc.roots()[0];

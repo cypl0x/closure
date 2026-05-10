@@ -4471,6 +4471,32 @@ impl Headline {
         out
     }
 
+    /// Descendants with a planning line.
+    #[must_use]
+    pub fn descendants_with_planning(&self) -> Vec<&Self> {
+        let mut out: Vec<&Self> = Vec::new();
+        for c in &self.children {
+            if c.has_planning() {
+                out.push(c);
+            }
+            out.extend(c.descendants_with_planning());
+        }
+        out
+    }
+
+    /// Descendants carrying property `key`.
+    #[must_use]
+    pub fn descendants_with_property<'a>(&'a self, key: &str) -> Vec<&'a Self> {
+        let mut out: Vec<&Self> = Vec::new();
+        for c in &self.children {
+            if c.has_property(key) {
+                out.push(c);
+            }
+            out.extend(c.descendants_with_property(key));
+        }
+        out
+    }
+
     /// Number of comment lines in the body.
     #[must_use]
     pub fn body_comment_count(&self) -> usize {
