@@ -905,6 +905,18 @@ impl OrgDoc {
         self.todo_counts().len()
     }
 
+    /// Distinct priority count.
+    #[must_use]
+    pub fn distinct_priority_count(&self) -> usize {
+        self.priority_counts().len()
+    }
+
+    /// Distinct level count.
+    #[must_use]
+    pub fn distinct_level_count(&self) -> usize {
+        self.level_counts().len()
+    }
+
     /// Level histogram across the document.
     #[must_use]
     pub fn level_counts(&self) -> std::collections::BTreeMap<u8, usize> {
