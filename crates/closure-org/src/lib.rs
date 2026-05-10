@@ -4008,6 +4008,12 @@ impl Headline {
         self.filter_descendants(|h| h.level() >= lo && h.level() <= hi)
     }
 
+    /// Count of descendants in level range `[lo, hi]`.
+    #[must_use]
+    pub fn count_descendants_in_level_range(&self, lo: u8, hi: u8) -> usize {
+        self.count_filter_descendants(|h| h.level() >= lo && h.level() <= hi)
+    }
+
     /// First child whose title equals `needle` (case-sensitive).
     #[must_use]
     pub fn child_by_title(&self, needle: &str) -> Option<&Self> {

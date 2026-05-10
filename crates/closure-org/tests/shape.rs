@@ -1695,6 +1695,14 @@ fn descendants_filter_by_level_range() {
 }
 
 #[test]
+fn count_descendants_in_level_range_count() {
+    let src = "* R\n** A\n*** A1\n*** A2\n**** A2a\n** B\n";
+    let doc = parse(src).expect("parse");
+    let root = &doc.roots()[0];
+    assert_eq!(root.count_descendants_in_level_range(3, 4), 3);
+}
+
+#[test]
 fn descendant_count_counts_children_recursively() {
     let doc = parse("* Root\n** A\n*** A1\n** B\n").expect("parse");
     let root = &doc.roots()[0];
