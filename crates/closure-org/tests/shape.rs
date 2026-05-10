@@ -1283,6 +1283,22 @@ fn count_title_contains_substring() {
 }
 
 #[test]
+fn count_descendant_todos_recursive() {
+    let src = "* Parent\n** TODO A\n*** TODO B\n** C\n";
+    let doc = parse(src).expect("parse");
+    let parent = &doc.roots()[0];
+    assert_eq!(parent.count_descendant_todos("TODO"), 2);
+}
+
+#[test]
+fn count_descendant_tagged_recursive() {
+    let src = "* Parent\n** A :work:\n*** B :work:\n** C :home:\n";
+    let doc = parse(src).expect("parse");
+    let parent = &doc.roots()[0];
+    assert_eq!(parent.count_descendant_tagged("work"), 2);
+}
+
+#[test]
 fn descendant_count_counts_children_recursively() {
     let doc = parse("* Root\n** A\n*** A1\n** B\n").expect("parse");
     let root = &doc.roots()[0];
