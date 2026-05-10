@@ -534,6 +534,11 @@ enum Cmd {
         /// Path to the vault directory.
         vault: PathBuf,
     },
+    /// Print every `id:` edge as `source<TAB>target` per line.
+    Edges {
+        /// Path to the vault directory.
+        vault: PathBuf,
+    },
     /// Run the MCP stdio dispatcher (one command name per line; `LIST`
     /// to enumerate). Quits on EOF.
     Mcp,
@@ -929,6 +934,7 @@ fn run(cmd: &Cmd) -> Result<(), String> {
         Cmd::RankTodos { vault } => cmd_rank_todos(vault),
         Cmd::RankLinks { vault } => cmd_rank_links(vault),
         Cmd::RankWords { vault } => cmd_rank_words(vault),
+        Cmd::Edges { vault } => cmd_edges(vault),
         Cmd::Mcp => cmd_mcp(),
         Cmd::Orphans { vault } => cmd_orphans(vault),
         Cmd::DeadLinks { vault } => cmd_dead_links(vault),
@@ -1684,6 +1690,14 @@ fn cmd_rank_words(vault: &Path) -> Result<(), String> {
     let v = Vault::open(vault).map_err(|e| format!("{e}"))?;
     for (p, n) in v.files_by_word_count() {
         println!("{n}\t{}", p.display());
+    }
+    Ok(())
+}
+
+fn cmd_edges(vault: &Path) -> Result<(), String> {
+    let v = Vault::open(vault).map_err(|e| format!("{e}"))?;
+    for (src, tgt) in v.id_edges() {
+        println!("{src}\t{tgt}");
     }
     Ok(())
 }
