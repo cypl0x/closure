@@ -2256,6 +2256,36 @@ impl OrgDoc {
         self.distinct_descendant_priorities().len()
     }
 
+    /// Count of distinct TODO keywords across all descendants.
+    #[must_use]
+    pub fn distinct_descendant_todo_count(&self) -> usize {
+        self.distinct_descendant_todos().len()
+    }
+
+    /// Count of distinct levels across all descendants.
+    #[must_use]
+    pub fn distinct_descendant_level_count(&self) -> usize {
+        self.distinct_descendant_levels().len()
+    }
+
+    /// Count of distinct tags across roots.
+    #[must_use]
+    pub fn distinct_root_tag_count(&self) -> usize {
+        self.distinct_root_tags().len()
+    }
+
+    /// Count of distinct TODO keywords across roots.
+    #[must_use]
+    pub fn distinct_root_todo_count(&self) -> usize {
+        self.distinct_root_todos().len()
+    }
+
+    /// Count of distinct priority letters across roots.
+    #[must_use]
+    pub fn distinct_root_priority_count(&self) -> usize {
+        self.distinct_root_priorities().len()
+    }
+
     fn collect_descendants_where<F: Fn(&Headline) -> bool>(
         &self,
         pred: F,

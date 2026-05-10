@@ -2663,3 +2663,38 @@ fn doc_distinct_descendant_priority_count_match() {
     let doc = parse(src).expect("parse");
     assert_eq!(doc.distinct_descendant_priority_count(), 2);
 }
+
+#[test]
+fn doc_distinct_descendant_todo_count_match() {
+    let src = "* TODO A\n** DONE B\n* TODO C\n";
+    let doc = parse(src).expect("parse");
+    assert_eq!(doc.distinct_descendant_todo_count(), 2);
+}
+
+#[test]
+fn doc_distinct_descendant_level_count_match() {
+    let src = "* A\n** B\n*** C\n";
+    let doc = parse(src).expect("parse");
+    assert_eq!(doc.distinct_descendant_level_count(), 3);
+}
+
+#[test]
+fn doc_distinct_root_tag_count_match() {
+    let src = "* A :z:y:\n* B :a:y:\n* C :a:\n";
+    let doc = parse(src).expect("parse");
+    assert_eq!(doc.distinct_root_tag_count(), 3);
+}
+
+#[test]
+fn doc_distinct_root_todo_count_match() {
+    let src = "* TODO A\n* DONE B\n* TODO C\n";
+    let doc = parse(src).expect("parse");
+    assert_eq!(doc.distinct_root_todo_count(), 2);
+}
+
+#[test]
+fn doc_distinct_root_priority_count_match() {
+    let src = "* [#B] One\n* [#A] Two\n* [#A] Three\n* [#C] Four\n";
+    let doc = parse(src).expect("parse");
+    assert_eq!(doc.distinct_root_priority_count(), 3);
+}
