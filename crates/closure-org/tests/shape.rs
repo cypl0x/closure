@@ -2362,3 +2362,19 @@ fn doc_descendants_commented_returns_all() {
         ["COMMENT A", "COMMENT C"]
     );
 }
+
+#[test]
+fn doc_descendants_with_property_returns_all() {
+    let src = "* A\n:PROPERTIES:\n:CATEGORY: x\n:END:\n* B\n:PROPERTIES:\n:CATEGORY: y\n:END:\n* C\n";
+    let doc = parse(src).expect("parse");
+    let v = doc.descendants_with_property("CATEGORY");
+    assert_eq!(v.iter().map(|h| h.title()).collect::<Vec<_>>(), ["A", "B"]);
+}
+
+#[test]
+fn doc_count_descendants_with_property_counts_all() {
+    let src = "* A\n:PROPERTIES:\n:K: 1\n:END:\n* B\n:PROPERTIES:\n:K: 2\n:END:\n* C\n";
+    let doc = parse(src).expect("parse");
+    assert_eq!(doc.count_descendants_with_property("K"), 2);
+    assert_eq!(doc.count_descendants_with_property("MISSING"), 0);
+}

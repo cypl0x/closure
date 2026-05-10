@@ -1944,6 +1944,18 @@ impl OrgDoc {
         self.collect_descendants_where(Headline::is_comment)
     }
 
+    /// Descendants (depth-first across roots) carrying property `key`.
+    #[must_use]
+    pub fn descendants_with_property(&self, key: &str) -> Vec<&Headline> {
+        self.collect_descendants_where(|h| h.has_property(key))
+    }
+
+    /// Count of all descendants (across roots) carrying property `key`.
+    #[must_use]
+    pub fn count_descendants_with_property(&self, key: &str) -> usize {
+        self.count_descendants_where(|h| h.has_property(key))
+    }
+
     fn collect_descendants_where<F: Fn(&Headline) -> bool>(
         &self,
         pred: F,
