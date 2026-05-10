@@ -524,6 +524,11 @@ enum Cmd {
         /// Path to the vault directory.
         vault: PathBuf,
     },
+    /// Print files ranked by link count (descending).
+    RankLinks {
+        /// Path to the vault directory.
+        vault: PathBuf,
+    },
     /// Run the MCP stdio dispatcher (one command name per line; `LIST`
     /// to enumerate). Quits on EOF.
     Mcp,
@@ -917,6 +922,7 @@ fn run(cmd: &Cmd) -> Result<(), String> {
         Cmd::RankFiles { vault } => cmd_rank_files(vault),
         Cmd::RankBytes { vault } => cmd_rank_bytes(vault),
         Cmd::RankTodos { vault } => cmd_rank_todos(vault),
+        Cmd::RankLinks { vault } => cmd_rank_links(vault),
         Cmd::Mcp => cmd_mcp(),
         Cmd::Orphans { vault } => cmd_orphans(vault),
         Cmd::DeadLinks { vault } => cmd_dead_links(vault),
@@ -1655,6 +1661,14 @@ fn cmd_rank_bytes(vault: &Path) -> Result<(), String> {
 fn cmd_rank_todos(vault: &Path) -> Result<(), String> {
     let v = Vault::open(vault).map_err(|e| format!("{e}"))?;
     for (p, n) in v.files_by_todo_count() {
+        println!("{n}\t{}", p.display());
+    }
+    Ok(())
+}
+
+fn cmd_rank_links(vault: &Path) -> Result<(), String> {
+    let v = Vault::open(vault).map_err(|e| format!("{e}"))?;
+    for (p, n) in v.files_by_link_count() {
         println!("{n}\t{}", p.display());
     }
     Ok(())
