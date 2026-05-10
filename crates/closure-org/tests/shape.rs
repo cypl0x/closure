@@ -2445,3 +2445,36 @@ fn doc_count_descendants_with_property_value_counts_match() {
     assert_eq!(doc.count_descendants_with_property_value("K", "y"), 1);
     assert_eq!(doc.count_descendants_with_property_value("MISSING", "x"), 0);
 }
+
+#[test]
+fn doc_roots_archived_returns_match() {
+    let src = "* A :ARCHIVE:\n* B\n* C :ARCHIVE:\n";
+    let doc = parse(src).expect("parse");
+    let v = doc.roots_archived();
+    assert_eq!(v.iter().map(|h| h.title()).collect::<Vec<_>>(), ["A", "C"]);
+}
+
+#[test]
+fn doc_roots_commented_returns_match() {
+    let src = "* COMMENT A\n* B\n* COMMENT C\n";
+    let doc = parse(src).expect("parse");
+    let v = doc.roots_commented();
+    assert_eq!(
+        v.iter().map(|h| h.title()).collect::<Vec<_>>(),
+        ["COMMENT A", "COMMENT C"]
+    );
+}
+
+#[test]
+fn doc_count_roots_archived_counts_match() {
+    let src = "* A :ARCHIVE:\n* B\n* C :ARCHIVE:\n";
+    let doc = parse(src).expect("parse");
+    assert_eq!(doc.count_roots_archived(), 2);
+}
+
+#[test]
+fn doc_count_roots_commented_counts_match() {
+    let src = "* COMMENT A\n* B\n* COMMENT C\n";
+    let doc = parse(src).expect("parse");
+    assert_eq!(doc.count_roots_commented(), 2);
+}

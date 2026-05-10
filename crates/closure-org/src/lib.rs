@@ -2024,6 +2024,30 @@ impl OrgDoc {
         })
     }
 
+    /// Roots tagged `:ARCHIVE:`.
+    #[must_use]
+    pub fn roots_archived(&self) -> Vec<&Headline> {
+        self.roots.iter().filter(|h| h.is_archived()).collect()
+    }
+
+    /// Roots prefixed `COMMENT`.
+    #[must_use]
+    pub fn roots_commented(&self) -> Vec<&Headline> {
+        self.roots.iter().filter(|h| h.is_comment()).collect()
+    }
+
+    /// Count of roots tagged `:ARCHIVE:`.
+    #[must_use]
+    pub fn count_roots_archived(&self) -> usize {
+        self.roots.iter().filter(|h| h.is_archived()).count()
+    }
+
+    /// Count of roots prefixed `COMMENT`.
+    #[must_use]
+    pub fn count_roots_commented(&self) -> usize {
+        self.roots.iter().filter(|h| h.is_comment()).count()
+    }
+
     fn collect_descendants_where<F: Fn(&Headline) -> bool>(
         &self,
         pred: F,
