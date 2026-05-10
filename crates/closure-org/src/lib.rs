@@ -650,6 +650,18 @@ impl OrgDoc {
         out
     }
 
+    /// Number of orphan headlines (no incoming links).
+    #[must_use]
+    pub fn orphan_count(&self) -> usize {
+        self.orphan_ids().len()
+    }
+
+    /// Number of dead `id:` link targets.
+    #[must_use]
+    pub fn dead_link_count(&self) -> usize {
+        self.dead_link_targets().len()
+    }
+
     /// Returns headlines whose body contains `needle` ignoring case.
     #[must_use]
     pub fn headlines_with_body_substring_ignore_case<'a>(
