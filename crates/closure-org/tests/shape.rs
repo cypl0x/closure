@@ -2478,3 +2478,30 @@ fn doc_count_roots_commented_counts_match() {
     let doc = parse(src).expect("parse");
     assert_eq!(doc.count_roots_commented(), 2);
 }
+
+#[test]
+fn doc_roots_with_tag_returns_all() {
+    let src = "* A :work:\n* B :home:\n* C :work:\n";
+    let doc = parse(src).expect("parse");
+    let v = doc.roots_with_tag("work");
+    assert_eq!(v.iter().map(|h| h.title()).collect::<Vec<_>>(), ["A", "C"]);
+}
+
+#[test]
+fn doc_roots_with_todo_returns_all() {
+    let src = "* TODO A\n* DONE B\n* TODO C\n";
+    let doc = parse(src).expect("parse");
+    let v = doc.roots_with_todo("TODO");
+    assert_eq!(v.iter().map(|h| h.title()).collect::<Vec<_>>(), ["A", "C"]);
+}
+
+#[test]
+fn doc_roots_with_priority_returns_all() {
+    let src = "* [#A] One\n* [#B] Two\n* [#A] Three\n";
+    let doc = parse(src).expect("parse");
+    let v = doc.roots_with_priority('A');
+    assert_eq!(
+        v.iter().map(|h| h.title()).collect::<Vec<_>>(),
+        ["One", "Three"]
+    );
+}

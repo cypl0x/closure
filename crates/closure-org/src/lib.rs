@@ -2048,6 +2048,27 @@ impl OrgDoc {
         self.roots.iter().filter(|h| h.is_comment()).count()
     }
 
+    /// Roots carrying `tag`.
+    #[must_use]
+    pub fn roots_with_tag(&self, tag: &str) -> Vec<&Headline> {
+        self.roots.iter().filter(|h| h.has_tag(tag)).collect()
+    }
+
+    /// Roots with TODO keyword equal to `kw`.
+    #[must_use]
+    pub fn roots_with_todo(&self, kw: &str) -> Vec<&Headline> {
+        self.roots.iter().filter(|h| h.todo() == Some(kw)).collect()
+    }
+
+    /// Roots with priority letter equal to `letter`.
+    #[must_use]
+    pub fn roots_with_priority(&self, letter: char) -> Vec<&Headline> {
+        self.roots
+            .iter()
+            .filter(|h| h.priority() == Some(letter))
+            .collect()
+    }
+
     fn collect_descendants_where<F: Fn(&Headline) -> bool>(
         &self,
         pred: F,
