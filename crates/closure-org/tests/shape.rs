@@ -1886,6 +1886,17 @@ fn doc_count_roots_with_predicate() {
 }
 
 #[test]
+fn doc_filter_roots_returns_matches() {
+    let doc = parse("* TODO A\n* B\n* TODO C\n").expect("parse");
+    let titles: Vec<&str> = doc
+        .filter_roots(|h| h.todo().is_some())
+        .iter()
+        .map(|h| h.title())
+        .collect();
+    assert_eq!(titles, vec!["A", "C"]);
+}
+
+#[test]
 fn descendant_count_counts_children_recursively() {
     let doc = parse("* Root\n** A\n*** A1\n** B\n").expect("parse");
     let root = &doc.roots()[0];

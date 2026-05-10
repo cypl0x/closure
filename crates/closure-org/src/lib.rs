@@ -1737,6 +1737,11 @@ impl OrgDoc {
         self.roots.iter().filter(|h| pred(h)).count()
     }
 
+    /// Filtered list of root headlines.
+    pub fn filter_roots<F: Fn(&Headline) -> bool>(&self, pred: F) -> Vec<&Headline> {
+        self.roots.iter().filter(|h| pred(h)).collect()
+    }
+
     /// Headline at the given DFS index.
     #[must_use]
     pub fn headline_at_index(&self, idx: usize) -> Option<&Headline> {
