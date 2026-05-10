@@ -4388,6 +4388,24 @@ impl Headline {
             .sum()
     }
 
+    /// Count of leaf descendants (terminal nodes only).
+    #[must_use]
+    pub fn count_descendant_leaves(&self) -> usize {
+        self.children
+            .iter()
+            .map(|c| usize::from(c.is_leaf()) + c.count_descendant_leaves())
+            .sum()
+    }
+
+    /// Count of descendants carrying `:ID:` drawer.
+    #[must_use]
+    pub fn count_descendants_with_id(&self) -> usize {
+        self.children
+            .iter()
+            .map(|c| usize::from(c.has_id()) + c.count_descendants_with_id())
+            .sum()
+    }
+
     /// Number of comment lines in the body.
     #[must_use]
     pub fn body_comment_count(&self) -> usize {

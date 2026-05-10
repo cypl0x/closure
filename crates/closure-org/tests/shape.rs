@@ -1317,6 +1317,22 @@ fn count_descendants_with_property_filters() {
 }
 
 #[test]
+fn count_descendant_leaves_only_terminal() {
+    let src = "* A\n** B\n*** C\n** D\n";
+    let doc = parse(src).expect("parse");
+    let root = &doc.roots()[0];
+    assert_eq!(root.count_descendant_leaves(), 2);
+}
+
+#[test]
+fn count_descendants_with_id_filters() {
+    let src = "* Root\n** A\n:PROPERTIES:\n:ID: x\n:END:\n** B\n*** C\n:PROPERTIES:\n:ID: y\n:END:\n";
+    let doc = parse(src).expect("parse");
+    let root = &doc.roots()[0];
+    assert_eq!(root.count_descendants_with_id(), 2);
+}
+
+#[test]
 fn descendant_count_counts_children_recursively() {
     let doc = parse("* Root\n** A\n*** A1\n** B\n").expect("parse");
     let root = &doc.roots()[0];
