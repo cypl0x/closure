@@ -869,6 +869,19 @@ impl OrgDoc {
         self.ids_with_todo_descendant().len()
     }
 
+    /// All distinct tags across the document with their counts.
+    #[must_use]
+    pub fn tag_counts(&self) -> std::collections::BTreeMap<String, usize> {
+        let mut counts: std::collections::BTreeMap<String, usize> =
+            std::collections::BTreeMap::new();
+        for h in self.iter_headlines() {
+            for t in h.tags() {
+                *counts.entry(t.to_owned()).or_insert(0) += 1;
+            }
+        }
+        counts
+    }
+
     /// Returns ids whose subtree contains a TODO descendant.
     #[must_use]
     pub fn ids_with_todo_descendant(&self) -> Vec<&str> {
