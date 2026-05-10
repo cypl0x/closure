@@ -1793,6 +1793,15 @@ fn doc_all_links_returns_targets() {
 }
 
 #[test]
+fn doc_distinct_link_targets_unique() {
+    let src = "* A [[id:T1]]\n* B [[id:T1]]\n* C [[id:T2]]\n";
+    let doc = parse(src).expect("parse");
+    let mut targets = doc.distinct_link_targets();
+    targets.sort();
+    assert_eq!(targets, vec!["id:T1", "id:T2"]);
+}
+
+#[test]
 fn descendant_count_counts_children_recursively() {
     let doc = parse("* Root\n** A\n*** A1\n** B\n").expect("parse");
     let root = &doc.roots()[0];

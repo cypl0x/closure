@@ -1494,6 +1494,14 @@ impl OrgDoc {
             .collect()
     }
 
+    /// Distinct link targets across the document.
+    #[must_use]
+    pub fn distinct_link_targets(&self) -> Vec<String> {
+        let set: std::collections::BTreeSet<String> =
+            self.all_link_targets().into_iter().collect();
+        set.into_iter().collect()
+    }
+
     /// Returns the first headline that satisfies `pred` (depth-first).
     #[must_use]
     pub fn find_headline<F: Fn(&Headline) -> bool>(&self, pred: F) -> Option<&Headline> {
