@@ -2004,6 +2004,26 @@ impl OrgDoc {
             .collect()
     }
 
+    /// Descendants whose property `key` equals `value`.
+    #[must_use]
+    pub fn descendants_with_property_value(
+        &self,
+        key: &str,
+        value: &str,
+    ) -> Vec<&Headline> {
+        self.collect_descendants_where(|h| {
+            h.properties().and_then(|p| p.get(key)) == Some(value)
+        })
+    }
+
+    /// Count of descendants whose property `key` equals `value`.
+    #[must_use]
+    pub fn count_descendants_with_property_value(&self, key: &str, value: &str) -> usize {
+        self.count_descendants_where(|h| {
+            h.properties().and_then(|p| p.get(key)) == Some(value)
+        })
+    }
+
     fn collect_descendants_where<F: Fn(&Headline) -> bool>(
         &self,
         pred: F,

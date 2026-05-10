@@ -2427,3 +2427,21 @@ fn doc_descendant_titles_with_id_returns_strs() {
     let doc = parse(src).expect("parse");
     assert_eq!(doc.descendant_titles_with_id(), vec!["A", "C"]);
 }
+
+#[test]
+fn doc_descendants_with_property_value_returns_match() {
+    let src = "* A\n:PROPERTIES:\n:K: x\n:END:\n* B\n:PROPERTIES:\n:K: y\n:END:\n* C\n:PROPERTIES:\n:K: x\n:END:\n";
+    let doc = parse(src).expect("parse");
+    let v = doc.descendants_with_property_value("K", "x");
+    assert_eq!(v.iter().map(|h| h.title()).collect::<Vec<_>>(), ["A", "C"]);
+    assert!(doc.descendants_with_property_value("K", "z").is_empty());
+}
+
+#[test]
+fn doc_count_descendants_with_property_value_counts_match() {
+    let src = "* A\n:PROPERTIES:\n:K: x\n:END:\n* B\n:PROPERTIES:\n:K: y\n:END:\n* C\n:PROPERTIES:\n:K: x\n:END:\n";
+    let doc = parse(src).expect("parse");
+    assert_eq!(doc.count_descendants_with_property_value("K", "x"), 2);
+    assert_eq!(doc.count_descendants_with_property_value("K", "y"), 1);
+    assert_eq!(doc.count_descendants_with_property_value("MISSING", "x"), 0);
+}
