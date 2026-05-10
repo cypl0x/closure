@@ -1932,6 +1932,19 @@ fn doc_root_at_or_default_returns_first_or_target() {
 }
 
 #[test]
+fn doc_position_predicate_returns_index() {
+    let doc = parse("* A\n** B\n** C :match:\n").expect("parse");
+    assert_eq!(
+        doc.headline_index_of(|h| h.has_tag("match")),
+        Some(2)
+    );
+    assert_eq!(
+        doc.headline_index_of(|h| h.has_tag("none")),
+        None
+    );
+}
+
+#[test]
 fn descendant_count_counts_children_recursively() {
     let doc = parse("* Root\n** A\n*** A1\n** B\n").expect("parse");
     let root = &doc.roots()[0];
