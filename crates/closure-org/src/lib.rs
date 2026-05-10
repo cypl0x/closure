@@ -796,6 +796,12 @@ impl OrgDoc {
             .collect()
     }
 
+    /// Distinct ids set.
+    #[must_use]
+    pub fn id_set(&self) -> std::collections::BTreeSet<&str> {
+        self.all_ids().into_iter().collect()
+    }
+
     /// Returns ids that have neither incoming nor outgoing edges.
     #[must_use]
     pub fn isolated_ids(&self) -> Vec<&str> {
