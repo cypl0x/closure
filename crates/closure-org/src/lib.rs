@@ -501,6 +501,18 @@ impl OrgDoc {
         self.headline_by_id(id).map(Headline::subtree_source)
     }
 
+    /// Header line for `id`-tagged headline.
+    #[must_use]
+    pub fn header_of(&self, id: &str) -> Option<&str> {
+        self.headline_by_id(id).map(Headline::header)
+    }
+
+    /// Display title for `id`-tagged headline.
+    #[must_use]
+    pub fn display_title_of(&self, id: &str) -> Option<String> {
+        self.headline_by_id(id).map(Headline::display_title)
+    }
+
     /// Returns every headline matching `pred` (depth-first).
     #[must_use]
     pub fn filter_headlines<F: Fn(&Headline) -> bool>(&self, pred: F) -> Vec<&Headline> {
