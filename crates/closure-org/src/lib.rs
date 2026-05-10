@@ -917,6 +917,18 @@ impl OrgDoc {
         self.level_counts().len()
     }
 
+    /// Number of headlines that have at least one tag.
+    #[must_use]
+    pub fn tagged_count(&self) -> usize {
+        self.count_headlines_where(Headline::has_any_tag)
+    }
+
+    /// Number of headlines that have at least one outgoing link.
+    #[must_use]
+    pub fn linking_count(&self) -> usize {
+        self.count_headlines_where(|h| !h.link_targets().is_empty())
+    }
+
     /// Level histogram across the document.
     #[must_use]
     pub fn level_counts(&self) -> std::collections::BTreeMap<u8, usize> {
