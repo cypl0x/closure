@@ -1727,6 +1727,12 @@ impl OrgDoc {
         self.roots.last()
     }
 
+    /// Headline at the given DFS index.
+    #[must_use]
+    pub fn headline_at_index(&self, idx: usize) -> Option<&Headline> {
+        self.iter_headlines().into_iter().nth(idx)
+    }
+
     /// Number of preamble nodes.
     #[must_use]
     pub const fn preamble_len(&self) -> usize {

@@ -1828,6 +1828,23 @@ fn doc_last_root_returns_last() {
 }
 
 #[test]
+fn doc_root_titles_iter_match() {
+    let doc = parse("* A\n* B\n* C\n").expect("parse");
+    let titles: Vec<&str> = doc
+        .iter_roots()
+        .map(closure_org::Headline::title)
+        .collect();
+    assert_eq!(titles, vec!["A", "B", "C"]);
+}
+
+#[test]
+fn doc_first_headline_at_dfs() {
+    let doc = parse("* A\n** B\n* C\n").expect("parse");
+    assert_eq!(doc.headline_at_index(1).expect("h").title(), "B");
+    assert_eq!(doc.headline_at_index(2).expect("h").title(), "C");
+}
+
+#[test]
 fn descendant_count_counts_children_recursively() {
     let doc = parse("* Root\n** A\n*** A1\n** B\n").expect("parse");
     let root = &doc.roots()[0];
