@@ -2181,3 +2181,17 @@ fn doc_count_roots_with_todo_counts_match() {
     assert_eq!(doc.count_roots_with_todo("TODO"), 2);
     assert_eq!(doc.count_roots_with_todo("WAIT"), 0);
 }
+
+#[test]
+fn doc_count_roots_with_priority_counts_match() {
+    let doc = parse("* [#A] One\n* [#B] Two\n* [#A] Three\n").expect("parse");
+    assert_eq!(doc.count_roots_with_priority('A'), 2);
+    assert_eq!(doc.count_roots_with_priority('C'), 0);
+}
+
+#[test]
+fn doc_count_roots_with_tag_counts_match() {
+    let doc = parse("* A :work:\n* B :home:\n* C :work:\n").expect("parse");
+    assert_eq!(doc.count_roots_with_tag("work"), 2);
+    assert_eq!(doc.count_roots_with_tag("none"), 0);
+}

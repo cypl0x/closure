@@ -1809,6 +1809,21 @@ impl OrgDoc {
         self.roots.iter().filter(|h| h.todo() == Some(kw)).count()
     }
 
+    /// Number of roots with priority letter equal to `letter`.
+    #[must_use]
+    pub fn count_roots_with_priority(&self, letter: char) -> usize {
+        self.roots
+            .iter()
+            .filter(|h| h.priority() == Some(letter))
+            .count()
+    }
+
+    /// Number of roots carrying `tag`.
+    #[must_use]
+    pub fn count_roots_with_tag(&self, tag: &str) -> usize {
+        self.roots.iter().filter(|h| h.has_tag(tag)).count()
+    }
+
     /// Highest priority letter present (`'A'` is highest).
     #[must_use]
     pub fn max_priority_letter(&self) -> Option<char> {
