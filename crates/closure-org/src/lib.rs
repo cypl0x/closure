@@ -775,6 +775,12 @@ impl OrgDoc {
         self.resolved_edges().len()
     }
 
+    /// Number of dead edges.
+    #[must_use]
+    pub fn dead_edge_count(&self) -> usize {
+        self.dead_edges().len()
+    }
+
     /// Reverse adjacency: target-id → list of source-ids that link to it.
     #[must_use]
     pub fn id_reverse_adjacency(&self) -> std::collections::BTreeMap<String, Vec<String>> {
