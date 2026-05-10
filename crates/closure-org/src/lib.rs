@@ -4567,6 +4567,27 @@ impl Headline {
             .sum()
     }
 
+    /// Count of descendants with a planning line.
+    #[must_use]
+    pub fn count_descendants_with_planning(&self) -> usize {
+        self.children
+            .iter()
+            .map(|c| usize::from(c.has_planning()) + c.count_descendants_with_planning())
+            .sum()
+    }
+
+    /// Count of descendants with priority `letter`.
+    #[must_use]
+    pub fn count_descendants_with_priority(&self, letter: char) -> usize {
+        self.children
+            .iter()
+            .map(|c| {
+                usize::from(c.priority() == Some(letter))
+                    + c.count_descendants_with_priority(letter)
+            })
+            .sum()
+    }
+
     /// Number of comment lines in the body.
     #[must_use]
     pub fn body_comment_count(&self) -> usize {

@@ -1492,6 +1492,22 @@ fn count_descendants_commented() {
 }
 
 #[test]
+fn count_descendants_with_planning() {
+    let src = "* R\n** A\nSCHEDULED: <2026-04-25 Sat>\n** B\n*** C\nDEADLINE: <2026-05-01 Fri>\n";
+    let doc = parse(src).expect("parse");
+    let root = &doc.roots()[0];
+    assert_eq!(root.count_descendants_with_planning(), 2);
+}
+
+#[test]
+fn count_descendants_with_priority() {
+    let src = "* R\n** [#A] A\n** B\n*** [#A] C\n";
+    let doc = parse(src).expect("parse");
+    let root = &doc.roots()[0];
+    assert_eq!(root.count_descendants_with_priority('A'), 2);
+}
+
+#[test]
 fn descendant_count_counts_children_recursively() {
     let doc = parse("* Root\n** A\n*** A1\n** B\n").expect("parse");
     let root = &doc.roots()[0];
