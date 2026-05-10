@@ -458,6 +458,23 @@ impl Vault {
             .sum()
     }
 
+    /// Most-referenced id across the vault and its incoming count.
+    #[must_use]
+    pub fn most_referenced(&self) -> Option<(String, usize)> {
+        let mut counts: HashMap<String, usize> = HashMap::new();
+        for (_, doc) in self.iter() {
+            for h in doc.all_headlines() {
+                for raw in h.link_targets() {
+                    let Some(stripped) = raw.strip_prefix("id:") else {
+                        continue;
+                    };
+                    *counts.entry(stripped.to_owned()).or_insert(0) += 1;
+                }
+            }
+        }
+        counts.into_iter().max_by_key(|(_, n)| *n)
+    }
+
     /// Total dead-link count across the vault (id: targets that don't
     /// resolve to any vault headline).
     #[must_use]
