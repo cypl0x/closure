@@ -1957,6 +1957,13 @@ fn doc_min_priority_returns_lowest_letter() {
 }
 
 #[test]
+fn doc_max_min_level_endpoints() {
+    let doc = parse("* A\n** B\n*** C\n** D\n").expect("parse");
+    assert_eq!(doc.min_level(), 1);
+    assert_eq!(doc.max_depth(), 3);
+}
+
+#[test]
 fn descendant_count_counts_children_recursively() {
     let doc = parse("* Root\n** A\n*** A1\n** B\n").expect("parse");
     let root = &doc.roots()[0];
