@@ -1744,6 +1744,9 @@ fn cmd_vault_info(vault: &Path) -> Result<(), String> {
     if let Some((kw, n)) = v.todo_counts().into_iter().next() {
         println!("top todo:   {kw} ({n})");
     }
+    if let Some((id, n)) = v.most_referenced() {
+        println!("top hub:    {id} ({n} incoming)");
+    }
     Ok(())
 }
 
