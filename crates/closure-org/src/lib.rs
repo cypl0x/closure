@@ -662,6 +662,12 @@ impl OrgDoc {
         self.dead_link_targets().len()
     }
 
+    /// Total number of `id:` edges inside the document.
+    #[must_use]
+    pub fn id_edge_count(&self) -> usize {
+        self.id_edges().len()
+    }
+
     /// Returns every `(source_id, target_id)` `id:` edge inside the doc.
     #[must_use]
     pub fn id_edges(&self) -> Vec<(String, String)> {
