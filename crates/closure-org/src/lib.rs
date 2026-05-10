@@ -857,6 +857,12 @@ impl OrgDoc {
         self.sink_only_ids().len()
     }
 
+    /// Number of hub ids.
+    #[must_use]
+    pub fn hub_count(&self) -> usize {
+        self.hub_ids().len()
+    }
+
     /// Returns ids that act as both source and sink.
     #[must_use]
     pub fn hub_ids(&self) -> Vec<&str> {
