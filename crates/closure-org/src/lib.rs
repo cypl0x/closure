@@ -3948,6 +3948,12 @@ impl Headline {
         self.children.get(idx)
     }
 
+    /// Returns titles of immediate children.
+    #[must_use]
+    pub fn child_titles(&self) -> Vec<&str> {
+        self.children.iter().map(Self::title).collect()
+    }
+
     /// First child whose title equals `needle` (case-sensitive).
     #[must_use]
     pub fn child_by_title(&self, needle: &str) -> Option<&Self> {
