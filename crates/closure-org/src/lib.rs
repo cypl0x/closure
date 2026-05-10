@@ -828,6 +828,40 @@ impl OrgDoc {
         self.all_ids().len()
     }
 
+    /// Returns ids that have outgoing edges only (no incoming).
+    #[must_use]
+    pub fn source_only_ids(&self) -> Vec<&str> {
+        let adj = self.id_adjacency();
+        let rev = self.id_reverse_adjacency();
+        let mut out: Vec<&str> = Vec::new();
+        for h in self.iter_headlines() {
+            if let Some(id) = h.id_property()
+                && adj.contains_key(id)
+                && !rev.contains_key(id)
+            {
+                out.push(id);
+            }
+        }
+        out
+    }
+
+    /// Returns ids that have incoming edges only (no outgoing).
+    #[must_use]
+    pub fn sink_only_ids(&self) -> Vec<&str> {
+        let adj = self.id_adjacency();
+        let rev = self.id_reverse_adjacency();
+        let mut out: Vec<&str> = Vec::new();
+        for h in self.iter_headlines() {
+            if let Some(id) = h.id_property()
+                && rev.contains_key(id)
+                && !adj.contains_key(id)
+            {
+                out.push(id);
+            }
+        }
+        out
+    }
+
     /// Returns ids that appear more than once.
     #[must_use]
     pub fn duplicate_ids(&self) -> Vec<&str> {
