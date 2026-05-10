@@ -611,6 +611,16 @@ impl OrgDoc {
         self.headline_by_id(id).map(|h| h.link_targets().len())
     }
 
+    /// Returns headlines whose body contains `needle` ignoring case.
+    #[must_use]
+    pub fn headlines_with_body_substring_ignore_case<'a>(
+        &'a self,
+        needle: &str,
+    ) -> Vec<&'a Headline> {
+        let lower = needle.to_lowercase();
+        self.filter_headlines(|h| h.body_source().to_lowercase().contains(&lower))
+    }
+
     /// Path indices for `id`-tagged headline (root-relative).
     #[must_use]
     pub fn path_of(&self, id: &str) -> Option<Vec<usize>> {
