@@ -2069,6 +2069,33 @@ impl OrgDoc {
             .collect()
     }
 
+    /// Titles of roots carrying `tag`.
+    #[must_use]
+    pub fn root_titles_with_tag(&self, tag: &str) -> Vec<&str> {
+        self.roots_with_tag(tag)
+            .into_iter()
+            .map(Headline::title)
+            .collect()
+    }
+
+    /// Titles of roots with TODO keyword equal to `kw`.
+    #[must_use]
+    pub fn root_titles_with_todo(&self, kw: &str) -> Vec<&str> {
+        self.roots_with_todo(kw)
+            .into_iter()
+            .map(Headline::title)
+            .collect()
+    }
+
+    /// Titles of roots with priority letter equal to `letter`.
+    #[must_use]
+    pub fn root_titles_with_priority(&self, letter: char) -> Vec<&str> {
+        self.roots_with_priority(letter)
+            .into_iter()
+            .map(Headline::title)
+            .collect()
+    }
+
     fn collect_descendants_where<F: Fn(&Headline) -> bool>(
         &self,
         pred: F,

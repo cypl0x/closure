@@ -2505,3 +2505,24 @@ fn doc_roots_with_priority_returns_all() {
         ["One", "Three"]
     );
 }
+
+#[test]
+fn doc_root_titles_with_tag_returns_strs() {
+    let src = "* A :work:\n* B :home:\n* C :work:\n";
+    let doc = parse(src).expect("parse");
+    assert_eq!(doc.root_titles_with_tag("work"), vec!["A", "C"]);
+}
+
+#[test]
+fn doc_root_titles_with_todo_returns_strs() {
+    let src = "* TODO A\n* DONE B\n* TODO C\n";
+    let doc = parse(src).expect("parse");
+    assert_eq!(doc.root_titles_with_todo("TODO"), vec!["A", "C"]);
+}
+
+#[test]
+fn doc_root_titles_with_priority_returns_strs() {
+    let src = "* [#A] One\n* [#B] Two\n* [#A] Three\n";
+    let doc = parse(src).expect("parse");
+    assert_eq!(doc.root_titles_with_priority('A'), vec!["One", "Three"]);
+}
