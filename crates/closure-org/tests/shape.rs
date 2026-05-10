@@ -1060,6 +1060,43 @@ fn distinct_tag_count_counts_distinct_tags() {
 }
 
 #[test]
+fn modal_tag_picks_most_common() {
+    let doc = parse("* A :x:\n* B :x:\n* C :y:\n").expect("parse");
+    let (tag, n) = doc.modal_tag().expect("modal");
+    assert_eq!(tag, "x");
+    assert_eq!(n, 2);
+}
+
+#[test]
+fn modal_level_picks_most_common() {
+    let doc = parse("* A\n* B\n** C\n").expect("parse");
+    let (lvl, n) = doc.modal_level().expect("modal");
+    assert_eq!(lvl, 1);
+    assert_eq!(n, 2);
+}
+
+#[test]
+fn id_set_is_distinct() {
+    let src = "* A\n:PROPERTIES:\n:ID: x\n:END:\n* B\n:PROPERTIES:\n:ID: x\n:END:\n* C\n";
+    let doc = parse(src).expect("parse");
+    assert_eq!(doc.id_set().len(), 1);
+    assert_eq!(doc.id_count(), 2);
+    assert!(doc.has_duplicate_ids());
+}
+
+#[test]
+fn linking_count_counts_only_linkers() {
+    let doc = parse("* A [[id:01TGT]]\n* B\n").expect("parse");
+    assert_eq!(doc.linking_count(), 1);
+}
+
+#[test]
+fn empty_title_count_walks_tree() {
+    let doc = parse("*\n* B\n*\n").expect("parse");
+    assert_eq!(doc.empty_title_count(), 2);
+}
+
+#[test]
 fn descendant_count_counts_children_recursively() {
     let doc = parse("* Root\n** A\n*** A1\n** B\n").expect("parse");
     let root = &doc.roots()[0];
