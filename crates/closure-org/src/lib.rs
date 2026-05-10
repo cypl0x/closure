@@ -662,6 +662,22 @@ impl OrgDoc {
         self.dead_link_targets().len()
     }
 
+    /// Returns every (source_id, target_id) `id:` edge inside the doc.
+    #[must_use]
+    pub fn id_edges(&self) -> Vec<(String, String)> {
+        let mut out: Vec<(String, String)> = Vec::new();
+        for h in self.iter_headlines() {
+            let Some(src) = h.id_property() else { continue };
+            for raw in h.link_targets() {
+                let Some(stripped) = raw.strip_prefix("id:") else {
+                    continue;
+                };
+                out.push((src.to_owned(), stripped.to_owned()));
+            }
+        }
+        out
+    }
+
     /// Returns headlines whose body contains `needle` ignoring case.
     #[must_use]
     pub fn headlines_with_body_substring_ignore_case<'a>(
