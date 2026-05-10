@@ -611,6 +611,14 @@ impl OrgDoc {
         self.headline_by_id(id).map(|h| h.link_targets().len())
     }
 
+    /// Net link delta (outgoing - incoming) for headline `id`.
+    #[must_use]
+    pub fn link_balance(&self, id: &str) -> Option<isize> {
+        let out = isize::try_from(self.outgoing_link_count(id)?).ok()?;
+        let inc = isize::try_from(self.incoming_link_count(id)).ok()?;
+        Some(out - inc)
+    }
+
     /// Returns headlines whose body contains `needle` ignoring case.
     #[must_use]
     pub fn headlines_with_body_substring_ignore_case<'a>(
