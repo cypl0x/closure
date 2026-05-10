@@ -4497,6 +4497,32 @@ impl Headline {
         out
     }
 
+    /// Archived descendants.
+    #[must_use]
+    pub fn descendants_archived(&self) -> Vec<&Self> {
+        let mut out: Vec<&Self> = Vec::new();
+        for c in &self.children {
+            if c.is_archived() {
+                out.push(c);
+            }
+            out.extend(c.descendants_archived());
+        }
+        out
+    }
+
+    /// COMMENT-prefixed descendants.
+    #[must_use]
+    pub fn descendants_commented(&self) -> Vec<&Self> {
+        let mut out: Vec<&Self> = Vec::new();
+        for c in &self.children {
+            if c.is_comment() {
+                out.push(c);
+            }
+            out.extend(c.descendants_commented());
+        }
+        out
+    }
+
     /// Number of comment lines in the body.
     #[must_use]
     pub fn body_comment_count(&self) -> usize {

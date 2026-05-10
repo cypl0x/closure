@@ -1424,6 +1424,32 @@ fn descendants_with_property_returns_subtree() {
 }
 
 #[test]
+fn descendants_archived_returns_subtree() {
+    let src = "* R\n** A :ARCHIVE:\n** B\n*** C :ARCHIVE:\n";
+    let doc = parse(src).expect("parse");
+    let root = &doc.roots()[0];
+    let titles: Vec<&str> = root
+        .descendants_archived()
+        .iter()
+        .map(|h| h.title())
+        .collect();
+    assert_eq!(titles, vec!["A", "C"]);
+}
+
+#[test]
+fn descendants_commented_returns_subtree() {
+    let src = "* R\n** COMMENT A\n** B\n*** COMMENT C\n";
+    let doc = parse(src).expect("parse");
+    let root = &doc.roots()[0];
+    let titles: Vec<&str> = root
+        .descendants_commented()
+        .iter()
+        .map(|h| h.title())
+        .collect();
+    assert_eq!(titles, vec!["COMMENT A", "COMMENT C"]);
+}
+
+#[test]
 fn descendant_count_counts_children_recursively() {
     let doc = parse("* Root\n** A\n*** A1\n** B\n").expect("parse");
     let root = &doc.roots()[0];
