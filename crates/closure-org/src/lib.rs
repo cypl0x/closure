@@ -591,6 +591,14 @@ impl OrgDoc {
         self.headline_by_id(id).map(|h| h.has_tag(tag))
     }
 
+    /// Property value for `id`+`key`.
+    #[must_use]
+    pub fn property_of(&self, id: &str, key: &str) -> Option<&str> {
+        self.headline_by_id(id)
+            .and_then(|h| h.properties())
+            .and_then(|p| p.get(key))
+    }
+
     /// Returns every headline matching `pred` (depth-first).
     #[must_use]
     pub fn filter_headlines<F: Fn(&Headline) -> bool>(&self, pred: F) -> Vec<&Headline> {
