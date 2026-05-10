@@ -1139,6 +1139,37 @@ fn hub_count_when_id_both_source_and_sink() {
 }
 
 #[test]
+fn most_referenced_picks_top() {
+    let src = "* A\n:PROPERTIES:\n:ID: TGT\n:END:\n* B\n:PROPERTIES:\n:ID: B\n:END:\nLink [[id:TGT]]\n* C\n:PROPERTIES:\n:ID: C\n:END:\nLink [[id:TGT]]\n";
+    let doc = parse(src).expect("parse");
+    let (id, n) = doc.most_referenced().expect("found");
+    assert_eq!(id, "TGT");
+    assert_eq!(n, 2);
+}
+
+#[test]
+fn link_balance_outgoing_minus_incoming() {
+    let src = "* A\n:PROPERTIES:\n:ID: SRC\n:END:\nLink [[id:T1]]\nLink [[id:T2]]\n* B\n:PROPERTIES:\n:ID: T1\n:END:\nLink [[id:SRC]]\n";
+    let doc = parse(src).expect("parse");
+    assert_eq!(doc.link_balance("SRC"), Some(2 - 1));
+    assert_eq!(doc.link_balance("T1"), Some(1 - 1));
+}
+
+#[test]
+fn density_pct_returns_percent() {
+    let doc = parse("* TODO A\n* TODO B\n* C\n* D\n").expect("parse");
+    assert_eq!(doc.todo_density_pct(), 50);
+    assert_eq!(doc.tag_density_pct(), 0);
+}
+
+#[test]
+fn id_pct_returns_percent() {
+    let src = "* A\n:PROPERTIES:\n:ID: x\n:END:\n* B\n* C\n* D\n";
+    let doc = parse(src).expect("parse");
+    assert_eq!(doc.id_pct(), 25);
+}
+
+#[test]
 fn descendant_count_counts_children_recursively() {
     let doc = parse("* Root\n** A\n*** A1\n** B\n").expect("parse");
     let root = &doc.roots()[0];
