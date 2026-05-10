@@ -2160,3 +2160,10 @@ fn planning_view_reads_scheduled_and_deadline() {
     assert_eq!(p.deadline, Some("<2026-05-01 Fri>"));
     assert!(p.closed.is_none());
 }
+
+#[test]
+fn doc_root_with_todo_returns_match() {
+    let doc = parse("* DONE A\n* TODO B\n").expect("parse");
+    assert_eq!(doc.root_with_todo("TODO").expect("h").title(), "B");
+    assert!(doc.root_with_todo("WAIT").is_none());
+}

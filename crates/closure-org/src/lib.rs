@@ -1791,6 +1791,12 @@ impl OrgDoc {
         self.roots.iter().find(|h| h.has_tag(tag))
     }
 
+    /// Root with `TODO` keyword equal to `kw`.
+    #[must_use]
+    pub fn root_with_todo(&self, kw: &str) -> Option<&Headline> {
+        self.roots.iter().find(|h| h.todo() == Some(kw))
+    }
+
     /// Highest priority letter present (`'A'` is highest).
     #[must_use]
     pub fn max_priority_letter(&self) -> Option<char> {
