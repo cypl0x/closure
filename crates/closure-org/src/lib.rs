@@ -1125,6 +1125,26 @@ impl OrgDoc {
             .unwrap_or(0)
     }
 
+    /// Returns max body byte count across headlines.
+    #[must_use]
+    pub fn max_body_byte_count(&self) -> usize {
+        self.iter_headlines()
+            .into_iter()
+            .map(Headline::body_byte_count)
+            .max()
+            .unwrap_or(0)
+    }
+
+    /// Returns max subtree byte count across headlines.
+    #[must_use]
+    pub fn max_subtree_byte_count(&self) -> usize {
+        self.iter_headlines()
+            .into_iter()
+            .map(Headline::subtree_byte_count)
+            .max()
+            .unwrap_or(0)
+    }
+
     /// Level histogram across the document.
     #[must_use]
     pub fn level_counts(&self) -> std::collections::BTreeMap<u8, usize> {
