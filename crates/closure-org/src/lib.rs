@@ -4608,6 +4608,19 @@ impl Headline {
         out
     }
 
+    /// Descendants whose title contains `needle`.
+    #[must_use]
+    pub fn descendants_with_title_substring<'a>(&'a self, needle: &str) -> Vec<&'a Self> {
+        let mut out: Vec<&Self> = Vec::new();
+        for c in &self.children {
+            if c.title().contains(needle) {
+                out.push(c);
+            }
+            out.extend(c.descendants_with_title_substring(needle));
+        }
+        out
+    }
+
     /// Number of comment lines in the body.
     #[must_use]
     pub fn body_comment_count(&self) -> usize {

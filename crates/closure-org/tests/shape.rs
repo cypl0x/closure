@@ -1521,6 +1521,19 @@ fn descendant_with_property_value_returns_subtree() {
 }
 
 #[test]
+fn descendants_with_title_substring_matches() {
+    let src = "* Project\n** kangaroo report\n** B\n*** kangaroo notes\n";
+    let doc = parse(src).expect("parse");
+    let root = &doc.roots()[0];
+    let titles: Vec<&str> = root
+        .descendants_with_title_substring("kangaroo")
+        .iter()
+        .map(|h| h.title())
+        .collect();
+    assert_eq!(titles, vec!["kangaroo report", "kangaroo notes"]);
+}
+
+#[test]
 fn descendant_count_counts_children_recursively() {
     let doc = parse("* Root\n** A\n*** A1\n** B\n").expect("parse");
     let root = &doc.roots()[0];
