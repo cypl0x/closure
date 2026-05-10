@@ -1733,6 +1733,11 @@ impl OrgDoc {
         self.iter_headlines().into_iter().nth(idx)
     }
 
+    /// DFS index of the first headline matching `pred`.
+    pub fn headline_index_of<F: Fn(&Headline) -> bool>(&self, pred: F) -> Option<usize> {
+        self.iter_headlines().into_iter().position(pred)
+    }
+
     /// Number of preamble nodes.
     #[must_use]
     pub const fn preamble_len(&self) -> usize {

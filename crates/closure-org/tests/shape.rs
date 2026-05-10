@@ -1845,6 +1845,15 @@ fn doc_first_headline_at_dfs() {
 }
 
 #[test]
+fn doc_headline_index_of_returns_position() {
+    let doc = parse("* A\n** B\n* C\n").expect("parse");
+    let bid = closure_org::find_links("");
+    let _ = bid;
+    let idx = doc.headline_index_of(|h| h.title() == "C");
+    assert_eq!(idx, Some(2));
+}
+
+#[test]
 fn descendant_count_counts_children_recursively() {
     let doc = parse("* Root\n** A\n*** A1\n** B\n").expect("parse");
     let root = &doc.roots()[0];
