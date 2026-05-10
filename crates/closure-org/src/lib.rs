@@ -869,6 +869,17 @@ impl OrgDoc {
         self.ids_with_todo_descendant().len()
     }
 
+    /// Level histogram across the document.
+    #[must_use]
+    pub fn level_counts(&self) -> std::collections::BTreeMap<u8, usize> {
+        let mut counts: std::collections::BTreeMap<u8, usize> =
+            std::collections::BTreeMap::new();
+        for h in self.iter_headlines() {
+            *counts.entry(h.level()).or_insert(0) += 1;
+        }
+        counts
+    }
+
     /// Priority-letter counts across the document.
     #[must_use]
     pub fn priority_counts(&self) -> std::collections::BTreeMap<char, usize> {
