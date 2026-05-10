@@ -537,6 +537,12 @@ impl OrgDoc {
         self.headline_by_id(id).map(Headline::child_count)
     }
 
+    /// Whether `id`-tagged headline is a leaf.
+    #[must_use]
+    pub fn is_leaf_of(&self, id: &str) -> Option<bool> {
+        self.headline_by_id(id).map(Headline::is_leaf)
+    }
+
     /// Returns every headline matching `pred` (depth-first).
     #[must_use]
     pub fn filter_headlines<F: Fn(&Headline) -> bool>(&self, pred: F) -> Vec<&Headline> {
