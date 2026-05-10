@@ -781,6 +781,12 @@ impl OrgDoc {
         self.dead_edges().len()
     }
 
+    /// Number of isolated ids.
+    #[must_use]
+    pub fn isolated_id_count(&self) -> usize {
+        self.isolated_ids().len()
+    }
+
     /// Returns ids that have neither incoming nor outgoing edges.
     #[must_use]
     pub fn isolated_ids(&self) -> Vec<&str> {
