@@ -2320,3 +2320,26 @@ fn doc_descendants_at_level_returns_all() {
     let v = doc.descendants_at_level(2);
     assert_eq!(v.iter().map(|h| h.title()).collect::<Vec<_>>(), ["B", "C"]);
 }
+
+#[test]
+fn doc_descendant_titles_at_level_returns_strs() {
+    let src = "* A\n** B\n** C\n*** D\n* E\n";
+    let doc = parse(src).expect("parse");
+    assert_eq!(doc.descendant_titles_at_level(2), vec!["B", "C"]);
+    assert_eq!(doc.descendant_titles_at_level(3), vec!["D"]);
+    assert!(doc.descendant_titles_at_level(4).is_empty());
+}
+
+#[test]
+fn doc_descendant_titles_with_tag_returns_strs() {
+    let src = "* A :work:\n** B :work:\n* C :home:\n";
+    let doc = parse(src).expect("parse");
+    assert_eq!(doc.descendant_titles_with_tag("work"), vec!["A", "B"]);
+}
+
+#[test]
+fn doc_descendant_titles_with_todo_returns_strs() {
+    let src = "* TODO A\n** DONE B\n* TODO C\n";
+    let doc = parse(src).expect("parse");
+    assert_eq!(doc.descendant_titles_with_todo("TODO"), vec!["A", "C"]);
+}

@@ -1905,6 +1905,33 @@ impl OrgDoc {
         self.collect_descendants_where(|h| h.level() == level)
     }
 
+    /// Titles of all descendants at exactly `level`.
+    #[must_use]
+    pub fn descendant_titles_at_level(&self, level: u8) -> Vec<&str> {
+        self.descendants_at_level(level)
+            .into_iter()
+            .map(Headline::title)
+            .collect()
+    }
+
+    /// Titles of all descendants carrying `tag`.
+    #[must_use]
+    pub fn descendant_titles_with_tag(&self, tag: &str) -> Vec<&str> {
+        self.descendants_with_tag(tag)
+            .into_iter()
+            .map(Headline::title)
+            .collect()
+    }
+
+    /// Titles of all descendants with TODO keyword `kw`.
+    #[must_use]
+    pub fn descendant_titles_with_todo(&self, kw: &str) -> Vec<&str> {
+        self.descendants_with_todo(kw)
+            .into_iter()
+            .map(Headline::title)
+            .collect()
+    }
+
     fn collect_descendants_where<F: Fn(&Headline) -> bool>(
         &self,
         pred: F,
