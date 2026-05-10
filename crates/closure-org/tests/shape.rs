@@ -2410,3 +2410,20 @@ fn doc_descendant_titles_archived_returns_strs() {
     let doc = parse(src).expect("parse");
     assert_eq!(doc.descendant_titles_archived(), vec!["A", "C"]);
 }
+
+#[test]
+fn doc_descendant_titles_commented_returns_strs() {
+    let src = "* COMMENT A\n** B\n* COMMENT C\n";
+    let doc = parse(src).expect("parse");
+    assert_eq!(
+        doc.descendant_titles_commented(),
+        vec!["COMMENT A", "COMMENT C"]
+    );
+}
+
+#[test]
+fn doc_descendant_titles_with_id_returns_strs() {
+    let src = "* A\n:PROPERTIES:\n:ID: a\n:END:\n* B\n* C\n:PROPERTIES:\n:ID: c\n:END:\n";
+    let doc = parse(src).expect("parse");
+    assert_eq!(doc.descendant_titles_with_id(), vec!["A", "C"]);
+}

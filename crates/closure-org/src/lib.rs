@@ -1986,6 +1986,24 @@ impl OrgDoc {
             .collect()
     }
 
+    /// Titles of all descendants prefixed `COMMENT`.
+    #[must_use]
+    pub fn descendant_titles_commented(&self) -> Vec<&str> {
+        self.descendants_commented()
+            .into_iter()
+            .map(Headline::title)
+            .collect()
+    }
+
+    /// Titles of all descendants carrying any `:ID:`.
+    #[must_use]
+    pub fn descendant_titles_with_id(&self) -> Vec<&str> {
+        self.descendants_with_id()
+            .into_iter()
+            .map(Headline::title)
+            .collect()
+    }
+
     fn collect_descendants_where<F: Fn(&Headline) -> bool>(
         &self,
         pred: F,
