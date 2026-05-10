@@ -449,6 +449,15 @@ impl Vault {
             .collect()
     }
 
+    /// Total `id:` edge count across the vault.
+    #[must_use]
+    pub fn id_edge_count(&self) -> usize {
+        self.documents
+            .values()
+            .map(|d| d.org().id_edge_count())
+            .sum()
+    }
+
     /// Total dead-link count across the vault (id: targets that don't
     /// resolve to any vault headline).
     #[must_use]
