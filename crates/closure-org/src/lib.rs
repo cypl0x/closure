@@ -579,6 +579,18 @@ impl OrgDoc {
         self.headline_by_id(id).map(Headline::property_count)
     }
 
+    /// Whether the headline at `id` has a `:NAME:` drawer.
+    #[must_use]
+    pub fn has_property_of(&self, id: &str, key: &str) -> Option<bool> {
+        self.headline_by_id(id).map(|h| h.has_property(key))
+    }
+
+    /// Whether the headline at `id` has tag `tag`.
+    #[must_use]
+    pub fn has_tag_of(&self, id: &str, tag: &str) -> Option<bool> {
+        self.headline_by_id(id).map(|h| h.has_tag(tag))
+    }
+
     /// Returns every headline matching `pred` (depth-first).
     #[must_use]
     pub fn filter_headlines<F: Fn(&Headline) -> bool>(&self, pred: F) -> Vec<&Headline> {
