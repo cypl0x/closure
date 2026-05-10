@@ -1547,6 +1547,23 @@ fn descendants_filter_walks_with_predicate() {
 }
 
 #[test]
+fn count_filter_descendants_returns_count() {
+    let src = "* R\n** A :work:\n*** B :work:\n** C\n";
+    let doc = parse(src).expect("parse");
+    let root = &doc.roots()[0];
+    assert_eq!(root.count_filter_descendants(|h| h.has_tag("work")), 2);
+}
+
+#[test]
+fn find_descendant_returns_first() {
+    let src = "* R\n** A\n** B :match:\n*** C :match:\n";
+    let doc = parse(src).expect("parse");
+    let root = &doc.roots()[0];
+    let h = root.find_descendant(|h| h.has_tag("match")).expect("found");
+    assert_eq!(h.title(), "B");
+}
+
+#[test]
 fn descendant_count_counts_children_recursively() {
     let doc = parse("* Root\n** A\n*** A1\n** B\n").expect("parse");
     let root = &doc.roots()[0];

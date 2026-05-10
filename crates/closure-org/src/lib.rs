@@ -4641,6 +4641,42 @@ impl Headline {
         out
     }
 
+    /// Count of descendants matching a predicate.
+    #[must_use]
+    pub fn count_filter_descendants<F: Fn(&Self) -> bool>(&self, pred: F) -> usize {
+        fn walk<F: Fn(&Headline) -> bool>(h: &Headline, pred: &F) -> usize {
+            let mut n = 0usize;
+            for c in h.children() {
+                if pred(c) {
+                    n += 1;
+                }
+                n += walk(c, pred);
+            }
+            n
+        }
+        walk(self, &pred)
+    }
+
+    /// First descendant matching a predicate.
+    #[must_use]
+    pub fn find_descendant<F: Fn(&Self) -> bool>(&self, pred: F) -> Option<&Self> {
+        fn walk<'a, F: Fn(&Headline) -> bool>(
+            h: &'a Headline,
+            pred: &F,
+        ) -> Option<&'a Headline> {
+            for c in h.children() {
+                if pred(c) {
+                    return Some(c);
+                }
+                if let Some(found) = walk(c, pred) {
+                    return Some(found);
+                }
+            }
+            None
+        }
+        walk(self, &pred)
+    }
+
     /// Number of comment lines in the body.
     #[must_use]
     pub fn body_comment_count(&self) -> usize {
