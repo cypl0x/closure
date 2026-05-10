@@ -947,6 +947,18 @@ impl OrgDoc {
         self.count_headlines_where(|h| h.title().is_empty())
     }
 
+    /// Sum of subtree word counts across roots.
+    #[must_use]
+    pub fn total_subtree_words(&self) -> usize {
+        self.roots.iter().map(Headline::subtree_word_count).sum()
+    }
+
+    /// Sum of subtree link counts across roots.
+    #[must_use]
+    pub fn total_subtree_links(&self) -> usize {
+        self.roots.iter().map(Headline::subtree_link_count).sum()
+    }
+
     /// Level histogram across the document.
     #[must_use]
     pub fn level_counts(&self) -> std::collections::BTreeMap<u8, usize> {
