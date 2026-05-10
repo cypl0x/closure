@@ -802,6 +802,14 @@ impl OrgDoc {
         self.all_ids().into_iter().collect()
     }
 
+    /// True if any id appears more than once (drawer ID collision).
+    #[must_use]
+    pub fn has_duplicate_ids(&self) -> bool {
+        let all = self.all_ids();
+        let set: std::collections::BTreeSet<&str> = all.iter().copied().collect();
+        all.len() != set.len()
+    }
+
     /// Returns ids that have neither incoming nor outgoing edges.
     #[must_use]
     pub fn isolated_ids(&self) -> Vec<&str> {
