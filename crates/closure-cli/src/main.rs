@@ -539,6 +539,11 @@ enum Cmd {
         /// Path to the vault directory.
         vault: PathBuf,
     },
+    /// Print drawer ids that appear more than once in the vault.
+    DuplicateIds {
+        /// Path to the vault directory.
+        vault: PathBuf,
+    },
     /// Run the MCP stdio dispatcher (one command name per line; `LIST`
     /// to enumerate). Quits on EOF.
     Mcp,
@@ -935,6 +940,7 @@ fn run(cmd: &Cmd) -> Result<(), String> {
         Cmd::RankLinks { vault } => cmd_rank_links(vault),
         Cmd::RankWords { vault } => cmd_rank_words(vault),
         Cmd::Edges { vault } => cmd_edges(vault),
+        Cmd::DuplicateIds { vault } => cmd_duplicate_ids(vault),
         Cmd::Mcp => cmd_mcp(),
         Cmd::Orphans { vault } => cmd_orphans(vault),
         Cmd::DeadLinks { vault } => cmd_dead_links(vault),
@@ -1698,6 +1704,14 @@ fn cmd_edges(vault: &Path) -> Result<(), String> {
     let v = Vault::open(vault).map_err(|e| format!("{e}"))?;
     for (src, tgt) in v.id_edges() {
         println!("{src}\t{tgt}");
+    }
+    Ok(())
+}
+
+fn cmd_duplicate_ids(vault: &Path) -> Result<(), String> {
+    let v = Vault::open(vault).map_err(|e| format!("{e}"))?;
+    for id in v.duplicate_ids() {
+        println!("{id}");
     }
     Ok(())
 }
