@@ -467,6 +467,15 @@ impl Vault {
             .sum()
     }
 
+    /// Resolved-edge count across vault (target lives in same doc).
+    #[must_use]
+    pub fn resolved_edge_count(&self) -> usize {
+        self.documents
+            .values()
+            .map(|d| d.org().resolved_edge_count())
+            .sum()
+    }
+
     /// Most-referenced id across the vault and its incoming count.
     #[must_use]
     pub fn most_referenced(&self) -> Option<(String, usize)> {
