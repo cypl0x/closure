@@ -787,6 +787,15 @@ impl OrgDoc {
         self.isolated_ids().len()
     }
 
+    /// Returns ids of every headline carrying `:ID:`.
+    #[must_use]
+    pub fn all_ids(&self) -> Vec<&str> {
+        self.iter_headlines()
+            .into_iter()
+            .filter_map(Headline::id_property)
+            .collect()
+    }
+
     /// Returns ids that have neither incoming nor outgoing edges.
     #[must_use]
     pub fn isolated_ids(&self) -> Vec<&str> {
