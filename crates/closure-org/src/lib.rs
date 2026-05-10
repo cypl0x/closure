@@ -822,6 +822,12 @@ impl OrgDoc {
         self.id_set().len()
     }
 
+    /// Number of `:ID:`-pinned headlines (counts duplicates).
+    #[must_use]
+    pub fn id_count(&self) -> usize {
+        self.all_ids().len()
+    }
+
     /// Returns ids that appear more than once.
     #[must_use]
     pub fn duplicate_ids(&self) -> Vec<&str> {
