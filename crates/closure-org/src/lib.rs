@@ -1833,6 +1833,28 @@ impl OrgDoc {
         self.headline_by_id(id)
     }
 
+    /// First descendant whose title equals `needle` (depth-first).
+    #[must_use]
+    pub fn descendant_with_title(&self, needle: &str) -> Option<&Headline> {
+        fn walk<'a>(h: &'a Headline, needle: &str) -> Option<&'a Headline> {
+            if h.title() == needle {
+                return Some(h);
+            }
+            for c in h.children() {
+                if let Some(found) = walk(c, needle) {
+                    return Some(found);
+                }
+            }
+            None
+        }
+        for r in &self.roots {
+            if let Some(found) = walk(r, needle) {
+                return Some(found);
+            }
+        }
+        None
+    }
+
     /// Highest priority letter present (`'A'` is highest).
     #[must_use]
     pub fn max_priority_letter(&self) -> Option<char> {

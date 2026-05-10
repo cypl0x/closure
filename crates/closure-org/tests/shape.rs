@@ -2204,3 +2204,14 @@ fn doc_descendant_with_id_returns_match() {
     assert_eq!(h.title(), "Inner");
     assert!(doc.descendant_with_id("missing").is_none());
 }
+
+#[test]
+fn doc_descendant_with_title_returns_match() {
+    let src = "* Top\n** Inner\n*** Leaf\n";
+    let doc = parse(src).expect("parse");
+    assert_eq!(
+        doc.descendant_with_title("Leaf").expect("hit").level(),
+        3
+    );
+    assert!(doc.descendant_with_title("Missing").is_none());
+}
