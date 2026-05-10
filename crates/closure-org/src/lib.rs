@@ -599,6 +599,41 @@ impl OrgDoc {
             .and_then(|p| p.get(key))
     }
 
+    /// Path indices for `id`-tagged headline (root-relative).
+    #[must_use]
+    pub fn path_of(&self, id: &str) -> Option<Vec<usize>> {
+        fn walk(
+            h: &Headline,
+            id: &str,
+            path: &mut Vec<usize>,
+            out: &mut Option<Vec<usize>>,
+        ) {
+            if h.id_property() == Some(id) {
+                *out = Some(path.clone());
+                return;
+            }
+            for (i, c) in h.children().iter().enumerate() {
+                path.push(i);
+                walk(c, id, path, out);
+                path.pop();
+                if out.is_some() {
+                    return;
+                }
+            }
+        }
+        let mut out = None;
+        let mut path = Vec::new();
+        for (i, r) in self.roots.iter().enumerate() {
+            path.push(i);
+            walk(r, id, &mut path, &mut out);
+            path.pop();
+            if out.is_some() {
+                break;
+            }
+        }
+        out
+    }
+
     /// Returns every headline matching `pred` (depth-first).
     #[must_use]
     pub fn filter_headlines<F: Fn(&Headline) -> bool>(&self, pred: F) -> Vec<&Headline> {
