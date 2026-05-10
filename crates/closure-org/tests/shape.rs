@@ -1097,6 +1097,48 @@ fn empty_title_count_walks_tree() {
 }
 
 #[test]
+fn id_edges_returns_id_links() {
+    let src = "* A\n:PROPERTIES:\n:ID: SRC\n:END:\nLink [[id:TGT]]\n* B\n:PROPERTIES:\n:ID: TGT\n:END:\n";
+    let doc = parse(src).expect("parse");
+    let edges = doc.id_edges();
+    assert_eq!(edges.len(), 1);
+    assert_eq!(edges[0].0, "SRC");
+    assert_eq!(edges[0].1, "TGT");
+    assert_eq!(doc.id_edge_count(), 1);
+    assert_eq!(doc.resolved_edge_count(), 1);
+    assert_eq!(doc.dead_edge_count(), 0);
+}
+
+#[test]
+fn dead_edge_count_when_target_missing() {
+    let src = "* A\n:PROPERTIES:\n:ID: SRC\n:END:\nLink [[id:GHOST]]\n";
+    let doc = parse(src).expect("parse");
+    assert_eq!(doc.dead_edge_count(), 1);
+    assert_eq!(doc.resolved_edge_count(), 0);
+}
+
+#[test]
+fn self_loop_count_picks_self_link() {
+    let src = "* A\n:PROPERTIES:\n:ID: X\n:END:\nLink [[id:X]]\n";
+    let doc = parse(src).expect("parse");
+    assert_eq!(doc.self_loop_count(), 1);
+}
+
+#[test]
+fn isolated_id_count_when_no_edges() {
+    let src = "* A\n:PROPERTIES:\n:ID: X\n:END:\n";
+    let doc = parse(src).expect("parse");
+    assert_eq!(doc.isolated_id_count(), 1);
+}
+
+#[test]
+fn hub_count_when_id_both_source_and_sink() {
+    let src = "* A\n:PROPERTIES:\n:ID: HUB\n:END:\nLink [[id:OTHER]]\n* B\n:PROPERTIES:\n:ID: OTHER\n:END:\nLink [[id:HUB]]\n";
+    let doc = parse(src).expect("parse");
+    assert_eq!(doc.hub_count(), 2);
+}
+
+#[test]
 fn descendant_count_counts_children_recursively() {
     let doc = parse("* Root\n** A\n*** A1\n** B\n").expect("parse");
     let root = &doc.roots()[0];
