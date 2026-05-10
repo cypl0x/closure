@@ -744,6 +744,15 @@ impl OrgDoc {
             .collect()
     }
 
+    /// Edges where target does not resolve inside the doc.
+    #[must_use]
+    pub fn dead_edges(&self) -> Vec<(String, String)> {
+        self.id_edges()
+            .into_iter()
+            .filter(|(_, t)| !self.contains_id(t))
+            .collect()
+    }
+
     /// Reverse adjacency: target-id → list of source-ids that link to it.
     #[must_use]
     pub fn id_reverse_adjacency(&self) -> std::collections::BTreeMap<String, Vec<String>> {
