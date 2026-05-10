@@ -1359,6 +1359,32 @@ fn descendant_leaves_returns_matching() {
 }
 
 #[test]
+fn descendant_todos_returns_todo_subtree() {
+    let src = "* Root\n** TODO A\n*** B\n** DONE C\n";
+    let doc = parse(src).expect("parse");
+    let root = &doc.roots()[0];
+    let titles: Vec<&str> = root
+        .descendant_todos()
+        .iter()
+        .map(|h| h.title())
+        .collect();
+    assert_eq!(titles, vec!["A", "C"]);
+}
+
+#[test]
+fn descendant_with_tag_returns_subtree() {
+    let src = "* Root\n** A :work:\n*** B :work:\n** C :home:\n";
+    let doc = parse(src).expect("parse");
+    let root = &doc.roots()[0];
+    let titles: Vec<&str> = root
+        .descendants_with_tag("work")
+        .iter()
+        .map(|h| h.title())
+        .collect();
+    assert_eq!(titles, vec!["A", "B"]);
+}
+
+#[test]
 fn descendant_count_counts_children_recursively() {
     let doc = parse("* Root\n** A\n*** A1\n** B\n").expect("parse");
     let root = &doc.roots()[0];

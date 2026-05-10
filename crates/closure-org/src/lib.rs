@@ -4432,6 +4432,32 @@ impl Headline {
         out
     }
 
+    /// Descendants with any TODO keyword.
+    #[must_use]
+    pub fn descendant_todos(&self) -> Vec<&Self> {
+        let mut out: Vec<&Self> = Vec::new();
+        for c in &self.children {
+            if c.todo().is_some() {
+                out.push(c);
+            }
+            out.extend(c.descendant_todos());
+        }
+        out
+    }
+
+    /// Descendants carrying `tag`.
+    #[must_use]
+    pub fn descendants_with_tag<'a>(&'a self, tag: &str) -> Vec<&'a Self> {
+        let mut out: Vec<&Self> = Vec::new();
+        for c in &self.children {
+            if c.has_tag(tag) {
+                out.push(c);
+            }
+            out.extend(c.descendants_with_tag(tag));
+        }
+        out
+    }
+
     /// Number of comment lines in the body.
     #[must_use]
     pub fn body_comment_count(&self) -> usize {
