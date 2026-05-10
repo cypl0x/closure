@@ -1451,6 +1451,16 @@ impl OrgDoc {
         self.iter_headlines().into_iter().all(pred)
     }
 
+    /// Maps every headline through `f`, collecting in DFS order.
+    pub fn map_headlines<T, F: Fn(&Headline) -> T>(&self, f: F) -> Vec<T> {
+        self.iter_headlines().into_iter().map(f).collect()
+    }
+
+    /// Folds every headline through `f`, accumulating from `init`.
+    pub fn fold_headlines<T, F: Fn(T, &Headline) -> T>(&self, init: T, f: F) -> T {
+        self.iter_headlines().into_iter().fold(init, f)
+    }
+
     /// Returns the first headline that satisfies `pred` (depth-first).
     #[must_use]
     pub fn find_headline<F: Fn(&Headline) -> bool>(&self, pred: F) -> Option<&Headline> {

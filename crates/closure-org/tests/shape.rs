@@ -1752,6 +1752,20 @@ fn doc_all_headlines_predicate() {
 }
 
 #[test]
+fn doc_map_headlines_returns_mapped() {
+    let doc = parse("* A\n* B\n* C\n").expect("parse");
+    let titles: Vec<String> = doc.map_headlines(|h| h.title().to_owned());
+    assert_eq!(titles, vec!["A", "B", "C"]);
+}
+
+#[test]
+fn doc_fold_headlines_aggregates() {
+    let doc = parse("* abc\n* d\n").expect("parse");
+    let total: usize = doc.fold_headlines(0, |acc, h| acc + h.title().len());
+    assert_eq!(total, 4);
+}
+
+#[test]
 fn descendant_count_counts_children_recursively() {
     let doc = parse("* Root\n** A\n*** A1\n** B\n").expect("parse");
     let root = &doc.roots()[0];
