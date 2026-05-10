@@ -705,6 +705,15 @@ impl OrgDoc {
         set.len()
     }
 
+    /// Returns the most-incoming-referenced id and its incoming count.
+    #[must_use]
+    pub fn most_referenced(&self) -> Option<(String, usize)> {
+        let rev = self.id_reverse_adjacency();
+        rev.into_iter()
+            .map(|(k, v)| (k, v.len()))
+            .max_by_key(|(_, n)| *n)
+    }
+
     /// Reverse adjacency: target-id → list of source-ids that link to it.
     #[must_use]
     pub fn id_reverse_adjacency(&self) -> std::collections::BTreeMap<String, Vec<String>> {
