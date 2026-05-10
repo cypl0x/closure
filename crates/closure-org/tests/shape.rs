@@ -1904,6 +1904,13 @@ fn doc_map_roots_returns_mapped() {
 }
 
 #[test]
+fn doc_fold_roots_aggregates() {
+    let doc = parse("* abc\n* d\n").expect("parse");
+    let total: usize = doc.fold_roots(0, |acc, h| acc + h.title().len());
+    assert_eq!(total, 4);
+}
+
+#[test]
 fn descendant_count_counts_children_recursively() {
     let doc = parse("* Root\n** A\n*** A1\n** B\n").expect("parse");
     let root = &doc.roots()[0];

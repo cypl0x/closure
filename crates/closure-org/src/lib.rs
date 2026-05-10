@@ -1747,6 +1747,11 @@ impl OrgDoc {
         self.roots.iter().map(f).collect()
     }
 
+    /// Folds root headlines through `f`.
+    pub fn fold_roots<T, F: Fn(T, &Headline) -> T>(&self, init: T, f: F) -> T {
+        self.roots.iter().fold(init, f)
+    }
+
     /// Headline at the given DFS index.
     #[must_use]
     pub fn headline_at_index(&self, idx: usize) -> Option<&Headline> {
