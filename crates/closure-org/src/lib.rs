@@ -513,6 +513,18 @@ impl OrgDoc {
         self.headline_by_id(id).map(Headline::display_title)
     }
 
+    /// Planning view for `id`-tagged headline.
+    #[must_use]
+    pub fn planning_of(&self, id: &str) -> Option<PlanningView<'_>> {
+        self.headline_by_id(id).and_then(Headline::planning)
+    }
+
+    /// Properties drawer for `id`-tagged headline.
+    #[must_use]
+    pub fn properties_of(&self, id: &str) -> Option<&Properties> {
+        self.headline_by_id(id).and_then(Headline::properties)
+    }
+
     /// Returns every headline matching `pred` (depth-first).
     #[must_use]
     pub fn filter_headlines<F: Fn(&Headline) -> bool>(&self, pred: F) -> Vec<&Headline> {
