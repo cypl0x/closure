@@ -4406,6 +4406,32 @@ impl Headline {
             .sum()
     }
 
+    /// Descendants at exactly `level` (not including self).
+    #[must_use]
+    pub fn descendants_at_level(&self, level: u8) -> Vec<&Self> {
+        let mut out: Vec<&Self> = Vec::new();
+        for c in &self.children {
+            if c.level() == level {
+                out.push(c);
+            }
+            out.extend(c.descendants_at_level(level));
+        }
+        out
+    }
+
+    /// Leaf descendants (terminal nodes only).
+    #[must_use]
+    pub fn descendant_leaves(&self) -> Vec<&Self> {
+        let mut out: Vec<&Self> = Vec::new();
+        for c in &self.children {
+            if c.is_leaf() {
+                out.push(c);
+            }
+            out.extend(c.descendant_leaves());
+        }
+        out
+    }
+
     /// Number of comment lines in the body.
     #[must_use]
     pub fn body_comment_count(&self) -> usize {

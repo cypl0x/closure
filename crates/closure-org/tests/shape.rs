@@ -1333,6 +1333,32 @@ fn count_descendants_with_id_filters() {
 }
 
 #[test]
+fn descendants_at_level_returns_matching() {
+    let src = "* A\n** B\n*** C\n*** D\n** E\n";
+    let doc = parse(src).expect("parse");
+    let root = &doc.roots()[0];
+    let l3: Vec<&str> = root
+        .descendants_at_level(3)
+        .iter()
+        .map(|h| h.title())
+        .collect();
+    assert_eq!(l3, vec!["C", "D"]);
+}
+
+#[test]
+fn descendant_leaves_returns_matching() {
+    let src = "* A\n** B\n*** C\n** D\n";
+    let doc = parse(src).expect("parse");
+    let root = &doc.roots()[0];
+    let leaves: Vec<&str> = root
+        .descendant_leaves()
+        .iter()
+        .map(|h| h.title())
+        .collect();
+    assert_eq!(leaves, vec!["C", "D"]);
+}
+
+#[test]
 fn descendant_count_counts_children_recursively() {
     let doc = parse("* Root\n** A\n*** A1\n** B\n").expect("parse");
     let root = &doc.roots()[0];
