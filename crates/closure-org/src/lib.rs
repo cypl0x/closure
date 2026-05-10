@@ -2096,6 +2096,24 @@ impl OrgDoc {
             .collect()
     }
 
+    /// Titles of roots tagged `:ARCHIVE:`.
+    #[must_use]
+    pub fn root_titles_archived(&self) -> Vec<&str> {
+        self.roots_archived()
+            .into_iter()
+            .map(Headline::title)
+            .collect()
+    }
+
+    /// Titles of roots prefixed `COMMENT`.
+    #[must_use]
+    pub fn root_titles_commented(&self) -> Vec<&str> {
+        self.roots_commented()
+            .into_iter()
+            .map(Headline::title)
+            .collect()
+    }
+
     fn collect_descendants_where<F: Fn(&Headline) -> bool>(
         &self,
         pred: F,

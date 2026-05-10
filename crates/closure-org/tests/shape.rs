@@ -2526,3 +2526,20 @@ fn doc_root_titles_with_priority_returns_strs() {
     let doc = parse(src).expect("parse");
     assert_eq!(doc.root_titles_with_priority('A'), vec!["One", "Three"]);
 }
+
+#[test]
+fn doc_root_titles_archived_returns_strs() {
+    let src = "* A :ARCHIVE:\n* B\n* C :ARCHIVE:\n";
+    let doc = parse(src).expect("parse");
+    assert_eq!(doc.root_titles_archived(), vec!["A", "C"]);
+}
+
+#[test]
+fn doc_root_titles_commented_returns_strs() {
+    let src = "* COMMENT A\n* B\n* COMMENT C\n";
+    let doc = parse(src).expect("parse");
+    assert_eq!(
+        doc.root_titles_commented(),
+        vec!["COMMENT A", "COMMENT C"]
+    );
+}
