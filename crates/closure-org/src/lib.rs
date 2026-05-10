@@ -1836,19 +1836,44 @@ impl OrgDoc {
     /// First descendant whose title equals `needle` (depth-first).
     #[must_use]
     pub fn descendant_with_title(&self, needle: &str) -> Option<&Headline> {
-        fn walk<'a>(h: &'a Headline, needle: &str) -> Option<&'a Headline> {
-            if h.title() == needle {
+        self.find_descendant(|h| h.title() == needle)
+    }
+
+    /// First descendant carrying `tag` (depth-first).
+    #[must_use]
+    pub fn descendant_with_tag(&self, tag: &str) -> Option<&Headline> {
+        self.find_descendant(|h| h.has_tag(tag))
+    }
+
+    /// First descendant with TODO keyword equal to `kw` (depth-first).
+    #[must_use]
+    pub fn descendant_with_todo(&self, kw: &str) -> Option<&Headline> {
+        self.find_descendant(|h| h.todo() == Some(kw))
+    }
+
+    /// First descendant with priority letter equal to `letter` (depth-first).
+    #[must_use]
+    pub fn descendant_with_priority(&self, letter: char) -> Option<&Headline> {
+        self.find_descendant(|h| h.priority() == Some(letter))
+    }
+
+    fn find_descendant<F: Fn(&Headline) -> bool>(&self, pred: F) -> Option<&Headline> {
+        fn walk<'a, F: Fn(&Headline) -> bool>(
+            h: &'a Headline,
+            pred: &F,
+        ) -> Option<&'a Headline> {
+            if pred(h) {
                 return Some(h);
             }
             for c in h.children() {
-                if let Some(found) = walk(c, needle) {
+                if let Some(found) = walk(c, pred) {
                     return Some(found);
                 }
             }
             None
         }
         for r in &self.roots {
-            if let Some(found) = walk(r, needle) {
+            if let Some(found) = walk(r, &pred) {
                 return Some(found);
             }
         }

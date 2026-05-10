@@ -2215,3 +2215,36 @@ fn doc_descendant_with_title_returns_match() {
     );
     assert!(doc.descendant_with_title("Missing").is_none());
 }
+
+#[test]
+fn doc_descendant_with_tag_returns_match() {
+    let src = "* Top\n** Inner :work:\n*** Leaf :home:\n";
+    let doc = parse(src).expect("parse");
+    assert_eq!(
+        doc.descendant_with_tag("home").expect("hit").title(),
+        "Leaf"
+    );
+    assert!(doc.descendant_with_tag("none").is_none());
+}
+
+#[test]
+fn doc_descendant_with_todo_returns_match() {
+    let src = "* Top\n** TODO Inner\n*** DONE Leaf\n";
+    let doc = parse(src).expect("parse");
+    assert_eq!(
+        doc.descendant_with_todo("DONE").expect("hit").title(),
+        "Leaf"
+    );
+    assert!(doc.descendant_with_todo("WAIT").is_none());
+}
+
+#[test]
+fn doc_descendant_with_priority_returns_match() {
+    let src = "* Top\n** [#A] Inner\n*** [#B] Leaf\n";
+    let doc = parse(src).expect("parse");
+    assert_eq!(
+        doc.descendant_with_priority('B').expect("hit").title(),
+        "Leaf"
+    );
+    assert!(doc.descendant_with_priority('Z').is_none());
+}
