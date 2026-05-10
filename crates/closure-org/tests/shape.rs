@@ -1721,6 +1721,24 @@ fn fold_descendants_aggregates() {
 }
 
 #[test]
+fn any_descendant_predicate() {
+    let src = "* R\n** A\n** B :match:\n";
+    let doc = parse(src).expect("parse");
+    let root = &doc.roots()[0];
+    assert!(root.any_descendant(|h| h.has_tag("match")));
+    assert!(!root.any_descendant(|h| h.has_tag("none")));
+}
+
+#[test]
+fn all_descendants_predicate() {
+    let src = "* R\n** A :work:\n** B :work:\n";
+    let doc = parse(src).expect("parse");
+    let root = &doc.roots()[0];
+    assert!(root.all_descendants(|h| h.has_tag("work")));
+    assert!(!root.all_descendants(|h| h.title() == "A"));
+}
+
+#[test]
 fn descendant_count_counts_children_recursively() {
     let doc = parse("* Root\n** A\n*** A1\n** B\n").expect("parse");
     let root = &doc.roots()[0];

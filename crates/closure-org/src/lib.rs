@@ -4024,6 +4024,16 @@ impl Headline {
         self.descendants().into_iter().fold(init, f)
     }
 
+    /// True iff any descendant matches the predicate.
+    pub fn any_descendant<F: Fn(&Self) -> bool>(&self, pred: F) -> bool {
+        self.descendants().into_iter().any(pred)
+    }
+
+    /// True iff every descendant matches the predicate.
+    pub fn all_descendants<F: Fn(&Self) -> bool>(&self, pred: F) -> bool {
+        self.descendants().into_iter().all(pred)
+    }
+
     /// First child whose title equals `needle` (case-sensitive).
     #[must_use]
     pub fn child_by_title(&self, needle: &str) -> Option<&Self> {
