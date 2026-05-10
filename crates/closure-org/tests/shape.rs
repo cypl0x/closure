@@ -1620,6 +1620,14 @@ fn descendant_titles_dfs() {
 }
 
 #[test]
+fn descendant_ids_returns_drawer_ids() {
+    let src = "* R\n** A\n:PROPERTIES:\n:ID: x\n:END:\n** B\n*** C\n:PROPERTIES:\n:ID: y\n:END:\n";
+    let doc = parse(src).expect("parse");
+    let root = &doc.roots()[0];
+    assert_eq!(root.descendant_ids(), vec!["x", "y"]);
+}
+
+#[test]
 fn descendant_count_counts_children_recursively() {
     let doc = parse("* Root\n** A\n*** A1\n** B\n").expect("parse");
     let root = &doc.roots()[0];

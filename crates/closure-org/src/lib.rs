@@ -3960,6 +3960,15 @@ impl Headline {
         self.descendants().into_iter().map(Self::title).collect()
     }
 
+    /// Returns drawer ids of every descendant carrying `:ID:`.
+    #[must_use]
+    pub fn descendant_ids(&self) -> Vec<&str> {
+        self.descendants()
+            .into_iter()
+            .filter_map(Self::id_property)
+            .collect()
+    }
+
     /// First child whose title equals `needle` (case-sensitive).
     #[must_use]
     pub fn child_by_title(&self, needle: &str) -> Option<&Self> {
