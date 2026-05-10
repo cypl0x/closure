@@ -599,6 +599,18 @@ impl OrgDoc {
             .and_then(|p| p.get(key))
     }
 
+    /// Number of links pointing to `id` from any headline.
+    #[must_use]
+    pub fn incoming_link_count(&self, id: &str) -> usize {
+        self.find_link_sources(id).len()
+    }
+
+    /// Number of outgoing links from headline `id`.
+    #[must_use]
+    pub fn outgoing_link_count(&self, id: &str) -> Option<usize> {
+        self.headline_by_id(id).map(|h| h.link_targets().len())
+    }
+
     /// Path indices for `id`-tagged headline (root-relative).
     #[must_use]
     pub fn path_of(&self, id: &str) -> Option<Vec<usize>> {
