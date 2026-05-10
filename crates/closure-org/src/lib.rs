@@ -1485,6 +1485,15 @@ impl OrgDoc {
         self.roots.iter().map(Headline::title).collect()
     }
 
+    /// All link targets across every headline (with duplicates).
+    #[must_use]
+    pub fn all_link_targets(&self) -> Vec<String> {
+        self.iter_headlines()
+            .into_iter()
+            .flat_map(Headline::link_targets)
+            .collect()
+    }
+
     /// Returns the first headline that satisfies `pred` (depth-first).
     #[must_use]
     pub fn find_headline<F: Fn(&Headline) -> bool>(&self, pred: F) -> Option<&Headline> {

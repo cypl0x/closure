@@ -1784,6 +1784,15 @@ fn doc_root_titles_returns_only_roots() {
 }
 
 #[test]
+fn doc_all_links_returns_targets() {
+    let src = "* A [[id:T1]]\n* B\nbody [[https://x]]\n";
+    let doc = parse(src).expect("parse");
+    let mut targets = doc.all_link_targets();
+    targets.sort();
+    assert_eq!(targets, vec!["https://x", "id:T1"]);
+}
+
+#[test]
 fn descendant_count_counts_children_recursively() {
     let doc = parse("* Root\n** A\n*** A1\n** B\n").expect("parse");
     let root = &doc.roots()[0];
