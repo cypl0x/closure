@@ -683,6 +683,20 @@ impl OrgDoc {
         out
     }
 
+    /// Number of distinct source-ids that link out.
+    #[must_use]
+    pub fn link_source_count(&self) -> usize {
+        let mut s: std::collections::HashSet<&str> = std::collections::HashSet::new();
+        for h in self.iter_headlines() {
+            if !h.link_targets().is_empty()
+                && let Some(id) = h.id_property()
+            {
+                s.insert(id);
+            }
+        }
+        s.len()
+    }
+
     /// Reverse adjacency: target-id → list of source-ids that link to it.
     #[must_use]
     pub fn id_reverse_adjacency(&self) -> std::collections::BTreeMap<String, Vec<String>> {
