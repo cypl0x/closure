@@ -4458,6 +4458,19 @@ impl Headline {
         out
     }
 
+    /// Descendants carrying an `:ID:` drawer.
+    #[must_use]
+    pub fn descendants_with_id(&self) -> Vec<&Self> {
+        let mut out: Vec<&Self> = Vec::new();
+        for c in &self.children {
+            if c.has_id() {
+                out.push(c);
+            }
+            out.extend(c.descendants_with_id());
+        }
+        out
+    }
+
     /// Number of comment lines in the body.
     #[must_use]
     pub fn body_comment_count(&self) -> usize {
