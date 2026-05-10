@@ -1779,6 +1779,12 @@ impl OrgDoc {
         self.roots.iter().find(|h| h.id_property() == Some(id))
     }
 
+    /// Root whose title equals `needle`.
+    #[must_use]
+    pub fn root_with_title(&self, needle: &str) -> Option<&Headline> {
+        self.roots.iter().find(|h| h.title() == needle)
+    }
+
     /// Highest priority letter present (`'A'` is highest).
     #[must_use]
     pub fn max_priority_letter(&self) -> Option<char> {

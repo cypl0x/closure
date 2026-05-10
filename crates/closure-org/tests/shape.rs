@@ -1997,6 +1997,13 @@ fn doc_root_with_id_returns_match() {
 }
 
 #[test]
+fn doc_root_with_title_returns_match() {
+    let doc = parse("* A\n* B\n").expect("parse");
+    assert_eq!(doc.root_with_title("B").expect("h").title(), "B");
+    assert!(doc.root_with_title("Z").is_none());
+}
+
+#[test]
 fn descendant_count_counts_children_recursively() {
     let doc = parse("* Root\n** A\n*** A1\n** B\n").expect("parse");
     let root = &doc.roots()[0];
