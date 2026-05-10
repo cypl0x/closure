@@ -1712,6 +1712,15 @@ fn map_descendants_returns_mapped() {
 }
 
 #[test]
+fn fold_descendants_aggregates() {
+    let src = "* R\n** A\n** B\n*** C\n";
+    let doc = parse(src).expect("parse");
+    let root = &doc.roots()[0];
+    let total = root.fold_descendants(0usize, |acc, h| acc + h.title().len());
+    assert_eq!(total, 3);
+}
+
+#[test]
 fn descendant_count_counts_children_recursively() {
     let doc = parse("* Root\n** A\n*** A1\n** B\n").expect("parse");
     let root = &doc.roots()[0];

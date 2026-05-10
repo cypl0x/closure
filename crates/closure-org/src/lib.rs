@@ -4019,6 +4019,11 @@ impl Headline {
         self.descendants().into_iter().map(f).collect()
     }
 
+    /// Folds descendants through `f`, accumulating from `init`.
+    pub fn fold_descendants<T, F: Fn(T, &Self) -> T>(&self, init: T, f: F) -> T {
+        self.descendants().into_iter().fold(init, f)
+    }
+
     /// First child whose title equals `needle` (case-sensitive).
     #[must_use]
     pub fn child_by_title(&self, needle: &str) -> Option<&Self> {
