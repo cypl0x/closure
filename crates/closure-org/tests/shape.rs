@@ -1308,6 +1308,15 @@ fn count_descendants_at_level_filters() {
 }
 
 #[test]
+fn count_descendants_with_property_filters() {
+    let src = "* A\n** B\n:PROPERTIES:\n:EFFORT: 1h\n:END:\n** C\n*** D\n:PROPERTIES:\n:EFFORT: 2h\n:END:\n";
+    let doc = parse(src).expect("parse");
+    let root = &doc.roots()[0];
+    assert_eq!(root.count_descendants_with_property("EFFORT"), 2);
+    assert_eq!(root.count_descendants_with_property("ID"), 0);
+}
+
+#[test]
 fn descendant_count_counts_children_recursively() {
     let doc = parse("* Root\n** A\n*** A1\n** B\n").expect("parse");
     let root = &doc.roots()[0];

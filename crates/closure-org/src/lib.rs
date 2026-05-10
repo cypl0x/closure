@@ -4377,6 +4377,17 @@ impl Headline {
             .sum()
     }
 
+    /// Count of descendants carrying property `key`.
+    #[must_use]
+    pub fn count_descendants_with_property(&self, key: &str) -> usize {
+        self.children
+            .iter()
+            .map(|c| {
+                usize::from(c.has_property(key)) + c.count_descendants_with_property(key)
+            })
+            .sum()
+    }
+
     /// Number of comment lines in the body.
     #[must_use]
     pub fn body_comment_count(&self) -> usize {
