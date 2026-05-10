@@ -1039,6 +1039,22 @@ impl OrgDoc {
             .unwrap_or(0)
     }
 
+    /// Priority-vs-headline ratio as a percentage.
+    #[must_use]
+    pub fn priority_pct(&self) -> usize {
+        (self.count_with_priority() * 100)
+            .checked_div(self.headline_count())
+            .unwrap_or(0)
+    }
+
+    /// Planning-vs-headline ratio as a percentage.
+    #[must_use]
+    pub fn planning_pct(&self) -> usize {
+        (self.count_with_planning() * 100)
+            .checked_div(self.headline_count())
+            .unwrap_or(0)
+    }
+
     /// Level histogram across the document.
     #[must_use]
     pub fn level_counts(&self) -> std::collections::BTreeMap<u8, usize> {
