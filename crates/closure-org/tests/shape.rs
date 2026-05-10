@@ -1026,6 +1026,40 @@ fn subtree_source_includes_children() {
 }
 
 #[test]
+fn max_depth_walks_tree() {
+    let doc = parse("* A\n** B\n*** C\n* D\n").expect("parse");
+    assert_eq!(doc.max_depth(), 3);
+    assert_eq!(doc.min_level(), 1);
+}
+
+#[test]
+fn headline_count_includes_descendants() {
+    let doc = parse("* A\n** B\n*** C\n* D\n").expect("parse");
+    assert_eq!(doc.headline_count(), 4);
+    assert_eq!(doc.root_count(), 2);
+    assert_eq!(doc.count_leaves(), 2);
+}
+
+#[test]
+fn count_todos_walks_tree() {
+    let doc = parse("* TODO A\n** DONE B\n* C\n").expect("parse");
+    assert_eq!(doc.count_todos(), 2);
+}
+
+#[test]
+fn count_tagged_filters_by_tag() {
+    let doc = parse("* A :work:\n* B :home:\n* C :work:\n").expect("parse");
+    assert_eq!(doc.count_tagged("work"), 2);
+    assert_eq!(doc.count_tagged("home"), 1);
+}
+
+#[test]
+fn distinct_tag_count_counts_distinct_tags() {
+    let doc = parse("* A :x:y:\n* B :x:z:\n").expect("parse");
+    assert_eq!(doc.distinct_tag_count(), 3);
+}
+
+#[test]
 fn descendant_count_counts_children_recursively() {
     let doc = parse("* Root\n** A\n*** A1\n** B\n").expect("parse");
     let root = &doc.roots()[0];
