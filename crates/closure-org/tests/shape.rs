@@ -2343,3 +2343,22 @@ fn doc_descendant_titles_with_todo_returns_strs() {
     let doc = parse(src).expect("parse");
     assert_eq!(doc.descendant_titles_with_todo("TODO"), vec!["A", "C"]);
 }
+
+#[test]
+fn doc_descendants_archived_returns_all() {
+    let src = "* A :ARCHIVE:\n** B\n* C :ARCHIVE:\n";
+    let doc = parse(src).expect("parse");
+    let v = doc.descendants_archived();
+    assert_eq!(v.iter().map(|h| h.title()).collect::<Vec<_>>(), ["A", "C"]);
+}
+
+#[test]
+fn doc_descendants_commented_returns_all() {
+    let src = "* COMMENT A\n** B\n* COMMENT C\n";
+    let doc = parse(src).expect("parse");
+    let v = doc.descendants_commented();
+    assert_eq!(
+        v.iter().map(|h| h.title()).collect::<Vec<_>>(),
+        ["COMMENT A", "COMMENT C"]
+    );
+}

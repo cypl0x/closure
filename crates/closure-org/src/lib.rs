@@ -1932,6 +1932,18 @@ impl OrgDoc {
             .collect()
     }
 
+    /// Descendants (depth-first across roots) tagged `:ARCHIVE:`.
+    #[must_use]
+    pub fn descendants_archived(&self) -> Vec<&Headline> {
+        self.collect_descendants_where(Headline::is_archived)
+    }
+
+    /// Descendants (depth-first across roots) prefixed `COMMENT`.
+    #[must_use]
+    pub fn descendants_commented(&self) -> Vec<&Headline> {
+        self.collect_descendants_where(Headline::is_comment)
+    }
+
     fn collect_descendants_where<F: Fn(&Headline) -> bool>(
         &self,
         pred: F,
