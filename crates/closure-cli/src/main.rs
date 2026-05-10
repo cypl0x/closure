@@ -559,6 +559,16 @@ enum Cmd {
         /// Path to a `*.org` file.
         file: PathBuf,
     },
+    /// Print source-only ids (outgoing without incoming) in a file.
+    SourceOnlyIds {
+        /// Path to a `*.org` file.
+        file: PathBuf,
+    },
+    /// Print sink-only ids (incoming without outgoing) in a file.
+    SinkOnlyIds {
+        /// Path to a `*.org` file.
+        file: PathBuf,
+    },
     /// Run the MCP stdio dispatcher (one command name per line; `LIST`
     /// to enumerate). Quits on EOF.
     Mcp,
@@ -959,6 +969,8 @@ fn run(cmd: &Cmd) -> Result<(), String> {
         Cmd::AllIds { file } => cmd_all_ids(file),
         Cmd::IsolatedIds { file } => cmd_isolated_ids(file),
         Cmd::HubIds { file } => cmd_hub_ids(file),
+        Cmd::SourceOnlyIds { file } => cmd_source_only_ids(file),
+        Cmd::SinkOnlyIds { file } => cmd_sink_only_ids(file),
         Cmd::Mcp => cmd_mcp(),
         Cmd::Orphans { vault } => cmd_orphans(vault),
         Cmd::DeadLinks { vault } => cmd_dead_links(vault),
@@ -1756,6 +1768,24 @@ fn cmd_hub_ids(path: &Path) -> Result<(), String> {
     let src = fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))?;
     let doc = closure_org::parse(&src).map_err(|e| format!("{e}"))?;
     for id in doc.hub_ids() {
+        println!("{id}");
+    }
+    Ok(())
+}
+
+fn cmd_source_only_ids(path: &Path) -> Result<(), String> {
+    let src = fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))?;
+    let doc = closure_org::parse(&src).map_err(|e| format!("{e}"))?;
+    for id in doc.source_only_ids() {
+        println!("{id}");
+    }
+    Ok(())
+}
+
+fn cmd_sink_only_ids(path: &Path) -> Result<(), String> {
+    let src = fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))?;
+    let doc = closure_org::parse(&src).map_err(|e| format!("{e}"))?;
+    for id in doc.sink_only_ids() {
         println!("{id}");
     }
     Ok(())
