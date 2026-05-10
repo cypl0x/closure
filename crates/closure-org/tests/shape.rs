@@ -1703,6 +1703,15 @@ fn count_descendants_in_level_range_count() {
 }
 
 #[test]
+fn map_descendants_returns_mapped() {
+    let src = "* R\n** A\n** B\n** C\n";
+    let doc = parse(src).expect("parse");
+    let root = &doc.roots()[0];
+    let upper: Vec<String> = root.map_descendants(|h| h.title().to_uppercase());
+    assert_eq!(upper, vec!["A", "B", "C"]);
+}
+
+#[test]
 fn descendant_count_counts_children_recursively() {
     let doc = parse("* Root\n** A\n*** A1\n** B\n").expect("parse");
     let root = &doc.roots()[0];

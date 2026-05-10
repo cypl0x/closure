@@ -4014,6 +4014,11 @@ impl Headline {
         self.count_filter_descendants(|h| h.level() >= lo && h.level() <= hi)
     }
 
+    /// Maps each descendant through `f`, collecting results in DFS order.
+    pub fn map_descendants<T, F: Fn(&Self) -> T>(&self, f: F) -> Vec<T> {
+        self.descendants().into_iter().map(f).collect()
+    }
+
     /// First child whose title equals `needle` (case-sensitive).
     #[must_use]
     pub fn child_by_title(&self, needle: &str) -> Option<&Self> {
