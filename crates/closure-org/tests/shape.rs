@@ -3971,3 +3971,16 @@ fn doc_most_common_property_key_match() {
     let doc = parse(src).expect("parse");
     assert_eq!(doc.most_common_property_key(), Some("K2".to_owned()));
 }
+
+#[test]
+fn doc_distinct_property_key_count_zero_when_no_props() {
+    let doc = parse("* A\n* B\n").expect("parse");
+    assert_eq!(doc.distinct_property_key_count(), 0);
+}
+
+#[test]
+fn doc_least_common_property_key_match() {
+    let src = "* A\n:PROPERTIES:\n:K1: 1\n:K2: 2\n:END:\n* B\n:PROPERTIES:\n:K2: 3\n:END:\n";
+    let doc = parse(src).expect("parse");
+    assert_eq!(doc.least_common_property_key(), Some("K1".to_owned()));
+}

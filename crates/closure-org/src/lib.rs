@@ -979,6 +979,15 @@ impl OrgDoc {
             .map(|(k, _)| k)
     }
 
+    /// Least-common property key across the document. Ties broken lexicographically.
+    #[must_use]
+    pub fn least_common_property_key(&self) -> Option<String> {
+        self.property_key_counts()
+            .into_iter()
+            .min_by_key(|(_, n)| *n)
+            .map(|(k, _)| k)
+    }
+
     /// Median subtree size across roots (integer; lower midpoint for even sets).
     #[must_use]
     pub fn median_root_subtree_size(&self) -> Option<usize> {
