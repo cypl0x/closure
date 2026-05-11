@@ -3180,3 +3180,31 @@ fn doc_total_id_count_match() {
     let doc = parse(src).expect("parse");
     assert_eq!(doc.total_id_count(), 2);
 }
+
+#[test]
+fn doc_priority_pct_match() {
+    let doc = parse("* [#A] X\n* Y\n* [#B] Z\n* W\n").expect("parse");
+    // 2/4 = 50
+    assert_eq!(doc.priority_pct(), 50);
+}
+
+#[test]
+fn doc_priority_pct_zero_when_empty() {
+    let doc = parse("nothing\n").expect("parse");
+    assert_eq!(doc.priority_pct(), 0);
+}
+
+#[test]
+fn doc_todo_pct_match() {
+    let doc = parse("* TODO X\n* Y\n* DONE Z\n* W\n").expect("parse");
+    // 2/4 = 50
+    assert_eq!(doc.todo_pct(), 50);
+}
+
+#[test]
+fn doc_id_pct_match() {
+    let src = "* X\n:PROPERTIES:\n:ID: a\n:END:\n* Y\n";
+    let doc = parse(src).expect("parse");
+    // 1/2 = 50
+    assert_eq!(doc.id_pct(), 50);
+}
