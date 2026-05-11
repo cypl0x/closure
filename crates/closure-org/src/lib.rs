@@ -860,6 +860,24 @@ impl OrgDoc {
         self.headline_by_id(id).map(Headline::subtree_priorities)
     }
 
+    /// Distinct levels in the subtree of `id`-tagged headline, sorted.
+    #[must_use]
+    pub fn subtree_levels_of(&self, id: &str) -> Option<Vec<u8>> {
+        self.headline_by_id(id).map(Headline::subtree_levels)
+    }
+
+    /// Titles of headlines in the subtree of `id`-tagged headline (DFS order).
+    #[must_use]
+    pub fn subtree_titles_of<'a>(&'a self, id: &str) -> Option<Vec<&'a str>> {
+        self.headline_by_id(id).map(Headline::subtree_titles)
+    }
+
+    /// IDs of headlines in the subtree of `id`-tagged headline (DFS order).
+    #[must_use]
+    pub fn subtree_ids_of<'a>(&'a self, id: &str) -> Option<Vec<&'a str>> {
+        self.headline_by_id(id).map(Headline::subtree_ids)
+    }
+
     /// Median subtree size across roots (integer; lower midpoint for even sets).
     #[must_use]
     pub fn median_root_subtree_size(&self) -> Option<usize> {
@@ -5647,6 +5665,31 @@ impl Headline {
     #[must_use]
     pub fn subtree_level_count(&self) -> usize {
         self.subtree_levels().len()
+    }
+
+    /// Titles in this subtree (self + descendants) in DFS order.
+    #[must_use]
+    pub fn subtree_titles(&self) -> Vec<&str> {
+        let mut out = vec![self.title()];
+        for h in self.descendants() {
+            out.push(h.title());
+        }
+        out
+    }
+
+    /// IDs in this subtree (self + descendants) in DFS order.
+    #[must_use]
+    pub fn subtree_ids(&self) -> Vec<&str> {
+        let mut out: Vec<&str> = Vec::new();
+        if let Some(id) = self.id_property() {
+            out.push(id);
+        }
+        for h in self.descendants() {
+            if let Some(id) = h.id_property() {
+                out.push(id);
+            }
+        }
+        out
     }
 
     /// Highest-priority letter (closest to `'A'`) in this subtree.

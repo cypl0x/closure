@@ -3806,3 +3806,26 @@ fn doc_subtree_priorities_of_match() {
     let doc = parse(src).expect("parse");
     assert_eq!(doc.subtree_priorities_of("a").expect("hit"), vec!['A', 'B']);
 }
+
+#[test]
+fn doc_subtree_levels_of_match() {
+    let src = "* A\n:PROPERTIES:\n:ID: a\n:END:\n** B\n*** C\n";
+    let doc = parse(src).expect("parse");
+    assert_eq!(doc.subtree_levels_of("a").expect("hit"), vec![1, 2, 3]);
+}
+
+#[test]
+fn doc_subtree_titles_of_match() {
+    let src = "* Top\n:PROPERTIES:\n:ID: top\n:END:\n** A\n*** B\n";
+    let doc = parse(src).expect("parse");
+    let v = doc.subtree_titles_of("top").expect("hit");
+    assert_eq!(v, vec!["Top", "A", "B"]);
+}
+
+#[test]
+fn doc_subtree_ids_of_match() {
+    let src = "* A\n:PROPERTIES:\n:ID: a\n:END:\n** B\n:PROPERTIES:\n:ID: b\n:END:\n";
+    let doc = parse(src).expect("parse");
+    let v = doc.subtree_ids_of("a").expect("hit");
+    assert_eq!(v, vec!["a", "b"]);
+}
