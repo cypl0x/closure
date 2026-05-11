@@ -1071,6 +1071,24 @@ impl Vault {
         seen.into_iter().collect()
     }
 
+    /// Number of loaded paths in the vault.
+    #[must_use]
+    pub fn path_count(&self) -> usize {
+        self.documents.len()
+    }
+
+    /// Count of distinct `:ID:` property values across the vault.
+    #[must_use]
+    pub fn distinct_id_property_count(&self) -> usize {
+        self.distinct_id_properties().len()
+    }
+
+    /// Count of distinct titles across the vault.
+    #[must_use]
+    pub fn distinct_title_count(&self) -> usize {
+        self.distinct_titles().len()
+    }
+
     /// Path with the maximum headline count. Ties resolved by lexicographic path.
     #[must_use]
     pub fn path_with_max_headlines(&self) -> Option<&Path> {

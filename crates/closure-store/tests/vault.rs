@@ -824,6 +824,33 @@ fn vault_all_id_properties_returns_collection() {
 }
 
 #[test]
+fn vault_path_count_match() {
+    let td = write_vault(&[("a.org", "* X\n"), ("b.org", "* Y\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.path_count(), 2);
+}
+
+#[test]
+fn vault_distinct_id_property_count_match() {
+    let td = write_vault(&[
+        ("a.org", "* X\n:PROPERTIES:\n:ID: x\n:END:\n"),
+        ("b.org", "* Y\n:PROPERTIES:\n:ID: y\n:END:\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.distinct_id_property_count(), 2);
+}
+
+#[test]
+fn vault_distinct_title_count_match() {
+    let td = write_vault(&[
+        ("a.org", "* X\n* Y\n"),
+        ("b.org", "* X\n* Z\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.distinct_title_count(), 3);
+}
+
+#[test]
 fn vault_watcher_observes_modify() {
     let td = write_vault(&[("x.org", "* A\n")]);
     let v = Vault::open(td.path()).expect("open");
