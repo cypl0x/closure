@@ -235,6 +235,26 @@ fn vault_backlinks_index_finds_linkers() {
 }
 
 #[test]
+fn vault_distinct_tags_returns_sorted_unique() {
+    let td = write_vault(&[
+        ("a.org", "* X :work:\n* Y :home:\n"),
+        ("b.org", "* Z :work:\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.distinct_tags(), vec!["home".to_owned(), "work".to_owned()]);
+}
+
+#[test]
+fn vault_distinct_todos_returns_sorted_unique() {
+    let td = write_vault(&[
+        ("a.org", "* TODO X\n* DONE Y\n"),
+        ("b.org", "* TODO Z\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.distinct_todos(), vec!["DONE".to_owned(), "TODO".to_owned()]);
+}
+
+#[test]
 fn vault_watcher_observes_modify() {
     let td = write_vault(&[("x.org", "* A\n")]);
     let v = Vault::open(td.path()).expect("open");
