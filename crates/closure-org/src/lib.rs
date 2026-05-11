@@ -5048,6 +5048,20 @@ impl Headline {
                 .any(|h| h.priority() == Some(letter))
     }
 
+    /// True iff this headline or any descendant carries `:ID: id`.
+    #[must_use]
+    pub fn subtree_contains_id(&self, id: &str) -> bool {
+        self.id_property() == Some(id)
+            || self.descendants().iter().any(|h| h.id_property() == Some(id))
+    }
+
+    /// True iff this headline or any descendant carries any `:ID:`.
+    #[must_use]
+    pub fn subtree_has_id(&self) -> bool {
+        self.id_property().is_some()
+            || self.descendants().iter().any(|h| h.id_property().is_some())
+    }
+
     /// Returns TODO keywords of every descendant carrying one.
     #[must_use]
     pub fn descendant_todo_keywords(&self) -> Vec<&str> {

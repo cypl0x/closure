@@ -2974,3 +2974,28 @@ fn headline_subtree_has_priority_returns_match() {
     assert!(top.subtree_has_priority('A'));
     assert!(!top.subtree_has_priority('B'));
 }
+
+#[test]
+fn headline_subtree_contains_id_returns_match() {
+    let src = "* Top\n** Inner\n:PROPERTIES:\n:ID: target\n:END:\n";
+    let doc = parse(src).expect("parse");
+    let top = &doc.roots()[0];
+    assert!(top.subtree_contains_id("target"));
+    assert!(!top.subtree_contains_id("missing"));
+}
+
+#[test]
+fn headline_subtree_has_id_returns_match() {
+    let src = "* Top\n** Inner\n:PROPERTIES:\n:ID: x\n:END:\n";
+    let doc = parse(src).expect("parse");
+    let top = &doc.roots()[0];
+    assert!(top.subtree_has_id());
+}
+
+#[test]
+fn headline_subtree_has_id_returns_false_when_absent() {
+    let src = "* Top\n** Inner\n";
+    let doc = parse(src).expect("parse");
+    let top = &doc.roots()[0];
+    assert!(!top.subtree_has_id());
+}
