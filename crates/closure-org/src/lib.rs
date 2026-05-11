@@ -4979,6 +4979,46 @@ impl Headline {
         None
     }
 
+    /// First priority letter (DFS) carried by this headline or any descendant.
+    #[must_use]
+    pub fn first_priority_letter(&self) -> Option<char> {
+        if let Some(p) = self.priority() {
+            return Some(p);
+        }
+        for h in self.descendants() {
+            if let Some(p) = h.priority() {
+                return Some(p);
+            }
+        }
+        None
+    }
+
+    /// First tag (DFS) carried by this headline or any descendant.
+    #[must_use]
+    pub fn first_tag(&self) -> Option<&str> {
+        if let Some(t) = self.tags().first() {
+            return Some(*t);
+        }
+        for h in self.descendants() {
+            if let Some(t) = h.tags().first() {
+                return Some(*t);
+            }
+        }
+        None
+    }
+
+    /// Maximum level in this subtree.
+    #[must_use]
+    pub fn subtree_max_level(&self) -> u8 {
+        self.subtree_levels().into_iter().max().unwrap_or(self.level)
+    }
+
+    /// Minimum level in this subtree (always this headline's own level).
+    #[must_use]
+    pub fn subtree_min_level(&self) -> u8 {
+        self.subtree_levels().into_iter().min().unwrap_or(self.level)
+    }
+
     /// Returns TODO keywords of every descendant carrying one.
     #[must_use]
     pub fn descendant_todo_keywords(&self) -> Vec<&str> {

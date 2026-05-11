@@ -2907,3 +2907,35 @@ fn headline_first_todo_keyword_returns_first() {
     let top = &doc.roots()[0];
     assert_eq!(top.first_todo_keyword(), Some("TODO"));
 }
+
+#[test]
+fn headline_subtree_max_level_match() {
+    let src = "* Top\n** Inner\n*** Leaf\n";
+    let doc = parse(src).expect("parse");
+    let top = &doc.roots()[0];
+    assert_eq!(top.subtree_max_level(), 3);
+}
+
+#[test]
+fn headline_subtree_min_level_match() {
+    let src = "* Top\n** Inner\n*** Leaf\n";
+    let doc = parse(src).expect("parse");
+    let top = &doc.roots()[0];
+    assert_eq!(top.subtree_min_level(), 1);
+}
+
+#[test]
+fn headline_first_priority_letter_returns_first() {
+    let src = "* Top\n** [#B] Inner\n*** [#A] Leaf\n";
+    let doc = parse(src).expect("parse");
+    let top = &doc.roots()[0];
+    assert_eq!(top.first_priority_letter(), Some('B'));
+}
+
+#[test]
+fn headline_first_tag_returns_first() {
+    let src = "* Top\n** Inner :work:\n*** Leaf :home:\n";
+    let doc = parse(src).expect("parse");
+    let top = &doc.roots()[0];
+    assert_eq!(top.first_tag(), Some("work"));
+}
