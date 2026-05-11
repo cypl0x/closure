@@ -113,6 +113,25 @@ impl Dispatcher {
         }
         s.into_iter().collect()
     }
+
+    /// Sorted chord strings bound to `command`.
+    #[must_use]
+    pub fn chords_for_command(&self, command: &str) -> Vec<&str> {
+        let mut v: Vec<&str> = self
+            .bindings
+            .iter()
+            .filter(|(_, c)| c.as_str() == command)
+            .map(|(k, _)| k.as_str())
+            .collect();
+        v.sort_unstable();
+        v
+    }
+
+    /// Number of distinct commands bound in this dispatcher.
+    #[must_use]
+    pub fn command_count(&self) -> usize {
+        self.command_names().len()
+    }
 }
 
 /// Input-mode errors.

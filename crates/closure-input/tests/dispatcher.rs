@@ -127,6 +127,31 @@ fn dispatcher_command_names_sorted_unique() {
 }
 
 #[test]
+fn dispatcher_chords_for_command_returns_match() {
+    let mut reg = Registry::new();
+    reg.register(Box::new(RenameHeadline::new_placeholder()));
+    let disp = Dispatcher::from_registry(&reg, InputMode::Doom);
+    let chords = disp.chords_for_command("rename-headline");
+    assert_eq!(chords, vec!["C-c C-x r"]);
+}
+
+#[test]
+fn dispatcher_chords_for_command_empty_for_unknown() {
+    let mut reg = Registry::new();
+    reg.register(Box::new(RenameHeadline::new_placeholder()));
+    let disp = Dispatcher::from_registry(&reg, InputMode::Doom);
+    assert!(disp.chords_for_command("none").is_empty());
+}
+
+#[test]
+fn dispatcher_command_count_match() {
+    let mut reg = Registry::new();
+    reg.register(Box::new(RenameHeadline::new_placeholder()));
+    let disp = Dispatcher::from_registry(&reg, InputMode::Doom);
+    assert_eq!(disp.command_count(), 1);
+}
+
+#[test]
 fn chord_trie_pending_lists_alternatives() {
     let mut t = closure_input::ChordTrie::build(&[("a b", "x"), ("a c", "y")]);
     let step = t.step("a");
