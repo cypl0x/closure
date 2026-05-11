@@ -666,6 +666,30 @@ impl Vault {
         seen.into_iter().collect()
     }
 
+    /// Count of distinct tags across the vault.
+    #[must_use]
+    pub fn distinct_tag_count(&self) -> usize {
+        self.distinct_tags().len()
+    }
+
+    /// Count of distinct TODO keywords across the vault.
+    #[must_use]
+    pub fn distinct_todo_count(&self) -> usize {
+        self.distinct_todos().len()
+    }
+
+    /// Count of distinct priority letters across the vault.
+    #[must_use]
+    pub fn distinct_priority_count(&self) -> usize {
+        self.distinct_priorities().len()
+    }
+
+    /// Count of distinct levels across the vault.
+    #[must_use]
+    pub fn distinct_level_count(&self) -> usize {
+        self.distinct_levels().len()
+    }
+
     /// Lookup a document by its full filesystem path.
     #[must_use]
     pub fn document(&self, path: &Path) -> Option<&Document> {

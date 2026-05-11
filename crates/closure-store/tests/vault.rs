@@ -275,6 +275,46 @@ fn vault_distinct_levels_returns_sorted_unique() {
 }
 
 #[test]
+fn vault_distinct_tag_count_match() {
+    let td = write_vault(&[
+        ("a.org", "* X :work:\n* Y :home:\n"),
+        ("b.org", "* Z :work:\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.distinct_tag_count(), 2);
+}
+
+#[test]
+fn vault_distinct_todo_count_match() {
+    let td = write_vault(&[
+        ("a.org", "* TODO X\n* DONE Y\n"),
+        ("b.org", "* TODO Z\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.distinct_todo_count(), 2);
+}
+
+#[test]
+fn vault_distinct_priority_count_match() {
+    let td = write_vault(&[
+        ("a.org", "* [#B] X\n* [#A] Y\n"),
+        ("b.org", "* [#A] Z\n* [#C] W\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.distinct_priority_count(), 3);
+}
+
+#[test]
+fn vault_distinct_level_count_match() {
+    let td = write_vault(&[
+        ("a.org", "* A\n** B\n*** C\n"),
+        ("b.org", "* D\n** E\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.distinct_level_count(), 3);
+}
+
+#[test]
 fn vault_watcher_observes_modify() {
     let td = write_vault(&[("x.org", "* A\n")]);
     let v = Vault::open(td.path()).expect("open");
