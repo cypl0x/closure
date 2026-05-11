@@ -3054,3 +3054,15 @@ fn headline_subtree_count_with_id_counts_self_plus_descendants() {
     let top = &doc.roots()[0];
     assert_eq!(top.subtree_count_with_id(), 2);
 }
+
+#[test]
+fn doc_max_level_match() {
+    let doc = parse("* A\n** B\n*** C\n").expect("parse");
+    assert_eq!(doc.max_level(), 3);
+}
+
+#[test]
+fn doc_max_level_zero_on_empty() {
+    let doc = parse("nothing\n").expect("parse");
+    assert_eq!(doc.max_level(), 0);
+}

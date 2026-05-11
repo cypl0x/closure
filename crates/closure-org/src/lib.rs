@@ -1202,6 +1202,16 @@ impl OrgDoc {
             .unwrap_or(u8::MAX)
     }
 
+    /// Returns max level present (`0` if no headlines).
+    #[must_use]
+    pub fn max_level(&self) -> u8 {
+        self.iter_headlines()
+            .into_iter()
+            .map(Headline::level)
+            .max()
+            .unwrap_or(0)
+    }
+
     /// Level histogram across the document.
     #[must_use]
     pub fn level_counts(&self) -> std::collections::BTreeMap<u8, usize> {
