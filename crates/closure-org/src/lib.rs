@@ -709,7 +709,7 @@ impl OrgDoc {
 
     /// Index of the root carrying `:ID: id`.
     #[must_use]
-    pub fn root_index_of(&self, id: &str) -> Option<usize> {
+    pub fn root_index_of_id(&self, id: &str) -> Option<usize> {
         self.roots
             .iter()
             .position(|h| h.id_property() == Some(id))

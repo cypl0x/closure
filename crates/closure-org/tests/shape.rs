@@ -3646,8 +3646,8 @@ fn doc_smallest_root_returns_smallest() {
 fn doc_root_index_of_id_match() {
     let src = "* A\n* B\n:PROPERTIES:\n:ID: b\n:END:\n* C\n";
     let doc = parse(src).expect("parse");
-    assert_eq!(doc.root_index_of("b"), Some(1));
-    assert_eq!(doc.root_index_of("missing"), None);
+    assert_eq!(doc.root_index_of_id("b"), Some(1));
+    assert_eq!(doc.root_index_of_id("missing"), None);
 }
 
 #[test]
