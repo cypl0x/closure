@@ -3668,3 +3668,25 @@ fn doc_smallest_root_index_match() {
     let doc = parse("* A\n** X\n* B\n").expect("parse");
     assert_eq!(doc.smallest_root_index(), Some(1));
 }
+
+#[test]
+fn doc_subtree_size_of_match() {
+    let src = "* A\n:PROPERTIES:\n:ID: a\n:END:\n** B\n** C\n";
+    let doc = parse(src).expect("parse");
+    assert_eq!(doc.subtree_size_of("a"), Some(3));
+    assert_eq!(doc.subtree_size_of("missing"), None);
+}
+
+#[test]
+fn doc_subtree_max_level_of_match() {
+    let src = "* A\n:PROPERTIES:\n:ID: a\n:END:\n** B\n*** C\n";
+    let doc = parse(src).expect("parse");
+    assert_eq!(doc.subtree_max_level_of("a"), Some(3));
+}
+
+#[test]
+fn doc_subtree_max_priority_of_match() {
+    let src = "* [#B] A\n:PROPERTIES:\n:ID: a\n:END:\n** [#A] B\n";
+    let doc = parse(src).expect("parse");
+    assert_eq!(doc.subtree_max_priority_of("a"), Some('A'));
+}

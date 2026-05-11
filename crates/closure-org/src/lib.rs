@@ -741,6 +741,24 @@ impl OrgDoc {
             .map(|(i, _)| i)
     }
 
+    /// Subtree size for `id`-tagged headline.
+    #[must_use]
+    pub fn subtree_size_of(&self, id: &str) -> Option<usize> {
+        self.headline_by_id(id).map(Headline::subtree_size)
+    }
+
+    /// Maximum level in the subtree of `id`-tagged headline.
+    #[must_use]
+    pub fn subtree_max_level_of(&self, id: &str) -> Option<u8> {
+        self.headline_by_id(id).map(Headline::subtree_max_level)
+    }
+
+    /// Highest priority letter in the subtree of `id`-tagged headline.
+    #[must_use]
+    pub fn subtree_max_priority_of(&self, id: &str) -> Option<char> {
+        self.headline_by_id(id).and_then(Headline::max_priority_letter)
+    }
+
     /// Median subtree size across roots (integer; lower midpoint for even sets).
     #[must_use]
     pub fn median_root_subtree_size(&self) -> Option<usize> {
