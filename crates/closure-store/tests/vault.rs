@@ -688,6 +688,36 @@ fn vault_empty_path_count_match() {
 }
 
 #[test]
+fn vault_max_headlines_per_path_match() {
+    let td = write_vault(&[
+        ("a.org", "* X\n* Y\n* Z\n"),
+        ("b.org", "* W\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.max_headlines_per_path(), Some(3));
+}
+
+#[test]
+fn vault_min_headlines_per_path_match() {
+    let td = write_vault(&[
+        ("a.org", "* X\n* Y\n"),
+        ("b.org", "* W\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.min_headlines_per_path(), Some(1));
+}
+
+#[test]
+fn vault_total_headline_count_match() {
+    let td = write_vault(&[
+        ("a.org", "* X\n** Y\n"),
+        ("b.org", "* Z\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.total_headline_count(), 3);
+}
+
+#[test]
 fn vault_watcher_observes_modify() {
     let td = write_vault(&[("x.org", "* A\n")]);
     let v = Vault::open(td.path()).expect("open");

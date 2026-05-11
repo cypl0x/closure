@@ -1009,6 +1009,24 @@ impl Vault {
             .count()
     }
 
+    /// Maximum headline count among paths.
+    #[must_use]
+    pub fn max_headlines_per_path(&self) -> Option<usize> {
+        self.iter().map(|(_, d)| d.all_headlines().count()).max()
+    }
+
+    /// Minimum headline count among paths.
+    #[must_use]
+    pub fn min_headlines_per_path(&self) -> Option<usize> {
+        self.iter().map(|(_, d)| d.all_headlines().count()).min()
+    }
+
+    /// Total headline count across the vault.
+    #[must_use]
+    pub fn total_headline_count(&self) -> usize {
+        self.iter().map(|(_, d)| d.all_headlines().count()).sum()
+    }
+
     /// Paths whose source contains the substring `needle` anywhere.
     #[must_use]
     pub fn paths_containing(&self, needle: &str) -> Vec<&Path> {
