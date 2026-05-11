@@ -778,6 +778,28 @@ fn vault_path_with_max_headlines_none_on_empty() {
 }
 
 #[test]
+fn vault_all_titles_returns_collection() {
+    let td = write_vault(&[("a.org", "* X\n** Y\n"), ("b.org", "* Z\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    let mut titles = v.all_titles();
+    titles.sort();
+    assert_eq!(titles, vec!["X", "Y", "Z"]);
+}
+
+#[test]
+fn vault_distinct_titles_returns_sorted_unique() {
+    let td = write_vault(&[
+        ("a.org", "* X\n* Y\n"),
+        ("b.org", "* X\n* Z\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(
+        v.distinct_titles(),
+        vec!["X".to_owned(), "Y".to_owned(), "Z".to_owned()]
+    );
+}
+
+#[test]
 fn vault_watcher_observes_modify() {
     let td = write_vault(&[("x.org", "* A\n")]);
     let v = Vault::open(td.path()).expect("open");

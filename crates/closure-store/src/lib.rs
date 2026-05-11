@@ -1027,6 +1027,27 @@ impl Vault {
         self.iter().map(|(_, d)| d.all_headlines().count()).sum()
     }
 
+    /// All headline titles across the vault (with duplicates).
+    #[must_use]
+    pub fn all_titles(&self) -> Vec<String> {
+        self.iter()
+            .flat_map(|(_, d)| d.all_headlines())
+            .map(|h| h.title().to_owned())
+            .collect()
+    }
+
+    /// Distinct headline titles across the vault, sorted.
+    #[must_use]
+    pub fn distinct_titles(&self) -> Vec<String> {
+        let mut seen: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+        for (_, doc) in self.iter() {
+            for h in doc.all_headlines() {
+                seen.insert(h.title().to_owned());
+            }
+        }
+        seen.into_iter().collect()
+    }
+
     /// Path with the maximum headline count. Ties resolved by lexicographic path.
     #[must_use]
     pub fn path_with_max_headlines(&self) -> Option<&Path> {
