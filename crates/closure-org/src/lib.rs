@@ -2686,6 +2686,24 @@ impl OrgDoc {
         self.roots.iter().map(walk).sum()
     }
 
+    /// Total priority-set occurrences across all headlines.
+    #[must_use]
+    pub fn total_priority_count(&self) -> usize {
+        self.count_descendants_where(|h| h.priority().is_some())
+    }
+
+    /// Total TODO-set occurrences across all headlines.
+    #[must_use]
+    pub fn total_todo_count(&self) -> usize {
+        self.count_descendants_where(|h| h.todo().is_some())
+    }
+
+    /// Total `:ID:` property occurrences across all headlines.
+    #[must_use]
+    pub fn total_id_count(&self) -> usize {
+        self.count_descendants_where(|h| h.id_property().is_some())
+    }
+
     /// Total properties drawer entries across all headlines.
     #[must_use]
     pub fn total_property_count(&self) -> usize {

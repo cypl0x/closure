@@ -3161,3 +3161,22 @@ fn doc_mode_tag_match() {
     let m = doc.mode_tag();
     assert!(m == Some("work".to_owned()) || m == Some("home".to_owned()));
 }
+
+#[test]
+fn doc_total_priority_count_match() {
+    let doc = parse("* [#A] X\n* Y\n** [#B] Z\n").expect("parse");
+    assert_eq!(doc.total_priority_count(), 2);
+}
+
+#[test]
+fn doc_total_todo_count_match() {
+    let doc = parse("* TODO X\n* Y\n** DONE Z\n").expect("parse");
+    assert_eq!(doc.total_todo_count(), 2);
+}
+
+#[test]
+fn doc_total_id_count_match() {
+    let src = "* X\n:PROPERTIES:\n:ID: a\n:END:\n* Y\n** Z\n:PROPERTIES:\n:ID: z\n:END:\n";
+    let doc = parse(src).expect("parse");
+    assert_eq!(doc.total_id_count(), 2);
+}
