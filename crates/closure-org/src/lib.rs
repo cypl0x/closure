@@ -1073,6 +1073,47 @@ impl OrgDoc {
         }
     }
 
+    /// Median headline-body byte count (integer; lower midpoint for even sets).
+    #[must_use]
+    pub fn median_body_byte_count(&self) -> Option<usize> {
+        let mut v: Vec<usize> = self
+            .iter_headlines()
+            .into_iter()
+            .map(Headline::body_byte_count)
+            .collect();
+        if v.is_empty() {
+            return None;
+        }
+        v.sort_unstable();
+        let mid = v.len() / 2;
+        if v.len() % 2 == 1 {
+            Some(v[mid])
+        } else {
+            Some(v[mid - 1].midpoint(v[mid]))
+        }
+    }
+
+    /// Total headline-body character count across the document.
+    #[must_use]
+    pub fn total_body_char_count(&self) -> usize {
+        self.iter_headlines()
+            .into_iter()
+            .map(|h| h.body_source().chars().count())
+            .sum()
+    }
+
+    /// Maximum root title length in characters.
+    #[must_use]
+    pub fn max_root_title_len(&self) -> Option<usize> {
+        self.roots.iter().map(|h| h.title().chars().count()).max()
+    }
+
+    /// Minimum root title length in characters.
+    #[must_use]
+    pub fn min_root_title_len(&self) -> Option<usize> {
+        self.roots.iter().map(|h| h.title().chars().count()).min()
+    }
+
     /// Median subtree size across roots (integer; lower midpoint for even sets).
     #[must_use]
     pub fn median_root_subtree_size(&self) -> Option<usize> {

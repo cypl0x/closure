@@ -4046,3 +4046,29 @@ fn doc_median_body_word_count_match() {
     // word counts: 1,2,3 -> median 2
     assert_eq!(doc.median_body_word_count(), Some(2));
 }
+
+#[test]
+fn doc_median_body_byte_count_match() {
+    let doc = parse("* A\nx\n* B\nxy\n* C\nxyz\n").expect("parse");
+    // bytes: 2,3,4 -> median 3
+    assert_eq!(doc.median_body_byte_count(), Some(3));
+}
+
+#[test]
+fn doc_total_body_char_count_match() {
+    let doc = parse("* A\nhello\n").expect("parse");
+    // "hello\n" -> 6 chars
+    assert_eq!(doc.total_body_char_count(), 6);
+}
+
+#[test]
+fn doc_max_root_title_len_match() {
+    let doc = parse("* Aa\n* Bbbb\n").expect("parse");
+    assert_eq!(doc.max_root_title_len(), Some(4));
+}
+
+#[test]
+fn doc_min_root_title_len_match() {
+    let doc = parse("* Aa\n* Bbbb\n").expect("parse");
+    assert_eq!(doc.min_root_title_len(), Some(2));
+}
