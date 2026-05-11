@@ -85,6 +85,34 @@ impl Dispatcher {
         v.sort_by_key(|&(k, _)| k);
         v
     }
+
+    /// Number of registered chord bindings.
+    #[must_use]
+    pub fn binding_count(&self) -> usize {
+        self.bindings.len()
+    }
+
+    /// True iff the dispatcher has zero registered chord bindings.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.bindings.is_empty()
+    }
+
+    /// True iff `chord` is bound to a command.
+    #[must_use]
+    pub fn is_bound(&self, chord: &KeyChord) -> bool {
+        self.bindings.contains_key(&chord.to_string())
+    }
+
+    /// Distinct command names reachable through this dispatcher, sorted.
+    #[must_use]
+    pub fn command_names(&self) -> Vec<&str> {
+        let mut s: std::collections::BTreeSet<&str> = std::collections::BTreeSet::new();
+        for v in self.bindings.values() {
+            s.insert(v.as_str());
+        }
+        s.into_iter().collect()
+    }
 }
 
 /// Input-mode errors.

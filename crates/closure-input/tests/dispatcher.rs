@@ -93,6 +93,40 @@ fn emacs_chord_empty_rejected() {
 }
 
 #[test]
+fn dispatcher_binding_count_match() {
+    let mut reg = Registry::new();
+    reg.register(Box::new(RenameHeadline::new_placeholder()));
+    let disp = Dispatcher::from_registry(&reg, InputMode::Doom);
+    assert_eq!(disp.binding_count(), 1);
+}
+
+#[test]
+fn dispatcher_is_bound_returns_match() {
+    let mut reg = Registry::new();
+    reg.register(Box::new(RenameHeadline::new_placeholder()));
+    let disp = Dispatcher::from_registry(&reg, InputMode::Doom);
+    let chord: KeyChord = "C-c C-x r".parse().expect("parse");
+    assert!(disp.is_bound(&chord));
+    let other: KeyChord = "C-x b".parse().expect("parse");
+    assert!(!disp.is_bound(&other));
+}
+
+#[test]
+fn dispatcher_is_empty_true_when_registry_empty() {
+    let reg = Registry::new();
+    let disp = Dispatcher::from_registry(&reg, InputMode::Emacs);
+    assert!(disp.is_empty());
+}
+
+#[test]
+fn dispatcher_command_names_sorted_unique() {
+    let mut reg = Registry::new();
+    reg.register(Box::new(RenameHeadline::new_placeholder()));
+    let disp = Dispatcher::from_registry(&reg, InputMode::Doom);
+    assert_eq!(disp.command_names(), vec!["rename-headline"]);
+}
+
+#[test]
 fn chord_trie_pending_lists_alternatives() {
     let mut t = closure_input::ChordTrie::build(&[("a b", "x"), ("a c", "y")]);
     let step = t.step("a");
