@@ -537,12 +537,6 @@ impl OrgDoc {
         s.into_iter().collect()
     }
 
-    /// Titles of every root headline.
-    #[must_use]
-    pub fn root_titles(&self) -> Vec<&str> {
-        self.roots.iter().map(Headline::title).collect()
-    }
-
     /// Levels of every root headline.
     #[must_use]
     pub fn root_levels(&self) -> Vec<u8> {
