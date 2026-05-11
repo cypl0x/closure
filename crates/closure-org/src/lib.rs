@@ -2325,6 +2325,56 @@ impl OrgDoc {
         m
     }
 
+    /// Tag-to-count map across all descendants.
+    #[must_use]
+    pub fn descendant_tag_counts(&self) -> std::collections::BTreeMap<String, usize> {
+        let mut m: std::collections::BTreeMap<String, usize> =
+            std::collections::BTreeMap::new();
+        for h in self.collect_descendants_where(|_| true) {
+            for t in h.tags() {
+                *m.entry(t.to_owned()).or_insert(0) += 1;
+            }
+        }
+        m
+    }
+
+    /// TODO-to-count map across all descendants.
+    #[must_use]
+    pub fn descendant_todo_counts(&self) -> std::collections::BTreeMap<String, usize> {
+        let mut m: std::collections::BTreeMap<String, usize> =
+            std::collections::BTreeMap::new();
+        for h in self.collect_descendants_where(|_| true) {
+            if let Some(t) = h.todo() {
+                *m.entry(t.to_owned()).or_insert(0) += 1;
+            }
+        }
+        m
+    }
+
+    /// Priority-to-count map across all descendants.
+    #[must_use]
+    pub fn descendant_priority_counts(&self) -> std::collections::BTreeMap<char, usize> {
+        let mut m: std::collections::BTreeMap<char, usize> =
+            std::collections::BTreeMap::new();
+        for h in self.collect_descendants_where(|_| true) {
+            if let Some(p) = h.priority() {
+                *m.entry(p).or_insert(0) += 1;
+            }
+        }
+        m
+    }
+
+    /// Level-to-count map across all descendants.
+    #[must_use]
+    pub fn descendant_level_counts(&self) -> std::collections::BTreeMap<u8, usize> {
+        let mut m: std::collections::BTreeMap<u8, usize> =
+            std::collections::BTreeMap::new();
+        for h in self.collect_descendants_where(|_| true) {
+            *m.entry(h.level()).or_insert(0) += 1;
+        }
+        m
+    }
+
     fn collect_descendants_where<F: Fn(&Headline) -> bool>(
         &self,
         pred: F,

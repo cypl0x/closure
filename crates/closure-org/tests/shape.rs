@@ -2726,3 +2726,40 @@ fn doc_root_priority_counts_returns_map() {
     assert_eq!(m.get(&'A').copied(), Some(2));
     assert_eq!(m.get(&'B').copied(), Some(1));
 }
+
+#[test]
+fn doc_descendant_tag_counts_returns_map() {
+    let src = "* A :z:y:\n** B :y:\n* C :z:\n";
+    let doc = parse(src).expect("parse");
+    let m = doc.descendant_tag_counts();
+    assert_eq!(m.get("y").copied(), Some(2));
+    assert_eq!(m.get("z").copied(), Some(2));
+}
+
+#[test]
+fn doc_descendant_todo_counts_returns_map() {
+    let src = "* TODO A\n** DONE B\n* TODO C\n";
+    let doc = parse(src).expect("parse");
+    let m = doc.descendant_todo_counts();
+    assert_eq!(m.get("TODO").copied(), Some(2));
+    assert_eq!(m.get("DONE").copied(), Some(1));
+}
+
+#[test]
+fn doc_descendant_priority_counts_returns_map() {
+    let src = "* [#A] One\n** [#A] Two\n* [#B] Three\n";
+    let doc = parse(src).expect("parse");
+    let m = doc.descendant_priority_counts();
+    assert_eq!(m.get(&'A').copied(), Some(2));
+    assert_eq!(m.get(&'B').copied(), Some(1));
+}
+
+#[test]
+fn doc_descendant_level_counts_returns_map() {
+    let src = "* A\n** B\n** C\n*** D\n* E\n";
+    let doc = parse(src).expect("parse");
+    let m = doc.descendant_level_counts();
+    assert_eq!(m.get(&1).copied(), Some(2));
+    assert_eq!(m.get(&2).copied(), Some(2));
+    assert_eq!(m.get(&3).copied(), Some(1));
+}
