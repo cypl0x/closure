@@ -1043,6 +1043,16 @@ impl OrgDoc {
             .sum()
     }
 
+    /// Minimum headline-body byte count across the document (`0` when empty).
+    #[must_use]
+    pub fn min_body_byte_count(&self) -> usize {
+        self.iter_headlines()
+            .into_iter()
+            .map(Headline::body_byte_count)
+            .min()
+            .unwrap_or(0)
+    }
+
     /// Median headline-body word count (integer; lower midpoint for even sets).
     #[must_use]
     pub fn median_body_word_count(&self) -> Option<usize> {
