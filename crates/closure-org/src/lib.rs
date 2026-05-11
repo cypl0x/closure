@@ -2743,6 +2743,33 @@ impl OrgDoc {
         self.count_descendants_where(|h| h.todo().is_none())
     }
 
+    /// Number of headlines carrying no `:ID:` property.
+    #[must_use]
+    pub fn no_id_count(&self) -> usize {
+        self.count_descendants_where(|h| h.id_property().is_none())
+    }
+
+    /// Percentage of headlines without a priority letter (`0..=100`).
+    #[must_use]
+    pub fn no_priority_pct(&self) -> usize {
+        let n = self.iter_headlines().len();
+        (self.no_priority_count() * 100).checked_div(n).unwrap_or(0)
+    }
+
+    /// Percentage of headlines without a TODO keyword (`0..=100`).
+    #[must_use]
+    pub fn no_todo_pct(&self) -> usize {
+        let n = self.iter_headlines().len();
+        (self.no_todo_count() * 100).checked_div(n).unwrap_or(0)
+    }
+
+    /// Percentage of headlines without an `:ID:` property (`0..=100`).
+    #[must_use]
+    pub fn no_id_pct(&self) -> usize {
+        let n = self.iter_headlines().len();
+        (self.no_id_count() * 100).checked_div(n).unwrap_or(0)
+    }
+
     /// Total properties drawer entries across all headlines.
     #[must_use]
     pub fn total_property_count(&self) -> usize {

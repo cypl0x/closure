@@ -3245,3 +3245,29 @@ fn doc_no_todo_count_match() {
     let doc = parse("* TODO X\n* Y\n* DONE Z\n* W\n").expect("parse");
     assert_eq!(doc.no_todo_count(), 2);
 }
+
+#[test]
+fn doc_no_id_count_match() {
+    let src = "* X\n:PROPERTIES:\n:ID: a\n:END:\n* Y\n* Z\n";
+    let doc = parse(src).expect("parse");
+    assert_eq!(doc.no_id_count(), 2);
+}
+
+#[test]
+fn doc_no_priority_pct_match() {
+    let doc = parse("* [#A] X\n* Y\n* [#B] Z\n* W\n").expect("parse");
+    assert_eq!(doc.no_priority_pct(), 50);
+}
+
+#[test]
+fn doc_no_todo_pct_match() {
+    let doc = parse("* TODO X\n* Y\n* DONE Z\n* W\n").expect("parse");
+    assert_eq!(doc.no_todo_pct(), 50);
+}
+
+#[test]
+fn doc_no_id_pct_match() {
+    let src = "* X\n:PROPERTIES:\n:ID: a\n:END:\n* Y\n";
+    let doc = parse(src).expect("parse");
+    assert_eq!(doc.no_id_pct(), 50);
+}
