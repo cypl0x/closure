@@ -2843,3 +2843,43 @@ fn headline_subtree_priorities_sorted_unique() {
     let top = &doc.roots()[0];
     assert_eq!(top.subtree_priorities(), vec!['A', 'B']);
 }
+
+#[test]
+fn headline_subtree_levels_sorted_unique() {
+    let src = "* Top\n** Inner\n*** Leaf\n** Other\n";
+    let doc = parse(src).expect("parse");
+    let top = &doc.roots()[0];
+    assert_eq!(top.subtree_levels(), vec![1, 2, 3]);
+}
+
+#[test]
+fn headline_subtree_tag_count_match() {
+    let src = "* Top :a:\n** Inner :b:a:\n*** Leaf :c:\n";
+    let doc = parse(src).expect("parse");
+    let top = &doc.roots()[0];
+    assert_eq!(top.subtree_tag_count(), 3);
+}
+
+#[test]
+fn headline_subtree_todo_count_match() {
+    let src = "* TODO Top\n** DONE Inner\n*** TODO Leaf\n";
+    let doc = parse(src).expect("parse");
+    let top = &doc.roots()[0];
+    assert_eq!(top.subtree_todo_count(), 2);
+}
+
+#[test]
+fn headline_subtree_priority_count_match() {
+    let src = "* [#B] Top\n** [#A] Inner\n*** [#A] Leaf\n";
+    let doc = parse(src).expect("parse");
+    let top = &doc.roots()[0];
+    assert_eq!(top.subtree_priority_count(), 2);
+}
+
+#[test]
+fn headline_subtree_level_count_match() {
+    let src = "* Top\n** Inner\n*** Leaf\n** Other\n";
+    let doc = parse(src).expect("parse");
+    let top = &doc.roots()[0];
+    assert_eq!(top.subtree_level_count(), 3);
+}

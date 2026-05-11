@@ -4918,6 +4918,41 @@ impl Headline {
         s.into_iter().collect()
     }
 
+    /// Distinct levels across this headline and all descendants, sorted.
+    #[must_use]
+    pub fn subtree_levels(&self) -> Vec<u8> {
+        let mut s: std::collections::BTreeSet<u8> = std::collections::BTreeSet::new();
+        s.insert(self.level);
+        for h in self.descendants() {
+            s.insert(h.level());
+        }
+        s.into_iter().collect()
+    }
+
+    /// Count of distinct tags in this subtree.
+    #[must_use]
+    pub fn subtree_tag_count(&self) -> usize {
+        self.subtree_tags().len()
+    }
+
+    /// Count of distinct TODO keywords in this subtree.
+    #[must_use]
+    pub fn subtree_todo_count(&self) -> usize {
+        self.subtree_todos().len()
+    }
+
+    /// Count of distinct priority letters in this subtree.
+    #[must_use]
+    pub fn subtree_priority_count(&self) -> usize {
+        self.subtree_priorities().len()
+    }
+
+    /// Count of distinct levels in this subtree.
+    #[must_use]
+    pub fn subtree_level_count(&self) -> usize {
+        self.subtree_levels().len()
+    }
+
     /// Returns TODO keywords of every descendant carrying one.
     #[must_use]
     pub fn descendant_todo_keywords(&self) -> Vec<&str> {
