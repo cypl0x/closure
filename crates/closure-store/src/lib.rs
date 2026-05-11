@@ -720,6 +720,30 @@ impl Vault {
         ranked
     }
 
+    /// Most-common tag across the vault. Ties broken by lexicographic order.
+    #[must_use]
+    pub fn most_common_tag(&self) -> Option<String> {
+        self.tag_counts().into_iter().next().map(|(k, _)| k)
+    }
+
+    /// Most-common TODO keyword across the vault.
+    #[must_use]
+    pub fn most_common_todo(&self) -> Option<String> {
+        self.todo_counts().into_iter().next().map(|(k, _)| k)
+    }
+
+    /// Most-common priority letter across the vault.
+    #[must_use]
+    pub fn most_common_priority(&self) -> Option<char> {
+        self.priority_counts().into_iter().next().map(|(k, _)| k)
+    }
+
+    /// Most-common level across the vault.
+    #[must_use]
+    pub fn most_common_level(&self) -> Option<u8> {
+        self.level_counts().into_iter().next().map(|(k, _)| k)
+    }
+
     /// Lookup a document by its full filesystem path.
     #[must_use]
     pub fn document(&self, path: &Path) -> Option<&Document> {

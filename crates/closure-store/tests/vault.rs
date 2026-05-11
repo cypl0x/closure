@@ -341,6 +341,46 @@ fn vault_level_counts_returns_ranked() {
 }
 
 #[test]
+fn vault_most_common_tag_returns_top() {
+    let td = write_vault(&[
+        ("a.org", "* X :work:\n* Y :home:\n"),
+        ("b.org", "* Z :work:\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.most_common_tag(), Some("work".to_owned()));
+}
+
+#[test]
+fn vault_most_common_todo_returns_top() {
+    let td = write_vault(&[
+        ("a.org", "* TODO X\n* DONE Y\n"),
+        ("b.org", "* TODO Z\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.most_common_todo(), Some("TODO".to_owned()));
+}
+
+#[test]
+fn vault_most_common_priority_returns_top() {
+    let td = write_vault(&[
+        ("a.org", "* [#A] X\n* [#B] Y\n"),
+        ("b.org", "* [#A] Z\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.most_common_priority(), Some('A'));
+}
+
+#[test]
+fn vault_most_common_level_returns_top() {
+    let td = write_vault(&[
+        ("a.org", "* A\n** B\n*** C\n*** D\n*** E\n"),
+        ("b.org", "* F\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.most_common_level(), Some(3));
+}
+
+#[test]
 fn vault_watcher_observes_modify() {
     let td = write_vault(&[("x.org", "* A\n")]);
     let v = Vault::open(td.path()).expect("open");
