@@ -152,6 +152,34 @@ fn dispatcher_command_count_match() {
 }
 
 #[test]
+fn chord_trie_is_empty_match() {
+    let t = closure_input::ChordTrie::build(&[]);
+    assert!(t.is_empty());
+}
+
+#[test]
+fn chord_trie_is_empty_false_when_bound() {
+    let t = closure_input::ChordTrie::build(&[("a b", "foo")]);
+    assert!(!t.is_empty());
+}
+
+#[test]
+fn chord_trie_command_count_match() {
+    let t = closure_input::ChordTrie::build(&[("a b", "foo"), ("a c", "bar")]);
+    assert_eq!(t.command_count(), 2);
+}
+
+#[test]
+fn chord_trie_is_at_root_after_unbound() {
+    let mut t = closure_input::ChordTrie::build(&[("a b", "x")]);
+    assert!(t.is_at_root());
+    let _ = t.step("a");
+    assert!(!t.is_at_root());
+    let _ = t.step("z");
+    assert!(t.is_at_root());
+}
+
+#[test]
 fn chord_trie_pending_lists_alternatives() {
     let mut t = closure_input::ChordTrie::build(&[("a b", "x"), ("a c", "y")]);
     let step = t.step("a");

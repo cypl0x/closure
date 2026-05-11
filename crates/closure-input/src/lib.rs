@@ -198,6 +198,30 @@ impl ChordTrie {
         self.cursor = 0;
     }
 
+    /// True iff the trie has no bound chords.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.nodes.iter().all(|n| n.command.is_none())
+    }
+
+    /// Number of distinct commands bound in the trie.
+    #[must_use]
+    pub fn command_count(&self) -> usize {
+        let mut s: std::collections::BTreeSet<&str> = std::collections::BTreeSet::new();
+        for n in &self.nodes {
+            if let Some(c) = &n.command {
+                s.insert(c.as_str());
+            }
+        }
+        s.len()
+    }
+
+    /// True iff the cursor is at the root (no in-progress chord).
+    #[must_use]
+    pub const fn is_at_root(&self) -> bool {
+        self.cursor == 0
+    }
+
     /// Feed one stroke. [`TrieStep::Resolved`] and
     /// [`TrieStep::Unbound`] both reset the cursor.
     pub fn step(&mut self, stroke: &str) -> TrieStep {
