@@ -2704,25 +2704,11 @@ impl OrgDoc {
         self.count_descendants_where(|h| h.id_property().is_some())
     }
 
-    /// Percentage of headlines that carry a priority letter (`0..=100`).
-    #[must_use]
-    pub fn priority_pct(&self) -> usize {
-        let n = self.iter_headlines().len();
-        (self.total_priority_count() * 100).checked_div(n).unwrap_or(0)
-    }
-
     /// Percentage of headlines that carry a TODO keyword (`0..=100`).
     #[must_use]
     pub fn todo_pct(&self) -> usize {
         let n = self.iter_headlines().len();
         (self.total_todo_count() * 100).checked_div(n).unwrap_or(0)
-    }
-
-    /// Percentage of headlines that carry an `:ID:` property (`0..=100`).
-    #[must_use]
-    pub fn id_pct(&self) -> usize {
-        let n = self.iter_headlines().len();
-        (self.total_id_count() * 100).checked_div(n).unwrap_or(0)
     }
 
     /// Total properties drawer entries across all headlines.
