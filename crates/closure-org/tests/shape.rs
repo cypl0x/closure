@@ -3829,3 +3829,30 @@ fn doc_subtree_ids_of_match() {
     let v = doc.subtree_ids_of("a").expect("hit");
     assert_eq!(v, vec!["a", "b"]);
 }
+
+#[test]
+fn headline_subtree_distinct_titles_sorted() {
+    let src = "* A\n** A\n** B\n";
+    let doc = parse(src).expect("parse");
+    let top = &doc.roots()[0];
+    assert_eq!(
+        top.subtree_distinct_titles(),
+        vec!["A".to_owned(), "B".to_owned()]
+    );
+}
+
+#[test]
+fn headline_subtree_distinct_title_count_match() {
+    let src = "* A\n** A\n** B\n";
+    let doc = parse(src).expect("parse");
+    let top = &doc.roots()[0];
+    assert_eq!(top.subtree_distinct_title_count(), 2);
+}
+
+#[test]
+fn headline_subtree_id_count_match() {
+    let src = "* A\n:PROPERTIES:\n:ID: a\n:END:\n** B\n:PROPERTIES:\n:ID: b\n:END:\n** C\n";
+    let doc = parse(src).expect("parse");
+    let top = &doc.roots()[0];
+    assert_eq!(top.subtree_id_count(), 2);
+}

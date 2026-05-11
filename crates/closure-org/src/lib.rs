@@ -5692,6 +5692,30 @@ impl Headline {
         out
     }
 
+    /// Distinct titles in this subtree, sorted.
+    #[must_use]
+    pub fn subtree_distinct_titles(&self) -> Vec<String> {
+        let mut s: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+        s.insert(self.title().to_owned());
+        for h in self.descendants() {
+            s.insert(h.title().to_owned());
+        }
+        s.into_iter().collect()
+    }
+
+    /// Count of distinct titles in this subtree.
+    #[must_use]
+    pub fn subtree_distinct_title_count(&self) -> usize {
+        self.subtree_distinct_titles().len()
+    }
+
+    /// Count of headlines in this subtree carrying any `:ID:`.
+    /// Alias of [`Self::subtree_count_with_id`].
+    #[must_use]
+    pub fn subtree_id_count(&self) -> usize {
+        self.subtree_count_with_id()
+    }
+
     /// Highest-priority letter (closest to `'A'`) in this subtree.
     #[must_use]
     pub fn max_priority_letter(&self) -> Option<char> {
