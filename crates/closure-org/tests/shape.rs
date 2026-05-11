@@ -3304,3 +3304,33 @@ fn doc_has_any_id_match() {
     let none = parse("* X\n").expect("parse");
     assert!(!none.has_any_id());
 }
+
+#[test]
+fn doc_contains_tag_returns_match() {
+    let doc = parse("* X :work:\n* Y\n").expect("parse");
+    assert!(doc.contains_tag("work"));
+    assert!(!doc.contains_tag("home"));
+}
+
+#[test]
+fn doc_contains_todo_returns_match() {
+    let doc = parse("* TODO X\n* DONE Y\n").expect("parse");
+    assert!(doc.contains_todo("TODO"));
+    assert!(doc.contains_todo("DONE"));
+    assert!(!doc.contains_todo("WAIT"));
+}
+
+#[test]
+fn doc_contains_priority_returns_match() {
+    let doc = parse("* [#A] X\n* Y\n").expect("parse");
+    assert!(doc.contains_priority('A'));
+    assert!(!doc.contains_priority('B'));
+}
+
+#[test]
+fn doc_contains_id_returns_match() {
+    let src = "* X\n:PROPERTIES:\n:ID: target\n:END:\n";
+    let doc = parse(src).expect("parse");
+    assert!(doc.contains_id("target"));
+    assert!(!doc.contains_id("missing"));
+}
