@@ -689,6 +689,24 @@ impl OrgDoc {
         sizes.iter().sum::<usize>() / sizes.len()
     }
 
+    /// Total subtree size across all roots (= total headline count).
+    #[must_use]
+    pub fn total_root_subtree_size(&self) -> usize {
+        self.roots.iter().map(Headline::subtree_size).sum()
+    }
+
+    /// Root headline with the largest subtree. Ties resolved by position.
+    #[must_use]
+    pub fn largest_root(&self) -> Option<&Headline> {
+        self.roots.iter().max_by_key(|h| h.subtree_size())
+    }
+
+    /// Root headline with the smallest subtree. Ties resolved by position.
+    #[must_use]
+    pub fn smallest_root(&self) -> Option<&Headline> {
+        self.roots.iter().min_by_key(|h| h.subtree_size())
+    }
+
     /// Median subtree size across roots (integer; lower midpoint for even sets).
     #[must_use]
     pub fn median_root_subtree_size(&self) -> Option<usize> {

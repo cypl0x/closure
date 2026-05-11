@@ -3622,3 +3622,22 @@ fn doc_median_root_subtree_size_match() {
     // sizes sorted: [1,1,3] -> 1
     assert_eq!(doc.median_root_subtree_size(), Some(1));
 }
+
+#[test]
+fn doc_total_root_subtree_size_match() {
+    let doc = parse("* A\n** B\n** C\n* D\n").expect("parse");
+    // sizes: 3 + 1 = 4
+    assert_eq!(doc.total_root_subtree_size(), 4);
+}
+
+#[test]
+fn doc_largest_root_returns_largest() {
+    let doc = parse("* A\n** B\n*** C\n* D\n").expect("parse");
+    assert_eq!(doc.largest_root().expect("hit").title(), "A");
+}
+
+#[test]
+fn doc_smallest_root_returns_smallest() {
+    let doc = parse("* A\n** B\n* C\n").expect("parse");
+    assert_eq!(doc.smallest_root().expect("hit").title(), "C");
+}
