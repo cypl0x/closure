@@ -4072,3 +4072,28 @@ fn doc_min_root_title_len_match() {
     let doc = parse("* Aa\n* Bbbb\n").expect("parse");
     assert_eq!(doc.min_root_title_len(), Some(2));
 }
+
+#[test]
+fn doc_max_headline_title_len_match() {
+    let doc = parse("* A\n** Long title\n").expect("parse");
+    assert_eq!(doc.max_headline_title_len(), Some("Long title".len()));
+}
+
+#[test]
+fn doc_min_headline_title_len_match() {
+    let doc = parse("* A\n** Long title\n").expect("parse");
+    assert_eq!(doc.min_headline_title_len(), Some(1));
+}
+
+#[test]
+fn doc_mean_headline_title_len_match() {
+    let doc = parse("* AA\n** BBBB\n").expect("parse");
+    // chars: 2,4 -> mean 3
+    assert_eq!(doc.mean_headline_title_len(), 3);
+}
+
+#[test]
+fn doc_total_headline_title_len_match() {
+    let doc = parse("* AA\n** BBBB\n").expect("parse");
+    assert_eq!(doc.total_headline_title_len(), 6);
+}

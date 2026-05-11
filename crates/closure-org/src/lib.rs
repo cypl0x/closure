@@ -1114,6 +1114,47 @@ impl OrgDoc {
         self.roots.iter().map(|h| h.title().chars().count()).min()
     }
 
+    /// Maximum headline title length in characters across the document.
+    #[must_use]
+    pub fn max_headline_title_len(&self) -> Option<usize> {
+        self.iter_headlines()
+            .into_iter()
+            .map(|h| h.title().chars().count())
+            .max()
+    }
+
+    /// Minimum headline title length in characters across the document.
+    #[must_use]
+    pub fn min_headline_title_len(&self) -> Option<usize> {
+        self.iter_headlines()
+            .into_iter()
+            .map(|h| h.title().chars().count())
+            .min()
+    }
+
+    /// Integer mean headline title length in characters (`0` when empty).
+    #[must_use]
+    pub fn mean_headline_title_len(&self) -> usize {
+        let lens: Vec<usize> = self
+            .iter_headlines()
+            .into_iter()
+            .map(|h| h.title().chars().count())
+            .collect();
+        if lens.is_empty() {
+            return 0;
+        }
+        lens.iter().sum::<usize>() / lens.len()
+    }
+
+    /// Total headline title length in characters across the document.
+    #[must_use]
+    pub fn total_headline_title_len(&self) -> usize {
+        self.iter_headlines()
+            .into_iter()
+            .map(|h| h.title().chars().count())
+            .sum()
+    }
+
     /// Median subtree size across roots (integer; lower midpoint for even sets).
     #[must_use]
     pub fn median_root_subtree_size(&self) -> Option<usize> {
