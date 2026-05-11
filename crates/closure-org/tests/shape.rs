@@ -3409,3 +3409,39 @@ fn doc_first_with_id_returns_first() {
     let h = doc.first_with_id().expect("hit");
     assert_eq!(h.title(), "B");
 }
+
+#[test]
+fn doc_headline_at_dfs_index_match() {
+    let doc = parse("* A\n** B\n** C\n* D\n").expect("parse");
+    assert_eq!(doc.headline_at_dfs_index(0).expect("0").title(), "A");
+    assert_eq!(doc.headline_at_dfs_index(1).expect("1").title(), "B");
+    assert_eq!(doc.headline_at_dfs_index(2).expect("2").title(), "C");
+    assert_eq!(doc.headline_at_dfs_index(3).expect("3").title(), "D");
+    assert!(doc.headline_at_dfs_index(4).is_none());
+}
+
+#[test]
+fn doc_dfs_index_of_returns_index() {
+    let src = "* A\n** B\n:PROPERTIES:\n:ID: b\n:END:\n** C\n";
+    let doc = parse(src).expect("parse");
+    assert_eq!(doc.dfs_index_of("b"), Some(1));
+    assert_eq!(doc.dfs_index_of("missing"), None);
+}
+
+#[test]
+fn doc_first_headline_returns_first() {
+    let doc = parse("* X\n** Y\n").expect("parse");
+    assert_eq!(doc.first_headline().expect("first").title(), "X");
+}
+
+#[test]
+fn doc_first_headline_none_on_empty() {
+    let doc = parse("nothing\n").expect("parse");
+    assert!(doc.first_headline().is_none());
+}
+
+#[test]
+fn doc_last_headline_returns_last() {
+    let doc = parse("* X\n** Y\n* Z\n").expect("parse");
+    assert_eq!(doc.last_headline().expect("last").title(), "Z");
+}

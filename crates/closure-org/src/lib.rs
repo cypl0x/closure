@@ -492,6 +492,32 @@ impl OrgDoc {
         self.find_headline(|h| h.id_property().is_some())
     }
 
+    /// Headline at zero-based DFS index `i`.
+    #[must_use]
+    pub fn headline_at_dfs_index(&self, i: usize) -> Option<&Headline> {
+        self.iter_headlines().into_iter().nth(i)
+    }
+
+    /// DFS index of headline carrying `:ID: id`.
+    #[must_use]
+    pub fn dfs_index_of(&self, id: &str) -> Option<usize> {
+        self.iter_headlines()
+            .into_iter()
+            .position(|h| h.id_property() == Some(id))
+    }
+
+    /// First headline in DFS order.
+    #[must_use]
+    pub fn first_headline(&self) -> Option<&Headline> {
+        self.iter_headlines().into_iter().next()
+    }
+
+    /// Last headline in DFS order.
+    #[must_use]
+    pub fn last_headline(&self) -> Option<&Headline> {
+        self.iter_headlines().into_iter().next_back()
+    }
+
     /// Iterate every headline depth-first.
     #[must_use]
     pub fn iter_headlines(&self) -> Vec<&Headline> {
