@@ -3445,3 +3445,27 @@ fn doc_last_headline_returns_last() {
     let doc = parse("* X\n** Y\n* Z\n").expect("parse");
     assert_eq!(doc.last_headline().expect("last").title(), "Z");
 }
+
+#[test]
+fn doc_all_titles_returns_collection() {
+    let doc = parse("* A\n** B\n* C\n").expect("parse");
+    assert_eq!(doc.all_titles(), vec!["A", "B", "C"]);
+}
+
+#[test]
+fn doc_distinct_titles_sorted_unique() {
+    let doc = parse("* A\n** A\n* B\n").expect("parse");
+    assert_eq!(doc.distinct_titles(), vec!["A".to_owned(), "B".to_owned()]);
+}
+
+#[test]
+fn doc_root_titles_returns_collection() {
+    let doc = parse("* A\n** B\n* C\n").expect("parse");
+    assert_eq!(doc.root_titles(), vec!["A", "C"]);
+}
+
+#[test]
+fn doc_root_levels_returns_collection() {
+    let doc = parse("* A\n* B\n").expect("parse");
+    assert_eq!(doc.root_levels(), vec![1, 1]);
+}

@@ -518,6 +518,37 @@ impl OrgDoc {
         self.iter_headlines().into_iter().next_back()
     }
 
+    /// All headline titles in DFS order (with duplicates).
+    #[must_use]
+    pub fn all_titles(&self) -> Vec<&str> {
+        self.iter_headlines()
+            .into_iter()
+            .map(Headline::title)
+            .collect()
+    }
+
+    /// Distinct headline titles, sorted.
+    #[must_use]
+    pub fn distinct_titles(&self) -> Vec<String> {
+        let mut s: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+        for h in self.iter_headlines() {
+            s.insert(h.title().to_owned());
+        }
+        s.into_iter().collect()
+    }
+
+    /// Titles of every root headline.
+    #[must_use]
+    pub fn root_titles(&self) -> Vec<&str> {
+        self.roots.iter().map(Headline::title).collect()
+    }
+
+    /// Levels of every root headline.
+    #[must_use]
+    pub fn root_levels(&self) -> Vec<u8> {
+        self.roots.iter().map(Headline::level).collect()
+    }
+
     /// Iterate every headline depth-first.
     #[must_use]
     pub fn iter_headlines(&self) -> Vec<&Headline> {
