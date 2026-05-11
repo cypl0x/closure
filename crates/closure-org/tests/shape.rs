@@ -3136,3 +3136,28 @@ fn doc_mean_priority_none_on_empty() {
     let doc = parse("nothing\n").expect("parse");
     assert_eq!(doc.mean_priority_letter(), None);
 }
+
+#[test]
+fn doc_mode_priority_match() {
+    let doc = parse("* [#A] X\n** [#A] Y\n** [#B] Z\n").expect("parse");
+    assert_eq!(doc.mode_priority(), Some('A'));
+}
+
+#[test]
+fn doc_mode_priority_none_when_unset() {
+    let doc = parse("* X\n* Y\n").expect("parse");
+    assert_eq!(doc.mode_priority(), None);
+}
+
+#[test]
+fn doc_mode_todo_match() {
+    let doc = parse("* TODO X\n* DONE Y\n* TODO Z\n").expect("parse");
+    assert_eq!(doc.mode_todo(), Some("TODO".to_owned()));
+}
+
+#[test]
+fn doc_mode_tag_match() {
+    let doc = parse("* X :work:\n* Y :work:home:\n* Z :home:\n").expect("parse");
+    let m = doc.mode_tag();
+    assert!(m == Some("work".to_owned()) || m == Some("home".to_owned()));
+}

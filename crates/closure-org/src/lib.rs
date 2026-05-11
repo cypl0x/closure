@@ -1258,6 +1258,33 @@ impl OrgDoc {
             .map(|(l, _)| l)
     }
 
+    /// Most-common priority letter. Ties broken by closest to `'A'`.
+    #[must_use]
+    pub fn mode_priority(&self) -> Option<char> {
+        self.priority_counts()
+            .into_iter()
+            .max_by_key(|(l, n)| (*n, std::cmp::Reverse(*l)))
+            .map(|(l, _)| l)
+    }
+
+    /// Most-common TODO keyword. Ties broken by lexicographic order.
+    #[must_use]
+    pub fn mode_todo(&self) -> Option<String> {
+        self.todo_counts()
+            .into_iter()
+            .max_by_key(|(_, n)| *n)
+            .map(|(k, _)| k)
+    }
+
+    /// Most-common tag. Ties broken by lexicographic order.
+    #[must_use]
+    pub fn mode_tag(&self) -> Option<String> {
+        self.tag_counts()
+            .into_iter()
+            .max_by_key(|(_, n)| *n)
+            .map(|(k, _)| k)
+    }
+
     /// Integer mean of priority letters (`A`..`Z` as `u32` codepoints).
     #[must_use]
     pub fn mean_priority_letter(&self) -> Option<char> {
