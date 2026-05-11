@@ -858,6 +858,27 @@ impl Vault {
             .collect()
     }
 
+    /// Paths containing at least one headline carrying property `key`.
+    #[must_use]
+    pub fn paths_with_property<'a>(&'a self, key: &str) -> Vec<&'a Path> {
+        self.iter()
+            .filter(|(_, d)| d.all_headlines().any(|h| h.property(key).is_some()))
+            .map(|(p, _)| p)
+            .collect()
+    }
+
+    /// Number of paths containing at least one headline with the given tag.
+    #[must_use]
+    pub fn path_count_with_tag(&self, tag: &str) -> usize {
+        self.paths_with_tag(tag).len()
+    }
+
+    /// Number of paths containing at least one headline with TODO keyword `kw`.
+    #[must_use]
+    pub fn path_count_with_todo(&self, kw: &str) -> usize {
+        self.paths_with_todo(kw).len()
+    }
+
     /// Paths whose source contains the substring `needle` anywhere.
     #[must_use]
     pub fn paths_containing(&self, needle: &str) -> Vec<&Path> {

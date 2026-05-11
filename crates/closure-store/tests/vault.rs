@@ -478,6 +478,46 @@ fn vault_paths_with_id_returns_match() {
 }
 
 #[test]
+fn vault_paths_with_property_returns_match() {
+    let td = write_vault(&[
+        ("a.org", "* X\n:PROPERTIES:\n:CATEGORY: foo\n:END:\n"),
+        ("b.org", "* Y\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    let paths: Vec<&str> = v
+        .paths_with_property("CATEGORY")
+        .into_iter()
+        .filter_map(|p| p.file_name().and_then(|s| s.to_str()))
+        .collect();
+    assert!(paths.contains(&"a.org"));
+    assert!(!paths.contains(&"b.org"));
+}
+
+#[test]
+fn vault_path_count_with_tag_match() {
+    let td = write_vault(&[
+        ("a.org", "* X :work:\n"),
+        ("b.org", "* Y :home:\n"),
+        ("c.org", "* Z :work:\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.path_count_with_tag("work"), 2);
+    assert_eq!(v.path_count_with_tag("none"), 0);
+}
+
+#[test]
+fn vault_path_count_with_todo_match() {
+    let td = write_vault(&[
+        ("a.org", "* TODO X\n"),
+        ("b.org", "* DONE Y\n"),
+        ("c.org", "* TODO Z\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.path_count_with_todo("TODO"), 2);
+    assert_eq!(v.path_count_with_todo("WAIT"), 0);
+}
+
+#[test]
 fn vault_watcher_observes_modify() {
     let td = write_vault(&[("x.org", "* A\n")]);
     let v = Vault::open(td.path()).expect("open");
