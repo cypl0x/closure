@@ -690,6 +690,36 @@ impl Vault {
         self.distinct_levels().len()
     }
 
+    /// Priority letter occurrence counts, sorted descending by count.
+    #[must_use]
+    pub fn priority_counts(&self) -> Vec<(char, usize)> {
+        let mut counts: HashMap<char, usize> = HashMap::new();
+        for (_, doc) in self.iter() {
+            for h in doc.all_headlines() {
+                if let Some(p) = h.priority() {
+                    *counts.entry(p).or_insert(0) += 1;
+                }
+            }
+        }
+        let mut ranked: Vec<_> = counts.into_iter().collect();
+        ranked.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+        ranked
+    }
+
+    /// Level occurrence counts, sorted descending by count.
+    #[must_use]
+    pub fn level_counts(&self) -> Vec<(u8, usize)> {
+        let mut counts: HashMap<u8, usize> = HashMap::new();
+        for (_, doc) in self.iter() {
+            for h in doc.all_headlines() {
+                *counts.entry(h.level()).or_insert(0) += 1;
+            }
+        }
+        let mut ranked: Vec<_> = counts.into_iter().collect();
+        ranked.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+        ranked
+    }
+
     /// Lookup a document by its full filesystem path.
     #[must_use]
     pub fn document(&self, path: &Path) -> Option<&Document> {

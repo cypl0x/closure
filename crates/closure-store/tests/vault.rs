@@ -315,6 +315,32 @@ fn vault_distinct_level_count_match() {
 }
 
 #[test]
+fn vault_priority_counts_returns_sorted_ranked() {
+    let td = write_vault(&[
+        ("a.org", "* [#B] X\n* [#A] Y\n"),
+        ("b.org", "* [#A] Z\n* [#C] W\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    let ranks = v.priority_counts();
+    assert_eq!(ranks[0], ('A', 2));
+    assert!(ranks.iter().any(|(c, n)| *c == 'B' && *n == 1));
+    assert!(ranks.iter().any(|(c, n)| *c == 'C' && *n == 1));
+}
+
+#[test]
+fn vault_level_counts_returns_ranked() {
+    let td = write_vault(&[
+        ("a.org", "* A\n** B\n** C\n*** D\n"),
+        ("b.org", "* E\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    let ranks = v.level_counts();
+    assert_eq!(ranks[0], (2, 2));
+    assert!(ranks.iter().any(|(l, n)| *l == 1 && *n == 2));
+    assert!(ranks.iter().any(|(l, n)| *l == 3 && *n == 1));
+}
+
+#[test]
 fn vault_watcher_observes_modify() {
     let td = write_vault(&[("x.org", "* A\n")]);
     let v = Vault::open(td.path()).expect("open");
