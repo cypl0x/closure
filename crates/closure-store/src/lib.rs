@@ -903,6 +903,33 @@ impl Vault {
         self.paths_with_property(key).len()
     }
 
+    /// Total tag occurrences across the vault (counting duplicates).
+    #[must_use]
+    pub fn total_tag_count(&self) -> usize {
+        self.iter()
+            .flat_map(|(_, d)| d.all_headlines())
+            .map(|h| h.tags().len())
+            .sum()
+    }
+
+    /// Total priority-set occurrences across the vault.
+    #[must_use]
+    pub fn total_priority_count(&self) -> usize {
+        self.iter()
+            .flat_map(|(_, d)| d.all_headlines())
+            .filter(|h| h.priority().is_some())
+            .count()
+    }
+
+    /// Total TODO-set occurrences across the vault.
+    #[must_use]
+    pub fn total_todo_count(&self) -> usize {
+        self.iter()
+            .flat_map(|(_, d)| d.all_headlines())
+            .filter(|h| h.todo().is_some())
+            .count()
+    }
+
     /// Paths whose source contains the substring `needle` anywhere.
     #[must_use]
     pub fn paths_containing(&self, needle: &str) -> Vec<&Path> {
