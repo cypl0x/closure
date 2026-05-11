@@ -748,6 +748,36 @@ fn vault_median_headlines_per_path_none_on_empty() {
 }
 
 #[test]
+fn vault_path_with_max_headlines_match() {
+    let td = write_vault(&[
+        ("a.org", "* X\n"),
+        ("b.org", "* X\n* Y\n* Z\n"),
+        ("c.org", "* X\n* Y\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    let p = v.path_with_max_headlines().expect("hit");
+    assert_eq!(p.file_name().and_then(|s| s.to_str()), Some("b.org"));
+}
+
+#[test]
+fn vault_path_with_min_headlines_match() {
+    let td = write_vault(&[
+        ("a.org", "* X\n* Y\n"),
+        ("b.org", "* X\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    let p = v.path_with_min_headlines().expect("hit");
+    assert_eq!(p.file_name().and_then(|s| s.to_str()), Some("b.org"));
+}
+
+#[test]
+fn vault_path_with_max_headlines_none_on_empty() {
+    let td = write_vault(&[]);
+    let v = Vault::open(td.path()).expect("open");
+    assert!(v.path_with_max_headlines().is_none());
+}
+
+#[test]
 fn vault_watcher_observes_modify() {
     let td = write_vault(&[("x.org", "* A\n")]);
     let v = Vault::open(td.path()).expect("open");

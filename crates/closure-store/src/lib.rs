@@ -1027,6 +1027,34 @@ impl Vault {
         self.iter().map(|(_, d)| d.all_headlines().count()).sum()
     }
 
+    /// Path with the maximum headline count. Ties resolved by lexicographic path.
+    #[must_use]
+    pub fn path_with_max_headlines(&self) -> Option<&Path> {
+        let mut best: Option<(&Path, usize)> = None;
+        for (p, d) in self.iter() {
+            let n = d.all_headlines().count();
+            best = match best {
+                Some((bp, bn)) if bn > n || (bn == n && bp < p) => Some((bp, bn)),
+                _ => Some((p, n)),
+            };
+        }
+        best.map(|(p, _)| p)
+    }
+
+    /// Path with the minimum headline count. Ties resolved by lexicographic path.
+    #[must_use]
+    pub fn path_with_min_headlines(&self) -> Option<&Path> {
+        let mut best: Option<(&Path, usize)> = None;
+        for (p, d) in self.iter() {
+            let n = d.all_headlines().count();
+            best = match best {
+                Some((bp, bn)) if bn < n || (bn == n && bp < p) => Some((bp, bn)),
+                _ => Some((p, n)),
+            };
+        }
+        best.map(|(p, _)| p)
+    }
+
     /// Median headline count per path (integer, lower-middle for even sets).
     #[must_use]
     pub fn median_headlines_per_path(&self) -> Option<usize> {
