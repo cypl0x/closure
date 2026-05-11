@@ -2818,13 +2818,6 @@ impl OrgDoc {
             .any(|h| h.priority() == Some(letter))
     }
 
-    /// True iff any headline carries `:ID: id`.
-    #[must_use]
-    pub fn contains_id(&self, id: &str) -> bool {
-        self.iter_headlines()
-            .into_iter()
-            .any(|h| h.id_property() == Some(id))
-    }
 
     /// Total properties drawer entries across all headlines.
     #[must_use]
