@@ -1027,6 +1027,23 @@ impl Vault {
         self.iter().map(|(_, d)| d.all_headlines().count()).sum()
     }
 
+    /// Median headline count per path (integer, lower-middle for even sets).
+    #[must_use]
+    pub fn median_headlines_per_path(&self) -> Option<usize> {
+        let mut counts: Vec<usize> =
+            self.iter().map(|(_, d)| d.all_headlines().count()).collect();
+        if counts.is_empty() {
+            return None;
+        }
+        counts.sort_unstable();
+        let mid = counts.len() / 2;
+        if counts.len() % 2 == 1 {
+            Some(counts[mid])
+        } else {
+            Some(counts[mid - 1].midpoint(counts[mid]))
+        }
+    }
+
     /// Paths whose source contains the substring `needle` anywhere.
     #[must_use]
     pub fn paths_containing(&self, needle: &str) -> Vec<&Path> {

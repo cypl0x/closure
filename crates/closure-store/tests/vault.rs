@@ -718,6 +718,36 @@ fn vault_total_headline_count_match() {
 }
 
 #[test]
+fn vault_median_headlines_per_path_match_odd() {
+    let td = write_vault(&[
+        ("a.org", "* X\n"),
+        ("b.org", "* X\n* Y\n* Z\n"),
+        ("c.org", "* X\n* Y\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.median_headlines_per_path(), Some(2));
+}
+
+#[test]
+fn vault_median_headlines_per_path_match_even() {
+    let td = write_vault(&[
+        ("a.org", "* X\n"),
+        ("b.org", "* X\n* Y\n"),
+        ("c.org", "* X\n* Y\n* Z\n"),
+        ("d.org", "* X\n* Y\n* Z\n* W\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.median_headlines_per_path(), Some(2));
+}
+
+#[test]
+fn vault_median_headlines_per_path_none_on_empty() {
+    let td = write_vault(&[]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.median_headlines_per_path(), None);
+}
+
+#[test]
 fn vault_watcher_observes_modify() {
     let td = write_vault(&[("x.org", "* A\n")]);
     let v = Vault::open(td.path()).expect("open");
