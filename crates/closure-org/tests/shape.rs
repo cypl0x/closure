@@ -3111,3 +3111,28 @@ fn doc_median_level_even_match() {
     // levels sorted: [1,2,2,3] -> midpoint(2,2) = 2
     assert_eq!(doc.median_level(), Some(2));
 }
+
+#[test]
+fn doc_mode_level_match() {
+    let doc = parse("* A\n** B\n** C\n*** D\n").expect("parse");
+    assert_eq!(doc.mode_level(), Some(2));
+}
+
+#[test]
+fn doc_mode_level_none_on_empty() {
+    let doc = parse("nothing\n").expect("parse");
+    assert_eq!(doc.mode_level(), None);
+}
+
+#[test]
+fn doc_mean_priority_match() {
+    let doc = parse("* [#A] X\n** [#A] Y\n** [#C] Z\n").expect("parse");
+    // letters as u32: A=65, A=65, C=67 -> mean = 65
+    assert_eq!(doc.mean_priority_letter(), Some('A'));
+}
+
+#[test]
+fn doc_mean_priority_none_on_empty() {
+    let doc = parse("nothing\n").expect("parse");
+    assert_eq!(doc.mean_priority_letter(), None);
+}

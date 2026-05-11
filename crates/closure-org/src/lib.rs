@@ -1249,6 +1249,31 @@ impl OrgDoc {
         u8::try_from(sum / n).unwrap_or(u8::MAX)
     }
 
+    /// Most-common headline level. Ties broken by smallest level.
+    #[must_use]
+    pub fn mode_level(&self) -> Option<u8> {
+        self.level_counts()
+            .into_iter()
+            .max_by_key(|(l, n)| (*n, std::cmp::Reverse(*l)))
+            .map(|(l, _)| l)
+    }
+
+    /// Integer mean of priority letters (`A`..`Z` as `u32` codepoints).
+    #[must_use]
+    pub fn mean_priority_letter(&self) -> Option<char> {
+        let letters: Vec<u32> = self
+            .iter_headlines()
+            .into_iter()
+            .filter_map(|h| h.priority().map(u32::from))
+            .collect();
+        if letters.is_empty() {
+            return None;
+        }
+        let sum: u32 = letters.iter().sum();
+        let n = u32::try_from(letters.len()).unwrap_or(u32::MAX);
+        char::from_u32(sum / n)
+    }
+
     /// Median headline level (integer; lower midpoint for even sets).
     #[must_use]
     pub fn median_level(&self) -> Option<u8> {
