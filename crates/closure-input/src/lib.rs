@@ -234,6 +234,29 @@ impl ChordTrie {
         s.into_iter().collect()
     }
 
+    /// Maximum chord depth (number of strokes in the longest bound chord).
+    #[must_use]
+    pub fn max_depth(&self) -> usize {
+        fn walk(idx: usize, depth: usize, nodes: &[TrieNode], best: &mut usize) {
+            let n = &nodes[idx];
+            if n.command.is_some() {
+                *best = (*best).max(depth);
+            }
+            for &child in n.children.values() {
+                walk(child, depth + 1, nodes, best);
+            }
+        }
+        let mut best = 0usize;
+        walk(0, 0, &self.nodes, &mut best);
+        best
+    }
+
+    /// True iff `command` is bound somewhere in the trie.
+    #[must_use]
+    pub fn contains_command(&self, command: &str) -> bool {
+        self.nodes.iter().any(|n| n.command.as_deref() == Some(command))
+    }
+
     /// Sorted distinct chord strings bound in the trie. Strokes joined by spaces.
     #[must_use]
     pub fn all_chords(&self) -> Vec<String> {

@@ -198,6 +198,25 @@ fn chord_trie_all_chords_sorted() {
 }
 
 #[test]
+fn chord_trie_max_depth_match() {
+    let t = closure_input::ChordTrie::build(&[("a b c", "x"), ("d e", "y")]);
+    assert_eq!(t.max_depth(), 3);
+}
+
+#[test]
+fn chord_trie_max_depth_zero_when_empty() {
+    let t = closure_input::ChordTrie::build(&[]);
+    assert_eq!(t.max_depth(), 0);
+}
+
+#[test]
+fn chord_trie_contains_command_match() {
+    let t = closure_input::ChordTrie::build(&[("a b", "foo")]);
+    assert!(t.contains_command("foo"));
+    assert!(!t.contains_command("bar"));
+}
+
+#[test]
 fn chord_trie_pending_lists_alternatives() {
     let mut t = closure_input::ChordTrie::build(&[("a b", "x"), ("a c", "y")]);
     let step = t.step("a");
