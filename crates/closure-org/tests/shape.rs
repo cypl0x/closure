@@ -3334,3 +3334,33 @@ fn doc_contains_id_returns_match() {
     assert!(doc.contains_id("target"));
     assert!(!doc.contains_id("missing"));
 }
+
+#[test]
+fn doc_headline_with_property_value_returns_first() {
+    let src = "* A\n:PROPERTIES:\n:K: x\n:END:\n* B\n:PROPERTIES:\n:K: y\n:END:\n";
+    let doc = parse(src).expect("parse");
+    let h = doc.headline_with_property_value("K", "y").expect("hit");
+    assert_eq!(h.title(), "B");
+    assert!(doc.headline_with_property_value("K", "z").is_none());
+}
+
+#[test]
+fn doc_first_with_priority_returns_first() {
+    let doc = parse("* X\n* [#B] Y\n* [#A] Z\n").expect("parse");
+    let h = doc.first_with_priority('A').expect("hit");
+    assert_eq!(h.title(), "Z");
+}
+
+#[test]
+fn doc_first_with_todo_returns_first() {
+    let doc = parse("* X\n* TODO Y\n* DONE Z\n").expect("parse");
+    let h = doc.first_with_todo("TODO").expect("hit");
+    assert_eq!(h.title(), "Y");
+}
+
+#[test]
+fn doc_first_with_tag_returns_first() {
+    let doc = parse("* X\n* Y :work:\n* Z :work:home:\n").expect("parse");
+    let h = doc.first_with_tag("work").expect("hit");
+    assert_eq!(h.title(), "Y");
+}

@@ -432,6 +432,22 @@ impl OrgDoc {
         self.find_headline(|h| h.has_property(key))
     }
 
+    /// Returns the first headline carrying `tag`.
+    #[must_use]
+    pub fn first_with_tag<'a>(&'a self, tag: &str) -> Option<&'a Headline> {
+        self.find_headline(|h| h.has_tag(tag))
+    }
+
+    /// Returns the first headline whose property `key` equals `value`.
+    #[must_use]
+    pub fn headline_with_property_value<'a>(
+        &'a self,
+        key: &str,
+        value: &str,
+    ) -> Option<&'a Headline> {
+        self.find_headline(|h| h.properties().and_then(|p| p.get(key)) == Some(value))
+    }
+
     /// Iterate every headline depth-first.
     #[must_use]
     pub fn iter_headlines(&self) -> Vec<&Headline> {
