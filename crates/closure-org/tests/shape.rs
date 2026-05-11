@@ -3501,3 +3501,27 @@ fn doc_tag_set_returns_distinct_sorted() {
     let v: Vec<&&str> = s.iter().collect();
     assert_eq!(v, vec![&"a", &"b", &"c"]);
 }
+
+#[test]
+fn doc_priority_set_returns_distinct_sorted() {
+    let doc = parse("* [#B] X\n** [#A] Y\n* [#A] Z\n").expect("parse");
+    let s = doc.priority_set();
+    let v: Vec<char> = s.into_iter().collect();
+    assert_eq!(v, vec!['A', 'B']);
+}
+
+#[test]
+fn doc_todo_set_returns_distinct_sorted() {
+    let doc = parse("* TODO X\n* DONE Y\n* TODO Z\n").expect("parse");
+    let s = doc.todo_set();
+    let v: Vec<String> = s.into_iter().collect();
+    assert_eq!(v, vec!["DONE".to_owned(), "TODO".to_owned()]);
+}
+
+#[test]
+fn doc_level_set_returns_distinct_sorted() {
+    let doc = parse("* A\n** B\n*** C\n** D\n").expect("parse");
+    let s = doc.level_set();
+    let v: Vec<u8> = s.into_iter().collect();
+    assert_eq!(v, vec![1, 2, 3]);
+}

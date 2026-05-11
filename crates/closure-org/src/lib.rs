@@ -588,6 +588,33 @@ impl OrgDoc {
             .collect()
     }
 
+    /// Sorted distinct priority letters present in the document.
+    #[must_use]
+    pub fn priority_set(&self) -> std::collections::BTreeSet<char> {
+        self.iter_headlines()
+            .into_iter()
+            .filter_map(Headline::priority)
+            .collect()
+    }
+
+    /// Sorted distinct TODO keywords present in the document.
+    #[must_use]
+    pub fn todo_set(&self) -> std::collections::BTreeSet<String> {
+        self.iter_headlines()
+            .into_iter()
+            .filter_map(|h| h.todo().map(str::to_owned))
+            .collect()
+    }
+
+    /// Sorted distinct levels present in the document.
+    #[must_use]
+    pub fn level_set(&self) -> std::collections::BTreeSet<u8> {
+        self.iter_headlines()
+            .into_iter()
+            .map(Headline::level)
+            .collect()
+    }
+
     /// Iterate every headline depth-first.
     #[must_use]
     pub fn iter_headlines(&self) -> Vec<&Headline> {
