@@ -3027,3 +3027,30 @@ fn headline_subtree_count_with_priority_counts_self_plus_descendants() {
     assert_eq!(top.subtree_count_with_priority('A'), 2);
     assert_eq!(top.subtree_count_with_priority('B'), 1);
 }
+
+#[test]
+fn headline_subtree_count_at_level_counts_self_plus_descendants() {
+    let src = "* Top\n** A\n** B\n*** C\n";
+    let doc = parse(src).expect("parse");
+    let top = &doc.roots()[0];
+    assert_eq!(top.subtree_count_at_level(1), 1);
+    assert_eq!(top.subtree_count_at_level(2), 2);
+    assert_eq!(top.subtree_count_at_level(3), 1);
+}
+
+#[test]
+fn headline_subtree_count_with_property_counts_self_plus_descendants() {
+    let src = "* Top\n:PROPERTIES:\n:K: 1\n:END:\n** Inner\n:PROPERTIES:\n:K: 2\n:END:\n";
+    let doc = parse(src).expect("parse");
+    let top = &doc.roots()[0];
+    assert_eq!(top.subtree_count_with_property("K"), 2);
+    assert_eq!(top.subtree_count_with_property("MISSING"), 0);
+}
+
+#[test]
+fn headline_subtree_count_with_id_counts_self_plus_descendants() {
+    let src = "* Top\n:PROPERTIES:\n:ID: a\n:END:\n** Inner\n:PROPERTIES:\n:ID: b\n:END:\n";
+    let doc = parse(src).expect("parse");
+    let top = &doc.roots()[0];
+    assert_eq!(top.subtree_count_with_id(), 2);
+}
