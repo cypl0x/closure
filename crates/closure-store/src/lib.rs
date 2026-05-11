@@ -1048,6 +1048,29 @@ impl Vault {
         seen.into_iter().collect()
     }
 
+    /// All `:ID:` property values across the vault (with duplicates).
+    #[must_use]
+    pub fn all_id_properties(&self) -> Vec<String> {
+        self.iter()
+            .flat_map(|(_, d)| d.all_headlines())
+            .filter_map(|h| h.property("ID").map(str::to_owned))
+            .collect()
+    }
+
+    /// Distinct `:ID:` property values across the vault, sorted.
+    #[must_use]
+    pub fn distinct_id_properties(&self) -> Vec<String> {
+        let mut seen: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+        for (_, doc) in self.iter() {
+            for h in doc.all_headlines() {
+                if let Some(id) = h.property("ID") {
+                    seen.insert(id.to_owned());
+                }
+            }
+        }
+        seen.into_iter().collect()
+    }
+
     /// Path with the maximum headline count. Ties resolved by lexicographic path.
     #[must_use]
     pub fn path_with_max_headlines(&self) -> Option<&Path> {

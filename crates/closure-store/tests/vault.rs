@@ -800,6 +800,30 @@ fn vault_distinct_titles_returns_sorted_unique() {
 }
 
 #[test]
+fn vault_distinct_id_properties_returns_sorted() {
+    let td = write_vault(&[
+        ("a.org", "* X\n:PROPERTIES:\n:ID: z\n:END:\n"),
+        ("b.org", "* Y\n:PROPERTIES:\n:ID: a\n:END:\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(
+        v.distinct_id_properties(),
+        vec!["a".to_owned(), "z".to_owned()]
+    );
+}
+
+#[test]
+fn vault_all_id_properties_returns_collection() {
+    let td = write_vault(&[
+        ("a.org", "* X\n:PROPERTIES:\n:ID: x\n:END:\n* Y\n:PROPERTIES:\n:ID: y\n:END:\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    let mut ids = v.all_id_properties();
+    ids.sort();
+    assert_eq!(ids, vec!["x".to_owned(), "y".to_owned()]);
+}
+
+#[test]
 fn vault_watcher_observes_modify() {
     let td = write_vault(&[("x.org", "* A\n")]);
     let v = Vault::open(td.path()).expect("open");
