@@ -840,6 +840,24 @@ impl Vault {
             .collect()
     }
 
+    /// Paths containing at least one headline with TODO keyword `kw`.
+    #[must_use]
+    pub fn paths_with_todo<'a>(&'a self, kw: &str) -> Vec<&'a Path> {
+        self.iter()
+            .filter(|(_, d)| d.all_headlines().any(|h| h.todo() == Some(kw)))
+            .map(|(p, _)| p)
+            .collect()
+    }
+
+    /// Paths containing at least one headline carrying an `:ID:` property.
+    #[must_use]
+    pub fn paths_with_id(&self) -> Vec<&Path> {
+        self.iter()
+            .filter(|(_, d)| d.all_headlines().any(|h| h.property("ID").is_some()))
+            .map(|(p, _)| p)
+            .collect()
+    }
+
     /// Paths whose source contains the substring `needle` anywhere.
     #[must_use]
     pub fn paths_containing(&self, needle: &str) -> Vec<&Path> {
