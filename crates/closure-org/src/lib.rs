@@ -2411,6 +2411,33 @@ impl OrgDoc {
             .map(|(k, _)| k)
     }
 
+    /// Most-common tag across roots. Ties broken by sort order.
+    #[must_use]
+    pub fn most_common_root_tag(&self) -> Option<String> {
+        self.root_tag_counts()
+            .into_iter()
+            .max_by_key(|(_, n)| *n)
+            .map(|(k, _)| k)
+    }
+
+    /// Most-common TODO keyword across roots.
+    #[must_use]
+    pub fn most_common_root_todo(&self) -> Option<String> {
+        self.root_todo_counts()
+            .into_iter()
+            .max_by_key(|(_, n)| *n)
+            .map(|(k, _)| k)
+    }
+
+    /// Most-common priority letter across roots.
+    #[must_use]
+    pub fn most_common_root_priority(&self) -> Option<char> {
+        self.root_priority_counts()
+            .into_iter()
+            .max_by_key(|(_, n)| *n)
+            .map(|(k, _)| k)
+    }
+
     fn collect_descendants_where<F: Fn(&Headline) -> bool>(
         &self,
         pred: F,

@@ -2791,3 +2791,25 @@ fn doc_most_common_descendant_level_returns_top() {
     let doc = parse(src).expect("parse");
     assert_eq!(doc.most_common_descendant_level(), Some(2));
 }
+
+#[test]
+fn doc_most_common_root_tag_returns_top() {
+    let src = "* A :a:b:\n* B :a:\n* C :b:\n";
+    let doc = parse(src).expect("parse");
+    let m = doc.most_common_root_tag();
+    assert!(m == Some("a".to_owned()) || m == Some("b".to_owned()));
+}
+
+#[test]
+fn doc_most_common_root_todo_returns_top() {
+    let src = "* TODO A\n* DONE B\n* TODO C\n";
+    let doc = parse(src).expect("parse");
+    assert_eq!(doc.most_common_root_todo(), Some("TODO".to_owned()));
+}
+
+#[test]
+fn doc_most_common_root_priority_returns_top() {
+    let src = "* [#A] One\n* [#A] Two\n* [#B] Three\n";
+    let doc = parse(src).expect("parse");
+    assert_eq!(doc.most_common_root_priority(), Some('A'));
+}
