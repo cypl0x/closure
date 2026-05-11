@@ -3549,3 +3549,22 @@ fn doc_level_set_count_match() {
     let doc = parse("* A\n** B\n*** C\n").expect("parse");
     assert_eq!(doc.level_set_count(), 3);
 }
+
+#[test]
+fn doc_source_byte_len_match() {
+    let src = "* A\n** B\n";
+    let doc = parse(src).expect("parse");
+    assert_eq!(doc.source_byte_len(), src.len());
+}
+
+#[test]
+fn doc_source_line_count_match() {
+    let doc = parse("* A\n** B\n* C\n").expect("parse");
+    assert_eq!(doc.source_line_count(), 3);
+}
+
+#[test]
+fn doc_source_line_count_empty_zero() {
+    let doc = parse("").expect("parse");
+    assert_eq!(doc.source_line_count(), 0);
+}

@@ -639,6 +639,22 @@ impl OrgDoc {
         self.level_set().len()
     }
 
+    /// Total byte length of the document source.
+    #[must_use]
+    pub fn source_byte_len(&self) -> usize {
+        self.source().len()
+    }
+
+    /// Total line count of the document source.
+    #[must_use]
+    pub fn source_line_count(&self) -> usize {
+        if self.source().is_empty() {
+            0
+        } else {
+            self.source().lines().count()
+        }
+    }
+
     /// Iterate every headline depth-first.
     #[must_use]
     pub fn iter_headlines(&self) -> Vec<&Headline> {
