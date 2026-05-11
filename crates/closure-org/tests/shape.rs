@@ -3911,3 +3911,20 @@ fn doc_subtree_total_property_count_of_match() {
     // 2 + 1 = 3
     assert_eq!(doc.subtree_total_property_count_of("a"), Some(3));
 }
+
+#[test]
+fn doc_distinct_property_keys_sorted_unique() {
+    let src = "* A\n:PROPERTIES:\n:K1: 1\n:K2: 2\n:END:\n* B\n:PROPERTIES:\n:K2: 3\n:K3: 4\n:END:\n";
+    let doc = parse(src).expect("parse");
+    assert_eq!(
+        doc.distinct_property_keys(),
+        vec!["K1".to_owned(), "K2".to_owned(), "K3".to_owned()]
+    );
+}
+
+#[test]
+fn doc_distinct_property_key_count_match() {
+    let src = "* A\n:PROPERTIES:\n:K1: 1\n:END:\n* B\n:PROPERTIES:\n:K1: 2\n:K2: 3\n:END:\n";
+    let doc = parse(src).expect("parse");
+    assert_eq!(doc.distinct_property_key_count(), 2);
+}
