@@ -593,6 +593,36 @@ fn vault_total_todo_count_match() {
 }
 
 #[test]
+fn vault_total_id_count_match() {
+    let td = write_vault(&[
+        ("a.org", "* X\n:PROPERTIES:\n:ID: x\n:END:\n* Y\n"),
+        ("b.org", "* Z\n:PROPERTIES:\n:ID: z\n:END:\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.total_id_count(), 2);
+}
+
+#[test]
+fn vault_total_property_count_match() {
+    let td = write_vault(&[
+        ("a.org", "* X\n:PROPERTIES:\n:K1: 1\n:K2: 2\n:END:\n"),
+        ("b.org", "* Y\n:PROPERTIES:\n:K3: 3\n:END:\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.total_property_count(), 3);
+}
+
+#[test]
+fn vault_headline_count_with_tag_match() {
+    let td = write_vault(&[
+        ("a.org", "* X :work:\n* Y :work:home:\n"),
+        ("b.org", "* Z\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.headline_count_with_tag("work"), 2);
+}
+
+#[test]
 fn vault_watcher_observes_modify() {
     let td = write_vault(&[("x.org", "* A\n")]);
     let v = Vault::open(td.path()).expect("open");

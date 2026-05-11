@@ -930,6 +930,33 @@ impl Vault {
             .count()
     }
 
+    /// Total `:ID:` property occurrences across the vault.
+    #[must_use]
+    pub fn total_id_count(&self) -> usize {
+        self.iter()
+            .flat_map(|(_, d)| d.all_headlines())
+            .filter(|h| h.property("ID").is_some())
+            .count()
+    }
+
+    /// Total property-pair occurrences across the vault.
+    #[must_use]
+    pub fn total_property_count(&self) -> usize {
+        self.iter()
+            .flat_map(|(_, d)| d.all_headlines())
+            .map(|h| h.properties().len())
+            .sum()
+    }
+
+    /// Number of headlines (across all paths) carrying `tag`.
+    #[must_use]
+    pub fn headline_count_with_tag(&self, tag: &str) -> usize {
+        self.iter()
+            .flat_map(|(_, d)| d.all_headlines())
+            .filter(|h| h.tags().iter().any(|t| t == tag))
+            .count()
+    }
+
     /// Paths whose source contains the substring `needle` anywhere.
     #[must_use]
     pub fn paths_containing(&self, needle: &str) -> Vec<&Path> {
