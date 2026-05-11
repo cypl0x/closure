@@ -615,6 +615,30 @@ impl OrgDoc {
             .collect()
     }
 
+    /// Count of distinct tags in the document.
+    #[must_use]
+    pub fn tag_set_count(&self) -> usize {
+        self.tag_set().len()
+    }
+
+    /// Count of distinct priority letters in the document.
+    #[must_use]
+    pub fn priority_set_count(&self) -> usize {
+        self.priority_set().len()
+    }
+
+    /// Count of distinct TODO keywords in the document.
+    #[must_use]
+    pub fn todo_set_count(&self) -> usize {
+        self.todo_set().len()
+    }
+
+    /// Count of distinct levels in the document.
+    #[must_use]
+    pub fn level_set_count(&self) -> usize {
+        self.level_set().len()
+    }
+
     /// Iterate every headline depth-first.
     #[must_use]
     pub fn iter_headlines(&self) -> Vec<&Headline> {

@@ -3525,3 +3525,27 @@ fn doc_level_set_returns_distinct_sorted() {
     let v: Vec<u8> = s.into_iter().collect();
     assert_eq!(v, vec![1, 2, 3]);
 }
+
+#[test]
+fn doc_tag_set_count_match() {
+    let doc = parse("* X :a:b:\n** Y :c:\n").expect("parse");
+    assert_eq!(doc.tag_set_count(), 3);
+}
+
+#[test]
+fn doc_priority_set_count_match() {
+    let doc = parse("* [#A] X\n* [#A] Y\n* [#B] Z\n").expect("parse");
+    assert_eq!(doc.priority_set_count(), 2);
+}
+
+#[test]
+fn doc_todo_set_count_match() {
+    let doc = parse("* TODO X\n* DONE Y\n").expect("parse");
+    assert_eq!(doc.todo_set_count(), 2);
+}
+
+#[test]
+fn doc_level_set_count_match() {
+    let doc = parse("* A\n** B\n*** C\n").expect("parse");
+    assert_eq!(doc.level_set_count(), 3);
+}
