@@ -222,6 +222,43 @@ impl ChordTrie {
         self.cursor == 0
     }
 
+    /// Sorted distinct command names bound in the trie.
+    #[must_use]
+    pub fn all_commands(&self) -> Vec<&str> {
+        let mut s: std::collections::BTreeSet<&str> = std::collections::BTreeSet::new();
+        for n in &self.nodes {
+            if let Some(c) = &n.command {
+                s.insert(c.as_str());
+            }
+        }
+        s.into_iter().collect()
+    }
+
+    /// Sorted distinct chord strings bound in the trie. Strokes joined by spaces.
+    #[must_use]
+    pub fn all_chords(&self) -> Vec<String> {
+        let mut out: Vec<String> = Vec::new();
+        fn walk(
+            idx: usize,
+            prefix: &mut Vec<String>,
+            nodes: &[TrieNode],
+            out: &mut Vec<String>,
+        ) {
+            let n = &nodes[idx];
+            if n.command.is_some() {
+                out.push(prefix.join(" "));
+            }
+            for (stroke, &child) in &n.children {
+                prefix.push(stroke.clone());
+                walk(child, prefix, nodes, out);
+                prefix.pop();
+            }
+        }
+        walk(0, &mut Vec::new(), &self.nodes, &mut out);
+        out.sort();
+        out
+    }
+
     /// Feed one stroke. [`TrieStep::Resolved`] and
     /// [`TrieStep::Unbound`] both reset the cursor.
     pub fn step(&mut self, stroke: &str) -> TrieStep {

@@ -180,6 +180,24 @@ fn chord_trie_is_at_root_after_unbound() {
 }
 
 #[test]
+fn chord_trie_all_commands_sorted_unique() {
+    let t = closure_input::ChordTrie::build(&[
+        ("a b", "second"),
+        ("a c", "first"),
+        ("d e", "first"),
+    ]);
+    assert_eq!(t.all_commands(), vec!["first", "second"]);
+}
+
+#[test]
+fn chord_trie_all_chords_sorted() {
+    let t = closure_input::ChordTrie::build(&[("a b", "x"), ("a c", "y")]);
+    let chords = t.all_chords();
+    assert!(chords.contains(&"a b".to_owned()));
+    assert!(chords.contains(&"a c".to_owned()));
+}
+
+#[test]
 fn chord_trie_pending_lists_alternatives() {
     let mut t = closure_input::ChordTrie::build(&[("a b", "x"), ("a c", "y")]);
     let step = t.step("a");
