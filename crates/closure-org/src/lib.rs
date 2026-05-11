@@ -5019,6 +5019,35 @@ impl Headline {
         self.subtree_levels().into_iter().min().unwrap_or(self.level)
     }
 
+    /// Number of headlines in this subtree (self + descendants).
+    #[must_use]
+    pub fn subtree_size(&self) -> usize {
+        1 + self.descendant_count()
+    }
+
+    /// True iff this headline or any descendant carries `tag`.
+    #[must_use]
+    pub fn subtree_has_tag(&self, tag: &str) -> bool {
+        self.has_tag(tag) || self.descendants().iter().any(|h| h.has_tag(tag))
+    }
+
+    /// True iff this headline or any descendant has TODO keyword `kw`.
+    #[must_use]
+    pub fn subtree_has_todo(&self, kw: &str) -> bool {
+        self.todo() == Some(kw)
+            || self.descendants().iter().any(|h| h.todo() == Some(kw))
+    }
+
+    /// True iff this headline or any descendant has priority `letter`.
+    #[must_use]
+    pub fn subtree_has_priority(&self, letter: char) -> bool {
+        self.priority() == Some(letter)
+            || self
+                .descendants()
+                .iter()
+                .any(|h| h.priority() == Some(letter))
+    }
+
     /// Returns TODO keywords of every descendant carrying one.
     #[must_use]
     pub fn descendant_todo_keywords(&self) -> Vec<&str> {

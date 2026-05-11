@@ -2939,3 +2939,38 @@ fn headline_first_tag_returns_first() {
     let top = &doc.roots()[0];
     assert_eq!(top.first_tag(), Some("work"));
 }
+
+#[test]
+fn headline_subtree_size_counts_self_and_descendants() {
+    let src = "* Top\n** Inner\n*** Leaf\n** Other\n";
+    let doc = parse(src).expect("parse");
+    let top = &doc.roots()[0];
+    assert_eq!(top.subtree_size(), 4);
+}
+
+#[test]
+fn headline_subtree_has_tag_returns_match() {
+    let src = "* Top\n** Inner :work:\n";
+    let doc = parse(src).expect("parse");
+    let top = &doc.roots()[0];
+    assert!(top.subtree_has_tag("work"));
+    assert!(!top.subtree_has_tag("none"));
+}
+
+#[test]
+fn headline_subtree_has_todo_returns_match() {
+    let src = "* Top\n** TODO Inner\n";
+    let doc = parse(src).expect("parse");
+    let top = &doc.roots()[0];
+    assert!(top.subtree_has_todo("TODO"));
+    assert!(!top.subtree_has_todo("DONE"));
+}
+
+#[test]
+fn headline_subtree_has_priority_returns_match() {
+    let src = "* Top\n** [#A] Inner\n";
+    let doc = parse(src).expect("parse");
+    let top = &doc.roots()[0];
+    assert!(top.subtree_has_priority('A'));
+    assert!(!top.subtree_has_priority('B'));
+}
