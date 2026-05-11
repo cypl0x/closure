@@ -2286,6 +2286,45 @@ impl OrgDoc {
         self.distinct_root_priorities().len()
     }
 
+    /// Tag-to-count map across roots.
+    #[must_use]
+    pub fn root_tag_counts(&self) -> std::collections::BTreeMap<String, usize> {
+        let mut m: std::collections::BTreeMap<String, usize> =
+            std::collections::BTreeMap::new();
+        for r in &self.roots {
+            for t in r.tags() {
+                *m.entry(t.to_owned()).or_insert(0) += 1;
+            }
+        }
+        m
+    }
+
+    /// TODO-to-count map across roots.
+    #[must_use]
+    pub fn root_todo_counts(&self) -> std::collections::BTreeMap<String, usize> {
+        let mut m: std::collections::BTreeMap<String, usize> =
+            std::collections::BTreeMap::new();
+        for r in &self.roots {
+            if let Some(t) = r.todo() {
+                *m.entry(t.to_owned()).or_insert(0) += 1;
+            }
+        }
+        m
+    }
+
+    /// Priority-to-count map across roots.
+    #[must_use]
+    pub fn root_priority_counts(&self) -> std::collections::BTreeMap<char, usize> {
+        let mut m: std::collections::BTreeMap<char, usize> =
+            std::collections::BTreeMap::new();
+        for r in &self.roots {
+            if let Some(p) = r.priority() {
+                *m.entry(p).or_insert(0) += 1;
+            }
+        }
+        m
+    }
+
     fn collect_descendants_where<F: Fn(&Headline) -> bool>(
         &self,
         pred: F,

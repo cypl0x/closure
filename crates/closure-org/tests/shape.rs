@@ -2698,3 +2698,31 @@ fn doc_distinct_root_priority_count_match() {
     let doc = parse(src).expect("parse");
     assert_eq!(doc.distinct_root_priority_count(), 3);
 }
+
+#[test]
+fn doc_root_tag_counts_returns_map() {
+    let src = "* A :z:y:\n* B :y:\n* C :z:\n";
+    let doc = parse(src).expect("parse");
+    let m = doc.root_tag_counts();
+    assert_eq!(m.get("y").copied(), Some(2));
+    assert_eq!(m.get("z").copied(), Some(2));
+    assert_eq!(m.get("missing").copied(), None);
+}
+
+#[test]
+fn doc_root_todo_counts_returns_map() {
+    let src = "* TODO A\n* DONE B\n* TODO C\n";
+    let doc = parse(src).expect("parse");
+    let m = doc.root_todo_counts();
+    assert_eq!(m.get("TODO").copied(), Some(2));
+    assert_eq!(m.get("DONE").copied(), Some(1));
+}
+
+#[test]
+fn doc_root_priority_counts_returns_map() {
+    let src = "* [#A] One\n* [#A] Two\n* [#B] Three\n";
+    let doc = parse(src).expect("parse");
+    let m = doc.root_priority_counts();
+    assert_eq!(m.get(&'A').copied(), Some(2));
+    assert_eq!(m.get(&'B').copied(), Some(1));
+}
