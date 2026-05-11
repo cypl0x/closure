@@ -640,6 +640,32 @@ impl Vault {
         self.all_todos()
     }
 
+    /// Distinct priority letter list across the vault, sorted.
+    #[must_use]
+    pub fn distinct_priorities(&self) -> Vec<char> {
+        let mut seen: std::collections::BTreeSet<char> = std::collections::BTreeSet::new();
+        for (_, doc) in self.iter() {
+            for h in doc.all_headlines() {
+                if let Some(p) = h.priority() {
+                    seen.insert(p);
+                }
+            }
+        }
+        seen.into_iter().collect()
+    }
+
+    /// Distinct level list across the vault, sorted ascending.
+    #[must_use]
+    pub fn distinct_levels(&self) -> Vec<u8> {
+        let mut seen: std::collections::BTreeSet<u8> = std::collections::BTreeSet::new();
+        for (_, doc) in self.iter() {
+            for h in doc.all_headlines() {
+                seen.insert(h.level());
+            }
+        }
+        seen.into_iter().collect()
+    }
+
     /// Lookup a document by its full filesystem path.
     #[must_use]
     pub fn document(&self, path: &Path) -> Option<&Document> {

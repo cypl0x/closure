@@ -255,6 +255,26 @@ fn vault_distinct_todos_returns_sorted_unique() {
 }
 
 #[test]
+fn vault_distinct_priorities_returns_sorted_unique() {
+    let td = write_vault(&[
+        ("a.org", "* [#B] X\n* [#A] Y\n"),
+        ("b.org", "* [#A] Z\n* [#C] W\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.distinct_priorities(), vec!['A', 'B', 'C']);
+}
+
+#[test]
+fn vault_distinct_levels_returns_sorted_unique() {
+    let td = write_vault(&[
+        ("a.org", "* A\n** B\n*** C\n"),
+        ("b.org", "* D\n** E\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.distinct_levels(), vec![1, 2, 3]);
+}
+
+#[test]
 fn vault_watcher_observes_modify() {
     let td = write_vault(&[("x.org", "* A\n")]);
     let v = Vault::open(td.path()).expect("open");
