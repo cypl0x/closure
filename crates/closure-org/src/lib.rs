@@ -2711,6 +2711,13 @@ impl OrgDoc {
         (self.total_todo_count() * 100).checked_div(n).unwrap_or(0)
     }
 
+    /// Percentage of headlines that carry at least one tag (`0..=100`).
+    #[must_use]
+    pub fn tagged_pct(&self) -> usize {
+        let n = self.iter_headlines().len();
+        (self.tagged_count() * 100).checked_div(n).unwrap_or(0)
+    }
+
     /// Total properties drawer entries across all headlines.
     #[must_use]
     pub fn total_property_count(&self) -> usize {

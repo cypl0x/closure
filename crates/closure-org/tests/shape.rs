@@ -3208,3 +3208,16 @@ fn doc_id_pct_match() {
     // 1/2 = 50
     assert_eq!(doc.id_pct(), 50);
 }
+
+#[test]
+fn doc_tagged_pct_match() {
+    let doc = parse("* X :work:\n* Y\n* Z :home:\n* W\n").expect("parse");
+    // 2/4 = 50
+    assert_eq!(doc.tagged_pct(), 50);
+}
+
+#[test]
+fn doc_tagged_pct_zero_when_empty() {
+    let doc = parse("nothing\n").expect("parse");
+    assert_eq!(doc.tagged_pct(), 0);
+}
