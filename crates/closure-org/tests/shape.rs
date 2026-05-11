@@ -3487,3 +3487,17 @@ fn doc_headline_todos_returns_collection() {
     let doc = parse("* TODO X\n* Y\n** DONE Z\n").expect("parse");
     assert_eq!(doc.headline_todos(), vec!["TODO", "DONE"]);
 }
+
+#[test]
+fn doc_headline_tags_returns_flat_collection() {
+    let doc = parse("* X :a:b:\n* Y :c:\n").expect("parse");
+    assert_eq!(doc.headline_tags(), vec!["a", "b", "c"]);
+}
+
+#[test]
+fn doc_tag_set_returns_distinct_sorted() {
+    let doc = parse("* X :b:a:\n** Y :c:a:\n").expect("parse");
+    let s = doc.tag_set();
+    let v: Vec<&&str> = s.iter().collect();
+    assert_eq!(v, vec![&"a", &"b", &"c"]);
+}

@@ -570,6 +570,24 @@ impl OrgDoc {
             .collect()
     }
 
+    /// All tags across every headline in DFS order (with duplicates).
+    #[must_use]
+    pub fn headline_tags(&self) -> Vec<&str> {
+        self.iter_headlines()
+            .into_iter()
+            .flat_map(Headline::tags)
+            .collect()
+    }
+
+    /// Sorted distinct tag set (borrowed).
+    #[must_use]
+    pub fn tag_set(&self) -> std::collections::BTreeSet<&str> {
+        self.iter_headlines()
+            .into_iter()
+            .flat_map(Headline::tags)
+            .collect()
+    }
+
     /// Iterate every headline depth-first.
     #[must_use]
     pub fn iter_headlines(&self) -> Vec<&Headline> {
