@@ -3221,3 +3221,27 @@ fn doc_tagged_pct_zero_when_empty() {
     let doc = parse("nothing\n").expect("parse");
     assert_eq!(doc.tagged_pct(), 0);
 }
+
+#[test]
+fn doc_untagged_count_match() {
+    let doc = parse("* X :work:\n* Y\n* Z :home:\n* W\n").expect("parse");
+    assert_eq!(doc.untagged_count(), 2);
+}
+
+#[test]
+fn doc_untagged_pct_match() {
+    let doc = parse("* X :work:\n* Y\n* Z :home:\n* W\n").expect("parse");
+    assert_eq!(doc.untagged_pct(), 50);
+}
+
+#[test]
+fn doc_no_priority_count_match() {
+    let doc = parse("* [#A] X\n* Y\n* [#B] Z\n* W\n").expect("parse");
+    assert_eq!(doc.no_priority_count(), 2);
+}
+
+#[test]
+fn doc_no_todo_count_match() {
+    let doc = parse("* TODO X\n* Y\n* DONE Z\n* W\n").expect("parse");
+    assert_eq!(doc.no_todo_count(), 2);
+}

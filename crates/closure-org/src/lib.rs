@@ -2718,6 +2718,31 @@ impl OrgDoc {
         (self.tagged_count() * 100).checked_div(n).unwrap_or(0)
     }
 
+    /// Number of headlines carrying zero tags.
+    #[must_use]
+    pub fn untagged_count(&self) -> usize {
+        self.iter_headlines().len() - self.tagged_count()
+    }
+
+    /// Percentage of headlines that carry zero tags (`0..=100`).
+    #[must_use]
+    pub fn untagged_pct(&self) -> usize {
+        let n = self.iter_headlines().len();
+        (self.untagged_count() * 100).checked_div(n).unwrap_or(0)
+    }
+
+    /// Number of headlines carrying no priority letter.
+    #[must_use]
+    pub fn no_priority_count(&self) -> usize {
+        self.count_descendants_where(|h| h.priority().is_none())
+    }
+
+    /// Number of headlines carrying no TODO keyword.
+    #[must_use]
+    pub fn no_todo_count(&self) -> usize {
+        self.count_descendants_where(|h| h.todo().is_none())
+    }
+
     /// Total properties drawer entries across all headlines.
     #[must_use]
     pub fn total_property_count(&self) -> usize {
