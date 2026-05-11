@@ -3713,3 +3713,27 @@ fn doc_subtree_has_tag_of_match() {
     assert_eq!(doc.subtree_has_tag_of("a", "home"), Some(false));
     assert_eq!(doc.subtree_has_tag_of("missing", "work"), None);
 }
+
+#[test]
+fn doc_subtree_has_todo_of_match() {
+    let src = "* A\n:PROPERTIES:\n:ID: a\n:END:\n** TODO B\n";
+    let doc = parse(src).expect("parse");
+    assert_eq!(doc.subtree_has_todo_of("a", "TODO"), Some(true));
+    assert_eq!(doc.subtree_has_todo_of("a", "DONE"), Some(false));
+}
+
+#[test]
+fn doc_subtree_has_priority_of_match() {
+    let src = "* A\n:PROPERTIES:\n:ID: a\n:END:\n** [#A] B\n";
+    let doc = parse(src).expect("parse");
+    assert_eq!(doc.subtree_has_priority_of("a", 'A'), Some(true));
+    assert_eq!(doc.subtree_has_priority_of("a", 'B'), Some(false));
+}
+
+#[test]
+fn doc_subtree_has_id_of_match() {
+    let src = "* A\n:PROPERTIES:\n:ID: a\n:END:\n** B\n:PROPERTIES:\n:ID: b\n:END:\n";
+    let doc = parse(src).expect("parse");
+    assert_eq!(doc.subtree_has_id_of("a"), Some(true));
+    assert_eq!(doc.subtree_has_id_of("missing"), None);
+}

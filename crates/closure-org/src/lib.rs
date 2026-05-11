@@ -777,6 +777,24 @@ impl OrgDoc {
         self.headline_by_id(id).map(|h| h.subtree_has_tag(tag))
     }
 
+    /// Whether subtree of `id`-tagged headline has TODO keyword `kw`.
+    #[must_use]
+    pub fn subtree_has_todo_of(&self, id: &str, kw: &str) -> Option<bool> {
+        self.headline_by_id(id).map(|h| h.subtree_has_todo(kw))
+    }
+
+    /// Whether subtree of `id`-tagged headline has priority `letter`.
+    #[must_use]
+    pub fn subtree_has_priority_of(&self, id: &str, letter: char) -> Option<bool> {
+        self.headline_by_id(id).map(|h| h.subtree_has_priority(letter))
+    }
+
+    /// Whether subtree of `id`-tagged headline carries any `:ID:`.
+    #[must_use]
+    pub fn subtree_has_id_of(&self, id: &str) -> Option<bool> {
+        self.headline_by_id(id).map(Headline::subtree_has_id)
+    }
+
     /// Median subtree size across roots (integer; lower midpoint for even sets).
     #[must_use]
     pub fn median_root_subtree_size(&self) -> Option<usize> {
