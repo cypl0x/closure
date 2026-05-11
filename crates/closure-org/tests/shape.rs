@@ -3784,3 +3784,25 @@ fn doc_subtree_count_with_id_of_match() {
     let doc = parse(src).expect("parse");
     assert_eq!(doc.subtree_count_with_id_of("a"), Some(2));
 }
+
+#[test]
+fn doc_subtree_tags_of_match() {
+    let src = "* A :a:\n:PROPERTIES:\n:ID: a\n:END:\n** B :b:a:\n";
+    let doc = parse(src).expect("parse");
+    assert_eq!(doc.subtree_tags_of("a").expect("hit"), vec!["a".to_owned(), "b".to_owned()]);
+    assert!(doc.subtree_tags_of("missing").is_none());
+}
+
+#[test]
+fn doc_subtree_todos_of_match() {
+    let src = "* TODO A\n:PROPERTIES:\n:ID: a\n:END:\n** DONE B\n";
+    let doc = parse(src).expect("parse");
+    assert_eq!(doc.subtree_todos_of("a").expect("hit"), vec!["DONE".to_owned(), "TODO".to_owned()]);
+}
+
+#[test]
+fn doc_subtree_priorities_of_match() {
+    let src = "* [#B] A\n:PROPERTIES:\n:ID: a\n:END:\n** [#A] B\n";
+    let doc = parse(src).expect("parse");
+    assert_eq!(doc.subtree_priorities_of("a").expect("hit"), vec!['A', 'B']);
+}

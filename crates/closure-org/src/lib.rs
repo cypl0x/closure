@@ -842,6 +842,24 @@ impl OrgDoc {
         self.headline_by_id(id).map(Headline::subtree_count_with_id)
     }
 
+    /// Distinct tag list in the subtree of `id`-tagged headline, sorted.
+    #[must_use]
+    pub fn subtree_tags_of(&self, id: &str) -> Option<Vec<String>> {
+        self.headline_by_id(id).map(Headline::subtree_tags)
+    }
+
+    /// Distinct TODO keywords in the subtree of `id`-tagged headline, sorted.
+    #[must_use]
+    pub fn subtree_todos_of(&self, id: &str) -> Option<Vec<String>> {
+        self.headline_by_id(id).map(Headline::subtree_todos)
+    }
+
+    /// Distinct priority letters in the subtree of `id`-tagged headline, sorted.
+    #[must_use]
+    pub fn subtree_priorities_of(&self, id: &str) -> Option<Vec<char>> {
+        self.headline_by_id(id).map(Headline::subtree_priorities)
+    }
+
     /// Median subtree size across roots (integer; lower midpoint for even sets).
     #[must_use]
     pub fn median_root_subtree_size(&self) -> Option<usize> {
