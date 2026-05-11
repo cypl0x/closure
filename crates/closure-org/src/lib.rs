@@ -655,6 +655,18 @@ impl OrgDoc {
         }
     }
 
+    /// Whitespace-delimited word count of the document source.
+    #[must_use]
+    pub fn source_word_count(&self) -> usize {
+        self.source().split_whitespace().count()
+    }
+
+    /// Character count of the document source.
+    #[must_use]
+    pub fn source_char_count(&self) -> usize {
+        self.source().chars().count()
+    }
+
     /// Iterate every headline depth-first.
     #[must_use]
     pub fn iter_headlines(&self) -> Vec<&Headline> {

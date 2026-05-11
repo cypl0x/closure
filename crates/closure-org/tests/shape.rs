@@ -3568,3 +3568,17 @@ fn doc_source_line_count_empty_zero() {
     let doc = parse("").expect("parse");
     assert_eq!(doc.source_line_count(), 0);
 }
+
+#[test]
+fn doc_source_word_count_match() {
+    let doc = parse("* Hello world\n** Foo bar baz\n").expect("parse");
+    // tokens: "*", "Hello", "world", "**", "Foo", "bar", "baz" => 7
+    assert_eq!(doc.source_word_count(), 7);
+}
+
+#[test]
+fn doc_source_char_count_match() {
+    let src = "* A\n";
+    let doc = parse(src).expect("parse");
+    assert_eq!(doc.source_char_count(), src.chars().count());
+}
