@@ -381,6 +381,33 @@ fn vault_most_common_level_returns_top() {
 }
 
 #[test]
+fn vault_max_level_match() {
+    let td = write_vault(&[
+        ("a.org", "* A\n** B\n*** C\n"),
+        ("b.org", "* D\n** E\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.max_level(), Some(3));
+}
+
+#[test]
+fn vault_min_level_match() {
+    let td = write_vault(&[
+        ("a.org", "* A\n** B\n*** C\n"),
+        ("b.org", "** D\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.min_level(), Some(1));
+}
+
+#[test]
+fn vault_max_level_none_on_empty() {
+    let td = write_vault(&[("a.org", "no headlines\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.max_level(), None);
+}
+
+#[test]
 fn vault_watcher_observes_modify() {
     let td = write_vault(&[("x.org", "* A\n")]);
     let v = Vault::open(td.path()).expect("open");

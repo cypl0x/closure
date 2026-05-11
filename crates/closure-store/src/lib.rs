@@ -744,6 +744,24 @@ impl Vault {
         self.level_counts().into_iter().next().map(|(k, _)| k)
     }
 
+    /// Maximum headline level across the vault.
+    #[must_use]
+    pub fn max_level(&self) -> Option<u8> {
+        self.iter()
+            .flat_map(|(_, d)| d.all_headlines())
+            .map(|h| h.level())
+            .max()
+    }
+
+    /// Minimum headline level across the vault.
+    #[must_use]
+    pub fn min_level(&self) -> Option<u8> {
+        self.iter()
+            .flat_map(|(_, d)| d.all_headlines())
+            .map(|h| h.level())
+            .min()
+    }
+
     /// Lookup a document by its full filesystem path.
     #[must_use]
     pub fn document(&self, path: &Path) -> Option<&Document> {
