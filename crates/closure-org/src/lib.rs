@@ -4873,6 +4873,51 @@ impl Headline {
             .collect()
     }
 
+    /// Distinct tags across this headline and all descendants, sorted.
+    #[must_use]
+    pub fn subtree_tags(&self) -> Vec<String> {
+        let mut s: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+        for t in self.tags() {
+            s.insert(t.to_owned());
+        }
+        for h in self.descendants() {
+            for t in h.tags() {
+                s.insert(t.to_owned());
+            }
+        }
+        s.into_iter().collect()
+    }
+
+    /// Distinct TODO keywords across this headline and all descendants, sorted.
+    #[must_use]
+    pub fn subtree_todos(&self) -> Vec<String> {
+        let mut s: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+        if let Some(t) = self.todo() {
+            s.insert(t.to_owned());
+        }
+        for h in self.descendants() {
+            if let Some(t) = h.todo() {
+                s.insert(t.to_owned());
+            }
+        }
+        s.into_iter().collect()
+    }
+
+    /// Distinct priority letters across this headline and all descendants, sorted.
+    #[must_use]
+    pub fn subtree_priorities(&self) -> Vec<char> {
+        let mut s: std::collections::BTreeSet<char> = std::collections::BTreeSet::new();
+        if let Some(p) = self.priority() {
+            s.insert(p);
+        }
+        for h in self.descendants() {
+            if let Some(p) = h.priority() {
+                s.insert(p);
+            }
+        }
+        s.into_iter().collect()
+    }
+
     /// Returns TODO keywords of every descendant carrying one.
     #[must_use]
     pub fn descendant_todo_keywords(&self) -> Vec<&str> {

@@ -2813,3 +2813,33 @@ fn doc_most_common_root_priority_returns_top() {
     let doc = parse(src).expect("parse");
     assert_eq!(doc.most_common_root_priority(), Some('A'));
 }
+
+#[test]
+fn headline_subtree_tags_sorted_unique() {
+    let src = "* Top :a:\n** Inner :b:a:\n*** Leaf :c:\n";
+    let doc = parse(src).expect("parse");
+    let top = &doc.roots()[0];
+    assert_eq!(
+        top.subtree_tags(),
+        vec!["a".to_owned(), "b".to_owned(), "c".to_owned()]
+    );
+}
+
+#[test]
+fn headline_subtree_todos_sorted_unique() {
+    let src = "* TODO Top\n** DONE Inner\n*** TODO Leaf\n";
+    let doc = parse(src).expect("parse");
+    let top = &doc.roots()[0];
+    assert_eq!(
+        top.subtree_todos(),
+        vec!["DONE".to_owned(), "TODO".to_owned()]
+    );
+}
+
+#[test]
+fn headline_subtree_priorities_sorted_unique() {
+    let src = "* [#B] Top\n** [#A] Inner\n*** [#A] Leaf\n";
+    let doc = parse(src).expect("parse");
+    let top = &doc.roots()[0];
+    assert_eq!(top.subtree_priorities(), vec!['A', 'B']);
+}
