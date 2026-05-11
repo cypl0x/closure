@@ -3582,3 +3582,23 @@ fn doc_source_char_count_match() {
     let doc = parse(src).expect("parse");
     assert_eq!(doc.source_char_count(), src.chars().count());
 }
+
+#[test]
+fn doc_max_root_subtree_size_match() {
+    let doc = parse("* A\n** B\n*** C\n* D\n").expect("parse");
+    // subtree sizes: A=3, D=1
+    assert_eq!(doc.max_root_subtree_size(), Some(3));
+}
+
+#[test]
+fn doc_min_root_subtree_size_match() {
+    let doc = parse("* A\n** B\n* C\n").expect("parse");
+    // subtree sizes: A=2, C=1
+    assert_eq!(doc.min_root_subtree_size(), Some(1));
+}
+
+#[test]
+fn doc_max_root_subtree_size_none_empty() {
+    let doc = parse("nothing\n").expect("parse");
+    assert_eq!(doc.max_root_subtree_size(), None);
+}

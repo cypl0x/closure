@@ -667,6 +667,18 @@ impl OrgDoc {
         self.source().chars().count()
     }
 
+    /// Maximum subtree size across root headlines.
+    #[must_use]
+    pub fn max_root_subtree_size(&self) -> Option<usize> {
+        self.roots.iter().map(Headline::subtree_size).max()
+    }
+
+    /// Minimum subtree size across root headlines.
+    #[must_use]
+    pub fn min_root_subtree_size(&self) -> Option<usize> {
+        self.roots.iter().map(Headline::subtree_size).min()
+    }
+
     /// Iterate every headline depth-first.
     #[must_use]
     pub fn iter_headlines(&self) -> Vec<&Headline> {
