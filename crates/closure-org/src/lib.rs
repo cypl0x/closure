@@ -1043,6 +1043,46 @@ impl OrgDoc {
             .sum()
     }
 
+    /// Maximum headline-body byte count across the document (`0` when empty).
+    #[must_use]
+    pub fn max_body_byte_count(&self) -> usize {
+        self.iter_headlines()
+            .into_iter()
+            .map(Headline::body_byte_count)
+            .max()
+            .unwrap_or(0)
+    }
+
+    /// Minimum headline-body byte count across the document (`0` when empty).
+    #[must_use]
+    pub fn min_body_byte_count(&self) -> usize {
+        self.iter_headlines()
+            .into_iter()
+            .map(Headline::body_byte_count)
+            .min()
+            .unwrap_or(0)
+    }
+
+    /// Median headline-body word count (integer; lower midpoint for even sets).
+    #[must_use]
+    pub fn median_body_word_count(&self) -> Option<usize> {
+        let mut v: Vec<usize> = self
+            .iter_headlines()
+            .into_iter()
+            .map(Headline::body_word_count)
+            .collect();
+        if v.is_empty() {
+            return None;
+        }
+        v.sort_unstable();
+        let mid = v.len() / 2;
+        if v.len() % 2 == 1 {
+            Some(v[mid])
+        } else {
+            Some(v[mid - 1].midpoint(v[mid]))
+        }
+    }
+
     /// Median subtree size across roots (integer; lower midpoint for even sets).
     #[must_use]
     pub fn median_root_subtree_size(&self) -> Option<usize> {

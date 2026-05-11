@@ -4027,3 +4027,22 @@ fn doc_total_body_byte_count_match() {
     // "hello\n" = 6
     assert_eq!(doc.total_body_byte_count(), 6);
 }
+
+#[test]
+fn doc_max_body_byte_count_match() {
+    let doc = parse("* A\nfoo\n* B\nlonger body\n").expect("parse");
+    assert_eq!(doc.max_body_byte_count(), "longer body\n".len());
+}
+
+#[test]
+fn doc_min_body_byte_count_match() {
+    let doc = parse("* A\nfoo\n* B\nlonger body\n").expect("parse");
+    assert_eq!(doc.min_body_byte_count(), "foo\n".len());
+}
+
+#[test]
+fn doc_median_body_word_count_match() {
+    let doc = parse("* A\nfoo\n* B\nfoo bar\n* C\nfoo bar baz\n").expect("parse");
+    // word counts: 1,2,3 -> median 2
+    assert_eq!(doc.median_body_word_count(), Some(2));
+}
