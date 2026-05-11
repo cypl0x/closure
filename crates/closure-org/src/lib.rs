@@ -988,6 +988,42 @@ impl OrgDoc {
             .map(|(k, _)| k)
     }
 
+    /// Least-common tag across the document.
+    #[must_use]
+    pub fn least_common_tag(&self) -> Option<String> {
+        self.tag_counts()
+            .into_iter()
+            .min_by_key(|(_, n)| *n)
+            .map(|(k, _)| k)
+    }
+
+    /// Least-common TODO keyword across the document.
+    #[must_use]
+    pub fn least_common_todo(&self) -> Option<String> {
+        self.todo_counts()
+            .into_iter()
+            .min_by_key(|(_, n)| *n)
+            .map(|(k, _)| k)
+    }
+
+    /// Least-common priority letter across the document.
+    #[must_use]
+    pub fn least_common_priority(&self) -> Option<char> {
+        self.priority_counts()
+            .into_iter()
+            .min_by_key(|(_, n)| *n)
+            .map(|(k, _)| k)
+    }
+
+    /// Least-common level across the document.
+    #[must_use]
+    pub fn least_common_level(&self) -> Option<u8> {
+        self.level_counts()
+            .into_iter()
+            .min_by_key(|(_, n)| *n)
+            .map(|(k, _)| k)
+    }
+
     /// Median subtree size across roots (integer; lower midpoint for even sets).
     #[must_use]
     pub fn median_root_subtree_size(&self) -> Option<usize> {

@@ -3984,3 +3984,27 @@ fn doc_least_common_property_key_match() {
     let doc = parse(src).expect("parse");
     assert_eq!(doc.least_common_property_key(), Some("K1".to_owned()));
 }
+
+#[test]
+fn doc_least_common_tag_match() {
+    let doc = parse("* X :work:\n* Y :work:\n* Z :home:\n").expect("parse");
+    assert_eq!(doc.least_common_tag(), Some("home".to_owned()));
+}
+
+#[test]
+fn doc_least_common_todo_match() {
+    let doc = parse("* TODO X\n* TODO Y\n* DONE Z\n").expect("parse");
+    assert_eq!(doc.least_common_todo(), Some("DONE".to_owned()));
+}
+
+#[test]
+fn doc_least_common_priority_match() {
+    let doc = parse("* [#A] X\n* [#A] Y\n* [#B] Z\n").expect("parse");
+    assert_eq!(doc.least_common_priority(), Some('B'));
+}
+
+#[test]
+fn doc_least_common_level_match() {
+    let doc = parse("* A\n** B\n** C\n").expect("parse");
+    assert_eq!(doc.least_common_level(), Some(1));
+}
