@@ -217,6 +217,30 @@ fn chord_trie_contains_command_match() {
 }
 
 #[test]
+fn chord_trie_chord_count_match() {
+    let t = closure_input::ChordTrie::build(&[
+        ("a b", "x"),
+        ("a c", "y"),
+        ("d e", "y"),
+    ]);
+    assert_eq!(t.chord_count(), 3);
+}
+
+#[test]
+fn chord_trie_node_count_match() {
+    let t = closure_input::ChordTrie::build(&[("a b", "x")]);
+    // root + 'a' + 'b' = 3
+    assert_eq!(t.node_count(), 3);
+}
+
+#[test]
+fn chord_trie_bindings_returns_sorted_pairs() {
+    let t = closure_input::ChordTrie::build(&[("a b", "y"), ("a c", "x")]);
+    let pairs = t.bindings();
+    assert_eq!(pairs, vec![("a b".to_owned(), "y".to_owned()), ("a c".to_owned(), "x".to_owned())]);
+}
+
+#[test]
 fn chord_trie_pending_lists_alternatives() {
     let mut t = closure_input::ChordTrie::build(&[("a b", "x"), ("a c", "y")]);
     let step = t.step("a");

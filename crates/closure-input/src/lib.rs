@@ -257,6 +257,43 @@ impl ChordTrie {
         self.nodes.iter().any(|n| n.command.as_deref() == Some(command))
     }
 
+    /// Number of distinct chords bound (each leaf with a command).
+    #[must_use]
+    pub fn chord_count(&self) -> usize {
+        self.nodes.iter().filter(|n| n.command.is_some()).count()
+    }
+
+    /// Total node count in the trie (including the root).
+    #[must_use]
+    pub fn node_count(&self) -> usize {
+        self.nodes.len()
+    }
+
+    /// All bindings as `(chord, command)` pairs, sorted by chord.
+    #[must_use]
+    pub fn bindings(&self) -> Vec<(String, String)> {
+        fn walk(
+            idx: usize,
+            prefix: &mut Vec<String>,
+            nodes: &[TrieNode],
+            out: &mut Vec<(String, String)>,
+        ) {
+            let n = &nodes[idx];
+            if let Some(c) = &n.command {
+                out.push((prefix.join(" "), c.clone()));
+            }
+            for (stroke, &child) in &n.children {
+                prefix.push(stroke.clone());
+                walk(child, prefix, nodes, out);
+                prefix.pop();
+            }
+        }
+        let mut out: Vec<(String, String)> = Vec::new();
+        walk(0, &mut Vec::new(), &self.nodes, &mut out);
+        out.sort_by(|a, b| a.0.cmp(&b.0));
+        out
+    }
+
     /// Sorted distinct chord strings bound in the trie. Strokes joined by spaces.
     #[must_use]
     pub fn all_chords(&self) -> Vec<String> {
