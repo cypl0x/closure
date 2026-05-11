@@ -408,6 +408,42 @@ fn vault_max_level_none_on_empty() {
 }
 
 #[test]
+fn vault_paths_with_priority_returns_match() {
+    let td = write_vault(&[
+        ("a.org", "* [#A] X\n"),
+        ("b.org", "* Plain\n"),
+        ("c.org", "* [#A] Z\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    let paths: Vec<&str> = v
+        .paths_with_priority('A')
+        .into_iter()
+        .filter_map(|p| p.file_name().and_then(|s| s.to_str()))
+        .collect();
+    assert!(paths.contains(&"a.org"));
+    assert!(paths.contains(&"c.org"));
+    assert!(!paths.contains(&"b.org"));
+}
+
+#[test]
+fn vault_paths_at_level_returns_match() {
+    let td = write_vault(&[
+        ("a.org", "* A\n** B\n"),
+        ("b.org", "* C\n"),
+        ("c.org", "** D\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    let paths: Vec<&str> = v
+        .paths_at_level(2)
+        .into_iter()
+        .filter_map(|p| p.file_name().and_then(|s| s.to_str()))
+        .collect();
+    assert!(paths.contains(&"a.org"));
+    assert!(paths.contains(&"c.org"));
+    assert!(!paths.contains(&"b.org"));
+}
+
+#[test]
 fn vault_watcher_observes_modify() {
     let td = write_vault(&[("x.org", "* A\n")]);
     let v = Vault::open(td.path()).expect("open");

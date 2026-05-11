@@ -822,6 +822,24 @@ impl Vault {
             .collect()
     }
 
+    /// Paths containing at least one headline with the given priority letter.
+    #[must_use]
+    pub fn paths_with_priority(&self, letter: char) -> Vec<&Path> {
+        self.iter()
+            .filter(|(_, d)| d.all_headlines().any(|h| h.priority() == Some(letter)))
+            .map(|(p, _)| p)
+            .collect()
+    }
+
+    /// Paths containing at least one headline at the given level.
+    #[must_use]
+    pub fn paths_at_level(&self, level: u8) -> Vec<&Path> {
+        self.iter()
+            .filter(|(_, d)| d.all_headlines().any(|h| h.level() == level))
+            .map(|(p, _)| p)
+            .collect()
+    }
+
     /// Paths whose source contains the substring `needle` anywhere.
     #[must_use]
     pub fn paths_containing(&self, needle: &str) -> Vec<&Path> {
