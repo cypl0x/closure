@@ -3759,3 +3759,28 @@ fn doc_subtree_count_with_priority_of_match() {
     let doc = parse(src).expect("parse");
     assert_eq!(doc.subtree_count_with_priority_of("a", 'A'), Some(2));
 }
+
+#[test]
+fn doc_subtree_count_at_level_of_match() {
+    let src = "* A\n:PROPERTIES:\n:ID: a\n:END:\n** B\n** C\n*** D\n";
+    let doc = parse(src).expect("parse");
+    assert_eq!(doc.subtree_count_at_level_of("a", 1), Some(1));
+    assert_eq!(doc.subtree_count_at_level_of("a", 2), Some(2));
+    assert_eq!(doc.subtree_count_at_level_of("a", 3), Some(1));
+    assert_eq!(doc.subtree_count_at_level_of("missing", 1), None);
+}
+
+#[test]
+fn doc_subtree_count_with_property_of_match() {
+    let src = "* A\n:PROPERTIES:\n:K: 1\n:ID: a\n:END:\n** B\n:PROPERTIES:\n:K: 2\n:END:\n";
+    let doc = parse(src).expect("parse");
+    assert_eq!(doc.subtree_count_with_property_of("a", "K"), Some(2));
+    assert_eq!(doc.subtree_count_with_property_of("a", "MISSING"), Some(0));
+}
+
+#[test]
+fn doc_subtree_count_with_id_of_match() {
+    let src = "* A\n:PROPERTIES:\n:ID: a\n:END:\n** B\n:PROPERTIES:\n:ID: b\n:END:\n";
+    let doc = parse(src).expect("parse");
+    assert_eq!(doc.subtree_count_with_id_of("a"), Some(2));
+}

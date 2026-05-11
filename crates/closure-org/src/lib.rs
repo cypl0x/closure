@@ -818,6 +818,30 @@ impl OrgDoc {
             .map(|h| h.subtree_count_with_priority(letter))
     }
 
+    /// Count of headlines in the subtree of `id`-tagged headline at `level`.
+    #[must_use]
+    pub fn subtree_count_at_level_of(&self, id: &str, level: u8) -> Option<usize> {
+        self.headline_by_id(id)
+            .map(|h| h.subtree_count_at_level(level))
+    }
+
+    /// Count of headlines in the subtree of `id`-tagged headline with property `key`.
+    #[must_use]
+    pub fn subtree_count_with_property_of(
+        &self,
+        id: &str,
+        key: &str,
+    ) -> Option<usize> {
+        self.headline_by_id(id)
+            .map(|h| h.subtree_count_with_property(key))
+    }
+
+    /// Count of headlines in the subtree of `id`-tagged headline carrying `:ID:`.
+    #[must_use]
+    pub fn subtree_count_with_id_of(&self, id: &str) -> Option<usize> {
+        self.headline_by_id(id).map(Headline::subtree_count_with_id)
+    }
+
     /// Median subtree size across roots (integer; lower midpoint for even sets).
     #[must_use]
     pub fn median_root_subtree_size(&self) -> Option<usize> {
