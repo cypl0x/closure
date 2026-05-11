@@ -795,6 +795,29 @@ impl OrgDoc {
         self.headline_by_id(id).map(Headline::subtree_has_id)
     }
 
+    /// Count of headlines in the subtree of `id`-tagged headline carrying `tag`.
+    #[must_use]
+    pub fn subtree_count_with_tag_of(&self, id: &str, tag: &str) -> Option<usize> {
+        self.headline_by_id(id).map(|h| h.subtree_count_with_tag(tag))
+    }
+
+    /// Count of headlines in the subtree of `id`-tagged headline with TODO `kw`.
+    #[must_use]
+    pub fn subtree_count_with_todo_of(&self, id: &str, kw: &str) -> Option<usize> {
+        self.headline_by_id(id).map(|h| h.subtree_count_with_todo(kw))
+    }
+
+    /// Count of headlines in the subtree of `id`-tagged headline with priority `letter`.
+    #[must_use]
+    pub fn subtree_count_with_priority_of(
+        &self,
+        id: &str,
+        letter: char,
+    ) -> Option<usize> {
+        self.headline_by_id(id)
+            .map(|h| h.subtree_count_with_priority(letter))
+    }
+
     /// Median subtree size across roots (integer; lower midpoint for even sets).
     #[must_use]
     pub fn median_root_subtree_size(&self) -> Option<usize> {

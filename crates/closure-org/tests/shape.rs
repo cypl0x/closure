@@ -3737,3 +3737,25 @@ fn doc_subtree_has_id_of_match() {
     assert_eq!(doc.subtree_has_id_of("a"), Some(true));
     assert_eq!(doc.subtree_has_id_of("missing"), None);
 }
+
+#[test]
+fn doc_subtree_count_with_tag_of_match() {
+    let src = "* A :work:\n:PROPERTIES:\n:ID: a\n:END:\n** B :work:\n** C :home:\n";
+    let doc = parse(src).expect("parse");
+    assert_eq!(doc.subtree_count_with_tag_of("a", "work"), Some(2));
+    assert_eq!(doc.subtree_count_with_tag_of("missing", "work"), None);
+}
+
+#[test]
+fn doc_subtree_count_with_todo_of_match() {
+    let src = "* TODO A\n:PROPERTIES:\n:ID: a\n:END:\n** TODO B\n** DONE C\n";
+    let doc = parse(src).expect("parse");
+    assert_eq!(doc.subtree_count_with_todo_of("a", "TODO"), Some(2));
+}
+
+#[test]
+fn doc_subtree_count_with_priority_of_match() {
+    let src = "* [#A] A\n:PROPERTIES:\n:ID: a\n:END:\n** [#A] B\n** [#B] C\n";
+    let doc = parse(src).expect("parse");
+    assert_eq!(doc.subtree_count_with_priority_of("a", 'A'), Some(2));
+}
