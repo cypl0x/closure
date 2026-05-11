@@ -3084,3 +3084,30 @@ fn doc_total_headline_count_match() {
     let doc = parse("* A\n** B\n*** C\n* D\n").expect("parse");
     assert_eq!(doc.total_headline_count(), 4);
 }
+
+#[test]
+fn doc_mean_level_match() {
+    let doc = parse("* A\n** B\n** C\n").expect("parse");
+    // levels: 1,2,2 -> (1+2+2)/3 = 1 (integer)
+    assert_eq!(doc.mean_level(), 1);
+}
+
+#[test]
+fn doc_mean_level_zero_when_empty() {
+    let doc = parse("nothing\n").expect("parse");
+    assert_eq!(doc.mean_level(), 0);
+}
+
+#[test]
+fn doc_median_level_odd_match() {
+    let doc = parse("* A\n** B\n*** C\n").expect("parse");
+    // levels sorted: [1,2,3] -> 2
+    assert_eq!(doc.median_level(), Some(2));
+}
+
+#[test]
+fn doc_median_level_even_match() {
+    let doc = parse("* A\n** B\n** C\n*** D\n").expect("parse");
+    // levels sorted: [1,2,2,3] -> midpoint(2,2) = 2
+    assert_eq!(doc.median_level(), Some(2));
+}

@@ -1233,6 +1233,42 @@ impl OrgDoc {
         self.iter_headlines().len()
     }
 
+    /// Integer mean of headline levels (`0` when empty).
+    #[must_use]
+    pub fn mean_level(&self) -> u8 {
+        let levels: Vec<u8> = self
+            .iter_headlines()
+            .into_iter()
+            .map(Headline::level)
+            .collect();
+        if levels.is_empty() {
+            return 0;
+        }
+        let sum: u32 = levels.iter().map(|l| u32::from(*l)).sum();
+        let n = u32::try_from(levels.len()).unwrap_or(u32::MAX);
+        u8::try_from(sum / n).unwrap_or(u8::MAX)
+    }
+
+    /// Median headline level (integer; lower midpoint for even sets).
+    #[must_use]
+    pub fn median_level(&self) -> Option<u8> {
+        let mut levels: Vec<u8> = self
+            .iter_headlines()
+            .into_iter()
+            .map(Headline::level)
+            .collect();
+        if levels.is_empty() {
+            return None;
+        }
+        levels.sort_unstable();
+        let mid = levels.len() / 2;
+        if levels.len() % 2 == 1 {
+            Some(levels[mid])
+        } else {
+            Some(levels[mid - 1].midpoint(levels[mid]))
+        }
+    }
+
     /// Level histogram across the document.
     #[must_use]
     pub fn level_counts(&self) -> std::collections::BTreeMap<u8, usize> {
