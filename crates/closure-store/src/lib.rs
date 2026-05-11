@@ -749,7 +749,7 @@ impl Vault {
     pub fn max_level(&self) -> Option<u8> {
         self.iter()
             .flat_map(|(_, d)| d.all_headlines())
-            .map(|h| h.level())
+            .map(closure_core::DocHeadline::level)
             .max()
     }
 
@@ -758,7 +758,7 @@ impl Vault {
     pub fn min_level(&self) -> Option<u8> {
         self.iter()
             .flat_map(|(_, d)| d.all_headlines())
-            .map(|h| h.level())
+            .map(closure_core::DocHeadline::level)
             .min()
     }
 
