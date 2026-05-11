@@ -3469,3 +3469,21 @@ fn doc_root_levels_returns_collection() {
     let doc = parse("* A\n* B\n").expect("parse");
     assert_eq!(doc.root_levels(), vec![1, 1]);
 }
+
+#[test]
+fn doc_headline_levels_returns_collection() {
+    let doc = parse("* A\n** B\n*** C\n* D\n").expect("parse");
+    assert_eq!(doc.headline_levels(), vec![1, 2, 3, 1]);
+}
+
+#[test]
+fn doc_headline_priorities_returns_collection() {
+    let doc = parse("* [#A] X\n* Y\n** [#B] Z\n").expect("parse");
+    assert_eq!(doc.headline_priorities(), vec!['A', 'B']);
+}
+
+#[test]
+fn doc_headline_todos_returns_collection() {
+    let doc = parse("* TODO X\n* Y\n** DONE Z\n").expect("parse");
+    assert_eq!(doc.headline_todos(), vec!["TODO", "DONE"]);
+}

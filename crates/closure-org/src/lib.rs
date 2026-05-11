@@ -543,6 +543,33 @@ impl OrgDoc {
         self.roots.iter().map(Headline::level).collect()
     }
 
+    /// Levels of every headline in DFS order.
+    #[must_use]
+    pub fn headline_levels(&self) -> Vec<u8> {
+        self.iter_headlines()
+            .into_iter()
+            .map(Headline::level)
+            .collect()
+    }
+
+    /// Priority letters of every headline that carries one (DFS order).
+    #[must_use]
+    pub fn headline_priorities(&self) -> Vec<char> {
+        self.iter_headlines()
+            .into_iter()
+            .filter_map(Headline::priority)
+            .collect()
+    }
+
+    /// TODO keywords of every headline that carries one (DFS order).
+    #[must_use]
+    pub fn headline_todos(&self) -> Vec<&str> {
+        self.iter_headlines()
+            .into_iter()
+            .filter_map(Headline::todo)
+            .collect()
+    }
+
     /// Iterate every headline depth-first.
     #[must_use]
     pub fn iter_headlines(&self) -> Vec<&Headline> {
