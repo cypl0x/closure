@@ -3928,3 +3928,21 @@ fn doc_distinct_property_key_count_match() {
     let doc = parse(src).expect("parse");
     assert_eq!(doc.distinct_property_key_count(), 2);
 }
+
+#[test]
+fn doc_distinct_property_values_for_key_match() {
+    let src = "* A\n:PROPERTIES:\n:K: x\n:END:\n* B\n:PROPERTIES:\n:K: y\n:END:\n* C\n:PROPERTIES:\n:K: x\n:END:\n";
+    let doc = parse(src).expect("parse");
+    assert_eq!(
+        doc.distinct_property_values_for_key("K"),
+        vec!["x".to_owned(), "y".to_owned()]
+    );
+    assert!(doc.distinct_property_values_for_key("MISSING").is_empty());
+}
+
+#[test]
+fn doc_distinct_property_value_count_for_key_match() {
+    let src = "* A\n:PROPERTIES:\n:K: x\n:END:\n* B\n:PROPERTIES:\n:K: y\n:END:\n* C\n:PROPERTIES:\n:K: x\n:END:\n";
+    let doc = parse(src).expect("parse");
+    assert_eq!(doc.distinct_property_value_count_for_key("K"), 2);
+}

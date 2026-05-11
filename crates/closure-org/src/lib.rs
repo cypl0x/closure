@@ -917,6 +917,26 @@ impl OrgDoc {
         self.distinct_property_keys().len()
     }
 
+    /// Distinct property values for `key` across every headline, sorted.
+    #[must_use]
+    pub fn distinct_property_values_for_key(&self, key: &str) -> Vec<String> {
+        let mut s: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+        for h in self.iter_headlines() {
+            if let Some(p) = h.properties()
+                && let Some(v) = p.get(key)
+            {
+                s.insert(v.to_owned());
+            }
+        }
+        s.into_iter().collect()
+    }
+
+    /// Count of distinct property values for `key` across the document.
+    #[must_use]
+    pub fn distinct_property_value_count_for_key(&self, key: &str) -> usize {
+        self.distinct_property_values_for_key(key).len()
+    }
+
     /// Median subtree size across roots (integer; lower midpoint for even sets).
     #[must_use]
     pub fn median_root_subtree_size(&self) -> Option<usize> {
