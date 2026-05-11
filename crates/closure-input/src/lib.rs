@@ -265,7 +265,7 @@ impl ChordTrie {
 
     /// Total node count in the trie (including the root).
     #[must_use]
-    pub fn node_count(&self) -> usize {
+    pub const fn node_count(&self) -> usize {
         self.nodes.len()
     }
 
