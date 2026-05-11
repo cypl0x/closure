@@ -1024,6 +1024,25 @@ impl OrgDoc {
             .map(|(k, _)| k)
     }
 
+    /// Minimum headline-body word count across the document (`0` when empty).
+    #[must_use]
+    pub fn min_body_word_count(&self) -> usize {
+        self.iter_headlines()
+            .into_iter()
+            .map(Headline::body_word_count)
+            .min()
+            .unwrap_or(0)
+    }
+
+    /// Total headline-body byte count across the document.
+    #[must_use]
+    pub fn total_body_byte_count(&self) -> usize {
+        self.iter_headlines()
+            .into_iter()
+            .map(Headline::body_byte_count)
+            .sum()
+    }
+
     /// Median subtree size across roots (integer; lower midpoint for even sets).
     #[must_use]
     pub fn median_root_subtree_size(&self) -> Option<usize> {

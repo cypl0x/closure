@@ -4008,3 +4008,22 @@ fn doc_least_common_level_match() {
     let doc = parse("* A\n** B\n** C\n").expect("parse");
     assert_eq!(doc.least_common_level(), Some(1));
 }
+
+#[test]
+fn doc_min_body_word_count_match() {
+    let doc = parse("* A\nhello\n* B\nfoo bar baz\n").expect("parse");
+    assert_eq!(doc.min_body_word_count(), 1);
+}
+
+#[test]
+fn doc_min_body_word_count_zero_when_no_headlines() {
+    let doc = parse("nothing\n").expect("parse");
+    assert_eq!(doc.min_body_word_count(), 0);
+}
+
+#[test]
+fn doc_total_body_byte_count_match() {
+    let doc = parse("* A\nhello\n* B\n").expect("parse");
+    // "hello\n" = 6
+    assert_eq!(doc.total_body_byte_count(), 6);
+}
