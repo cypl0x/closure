@@ -330,14 +330,14 @@ fn vault_priority_counts_returns_sorted_ranked() {
 #[test]
 fn vault_level_counts_returns_ranked() {
     let td = write_vault(&[
-        ("a.org", "* A\n** B\n** C\n*** D\n"),
-        ("b.org", "* E\n"),
+        ("a.org", "* A\n** B\n*** C\n*** D\n*** E\n"),
+        ("b.org", "* F\n"),
     ]);
     let v = Vault::open(td.path()).expect("open");
     let ranks = v.level_counts();
-    assert_eq!(ranks[0], (2, 2));
+    assert_eq!(ranks[0], (3, 3));
     assert!(ranks.iter().any(|(l, n)| *l == 1 && *n == 2));
-    assert!(ranks.iter().any(|(l, n)| *l == 3 && *n == 1));
+    assert!(ranks.iter().any(|(l, n)| *l == 2 && *n == 1));
 }
 
 #[test]
