@@ -470,6 +470,28 @@ impl OrgDoc {
         self.iter_headlines().into_iter().rfind(|h| h.has_tag(tag))
     }
 
+    /// Returns the last headline carrying property `key` (DFS order).
+    #[must_use]
+    pub fn last_with_property<'a>(&'a self, key: &str) -> Option<&'a Headline> {
+        self.iter_headlines()
+            .into_iter()
+            .rfind(|h| h.has_property(key))
+    }
+
+    /// Returns the last headline carrying an `:ID:` property (DFS order).
+    #[must_use]
+    pub fn last_with_id(&self) -> Option<&Headline> {
+        self.iter_headlines()
+            .into_iter()
+            .rfind(|h| h.id_property().is_some())
+    }
+
+    /// Returns the first headline carrying an `:ID:` property (DFS order).
+    #[must_use]
+    pub fn first_with_id(&self) -> Option<&Headline> {
+        self.find_headline(|h| h.id_property().is_some())
+    }
+
     /// Iterate every headline depth-first.
     #[must_use]
     pub fn iter_headlines(&self) -> Vec<&Headline> {

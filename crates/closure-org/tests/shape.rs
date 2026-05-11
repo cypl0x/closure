@@ -3385,3 +3385,27 @@ fn doc_last_with_tag_returns_last() {
     let h = doc.last_with_tag("work").expect("hit");
     assert_eq!(h.title(), "Z");
 }
+
+#[test]
+fn doc_last_with_property_returns_last() {
+    let src = "* A\n:PROPERTIES:\n:K: 1\n:END:\n* B\n* C\n:PROPERTIES:\n:K: 2\n:END:\n";
+    let doc = parse(src).expect("parse");
+    let h = doc.last_with_property("K").expect("hit");
+    assert_eq!(h.title(), "C");
+}
+
+#[test]
+fn doc_last_with_id_returns_last() {
+    let src = "* A\n:PROPERTIES:\n:ID: a\n:END:\n* B\n* C\n:PROPERTIES:\n:ID: c\n:END:\n";
+    let doc = parse(src).expect("parse");
+    let h = doc.last_with_id().expect("hit");
+    assert_eq!(h.title(), "C");
+}
+
+#[test]
+fn doc_first_with_id_returns_first() {
+    let src = "* A\n* B\n:PROPERTIES:\n:ID: b\n:END:\n";
+    let doc = parse(src).expect("parse");
+    let h = doc.first_with_id().expect("hit");
+    assert_eq!(h.title(), "B");
+}
