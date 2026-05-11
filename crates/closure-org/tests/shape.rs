@@ -2763,3 +2763,31 @@ fn doc_descendant_level_counts_returns_map() {
     assert_eq!(m.get(&2).copied(), Some(2));
     assert_eq!(m.get(&3).copied(), Some(1));
 }
+
+#[test]
+fn doc_most_common_descendant_tag_returns_top() {
+    let src = "* A :a:b:\n** B :a:\n* C :b:\n** D :a:\n";
+    let doc = parse(src).expect("parse");
+    assert_eq!(doc.most_common_descendant_tag(), Some("a".to_owned()));
+}
+
+#[test]
+fn doc_most_common_descendant_todo_returns_top() {
+    let src = "* TODO A\n** DONE B\n* TODO C\n* TODO D\n";
+    let doc = parse(src).expect("parse");
+    assert_eq!(doc.most_common_descendant_todo(), Some("TODO".to_owned()));
+}
+
+#[test]
+fn doc_most_common_descendant_priority_returns_top() {
+    let src = "* [#A] One\n** [#A] Two\n* [#B] Three\n";
+    let doc = parse(src).expect("parse");
+    assert_eq!(doc.most_common_descendant_priority(), Some('A'));
+}
+
+#[test]
+fn doc_most_common_descendant_level_returns_top() {
+    let src = "* A\n** B\n** C\n*** D\n";
+    let doc = parse(src).expect("parse");
+    assert_eq!(doc.most_common_descendant_level(), Some(2));
+}

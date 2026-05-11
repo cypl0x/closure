@@ -2375,6 +2375,42 @@ impl OrgDoc {
         m
     }
 
+    /// Most-common tag across all descendants. Ties broken by sort order.
+    #[must_use]
+    pub fn most_common_descendant_tag(&self) -> Option<String> {
+        self.descendant_tag_counts()
+            .into_iter()
+            .max_by_key(|(_, n)| *n)
+            .map(|(k, _)| k)
+    }
+
+    /// Most-common TODO keyword across all descendants.
+    #[must_use]
+    pub fn most_common_descendant_todo(&self) -> Option<String> {
+        self.descendant_todo_counts()
+            .into_iter()
+            .max_by_key(|(_, n)| *n)
+            .map(|(k, _)| k)
+    }
+
+    /// Most-common priority letter across all descendants.
+    #[must_use]
+    pub fn most_common_descendant_priority(&self) -> Option<char> {
+        self.descendant_priority_counts()
+            .into_iter()
+            .max_by_key(|(_, n)| *n)
+            .map(|(k, _)| k)
+    }
+
+    /// Most-common level across all descendants.
+    #[must_use]
+    pub fn most_common_descendant_level(&self) -> Option<u8> {
+        self.descendant_level_counts()
+            .into_iter()
+            .max_by_key(|(_, n)| *n)
+            .map(|(k, _)| k)
+    }
+
     fn collect_descendants_where<F: Fn(&Headline) -> bool>(
         &self,
         pred: F,
