@@ -623,6 +623,49 @@ fn vault_headline_count_with_tag_match() {
 }
 
 #[test]
+fn vault_headline_count_with_todo_match() {
+    let td = write_vault(&[
+        ("a.org", "* TODO X\n* DONE Y\n"),
+        ("b.org", "* TODO Z\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.headline_count_with_todo("TODO"), 2);
+    assert_eq!(v.headline_count_with_todo("DONE"), 1);
+}
+
+#[test]
+fn vault_headline_count_with_priority_match() {
+    let td = write_vault(&[
+        ("a.org", "* [#A] X\n* [#B] Y\n"),
+        ("b.org", "* [#A] Z\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.headline_count_with_priority('A'), 2);
+    assert_eq!(v.headline_count_with_priority('B'), 1);
+}
+
+#[test]
+fn vault_headline_count_at_level_match() {
+    let td = write_vault(&[
+        ("a.org", "* A\n** B\n** C\n"),
+        ("b.org", "* D\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.headline_count_at_level(1), 2);
+    assert_eq!(v.headline_count_at_level(2), 2);
+}
+
+#[test]
+fn vault_headline_count_with_property_match() {
+    let td = write_vault(&[
+        ("a.org", "* X\n:PROPERTIES:\n:K: 1\n:END:\n"),
+        ("b.org", "* Y\n:PROPERTIES:\n:K: 2\n:END:\n* Z\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.headline_count_with_property("K"), 2);
+}
+
+#[test]
 fn vault_watcher_observes_modify() {
     let td = write_vault(&[("x.org", "* A\n")]);
     let v = Vault::open(td.path()).expect("open");
