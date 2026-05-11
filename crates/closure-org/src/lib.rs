@@ -878,6 +878,25 @@ impl OrgDoc {
         self.headline_by_id(id).map(Headline::subtree_ids)
     }
 
+    /// Distinct property keys across the subtree of `id`-tagged headline.
+    #[must_use]
+    pub fn subtree_property_keys_of(&self, id: &str) -> Option<Vec<String>> {
+        self.headline_by_id(id).map(Headline::subtree_property_keys)
+    }
+
+    /// Distinct titles across the subtree of `id`-tagged headline, sorted.
+    #[must_use]
+    pub fn subtree_distinct_titles_of(&self, id: &str) -> Option<Vec<String>> {
+        self.headline_by_id(id).map(Headline::subtree_distinct_titles)
+    }
+
+    /// Total property entry count across the subtree of `id`-tagged headline.
+    #[must_use]
+    pub fn subtree_total_property_count_of(&self, id: &str) -> Option<usize> {
+        self.headline_by_id(id)
+            .map(Headline::subtree_total_property_count)
+    }
+
     /// Median subtree size across roots (integer; lower midpoint for even sets).
     #[must_use]
     pub fn median_root_subtree_size(&self) -> Option<usize> {

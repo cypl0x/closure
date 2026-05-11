@@ -3883,3 +3883,31 @@ fn headline_subtree_total_property_count_match() {
     let top = &doc.roots()[0];
     assert_eq!(top.subtree_total_property_count(), 3);
 }
+
+#[test]
+fn doc_subtree_property_keys_of_match() {
+    let src = "* A\n:PROPERTIES:\n:ID: a\n:K1: 1\n:END:\n** B\n:PROPERTIES:\n:K2: 2\n:END:\n";
+    let doc = parse(src).expect("parse");
+    let keys = doc.subtree_property_keys_of("a").expect("hit");
+    assert!(keys.contains(&"ID".to_owned()));
+    assert!(keys.contains(&"K1".to_owned()));
+    assert!(keys.contains(&"K2".to_owned()));
+}
+
+#[test]
+fn doc_subtree_distinct_titles_of_match() {
+    let src = "* A\n:PROPERTIES:\n:ID: a\n:END:\n** A\n** B\n";
+    let doc = parse(src).expect("parse");
+    assert_eq!(
+        doc.subtree_distinct_titles_of("a").expect("hit"),
+        vec!["A".to_owned(), "B".to_owned()]
+    );
+}
+
+#[test]
+fn doc_subtree_total_property_count_of_match() {
+    let src = "* A\n:PROPERTIES:\n:ID: a\n:K1: 1\n:END:\n** B\n:PROPERTIES:\n:K2: 2\n:END:\n";
+    let doc = parse(src).expect("parse");
+    // 2 + 1 = 3
+    assert_eq!(doc.subtree_total_property_count_of("a"), Some(3));
+}
