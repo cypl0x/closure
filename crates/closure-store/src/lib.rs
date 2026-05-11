@@ -993,6 +993,22 @@ impl Vault {
             .count()
     }
 
+    /// Number of paths containing at least one headline.
+    #[must_use]
+    pub fn nonempty_path_count(&self) -> usize {
+        self.iter()
+            .filter(|(_, d)| d.all_headlines().count() > 0)
+            .count()
+    }
+
+    /// Number of paths containing zero headlines.
+    #[must_use]
+    pub fn empty_path_count(&self) -> usize {
+        self.iter()
+            .filter(|(_, d)| d.all_headlines().count() == 0)
+            .count()
+    }
+
     /// Paths whose source contains the substring `needle` anywhere.
     #[must_use]
     pub fn paths_containing(&self, needle: &str) -> Vec<&Path> {

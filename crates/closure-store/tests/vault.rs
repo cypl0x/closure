@@ -666,6 +666,28 @@ fn vault_headline_count_with_property_match() {
 }
 
 #[test]
+fn vault_nonempty_path_count_match() {
+    let td = write_vault(&[
+        ("a.org", "* X\n"),
+        ("b.org", "no headlines\n"),
+        ("c.org", "* Y\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.nonempty_path_count(), 2);
+}
+
+#[test]
+fn vault_empty_path_count_match() {
+    let td = write_vault(&[
+        ("a.org", "* X\n"),
+        ("b.org", "no headlines\n"),
+        ("c.org", "no headlines either\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.empty_path_count(), 2);
+}
+
+#[test]
 fn vault_watcher_observes_modify() {
     let td = write_vault(&[("x.org", "* A\n")]);
     let v = Vault::open(td.path()).expect("open");
