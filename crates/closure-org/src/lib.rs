@@ -4953,6 +4953,32 @@ impl Headline {
         self.subtree_levels().len()
     }
 
+    /// Highest-priority letter (closest to `'A'`) in this subtree.
+    #[must_use]
+    pub fn max_priority_letter(&self) -> Option<char> {
+        self.subtree_priorities().into_iter().min()
+    }
+
+    /// Lowest-priority letter (farthest from `'A'`) in this subtree.
+    #[must_use]
+    pub fn min_priority_letter(&self) -> Option<char> {
+        self.subtree_priorities().into_iter().max()
+    }
+
+    /// First TODO keyword (DFS) carried by this headline or any descendant.
+    #[must_use]
+    pub fn first_todo_keyword(&self) -> Option<&str> {
+        if let Some(t) = self.todo() {
+            return Some(t);
+        }
+        for h in self.descendants() {
+            if let Some(t) = h.todo() {
+                return Some(t);
+            }
+        }
+        None
+    }
+
     /// Returns TODO keywords of every descendant carrying one.
     #[must_use]
     pub fn descendant_todo_keywords(&self) -> Vec<&str> {

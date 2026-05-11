@@ -2883,3 +2883,27 @@ fn headline_subtree_level_count_match() {
     let top = &doc.roots()[0];
     assert_eq!(top.subtree_level_count(), 3);
 }
+
+#[test]
+fn headline_max_priority_letter_returns_highest() {
+    let src = "* [#C] Top\n** [#A] Inner\n*** [#B] Leaf\n";
+    let doc = parse(src).expect("parse");
+    let top = &doc.roots()[0];
+    assert_eq!(top.max_priority_letter(), Some('A'));
+}
+
+#[test]
+fn headline_min_priority_letter_returns_lowest() {
+    let src = "* [#C] Top\n** [#A] Inner\n*** [#B] Leaf\n";
+    let doc = parse(src).expect("parse");
+    let top = &doc.roots()[0];
+    assert_eq!(top.min_priority_letter(), Some('C'));
+}
+
+#[test]
+fn headline_first_todo_keyword_returns_first() {
+    let src = "* TODO Top\n** DONE Inner\n*** TODO Leaf\n";
+    let doc = parse(src).expect("parse");
+    let top = &doc.roots()[0];
+    assert_eq!(top.first_todo_keyword(), Some("TODO"));
+}
