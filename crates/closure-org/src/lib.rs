@@ -679,6 +679,32 @@ impl OrgDoc {
         self.roots.iter().map(Headline::subtree_size).min()
     }
 
+    /// Integer mean of subtree sizes across roots (`0` when empty).
+    #[must_use]
+    pub fn mean_root_subtree_size(&self) -> usize {
+        let sizes: Vec<usize> = self.roots.iter().map(Headline::subtree_size).collect();
+        if sizes.is_empty() {
+            return 0;
+        }
+        sizes.iter().sum::<usize>() / sizes.len()
+    }
+
+    /// Median subtree size across roots (integer; lower midpoint for even sets).
+    #[must_use]
+    pub fn median_root_subtree_size(&self) -> Option<usize> {
+        let mut sizes: Vec<usize> = self.roots.iter().map(Headline::subtree_size).collect();
+        if sizes.is_empty() {
+            return None;
+        }
+        sizes.sort_unstable();
+        let mid = sizes.len() / 2;
+        if sizes.len() % 2 == 1 {
+            Some(sizes[mid])
+        } else {
+            Some(sizes[mid - 1].midpoint(sizes[mid]))
+        }
+    }
+
     /// Iterate every headline depth-first.
     #[must_use]
     pub fn iter_headlines(&self) -> Vec<&Headline> {

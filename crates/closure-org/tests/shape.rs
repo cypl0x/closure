@@ -3602,3 +3602,23 @@ fn doc_max_root_subtree_size_none_empty() {
     let doc = parse("nothing\n").expect("parse");
     assert_eq!(doc.max_root_subtree_size(), None);
 }
+
+#[test]
+fn doc_mean_root_subtree_size_match() {
+    let doc = parse("* A\n** B\n** C\n* D\n").expect("parse");
+    // sizes: 3, 1 -> 2
+    assert_eq!(doc.mean_root_subtree_size(), 2);
+}
+
+#[test]
+fn doc_mean_root_subtree_size_zero_when_empty() {
+    let doc = parse("nothing\n").expect("parse");
+    assert_eq!(doc.mean_root_subtree_size(), 0);
+}
+
+#[test]
+fn doc_median_root_subtree_size_match() {
+    let doc = parse("* A\n** B\n** C\n* D\n* E\n").expect("parse");
+    // sizes sorted: [1,1,3] -> 1
+    assert_eq!(doc.median_root_subtree_size(), Some(1));
+}
