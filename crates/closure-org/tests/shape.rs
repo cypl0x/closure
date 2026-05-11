@@ -2999,3 +2999,31 @@ fn headline_subtree_has_id_returns_false_when_absent() {
     let top = &doc.roots()[0];
     assert!(!top.subtree_has_id());
 }
+
+#[test]
+fn headline_subtree_count_with_tag_counts_self_plus_descendants() {
+    let src = "* Top :work:\n** Inner :work:\n*** Leaf :home:\n";
+    let doc = parse(src).expect("parse");
+    let top = &doc.roots()[0];
+    assert_eq!(top.subtree_count_with_tag("work"), 2);
+    assert_eq!(top.subtree_count_with_tag("home"), 1);
+    assert_eq!(top.subtree_count_with_tag("none"), 0);
+}
+
+#[test]
+fn headline_subtree_count_with_todo_counts_self_plus_descendants() {
+    let src = "* TODO Top\n** DONE Inner\n*** TODO Leaf\n";
+    let doc = parse(src).expect("parse");
+    let top = &doc.roots()[0];
+    assert_eq!(top.subtree_count_with_todo("TODO"), 2);
+    assert_eq!(top.subtree_count_with_todo("DONE"), 1);
+}
+
+#[test]
+fn headline_subtree_count_with_priority_counts_self_plus_descendants() {
+    let src = "* [#A] Top\n** [#A] Inner\n*** [#B] Leaf\n";
+    let doc = parse(src).expect("parse");
+    let top = &doc.roots()[0];
+    assert_eq!(top.subtree_count_with_priority('A'), 2);
+    assert_eq!(top.subtree_count_with_priority('B'), 1);
+}

@@ -5062,6 +5062,35 @@ impl Headline {
             || self.descendants().iter().any(|h| h.id_property().is_some())
     }
 
+    /// Count of headlines in this subtree (self + descendants) carrying `tag`.
+    #[must_use]
+    pub fn subtree_count_with_tag(&self, tag: &str) -> usize {
+        usize::from(self.has_tag(tag))
+            + self.descendants().iter().filter(|h| h.has_tag(tag)).count()
+    }
+
+    /// Count of headlines in this subtree (self + descendants) with TODO `kw`.
+    #[must_use]
+    pub fn subtree_count_with_todo(&self, kw: &str) -> usize {
+        usize::from(self.todo() == Some(kw))
+            + self
+                .descendants()
+                .iter()
+                .filter(|h| h.todo() == Some(kw))
+                .count()
+    }
+
+    /// Count of headlines in this subtree (self + descendants) with priority `letter`.
+    #[must_use]
+    pub fn subtree_count_with_priority(&self, letter: char) -> usize {
+        usize::from(self.priority() == Some(letter))
+            + self
+                .descendants()
+                .iter()
+                .filter(|h| h.priority() == Some(letter))
+                .count()
+    }
+
     /// Returns TODO keywords of every descendant carrying one.
     #[must_use]
     pub fn descendant_todo_keywords(&self) -> Vec<&str> {
