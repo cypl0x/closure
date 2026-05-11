@@ -5716,6 +5716,41 @@ impl Headline {
         self.subtree_count_with_id()
     }
 
+    /// Distinct property keys across this subtree, sorted.
+    #[must_use]
+    pub fn subtree_property_keys(&self) -> Vec<String> {
+        let mut s: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+        if let Some(p) = self.properties() {
+            for k in p.keys() {
+                s.insert(k.to_owned());
+            }
+        }
+        for h in self.descendants() {
+            if let Some(p) = h.properties() {
+                for k in p.keys() {
+                    s.insert(k.to_owned());
+                }
+            }
+        }
+        s.into_iter().collect()
+    }
+
+    /// Count of distinct property keys across this subtree.
+    #[must_use]
+    pub fn subtree_property_key_count(&self) -> usize {
+        self.subtree_property_keys().len()
+    }
+
+    /// Total property entry count across this subtree (with duplicates by key+value pair).
+    #[must_use]
+    pub fn subtree_total_property_count(&self) -> usize {
+        let mut n = self.property_count();
+        for h in self.descendants() {
+            n += h.property_count();
+        }
+        n
+    }
+
     /// Highest-priority letter (closest to `'A'`) in this subtree.
     #[must_use]
     pub fn max_priority_letter(&self) -> Option<char> {

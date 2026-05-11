@@ -3856,3 +3856,30 @@ fn headline_subtree_id_count_match() {
     let top = &doc.roots()[0];
     assert_eq!(top.subtree_id_count(), 2);
 }
+
+#[test]
+fn headline_subtree_property_keys_sorted_unique() {
+    let src = "* A\n:PROPERTIES:\n:K1: 1\n:K2: 2\n:END:\n** B\n:PROPERTIES:\n:K2: 3\n:K3: 4\n:END:\n";
+    let doc = parse(src).expect("parse");
+    let top = &doc.roots()[0];
+    assert_eq!(
+        top.subtree_property_keys(),
+        vec!["K1".to_owned(), "K2".to_owned(), "K3".to_owned()]
+    );
+}
+
+#[test]
+fn headline_subtree_property_key_count_match() {
+    let src = "* A\n:PROPERTIES:\n:K1: 1\n:END:\n** B\n:PROPERTIES:\n:K2: 2\n:END:\n";
+    let doc = parse(src).expect("parse");
+    let top = &doc.roots()[0];
+    assert_eq!(top.subtree_property_key_count(), 2);
+}
+
+#[test]
+fn headline_subtree_total_property_count_match() {
+    let src = "* A\n:PROPERTIES:\n:K1: 1\n:K2: 2\n:END:\n** B\n:PROPERTIES:\n:K3: 3\n:END:\n";
+    let doc = parse(src).expect("parse");
+    let top = &doc.roots()[0];
+    assert_eq!(top.subtree_total_property_count(), 3);
+}
