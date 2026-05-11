@@ -237,7 +237,6 @@ impl ChordTrie {
     /// Sorted distinct chord strings bound in the trie. Strokes joined by spaces.
     #[must_use]
     pub fn all_chords(&self) -> Vec<String> {
-        let mut out: Vec<String> = Vec::new();
         fn walk(
             idx: usize,
             prefix: &mut Vec<String>,
@@ -254,6 +253,7 @@ impl ChordTrie {
                 prefix.pop();
             }
         }
+        let mut out: Vec<String> = Vec::new();
         walk(0, &mut Vec::new(), &self.nodes, &mut out);
         out.sort();
         out
