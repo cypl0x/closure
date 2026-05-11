@@ -448,6 +448,33 @@ impl OrgDoc {
         self.find_headline(|h| h.properties().and_then(|p| p.get(key)) == Some(value))
     }
 
+    /// Returns the last headline with priority `letter` (DFS order).
+    #[must_use]
+    pub fn last_with_priority(&self, letter: char) -> Option<&Headline> {
+        self.iter_headlines()
+            .into_iter()
+            .filter(|h| h.priority() == Some(letter))
+            .next_back()
+    }
+
+    /// Returns the last headline with TODO keyword `kw` (DFS order).
+    #[must_use]
+    pub fn last_with_todo<'a>(&'a self, kw: &str) -> Option<&'a Headline> {
+        self.iter_headlines()
+            .into_iter()
+            .filter(|h| h.todo() == Some(kw))
+            .next_back()
+    }
+
+    /// Returns the last headline carrying `tag` (DFS order).
+    #[must_use]
+    pub fn last_with_tag<'a>(&'a self, tag: &str) -> Option<&'a Headline> {
+        self.iter_headlines()
+            .into_iter()
+            .filter(|h| h.has_tag(tag))
+            .next_back()
+    }
+
     /// Iterate every headline depth-first.
     #[must_use]
     pub fn iter_headlines(&self) -> Vec<&Headline> {

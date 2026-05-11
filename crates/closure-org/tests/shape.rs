@@ -3364,3 +3364,24 @@ fn doc_first_with_tag_returns_first() {
     let h = doc.first_with_tag("work").expect("hit");
     assert_eq!(h.title(), "Y");
 }
+
+#[test]
+fn doc_last_with_priority_returns_last() {
+    let doc = parse("* [#A] X\n* Y\n* [#A] Z\n").expect("parse");
+    let h = doc.last_with_priority('A').expect("hit");
+    assert_eq!(h.title(), "Z");
+}
+
+#[test]
+fn doc_last_with_todo_returns_last() {
+    let doc = parse("* TODO X\n* Y\n* TODO Z\n").expect("parse");
+    let h = doc.last_with_todo("TODO").expect("hit");
+    assert_eq!(h.title(), "Z");
+}
+
+#[test]
+fn doc_last_with_tag_returns_last() {
+    let doc = parse("* X :work:\n* Y\n* Z :work:\n").expect("parse");
+    let h = doc.last_with_tag("work").expect("hit");
+    assert_eq!(h.title(), "Z");
+}
