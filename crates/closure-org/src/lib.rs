@@ -759,6 +759,24 @@ impl OrgDoc {
         self.headline_by_id(id).and_then(Headline::max_priority_letter)
     }
 
+    /// Minimum level in the subtree of `id`-tagged headline.
+    #[must_use]
+    pub fn subtree_min_level_of(&self, id: &str) -> Option<u8> {
+        self.headline_by_id(id).map(Headline::subtree_min_level)
+    }
+
+    /// Lowest priority letter in the subtree of `id`-tagged headline.
+    #[must_use]
+    pub fn subtree_min_priority_of(&self, id: &str) -> Option<char> {
+        self.headline_by_id(id).and_then(Headline::min_priority_letter)
+    }
+
+    /// Whether subtree of `id`-tagged headline carries `tag`.
+    #[must_use]
+    pub fn subtree_has_tag_of(&self, id: &str, tag: &str) -> Option<bool> {
+        self.headline_by_id(id).map(|h| h.subtree_has_tag(tag))
+    }
+
     /// Median subtree size across roots (integer; lower midpoint for even sets).
     #[must_use]
     pub fn median_root_subtree_size(&self) -> Option<usize> {

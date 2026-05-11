@@ -3690,3 +3690,26 @@ fn doc_subtree_max_priority_of_match() {
     let doc = parse(src).expect("parse");
     assert_eq!(doc.subtree_max_priority_of("a"), Some('A'));
 }
+
+#[test]
+fn doc_subtree_min_level_of_match() {
+    let src = "* A\n:PROPERTIES:\n:ID: a\n:END:\n** B\n*** C\n";
+    let doc = parse(src).expect("parse");
+    assert_eq!(doc.subtree_min_level_of("a"), Some(1));
+}
+
+#[test]
+fn doc_subtree_min_priority_of_match() {
+    let src = "* [#B] A\n:PROPERTIES:\n:ID: a\n:END:\n** [#A] B\n";
+    let doc = parse(src).expect("parse");
+    assert_eq!(doc.subtree_min_priority_of("a"), Some('B'));
+}
+
+#[test]
+fn doc_subtree_has_tag_of_match() {
+    let src = "* A\n:PROPERTIES:\n:ID: a\n:END:\n** B :work:\n";
+    let doc = parse(src).expect("parse");
+    assert_eq!(doc.subtree_has_tag_of("a", "work"), Some(true));
+    assert_eq!(doc.subtree_has_tag_of("a", "home"), Some(false));
+    assert_eq!(doc.subtree_has_tag_of("missing", "work"), None);
+}
