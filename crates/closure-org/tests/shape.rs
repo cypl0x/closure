@@ -3641,3 +3641,30 @@ fn doc_smallest_root_returns_smallest() {
     let doc = parse("* A\n** B\n* C\n").expect("parse");
     assert_eq!(doc.smallest_root().expect("hit").title(), "C");
 }
+
+#[test]
+fn doc_root_index_of_id_match() {
+    let src = "* A\n* B\n:PROPERTIES:\n:ID: b\n:END:\n* C\n";
+    let doc = parse(src).expect("parse");
+    assert_eq!(doc.root_index_of("b"), Some(1));
+    assert_eq!(doc.root_index_of("missing"), None);
+}
+
+#[test]
+fn doc_root_position_of_title_match() {
+    let doc = parse("* A\n* B\n* C\n").expect("parse");
+    assert_eq!(doc.root_position_of_title("B"), Some(1));
+    assert_eq!(doc.root_position_of_title("missing"), None);
+}
+
+#[test]
+fn doc_largest_root_index_match() {
+    let doc = parse("* A\n* B\n** C\n* D\n").expect("parse");
+    assert_eq!(doc.largest_root_index(), Some(1));
+}
+
+#[test]
+fn doc_smallest_root_index_match() {
+    let doc = parse("* A\n** X\n* B\n").expect("parse");
+    assert_eq!(doc.smallest_root_index(), Some(1));
+}

@@ -707,6 +707,40 @@ impl OrgDoc {
         self.roots.iter().min_by_key(|h| h.subtree_size())
     }
 
+    /// Index of the root carrying `:ID: id`.
+    #[must_use]
+    pub fn root_index_of(&self, id: &str) -> Option<usize> {
+        self.roots
+            .iter()
+            .position(|h| h.id_property() == Some(id))
+    }
+
+    /// Index of the first root whose title equals `needle`.
+    #[must_use]
+    pub fn root_position_of_title(&self, needle: &str) -> Option<usize> {
+        self.roots.iter().position(|h| h.title() == needle)
+    }
+
+    /// Index of the root with the largest subtree.
+    #[must_use]
+    pub fn largest_root_index(&self) -> Option<usize> {
+        self.roots
+            .iter()
+            .enumerate()
+            .max_by_key(|(_, h)| h.subtree_size())
+            .map(|(i, _)| i)
+    }
+
+    /// Index of the root with the smallest subtree.
+    #[must_use]
+    pub fn smallest_root_index(&self) -> Option<usize> {
+        self.roots
+            .iter()
+            .enumerate()
+            .min_by_key(|(_, h)| h.subtree_size())
+            .map(|(i, _)| i)
+    }
+
     /// Median subtree size across roots (integer; lower midpoint for even sets).
     #[must_use]
     pub fn median_root_subtree_size(&self) -> Option<usize> {
