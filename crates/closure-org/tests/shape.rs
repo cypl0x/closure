@@ -3946,3 +3946,28 @@ fn doc_distinct_property_value_count_for_key_match() {
     let doc = parse(src).expect("parse");
     assert_eq!(doc.distinct_property_value_count_for_key("K"), 2);
 }
+
+#[test]
+fn doc_property_value_counts_for_key_returns_map() {
+    let src = "* A\n:PROPERTIES:\n:K: x\n:END:\n* B\n:PROPERTIES:\n:K: y\n:END:\n* C\n:PROPERTIES:\n:K: x\n:END:\n";
+    let doc = parse(src).expect("parse");
+    let m = doc.property_value_counts_for_key("K");
+    assert_eq!(m.get("x").copied(), Some(2));
+    assert_eq!(m.get("y").copied(), Some(1));
+}
+
+#[test]
+fn doc_property_key_counts_returns_map() {
+    let src = "* A\n:PROPERTIES:\n:K1: 1\n:K2: 2\n:END:\n* B\n:PROPERTIES:\n:K2: 3\n:END:\n";
+    let doc = parse(src).expect("parse");
+    let m = doc.property_key_counts();
+    assert_eq!(m.get("K1").copied(), Some(1));
+    assert_eq!(m.get("K2").copied(), Some(2));
+}
+
+#[test]
+fn doc_most_common_property_key_match() {
+    let src = "* A\n:PROPERTIES:\n:K1: 1\n:K2: 2\n:END:\n* B\n:PROPERTIES:\n:K2: 3\n:END:\n";
+    let doc = parse(src).expect("parse");
+    assert_eq!(doc.most_common_property_key(), Some("K2".to_owned()));
+}

@@ -937,6 +937,48 @@ impl OrgDoc {
         self.distinct_property_values_for_key(key).len()
     }
 
+    /// Histogram of property values for `key` across the document.
+    #[must_use]
+    pub fn property_value_counts_for_key(
+        &self,
+        key: &str,
+    ) -> std::collections::BTreeMap<String, usize> {
+        let mut m: std::collections::BTreeMap<String, usize> =
+            std::collections::BTreeMap::new();
+        for h in self.iter_headlines() {
+            if let Some(p) = h.properties()
+                && let Some(v) = p.get(key)
+            {
+                *m.entry(v.to_owned()).or_insert(0) += 1;
+            }
+        }
+        m
+    }
+
+    /// Histogram of property keys across the document.
+    #[must_use]
+    pub fn property_key_counts(&self) -> std::collections::BTreeMap<String, usize> {
+        let mut m: std::collections::BTreeMap<String, usize> =
+            std::collections::BTreeMap::new();
+        for h in self.iter_headlines() {
+            if let Some(p) = h.properties() {
+                for k in p.keys() {
+                    *m.entry(k.to_owned()).or_insert(0) += 1;
+                }
+            }
+        }
+        m
+    }
+
+    /// Most-common property key across the document. Ties broken lexicographically.
+    #[must_use]
+    pub fn most_common_property_key(&self) -> Option<String> {
+        self.property_key_counts()
+            .into_iter()
+            .max_by_key(|(_, n)| *n)
+            .map(|(k, _)| k)
+    }
+
     /// Median subtree size across roots (integer; lower midpoint for even sets).
     #[must_use]
     pub fn median_root_subtree_size(&self) -> Option<usize> {
