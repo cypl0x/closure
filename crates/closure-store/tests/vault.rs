@@ -518,6 +518,51 @@ fn vault_path_count_with_todo_match() {
 }
 
 #[test]
+fn vault_path_count_with_priority_match() {
+    let td = write_vault(&[
+        ("a.org", "* [#A] X\n"),
+        ("b.org", "* [#B] Y\n"),
+        ("c.org", "* [#A] Z\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.path_count_with_priority('A'), 2);
+    assert_eq!(v.path_count_with_priority('C'), 0);
+}
+
+#[test]
+fn vault_path_count_at_level_match() {
+    let td = write_vault(&[
+        ("a.org", "* A\n** B\n"),
+        ("b.org", "* C\n"),
+        ("c.org", "** D\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.path_count_at_level(2), 2);
+    assert_eq!(v.path_count_at_level(3), 0);
+}
+
+#[test]
+fn vault_path_count_with_id_match() {
+    let td = write_vault(&[
+        ("a.org", "* X\n:PROPERTIES:\n:ID: x\n:END:\n"),
+        ("b.org", "* Y\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.path_count_with_id(), 1);
+}
+
+#[test]
+fn vault_path_count_with_property_match() {
+    let td = write_vault(&[
+        ("a.org", "* X\n:PROPERTIES:\n:K: 1\n:END:\n"),
+        ("b.org", "* Y\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.path_count_with_property("K"), 1);
+    assert_eq!(v.path_count_with_property("MISSING"), 0);
+}
+
+#[test]
 fn vault_watcher_observes_modify() {
     let td = write_vault(&[("x.org", "* A\n")]);
     let v = Vault::open(td.path()).expect("open");

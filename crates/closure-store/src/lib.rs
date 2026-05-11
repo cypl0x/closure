@@ -879,6 +879,30 @@ impl Vault {
         self.paths_with_todo(kw).len()
     }
 
+    /// Number of paths containing at least one headline with priority `letter`.
+    #[must_use]
+    pub fn path_count_with_priority(&self, letter: char) -> usize {
+        self.paths_with_priority(letter).len()
+    }
+
+    /// Number of paths containing at least one headline at exactly `level`.
+    #[must_use]
+    pub fn path_count_at_level(&self, level: u8) -> usize {
+        self.paths_at_level(level).len()
+    }
+
+    /// Number of paths containing at least one headline carrying an `:ID:`.
+    #[must_use]
+    pub fn path_count_with_id(&self) -> usize {
+        self.paths_with_id().len()
+    }
+
+    /// Number of paths containing at least one headline carrying property `key`.
+    #[must_use]
+    pub fn path_count_with_property(&self, key: &str) -> usize {
+        self.paths_with_property(key).len()
+    }
+
     /// Paths whose source contains the substring `needle` anywhere.
     #[must_use]
     pub fn paths_containing(&self, needle: &str) -> Vec<&Path> {
