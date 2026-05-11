@@ -2770,6 +2770,34 @@ impl OrgDoc {
         (self.no_id_count() * 100).checked_div(n).unwrap_or(0)
     }
 
+    /// True iff any headline carries a priority letter.
+    #[must_use]
+    pub fn has_any_priority(&self) -> bool {
+        self.iter_headlines()
+            .into_iter()
+            .any(|h| h.priority().is_some())
+    }
+
+    /// True iff any headline carries a TODO keyword.
+    #[must_use]
+    pub fn has_any_todo(&self) -> bool {
+        self.iter_headlines().into_iter().any(|h| h.todo().is_some())
+    }
+
+    /// True iff any headline carries at least one tag.
+    #[must_use]
+    pub fn has_any_tag(&self) -> bool {
+        self.iter_headlines().into_iter().any(Headline::has_any_tag)
+    }
+
+    /// True iff any headline carries an `:ID:` property.
+    #[must_use]
+    pub fn has_any_id(&self) -> bool {
+        self.iter_headlines()
+            .into_iter()
+            .any(|h| h.id_property().is_some())
+    }
+
     /// Total properties drawer entries across all headlines.
     #[must_use]
     pub fn total_property_count(&self) -> usize {

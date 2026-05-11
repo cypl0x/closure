@@ -3271,3 +3271,36 @@ fn doc_no_id_pct_match() {
     let doc = parse(src).expect("parse");
     assert_eq!(doc.no_id_pct(), 50);
 }
+
+#[test]
+fn doc_has_any_priority_match() {
+    let doc = parse("* [#A] X\n* Y\n").expect("parse");
+    assert!(doc.has_any_priority());
+    let none = parse("* X\n* Y\n").expect("parse");
+    assert!(!none.has_any_priority());
+}
+
+#[test]
+fn doc_has_any_todo_match() {
+    let doc = parse("* TODO X\n* Y\n").expect("parse");
+    assert!(doc.has_any_todo());
+    let none = parse("* X\n* Y\n").expect("parse");
+    assert!(!none.has_any_todo());
+}
+
+#[test]
+fn doc_has_any_tag_match() {
+    let doc = parse("* X :work:\n").expect("parse");
+    assert!(doc.has_any_tag());
+    let none = parse("* X\n").expect("parse");
+    assert!(!none.has_any_tag());
+}
+
+#[test]
+fn doc_has_any_id_match() {
+    let src = "* X\n:PROPERTIES:\n:ID: a\n:END:\n";
+    let doc = parse(src).expect("parse");
+    assert!(doc.has_any_id());
+    let none = parse("* X\n").expect("parse");
+    assert!(!none.has_any_id());
+}
