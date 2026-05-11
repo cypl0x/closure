@@ -3066,3 +3066,21 @@ fn doc_max_level_zero_on_empty() {
     let doc = parse("nothing\n").expect("parse");
     assert_eq!(doc.max_level(), 0);
 }
+
+#[test]
+fn doc_level_range_match() {
+    let doc = parse("* A\n** B\n*** C\n").expect("parse");
+    assert_eq!(doc.level_range(), Some((1, 3)));
+}
+
+#[test]
+fn doc_level_range_none_on_empty() {
+    let doc = parse("nothing\n").expect("parse");
+    assert_eq!(doc.level_range(), None);
+}
+
+#[test]
+fn doc_total_headline_count_match() {
+    let doc = parse("* A\n** B\n*** C\n* D\n").expect("parse");
+    assert_eq!(doc.total_headline_count(), 4);
+}

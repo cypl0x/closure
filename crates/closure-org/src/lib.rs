@@ -1212,6 +1212,27 @@ impl OrgDoc {
             .unwrap_or(0)
     }
 
+    /// `(min, max)` level range present, or `None` when no headlines.
+    #[must_use]
+    pub fn level_range(&self) -> Option<(u8, u8)> {
+        let levels: Vec<u8> = self
+            .iter_headlines()
+            .into_iter()
+            .map(Headline::level)
+            .collect();
+        levels
+            .iter()
+            .min()
+            .copied()
+            .zip(levels.iter().max().copied())
+    }
+
+    /// Total headline count across the document (alias of [`Self::headline_count`]).
+    #[must_use]
+    pub fn total_headline_count(&self) -> usize {
+        self.iter_headlines().len()
+    }
+
     /// Level histogram across the document.
     #[must_use]
     pub fn level_counts(&self) -> std::collections::BTreeMap<u8, usize> {
