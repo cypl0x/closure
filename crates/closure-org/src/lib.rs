@@ -1298,6 +1298,59 @@ impl OrgDoc {
         best.map(|(cc, _)| cc)
     }
 
+    /// Total root-body char count (roots only, no recursion).
+    #[must_use]
+    pub fn total_root_body_char_count(&self) -> usize {
+        self.roots.iter().map(Headline::body_char_count).sum()
+    }
+
+    /// Integer mean root-body char count (`0` when no roots).
+    #[must_use]
+    pub fn mean_root_body_char_count(&self) -> usize {
+        let n = self.roots.len();
+        self.total_root_body_char_count()
+            .checked_div(n)
+            .unwrap_or(0)
+    }
+
+    /// Maximum root-body char count.
+    #[must_use]
+    pub fn max_root_body_char_count(&self) -> Option<usize> {
+        self.roots.iter().map(Headline::body_char_count).max()
+    }
+
+    /// Minimum root-body char count.
+    #[must_use]
+    pub fn min_root_body_char_count(&self) -> Option<usize> {
+        self.roots.iter().map(Headline::body_char_count).min()
+    }
+
+    /// Median root-body char count (`None` when no roots).
+    #[must_use]
+    pub fn median_root_body_char_count(&self) -> Option<usize> {
+        let mut v: Vec<usize> = self.roots.iter().map(Headline::body_char_count).collect();
+        if v.is_empty() {
+            return None;
+        }
+        v.sort_unstable();
+        let mid = v.len() / 2;
+        Some(if v.len() % 2 == 1 {
+            v[mid]
+        } else {
+            v[mid - 1].midpoint(v[mid])
+        })
+    }
+
+    /// Histogram of root-body char counts to occurrence count.
+    #[must_use]
+    pub fn root_body_char_count_counts(&self) -> std::collections::BTreeMap<usize, usize> {
+        let mut m = std::collections::BTreeMap::new();
+        for r in &self.roots {
+            *m.entry(r.body_char_count()).or_insert(0) += 1;
+        }
+        m
+    }
+
     /// Maximum root title length in characters.
     #[must_use]
     pub fn max_root_title_len(&self) -> Option<usize> {
