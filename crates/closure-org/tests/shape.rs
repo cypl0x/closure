@@ -4683,3 +4683,40 @@ fn doc_mode_child_count_match() {
     let doc = parse("* A\n** B\n** C\n* D\n").expect("parse");
     assert_eq!(doc.mode_child_count(), Some(0));
 }
+
+#[test]
+fn doc_total_root_child_count_match() {
+    let doc = parse("* A\n** B\n** C\n* D\n** E\n").expect("parse");
+    // roots A=2, D=1 -> total 3
+    assert_eq!(doc.total_root_child_count(), 3);
+}
+
+#[test]
+fn doc_max_min_root_child_count_match() {
+    let doc = parse("* A\n** B\n** C\n* D\n").expect("parse");
+    assert_eq!(doc.max_root_child_count(), Some(2));
+    assert_eq!(doc.min_root_child_count(), Some(0));
+}
+
+#[test]
+fn doc_mean_root_child_count_match() {
+    let doc = parse("* A\n** B\n** C\n** E\n* D\n").expect("parse");
+    // roots A=3, D=0 -> mean 1
+    assert_eq!(doc.mean_root_child_count(), 1);
+}
+
+#[test]
+fn doc_median_root_child_count_match() {
+    let doc = parse("* A\n** B\n* C\n** D\n** E\n* F\n").expect("parse");
+    // roots A=1, C=2, F=0 -> sorted [0,1,2] median 1
+    assert_eq!(doc.median_root_child_count(), Some(1));
+}
+
+#[test]
+fn doc_root_child_count_counts_match() {
+    let doc = parse("* A\n* B\n* C\n** D\n").expect("parse");
+    // roots A=0, B=0, C=1
+    let m = doc.root_child_count_counts();
+    assert_eq!(m.get(&0), Some(&2));
+    assert_eq!(m.get(&1), Some(&1));
+}

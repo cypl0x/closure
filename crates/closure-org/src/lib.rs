@@ -2754,6 +2754,57 @@ impl OrgDoc {
         best.map(|(cc, _)| cc)
     }
 
+    /// Total direct-child count across roots only.
+    #[must_use]
+    pub fn total_root_child_count(&self) -> usize {
+        self.roots.iter().map(Headline::child_count).sum()
+    }
+
+    /// Maximum root child count.
+    #[must_use]
+    pub fn max_root_child_count(&self) -> Option<usize> {
+        self.roots.iter().map(Headline::child_count).max()
+    }
+
+    /// Minimum root child count.
+    #[must_use]
+    pub fn min_root_child_count(&self) -> Option<usize> {
+        self.roots.iter().map(Headline::child_count).min()
+    }
+
+    /// Integer mean root child count (`0` when no roots).
+    #[must_use]
+    pub fn mean_root_child_count(&self) -> usize {
+        let n = self.roots.len();
+        self.total_root_child_count().checked_div(n).unwrap_or(0)
+    }
+
+    /// Median root child count (`None` when no roots).
+    #[must_use]
+    pub fn median_root_child_count(&self) -> Option<usize> {
+        let mut v: Vec<usize> = self.roots.iter().map(Headline::child_count).collect();
+        if v.is_empty() {
+            return None;
+        }
+        v.sort_unstable();
+        let mid = v.len() / 2;
+        Some(if v.len() % 2 == 1 {
+            v[mid]
+        } else {
+            v[mid - 1].midpoint(v[mid])
+        })
+    }
+
+    /// Histogram of root child counts to occurrence count.
+    #[must_use]
+    pub fn root_child_count_counts(&self) -> std::collections::BTreeMap<usize, usize> {
+        let mut m = std::collections::BTreeMap::new();
+        for r in &self.roots {
+            *m.entry(r.child_count()).or_insert(0) += 1;
+        }
+        m
+    }
+
     /// Returns max descendant count across headlines.
     #[must_use]
     pub fn max_descendant_count(&self) -> usize {
