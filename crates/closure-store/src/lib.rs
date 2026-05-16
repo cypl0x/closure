@@ -1048,6 +1048,43 @@ impl Vault {
         seen.into_iter().collect()
     }
 
+    /// Total headline title length in characters across the vault.
+    #[must_use]
+    pub fn total_title_len(&self) -> usize {
+        self.iter()
+            .flat_map(|(_, d)| d.all_headlines())
+            .map(|h| h.title().chars().count())
+            .sum()
+    }
+
+    /// Integer mean headline title length (`0` when no headlines).
+    #[must_use]
+    pub fn mean_title_len(&self) -> usize {
+        let n = self
+            .iter()
+            .flat_map(|(_, d)| d.all_headlines())
+            .count();
+        self.total_title_len().checked_div(n).unwrap_or(0)
+    }
+
+    /// Maximum headline title length in characters across the vault.
+    #[must_use]
+    pub fn max_title_len(&self) -> Option<usize> {
+        self.iter()
+            .flat_map(|(_, d)| d.all_headlines())
+            .map(|h| h.title().chars().count())
+            .max()
+    }
+
+    /// Minimum headline title length in characters across the vault.
+    #[must_use]
+    pub fn min_title_len(&self) -> Option<usize> {
+        self.iter()
+            .flat_map(|(_, d)| d.all_headlines())
+            .map(|h| h.title().chars().count())
+            .min()
+    }
+
     /// All `:ID:` property values across the vault (with duplicates).
     #[must_use]
     pub fn all_id_properties(&self) -> Vec<String> {

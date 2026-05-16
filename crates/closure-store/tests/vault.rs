@@ -870,3 +870,25 @@ fn vault_watcher_observes_modify() {
     }
     assert!(saw, "expected at least one watcher event");
 }
+
+#[test]
+fn vault_total_title_len_match() {
+    let td = write_vault(&[("a.org", "* AA\n** BBBB\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.total_title_len(), 6);
+}
+
+#[test]
+fn vault_mean_title_len_match() {
+    let td = write_vault(&[("a.org", "* AA\n** BBBB\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.mean_title_len(), 3);
+}
+
+#[test]
+fn vault_max_min_title_len_match() {
+    let td = write_vault(&[("a.org", "* A\n** CCCC\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.max_title_len(), Some(4));
+    assert_eq!(v.min_title_len(), Some(1));
+}
