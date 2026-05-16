@@ -899,6 +899,56 @@ fn vault_mode_property_count_match() {
 }
 
 #[test]
+fn vault_scheduled_pct_match() {
+    let td = write_vault(&[("a.org", "* A\nSCHEDULED: <2026-01-01>\n* B\n* C\n* D\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    // 1 of 4 -> 25
+    assert_eq!(v.scheduled_pct(), 25);
+}
+
+#[test]
+fn vault_deadline_pct_match() {
+    let td = write_vault(&[("a.org", "* A\nDEADLINE: <2026-01-01>\n* B\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.deadline_pct(), 50);
+}
+
+#[test]
+fn vault_count_unscheduled_match() {
+    let td = write_vault(&[("a.org", "* A\nSCHEDULED: <2026-01-01>\n* B\n* C\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.count_unscheduled(), 2);
+}
+
+#[test]
+fn vault_unscheduled_pct_match() {
+    let td = write_vault(&[("a.org", "* A\nSCHEDULED: <2026-01-01>\n* B\n* C\n* D\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.unscheduled_pct(), 75);
+}
+
+#[test]
+fn vault_count_no_deadline_match() {
+    let td = write_vault(&[("a.org", "* A\nDEADLINE: <2026-01-01>\n* B\n* C\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.count_no_deadline(), 2);
+}
+
+#[test]
+fn vault_no_deadline_pct_match() {
+    let td = write_vault(&[("a.org", "* A\nDEADLINE: <2026-01-01>\n* B\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.no_deadline_pct(), 50);
+}
+
+#[test]
+fn vault_scheduled_pct_zero_when_empty() {
+    let td = write_vault(&[("a.org", "no headlines\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.scheduled_pct(), 0);
+}
+
+#[test]
 fn vault_path_with_max_headlines_match() {
     let td = write_vault(&[
         ("a.org", "* X\n"),

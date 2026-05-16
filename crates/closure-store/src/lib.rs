@@ -302,6 +302,50 @@ impl Vault {
             .sum()
     }
 
+    /// Percentage of headlines that are SCHEDULED (`0..=100`).
+    #[must_use]
+    pub fn scheduled_pct(&self) -> usize {
+        (self.scheduled_count() * 100)
+            .checked_div(self.headline_count())
+            .unwrap_or(0)
+    }
+
+    /// Percentage of headlines carrying a DEADLINE (`0..=100`).
+    #[must_use]
+    pub fn deadline_pct(&self) -> usize {
+        (self.deadline_count() * 100)
+            .checked_div(self.headline_count())
+            .unwrap_or(0)
+    }
+
+    /// Count of headlines that are not SCHEDULED.
+    #[must_use]
+    pub fn count_unscheduled(&self) -> usize {
+        self.headline_count() - self.scheduled_count()
+    }
+
+    /// Percentage of headlines that are not SCHEDULED (`0..=100`).
+    #[must_use]
+    pub fn unscheduled_pct(&self) -> usize {
+        (self.count_unscheduled() * 100)
+            .checked_div(self.headline_count())
+            .unwrap_or(0)
+    }
+
+    /// Count of headlines that carry no DEADLINE.
+    #[must_use]
+    pub fn count_no_deadline(&self) -> usize {
+        self.headline_count() - self.deadline_count()
+    }
+
+    /// Percentage of headlines that carry no DEADLINE (`0..=100`).
+    #[must_use]
+    pub fn no_deadline_pct(&self) -> usize {
+        (self.count_no_deadline() * 100)
+            .checked_div(self.headline_count())
+            .unwrap_or(0)
+    }
+
     /// Count of headlines with `CLOSED:` across the vault.
     #[must_use]
     pub fn closed_count(&self) -> usize {
