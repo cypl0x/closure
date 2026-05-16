@@ -1227,8 +1227,33 @@ impl OrgDoc {
     pub fn total_body_char_count(&self) -> usize {
         self.iter_headlines()
             .into_iter()
-            .map(|h| h.body_source().chars().count())
+            .map(Headline::body_char_count)
             .sum()
+    }
+
+    /// Integer mean headline-body char count (`0` when no headlines).
+    #[must_use]
+    pub fn mean_body_char_count(&self) -> usize {
+        let n = self.iter_headlines().len();
+        self.total_body_char_count().checked_div(n).unwrap_or(0)
+    }
+
+    /// Maximum headline-body char count across the document.
+    #[must_use]
+    pub fn max_body_char_count(&self) -> Option<usize> {
+        self.iter_headlines()
+            .into_iter()
+            .map(Headline::body_char_count)
+            .max()
+    }
+
+    /// Minimum headline-body char count across the document.
+    #[must_use]
+    pub fn min_body_char_count(&self) -> Option<usize> {
+        self.iter_headlines()
+            .into_iter()
+            .map(Headline::body_char_count)
+            .min()
     }
 
     /// Maximum root title length in characters.
@@ -6109,6 +6134,12 @@ impl Headline {
     #[must_use]
     pub fn body_line_count(&self) -> usize {
         self.body_source().lines().count()
+    }
+
+    /// Character count of this headline's body (does not recurse).
+    #[must_use]
+    pub fn body_char_count(&self) -> usize {
+        self.body_source().chars().count()
     }
 
     /// Verbatim body source as a single contiguous slice. Returns `""`

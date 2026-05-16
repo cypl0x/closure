@@ -4328,3 +4328,25 @@ fn doc_root_body_line_count_counts_match() {
     assert_eq!(m.get(&1), Some(&2));
     assert_eq!(m.get(&2), Some(&1));
 }
+
+#[test]
+fn headline_body_char_count_match() {
+    let doc = parse("* H\nabc\n").expect("parse");
+    // body source "abc\n" -> 4 chars
+    assert_eq!(doc.roots()[0].body_char_count(), 4);
+}
+
+#[test]
+fn doc_mean_body_char_count_match() {
+    let doc = parse("* A\nab\n* B\nabcdef\n").expect("parse");
+    // body src "ab\n"=3, "abcdef\n"=7 -> mean 5
+    assert_eq!(doc.mean_body_char_count(), 5);
+}
+
+#[test]
+fn doc_max_min_body_char_count_match() {
+    let doc = parse("* A\nx\n* B\nabcd\n").expect("parse");
+    // 2, 5
+    assert_eq!(doc.max_body_char_count(), Some(5));
+    assert_eq!(doc.min_body_char_count(), Some(2));
+}
