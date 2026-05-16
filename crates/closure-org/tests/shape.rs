@@ -4641,3 +4641,45 @@ fn doc_root_title_byte_len_counts_match() {
     assert_eq!(m.get(&2), Some(&2));
     assert_eq!(m.get(&3), Some(&1));
 }
+
+#[test]
+fn doc_min_child_count_match() {
+    let doc = parse("* A\n** B\n** C\n* D\n").expect("parse");
+    // child counts: A=2, B=0, C=0, D=0 -> min 0
+    assert_eq!(doc.min_child_count(), 0);
+}
+
+#[test]
+fn doc_total_child_count_match() {
+    let doc = parse("* A\n** B\n** C\n* D\n").expect("parse");
+    // 2+0+0+0 = 2
+    assert_eq!(doc.total_child_count(), 2);
+}
+
+#[test]
+fn doc_mean_child_count_match() {
+    let doc = parse("* A\n** B\n** C\n** E\n* D\n").expect("parse");
+    // A=3,B=0,C=0,E=0,D=0 total 3 / 5 = 0
+    assert_eq!(doc.mean_child_count(), 0);
+}
+
+#[test]
+fn doc_median_child_count_match() {
+    let doc = parse("* A\n** B\n** C\n* D\n").expect("parse");
+    // sorted child counts [0,0,0,2] -> median midpoint(0,0)=0
+    assert_eq!(doc.median_child_count(), Some(0));
+}
+
+#[test]
+fn doc_child_count_counts_match() {
+    let doc = parse("* A\n** B\n** C\n* D\n").expect("parse");
+    let m = doc.child_count_counts();
+    assert_eq!(m.get(&0), Some(&3));
+    assert_eq!(m.get(&2), Some(&1));
+}
+
+#[test]
+fn doc_mode_child_count_match() {
+    let doc = parse("* A\n** B\n** C\n* D\n").expect("parse");
+    assert_eq!(doc.mode_child_count(), Some(0));
+}

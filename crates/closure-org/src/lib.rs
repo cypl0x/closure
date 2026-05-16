@@ -2686,6 +2686,74 @@ impl OrgDoc {
             .unwrap_or(0)
     }
 
+    /// Returns min child count across headlines (`0` when empty).
+    #[must_use]
+    pub fn min_child_count(&self) -> usize {
+        self.iter_headlines()
+            .into_iter()
+            .map(Headline::child_count)
+            .min()
+            .unwrap_or(0)
+    }
+
+    /// Total direct-child count across all headlines.
+    #[must_use]
+    pub fn total_child_count(&self) -> usize {
+        self.iter_headlines()
+            .into_iter()
+            .map(Headline::child_count)
+            .sum()
+    }
+
+    /// Integer mean child count across headlines (`0` when empty).
+    #[must_use]
+    pub fn mean_child_count(&self) -> usize {
+        let n = self.iter_headlines().len();
+        self.total_child_count().checked_div(n).unwrap_or(0)
+    }
+
+    /// Median child count across headlines (`None` when empty).
+    #[must_use]
+    pub fn median_child_count(&self) -> Option<usize> {
+        let mut v: Vec<usize> = self
+            .iter_headlines()
+            .into_iter()
+            .map(Headline::child_count)
+            .collect();
+        if v.is_empty() {
+            return None;
+        }
+        v.sort_unstable();
+        let mid = v.len() / 2;
+        Some(if v.len() % 2 == 1 {
+            v[mid]
+        } else {
+            v[mid - 1].midpoint(v[mid])
+        })
+    }
+
+    /// Histogram of child counts to occurrence count.
+    #[must_use]
+    pub fn child_count_counts(&self) -> std::collections::BTreeMap<usize, usize> {
+        let mut m = std::collections::BTreeMap::new();
+        for h in self.iter_headlines() {
+            *m.entry(h.child_count()).or_insert(0) += 1;
+        }
+        m
+    }
+
+    /// Most common child count (lowest wins ties).
+    #[must_use]
+    pub fn mode_child_count(&self) -> Option<usize> {
+        let mut best: Option<(usize, usize)> = None;
+        for (cc, c) in self.child_count_counts() {
+            if best.is_none_or(|(_, bc)| c > bc) {
+                best = Some((cc, c));
+            }
+        }
+        best.map(|(cc, _)| cc)
+    }
+
     /// Returns max descendant count across headlines.
     #[must_use]
     pub fn max_descendant_count(&self) -> usize {
