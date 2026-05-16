@@ -286,3 +286,32 @@ fn chord_trie_mean_depth_zero_when_empty() {
     let t = closure_input::ChordTrie::build(&[]);
     assert_eq!(t.mean_depth(), 0);
 }
+
+#[test]
+fn chord_trie_mode_depth_match() {
+    let t = closure_input::ChordTrie::build(&[
+        ("a b", "x"),
+        ("c d", "y"),
+        ("e f g", "z"),
+    ]);
+    // depths 2,2,3 -> mode 2
+    assert_eq!(t.mode_depth(), Some(2));
+}
+
+#[test]
+fn chord_trie_mode_depth_none_when_empty() {
+    let t = closure_input::ChordTrie::build(&[]);
+    assert_eq!(t.mode_depth(), None);
+}
+
+#[test]
+fn chord_trie_commands_at_depth_match() {
+    let t = closure_input::ChordTrie::build(&[
+        ("a b", "first"),
+        ("c d", "second"),
+        ("e f g", "third"),
+    ]);
+    assert_eq!(t.commands_at_depth(2), vec!["first", "second"]);
+    assert_eq!(t.commands_at_depth(3), vec!["third"]);
+    assert!(t.commands_at_depth(9).is_empty());
+}

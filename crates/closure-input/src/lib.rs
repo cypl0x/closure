@@ -309,6 +309,44 @@ impl ChordTrie {
         total.checked_div(n).unwrap_or(0)
     }
 
+    /// Most common chord depth (lowest depth wins ties; `None` when empty).
+    #[must_use]
+    pub fn mode_depth(&self) -> Option<usize> {
+        let mut best: Option<(usize, usize)> = None;
+        for (depth, c) in self.chord_depth_counts() {
+            if best.is_none_or(|(_, bc)| c > bc) {
+                best = Some((depth, c));
+            }
+        }
+        best.map(|(depth, _)| depth)
+    }
+
+    /// Sorted command names bound at exactly `depth` strokes.
+    #[must_use]
+    pub fn commands_at_depth(&self, depth: usize) -> Vec<&str> {
+        fn walk<'a>(
+            idx: usize,
+            cur: usize,
+            target: usize,
+            nodes: &'a [TrieNode],
+            out: &mut Vec<&'a str>,
+        ) {
+            let n = &nodes[idx];
+            if cur == target {
+                if let Some(c) = &n.command {
+                    out.push(c.as_str());
+                }
+            }
+            for &child in n.children.values() {
+                walk(child, cur + 1, target, nodes, out);
+            }
+        }
+        let mut out = Vec::new();
+        walk(0, 0, depth, &self.nodes, &mut out);
+        out.sort_unstable();
+        out
+    }
+
     /// True iff `command` is bound somewhere in the trie.
     #[must_use]
     pub fn contains_command(&self, command: &str) -> bool {
