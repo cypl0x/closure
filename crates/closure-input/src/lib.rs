@@ -332,10 +332,8 @@ impl ChordTrie {
             out: &mut Vec<&'a str>,
         ) {
             let n = &nodes[idx];
-            if cur == target {
-                if let Some(c) = &n.command {
-                    out.push(c.as_str());
-                }
+            if cur == target && let Some(c) = &n.command {
+                out.push(c.as_str());
             }
             for &child in n.children.values() {
                 walk(child, cur + 1, target, nodes, out);
