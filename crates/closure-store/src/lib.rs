@@ -1085,6 +1085,50 @@ impl Vault {
             .min()
     }
 
+    /// Median headline title length in characters (`None` when empty).
+    #[must_use]
+    pub fn median_title_len(&self) -> Option<usize> {
+        let mut v: Vec<usize> = self
+            .iter()
+            .flat_map(|(_, d)| d.all_headlines())
+            .map(|h| h.title().chars().count())
+            .collect();
+        if v.is_empty() {
+            return None;
+        }
+        v.sort_unstable();
+        let mid = v.len() / 2;
+        Some(if v.len() % 2 == 1 {
+            v[mid]
+        } else {
+            v[mid - 1].midpoint(v[mid])
+        })
+    }
+
+    /// Histogram of headline title lengths (chars) to occurrence count.
+    #[must_use]
+    pub fn title_len_counts(&self) -> std::collections::BTreeMap<usize, usize> {
+        let mut m = std::collections::BTreeMap::new();
+        for (_, d) in self.iter() {
+            for h in d.all_headlines() {
+                *m.entry(h.title().chars().count()).or_insert(0) += 1;
+            }
+        }
+        m
+    }
+
+    /// Most common headline title length (lowest length wins ties).
+    #[must_use]
+    pub fn mode_title_len(&self) -> Option<usize> {
+        let mut best: Option<(usize, usize)> = None;
+        for (len, c) in self.title_len_counts() {
+            if best.is_none_or(|(_, bc)| c > bc) {
+                best = Some((len, c));
+            }
+        }
+        best.map(|(len, _)| len)
+    }
+
     /// All `:ID:` property values across the vault (with duplicates).
     #[must_use]
     pub fn all_id_properties(&self) -> Vec<String> {

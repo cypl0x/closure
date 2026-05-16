@@ -892,3 +892,27 @@ fn vault_max_min_title_len_match() {
     assert_eq!(v.max_title_len(), Some(4));
     assert_eq!(v.min_title_len(), Some(1));
 }
+
+#[test]
+fn vault_median_title_len_match() {
+    let td = write_vault(&[("a.org", "* A\n** BB\n** CCCC\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    // chars 1,2,4 -> median 2
+    assert_eq!(v.median_title_len(), Some(2));
+}
+
+#[test]
+fn vault_title_len_counts_match() {
+    let td = write_vault(&[("a.org", "* AA\n** BB\n** CCC\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    let m = v.title_len_counts();
+    assert_eq!(m.get(&2), Some(&2));
+    assert_eq!(m.get(&3), Some(&1));
+}
+
+#[test]
+fn vault_mode_title_len_match() {
+    let td = write_vault(&[("a.org", "* AA\n** BB\n** CCC\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.mode_title_len(), Some(2));
+}
