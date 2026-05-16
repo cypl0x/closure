@@ -5163,6 +5163,66 @@ impl OrgDoc {
         self.roots.iter().map(walk).sum()
     }
 
+    /// Maximum per-headline timestamp count.
+    #[must_use]
+    pub fn max_timestamp_count(&self) -> Option<usize> {
+        self.iter_headlines()
+            .into_iter()
+            .map(Headline::timestamp_count)
+            .max()
+    }
+
+    /// Minimum per-headline timestamp count.
+    #[must_use]
+    pub fn min_timestamp_count(&self) -> Option<usize> {
+        self.iter_headlines()
+            .into_iter()
+            .map(Headline::timestamp_count)
+            .min()
+    }
+
+    /// Median per-headline timestamp count (`None` when empty).
+    #[must_use]
+    pub fn median_timestamp_count(&self) -> Option<usize> {
+        let mut v: Vec<usize> = self
+            .iter_headlines()
+            .into_iter()
+            .map(Headline::timestamp_count)
+            .collect();
+        if v.is_empty() {
+            return None;
+        }
+        v.sort_unstable();
+        let mid = v.len() / 2;
+        Some(if v.len() % 2 == 1 {
+            v[mid]
+        } else {
+            v[mid - 1].midpoint(v[mid])
+        })
+    }
+
+    /// Histogram of per-headline timestamp counts to occurrence count.
+    #[must_use]
+    pub fn timestamp_count_counts(&self) -> std::collections::BTreeMap<usize, usize> {
+        let mut m = std::collections::BTreeMap::new();
+        for h in self.iter_headlines() {
+            *m.entry(h.timestamp_count()).or_insert(0) += 1;
+        }
+        m
+    }
+
+    /// Most common per-headline timestamp count (lowest wins ties).
+    #[must_use]
+    pub fn mode_timestamp_count(&self) -> Option<usize> {
+        let mut best: Option<(usize, usize)> = None;
+        for (tc, c) in self.timestamp_count_counts() {
+            if best.is_none_or(|(_, bc)| c > bc) {
+                best = Some((tc, c));
+            }
+        }
+        best.map(|(tc, _)| tc)
+    }
+
     /// Total cookie count across every headline.
     #[must_use]
     pub fn total_cookie_count(&self) -> usize {
