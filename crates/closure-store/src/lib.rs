@@ -1086,6 +1086,75 @@ impl Vault {
             .sum()
     }
 
+    /// Maximum per-headline property count across the vault.
+    #[must_use]
+    pub fn max_property_count(&self) -> Option<usize> {
+        self.iter()
+            .flat_map(|(_, d)| d.all_headlines())
+            .map(|h| h.properties().len())
+            .max()
+    }
+
+    /// Minimum per-headline property count across the vault.
+    #[must_use]
+    pub fn min_property_count(&self) -> Option<usize> {
+        self.iter()
+            .flat_map(|(_, d)| d.all_headlines())
+            .map(|h| h.properties().len())
+            .min()
+    }
+
+    /// Integer mean per-headline property count (`0` when no headlines).
+    #[must_use]
+    pub fn mean_property_count(&self) -> usize {
+        let n = self.iter().flat_map(|(_, d)| d.all_headlines()).count();
+        self.total_property_count().checked_div(n).unwrap_or(0)
+    }
+
+    /// Median per-headline property count (`None` when no headlines).
+    #[must_use]
+    pub fn median_property_count(&self) -> Option<usize> {
+        let mut v: Vec<usize> = self
+            .iter()
+            .flat_map(|(_, d)| d.all_headlines())
+            .map(|h| h.properties().len())
+            .collect();
+        if v.is_empty() {
+            return None;
+        }
+        v.sort_unstable();
+        let mid = v.len() / 2;
+        Some(if v.len() % 2 == 1 {
+            v[mid]
+        } else {
+            v[mid - 1].midpoint(v[mid])
+        })
+    }
+
+    /// Histogram of per-headline property counts to occurrence count.
+    #[must_use]
+    pub fn property_count_counts(&self) -> std::collections::BTreeMap<usize, usize> {
+        let mut m = std::collections::BTreeMap::new();
+        for (_, d) in self.iter() {
+            for h in d.all_headlines() {
+                *m.entry(h.properties().len()).or_insert(0) += 1;
+            }
+        }
+        m
+    }
+
+    /// Most common per-headline property count (lowest wins ties).
+    #[must_use]
+    pub fn mode_property_count(&self) -> Option<usize> {
+        let mut best: Option<(usize, usize)> = None;
+        for (pc, c) in self.property_count_counts() {
+            if best.is_none_or(|(_, bc)| c > bc) {
+                best = Some((pc, c));
+            }
+        }
+        best.map(|(pc, _)| pc)
+    }
+
     /// Number of headlines (across all paths) carrying `tag`.
     #[must_use]
     pub fn headline_count_with_tag(&self, tag: &str) -> usize {

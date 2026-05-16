@@ -844,6 +844,61 @@ fn vault_mode_headlines_per_path_none_on_empty() {
 }
 
 #[test]
+fn vault_max_min_property_count_match() {
+    let td = write_vault(&[(
+        "a.org",
+        "* A\n:PROPERTIES:\n:K1: v\n:K2: w\n:END:\n* B\n",
+    )]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.max_property_count(), Some(2));
+    assert_eq!(v.min_property_count(), Some(0));
+}
+
+#[test]
+fn vault_mean_property_count_match() {
+    let td = write_vault(&[(
+        "a.org",
+        "* A\n:PROPERTIES:\n:K1: v\n:K2: w\n:K3: x\n:K4: y\n:END:\n* B\n",
+    )]);
+    let v = Vault::open(td.path()).expect("open");
+    // 4,0 -> mean 2
+    assert_eq!(v.mean_property_count(), 2);
+}
+
+#[test]
+fn vault_median_property_count_match() {
+    let td = write_vault(&[(
+        "a.org",
+        "* A\n* B\n:PROPERTIES:\n:K1: v\n:END:\n* C\n:PROPERTIES:\n:K2: v\n:K3: w\n:END:\n",
+    )]);
+    let v = Vault::open(td.path()).expect("open");
+    // 0,1,2 -> median 1
+    assert_eq!(v.median_property_count(), Some(1));
+}
+
+#[test]
+fn vault_property_count_counts_match() {
+    let td = write_vault(&[(
+        "a.org",
+        "* A\n:PROPERTIES:\n:K1: v\n:END:\n* B\n:PROPERTIES:\n:K2: v\n:END:\n* C\n:PROPERTIES:\n:K3: v\n:K4: w\n:END:\n",
+    )]);
+    let v = Vault::open(td.path()).expect("open");
+    let m = v.property_count_counts();
+    assert_eq!(m.get(&1), Some(&2));
+    assert_eq!(m.get(&2), Some(&1));
+}
+
+#[test]
+fn vault_mode_property_count_match() {
+    let td = write_vault(&[(
+        "a.org",
+        "* A\n:PROPERTIES:\n:K1: v\n:END:\n* B\n:PROPERTIES:\n:K2: v\n:END:\n* C\n:PROPERTIES:\n:K3: v\n:K4: w\n:END:\n",
+    )]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.mode_property_count(), Some(1));
+}
+
+#[test]
 fn vault_path_with_max_headlines_match() {
     let td = write_vault(&[
         ("a.org", "* X\n"),
