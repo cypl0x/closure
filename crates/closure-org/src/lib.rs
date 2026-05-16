@@ -1101,6 +1101,25 @@ impl OrgDoc {
             .map(|(k, _)| k)
     }
 
+    /// Lexicographically smallest priority letter (highest urgency).
+    #[must_use]
+    pub fn min_priority(&self) -> Option<char> {
+        self.priority_counts().keys().min().copied()
+    }
+
+    /// Lexicographically largest priority letter (lowest urgency).
+    #[must_use]
+    pub fn max_priority(&self) -> Option<char> {
+        self.priority_counts().keys().max().copied()
+    }
+
+    /// `(min, max)` priority letter across the document (`None` when no
+    /// prioritized headline exists).
+    #[must_use]
+    pub fn priority_range(&self) -> Option<(char, char)> {
+        Some((self.min_priority()?, self.max_priority()?))
+    }
+
     /// Least-common level across the document.
     #[must_use]
     pub fn least_common_level(&self) -> Option<u8> {

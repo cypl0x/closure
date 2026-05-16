@@ -4870,3 +4870,30 @@ fn doc_root_body_word_count_counts_match() {
     assert_eq!(m.get(&1), Some(&2));
     assert_eq!(m.get(&3), Some(&1));
 }
+
+#[test]
+fn doc_min_priority_match() {
+    let doc = parse("* [#A] one\n* [#C] two\n").expect("parse");
+    // chars 'A' < 'C' -> min 'A'
+    assert_eq!(doc.min_priority(), Some('A'));
+}
+
+#[test]
+fn doc_max_priority_match() {
+    let doc = parse("* [#A] one\n* [#C] two\n").expect("parse");
+    assert_eq!(doc.max_priority(), Some('C'));
+}
+
+#[test]
+fn doc_priority_range_match() {
+    let doc = parse("* [#A] one\n* [#B] two\n* [#C] three\n").expect("parse");
+    assert_eq!(doc.priority_range(), Some(('A', 'C')));
+}
+
+#[test]
+fn doc_priority_range_none_when_unprioritized() {
+    let doc = parse("* one\n* two\n").expect("parse");
+    assert_eq!(doc.priority_range(), None);
+    assert_eq!(doc.min_priority(), None);
+    assert_eq!(doc.max_priority(), None);
+}
