@@ -1207,6 +1207,40 @@ impl Vault {
         best.map(|(wc, _)| wc)
     }
 
+    /// Total headline-body line count across the vault.
+    #[must_use]
+    pub fn total_body_line_count(&self) -> usize {
+        self.iter()
+            .flat_map(|(_, d)| d.all_headlines())
+            .map(|h| h.body_text().lines().count())
+            .sum()
+    }
+
+    /// Integer mean headline-body line count (`0` when no headlines).
+    #[must_use]
+    pub fn mean_body_line_count(&self) -> usize {
+        let n = self.iter().flat_map(|(_, d)| d.all_headlines()).count();
+        self.total_body_line_count().checked_div(n).unwrap_or(0)
+    }
+
+    /// Maximum headline-body line count across the vault.
+    #[must_use]
+    pub fn max_body_line_count(&self) -> Option<usize> {
+        self.iter()
+            .flat_map(|(_, d)| d.all_headlines())
+            .map(|h| h.body_text().lines().count())
+            .max()
+    }
+
+    /// Minimum headline-body line count across the vault.
+    #[must_use]
+    pub fn min_body_line_count(&self) -> Option<usize> {
+        self.iter()
+            .flat_map(|(_, d)| d.all_headlines())
+            .map(|h| h.body_text().lines().count())
+            .min()
+    }
+
     /// All `:ID:` property values across the vault (with duplicates).
     #[must_use]
     pub fn all_id_properties(&self) -> Vec<String> {
