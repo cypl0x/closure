@@ -5243,3 +5243,43 @@ fn doc_scheduled_pct_zero_when_empty() {
     assert_eq!(doc.scheduled_pct(), 0);
     assert_eq!(doc.timestamped_pct(), 0);
 }
+
+#[test]
+fn doc_count_unscheduled_match() {
+    let doc = parse("* A\nSCHEDULED: <2026-01-01>\n* B\n* C\n").expect("parse");
+    // 2 of 3 not scheduled
+    assert_eq!(doc.count_unscheduled(), 2);
+}
+
+#[test]
+fn doc_unscheduled_pct_match() {
+    let doc = parse("* A\nSCHEDULED: <2026-01-01>\n* B\n* C\n* D\n").expect("parse");
+    // 3 of 4 -> 75
+    assert_eq!(doc.unscheduled_pct(), 75);
+}
+
+#[test]
+fn doc_count_no_deadline_match() {
+    let doc = parse("* A\nDEADLINE: <2026-01-01>\n* B\n* C\n").expect("parse");
+    assert_eq!(doc.count_no_deadline(), 2);
+}
+
+#[test]
+fn doc_no_deadline_pct_match() {
+    let doc = parse("* A\nDEADLINE: <2026-01-01>\n* B\n").expect("parse");
+    // 1 of 2 -> 50
+    assert_eq!(doc.no_deadline_pct(), 50);
+}
+
+#[test]
+fn doc_count_untimestamped_match() {
+    let doc = parse("* A\n<2026-01-01>\n* B\nno\n* C\nno\n").expect("parse");
+    assert_eq!(doc.count_untimestamped(), 2);
+}
+
+#[test]
+fn doc_untimestamped_pct_match() {
+    let doc = parse("* A\n<2026-01-01>\n* B\nno\n* C\nno\n* D\nno\n").expect("parse");
+    // 3 of 4 -> 75
+    assert_eq!(doc.untimestamped_pct(), 75);
+}

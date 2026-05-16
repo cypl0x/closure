@@ -4994,6 +4994,47 @@ impl OrgDoc {
         (self.count_timestamped() * 100).checked_div(n).unwrap_or(0)
     }
 
+    /// Count of headlines that are not SCHEDULED.
+    #[must_use]
+    pub fn count_unscheduled(&self) -> usize {
+        self.iter_headlines().len() - self.count_scheduled()
+    }
+
+    /// Percentage of headlines that are not SCHEDULED (`0..=100`).
+    #[must_use]
+    pub fn unscheduled_pct(&self) -> usize {
+        let n = self.iter_headlines().len();
+        (self.count_unscheduled() * 100).checked_div(n).unwrap_or(0)
+    }
+
+    /// Count of headlines that carry no DEADLINE.
+    #[must_use]
+    pub fn count_no_deadline(&self) -> usize {
+        self.iter_headlines().len() - self.count_with_deadline()
+    }
+
+    /// Percentage of headlines that carry no DEADLINE (`0..=100`).
+    #[must_use]
+    pub fn no_deadline_pct(&self) -> usize {
+        let n = self.iter_headlines().len();
+        (self.count_no_deadline() * 100).checked_div(n).unwrap_or(0)
+    }
+
+    /// Count of headlines carrying no timestamp.
+    #[must_use]
+    pub fn count_untimestamped(&self) -> usize {
+        self.iter_headlines().len() - self.count_timestamped()
+    }
+
+    /// Percentage of headlines carrying no timestamp (`0..=100`).
+    #[must_use]
+    pub fn untimestamped_pct(&self) -> usize {
+        let n = self.iter_headlines().len();
+        (self.count_untimestamped() * 100)
+            .checked_div(n)
+            .unwrap_or(0)
+    }
+
     /// Number of headlines carrying zero tags.
     #[must_use]
     pub fn untagged_count(&self) -> usize {
