@@ -986,3 +986,27 @@ fn vault_max_min_body_line_count_match() {
     assert_eq!(v.max_body_line_count(), Some(2));
     assert_eq!(v.min_body_line_count(), Some(1));
 }
+
+#[test]
+fn vault_median_body_line_count_match() {
+    let td = write_vault(&[("a.org", "* A\n* B\nx\n* C\ny\nz\nw\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    // 0,1,3 -> median 1
+    assert_eq!(v.median_body_line_count(), Some(1));
+}
+
+#[test]
+fn vault_body_line_count_counts_match() {
+    let td = write_vault(&[("a.org", "* A\nx\n* B\ny\n* C\nz\nw\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    let m = v.body_line_count_counts();
+    assert_eq!(m.get(&1), Some(&2));
+    assert_eq!(m.get(&2), Some(&1));
+}
+
+#[test]
+fn vault_mode_body_line_count_match() {
+    let td = write_vault(&[("a.org", "* A\nx\n* B\ny\n* C\nz\nw\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.mode_body_line_count(), Some(1));
+}
