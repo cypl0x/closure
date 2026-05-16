@@ -4897,3 +4897,32 @@ fn doc_priority_range_none_when_unprioritized() {
     assert_eq!(doc.min_priority(), None);
     assert_eq!(doc.max_priority(), None);
 }
+
+#[test]
+fn doc_min_tag_count_match() {
+    let doc = parse("* A :x:y:\n* B :x:\n* C\n").expect("parse");
+    // tag counts A=2,B=1,C=0 -> min 0
+    assert_eq!(doc.min_tag_count(), 0);
+}
+
+#[test]
+fn doc_median_tag_count_match() {
+    let doc = parse("* A :x:y:\n* B :x:\n* C\n").expect("parse");
+    // sorted [0,1,2] -> median 1
+    assert_eq!(doc.median_tag_count(), Some(1));
+}
+
+#[test]
+fn doc_headline_tag_count_counts_match() {
+    let doc = parse("* A :x:\n* B :y:\n* C :p:q:\n").expect("parse");
+    // tag counts 1,1,2
+    let m = doc.headline_tag_count_counts();
+    assert_eq!(m.get(&1), Some(&2));
+    assert_eq!(m.get(&2), Some(&1));
+}
+
+#[test]
+fn doc_mode_tag_count_match() {
+    let doc = parse("* A :x:\n* B :y:\n* C :p:q:\n").expect("parse");
+    assert_eq!(doc.mode_tag_count(), Some(1));
+}

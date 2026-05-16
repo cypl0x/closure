@@ -2846,6 +2846,58 @@ impl OrgDoc {
             .unwrap_or(0)
     }
 
+    /// Returns min tag count across headlines (`0` when empty).
+    #[must_use]
+    pub fn min_tag_count(&self) -> usize {
+        self.iter_headlines()
+            .into_iter()
+            .map(Headline::tag_count)
+            .min()
+            .unwrap_or(0)
+    }
+
+    /// Median per-headline tag count (`None` when empty).
+    #[must_use]
+    pub fn median_tag_count(&self) -> Option<usize> {
+        let mut v: Vec<usize> = self
+            .iter_headlines()
+            .into_iter()
+            .map(Headline::tag_count)
+            .collect();
+        if v.is_empty() {
+            return None;
+        }
+        v.sort_unstable();
+        let mid = v.len() / 2;
+        Some(if v.len() % 2 == 1 {
+            v[mid]
+        } else {
+            v[mid - 1].midpoint(v[mid])
+        })
+    }
+
+    /// Histogram of per-headline tag counts to occurrence count.
+    #[must_use]
+    pub fn headline_tag_count_counts(&self) -> std::collections::BTreeMap<usize, usize> {
+        let mut m = std::collections::BTreeMap::new();
+        for h in self.iter_headlines() {
+            *m.entry(h.tag_count()).or_insert(0) += 1;
+        }
+        m
+    }
+
+    /// Most common per-headline tag count (lowest wins ties).
+    #[must_use]
+    pub fn mode_tag_count(&self) -> Option<usize> {
+        let mut best: Option<(usize, usize)> = None;
+        for (tc, c) in self.headline_tag_count_counts() {
+            if best.is_none_or(|(_, bc)| c > bc) {
+                best = Some((tc, c));
+            }
+        }
+        best.map(|(tc, _)| tc)
+    }
+
     /// Returns max property count across headlines.
     #[must_use]
     pub fn max_property_count(&self) -> usize {
