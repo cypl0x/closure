@@ -5169,3 +5169,43 @@ fn doc_mode_timestamp_count_match() {
         .expect("parse");
     assert_eq!(doc.mode_timestamp_count(), Some(1));
 }
+
+#[test]
+fn doc_total_root_timestamp_count_match() {
+    let doc = parse("* A\n<2026-01-01> <2026-01-02>\n** child\n<2026-09-09>\n* B\n<2026-01-03>\n")
+        .expect("parse");
+    // roots only: A=2, B=1 -> total 3
+    assert_eq!(doc.total_root_timestamp_count(), 3);
+}
+
+#[test]
+fn doc_max_min_root_timestamp_count_match() {
+    let doc = parse("* A\n<2026-01-01> <2026-01-02>\n* B\nno\n").expect("parse");
+    assert_eq!(doc.max_root_timestamp_count(), Some(2));
+    assert_eq!(doc.min_root_timestamp_count(), Some(0));
+}
+
+#[test]
+fn doc_mean_root_timestamp_count_match() {
+    let doc = parse("* A\n<2026-01-01> <2026-01-02> <2026-01-03> <2026-01-04>\n* B\nno\n")
+        .expect("parse");
+    // 4,0 -> mean 2
+    assert_eq!(doc.mean_root_timestamp_count(), 2);
+}
+
+#[test]
+fn doc_median_root_timestamp_count_match() {
+    let doc = parse("* A\nno\n* B\n<2026-01-01>\n* C\n<2026-01-02> <2026-01-03>\n")
+        .expect("parse");
+    // 0,1,2 -> median 1
+    assert_eq!(doc.median_root_timestamp_count(), Some(1));
+}
+
+#[test]
+fn doc_root_timestamp_count_counts_match() {
+    let doc = parse("* A\n<2026-01-01>\n* B\n<2026-01-02>\n* C\n<2026-01-03> <2026-01-04>\n")
+        .expect("parse");
+    let m = doc.root_timestamp_count_counts();
+    assert_eq!(m.get(&1), Some(&2));
+    assert_eq!(m.get(&2), Some(&1));
+}
