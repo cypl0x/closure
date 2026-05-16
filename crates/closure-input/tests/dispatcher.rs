@@ -341,6 +341,30 @@ fn dispatcher_chord_stroke_counts_match() {
 }
 
 #[test]
+fn dispatcher_mode_chord_strokes_match() {
+    let mut reg = Registry::new();
+    reg.register(Box::new(RenameHeadline::new_placeholder()));
+    let disp = Dispatcher::from_registry(&reg, InputMode::Doom);
+    assert_eq!(disp.mode_chord_strokes(), Some(3));
+}
+
+#[test]
+fn dispatcher_mode_chord_strokes_none_when_empty() {
+    let reg = Registry::new();
+    let disp = Dispatcher::from_registry(&reg, InputMode::Emacs);
+    assert_eq!(disp.mode_chord_strokes(), None);
+}
+
+#[test]
+fn dispatcher_has_command_match() {
+    let mut reg = Registry::new();
+    reg.register(Box::new(RenameHeadline::new_placeholder()));
+    let disp = Dispatcher::from_registry(&reg, InputMode::Doom);
+    assert!(disp.has_command("rename-headline"));
+    assert!(!disp.has_command("nope"));
+}
+
+#[test]
 fn chord_trie_commands_at_depth_match() {
     let t = closure_input::ChordTrie::build(&[
         ("a b", "first"),

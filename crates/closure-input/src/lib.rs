@@ -171,6 +171,24 @@ impl Dispatcher {
         }
         m
     }
+
+    /// Most common chord stroke count (lowest wins ties; `None` when empty).
+    #[must_use]
+    pub fn mode_chord_strokes(&self) -> Option<usize> {
+        let mut best: Option<(usize, usize)> = None;
+        for (sc, c) in self.chord_stroke_counts() {
+            if best.is_none_or(|(_, bc)| c > bc) {
+                best = Some((sc, c));
+            }
+        }
+        best.map(|(sc, _)| sc)
+    }
+
+    /// True iff `command` is bound to at least one chord.
+    #[must_use]
+    pub fn has_command(&self, command: &str) -> bool {
+        self.bindings.values().any(|v| v == command)
+    }
 }
 
 /// Input-mode errors.
