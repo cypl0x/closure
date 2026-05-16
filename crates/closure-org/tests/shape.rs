@@ -4154,3 +4154,29 @@ fn doc_mode_headline_title_len_match() {
     // chars 2,2,3 -> mode 2
     assert_eq!(doc.mode_headline_title_len(), Some(2));
 }
+
+#[test]
+fn headline_title_word_count_match() {
+    let doc = parse("* one two three\n").expect("parse");
+    assert_eq!(doc.roots()[0].title_word_count(), 3);
+}
+
+#[test]
+fn doc_total_title_word_count_match() {
+    let doc = parse("* a b\n** c d e\n").expect("parse");
+    assert_eq!(doc.total_title_word_count(), 5);
+}
+
+#[test]
+fn doc_mean_title_word_count_match() {
+    let doc = parse("* a b\n** c d e f\n").expect("parse");
+    // words 2,4 -> mean 3
+    assert_eq!(doc.mean_title_word_count(), 3);
+}
+
+#[test]
+fn doc_max_min_title_word_count_match() {
+    let doc = parse("* a\n** b c d\n").expect("parse");
+    assert_eq!(doc.max_title_word_count(), Some(3));
+    assert_eq!(doc.min_title_word_count(), Some(1));
+}

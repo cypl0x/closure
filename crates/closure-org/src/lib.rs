@@ -1208,6 +1208,40 @@ impl OrgDoc {
         m
     }
 
+    /// Total whitespace-separated word count across all headline titles.
+    #[must_use]
+    pub fn total_title_word_count(&self) -> usize {
+        self.iter_headlines()
+            .into_iter()
+            .map(Headline::title_word_count)
+            .sum()
+    }
+
+    /// Integer mean title word count (`0` when no headlines).
+    #[must_use]
+    pub fn mean_title_word_count(&self) -> usize {
+        let n = self.iter_headlines().len();
+        self.total_title_word_count().checked_div(n).unwrap_or(0)
+    }
+
+    /// Maximum title word count across headlines.
+    #[must_use]
+    pub fn max_title_word_count(&self) -> Option<usize> {
+        self.iter_headlines()
+            .into_iter()
+            .map(Headline::title_word_count)
+            .max()
+    }
+
+    /// Minimum title word count across headlines.
+    #[must_use]
+    pub fn min_title_word_count(&self) -> Option<usize> {
+        self.iter_headlines()
+            .into_iter()
+            .map(Headline::title_word_count)
+            .min()
+    }
+
     /// Median headline title length in characters (`None` when empty).
     #[must_use]
     pub fn median_headline_title_len(&self) -> Option<usize> {
@@ -6535,6 +6569,12 @@ impl Headline {
     #[must_use]
     pub fn title_link_count(&self) -> usize {
         find_links(self.title()).len()
+    }
+
+    /// Whitespace-separated word count over this headline's title.
+    #[must_use]
+    pub fn title_word_count(&self) -> usize {
+        self.title().split_whitespace().count()
     }
 
     /// Number of timestamps found in title + body.
