@@ -408,6 +408,45 @@ fn vault_max_level_none_on_empty() {
 }
 
 #[test]
+fn vault_total_level_match() {
+    let td = write_vault(&[("a.org", "* A\n** B\n*** C\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    // 1+2+3 = 6
+    assert_eq!(v.total_level(), 6);
+}
+
+#[test]
+fn vault_mean_level_match() {
+    let td = write_vault(&[("a.org", "* A\n*** B\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    // 1,3 -> mean 2
+    assert_eq!(v.mean_level(), 2);
+}
+
+#[test]
+fn vault_mean_level_zero_on_empty() {
+    let td = write_vault(&[("a.org", "no headlines\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.mean_level(), 0);
+}
+
+#[test]
+fn vault_median_level_match() {
+    let td = write_vault(&[("a.org", "* A\n** B\n**** C\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    // 1,2,4 -> median 2
+    assert_eq!(v.median_level(), Some(2));
+}
+
+#[test]
+fn vault_mode_level_match() {
+    let td = write_vault(&[("a.org", "* A\n* B\n** C\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    // levels 1,1,2 -> mode 1
+    assert_eq!(v.mode_level(), Some(1));
+}
+
+#[test]
 fn vault_paths_with_priority_returns_match() {
     let td = write_vault(&[
         ("a.org", "* [#A] X\n"),

@@ -834,6 +834,60 @@ impl Vault {
             .min()
     }
 
+    /// Sum of headline levels across the vault.
+    #[must_use]
+    pub fn total_level(&self) -> usize {
+        self.iter()
+            .flat_map(|(_, d)| d.all_headlines())
+            .map(|h| h.level() as usize)
+            .sum()
+    }
+
+    /// Integer mean headline level (`0` when no headlines).
+    #[must_use]
+    pub fn mean_level(&self) -> usize {
+        let n = self.iter().flat_map(|(_, d)| d.all_headlines()).count();
+        self.total_level().checked_div(n).unwrap_or(0)
+    }
+
+    /// Median headline level (`None` when no headlines).
+    #[must_use]
+    pub fn median_level(&self) -> Option<u8> {
+        let mut v: Vec<u8> = self
+            .iter()
+            .flat_map(|(_, d)| d.all_headlines())
+            .map(closure_core::DocHeadline::level)
+            .collect();
+        if v.is_empty() {
+            return None;
+        }
+        v.sort_unstable();
+        let mid = v.len() / 2;
+        Some(if v.len() % 2 == 1 {
+            v[mid]
+        } else {
+            v[mid - 1].midpoint(v[mid])
+        })
+    }
+
+    /// Most common headline level (lowest wins ties; `None` when empty).
+    #[must_use]
+    pub fn mode_level(&self) -> Option<u8> {
+        let mut counts: std::collections::BTreeMap<u8, usize> = std::collections::BTreeMap::new();
+        for (_, d) in self.iter() {
+            for h in d.all_headlines() {
+                *counts.entry(h.level()).or_insert(0) += 1;
+            }
+        }
+        let mut best: Option<(u8, usize)> = None;
+        for (lvl, c) in counts {
+            if best.is_none_or(|(_, bc)| c > bc) {
+                best = Some((lvl, c));
+            }
+        }
+        best.map(|(lvl, _)| lvl)
+    }
+
     /// Lookup a document by its full filesystem path.
     #[must_use]
     pub fn document(&self, path: &Path) -> Option<&Document> {
