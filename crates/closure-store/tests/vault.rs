@@ -916,3 +916,50 @@ fn vault_mode_title_len_match() {
     let v = Vault::open(td.path()).expect("open");
     assert_eq!(v.mode_title_len(), Some(2));
 }
+
+#[test]
+fn vault_total_title_word_count_match() {
+    let td = write_vault(&[("a.org", "* a b\n** c d e\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.total_title_word_count(), 5);
+}
+
+#[test]
+fn vault_mean_title_word_count_match() {
+    let td = write_vault(&[("a.org", "* a b\n** c d e f\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    // 2,4 -> 3
+    assert_eq!(v.mean_title_word_count(), 3);
+}
+
+#[test]
+fn vault_max_min_title_word_count_match() {
+    let td = write_vault(&[("a.org", "* a\n** b c d\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.max_title_word_count(), Some(3));
+    assert_eq!(v.min_title_word_count(), Some(1));
+}
+
+#[test]
+fn vault_median_title_word_count_match() {
+    let td = write_vault(&[("a.org", "* a\n** b c\n** d e f g\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    // 1,2,4 -> median 2
+    assert_eq!(v.median_title_word_count(), Some(2));
+}
+
+#[test]
+fn vault_title_word_count_counts_match() {
+    let td = write_vault(&[("a.org", "* a b\n** c d\n** e f g\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    let m = v.title_word_count_counts();
+    assert_eq!(m.get(&2), Some(&2));
+    assert_eq!(m.get(&3), Some(&1));
+}
+
+#[test]
+fn vault_mode_title_word_count_match() {
+    let td = write_vault(&[("a.org", "* a b\n** c d\n** e f g\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.mode_title_word_count(), Some(2));
+}
