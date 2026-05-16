@@ -4466,3 +4466,53 @@ fn doc_mode_header_byte_len_match() {
     let doc = parse("* A\n* B\n** CCC\n").expect("parse");
     assert_eq!(doc.mode_header_byte_len(), Some(4));
 }
+
+#[test]
+fn doc_total_header_char_count_match() {
+    let doc = parse("* A\n** BB\n").expect("parse");
+    // "* A\n"=4 + "** BB\n"=6 = 10
+    assert_eq!(doc.total_header_char_count(), 10);
+}
+
+#[test]
+fn doc_total_header_char_count_unicode() {
+    let doc = parse("* é\n").expect("parse");
+    // chars '*',' ','é','\n' = 4 (byte len would be 5)
+    assert_eq!(doc.total_header_char_count(), 4);
+    assert_eq!(doc.total_header_byte_len(), 5);
+}
+
+#[test]
+fn doc_mean_header_char_count_match() {
+    let doc = parse("* A\n** BBB\n").expect("parse");
+    // 4,7 -> mean 5
+    assert_eq!(doc.mean_header_char_count(), 5);
+}
+
+#[test]
+fn doc_max_min_header_char_count_match() {
+    let doc = parse("* A\n** BBB\n").expect("parse");
+    assert_eq!(doc.max_header_char_count(), Some(7));
+    assert_eq!(doc.min_header_char_count(), Some(4));
+}
+
+#[test]
+fn doc_median_header_char_count_match() {
+    let doc = parse("* A\n** BB\n*** CCCCC\n").expect("parse");
+    // 4,6,10 -> median 6
+    assert_eq!(doc.median_header_char_count(), Some(6));
+}
+
+#[test]
+fn doc_header_char_count_counts_match() {
+    let doc = parse("* A\n* B\n** CCC\n").expect("parse");
+    let m = doc.header_char_count_counts();
+    assert_eq!(m.get(&4), Some(&2));
+    assert_eq!(m.get(&7), Some(&1));
+}
+
+#[test]
+fn doc_mode_header_char_count_match() {
+    let doc = parse("* A\n* B\n** CCC\n").expect("parse");
+    assert_eq!(doc.mode_header_char_count(), Some(4));
+}

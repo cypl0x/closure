@@ -1374,6 +1374,82 @@ impl OrgDoc {
         best.map(|(bl, _)| bl)
     }
 
+    /// Total header char count across all headlines.
+    #[must_use]
+    pub fn total_header_char_count(&self) -> usize {
+        self.iter_headlines()
+            .into_iter()
+            .map(Headline::header_char_count)
+            .sum()
+    }
+
+    /// Integer mean header char count (`0` when no headlines).
+    #[must_use]
+    pub fn mean_header_char_count(&self) -> usize {
+        let n = self.iter_headlines().len();
+        self.total_header_char_count().checked_div(n).unwrap_or(0)
+    }
+
+    /// Maximum header char count across headlines.
+    #[must_use]
+    pub fn max_header_char_count(&self) -> Option<usize> {
+        self.iter_headlines()
+            .into_iter()
+            .map(Headline::header_char_count)
+            .max()
+    }
+
+    /// Minimum header char count across headlines.
+    #[must_use]
+    pub fn min_header_char_count(&self) -> Option<usize> {
+        self.iter_headlines()
+            .into_iter()
+            .map(Headline::header_char_count)
+            .min()
+    }
+
+    /// Median header char count (`None` when no headlines).
+    #[must_use]
+    pub fn median_header_char_count(&self) -> Option<usize> {
+        let mut v: Vec<usize> = self
+            .iter_headlines()
+            .into_iter()
+            .map(Headline::header_char_count)
+            .collect();
+        if v.is_empty() {
+            return None;
+        }
+        v.sort_unstable();
+        let mid = v.len() / 2;
+        Some(if v.len() % 2 == 1 {
+            v[mid]
+        } else {
+            v[mid - 1].midpoint(v[mid])
+        })
+    }
+
+    /// Histogram of header char counts to occurrence count.
+    #[must_use]
+    pub fn header_char_count_counts(&self) -> std::collections::BTreeMap<usize, usize> {
+        let mut m = std::collections::BTreeMap::new();
+        for h in self.iter_headlines() {
+            *m.entry(h.header_char_count()).or_insert(0) += 1;
+        }
+        m
+    }
+
+    /// Most common header char count (lowest wins ties).
+    #[must_use]
+    pub fn mode_header_char_count(&self) -> Option<usize> {
+        let mut best: Option<(usize, usize)> = None;
+        for (cc, c) in self.header_char_count_counts() {
+            if best.is_none_or(|(_, bc)| c > bc) {
+                best = Some((cc, c));
+            }
+        }
+        best.map(|(cc, _)| cc)
+    }
+
     /// Total root-body char count (roots only, no recursion).
     #[must_use]
     pub fn total_root_body_char_count(&self) -> usize {
