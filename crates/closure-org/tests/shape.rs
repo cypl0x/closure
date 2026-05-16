@@ -4926,3 +4926,39 @@ fn doc_mode_tag_count_match() {
     let doc = parse("* A :x:\n* B :y:\n* C :p:q:\n").expect("parse");
     assert_eq!(doc.mode_tag_count(), Some(1));
 }
+
+#[test]
+fn doc_total_root_tag_count_match() {
+    let doc = parse("* A :x:y:\n** child :ignored:\n* B :z:\n").expect("parse");
+    // roots only: A=2, B=1 -> total 3
+    assert_eq!(doc.total_root_tag_count(), 3);
+}
+
+#[test]
+fn doc_max_min_root_tag_count_match() {
+    let doc = parse("* A :x:y:\n* B\n").expect("parse");
+    assert_eq!(doc.max_root_tag_count(), Some(2));
+    assert_eq!(doc.min_root_tag_count(), Some(0));
+}
+
+#[test]
+fn doc_mean_root_tag_count_match() {
+    let doc = parse("* A :x:y:z:w:\n* B\n").expect("parse");
+    // 4,0 -> mean 2
+    assert_eq!(doc.mean_root_tag_count(), 2);
+}
+
+#[test]
+fn doc_median_root_tag_count_match() {
+    let doc = parse("* A\n* B :x:\n* C :p:q:\n").expect("parse");
+    // 0,1,2 -> median 1
+    assert_eq!(doc.median_root_tag_count(), Some(1));
+}
+
+#[test]
+fn doc_root_tag_count_counts_match() {
+    let doc = parse("* A :x:\n* B :y:\n* C :p:q:\n").expect("parse");
+    let m = doc.root_tag_count_counts();
+    assert_eq!(m.get(&1), Some(&2));
+    assert_eq!(m.get(&2), Some(&1));
+}
