@@ -4350,3 +4350,25 @@ fn doc_max_min_body_char_count_match() {
     assert_eq!(doc.max_body_char_count(), Some(5));
     assert_eq!(doc.min_body_char_count(), Some(2));
 }
+
+#[test]
+fn doc_median_body_char_count_match() {
+    let doc = parse("* A\n* B\nx\n* C\nabc\n").expect("parse");
+    // body src chars: 0, 2, 4 -> median 2
+    assert_eq!(doc.median_body_char_count(), Some(2));
+}
+
+#[test]
+fn doc_body_char_count_counts_match() {
+    let doc = parse("* A\nx\n* B\ny\n* C\nabc\n").expect("parse");
+    // chars 2,2,4
+    let m = doc.body_char_count_counts();
+    assert_eq!(m.get(&2), Some(&2));
+    assert_eq!(m.get(&4), Some(&1));
+}
+
+#[test]
+fn doc_mode_body_char_count_match() {
+    let doc = parse("* A\nx\n* B\ny\n* C\nabc\n").expect("parse");
+    assert_eq!(doc.mode_body_char_count(), Some(2));
+}
