@@ -4516,3 +4516,38 @@ fn doc_mode_header_char_count_match() {
     let doc = parse("* A\n* B\n** CCC\n").expect("parse");
     assert_eq!(doc.mode_header_char_count(), Some(4));
 }
+
+#[test]
+fn doc_total_root_header_byte_len_match() {
+    let doc = parse("* A\n** ignored\n* BBB\n").expect("parse");
+    // roots only: "* A\n"=4 + "* BBB\n"=6 = 10
+    assert_eq!(doc.total_root_header_byte_len(), 10);
+}
+
+#[test]
+fn doc_max_min_root_header_byte_len_match() {
+    let doc = parse("* A\n* BBB\n").expect("parse");
+    assert_eq!(doc.max_root_header_byte_len(), Some(6));
+    assert_eq!(doc.min_root_header_byte_len(), Some(4));
+}
+
+#[test]
+fn doc_mean_root_header_byte_len_match() {
+    let doc = parse("* A\n* BBB\n").expect("parse");
+    // 4,6 -> 5
+    assert_eq!(doc.mean_root_header_byte_len(), 5);
+}
+
+#[test]
+fn doc_total_root_header_char_count_unicode() {
+    let doc = parse("* é\n** ignored\n").expect("parse");
+    // root only "* é\n" = 4 chars (5 bytes)
+    assert_eq!(doc.total_root_header_char_count(), 4);
+}
+
+#[test]
+fn doc_max_min_root_header_char_count_match() {
+    let doc = parse("* A\n* BBB\n").expect("parse");
+    assert_eq!(doc.max_root_header_char_count(), Some(6));
+    assert_eq!(doc.min_root_header_char_count(), Some(4));
+}

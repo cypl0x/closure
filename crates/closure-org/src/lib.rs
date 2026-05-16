@@ -1450,6 +1450,51 @@ impl OrgDoc {
         best.map(|(cc, _)| cc)
     }
 
+    /// Total root header byte length (roots only, no recursion).
+    #[must_use]
+    pub fn total_root_header_byte_len(&self) -> usize {
+        self.roots.iter().map(Headline::header_byte_len).sum()
+    }
+
+    /// Integer mean root header byte length (`0` when no roots).
+    #[must_use]
+    pub fn mean_root_header_byte_len(&self) -> usize {
+        let n = self.roots.len();
+        self.total_root_header_byte_len()
+            .checked_div(n)
+            .unwrap_or(0)
+    }
+
+    /// Maximum root header byte length.
+    #[must_use]
+    pub fn max_root_header_byte_len(&self) -> Option<usize> {
+        self.roots.iter().map(Headline::header_byte_len).max()
+    }
+
+    /// Minimum root header byte length.
+    #[must_use]
+    pub fn min_root_header_byte_len(&self) -> Option<usize> {
+        self.roots.iter().map(Headline::header_byte_len).min()
+    }
+
+    /// Total root header char count (roots only, no recursion).
+    #[must_use]
+    pub fn total_root_header_char_count(&self) -> usize {
+        self.roots.iter().map(Headline::header_char_count).sum()
+    }
+
+    /// Maximum root header char count.
+    #[must_use]
+    pub fn max_root_header_char_count(&self) -> Option<usize> {
+        self.roots.iter().map(Headline::header_char_count).max()
+    }
+
+    /// Minimum root header char count.
+    #[must_use]
+    pub fn min_root_header_char_count(&self) -> Option<usize> {
+        self.roots.iter().map(Headline::header_char_count).min()
+    }
+
     /// Total root-body char count (roots only, no recursion).
     #[must_use]
     pub fn total_root_body_char_count(&self) -> usize {
