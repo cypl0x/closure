@@ -3074,6 +3074,70 @@ impl OrgDoc {
             .unwrap_or(0)
     }
 
+    /// Returns min property count across headlines (`0` when empty).
+    #[must_use]
+    pub fn min_property_count(&self) -> usize {
+        self.iter_headlines()
+            .into_iter()
+            .map(Headline::property_count)
+            .min()
+            .unwrap_or(0)
+    }
+
+    /// Integer mean property count across headlines (`0` when empty).
+    #[must_use]
+    pub fn mean_property_count(&self) -> usize {
+        let n = self.iter_headlines().len();
+        let total: usize = self
+            .iter_headlines()
+            .into_iter()
+            .map(Headline::property_count)
+            .sum();
+        total.checked_div(n).unwrap_or(0)
+    }
+
+    /// Median property count across headlines (`None` when empty).
+    #[must_use]
+    pub fn median_property_count(&self) -> Option<usize> {
+        let mut v: Vec<usize> = self
+            .iter_headlines()
+            .into_iter()
+            .map(Headline::property_count)
+            .collect();
+        if v.is_empty() {
+            return None;
+        }
+        v.sort_unstable();
+        let mid = v.len() / 2;
+        Some(if v.len() % 2 == 1 {
+            v[mid]
+        } else {
+            v[mid - 1].midpoint(v[mid])
+        })
+    }
+
+    /// Histogram of per-headline property counts to occurrence count.
+    #[must_use]
+    pub fn property_count_counts(&self) -> std::collections::BTreeMap<usize, usize> {
+        let mut m = std::collections::BTreeMap::new();
+        for h in self.iter_headlines() {
+            *m.entry(h.property_count()).or_insert(0) += 1;
+        }
+        m
+    }
+
+    /// Most common per-headline property count (lowest wins ties).
+    #[must_use]
+    pub fn mode_property_count(&self) -> Option<usize> {
+        let mut best: Option<(usize, usize)> = None;
+        for (pc, c) in self.property_count_counts() {
+            if best.is_none_or(|(_, bc)| c > bc) {
+                best = Some((pc, c));
+            }
+        }
+        best.map(|(pc, _)| pc)
+    }
+
     /// Returns max child count across headlines.
     #[must_use]
     pub fn max_child_count(&self) -> usize {
