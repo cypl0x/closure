@@ -1241,6 +1241,40 @@ impl Vault {
             .min()
     }
 
+    /// Total headline-body char count across the vault.
+    #[must_use]
+    pub fn total_body_char_count(&self) -> usize {
+        self.iter()
+            .flat_map(|(_, d)| d.all_headlines())
+            .map(|h| h.body_text().chars().count())
+            .sum()
+    }
+
+    /// Integer mean headline-body char count (`0` when no headlines).
+    #[must_use]
+    pub fn mean_body_char_count(&self) -> usize {
+        let n = self.iter().flat_map(|(_, d)| d.all_headlines()).count();
+        self.total_body_char_count().checked_div(n).unwrap_or(0)
+    }
+
+    /// Maximum headline-body char count across the vault.
+    #[must_use]
+    pub fn max_body_char_count(&self) -> Option<usize> {
+        self.iter()
+            .flat_map(|(_, d)| d.all_headlines())
+            .map(|h| h.body_text().chars().count())
+            .max()
+    }
+
+    /// Minimum headline-body char count across the vault.
+    #[must_use]
+    pub fn min_body_char_count(&self) -> Option<usize> {
+        self.iter()
+            .flat_map(|(_, d)| d.all_headlines())
+            .map(|h| h.body_text().chars().count())
+            .min()
+    }
+
     /// Median headline-body line count (`None` when no headlines).
     #[must_use]
     pub fn median_body_line_count(&self) -> Option<usize> {

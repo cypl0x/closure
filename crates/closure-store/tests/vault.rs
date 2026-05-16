@@ -1010,3 +1010,26 @@ fn vault_mode_body_line_count_match() {
     let v = Vault::open(td.path()).expect("open");
     assert_eq!(v.mode_body_line_count(), Some(1));
 }
+
+#[test]
+fn vault_total_body_char_count_match() {
+    let td = write_vault(&[("a.org", "* A\nab\n* B\nc\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.total_body_char_count(), 5);
+}
+
+#[test]
+fn vault_mean_body_char_count_match() {
+    let td = write_vault(&[("a.org", "* A\nab\n* B\nabcdef\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    // 3,7 -> 5
+    assert_eq!(v.mean_body_char_count(), 5);
+}
+
+#[test]
+fn vault_max_min_body_char_count_match() {
+    let td = write_vault(&[("a.org", "* A\nx\n* B\nabcd\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.max_body_char_count(), Some(5));
+    assert_eq!(v.min_body_char_count(), Some(2));
+}
