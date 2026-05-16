@@ -470,6 +470,36 @@ impl ChordTrie {
         out
     }
 
+    /// Longest bound chord by stroke count (sorted-first on ties).
+    #[must_use]
+    pub fn longest_chord(&self) -> Option<String> {
+        let mut best: Option<String> = None;
+        for c in self.all_chords() {
+            let take = best
+                .as_ref()
+                .is_none_or(|b| c.split_whitespace().count() > b.split_whitespace().count());
+            if take {
+                best = Some(c);
+            }
+        }
+        best
+    }
+
+    /// Shortest bound chord by stroke count (sorted-first on ties).
+    #[must_use]
+    pub fn shortest_chord(&self) -> Option<String> {
+        let mut best: Option<String> = None;
+        for c in self.all_chords() {
+            let take = best
+                .as_ref()
+                .is_none_or(|b| c.split_whitespace().count() < b.split_whitespace().count());
+            if take {
+                best = Some(c);
+            }
+        }
+        best
+    }
+
     /// Feed one stroke. [`TrieStep::Resolved`] and
     /// [`TrieStep::Unbound`] both reset the cursor.
     pub fn step(&mut self, stroke: &str) -> TrieStep {
