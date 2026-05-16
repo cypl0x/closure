@@ -888,6 +888,18 @@ impl Vault {
         best.map(|(lvl, _)| lvl)
     }
 
+    /// `(min, max)` headline level across the vault (`None` when empty).
+    #[must_use]
+    pub fn level_range(&self) -> Option<(u8, u8)> {
+        Some((self.min_level()?, self.max_level()?))
+    }
+
+    /// Total root headline count across all documents in the vault.
+    #[must_use]
+    pub fn root_count(&self) -> usize {
+        self.documents.values().map(|d| d.org().roots().len()).sum()
+    }
+
     /// Lookup a document by its full filesystem path.
     #[must_use]
     pub fn document(&self, path: &Path) -> Option<&Document> {

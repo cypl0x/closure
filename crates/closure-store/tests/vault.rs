@@ -447,6 +447,31 @@ fn vault_mode_level_match() {
 }
 
 #[test]
+fn vault_level_range_match() {
+    let td = write_vault(&[("a.org", "* A\n** B\n*** C\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.level_range(), Some((1, 3)));
+}
+
+#[test]
+fn vault_level_range_none_on_empty() {
+    let td = write_vault(&[("a.org", "no headlines\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.level_range(), None);
+}
+
+#[test]
+fn vault_root_count_match() {
+    let td = write_vault(&[
+        ("a.org", "* A\n** B\n* C\n"),
+        ("b.org", "* D\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    // roots: a.org A,C + b.org D = 3
+    assert_eq!(v.root_count(), 3);
+}
+
+#[test]
 fn vault_paths_with_priority_returns_match() {
     let td = write_vault(&[
         ("a.org", "* [#A] X\n"),
