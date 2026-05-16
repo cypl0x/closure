@@ -2836,6 +2836,70 @@ impl OrgDoc {
             .unwrap_or(0)
     }
 
+    /// Returns min link count across headlines (`0` when empty).
+    #[must_use]
+    pub fn min_link_count(&self) -> usize {
+        self.iter_headlines()
+            .into_iter()
+            .map(Headline::link_count)
+            .min()
+            .unwrap_or(0)
+    }
+
+    /// Integer mean link count across headlines (`0` when empty).
+    #[must_use]
+    pub fn mean_link_count(&self) -> usize {
+        let n = self.iter_headlines().len();
+        let total: usize = self
+            .iter_headlines()
+            .into_iter()
+            .map(Headline::link_count)
+            .sum();
+        total.checked_div(n).unwrap_or(0)
+    }
+
+    /// Median link count across headlines (`None` when empty).
+    #[must_use]
+    pub fn median_link_count(&self) -> Option<usize> {
+        let mut v: Vec<usize> = self
+            .iter_headlines()
+            .into_iter()
+            .map(Headline::link_count)
+            .collect();
+        if v.is_empty() {
+            return None;
+        }
+        v.sort_unstable();
+        let mid = v.len() / 2;
+        Some(if v.len() % 2 == 1 {
+            v[mid]
+        } else {
+            v[mid - 1].midpoint(v[mid])
+        })
+    }
+
+    /// Histogram of per-headline link counts to occurrence count.
+    #[must_use]
+    pub fn link_count_counts(&self) -> std::collections::BTreeMap<usize, usize> {
+        let mut m = std::collections::BTreeMap::new();
+        for h in self.iter_headlines() {
+            *m.entry(h.link_count()).or_insert(0) += 1;
+        }
+        m
+    }
+
+    /// Most common per-headline link count (lowest wins ties).
+    #[must_use]
+    pub fn mode_link_count(&self) -> Option<usize> {
+        let mut best: Option<(usize, usize)> = None;
+        for (lc, c) in self.link_count_counts() {
+            if best.is_none_or(|(_, bc)| c > bc) {
+                best = Some((lc, c));
+            }
+        }
+        best.map(|(lc, _)| lc)
+    }
+
     /// Returns max tag count across headlines.
     #[must_use]
     pub fn max_tag_count(&self) -> usize {

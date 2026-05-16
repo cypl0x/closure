@@ -4962,3 +4962,39 @@ fn doc_root_tag_count_counts_match() {
     assert_eq!(m.get(&1), Some(&2));
     assert_eq!(m.get(&2), Some(&1));
 }
+
+#[test]
+fn doc_min_link_count_match() {
+    let doc = parse("* A\n[[l1]] [[l2]]\n* B\n[[l3]]\n* C\nno links\n").expect("parse");
+    // link counts A=2,B=1,C=0 -> min 0
+    assert_eq!(doc.min_link_count(), 0);
+}
+
+#[test]
+fn doc_mean_link_count_match() {
+    let doc = parse("* A\n[[l1]] [[l2]]\n* B\n[[l3]]\n* C\nno links\n").expect("parse");
+    // 2,1,0 total 3 / 3 = 1
+    assert_eq!(doc.mean_link_count(), 1);
+}
+
+#[test]
+fn doc_median_link_count_match() {
+    let doc = parse("* A\n[[l1]] [[l2]]\n* B\n[[l3]]\n* C\nno links\n").expect("parse");
+    // sorted [0,1,2] -> median 1
+    assert_eq!(doc.median_link_count(), Some(1));
+}
+
+#[test]
+fn doc_link_count_counts_match() {
+    let doc = parse("* A\n[[l1]]\n* B\n[[l2]]\n* C\n[[l3]] [[l4]]\n").expect("parse");
+    // link counts 1,1,2
+    let m = doc.link_count_counts();
+    assert_eq!(m.get(&1), Some(&2));
+    assert_eq!(m.get(&2), Some(&1));
+}
+
+#[test]
+fn doc_mode_link_count_match() {
+    let doc = parse("* A\n[[l1]]\n* B\n[[l2]]\n* C\n[[l3]] [[l4]]\n").expect("parse");
+    assert_eq!(doc.mode_link_count(), Some(1));
+}
