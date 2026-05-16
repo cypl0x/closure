@@ -189,6 +189,38 @@ impl Dispatcher {
     pub fn has_command(&self, command: &str) -> bool {
         self.bindings.values().any(|v| v == command)
     }
+
+    /// Longest bound chord by stroke count (sorted-first on ties).
+    #[must_use]
+    pub fn longest_chord(&self) -> Option<String> {
+        let mut keys: Vec<&String> = self.bindings.keys().collect();
+        keys.sort();
+        let mut best: Option<&String> = None;
+        for k in keys {
+            if best.is_none_or(|b| {
+                k.split_whitespace().count() > b.split_whitespace().count()
+            }) {
+                best = Some(k);
+            }
+        }
+        best.cloned()
+    }
+
+    /// Shortest bound chord by stroke count (sorted-first on ties).
+    #[must_use]
+    pub fn shortest_chord(&self) -> Option<String> {
+        let mut keys: Vec<&String> = self.bindings.keys().collect();
+        keys.sort();
+        let mut best: Option<&String> = None;
+        for k in keys {
+            if best.is_none_or(|b| {
+                k.split_whitespace().count() < b.split_whitespace().count()
+            }) {
+                best = Some(k);
+            }
+        }
+        best.cloned()
+    }
 }
 
 /// Input-mode errors.

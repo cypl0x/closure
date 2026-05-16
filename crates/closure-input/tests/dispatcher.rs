@@ -365,6 +365,24 @@ fn dispatcher_has_command_match() {
 }
 
 #[test]
+fn dispatcher_longest_shortest_chord_match() {
+    let mut reg = Registry::new();
+    reg.register(Box::new(RenameHeadline::new_placeholder()));
+    let disp = Dispatcher::from_registry(&reg, InputMode::Doom);
+    // single binding "C-c C-x r"
+    assert_eq!(disp.longest_chord(), Some("C-c C-x r".to_owned()));
+    assert_eq!(disp.shortest_chord(), Some("C-c C-x r".to_owned()));
+}
+
+#[test]
+fn dispatcher_longest_shortest_chord_none_when_empty() {
+    let reg = Registry::new();
+    let disp = Dispatcher::from_registry(&reg, InputMode::Emacs);
+    assert_eq!(disp.longest_chord(), None);
+    assert_eq!(disp.shortest_chord(), None);
+}
+
+#[test]
 fn chord_trie_longest_chord_match() {
     let t = closure_input::ChordTrie::build(&[("a b", "x"), ("c d e", "y")]);
     assert_eq!(t.longest_chord(), Some("c d e".to_owned()));
