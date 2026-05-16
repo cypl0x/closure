@@ -5209,3 +5209,37 @@ fn doc_root_timestamp_count_counts_match() {
     assert_eq!(m.get(&1), Some(&2));
     assert_eq!(m.get(&2), Some(&1));
 }
+
+#[test]
+fn doc_scheduled_pct_match() {
+    let doc = parse("* A\nSCHEDULED: <2026-01-01>\n* B\n* C\n* D\n").expect("parse");
+    // 1 of 4 scheduled -> 25
+    assert_eq!(doc.scheduled_pct(), 25);
+}
+
+#[test]
+fn doc_deadline_pct_match() {
+    let doc = parse("* A\nDEADLINE: <2026-01-01>\n* B\n").expect("parse");
+    // 1 of 2 -> 50
+    assert_eq!(doc.deadline_pct(), 50);
+}
+
+#[test]
+fn doc_count_timestamped_match() {
+    let doc = parse("* A\n<2026-01-01>\n* B\nno ts\n* C\n<2026-02-02>\n").expect("parse");
+    assert_eq!(doc.count_timestamped(), 2);
+}
+
+#[test]
+fn doc_timestamped_pct_match() {
+    let doc = parse("* A\n<2026-01-01>\n* B\nno\n* C\n<2026-02-02>\n* D\nno\n").expect("parse");
+    // 2 of 4 -> 50
+    assert_eq!(doc.timestamped_pct(), 50);
+}
+
+#[test]
+fn doc_scheduled_pct_zero_when_empty() {
+    let doc = parse("preamble only\n").expect("parse");
+    assert_eq!(doc.scheduled_pct(), 0);
+    assert_eq!(doc.timestamped_pct(), 0);
+}

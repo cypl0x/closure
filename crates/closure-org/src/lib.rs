@@ -4965,6 +4965,35 @@ impl OrgDoc {
         (self.tagged_count() * 100).checked_div(n).unwrap_or(0)
     }
 
+    /// Percentage of headlines that are SCHEDULED (`0..=100`).
+    #[must_use]
+    pub fn scheduled_pct(&self) -> usize {
+        let n = self.iter_headlines().len();
+        (self.count_scheduled() * 100).checked_div(n).unwrap_or(0)
+    }
+
+    /// Percentage of headlines that carry a DEADLINE (`0..=100`).
+    #[must_use]
+    pub fn deadline_pct(&self) -> usize {
+        let n = self.iter_headlines().len();
+        (self.count_with_deadline() * 100)
+            .checked_div(n)
+            .unwrap_or(0)
+    }
+
+    /// Count of headlines carrying at least one timestamp.
+    #[must_use]
+    pub fn count_timestamped(&self) -> usize {
+        self.count_headlines_where(|h| h.timestamp_count() > 0)
+    }
+
+    /// Percentage of headlines carrying at least one timestamp (`0..=100`).
+    #[must_use]
+    pub fn timestamped_pct(&self) -> usize {
+        let n = self.iter_headlines().len();
+        (self.count_timestamped() * 100).checked_div(n).unwrap_or(0)
+    }
+
     /// Number of headlines carrying zero tags.
     #[must_use]
     pub fn untagged_count(&self) -> usize {
