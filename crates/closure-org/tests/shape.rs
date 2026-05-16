@@ -4140,3 +4140,17 @@ fn doc_root_title_len_counts_match() {
     assert_eq!(m.get(&2), Some(&2));
     assert_eq!(m.get(&3), Some(&1));
 }
+
+#[test]
+fn doc_median_headline_title_len_match() {
+    let doc = parse("* A\n** BB\n** CCCC\n").expect("parse");
+    // chars 1,2,4 -> median 2
+    assert_eq!(doc.median_headline_title_len(), Some(2));
+}
+
+#[test]
+fn doc_mode_headline_title_len_match() {
+    let doc = parse("* AA\n** BB\n** CCC\n").expect("parse");
+    // chars 2,2,3 -> mode 2
+    assert_eq!(doc.mode_headline_title_len(), Some(2));
+}

@@ -1208,6 +1208,39 @@ impl OrgDoc {
         m
     }
 
+    /// Median headline title length in characters (`None` when empty).
+    #[must_use]
+    pub fn median_headline_title_len(&self) -> Option<usize> {
+        let mut v: Vec<usize> = self
+            .iter_headlines()
+            .into_iter()
+            .map(|h| h.title().chars().count())
+            .collect();
+        if v.is_empty() {
+            return None;
+        }
+        v.sort_unstable();
+        let mid = v.len() / 2;
+        Some(if v.len() % 2 == 1 {
+            v[mid]
+        } else {
+            v[mid - 1].midpoint(v[mid])
+        })
+    }
+
+    /// Most common headline title length in characters (lowest wins ties).
+    #[must_use]
+    pub fn mode_headline_title_len(&self) -> Option<usize> {
+        let m = self.headline_title_len_counts();
+        let mut best: Option<(usize, usize)> = None;
+        for (len, c) in m {
+            if best.is_none_or(|(_, bc)| c > bc) {
+                best = Some((len, c));
+            }
+        }
+        best.map(|(len, _)| len)
+    }
+
     /// Most common root title length in characters (lowest length wins ties).
     #[must_use]
     pub fn mode_root_title_len(&self) -> Option<usize> {
