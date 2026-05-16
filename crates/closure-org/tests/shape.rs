@@ -4819,3 +4819,18 @@ fn doc_mode_descendant_count_match() {
     let doc = parse("* A\n** B\n** C\n* D\n").expect("parse");
     assert_eq!(doc.mode_descendant_count(), Some(0));
 }
+
+#[test]
+fn doc_body_word_count_counts_match() {
+    let doc = parse("* A\none\n* B\ntwo\n* C\nthree words here\n").expect("parse");
+    // body words: 1,1,3
+    let m = doc.body_word_count_counts();
+    assert_eq!(m.get(&1), Some(&2));
+    assert_eq!(m.get(&3), Some(&1));
+}
+
+#[test]
+fn doc_mode_body_word_count_match() {
+    let doc = parse("* A\none\n* B\ntwo\n* C\nthree words here\n").expect("parse");
+    assert_eq!(doc.mode_body_word_count(), Some(1));
+}

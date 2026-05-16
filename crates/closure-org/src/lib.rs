@@ -2732,6 +2732,28 @@ impl OrgDoc {
             .unwrap_or(0)
     }
 
+    /// Histogram of body word counts to occurrence count.
+    #[must_use]
+    pub fn body_word_count_counts(&self) -> std::collections::BTreeMap<usize, usize> {
+        let mut m = std::collections::BTreeMap::new();
+        for h in self.iter_headlines() {
+            *m.entry(h.body_word_count()).or_insert(0) += 1;
+        }
+        m
+    }
+
+    /// Most common body word count (lowest wins ties).
+    #[must_use]
+    pub fn mode_body_word_count(&self) -> Option<usize> {
+        let mut best: Option<(usize, usize)> = None;
+        for (wc, c) in self.body_word_count_counts() {
+            if best.is_none_or(|(_, bc)| c > bc) {
+                best = Some((wc, c));
+            }
+        }
+        best.map(|(wc, _)| wc)
+    }
+
     /// Returns max link count across headlines.
     #[must_use]
     pub fn max_link_count(&self) -> usize {
