@@ -1119,6 +1119,59 @@ impl OrgDoc {
         best.map(|(lc, _)| lc)
     }
 
+    /// Total root-body line count (roots only, no recursion).
+    #[must_use]
+    pub fn total_root_body_line_count(&self) -> usize {
+        self.roots.iter().map(Headline::body_line_count).sum()
+    }
+
+    /// Integer mean root-body line count (`0` when no roots).
+    #[must_use]
+    pub fn mean_root_body_line_count(&self) -> usize {
+        let n = self.roots.len();
+        self.total_root_body_line_count()
+            .checked_div(n)
+            .unwrap_or(0)
+    }
+
+    /// Maximum root-body line count.
+    #[must_use]
+    pub fn max_root_body_line_count(&self) -> Option<usize> {
+        self.roots.iter().map(Headline::body_line_count).max()
+    }
+
+    /// Minimum root-body line count.
+    #[must_use]
+    pub fn min_root_body_line_count(&self) -> Option<usize> {
+        self.roots.iter().map(Headline::body_line_count).min()
+    }
+
+    /// Median root-body line count (`None` when no roots).
+    #[must_use]
+    pub fn median_root_body_line_count(&self) -> Option<usize> {
+        let mut v: Vec<usize> = self.roots.iter().map(Headline::body_line_count).collect();
+        if v.is_empty() {
+            return None;
+        }
+        v.sort_unstable();
+        let mid = v.len() / 2;
+        Some(if v.len() % 2 == 1 {
+            v[mid]
+        } else {
+            v[mid - 1].midpoint(v[mid])
+        })
+    }
+
+    /// Histogram of root-body line counts to occurrence count.
+    #[must_use]
+    pub fn root_body_line_count_counts(&self) -> std::collections::BTreeMap<usize, usize> {
+        let mut m = std::collections::BTreeMap::new();
+        for r in &self.roots {
+            *m.entry(r.body_line_count()).or_insert(0) += 1;
+        }
+        m
+    }
+
     /// Minimum headline-body byte count across the document (`0` when empty).
     #[must_use]
     pub fn min_body_byte_count(&self) -> usize {

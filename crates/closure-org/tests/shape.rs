@@ -4292,3 +4292,39 @@ fn doc_mode_body_line_count_match() {
     let doc = parse("* A\nx\n* B\ny\n* C\nz\nw\n").expect("parse");
     assert_eq!(doc.mode_body_line_count(), Some(1));
 }
+
+#[test]
+fn doc_total_root_body_line_count_match() {
+    let doc = parse("* A\nx\n** child\nignored\n* B\ny\nz\n").expect("parse");
+    // roots only: A body 1 line, B body 2 lines = 3
+    assert_eq!(doc.total_root_body_line_count(), 3);
+}
+
+#[test]
+fn doc_mean_root_body_line_count_match() {
+    let doc = parse("* A\nx\n* B\ny\nz\nw\n").expect("parse");
+    // 1,3 -> mean 2
+    assert_eq!(doc.mean_root_body_line_count(), 2);
+}
+
+#[test]
+fn doc_max_min_root_body_line_count_match() {
+    let doc = parse("* A\nx\n* B\ny\nz\n").expect("parse");
+    assert_eq!(doc.max_root_body_line_count(), Some(2));
+    assert_eq!(doc.min_root_body_line_count(), Some(1));
+}
+
+#[test]
+fn doc_median_root_body_line_count_match() {
+    let doc = parse("* A\n* B\nx\n* C\ny\nz\nw\n").expect("parse");
+    // 0,1,3 -> median 1
+    assert_eq!(doc.median_root_body_line_count(), Some(1));
+}
+
+#[test]
+fn doc_root_body_line_count_counts_match() {
+    let doc = parse("* A\nx\n* B\ny\n* C\nz\nw\n").expect("parse");
+    let m = doc.root_body_line_count_counts();
+    assert_eq!(m.get(&1), Some(&2));
+    assert_eq!(m.get(&2), Some(&1));
+}
