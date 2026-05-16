@@ -1242,6 +1242,48 @@ impl OrgDoc {
             .min()
     }
 
+    /// Median title word count across headlines (`None` when empty).
+    #[must_use]
+    pub fn median_title_word_count(&self) -> Option<usize> {
+        let mut v: Vec<usize> = self
+            .iter_headlines()
+            .into_iter()
+            .map(Headline::title_word_count)
+            .collect();
+        if v.is_empty() {
+            return None;
+        }
+        v.sort_unstable();
+        let mid = v.len() / 2;
+        Some(if v.len() % 2 == 1 {
+            v[mid]
+        } else {
+            v[mid - 1].midpoint(v[mid])
+        })
+    }
+
+    /// Histogram of title word counts to occurrence count.
+    #[must_use]
+    pub fn title_word_count_counts(&self) -> std::collections::BTreeMap<usize, usize> {
+        let mut m = std::collections::BTreeMap::new();
+        for h in self.iter_headlines() {
+            *m.entry(h.title_word_count()).or_insert(0) += 1;
+        }
+        m
+    }
+
+    /// Most common title word count (lowest count wins ties).
+    #[must_use]
+    pub fn mode_title_word_count(&self) -> Option<usize> {
+        let mut best: Option<(usize, usize)> = None;
+        for (wc, c) in self.title_word_count_counts() {
+            if best.is_none_or(|(_, bc)| c > bc) {
+                best = Some((wc, c));
+            }
+        }
+        best.map(|(wc, _)| wc)
+    }
+
     /// Median headline title length in characters (`None` when empty).
     #[must_use]
     pub fn median_headline_title_len(&self) -> Option<usize> {
