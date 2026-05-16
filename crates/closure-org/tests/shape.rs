@@ -4777,3 +4777,45 @@ fn doc_root_subtree_size_counts_match() {
     assert_eq!(m.get(&1), Some(&2));
     assert_eq!(m.get(&2), Some(&1));
 }
+
+#[test]
+fn doc_min_descendant_count_match() {
+    let doc = parse("* A\n** B\n** C\n* D\n").expect("parse");
+    // desc: A=2,B=0,C=0,D=0 -> min 0
+    assert_eq!(doc.min_descendant_count(), 0);
+}
+
+#[test]
+fn doc_total_descendant_count_match() {
+    let doc = parse("* A\n** B\n** C\n* D\n").expect("parse");
+    // 2+0+0+0 = 2
+    assert_eq!(doc.total_descendant_count(), 2);
+}
+
+#[test]
+fn doc_mean_descendant_count_match() {
+    let doc = parse("* A\n** B\n** C\n* D\n").expect("parse");
+    // 2/4 = 0
+    assert_eq!(doc.mean_descendant_count(), 0);
+}
+
+#[test]
+fn doc_median_descendant_count_match() {
+    let doc = parse("* A\n** B\n** C\n* D\n").expect("parse");
+    // sorted [0,0,0,2] -> midpoint(0,0)=0
+    assert_eq!(doc.median_descendant_count(), Some(0));
+}
+
+#[test]
+fn doc_descendant_count_counts_match() {
+    let doc = parse("* A\n** B\n** C\n* D\n").expect("parse");
+    let m = doc.descendant_count_counts();
+    assert_eq!(m.get(&0), Some(&3));
+    assert_eq!(m.get(&2), Some(&1));
+}
+
+#[test]
+fn doc_mode_descendant_count_match() {
+    let doc = parse("* A\n** B\n** C\n* D\n").expect("parse");
+    assert_eq!(doc.mode_descendant_count(), Some(0));
+}
