@@ -1242,6 +1242,59 @@ impl OrgDoc {
             .min()
     }
 
+    /// Total whitespace-separated word count across root titles only.
+    #[must_use]
+    pub fn total_root_title_word_count(&self) -> usize {
+        self.roots.iter().map(Headline::title_word_count).sum()
+    }
+
+    /// Integer mean root title word count (`0` when no roots).
+    #[must_use]
+    pub fn mean_root_title_word_count(&self) -> usize {
+        let n = self.roots.len();
+        self.total_root_title_word_count()
+            .checked_div(n)
+            .unwrap_or(0)
+    }
+
+    /// Maximum root title word count.
+    #[must_use]
+    pub fn max_root_title_word_count(&self) -> Option<usize> {
+        self.roots.iter().map(Headline::title_word_count).max()
+    }
+
+    /// Minimum root title word count.
+    #[must_use]
+    pub fn min_root_title_word_count(&self) -> Option<usize> {
+        self.roots.iter().map(Headline::title_word_count).min()
+    }
+
+    /// Median root title word count (`None` when no roots).
+    #[must_use]
+    pub fn median_root_title_word_count(&self) -> Option<usize> {
+        let mut v: Vec<usize> = self.roots.iter().map(Headline::title_word_count).collect();
+        if v.is_empty() {
+            return None;
+        }
+        v.sort_unstable();
+        let mid = v.len() / 2;
+        Some(if v.len() % 2 == 1 {
+            v[mid]
+        } else {
+            v[mid - 1].midpoint(v[mid])
+        })
+    }
+
+    /// Histogram of root title word counts to occurrence count.
+    #[must_use]
+    pub fn root_title_word_count_counts(&self) -> std::collections::BTreeMap<usize, usize> {
+        let mut m = std::collections::BTreeMap::new();
+        for r in &self.roots {
+            *m.entry(r.title_word_count()).or_insert(0) += 1;
+        }
+        m
+    }
+
     /// Median title word count across headlines (`None` when empty).
     #[must_use]
     pub fn median_title_word_count(&self) -> Option<usize> {

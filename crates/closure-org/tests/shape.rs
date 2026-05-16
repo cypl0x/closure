@@ -4202,3 +4202,39 @@ fn doc_title_word_count_counts_match() {
     assert_eq!(m.get(&2), Some(&2));
     assert_eq!(m.get(&3), Some(&1));
 }
+
+#[test]
+fn doc_total_root_title_word_count_match() {
+    let doc = parse("* a b\n** ignored child\n* c d e\n").expect("parse");
+    // roots only: 2 + 3 = 5
+    assert_eq!(doc.total_root_title_word_count(), 5);
+}
+
+#[test]
+fn doc_mean_root_title_word_count_match() {
+    let doc = parse("* a b\n* c d e f\n").expect("parse");
+    // 2,4 -> 3
+    assert_eq!(doc.mean_root_title_word_count(), 3);
+}
+
+#[test]
+fn doc_max_min_root_title_word_count_match() {
+    let doc = parse("* a\n* b c d\n").expect("parse");
+    assert_eq!(doc.max_root_title_word_count(), Some(3));
+    assert_eq!(doc.min_root_title_word_count(), Some(1));
+}
+
+#[test]
+fn doc_median_root_title_word_count_match() {
+    let doc = parse("* a\n* b c\n* d e f g\n").expect("parse");
+    // 1,2,4 -> median 2
+    assert_eq!(doc.median_root_title_word_count(), Some(2));
+}
+
+#[test]
+fn doc_root_title_word_count_counts_match() {
+    let doc = parse("* a b\n* c d\n* e f g\n").expect("parse");
+    let m = doc.root_title_word_count_counts();
+    assert_eq!(m.get(&2), Some(&2));
+    assert_eq!(m.get(&3), Some(&1));
+}
