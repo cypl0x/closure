@@ -4097,3 +4097,18 @@ fn doc_total_headline_title_len_match() {
     let doc = parse("* AA\n** BBBB\n").expect("parse");
     assert_eq!(doc.total_headline_title_len(), 6);
 }
+
+#[test]
+fn doc_headline_title_len_counts_match() {
+    let doc = parse("* AA\n** BB\n* CCC\n").expect("parse");
+    let m = doc.headline_title_len_counts();
+    assert_eq!(m.get(&2), Some(&2));
+    assert_eq!(m.get(&3), Some(&1));
+}
+
+#[test]
+fn doc_mode_root_title_len_match() {
+    let doc = parse("* AA\n* BB\n* CCC\n").expect("parse");
+    // root title chars: 2,2,3 -> mode 2
+    assert_eq!(doc.mode_root_title_len(), Some(2));
+}

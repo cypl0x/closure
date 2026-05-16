@@ -1155,6 +1155,32 @@ impl OrgDoc {
             .sum()
     }
 
+    /// Histogram of headline title lengths (chars) to occurrence count.
+    #[must_use]
+    pub fn headline_title_len_counts(&self) -> std::collections::BTreeMap<usize, usize> {
+        let mut m = std::collections::BTreeMap::new();
+        for h in self.iter_headlines() {
+            *m.entry(h.title().chars().count()).or_insert(0) += 1;
+        }
+        m
+    }
+
+    /// Most common root title length in characters (lowest length wins ties).
+    #[must_use]
+    pub fn mode_root_title_len(&self) -> Option<usize> {
+        let mut m: std::collections::BTreeMap<usize, usize> = std::collections::BTreeMap::new();
+        for r in &self.roots {
+            *m.entry(r.title().chars().count()).or_insert(0) += 1;
+        }
+        let mut best: Option<(usize, usize)> = None;
+        for (len, c) in m {
+            if best.is_none_or(|(_, bc)| c > bc) {
+                best = Some((len, c));
+            }
+        }
+        best.map(|(len, _)| len)
+    }
+
     /// Median subtree size across roots (integer; lower midpoint for even sets).
     #[must_use]
     pub fn median_root_subtree_size(&self) -> Option<usize> {
