@@ -4444,3 +4444,25 @@ fn doc_max_min_header_byte_len_match() {
     assert_eq!(doc.max_header_byte_len(), Some(7));
     assert_eq!(doc.min_header_byte_len(), Some(4));
 }
+
+#[test]
+fn doc_median_header_byte_len_match() {
+    let doc = parse("* A\n** BB\n*** CCCCC\n").expect("parse");
+    // "* A\n"=4, "** BB\n"=6, "*** CCCCC\n"=10 -> median 6
+    assert_eq!(doc.median_header_byte_len(), Some(6));
+}
+
+#[test]
+fn doc_header_byte_len_counts_match() {
+    let doc = parse("* A\n* B\n** CCC\n").expect("parse");
+    // "* A\n"=4, "* B\n"=4, "** CCC\n"=7
+    let m = doc.header_byte_len_counts();
+    assert_eq!(m.get(&4), Some(&2));
+    assert_eq!(m.get(&7), Some(&1));
+}
+
+#[test]
+fn doc_mode_header_byte_len_match() {
+    let doc = parse("* A\n* B\n** CCC\n").expect("parse");
+    assert_eq!(doc.mode_header_byte_len(), Some(4));
+}
