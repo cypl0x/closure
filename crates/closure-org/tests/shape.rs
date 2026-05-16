@@ -4238,3 +4238,35 @@ fn doc_root_title_word_count_counts_match() {
     assert_eq!(m.get(&2), Some(&2));
     assert_eq!(m.get(&3), Some(&1));
 }
+
+#[test]
+fn headline_body_line_count_match() {
+    let doc = parse("* H\nline1\nline2\n").expect("parse");
+    assert_eq!(doc.roots()[0].body_line_count(), 2);
+}
+
+#[test]
+fn headline_body_line_count_zero_when_no_body() {
+    let doc = parse("* H\n").expect("parse");
+    assert_eq!(doc.roots()[0].body_line_count(), 0);
+}
+
+#[test]
+fn doc_total_body_line_count_match() {
+    let doc = parse("* A\nx\n* B\ny\nz\n").expect("parse");
+    assert_eq!(doc.total_body_line_count(), 3);
+}
+
+#[test]
+fn doc_mean_body_line_count_match() {
+    let doc = parse("* A\nx\n* B\ny\nz\nw\n").expect("parse");
+    // lines 1,3 -> mean 2
+    assert_eq!(doc.mean_body_line_count(), 2);
+}
+
+#[test]
+fn doc_max_min_body_line_count_match() {
+    let doc = parse("* A\nx\n* B\ny\nz\n").expect("parse");
+    assert_eq!(doc.max_body_line_count(), Some(2));
+    assert_eq!(doc.min_body_line_count(), Some(1));
+}

@@ -1043,6 +1043,40 @@ impl OrgDoc {
             .sum()
     }
 
+    /// Total headline-body line count across the document.
+    #[must_use]
+    pub fn total_body_line_count(&self) -> usize {
+        self.iter_headlines()
+            .into_iter()
+            .map(Headline::body_line_count)
+            .sum()
+    }
+
+    /// Integer mean headline-body line count (`0` when no headlines).
+    #[must_use]
+    pub fn mean_body_line_count(&self) -> usize {
+        let n = self.iter_headlines().len();
+        self.total_body_line_count().checked_div(n).unwrap_or(0)
+    }
+
+    /// Maximum headline-body line count across the document.
+    #[must_use]
+    pub fn max_body_line_count(&self) -> Option<usize> {
+        self.iter_headlines()
+            .into_iter()
+            .map(Headline::body_line_count)
+            .max()
+    }
+
+    /// Minimum headline-body line count across the document.
+    #[must_use]
+    pub fn min_body_line_count(&self) -> Option<usize> {
+        self.iter_headlines()
+            .into_iter()
+            .map(Headline::body_line_count)
+            .min()
+    }
+
     /// Minimum headline-body byte count across the document (`0` when empty).
     #[must_use]
     pub fn min_body_byte_count(&self) -> usize {
@@ -5973,6 +6007,13 @@ impl Headline {
     #[must_use]
     pub fn body_byte_count(&self) -> usize {
         self.body.iter().map(|n| n.span.end - n.span.start).sum()
+    }
+
+    /// Number of lines in this headline's body (does not recurse).
+    /// `0` for headlines with no body.
+    #[must_use]
+    pub fn body_line_count(&self) -> usize {
+        self.body_source().lines().count()
     }
 
     /// Verbatim body source as a single contiguous slice. Returns `""`
