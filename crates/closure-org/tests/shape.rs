@@ -4270,3 +4270,25 @@ fn doc_max_min_body_line_count_match() {
     assert_eq!(doc.max_body_line_count(), Some(2));
     assert_eq!(doc.min_body_line_count(), Some(1));
 }
+
+#[test]
+fn doc_median_body_line_count_match() {
+    let doc = parse("* A\n* B\nx\n* C\ny\nz\nw\n").expect("parse");
+    // lines 0,1,3 -> median 1
+    assert_eq!(doc.median_body_line_count(), Some(1));
+}
+
+#[test]
+fn doc_body_line_count_counts_match() {
+    let doc = parse("* A\nx\n* B\ny\n* C\nz\nw\n").expect("parse");
+    // lines 1,1,2
+    let m = doc.body_line_count_counts();
+    assert_eq!(m.get(&1), Some(&2));
+    assert_eq!(m.get(&2), Some(&1));
+}
+
+#[test]
+fn doc_mode_body_line_count_match() {
+    let doc = parse("* A\nx\n* B\ny\n* C\nz\nw\n").expect("parse");
+    assert_eq!(doc.mode_body_line_count(), Some(1));
+}
