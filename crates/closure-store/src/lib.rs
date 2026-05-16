@@ -322,6 +322,78 @@ impl Vault {
         total.checked_div(self.headline_count()).unwrap_or(0)
     }
 
+    /// Total headline-body word count across the vault.
+    #[must_use]
+    pub fn total_body_word_count(&self) -> usize {
+        self.iter()
+            .flat_map(|(_, d)| d.all_headlines())
+            .map(|h| h.body_text().split_whitespace().count())
+            .sum()
+    }
+
+    /// Maximum headline-body word count across the vault.
+    #[must_use]
+    pub fn max_body_word_count(&self) -> Option<usize> {
+        self.iter()
+            .flat_map(|(_, d)| d.all_headlines())
+            .map(|h| h.body_text().split_whitespace().count())
+            .max()
+    }
+
+    /// Minimum headline-body word count across the vault.
+    #[must_use]
+    pub fn min_body_word_count(&self) -> Option<usize> {
+        self.iter()
+            .flat_map(|(_, d)| d.all_headlines())
+            .map(|h| h.body_text().split_whitespace().count())
+            .min()
+    }
+
+    /// Median headline-body word count (`None` when no headlines).
+    #[must_use]
+    pub fn median_body_word_count(&self) -> Option<usize> {
+        let mut v: Vec<usize> = self
+            .iter()
+            .flat_map(|(_, d)| d.all_headlines())
+            .map(|h| h.body_text().split_whitespace().count())
+            .collect();
+        if v.is_empty() {
+            return None;
+        }
+        v.sort_unstable();
+        let mid = v.len() / 2;
+        Some(if v.len() % 2 == 1 {
+            v[mid]
+        } else {
+            v[mid - 1].midpoint(v[mid])
+        })
+    }
+
+    /// Histogram of headline-body word counts to occurrence count.
+    #[must_use]
+    pub fn body_word_count_counts(&self) -> std::collections::BTreeMap<usize, usize> {
+        let mut m = std::collections::BTreeMap::new();
+        for (_, d) in self.iter() {
+            for h in d.all_headlines() {
+                *m.entry(h.body_text().split_whitespace().count())
+                    .or_insert(0) += 1;
+            }
+        }
+        m
+    }
+
+    /// Most common headline-body word count (lowest wins ties).
+    #[must_use]
+    pub fn mode_body_word_count(&self) -> Option<usize> {
+        let mut best: Option<(usize, usize)> = None;
+        for (wc, c) in self.body_word_count_counts() {
+            if best.is_none_or(|(_, bc)| c > bc) {
+                best = Some((wc, c));
+            }
+        }
+        best.map(|(wc, _)| wc)
+    }
+
     /// Mean file byte count across the vault (rounded down).
     #[must_use]
     pub fn mean_byte_count(&self) -> usize {

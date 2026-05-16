@@ -1059,6 +1059,45 @@ fn vault_mode_body_char_count_match() {
 }
 
 #[test]
+fn vault_total_body_word_count_match() {
+    let td = write_vault(&[("a.org", "* A\none two\n* B\nthree\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.total_body_word_count(), 3);
+}
+
+#[test]
+fn vault_max_min_body_word_count_match() {
+    let td = write_vault(&[("a.org", "* A\none\n* B\ntwo three four\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.max_body_word_count(), Some(3));
+    assert_eq!(v.min_body_word_count(), Some(1));
+}
+
+#[test]
+fn vault_median_body_word_count_match() {
+    let td = write_vault(&[("a.org", "* A\n* B\none\n* C\ntwo three four\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    // 0,1,3 -> median 1
+    assert_eq!(v.median_body_word_count(), Some(1));
+}
+
+#[test]
+fn vault_body_word_count_counts_match() {
+    let td = write_vault(&[("a.org", "* A\none\n* B\ntwo\n* C\nthree words here\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    let m = v.body_word_count_counts();
+    assert_eq!(m.get(&1), Some(&2));
+    assert_eq!(m.get(&3), Some(&1));
+}
+
+#[test]
+fn vault_mode_body_word_count_match() {
+    let td = write_vault(&[("a.org", "* A\none\n* B\ntwo\n* C\nthree words here\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.mode_body_word_count(), Some(1));
+}
+
+#[test]
 fn vault_total_title_byte_len_match() {
     let td = write_vault(&[("a.org", "* AA\n** BBBB\n")]);
     let v = Vault::open(td.path()).expect("open");
