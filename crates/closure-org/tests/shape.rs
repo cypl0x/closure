@@ -4720,3 +4720,60 @@ fn doc_root_child_count_counts_match() {
     assert_eq!(m.get(&0), Some(&2));
     assert_eq!(m.get(&1), Some(&1));
 }
+
+#[test]
+fn doc_max_subtree_size_match() {
+    let doc = parse("* A\n** B\n** C\n* D\n").expect("parse");
+    // sizes A=3,B=1,C=1,D=1 -> max 3
+    assert_eq!(doc.max_subtree_size(), Some(3));
+}
+
+#[test]
+fn doc_min_subtree_size_match() {
+    let doc = parse("* A\n** B\n** C\n* D\n").expect("parse");
+    assert_eq!(doc.min_subtree_size(), Some(1));
+}
+
+#[test]
+fn doc_total_subtree_size_match() {
+    let doc = parse("* A\n** B\n** C\n* D\n").expect("parse");
+    // 3+1+1+1 = 6
+    assert_eq!(doc.total_subtree_size(), 6);
+}
+
+#[test]
+fn doc_mean_subtree_size_match() {
+    let doc = parse("* A\n** B\n** C\n* D\n").expect("parse");
+    // 6/4 = 1
+    assert_eq!(doc.mean_subtree_size(), 1);
+}
+
+#[test]
+fn doc_median_subtree_size_match() {
+    let doc = parse("* A\n** B\n** C\n* D\n").expect("parse");
+    // sorted [1,1,1,3] -> midpoint(1,1) = 1
+    assert_eq!(doc.median_subtree_size(), Some(1));
+}
+
+#[test]
+fn doc_subtree_size_counts_match() {
+    let doc = parse("* A\n** B\n** C\n* D\n").expect("parse");
+    let m = doc.subtree_size_counts();
+    assert_eq!(m.get(&1), Some(&3));
+    assert_eq!(m.get(&3), Some(&1));
+}
+
+#[test]
+fn doc_mode_subtree_size_match() {
+    let doc = parse("* A\n** B\n** C\n* D\n").expect("parse");
+    assert_eq!(doc.mode_subtree_size(), Some(1));
+}
+
+#[test]
+fn doc_root_subtree_size_counts_match() {
+    let doc = parse("* A\n** B\n* C\n* D\n").expect("parse");
+    // roots A=2, C=1, D=1
+    let m = doc.root_subtree_size_counts();
+    assert_eq!(m.get(&1), Some(&2));
+    assert_eq!(m.get(&2), Some(&1));
+}

@@ -695,6 +695,92 @@ impl OrgDoc {
         self.roots.iter().map(Headline::subtree_size).sum()
     }
 
+    /// Histogram of root subtree sizes to occurrence count.
+    #[must_use]
+    pub fn root_subtree_size_counts(&self) -> std::collections::BTreeMap<usize, usize> {
+        let mut m = std::collections::BTreeMap::new();
+        for r in &self.roots {
+            *m.entry(r.subtree_size()).or_insert(0) += 1;
+        }
+        m
+    }
+
+    /// Maximum subtree size across all headlines.
+    #[must_use]
+    pub fn max_subtree_size(&self) -> Option<usize> {
+        self.iter_headlines()
+            .into_iter()
+            .map(Headline::subtree_size)
+            .max()
+    }
+
+    /// Minimum subtree size across all headlines.
+    #[must_use]
+    pub fn min_subtree_size(&self) -> Option<usize> {
+        self.iter_headlines()
+            .into_iter()
+            .map(Headline::subtree_size)
+            .min()
+    }
+
+    /// Total subtree size across all headlines.
+    #[must_use]
+    pub fn total_subtree_size(&self) -> usize {
+        self.iter_headlines()
+            .into_iter()
+            .map(Headline::subtree_size)
+            .sum()
+    }
+
+    /// Integer mean subtree size across all headlines (`0` when empty).
+    #[must_use]
+    pub fn mean_subtree_size(&self) -> usize {
+        let n = self.iter_headlines().len();
+        self.total_subtree_size().checked_div(n).unwrap_or(0)
+    }
+
+    /// Median subtree size across all headlines (`None` when empty).
+    #[must_use]
+    pub fn median_subtree_size(&self) -> Option<usize> {
+        let mut v: Vec<usize> = self
+            .iter_headlines()
+            .into_iter()
+            .map(Headline::subtree_size)
+            .collect();
+        if v.is_empty() {
+            return None;
+        }
+        v.sort_unstable();
+        let mid = v.len() / 2;
+        Some(if v.len() % 2 == 1 {
+            v[mid]
+        } else {
+            v[mid - 1].midpoint(v[mid])
+        })
+    }
+
+    /// Histogram of subtree sizes (all headlines) to occurrence count.
+    #[must_use]
+    pub fn subtree_size_counts(&self) -> std::collections::BTreeMap<usize, usize> {
+        let mut m = std::collections::BTreeMap::new();
+        for h in self.iter_headlines() {
+            *m.entry(h.subtree_size()).or_insert(0) += 1;
+        }
+        m
+    }
+
+    /// Most common subtree size (lowest wins ties).
+    #[must_use]
+    pub fn mode_subtree_size(&self) -> Option<usize> {
+        let mut best: Option<(usize, usize)> = None;
+        for (sz, c) in self.subtree_size_counts() {
+            if best.is_none_or(|(_, bc)| c > bc) {
+                best = Some((sz, c));
+            }
+        }
+        best.map(|(sz, _)| sz)
+    }
+
     /// Root headline with the largest subtree. Ties resolved by position.
     #[must_use]
     pub fn largest_root(&self) -> Option<&Headline> {
