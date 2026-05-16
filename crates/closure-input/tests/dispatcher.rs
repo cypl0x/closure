@@ -249,3 +249,40 @@ fn chord_trie_pending_lists_alternatives() {
     };
     assert_eq!(opts, vec!["b".to_owned(), "c".to_owned()]);
 }
+
+#[test]
+fn chord_trie_min_depth_match() {
+    let t = closure_input::ChordTrie::build(&[("a b c", "x"), ("d e", "y")]);
+    assert_eq!(t.min_depth(), 2);
+}
+
+#[test]
+fn chord_trie_min_depth_zero_when_empty() {
+    let t = closure_input::ChordTrie::build(&[]);
+    assert_eq!(t.min_depth(), 0);
+}
+
+#[test]
+fn chord_trie_chord_depth_counts_match() {
+    let t = closure_input::ChordTrie::build(&[
+        ("a b", "x"),
+        ("c d", "y"),
+        ("e f g", "z"),
+    ]);
+    let m = t.chord_depth_counts();
+    assert_eq!(m.get(&2), Some(&2));
+    assert_eq!(m.get(&3), Some(&1));
+}
+
+#[test]
+fn chord_trie_mean_depth_match() {
+    let t = closure_input::ChordTrie::build(&[("a b", "x"), ("c d e f", "y")]);
+    // depths 2,4 -> mean 3
+    assert_eq!(t.mean_depth(), 3);
+}
+
+#[test]
+fn chord_trie_mean_depth_zero_when_empty() {
+    let t = closure_input::ChordTrie::build(&[]);
+    assert_eq!(t.mean_depth(), 0);
+}

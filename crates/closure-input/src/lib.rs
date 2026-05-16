@@ -251,6 +251,64 @@ impl ChordTrie {
         best
     }
 
+    /// Minimum chord depth (strokes in the shortest bound chord; `0` when empty).
+    #[must_use]
+    pub fn min_depth(&self) -> usize {
+        fn walk(idx: usize, depth: usize, nodes: &[TrieNode], best: &mut Option<usize>) {
+            let n = &nodes[idx];
+            if n.command.is_some() {
+                *best = Some(best.map_or(depth, |b: usize| b.min(depth)));
+            }
+            for &child in n.children.values() {
+                walk(child, depth + 1, nodes, best);
+            }
+        }
+        let mut best = None;
+        walk(0, 0, &self.nodes, &mut best);
+        best.unwrap_or(0)
+    }
+
+    /// Histogram of chord depths (strokes) to occurrence count.
+    #[must_use]
+    pub fn chord_depth_counts(&self) -> std::collections::BTreeMap<usize, usize> {
+        fn walk(
+            idx: usize,
+            depth: usize,
+            nodes: &[TrieNode],
+            m: &mut std::collections::BTreeMap<usize, usize>,
+        ) {
+            let n = &nodes[idx];
+            if n.command.is_some() {
+                *m.entry(depth).or_insert(0) += 1;
+            }
+            for &child in n.children.values() {
+                walk(child, depth + 1, nodes, m);
+            }
+        }
+        let mut m = std::collections::BTreeMap::new();
+        walk(0, 0, &self.nodes, &mut m);
+        m
+    }
+
+    /// Integer mean chord depth (strokes per bound chord; `0` when empty).
+    #[must_use]
+    pub fn mean_depth(&self) -> usize {
+        fn walk(idx: usize, depth: usize, nodes: &[TrieNode], total: &mut usize, n: &mut usize) {
+            let node = &nodes[idx];
+            if node.command.is_some() {
+                *total += depth;
+                *n += 1;
+            }
+            for &child in node.children.values() {
+                walk(child, depth + 1, nodes, total, n);
+            }
+        }
+        let mut total = 0usize;
+        let mut n = 0usize;
+        walk(0, 0, &self.nodes, &mut total, &mut n);
+        total.checked_div(n).unwrap_or(0)
+    }
+
     /// True iff `command` is bound somewhere in the trie.
     #[must_use]
     pub fn contains_command(&self, command: &str) -> bool {
