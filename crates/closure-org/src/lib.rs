@@ -1697,6 +1697,48 @@ impl OrgDoc {
             .min()
     }
 
+    /// Median title byte length (`None` when no headlines).
+    #[must_use]
+    pub fn median_title_byte_len(&self) -> Option<usize> {
+        let mut v: Vec<usize> = self
+            .iter_headlines()
+            .into_iter()
+            .map(Headline::title_byte_len)
+            .collect();
+        if v.is_empty() {
+            return None;
+        }
+        v.sort_unstable();
+        let mid = v.len() / 2;
+        Some(if v.len() % 2 == 1 {
+            v[mid]
+        } else {
+            v[mid - 1].midpoint(v[mid])
+        })
+    }
+
+    /// Histogram of title byte lengths to occurrence count.
+    #[must_use]
+    pub fn title_byte_len_counts(&self) -> std::collections::BTreeMap<usize, usize> {
+        let mut m = std::collections::BTreeMap::new();
+        for h in self.iter_headlines() {
+            *m.entry(h.title_byte_len()).or_insert(0) += 1;
+        }
+        m
+    }
+
+    /// Most common title byte length (lowest wins ties).
+    #[must_use]
+    pub fn mode_title_byte_len(&self) -> Option<usize> {
+        let mut best: Option<(usize, usize)> = None;
+        for (bl, c) in self.title_byte_len_counts() {
+            if best.is_none_or(|(_, bc)| c > bc) {
+                best = Some((bl, c));
+            }
+        }
+        best.map(|(bl, _)| bl)
+    }
+
     /// Integer mean title word count (`0` when no headlines).
     #[must_use]
     pub fn mean_title_word_count(&self) -> usize {

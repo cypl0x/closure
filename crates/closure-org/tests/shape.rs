@@ -4578,3 +4578,24 @@ fn doc_max_min_title_byte_len_match() {
     assert_eq!(doc.max_title_byte_len(), Some(4));
     assert_eq!(doc.min_title_byte_len(), Some(1));
 }
+
+#[test]
+fn doc_median_title_byte_len_match() {
+    let doc = parse("* A\n** BB\n** CCCC\n").expect("parse");
+    // 1,2,4 -> median 2
+    assert_eq!(doc.median_title_byte_len(), Some(2));
+}
+
+#[test]
+fn doc_title_byte_len_counts_match() {
+    let doc = parse("* AA\n** BB\n** CCC\n").expect("parse");
+    let m = doc.title_byte_len_counts();
+    assert_eq!(m.get(&2), Some(&2));
+    assert_eq!(m.get(&3), Some(&1));
+}
+
+#[test]
+fn doc_mode_title_byte_len_match() {
+    let doc = parse("* AA\n** BB\n** CCC\n").expect("parse");
+    assert_eq!(doc.mode_title_byte_len(), Some(2));
+}
