@@ -1057,3 +1057,59 @@ fn vault_mode_body_char_count_match() {
     let v = Vault::open(td.path()).expect("open");
     assert_eq!(v.mode_body_char_count(), Some(2));
 }
+
+#[test]
+fn vault_total_title_byte_len_match() {
+    let td = write_vault(&[("a.org", "* AA\n** BBBB\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.total_title_byte_len(), 6);
+}
+
+#[test]
+fn vault_total_title_byte_len_unicode() {
+    let td = write_vault(&[("a.org", "* é\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    // "é" = 2 bytes, 1 char
+    assert_eq!(v.total_title_byte_len(), 2);
+    assert_eq!(v.total_title_len(), 1);
+}
+
+#[test]
+fn vault_mean_title_byte_len_match() {
+    let td = write_vault(&[("a.org", "* AA\n** BBBB\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    // 2,4 -> 3
+    assert_eq!(v.mean_title_byte_len(), 3);
+}
+
+#[test]
+fn vault_max_min_title_byte_len_match() {
+    let td = write_vault(&[("a.org", "* A\n** CCCC\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.max_title_byte_len(), Some(4));
+    assert_eq!(v.min_title_byte_len(), Some(1));
+}
+
+#[test]
+fn vault_median_title_byte_len_match() {
+    let td = write_vault(&[("a.org", "* A\n** BB\n** CCCC\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    // 1,2,4 -> 2
+    assert_eq!(v.median_title_byte_len(), Some(2));
+}
+
+#[test]
+fn vault_title_byte_len_counts_match() {
+    let td = write_vault(&[("a.org", "* AA\n** BB\n** CCC\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    let m = v.title_byte_len_counts();
+    assert_eq!(m.get(&2), Some(&2));
+    assert_eq!(m.get(&3), Some(&1));
+}
+
+#[test]
+fn vault_mode_title_byte_len_match() {
+    let td = write_vault(&[("a.org", "* AA\n** BB\n** CCC\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.mode_title_byte_len(), Some(2));
+}

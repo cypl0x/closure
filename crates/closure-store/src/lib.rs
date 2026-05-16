@@ -1129,6 +1129,84 @@ impl Vault {
         best.map(|(len, _)| len)
     }
 
+    /// Total headline title length in bytes across the vault.
+    #[must_use]
+    pub fn total_title_byte_len(&self) -> usize {
+        self.iter()
+            .flat_map(|(_, d)| d.all_headlines())
+            .map(|h| h.title().len())
+            .sum()
+    }
+
+    /// Integer mean headline title byte length (`0` when no headlines).
+    #[must_use]
+    pub fn mean_title_byte_len(&self) -> usize {
+        let n = self.iter().flat_map(|(_, d)| d.all_headlines()).count();
+        self.total_title_byte_len().checked_div(n).unwrap_or(0)
+    }
+
+    /// Maximum headline title length in bytes across the vault.
+    #[must_use]
+    pub fn max_title_byte_len(&self) -> Option<usize> {
+        self.iter()
+            .flat_map(|(_, d)| d.all_headlines())
+            .map(|h| h.title().len())
+            .max()
+    }
+
+    /// Minimum headline title length in bytes across the vault.
+    #[must_use]
+    pub fn min_title_byte_len(&self) -> Option<usize> {
+        self.iter()
+            .flat_map(|(_, d)| d.all_headlines())
+            .map(|h| h.title().len())
+            .min()
+    }
+
+    /// Median headline title length in bytes (`None` when no headlines).
+    #[must_use]
+    pub fn median_title_byte_len(&self) -> Option<usize> {
+        let mut v: Vec<usize> = self
+            .iter()
+            .flat_map(|(_, d)| d.all_headlines())
+            .map(|h| h.title().len())
+            .collect();
+        if v.is_empty() {
+            return None;
+        }
+        v.sort_unstable();
+        let mid = v.len() / 2;
+        Some(if v.len() % 2 == 1 {
+            v[mid]
+        } else {
+            v[mid - 1].midpoint(v[mid])
+        })
+    }
+
+    /// Histogram of headline title byte lengths to occurrence count.
+    #[must_use]
+    pub fn title_byte_len_counts(&self) -> std::collections::BTreeMap<usize, usize> {
+        let mut m = std::collections::BTreeMap::new();
+        for (_, d) in self.iter() {
+            for h in d.all_headlines() {
+                *m.entry(h.title().len()).or_insert(0) += 1;
+            }
+        }
+        m
+    }
+
+    /// Most common headline title byte length (lowest wins ties).
+    #[must_use]
+    pub fn mode_title_byte_len(&self) -> Option<usize> {
+        let mut best: Option<(usize, usize)> = None;
+        for (len, c) in self.title_byte_len_counts() {
+            if best.is_none_or(|(_, bc)| c > bc) {
+                best = Some((len, c));
+            }
+        }
+        best.map(|(len, _)| len)
+    }
+
     /// Total whitespace-separated word count across all headline titles.
     #[must_use]
     pub fn total_title_word_count(&self) -> usize {
