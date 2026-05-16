@@ -4599,3 +4599,45 @@ fn doc_mode_title_byte_len_match() {
     let doc = parse("* AA\n** BB\n** CCC\n").expect("parse");
     assert_eq!(doc.mode_title_byte_len(), Some(2));
 }
+
+#[test]
+fn doc_total_root_title_byte_len_match() {
+    let doc = parse("* AA\n** ignored\n* CCC\n").expect("parse");
+    // roots only: 2 + 3 = 5
+    assert_eq!(doc.total_root_title_byte_len(), 5);
+}
+
+#[test]
+fn doc_total_root_title_byte_len_unicode() {
+    let doc = parse("* é\n").expect("parse");
+    assert_eq!(doc.total_root_title_byte_len(), 2);
+}
+
+#[test]
+fn doc_mean_root_title_byte_len_match() {
+    let doc = parse("* AA\n* BBBB\n").expect("parse");
+    // 2,4 -> 3
+    assert_eq!(doc.mean_root_title_byte_len(), 3);
+}
+
+#[test]
+fn doc_max_min_root_title_byte_len_match() {
+    let doc = parse("* A\n* CCCC\n").expect("parse");
+    assert_eq!(doc.max_root_title_byte_len(), Some(4));
+    assert_eq!(doc.min_root_title_byte_len(), Some(1));
+}
+
+#[test]
+fn doc_median_root_title_byte_len_match() {
+    let doc = parse("* A\n* BB\n* CCCC\n").expect("parse");
+    // 1,2,4 -> 2
+    assert_eq!(doc.median_root_title_byte_len(), Some(2));
+}
+
+#[test]
+fn doc_root_title_byte_len_counts_match() {
+    let doc = parse("* AA\n* BB\n* CCC\n").expect("parse");
+    let m = doc.root_title_byte_len_counts();
+    assert_eq!(m.get(&2), Some(&2));
+    assert_eq!(m.get(&3), Some(&1));
+}

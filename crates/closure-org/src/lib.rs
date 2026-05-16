@@ -1739,6 +1739,59 @@ impl OrgDoc {
         best.map(|(bl, _)| bl)
     }
 
+    /// Total root title byte length (roots only, no recursion).
+    #[must_use]
+    pub fn total_root_title_byte_len(&self) -> usize {
+        self.roots.iter().map(Headline::title_byte_len).sum()
+    }
+
+    /// Integer mean root title byte length (`0` when no roots).
+    #[must_use]
+    pub fn mean_root_title_byte_len(&self) -> usize {
+        let n = self.roots.len();
+        self.total_root_title_byte_len()
+            .checked_div(n)
+            .unwrap_or(0)
+    }
+
+    /// Maximum root title byte length.
+    #[must_use]
+    pub fn max_root_title_byte_len(&self) -> Option<usize> {
+        self.roots.iter().map(Headline::title_byte_len).max()
+    }
+
+    /// Minimum root title byte length.
+    #[must_use]
+    pub fn min_root_title_byte_len(&self) -> Option<usize> {
+        self.roots.iter().map(Headline::title_byte_len).min()
+    }
+
+    /// Median root title byte length (`None` when no roots).
+    #[must_use]
+    pub fn median_root_title_byte_len(&self) -> Option<usize> {
+        let mut v: Vec<usize> = self.roots.iter().map(Headline::title_byte_len).collect();
+        if v.is_empty() {
+            return None;
+        }
+        v.sort_unstable();
+        let mid = v.len() / 2;
+        Some(if v.len() % 2 == 1 {
+            v[mid]
+        } else {
+            v[mid - 1].midpoint(v[mid])
+        })
+    }
+
+    /// Histogram of root title byte lengths to occurrence count.
+    #[must_use]
+    pub fn root_title_byte_len_counts(&self) -> std::collections::BTreeMap<usize, usize> {
+        let mut m = std::collections::BTreeMap::new();
+        for r in &self.roots {
+            *m.entry(r.title_byte_len()).or_insert(0) += 1;
+        }
+        m
+    }
+
     /// Integer mean title word count (`0` when no headlines).
     #[must_use]
     pub fn mean_title_word_count(&self) -> usize {
