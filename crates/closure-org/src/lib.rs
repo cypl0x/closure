@@ -1298,6 +1298,40 @@ impl OrgDoc {
         best.map(|(cc, _)| cc)
     }
 
+    /// Total header byte length across all headlines.
+    #[must_use]
+    pub fn total_header_byte_len(&self) -> usize {
+        self.iter_headlines()
+            .into_iter()
+            .map(Headline::header_byte_len)
+            .sum()
+    }
+
+    /// Integer mean header byte length (`0` when no headlines).
+    #[must_use]
+    pub fn mean_header_byte_len(&self) -> usize {
+        let n = self.iter_headlines().len();
+        self.total_header_byte_len().checked_div(n).unwrap_or(0)
+    }
+
+    /// Maximum header byte length across headlines.
+    #[must_use]
+    pub fn max_header_byte_len(&self) -> Option<usize> {
+        self.iter_headlines()
+            .into_iter()
+            .map(Headline::header_byte_len)
+            .max()
+    }
+
+    /// Minimum header byte length across headlines.
+    #[must_use]
+    pub fn min_header_byte_len(&self) -> Option<usize> {
+        self.iter_headlines()
+            .into_iter()
+            .map(Headline::header_byte_len)
+            .min()
+    }
+
     /// Total root-body char count (roots only, no recursion).
     #[must_use]
     pub fn total_root_body_char_count(&self) -> usize {
@@ -6158,6 +6192,18 @@ impl Headline {
     #[must_use]
     pub fn header(&self) -> &str {
         &self.source[self.header_span.start..self.header_span.end]
+    }
+
+    /// Byte length of the header line (including trailing newline if any).
+    #[must_use]
+    pub const fn header_byte_len(&self) -> usize {
+        self.header_span.end - self.header_span.start
+    }
+
+    /// Character count of the header line (including trailing newline if any).
+    #[must_use]
+    pub fn header_char_count(&self) -> usize {
+        self.header().chars().count()
     }
 
     /// Nodes in this headline's body (after header, before children or
