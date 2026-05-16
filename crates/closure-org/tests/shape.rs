@@ -4834,3 +4834,39 @@ fn doc_mode_body_word_count_match() {
     let doc = parse("* A\none\n* B\ntwo\n* C\nthree words here\n").expect("parse");
     assert_eq!(doc.mode_body_word_count(), Some(1));
 }
+
+#[test]
+fn doc_total_root_body_word_count_match() {
+    let doc = parse("* A\none two\n** child\nignored body words\n* B\nthree\n").expect("parse");
+    // roots only: A body 2 words, B body 1 word = 3
+    assert_eq!(doc.total_root_body_word_count(), 3);
+}
+
+#[test]
+fn doc_max_min_root_body_word_count_match() {
+    let doc = parse("* A\none\n* B\ntwo three four\n").expect("parse");
+    assert_eq!(doc.max_root_body_word_count(), Some(3));
+    assert_eq!(doc.min_root_body_word_count(), Some(1));
+}
+
+#[test]
+fn doc_mean_root_body_word_count_match() {
+    let doc = parse("* A\none\n* B\ntwo three four five\n").expect("parse");
+    // 1,4 -> mean 2
+    assert_eq!(doc.mean_root_body_word_count(), 2);
+}
+
+#[test]
+fn doc_median_root_body_word_count_match() {
+    let doc = parse("* A\n* B\none\n* C\ntwo three four\n").expect("parse");
+    // 0,1,3 -> median 1
+    assert_eq!(doc.median_root_body_word_count(), Some(1));
+}
+
+#[test]
+fn doc_root_body_word_count_counts_match() {
+    let doc = parse("* A\none\n* B\ntwo\n* C\nthree words here\n").expect("parse");
+    let m = doc.root_body_word_count_counts();
+    assert_eq!(m.get(&1), Some(&2));
+    assert_eq!(m.get(&3), Some(&1));
+}
