@@ -1665,6 +1665,28 @@ impl Vault {
         }
     }
 
+    /// Histogram of per-path headline counts to occurrence count.
+    #[must_use]
+    pub fn headlines_per_path_counts(&self) -> std::collections::BTreeMap<usize, usize> {
+        let mut m = std::collections::BTreeMap::new();
+        for (_, d) in self.iter() {
+            *m.entry(d.all_headlines().count()).or_insert(0) += 1;
+        }
+        m
+    }
+
+    /// Most common per-path headline count (lowest wins ties).
+    #[must_use]
+    pub fn mode_headlines_per_path(&self) -> Option<usize> {
+        let mut best: Option<(usize, usize)> = None;
+        for (hc, c) in self.headlines_per_path_counts() {
+            if best.is_none_or(|(_, bc)| c > bc) {
+                best = Some((hc, c));
+            }
+        }
+        best.map(|(hc, _)| hc)
+    }
+
     /// Paths whose source contains the substring `needle` anywhere.
     #[must_use]
     pub fn paths_containing(&self, needle: &str) -> Vec<&Path> {
