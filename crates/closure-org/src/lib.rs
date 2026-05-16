@@ -1663,6 +1663,40 @@ impl OrgDoc {
             .sum()
     }
 
+    /// Total title byte length across all headlines.
+    #[must_use]
+    pub fn total_title_byte_len(&self) -> usize {
+        self.iter_headlines()
+            .into_iter()
+            .map(Headline::title_byte_len)
+            .sum()
+    }
+
+    /// Integer mean title byte length (`0` when no headlines).
+    #[must_use]
+    pub fn mean_title_byte_len(&self) -> usize {
+        let n = self.iter_headlines().len();
+        self.total_title_byte_len().checked_div(n).unwrap_or(0)
+    }
+
+    /// Maximum title byte length across headlines.
+    #[must_use]
+    pub fn max_title_byte_len(&self) -> Option<usize> {
+        self.iter_headlines()
+            .into_iter()
+            .map(Headline::title_byte_len)
+            .max()
+    }
+
+    /// Minimum title byte length across headlines.
+    #[must_use]
+    pub fn min_title_byte_len(&self) -> Option<usize> {
+        self.iter_headlines()
+            .into_iter()
+            .map(Headline::title_byte_len)
+            .min()
+    }
+
     /// Integer mean title word count (`0` when no headlines).
     #[must_use]
     pub fn mean_title_word_count(&self) -> usize {
@@ -7141,6 +7175,12 @@ impl Headline {
     #[must_use]
     pub fn title_word_count(&self) -> usize {
         self.title().split_whitespace().count()
+    }
+
+    /// Byte length of this headline's title.
+    #[must_use]
+    pub fn title_byte_len(&self) -> usize {
+        self.title().len()
     }
 
     /// Number of timestamps found in title + body.

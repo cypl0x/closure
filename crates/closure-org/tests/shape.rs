@@ -4551,3 +4551,30 @@ fn doc_max_min_root_header_char_count_match() {
     assert_eq!(doc.max_root_header_char_count(), Some(6));
     assert_eq!(doc.min_root_header_char_count(), Some(4));
 }
+
+#[test]
+fn headline_title_byte_len_match() {
+    let doc = parse("* é\n").expect("parse");
+    // "é" = 2 bytes, 1 char
+    assert_eq!(doc.roots()[0].title_byte_len(), 2);
+}
+
+#[test]
+fn doc_total_title_byte_len_match() {
+    let doc = parse("* AA\n** BBBB\n").expect("parse");
+    assert_eq!(doc.total_title_byte_len(), 6);
+}
+
+#[test]
+fn doc_mean_title_byte_len_match() {
+    let doc = parse("* AA\n** BBBB\n").expect("parse");
+    // 2,4 -> 3
+    assert_eq!(doc.mean_title_byte_len(), 3);
+}
+
+#[test]
+fn doc_max_min_title_byte_len_match() {
+    let doc = parse("* A\n** CCCC\n").expect("parse");
+    assert_eq!(doc.max_title_byte_len(), Some(4));
+    assert_eq!(doc.min_title_byte_len(), Some(1));
+}
