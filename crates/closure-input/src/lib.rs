@@ -132,6 +132,45 @@ impl Dispatcher {
     pub fn command_count(&self) -> usize {
         self.command_names().len()
     }
+
+    /// Maximum stroke count across bound chords (`None` when empty).
+    #[must_use]
+    pub fn max_chord_strokes(&self) -> Option<usize> {
+        self.bindings
+            .keys()
+            .map(|k| k.split_whitespace().count())
+            .max()
+    }
+
+    /// Minimum stroke count across bound chords (`None` when empty).
+    #[must_use]
+    pub fn min_chord_strokes(&self) -> Option<usize> {
+        self.bindings
+            .keys()
+            .map(|k| k.split_whitespace().count())
+            .min()
+    }
+
+    /// Integer mean stroke count across bound chords (`0` when empty).
+    #[must_use]
+    pub fn mean_chord_strokes(&self) -> usize {
+        let total: usize = self
+            .bindings
+            .keys()
+            .map(|k| k.split_whitespace().count())
+            .sum();
+        total.checked_div(self.bindings.len()).unwrap_or(0)
+    }
+
+    /// Histogram of chord stroke counts to occurrence count.
+    #[must_use]
+    pub fn chord_stroke_counts(&self) -> std::collections::BTreeMap<usize, usize> {
+        let mut m = std::collections::BTreeMap::new();
+        for k in self.bindings.keys() {
+            *m.entry(k.split_whitespace().count()).or_insert(0) += 1;
+        }
+        m
+    }
 }
 
 /// Input-mode errors.

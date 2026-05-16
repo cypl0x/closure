@@ -305,6 +305,42 @@ fn chord_trie_mode_depth_none_when_empty() {
 }
 
 #[test]
+fn dispatcher_max_min_chord_strokes_match() {
+    let mut reg = Registry::new();
+    reg.register(Box::new(RenameHeadline::new_placeholder()));
+    let disp = Dispatcher::from_registry(&reg, InputMode::Doom);
+    // single binding "C-c C-x r" = 3 strokes
+    assert_eq!(disp.max_chord_strokes(), Some(3));
+    assert_eq!(disp.min_chord_strokes(), Some(3));
+}
+
+#[test]
+fn dispatcher_chord_strokes_none_when_empty() {
+    let reg = Registry::new();
+    let disp = Dispatcher::from_registry(&reg, InputMode::Emacs);
+    assert_eq!(disp.max_chord_strokes(), None);
+    assert_eq!(disp.min_chord_strokes(), None);
+    assert_eq!(disp.mean_chord_strokes(), 0);
+}
+
+#[test]
+fn dispatcher_mean_chord_strokes_match() {
+    let mut reg = Registry::new();
+    reg.register(Box::new(RenameHeadline::new_placeholder()));
+    let disp = Dispatcher::from_registry(&reg, InputMode::Doom);
+    assert_eq!(disp.mean_chord_strokes(), 3);
+}
+
+#[test]
+fn dispatcher_chord_stroke_counts_match() {
+    let mut reg = Registry::new();
+    reg.register(Box::new(RenameHeadline::new_placeholder()));
+    let disp = Dispatcher::from_registry(&reg, InputMode::Doom);
+    let m = disp.chord_stroke_counts();
+    assert_eq!(m.get(&3), Some(&1));
+}
+
+#[test]
 fn chord_trie_commands_at_depth_match() {
     let t = closure_input::ChordTrie::build(&[
         ("a b", "first"),
