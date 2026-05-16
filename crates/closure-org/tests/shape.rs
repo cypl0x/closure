@@ -5085,3 +5085,54 @@ fn doc_mode_property_count_match() {
     .expect("parse");
     assert_eq!(doc.mode_property_count(), Some(1));
 }
+
+#[test]
+fn doc_total_root_property_count_match() {
+    let doc = parse(
+        "* A\n:PROPERTIES:\n:K1: v\n:K2: w\n:END:\n** child\n:PROPERTIES:\n:IGN: x\n:END:\n* B\n:PROPERTIES:\n:K3: v\n:END:\n",
+    )
+    .expect("parse");
+    // roots only: A=2, B=1 -> total 3
+    assert_eq!(doc.total_root_property_count(), 3);
+}
+
+#[test]
+fn doc_max_min_root_property_count_match() {
+    let doc = parse(
+        "* A\n:PROPERTIES:\n:K1: v\n:K2: w\n:END:\n* B\n",
+    )
+    .expect("parse");
+    assert_eq!(doc.max_root_property_count(), Some(2));
+    assert_eq!(doc.min_root_property_count(), Some(0));
+}
+
+#[test]
+fn doc_mean_root_property_count_match() {
+    let doc = parse(
+        "* A\n:PROPERTIES:\n:K1: v\n:K2: w\n:K3: x\n:K4: y\n:END:\n* B\n",
+    )
+    .expect("parse");
+    // 4,0 -> mean 2
+    assert_eq!(doc.mean_root_property_count(), 2);
+}
+
+#[test]
+fn doc_median_root_property_count_match() {
+    let doc = parse(
+        "* A\n* B\n:PROPERTIES:\n:K1: v\n:END:\n* C\n:PROPERTIES:\n:K2: v\n:K3: w\n:END:\n",
+    )
+    .expect("parse");
+    // 0,1,2 -> median 1
+    assert_eq!(doc.median_root_property_count(), Some(1));
+}
+
+#[test]
+fn doc_root_property_count_counts_match() {
+    let doc = parse(
+        "* A\n:PROPERTIES:\n:K1: v\n:END:\n* B\n:PROPERTIES:\n:K2: v\n:END:\n* C\n:PROPERTIES:\n:K3: v\n:K4: w\n:END:\n",
+    )
+    .expect("parse");
+    let m = doc.root_property_count_counts();
+    assert_eq!(m.get(&1), Some(&2));
+    assert_eq!(m.get(&2), Some(&1));
+}

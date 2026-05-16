@@ -3138,6 +3138,59 @@ impl OrgDoc {
         best.map(|(pc, _)| pc)
     }
 
+    /// Total property count across roots only (no recursion).
+    #[must_use]
+    pub fn total_root_property_count(&self) -> usize {
+        self.roots.iter().map(Headline::property_count).sum()
+    }
+
+    /// Maximum root property count.
+    #[must_use]
+    pub fn max_root_property_count(&self) -> Option<usize> {
+        self.roots.iter().map(Headline::property_count).max()
+    }
+
+    /// Minimum root property count.
+    #[must_use]
+    pub fn min_root_property_count(&self) -> Option<usize> {
+        self.roots.iter().map(Headline::property_count).min()
+    }
+
+    /// Integer mean root property count (`0` when no roots).
+    #[must_use]
+    pub fn mean_root_property_count(&self) -> usize {
+        let n = self.roots.len();
+        self.total_root_property_count()
+            .checked_div(n)
+            .unwrap_or(0)
+    }
+
+    /// Median root property count (`None` when no roots).
+    #[must_use]
+    pub fn median_root_property_count(&self) -> Option<usize> {
+        let mut v: Vec<usize> = self.roots.iter().map(Headline::property_count).collect();
+        if v.is_empty() {
+            return None;
+        }
+        v.sort_unstable();
+        let mid = v.len() / 2;
+        Some(if v.len() % 2 == 1 {
+            v[mid]
+        } else {
+            v[mid - 1].midpoint(v[mid])
+        })
+    }
+
+    /// Histogram of root property counts to occurrence count.
+    #[must_use]
+    pub fn root_property_count_counts(&self) -> std::collections::BTreeMap<usize, usize> {
+        let mut m = std::collections::BTreeMap::new();
+        for r in &self.roots {
+            *m.entry(r.property_count()).or_insert(0) += 1;
+        }
+        m
+    }
+
     /// Returns max child count across headlines.
     #[must_use]
     pub fn max_child_count(&self) -> usize {
