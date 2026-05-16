@@ -4112,3 +4112,31 @@ fn doc_mode_root_title_len_match() {
     // root title chars: 2,2,3 -> mode 2
     assert_eq!(doc.mode_root_title_len(), Some(2));
 }
+
+#[test]
+fn doc_total_root_title_len_match() {
+    let doc = parse("* AA\n* CCC\n").expect("parse");
+    assert_eq!(doc.total_root_title_len(), 5);
+}
+
+#[test]
+fn doc_mean_root_title_len_match() {
+    let doc = parse("* AA\n* BBBB\n").expect("parse");
+    // 2,4 -> 3
+    assert_eq!(doc.mean_root_title_len(), 3);
+}
+
+#[test]
+fn doc_median_root_title_len_match() {
+    let doc = parse("* A\n* BB\n* CCCC\n").expect("parse");
+    // 1,2,4 -> median 2
+    assert_eq!(doc.median_root_title_len(), Some(2));
+}
+
+#[test]
+fn doc_root_title_len_counts_match() {
+    let doc = parse("* AA\n* BB\n* CCC\n").expect("parse");
+    let m = doc.root_title_len_counts();
+    assert_eq!(m.get(&2), Some(&2));
+    assert_eq!(m.get(&3), Some(&1));
+}
