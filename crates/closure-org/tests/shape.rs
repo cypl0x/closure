@@ -5393,3 +5393,42 @@ fn doc_root_archived_pct_zero_when_no_roots() {
     assert_eq!(doc.root_archived_pct(), 0);
     assert_eq!(doc.root_comment_pct(), 0);
 }
+
+#[test]
+fn doc_body_pct_match() {
+    let doc = parse("* A\nbody\n* B\n* C\n* D\n").expect("parse");
+    // 1 of 4 has body -> 25
+    assert_eq!(doc.body_pct(), 25);
+}
+
+#[test]
+fn doc_count_empty_body_match() {
+    let doc = parse("* A\nbody\n* B\n* C\n").expect("parse");
+    assert_eq!(doc.count_empty_body(), 2);
+}
+
+#[test]
+fn doc_empty_body_pct_match() {
+    let doc = parse("* A\nbody\n* B\n").expect("parse");
+    assert_eq!(doc.empty_body_pct(), 50);
+}
+
+#[test]
+fn doc_root_with_body_count_match() {
+    let doc = parse("* A\nbody\n** child\nchild body\n* B\n").expect("parse");
+    // roots only: A has body, B not -> 1
+    assert_eq!(doc.root_with_body_count(), 1);
+}
+
+#[test]
+fn doc_root_body_pct_match() {
+    let doc = parse("* A\nbody\n* B\n* C\n* D\n").expect("parse");
+    assert_eq!(doc.root_body_pct(), 25);
+}
+
+#[test]
+fn doc_body_pct_zero_when_empty() {
+    let doc = parse("preamble only\n").expect("parse");
+    assert_eq!(doc.body_pct(), 0);
+    assert_eq!(doc.root_body_pct(), 0);
+}

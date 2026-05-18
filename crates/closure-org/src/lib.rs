@@ -2621,6 +2621,40 @@ impl OrgDoc {
         self.count_headlines_where(Headline::has_body)
     }
 
+    /// Percentage of headlines with a body (`0..=100`).
+    #[must_use]
+    pub fn body_pct(&self) -> usize {
+        let n = self.iter_headlines().len();
+        (self.with_body_count() * 100).checked_div(n).unwrap_or(0)
+    }
+
+    /// Number of headlines with an empty body.
+    #[must_use]
+    pub fn count_empty_body(&self) -> usize {
+        self.iter_headlines().len() - self.with_body_count()
+    }
+
+    /// Percentage of headlines with an empty body (`0..=100`).
+    #[must_use]
+    pub fn empty_body_pct(&self) -> usize {
+        let n = self.iter_headlines().len();
+        (self.count_empty_body() * 100).checked_div(n).unwrap_or(0)
+    }
+
+    /// Number of roots with a body (roots only).
+    #[must_use]
+    pub fn root_with_body_count(&self) -> usize {
+        self.roots.iter().filter(|h| h.has_body()).count()
+    }
+
+    /// Percentage of roots with a body (`0..=100`).
+    #[must_use]
+    pub fn root_body_pct(&self) -> usize {
+        (self.root_with_body_count() * 100)
+            .checked_div(self.roots.len())
+            .unwrap_or(0)
+    }
+
     /// Number of headlines with a properties drawer.
     #[must_use]
     pub fn with_properties_count(&self) -> usize {
