@@ -532,6 +532,36 @@ fn vault_distinct_property_value_count_zero_for_unknown() {
 }
 
 #[test]
+fn vault_max_min_file_byte_count_match() {
+    let td = write_vault(&[("a.org", "* A\n"), ("b.org", "* BBBBBB\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    // "* A\n"=4, "* BBBBBB\n"=9
+    assert_eq!(v.max_file_byte_count(), Some(9));
+    assert_eq!(v.min_file_byte_count(), Some(4));
+}
+
+#[test]
+fn vault_median_file_byte_count_match() {
+    let td = write_vault(&[
+        ("a.org", "* A\n"),
+        ("b.org", "* BB\n"),
+        ("c.org", "* CCCCCC\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    // 4,5,9 -> median 5
+    assert_eq!(v.median_file_byte_count(), Some(5));
+}
+
+#[test]
+fn vault_file_byte_count_none_when_empty() {
+    let td = write_vault(&[]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.max_file_byte_count(), None);
+    assert_eq!(v.min_file_byte_count(), None);
+    assert_eq!(v.median_file_byte_count(), None);
+}
+
+#[test]
 fn vault_most_common_todo_returns_top() {
     let td = write_vault(&[
         ("a.org", "* TODO X\n* DONE Y\n"),

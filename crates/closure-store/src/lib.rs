@@ -563,6 +563,34 @@ impl Vault {
         self.byte_count().checked_div(self.len()).unwrap_or(0)
     }
 
+    /// Maximum file byte count across the vault.
+    #[must_use]
+    pub fn max_file_byte_count(&self) -> Option<usize> {
+        self.documents.values().map(|d| d.source().len()).max()
+    }
+
+    /// Minimum file byte count across the vault.
+    #[must_use]
+    pub fn min_file_byte_count(&self) -> Option<usize> {
+        self.documents.values().map(|d| d.source().len()).min()
+    }
+
+    /// Median file byte count across the vault (`None` when empty).
+    #[must_use]
+    pub fn median_file_byte_count(&self) -> Option<usize> {
+        let mut v: Vec<usize> = self.documents.values().map(|d| d.source().len()).collect();
+        if v.is_empty() {
+            return None;
+        }
+        v.sort_unstable();
+        let mid = v.len() / 2;
+        Some(if v.len() % 2 == 1 {
+            v[mid]
+        } else {
+            v[mid - 1].midpoint(v[mid])
+        })
+    }
+
     /// Mean headline count per file across the vault (rounded down).
     #[must_use]
     pub fn mean_headlines_per_file(&self) -> usize {
