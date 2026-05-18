@@ -5898,3 +5898,23 @@ fn doc_id_uniqueness_pct_zero_when_no_ids() {
     assert_eq!(doc.id_uniqueness_pct(), 0);
     assert!(doc.distinct_ids().is_empty());
 }
+
+#[test]
+fn doc_tag_diversity_pct_match() {
+    let doc = parse("* A :x:y:\n* B :x:\n* C :x:\n").expect("parse");
+    // tag occurrences: x*3, y*1 = 4 total; distinct {x,y}=2 -> 2*100/4 = 50
+    assert_eq!(doc.tag_diversity_pct(), 50);
+}
+
+#[test]
+fn doc_tag_diversity_pct_zero_when_no_tags() {
+    let doc = parse("* A\n* B\n").expect("parse");
+    assert_eq!(doc.tag_diversity_pct(), 0);
+}
+
+#[test]
+fn doc_tag_diversity_pct_full_when_all_distinct() {
+    let doc = parse("* A :x:\n* B :y:\n").expect("parse");
+    // 2 occurrences, 2 distinct -> 100
+    assert_eq!(doc.tag_diversity_pct(), 100);
+}

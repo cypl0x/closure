@@ -5443,6 +5443,15 @@ impl OrgDoc {
         self.roots.iter().map(walk).sum()
     }
 
+    /// Percentage of distinct tags among total tag occurrences
+    /// (`distinct * 100 / total`, `0` when no tags).
+    #[must_use]
+    pub fn tag_diversity_pct(&self) -> usize {
+        (self.distinct_tag_count() * 100)
+            .checked_div(self.total_tag_count())
+            .unwrap_or(0)
+    }
+
     /// Total priority-set occurrences across all headlines.
     #[must_use]
     pub fn total_priority_count(&self) -> usize {
