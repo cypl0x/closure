@@ -508,6 +508,12 @@ impl ChordTrie {
         self.nodes.len()
     }
 
+    /// Count of nodes that carry no command (root + intermediate prefixes).
+    #[must_use]
+    pub fn prefix_node_count(&self) -> usize {
+        self.nodes.iter().filter(|n| n.command.is_none()).count()
+    }
+
     /// All bindings as `(chord, command)` pairs, sorted by chord.
     #[must_use]
     pub fn bindings(&self) -> Vec<(String, String)> {

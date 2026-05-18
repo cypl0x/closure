@@ -453,6 +453,20 @@ fn dispatcher_stroke_count_zero_when_empty() {
 }
 
 #[test]
+fn chord_trie_prefix_node_count_match() {
+    let t = closure_input::ChordTrie::build(&[("a b", "x")]);
+    // nodes: root, 'a', 'b'(cmd) -> prefix (no command) = root + 'a' = 2
+    assert_eq!(t.prefix_node_count(), 2);
+}
+
+#[test]
+fn chord_trie_prefix_node_count_empty_is_one() {
+    let t = closure_input::ChordTrie::build(&[]);
+    // only root, no command -> 1
+    assert_eq!(t.prefix_node_count(), 1);
+}
+
+#[test]
 fn chord_trie_single_stroke_count_match() {
     let t = closure_input::ChordTrie::build(&[("a", "x"), ("b c", "y"), ("d", "z")]);
     // single-stroke: "a","d" = 2
