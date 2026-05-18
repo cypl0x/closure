@@ -4885,6 +4885,40 @@ impl OrgDoc {
         m
     }
 
+    /// All values bound to property `key` across roots (with duplicates).
+    #[must_use]
+    pub fn root_property_values_for_key(&self, key: &str) -> Vec<String> {
+        let mut out = Vec::new();
+        for r in &self.roots {
+            if let Some(p) = r.properties()
+                && let Some(v) = p.get(key)
+            {
+                out.push(v.to_owned());
+            }
+        }
+        out
+    }
+
+    /// Sorted distinct values bound to property `key` across roots.
+    #[must_use]
+    pub fn distinct_root_property_values_for_key(&self, key: &str) -> Vec<String> {
+        let mut s: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+        for r in &self.roots {
+            if let Some(p) = r.properties()
+                && let Some(v) = p.get(key)
+            {
+                s.insert(v.to_owned());
+            }
+        }
+        s.into_iter().collect()
+    }
+
+    /// Count of distinct values bound to property `key` across roots.
+    #[must_use]
+    pub fn distinct_root_property_value_count_for_key(&self, key: &str) -> usize {
+        self.distinct_root_property_values_for_key(key).len()
+    }
+
     /// Distinct TODO keywords across roots, sorted.
     #[must_use]
     pub fn distinct_root_todos(&self) -> Vec<String> {

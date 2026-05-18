@@ -5680,3 +5680,36 @@ fn doc_root_property_key_counts_match() {
     assert_eq!(m.get("Foo"), Some(&2));
     assert_eq!(m.get("Bar"), Some(&1));
 }
+
+#[test]
+fn doc_root_property_values_for_key_match() {
+    let doc = parse(
+        "* A\n:PROPERTIES:\n:Foo: 1\n:END:\n** child\n:PROPERTIES:\n:Foo: 9\n:END:\n* B\n:PROPERTIES:\n:Foo: 2\n:END:\n",
+    )
+    .expect("parse");
+    let mut vals = doc.root_property_values_for_key("Foo");
+    vals.sort();
+    // roots only; child Foo:9 excluded
+    assert_eq!(vals, vec!["1".to_owned(), "2".to_owned()]);
+}
+
+#[test]
+fn doc_distinct_root_property_values_for_key_sorted() {
+    let doc = parse(
+        "* A\n:PROPERTIES:\n:Foo: x\n:END:\n* B\n:PROPERTIES:\n:Foo: x\n:END:\n* C\n:PROPERTIES:\n:Foo: y\n:END:\n",
+    )
+    .expect("parse");
+    assert_eq!(
+        doc.distinct_root_property_values_for_key("Foo"),
+        vec!["x".to_owned(), "y".to_owned()]
+    );
+}
+
+#[test]
+fn doc_distinct_root_property_value_count_for_key_match() {
+    let doc = parse(
+        "* A\n:PROPERTIES:\n:Foo: x\n:END:\n* B\n:PROPERTIES:\n:Foo: y\n:END:\n",
+    )
+    .expect("parse");
+    assert_eq!(doc.distinct_root_property_value_count_for_key("Foo"), 2);
+}
