@@ -2735,6 +2735,48 @@ impl OrgDoc {
             .unwrap_or(0)
     }
 
+    /// Count of branch headlines (those with at least one child).
+    #[must_use]
+    pub fn count_branches(&self) -> usize {
+        self.iter_headlines().len() - self.count_leaves()
+    }
+
+    /// Branch-vs-headline ratio as a percentage.
+    #[must_use]
+    pub fn branch_pct(&self) -> usize {
+        (self.count_branches() * 100)
+            .checked_div(self.headline_count())
+            .unwrap_or(0)
+    }
+
+    /// Count of roots that are leaves (no children).
+    #[must_use]
+    pub fn count_root_leaves(&self) -> usize {
+        self.roots.iter().filter(|h| h.is_leaf()).count()
+    }
+
+    /// Count of roots that are branches (have children).
+    #[must_use]
+    pub fn count_root_branches(&self) -> usize {
+        self.roots.len() - self.count_root_leaves()
+    }
+
+    /// Percentage of roots that are leaves (`0..=100`).
+    #[must_use]
+    pub fn root_leaf_pct(&self) -> usize {
+        (self.count_root_leaves() * 100)
+            .checked_div(self.roots.len())
+            .unwrap_or(0)
+    }
+
+    /// Percentage of roots that are branches (`0..=100`).
+    #[must_use]
+    pub fn root_branch_pct(&self) -> usize {
+        (self.count_root_branches() * 100)
+            .checked_div(self.roots.len())
+            .unwrap_or(0)
+    }
+
     /// Archived-vs-headline ratio as a percentage.
     #[must_use]
     pub fn archived_pct(&self) -> usize {

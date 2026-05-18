@@ -5537,3 +5537,51 @@ fn doc_root_unprioritized_pct_match() {
     let doc = parse("* [#A] A\n* B\n* C\n* D\n").expect("parse");
     assert_eq!(doc.root_unprioritized_pct(), 75);
 }
+
+#[test]
+fn doc_count_branches_match() {
+    let doc = parse("* A\n** B\n** C\n* D\n").expect("parse");
+    // A has children (branch); B,C,D leaves -> 1 branch
+    assert_eq!(doc.count_branches(), 1);
+}
+
+#[test]
+fn doc_branch_pct_match() {
+    let doc = parse("* A\n** B\n* C\n* D\n").expect("parse");
+    // A branch; B,C,D leaves -> 1 of 4 = 25
+    assert_eq!(doc.branch_pct(), 25);
+}
+
+#[test]
+fn doc_count_root_leaves_match() {
+    let doc = parse("* A\n** B\n* C\n* D\n").expect("parse");
+    // roots: A branch, C leaf, D leaf -> 2 leaf roots
+    assert_eq!(doc.count_root_leaves(), 2);
+}
+
+#[test]
+fn doc_count_root_branches_match() {
+    let doc = parse("* A\n** B\n* C\n** D\n* E\n").expect("parse");
+    // roots: A branch, C branch, E leaf -> 2 branch roots
+    assert_eq!(doc.count_root_branches(), 2);
+}
+
+#[test]
+fn doc_root_leaf_pct_match() {
+    let doc = parse("* A\n** B\n* C\n* D\n* E\n").expect("parse");
+    // roots: A branch; C,D,E leaves -> 3 of 4 = 75
+    assert_eq!(doc.root_leaf_pct(), 75);
+}
+
+#[test]
+fn doc_root_branch_pct_match() {
+    let doc = parse("* A\n** B\n* C\n* D\n* E\n").expect("parse");
+    assert_eq!(doc.root_branch_pct(), 25);
+}
+
+#[test]
+fn doc_branch_pct_zero_when_empty() {
+    let doc = parse("preamble only\n").expect("parse");
+    assert_eq!(doc.branch_pct(), 0);
+    assert_eq!(doc.root_branch_pct(), 0);
+}
