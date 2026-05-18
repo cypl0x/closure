@@ -383,6 +383,30 @@ fn dispatcher_longest_shortest_chord_none_when_empty() {
 }
 
 #[test]
+fn dispatcher_command_chord_counts_match() {
+    let mut reg = Registry::new();
+    reg.register(Box::new(RenameHeadline::new_placeholder()));
+    let disp = Dispatcher::from_registry(&reg, InputMode::Doom);
+    let m = disp.command_chord_counts();
+    assert_eq!(m.get("rename-headline"), Some(&1));
+}
+
+#[test]
+fn dispatcher_most_bound_command_match() {
+    let mut reg = Registry::new();
+    reg.register(Box::new(RenameHeadline::new_placeholder()));
+    let disp = Dispatcher::from_registry(&reg, InputMode::Doom);
+    assert_eq!(disp.most_bound_command(), Some("rename-headline".to_owned()));
+}
+
+#[test]
+fn dispatcher_most_bound_command_none_when_empty() {
+    let reg = Registry::new();
+    let disp = Dispatcher::from_registry(&reg, InputMode::Emacs);
+    assert_eq!(disp.most_bound_command(), None);
+}
+
+#[test]
 fn chord_trie_command_chord_counts_match() {
     let t = closure_input::ChordTrie::build(&[
         ("a b", "foo"),
