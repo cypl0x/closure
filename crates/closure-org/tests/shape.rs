@@ -5432,3 +5432,28 @@ fn doc_body_pct_zero_when_empty() {
     assert_eq!(doc.body_pct(), 0);
     assert_eq!(doc.root_body_pct(), 0);
 }
+
+#[test]
+fn doc_count_no_id_match() {
+    let doc = parse("* A\n:PROPERTIES:\n:ID: x1\n:END:\n* B\n* C\n").expect("parse");
+    assert_eq!(doc.count_no_id(), 2);
+}
+
+#[test]
+fn doc_count_roots_without_id_match() {
+    let doc = parse("* A\n:PROPERTIES:\n:ID: x1\n:END:\n* B\n* C\n").expect("parse");
+    assert_eq!(doc.count_roots_without_id(), 2);
+}
+
+#[test]
+fn doc_root_id_pct_match() {
+    let doc = parse("* A\n:PROPERTIES:\n:ID: x1\n:END:\n* B\n* C\n* D\n").expect("parse");
+    // 1 of 4 roots -> 25
+    assert_eq!(doc.root_id_pct(), 25);
+}
+
+#[test]
+fn doc_root_id_pct_zero_when_no_roots() {
+    let doc = parse("preamble only\n").expect("parse");
+    assert_eq!(doc.root_id_pct(), 0);
+}

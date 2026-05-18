@@ -2759,6 +2759,12 @@ impl OrgDoc {
             .unwrap_or(0)
     }
 
+    /// Count of headlines with no `:ID:` property.
+    #[must_use]
+    pub fn count_no_id(&self) -> usize {
+        self.iter_headlines().len() - self.count_with_id()
+    }
+
     /// Priority-vs-headline ratio as a percentage.
     #[must_use]
     pub fn priority_pct(&self) -> usize {
@@ -4595,6 +4601,20 @@ impl OrgDoc {
             .iter()
             .filter(|h| h.id_property().is_some())
             .count()
+    }
+
+    /// Count of roots carrying no `:ID:`.
+    #[must_use]
+    pub fn count_roots_without_id(&self) -> usize {
+        self.roots.len() - self.count_roots_with_id()
+    }
+
+    /// Percentage of roots carrying an `:ID:` (`0..=100`).
+    #[must_use]
+    pub fn root_id_pct(&self) -> usize {
+        (self.count_roots_with_id() * 100)
+            .checked_div(self.roots.len())
+            .unwrap_or(0)
     }
 
     /// Roots carrying property `key`.
