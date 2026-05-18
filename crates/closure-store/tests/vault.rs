@@ -606,6 +606,43 @@ fn vault_line_count_none_when_empty() {
 }
 
 #[test]
+fn vault_mean_file_word_count_match() {
+    let td = write_vault(&[("a.org", "* a b\n"), ("b.org", "* c d e f\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    // a.org "* a b" = 3 words, b.org "* c d e f" = 5 -> mean 4
+    assert_eq!(v.mean_file_word_count(), 4);
+}
+
+#[test]
+fn vault_max_min_file_word_count_match() {
+    let td = write_vault(&[("a.org", "* a\n"), ("b.org", "* b c d\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    // "* a"=2, "* b c d"=4
+    assert_eq!(v.max_file_word_count(), Some(4));
+    assert_eq!(v.min_file_word_count(), Some(2));
+}
+
+#[test]
+fn vault_median_file_word_count_match() {
+    let td = write_vault(&[
+        ("a.org", "* a\n"),
+        ("b.org", "* b c\n"),
+        ("c.org", "* d e f g h\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    // "* a"=2, "* b c"=3, "* d e f g h"=6 -> median 3
+    assert_eq!(v.median_file_word_count(), Some(3));
+}
+
+#[test]
+fn vault_file_word_count_none_when_empty() {
+    let td = write_vault(&[]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.max_file_word_count(), None);
+    assert_eq!(v.mean_file_word_count(), 0);
+}
+
+#[test]
 fn vault_most_common_todo_returns_top() {
     let td = write_vault(&[
         ("a.org", "* TODO X\n* DONE Y\n"),

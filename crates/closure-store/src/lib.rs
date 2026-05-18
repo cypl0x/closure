@@ -206,6 +206,50 @@ impl Vault {
             .map(|d| d.source().split_whitespace().count())
     }
 
+    /// Integer mean file word count (`0` when empty).
+    #[must_use]
+    pub fn mean_file_word_count(&self) -> usize {
+        self.word_count().checked_div(self.len()).unwrap_or(0)
+    }
+
+    /// Maximum file word count across the vault.
+    #[must_use]
+    pub fn max_file_word_count(&self) -> Option<usize> {
+        self.documents
+            .values()
+            .map(|d| d.source().split_whitespace().count())
+            .max()
+    }
+
+    /// Minimum file word count across the vault.
+    #[must_use]
+    pub fn min_file_word_count(&self) -> Option<usize> {
+        self.documents
+            .values()
+            .map(|d| d.source().split_whitespace().count())
+            .min()
+    }
+
+    /// Median file word count across the vault (`None` when empty).
+    #[must_use]
+    pub fn median_file_word_count(&self) -> Option<usize> {
+        let mut v: Vec<usize> = self
+            .documents
+            .values()
+            .map(|d| d.source().split_whitespace().count())
+            .collect();
+        if v.is_empty() {
+            return None;
+        }
+        v.sort_unstable();
+        let mid = v.len() / 2;
+        Some(if v.len() % 2 == 1 {
+            v[mid]
+        } else {
+            v[mid - 1].midpoint(v[mid])
+        })
+    }
+
     /// Headline count for a single file by path.
     #[must_use]
     pub fn headline_count_of(&self, path: &Path) -> Option<usize> {
