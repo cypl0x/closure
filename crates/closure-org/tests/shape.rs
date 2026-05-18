@@ -6034,3 +6034,16 @@ fn doc_header_byte_pct_zero_when_empty_source() {
     let doc = parse("").expect("parse");
     assert_eq!(doc.header_byte_pct(), 0);
 }
+
+#[test]
+fn doc_title_byte_pct_match() {
+    let doc = parse("* HHHH\n").expect("parse");
+    // source "* HHHH\n"=7, title "HHHH"=4 -> 4*100/7 = 57
+    assert_eq!(doc.title_byte_pct(), 57);
+}
+
+#[test]
+fn doc_title_byte_pct_zero_when_empty_source() {
+    let doc = parse("").expect("parse");
+    assert_eq!(doc.title_byte_pct(), 0);
+}
