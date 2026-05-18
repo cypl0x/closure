@@ -2240,6 +2240,27 @@ impl Vault {
         self.distinct_titles().len()
     }
 
+    /// Number of headlines whose title duplicates another
+    /// (total headlines minus distinct titles).
+    #[must_use]
+    pub fn duplicate_title_count(&self) -> usize {
+        self.headline_count() - self.distinct_title_count()
+    }
+
+    /// True iff any title appears on more than one headline.
+    #[must_use]
+    pub fn has_duplicate_titles(&self) -> bool {
+        self.duplicate_title_count() > 0
+    }
+
+    /// Percentage of headlines whose title is distinct (`0..=100`).
+    #[must_use]
+    pub fn unique_title_pct(&self) -> usize {
+        (self.distinct_title_count() * 100)
+            .checked_div(self.headline_count())
+            .unwrap_or(0)
+    }
+
     /// Path with the maximum headline count. Ties resolved by lexicographic path.
     #[must_use]
     pub fn path_with_max_headlines(&self) -> Option<&Path> {

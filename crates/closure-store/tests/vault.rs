@@ -646,6 +646,40 @@ fn vault_empty_title_pct_zero_when_empty() {
 }
 
 #[test]
+fn vault_duplicate_title_count_match() {
+    let td = write_vault(&[("a.org", "* A\n* A\n* B\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    // total 3 - distinct 2 = 1
+    assert_eq!(v.duplicate_title_count(), 1);
+}
+
+#[test]
+fn vault_has_duplicate_titles_match() {
+    let dup = write_vault(&[("a.org", "* A\n"), ("b.org", "* A\n")]);
+    let vd = Vault::open(dup.path()).expect("open");
+    assert!(vd.has_duplicate_titles());
+    let uniq = write_vault(&[("a.org", "* A\n* B\n")]);
+    let vu = Vault::open(uniq.path()).expect("open");
+    assert!(!vu.has_duplicate_titles());
+}
+
+#[test]
+fn vault_unique_title_pct_match() {
+    let td = write_vault(&[("a.org", "* A\n* A\n* B\n* C\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    // distinct 3 of 4 -> 75
+    assert_eq!(v.unique_title_pct(), 75);
+}
+
+#[test]
+fn vault_unique_title_pct_zero_when_empty() {
+    let td = write_vault(&[("a.org", "no headlines\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.unique_title_pct(), 0);
+    assert!(!v.has_duplicate_titles());
+}
+
+#[test]
 fn vault_max_min_file_byte_count_match() {
     let td = write_vault(&[("a.org", "* A\n"), ("b.org", "* BBBBBB\n")]);
     let v = Vault::open(td.path()).expect("open");
