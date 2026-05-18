@@ -5452,6 +5452,24 @@ impl OrgDoc {
             .unwrap_or(0)
     }
 
+    /// Percentage of distinct TODO keywords among total TODO occurrences
+    /// (`distinct * 100 / total`, `0` when no TODOs).
+    #[must_use]
+    pub fn todo_diversity_pct(&self) -> usize {
+        (self.distinct_todo_count() * 100)
+            .checked_div(self.total_todo_count())
+            .unwrap_or(0)
+    }
+
+    /// Percentage of distinct levels among all headlines
+    /// (`distinct levels * 100 / headline count`, `0` when empty).
+    #[must_use]
+    pub fn level_diversity_pct(&self) -> usize {
+        (self.distinct_level_count() * 100)
+            .checked_div(self.iter_headlines().len())
+            .unwrap_or(0)
+    }
+
     /// Total priority-set occurrences across all headlines.
     #[must_use]
     pub fn total_priority_count(&self) -> usize {

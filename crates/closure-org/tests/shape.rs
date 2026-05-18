@@ -5918,3 +5918,29 @@ fn doc_tag_diversity_pct_full_when_all_distinct() {
     // 2 occurrences, 2 distinct -> 100
     assert_eq!(doc.tag_diversity_pct(), 100);
 }
+
+#[test]
+fn doc_todo_diversity_pct_match() {
+    let doc = parse("* TODO A\n* TODO B\n* DONE C\n* DONE D\n").expect("parse");
+    // 4 todo occurrences, distinct {TODO,DONE}=2 -> 2*100/4 = 50
+    assert_eq!(doc.todo_diversity_pct(), 50);
+}
+
+#[test]
+fn doc_todo_diversity_pct_zero_when_no_todos() {
+    let doc = parse("* A\n* B\n").expect("parse");
+    assert_eq!(doc.todo_diversity_pct(), 0);
+}
+
+#[test]
+fn doc_level_diversity_pct_match() {
+    let doc = parse("* A\n* B\n** C\n** D\n").expect("parse");
+    // 4 headlines, distinct levels {1,2}=2 -> 2*100/4 = 50
+    assert_eq!(doc.level_diversity_pct(), 50);
+}
+
+#[test]
+fn doc_level_diversity_pct_zero_when_empty() {
+    let doc = parse("preamble only\n").expect("parse");
+    assert_eq!(doc.level_diversity_pct(), 0);
+}
