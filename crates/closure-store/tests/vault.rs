@@ -562,6 +562,50 @@ fn vault_file_byte_count_none_when_empty() {
 }
 
 #[test]
+fn vault_total_line_count_match() {
+    let td = write_vault(&[("a.org", "* A\nx\n"), ("b.org", "* B\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    // a.org 2 lines, b.org 1 line = 3
+    assert_eq!(v.total_line_count(), 3);
+}
+
+#[test]
+fn vault_mean_file_line_count_match() {
+    let td = write_vault(&[("a.org", "* A\nx\n"), ("b.org", "* B\ny\nz\nw\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    // 2,4 -> mean 3
+    assert_eq!(v.mean_file_line_count(), 3);
+}
+
+#[test]
+fn vault_max_min_file_line_count_match() {
+    let td = write_vault(&[("a.org", "* A\n"), ("b.org", "* B\ny\nz\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.max_file_line_count(), Some(3));
+    assert_eq!(v.min_file_line_count(), Some(1));
+}
+
+#[test]
+fn vault_median_file_line_count_match() {
+    let td = write_vault(&[
+        ("a.org", "* A\n"),
+        ("b.org", "* B\ny\n"),
+        ("c.org", "* C\nx\ny\nz\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    // 1,2,4 -> median 2
+    assert_eq!(v.median_file_line_count(), Some(2));
+}
+
+#[test]
+fn vault_line_count_none_when_empty() {
+    let td = write_vault(&[]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.total_line_count(), 0);
+    assert_eq!(v.max_file_line_count(), None);
+}
+
+#[test]
 fn vault_most_common_todo_returns_top() {
     let td = write_vault(&[
         ("a.org", "* TODO X\n* DONE Y\n"),
