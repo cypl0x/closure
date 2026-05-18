@@ -5713,3 +5713,22 @@ fn doc_distinct_root_property_value_count_for_key_match() {
     .expect("parse");
     assert_eq!(doc.distinct_root_property_value_count_for_key("Foo"), 2);
 }
+
+#[test]
+fn doc_least_common_property_value_for_key_match() {
+    let doc = parse(
+        "* A\n:PROPERTIES:\n:Foo: x\n:END:\n* B\n:PROPERTIES:\n:Foo: x\n:END:\n* C\n:PROPERTIES:\n:Foo: y\n:END:\n",
+    )
+    .expect("parse");
+    // x=2, y=1 -> least y
+    assert_eq!(
+        doc.least_common_property_value_for_key("Foo"),
+        Some("y".to_owned())
+    );
+}
+
+#[test]
+fn doc_least_common_property_value_for_key_none_for_unknown() {
+    let doc = parse("* A\n:PROPERTIES:\n:Foo: 1\n:END:\n").expect("parse");
+    assert_eq!(doc.least_common_property_value_for_key("Nope"), None);
+}
