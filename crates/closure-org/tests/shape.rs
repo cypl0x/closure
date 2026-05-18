@@ -6127,3 +6127,16 @@ fn doc_median_tag_len_none_when_no_tags() {
     assert_eq!(doc.median_tag_len(), None);
     assert_eq!(doc.total_tag_len(), 0);
 }
+
+#[test]
+fn doc_mode_tag_len_match() {
+    let doc = parse("* A :ab:cd:\n* B :e:\n").expect("parse");
+    // lens 2,2,1 -> mode 2
+    assert_eq!(doc.mode_tag_len(), Some(2));
+}
+
+#[test]
+fn doc_mode_tag_len_none_when_no_tags() {
+    let doc = parse("* A\n").expect("parse");
+    assert_eq!(doc.mode_tag_len(), None);
+}

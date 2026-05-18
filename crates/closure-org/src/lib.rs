@@ -675,6 +675,18 @@ impl OrgDoc {
         m
     }
 
+    /// Most common tag length in characters (lowest wins ties).
+    #[must_use]
+    pub fn mode_tag_len(&self) -> Option<usize> {
+        let mut best: Option<(usize, usize)> = None;
+        for (len, c) in self.tag_len_counts() {
+            if best.is_none_or(|(_, bc)| c > bc) {
+                best = Some((len, c));
+            }
+        }
+        best.map(|(len, _)| len)
+    }
+
     /// Sorted distinct tag set (borrowed).
     #[must_use]
     pub fn tag_set(&self) -> std::collections::BTreeSet<&str> {
