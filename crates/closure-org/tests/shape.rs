@@ -5585,3 +5585,36 @@ fn doc_branch_pct_zero_when_empty() {
     assert_eq!(doc.branch_pct(), 0);
     assert_eq!(doc.root_branch_pct(), 0);
 }
+
+#[test]
+fn doc_most_common_tag_match() {
+    let doc = parse("* A :x:\n* B :x:\n* C :y:\n").expect("parse");
+    assert_eq!(doc.most_common_tag(), Some("x".to_owned()));
+}
+
+#[test]
+fn doc_most_common_todo_match() {
+    let doc = parse("* TODO A\n* TODO B\n* DONE C\n").expect("parse");
+    assert_eq!(doc.most_common_todo(), Some("TODO".to_owned()));
+}
+
+#[test]
+fn doc_most_common_level_match() {
+    let doc = parse("* A\n* B\n** C\n").expect("parse");
+    // levels 1,1,2 -> mode 1
+    assert_eq!(doc.most_common_level(), Some(1));
+}
+
+#[test]
+fn doc_most_common_priority_match() {
+    let doc = parse("* [#A] X\n* [#A] Y\n* [#B] Z\n").expect("parse");
+    assert_eq!(doc.most_common_priority(), Some('A'));
+}
+
+#[test]
+fn doc_most_common_tag_none_when_none() {
+    let doc = parse("* A\n").expect("parse");
+    assert_eq!(doc.most_common_tag(), None);
+    assert_eq!(doc.most_common_todo(), None);
+    assert_eq!(doc.most_common_priority(), None);
+}

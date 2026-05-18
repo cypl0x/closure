@@ -1129,6 +1129,54 @@ impl OrgDoc {
             .map(|(k, _)| k)
     }
 
+    /// Most-common tag across the document (lowest name wins ties).
+    #[must_use]
+    pub fn most_common_tag(&self) -> Option<String> {
+        let mut best: Option<(String, usize)> = None;
+        for (k, c) in self.tag_counts() {
+            if best.as_ref().is_none_or(|(_, bc)| c > *bc) {
+                best = Some((k, c));
+            }
+        }
+        best.map(|(k, _)| k)
+    }
+
+    /// Most-common TODO keyword across the document (lowest name wins ties).
+    #[must_use]
+    pub fn most_common_todo(&self) -> Option<String> {
+        let mut best: Option<(String, usize)> = None;
+        for (k, c) in self.todo_counts() {
+            if best.as_ref().is_none_or(|(_, bc)| c > *bc) {
+                best = Some((k, c));
+            }
+        }
+        best.map(|(k, _)| k)
+    }
+
+    /// Most-common level across the document (lowest level wins ties).
+    #[must_use]
+    pub fn most_common_level(&self) -> Option<u8> {
+        let mut best: Option<(u8, usize)> = None;
+        for (k, c) in self.level_counts() {
+            if best.is_none_or(|(_, bc)| c > bc) {
+                best = Some((k, c));
+            }
+        }
+        best.map(|(k, _)| k)
+    }
+
+    /// Most-common priority letter across the document (lowest letter wins ties).
+    #[must_use]
+    pub fn most_common_priority(&self) -> Option<char> {
+        let mut best: Option<(char, usize)> = None;
+        for (k, c) in self.priority_counts() {
+            if best.is_none_or(|(_, bc)| c > bc) {
+                best = Some((k, c));
+            }
+        }
+        best.map(|(k, _)| k)
+    }
+
     /// Minimum headline-body word count across the document (`0` when empty).
     #[must_use]
     pub fn min_body_word_count(&self) -> usize {
