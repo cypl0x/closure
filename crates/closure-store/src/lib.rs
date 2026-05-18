@@ -266,6 +266,59 @@ impl Vault {
         self.documents.values().map(|d| d.org().count_todos()).sum()
     }
 
+    /// Percentage of headlines carrying a TODO keyword (`0..=100`).
+    #[must_use]
+    pub fn todo_pct(&self) -> usize {
+        (self.todo_count() * 100)
+            .checked_div(self.headline_count())
+            .unwrap_or(0)
+    }
+
+    /// Count of headlines with no TODO keyword.
+    #[must_use]
+    pub fn count_no_todo(&self) -> usize {
+        self.headline_count() - self.todo_count()
+    }
+
+    /// Percentage of headlines with no TODO keyword (`0..=100`).
+    #[must_use]
+    pub fn no_todo_pct(&self) -> usize {
+        (self.count_no_todo() * 100)
+            .checked_div(self.headline_count())
+            .unwrap_or(0)
+    }
+
+    /// Count of headlines carrying at least one tag across the vault.
+    #[must_use]
+    pub fn tagged_count(&self) -> usize {
+        self.iter()
+            .flat_map(|(_, d)| d.all_headlines())
+            .filter(|h| !h.tags().is_empty())
+            .count()
+    }
+
+    /// Percentage of headlines carrying at least one tag (`0..=100`).
+    #[must_use]
+    pub fn tagged_pct(&self) -> usize {
+        (self.tagged_count() * 100)
+            .checked_div(self.headline_count())
+            .unwrap_or(0)
+    }
+
+    /// Count of headlines carrying no tag.
+    #[must_use]
+    pub fn untagged_count(&self) -> usize {
+        self.headline_count() - self.tagged_count()
+    }
+
+    /// Percentage of headlines carrying no tag (`0..=100`).
+    #[must_use]
+    pub fn untagged_pct(&self) -> usize {
+        (self.untagged_count() * 100)
+            .checked_div(self.headline_count())
+            .unwrap_or(0)
+    }
+
     /// Count of archived headlines across the vault.
     #[must_use]
     pub fn archived_count(&self) -> usize {

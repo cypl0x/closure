@@ -1034,6 +1034,63 @@ fn vault_archived_pct_zero_when_empty() {
 }
 
 #[test]
+fn vault_todo_pct_match() {
+    let td = write_vault(&[("a.org", "* TODO A\n* B\n* C\n* D\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.todo_pct(), 25);
+}
+
+#[test]
+fn vault_count_no_todo_match() {
+    let td = write_vault(&[("a.org", "* TODO A\n* B\n* C\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.count_no_todo(), 2);
+}
+
+#[test]
+fn vault_no_todo_pct_match() {
+    let td = write_vault(&[("a.org", "* TODO A\n* B\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.no_todo_pct(), 50);
+}
+
+#[test]
+fn vault_tagged_count_match() {
+    let td = write_vault(&[("a.org", "* A :x:\n* B\n* C :y:z:\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.tagged_count(), 2);
+}
+
+#[test]
+fn vault_tagged_pct_match() {
+    let td = write_vault(&[("a.org", "* A :x:\n* B\n* C\n* D\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.tagged_pct(), 25);
+}
+
+#[test]
+fn vault_untagged_count_match() {
+    let td = write_vault(&[("a.org", "* A :x:\n* B\n* C\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.untagged_count(), 2);
+}
+
+#[test]
+fn vault_untagged_pct_match() {
+    let td = write_vault(&[("a.org", "* A :x:\n* B\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.untagged_pct(), 50);
+}
+
+#[test]
+fn vault_todo_pct_zero_when_empty() {
+    let td = write_vault(&[("a.org", "no headlines\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.todo_pct(), 0);
+    assert_eq!(v.tagged_pct(), 0);
+}
+
+#[test]
 fn vault_path_with_max_headlines_match() {
     let td = write_vault(&[
         ("a.org", "* X\n"),
