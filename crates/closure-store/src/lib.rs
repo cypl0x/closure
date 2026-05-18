@@ -2203,6 +2203,37 @@ impl Vault {
             .unwrap_or(0)
     }
 
+    /// Count of headlines with an empty title across the vault.
+    #[must_use]
+    pub fn empty_title_count(&self) -> usize {
+        self.iter()
+            .flat_map(|(_, d)| d.all_headlines())
+            .filter(|h| h.title().is_empty())
+            .count()
+    }
+
+    /// Percentage of headlines with an empty title (`0..=100`).
+    #[must_use]
+    pub fn empty_title_pct(&self) -> usize {
+        (self.empty_title_count() * 100)
+            .checked_div(self.headline_count())
+            .unwrap_or(0)
+    }
+
+    /// Count of headlines with a non-empty title.
+    #[must_use]
+    pub fn count_nonempty_title(&self) -> usize {
+        self.headline_count() - self.empty_title_count()
+    }
+
+    /// Percentage of headlines with a non-empty title (`0..=100`).
+    #[must_use]
+    pub fn nonempty_title_pct(&self) -> usize {
+        (self.count_nonempty_title() * 100)
+            .checked_div(self.headline_count())
+            .unwrap_or(0)
+    }
+
     /// Count of distinct titles across the vault.
     #[must_use]
     pub fn distinct_title_count(&self) -> usize {

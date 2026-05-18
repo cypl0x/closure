@@ -611,6 +611,41 @@ fn vault_property_pct_zero_when_empty() {
 }
 
 #[test]
+fn vault_empty_title_count_match() {
+    let td = write_vault(&[("a.org", "* \n* B\n* C\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.empty_title_count(), 1);
+}
+
+#[test]
+fn vault_empty_title_pct_match() {
+    let td = write_vault(&[("a.org", "* \n* B\n* C\n* D\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.empty_title_pct(), 25);
+}
+
+#[test]
+fn vault_count_nonempty_title_match() {
+    let td = write_vault(&[("a.org", "* \n* B\n* C\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.count_nonempty_title(), 2);
+}
+
+#[test]
+fn vault_nonempty_title_pct_match() {
+    let td = write_vault(&[("a.org", "* \n* B\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.nonempty_title_pct(), 50);
+}
+
+#[test]
+fn vault_empty_title_pct_zero_when_empty() {
+    let td = write_vault(&[("a.org", "no headlines\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.empty_title_pct(), 0);
+}
+
+#[test]
 fn vault_max_min_file_byte_count_match() {
     let td = write_vault(&[("a.org", "* A\n"), ("b.org", "* BBBBBB\n")]);
     let v = Vault::open(td.path()).expect("open");
