@@ -5618,3 +5618,32 @@ fn doc_most_common_tag_none_when_none() {
     assert_eq!(doc.most_common_todo(), None);
     assert_eq!(doc.most_common_priority(), None);
 }
+
+#[test]
+fn doc_property_values_for_key_match() {
+    let doc = parse(
+        "* A\n:PROPERTIES:\n:Foo: 1\n:END:\n* B\n:PROPERTIES:\n:Foo: 2\n:END:\n",
+    )
+    .expect("parse");
+    let mut vals = doc.property_values_for_key("Foo");
+    vals.sort();
+    assert_eq!(vals, vec!["1".to_owned(), "2".to_owned()]);
+}
+
+#[test]
+fn doc_property_values_for_key_empty_for_unknown() {
+    let doc = parse("* A\n:PROPERTIES:\n:Foo: 1\n:END:\n").expect("parse");
+    assert!(doc.property_values_for_key("Nope").is_empty());
+}
+
+#[test]
+fn doc_most_common_property_value_for_key_match() {
+    let doc = parse(
+        "* A\n:PROPERTIES:\n:Foo: x\n:END:\n* B\n:PROPERTIES:\n:Foo: x\n:END:\n* C\n:PROPERTIES:\n:Foo: y\n:END:\n",
+    )
+    .expect("parse");
+    assert_eq!(
+        doc.most_common_property_value_for_key("Foo"),
+        Some("x".to_owned())
+    );
+}

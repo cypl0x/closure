@@ -1041,6 +1041,33 @@ impl OrgDoc {
         m
     }
 
+    /// All values bound to property `key` across every headline (with
+    /// duplicates), in document order.
+    #[must_use]
+    pub fn property_values_for_key(&self, key: &str) -> Vec<String> {
+        let mut out = Vec::new();
+        for h in self.iter_headlines() {
+            if let Some(p) = h.properties()
+                && let Some(v) = p.get(key)
+            {
+                out.push(v.to_owned());
+            }
+        }
+        out
+    }
+
+    /// Most-common value bound to property `key` (lowest value wins ties).
+    #[must_use]
+    pub fn most_common_property_value_for_key(&self, key: &str) -> Option<String> {
+        let mut best: Option<(String, usize)> = None;
+        for (val, c) in self.property_value_counts_for_key(key) {
+            if best.as_ref().is_none_or(|(_, bc)| c > *bc) {
+                best = Some((val, c));
+            }
+        }
+        best.map(|(val, _)| val)
+    }
+
     /// Histogram of property keys across the document.
     #[must_use]
     pub fn property_key_counts(&self) -> std::collections::BTreeMap<String, usize> {
