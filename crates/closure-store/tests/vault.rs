@@ -876,6 +876,37 @@ fn vault_non_body_byte_pct_zero_when_empty() {
 }
 
 #[test]
+fn vault_max_min_tag_len_match() {
+    let td = write_vault(&[("a.org", "* A :ab:ccc:\n* B :d:\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.max_tag_len(), Some(3));
+    assert_eq!(v.min_tag_len(), Some(1));
+}
+
+#[test]
+fn vault_mean_tag_len_match() {
+    let td = write_vault(&[("a.org", "* A :ab:ccc:\n* B :d:\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    // 2,3,1 -> 6/3 = 2
+    assert_eq!(v.mean_tag_len(), 2);
+}
+
+#[test]
+fn vault_total_tag_len_match() {
+    let td = write_vault(&[("a.org", "* A :ab:ccc:\n* B :d:\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.total_tag_len(), 6);
+}
+
+#[test]
+fn vault_tag_len_none_when_no_tags() {
+    let td = write_vault(&[("a.org", "* A\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.max_tag_len(), None);
+    assert_eq!(v.mean_tag_len(), 0);
+}
+
+#[test]
 fn vault_max_min_file_byte_count_match() {
     let td = write_vault(&[("a.org", "* A\n"), ("b.org", "* BBBBBB\n")]);
     let v = Vault::open(td.path()).expect("open");

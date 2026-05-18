@@ -1446,6 +1446,44 @@ impl Vault {
             .sum()
     }
 
+    /// Maximum tag length in characters across the vault.
+    #[must_use]
+    pub fn max_tag_len(&self) -> Option<usize> {
+        self.iter()
+            .flat_map(|(_, d)| d.all_headlines())
+            .flat_map(closure_core::DocHeadline::tags)
+            .map(|t| t.chars().count())
+            .max()
+    }
+
+    /// Minimum tag length in characters across the vault.
+    #[must_use]
+    pub fn min_tag_len(&self) -> Option<usize> {
+        self.iter()
+            .flat_map(|(_, d)| d.all_headlines())
+            .flat_map(closure_core::DocHeadline::tags)
+            .map(|t| t.chars().count())
+            .min()
+    }
+
+    /// Total tag length in characters across the vault.
+    #[must_use]
+    pub fn total_tag_len(&self) -> usize {
+        self.iter()
+            .flat_map(|(_, d)| d.all_headlines())
+            .flat_map(closure_core::DocHeadline::tags)
+            .map(|t| t.chars().count())
+            .sum()
+    }
+
+    /// Integer mean tag length in characters (`0` when no tags).
+    #[must_use]
+    pub fn mean_tag_len(&self) -> usize {
+        self.total_tag_len()
+            .checked_div(self.total_tag_count())
+            .unwrap_or(0)
+    }
+
     /// Total priority-set occurrences across the vault.
     #[must_use]
     pub fn total_priority_count(&self) -> usize {
