@@ -532,6 +532,38 @@ fn vault_distinct_property_value_count_zero_for_unknown() {
 }
 
 #[test]
+fn vault_least_common_property_key_match() {
+    let td = write_vault(&[(
+        "a.org",
+        "* A\n:PROPERTIES:\n:Foo: 1\n:Bar: 2\n:END:\n* B\n:PROPERTIES:\n:Foo: 3\n:END:\n",
+    )]);
+    let v = Vault::open(td.path()).expect("open");
+    // Foo=2, Bar=1 -> least Bar
+    assert_eq!(v.least_common_property_key(), Some("Bar".to_owned()));
+}
+
+#[test]
+fn vault_least_common_property_value_match() {
+    let td = write_vault(&[(
+        "a.org",
+        "* A\n:PROPERTIES:\n:Foo: x\n:END:\n* B\n:PROPERTIES:\n:Foo: x\n:END:\n* C\n:PROPERTIES:\n:Foo: y\n:END:\n",
+    )]);
+    let v = Vault::open(td.path()).expect("open");
+    // x=2, y=1 -> least y
+    assert_eq!(
+        v.least_common_property_value("Foo"),
+        Some("y".to_owned())
+    );
+}
+
+#[test]
+fn vault_least_common_property_key_none_when_empty() {
+    let td = write_vault(&[("a.org", "* A\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.least_common_property_key(), None);
+}
+
+#[test]
 fn vault_max_min_file_byte_count_match() {
     let td = write_vault(&[("a.org", "* A\n"), ("b.org", "* BBBBBB\n")]);
     let v = Vault::open(td.path()).expect("open");

@@ -2154,6 +2154,24 @@ impl Vault {
         best.map(|(val, _)| val)
     }
 
+    /// Least-common property key (lowest count; ties by name asc).
+    #[must_use]
+    pub fn least_common_property_key(&self) -> Option<String> {
+        self.property_key_counts()
+            .into_iter()
+            .min_by(|a, b| a.1.cmp(&b.1).then_with(|| a.0.cmp(&b.0)))
+            .map(|(k, _)| k)
+    }
+
+    /// Least-common value bound to property `key` (lowest count; ties name asc).
+    #[must_use]
+    pub fn least_common_property_value(&self, key: &str) -> Option<String> {
+        self.property_value_counts(key)
+            .into_iter()
+            .min_by(|a, b| a.1.cmp(&b.1).then_with(|| a.0.cmp(&b.0)))
+            .map(|(val, _)| val)
+    }
+
     /// Count of distinct titles across the vault.
     #[must_use]
     pub fn distinct_title_count(&self) -> usize {
