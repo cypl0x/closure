@@ -4851,6 +4851,40 @@ impl OrgDoc {
         s.into_iter().collect()
     }
 
+    /// Distinct property keys across roots, sorted.
+    #[must_use]
+    pub fn distinct_root_property_keys(&self) -> Vec<String> {
+        let mut s: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+        for r in &self.roots {
+            if let Some(p) = r.properties() {
+                for k in p.keys() {
+                    s.insert(k.to_owned());
+                }
+            }
+        }
+        s.into_iter().collect()
+    }
+
+    /// Count of distinct property keys across roots.
+    #[must_use]
+    pub fn distinct_root_property_key_count(&self) -> usize {
+        self.distinct_root_property_keys().len()
+    }
+
+    /// Histogram of property keys across roots.
+    #[must_use]
+    pub fn root_property_key_counts(&self) -> std::collections::BTreeMap<String, usize> {
+        let mut m: std::collections::BTreeMap<String, usize> = std::collections::BTreeMap::new();
+        for r in &self.roots {
+            if let Some(p) = r.properties() {
+                for k in p.keys() {
+                    *m.entry(k.to_owned()).or_insert(0) += 1;
+                }
+            }
+        }
+        m
+    }
+
     /// Distinct TODO keywords across roots, sorted.
     #[must_use]
     pub fn distinct_root_todos(&self) -> Vec<String> {

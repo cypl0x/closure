@@ -5647,3 +5647,36 @@ fn doc_most_common_property_value_for_key_match() {
         Some("x".to_owned())
     );
 }
+
+#[test]
+fn doc_distinct_root_property_keys_sorted() {
+    let doc = parse(
+        "* A\n:PROPERTIES:\n:Foo: 1\n:Bar: 2\n:END:\n** child\n:PROPERTIES:\n:Zed: 9\n:END:\n* B\n:PROPERTIES:\n:Foo: 3\n:END:\n",
+    )
+    .expect("parse");
+    // roots only, child Zed excluded
+    assert_eq!(
+        doc.distinct_root_property_keys(),
+        vec!["Bar".to_owned(), "Foo".to_owned()]
+    );
+}
+
+#[test]
+fn doc_distinct_root_property_key_count_match() {
+    let doc = parse(
+        "* A\n:PROPERTIES:\n:Foo: 1\n:Bar: 2\n:END:\n",
+    )
+    .expect("parse");
+    assert_eq!(doc.distinct_root_property_key_count(), 2);
+}
+
+#[test]
+fn doc_root_property_key_counts_match() {
+    let doc = parse(
+        "* A\n:PROPERTIES:\n:Foo: 1\n:Bar: 2\n:END:\n* B\n:PROPERTIES:\n:Foo: 3\n:END:\n",
+    )
+    .expect("parse");
+    let m = doc.root_property_key_counts();
+    assert_eq!(m.get("Foo"), Some(&2));
+    assert_eq!(m.get("Bar"), Some(&1));
+}
