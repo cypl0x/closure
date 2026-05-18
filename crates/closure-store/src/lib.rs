@@ -1484,6 +1484,53 @@ impl Vault {
             .unwrap_or(0)
     }
 
+    /// Median tag length in characters (`None` when no tags).
+    #[must_use]
+    pub fn median_tag_len(&self) -> Option<usize> {
+        let mut v: Vec<usize> = self
+            .iter()
+            .flat_map(|(_, d)| d.all_headlines())
+            .flat_map(closure_core::DocHeadline::tags)
+            .map(|t| t.chars().count())
+            .collect();
+        if v.is_empty() {
+            return None;
+        }
+        v.sort_unstable();
+        let mid = v.len() / 2;
+        Some(if v.len() % 2 == 1 {
+            v[mid]
+        } else {
+            v[mid - 1].midpoint(v[mid])
+        })
+    }
+
+    /// Histogram of tag lengths (chars) to occurrence count.
+    #[must_use]
+    pub fn tag_len_counts(&self) -> std::collections::BTreeMap<usize, usize> {
+        let mut m = std::collections::BTreeMap::new();
+        for (_, d) in self.iter() {
+            for h in d.all_headlines() {
+                for t in h.tags() {
+                    *m.entry(t.chars().count()).or_insert(0) += 1;
+                }
+            }
+        }
+        m
+    }
+
+    /// Most common tag length (lowest wins ties).
+    #[must_use]
+    pub fn mode_tag_len(&self) -> Option<usize> {
+        let mut best: Option<(usize, usize)> = None;
+        for (len, c) in self.tag_len_counts() {
+            if best.is_none_or(|(_, bc)| c > bc) {
+                best = Some((len, c));
+            }
+        }
+        best.map(|(len, _)| len)
+    }
+
     /// Total priority-set occurrences across the vault.
     #[must_use]
     pub fn total_priority_count(&self) -> usize {

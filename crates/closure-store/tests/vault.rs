@@ -907,6 +907,37 @@ fn vault_tag_len_none_when_no_tags() {
 }
 
 #[test]
+fn vault_median_tag_len_match() {
+    let td = write_vault(&[("a.org", "* A :a:bb:cccc:\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    // lens 1,2,4 -> median 2
+    assert_eq!(v.median_tag_len(), Some(2));
+}
+
+#[test]
+fn vault_tag_len_counts_match() {
+    let td = write_vault(&[("a.org", "* A :ab:cd:\n* B :e:\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    let m = v.tag_len_counts();
+    assert_eq!(m.get(&2), Some(&2));
+    assert_eq!(m.get(&1), Some(&1));
+}
+
+#[test]
+fn vault_mode_tag_len_match() {
+    let td = write_vault(&[("a.org", "* A :ab:cd:\n* B :e:\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.mode_tag_len(), Some(2));
+}
+
+#[test]
+fn vault_median_tag_len_none_when_no_tags() {
+    let td = write_vault(&[("a.org", "* A\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.median_tag_len(), None);
+}
+
+#[test]
 fn vault_max_min_file_byte_count_match() {
     let td = write_vault(&[("a.org", "* A\n"), ("b.org", "* BBBBBB\n")]);
     let v = Vault::open(td.path()).expect("open");
