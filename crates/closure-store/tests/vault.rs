@@ -838,6 +838,21 @@ fn vault_body_byte_pct_zero_when_empty() {
 }
 
 #[test]
+fn vault_title_byte_pct_match() {
+    let td = write_vault(&[("a.org", "* HHHH\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    // source "* HHHH\n"=7, title "HHHH"=4 -> 4*100/7 = 57
+    assert_eq!(v.title_byte_pct(), 57);
+}
+
+#[test]
+fn vault_title_byte_pct_zero_when_empty() {
+    let td = write_vault(&[]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.title_byte_pct(), 0);
+}
+
+#[test]
 fn vault_max_min_file_byte_count_match() {
     let td = write_vault(&[("a.org", "* A\n"), ("b.org", "* BBBBBB\n")]);
     let v = Vault::open(td.path()).expect("open");

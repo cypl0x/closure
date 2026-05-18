@@ -286,6 +286,15 @@ impl Vault {
             .unwrap_or(0)
     }
 
+    /// Percentage of source bytes that are headline titles
+    /// (`total title bytes * 100 / source bytes`, `0` when empty).
+    #[must_use]
+    pub fn title_byte_pct(&self) -> usize {
+        (self.total_title_byte_len() * 100)
+            .checked_div(self.byte_count())
+            .unwrap_or(0)
+    }
+
     /// Total link count across every headline in the vault.
     #[must_use]
     pub fn link_count(&self) -> usize {
