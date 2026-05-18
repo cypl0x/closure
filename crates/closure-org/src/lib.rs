@@ -5470,6 +5470,24 @@ impl OrgDoc {
             .unwrap_or(0)
     }
 
+    /// Percentage of distinct priorities among total priority occurrences
+    /// (`distinct * 100 / total`, `0` when no priorities).
+    #[must_use]
+    pub fn priority_diversity_pct(&self) -> usize {
+        (self.distinct_priority_count() * 100)
+            .checked_div(self.total_priority_count())
+            .unwrap_or(0)
+    }
+
+    /// Percentage of distinct titles among all headlines
+    /// (`distinct titles * 100 / headline count`, `0` when empty).
+    #[must_use]
+    pub fn title_diversity_pct(&self) -> usize {
+        (self.distinct_title_count() * 100)
+            .checked_div(self.iter_headlines().len())
+            .unwrap_or(0)
+    }
+
     /// Total priority-set occurrences across all headlines.
     #[must_use]
     pub fn total_priority_count(&self) -> usize {

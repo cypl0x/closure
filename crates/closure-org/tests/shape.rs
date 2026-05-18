@@ -5944,3 +5944,29 @@ fn doc_level_diversity_pct_zero_when_empty() {
     let doc = parse("preamble only\n").expect("parse");
     assert_eq!(doc.level_diversity_pct(), 0);
 }
+
+#[test]
+fn doc_priority_diversity_pct_match() {
+    let doc = parse("* [#A] X\n* [#A] Y\n* [#B] Z\n* [#C] W\n").expect("parse");
+    // 4 priority occurrences, distinct {A,B,C}=3 -> 75
+    assert_eq!(doc.priority_diversity_pct(), 75);
+}
+
+#[test]
+fn doc_priority_diversity_pct_zero_when_none() {
+    let doc = parse("* A\n* B\n").expect("parse");
+    assert_eq!(doc.priority_diversity_pct(), 0);
+}
+
+#[test]
+fn doc_title_diversity_pct_match() {
+    let doc = parse("* A\n* A\n* B\n* C\n").expect("parse");
+    // 4 headlines, distinct {A,B,C}=3 -> 75
+    assert_eq!(doc.title_diversity_pct(), 75);
+}
+
+#[test]
+fn doc_title_diversity_pct_zero_when_empty() {
+    let doc = parse("preamble only\n").expect("parse");
+    assert_eq!(doc.title_diversity_pct(), 0);
+}
