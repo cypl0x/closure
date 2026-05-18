@@ -5970,3 +5970,28 @@ fn doc_title_diversity_pct_zero_when_empty() {
     let doc = parse("preamble only\n").expect("parse");
     assert_eq!(doc.title_diversity_pct(), 0);
 }
+
+#[test]
+fn doc_property_key_diversity_pct_match() {
+    let doc = parse(
+        "* A\n:PROPERTIES:\n:Foo: 1\n:Bar: 2\n:END:\n* B\n:PROPERTIES:\n:Foo: 3\n:END:\n* C\n:PROPERTIES:\n:Foo: 4\n:END:\n",
+    )
+    .expect("parse");
+    // key occurrences Foo*3,Bar*1=4; distinct {Foo,Bar}=2 -> 50
+    assert_eq!(doc.property_key_diversity_pct(), 50);
+}
+
+#[test]
+fn doc_property_key_diversity_pct_zero_when_none() {
+    let doc = parse("* A\n* B\n").expect("parse");
+    assert_eq!(doc.property_key_diversity_pct(), 0);
+}
+
+#[test]
+fn doc_property_key_diversity_pct_full_when_all_distinct() {
+    let doc = parse(
+        "* A\n:PROPERTIES:\n:Foo: 1\n:END:\n* B\n:PROPERTIES:\n:Bar: 2\n:END:\n",
+    )
+    .expect("parse");
+    assert_eq!(doc.property_key_diversity_pct(), 100);
+}
