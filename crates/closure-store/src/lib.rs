@@ -2172,6 +2172,37 @@ impl Vault {
             .map(|(val, _)| val)
     }
 
+    /// Count of headlines carrying at least one property across the vault.
+    #[must_use]
+    pub fn with_property_count(&self) -> usize {
+        self.iter()
+            .flat_map(|(_, d)| d.all_headlines())
+            .filter(|h| !h.properties().is_empty())
+            .count()
+    }
+
+    /// Percentage of headlines carrying at least one property (`0..=100`).
+    #[must_use]
+    pub fn property_pct(&self) -> usize {
+        (self.with_property_count() * 100)
+            .checked_div(self.headline_count())
+            .unwrap_or(0)
+    }
+
+    /// Count of headlines carrying no property.
+    #[must_use]
+    pub fn count_no_property(&self) -> usize {
+        self.headline_count() - self.with_property_count()
+    }
+
+    /// Percentage of headlines carrying no property (`0..=100`).
+    #[must_use]
+    pub fn no_property_pct(&self) -> usize {
+        (self.count_no_property() * 100)
+            .checked_div(self.headline_count())
+            .unwrap_or(0)
+    }
+
     /// Count of distinct titles across the vault.
     #[must_use]
     pub fn distinct_title_count(&self) -> usize {

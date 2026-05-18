@@ -564,6 +564,53 @@ fn vault_least_common_property_key_none_when_empty() {
 }
 
 #[test]
+fn vault_with_property_count_match() {
+    let td = write_vault(&[(
+        "a.org",
+        "* A\n:PROPERTIES:\n:Foo: 1\n:END:\n* B\n* C\n:PROPERTIES:\n:Bar: 2\n:END:\n",
+    )]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.with_property_count(), 2);
+}
+
+#[test]
+fn vault_property_pct_match() {
+    let td = write_vault(&[(
+        "a.org",
+        "* A\n:PROPERTIES:\n:Foo: 1\n:END:\n* B\n* C\n* D\n",
+    )]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.property_pct(), 25);
+}
+
+#[test]
+fn vault_count_no_property_match() {
+    let td = write_vault(&[(
+        "a.org",
+        "* A\n:PROPERTIES:\n:Foo: 1\n:END:\n* B\n* C\n",
+    )]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.count_no_property(), 2);
+}
+
+#[test]
+fn vault_no_property_pct_match() {
+    let td = write_vault(&[(
+        "a.org",
+        "* A\n:PROPERTIES:\n:Foo: 1\n:END:\n* B\n",
+    )]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.no_property_pct(), 50);
+}
+
+#[test]
+fn vault_property_pct_zero_when_empty() {
+    let td = write_vault(&[("a.org", "no headlines\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.property_pct(), 0);
+}
+
+#[test]
 fn vault_max_min_file_byte_count_match() {
     let td = write_vault(&[("a.org", "* A\n"), ("b.org", "* BBBBBB\n")]);
     let v = Vault::open(td.path()).expect("open");
