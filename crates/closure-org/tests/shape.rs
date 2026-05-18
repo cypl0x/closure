@@ -6014,3 +6014,23 @@ fn doc_body_byte_pct_zero_when_empty_source() {
     let doc = parse("").expect("parse");
     assert_eq!(doc.body_byte_pct(), 0);
 }
+
+#[test]
+fn doc_header_byte_pct_match() {
+    let doc = parse("* H\nxxxxx\n").expect("parse");
+    // source 10, header "* H\n"=4 -> 40
+    assert_eq!(doc.header_byte_pct(), 40);
+}
+
+#[test]
+fn doc_header_byte_pct_full_when_no_body() {
+    let doc = parse("* A\n").expect("parse");
+    // source "* A\n"=4, header=4 -> 100
+    assert_eq!(doc.header_byte_pct(), 100);
+}
+
+#[test]
+fn doc_header_byte_pct_zero_when_empty_source() {
+    let doc = parse("").expect("parse");
+    assert_eq!(doc.header_byte_pct(), 0);
+}
