@@ -745,6 +745,39 @@ fn vault_todo_diversity_pct_zero_when_no_todos() {
 }
 
 #[test]
+fn vault_level_diversity_pct_match() {
+    let td = write_vault(&[("a.org", "* A\n* B\n** C\n** D\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    // 4 headlines, distinct levels {1,2}=2 -> 50
+    assert_eq!(v.level_diversity_pct(), 50);
+}
+
+#[test]
+fn vault_level_diversity_pct_zero_when_empty() {
+    let td = write_vault(&[("a.org", "no headlines\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.level_diversity_pct(), 0);
+}
+
+#[test]
+fn vault_property_key_diversity_pct_match() {
+    let td = write_vault(&[(
+        "a.org",
+        "* A\n:PROPERTIES:\n:Foo: 1\n:Bar: 2\n:END:\n* B\n:PROPERTIES:\n:Foo: 3\n:END:\n* C\n:PROPERTIES:\n:Foo: 4\n:END:\n",
+    )]);
+    let v = Vault::open(td.path()).expect("open");
+    // key occurrences Foo*3,Bar*1=4; distinct {Foo,Bar}=2 -> 50
+    assert_eq!(v.property_key_diversity_pct(), 50);
+}
+
+#[test]
+fn vault_property_key_diversity_pct_zero_when_none() {
+    let td = write_vault(&[("a.org", "* A\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.property_key_diversity_pct(), 0);
+}
+
+#[test]
 fn vault_max_min_file_byte_count_match() {
     let td = write_vault(&[("a.org", "* A\n"), ("b.org", "* BBBBBB\n")]);
     let v = Vault::open(td.path()).expect("open");

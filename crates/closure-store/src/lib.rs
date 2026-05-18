@@ -1438,6 +1438,25 @@ impl Vault {
             .unwrap_or(0)
     }
 
+    /// Percentage of distinct levels among all headlines
+    /// (`distinct levels * 100 / headline count`, `0` when empty).
+    #[must_use]
+    pub fn level_diversity_pct(&self) -> usize {
+        (self.distinct_level_count() * 100)
+            .checked_div(self.headline_count())
+            .unwrap_or(0)
+    }
+
+    /// Percentage of distinct property keys among total key occurrences
+    /// (`distinct * 100 / total`, `0` when no properties).
+    #[must_use]
+    pub fn property_key_diversity_pct(&self) -> usize {
+        let total: usize = self.property_key_counts().values().sum();
+        (self.distinct_property_key_count() * 100)
+            .checked_div(total)
+            .unwrap_or(0)
+    }
+
     /// Total `:ID:` property occurrences across the vault.
     #[must_use]
     pub fn total_id_count(&self) -> usize {
