@@ -5811,3 +5811,28 @@ fn doc_empty_title_pct_zero_when_empty() {
     assert_eq!(doc.empty_title_pct(), 0);
     assert_eq!(doc.nonempty_title_pct(), 0);
 }
+
+#[test]
+fn doc_count_root_empty_title_match() {
+    let doc = parse("* \n** child\n* B\n").expect("parse");
+    // roots: first empty title, B not -> 1
+    assert_eq!(doc.count_root_empty_title(), 1);
+}
+
+#[test]
+fn doc_count_root_nonempty_title_match() {
+    let doc = parse("* \n* B\n* C\n").expect("parse");
+    assert_eq!(doc.count_root_nonempty_title(), 2);
+}
+
+#[test]
+fn doc_root_empty_title_pct_match() {
+    let doc = parse("* \n* B\n* C\n* D\n").expect("parse");
+    assert_eq!(doc.root_empty_title_pct(), 25);
+}
+
+#[test]
+fn doc_root_empty_title_pct_zero_when_no_roots() {
+    let doc = parse("preamble only\n").expect("parse");
+    assert_eq!(doc.root_empty_title_pct(), 0);
+}

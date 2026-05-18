@@ -2809,6 +2809,26 @@ impl OrgDoc {
             .unwrap_or(0)
     }
 
+    /// Number of roots with an empty title.
+    #[must_use]
+    pub fn count_root_empty_title(&self) -> usize {
+        self.roots.iter().filter(|h| h.title().is_empty()).count()
+    }
+
+    /// Number of roots with a non-empty title.
+    #[must_use]
+    pub fn count_root_nonempty_title(&self) -> usize {
+        self.roots.len() - self.count_root_empty_title()
+    }
+
+    /// Percentage of roots with an empty title (`0..=100`).
+    #[must_use]
+    pub fn root_empty_title_pct(&self) -> usize {
+        (self.count_root_empty_title() * 100)
+            .checked_div(self.roots.len())
+            .unwrap_or(0)
+    }
+
     /// Sum of subtree word counts across roots.
     #[must_use]
     pub fn total_subtree_words(&self) -> usize {
