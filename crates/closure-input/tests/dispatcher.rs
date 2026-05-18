@@ -383,6 +383,34 @@ fn dispatcher_longest_shortest_chord_none_when_empty() {
 }
 
 #[test]
+fn chord_trie_command_chord_counts_match() {
+    let t = closure_input::ChordTrie::build(&[
+        ("a b", "foo"),
+        ("a c", "foo"),
+        ("d e", "bar"),
+    ]);
+    let m = t.command_chord_counts();
+    assert_eq!(m.get("foo"), Some(&2));
+    assert_eq!(m.get("bar"), Some(&1));
+}
+
+#[test]
+fn chord_trie_most_bound_command_match() {
+    let t = closure_input::ChordTrie::build(&[
+        ("a b", "foo"),
+        ("a c", "foo"),
+        ("d e", "bar"),
+    ]);
+    assert_eq!(t.most_bound_command(), Some("foo".to_owned()));
+}
+
+#[test]
+fn chord_trie_most_bound_command_none_when_empty() {
+    let t = closure_input::ChordTrie::build(&[]);
+    assert_eq!(t.most_bound_command(), None);
+}
+
+#[test]
 fn chord_trie_longest_chord_match() {
     let t = closure_input::ChordTrie::build(&[("a b", "x"), ("c d e", "y")]);
     assert_eq!(t.longest_chord(), Some("c d e".to_owned()));

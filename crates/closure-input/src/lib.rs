@@ -502,6 +502,28 @@ impl ChordTrie {
         out
     }
 
+    /// Map of command name to the number of chords bound to it.
+    #[must_use]
+    pub fn command_chord_counts(&self) -> std::collections::BTreeMap<String, usize> {
+        let mut m = std::collections::BTreeMap::new();
+        for (_, cmd) in self.bindings() {
+            *m.entry(cmd).or_insert(0) += 1;
+        }
+        m
+    }
+
+    /// Command bound to the most chords (lowest name wins ties).
+    #[must_use]
+    pub fn most_bound_command(&self) -> Option<String> {
+        let mut best: Option<(String, usize)> = None;
+        for (cmd, c) in self.command_chord_counts() {
+            if best.as_ref().is_none_or(|(_, bc)| c > *bc) {
+                best = Some((cmd, c));
+            }
+        }
+        best.map(|(cmd, _)| cmd)
+    }
+
     /// Longest bound chord by stroke count (sorted-first on ties).
     #[must_use]
     pub fn longest_chord(&self) -> Option<String> {
