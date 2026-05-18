@@ -5283,3 +5283,37 @@ fn doc_untimestamped_pct_match() {
     // 3 of 4 -> 75
     assert_eq!(doc.untimestamped_pct(), 75);
 }
+
+#[test]
+fn doc_count_roots_scheduled_match() {
+    let doc = parse("* A\nSCHEDULED: <2026-01-01>\n** child\nSCHEDULED: <2026-02-02>\n* B\n")
+        .expect("parse");
+    // roots only: A scheduled, B not -> 1
+    assert_eq!(doc.count_roots_scheduled(), 1);
+}
+
+#[test]
+fn doc_count_roots_with_deadline_match() {
+    let doc = parse("* A\nDEADLINE: <2026-01-01>\n* B\n* C\nDEADLINE: <2026-03-03>\n")
+        .expect("parse");
+    assert_eq!(doc.count_roots_with_deadline(), 2);
+}
+
+#[test]
+fn doc_root_scheduled_pct_match() {
+    let doc = parse("* A\nSCHEDULED: <2026-01-01>\n* B\n* C\n* D\n").expect("parse");
+    // 1 of 4 roots -> 25
+    assert_eq!(doc.root_scheduled_pct(), 25);
+}
+
+#[test]
+fn doc_root_deadline_pct_match() {
+    let doc = parse("* A\nDEADLINE: <2026-01-01>\n* B\n").expect("parse");
+    assert_eq!(doc.root_deadline_pct(), 50);
+}
+
+#[test]
+fn doc_root_scheduled_pct_zero_when_no_roots() {
+    let doc = parse("preamble only\n").expect("parse");
+    assert_eq!(doc.root_scheduled_pct(), 0);
+}

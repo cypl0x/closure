@@ -4190,6 +4190,34 @@ impl OrgDoc {
         self.roots.iter().filter(|h| h.has_tag(tag)).count()
     }
 
+    /// Number of roots that are SCHEDULED.
+    #[must_use]
+    pub fn count_roots_scheduled(&self) -> usize {
+        self.roots.iter().filter(|h| h.is_scheduled()).count()
+    }
+
+    /// Number of roots carrying a DEADLINE.
+    #[must_use]
+    pub fn count_roots_with_deadline(&self) -> usize {
+        self.roots.iter().filter(|h| h.has_deadline()).count()
+    }
+
+    /// Percentage of roots that are SCHEDULED (`0..=100`).
+    #[must_use]
+    pub fn root_scheduled_pct(&self) -> usize {
+        (self.count_roots_scheduled() * 100)
+            .checked_div(self.roots.len())
+            .unwrap_or(0)
+    }
+
+    /// Percentage of roots carrying a DEADLINE (`0..=100`).
+    #[must_use]
+    pub fn root_deadline_pct(&self) -> usize {
+        (self.count_roots_with_deadline() * 100)
+            .checked_div(self.roots.len())
+            .unwrap_or(0)
+    }
+
     /// Descendant headline carrying `:ID: id`.
     ///
     /// Alias for [`Self::headline_by_id`] for parity with `descendant_*`
