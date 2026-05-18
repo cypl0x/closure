@@ -2745,6 +2745,42 @@ impl OrgDoc {
         self.count_headlines_where(Headline::has_properties)
     }
 
+    /// Percentage of headlines with a properties drawer (`0..=100`).
+    #[must_use]
+    pub fn property_pct(&self) -> usize {
+        let n = self.iter_headlines().len();
+        (self.with_properties_count() * 100)
+            .checked_div(n)
+            .unwrap_or(0)
+    }
+
+    /// Number of headlines with no properties drawer.
+    #[must_use]
+    pub fn count_no_property(&self) -> usize {
+        self.iter_headlines().len() - self.with_properties_count()
+    }
+
+    /// Percentage of headlines with no properties drawer (`0..=100`).
+    #[must_use]
+    pub fn no_property_pct(&self) -> usize {
+        let n = self.iter_headlines().len();
+        (self.count_no_property() * 100).checked_div(n).unwrap_or(0)
+    }
+
+    /// Number of roots with a properties drawer.
+    #[must_use]
+    pub fn count_roots_with_any_property(&self) -> usize {
+        self.roots.iter().filter(|h| h.has_properties()).count()
+    }
+
+    /// Percentage of roots with a properties drawer (`0..=100`).
+    #[must_use]
+    pub fn root_property_pct(&self) -> usize {
+        (self.count_roots_with_any_property() * 100)
+            .checked_div(self.roots.len())
+            .unwrap_or(0)
+    }
+
     /// Number of empty-title headlines.
     #[must_use]
     pub fn empty_title_count(&self) -> usize {

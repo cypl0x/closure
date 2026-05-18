@@ -5732,3 +5732,56 @@ fn doc_least_common_property_value_for_key_none_for_unknown() {
     let doc = parse("* A\n:PROPERTIES:\n:Foo: 1\n:END:\n").expect("parse");
     assert_eq!(doc.least_common_property_value_for_key("Nope"), None);
 }
+
+#[test]
+fn doc_property_pct_match() {
+    let doc = parse(
+        "* A\n:PROPERTIES:\n:Foo: 1\n:END:\n* B\n* C\n* D\n",
+    )
+    .expect("parse");
+    assert_eq!(doc.property_pct(), 25);
+}
+
+#[test]
+fn doc_count_no_property_match() {
+    let doc = parse(
+        "* A\n:PROPERTIES:\n:Foo: 1\n:END:\n* B\n* C\n",
+    )
+    .expect("parse");
+    assert_eq!(doc.count_no_property(), 2);
+}
+
+#[test]
+fn doc_no_property_pct_match() {
+    let doc = parse(
+        "* A\n:PROPERTIES:\n:Foo: 1\n:END:\n* B\n",
+    )
+    .expect("parse");
+    assert_eq!(doc.no_property_pct(), 50);
+}
+
+#[test]
+fn doc_count_roots_with_any_property_match() {
+    let doc = parse(
+        "* A\n:PROPERTIES:\n:Foo: 1\n:END:\n** child\n:PROPERTIES:\n:Bar: 9\n:END:\n* B\n",
+    )
+    .expect("parse");
+    // roots only: A has props, B not -> 1
+    assert_eq!(doc.count_roots_with_any_property(), 1);
+}
+
+#[test]
+fn doc_root_property_pct_match() {
+    let doc = parse(
+        "* A\n:PROPERTIES:\n:Foo: 1\n:END:\n* B\n* C\n* D\n",
+    )
+    .expect("parse");
+    assert_eq!(doc.root_property_pct(), 25);
+}
+
+#[test]
+fn doc_property_pct_zero_when_empty() {
+    let doc = parse("preamble only\n").expect("parse");
+    assert_eq!(doc.property_pct(), 0);
+    assert_eq!(doc.root_property_pct(), 0);
+}
