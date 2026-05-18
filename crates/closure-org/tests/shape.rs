@@ -6074,3 +6074,26 @@ fn doc_overhead_byte_pct_zero_when_empty_source() {
     let doc = parse("").expect("parse");
     assert_eq!(doc.overhead_byte_pct(), 0);
 }
+
+#[test]
+fn doc_max_min_tag_len_match() {
+    let doc = parse("* A :ab:ccc:\n* B :d:\n").expect("parse");
+    // tag lens: ab=2, ccc=3, d=1
+    assert_eq!(doc.max_tag_len(), Some(3));
+    assert_eq!(doc.min_tag_len(), Some(1));
+}
+
+#[test]
+fn doc_mean_tag_len_match() {
+    let doc = parse("* A :ab:ccc:\n* B :d:\n").expect("parse");
+    // 2,3,1 total 6 / 3 = 2
+    assert_eq!(doc.mean_tag_len(), 2);
+}
+
+#[test]
+fn doc_tag_len_none_when_no_tags() {
+    let doc = parse("* A\n* B\n").expect("parse");
+    assert_eq!(doc.max_tag_len(), None);
+    assert_eq!(doc.min_tag_len(), None);
+    assert_eq!(doc.mean_tag_len(), 0);
+}

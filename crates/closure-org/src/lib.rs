@@ -607,6 +607,35 @@ impl OrgDoc {
             .collect()
     }
 
+    /// Maximum tag length in characters across all tag occurrences.
+    #[must_use]
+    pub fn max_tag_len(&self) -> Option<usize> {
+        self.headline_tags()
+            .into_iter()
+            .map(|t| t.chars().count())
+            .max()
+    }
+
+    /// Minimum tag length in characters across all tag occurrences.
+    #[must_use]
+    pub fn min_tag_len(&self) -> Option<usize> {
+        self.headline_tags()
+            .into_iter()
+            .map(|t| t.chars().count())
+            .min()
+    }
+
+    /// Integer mean tag length in characters (`0` when no tags).
+    #[must_use]
+    pub fn mean_tag_len(&self) -> usize {
+        let lens: Vec<usize> = self
+            .headline_tags()
+            .into_iter()
+            .map(|t| t.chars().count())
+            .collect();
+        lens.iter().sum::<usize>().checked_div(lens.len()).unwrap_or(0)
+    }
+
     /// Sorted distinct tag set (borrowed).
     #[must_use]
     pub fn tag_set(&self) -> std::collections::BTreeSet<&str> {
