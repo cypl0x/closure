@@ -682,6 +682,12 @@ pub fn parse_chord(s: &str) -> Result<KeyChord, InputError> {
     }
 }
 
+/// True iff `s` parses as a chord under [`parse_chord`] auto-detection.
+#[must_use]
+pub fn is_valid_chord(s: &str) -> bool {
+    parse_chord(s).is_ok()
+}
+
 /// Parse an Emacs-style chord like `C-c C-x r` (whitespace separated,
 /// no brackets). Returns a [`KeyChord`] where each stroke is one of
 /// `C-x`, `M-x`, `S-x`, or a bare key. Empty input is rejected.

@@ -407,6 +407,22 @@ fn dispatcher_most_bound_command_none_when_empty() {
 }
 
 #[test]
+fn is_valid_chord_true_for_emacs_syntax() {
+    assert!(closure_input::is_valid_chord("C-c C-x r"));
+}
+
+#[test]
+fn is_valid_chord_true_for_vim_syntax() {
+    assert!(closure_input::is_valid_chord("<C-c><C-x>r"));
+}
+
+#[test]
+fn is_valid_chord_false_for_garbage() {
+    assert!(!closure_input::is_valid_chord("<C-c"));
+    assert!(!closure_input::is_valid_chord("   "));
+}
+
+#[test]
 fn dispatcher_single_multi_stroke_count_match() {
     let mut reg = Registry::new();
     reg.register(Box::new(RenameHeadline::new_placeholder()));
