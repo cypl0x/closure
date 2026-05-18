@@ -5785,3 +5785,29 @@ fn doc_property_pct_zero_when_empty() {
     assert_eq!(doc.property_pct(), 0);
     assert_eq!(doc.root_property_pct(), 0);
 }
+
+#[test]
+fn doc_empty_title_pct_match() {
+    let doc = parse("* \n* B\n* C\n* D\n").expect("parse");
+    // 1 empty of 4 -> 25
+    assert_eq!(doc.empty_title_pct(), 25);
+}
+
+#[test]
+fn doc_count_nonempty_title_match() {
+    let doc = parse("* \n* B\n* C\n").expect("parse");
+    assert_eq!(doc.count_nonempty_title(), 2);
+}
+
+#[test]
+fn doc_nonempty_title_pct_match() {
+    let doc = parse("* \n* B\n").expect("parse");
+    assert_eq!(doc.nonempty_title_pct(), 50);
+}
+
+#[test]
+fn doc_empty_title_pct_zero_when_empty() {
+    let doc = parse("preamble only\n").expect("parse");
+    assert_eq!(doc.empty_title_pct(), 0);
+    assert_eq!(doc.nonempty_title_pct(), 0);
+}

@@ -2787,6 +2787,28 @@ impl OrgDoc {
         self.count_headlines_where(|h| h.title().is_empty())
     }
 
+    /// Percentage of headlines with an empty title (`0..=100`).
+    #[must_use]
+    pub fn empty_title_pct(&self) -> usize {
+        let n = self.iter_headlines().len();
+        (self.empty_title_count() * 100).checked_div(n).unwrap_or(0)
+    }
+
+    /// Number of headlines with a non-empty title.
+    #[must_use]
+    pub fn count_nonempty_title(&self) -> usize {
+        self.iter_headlines().len() - self.empty_title_count()
+    }
+
+    /// Percentage of headlines with a non-empty title (`0..=100`).
+    #[must_use]
+    pub fn nonempty_title_pct(&self) -> usize {
+        let n = self.iter_headlines().len();
+        (self.count_nonempty_title() * 100)
+            .checked_div(n)
+            .unwrap_or(0)
+    }
+
     /// Sum of subtree word counts across roots.
     #[must_use]
     pub fn total_subtree_words(&self) -> usize {
