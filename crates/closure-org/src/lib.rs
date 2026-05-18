@@ -4442,6 +4442,34 @@ impl OrgDoc {
         self.roots.iter().filter(|h| h.is_comment()).count()
     }
 
+    /// Count of roots that are not archived.
+    #[must_use]
+    pub fn count_non_archived_roots(&self) -> usize {
+        self.roots.len() - self.count_roots_archived()
+    }
+
+    /// Count of roots that are not COMMENT.
+    #[must_use]
+    pub fn count_non_comment_roots(&self) -> usize {
+        self.roots.len() - self.count_roots_commented()
+    }
+
+    /// Percentage of roots that are archived (`0..=100`).
+    #[must_use]
+    pub fn root_archived_pct(&self) -> usize {
+        (self.count_roots_archived() * 100)
+            .checked_div(self.roots.len())
+            .unwrap_or(0)
+    }
+
+    /// Percentage of roots that are COMMENT (`0..=100`).
+    #[must_use]
+    pub fn root_comment_pct(&self) -> usize {
+        (self.count_roots_commented() * 100)
+            .checked_div(self.roots.len())
+            .unwrap_or(0)
+    }
+
     /// Roots carrying `tag`.
     #[must_use]
     pub fn roots_with_tag(&self, tag: &str) -> Vec<&Headline> {

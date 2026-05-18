@@ -5362,3 +5362,34 @@ fn doc_archived_pct_zero_when_empty() {
     assert_eq!(doc.archived_pct(), 0);
     assert_eq!(doc.comment_pct(), 0);
 }
+
+#[test]
+fn doc_root_archived_pct_match() {
+    let doc = parse("* A :ARCHIVE:\n* B\n* C\n* D\n").expect("parse");
+    assert_eq!(doc.root_archived_pct(), 25);
+}
+
+#[test]
+fn doc_root_comment_pct_match() {
+    let doc = parse("* COMMENT A\n* B\n").expect("parse");
+    assert_eq!(doc.root_comment_pct(), 50);
+}
+
+#[test]
+fn doc_count_non_archived_roots_match() {
+    let doc = parse("* A :ARCHIVE:\n* B\n* C\n").expect("parse");
+    assert_eq!(doc.count_non_archived_roots(), 2);
+}
+
+#[test]
+fn doc_count_non_comment_roots_match() {
+    let doc = parse("* COMMENT A\n* B\n* C\n").expect("parse");
+    assert_eq!(doc.count_non_comment_roots(), 2);
+}
+
+#[test]
+fn doc_root_archived_pct_zero_when_no_roots() {
+    let doc = parse("preamble only\n").expect("parse");
+    assert_eq!(doc.root_archived_pct(), 0);
+    assert_eq!(doc.root_comment_pct(), 0);
+}
