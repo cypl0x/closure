@@ -295,6 +295,23 @@ impl Vault {
             .unwrap_or(0)
     }
 
+    /// Source bytes that are not headline body (headers, drawers,
+    /// preamble, blank lines). Saturating.
+    #[must_use]
+    pub fn non_body_byte_count(&self) -> usize {
+        self.byte_count()
+            .saturating_sub(self.total_body_byte_count())
+    }
+
+    /// Percentage of source bytes that are not headline body
+    /// (`non-body bytes * 100 / source bytes`, `0` when empty).
+    #[must_use]
+    pub fn non_body_byte_pct(&self) -> usize {
+        (self.non_body_byte_count() * 100)
+            .checked_div(self.byte_count())
+            .unwrap_or(0)
+    }
+
     /// Total link count across every headline in the vault.
     #[must_use]
     pub fn link_count(&self) -> usize {

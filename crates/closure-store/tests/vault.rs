@@ -853,6 +853,29 @@ fn vault_title_byte_pct_zero_when_empty() {
 }
 
 #[test]
+fn vault_non_body_byte_count_match() {
+    let td = write_vault(&[("a.org", "* H\nxxxxx\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    // source 10, body_text "xxxxx\n"=6 -> non-body 4
+    assert_eq!(v.non_body_byte_count(), 4);
+}
+
+#[test]
+fn vault_non_body_byte_pct_match() {
+    let td = write_vault(&[("a.org", "* H\nxxxxx\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    // non-body 4 of source 10 -> 40
+    assert_eq!(v.non_body_byte_pct(), 40);
+}
+
+#[test]
+fn vault_non_body_byte_pct_zero_when_empty() {
+    let td = write_vault(&[]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.non_body_byte_pct(), 0);
+}
+
+#[test]
 fn vault_max_min_file_byte_count_match() {
     let td = write_vault(&[("a.org", "* A\n"), ("b.org", "* BBBBBB\n")]);
     let v = Vault::open(td.path()).expect("open");
