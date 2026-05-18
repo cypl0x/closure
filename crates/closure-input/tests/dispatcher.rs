@@ -407,6 +407,24 @@ fn dispatcher_most_bound_command_none_when_empty() {
 }
 
 #[test]
+fn dispatcher_single_multi_stroke_count_match() {
+    let mut reg = Registry::new();
+    reg.register(Box::new(RenameHeadline::new_placeholder()));
+    let disp = Dispatcher::from_registry(&reg, InputMode::Doom);
+    // single binding "C-c C-x r" = 3 strokes -> multi
+    assert_eq!(disp.single_stroke_count(), 0);
+    assert_eq!(disp.multi_stroke_count(), 1);
+}
+
+#[test]
+fn dispatcher_stroke_count_zero_when_empty() {
+    let reg = Registry::new();
+    let disp = Dispatcher::from_registry(&reg, InputMode::Emacs);
+    assert_eq!(disp.single_stroke_count(), 0);
+    assert_eq!(disp.multi_stroke_count(), 0);
+}
+
+#[test]
 fn chord_trie_single_stroke_count_match() {
     let t = closure_input::ChordTrie::build(&[("a", "x"), ("b c", "y"), ("d", "z")]);
     // single-stroke: "a","d" = 2

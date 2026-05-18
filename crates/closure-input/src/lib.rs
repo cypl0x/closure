@@ -172,6 +172,24 @@ impl Dispatcher {
         m
     }
 
+    /// Count of single-stroke bound chords.
+    #[must_use]
+    pub fn single_stroke_count(&self) -> usize {
+        self.bindings
+            .keys()
+            .filter(|k| k.split_whitespace().count() == 1)
+            .count()
+    }
+
+    /// Count of multi-stroke bound chords (more than one stroke).
+    #[must_use]
+    pub fn multi_stroke_count(&self) -> usize {
+        self.bindings
+            .keys()
+            .filter(|k| k.split_whitespace().count() > 1)
+            .count()
+    }
+
     /// Most common chord stroke count (lowest wins ties; `None` when empty).
     #[must_use]
     pub fn mode_chord_strokes(&self) -> Option<usize> {
