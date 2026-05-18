@@ -5872,3 +5872,29 @@ fn doc_unique_title_pct_zero_when_empty() {
     assert_eq!(doc.unique_title_pct(), 0);
     assert!(!doc.has_duplicate_titles());
 }
+
+#[test]
+fn doc_distinct_ids_sorted() {
+    let doc = parse(
+        "* A\n:PROPERTIES:\n:ID: z1\n:END:\n* B\n:PROPERTIES:\n:ID: a1\n:END:\n* C\n:PROPERTIES:\n:ID: z1\n:END:\n",
+    )
+    .expect("parse");
+    assert_eq!(doc.distinct_ids(), vec!["a1".to_owned(), "z1".to_owned()]);
+}
+
+#[test]
+fn doc_id_uniqueness_pct_match() {
+    let doc = parse(
+        "* A\n:PROPERTIES:\n:ID: x\n:END:\n* B\n:PROPERTIES:\n:ID: x\n:END:\n* C\n:PROPERTIES:\n:ID: y\n:END:\n* D\n:PROPERTIES:\n:ID: z\n:END:\n",
+    )
+    .expect("parse");
+    // 4 ids, distinct {x,y,z}=3 -> 75
+    assert_eq!(doc.id_uniqueness_pct(), 75);
+}
+
+#[test]
+fn doc_id_uniqueness_pct_zero_when_no_ids() {
+    let doc = parse("* A\n* B\n").expect("parse");
+    assert_eq!(doc.id_uniqueness_pct(), 0);
+    assert!(doc.distinct_ids().is_empty());
+}

@@ -2596,6 +2596,22 @@ impl OrgDoc {
         self.id_set().len()
     }
 
+    /// Sorted distinct ids across the document.
+    #[must_use]
+    pub fn distinct_ids(&self) -> Vec<String> {
+        self.id_set().into_iter().map(str::to_owned).collect()
+    }
+
+    /// Percentage of `:ID:`-carrying headlines whose id is distinct
+    /// (`distinct ids * 100 / total ids`, `0` when no ids).
+    #[must_use]
+    pub fn id_uniqueness_pct(&self) -> usize {
+        let total = self.all_ids().len();
+        (self.unique_id_count() * 100)
+            .checked_div(total)
+            .unwrap_or(0)
+    }
+
     /// Number of `:ID:`-pinned headlines (counts duplicates).
     #[must_use]
     pub fn id_count(&self) -> usize {
