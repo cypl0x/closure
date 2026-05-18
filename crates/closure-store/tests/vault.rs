@@ -680,6 +680,41 @@ fn vault_unique_title_pct_zero_when_empty() {
 }
 
 #[test]
+fn vault_has_duplicate_ids_match() {
+    let dup = write_vault(&[(
+        "a.org",
+        "* A\n:PROPERTIES:\n:ID: x\n:END:\n* B\n:PROPERTIES:\n:ID: x\n:END:\n",
+    )]);
+    let vd = Vault::open(dup.path()).expect("open");
+    assert!(vd.has_duplicate_ids());
+    let uniq = write_vault(&[(
+        "a.org",
+        "* A\n:PROPERTIES:\n:ID: x\n:END:\n* B\n:PROPERTIES:\n:ID: y\n:END:\n",
+    )]);
+    let vu = Vault::open(uniq.path()).expect("open");
+    assert!(!vu.has_duplicate_ids());
+}
+
+#[test]
+fn vault_id_uniqueness_pct_match() {
+    let td = write_vault(&[(
+        "a.org",
+        "* A\n:PROPERTIES:\n:ID: x\n:END:\n* B\n:PROPERTIES:\n:ID: x\n:END:\n* C\n:PROPERTIES:\n:ID: y\n:END:\n* D\n:PROPERTIES:\n:ID: z\n:END:\n",
+    )]);
+    let v = Vault::open(td.path()).expect("open");
+    // 4 ids, distinct {x,y,z}=3 -> 75
+    assert_eq!(v.id_uniqueness_pct(), 75);
+}
+
+#[test]
+fn vault_id_uniqueness_pct_zero_when_no_ids() {
+    let td = write_vault(&[("a.org", "* A\n* B\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.id_uniqueness_pct(), 0);
+    assert!(!v.has_duplicate_ids());
+}
+
+#[test]
 fn vault_max_min_file_byte_count_match() {
     let td = write_vault(&[("a.org", "* A\n"), ("b.org", "* BBBBBB\n")]);
     let v = Vault::open(td.path()).expect("open");

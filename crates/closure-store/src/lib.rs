@@ -842,6 +842,25 @@ impl Vault {
         self.duplicate_ids().len()
     }
 
+    /// True iff any drawer id appears more than once across the vault.
+    #[must_use]
+    pub fn has_duplicate_ids(&self) -> bool {
+        self.duplicate_id_count() > 0
+    }
+
+    /// Percentage of `:ID:`-carrying headlines whose id is distinct
+    /// (`distinct ids * 100 / total ids`, `0` when no ids).
+    #[must_use]
+    pub fn id_uniqueness_pct(&self) -> usize {
+        let total: usize = self
+            .iter()
+            .map(|(_, d)| d.org().all_ids().len())
+            .sum();
+        (self.unique_id_count() * 100)
+            .checked_div(total)
+            .unwrap_or(0)
+    }
+
     /// Total number of distinct drawer ids across the vault.
     #[must_use]
     pub fn unique_id_count(&self) -> usize {
