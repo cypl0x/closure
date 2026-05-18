@@ -6047,3 +6047,30 @@ fn doc_title_byte_pct_zero_when_empty_source() {
     let doc = parse("").expect("parse");
     assert_eq!(doc.title_byte_pct(), 0);
 }
+
+#[test]
+fn doc_overhead_byte_count_match() {
+    let doc = parse("intro\n* H\nxxxxx\n").expect("parse");
+    // source = "intro\n"(6)+"* H\n"(4)+"xxxxx\n"(6) = 16
+    // header 4, body 6 -> overhead 16-4-6 = 6 (the preamble)
+    assert_eq!(doc.overhead_byte_count(), 6);
+}
+
+#[test]
+fn doc_overhead_byte_count_zero_when_no_preamble() {
+    let doc = parse("* H\nxxxxx\n").expect("parse");
+    assert_eq!(doc.overhead_byte_count(), 0);
+}
+
+#[test]
+fn doc_overhead_byte_pct_match() {
+    let doc = parse("intro\n* H\nxxxxx\n").expect("parse");
+    // overhead 6 of source 16 -> 6*100/16 = 37
+    assert_eq!(doc.overhead_byte_pct(), 37);
+}
+
+#[test]
+fn doc_overhead_byte_pct_zero_when_empty_source() {
+    let doc = parse("").expect("parse");
+    assert_eq!(doc.overhead_byte_pct(), 0);
+}

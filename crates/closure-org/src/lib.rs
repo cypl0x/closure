@@ -1287,6 +1287,24 @@ impl OrgDoc {
             .unwrap_or(0)
     }
 
+    /// Source bytes that are neither headline header nor body
+    /// (preamble, drawers, blank lines). Saturating.
+    #[must_use]
+    pub fn overhead_byte_count(&self) -> usize {
+        self.source_byte_len()
+            .saturating_sub(self.total_header_byte_len())
+            .saturating_sub(self.total_body_byte_count())
+    }
+
+    /// Percentage of source bytes that are overhead
+    /// (`overhead bytes * 100 / source bytes`, `0` when source empty).
+    #[must_use]
+    pub fn overhead_byte_pct(&self) -> usize {
+        (self.overhead_byte_count() * 100)
+            .checked_div(self.source_byte_len())
+            .unwrap_or(0)
+    }
+
     /// Total headline-body line count across the document.
     #[must_use]
     pub fn total_body_line_count(&self) -> usize {
