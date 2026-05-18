@@ -260,6 +260,28 @@ impl Vault {
         self.documents.values().map(|d| d.org().count_with_id()).sum()
     }
 
+    /// Percentage of headlines carrying an `:ID:` property (`0..=100`).
+    #[must_use]
+    pub fn id_pct(&self) -> usize {
+        (self.id_count() * 100)
+            .checked_div(self.headline_count())
+            .unwrap_or(0)
+    }
+
+    /// Count of headlines with no `:ID:` property.
+    #[must_use]
+    pub fn count_no_id(&self) -> usize {
+        self.headline_count() - self.id_count()
+    }
+
+    /// Percentage of headlines with no `:ID:` property (`0..=100`).
+    #[must_use]
+    pub fn no_id_pct(&self) -> usize {
+        (self.count_no_id() * 100)
+            .checked_div(self.headline_count())
+            .unwrap_or(0)
+    }
+
     /// Count of TODO-marked headlines across the vault.
     #[must_use]
     pub fn todo_count(&self) -> usize {

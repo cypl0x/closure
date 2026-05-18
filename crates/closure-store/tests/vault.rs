@@ -1091,6 +1091,43 @@ fn vault_todo_pct_zero_when_empty() {
 }
 
 #[test]
+fn vault_id_pct_match() {
+    let td = write_vault(&[(
+        "a.org",
+        "* A\n:PROPERTIES:\n:ID: x1\n:END:\n* B\n* C\n* D\n",
+    )]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.id_pct(), 25);
+}
+
+#[test]
+fn vault_count_no_id_match() {
+    let td = write_vault(&[(
+        "a.org",
+        "* A\n:PROPERTIES:\n:ID: x1\n:END:\n* B\n* C\n",
+    )]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.count_no_id(), 2);
+}
+
+#[test]
+fn vault_no_id_pct_match() {
+    let td = write_vault(&[(
+        "a.org",
+        "* A\n:PROPERTIES:\n:ID: x1\n:END:\n* B\n",
+    )]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.no_id_pct(), 50);
+}
+
+#[test]
+fn vault_id_pct_zero_when_empty() {
+    let td = write_vault(&[("a.org", "no headlines\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.id_pct(), 0);
+}
+
+#[test]
 fn vault_path_with_max_headlines_match() {
     let td = write_vault(&[
         ("a.org", "* X\n"),
