@@ -268,6 +268,24 @@ impl Vault {
         self.documents.values().map(|d| d.source().len()).sum()
     }
 
+    /// Total headline-body byte count across the vault.
+    #[must_use]
+    pub fn total_body_byte_count(&self) -> usize {
+        self.iter()
+            .flat_map(|(_, d)| d.all_headlines())
+            .map(|h| h.body_text().len())
+            .sum()
+    }
+
+    /// Percentage of source bytes that are headline body
+    /// (`total body bytes * 100 / source bytes`, `0` when empty).
+    #[must_use]
+    pub fn body_byte_pct(&self) -> usize {
+        (self.total_body_byte_count() * 100)
+            .checked_div(self.byte_count())
+            .unwrap_or(0)
+    }
+
     /// Total link count across every headline in the vault.
     #[must_use]
     pub fn link_count(&self) -> usize {
