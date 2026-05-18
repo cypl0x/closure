@@ -6097,3 +6097,33 @@ fn doc_tag_len_none_when_no_tags() {
     assert_eq!(doc.min_tag_len(), None);
     assert_eq!(doc.mean_tag_len(), 0);
 }
+
+#[test]
+fn doc_total_tag_len_match() {
+    let doc = parse("* A :ab:ccc:\n* B :d:\n").expect("parse");
+    // 2+3+1 = 6
+    assert_eq!(doc.total_tag_len(), 6);
+}
+
+#[test]
+fn doc_median_tag_len_match() {
+    let doc = parse("* A :a:bb:cccc:\n").expect("parse");
+    // lens 1,2,4 -> median 2
+    assert_eq!(doc.median_tag_len(), Some(2));
+}
+
+#[test]
+fn doc_tag_len_counts_match() {
+    let doc = parse("* A :ab:cd:\n* B :e:\n").expect("parse");
+    // lens 2,2,1
+    let m = doc.tag_len_counts();
+    assert_eq!(m.get(&2), Some(&2));
+    assert_eq!(m.get(&1), Some(&1));
+}
+
+#[test]
+fn doc_median_tag_len_none_when_no_tags() {
+    let doc = parse("* A\n").expect("parse");
+    assert_eq!(doc.median_tag_len(), None);
+    assert_eq!(doc.total_tag_len(), 0);
+}

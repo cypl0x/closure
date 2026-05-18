@@ -636,6 +636,45 @@ impl OrgDoc {
         lens.iter().sum::<usize>().checked_div(lens.len()).unwrap_or(0)
     }
 
+    /// Total tag length in characters across all tag occurrences.
+    #[must_use]
+    pub fn total_tag_len(&self) -> usize {
+        self.headline_tags()
+            .into_iter()
+            .map(|t| t.chars().count())
+            .sum()
+    }
+
+    /// Median tag length in characters (`None` when no tags).
+    #[must_use]
+    pub fn median_tag_len(&self) -> Option<usize> {
+        let mut v: Vec<usize> = self
+            .headline_tags()
+            .into_iter()
+            .map(|t| t.chars().count())
+            .collect();
+        if v.is_empty() {
+            return None;
+        }
+        v.sort_unstable();
+        let mid = v.len() / 2;
+        Some(if v.len() % 2 == 1 {
+            v[mid]
+        } else {
+            v[mid - 1].midpoint(v[mid])
+        })
+    }
+
+    /// Histogram of tag lengths (chars) to occurrence count.
+    #[must_use]
+    pub fn tag_len_counts(&self) -> std::collections::BTreeMap<usize, usize> {
+        let mut m = std::collections::BTreeMap::new();
+        for t in self.headline_tags() {
+            *m.entry(t.chars().count()).or_insert(0) += 1;
+        }
+        m
+    }
+
     /// Sorted distinct tag set (borrowed).
     #[must_use]
     pub fn tag_set(&self) -> std::collections::BTreeSet<&str> {
