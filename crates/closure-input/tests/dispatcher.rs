@@ -407,6 +407,18 @@ fn dispatcher_most_bound_command_none_when_empty() {
 }
 
 #[test]
+fn is_vim_syntax_detects_brackets() {
+    assert!(closure_input::is_vim_syntax("<C-c><C-x>r"));
+    assert!(!closure_input::is_vim_syntax("C-c C-x r"));
+}
+
+#[test]
+fn is_emacs_syntax_detects_no_brackets() {
+    assert!(closure_input::is_emacs_syntax("C-c C-x r"));
+    assert!(!closure_input::is_emacs_syntax("<C-c>"));
+}
+
+#[test]
 fn is_valid_chord_true_for_emacs_syntax() {
     assert!(closure_input::is_valid_chord("C-c C-x r"));
 }

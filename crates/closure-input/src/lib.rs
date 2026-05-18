@@ -688,6 +688,19 @@ pub fn is_valid_chord(s: &str) -> bool {
     parse_chord(s).is_ok()
 }
 
+/// True iff `s` uses vim bracket syntax (`<...>` strokes), matching
+/// the auto-detection rule [`parse_chord`] applies.
+#[must_use]
+pub fn is_vim_syntax(s: &str) -> bool {
+    s.contains('<')
+}
+
+/// True iff `s` uses Emacs syntax (no `<` bracket).
+#[must_use]
+pub fn is_emacs_syntax(s: &str) -> bool {
+    !s.contains('<')
+}
+
 /// Parse an Emacs-style chord like `C-c C-x r` (whitespace separated,
 /// no brackets). Returns a [`KeyChord`] where each stroke is one of
 /// `C-x`, `M-x`, `S-x`, or a bare key. Empty input is rejected.
