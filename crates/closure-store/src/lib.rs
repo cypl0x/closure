@@ -1922,6 +1922,52 @@ impl Vault {
         self.distinct_id_properties().len()
     }
 
+    /// Sorted distinct property keys across the vault.
+    #[must_use]
+    pub fn distinct_property_keys(&self) -> Vec<String> {
+        let mut seen: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+        for (_, d) in self.iter() {
+            for h in d.all_headlines() {
+                for (k, _) in h.properties() {
+                    seen.insert(k.clone());
+                }
+            }
+        }
+        seen.into_iter().collect()
+    }
+
+    /// Count of distinct property keys across the vault.
+    #[must_use]
+    pub fn distinct_property_key_count(&self) -> usize {
+        self.distinct_property_keys().len()
+    }
+
+    /// Property-key occurrence counts as a sorted map.
+    #[must_use]
+    pub fn property_key_counts(&self) -> std::collections::BTreeMap<String, usize> {
+        let mut m = std::collections::BTreeMap::new();
+        for (_, d) in self.iter() {
+            for h in d.all_headlines() {
+                for (k, _) in h.properties() {
+                    *m.entry(k.clone()).or_insert(0) += 1;
+                }
+            }
+        }
+        m
+    }
+
+    /// Most-common property key (lowest key wins ties).
+    #[must_use]
+    pub fn most_common_property_key(&self) -> Option<String> {
+        let mut best: Option<(String, usize)> = None;
+        for (k, c) in self.property_key_counts() {
+            if best.as_ref().is_none_or(|(_, bc)| c > *bc) {
+                best = Some((k, c));
+            }
+        }
+        best.map(|(k, _)| k)
+    }
+
     /// Count of distinct titles across the vault.
     #[must_use]
     pub fn distinct_title_count(&self) -> usize {

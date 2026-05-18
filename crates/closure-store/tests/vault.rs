@@ -416,6 +416,51 @@ fn vault_least_common_todo_none_when_none() {
 }
 
 #[test]
+fn vault_distinct_property_keys_sorted() {
+    let td = write_vault(&[(
+        "a.org",
+        "* A\n:PROPERTIES:\n:Foo: 1\n:Bar: 2\n:END:\n* B\n:PROPERTIES:\n:Foo: 9\n:END:\n",
+    )]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(
+        v.distinct_property_keys(),
+        vec!["Bar".to_owned(), "Foo".to_owned()]
+    );
+}
+
+#[test]
+fn vault_distinct_property_key_count_match() {
+    let td = write_vault(&[(
+        "a.org",
+        "* A\n:PROPERTIES:\n:Foo: 1\n:Bar: 2\n:END:\n",
+    )]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.distinct_property_key_count(), 2);
+}
+
+#[test]
+fn vault_property_key_counts_match() {
+    let td = write_vault(&[(
+        "a.org",
+        "* A\n:PROPERTIES:\n:Foo: 1\n:Bar: 2\n:END:\n* B\n:PROPERTIES:\n:Foo: 9\n:END:\n",
+    )]);
+    let v = Vault::open(td.path()).expect("open");
+    let m = v.property_key_counts();
+    assert_eq!(m.get("Foo"), Some(&2));
+    assert_eq!(m.get("Bar"), Some(&1));
+}
+
+#[test]
+fn vault_most_common_property_key_match() {
+    let td = write_vault(&[(
+        "a.org",
+        "* A\n:PROPERTIES:\n:Foo: 1\n:Bar: 2\n:END:\n* B\n:PROPERTIES:\n:Foo: 9\n:END:\n",
+    )]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.most_common_property_key(), Some("Foo".to_owned()));
+}
+
+#[test]
 fn vault_most_common_todo_returns_top() {
     let td = write_vault(&[
         ("a.org", "* TODO X\n* DONE Y\n"),
