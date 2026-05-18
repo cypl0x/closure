@@ -1199,6 +1199,37 @@ impl Vault {
         best.map(|(pc, _)| pc)
     }
 
+    /// Count of headlines carrying a non-empty body across the vault.
+    #[must_use]
+    pub fn with_body_count(&self) -> usize {
+        self.iter()
+            .flat_map(|(_, d)| d.all_headlines())
+            .filter(|h| !h.body_text().is_empty())
+            .count()
+    }
+
+    /// Percentage of headlines carrying a non-empty body (`0..=100`).
+    #[must_use]
+    pub fn body_pct(&self) -> usize {
+        (self.with_body_count() * 100)
+            .checked_div(self.headline_count())
+            .unwrap_or(0)
+    }
+
+    /// Count of headlines with an empty body across the vault.
+    #[must_use]
+    pub fn count_empty_body(&self) -> usize {
+        self.headline_count() - self.with_body_count()
+    }
+
+    /// Percentage of headlines with an empty body (`0..=100`).
+    #[must_use]
+    pub fn empty_body_pct(&self) -> usize {
+        (self.count_empty_body() * 100)
+            .checked_div(self.headline_count())
+            .unwrap_or(0)
+    }
+
     /// Number of headlines (across all paths) carrying `tag`.
     #[must_use]
     pub fn headline_count_with_tag(&self, tag: &str) -> usize {

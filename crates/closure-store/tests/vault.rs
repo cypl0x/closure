@@ -949,6 +949,41 @@ fn vault_scheduled_pct_zero_when_empty() {
 }
 
 #[test]
+fn vault_with_body_count_match() {
+    let td = write_vault(&[("a.org", "* A\nbody\n* B\n* C\nmore\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.with_body_count(), 2);
+}
+
+#[test]
+fn vault_body_pct_match() {
+    let td = write_vault(&[("a.org", "* A\nbody\n* B\n* C\n* D\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.body_pct(), 25);
+}
+
+#[test]
+fn vault_count_empty_body_match() {
+    let td = write_vault(&[("a.org", "* A\nbody\n* B\n* C\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.count_empty_body(), 2);
+}
+
+#[test]
+fn vault_empty_body_pct_match() {
+    let td = write_vault(&[("a.org", "* A\nbody\n* B\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.empty_body_pct(), 50);
+}
+
+#[test]
+fn vault_body_pct_zero_when_empty() {
+    let td = write_vault(&[("a.org", "no headlines\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.body_pct(), 0);
+}
+
+#[test]
 fn vault_path_with_max_headlines_match() {
     let td = write_vault(&[
         ("a.org", "* X\n"),
