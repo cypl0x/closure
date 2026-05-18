@@ -5063,6 +5063,32 @@ impl OrgDoc {
             .unwrap_or(0)
     }
 
+    /// Count of headlines that are not archived.
+    #[must_use]
+    pub fn count_non_archived(&self) -> usize {
+        self.iter_headlines().len() - self.count_archived()
+    }
+
+    /// Percentage of headlines that are not archived (`0..=100`).
+    #[must_use]
+    pub fn non_archived_pct(&self) -> usize {
+        let n = self.iter_headlines().len();
+        (self.count_non_archived() * 100).checked_div(n).unwrap_or(0)
+    }
+
+    /// Count of headlines that are not COMMENT.
+    #[must_use]
+    pub fn count_non_comment(&self) -> usize {
+        self.iter_headlines().len() - self.count_comments()
+    }
+
+    /// Percentage of headlines that are not COMMENT (`0..=100`).
+    #[must_use]
+    pub fn non_comment_pct(&self) -> usize {
+        let n = self.iter_headlines().len();
+        (self.count_non_comment() * 100).checked_div(n).unwrap_or(0)
+    }
+
     /// Number of headlines carrying zero tags.
     #[must_use]
     pub fn untagged_count(&self) -> usize {
