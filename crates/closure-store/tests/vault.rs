@@ -351,6 +351,30 @@ fn vault_most_common_tag_returns_top() {
 }
 
 #[test]
+fn vault_least_common_tag_returns_bottom() {
+    let td = write_vault(&[("a.org", "* X :work:\n* Y :home:\n* Z :work:\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    // work=2, home=1 -> least is home
+    assert_eq!(v.least_common_tag(), Some("home".to_owned()));
+}
+
+#[test]
+fn vault_least_common_tag_none_when_no_tags() {
+    let td = write_vault(&[("a.org", "* X\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.least_common_tag(), None);
+}
+
+#[test]
+fn vault_tag_count_map_match() {
+    let td = write_vault(&[("a.org", "* X :work:\n* Y :home:\n* Z :work:\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    let m = v.tag_count_map();
+    assert_eq!(m.get("work"), Some(&2));
+    assert_eq!(m.get("home"), Some(&1));
+}
+
+#[test]
 fn vault_most_common_todo_returns_top() {
     let td = write_vault(&[
         ("a.org", "* TODO X\n* DONE Y\n"),

@@ -961,6 +961,21 @@ impl Vault {
         self.tag_counts().into_iter().next().map(|(k, _)| k)
     }
 
+    /// Least-common tag across the vault (lowest count; ties by name asc).
+    #[must_use]
+    pub fn least_common_tag(&self) -> Option<String> {
+        self.tag_counts()
+            .into_iter()
+            .min_by(|a, b| a.1.cmp(&b.1).then_with(|| a.0.cmp(&b.0)))
+            .map(|(k, _)| k)
+    }
+
+    /// Tag occurrence counts as a sorted map.
+    #[must_use]
+    pub fn tag_count_map(&self) -> std::collections::BTreeMap<String, usize> {
+        self.tag_counts().into_iter().collect()
+    }
+
     /// Most-common TODO keyword across the vault.
     #[must_use]
     pub fn most_common_todo(&self) -> Option<String> {
