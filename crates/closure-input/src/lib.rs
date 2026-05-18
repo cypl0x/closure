@@ -401,6 +401,22 @@ impl ChordTrie {
         m
     }
 
+    /// Count of single-stroke bound chords (depth == 1).
+    #[must_use]
+    pub fn single_stroke_count(&self) -> usize {
+        self.chord_depth_counts().get(&1).copied().unwrap_or(0)
+    }
+
+    /// Count of multi-stroke bound chords (depth > 1).
+    #[must_use]
+    pub fn multi_stroke_count(&self) -> usize {
+        self.chord_depth_counts()
+            .iter()
+            .filter(|(d, _)| **d > 1)
+            .map(|(_, c)| *c)
+            .sum()
+    }
+
     /// Integer mean chord depth (strokes per bound chord; `0` when empty).
     #[must_use]
     pub fn mean_depth(&self) -> usize {

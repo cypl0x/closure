@@ -407,6 +407,27 @@ fn dispatcher_most_bound_command_none_when_empty() {
 }
 
 #[test]
+fn chord_trie_single_stroke_count_match() {
+    let t = closure_input::ChordTrie::build(&[("a", "x"), ("b c", "y"), ("d", "z")]);
+    // single-stroke: "a","d" = 2
+    assert_eq!(t.single_stroke_count(), 2);
+}
+
+#[test]
+fn chord_trie_multi_stroke_count_match() {
+    let t = closure_input::ChordTrie::build(&[("a", "x"), ("b c", "y"), ("d e f", "z")]);
+    // multi-stroke: "b c","d e f" = 2
+    assert_eq!(t.multi_stroke_count(), 2);
+}
+
+#[test]
+fn chord_trie_single_stroke_count_zero_when_empty() {
+    let t = closure_input::ChordTrie::build(&[]);
+    assert_eq!(t.single_stroke_count(), 0);
+    assert_eq!(t.multi_stroke_count(), 0);
+}
+
+#[test]
 fn chord_trie_command_chord_counts_match() {
     let t = closure_input::ChordTrie::build(&[
         ("a b", "foo"),
