@@ -1995,6 +1995,40 @@ impl Vault {
         seen.into_iter().collect()
     }
 
+    /// Count of distinct values bound to property `key`.
+    #[must_use]
+    pub fn distinct_property_value_count(&self, key: &str) -> usize {
+        self.distinct_property_values(key).len()
+    }
+
+    /// Value occurrence counts for property `key` as a sorted map.
+    #[must_use]
+    pub fn property_value_counts(&self, key: &str) -> std::collections::BTreeMap<String, usize> {
+        let mut m = std::collections::BTreeMap::new();
+        for (_, d) in self.iter() {
+            for h in d.all_headlines() {
+                for (k, val) in h.properties() {
+                    if k == key {
+                        *m.entry(val.clone()).or_insert(0) += 1;
+                    }
+                }
+            }
+        }
+        m
+    }
+
+    /// Most-common value bound to property `key` (lowest value wins ties).
+    #[must_use]
+    pub fn most_common_property_value(&self, key: &str) -> Option<String> {
+        let mut best: Option<(String, usize)> = None;
+        for (val, c) in self.property_value_counts(key) {
+            if best.as_ref().is_none_or(|(_, bc)| c > *bc) {
+                best = Some((val, c));
+            }
+        }
+        best.map(|(val, _)| val)
+    }
+
     /// Count of distinct titles across the vault.
     #[must_use]
     pub fn distinct_title_count(&self) -> usize {
