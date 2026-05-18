@@ -537,6 +537,34 @@ impl OrgDoc {
         s.into_iter().collect()
     }
 
+    /// Count of distinct headline titles.
+    #[must_use]
+    pub fn distinct_title_count(&self) -> usize {
+        self.distinct_titles().len()
+    }
+
+    /// Number of headlines whose title duplicates an earlier one
+    /// (total headlines minus distinct titles).
+    #[must_use]
+    pub fn duplicate_title_count(&self) -> usize {
+        self.iter_headlines().len() - self.distinct_title_count()
+    }
+
+    /// True iff any title appears on more than one headline.
+    #[must_use]
+    pub fn has_duplicate_titles(&self) -> bool {
+        self.duplicate_title_count() > 0
+    }
+
+    /// Percentage of headlines whose title is distinct (`0..=100`).
+    #[must_use]
+    pub fn unique_title_pct(&self) -> usize {
+        let n = self.iter_headlines().len();
+        (self.distinct_title_count() * 100)
+            .checked_div(n)
+            .unwrap_or(0)
+    }
+
     /// Levels of every root headline.
     #[must_use]
     pub fn root_levels(&self) -> Vec<u8> {

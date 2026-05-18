@@ -5836,3 +5836,39 @@ fn doc_root_empty_title_pct_zero_when_no_roots() {
     let doc = parse("preamble only\n").expect("parse");
     assert_eq!(doc.root_empty_title_pct(), 0);
 }
+
+#[test]
+fn doc_distinct_title_count_match() {
+    let doc = parse("* A\n* A\n* B\n").expect("parse");
+    // distinct: A,B = 2
+    assert_eq!(doc.distinct_title_count(), 2);
+}
+
+#[test]
+fn doc_duplicate_title_count_match() {
+    let doc = parse("* A\n* A\n* B\n").expect("parse");
+    // total 3 - distinct 2 = 1
+    assert_eq!(doc.duplicate_title_count(), 1);
+}
+
+#[test]
+fn doc_has_duplicate_titles_match() {
+    let dup = parse("* A\n* A\n").expect("parse");
+    assert!(dup.has_duplicate_titles());
+    let uniq = parse("* A\n* B\n").expect("parse");
+    assert!(!uniq.has_duplicate_titles());
+}
+
+#[test]
+fn doc_unique_title_pct_match() {
+    let doc = parse("* A\n* A\n* B\n* C\n").expect("parse");
+    // distinct 3 of 4 -> 75
+    assert_eq!(doc.unique_title_pct(), 75);
+}
+
+#[test]
+fn doc_unique_title_pct_zero_when_empty() {
+    let doc = parse("preamble only\n").expect("parse");
+    assert_eq!(doc.unique_title_pct(), 0);
+    assert!(!doc.has_duplicate_titles());
+}
