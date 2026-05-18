@@ -715,6 +715,36 @@ fn vault_id_uniqueness_pct_zero_when_no_ids() {
 }
 
 #[test]
+fn vault_tag_diversity_pct_match() {
+    let td = write_vault(&[("a.org", "* A :x:y:\n* B :x:\n* C :x:\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    // tag occurrences x*3,y*1=4; distinct {x,y}=2 -> 50
+    assert_eq!(v.tag_diversity_pct(), 50);
+}
+
+#[test]
+fn vault_tag_diversity_pct_zero_when_no_tags() {
+    let td = write_vault(&[("a.org", "* A\n* B\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.tag_diversity_pct(), 0);
+}
+
+#[test]
+fn vault_todo_diversity_pct_match() {
+    let td = write_vault(&[("a.org", "* TODO A\n* TODO B\n* DONE C\n* DONE D\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    // 4 todo occurrences, distinct {TODO,DONE}=2 -> 50
+    assert_eq!(v.todo_diversity_pct(), 50);
+}
+
+#[test]
+fn vault_todo_diversity_pct_zero_when_no_todos() {
+    let td = write_vault(&[("a.org", "* A\n* B\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.todo_diversity_pct(), 0);
+}
+
+#[test]
 fn vault_max_min_file_byte_count_match() {
     let td = write_vault(&[("a.org", "* A\n"), ("b.org", "* BBBBBB\n")]);
     let v = Vault::open(td.path()).expect("open");

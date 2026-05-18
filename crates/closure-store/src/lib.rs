@@ -1420,6 +1420,24 @@ impl Vault {
             .count()
     }
 
+    /// Percentage of distinct tags among total tag occurrences
+    /// (`distinct * 100 / total`, `0` when no tags).
+    #[must_use]
+    pub fn tag_diversity_pct(&self) -> usize {
+        (self.distinct_tag_count() * 100)
+            .checked_div(self.total_tag_count())
+            .unwrap_or(0)
+    }
+
+    /// Percentage of distinct TODO keywords among total TODO occurrences
+    /// (`distinct * 100 / total`, `0` when no TODOs).
+    #[must_use]
+    pub fn todo_diversity_pct(&self) -> usize {
+        (self.distinct_todo_count() * 100)
+            .checked_div(self.total_todo_count())
+            .unwrap_or(0)
+    }
+
     /// Total `:ID:` property occurrences across the vault.
     #[must_use]
     pub fn total_id_count(&self) -> usize {
