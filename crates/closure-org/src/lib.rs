@@ -1260,6 +1260,15 @@ impl OrgDoc {
             .sum()
     }
 
+    /// Percentage of source bytes that are headline body
+    /// (`total body bytes * 100 / source bytes`, `0` when source empty).
+    #[must_use]
+    pub fn body_byte_pct(&self) -> usize {
+        (self.total_body_byte_count() * 100)
+            .checked_div(self.source_byte_len())
+            .unwrap_or(0)
+    }
+
     /// Total headline-body line count across the document.
     #[must_use]
     pub fn total_body_line_count(&self) -> usize {

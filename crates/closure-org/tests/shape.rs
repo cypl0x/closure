@@ -5995,3 +5995,22 @@ fn doc_property_key_diversity_pct_full_when_all_distinct() {
     .expect("parse");
     assert_eq!(doc.property_key_diversity_pct(), 100);
 }
+
+#[test]
+fn doc_body_byte_pct_match() {
+    let doc = parse("* H\nxxxxx\n").expect("parse");
+    // source = "* H\n"(4) + "xxxxx\n"(6) = 10; body bytes = 6 -> 60
+    assert_eq!(doc.body_byte_pct(), 60);
+}
+
+#[test]
+fn doc_body_byte_pct_zero_when_no_body() {
+    let doc = parse("* A\n* B\n").expect("parse");
+    assert_eq!(doc.body_byte_pct(), 0);
+}
+
+#[test]
+fn doc_body_byte_pct_zero_when_empty_source() {
+    let doc = parse("").expect("parse");
+    assert_eq!(doc.body_byte_pct(), 0);
+}
