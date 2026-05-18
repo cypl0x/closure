@@ -4230,6 +4230,48 @@ impl OrgDoc {
         self.roots.iter().filter(|h| h.has_tag(tag)).count()
     }
 
+    /// Number of roots carrying at least one tag.
+    #[must_use]
+    pub fn count_roots_tagged(&self) -> usize {
+        self.roots.iter().filter(|h| !h.tags().is_empty()).count()
+    }
+
+    /// Number of roots carrying any TODO keyword.
+    #[must_use]
+    pub fn count_roots_with_any_todo(&self) -> usize {
+        self.roots.iter().filter(|h| h.todo().is_some()).count()
+    }
+
+    /// Number of roots carrying a priority cookie.
+    #[must_use]
+    pub fn count_roots_prioritized(&self) -> usize {
+        self.roots.iter().filter(|h| h.priority().is_some()).count()
+    }
+
+    /// Percentage of roots carrying at least one tag (`0..=100`).
+    #[must_use]
+    pub fn root_tagged_pct(&self) -> usize {
+        (self.count_roots_tagged() * 100)
+            .checked_div(self.roots.len())
+            .unwrap_or(0)
+    }
+
+    /// Percentage of roots carrying any TODO keyword (`0..=100`).
+    #[must_use]
+    pub fn root_todo_pct(&self) -> usize {
+        (self.count_roots_with_any_todo() * 100)
+            .checked_div(self.roots.len())
+            .unwrap_or(0)
+    }
+
+    /// Percentage of roots carrying a priority cookie (`0..=100`).
+    #[must_use]
+    pub fn root_priority_pct(&self) -> usize {
+        (self.count_roots_prioritized() * 100)
+            .checked_div(self.roots.len())
+            .unwrap_or(0)
+    }
+
     /// Number of roots that are SCHEDULED.
     #[must_use]
     pub fn count_roots_scheduled(&self) -> usize {

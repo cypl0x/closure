@@ -5457,3 +5457,47 @@ fn doc_root_id_pct_zero_when_no_roots() {
     let doc = parse("preamble only\n").expect("parse");
     assert_eq!(doc.root_id_pct(), 0);
 }
+
+#[test]
+fn doc_count_roots_tagged_match() {
+    let doc = parse("* A :x:\n* B\n* C :y:z:\n").expect("parse");
+    assert_eq!(doc.count_roots_tagged(), 2);
+}
+
+#[test]
+fn doc_count_roots_with_any_todo_match() {
+    let doc = parse("* TODO A\n* B\n* DONE C\n").expect("parse");
+    assert_eq!(doc.count_roots_with_any_todo(), 2);
+}
+
+#[test]
+fn doc_count_roots_prioritized_match() {
+    let doc = parse("* [#A] A\n* B\n* [#C] C\n").expect("parse");
+    assert_eq!(doc.count_roots_prioritized(), 2);
+}
+
+#[test]
+fn doc_root_tagged_pct_match() {
+    let doc = parse("* A :x:\n* B\n* C\n* D\n").expect("parse");
+    assert_eq!(doc.root_tagged_pct(), 25);
+}
+
+#[test]
+fn doc_root_todo_pct_match() {
+    let doc = parse("* TODO A\n* B\n").expect("parse");
+    assert_eq!(doc.root_todo_pct(), 50);
+}
+
+#[test]
+fn doc_root_priority_pct_match() {
+    let doc = parse("* [#A] A\n* B\n* C\n* D\n").expect("parse");
+    assert_eq!(doc.root_priority_pct(), 25);
+}
+
+#[test]
+fn doc_root_tagged_pct_zero_when_no_roots() {
+    let doc = parse("preamble only\n").expect("parse");
+    assert_eq!(doc.root_tagged_pct(), 0);
+    assert_eq!(doc.root_todo_pct(), 0);
+    assert_eq!(doc.root_priority_pct(), 0);
+}
