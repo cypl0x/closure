@@ -284,6 +284,50 @@ impl Vault {
             .sum()
     }
 
+    /// Percentage of headlines that are archived (`0..=100`).
+    #[must_use]
+    pub fn archived_pct(&self) -> usize {
+        (self.archived_count() * 100)
+            .checked_div(self.headline_count())
+            .unwrap_or(0)
+    }
+
+    /// Percentage of headlines that are COMMENT (`0..=100`).
+    #[must_use]
+    pub fn comment_pct(&self) -> usize {
+        (self.comment_count() * 100)
+            .checked_div(self.headline_count())
+            .unwrap_or(0)
+    }
+
+    /// Count of headlines that are not archived.
+    #[must_use]
+    pub fn count_non_archived(&self) -> usize {
+        self.headline_count() - self.archived_count()
+    }
+
+    /// Percentage of headlines that are not archived (`0..=100`).
+    #[must_use]
+    pub fn non_archived_pct(&self) -> usize {
+        (self.count_non_archived() * 100)
+            .checked_div(self.headline_count())
+            .unwrap_or(0)
+    }
+
+    /// Count of headlines that are not COMMENT.
+    #[must_use]
+    pub fn count_non_comment(&self) -> usize {
+        self.headline_count() - self.comment_count()
+    }
+
+    /// Percentage of headlines that are not COMMENT (`0..=100`).
+    #[must_use]
+    pub fn non_comment_pct(&self) -> usize {
+        (self.count_non_comment() * 100)
+            .checked_div(self.headline_count())
+            .unwrap_or(0)
+    }
+
     /// Count of headlines with `SCHEDULED:` across the vault.
     #[must_use]
     pub fn scheduled_count(&self) -> usize {

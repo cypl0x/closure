@@ -984,6 +984,56 @@ fn vault_body_pct_zero_when_empty() {
 }
 
 #[test]
+fn vault_archived_pct_match() {
+    let td = write_vault(&[("a.org", "* A :ARCHIVE:\n* B\n* C\n* D\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.archived_pct(), 25);
+}
+
+#[test]
+fn vault_comment_pct_match() {
+    let td = write_vault(&[("a.org", "* COMMENT A\n* B\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.comment_pct(), 50);
+}
+
+#[test]
+fn vault_count_non_archived_match() {
+    let td = write_vault(&[("a.org", "* A :ARCHIVE:\n* B\n* C\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.count_non_archived(), 2);
+}
+
+#[test]
+fn vault_non_archived_pct_match() {
+    let td = write_vault(&[("a.org", "* A :ARCHIVE:\n* B\n* C\n* D\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.non_archived_pct(), 75);
+}
+
+#[test]
+fn vault_count_non_comment_match() {
+    let td = write_vault(&[("a.org", "* COMMENT A\n* B\n* C\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.count_non_comment(), 2);
+}
+
+#[test]
+fn vault_non_comment_pct_match() {
+    let td = write_vault(&[("a.org", "* COMMENT A\n* B\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.non_comment_pct(), 50);
+}
+
+#[test]
+fn vault_archived_pct_zero_when_empty() {
+    let td = write_vault(&[("a.org", "no headlines\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.archived_pct(), 0);
+    assert_eq!(v.comment_pct(), 0);
+}
+
+#[test]
 fn vault_path_with_max_headlines_match() {
     let td = write_vault(&[
         ("a.org", "* X\n"),
