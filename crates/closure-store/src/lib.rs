@@ -988,6 +988,36 @@ impl Vault {
         self.priority_counts().into_iter().next().map(|(k, _)| k)
     }
 
+    /// Least-common TODO keyword (lowest count; ties by name asc).
+    #[must_use]
+    pub fn least_common_todo(&self) -> Option<String> {
+        self.todo_counts()
+            .into_iter()
+            .min_by(|a, b| a.1.cmp(&b.1).then_with(|| a.0.cmp(&b.0)))
+            .map(|(k, _)| k)
+    }
+
+    /// Least-common priority letter (lowest count; ties by letter asc).
+    #[must_use]
+    pub fn least_common_priority(&self) -> Option<char> {
+        self.priority_counts()
+            .into_iter()
+            .min_by(|a, b| a.1.cmp(&b.1).then_with(|| a.0.cmp(&b.0)))
+            .map(|(k, _)| k)
+    }
+
+    /// TODO keyword occurrence counts as a sorted map.
+    #[must_use]
+    pub fn todo_count_map(&self) -> std::collections::BTreeMap<String, usize> {
+        self.todo_counts().into_iter().collect()
+    }
+
+    /// Priority occurrence counts as a sorted map.
+    #[must_use]
+    pub fn priority_count_map(&self) -> std::collections::BTreeMap<char, usize> {
+        self.priority_counts().into_iter().collect()
+    }
+
     /// Most-common level across the vault.
     #[must_use]
     pub fn most_common_level(&self) -> Option<u8> {

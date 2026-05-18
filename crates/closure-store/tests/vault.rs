@@ -375,6 +375,47 @@ fn vault_tag_count_map_match() {
 }
 
 #[test]
+fn vault_least_common_todo_returns_bottom() {
+    let td = write_vault(&[("a.org", "* TODO X\n* TODO Y\n* DONE Z\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    // TODO=2, DONE=1 -> least DONE
+    assert_eq!(v.least_common_todo(), Some("DONE".to_owned()));
+}
+
+#[test]
+fn vault_todo_count_map_match() {
+    let td = write_vault(&[("a.org", "* TODO X\n* TODO Y\n* DONE Z\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    let m = v.todo_count_map();
+    assert_eq!(m.get("TODO"), Some(&2));
+    assert_eq!(m.get("DONE"), Some(&1));
+}
+
+#[test]
+fn vault_least_common_priority_returns_bottom() {
+    let td = write_vault(&[("a.org", "* [#A] X\n* [#A] Y\n* [#B] Z\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    // A=2, B=1 -> least B
+    assert_eq!(v.least_common_priority(), Some('B'));
+}
+
+#[test]
+fn vault_priority_count_map_match() {
+    let td = write_vault(&[("a.org", "* [#A] X\n* [#A] Y\n* [#B] Z\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    let m = v.priority_count_map();
+    assert_eq!(m.get(&'A'), Some(&2));
+    assert_eq!(m.get(&'B'), Some(&1));
+}
+
+#[test]
+fn vault_least_common_todo_none_when_none() {
+    let td = write_vault(&[("a.org", "* X\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.least_common_todo(), None);
+}
+
+#[test]
 fn vault_most_common_todo_returns_top() {
     let td = write_vault(&[
         ("a.org", "* TODO X\n* DONE Y\n"),
