@@ -4272,6 +4272,48 @@ impl OrgDoc {
             .unwrap_or(0)
     }
 
+    /// Number of roots carrying no tag.
+    #[must_use]
+    pub fn count_roots_untagged(&self) -> usize {
+        self.roots.len() - self.count_roots_tagged()
+    }
+
+    /// Number of roots carrying no TODO keyword.
+    #[must_use]
+    pub fn count_roots_without_todo(&self) -> usize {
+        self.roots.len() - self.count_roots_with_any_todo()
+    }
+
+    /// Number of roots carrying no priority cookie.
+    #[must_use]
+    pub fn count_roots_unprioritized(&self) -> usize {
+        self.roots.len() - self.count_roots_prioritized()
+    }
+
+    /// Percentage of roots carrying no tag (`0..=100`).
+    #[must_use]
+    pub fn root_untagged_pct(&self) -> usize {
+        (self.count_roots_untagged() * 100)
+            .checked_div(self.roots.len())
+            .unwrap_or(0)
+    }
+
+    /// Percentage of roots carrying no TODO keyword (`0..=100`).
+    #[must_use]
+    pub fn root_no_todo_pct(&self) -> usize {
+        (self.count_roots_without_todo() * 100)
+            .checked_div(self.roots.len())
+            .unwrap_or(0)
+    }
+
+    /// Percentage of roots carrying no priority cookie (`0..=100`).
+    #[must_use]
+    pub fn root_unprioritized_pct(&self) -> usize {
+        (self.count_roots_unprioritized() * 100)
+            .checked_div(self.roots.len())
+            .unwrap_or(0)
+    }
+
     /// Number of roots that are SCHEDULED.
     #[must_use]
     pub fn count_roots_scheduled(&self) -> usize {

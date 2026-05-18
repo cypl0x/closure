@@ -5501,3 +5501,39 @@ fn doc_root_tagged_pct_zero_when_no_roots() {
     assert_eq!(doc.root_todo_pct(), 0);
     assert_eq!(doc.root_priority_pct(), 0);
 }
+
+#[test]
+fn doc_count_roots_untagged_match() {
+    let doc = parse("* A :x:\n* B\n* C\n").expect("parse");
+    assert_eq!(doc.count_roots_untagged(), 2);
+}
+
+#[test]
+fn doc_count_roots_without_todo_match() {
+    let doc = parse("* TODO A\n* B\n* C\n").expect("parse");
+    assert_eq!(doc.count_roots_without_todo(), 2);
+}
+
+#[test]
+fn doc_count_roots_unprioritized_match() {
+    let doc = parse("* [#A] A\n* B\n* C\n").expect("parse");
+    assert_eq!(doc.count_roots_unprioritized(), 2);
+}
+
+#[test]
+fn doc_root_untagged_pct_match() {
+    let doc = parse("* A :x:\n* B\n* C\n* D\n").expect("parse");
+    assert_eq!(doc.root_untagged_pct(), 75);
+}
+
+#[test]
+fn doc_root_no_todo_pct_match() {
+    let doc = parse("* TODO A\n* B\n").expect("parse");
+    assert_eq!(doc.root_no_todo_pct(), 50);
+}
+
+#[test]
+fn doc_root_unprioritized_pct_match() {
+    let doc = parse("* [#A] A\n* B\n* C\n* D\n").expect("parse");
+    assert_eq!(doc.root_unprioritized_pct(), 75);
+}
