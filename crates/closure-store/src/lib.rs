@@ -1968,6 +1968,33 @@ impl Vault {
         best.map(|(k, _)| k)
     }
 
+    /// All values bound to property `key` across the vault (with duplicates).
+    #[must_use]
+    pub fn property_values(&self, key: &str) -> Vec<String> {
+        self.iter()
+            .flat_map(|(_, d)| d.all_headlines())
+            .flat_map(closure_core::DocHeadline::properties)
+            .filter(|(k, _)| k == key)
+            .map(|(_, val)| val.clone())
+            .collect()
+    }
+
+    /// Sorted distinct values bound to property `key` across the vault.
+    #[must_use]
+    pub fn distinct_property_values(&self, key: &str) -> Vec<String> {
+        let mut seen: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+        for (_, d) in self.iter() {
+            for h in d.all_headlines() {
+                for (k, val) in h.properties() {
+                    if k == key {
+                        seen.insert(val.clone());
+                    }
+                }
+            }
+        }
+        seen.into_iter().collect()
+    }
+
     /// Count of distinct titles across the vault.
     #[must_use]
     pub fn distinct_title_count(&self) -> usize {

@@ -461,6 +461,38 @@ fn vault_most_common_property_key_match() {
 }
 
 #[test]
+fn vault_property_values_for_key_match() {
+    let td = write_vault(&[(
+        "a.org",
+        "* A\n:PROPERTIES:\n:Foo: 1\n:END:\n* B\n:PROPERTIES:\n:Foo: 2\n:END:\n",
+    )]);
+    let v = Vault::open(td.path()).expect("open");
+    let mut vals = v.property_values("Foo");
+    vals.sort();
+    assert_eq!(vals, vec!["1".to_owned(), "2".to_owned()]);
+}
+
+#[test]
+fn vault_distinct_property_values_for_key_sorted() {
+    let td = write_vault(&[(
+        "a.org",
+        "* A\n:PROPERTIES:\n:Foo: x\n:END:\n* B\n:PROPERTIES:\n:Foo: x\n:END:\n* C\n:PROPERTIES:\n:Foo: y\n:END:\n",
+    )]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(
+        v.distinct_property_values("Foo"),
+        vec!["x".to_owned(), "y".to_owned()]
+    );
+}
+
+#[test]
+fn vault_property_values_empty_for_unknown_key() {
+    let td = write_vault(&[("a.org", "* A\n:PROPERTIES:\n:Foo: 1\n:END:\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert!(v.property_values("Nope").is_empty());
+}
+
+#[test]
 fn vault_most_common_todo_returns_top() {
     let td = write_vault(&[
         ("a.org", "* TODO X\n* DONE Y\n"),
