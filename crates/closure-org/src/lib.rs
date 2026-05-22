@@ -815,6 +815,55 @@ impl OrgDoc {
             .unwrap_or(0)
     }
 
+    /// Median property-key length in characters (`None` when no properties).
+    #[must_use]
+    pub fn median_property_key_len(&self) -> Option<usize> {
+        let mut v: Vec<usize> = self
+            .iter_headlines()
+            .into_iter()
+            .filter_map(Headline::properties)
+            .flat_map(Properties::keys)
+            .map(|k| k.chars().count())
+            .collect();
+        if v.is_empty() {
+            return None;
+        }
+        v.sort_unstable();
+        let mid = v.len() / 2;
+        Some(if v.len() % 2 == 1 {
+            v[mid]
+        } else {
+            v[mid - 1].midpoint(v[mid])
+        })
+    }
+
+    /// Histogram of property-key lengths (chars) to occurrence count.
+    #[must_use]
+    pub fn property_key_len_counts(&self) -> std::collections::BTreeMap<usize, usize> {
+        let mut m = std::collections::BTreeMap::new();
+        for k in self
+            .iter_headlines()
+            .into_iter()
+            .filter_map(Headline::properties)
+            .flat_map(Properties::keys)
+        {
+            *m.entry(k.chars().count()).or_insert(0) += 1;
+        }
+        m
+    }
+
+    /// Most common property-key length (lowest wins ties).
+    #[must_use]
+    pub fn mode_property_key_len(&self) -> Option<usize> {
+        let mut best: Option<(usize, usize)> = None;
+        for (len, c) in self.property_key_len_counts() {
+            if best.is_none_or(|(_, bc)| c > bc) {
+                best = Some((len, c));
+            }
+        }
+        best.map(|(len, _)| len)
+    }
+
     /// Sorted distinct tag set (borrowed).
     #[must_use]
     pub fn tag_set(&self) -> std::collections::BTreeSet<&str> {

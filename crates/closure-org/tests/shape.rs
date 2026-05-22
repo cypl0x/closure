@@ -6239,3 +6239,41 @@ fn doc_property_key_len_none_when_no_props() {
     assert_eq!(doc.mean_property_key_len(), 0);
     assert_eq!(doc.total_property_key_len(), 0);
 }
+
+#[test]
+fn doc_median_property_key_len_match() {
+    let doc = parse(
+        "* A\n:PROPERTIES:\n:A: 1\n:BB: 2\n:DDDD: 3\n:END:\n",
+    )
+    .expect("parse");
+    // 1,2,4 -> median 2
+    assert_eq!(doc.median_property_key_len(), Some(2));
+}
+
+#[test]
+fn doc_property_key_len_counts_match() {
+    let doc = parse(
+        "* A\n:PROPERTIES:\n:Foo: 1\n:Bar: 2\n:LongKey: 3\n:END:\n",
+    )
+    .expect("parse");
+    // 3,3,7
+    let m = doc.property_key_len_counts();
+    assert_eq!(m.get(&3), Some(&2));
+    assert_eq!(m.get(&7), Some(&1));
+}
+
+#[test]
+fn doc_mode_property_key_len_match() {
+    let doc = parse(
+        "* A\n:PROPERTIES:\n:Foo: 1\n:Bar: 2\n:LongKey: 3\n:END:\n",
+    )
+    .expect("parse");
+    assert_eq!(doc.mode_property_key_len(), Some(3));
+}
+
+#[test]
+fn doc_median_property_key_len_none_when_no_props() {
+    let doc = parse("* A\n").expect("parse");
+    assert_eq!(doc.median_property_key_len(), None);
+    assert_eq!(doc.mode_property_key_len(), None);
+}
