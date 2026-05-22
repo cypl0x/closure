@@ -970,6 +970,36 @@ fn vault_todo_len_none_when_no_todos() {
 }
 
 #[test]
+fn vault_median_todo_len_match() {
+    let td = write_vault(&[("a.org", "* TODO A\n* TODO B\n* DONE C\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.median_todo_len(), Some(4));
+}
+
+#[test]
+fn vault_todo_len_counts_match() {
+    let td = write_vault(&[("a.org", "* TODO A\n* TODO B\n* DONE C\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    let m = v.todo_len_counts();
+    assert_eq!(m.get(&4), Some(&3));
+}
+
+#[test]
+fn vault_mode_todo_len_match() {
+    let td = write_vault(&[("a.org", "* TODO A\n* TODO B\n* DONE C\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.mode_todo_len(), Some(4));
+}
+
+#[test]
+fn vault_median_todo_len_none_when_no_todos() {
+    let td = write_vault(&[("a.org", "* A\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.median_todo_len(), None);
+    assert_eq!(v.mode_todo_len(), None);
+}
+
+#[test]
 fn vault_max_min_file_byte_count_match() {
     let td = write_vault(&[("a.org", "* A\n"), ("b.org", "* BBBBBB\n")]);
     let v = Vault::open(td.path()).expect("open");
