@@ -768,6 +768,53 @@ impl OrgDoc {
         best.map(|(len, _)| len)
     }
 
+    /// Maximum property-key length in characters across the document.
+    #[must_use]
+    pub fn max_property_key_len(&self) -> Option<usize> {
+        self.iter_headlines()
+            .into_iter()
+            .filter_map(Headline::properties)
+            .flat_map(Properties::keys)
+            .map(|k| k.chars().count())
+            .max()
+    }
+
+    /// Minimum property-key length in characters across the document.
+    #[must_use]
+    pub fn min_property_key_len(&self) -> Option<usize> {
+        self.iter_headlines()
+            .into_iter()
+            .filter_map(Headline::properties)
+            .flat_map(Properties::keys)
+            .map(|k| k.chars().count())
+            .min()
+    }
+
+    /// Total property-key length in characters across the document.
+    #[must_use]
+    pub fn total_property_key_len(&self) -> usize {
+        self.iter_headlines()
+            .into_iter()
+            .filter_map(Headline::properties)
+            .flat_map(Properties::keys)
+            .map(|k| k.chars().count())
+            .sum()
+    }
+
+    /// Integer mean property-key length in characters (`0` when no properties).
+    #[must_use]
+    pub fn mean_property_key_len(&self) -> usize {
+        let total_keys: usize = self
+            .iter_headlines()
+            .into_iter()
+            .filter_map(Headline::properties)
+            .map(Properties::len)
+            .sum();
+        self.total_property_key_len()
+            .checked_div(total_keys)
+            .unwrap_or(0)
+    }
+
     /// Sorted distinct tag set (borrowed).
     #[must_use]
     pub fn tag_set(&self) -> std::collections::BTreeSet<&str> {
