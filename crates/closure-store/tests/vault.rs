@@ -938,6 +938,38 @@ fn vault_median_tag_len_none_when_no_tags() {
 }
 
 #[test]
+fn vault_max_min_todo_len_match() {
+    let td = write_vault(&[("a.org", "* TODO A\n* DONE B\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.max_todo_len(), Some(4));
+    assert_eq!(v.min_todo_len(), Some(4));
+}
+
+#[test]
+fn vault_mean_todo_len_match() {
+    let td = write_vault(&[("a.org", "* TODO A\n* DONE B\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.mean_todo_len(), 4);
+}
+
+#[test]
+fn vault_total_todo_len_match() {
+    let td = write_vault(&[("a.org", "* TODO A\n* DONE B\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.total_todo_len(), 8);
+}
+
+#[test]
+fn vault_todo_len_none_when_no_todos() {
+    let td = write_vault(&[("a.org", "* A\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.max_todo_len(), None);
+    assert_eq!(v.min_todo_len(), None);
+    assert_eq!(v.mean_todo_len(), 0);
+    assert_eq!(v.total_todo_len(), 0);
+}
+
+#[test]
 fn vault_max_min_file_byte_count_match() {
     let td = write_vault(&[("a.org", "* A\n"), ("b.org", "* BBBBBB\n")]);
     let v = Vault::open(td.path()).expect("open");

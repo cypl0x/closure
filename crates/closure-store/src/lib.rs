@@ -1531,6 +1531,44 @@ impl Vault {
         best.map(|(len, _)| len)
     }
 
+    /// Maximum TODO keyword length in characters across the vault.
+    #[must_use]
+    pub fn max_todo_len(&self) -> Option<usize> {
+        self.iter()
+            .flat_map(|(_, d)| d.all_headlines())
+            .filter_map(closure_core::DocHeadline::todo)
+            .map(|t| t.chars().count())
+            .max()
+    }
+
+    /// Minimum TODO keyword length in characters across the vault.
+    #[must_use]
+    pub fn min_todo_len(&self) -> Option<usize> {
+        self.iter()
+            .flat_map(|(_, d)| d.all_headlines())
+            .filter_map(closure_core::DocHeadline::todo)
+            .map(|t| t.chars().count())
+            .min()
+    }
+
+    /// Total TODO keyword length in characters across the vault.
+    #[must_use]
+    pub fn total_todo_len(&self) -> usize {
+        self.iter()
+            .flat_map(|(_, d)| d.all_headlines())
+            .filter_map(closure_core::DocHeadline::todo)
+            .map(|t| t.chars().count())
+            .sum()
+    }
+
+    /// Integer mean TODO keyword length in characters (`0` when no TODOs).
+    #[must_use]
+    pub fn mean_todo_len(&self) -> usize {
+        self.total_todo_len()
+            .checked_div(self.total_todo_count())
+            .unwrap_or(0)
+    }
+
     /// Total priority-set occurrences across the vault.
     #[must_use]
     pub fn total_priority_count(&self) -> usize {
