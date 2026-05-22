@@ -6171,3 +6171,31 @@ fn doc_todo_len_none_when_no_todos() {
     assert_eq!(doc.mean_todo_len(), 0);
     assert_eq!(doc.total_todo_len(), 0);
 }
+
+#[test]
+fn doc_todo_len_counts_match() {
+    let doc = parse("* TODO A\n* TODO B\n* DONE C\n").expect("parse");
+    // TODO=4, TODO=4, DONE=4 -> all 4
+    let m = doc.todo_len_counts();
+    assert_eq!(m.get(&4), Some(&3));
+}
+
+#[test]
+fn doc_mode_todo_len_match() {
+    let doc = parse("* TODO A\n* TODO B\n* DONE C\n").expect("parse");
+    assert_eq!(doc.mode_todo_len(), Some(4));
+}
+
+#[test]
+fn doc_median_todo_len_match() {
+    let doc = parse("* TODO A\n* TODO B\n* DONE C\n").expect("parse");
+    // all 4
+    assert_eq!(doc.median_todo_len(), Some(4));
+}
+
+#[test]
+fn doc_median_todo_len_none_when_no_todos() {
+    let doc = parse("* A\n").expect("parse");
+    assert_eq!(doc.median_todo_len(), None);
+    assert_eq!(doc.mode_todo_len(), None);
+}

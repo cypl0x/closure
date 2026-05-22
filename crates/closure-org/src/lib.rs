@@ -725,6 +725,49 @@ impl OrgDoc {
             .unwrap_or(0)
     }
 
+    /// Median TODO keyword length in characters (`None` when no TODOs).
+    #[must_use]
+    pub fn median_todo_len(&self) -> Option<usize> {
+        let mut v: Vec<usize> = self
+            .iter_headlines()
+            .into_iter()
+            .filter_map(Headline::todo)
+            .map(|t| t.chars().count())
+            .collect();
+        if v.is_empty() {
+            return None;
+        }
+        v.sort_unstable();
+        let mid = v.len() / 2;
+        Some(if v.len() % 2 == 1 {
+            v[mid]
+        } else {
+            v[mid - 1].midpoint(v[mid])
+        })
+    }
+
+    /// Histogram of TODO keyword lengths (chars) to occurrence count.
+    #[must_use]
+    pub fn todo_len_counts(&self) -> std::collections::BTreeMap<usize, usize> {
+        let mut m = std::collections::BTreeMap::new();
+        for t in self.iter_headlines().into_iter().filter_map(Headline::todo) {
+            *m.entry(t.chars().count()).or_insert(0) += 1;
+        }
+        m
+    }
+
+    /// Most common TODO keyword length (lowest wins ties).
+    #[must_use]
+    pub fn mode_todo_len(&self) -> Option<usize> {
+        let mut best: Option<(usize, usize)> = None;
+        for (len, c) in self.todo_len_counts() {
+            if best.is_none_or(|(_, bc)| c > bc) {
+                best = Some((len, c));
+            }
+        }
+        best.map(|(len, _)| len)
+    }
+
     /// Sorted distinct tag set (borrowed).
     #[must_use]
     pub fn tag_set(&self) -> std::collections::BTreeSet<&str> {
