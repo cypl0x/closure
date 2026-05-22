@@ -6140,3 +6140,34 @@ fn doc_mode_tag_len_none_when_no_tags() {
     let doc = parse("* A\n").expect("parse");
     assert_eq!(doc.mode_tag_len(), None);
 }
+
+#[test]
+fn doc_max_min_todo_len_match() {
+    let doc = parse("* TODO A\n* DONE B\n").expect("parse");
+    // TODO=4, DONE=4
+    assert_eq!(doc.max_todo_len(), Some(4));
+    assert_eq!(doc.min_todo_len(), Some(4));
+}
+
+#[test]
+fn doc_mean_todo_len_match() {
+    let doc = parse("* TODO A\n* DONE B\n").expect("parse");
+    // both 4 -> mean 4
+    assert_eq!(doc.mean_todo_len(), 4);
+}
+
+#[test]
+fn doc_total_todo_len_match() {
+    let doc = parse("* TODO A\n* DONE B\n").expect("parse");
+    // 4+4 = 8
+    assert_eq!(doc.total_todo_len(), 8);
+}
+
+#[test]
+fn doc_todo_len_none_when_no_todos() {
+    let doc = parse("* A\n").expect("parse");
+    assert_eq!(doc.max_todo_len(), None);
+    assert_eq!(doc.min_todo_len(), None);
+    assert_eq!(doc.mean_todo_len(), 0);
+    assert_eq!(doc.total_todo_len(), 0);
+}

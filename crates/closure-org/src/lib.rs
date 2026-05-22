@@ -687,6 +687,44 @@ impl OrgDoc {
         best.map(|(len, _)| len)
     }
 
+    /// Maximum TODO keyword length in characters across the document.
+    #[must_use]
+    pub fn max_todo_len(&self) -> Option<usize> {
+        self.iter_headlines()
+            .into_iter()
+            .filter_map(Headline::todo)
+            .map(|t| t.chars().count())
+            .max()
+    }
+
+    /// Minimum TODO keyword length in characters across the document.
+    #[must_use]
+    pub fn min_todo_len(&self) -> Option<usize> {
+        self.iter_headlines()
+            .into_iter()
+            .filter_map(Headline::todo)
+            .map(|t| t.chars().count())
+            .min()
+    }
+
+    /// Total TODO keyword length in characters across the document.
+    #[must_use]
+    pub fn total_todo_len(&self) -> usize {
+        self.iter_headlines()
+            .into_iter()
+            .filter_map(Headline::todo)
+            .map(|t| t.chars().count())
+            .sum()
+    }
+
+    /// Integer mean TODO keyword length in characters (`0` when no TODOs).
+    #[must_use]
+    pub fn mean_todo_len(&self) -> usize {
+        self.total_todo_len()
+            .checked_div(self.total_todo_count())
+            .unwrap_or(0)
+    }
+
     /// Sorted distinct tag set (borrowed).
     #[must_use]
     pub fn tag_set(&self) -> std::collections::BTreeSet<&str> {
