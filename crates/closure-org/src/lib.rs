@@ -864,6 +864,53 @@ impl OrgDoc {
         best.map(|(len, _)| len)
     }
 
+    /// Maximum property-value length in characters across the document.
+    #[must_use]
+    pub fn max_property_value_len(&self) -> Option<usize> {
+        self.iter_headlines()
+            .into_iter()
+            .filter_map(Headline::properties)
+            .flat_map(Properties::values)
+            .map(|v| v.chars().count())
+            .max()
+    }
+
+    /// Minimum property-value length in characters across the document.
+    #[must_use]
+    pub fn min_property_value_len(&self) -> Option<usize> {
+        self.iter_headlines()
+            .into_iter()
+            .filter_map(Headline::properties)
+            .flat_map(Properties::values)
+            .map(|v| v.chars().count())
+            .min()
+    }
+
+    /// Total property-value length in characters across the document.
+    #[must_use]
+    pub fn total_property_value_len(&self) -> usize {
+        self.iter_headlines()
+            .into_iter()
+            .filter_map(Headline::properties)
+            .flat_map(Properties::values)
+            .map(|v| v.chars().count())
+            .sum()
+    }
+
+    /// Integer mean property-value length in characters (`0` when no properties).
+    #[must_use]
+    pub fn mean_property_value_len(&self) -> usize {
+        let total_vals: usize = self
+            .iter_headlines()
+            .into_iter()
+            .filter_map(Headline::properties)
+            .map(Properties::len)
+            .sum();
+        self.total_property_value_len()
+            .checked_div(total_vals)
+            .unwrap_or(0)
+    }
+
     /// Sorted distinct tag set (borrowed).
     #[must_use]
     pub fn tag_set(&self) -> std::collections::BTreeSet<&str> {

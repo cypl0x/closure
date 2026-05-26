@@ -6277,3 +6277,43 @@ fn doc_median_property_key_len_none_when_no_props() {
     assert_eq!(doc.median_property_key_len(), None);
     assert_eq!(doc.mode_property_key_len(), None);
 }
+
+#[test]
+fn doc_max_min_property_value_len_match() {
+    let doc = parse(
+        "* A\n:PROPERTIES:\n:Foo: abc\n:Bar: defghij\n:END:\n",
+    )
+    .expect("parse");
+    // values: "abc"=3, "defghij"=7
+    assert_eq!(doc.max_property_value_len(), Some(7));
+    assert_eq!(doc.min_property_value_len(), Some(3));
+}
+
+#[test]
+fn doc_mean_property_value_len_match() {
+    let doc = parse(
+        "* A\n:PROPERTIES:\n:Foo: abc\n:Bar: defghij\n:END:\n",
+    )
+    .expect("parse");
+    // 3,7 -> mean 5
+    assert_eq!(doc.mean_property_value_len(), 5);
+}
+
+#[test]
+fn doc_total_property_value_len_match() {
+    let doc = parse(
+        "* A\n:PROPERTIES:\n:Foo: abc\n:Bar: def\n:END:\n",
+    )
+    .expect("parse");
+    // 3+3=6
+    assert_eq!(doc.total_property_value_len(), 6);
+}
+
+#[test]
+fn doc_property_value_len_none_when_no_props() {
+    let doc = parse("* A\n").expect("parse");
+    assert_eq!(doc.max_property_value_len(), None);
+    assert_eq!(doc.min_property_value_len(), None);
+    assert_eq!(doc.mean_property_value_len(), 0);
+    assert_eq!(doc.total_property_value_len(), 0);
+}
