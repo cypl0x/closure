@@ -5146,6 +5146,20 @@ fn doc_max_min_timestamp_count_match() {
 }
 
 #[test]
+fn doc_mean_timestamp_count_match() {
+    let doc = parse("* A\n<2026-01-01> <2026-01-02>\n* B\n<2026-01-03>\n* C\nno ts\n")
+        .expect("parse");
+    // A=2, B=1, C=0 -> total 3 / 3 = 1
+    assert_eq!(doc.mean_timestamp_count(), 1);
+}
+
+#[test]
+fn doc_mean_timestamp_count_zero_when_empty() {
+    let doc = parse("").expect("parse");
+    assert_eq!(doc.mean_timestamp_count(), 0);
+}
+
+#[test]
 fn doc_median_timestamp_count_match() {
     let doc = parse("* A\nno\n* B\n<2026-01-01>\n* C\n<2026-01-02> <2026-01-03>\n")
         .expect("parse");

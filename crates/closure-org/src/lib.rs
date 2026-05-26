@@ -6240,6 +6240,13 @@ impl OrgDoc {
             .min()
     }
 
+    /// Integer mean per-headline timestamp count (`0` when no headlines).
+    #[must_use]
+    pub fn mean_timestamp_count(&self) -> usize {
+        let n = self.iter_headlines().len();
+        self.total_timestamp_count().checked_div(n).unwrap_or(0)
+    }
+
     /// Median per-headline timestamp count (`None` when empty).
     #[must_use]
     pub fn median_timestamp_count(&self) -> Option<usize> {
