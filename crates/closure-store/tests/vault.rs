@@ -1123,6 +1123,47 @@ fn vault_property_value_len_none_when_no_props() {
 }
 
 #[test]
+fn vault_median_property_value_len_match() {
+    let td = write_vault(&[(
+        "a.org",
+        "* A\n:PROPERTIES:\n:A: a\n:B: bb\n:C: dddd\n:END:\n",
+    )]);
+    let v = Vault::open(td.path()).expect("open");
+    // vals lens sorted: 1, 2, 4 -> median 2
+    assert_eq!(v.median_property_value_len(), Some(2));
+}
+
+#[test]
+fn vault_property_value_len_counts_match() {
+    let td = write_vault(&[(
+        "a.org",
+        "* A\n:PROPERTIES:\n:A: aa\n:B: bb\n:C: longer\n:END:\n",
+    )]);
+    let v = Vault::open(td.path()).expect("open");
+    let m = v.property_value_len_counts();
+    assert_eq!(m.get(&2), Some(&2));
+    assert_eq!(m.get(&6), Some(&1));
+}
+
+#[test]
+fn vault_mode_property_value_len_match() {
+    let td = write_vault(&[(
+        "a.org",
+        "* A\n:PROPERTIES:\n:A: aa\n:B: bb\n:C: longer\n:END:\n",
+    )]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.mode_property_value_len(), Some(2));
+}
+
+#[test]
+fn vault_median_property_value_len_none_when_no_props() {
+    let td = write_vault(&[("a.org", "* A\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.median_property_value_len(), None);
+    assert_eq!(v.mode_property_value_len(), None);
+}
+
+#[test]
 fn vault_max_min_file_byte_count_match() {
     let td = write_vault(&[("a.org", "* A\n"), ("b.org", "* BBBBBB\n")]);
     let v = Vault::open(td.path()).expect("open");

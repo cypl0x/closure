@@ -1899,6 +1899,52 @@ impl Vault {
         self.total_property_value_len().checked_div(n).unwrap_or(0)
     }
 
+    /// Median property-value character length (`None` when no properties).
+    #[must_use]
+    pub fn median_property_value_len(&self) -> Option<usize> {
+        let mut v: Vec<usize> = self
+            .iter()
+            .flat_map(|(_, d)| d.all_headlines())
+            .flat_map(|h| h.properties().iter().map(|(_, val)| val.chars().count()))
+            .collect();
+        if v.is_empty() {
+            return None;
+        }
+        v.sort_unstable();
+        let mid = v.len() / 2;
+        Some(if v.len() % 2 == 1 {
+            v[mid]
+        } else {
+            v[mid - 1].midpoint(v[mid])
+        })
+    }
+
+    /// Histogram of property-value character lengths to occurrence count.
+    #[must_use]
+    pub fn property_value_len_counts(&self) -> std::collections::BTreeMap<usize, usize> {
+        let mut m = std::collections::BTreeMap::new();
+        for (_, d) in self.iter() {
+            for h in d.all_headlines() {
+                for (_, val) in h.properties() {
+                    *m.entry(val.chars().count()).or_insert(0) += 1;
+                }
+            }
+        }
+        m
+    }
+
+    /// Most common property-value character length (lowest wins ties).
+    #[must_use]
+    pub fn mode_property_value_len(&self) -> Option<usize> {
+        let mut best: Option<(usize, usize)> = None;
+        for (len, c) in self.property_value_len_counts() {
+            if best.is_none_or(|(_, bc)| c > bc) {
+                best = Some((len, c));
+            }
+        }
+        best.map(|(len, _)| len)
+    }
+
     /// Count of headlines carrying a non-empty body across the vault.
     #[must_use]
     pub fn with_body_count(&self) -> usize {
