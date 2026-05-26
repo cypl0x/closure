@@ -6317,3 +6317,41 @@ fn doc_property_value_len_none_when_no_props() {
     assert_eq!(doc.mean_property_value_len(), 0);
     assert_eq!(doc.total_property_value_len(), 0);
 }
+
+#[test]
+fn doc_median_property_value_len_match() {
+    let doc = parse(
+        "* A\n:PROPERTIES:\n:A: a\n:B: bb\n:C: dddd\n:END:\n",
+    )
+    .expect("parse");
+    // vals lens: 1, 2, 4 -> median 2
+    assert_eq!(doc.median_property_value_len(), Some(2));
+}
+
+#[test]
+fn doc_property_value_len_counts_match() {
+    let doc = parse(
+        "* A\n:PROPERTIES:\n:A: aa\n:B: bb\n:C: longer\n:END:\n",
+    )
+    .expect("parse");
+    // 2,2,6
+    let m = doc.property_value_len_counts();
+    assert_eq!(m.get(&2), Some(&2));
+    assert_eq!(m.get(&6), Some(&1));
+}
+
+#[test]
+fn doc_mode_property_value_len_match() {
+    let doc = parse(
+        "* A\n:PROPERTIES:\n:A: aa\n:B: bb\n:C: longer\n:END:\n",
+    )
+    .expect("parse");
+    assert_eq!(doc.mode_property_value_len(), Some(2));
+}
+
+#[test]
+fn doc_median_property_value_len_none_when_no_props() {
+    let doc = parse("* A\n").expect("parse");
+    assert_eq!(doc.median_property_value_len(), None);
+    assert_eq!(doc.mode_property_value_len(), None);
+}
