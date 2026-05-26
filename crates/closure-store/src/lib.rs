@@ -1777,6 +1777,44 @@ impl Vault {
         best.map(|(pc, _)| pc)
     }
 
+    /// Maximum property-key character length across the vault.
+    #[must_use]
+    pub fn max_property_key_len(&self) -> Option<usize> {
+        self.iter()
+            .flat_map(|(_, d)| d.all_headlines())
+            .flat_map(|h| h.properties().iter().map(|(k, _)| k.chars().count()))
+            .max()
+    }
+
+    /// Minimum property-key character length across the vault.
+    #[must_use]
+    pub fn min_property_key_len(&self) -> Option<usize> {
+        self.iter()
+            .flat_map(|(_, d)| d.all_headlines())
+            .flat_map(|h| h.properties().iter().map(|(k, _)| k.chars().count()))
+            .min()
+    }
+
+    /// Total property-key character length across the vault.
+    #[must_use]
+    pub fn total_property_key_len(&self) -> usize {
+        self.iter()
+            .flat_map(|(_, d)| d.all_headlines())
+            .flat_map(|h| h.properties().iter().map(|(k, _)| k.chars().count()))
+            .sum()
+    }
+
+    /// Integer mean property-key character length (`0` when no properties).
+    #[must_use]
+    pub fn mean_property_key_len(&self) -> usize {
+        let n: usize = self
+            .iter()
+            .flat_map(|(_, d)| d.all_headlines())
+            .map(|h| h.properties().len())
+            .sum();
+        self.total_property_key_len().checked_div(n).unwrap_or(0)
+    }
+
     /// Count of headlines carrying a non-empty body across the vault.
     #[must_use]
     pub fn with_body_count(&self) -> usize {

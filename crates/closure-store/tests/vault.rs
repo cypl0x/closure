@@ -1000,6 +1000,47 @@ fn vault_median_todo_len_none_when_no_todos() {
 }
 
 #[test]
+fn vault_max_min_property_key_len_match() {
+    let td = write_vault(&[(
+        "a.org",
+        "* A\n:PROPERTIES:\n:Foo: 1\n:LongerKey: 2\n:END:\n",
+    )]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.max_property_key_len(), Some(9));
+    assert_eq!(v.min_property_key_len(), Some(3));
+}
+
+#[test]
+fn vault_mean_property_key_len_match() {
+    let td = write_vault(&[(
+        "a.org",
+        "* A\n:PROPERTIES:\n:Foo: 1\n:LongerKey: 2\n:END:\n",
+    )]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.mean_property_key_len(), 6);
+}
+
+#[test]
+fn vault_total_property_key_len_match() {
+    let td = write_vault(&[(
+        "a.org",
+        "* A\n:PROPERTIES:\n:Foo: 1\n:LongerKey: 2\n:END:\n",
+    )]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.total_property_key_len(), 12);
+}
+
+#[test]
+fn vault_property_key_len_none_when_no_props() {
+    let td = write_vault(&[("a.org", "* A\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.max_property_key_len(), None);
+    assert_eq!(v.min_property_key_len(), None);
+    assert_eq!(v.mean_property_key_len(), 0);
+    assert_eq!(v.total_property_key_len(), 0);
+}
+
+#[test]
 fn vault_max_min_file_byte_count_match() {
     let td = write_vault(&[("a.org", "* A\n"), ("b.org", "* BBBBBB\n")]);
     let v = Vault::open(td.path()).expect("open");
