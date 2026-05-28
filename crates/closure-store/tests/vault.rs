@@ -1342,6 +1342,40 @@ fn vault_child_count_none_when_empty() {
 }
 
 #[test]
+fn vault_median_child_count_match() {
+    let td = write_vault(&[("a.org", "* A\n** a1\n** a2\n* B\n** b1\n* C\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    // child counts: A=2, B=1, C=0, a1=0, a2=0, b1=0 -> sorted 0,0,0,0,1,2 -> median midpoint(0,0)=0
+    assert_eq!(v.median_child_count(), Some(0));
+}
+
+#[test]
+fn vault_child_count_counts_match() {
+    let td = write_vault(&[("a.org", "* A\n** a1\n** a2\n* B\n** b1\n* C\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    let m = v.child_count_counts();
+    // 4 zeros, 1 one, 1 two
+    assert_eq!(m.get(&0), Some(&4));
+    assert_eq!(m.get(&1), Some(&1));
+    assert_eq!(m.get(&2), Some(&1));
+}
+
+#[test]
+fn vault_mode_child_count_match() {
+    let td = write_vault(&[("a.org", "* A\n** a1\n** a2\n* B\n** b1\n* C\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.mode_child_count(), Some(0));
+}
+
+#[test]
+fn vault_median_child_count_none_when_empty() {
+    let td = write_vault(&[("a.org", "")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.median_child_count(), None);
+    assert_eq!(v.mode_child_count(), None);
+}
+
+#[test]
 fn vault_max_min_file_byte_count_match() {
     let td = write_vault(&[("a.org", "* A\n"), ("b.org", "* BBBBBB\n")]);
     let v = Vault::open(td.path()).expect("open");
