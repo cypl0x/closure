@@ -1514,6 +1514,32 @@ fn vault_median_subtree_size_none_when_empty() {
 }
 
 #[test]
+fn vault_max_min_tag_count_match() {
+    let td = write_vault(&[("a.org", "* A :x:y:\n* B :z:\n* C\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    // tag counts: A=2, B=1, C=0
+    assert_eq!(v.max_tag_count(), Some(2));
+    assert_eq!(v.min_tag_count(), Some(0));
+}
+
+#[test]
+fn vault_mean_tag_count_match() {
+    let td = write_vault(&[("a.org", "* A :x:y:\n* B :z:\n* C\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    // 2+1+0=3, 3/3=1
+    assert_eq!(v.mean_tag_count(), 1);
+}
+
+#[test]
+fn vault_tag_count_none_when_empty() {
+    let td = write_vault(&[("a.org", "")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.max_tag_count(), None);
+    assert_eq!(v.min_tag_count(), None);
+    assert_eq!(v.mean_tag_count(), 0);
+}
+
+#[test]
 fn vault_max_min_file_byte_count_match() {
     let td = write_vault(&[("a.org", "* A\n"), ("b.org", "* BBBBBB\n")]);
     let v = Vault::open(td.path()).expect("open");

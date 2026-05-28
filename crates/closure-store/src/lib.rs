@@ -2355,6 +2355,35 @@ impl Vault {
         best.map(|(sz, _)| sz)
     }
 
+    /// Maximum per-headline tag count across the vault.
+    #[must_use]
+    pub fn max_tag_count(&self) -> Option<usize> {
+        self.iter()
+            .flat_map(|(_, d)| d.all_headlines())
+            .map(|h| h.tags().len())
+            .max()
+    }
+
+    /// Minimum per-headline tag count across the vault.
+    #[must_use]
+    pub fn min_tag_count(&self) -> Option<usize> {
+        self.iter()
+            .flat_map(|(_, d)| d.all_headlines())
+            .map(|h| h.tags().len())
+            .min()
+    }
+
+    /// Integer mean per-headline tag count (`0` when no headlines).
+    #[must_use]
+    pub fn mean_tag_count(&self) -> usize {
+        let n: usize = self
+            .documents
+            .values()
+            .map(|d| d.org().iter_headlines().len())
+            .sum();
+        self.total_tag_count().checked_div(n).unwrap_or(0)
+    }
+
     /// Count of headlines carrying a non-empty body across the vault.
     #[must_use]
     pub fn with_body_count(&self) -> usize {
