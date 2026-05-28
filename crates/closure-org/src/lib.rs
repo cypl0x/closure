@@ -3901,6 +3901,18 @@ impl OrgDoc {
         m
     }
 
+    /// Most common root property count (lowest wins ties).
+    #[must_use]
+    pub fn mode_root_property_count(&self) -> Option<usize> {
+        let mut best: Option<(usize, usize)> = None;
+        for (pc, c) in self.root_property_count_counts() {
+            if best.is_none_or(|(_, bc)| c > bc) {
+                best = Some((pc, c));
+            }
+        }
+        best.map(|(pc, _)| pc)
+    }
+
     /// Returns max child count across headlines.
     #[must_use]
     pub fn max_child_count(&self) -> usize {
