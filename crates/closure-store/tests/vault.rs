@@ -1480,6 +1480,40 @@ fn vault_subtree_size_none_when_empty() {
 }
 
 #[test]
+fn vault_median_subtree_size_match() {
+    let td = write_vault(&[("a.org", "* A\n** a1\n*** a2\n* B\n** b1\n* C\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    // sizes: 3,2,1,2,1,1 -> sorted 1,1,1,2,2,3 -> midpoint(1,2)=1
+    assert_eq!(v.median_subtree_size(), Some(1));
+}
+
+#[test]
+fn vault_subtree_size_counts_match() {
+    let td = write_vault(&[("a.org", "* A\n** a1\n*** a2\n* B\n** b1\n* C\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    let m = v.subtree_size_counts();
+    // 3 ones, 2 twos, 1 three
+    assert_eq!(m.get(&1), Some(&3));
+    assert_eq!(m.get(&2), Some(&2));
+    assert_eq!(m.get(&3), Some(&1));
+}
+
+#[test]
+fn vault_mode_subtree_size_match() {
+    let td = write_vault(&[("a.org", "* A\n** a1\n*** a2\n* B\n** b1\n* C\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.mode_subtree_size(), Some(1));
+}
+
+#[test]
+fn vault_median_subtree_size_none_when_empty() {
+    let td = write_vault(&[("a.org", "")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.median_subtree_size(), None);
+    assert_eq!(v.mode_subtree_size(), None);
+}
+
+#[test]
 fn vault_max_min_file_byte_count_match() {
     let td = write_vault(&[("a.org", "* A\n"), ("b.org", "* BBBBBB\n")]);
     let v = Vault::open(td.path()).expect("open");
