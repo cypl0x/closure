@@ -1086,6 +1086,18 @@ impl OrgDoc {
         m
     }
 
+    /// Most common root subtree size (lowest wins ties).
+    #[must_use]
+    pub fn mode_root_subtree_size(&self) -> Option<usize> {
+        let mut best: Option<(usize, usize)> = None;
+        for (sz, c) in self.root_subtree_size_counts() {
+            if best.is_none_or(|(_, bc)| c > bc) {
+                best = Some((sz, c));
+            }
+        }
+        best.map(|(sz, _)| sz)
+    }
+
     /// Maximum subtree size across all headlines.
     #[must_use]
     pub fn max_subtree_size(&self) -> Option<usize> {
