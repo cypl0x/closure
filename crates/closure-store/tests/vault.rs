@@ -1164,6 +1164,37 @@ fn vault_median_property_value_len_none_when_no_props() {
 }
 
 #[test]
+fn vault_max_min_timestamp_count_match() {
+    let td = write_vault(&[(
+        "a.org",
+        "* A\n<2026-01-01> <2026-01-02>\n* B\n<2026-01-03>\n* C\nno ts\n",
+    )]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.max_timestamp_count(), Some(2));
+    assert_eq!(v.min_timestamp_count(), Some(0));
+}
+
+#[test]
+fn vault_mean_timestamp_count_match() {
+    let td = write_vault(&[(
+        "a.org",
+        "* A\n<2026-01-01> <2026-01-02>\n* B\n<2026-01-03>\n* C\nno ts\n",
+    )]);
+    let v = Vault::open(td.path()).expect("open");
+    // 2,1,0 -> 3/3=1
+    assert_eq!(v.mean_timestamp_count(), 1);
+}
+
+#[test]
+fn vault_timestamp_count_none_when_empty() {
+    let td = write_vault(&[("a.org", "")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.max_timestamp_count(), None);
+    assert_eq!(v.min_timestamp_count(), None);
+    assert_eq!(v.mean_timestamp_count(), 0);
+}
+
+#[test]
 fn vault_max_min_file_byte_count_match() {
     let td = write_vault(&[("a.org", "* A\n"), ("b.org", "* BBBBBB\n")]);
     let v = Vault::open(td.path()).expect("open");

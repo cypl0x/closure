@@ -1945,6 +1945,37 @@ impl Vault {
         best.map(|(len, _)| len)
     }
 
+    /// Maximum per-headline timestamp count across the vault.
+    #[must_use]
+    pub fn max_timestamp_count(&self) -> Option<usize> {
+        self.documents
+            .values()
+            .flat_map(|d| d.org().iter_headlines())
+            .map(closure_org::Headline::timestamp_count)
+            .max()
+    }
+
+    /// Minimum per-headline timestamp count across the vault.
+    #[must_use]
+    pub fn min_timestamp_count(&self) -> Option<usize> {
+        self.documents
+            .values()
+            .flat_map(|d| d.org().iter_headlines())
+            .map(closure_org::Headline::timestamp_count)
+            .min()
+    }
+
+    /// Integer mean per-headline timestamp count (`0` when no headlines).
+    #[must_use]
+    pub fn mean_timestamp_count(&self) -> usize {
+        let n: usize = self
+            .documents
+            .values()
+            .map(|d| d.org().iter_headlines().len())
+            .sum();
+        self.timestamp_count().checked_div(n).unwrap_or(0)
+    }
+
     /// Count of headlines carrying a non-empty body across the vault.
     #[must_use]
     pub fn with_body_count(&self) -> usize {
