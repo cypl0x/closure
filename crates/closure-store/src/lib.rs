@@ -2097,6 +2097,47 @@ impl Vault {
         best.map(|(lc, _)| lc)
     }
 
+    /// Maximum per-headline child count across the vault.
+    #[must_use]
+    pub fn max_child_count(&self) -> Option<usize> {
+        self.documents
+            .values()
+            .flat_map(|d| d.org().iter_headlines())
+            .map(|h| h.children().len())
+            .max()
+    }
+
+    /// Minimum per-headline child count across the vault.
+    #[must_use]
+    pub fn min_child_count(&self) -> Option<usize> {
+        self.documents
+            .values()
+            .flat_map(|d| d.org().iter_headlines())
+            .map(|h| h.children().len())
+            .min()
+    }
+
+    /// Total child-count across all headlines in the vault.
+    #[must_use]
+    pub fn total_child_count(&self) -> usize {
+        self.documents
+            .values()
+            .flat_map(|d| d.org().iter_headlines())
+            .map(|h| h.children().len())
+            .sum()
+    }
+
+    /// Integer mean per-headline child count (`0` when no headlines).
+    #[must_use]
+    pub fn mean_child_count(&self) -> usize {
+        let n: usize = self
+            .documents
+            .values()
+            .map(|d| d.org().iter_headlines().len())
+            .sum();
+        self.total_child_count().checked_div(n).unwrap_or(0)
+    }
+
     /// Count of headlines carrying a non-empty body across the vault.
     #[must_use]
     pub fn with_body_count(&self) -> usize {
