@@ -5135,6 +5135,36 @@ fn doc_root_descendant_count_none_when_empty() {
 }
 
 #[test]
+fn doc_median_root_descendant_count_match() {
+    let doc = parse("* A\n** a1\n*** a2\n* B\n** b1\n* C\n").expect("parse");
+    // sorted: 0,1,2 -> median 1
+    assert_eq!(doc.median_root_descendant_count(), Some(1));
+}
+
+#[test]
+fn doc_root_descendant_count_counts_match() {
+    let doc = parse("* A\n** a1\n* B\n** b1\n* C\n** c1\n*** c2\n").expect("parse");
+    // counts: A=1, B=1, C=2
+    let m = doc.root_descendant_count_counts();
+    assert_eq!(m.get(&1), Some(&2));
+    assert_eq!(m.get(&2), Some(&1));
+}
+
+#[test]
+fn doc_mode_root_descendant_count_match() {
+    let doc = parse("* A\n** a1\n* B\n** b1\n* C\n** c1\n*** c2\n").expect("parse");
+    // 1,1,2 -> mode 1
+    assert_eq!(doc.mode_root_descendant_count(), Some(1));
+}
+
+#[test]
+fn doc_median_root_descendant_count_none_when_empty() {
+    let doc = parse("").expect("parse");
+    assert_eq!(doc.median_root_descendant_count(), None);
+    assert_eq!(doc.mode_root_descendant_count(), None);
+}
+
+#[test]
 fn doc_min_property_count_match() {
     let doc = parse(
         "* A\n:PROPERTIES:\n:K1: v\n:K2: w\n:END:\n* B\n:PROPERTIES:\n:K1: v\n:END:\n* C\n",
