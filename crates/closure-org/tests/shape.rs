@@ -5036,6 +5036,19 @@ fn doc_root_link_count_counts_match() {
 }
 
 #[test]
+fn doc_mode_root_link_count_match() {
+    let doc = parse("* A\n[[l1]]\n* B\n[[l2]]\n* C\n[[l3]] [[l4]]\n").expect("parse");
+    // 1,1,2 -> mode 1
+    assert_eq!(doc.mode_root_link_count(), Some(1));
+}
+
+#[test]
+fn doc_mode_root_link_count_none_when_empty() {
+    let doc = parse("").expect("parse");
+    assert_eq!(doc.mode_root_link_count(), None);
+}
+
+#[test]
 fn doc_min_property_count_match() {
     let doc = parse(
         "* A\n:PROPERTIES:\n:K1: v\n:K2: w\n:END:\n* B\n:PROPERTIES:\n:K1: v\n:END:\n* C\n",

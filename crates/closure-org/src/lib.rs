@@ -3637,6 +3637,18 @@ impl OrgDoc {
         m
     }
 
+    /// Most common root link count (lowest wins ties).
+    #[must_use]
+    pub fn mode_root_link_count(&self) -> Option<usize> {
+        let mut best: Option<(usize, usize)> = None;
+        for (lc, c) in self.root_link_count_counts() {
+            if best.is_none_or(|(_, bc)| c > bc) {
+                best = Some((lc, c));
+            }
+        }
+        best.map(|(lc, _)| lc)
+    }
+
     /// Returns max tag count across headlines.
     #[must_use]
     pub fn max_tag_count(&self) -> usize {
