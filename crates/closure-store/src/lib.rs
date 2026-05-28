@@ -2183,6 +2183,47 @@ impl Vault {
         best.map(|(cc, _)| cc)
     }
 
+    /// Maximum per-headline descendant count across the vault.
+    #[must_use]
+    pub fn max_descendant_count(&self) -> Option<usize> {
+        self.documents
+            .values()
+            .flat_map(|d| d.org().iter_headlines())
+            .map(closure_org::Headline::descendant_count)
+            .max()
+    }
+
+    /// Minimum per-headline descendant count across the vault.
+    #[must_use]
+    pub fn min_descendant_count(&self) -> Option<usize> {
+        self.documents
+            .values()
+            .flat_map(|d| d.org().iter_headlines())
+            .map(closure_org::Headline::descendant_count)
+            .min()
+    }
+
+    /// Total descendant-count across all headlines in the vault.
+    #[must_use]
+    pub fn total_descendant_count(&self) -> usize {
+        self.documents
+            .values()
+            .flat_map(|d| d.org().iter_headlines())
+            .map(closure_org::Headline::descendant_count)
+            .sum()
+    }
+
+    /// Integer mean per-headline descendant count (`0` when no headlines).
+    #[must_use]
+    pub fn mean_descendant_count(&self) -> usize {
+        let n: usize = self
+            .documents
+            .values()
+            .map(|d| d.org().iter_headlines().len())
+            .sum();
+        self.total_descendant_count().checked_div(n).unwrap_or(0)
+    }
+
     /// Count of headlines carrying a non-empty body across the vault.
     #[must_use]
     pub fn with_body_count(&self) -> usize {

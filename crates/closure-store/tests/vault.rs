@@ -1376,6 +1376,41 @@ fn vault_median_child_count_none_when_empty() {
 }
 
 #[test]
+fn vault_max_min_descendant_count_match() {
+    let td = write_vault(&[("a.org", "* A\n** a1\n*** a2\n* B\n** b1\n* C\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    // descendants: A=2, a1=1, a2=0, B=1, b1=0, C=0
+    assert_eq!(v.max_descendant_count(), Some(2));
+    assert_eq!(v.min_descendant_count(), Some(0));
+}
+
+#[test]
+fn vault_total_descendant_count_match() {
+    let td = write_vault(&[("a.org", "* A\n** a1\n*** a2\n* B\n** b1\n* C\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    // 2+1+0+1+0+0 = 4
+    assert_eq!(v.total_descendant_count(), 4);
+}
+
+#[test]
+fn vault_mean_descendant_count_match() {
+    let td = write_vault(&[("a.org", "* A\n** a1\n*** a2\n* B\n** b1\n* C\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    // 4/6=0
+    assert_eq!(v.mean_descendant_count(), 0);
+}
+
+#[test]
+fn vault_descendant_count_none_when_empty() {
+    let td = write_vault(&[("a.org", "")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.max_descendant_count(), None);
+    assert_eq!(v.min_descendant_count(), None);
+    assert_eq!(v.total_descendant_count(), 0);
+    assert_eq!(v.mean_descendant_count(), 0);
+}
+
+#[test]
 fn vault_max_min_file_byte_count_match() {
     let td = write_vault(&[("a.org", "* A\n"), ("b.org", "* BBBBBB\n")]);
     let v = Vault::open(td.path()).expect("open");
