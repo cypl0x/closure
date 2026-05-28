@@ -2269,6 +2269,47 @@ impl Vault {
         best.map(|(dc, _)| dc)
     }
 
+    /// Maximum per-headline subtree size across the vault.
+    #[must_use]
+    pub fn max_subtree_size(&self) -> Option<usize> {
+        self.documents
+            .values()
+            .flat_map(|d| d.org().iter_headlines())
+            .map(closure_org::Headline::subtree_size)
+            .max()
+    }
+
+    /// Minimum per-headline subtree size across the vault.
+    #[must_use]
+    pub fn min_subtree_size(&self) -> Option<usize> {
+        self.documents
+            .values()
+            .flat_map(|d| d.org().iter_headlines())
+            .map(closure_org::Headline::subtree_size)
+            .min()
+    }
+
+    /// Total subtree-size across all headlines in the vault.
+    #[must_use]
+    pub fn total_subtree_size(&self) -> usize {
+        self.documents
+            .values()
+            .flat_map(|d| d.org().iter_headlines())
+            .map(closure_org::Headline::subtree_size)
+            .sum()
+    }
+
+    /// Integer mean per-headline subtree size (`0` when no headlines).
+    #[must_use]
+    pub fn mean_subtree_size(&self) -> usize {
+        let n: usize = self
+            .documents
+            .values()
+            .map(|d| d.org().iter_headlines().len())
+            .sum();
+        self.total_subtree_size().checked_div(n).unwrap_or(0)
+    }
+
     /// Count of headlines carrying a non-empty body across the vault.
     #[must_use]
     pub fn with_body_count(&self) -> usize {

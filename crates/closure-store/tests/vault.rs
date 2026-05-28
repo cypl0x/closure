@@ -1445,6 +1445,41 @@ fn vault_median_descendant_count_none_when_empty() {
 }
 
 #[test]
+fn vault_max_min_subtree_size_match() {
+    let td = write_vault(&[("a.org", "* A\n** a1\n*** a2\n* B\n** b1\n* C\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    // subtree sizes: A=3, a1=2, a2=1, B=2, b1=1, C=1
+    assert_eq!(v.max_subtree_size(), Some(3));
+    assert_eq!(v.min_subtree_size(), Some(1));
+}
+
+#[test]
+fn vault_total_subtree_size_match() {
+    let td = write_vault(&[("a.org", "* A\n** a1\n*** a2\n* B\n** b1\n* C\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    // 3+2+1+2+1+1 = 10
+    assert_eq!(v.total_subtree_size(), 10);
+}
+
+#[test]
+fn vault_mean_subtree_size_match() {
+    let td = write_vault(&[("a.org", "* A\n** a1\n*** a2\n* B\n** b1\n* C\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    // 10/6=1
+    assert_eq!(v.mean_subtree_size(), 1);
+}
+
+#[test]
+fn vault_subtree_size_none_when_empty() {
+    let td = write_vault(&[("a.org", "")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.max_subtree_size(), None);
+    assert_eq!(v.min_subtree_size(), None);
+    assert_eq!(v.total_subtree_size(), 0);
+    assert_eq!(v.mean_subtree_size(), 0);
+}
+
+#[test]
 fn vault_max_min_file_byte_count_match() {
     let td = write_vault(&[("a.org", "* A\n"), ("b.org", "* BBBBBB\n")]);
     let v = Vault::open(td.path()).expect("open");
