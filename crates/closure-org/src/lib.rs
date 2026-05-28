@@ -3762,6 +3762,18 @@ impl OrgDoc {
         m
     }
 
+    /// Most common root tag count (lowest wins ties).
+    #[must_use]
+    pub fn mode_root_tag_count(&self) -> Option<usize> {
+        let mut best: Option<(usize, usize)> = None;
+        for (tc, c) in self.root_tag_count_counts() {
+            if best.is_none_or(|(_, bc)| c > bc) {
+                best = Some((tc, c));
+            }
+        }
+        best.map(|(tc, _)| tc)
+    }
+
     /// Returns max property count across headlines.
     #[must_use]
     pub fn max_property_count(&self) -> usize {
