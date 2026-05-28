@@ -5225,6 +5225,20 @@ fn doc_root_timestamp_count_counts_match() {
 }
 
 #[test]
+fn doc_mode_root_timestamp_count_match() {
+    let doc = parse("* A\n<2026-01-01>\n* B\n<2026-01-02>\n* C\n<2026-01-03> <2026-01-04>\n")
+        .expect("parse");
+    // 1,1,2 -> mode 1
+    assert_eq!(doc.mode_root_timestamp_count(), Some(1));
+}
+
+#[test]
+fn doc_mode_root_timestamp_count_none_when_empty() {
+    let doc = parse("").expect("parse");
+    assert_eq!(doc.mode_root_timestamp_count(), None);
+}
+
+#[test]
 fn doc_scheduled_pct_match() {
     let doc = parse("* A\nSCHEDULED: <2026-01-01>\n* B\n* C\n* D\n").expect("parse");
     // 1 of 4 scheduled -> 25

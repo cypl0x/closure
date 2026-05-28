@@ -6342,6 +6342,18 @@ impl OrgDoc {
         m
     }
 
+    /// Most common root timestamp count (lowest wins ties).
+    #[must_use]
+    pub fn mode_root_timestamp_count(&self) -> Option<usize> {
+        let mut best: Option<(usize, usize)> = None;
+        for (tc, c) in self.root_timestamp_count_counts() {
+            if best.is_none_or(|(_, bc)| c > bc) {
+                best = Some((tc, c));
+            }
+        }
+        best.map(|(tc, _)| tc)
+    }
+
     /// Total cookie count across every headline.
     #[must_use]
     pub fn total_cookie_count(&self) -> usize {
