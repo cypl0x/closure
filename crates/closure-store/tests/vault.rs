@@ -1540,6 +1540,38 @@ fn vault_tag_count_none_when_empty() {
 }
 
 #[test]
+fn vault_median_tag_count_match() {
+    let td = write_vault(&[("a.org", "* A :x:y:\n* B :z:\n* C\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    // 0,1,2 -> median 1
+    assert_eq!(v.median_tag_count(), Some(1));
+}
+
+#[test]
+fn vault_tag_count_counts_match() {
+    let td = write_vault(&[("a.org", "* A :x:\n* B :y:\n* C :a:b:\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    let m = v.tag_count_counts();
+    assert_eq!(m.get(&1), Some(&2));
+    assert_eq!(m.get(&2), Some(&1));
+}
+
+#[test]
+fn vault_mode_tag_count_match() {
+    let td = write_vault(&[("a.org", "* A :x:\n* B :y:\n* C :a:b:\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.mode_tag_count(), Some(1));
+}
+
+#[test]
+fn vault_median_tag_count_none_when_empty() {
+    let td = write_vault(&[("a.org", "")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.median_tag_count(), None);
+    assert_eq!(v.mode_tag_count(), None);
+}
+
+#[test]
 fn vault_max_min_file_byte_count_match() {
     let td = write_vault(&[("a.org", "* A\n"), ("b.org", "* BBBBBB\n")]);
     let v = Vault::open(td.path()).expect("open");
