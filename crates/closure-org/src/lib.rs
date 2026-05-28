@@ -4144,6 +4144,33 @@ impl OrgDoc {
         best.map(|(dc, _)| dc)
     }
 
+    /// Maximum root descendant count.
+    #[must_use]
+    pub fn max_root_descendant_count(&self) -> Option<usize> {
+        self.roots.iter().map(Headline::descendant_count).max()
+    }
+
+    /// Minimum root descendant count.
+    #[must_use]
+    pub fn min_root_descendant_count(&self) -> Option<usize> {
+        self.roots.iter().map(Headline::descendant_count).min()
+    }
+
+    /// Total root descendant count.
+    #[must_use]
+    pub fn total_root_descendant_count(&self) -> usize {
+        self.roots.iter().map(Headline::descendant_count).sum()
+    }
+
+    /// Integer mean root descendant count (`0` when no roots).
+    #[must_use]
+    pub fn mean_root_descendant_count(&self) -> usize {
+        let n = self.roots.len();
+        self.total_root_descendant_count()
+            .checked_div(n)
+            .unwrap_or(0)
+    }
+
     /// Returns max subtree word count across headlines.
     #[must_use]
     pub fn max_subtree_word_count(&self) -> usize {

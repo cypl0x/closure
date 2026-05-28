@@ -5104,6 +5104,37 @@ fn doc_mode_root_subtree_size_none_when_empty() {
 }
 
 #[test]
+fn doc_max_min_root_descendant_count_match() {
+    let doc = parse("* A\n** a1\n*** a2\n* B\n** b1\n* C\n").expect("parse");
+    // descendants: A=2, B=1, C=0
+    assert_eq!(doc.max_root_descendant_count(), Some(2));
+    assert_eq!(doc.min_root_descendant_count(), Some(0));
+}
+
+#[test]
+fn doc_mean_root_descendant_count_match() {
+    let doc = parse("* A\n** a1\n*** a2\n* B\n** b1\n* C\n").expect("parse");
+    // 2+1+0=3, n=3 -> 1
+    assert_eq!(doc.mean_root_descendant_count(), 1);
+}
+
+#[test]
+fn doc_total_root_descendant_count_match() {
+    let doc = parse("* A\n** a1\n*** a2\n* B\n** b1\n* C\n").expect("parse");
+    // 2+1+0 = 3
+    assert_eq!(doc.total_root_descendant_count(), 3);
+}
+
+#[test]
+fn doc_root_descendant_count_none_when_empty() {
+    let doc = parse("").expect("parse");
+    assert_eq!(doc.max_root_descendant_count(), None);
+    assert_eq!(doc.min_root_descendant_count(), None);
+    assert_eq!(doc.mean_root_descendant_count(), 0);
+    assert_eq!(doc.total_root_descendant_count(), 0);
+}
+
+#[test]
 fn doc_min_property_count_match() {
     let doc = parse(
         "* A\n:PROPERTIES:\n:K1: v\n:K2: w\n:END:\n* B\n:PROPERTIES:\n:K1: v\n:END:\n* C\n",
