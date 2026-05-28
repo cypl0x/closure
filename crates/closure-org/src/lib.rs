@@ -4042,6 +4042,18 @@ impl OrgDoc {
         m
     }
 
+    /// Most common root child count (lowest wins ties).
+    #[must_use]
+    pub fn mode_root_child_count(&self) -> Option<usize> {
+        let mut best: Option<(usize, usize)> = None;
+        for (cc, c) in self.root_child_count_counts() {
+            if best.is_none_or(|(_, bc)| c > bc) {
+                best = Some((cc, c));
+            }
+        }
+        best.map(|(cc, _)| cc)
+    }
+
     /// Returns max descendant count across headlines.
     #[must_use]
     pub fn max_descendant_count(&self) -> usize {

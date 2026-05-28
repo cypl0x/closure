@@ -5078,6 +5078,19 @@ fn doc_mode_root_property_count_none_when_empty() {
 }
 
 #[test]
+fn doc_mode_root_child_count_match() {
+    let doc = parse("* A\n** a1\n* B\n** b1\n* C\n** c1\n** c2\n").expect("parse");
+    // child counts 1,1,2 -> mode 1
+    assert_eq!(doc.mode_root_child_count(), Some(1));
+}
+
+#[test]
+fn doc_mode_root_child_count_none_when_empty() {
+    let doc = parse("").expect("parse");
+    assert_eq!(doc.mode_root_child_count(), None);
+}
+
+#[test]
 fn doc_min_property_count_match() {
     let doc = parse(
         "* A\n:PROPERTIES:\n:K1: v\n:K2: w\n:END:\n* B\n:PROPERTIES:\n:K1: v\n:END:\n* C\n",
