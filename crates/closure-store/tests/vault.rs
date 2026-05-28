@@ -1411,6 +1411,40 @@ fn vault_descendant_count_none_when_empty() {
 }
 
 #[test]
+fn vault_median_descendant_count_match() {
+    let td = write_vault(&[("a.org", "* A\n** a1\n*** a2\n* B\n** b1\n* C\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    // sorted desc counts: 0,0,0,0,1,1,2 wait n=6: A=2,a1=1,a2=0,B=1,b1=0,C=0 -> sorted 0,0,0,1,1,2 mid=midpoint(0,1)=0
+    assert_eq!(v.median_descendant_count(), Some(0));
+}
+
+#[test]
+fn vault_descendant_count_counts_match() {
+    let td = write_vault(&[("a.org", "* A\n** a1\n*** a2\n* B\n** b1\n* C\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    let m = v.descendant_count_counts();
+    // 3 zeros, 2 ones, 1 two
+    assert_eq!(m.get(&0), Some(&3));
+    assert_eq!(m.get(&1), Some(&2));
+    assert_eq!(m.get(&2), Some(&1));
+}
+
+#[test]
+fn vault_mode_descendant_count_match() {
+    let td = write_vault(&[("a.org", "* A\n** a1\n*** a2\n* B\n** b1\n* C\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.mode_descendant_count(), Some(0));
+}
+
+#[test]
+fn vault_median_descendant_count_none_when_empty() {
+    let td = write_vault(&[("a.org", "")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.median_descendant_count(), None);
+    assert_eq!(v.mode_descendant_count(), None);
+}
+
+#[test]
 fn vault_max_min_file_byte_count_match() {
     let td = write_vault(&[("a.org", "* A\n"), ("b.org", "* BBBBBB\n")]);
     let v = Vault::open(td.path()).expect("open");
