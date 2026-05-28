@@ -1236,6 +1236,37 @@ fn vault_median_timestamp_count_none_when_empty() {
 }
 
 #[test]
+fn vault_max_min_link_count_match() {
+    let td = write_vault(&[(
+        "a.org",
+        "* A\n[[l1]] [[l2]]\n* B\n[[l3]]\n* C\nno links\n",
+    )]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.max_link_count(), Some(2));
+    assert_eq!(v.min_link_count(), Some(0));
+}
+
+#[test]
+fn vault_mean_link_count_match() {
+    let td = write_vault(&[(
+        "a.org",
+        "* A\n[[l1]] [[l2]]\n* B\n[[l3]]\n* C\nno links\n",
+    )]);
+    let v = Vault::open(td.path()).expect("open");
+    // 2,1,0 -> 3/3=1
+    assert_eq!(v.mean_link_count(), 1);
+}
+
+#[test]
+fn vault_link_count_none_when_empty() {
+    let td = write_vault(&[("a.org", "")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.max_link_count(), None);
+    assert_eq!(v.min_link_count(), None);
+    assert_eq!(v.mean_link_count(), 0);
+}
+
+#[test]
 fn vault_max_min_file_byte_count_match() {
     let td = write_vault(&[("a.org", "* A\n"), ("b.org", "* BBBBBB\n")]);
     let v = Vault::open(td.path()).expect("open");
