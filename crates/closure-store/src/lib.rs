@@ -920,6 +920,75 @@ impl Vault {
             .sum()
     }
 
+    /// Total headline-body word count for a single file by path. Returns
+    /// `None` if the file isn't loaded.
+    #[must_use]
+    pub fn body_word_count_of(&self, path: &Path) -> Option<usize> {
+        self.documents.get(path).map(|d| {
+            d.all_headlines()
+                .map(|h| h.body_text().split_whitespace().count())
+                .sum()
+        })
+    }
+
+    /// Maximum per-file body word count (`None` when no files).
+    #[must_use]
+    pub fn max_file_body_word_count(&self) -> Option<usize> {
+        self.documents
+            .values()
+            .map(|d| {
+                d.all_headlines()
+                    .map(|h| h.body_text().split_whitespace().count())
+                    .sum()
+            })
+            .max()
+    }
+
+    /// Minimum per-file body word count (`None` when no files).
+    #[must_use]
+    pub fn min_file_body_word_count(&self) -> Option<usize> {
+        self.documents
+            .values()
+            .map(|d| {
+                d.all_headlines()
+                    .map(|h| h.body_text().split_whitespace().count())
+                    .sum()
+            })
+            .min()
+    }
+
+    /// Integer mean per-file body word count (`0` when no files).
+    #[must_use]
+    pub fn mean_file_body_word_count(&self) -> usize {
+        self.total_body_word_count()
+            .checked_div(self.len())
+            .unwrap_or(0)
+    }
+
+    /// Median per-file body word count (`None` when no files).
+    #[must_use]
+    pub fn median_file_body_word_count(&self) -> Option<usize> {
+        let mut v: Vec<usize> = self
+            .documents
+            .values()
+            .map(|d| {
+                d.all_headlines()
+                    .map(|h| h.body_text().split_whitespace().count())
+                    .sum()
+            })
+            .collect();
+        if v.is_empty() {
+            return None;
+        }
+        v.sort_unstable();
+        let mid = v.len() / 2;
+        Some(if v.len() % 2 == 1 {
+            v[mid]
+        } else {
+            v[mid - 1].midpoint(v[mid])
+        })
+    }
+
     /// Maximum headline-body word count across the vault.
     #[must_use]
     pub fn max_body_word_count(&self) -> Option<usize> {
