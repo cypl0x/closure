@@ -829,6 +829,57 @@ impl Vault {
             .sum()
     }
 
+    /// Count of archived headlines for a single file by path. Returns
+    /// `None` if the file isn't loaded.
+    #[must_use]
+    pub fn archived_count_of(&self, path: &Path) -> Option<usize> {
+        self.documents.get(path).map(|d| d.org().count_archived())
+    }
+
+    /// Maximum per-file archived count (`None` when no files).
+    #[must_use]
+    pub fn max_file_archived_count(&self) -> Option<usize> {
+        self.documents
+            .values()
+            .map(|d| d.org().count_archived())
+            .max()
+    }
+
+    /// Minimum per-file archived count (`None` when no files).
+    #[must_use]
+    pub fn min_file_archived_count(&self) -> Option<usize> {
+        self.documents
+            .values()
+            .map(|d| d.org().count_archived())
+            .min()
+    }
+
+    /// Integer mean per-file archived count (`0` when no files).
+    #[must_use]
+    pub fn mean_file_archived_count(&self) -> usize {
+        self.archived_count().checked_div(self.len()).unwrap_or(0)
+    }
+
+    /// Median per-file archived count (`None` when no files).
+    #[must_use]
+    pub fn median_file_archived_count(&self) -> Option<usize> {
+        let mut v: Vec<usize> = self
+            .documents
+            .values()
+            .map(|d| d.org().count_archived())
+            .collect();
+        if v.is_empty() {
+            return None;
+        }
+        v.sort_unstable();
+        let mid = v.len() / 2;
+        Some(if v.len() % 2 == 1 {
+            v[mid]
+        } else {
+            v[mid - 1].midpoint(v[mid])
+        })
+    }
+
     /// Count of COMMENT-prefixed headlines across the vault.
     #[must_use]
     pub fn comment_count(&self) -> usize {
