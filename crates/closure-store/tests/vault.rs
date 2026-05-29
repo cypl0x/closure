@@ -3078,6 +3078,63 @@ fn vault_file_with_link_count_none_when_no_files() {
 }
 
 #[test]
+fn vault_with_property_count_of_match() {
+    let td = write_vault(&[
+        ("a.org", "* A\n:PROPERTIES:\n:K: v\n:END:\n* B\n:PROPERTIES:\n:K: w\n:END:\n* C\n"),
+        ("b.org", "* D\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    // a.org headlines with properties: A, B = 2; b.org 0
+    assert_eq!(v.with_property_count_of(&td.path().join("a.org")), Some(2));
+    assert_eq!(v.with_property_count_of(&td.path().join("b.org")), Some(0));
+    assert_eq!(v.with_property_count_of(&td.path().join("missing.org")), None);
+}
+
+#[test]
+fn vault_max_min_file_with_property_count_match() {
+    let td = write_vault(&[
+        ("a.org", "* A\n:PROPERTIES:\n:K: v\n:END:\n* B\n:PROPERTIES:\n:K: w\n:END:\n"),
+        ("b.org", "* D\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.max_file_with_property_count(), Some(2));
+    assert_eq!(v.min_file_with_property_count(), Some(0));
+}
+
+#[test]
+fn vault_mean_file_with_property_count_match() {
+    let td = write_vault(&[
+        ("a.org", "* A\n:PROPERTIES:\n:K: v\n:END:\n* B\n:PROPERTIES:\n:K: w\n:END:\n* C\n:PROPERTIES:\n:K: x\n:END:\n"),
+        ("b.org", "* D\n:PROPERTIES:\n:K: y\n:END:\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    // 3+1=4, 2 files -> 2
+    assert_eq!(v.mean_file_with_property_count(), 2);
+}
+
+#[test]
+fn vault_median_file_with_property_count_match() {
+    let td = write_vault(&[
+        ("a.org", "* A\n"),
+        ("b.org", "* B\n:PROPERTIES:\n:K: v\n:END:\n"),
+        ("c.org", "* C\n:PROPERTIES:\n:K: w\n:END:\n* D\n:PROPERTIES:\n:K: x\n:END:\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    // 0,1,2 -> median 1
+    assert_eq!(v.median_file_with_property_count(), Some(1));
+}
+
+#[test]
+fn vault_file_with_property_count_none_when_no_files() {
+    let td = write_vault(&[]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.max_file_with_property_count(), None);
+    assert_eq!(v.min_file_with_property_count(), None);
+    assert_eq!(v.mean_file_with_property_count(), 0);
+    assert_eq!(v.median_file_with_property_count(), None);
+}
+
+#[test]
 fn vault_file_byte_count_none_when_empty() {
     let td = write_vault(&[]);
     let v = Vault::open(td.path()).expect("open");
