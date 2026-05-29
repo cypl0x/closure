@@ -1989,6 +1989,30 @@ fn vault_root_count_match() {
 }
 
 #[test]
+fn vault_leaf_count_match() {
+    let td = write_vault(&[("a.org", "* A\n** B\n* C\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    // A has child B -> not leaf; B leaf; C leaf -> 2 leaves
+    assert_eq!(v.leaf_count(), 2);
+}
+
+#[test]
+fn vault_leaf_pct_match() {
+    let td = write_vault(&[("a.org", "* A\n** B\n* C\n* D\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    // leaves: B, C, D = 3 of 4 -> 75
+    assert_eq!(v.leaf_pct(), 75);
+}
+
+#[test]
+fn vault_leaf_pct_zero_when_empty() {
+    let td = write_vault(&[("a.org", "")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.leaf_count(), 0);
+    assert_eq!(v.leaf_pct(), 0);
+}
+
+#[test]
 fn vault_paths_with_priority_returns_match() {
     let td = write_vault(&[
         ("a.org", "* [#A] X\n"),

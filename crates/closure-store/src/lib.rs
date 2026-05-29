@@ -1463,6 +1463,24 @@ impl Vault {
         self.documents.values().map(|d| d.org().roots().len()).sum()
     }
 
+    /// Count of leaf headlines (no children) across the vault.
+    #[must_use]
+    pub fn leaf_count(&self) -> usize {
+        self.documents
+            .values()
+            .flat_map(|d| d.org().iter_headlines())
+            .filter(|h| h.is_leaf())
+            .count()
+    }
+
+    /// Percentage of headlines that are leaves (`0..=100`).
+    #[must_use]
+    pub fn leaf_pct(&self) -> usize {
+        (self.leaf_count() * 100)
+            .checked_div(self.headline_count())
+            .unwrap_or(0)
+    }
+
     /// Lookup a document by its full filesystem path.
     #[must_use]
     pub fn document(&self, path: &Path) -> Option<&Document> {
