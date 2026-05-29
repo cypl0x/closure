@@ -2013,6 +2013,30 @@ fn vault_leaf_pct_zero_when_empty() {
 }
 
 #[test]
+fn vault_branch_count_match() {
+    let td = write_vault(&[("a.org", "* A\n** B\n*** C\n* D\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    // A has child, B has child -> 2 branches (C, D leaves)
+    assert_eq!(v.branch_count(), 2);
+}
+
+#[test]
+fn vault_branch_pct_match() {
+    let td = write_vault(&[("a.org", "* A\n** B\n* C\n* D\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    // A is branch (1 of 4) -> 25
+    assert_eq!(v.branch_pct(), 25);
+}
+
+#[test]
+fn vault_branch_pct_zero_when_empty() {
+    let td = write_vault(&[("a.org", "")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.branch_count(), 0);
+    assert_eq!(v.branch_pct(), 0);
+}
+
+#[test]
 fn vault_paths_with_priority_returns_match() {
     let td = write_vault(&[
         ("a.org", "* [#A] X\n"),

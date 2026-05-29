@@ -1481,6 +1481,24 @@ impl Vault {
             .unwrap_or(0)
     }
 
+    /// Count of branch headlines (at least one child) across the vault.
+    #[must_use]
+    pub fn branch_count(&self) -> usize {
+        self.documents
+            .values()
+            .flat_map(|d| d.org().iter_headlines())
+            .filter(|h| !h.is_leaf())
+            .count()
+    }
+
+    /// Percentage of headlines that are branches (`0..=100`).
+    #[must_use]
+    pub fn branch_pct(&self) -> usize {
+        (self.branch_count() * 100)
+            .checked_div(self.headline_count())
+            .unwrap_or(0)
+    }
+
     /// Lookup a document by its full filesystem path.
     #[must_use]
     pub fn document(&self, path: &Path) -> Option<&Document> {
