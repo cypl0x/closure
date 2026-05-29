@@ -2389,6 +2389,21 @@ fn vault_scheduled_pct_zero_when_empty() {
 }
 
 #[test]
+fn vault_closed_pct_match() {
+    let td = write_vault(&[("a.org", "* A\nCLOSED: [2026-01-01]\n* B\n* C\n* D\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    // 1 of 4 -> 25
+    assert_eq!(v.closed_pct(), 25);
+}
+
+#[test]
+fn vault_closed_pct_zero_when_empty() {
+    let td = write_vault(&[("a.org", "no headlines\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.closed_pct(), 0);
+}
+
+#[test]
 fn vault_with_body_count_match() {
     let td = write_vault(&[("a.org", "* A\nbody\n* B\n* C\nmore\n")]);
     let v = Vault::open(td.path()).expect("open");
