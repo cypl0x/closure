@@ -156,6 +156,36 @@ fn vault_mean_file_char_count_zero_when_no_files() {
 }
 
 #[test]
+fn vault_max_min_file_char_count_match() {
+    let td = write_vault(&[("a.org", "* A\n"), ("b.org", "* BBBBBB\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    // "* A\n"=4, "* BBBBBB\n"=9 chars
+    assert_eq!(v.max_file_char_count(), Some(9));
+    assert_eq!(v.min_file_char_count(), Some(4));
+}
+
+#[test]
+fn vault_median_file_char_count_match() {
+    let td = write_vault(&[
+        ("a.org", "* A\n"),
+        ("b.org", "* BB\n"),
+        ("c.org", "* CCC\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    // 4,5,6 -> median 5
+    assert_eq!(v.median_file_char_count(), Some(5));
+}
+
+#[test]
+fn vault_file_char_count_none_when_no_files() {
+    let td = write_vault(&[]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.max_file_char_count(), None);
+    assert_eq!(v.min_file_char_count(), None);
+    assert_eq!(v.median_file_char_count(), None);
+}
+
+#[test]
 fn vault_all_tags_and_all_todos_aggregate() {
     let td = write_vault(&[
         ("a.org", "* TODO Fix :work:\n"),

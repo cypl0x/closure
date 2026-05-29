@@ -292,6 +292,44 @@ impl Vault {
         self.char_count().checked_div(self.len()).unwrap_or(0)
     }
 
+    /// Maximum per-file character count (`None` when no files).
+    #[must_use]
+    pub fn max_file_char_count(&self) -> Option<usize> {
+        self.documents
+            .values()
+            .map(|d| d.source().chars().count())
+            .max()
+    }
+
+    /// Minimum per-file character count (`None` when no files).
+    #[must_use]
+    pub fn min_file_char_count(&self) -> Option<usize> {
+        self.documents
+            .values()
+            .map(|d| d.source().chars().count())
+            .min()
+    }
+
+    /// Median per-file character count (`None` when no files).
+    #[must_use]
+    pub fn median_file_char_count(&self) -> Option<usize> {
+        let mut v: Vec<usize> = self
+            .documents
+            .values()
+            .map(|d| d.source().chars().count())
+            .collect();
+        if v.is_empty() {
+            return None;
+        }
+        v.sort_unstable();
+        let mid = v.len() / 2;
+        Some(if v.len() % 2 == 1 {
+            v[mid]
+        } else {
+            v[mid - 1].midpoint(v[mid])
+        })
+    }
+
     /// Total headline-body byte count across the vault.
     #[must_use]
     pub fn total_body_byte_count(&self) -> usize {
