@@ -328,6 +328,31 @@ fn vault_priority_counts_returns_sorted_ranked() {
 }
 
 #[test]
+fn vault_min_max_priority_match() {
+    let td = write_vault(&[("a.org", "* [#B] X\n* [#A] Y\n* [#C] Z\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    // smallest letter = highest urgency
+    assert_eq!(v.min_priority(), Some('A'));
+    assert_eq!(v.max_priority(), Some('C'));
+}
+
+#[test]
+fn vault_mode_priority_match() {
+    let td = write_vault(&[("a.org", "* [#A] X\n* [#A] Y\n* [#C] Z\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.mode_priority(), Some('A'));
+}
+
+#[test]
+fn vault_priority_none_when_no_priority() {
+    let td = write_vault(&[("a.org", "* A\n* B\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.min_priority(), None);
+    assert_eq!(v.max_priority(), None);
+    assert_eq!(v.mode_priority(), None);
+}
+
+#[test]
 fn vault_level_counts_returns_ranked() {
     let td = write_vault(&[
         ("a.org", "* A\n** B\n*** C\n*** D\n*** E\n"),

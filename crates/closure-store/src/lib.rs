@@ -1202,6 +1202,47 @@ impl Vault {
         ranked
     }
 
+    /// Lexicographically smallest priority letter (highest urgency), or
+    /// `None` when no prioritized headline exists.
+    #[must_use]
+    pub fn min_priority(&self) -> Option<char> {
+        self.iter()
+            .flat_map(|(_, d)| d.all_headlines())
+            .filter_map(closure_core::DocHeadline::priority)
+            .min()
+    }
+
+    /// Lexicographically largest priority letter (lowest urgency), or
+    /// `None` when no prioritized headline exists.
+    #[must_use]
+    pub fn max_priority(&self) -> Option<char> {
+        self.iter()
+            .flat_map(|(_, d)| d.all_headlines())
+            .filter_map(closure_core::DocHeadline::priority)
+            .max()
+    }
+
+    /// Most common priority letter (lowest letter wins ties), or `None`
+    /// when no prioritized headline exists.
+    #[must_use]
+    pub fn mode_priority(&self) -> Option<char> {
+        let mut m: std::collections::BTreeMap<char, usize> = std::collections::BTreeMap::new();
+        for (_, d) in self.iter() {
+            for h in d.all_headlines() {
+                if let Some(p) = h.priority() {
+                    *m.entry(p).or_insert(0) += 1;
+                }
+            }
+        }
+        let mut best: Option<(char, usize)> = None;
+        for (p, c) in m {
+            if best.is_none_or(|(_, bc)| c > bc) {
+                best = Some((p, c));
+            }
+        }
+        best.map(|(p, _)| p)
+    }
+
     /// Level occurrence counts, sorted descending by count.
     #[must_use]
     pub fn level_counts(&self) -> Vec<(u8, usize)> {
