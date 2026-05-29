@@ -2280,6 +2280,61 @@ impl Vault {
             .sum()
     }
 
+    /// Total property-pair occurrences for a single file by path. Returns
+    /// `None` if the file isn't loaded.
+    #[must_use]
+    pub fn property_count_of(&self, path: &Path) -> Option<usize> {
+        self.documents
+            .get(path)
+            .map(|d| d.all_headlines().map(|h| h.properties().len()).sum())
+    }
+
+    /// Maximum per-file property-pair count (`None` when no files).
+    #[must_use]
+    pub fn max_file_property_count(&self) -> Option<usize> {
+        self.documents
+            .values()
+            .map(|d| d.all_headlines().map(|h| h.properties().len()).sum())
+            .max()
+    }
+
+    /// Minimum per-file property-pair count (`None` when no files).
+    #[must_use]
+    pub fn min_file_property_count(&self) -> Option<usize> {
+        self.documents
+            .values()
+            .map(|d| d.all_headlines().map(|h| h.properties().len()).sum())
+            .min()
+    }
+
+    /// Integer mean per-file property-pair count (`0` when no files).
+    #[must_use]
+    pub fn mean_file_property_count(&self) -> usize {
+        self.total_property_count()
+            .checked_div(self.len())
+            .unwrap_or(0)
+    }
+
+    /// Median per-file property-pair count (`None` when no files).
+    #[must_use]
+    pub fn median_file_property_count(&self) -> Option<usize> {
+        let mut v: Vec<usize> = self
+            .documents
+            .values()
+            .map(|d| d.all_headlines().map(|h| h.properties().len()).sum())
+            .collect();
+        if v.is_empty() {
+            return None;
+        }
+        v.sort_unstable();
+        let mid = v.len() / 2;
+        Some(if v.len() % 2 == 1 {
+            v[mid]
+        } else {
+            v[mid - 1].midpoint(v[mid])
+        })
+    }
+
     /// Maximum per-headline property count across the vault.
     #[must_use]
     pub fn max_property_count(&self) -> Option<usize> {
