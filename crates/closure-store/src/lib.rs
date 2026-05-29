@@ -256,6 +256,50 @@ impl Vault {
         self.documents.get(path).map(|d| d.all_headlines().count())
     }
 
+    /// Maximum per-file headline count (`None` when no files).
+    #[must_use]
+    pub fn max_file_headline_count(&self) -> Option<usize> {
+        self.documents
+            .values()
+            .map(|d| d.all_headlines().count())
+            .max()
+    }
+
+    /// Minimum per-file headline count (`None` when no files).
+    #[must_use]
+    pub fn min_file_headline_count(&self) -> Option<usize> {
+        self.documents
+            .values()
+            .map(|d| d.all_headlines().count())
+            .min()
+    }
+
+    /// Integer mean per-file headline count (`0` when no files).
+    #[must_use]
+    pub fn mean_file_headline_count(&self) -> usize {
+        self.headline_count().checked_div(self.len()).unwrap_or(0)
+    }
+
+    /// Median per-file headline count (`None` when no files).
+    #[must_use]
+    pub fn median_file_headline_count(&self) -> Option<usize> {
+        let mut v: Vec<usize> = self
+            .documents
+            .values()
+            .map(|d| d.all_headlines().count())
+            .collect();
+        if v.is_empty() {
+            return None;
+        }
+        v.sort_unstable();
+        let mid = v.len() / 2;
+        Some(if v.len() % 2 == 1 {
+            v[mid]
+        } else {
+            v[mid - 1].midpoint(v[mid])
+        })
+    }
+
     /// Source byte length for a single file by path.
     #[must_use]
     pub fn byte_count_of(&self, path: &Path) -> Option<usize> {
