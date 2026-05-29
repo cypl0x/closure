@@ -1840,6 +1840,21 @@ fn vault_median_file_byte_count_match() {
 }
 
 #[test]
+fn vault_mean_file_byte_count_match() {
+    let td = write_vault(&[("a.org", "* AB\n"), ("b.org", "* CD\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    // each 5 bytes, 2 files -> 5
+    assert_eq!(v.mean_file_byte_count(), 5);
+}
+
+#[test]
+fn vault_mean_file_byte_count_zero_when_no_files() {
+    let td = write_vault(&[]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.mean_file_byte_count(), 0);
+}
+
+#[test]
 fn vault_file_byte_count_none_when_empty() {
     let td = write_vault(&[]);
     let v = Vault::open(td.path()).expect("open");

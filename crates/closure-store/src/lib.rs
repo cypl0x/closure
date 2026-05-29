@@ -851,6 +851,12 @@ impl Vault {
         self.documents.values().map(|d| d.source().len()).min()
     }
 
+    /// Integer mean file byte count (`0` when no files).
+    #[must_use]
+    pub fn mean_file_byte_count(&self) -> usize {
+        self.byte_count().checked_div(self.len()).unwrap_or(0)
+    }
+
     /// Median file byte count across the vault (`None` when empty).
     #[must_use]
     pub fn median_file_byte_count(&self) -> Option<usize> {
