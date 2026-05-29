@@ -2168,6 +2168,59 @@ impl Vault {
             .count()
     }
 
+    /// Count of leaf headlines for a single file by path. Returns `None`
+    /// if the file isn't loaded.
+    #[must_use]
+    pub fn leaf_count_of(&self, path: &Path) -> Option<usize> {
+        self.documents
+            .get(path)
+            .map(|d| d.org().iter_headlines().into_iter().filter(|h| h.is_leaf()).count())
+    }
+
+    /// Maximum per-file leaf count (`None` when no files).
+    #[must_use]
+    pub fn max_file_leaf_count(&self) -> Option<usize> {
+        self.documents
+            .values()
+            .map(|d| d.org().iter_headlines().into_iter().filter(|h| h.is_leaf()).count())
+            .max()
+    }
+
+    /// Minimum per-file leaf count (`None` when no files).
+    #[must_use]
+    pub fn min_file_leaf_count(&self) -> Option<usize> {
+        self.documents
+            .values()
+            .map(|d| d.org().iter_headlines().into_iter().filter(|h| h.is_leaf()).count())
+            .min()
+    }
+
+    /// Integer mean per-file leaf count (`0` when no files).
+    #[must_use]
+    pub fn mean_file_leaf_count(&self) -> usize {
+        self.leaf_count().checked_div(self.len()).unwrap_or(0)
+    }
+
+    /// Median per-file leaf count (`None` when no files).
+    #[must_use]
+    pub fn median_file_leaf_count(&self) -> Option<usize> {
+        let mut v: Vec<usize> = self
+            .documents
+            .values()
+            .map(|d| d.org().iter_headlines().into_iter().filter(|h| h.is_leaf()).count())
+            .collect();
+        if v.is_empty() {
+            return None;
+        }
+        v.sort_unstable();
+        let mid = v.len() / 2;
+        Some(if v.len() % 2 == 1 {
+            v[mid]
+        } else {
+            v[mid - 1].midpoint(v[mid])
+        })
+    }
+
     /// Percentage of headlines that are leaves (`0..=100`).
     #[must_use]
     pub fn leaf_pct(&self) -> usize {
