@@ -1367,6 +1367,36 @@ fn vault_median_timestamp_count_none_when_empty() {
 }
 
 #[test]
+fn vault_with_timestamp_count_match() {
+    let td = write_vault(&[(
+        "a.org",
+        "* A\n<2026-01-01>\n* B\nno ts\n* C\n<2026-01-02> <2026-01-03>\n* D\n",
+    )]);
+    let v = Vault::open(td.path()).expect("open");
+    // A and C carry timestamps
+    assert_eq!(v.with_timestamp_count(), 2);
+}
+
+#[test]
+fn vault_timestamp_pct_match() {
+    let td = write_vault(&[(
+        "a.org",
+        "* A\n<2026-01-01>\n* B\nno ts\n* C\n<2026-01-02>\n* D\n",
+    )]);
+    let v = Vault::open(td.path()).expect("open");
+    // 2 of 4 -> 50
+    assert_eq!(v.timestamp_pct(), 50);
+}
+
+#[test]
+fn vault_timestamp_pct_zero_when_empty() {
+    let td = write_vault(&[("a.org", "")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.with_timestamp_count(), 0);
+    assert_eq!(v.timestamp_pct(), 0);
+}
+
+#[test]
 fn vault_max_min_link_count_match() {
     let td = write_vault(&[(
         "a.org",

@@ -2188,6 +2188,24 @@ impl Vault {
         best.map(|(tc, _)| tc)
     }
 
+    /// Count of headlines carrying at least one timestamp.
+    #[must_use]
+    pub fn with_timestamp_count(&self) -> usize {
+        self.documents
+            .values()
+            .flat_map(|d| d.org().iter_headlines())
+            .filter(|h| h.timestamp_count() > 0)
+            .count()
+    }
+
+    /// Percentage of headlines carrying at least one timestamp (`0..=100`).
+    #[must_use]
+    pub fn timestamp_pct(&self) -> usize {
+        (self.with_timestamp_count() * 100)
+            .checked_div(self.headline_count())
+            .unwrap_or(0)
+    }
+
     /// Maximum per-headline link count across the vault.
     #[must_use]
     pub fn max_link_count(&self) -> Option<usize> {
