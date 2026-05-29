@@ -674,6 +674,20 @@ impl Vault {
             .unwrap_or(0)
     }
 
+    /// Count of headlines lacking a `CLOSED:` stamp.
+    #[must_use]
+    pub fn count_unclosed(&self) -> usize {
+        self.headline_count() - self.closed_count()
+    }
+
+    /// Percentage of headlines lacking a `CLOSED:` stamp (`0..=100`).
+    #[must_use]
+    pub fn unclosed_pct(&self) -> usize {
+        (self.count_unclosed() * 100)
+            .checked_div(self.headline_count())
+            .unwrap_or(0)
+    }
+
     /// Mean body word count across the vault (rounded down).
     #[must_use]
     pub fn mean_body_word_count(&self) -> usize {

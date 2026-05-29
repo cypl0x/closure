@@ -2427,6 +2427,30 @@ fn vault_closed_pct_zero_when_empty() {
 }
 
 #[test]
+fn vault_count_unclosed_match() {
+    let td = write_vault(&[("a.org", "* A\nCLOSED: [2026-01-01]\n* B\n* C\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    // 2 of 3 lack CLOSED
+    assert_eq!(v.count_unclosed(), 2);
+}
+
+#[test]
+fn vault_unclosed_pct_match() {
+    let td = write_vault(&[("a.org", "* A\nCLOSED: [2026-01-01]\n* B\n* C\n* D\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    // 3 of 4 -> 75
+    assert_eq!(v.unclosed_pct(), 75);
+}
+
+#[test]
+fn vault_unclosed_pct_zero_when_empty() {
+    let td = write_vault(&[("a.org", "no headlines\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.count_unclosed(), 0);
+    assert_eq!(v.unclosed_pct(), 0);
+}
+
+#[test]
 fn vault_with_body_count_match() {
     let td = write_vault(&[("a.org", "* A\nbody\n* B\n* C\nmore\n")]);
     let v = Vault::open(td.path()).expect("open");
