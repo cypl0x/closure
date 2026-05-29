@@ -2239,6 +2239,59 @@ impl Vault {
             .count()
     }
 
+    /// Count of branch headlines for a single file by path. Returns
+    /// `None` if the file isn't loaded.
+    #[must_use]
+    pub fn branch_count_of(&self, path: &Path) -> Option<usize> {
+        self.documents
+            .get(path)
+            .map(|d| d.org().iter_headlines().into_iter().filter(|h| !h.is_leaf()).count())
+    }
+
+    /// Maximum per-file branch count (`None` when no files).
+    #[must_use]
+    pub fn max_file_branch_count(&self) -> Option<usize> {
+        self.documents
+            .values()
+            .map(|d| d.org().iter_headlines().into_iter().filter(|h| !h.is_leaf()).count())
+            .max()
+    }
+
+    /// Minimum per-file branch count (`None` when no files).
+    #[must_use]
+    pub fn min_file_branch_count(&self) -> Option<usize> {
+        self.documents
+            .values()
+            .map(|d| d.org().iter_headlines().into_iter().filter(|h| !h.is_leaf()).count())
+            .min()
+    }
+
+    /// Integer mean per-file branch count (`0` when no files).
+    #[must_use]
+    pub fn mean_file_branch_count(&self) -> usize {
+        self.branch_count().checked_div(self.len()).unwrap_or(0)
+    }
+
+    /// Median per-file branch count (`None` when no files).
+    #[must_use]
+    pub fn median_file_branch_count(&self) -> Option<usize> {
+        let mut v: Vec<usize> = self
+            .documents
+            .values()
+            .map(|d| d.org().iter_headlines().into_iter().filter(|h| !h.is_leaf()).count())
+            .collect();
+        if v.is_empty() {
+            return None;
+        }
+        v.sort_unstable();
+        let mid = v.len() / 2;
+        Some(if v.len() % 2 == 1 {
+            v[mid]
+        } else {
+            v[mid - 1].midpoint(v[mid])
+        })
+    }
+
     /// Percentage of headlines that are branches (`0..=100`).
     #[must_use]
     pub fn branch_pct(&self) -> usize {
