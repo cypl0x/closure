@@ -2340,6 +2340,64 @@ fn vault_file_body_byte_count_none_when_no_files() {
 }
 
 #[test]
+fn vault_body_char_count_of_match() {
+    let td = write_vault(&[
+        ("a.org", "* A\náb\n"),
+        ("b.org", "* C\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    // a.org body "áb\n" = 3 chars, b.org 0
+    assert_eq!(v.body_char_count_of(&td.path().join("a.org")), Some(3));
+    assert_eq!(v.body_char_count_of(&td.path().join("b.org")), Some(0));
+    assert_eq!(v.body_char_count_of(&td.path().join("missing.org")), None);
+}
+
+#[test]
+fn vault_max_min_file_body_char_count_match() {
+    let td = write_vault(&[
+        ("a.org", "* A\náb\n* B\nz\n"),
+        ("b.org", "* C\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    // a.org "áb\n"=3 + "z\n"=2 = 5 chars, b.org 0
+    assert_eq!(v.max_file_body_char_count(), Some(5));
+    assert_eq!(v.min_file_body_char_count(), Some(0));
+}
+
+#[test]
+fn vault_mean_file_body_char_count_match() {
+    let td = write_vault(&[
+        ("a.org", "* A\nxyz\n"),
+        ("b.org", "* C\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    // a.org "xyz\n"=4, b.org 0 -> total 4, 2 files -> 2
+    assert_eq!(v.mean_file_body_char_count(), 2);
+}
+
+#[test]
+fn vault_median_file_body_char_count_match() {
+    let td = write_vault(&[
+        ("a.org", "* A\n"),
+        ("b.org", "* B\nz\n"),
+        ("c.org", "* C\nxyz\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    // 0, 2, 4 -> median 2
+    assert_eq!(v.median_file_body_char_count(), Some(2));
+}
+
+#[test]
+fn vault_file_body_char_count_none_when_no_files() {
+    let td = write_vault(&[]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.max_file_body_char_count(), None);
+    assert_eq!(v.min_file_body_char_count(), None);
+    assert_eq!(v.mean_file_body_char_count(), 0);
+    assert_eq!(v.median_file_body_char_count(), None);
+}
+
+#[test]
 fn vault_file_byte_count_none_when_empty() {
     let td = write_vault(&[]);
     let v = Vault::open(td.path()).expect("open");
