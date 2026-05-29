@@ -842,6 +842,40 @@ fn vault_body_byte_count_none_when_empty() {
 }
 
 #[test]
+fn vault_median_body_byte_count_match() {
+    let td = write_vault(&[("a.org", "* A\nxy\n* B\nz\n* C\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    // body bytes 3,2,0 -> sorted 0,2,3 -> median 2
+    assert_eq!(v.median_body_byte_count(), Some(2));
+}
+
+#[test]
+fn vault_body_byte_count_counts_match() {
+    let td = write_vault(&[("a.org", "* A\nxy\n* B\nab\n* C\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    // body bytes A=3, B=3, C=0
+    let m = v.body_byte_count_counts();
+    assert_eq!(m.get(&3), Some(&2));
+    assert_eq!(m.get(&0), Some(&1));
+}
+
+#[test]
+fn vault_mode_body_byte_count_match() {
+    let td = write_vault(&[("a.org", "* A\nxy\n* B\nab\n* C\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    // 3,3,0 -> mode 3
+    assert_eq!(v.mode_body_byte_count(), Some(3));
+}
+
+#[test]
+fn vault_median_body_byte_count_none_when_empty() {
+    let td = write_vault(&[("a.org", "")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.median_body_byte_count(), None);
+    assert_eq!(v.mode_body_byte_count(), None);
+}
+
+#[test]
 fn vault_body_byte_pct_match() {
     let td = write_vault(&[("a.org", "* H\nxxxxx\n")]);
     let v = Vault::open(td.path()).expect("open");

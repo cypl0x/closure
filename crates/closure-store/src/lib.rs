@@ -306,6 +306,50 @@ impl Vault {
         self.total_body_byte_count().checked_div(n).unwrap_or(0)
     }
 
+    /// Median per-headline body byte count (`None` when no headlines).
+    #[must_use]
+    pub fn median_body_byte_count(&self) -> Option<usize> {
+        let mut v: Vec<usize> = self
+            .iter()
+            .flat_map(|(_, d)| d.all_headlines())
+            .map(|h| h.body_text().len())
+            .collect();
+        if v.is_empty() {
+            return None;
+        }
+        v.sort_unstable();
+        let mid = v.len() / 2;
+        Some(if v.len() % 2 == 1 {
+            v[mid]
+        } else {
+            v[mid - 1].midpoint(v[mid])
+        })
+    }
+
+    /// Histogram of per-headline body byte counts to occurrence count.
+    #[must_use]
+    pub fn body_byte_count_counts(&self) -> std::collections::BTreeMap<usize, usize> {
+        let mut m = std::collections::BTreeMap::new();
+        for (_, d) in self.iter() {
+            for h in d.all_headlines() {
+                *m.entry(h.body_text().len()).or_insert(0) += 1;
+            }
+        }
+        m
+    }
+
+    /// Most common per-headline body byte count (lowest wins ties).
+    #[must_use]
+    pub fn mode_body_byte_count(&self) -> Option<usize> {
+        let mut best: Option<(usize, usize)> = None;
+        for (bc, c) in self.body_byte_count_counts() {
+            if best.is_none_or(|(_, cc)| c > cc) {
+                best = Some((bc, c));
+            }
+        }
+        best.map(|(bc, _)| bc)
+    }
+
     /// Percentage of source bytes that are headline body
     /// (`total body bytes * 100 / source bytes`, `0` when empty).
     #[must_use]
