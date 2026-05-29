@@ -1859,6 +1859,59 @@ impl Vault {
             .sum()
     }
 
+    /// Total tag occurrences for a single file by path. Returns `None`
+    /// if the file isn't loaded.
+    #[must_use]
+    pub fn tag_count_of(&self, path: &Path) -> Option<usize> {
+        self.documents
+            .get(path)
+            .map(|d| d.all_headlines().map(|h| h.tags().len()).sum())
+    }
+
+    /// Maximum per-file tag occurrence count (`None` when no files).
+    #[must_use]
+    pub fn max_file_tag_count(&self) -> Option<usize> {
+        self.documents
+            .values()
+            .map(|d| d.all_headlines().map(|h| h.tags().len()).sum())
+            .max()
+    }
+
+    /// Minimum per-file tag occurrence count (`None` when no files).
+    #[must_use]
+    pub fn min_file_tag_count(&self) -> Option<usize> {
+        self.documents
+            .values()
+            .map(|d| d.all_headlines().map(|h| h.tags().len()).sum())
+            .min()
+    }
+
+    /// Integer mean per-file tag occurrence count (`0` when no files).
+    #[must_use]
+    pub fn mean_file_tag_count(&self) -> usize {
+        self.total_tag_count().checked_div(self.len()).unwrap_or(0)
+    }
+
+    /// Median per-file tag occurrence count (`None` when no files).
+    #[must_use]
+    pub fn median_file_tag_count(&self) -> Option<usize> {
+        let mut v: Vec<usize> = self
+            .documents
+            .values()
+            .map(|d| d.all_headlines().map(|h| h.tags().len()).sum())
+            .collect();
+        if v.is_empty() {
+            return None;
+        }
+        v.sort_unstable();
+        let mid = v.len() / 2;
+        Some(if v.len() % 2 == 1 {
+            v[mid]
+        } else {
+            v[mid - 1].midpoint(v[mid])
+        })
+    }
+
     /// Maximum tag length in characters across the vault.
     #[must_use]
     pub fn max_tag_len(&self) -> Option<usize> {

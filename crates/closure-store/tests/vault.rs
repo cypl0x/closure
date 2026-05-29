@@ -1998,6 +1998,63 @@ fn vault_file_link_count_none_when_no_files() {
 }
 
 #[test]
+fn vault_tag_count_of_match() {
+    let td = write_vault(&[
+        ("a.org", "* A :x:y:\n* B :z:\n"),
+        ("b.org", "* C\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    // a.org tag occurrences 3, b.org 0
+    assert_eq!(v.tag_count_of(&td.path().join("a.org")), Some(3));
+    assert_eq!(v.tag_count_of(&td.path().join("b.org")), Some(0));
+    assert_eq!(v.tag_count_of(&td.path().join("missing.org")), None);
+}
+
+#[test]
+fn vault_max_min_file_tag_count_match() {
+    let td = write_vault(&[
+        ("a.org", "* A :x:y:\n* B :z:\n"),
+        ("b.org", "* C\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.max_file_tag_count(), Some(3));
+    assert_eq!(v.min_file_tag_count(), Some(0));
+}
+
+#[test]
+fn vault_mean_file_tag_count_match() {
+    let td = write_vault(&[
+        ("a.org", "* A :x:y:z:\n"),
+        ("b.org", "* C :w:\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    // 3+1=4, 2 files -> 2
+    assert_eq!(v.mean_file_tag_count(), 2);
+}
+
+#[test]
+fn vault_median_file_tag_count_match() {
+    let td = write_vault(&[
+        ("a.org", "* A\n"),
+        ("b.org", "* B :x:\n"),
+        ("c.org", "* C :y:z:\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    // 0,1,2 -> median 1
+    assert_eq!(v.median_file_tag_count(), Some(1));
+}
+
+#[test]
+fn vault_file_tag_count_none_when_no_files() {
+    let td = write_vault(&[]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.max_file_tag_count(), None);
+    assert_eq!(v.min_file_tag_count(), None);
+    assert_eq!(v.mean_file_tag_count(), 0);
+    assert_eq!(v.median_file_tag_count(), None);
+}
+
+#[test]
 fn vault_file_byte_count_none_when_empty() {
     let td = write_vault(&[]);
     let v = Vault::open(td.path()).expect("open");
