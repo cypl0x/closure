@@ -2964,6 +2964,63 @@ fn vault_file_priority_count_none_when_no_files() {
 }
 
 #[test]
+fn vault_with_body_count_of_match() {
+    let td = write_vault(&[
+        ("a.org", "* A\nbody\n* B\nmore\n* C\n"),
+        ("b.org", "* D\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    // a.org A,B have body = 2; b.org 0
+    assert_eq!(v.with_body_count_of(&td.path().join("a.org")), Some(2));
+    assert_eq!(v.with_body_count_of(&td.path().join("b.org")), Some(0));
+    assert_eq!(v.with_body_count_of(&td.path().join("missing.org")), None);
+}
+
+#[test]
+fn vault_max_min_file_with_body_count_match() {
+    let td = write_vault(&[
+        ("a.org", "* A\nbody\n* B\nmore\n"),
+        ("b.org", "* D\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.max_file_with_body_count(), Some(2));
+    assert_eq!(v.min_file_with_body_count(), Some(0));
+}
+
+#[test]
+fn vault_mean_file_with_body_count_match() {
+    let td = write_vault(&[
+        ("a.org", "* A\nbody\n* B\nmore\n* C\nyet\n"),
+        ("b.org", "* D\nbody\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    // 3+1=4, 2 files -> 2
+    assert_eq!(v.mean_file_with_body_count(), 2);
+}
+
+#[test]
+fn vault_median_file_with_body_count_match() {
+    let td = write_vault(&[
+        ("a.org", "* A\n"),
+        ("b.org", "* B\nbody\n"),
+        ("c.org", "* C\nbody\n* D\nmore\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    // 0,1,2 -> median 1
+    assert_eq!(v.median_file_with_body_count(), Some(1));
+}
+
+#[test]
+fn vault_file_with_body_count_none_when_no_files() {
+    let td = write_vault(&[]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.max_file_with_body_count(), None);
+    assert_eq!(v.min_file_with_body_count(), None);
+    assert_eq!(v.mean_file_with_body_count(), 0);
+    assert_eq!(v.median_file_with_body_count(), None);
+}
+
+#[test]
 fn vault_file_byte_count_none_when_empty() {
     let td = write_vault(&[]);
     let v = Vault::open(td.path()).expect("open");
