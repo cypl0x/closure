@@ -1893,6 +1893,54 @@ fn vault_file_headline_count_none_when_no_files() {
 }
 
 #[test]
+fn vault_root_count_of_match() {
+    let td = write_vault(&[("a.org", "* A\n** B\n* C\n"), ("b.org", "* D\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.root_count_of(&td.path().join("a.org")), Some(2));
+    assert_eq!(v.root_count_of(&td.path().join("b.org")), Some(1));
+    assert_eq!(v.root_count_of(&td.path().join("missing.org")), None);
+}
+
+#[test]
+fn vault_max_min_file_root_count_match() {
+    let td = write_vault(&[("a.org", "* A\n** B\n* C\n"), ("b.org", "* D\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    // roots: a=2, b=1
+    assert_eq!(v.max_file_root_count(), Some(2));
+    assert_eq!(v.min_file_root_count(), Some(1));
+}
+
+#[test]
+fn vault_mean_file_root_count_match() {
+    let td = write_vault(&[("a.org", "* A\n* B\n* C\n"), ("b.org", "* D\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    // roots a=3, b=1 -> total 4, 2 files -> 2
+    assert_eq!(v.mean_file_root_count(), 2);
+}
+
+#[test]
+fn vault_median_file_root_count_match() {
+    let td = write_vault(&[
+        ("a.org", "* A\n"),
+        ("b.org", "* B\n* C\n"),
+        ("c.org", "* D\n* E\n* F\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    // roots 1,2,3 -> median 2
+    assert_eq!(v.median_file_root_count(), Some(2));
+}
+
+#[test]
+fn vault_file_root_count_none_when_no_files() {
+    let td = write_vault(&[]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.max_file_root_count(), None);
+    assert_eq!(v.min_file_root_count(), None);
+    assert_eq!(v.mean_file_root_count(), 0);
+    assert_eq!(v.median_file_root_count(), None);
+}
+
+#[test]
 fn vault_file_byte_count_none_when_empty() {
     let td = write_vault(&[]);
     let v = Vault::open(td.path()).expect("open");
