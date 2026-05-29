@@ -277,6 +277,35 @@ impl Vault {
             .sum()
     }
 
+    /// Maximum per-headline body byte count across the vault.
+    #[must_use]
+    pub fn max_body_byte_count(&self) -> Option<usize> {
+        self.iter()
+            .flat_map(|(_, d)| d.all_headlines())
+            .map(|h| h.body_text().len())
+            .max()
+    }
+
+    /// Minimum per-headline body byte count across the vault.
+    #[must_use]
+    pub fn min_body_byte_count(&self) -> Option<usize> {
+        self.iter()
+            .flat_map(|(_, d)| d.all_headlines())
+            .map(|h| h.body_text().len())
+            .min()
+    }
+
+    /// Integer mean per-headline body byte count (`0` when no headlines).
+    #[must_use]
+    pub fn mean_body_byte_count(&self) -> usize {
+        let n: usize = self
+            .documents
+            .values()
+            .map(|d| d.org().iter_headlines().len())
+            .sum();
+        self.total_body_byte_count().checked_div(n).unwrap_or(0)
+    }
+
     /// Percentage of source bytes that are headline body
     /// (`total body bytes * 100 / source bytes`, `0` when empty).
     #[must_use]
