@@ -615,6 +615,20 @@ impl Vault {
             .unwrap_or(0)
     }
 
+    /// Count of headlines lacking a `[#X]` priority cookie.
+    #[must_use]
+    pub fn count_no_priority(&self) -> usize {
+        self.headline_count() - self.with_priority_count()
+    }
+
+    /// Percentage of headlines lacking a priority cookie (`0..=100`).
+    #[must_use]
+    pub fn no_priority_pct(&self) -> usize {
+        (self.count_no_priority() * 100)
+            .checked_div(self.headline_count())
+            .unwrap_or(0)
+    }
+
     /// Count of headlines that are not SCHEDULED.
     #[must_use]
     pub fn count_unscheduled(&self) -> usize {

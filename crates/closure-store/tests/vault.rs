@@ -376,6 +376,29 @@ fn vault_priority_pct_zero_when_empty() {
 }
 
 #[test]
+fn vault_count_no_priority_match() {
+    let td = write_vault(&[("a.org", "* [#A] X\n* Y\n* [#C] Z\n* W\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    // 2 of 4 lack priority
+    assert_eq!(v.count_no_priority(), 2);
+}
+
+#[test]
+fn vault_no_priority_pct_match() {
+    let td = write_vault(&[("a.org", "* [#A] X\n* Y\n* [#C] Z\n* W\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.no_priority_pct(), 50);
+}
+
+#[test]
+fn vault_no_priority_pct_zero_when_empty() {
+    let td = write_vault(&[("a.org", "")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.count_no_priority(), 0);
+    assert_eq!(v.no_priority_pct(), 0);
+}
+
+#[test]
 fn vault_level_counts_returns_ranked() {
     let td = write_vault(&[
         ("a.org", "* A\n** B\n*** C\n*** D\n*** E\n"),
