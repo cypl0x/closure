@@ -2908,6 +2908,62 @@ fn vault_file_branch_count_none_when_no_files() {
 }
 
 #[test]
+fn vault_with_priority_count_of_match() {
+    let td = write_vault(&[
+        ("a.org", "* [#A] X\n* [#C] Y\n* Z\n"),
+        ("b.org", "* D\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.with_priority_count_of(&td.path().join("a.org")), Some(2));
+    assert_eq!(v.with_priority_count_of(&td.path().join("b.org")), Some(0));
+    assert_eq!(v.with_priority_count_of(&td.path().join("missing.org")), None);
+}
+
+#[test]
+fn vault_max_min_file_priority_count_match() {
+    let td = write_vault(&[
+        ("a.org", "* [#A] X\n* [#C] Y\n"),
+        ("b.org", "* D\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.max_file_priority_count(), Some(2));
+    assert_eq!(v.min_file_priority_count(), Some(0));
+}
+
+#[test]
+fn vault_mean_file_priority_count_match() {
+    let td = write_vault(&[
+        ("a.org", "* [#A] X\n* [#B] Y\n* [#C] Z\n"),
+        ("b.org", "* [#A] D\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    // 3+1=4, 2 files -> 2
+    assert_eq!(v.mean_file_priority_count(), 2);
+}
+
+#[test]
+fn vault_median_file_priority_count_match() {
+    let td = write_vault(&[
+        ("a.org", "* A\n"),
+        ("b.org", "* [#A] B\n"),
+        ("c.org", "* [#A] C\n* [#B] D\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    // 0,1,2 -> median 1
+    assert_eq!(v.median_file_priority_count(), Some(1));
+}
+
+#[test]
+fn vault_file_priority_count_none_when_no_files() {
+    let td = write_vault(&[]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.max_file_priority_count(), None);
+    assert_eq!(v.min_file_priority_count(), None);
+    assert_eq!(v.mean_file_priority_count(), 0);
+    assert_eq!(v.median_file_priority_count(), None);
+}
+
+#[test]
 fn vault_file_byte_count_none_when_empty() {
     let td = write_vault(&[]);
     let v = Vault::open(td.path()).expect("open");
