@@ -2100,6 +2100,59 @@ impl Vault {
             .count()
     }
 
+    /// Count of TODO-marked headlines for a single file by path. Returns
+    /// `None` if the file isn't loaded.
+    #[must_use]
+    pub fn todo_count_of(&self, path: &Path) -> Option<usize> {
+        self.documents
+            .get(path)
+            .map(|d| d.all_headlines().filter(|h| h.todo().is_some()).count())
+    }
+
+    /// Maximum per-file TODO-marked headline count (`None` when no files).
+    #[must_use]
+    pub fn max_file_todo_count(&self) -> Option<usize> {
+        self.documents
+            .values()
+            .map(|d| d.all_headlines().filter(|h| h.todo().is_some()).count())
+            .max()
+    }
+
+    /// Minimum per-file TODO-marked headline count (`None` when no files).
+    #[must_use]
+    pub fn min_file_todo_count(&self) -> Option<usize> {
+        self.documents
+            .values()
+            .map(|d| d.all_headlines().filter(|h| h.todo().is_some()).count())
+            .min()
+    }
+
+    /// Integer mean per-file TODO-marked headline count (`0` when no files).
+    #[must_use]
+    pub fn mean_file_todo_count(&self) -> usize {
+        self.total_todo_count().checked_div(self.len()).unwrap_or(0)
+    }
+
+    /// Median per-file TODO-marked headline count (`None` when no files).
+    #[must_use]
+    pub fn median_file_todo_count(&self) -> Option<usize> {
+        let mut v: Vec<usize> = self
+            .documents
+            .values()
+            .map(|d| d.all_headlines().filter(|h| h.todo().is_some()).count())
+            .collect();
+        if v.is_empty() {
+            return None;
+        }
+        v.sort_unstable();
+        let mid = v.len() / 2;
+        Some(if v.len() % 2 == 1 {
+            v[mid]
+        } else {
+            v[mid - 1].midpoint(v[mid])
+        })
+    }
+
     /// Percentage of distinct tags among total tag occurrences
     /// (`distinct * 100 / total`, `0` when no tags).
     #[must_use]
