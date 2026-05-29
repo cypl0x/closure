@@ -124,6 +124,38 @@ fn vault_headline_and_word_counts_aggregate() {
 }
 
 #[test]
+fn vault_char_count_match() {
+    let td = write_vault(&[("a.org", "* Áb\n"), ("b.org", "* C\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    // "* Áb\n" = 5 chars, "* C\n" = 4 chars -> 9
+    assert_eq!(v.char_count(), 9);
+}
+
+#[test]
+fn vault_char_count_of_match() {
+    let td = write_vault(&[("a.org", "* Áb\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.char_count_of(&td.path().join("a.org")), Some(5));
+    assert_eq!(v.char_count_of(&td.path().join("missing.org")), None);
+}
+
+#[test]
+fn vault_mean_file_char_count_match() {
+    let td = write_vault(&[("a.org", "* AB\n"), ("b.org", "* CD\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    // each file 5 chars, 2 files -> 5
+    assert_eq!(v.mean_file_char_count(), 5);
+}
+
+#[test]
+fn vault_mean_file_char_count_zero_when_no_files() {
+    let td = write_vault(&[]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.char_count(), 0);
+    assert_eq!(v.mean_file_char_count(), 0);
+}
+
+#[test]
 fn vault_all_tags_and_all_todos_aggregate() {
     let td = write_vault(&[
         ("a.org", "* TODO Fix :work:\n"),

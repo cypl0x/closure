@@ -268,6 +268,30 @@ impl Vault {
         self.documents.values().map(|d| d.source().len()).sum()
     }
 
+    /// Source character count for a single file by path. Returns `None`
+    /// if the file isn't loaded.
+    #[must_use]
+    pub fn char_count_of(&self, path: &Path) -> Option<usize> {
+        self.documents
+            .get(path)
+            .map(|d| d.source().chars().count())
+    }
+
+    /// Total source character count across the vault.
+    #[must_use]
+    pub fn char_count(&self) -> usize {
+        self.documents
+            .values()
+            .map(|d| d.source().chars().count())
+            .sum()
+    }
+
+    /// Integer mean file character count (`0` when no files).
+    #[must_use]
+    pub fn mean_file_char_count(&self) -> usize {
+        self.char_count().checked_div(self.len()).unwrap_or(0)
+    }
+
     /// Total headline-body byte count across the vault.
     #[must_use]
     pub fn total_body_byte_count(&self) -> usize {
