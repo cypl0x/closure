@@ -2264,6 +2264,23 @@ impl Vault {
         best.map(|(lc, _)| lc)
     }
 
+    /// Count of headlines carrying at least one link.
+    #[must_use]
+    pub fn with_link_count(&self) -> usize {
+        self.iter()
+            .flat_map(|(_, d)| d.all_headlines())
+            .filter(|h| !h.link_targets().is_empty())
+            .count()
+    }
+
+    /// Percentage of headlines carrying at least one link (`0..=100`).
+    #[must_use]
+    pub fn link_pct(&self) -> usize {
+        (self.with_link_count() * 100)
+            .checked_div(self.headline_count())
+            .unwrap_or(0)
+    }
+
     /// Maximum per-headline child count across the vault.
     #[must_use]
     pub fn max_child_count(&self) -> Option<usize> {

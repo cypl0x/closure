@@ -1438,6 +1438,30 @@ fn vault_median_link_count_none_when_empty() {
 }
 
 #[test]
+fn vault_with_link_count_match() {
+    let td = write_vault(&[("a.org", "* A\n[[l1]]\n* B\nno links\n* C\n[[l2]] [[l3]]\n* D\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    // A and C carry links
+    assert_eq!(v.with_link_count(), 2);
+}
+
+#[test]
+fn vault_link_pct_match() {
+    let td = write_vault(&[("a.org", "* A\n[[l1]]\n* B\nno links\n* C\n[[l2]]\n* D\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    // 2 of 4 -> 50
+    assert_eq!(v.link_pct(), 50);
+}
+
+#[test]
+fn vault_link_pct_zero_when_empty() {
+    let td = write_vault(&[("a.org", "")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.with_link_count(), 0);
+    assert_eq!(v.link_pct(), 0);
+}
+
+#[test]
 fn vault_max_min_child_count_match() {
     let td = write_vault(&[("a.org", "* A\n** a1\n** a2\n* B\n** b1\n* C\n")]);
     let v = Vault::open(td.path()).expect("open");
