@@ -598,6 +598,23 @@ impl Vault {
             .unwrap_or(0)
     }
 
+    /// Count of headlines carrying a `[#X]` priority cookie.
+    #[must_use]
+    pub fn with_priority_count(&self) -> usize {
+        self.iter()
+            .flat_map(|(_, d)| d.all_headlines())
+            .filter(|h| h.priority().is_some())
+            .count()
+    }
+
+    /// Percentage of headlines carrying a priority cookie (`0..=100`).
+    #[must_use]
+    pub fn priority_pct(&self) -> usize {
+        (self.with_priority_count() * 100)
+            .checked_div(self.headline_count())
+            .unwrap_or(0)
+    }
+
     /// Count of headlines that are not SCHEDULED.
     #[must_use]
     pub fn count_unscheduled(&self) -> usize {
