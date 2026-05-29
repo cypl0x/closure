@@ -3591,6 +3591,61 @@ impl Vault {
             .sum()
     }
 
+    /// Total headline-body line count for a single file by path. Returns
+    /// `None` if the file isn't loaded.
+    #[must_use]
+    pub fn body_line_count_of(&self, path: &Path) -> Option<usize> {
+        self.documents
+            .get(path)
+            .map(|d| d.all_headlines().map(|h| h.body_text().lines().count()).sum())
+    }
+
+    /// Maximum per-file body line count (`None` when no files).
+    #[must_use]
+    pub fn max_file_body_line_count(&self) -> Option<usize> {
+        self.documents
+            .values()
+            .map(|d| d.all_headlines().map(|h| h.body_text().lines().count()).sum())
+            .max()
+    }
+
+    /// Minimum per-file body line count (`None` when no files).
+    #[must_use]
+    pub fn min_file_body_line_count(&self) -> Option<usize> {
+        self.documents
+            .values()
+            .map(|d| d.all_headlines().map(|h| h.body_text().lines().count()).sum())
+            .min()
+    }
+
+    /// Integer mean per-file body line count (`0` when no files).
+    #[must_use]
+    pub fn mean_file_body_line_count(&self) -> usize {
+        self.total_body_line_count()
+            .checked_div(self.len())
+            .unwrap_or(0)
+    }
+
+    /// Median per-file body line count (`None` when no files).
+    #[must_use]
+    pub fn median_file_body_line_count(&self) -> Option<usize> {
+        let mut v: Vec<usize> = self
+            .documents
+            .values()
+            .map(|d| d.all_headlines().map(|h| h.body_text().lines().count()).sum())
+            .collect();
+        if v.is_empty() {
+            return None;
+        }
+        v.sort_unstable();
+        let mid = v.len() / 2;
+        Some(if v.len() % 2 == 1 {
+            v[mid]
+        } else {
+            v[mid - 1].midpoint(v[mid])
+        })
+    }
+
     /// Integer mean headline-body line count (`0` when no headlines).
     #[must_use]
     pub fn mean_body_line_count(&self) -> usize {
