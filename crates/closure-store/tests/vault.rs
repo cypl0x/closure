@@ -4875,3 +4875,38 @@ fn vault_subtree_tag_count_counts_match() {
     assert_eq!(m.get(&1), Some(&1));
     assert_eq!(m.get(&0), Some(&1));
 }
+
+#[test]
+fn vault_max_min_subtree_todo_count_match() {
+    // distinct keywords. A subtree has {TODO, DONE}=2, B={DONE}=1, C={}=0
+    let td = write_vault(&[("a.org", "* TODO A\n** DONE B\n** C\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.max_subtree_todo_count(), Some(2));
+    assert_eq!(v.min_subtree_todo_count(), Some(0));
+}
+
+#[test]
+fn vault_total_subtree_todo_count_match() {
+    let td = write_vault(&[("a.org", "* TODO A\n** DONE B\n** C\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    // 2+1+0
+    assert_eq!(v.total_subtree_todo_count(), 3);
+}
+
+#[test]
+fn vault_mean_subtree_todo_count_match() {
+    let td = write_vault(&[("a.org", "* TODO A\n** DONE B\n** C\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    // 3/3=1
+    assert_eq!(v.mean_subtree_todo_count(), 1);
+}
+
+#[test]
+fn vault_subtree_todo_count_none_when_empty() {
+    let td = write_vault(&[("a.org", "")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.max_subtree_todo_count(), None);
+    assert_eq!(v.min_subtree_todo_count(), None);
+    assert_eq!(v.total_subtree_todo_count(), 0);
+    assert_eq!(v.mean_subtree_todo_count(), 0);
+}
