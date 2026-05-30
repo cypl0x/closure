@@ -2820,6 +2820,29 @@ impl Vault {
         best.map(|(tc, _)| tc)
     }
 
+    /// Histogram of per-file prioritized-headline counts.
+    #[must_use]
+    pub fn file_priority_count_counts(&self) -> std::collections::BTreeMap<usize, usize> {
+        let mut m = std::collections::BTreeMap::new();
+        for d in self.documents.values() {
+            let c = d.all_headlines().filter(|h| h.priority().is_some()).count();
+            *m.entry(c).or_insert(0) += 1;
+        }
+        m
+    }
+
+    /// Most common per-file prioritized-headline count (lowest wins ties).
+    #[must_use]
+    pub fn mode_file_priority_count(&self) -> Option<usize> {
+        let mut best: Option<(usize, usize)> = None;
+        for (pc, c) in self.file_priority_count_counts() {
+            if best.is_none_or(|(_, bestc)| c > bestc) {
+                best = Some((pc, c));
+            }
+        }
+        best.map(|(pc, _)| pc)
+    }
+
     /// Percentage of distinct tags among total tag occurrences
     /// (`distinct * 100 / total`, `0` when no tags).
     #[must_use]
