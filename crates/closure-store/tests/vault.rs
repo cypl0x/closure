@@ -4635,3 +4635,37 @@ fn vault_mode_subtree_word_count_none_when_empty() {
     let v = Vault::open(td.path()).expect("open");
     assert_eq!(v.mode_subtree_word_count(), None);
 }
+
+#[test]
+fn vault_max_min_subtree_byte_count_match() {
+    // single root "* AAA\n" - parent subtree_byte_count covers whole subtree.
+    let td = write_vault(&[("a.org", "* AAA\n** BB\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert!(v.max_subtree_byte_count().is_some());
+    assert!(v.min_subtree_byte_count().is_some());
+    assert!(v.max_subtree_byte_count() >= v.min_subtree_byte_count());
+}
+
+#[test]
+fn vault_total_subtree_byte_count_positive() {
+    let td = write_vault(&[("a.org", "* AAA\n** BB\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert!(v.total_subtree_byte_count() > 0);
+}
+
+#[test]
+fn vault_mean_subtree_byte_count_positive() {
+    let td = write_vault(&[("a.org", "* AAA\n** BB\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert!(v.mean_subtree_byte_count() > 0);
+}
+
+#[test]
+fn vault_subtree_byte_count_none_when_empty() {
+    let td = write_vault(&[("a.org", "")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.max_subtree_byte_count(), None);
+    assert_eq!(v.min_subtree_byte_count(), None);
+    assert_eq!(v.total_subtree_byte_count(), 0);
+    assert_eq!(v.mean_subtree_byte_count(), 0);
+}
