@@ -5530,6 +5530,42 @@ fn doc_subtree_timestamp_count_zero_when_empty() {
 }
 
 #[test]
+fn doc_median_subtree_timestamp_count_match() {
+    let doc = parse("* A\n<2026-01-01> <2026-01-02>\n** B\n<2026-01-03>\n* C\nno ts\n")
+        .expect("parse");
+    // counts: A=3, B=1, C=0 -> sorted 0,1,3 -> median 1
+    assert_eq!(doc.median_subtree_timestamp_count(), Some(1));
+}
+
+#[test]
+fn doc_subtree_timestamp_count_counts_match() {
+    let doc = parse(
+        "* A\n<2026-01-01>\n* B\n<2026-01-02>\n* C\n<2026-01-03> <2026-01-04>\n",
+    )
+    .expect("parse");
+    // 1,1,2 -> 1->2, 2->1
+    let m = doc.subtree_timestamp_count_counts();
+    assert_eq!(m.get(&1), Some(&2));
+    assert_eq!(m.get(&2), Some(&1));
+}
+
+#[test]
+fn doc_mode_subtree_timestamp_count_match() {
+    let doc = parse(
+        "* A\n<2026-01-01>\n* B\n<2026-01-02>\n* C\n<2026-01-03> <2026-01-04>\n",
+    )
+    .expect("parse");
+    assert_eq!(doc.mode_subtree_timestamp_count(), Some(1));
+}
+
+#[test]
+fn doc_median_subtree_timestamp_count_none_when_empty() {
+    let doc = parse("").expect("parse");
+    assert_eq!(doc.median_subtree_timestamp_count(), None);
+    assert_eq!(doc.mode_subtree_timestamp_count(), None);
+}
+
+#[test]
 fn doc_max_min_root_descendant_count_match() {
     let doc = parse("* A\n** a1\n*** a2\n* B\n** b1\n* C\n").expect("parse");
     // descendants: A=2, B=1, C=0
