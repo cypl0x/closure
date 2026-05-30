@@ -1141,3 +1141,41 @@ fn chord_trie_command_char_len_none_when_empty() {
     assert_eq!(t.total_command_char_len(), 0);
     assert_eq!(t.mean_command_char_len(), 0);
 }
+
+#[test]
+fn chord_trie_median_command_char_len_match() {
+    let t = closure_input::ChordTrie::build(&[("a", "x"), ("b", "yy"), ("c", "zzz")]);
+    assert_eq!(t.median_command_char_len(), Some(2));
+}
+
+#[test]
+fn chord_trie_median_command_char_len_even() {
+    let t = closure_input::ChordTrie::build(&[("a", "x"), ("b", "zzzzz")]);
+    assert_eq!(t.median_command_char_len(), Some(3));
+}
+
+#[test]
+fn chord_trie_median_command_char_len_none_when_empty() {
+    let t = closure_input::ChordTrie::build(&[]);
+    assert_eq!(t.median_command_char_len(), None);
+}
+
+#[test]
+fn chord_trie_mode_command_char_len_match() {
+    let t = closure_input::ChordTrie::build(&[("a", "xx"), ("b", "yy"), ("c", "zzz")]);
+    assert_eq!(t.mode_command_char_len(), Some(2));
+}
+
+#[test]
+fn chord_trie_mode_command_char_len_none_when_empty() {
+    let t = closure_input::ChordTrie::build(&[]);
+    assert_eq!(t.mode_command_char_len(), None);
+}
+
+#[test]
+fn chord_trie_command_char_len_counts_match() {
+    let t = closure_input::ChordTrie::build(&[("a", "xx"), ("b", "yy"), ("c", "zzz")]);
+    let counts = t.command_char_len_counts();
+    assert_eq!(counts.get(&2), Some(&2));
+    assert_eq!(counts.get(&3), Some(&1));
+}
