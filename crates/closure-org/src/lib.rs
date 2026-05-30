@@ -4245,6 +4245,48 @@ impl OrgDoc {
         self.total_subtree_word_count().checked_div(n).unwrap_or(0)
     }
 
+    /// Median subtree word count across headlines (`None` when empty).
+    #[must_use]
+    pub fn median_subtree_word_count(&self) -> Option<usize> {
+        let mut v: Vec<usize> = self
+            .iter_headlines()
+            .into_iter()
+            .map(Headline::subtree_word_count)
+            .collect();
+        if v.is_empty() {
+            return None;
+        }
+        v.sort_unstable();
+        let mid = v.len() / 2;
+        Some(if v.len() % 2 == 1 {
+            v[mid]
+        } else {
+            v[mid - 1].midpoint(v[mid])
+        })
+    }
+
+    /// Histogram of per-headline subtree word counts to occurrence count.
+    #[must_use]
+    pub fn subtree_word_count_counts(&self) -> std::collections::BTreeMap<usize, usize> {
+        let mut m = std::collections::BTreeMap::new();
+        for h in self.iter_headlines() {
+            *m.entry(h.subtree_word_count()).or_insert(0) += 1;
+        }
+        m
+    }
+
+    /// Most common subtree word count (lowest wins ties).
+    #[must_use]
+    pub fn mode_subtree_word_count(&self) -> Option<usize> {
+        let mut best: Option<(usize, usize)> = None;
+        for (wc, c) in self.subtree_word_count_counts() {
+            if best.is_none_or(|(_, bc)| c > bc) {
+                best = Some((wc, c));
+            }
+        }
+        best.map(|(wc, _)| wc)
+    }
+
     /// Returns max body byte count across headlines.
     #[must_use]
     pub fn max_body_byte_count(&self) -> usize {
