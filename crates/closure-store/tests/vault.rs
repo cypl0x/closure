@@ -5339,3 +5339,99 @@ fn vault_mode_file_priority_count_none_when_no_files() {
     let v = Vault::open(td.path()).expect("open");
     assert_eq!(v.mode_file_priority_count(), None);
 }
+
+#[test]
+fn vault_file_leaf_count_counts_match() {
+    // a.org has 1 leaf (A no children), b.org 1 leaf, c.org 2 leaves
+    let td = write_vault(&[
+        ("a.org", "* A\n"),
+        ("b.org", "* B\n"),
+        ("c.org", "* C\n* D\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    let m = v.file_leaf_count_counts();
+    assert_eq!(m.get(&1), Some(&2));
+    assert_eq!(m.get(&2), Some(&1));
+}
+
+#[test]
+fn vault_mode_file_leaf_count_match() {
+    let td = write_vault(&[
+        ("a.org", "* A\n"),
+        ("b.org", "* B\n"),
+        ("c.org", "* C\n* D\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.mode_file_leaf_count(), Some(1));
+}
+
+#[test]
+fn vault_mode_file_leaf_count_none_when_no_files() {
+    let td = write_vault(&[]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.mode_file_leaf_count(), None);
+}
+
+#[test]
+fn vault_file_branch_count_counts_match() {
+    // a.org 1 branch (A has child B), b.org 0 (just C), c.org 1
+    let td = write_vault(&[
+        ("a.org", "* A\n** B\n"),
+        ("b.org", "* C\n"),
+        ("c.org", "* D\n** E\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    let m = v.file_branch_count_counts();
+    assert_eq!(m.get(&1), Some(&2));
+    assert_eq!(m.get(&0), Some(&1));
+}
+
+#[test]
+fn vault_mode_file_branch_count_match() {
+    let td = write_vault(&[
+        ("a.org", "* A\n** B\n"),
+        ("b.org", "* C\n"),
+        ("c.org", "* D\n** E\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.mode_file_branch_count(), Some(1));
+}
+
+#[test]
+fn vault_mode_file_branch_count_none_when_no_files() {
+    let td = write_vault(&[]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.mode_file_branch_count(), None);
+}
+
+#[test]
+fn vault_file_root_count_counts_match() {
+    // a.org 1 root, b.org 1 root, c.org 2 roots
+    let td = write_vault(&[
+        ("a.org", "* A\n"),
+        ("b.org", "* B\n"),
+        ("c.org", "* C\n* D\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    let m = v.file_root_count_counts();
+    assert_eq!(m.get(&1), Some(&2));
+    assert_eq!(m.get(&2), Some(&1));
+}
+
+#[test]
+fn vault_mode_file_root_count_match() {
+    let td = write_vault(&[
+        ("a.org", "* A\n"),
+        ("b.org", "* B\n"),
+        ("c.org", "* C\n* D\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.mode_file_root_count(), Some(1));
+}
+
+#[test]
+fn vault_mode_file_root_count_none_when_no_files() {
+    let td = write_vault(&[]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.mode_file_root_count(), None);
+}

@@ -2843,6 +2843,84 @@ impl Vault {
         best.map(|(pc, _)| pc)
     }
 
+    /// Histogram of per-file leaf counts.
+    #[must_use]
+    pub fn file_leaf_count_counts(&self) -> std::collections::BTreeMap<usize, usize> {
+        let mut m = std::collections::BTreeMap::new();
+        for d in self.documents.values() {
+            let c = d
+                .org()
+                .iter_headlines()
+                .into_iter()
+                .filter(|h| h.is_leaf())
+                .count();
+            *m.entry(c).or_insert(0) += 1;
+        }
+        m
+    }
+
+    /// Most common per-file leaf count (lowest wins ties).
+    #[must_use]
+    pub fn mode_file_leaf_count(&self) -> Option<usize> {
+        let mut best: Option<(usize, usize)> = None;
+        for (lc, c) in self.file_leaf_count_counts() {
+            if best.is_none_or(|(_, bestc)| c > bestc) {
+                best = Some((lc, c));
+            }
+        }
+        best.map(|(lc, _)| lc)
+    }
+
+    /// Histogram of per-file branch counts.
+    #[must_use]
+    pub fn file_branch_count_counts(&self) -> std::collections::BTreeMap<usize, usize> {
+        let mut m = std::collections::BTreeMap::new();
+        for d in self.documents.values() {
+            let c = d
+                .org()
+                .iter_headlines()
+                .into_iter()
+                .filter(|h| !h.is_leaf())
+                .count();
+            *m.entry(c).or_insert(0) += 1;
+        }
+        m
+    }
+
+    /// Most common per-file branch count (lowest wins ties).
+    #[must_use]
+    pub fn mode_file_branch_count(&self) -> Option<usize> {
+        let mut best: Option<(usize, usize)> = None;
+        for (bc, c) in self.file_branch_count_counts() {
+            if best.is_none_or(|(_, bestc)| c > bestc) {
+                best = Some((bc, c));
+            }
+        }
+        best.map(|(bc, _)| bc)
+    }
+
+    /// Histogram of per-file root-headline counts.
+    #[must_use]
+    pub fn file_root_count_counts(&self) -> std::collections::BTreeMap<usize, usize> {
+        let mut m = std::collections::BTreeMap::new();
+        for d in self.documents.values() {
+            *m.entry(d.org().roots().len()).or_insert(0) += 1;
+        }
+        m
+    }
+
+    /// Most common per-file root-headline count (lowest wins ties).
+    #[must_use]
+    pub fn mode_file_root_count(&self) -> Option<usize> {
+        let mut best: Option<(usize, usize)> = None;
+        for (rc, c) in self.file_root_count_counts() {
+            if best.is_none_or(|(_, bestc)| c > bestc) {
+                best = Some((rc, c));
+            }
+        }
+        best.map(|(rc, _)| rc)
+    }
+
     /// Percentage of distinct tags among total tag occurrences
     /// (`distinct * 100 / total`, `0` when no tags).
     #[must_use]
