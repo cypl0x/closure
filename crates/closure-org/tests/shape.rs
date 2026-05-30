@@ -5341,6 +5341,37 @@ fn doc_median_subtree_tag_count_none_when_empty() {
 }
 
 #[test]
+fn doc_max_min_subtree_todo_count_match() {
+    let doc = parse("* TODO A\n** DONE B\n* C\n").expect("parse");
+    // subtree distinct TODOs: A={TODO,DONE}=2, B={DONE}=1, C={}=0
+    assert_eq!(doc.max_subtree_todo_count(), 2);
+    assert_eq!(doc.min_subtree_todo_count(), 0);
+}
+
+#[test]
+fn doc_total_subtree_todo_count_match() {
+    let doc = parse("* TODO A\n** DONE B\n* C\n").expect("parse");
+    // 2+1+0 = 3
+    assert_eq!(doc.total_subtree_todo_count(), 3);
+}
+
+#[test]
+fn doc_mean_subtree_todo_count_match() {
+    let doc = parse("* TODO A\n* TODO B\n* TODO C\n").expect("parse");
+    // 1+1+1=3, n=3 -> 1
+    assert_eq!(doc.mean_subtree_todo_count(), 1);
+}
+
+#[test]
+fn doc_subtree_todo_count_zero_when_empty() {
+    let doc = parse("").expect("parse");
+    assert_eq!(doc.max_subtree_todo_count(), 0);
+    assert_eq!(doc.min_subtree_todo_count(), 0);
+    assert_eq!(doc.total_subtree_todo_count(), 0);
+    assert_eq!(doc.mean_subtree_todo_count(), 0);
+}
+
+#[test]
 fn doc_max_min_root_descendant_count_match() {
     let doc = parse("* A\n** a1\n*** a2\n* B\n** b1\n* C\n").expect("parse");
     // descendants: A=2, B=1, C=0
