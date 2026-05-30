@@ -5097,3 +5097,48 @@ fn vault_subtree_level_count_counts_match() {
     assert_eq!(m.get(&2), Some(&1));
     assert_eq!(m.get(&1), Some(&2));
 }
+
+#[test]
+fn vault_max_min_subtree_property_count_match() {
+    // A has :PROPERTIES: with 1 prop, B has 2, C 0.
+    // subtree counts: A=3, B=2, C=0
+    let td = write_vault(&[(
+        "a.org",
+        "* A\n:PROPERTIES:\n:x: 1\n:END:\n** B\n:PROPERTIES:\n:y: 2\n:z: 3\n:END:\n** C\n",
+    )]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.max_subtree_property_count(), Some(3));
+    assert_eq!(v.min_subtree_property_count(), Some(0));
+}
+
+#[test]
+fn vault_total_subtree_property_count_match() {
+    let td = write_vault(&[(
+        "a.org",
+        "* A\n:PROPERTIES:\n:x: 1\n:END:\n** B\n:PROPERTIES:\n:y: 2\n:z: 3\n:END:\n** C\n",
+    )]);
+    let v = Vault::open(td.path()).expect("open");
+    // 3+2+0
+    assert_eq!(v.total_subtree_property_count(), 5);
+}
+
+#[test]
+fn vault_mean_subtree_property_count_match() {
+    let td = write_vault(&[(
+        "a.org",
+        "* A\n:PROPERTIES:\n:x: 1\n:END:\n** B\n:PROPERTIES:\n:y: 2\n:z: 3\n:END:\n** C\n",
+    )]);
+    let v = Vault::open(td.path()).expect("open");
+    // 5/3=1
+    assert_eq!(v.mean_subtree_property_count(), 1);
+}
+
+#[test]
+fn vault_subtree_property_count_none_when_empty() {
+    let td = write_vault(&[("a.org", "")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.max_subtree_property_count(), None);
+    assert_eq!(v.min_subtree_property_count(), None);
+    assert_eq!(v.total_subtree_property_count(), 0);
+    assert_eq!(v.mean_subtree_property_count(), 0);
+}
