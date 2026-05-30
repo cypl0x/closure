@@ -357,6 +357,44 @@ impl Dispatcher {
             .unwrap_or(0)
     }
 
+    /// Median byte length over distinct command names. None if empty.
+    #[must_use]
+    pub fn median_command_byte_len(&self) -> Option<usize> {
+        let mut v: Vec<usize> = self.command_names().iter().map(|n| n.len()).collect();
+        if v.is_empty() {
+            return None;
+        }
+        v.sort_unstable();
+        let mid = v.len() / 2;
+        Some(if v.len() % 2 == 1 {
+            v[mid]
+        } else {
+            v[mid - 1].midpoint(v[mid])
+        })
+    }
+
+    /// Histogram of command name byte length -> count.
+    #[must_use]
+    pub fn command_byte_len_counts(&self) -> std::collections::BTreeMap<usize, usize> {
+        let mut m = std::collections::BTreeMap::new();
+        for n in self.command_names() {
+            *m.entry(n.len()).or_insert(0) += 1;
+        }
+        m
+    }
+
+    /// Most common command name byte length. None if empty. Lowest wins ties.
+    #[must_use]
+    pub fn mode_command_byte_len(&self) -> Option<usize> {
+        let mut best: Option<(usize, usize)> = None;
+        for (len, c) in self.command_byte_len_counts() {
+            if best.is_none_or(|(_, bc)| c > bc) {
+                best = Some((len, c));
+            }
+        }
+        best.map(|(len, _)| len)
+    }
+
     /// Count of single-stroke bound chords.
     #[must_use]
     pub fn single_stroke_count(&self) -> usize {
