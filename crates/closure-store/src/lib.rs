@@ -2797,6 +2797,29 @@ impl Vault {
         })
     }
 
+    /// Histogram of per-file TODO-marked headline counts.
+    #[must_use]
+    pub fn file_todo_count_counts(&self) -> std::collections::BTreeMap<usize, usize> {
+        let mut m = std::collections::BTreeMap::new();
+        for d in self.documents.values() {
+            let c = d.all_headlines().filter(|h| h.todo().is_some()).count();
+            *m.entry(c).or_insert(0) += 1;
+        }
+        m
+    }
+
+    /// Most common per-file TODO-marked headline count (lowest wins ties).
+    #[must_use]
+    pub fn mode_file_todo_count(&self) -> Option<usize> {
+        let mut best: Option<(usize, usize)> = None;
+        for (tc, c) in self.file_todo_count_counts() {
+            if best.is_none_or(|(_, bestc)| c > bestc) {
+                best = Some((tc, c));
+            }
+        }
+        best.map(|(tc, _)| tc)
+    }
+
     /// Percentage of distinct tags among total tag occurrences
     /// (`distinct * 100 / total`, `0` when no tags).
     #[must_use]
