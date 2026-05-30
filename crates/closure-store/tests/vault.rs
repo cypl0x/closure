@@ -4586,3 +4586,52 @@ fn vault_subtree_word_count_none_when_empty() {
     assert_eq!(v.total_subtree_word_count(), 0);
     assert_eq!(v.mean_subtree_word_count(), 0);
 }
+
+#[test]
+fn vault_median_subtree_word_count_match() {
+    // headlines subtree counts: parent=3, child=1 -> sorted [1,3], midpoint 2
+    let td = write_vault(&[("a.org", "* A\none two\n** B\nthree\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.median_subtree_word_count(), Some(2));
+}
+
+#[test]
+fn vault_median_subtree_word_count_odd() {
+    // three headlines: A subtree=1, B subtree=1, C subtree=2 -> sorted [1,1,2] -> median 1
+    let td = write_vault(&[("a.org", "* A\nx\n* B\ny\n* C\nz w\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.median_subtree_word_count(), Some(1));
+}
+
+#[test]
+fn vault_median_subtree_word_count_none_when_empty() {
+    let td = write_vault(&[("a.org", "")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.median_subtree_word_count(), None);
+}
+
+#[test]
+fn vault_subtree_word_count_counts_match() {
+    // counts: 3 -> 1, 1 -> 1
+    let td = write_vault(&[("a.org", "* A\none two\n** B\nthree\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    let m = v.subtree_word_count_counts();
+    assert_eq!(m.get(&3), Some(&1));
+    assert_eq!(m.get(&1), Some(&1));
+}
+
+#[test]
+fn vault_mode_subtree_word_count_match() {
+    // subtree counts: A=1 (own body "x"), B=1 (own body "y"), C=2 (z w)
+    // mode = 1
+    let td = write_vault(&[("a.org", "* A\nx\n* B\ny\n* C\nz w\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.mode_subtree_word_count(), Some(1));
+}
+
+#[test]
+fn vault_mode_subtree_word_count_none_when_empty() {
+    let td = write_vault(&[("a.org", "")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.mode_subtree_word_count(), None);
+}
