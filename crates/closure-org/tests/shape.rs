@@ -5221,6 +5221,37 @@ fn doc_median_subtree_byte_count_none_when_empty() {
 }
 
 #[test]
+fn doc_max_min_subtree_link_count_match() {
+    let doc = parse("* A\n[[l1]]\n** B\n[[l2]] [[l3]]\n* C\nno links\n").expect("parse");
+    // subtree links: A=1+2=3, B=2, C=0 -> max 3, min 0
+    assert_eq!(doc.max_subtree_link_count(), 3);
+    assert_eq!(doc.min_subtree_link_count(), 0);
+}
+
+#[test]
+fn doc_total_subtree_link_count_match() {
+    let doc = parse("* A\n[[l1]]\n** B\n[[l2]] [[l3]]\n* C\nno links\n").expect("parse");
+    // 3+2+0 = 5
+    assert_eq!(doc.total_subtree_link_count(), 5);
+}
+
+#[test]
+fn doc_mean_subtree_link_count_match() {
+    let doc = parse("* A\n[[l1]]\n** B\n[[l2]]\n* C\n[[l3]]\n").expect("parse");
+    // subtree links: A=1+1=2, B=1, C=1 -> total 4 / 3 = 1
+    assert_eq!(doc.mean_subtree_link_count(), 1);
+}
+
+#[test]
+fn doc_subtree_link_count_zero_when_empty() {
+    let doc = parse("").expect("parse");
+    assert_eq!(doc.max_subtree_link_count(), 0);
+    assert_eq!(doc.min_subtree_link_count(), 0);
+    assert_eq!(doc.total_subtree_link_count(), 0);
+    assert_eq!(doc.mean_subtree_link_count(), 0);
+}
+
+#[test]
 fn doc_max_min_root_descendant_count_match() {
     let doc = parse("* A\n** a1\n*** a2\n* B\n** b1\n* C\n").expect("parse");
     // descendants: A=2, B=1, C=0
