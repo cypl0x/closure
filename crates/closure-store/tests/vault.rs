@@ -5023,3 +5023,38 @@ fn vault_subtree_priority_count_counts_match() {
     assert_eq!(m.get(&1), Some(&1));
     assert_eq!(m.get(&0), Some(&1));
 }
+
+#[test]
+fn vault_max_min_subtree_level_count_match() {
+    // A subtree distinct levels {1,2}=2. B subtree {2}=1. C subtree {2}=1
+    let td = write_vault(&[("a.org", "* A\n** B\n** C\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.max_subtree_level_count(), Some(2));
+    assert_eq!(v.min_subtree_level_count(), Some(1));
+}
+
+#[test]
+fn vault_total_subtree_level_count_match() {
+    let td = write_vault(&[("a.org", "* A\n** B\n** C\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    // 2+1+1
+    assert_eq!(v.total_subtree_level_count(), 4);
+}
+
+#[test]
+fn vault_mean_subtree_level_count_match() {
+    let td = write_vault(&[("a.org", "* A\n** B\n** C\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    // 4/3=1
+    assert_eq!(v.mean_subtree_level_count(), 1);
+}
+
+#[test]
+fn vault_subtree_level_count_none_when_empty() {
+    let td = write_vault(&[("a.org", "")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.max_subtree_level_count(), None);
+    assert_eq!(v.min_subtree_level_count(), None);
+    assert_eq!(v.total_subtree_level_count(), 0);
+    assert_eq!(v.mean_subtree_level_count(), 0);
+}
