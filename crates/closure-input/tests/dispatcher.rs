@@ -967,3 +967,39 @@ fn dispatcher_command_byte_len_counts_match() {
     let m = disp.command_byte_len_counts();
     assert_eq!(m.get(&15), Some(&1));
 }
+
+#[test]
+fn dispatcher_max_min_command_char_len_match() {
+    let mut reg = Registry::new();
+    reg.register(Box::new(RenameHeadline::new_placeholder()));
+    let disp = Dispatcher::from_registry(&reg, InputMode::Doom);
+    // "rename-headline" = 15 chars
+    assert_eq!(disp.max_command_char_len(), Some(15));
+    assert_eq!(disp.min_command_char_len(), Some(15));
+}
+
+#[test]
+fn dispatcher_total_command_char_len_match() {
+    let mut reg = Registry::new();
+    reg.register(Box::new(RenameHeadline::new_placeholder()));
+    let disp = Dispatcher::from_registry(&reg, InputMode::Doom);
+    assert_eq!(disp.total_command_char_len(), 15);
+}
+
+#[test]
+fn dispatcher_mean_command_char_len_match() {
+    let mut reg = Registry::new();
+    reg.register(Box::new(RenameHeadline::new_placeholder()));
+    let disp = Dispatcher::from_registry(&reg, InputMode::Doom);
+    assert_eq!(disp.mean_command_char_len(), 15);
+}
+
+#[test]
+fn dispatcher_command_char_len_none_when_empty() {
+    let reg = Registry::new();
+    let disp = Dispatcher::from_registry(&reg, InputMode::Doom);
+    assert_eq!(disp.max_command_char_len(), None);
+    assert_eq!(disp.min_command_char_len(), None);
+    assert_eq!(disp.total_command_char_len(), 0);
+    assert_eq!(disp.mean_command_char_len(), 0);
+}

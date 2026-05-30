@@ -395,6 +395,33 @@ impl Dispatcher {
         best.map(|(len, _)| len)
     }
 
+    /// Max char length over distinct command names. None if no commands.
+    #[must_use]
+    pub fn max_command_char_len(&self) -> Option<usize> {
+        self.command_names().iter().map(|n| n.chars().count()).max()
+    }
+
+    /// Min char length over distinct command names. None if no commands.
+    #[must_use]
+    pub fn min_command_char_len(&self) -> Option<usize> {
+        self.command_names().iter().map(|n| n.chars().count()).min()
+    }
+
+    /// Sum of char lengths over distinct command names.
+    #[must_use]
+    pub fn total_command_char_len(&self) -> usize {
+        self.command_names().iter().map(|n| n.chars().count()).sum()
+    }
+
+    /// Integer mean char length over distinct command names. 0 when empty.
+    #[must_use]
+    pub fn mean_command_char_len(&self) -> usize {
+        let names = self.command_names();
+        self.total_command_char_len()
+            .checked_div(names.len())
+            .unwrap_or(0)
+    }
+
     /// Count of single-stroke bound chords.
     #[must_use]
     pub fn single_stroke_count(&self) -> usize {
