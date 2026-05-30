@@ -4669,3 +4669,43 @@ fn vault_subtree_byte_count_none_when_empty() {
     assert_eq!(v.total_subtree_byte_count(), 0);
     assert_eq!(v.mean_subtree_byte_count(), 0);
 }
+
+#[test]
+fn vault_median_subtree_byte_count_positive() {
+    let td = write_vault(&[("a.org", "* A\n** B\n** C\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert!(v.median_subtree_byte_count().is_some());
+}
+
+#[test]
+fn vault_median_subtree_byte_count_none_when_empty() {
+    let td = write_vault(&[("a.org", "")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.median_subtree_byte_count(), None);
+}
+
+#[test]
+fn vault_mode_subtree_byte_count_match() {
+    // siblings B and C both "* B\n" = 4 bytes, A subtree larger
+    let td = write_vault(&[("a.org", "* A\n** B\n** C\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    // B == C → mode is their byte count, A larger
+    let counts = v.subtree_byte_count_counts();
+    let mode = v.mode_subtree_byte_count().expect("non-empty");
+    assert_eq!(counts.get(&mode), Some(&2));
+}
+
+#[test]
+fn vault_mode_subtree_byte_count_none_when_empty() {
+    let td = write_vault(&[("a.org", "")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.mode_subtree_byte_count(), None);
+}
+
+#[test]
+fn vault_subtree_byte_count_counts_nonempty() {
+    let td = write_vault(&[("a.org", "* A\n** B\n** C\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    let m = v.subtree_byte_count_counts();
+    assert!(!m.is_empty());
+}
