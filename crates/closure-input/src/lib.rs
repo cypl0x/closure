@@ -188,6 +188,32 @@ impl Dispatcher {
         })
     }
 
+    /// Maximum chord byte length across bound chords (`None` when empty).
+    #[must_use]
+    pub fn max_chord_byte_len(&self) -> Option<usize> {
+        self.bindings.keys().map(String::len).max()
+    }
+
+    /// Minimum chord byte length across bound chords (`None` when empty).
+    #[must_use]
+    pub fn min_chord_byte_len(&self) -> Option<usize> {
+        self.bindings.keys().map(String::len).min()
+    }
+
+    /// Total chord byte length summed across bound chords.
+    #[must_use]
+    pub fn total_chord_byte_len(&self) -> usize {
+        self.bindings.keys().map(String::len).sum()
+    }
+
+    /// Integer mean chord byte length (`0` when empty).
+    #[must_use]
+    pub fn mean_chord_byte_len(&self) -> usize {
+        self.total_chord_byte_len()
+            .checked_div(self.bindings.len())
+            .unwrap_or(0)
+    }
+
     /// Histogram of chord stroke counts to occurrence count.
     #[must_use]
     pub fn chord_stroke_counts(&self) -> std::collections::BTreeMap<usize, usize> {

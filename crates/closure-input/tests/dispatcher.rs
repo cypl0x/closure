@@ -413,6 +413,42 @@ fn dispatcher_median_chord_strokes_none_when_empty() {
 }
 
 #[test]
+fn dispatcher_max_min_chord_byte_len_match() {
+    let mut reg = Registry::new();
+    reg.register(Box::new(RenameHeadline::new_placeholder()));
+    let disp = Dispatcher::from_registry(&reg, InputMode::Doom);
+    // "C-c C-x r" = 9 bytes
+    assert_eq!(disp.max_chord_byte_len(), Some(9));
+    assert_eq!(disp.min_chord_byte_len(), Some(9));
+}
+
+#[test]
+fn dispatcher_total_chord_byte_len_match() {
+    let mut reg = Registry::new();
+    reg.register(Box::new(RenameHeadline::new_placeholder()));
+    let disp = Dispatcher::from_registry(&reg, InputMode::Doom);
+    assert_eq!(disp.total_chord_byte_len(), 9);
+}
+
+#[test]
+fn dispatcher_mean_chord_byte_len_match() {
+    let mut reg = Registry::new();
+    reg.register(Box::new(RenameHeadline::new_placeholder()));
+    let disp = Dispatcher::from_registry(&reg, InputMode::Doom);
+    assert_eq!(disp.mean_chord_byte_len(), 9);
+}
+
+#[test]
+fn dispatcher_chord_byte_len_none_when_empty() {
+    let reg = Registry::new();
+    let disp = Dispatcher::from_registry(&reg, InputMode::Doom);
+    assert_eq!(disp.max_chord_byte_len(), None);
+    assert_eq!(disp.min_chord_byte_len(), None);
+    assert_eq!(disp.mean_chord_byte_len(), 0);
+    assert_eq!(disp.total_chord_byte_len(), 0);
+}
+
+#[test]
 fn dispatcher_has_command_match() {
     let mut reg = Registry::new();
     reg.register(Box::new(RenameHeadline::new_placeholder()));
