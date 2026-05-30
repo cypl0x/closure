@@ -5459,6 +5459,44 @@ fn doc_subtree_property_count_zero_when_empty() {
 }
 
 #[test]
+fn doc_median_subtree_property_count_match() {
+    let doc = parse(
+        "* A\n:PROPERTIES:\n:K1: v\n:K2: w\n:END:\n** B\n:PROPERTIES:\n:K3: x\n:END:\n* C\n",
+    )
+    .expect("parse");
+    // counts: A=3, B=1, C=0 -> sorted 0,1,3 -> median 1
+    assert_eq!(doc.median_subtree_property_count(), Some(1));
+}
+
+#[test]
+fn doc_subtree_property_count_counts_match() {
+    let doc = parse(
+        "* A\n:PROPERTIES:\n:K: v\n:END:\n* B\n:PROPERTIES:\n:K: w\n:END:\n* C\n:PROPERTIES:\n:K: x\n:L: y\n:END:\n",
+    )
+    .expect("parse");
+    // counts: A=1, B=1, C=2 -> 1->2, 2->1
+    let m = doc.subtree_property_count_counts();
+    assert_eq!(m.get(&1), Some(&2));
+    assert_eq!(m.get(&2), Some(&1));
+}
+
+#[test]
+fn doc_mode_subtree_property_count_match() {
+    let doc = parse(
+        "* A\n:PROPERTIES:\n:K: v\n:END:\n* B\n:PROPERTIES:\n:K: w\n:END:\n* C\n:PROPERTIES:\n:K: x\n:L: y\n:END:\n",
+    )
+    .expect("parse");
+    assert_eq!(doc.mode_subtree_property_count(), Some(1));
+}
+
+#[test]
+fn doc_median_subtree_property_count_none_when_empty() {
+    let doc = parse("").expect("parse");
+    assert_eq!(doc.median_subtree_property_count(), None);
+    assert_eq!(doc.mode_subtree_property_count(), None);
+}
+
+#[test]
 fn doc_max_min_root_descendant_count_match() {
     let doc = parse("* A\n** a1\n*** a2\n* B\n** b1\n* C\n").expect("parse");
     // descendants: A=2, B=1, C=0
