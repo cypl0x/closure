@@ -5435,3 +5435,98 @@ fn vault_mode_file_root_count_none_when_no_files() {
     let v = Vault::open(td.path()).expect("open");
     assert_eq!(v.mode_file_root_count(), None);
 }
+
+#[test]
+fn vault_file_tag_count_counts_match() {
+    // file tag count = headlines with non-empty tags count
+    let td = write_vault(&[
+        ("a.org", "* A :x:\n"),
+        ("b.org", "* B :y:\n"),
+        ("c.org", "* C\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    let m = v.file_tag_count_counts();
+    // a.org: 1 tag, b.org: 1 tag, c.org: 0
+    assert_eq!(m.get(&1), Some(&2));
+    assert_eq!(m.get(&0), Some(&1));
+}
+
+#[test]
+fn vault_mode_file_tag_count_match() {
+    let td = write_vault(&[
+        ("a.org", "* A :x:\n"),
+        ("b.org", "* B :y:\n"),
+        ("c.org", "* C\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.mode_file_tag_count(), Some(1));
+}
+
+#[test]
+fn vault_mode_file_tag_count_none_when_no_files() {
+    let td = write_vault(&[]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.mode_file_tag_count(), None);
+}
+
+#[test]
+fn vault_file_link_count_counts_match() {
+    let td = write_vault(&[
+        ("a.org", "* A\n[[x][X]]\n"),
+        ("b.org", "* B\n[[y][Y]]\n"),
+        ("c.org", "* C\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    let m = v.file_link_count_counts();
+    assert_eq!(m.get(&1), Some(&2));
+    assert_eq!(m.get(&0), Some(&1));
+}
+
+#[test]
+fn vault_mode_file_link_count_match() {
+    let td = write_vault(&[
+        ("a.org", "* A\n[[x][X]]\n"),
+        ("b.org", "* B\n[[y][Y]]\n"),
+        ("c.org", "* C\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.mode_file_link_count(), Some(1));
+}
+
+#[test]
+fn vault_mode_file_link_count_none_when_no_files() {
+    let td = write_vault(&[]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.mode_file_link_count(), None);
+}
+
+#[test]
+fn vault_file_timestamp_count_counts_match() {
+    let td = write_vault(&[
+        ("a.org", "* A\n<2026-05-30 Sat>\n"),
+        ("b.org", "* B\n<2026-05-31 Sun>\n"),
+        ("c.org", "* C\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    let m = v.file_timestamp_count_counts();
+    assert_eq!(m.get(&1), Some(&2));
+    assert_eq!(m.get(&0), Some(&1));
+}
+
+#[test]
+fn vault_mode_file_timestamp_count_match() {
+    let td = write_vault(&[
+        ("a.org", "* A\n<2026-05-30 Sat>\n"),
+        ("b.org", "* B\n<2026-05-31 Sun>\n"),
+        ("c.org", "* C\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.mode_file_timestamp_count(), Some(1));
+}
+
+#[test]
+fn vault_mode_file_timestamp_count_none_when_no_files() {
+    let td = write_vault(&[]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.mode_file_timestamp_count(), None);
+}

@@ -2921,6 +2921,74 @@ impl Vault {
         best.map(|(rc, _)| rc)
     }
 
+    /// Histogram of per-file tag occurrence counts.
+    #[must_use]
+    pub fn file_tag_count_counts(&self) -> std::collections::BTreeMap<usize, usize> {
+        let mut m = std::collections::BTreeMap::new();
+        for d in self.documents.values() {
+            let c: usize = d.all_headlines().map(|h| h.tags().len()).sum();
+            *m.entry(c).or_insert(0) += 1;
+        }
+        m
+    }
+
+    /// Most common per-file tag occurrence count (lowest wins ties).
+    #[must_use]
+    pub fn mode_file_tag_count(&self) -> Option<usize> {
+        let mut best: Option<(usize, usize)> = None;
+        for (tc, c) in self.file_tag_count_counts() {
+            if best.is_none_or(|(_, bestc)| c > bestc) {
+                best = Some((tc, c));
+            }
+        }
+        best.map(|(tc, _)| tc)
+    }
+
+    /// Histogram of per-file link counts.
+    #[must_use]
+    pub fn file_link_count_counts(&self) -> std::collections::BTreeMap<usize, usize> {
+        let mut m = std::collections::BTreeMap::new();
+        for d in self.documents.values() {
+            let c: usize = d.all_headlines().map(|h| h.link_targets().len()).sum();
+            *m.entry(c).or_insert(0) += 1;
+        }
+        m
+    }
+
+    /// Most common per-file link count (lowest wins ties).
+    #[must_use]
+    pub fn mode_file_link_count(&self) -> Option<usize> {
+        let mut best: Option<(usize, usize)> = None;
+        for (lc, c) in self.file_link_count_counts() {
+            if best.is_none_or(|(_, bestc)| c > bestc) {
+                best = Some((lc, c));
+            }
+        }
+        best.map(|(lc, _)| lc)
+    }
+
+    /// Histogram of per-file timestamp counts.
+    #[must_use]
+    pub fn file_timestamp_count_counts(&self) -> std::collections::BTreeMap<usize, usize> {
+        let mut m = std::collections::BTreeMap::new();
+        for d in self.documents.values() {
+            *m.entry(d.org().total_timestamp_count()).or_insert(0) += 1;
+        }
+        m
+    }
+
+    /// Most common per-file timestamp count (lowest wins ties).
+    #[must_use]
+    pub fn mode_file_timestamp_count(&self) -> Option<usize> {
+        let mut best: Option<(usize, usize)> = None;
+        for (tc, c) in self.file_timestamp_count_counts() {
+            if best.is_none_or(|(_, bestc)| c > bestc) {
+                best = Some((tc, c));
+            }
+        }
+        best.map(|(tc, _)| tc)
+    }
+
     /// Percentage of distinct tags among total tag occurrences
     /// (`distinct * 100 / total`, `0` when no tags).
     #[must_use]
