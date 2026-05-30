@@ -9729,6 +9729,28 @@ impl Headline {
                 .sum::<usize>()
     }
 
+    /// Total property-pair count over the entire subtree (self + descendants).
+    #[must_use]
+    pub fn subtree_property_count(&self) -> usize {
+        self.property_count()
+            + self
+                .children
+                .iter()
+                .map(Self::subtree_property_count)
+                .sum::<usize>()
+    }
+
+    /// Total timestamp count over the entire subtree (self + descendants).
+    #[must_use]
+    pub fn subtree_timestamp_count(&self) -> usize {
+        self.timestamp_count()
+            + self
+                .children
+                .iter()
+                .map(Self::subtree_timestamp_count)
+                .sum::<usize>()
+    }
+
     /// Iterate body nodes whose kind matches `kind`.
     pub fn body_nodes_by_kind(&self, kind: NodeKind) -> impl Iterator<Item = &Node> {
         self.body.iter().filter(move |n| n.kind == kind)

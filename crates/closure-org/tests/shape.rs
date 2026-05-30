@@ -2861,6 +2861,24 @@ fn headline_subtree_tag_count_match() {
 }
 
 #[test]
+fn headline_subtree_property_count_match() {
+    let src = "* Top\n:PROPERTIES:\n:K1: v\n:K2: w\n:END:\n** Inner\n:PROPERTIES:\n:K3: x\n:END:\n";
+    let doc = parse(src).expect("parse");
+    let top = &doc.roots()[0];
+    // Top=2 props + Inner=1 prop -> 3
+    assert_eq!(top.subtree_property_count(), 3);
+}
+
+#[test]
+fn headline_subtree_timestamp_count_match() {
+    let src = "* Top\n<2026-01-01> <2026-01-02>\n** Inner\n<2026-01-03>\n";
+    let doc = parse(src).expect("parse");
+    let top = &doc.roots()[0];
+    // Top=2 + Inner=1 -> 3
+    assert_eq!(top.subtree_timestamp_count(), 3);
+}
+
+#[test]
 fn headline_subtree_todo_count_match() {
     let src = "* TODO Top\n** DONE Inner\n*** TODO Leaf\n";
     let doc = parse(src).expect("parse");
