@@ -330,6 +330,33 @@ impl Dispatcher {
         m
     }
 
+    /// Max byte length over distinct command names. None if no commands.
+    #[must_use]
+    pub fn max_command_byte_len(&self) -> Option<usize> {
+        self.command_names().iter().map(|n| n.len()).max()
+    }
+
+    /// Min byte length over distinct command names. None if no commands.
+    #[must_use]
+    pub fn min_command_byte_len(&self) -> Option<usize> {
+        self.command_names().iter().map(|n| n.len()).min()
+    }
+
+    /// Sum of byte lengths over distinct command names.
+    #[must_use]
+    pub fn total_command_byte_len(&self) -> usize {
+        self.command_names().iter().map(|n| n.len()).sum()
+    }
+
+    /// Integer mean byte length over distinct command names. 0 when empty.
+    #[must_use]
+    pub fn mean_command_byte_len(&self) -> usize {
+        let names = self.command_names();
+        self.total_command_byte_len()
+            .checked_div(names.len())
+            .unwrap_or(0)
+    }
+
     /// Count of single-stroke bound chords.
     #[must_use]
     pub fn single_stroke_count(&self) -> usize {
