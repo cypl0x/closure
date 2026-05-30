@@ -5597,6 +5597,35 @@ fn doc_subtree_priority_count_zero_when_empty() {
 }
 
 #[test]
+fn doc_median_subtree_priority_count_match() {
+    let doc = parse("* [#A] X\n** [#B] Y\n*** [#A] Z\n* W\n").expect("parse");
+    // X=2, Y=2, Z=1, W=0 -> sorted 0,1,2,2 -> mid midpoint(1,2)=1
+    assert_eq!(doc.median_subtree_priority_count(), Some(1));
+}
+
+#[test]
+fn doc_subtree_priority_count_counts_match() {
+    let doc = parse("* [#A] X\n* [#A] Y\n* [#B] Z\n** [#A] W\n").expect("parse");
+    // distinct: X=1, Y=1, Z={B,A}=2, W=1
+    let m = doc.subtree_priority_count_counts();
+    assert_eq!(m.get(&1), Some(&3));
+    assert_eq!(m.get(&2), Some(&1));
+}
+
+#[test]
+fn doc_mode_subtree_priority_count_match() {
+    let doc = parse("* [#A] X\n* [#A] Y\n* [#B] Z\n** [#A] W\n").expect("parse");
+    assert_eq!(doc.mode_subtree_priority_count(), Some(1));
+}
+
+#[test]
+fn doc_median_subtree_priority_count_none_when_empty() {
+    let doc = parse("").expect("parse");
+    assert_eq!(doc.median_subtree_priority_count(), None);
+    assert_eq!(doc.mode_subtree_priority_count(), None);
+}
+
+#[test]
 fn doc_max_min_root_descendant_count_match() {
     let doc = parse("* A\n** a1\n*** a2\n* B\n** b1\n* C\n").expect("parse");
     // descendants: A=2, B=1, C=0

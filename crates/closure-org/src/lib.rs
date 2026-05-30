@@ -3721,6 +3721,48 @@ impl OrgDoc {
         self.total_subtree_priority_count().checked_div(n).unwrap_or(0)
     }
 
+    /// Median subtree distinct-priority count across all headlines (`None` when empty).
+    #[must_use]
+    pub fn median_subtree_priority_count(&self) -> Option<usize> {
+        let mut v: Vec<usize> = self
+            .iter_headlines()
+            .into_iter()
+            .map(Headline::subtree_priority_count)
+            .collect();
+        if v.is_empty() {
+            return None;
+        }
+        v.sort_unstable();
+        let mid = v.len() / 2;
+        Some(if v.len() % 2 == 1 {
+            v[mid]
+        } else {
+            v[mid - 1].midpoint(v[mid])
+        })
+    }
+
+    /// Histogram of per-headline subtree distinct-priority counts to occurrence count.
+    #[must_use]
+    pub fn subtree_priority_count_counts(&self) -> std::collections::BTreeMap<usize, usize> {
+        let mut m = std::collections::BTreeMap::new();
+        for h in self.iter_headlines() {
+            *m.entry(h.subtree_priority_count()).or_insert(0) += 1;
+        }
+        m
+    }
+
+    /// Most common subtree distinct-priority count (lowest wins ties).
+    #[must_use]
+    pub fn mode_subtree_priority_count(&self) -> Option<usize> {
+        let mut best: Option<(usize, usize)> = None;
+        for (pc, c) in self.subtree_priority_count_counts() {
+            if best.is_none_or(|(_, bc)| c > bc) {
+                best = Some((pc, c));
+            }
+        }
+        best.map(|(pc, _)| pc)
+    }
+
     /// Average tags per headline (0 if no headlines).
     #[must_use]
     pub fn mean_tags(&self) -> usize {
