@@ -4835,3 +4835,43 @@ fn vault_subtree_tag_count_none_when_empty() {
     assert_eq!(v.total_subtree_tag_count(), 0);
     assert_eq!(v.mean_subtree_tag_count(), 0);
 }
+
+#[test]
+fn vault_median_subtree_tag_count_match() {
+    // counts A=2, B=1, C=0 -> sorted [0,1,2] -> median 1
+    let td = write_vault(&[("a.org", "* A :x:\n** B :y:\n** C\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.median_subtree_tag_count(), Some(1));
+}
+
+#[test]
+fn vault_median_subtree_tag_count_none_when_empty() {
+    let td = write_vault(&[("a.org", "")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.median_subtree_tag_count(), None);
+}
+
+#[test]
+fn vault_mode_subtree_tag_count_match() {
+    // each headline 0 tags -> mode 0
+    let td = write_vault(&[("a.org", "* A\n* B\n* C\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.mode_subtree_tag_count(), Some(0));
+}
+
+#[test]
+fn vault_mode_subtree_tag_count_none_when_empty() {
+    let td = write_vault(&[("a.org", "")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.mode_subtree_tag_count(), None);
+}
+
+#[test]
+fn vault_subtree_tag_count_counts_match() {
+    let td = write_vault(&[("a.org", "* A :x:\n** B :y:\n** C\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    let m = v.subtree_tag_count_counts();
+    assert_eq!(m.get(&2), Some(&1));
+    assert_eq!(m.get(&1), Some(&1));
+    assert_eq!(m.get(&0), Some(&1));
+}
