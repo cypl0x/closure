@@ -5187,3 +5187,47 @@ fn vault_subtree_property_count_counts_match() {
     assert_eq!(m.get(&2), Some(&1));
     assert_eq!(m.get(&0), Some(&1));
 }
+
+#[test]
+fn vault_max_min_subtree_timestamp_count_match() {
+    // A body has 1 ts, B body has 1, C none. Subtree: A=2, B=1, C=0.
+    let td = write_vault(&[(
+        "a.org",
+        "* A\n<2026-05-30 Sat>\n** B\n<2026-05-31 Sun>\n** C\n",
+    )]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.max_subtree_timestamp_count(), Some(2));
+    assert_eq!(v.min_subtree_timestamp_count(), Some(0));
+}
+
+#[test]
+fn vault_total_subtree_timestamp_count_match() {
+    let td = write_vault(&[(
+        "a.org",
+        "* A\n<2026-05-30 Sat>\n** B\n<2026-05-31 Sun>\n** C\n",
+    )]);
+    let v = Vault::open(td.path()).expect("open");
+    // 2+1+0
+    assert_eq!(v.total_subtree_timestamp_count(), 3);
+}
+
+#[test]
+fn vault_mean_subtree_timestamp_count_match() {
+    let td = write_vault(&[(
+        "a.org",
+        "* A\n<2026-05-30 Sat>\n** B\n<2026-05-31 Sun>\n** C\n",
+    )]);
+    let v = Vault::open(td.path()).expect("open");
+    // 3/3=1
+    assert_eq!(v.mean_subtree_timestamp_count(), 1);
+}
+
+#[test]
+fn vault_subtree_timestamp_count_none_when_empty() {
+    let td = write_vault(&[("a.org", "")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.max_subtree_timestamp_count(), None);
+    assert_eq!(v.min_subtree_timestamp_count(), None);
+    assert_eq!(v.total_subtree_timestamp_count(), 0);
+    assert_eq!(v.mean_subtree_timestamp_count(), 0);
+}
