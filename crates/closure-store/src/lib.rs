@@ -2989,6 +2989,74 @@ impl Vault {
         best.map(|(tc, _)| tc)
     }
 
+    /// Histogram of per-file headline counts.
+    #[must_use]
+    pub fn file_headline_count_counts(&self) -> std::collections::BTreeMap<usize, usize> {
+        let mut m = std::collections::BTreeMap::new();
+        for d in self.documents.values() {
+            *m.entry(d.org().iter_headlines().len()).or_insert(0) += 1;
+        }
+        m
+    }
+
+    /// Most common per-file headline count (lowest wins ties).
+    #[must_use]
+    pub fn mode_file_headline_count(&self) -> Option<usize> {
+        let mut best: Option<(usize, usize)> = None;
+        for (hc, c) in self.file_headline_count_counts() {
+            if best.is_none_or(|(_, bestc)| c > bestc) {
+                best = Some((hc, c));
+            }
+        }
+        best.map(|(hc, _)| hc)
+    }
+
+    /// Histogram of per-file non-empty-body headline counts.
+    #[must_use]
+    pub fn file_with_body_count_counts(&self) -> std::collections::BTreeMap<usize, usize> {
+        let mut m = std::collections::BTreeMap::new();
+        for d in self.documents.values() {
+            let c = d.all_headlines().filter(|h| !h.body_text().is_empty()).count();
+            *m.entry(c).or_insert(0) += 1;
+        }
+        m
+    }
+
+    /// Most common per-file non-empty-body headline count (lowest wins ties).
+    #[must_use]
+    pub fn mode_file_with_body_count(&self) -> Option<usize> {
+        let mut best: Option<(usize, usize)> = None;
+        for (bc, c) in self.file_with_body_count_counts() {
+            if best.is_none_or(|(_, bestc)| c > bestc) {
+                best = Some((bc, c));
+            }
+        }
+        best.map(|(bc, _)| bc)
+    }
+
+    /// Histogram of per-file property-carrying headline counts.
+    #[must_use]
+    pub fn file_with_property_count_counts(&self) -> std::collections::BTreeMap<usize, usize> {
+        let mut m = std::collections::BTreeMap::new();
+        for d in self.documents.values() {
+            let c = d.all_headlines().filter(|h| !h.properties().is_empty()).count();
+            *m.entry(c).or_insert(0) += 1;
+        }
+        m
+    }
+
+    /// Most common per-file property-carrying headline count (lowest wins ties).
+    #[must_use]
+    pub fn mode_file_with_property_count(&self) -> Option<usize> {
+        let mut best: Option<(usize, usize)> = None;
+        for (pc, c) in self.file_with_property_count_counts() {
+            if best.is_none_or(|(_, bestc)| c > bestc) {
+                best = Some((pc, c));
+            }
+        }
+        best.map(|(pc, _)| pc)
+    }
+
     /// Percentage of distinct tags among total tag occurrences
     /// (`distinct * 100 / total`, `0` when no tags).
     #[must_use]
