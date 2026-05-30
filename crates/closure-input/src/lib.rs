@@ -252,6 +252,32 @@ impl Dispatcher {
         best.map(|(len, _)| len)
     }
 
+    /// Maximum chord character length across bound chords (`None` when empty).
+    #[must_use]
+    pub fn max_chord_char_len(&self) -> Option<usize> {
+        self.bindings.keys().map(|k| k.chars().count()).max()
+    }
+
+    /// Minimum chord character length across bound chords (`None` when empty).
+    #[must_use]
+    pub fn min_chord_char_len(&self) -> Option<usize> {
+        self.bindings.keys().map(|k| k.chars().count()).min()
+    }
+
+    /// Total chord character length summed across bound chords.
+    #[must_use]
+    pub fn total_chord_char_len(&self) -> usize {
+        self.bindings.keys().map(|k| k.chars().count()).sum()
+    }
+
+    /// Integer mean chord character length (`0` when empty).
+    #[must_use]
+    pub fn mean_chord_char_len(&self) -> usize {
+        self.total_chord_char_len()
+            .checked_div(self.bindings.len())
+            .unwrap_or(0)
+    }
+
     /// Histogram of chord stroke counts to occurrence count.
     #[must_use]
     pub fn chord_stroke_counts(&self) -> std::collections::BTreeMap<usize, usize> {
