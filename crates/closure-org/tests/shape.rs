@@ -5193,6 +5193,34 @@ fn doc_subtree_byte_count_zero_when_empty() {
 }
 
 #[test]
+fn doc_median_subtree_byte_count_match() {
+    let doc = parse("* A\n* B\n* C\n").expect("parse");
+    // each subtree "* X\n" = 4 bytes -> median 4
+    assert_eq!(doc.median_subtree_byte_count(), Some(4));
+}
+
+#[test]
+fn doc_subtree_byte_count_counts_match() {
+    let doc = parse("* A\n* B\n").expect("parse");
+    // both 4 bytes -> 4->2
+    let m = doc.subtree_byte_count_counts();
+    assert_eq!(m.get(&4), Some(&2));
+}
+
+#[test]
+fn doc_mode_subtree_byte_count_match() {
+    let doc = parse("* A\n* B\n").expect("parse");
+    assert_eq!(doc.mode_subtree_byte_count(), Some(4));
+}
+
+#[test]
+fn doc_median_subtree_byte_count_none_when_empty() {
+    let doc = parse("").expect("parse");
+    assert_eq!(doc.median_subtree_byte_count(), None);
+    assert_eq!(doc.mode_subtree_byte_count(), None);
+}
+
+#[test]
 fn doc_max_min_root_descendant_count_match() {
     let doc = parse("* A\n** a1\n*** a2\n* B\n** b1\n* C\n").expect("parse");
     // descendants: A=2, B=1, C=0
