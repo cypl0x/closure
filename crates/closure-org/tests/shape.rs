@@ -5163,6 +5163,36 @@ fn doc_median_subtree_word_count_none_when_empty() {
 }
 
 #[test]
+fn doc_min_subtree_byte_count_match() {
+    let doc = parse("* A\n** B\n* C\n").expect("parse");
+    // C smallest subtree: "* C\n" = 4 bytes
+    assert_eq!(doc.min_subtree_byte_count(), 4);
+}
+
+#[test]
+fn doc_total_subtree_byte_count_match() {
+    let doc = parse("* A\n* B\n").expect("parse");
+    // A subtree "* A\n"=4, B subtree "* B\n"=4 -> 8
+    assert_eq!(doc.total_subtree_byte_count(), 8);
+}
+
+#[test]
+fn doc_mean_subtree_byte_count_match() {
+    let doc = parse("* A\n* B\n").expect("parse");
+    // 8 / 2 = 4
+    assert_eq!(doc.mean_subtree_byte_count(), 4);
+}
+
+#[test]
+fn doc_subtree_byte_count_zero_when_empty() {
+    let doc = parse("").expect("parse");
+    assert_eq!(doc.max_subtree_byte_count(), 0);
+    assert_eq!(doc.min_subtree_byte_count(), 0);
+    assert_eq!(doc.total_subtree_byte_count(), 0);
+    assert_eq!(doc.mean_subtree_byte_count(), 0);
+}
+
+#[test]
 fn doc_max_min_root_descendant_count_match() {
     let doc = parse("* A\n** a1\n*** a2\n* B\n** b1\n* C\n").expect("parse");
     // descendants: A=2, B=1, C=0

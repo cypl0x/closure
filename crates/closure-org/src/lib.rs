@@ -4307,6 +4307,32 @@ impl OrgDoc {
             .unwrap_or(0)
     }
 
+    /// Returns min subtree byte count across headlines (`0` when empty).
+    #[must_use]
+    pub fn min_subtree_byte_count(&self) -> usize {
+        self.iter_headlines()
+            .into_iter()
+            .map(Headline::subtree_byte_count)
+            .min()
+            .unwrap_or(0)
+    }
+
+    /// Returns total subtree byte count summed across all headlines.
+    #[must_use]
+    pub fn total_subtree_byte_count(&self) -> usize {
+        self.iter_headlines()
+            .into_iter()
+            .map(Headline::subtree_byte_count)
+            .sum()
+    }
+
+    /// Integer mean subtree byte count across headlines (`0` when empty).
+    #[must_use]
+    pub fn mean_subtree_byte_count(&self) -> usize {
+        let n = self.iter_headlines().len();
+        self.total_subtree_byte_count().checked_div(n).unwrap_or(0)
+    }
+
     /// Returns min body word count among non-empty bodies (0 if none).
     #[must_use]
     pub fn min_nonzero_body_word_count(&self) -> usize {
