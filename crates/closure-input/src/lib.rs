@@ -831,6 +831,44 @@ impl ChordTrie {
             .unwrap_or(0)
     }
 
+    /// Median chord byte length. None if empty. Even count takes midpoint.
+    #[must_use]
+    pub fn median_chord_byte_len(&self) -> Option<usize> {
+        let mut v: Vec<usize> = self.all_chords().iter().map(String::len).collect();
+        if v.is_empty() {
+            return None;
+        }
+        v.sort_unstable();
+        let mid = v.len() / 2;
+        Some(if v.len() % 2 == 1 {
+            v[mid]
+        } else {
+            v[mid - 1].midpoint(v[mid])
+        })
+    }
+
+    /// Histogram of chord byte length -> count.
+    #[must_use]
+    pub fn chord_byte_len_counts(&self) -> std::collections::BTreeMap<usize, usize> {
+        let mut m = std::collections::BTreeMap::new();
+        for c in self.all_chords() {
+            *m.entry(c.len()).or_insert(0) += 1;
+        }
+        m
+    }
+
+    /// Most common chord byte length. None if empty. Lowest wins ties.
+    #[must_use]
+    pub fn mode_chord_byte_len(&self) -> Option<usize> {
+        let mut best: Option<(usize, usize)> = None;
+        for (len, c) in self.chord_byte_len_counts() {
+            if best.is_none_or(|(_, bc)| c > bc) {
+                best = Some((len, c));
+            }
+        }
+        best.map(|(len, _)| len)
+    }
+
     /// Feed one stroke. [`TrieStep::Resolved`] and
     /// [`TrieStep::Unbound`] both reset the cursor.
     pub fn step(&mut self, stroke: &str) -> TrieStep {

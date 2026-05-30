@@ -779,3 +779,44 @@ fn chord_trie_chord_byte_len_none_when_empty() {
     assert_eq!(t.total_chord_byte_len(), 0);
     assert_eq!(t.mean_chord_byte_len(), 0);
 }
+
+#[test]
+fn chord_trie_median_chord_byte_len_match() {
+    let t = closure_input::ChordTrie::build(&[("a", "x"), ("a b", "y"), ("a b c", "z")]);
+    // lens sorted: [1, 3, 5] -> median 3
+    assert_eq!(t.median_chord_byte_len(), Some(3));
+}
+
+#[test]
+fn chord_trie_median_chord_byte_len_even() {
+    let t = closure_input::ChordTrie::build(&[("a", "x"), ("a b c", "y")]);
+    // lens sorted: [1, 5] -> midpoint 3
+    assert_eq!(t.median_chord_byte_len(), Some(3));
+}
+
+#[test]
+fn chord_trie_median_chord_byte_len_none_when_empty() {
+    let t = closure_input::ChordTrie::build(&[]);
+    assert_eq!(t.median_chord_byte_len(), None);
+}
+
+#[test]
+fn chord_trie_mode_chord_byte_len_match() {
+    let t = closure_input::ChordTrie::build(&[("a b", "x"), ("c d", "y"), ("e f g", "z")]);
+    // lens: 3, 3, 5 -> mode 3
+    assert_eq!(t.mode_chord_byte_len(), Some(3));
+}
+
+#[test]
+fn chord_trie_mode_chord_byte_len_none_when_empty() {
+    let t = closure_input::ChordTrie::build(&[]);
+    assert_eq!(t.mode_chord_byte_len(), None);
+}
+
+#[test]
+fn chord_trie_chord_byte_len_counts_match() {
+    let t = closure_input::ChordTrie::build(&[("a b", "x"), ("c d", "y"), ("e f g", "z")]);
+    let counts = t.chord_byte_len_counts();
+    assert_eq!(counts.get(&3), Some(&2));
+    assert_eq!(counts.get(&5), Some(&1));
+}
