@@ -5419,6 +5419,46 @@ fn doc_median_subtree_todo_count_none_when_empty() {
 }
 
 #[test]
+fn doc_max_min_subtree_property_count_match() {
+    let doc = parse(
+        "* A\n:PROPERTIES:\n:K1: v\n:K2: w\n:END:\n** B\n:PROPERTIES:\n:K3: x\n:END:\n* C\n",
+    )
+    .expect("parse");
+    // subtree props: A=2+1=3, B=1, C=0 -> max 3, min 0
+    assert_eq!(doc.max_subtree_property_count(), 3);
+    assert_eq!(doc.min_subtree_property_count(), 0);
+}
+
+#[test]
+fn doc_total_subtree_property_count_match() {
+    let doc = parse(
+        "* A\n:PROPERTIES:\n:K1: v\n:K2: w\n:END:\n** B\n:PROPERTIES:\n:K3: x\n:END:\n* C\n",
+    )
+    .expect("parse");
+    // 3+1+0 = 4
+    assert_eq!(doc.total_subtree_property_count(), 4);
+}
+
+#[test]
+fn doc_mean_subtree_property_count_match() {
+    let doc = parse(
+        "* A\n:PROPERTIES:\n:K: v\n:END:\n* B\n:PROPERTIES:\n:K: w\n:END:\n* C\n:PROPERTIES:\n:K: x\n:END:\n",
+    )
+    .expect("parse");
+    // 1+1+1=3 / 3 = 1
+    assert_eq!(doc.mean_subtree_property_count(), 1);
+}
+
+#[test]
+fn doc_subtree_property_count_zero_when_empty() {
+    let doc = parse("").expect("parse");
+    assert_eq!(doc.max_subtree_property_count(), 0);
+    assert_eq!(doc.min_subtree_property_count(), 0);
+    assert_eq!(doc.total_subtree_property_count(), 0);
+    assert_eq!(doc.mean_subtree_property_count(), 0);
+}
+
+#[test]
 fn doc_max_min_root_descendant_count_match() {
     let doc = parse("* A\n** a1\n*** a2\n* B\n** b1\n* C\n").expect("parse");
     // descendants: A=2, B=1, C=0

@@ -3529,6 +3529,42 @@ impl OrgDoc {
         best.map(|(tc, _)| tc)
     }
 
+    /// Returns max subtree property count across all headlines (`0` when empty).
+    #[must_use]
+    pub fn max_subtree_property_count(&self) -> usize {
+        self.iter_headlines()
+            .into_iter()
+            .map(Headline::subtree_property_count)
+            .max()
+            .unwrap_or(0)
+    }
+
+    /// Returns min subtree property count across all headlines (`0` when empty).
+    #[must_use]
+    pub fn min_subtree_property_count(&self) -> usize {
+        self.iter_headlines()
+            .into_iter()
+            .map(Headline::subtree_property_count)
+            .min()
+            .unwrap_or(0)
+    }
+
+    /// Returns total subtree property count summed across all headlines.
+    #[must_use]
+    pub fn total_subtree_property_count(&self) -> usize {
+        self.iter_headlines()
+            .into_iter()
+            .map(Headline::subtree_property_count)
+            .sum()
+    }
+
+    /// Integer mean subtree property count across all headlines (`0` when empty).
+    #[must_use]
+    pub fn mean_subtree_property_count(&self) -> usize {
+        let n = self.iter_headlines().len();
+        self.total_subtree_property_count().checked_div(n).unwrap_or(0)
+    }
+
     /// Average tags per headline (0 if no headlines).
     #[must_use]
     pub fn mean_tags(&self) -> usize {
