@@ -5626,6 +5626,37 @@ fn doc_median_subtree_priority_count_none_when_empty() {
 }
 
 #[test]
+fn doc_max_min_subtree_level_count_match() {
+    let doc = parse("* A\n** B\n*** C\n* D\n").expect("parse");
+    // subtree levels distinct: A={1,2,3}=3, B={2,3}=2, C={3}=1, D={1}=1
+    assert_eq!(doc.max_subtree_level_count(), 3);
+    assert_eq!(doc.min_subtree_level_count(), 1);
+}
+
+#[test]
+fn doc_total_subtree_level_count_match() {
+    let doc = parse("* A\n** B\n*** C\n* D\n").expect("parse");
+    // 3+2+1+1 = 7
+    assert_eq!(doc.total_subtree_level_count(), 7);
+}
+
+#[test]
+fn doc_mean_subtree_level_count_match() {
+    let doc = parse("* A\n* B\n* C\n").expect("parse");
+    // 1+1+1=3, n=3 -> 1
+    assert_eq!(doc.mean_subtree_level_count(), 1);
+}
+
+#[test]
+fn doc_subtree_level_count_zero_when_empty() {
+    let doc = parse("").expect("parse");
+    assert_eq!(doc.max_subtree_level_count(), 0);
+    assert_eq!(doc.min_subtree_level_count(), 0);
+    assert_eq!(doc.total_subtree_level_count(), 0);
+    assert_eq!(doc.mean_subtree_level_count(), 0);
+}
+
+#[test]
 fn doc_max_min_root_descendant_count_match() {
     let doc = parse("* A\n** a1\n*** a2\n* B\n** b1\n* C\n").expect("parse");
     // descendants: A=2, B=1, C=0

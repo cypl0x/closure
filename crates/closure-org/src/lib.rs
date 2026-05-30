@@ -3763,6 +3763,42 @@ impl OrgDoc {
         best.map(|(pc, _)| pc)
     }
 
+    /// Returns max subtree distinct-level count across all headlines (`0` when empty).
+    #[must_use]
+    pub fn max_subtree_level_count(&self) -> usize {
+        self.iter_headlines()
+            .into_iter()
+            .map(Headline::subtree_level_count)
+            .max()
+            .unwrap_or(0)
+    }
+
+    /// Returns min subtree distinct-level count across all headlines (`0` when empty).
+    #[must_use]
+    pub fn min_subtree_level_count(&self) -> usize {
+        self.iter_headlines()
+            .into_iter()
+            .map(Headline::subtree_level_count)
+            .min()
+            .unwrap_or(0)
+    }
+
+    /// Returns total subtree distinct-level count summed across all headlines.
+    #[must_use]
+    pub fn total_subtree_level_count(&self) -> usize {
+        self.iter_headlines()
+            .into_iter()
+            .map(Headline::subtree_level_count)
+            .sum()
+    }
+
+    /// Integer mean subtree distinct-level count across all headlines (`0` when empty).
+    #[must_use]
+    pub fn mean_subtree_level_count(&self) -> usize {
+        let n = self.iter_headlines().len();
+        self.total_subtree_level_count().checked_div(n).unwrap_or(0)
+    }
+
     /// Average tags per headline (0 if no headlines).
     #[must_use]
     pub fn mean_tags(&self) -> usize {
