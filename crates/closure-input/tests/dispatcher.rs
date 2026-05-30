@@ -519,6 +519,39 @@ fn dispatcher_chord_char_len_none_when_empty() {
 }
 
 #[test]
+fn dispatcher_median_chord_char_len_match() {
+    let mut reg = Registry::new();
+    reg.register(Box::new(RenameHeadline::new_placeholder()));
+    let disp = Dispatcher::from_registry(&reg, InputMode::Doom);
+    assert_eq!(disp.median_chord_char_len(), Some(9));
+}
+
+#[test]
+fn dispatcher_chord_char_len_counts_match() {
+    let mut reg = Registry::new();
+    reg.register(Box::new(RenameHeadline::new_placeholder()));
+    let disp = Dispatcher::from_registry(&reg, InputMode::Doom);
+    let m = disp.chord_char_len_counts();
+    assert_eq!(m.get(&9), Some(&1));
+}
+
+#[test]
+fn dispatcher_mode_chord_char_len_match() {
+    let mut reg = Registry::new();
+    reg.register(Box::new(RenameHeadline::new_placeholder()));
+    let disp = Dispatcher::from_registry(&reg, InputMode::Doom);
+    assert_eq!(disp.mode_chord_char_len(), Some(9));
+}
+
+#[test]
+fn dispatcher_median_chord_char_len_none_when_empty() {
+    let reg = Registry::new();
+    let disp = Dispatcher::from_registry(&reg, InputMode::Doom);
+    assert_eq!(disp.median_chord_char_len(), None);
+    assert_eq!(disp.mode_chord_char_len(), None);
+}
+
+#[test]
 fn dispatcher_has_command_match() {
     let mut reg = Registry::new();
     reg.register(Box::new(RenameHeadline::new_placeholder()));
