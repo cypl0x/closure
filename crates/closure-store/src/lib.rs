@@ -4546,6 +4546,51 @@ impl Vault {
             .unwrap_or(0)
     }
 
+    /// Median per-headline subtree timestamp count (`None` when no headlines).
+    #[must_use]
+    pub fn median_subtree_timestamp_count(&self) -> Option<usize> {
+        let mut v: Vec<usize> = self
+            .documents
+            .values()
+            .flat_map(|d| d.org().iter_headlines())
+            .map(closure_org::Headline::subtree_timestamp_count)
+            .collect();
+        if v.is_empty() {
+            return None;
+        }
+        v.sort_unstable();
+        let mid = v.len() / 2;
+        Some(if v.len() % 2 == 1 {
+            v[mid]
+        } else {
+            v[mid - 1].midpoint(v[mid])
+        })
+    }
+
+    /// Histogram of per-headline subtree timestamp counts.
+    #[must_use]
+    pub fn subtree_timestamp_count_counts(&self) -> std::collections::BTreeMap<usize, usize> {
+        let mut m = std::collections::BTreeMap::new();
+        for d in self.documents.values() {
+            for h in d.org().iter_headlines() {
+                *m.entry(h.subtree_timestamp_count()).or_insert(0) += 1;
+            }
+        }
+        m
+    }
+
+    /// Most common per-headline subtree timestamp count (lowest wins ties).
+    #[must_use]
+    pub fn mode_subtree_timestamp_count(&self) -> Option<usize> {
+        let mut best: Option<(usize, usize)> = None;
+        for (tc, c) in self.subtree_timestamp_count_counts() {
+            if best.is_none_or(|(_, bestc)| c > bestc) {
+                best = Some((tc, c));
+            }
+        }
+        best.map(|(tc, _)| tc)
+    }
+
     /// Count of headlines carrying a non-empty body across the vault.
     #[must_use]
     pub fn with_body_count(&self) -> usize {
