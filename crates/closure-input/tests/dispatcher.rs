@@ -1003,3 +1003,42 @@ fn dispatcher_command_char_len_none_when_empty() {
     assert_eq!(disp.total_command_char_len(), 0);
     assert_eq!(disp.mean_command_char_len(), 0);
 }
+
+#[test]
+fn dispatcher_median_command_char_len_match() {
+    let mut reg = Registry::new();
+    reg.register(Box::new(RenameHeadline::new_placeholder()));
+    let disp = Dispatcher::from_registry(&reg, InputMode::Doom);
+    assert_eq!(disp.median_command_char_len(), Some(15));
+}
+
+#[test]
+fn dispatcher_median_command_char_len_none_when_empty() {
+    let reg = Registry::new();
+    let disp = Dispatcher::from_registry(&reg, InputMode::Doom);
+    assert_eq!(disp.median_command_char_len(), None);
+}
+
+#[test]
+fn dispatcher_mode_command_char_len_match() {
+    let mut reg = Registry::new();
+    reg.register(Box::new(RenameHeadline::new_placeholder()));
+    let disp = Dispatcher::from_registry(&reg, InputMode::Doom);
+    assert_eq!(disp.mode_command_char_len(), Some(15));
+}
+
+#[test]
+fn dispatcher_mode_command_char_len_none_when_empty() {
+    let reg = Registry::new();
+    let disp = Dispatcher::from_registry(&reg, InputMode::Doom);
+    assert_eq!(disp.mode_command_char_len(), None);
+}
+
+#[test]
+fn dispatcher_command_char_len_counts_match() {
+    let mut reg = Registry::new();
+    reg.register(Box::new(RenameHeadline::new_placeholder()));
+    let disp = Dispatcher::from_registry(&reg, InputMode::Doom);
+    let m = disp.command_char_len_counts();
+    assert_eq!(m.get(&15), Some(&1));
+}
