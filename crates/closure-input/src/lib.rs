@@ -869,6 +869,33 @@ impl ChordTrie {
         best.map(|(len, _)| len)
     }
 
+    /// Max chord char length over bound chords. None if empty.
+    #[must_use]
+    pub fn max_chord_char_len(&self) -> Option<usize> {
+        self.all_chords().iter().map(|c| c.chars().count()).max()
+    }
+
+    /// Min chord char length over bound chords. None if empty.
+    #[must_use]
+    pub fn min_chord_char_len(&self) -> Option<usize> {
+        self.all_chords().iter().map(|c| c.chars().count()).min()
+    }
+
+    /// Sum of chord char lengths over bound chords.
+    #[must_use]
+    pub fn total_chord_char_len(&self) -> usize {
+        self.all_chords().iter().map(|c| c.chars().count()).sum()
+    }
+
+    /// Mean chord char length (integer division). 0 if empty.
+    #[must_use]
+    pub fn mean_chord_char_len(&self) -> usize {
+        let chords = self.all_chords();
+        self.total_chord_char_len()
+            .checked_div(chords.len())
+            .unwrap_or(0)
+    }
+
     /// Feed one stroke. [`TrieStep::Resolved`] and
     /// [`TrieStep::Unbound`] both reset the cursor.
     pub fn step(&mut self, stroke: &str) -> TrieStep {

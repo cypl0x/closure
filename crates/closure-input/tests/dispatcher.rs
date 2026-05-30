@@ -820,3 +820,34 @@ fn chord_trie_chord_byte_len_counts_match() {
     assert_eq!(counts.get(&3), Some(&2));
     assert_eq!(counts.get(&5), Some(&1));
 }
+
+#[test]
+fn chord_trie_max_min_chord_char_len_match() {
+    let t = closure_input::ChordTrie::build(&[("a", "x"), ("a b c", "y")]);
+    // "a" (1 char), "a b c" (5 chars)
+    assert_eq!(t.max_chord_char_len(), Some(5));
+    assert_eq!(t.min_chord_char_len(), Some(1));
+}
+
+#[test]
+fn chord_trie_total_chord_char_len_match() {
+    let t = closure_input::ChordTrie::build(&[("a", "x"), ("a b", "y")]);
+    // 1 + 3 = 4
+    assert_eq!(t.total_chord_char_len(), 4);
+}
+
+#[test]
+fn chord_trie_mean_chord_char_len_match() {
+    let t = closure_input::ChordTrie::build(&[("a", "x"), ("a b c", "y")]);
+    // (1 + 5) / 2 = 3
+    assert_eq!(t.mean_chord_char_len(), 3);
+}
+
+#[test]
+fn chord_trie_chord_char_len_none_when_empty() {
+    let t = closure_input::ChordTrie::build(&[]);
+    assert_eq!(t.max_chord_char_len(), None);
+    assert_eq!(t.min_chord_char_len(), None);
+    assert_eq!(t.total_chord_char_len(), 0);
+    assert_eq!(t.mean_chord_char_len(), 0);
+}
