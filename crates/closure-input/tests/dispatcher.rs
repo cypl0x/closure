@@ -1113,3 +1113,31 @@ fn chord_trie_command_byte_len_counts_match() {
     assert_eq!(counts.get(&2), Some(&2));
     assert_eq!(counts.get(&3), Some(&1));
 }
+
+#[test]
+fn chord_trie_max_min_command_char_len_match() {
+    let t = closure_input::ChordTrie::build(&[("a", "x"), ("b", "yyyy")]);
+    assert_eq!(t.max_command_char_len(), Some(4));
+    assert_eq!(t.min_command_char_len(), Some(1));
+}
+
+#[test]
+fn chord_trie_total_command_char_len_match() {
+    let t = closure_input::ChordTrie::build(&[("a", "x"), ("b", "yyyy")]);
+    assert_eq!(t.total_command_char_len(), 5);
+}
+
+#[test]
+fn chord_trie_mean_command_char_len_match() {
+    let t = closure_input::ChordTrie::build(&[("a", "x"), ("b", "yyyy")]);
+    assert_eq!(t.mean_command_char_len(), 2);
+}
+
+#[test]
+fn chord_trie_command_char_len_none_when_empty() {
+    let t = closure_input::ChordTrie::build(&[]);
+    assert_eq!(t.max_command_char_len(), None);
+    assert_eq!(t.min_command_char_len(), None);
+    assert_eq!(t.total_command_char_len(), 0);
+    assert_eq!(t.mean_command_char_len(), 0);
+}

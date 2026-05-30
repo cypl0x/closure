@@ -1095,6 +1095,33 @@ impl ChordTrie {
         best.map(|(len, _)| len)
     }
 
+    /// Max char length over distinct command names. None if empty.
+    #[must_use]
+    pub fn max_command_char_len(&self) -> Option<usize> {
+        self.all_commands().iter().map(|c| c.chars().count()).max()
+    }
+
+    /// Min char length over distinct command names. None if empty.
+    #[must_use]
+    pub fn min_command_char_len(&self) -> Option<usize> {
+        self.all_commands().iter().map(|c| c.chars().count()).min()
+    }
+
+    /// Sum of char lengths over distinct command names.
+    #[must_use]
+    pub fn total_command_char_len(&self) -> usize {
+        self.all_commands().iter().map(|c| c.chars().count()).sum()
+    }
+
+    /// Integer mean char length over distinct command names. 0 when empty.
+    #[must_use]
+    pub fn mean_command_char_len(&self) -> usize {
+        let cmds = self.all_commands();
+        self.total_command_char_len()
+            .checked_div(cmds.len())
+            .unwrap_or(0)
+    }
+
     /// Median chord char length. None if empty. Even count takes midpoint.
     #[must_use]
     pub fn median_chord_char_len(&self) -> Option<usize> {
