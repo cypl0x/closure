@@ -5104,6 +5104,36 @@ fn doc_mode_root_subtree_size_none_when_empty() {
 }
 
 #[test]
+fn doc_min_subtree_word_count_match() {
+    let doc = parse("* A\nword one\n** B\nthree more words\n* C\nsolo\n").expect("parse");
+    // subtree words: A=2+3=5, B=3, C=1 -> min 1
+    assert_eq!(doc.min_subtree_word_count(), 1);
+}
+
+#[test]
+fn doc_total_subtree_word_count_match() {
+    let doc = parse("* A\nword one\n** B\nthree more words\n* C\nsolo\n").expect("parse");
+    // 5+3+1 = 9
+    assert_eq!(doc.total_subtree_word_count(), 9);
+}
+
+#[test]
+fn doc_mean_subtree_word_count_match() {
+    let doc = parse("* A\nword one\n** B\nthree more words\n* C\nsolo\n").expect("parse");
+    // 9 / 3 = 3
+    assert_eq!(doc.mean_subtree_word_count(), 3);
+}
+
+#[test]
+fn doc_subtree_word_count_zero_when_empty() {
+    let doc = parse("").expect("parse");
+    assert_eq!(doc.max_subtree_word_count(), 0);
+    assert_eq!(doc.min_subtree_word_count(), 0);
+    assert_eq!(doc.total_subtree_word_count(), 0);
+    assert_eq!(doc.mean_subtree_word_count(), 0);
+}
+
+#[test]
 fn doc_max_min_root_descendant_count_match() {
     let doc = parse("* A\n** a1\n*** a2\n* B\n** b1\n* C\n").expect("parse");
     // descendants: A=2, B=1, C=0
