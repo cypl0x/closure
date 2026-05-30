@@ -4709,3 +4709,48 @@ fn vault_subtree_byte_count_counts_nonempty() {
     let m = v.subtree_byte_count_counts();
     assert!(!m.is_empty());
 }
+
+#[test]
+fn vault_max_min_subtree_link_count_match() {
+    // root A body has 2 links, child B body has 1, child C none
+    let td = write_vault(&[(
+        "a.org",
+        "* A\n[[x][X]] [[y][Y]]\n** B\n[[z][Z]]\n** C\n",
+    )]);
+    let v = Vault::open(td.path()).expect("open");
+    // subtree counts: A=3, B=1, C=0
+    assert_eq!(v.max_subtree_link_count(), Some(3));
+    assert_eq!(v.min_subtree_link_count(), Some(0));
+}
+
+#[test]
+fn vault_total_subtree_link_count_match() {
+    let td = write_vault(&[(
+        "a.org",
+        "* A\n[[x][X]] [[y][Y]]\n** B\n[[z][Z]]\n** C\n",
+    )]);
+    let v = Vault::open(td.path()).expect("open");
+    // 3 + 1 + 0 = 4
+    assert_eq!(v.total_subtree_link_count(), 4);
+}
+
+#[test]
+fn vault_mean_subtree_link_count_match() {
+    let td = write_vault(&[(
+        "a.org",
+        "* A\n[[x][X]] [[y][Y]]\n** B\n[[z][Z]]\n** C\n",
+    )]);
+    let v = Vault::open(td.path()).expect("open");
+    // 4/3 = 1
+    assert_eq!(v.mean_subtree_link_count(), 1);
+}
+
+#[test]
+fn vault_subtree_link_count_none_when_empty() {
+    let td = write_vault(&[("a.org", "")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.max_subtree_link_count(), None);
+    assert_eq!(v.min_subtree_link_count(), None);
+    assert_eq!(v.total_subtree_link_count(), 0);
+    assert_eq!(v.mean_subtree_link_count(), 0);
+}
