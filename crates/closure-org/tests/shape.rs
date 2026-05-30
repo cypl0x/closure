@@ -5657,6 +5657,35 @@ fn doc_subtree_level_count_zero_when_empty() {
 }
 
 #[test]
+fn doc_median_subtree_level_count_match() {
+    let doc = parse("* A\n** B\n*** C\n* D\n").expect("parse");
+    // A=3, B=2, C=1, D=1 -> sorted 1,1,2,3 -> midpoint(1,2)=1
+    assert_eq!(doc.median_subtree_level_count(), Some(1));
+}
+
+#[test]
+fn doc_subtree_level_count_counts_match() {
+    let doc = parse("* A\n* B\n* C\n** D\n").expect("parse");
+    // A=1, B=1, C=2, D=1
+    let m = doc.subtree_level_count_counts();
+    assert_eq!(m.get(&1), Some(&3));
+    assert_eq!(m.get(&2), Some(&1));
+}
+
+#[test]
+fn doc_mode_subtree_level_count_match() {
+    let doc = parse("* A\n* B\n* C\n** D\n").expect("parse");
+    assert_eq!(doc.mode_subtree_level_count(), Some(1));
+}
+
+#[test]
+fn doc_median_subtree_level_count_none_when_empty() {
+    let doc = parse("").expect("parse");
+    assert_eq!(doc.median_subtree_level_count(), None);
+    assert_eq!(doc.mode_subtree_level_count(), None);
+}
+
+#[test]
 fn doc_max_min_root_descendant_count_match() {
     let doc = parse("* A\n** a1\n*** a2\n* B\n** b1\n* C\n").expect("parse");
     // descendants: A=2, B=1, C=0
