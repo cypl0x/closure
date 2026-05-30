@@ -3607,6 +3607,42 @@ impl OrgDoc {
         best.map(|(pc, _)| pc)
     }
 
+    /// Returns max subtree timestamp count across all headlines (`0` when empty).
+    #[must_use]
+    pub fn max_subtree_timestamp_count(&self) -> usize {
+        self.iter_headlines()
+            .into_iter()
+            .map(Headline::subtree_timestamp_count)
+            .max()
+            .unwrap_or(0)
+    }
+
+    /// Returns min subtree timestamp count across all headlines (`0` when empty).
+    #[must_use]
+    pub fn min_subtree_timestamp_count(&self) -> usize {
+        self.iter_headlines()
+            .into_iter()
+            .map(Headline::subtree_timestamp_count)
+            .min()
+            .unwrap_or(0)
+    }
+
+    /// Returns total subtree timestamp count summed across all headlines.
+    #[must_use]
+    pub fn total_subtree_timestamp_count(&self) -> usize {
+        self.iter_headlines()
+            .into_iter()
+            .map(Headline::subtree_timestamp_count)
+            .sum()
+    }
+
+    /// Integer mean subtree timestamp count across all headlines (`0` when empty).
+    #[must_use]
+    pub fn mean_subtree_timestamp_count(&self) -> usize {
+        let n = self.iter_headlines().len();
+        self.total_subtree_timestamp_count().checked_div(n).unwrap_or(0)
+    }
+
     /// Average tags per headline (0 if no headlines).
     #[must_use]
     pub fn mean_tags(&self) -> usize {
