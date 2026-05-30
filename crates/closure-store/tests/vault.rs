@@ -4550,3 +4550,39 @@ fn vault_mode_title_byte_len_match() {
     let v = Vault::open(td.path()).expect("open");
     assert_eq!(v.mode_title_byte_len(), Some(2));
 }
+
+#[test]
+fn vault_max_min_subtree_word_count_match() {
+    // parent has body "one two\n" (2 words) + child body "three\n" (1 word).
+    // parent subtree_word_count = 3; child subtree_word_count = 1.
+    let td = write_vault(&[("a.org", "* A\none two\n** B\nthree\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.max_subtree_word_count(), Some(3));
+    assert_eq!(v.min_subtree_word_count(), Some(1));
+}
+
+#[test]
+fn vault_total_subtree_word_count_match() {
+    let td = write_vault(&[("a.org", "* A\none two\n** B\nthree\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    // 3 + 1 = 4
+    assert_eq!(v.total_subtree_word_count(), 4);
+}
+
+#[test]
+fn vault_mean_subtree_word_count_match() {
+    let td = write_vault(&[("a.org", "* A\none two\n** B\nthree\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    // (3+1)/2 = 2
+    assert_eq!(v.mean_subtree_word_count(), 2);
+}
+
+#[test]
+fn vault_subtree_word_count_none_when_empty() {
+    let td = write_vault(&[("a.org", "")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.max_subtree_word_count(), None);
+    assert_eq!(v.min_subtree_word_count(), None);
+    assert_eq!(v.total_subtree_word_count(), 0);
+    assert_eq!(v.mean_subtree_word_count(), 0);
+}

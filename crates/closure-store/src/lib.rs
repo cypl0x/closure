@@ -3809,6 +3809,47 @@ impl Vault {
         best.map(|(tc, _)| tc)
     }
 
+    /// Maximum per-headline subtree word count across the vault.
+    #[must_use]
+    pub fn max_subtree_word_count(&self) -> Option<usize> {
+        self.documents
+            .values()
+            .flat_map(|d| d.org().iter_headlines())
+            .map(closure_org::Headline::subtree_word_count)
+            .max()
+    }
+
+    /// Minimum per-headline subtree word count across the vault.
+    #[must_use]
+    pub fn min_subtree_word_count(&self) -> Option<usize> {
+        self.documents
+            .values()
+            .flat_map(|d| d.org().iter_headlines())
+            .map(closure_org::Headline::subtree_word_count)
+            .min()
+    }
+
+    /// Sum of per-headline subtree word counts across the vault.
+    #[must_use]
+    pub fn total_subtree_word_count(&self) -> usize {
+        self.documents
+            .values()
+            .flat_map(|d| d.org().iter_headlines())
+            .map(closure_org::Headline::subtree_word_count)
+            .sum()
+    }
+
+    /// Integer mean per-headline subtree word count (`0` when no headlines).
+    #[must_use]
+    pub fn mean_subtree_word_count(&self) -> usize {
+        let n: usize = self
+            .documents
+            .values()
+            .map(|d| d.org().iter_headlines().len())
+            .sum();
+        self.total_subtree_word_count().checked_div(n).unwrap_or(0)
+    }
+
     /// Count of headlines carrying a non-empty body across the vault.
     #[must_use]
     pub fn with_body_count(&self) -> usize {
