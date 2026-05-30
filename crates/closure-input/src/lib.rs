@@ -154,12 +154,38 @@ impl Dispatcher {
     /// Integer mean stroke count across bound chords (`0` when empty).
     #[must_use]
     pub fn mean_chord_strokes(&self) -> usize {
-        let total: usize = self
+        self.total_chord_strokes()
+            .checked_div(self.bindings.len())
+            .unwrap_or(0)
+    }
+
+    /// Total stroke count summed across every bound chord.
+    #[must_use]
+    pub fn total_chord_strokes(&self) -> usize {
+        self.bindings
+            .keys()
+            .map(|k| k.split_whitespace().count())
+            .sum()
+    }
+
+    /// Median chord stroke count (`None` when empty).
+    #[must_use]
+    pub fn median_chord_strokes(&self) -> Option<usize> {
+        let mut v: Vec<usize> = self
             .bindings
             .keys()
             .map(|k| k.split_whitespace().count())
-            .sum();
-        total.checked_div(self.bindings.len()).unwrap_or(0)
+            .collect();
+        if v.is_empty() {
+            return None;
+        }
+        v.sort_unstable();
+        let mid = v.len() / 2;
+        Some(if v.len() % 2 == 1 {
+            v[mid]
+        } else {
+            v[mid - 1].midpoint(v[mid])
+        })
     }
 
     /// Histogram of chord stroke counts to occurrence count.
