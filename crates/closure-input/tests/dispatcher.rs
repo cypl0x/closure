@@ -305,6 +305,32 @@ fn chord_trie_mode_depth_none_when_empty() {
 }
 
 #[test]
+fn chord_trie_total_depth_match() {
+    let t = closure_input::ChordTrie::build(&[("a", "x"), ("a b", "y"), ("a b c", "z")]);
+    // depths 1, 2, 3 -> total 6
+    assert_eq!(t.total_depth(), 6);
+}
+
+#[test]
+fn chord_trie_total_depth_zero_when_empty() {
+    let t = closure_input::ChordTrie::build(&[]);
+    assert_eq!(t.total_depth(), 0);
+}
+
+#[test]
+fn chord_trie_median_depth_match() {
+    let t = closure_input::ChordTrie::build(&[("a", "x"), ("a b", "y"), ("a b c", "z")]);
+    // 1,2,3 -> median 2
+    assert_eq!(t.median_depth(), Some(2));
+}
+
+#[test]
+fn chord_trie_median_depth_none_when_empty() {
+    let t = closure_input::ChordTrie::build(&[]);
+    assert_eq!(t.median_depth(), None);
+}
+
+#[test]
 fn dispatcher_max_min_chord_strokes_match() {
     let mut reg = Registry::new();
     reg.register(Box::new(RenameHeadline::new_placeholder()));

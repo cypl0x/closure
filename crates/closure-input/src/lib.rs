@@ -492,6 +492,36 @@ impl ChordTrie {
         best.map(|(depth, _)| depth)
     }
 
+    /// Sum of depths over every bound chord.
+    #[must_use]
+    pub fn total_depth(&self) -> usize {
+        self.chord_depth_counts()
+            .iter()
+            .map(|(d, c)| d * c)
+            .sum()
+    }
+
+    /// Median chord depth (`None` when empty).
+    #[must_use]
+    pub fn median_depth(&self) -> Option<usize> {
+        let mut v: Vec<usize> = Vec::new();
+        for (d, c) in self.chord_depth_counts() {
+            for _ in 0..c {
+                v.push(d);
+            }
+        }
+        if v.is_empty() {
+            return None;
+        }
+        v.sort_unstable();
+        let mid = v.len() / 2;
+        Some(if v.len() % 2 == 1 {
+            v[mid]
+        } else {
+            v[mid - 1].midpoint(v[mid])
+        })
+    }
+
     /// Sorted command names bound at exactly `depth` strokes.
     #[must_use]
     pub fn commands_at_depth(&self, depth: usize) -> Vec<&str> {
