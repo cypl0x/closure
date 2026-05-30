@@ -3145,6 +3145,129 @@ impl Vault {
         best.map(|(ic, _)| ic)
     }
 
+    /// Histogram of per-file link-carrying headline counts.
+    #[must_use]
+    pub fn file_with_link_count_counts(&self) -> std::collections::BTreeMap<usize, usize> {
+        let mut m = std::collections::BTreeMap::new();
+        for d in self.documents.values() {
+            let c = d.all_headlines().filter(|h| !h.link_targets().is_empty()).count();
+            *m.entry(c).or_insert(0) += 1;
+        }
+        m
+    }
+
+    /// Most common per-file link-carrying headline count (lowest wins ties).
+    #[must_use]
+    pub fn mode_file_with_link_count(&self) -> Option<usize> {
+        let mut best: Option<(usize, usize)> = None;
+        for (lc, c) in self.file_with_link_count_counts() {
+            if best.is_none_or(|(_, bestc)| c > bestc) {
+                best = Some((lc, c));
+            }
+        }
+        best.map(|(lc, _)| lc)
+    }
+
+    /// Histogram of per-file timestamp-carrying headline counts.
+    #[must_use]
+    pub fn file_with_timestamp_count_counts(&self) -> std::collections::BTreeMap<usize, usize> {
+        let mut m = std::collections::BTreeMap::new();
+        for d in self.documents.values() {
+            let c = d
+                .org()
+                .iter_headlines()
+                .into_iter()
+                .filter(|h| h.timestamp_count() > 0)
+                .count();
+            *m.entry(c).or_insert(0) += 1;
+        }
+        m
+    }
+
+    /// Most common per-file timestamp-carrying headline count (lowest wins ties).
+    #[must_use]
+    pub fn mode_file_with_timestamp_count(&self) -> Option<usize> {
+        let mut best: Option<(usize, usize)> = None;
+        for (tc, c) in self.file_with_timestamp_count_counts() {
+            if best.is_none_or(|(_, bestc)| c > bestc) {
+                best = Some((tc, c));
+            }
+        }
+        best.map(|(tc, _)| tc)
+    }
+
+    /// Histogram of per-file body byte counts.
+    #[must_use]
+    pub fn file_body_byte_count_counts(&self) -> std::collections::BTreeMap<usize, usize> {
+        let mut m = std::collections::BTreeMap::new();
+        for d in self.documents.values() {
+            let c: usize = d.all_headlines().map(|h| h.body_text().len()).sum();
+            *m.entry(c).or_insert(0) += 1;
+        }
+        m
+    }
+
+    /// Most common per-file body byte count (lowest wins ties).
+    #[must_use]
+    pub fn mode_file_body_byte_count(&self) -> Option<usize> {
+        let mut best: Option<(usize, usize)> = None;
+        for (bc, c) in self.file_body_byte_count_counts() {
+            if best.is_none_or(|(_, bestc)| c > bestc) {
+                best = Some((bc, c));
+            }
+        }
+        best.map(|(bc, _)| bc)
+    }
+
+    /// Histogram of per-file body line counts.
+    #[must_use]
+    pub fn file_body_line_count_counts(&self) -> std::collections::BTreeMap<usize, usize> {
+        let mut m = std::collections::BTreeMap::new();
+        for d in self.documents.values() {
+            let c: usize = d.all_headlines().map(|h| h.body_text().lines().count()).sum();
+            *m.entry(c).or_insert(0) += 1;
+        }
+        m
+    }
+
+    /// Most common per-file body line count (lowest wins ties).
+    #[must_use]
+    pub fn mode_file_body_line_count(&self) -> Option<usize> {
+        let mut best: Option<(usize, usize)> = None;
+        for (lc, c) in self.file_body_line_count_counts() {
+            if best.is_none_or(|(_, bestc)| c > bestc) {
+                best = Some((lc, c));
+            }
+        }
+        best.map(|(lc, _)| lc)
+    }
+
+    /// Histogram of per-file body char counts.
+    #[must_use]
+    pub fn file_body_char_count_counts(&self) -> std::collections::BTreeMap<usize, usize> {
+        let mut m = std::collections::BTreeMap::new();
+        for d in self.documents.values() {
+            let c: usize = d
+                .all_headlines()
+                .map(|h| h.body_text().chars().count())
+                .sum();
+            *m.entry(c).or_insert(0) += 1;
+        }
+        m
+    }
+
+    /// Most common per-file body char count (lowest wins ties).
+    #[must_use]
+    pub fn mode_file_body_char_count(&self) -> Option<usize> {
+        let mut best: Option<(usize, usize)> = None;
+        for (cc, c) in self.file_body_char_count_counts() {
+            if best.is_none_or(|(_, bestc)| c > bestc) {
+                best = Some((cc, c));
+            }
+        }
+        best.map(|(cc, _)| cc)
+    }
+
     /// Percentage of distinct tags among total tag occurrences
     /// (`distinct * 100 / total`, `0` when no tags).
     #[must_use]

@@ -5749,3 +5749,159 @@ fn vault_mode_file_id_count_none_when_no_files() {
     let v = Vault::open(td.path()).expect("open");
     assert_eq!(v.mode_file_id_count(), None);
 }
+
+#[test]
+fn vault_file_with_link_count_counts_match() {
+    let td = write_vault(&[
+        ("a.org", "* A\n[[x][X]]\n"),
+        ("b.org", "* B\n[[y][Y]]\n"),
+        ("c.org", "* C\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    let m = v.file_with_link_count_counts();
+    assert_eq!(m.get(&1), Some(&2));
+    assert_eq!(m.get(&0), Some(&1));
+}
+
+#[test]
+fn vault_mode_file_with_link_count_match() {
+    let td = write_vault(&[
+        ("a.org", "* A\n[[x][X]]\n"),
+        ("b.org", "* B\n[[y][Y]]\n"),
+        ("c.org", "* C\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.mode_file_with_link_count(), Some(1));
+}
+
+#[test]
+fn vault_mode_file_with_link_count_none_when_no_files() {
+    let td = write_vault(&[]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.mode_file_with_link_count(), None);
+}
+
+#[test]
+fn vault_file_with_timestamp_count_counts_match() {
+    let td = write_vault(&[
+        ("a.org", "* A\n<2026-05-30 Sat>\n"),
+        ("b.org", "* B\n<2026-05-31 Sun>\n"),
+        ("c.org", "* C\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    let m = v.file_with_timestamp_count_counts();
+    assert_eq!(m.get(&1), Some(&2));
+    assert_eq!(m.get(&0), Some(&1));
+}
+
+#[test]
+fn vault_mode_file_with_timestamp_count_match() {
+    let td = write_vault(&[
+        ("a.org", "* A\n<2026-05-30 Sat>\n"),
+        ("b.org", "* B\n<2026-05-31 Sun>\n"),
+        ("c.org", "* C\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.mode_file_with_timestamp_count(), Some(1));
+}
+
+#[test]
+fn vault_mode_file_with_timestamp_count_none_when_no_files() {
+    let td = write_vault(&[]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.mode_file_with_timestamp_count(), None);
+}
+
+#[test]
+fn vault_file_body_byte_count_counts_match() {
+    // bodies: "x\n" (2 bytes), "x\n" (2), "" (0)
+    let td = write_vault(&[
+        ("a.org", "* A\nx\n"),
+        ("b.org", "* B\nx\n"),
+        ("c.org", "* C\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    let m = v.file_body_byte_count_counts();
+    assert_eq!(m.get(&2), Some(&2));
+    assert_eq!(m.get(&0), Some(&1));
+}
+
+#[test]
+fn vault_mode_file_body_byte_count_match() {
+    let td = write_vault(&[
+        ("a.org", "* A\nx\n"),
+        ("b.org", "* B\nx\n"),
+        ("c.org", "* C\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.mode_file_body_byte_count(), Some(2));
+}
+
+#[test]
+fn vault_mode_file_body_byte_count_none_when_no_files() {
+    let td = write_vault(&[]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.mode_file_body_byte_count(), None);
+}
+
+#[test]
+fn vault_file_body_line_count_counts_match() {
+    let td = write_vault(&[
+        ("a.org", "* A\nx\n"),
+        ("b.org", "* B\nx\n"),
+        ("c.org", "* C\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    let m = v.file_body_line_count_counts();
+    assert_eq!(m.get(&1), Some(&2));
+    assert_eq!(m.get(&0), Some(&1));
+}
+
+#[test]
+fn vault_mode_file_body_line_count_match() {
+    let td = write_vault(&[
+        ("a.org", "* A\nx\n"),
+        ("b.org", "* B\nx\n"),
+        ("c.org", "* C\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.mode_file_body_line_count(), Some(1));
+}
+
+#[test]
+fn vault_mode_file_body_line_count_none_when_no_files() {
+    let td = write_vault(&[]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.mode_file_body_line_count(), None);
+}
+
+#[test]
+fn vault_file_body_char_count_counts_match() {
+    let td = write_vault(&[
+        ("a.org", "* A\nx\n"),
+        ("b.org", "* B\nx\n"),
+        ("c.org", "* C\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    let m = v.file_body_char_count_counts();
+    assert_eq!(m.get(&2), Some(&2));
+    assert_eq!(m.get(&0), Some(&1));
+}
+
+#[test]
+fn vault_mode_file_body_char_count_match() {
+    let td = write_vault(&[
+        ("a.org", "* A\nx\n"),
+        ("b.org", "* B\nx\n"),
+        ("c.org", "* C\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.mode_file_body_char_count(), Some(2));
+}
+
+#[test]
+fn vault_mode_file_body_char_count_none_when_no_files() {
+    let td = write_vault(&[]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.mode_file_body_char_count(), None);
+}
