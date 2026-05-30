@@ -5281,6 +5281,37 @@ fn doc_median_subtree_link_count_none_when_empty() {
 }
 
 #[test]
+fn doc_max_min_subtree_tag_count_match() {
+    let doc = parse("* A :x:\n** B :y:z:\n* C\n").expect("parse");
+    // subtree distinct tags: A={x,y,z}=3, B={y,z}=2, C={}=0
+    assert_eq!(doc.max_subtree_tag_count(), 3);
+    assert_eq!(doc.min_subtree_tag_count(), 0);
+}
+
+#[test]
+fn doc_total_subtree_tag_count_match() {
+    let doc = parse("* A :x:\n** B :y:z:\n* C\n").expect("parse");
+    // 3+2+0 = 5
+    assert_eq!(doc.total_subtree_tag_count(), 5);
+}
+
+#[test]
+fn doc_mean_subtree_tag_count_match() {
+    let doc = parse("* A :x:\n* B :y:\n* C :z:\n").expect("parse");
+    // 1+1+1=3, n=3 -> 1
+    assert_eq!(doc.mean_subtree_tag_count(), 1);
+}
+
+#[test]
+fn doc_subtree_tag_count_zero_when_empty() {
+    let doc = parse("").expect("parse");
+    assert_eq!(doc.max_subtree_tag_count(), 0);
+    assert_eq!(doc.min_subtree_tag_count(), 0);
+    assert_eq!(doc.total_subtree_tag_count(), 0);
+    assert_eq!(doc.mean_subtree_tag_count(), 0);
+}
+
+#[test]
 fn doc_max_min_root_descendant_count_match() {
     let doc = parse("* A\n** a1\n*** a2\n* B\n** b1\n* C\n").expect("parse");
     // descendants: A=2, B=1, C=0
