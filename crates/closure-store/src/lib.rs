@@ -4143,6 +4143,85 @@ impl Vault {
         best.map(|(tc, _)| tc)
     }
 
+    /// Maximum per-file distinct priority count (`None` when no files).
+    #[must_use]
+    pub fn max_file_distinct_priority_count(&self) -> Option<usize> {
+        self.documents
+            .values()
+            .map(|d| d.org().distinct_priority_count())
+            .max()
+    }
+
+    /// Minimum per-file distinct priority count (`None` when no files).
+    #[must_use]
+    pub fn min_file_distinct_priority_count(&self) -> Option<usize> {
+        self.documents
+            .values()
+            .map(|d| d.org().distinct_priority_count())
+            .min()
+    }
+
+    /// Sum of per-file distinct priority counts.
+    #[must_use]
+    pub fn total_file_distinct_priority_count(&self) -> usize {
+        self.documents
+            .values()
+            .map(|d| d.org().distinct_priority_count())
+            .sum()
+    }
+
+    /// Integer mean per-file distinct priority count (`0` when no files).
+    #[must_use]
+    pub fn mean_file_distinct_priority_count(&self) -> usize {
+        self.total_file_distinct_priority_count()
+            .checked_div(self.len())
+            .unwrap_or(0)
+    }
+
+    /// Median per-file distinct priority count (`None` when no files).
+    #[must_use]
+    pub fn median_file_distinct_priority_count(&self) -> Option<usize> {
+        let mut v: Vec<usize> = self
+            .documents
+            .values()
+            .map(|d| d.org().distinct_priority_count())
+            .collect();
+        if v.is_empty() {
+            return None;
+        }
+        v.sort_unstable();
+        let mid = v.len() / 2;
+        Some(if v.len() % 2 == 1 {
+            v[mid]
+        } else {
+            v[mid - 1].midpoint(v[mid])
+        })
+    }
+
+    /// Histogram of per-file distinct priority counts.
+    #[must_use]
+    pub fn file_distinct_priority_count_counts(
+        &self,
+    ) -> std::collections::BTreeMap<usize, usize> {
+        let mut m = std::collections::BTreeMap::new();
+        for d in self.documents.values() {
+            *m.entry(d.org().distinct_priority_count()).or_insert(0) += 1;
+        }
+        m
+    }
+
+    /// Most common per-file distinct priority count (lowest wins ties).
+    #[must_use]
+    pub fn mode_file_distinct_priority_count(&self) -> Option<usize> {
+        let mut best: Option<(usize, usize)> = None;
+        for (pc, c) in self.file_distinct_priority_count_counts() {
+            if best.is_none_or(|(_, bestc)| c > bestc) {
+                best = Some((pc, c));
+            }
+        }
+        best.map(|(pc, _)| pc)
+    }
+
     /// Percentage of distinct tags among total tag occurrences
     /// (`distinct * 100 / total`, `0` when no tags).
     #[must_use]
