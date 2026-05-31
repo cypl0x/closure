@@ -3469,6 +3469,113 @@ impl Vault {
         best.map(|(wc, _)| wc)
     }
 
+    /// Maximum per-file summed headline descendant count (`None` when no files).
+    #[must_use]
+    pub fn max_file_descendant_count(&self) -> Option<usize> {
+        self.documents
+            .values()
+            .map(|d| {
+                d.org()
+                    .iter_headlines()
+                    .into_iter()
+                    .map(closure_org::Headline::descendant_count)
+                    .sum()
+            })
+            .max()
+    }
+
+    /// Minimum per-file summed headline descendant count (`None` when no files).
+    #[must_use]
+    pub fn min_file_descendant_count(&self) -> Option<usize> {
+        self.documents
+            .values()
+            .map(|d| {
+                d.org()
+                    .iter_headlines()
+                    .into_iter()
+                    .map(closure_org::Headline::descendant_count)
+                    .sum()
+            })
+            .min()
+    }
+
+    /// Sum of per-file summed headline descendant counts.
+    #[must_use]
+    pub fn total_file_descendant_count(&self) -> usize {
+        self.documents
+            .values()
+            .map(|d| {
+                d.org()
+                    .iter_headlines()
+                    .into_iter()
+                    .map(closure_org::Headline::descendant_count)
+                    .sum::<usize>()
+            })
+            .sum()
+    }
+
+    /// Integer mean per-file summed headline descendant count (`0` when no files).
+    #[must_use]
+    pub fn mean_file_descendant_count(&self) -> usize {
+        self.total_file_descendant_count()
+            .checked_div(self.len())
+            .unwrap_or(0)
+    }
+
+    /// Median per-file summed headline descendant count (`None` when no files).
+    #[must_use]
+    pub fn median_file_descendant_count(&self) -> Option<usize> {
+        let mut v: Vec<usize> = self
+            .documents
+            .values()
+            .map(|d| {
+                d.org()
+                    .iter_headlines()
+                    .into_iter()
+                    .map(closure_org::Headline::descendant_count)
+                    .sum()
+            })
+            .collect();
+        if v.is_empty() {
+            return None;
+        }
+        v.sort_unstable();
+        let mid = v.len() / 2;
+        Some(if v.len() % 2 == 1 {
+            v[mid]
+        } else {
+            v[mid - 1].midpoint(v[mid])
+        })
+    }
+
+    /// Histogram of per-file summed headline descendant counts.
+    #[must_use]
+    pub fn file_descendant_count_counts(&self) -> std::collections::BTreeMap<usize, usize> {
+        let mut m = std::collections::BTreeMap::new();
+        for d in self.documents.values() {
+            let c: usize = d
+                .org()
+                .iter_headlines()
+                .into_iter()
+                .map(closure_org::Headline::descendant_count)
+                .sum();
+            *m.entry(c).or_insert(0) += 1;
+        }
+        m
+    }
+
+    /// Most common per-file summed headline descendant count (lowest wins ties).
+    #[must_use]
+    pub fn mode_file_descendant_count(&self) -> Option<usize> {
+        let mut best: Option<(usize, usize)> = None;
+        for (dc, c) in self.file_descendant_count_counts() {
+            if best.is_none_or(|(_, bestc)| c > bestc) {
+                best = Some((dc, c));
+            }
+        }
+        best.map(|(dc, _)| dc)
+    }
+
     /// Percentage of distinct tags among total tag occurrences
     /// (`distinct * 100 / total`, `0` when no tags).
     #[must_use]

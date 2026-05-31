@@ -6104,3 +6104,89 @@ fn vault_file_title_word_count_none_when_no_files() {
     assert_eq!(v.median_file_title_word_count(), None);
     assert_eq!(v.mode_file_title_word_count(), None);
 }
+
+#[test]
+fn vault_max_min_file_descendant_count_match() {
+    // a.org: A has child B -> A.descendant_count=1, B.descendant_count=0; sum=1
+    // b.org: only "* C" -> sum=0
+    // c.org: D->E->F -> D=2, E=1, F=0; sum=3
+    let td = write_vault(&[
+        ("a.org", "* A\n** B\n"),
+        ("b.org", "* C\n"),
+        ("c.org", "* D\n** E\n*** F\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.max_file_descendant_count(), Some(3));
+    assert_eq!(v.min_file_descendant_count(), Some(0));
+}
+
+#[test]
+fn vault_total_file_descendant_count_match() {
+    let td = write_vault(&[
+        ("a.org", "* A\n** B\n"),
+        ("b.org", "* C\n"),
+        ("c.org", "* D\n** E\n*** F\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.total_file_descendant_count(), 4);
+}
+
+#[test]
+fn vault_mean_file_descendant_count_match() {
+    let td = write_vault(&[
+        ("a.org", "* A\n** B\n"),
+        ("b.org", "* C\n"),
+        ("c.org", "* D\n** E\n*** F\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.mean_file_descendant_count(), 1);
+}
+
+#[test]
+fn vault_median_file_descendant_count_match() {
+    let td = write_vault(&[
+        ("a.org", "* A\n** B\n"),
+        ("b.org", "* C\n"),
+        ("c.org", "* D\n** E\n*** F\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    // [0,1,3] median 1
+    assert_eq!(v.median_file_descendant_count(), Some(1));
+}
+
+#[test]
+fn vault_file_descendant_count_counts_match() {
+    let td = write_vault(&[
+        ("a.org", "* A\n** B\n"),
+        ("b.org", "* C\n"),
+        ("c.org", "* D\n** E\n*** F\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    let m = v.file_descendant_count_counts();
+    assert_eq!(m.get(&1), Some(&1));
+    assert_eq!(m.get(&0), Some(&1));
+    assert_eq!(m.get(&3), Some(&1));
+}
+
+#[test]
+fn vault_mode_file_descendant_count_match() {
+    let td = write_vault(&[
+        ("a.org", "* A\n** B\n"),
+        ("b.org", "* C\n** D\n"),
+        ("c.org", "* E\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.mode_file_descendant_count(), Some(1));
+}
+
+#[test]
+fn vault_file_descendant_count_none_when_no_files() {
+    let td = write_vault(&[]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.max_file_descendant_count(), None);
+    assert_eq!(v.min_file_descendant_count(), None);
+    assert_eq!(v.total_file_descendant_count(), 0);
+    assert_eq!(v.mean_file_descendant_count(), 0);
+    assert_eq!(v.median_file_descendant_count(), None);
+    assert_eq!(v.mode_file_descendant_count(), None);
+}
