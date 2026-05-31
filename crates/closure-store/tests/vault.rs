@@ -5937,3 +5937,87 @@ fn vault_mode_file_body_word_count_none_when_no_files() {
     let v = Vault::open(td.path()).expect("open");
     assert_eq!(v.mode_file_body_word_count(), None);
 }
+
+#[test]
+fn vault_max_min_file_title_byte_len_match() {
+    // titles: "A" (1), "BBB" (3), "CC" (2). per-file sums: 1, 3, 2
+    let td = write_vault(&[
+        ("a.org", "* A\n"),
+        ("b.org", "* BBB\n"),
+        ("c.org", "* CC\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.max_file_title_byte_len(), Some(3));
+    assert_eq!(v.min_file_title_byte_len(), Some(1));
+}
+
+#[test]
+fn vault_total_file_title_byte_len_match() {
+    let td = write_vault(&[
+        ("a.org", "* A\n"),
+        ("b.org", "* BBB\n"),
+        ("c.org", "* CC\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.total_file_title_byte_len(), 6);
+}
+
+#[test]
+fn vault_mean_file_title_byte_len_match() {
+    let td = write_vault(&[
+        ("a.org", "* A\n"),
+        ("b.org", "* BBB\n"),
+        ("c.org", "* CC\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.mean_file_title_byte_len(), 2);
+}
+
+#[test]
+fn vault_median_file_title_byte_len_match() {
+    let td = write_vault(&[
+        ("a.org", "* A\n"),
+        ("b.org", "* BBB\n"),
+        ("c.org", "* CC\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    // sums sorted [1,2,3] median 2
+    assert_eq!(v.median_file_title_byte_len(), Some(2));
+}
+
+#[test]
+fn vault_file_title_byte_len_counts_match() {
+    let td = write_vault(&[
+        ("a.org", "* A\n"),
+        ("b.org", "* BBB\n"),
+        ("c.org", "* CC\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    let m = v.file_title_byte_len_counts();
+    assert_eq!(m.get(&1), Some(&1));
+    assert_eq!(m.get(&3), Some(&1));
+    assert_eq!(m.get(&2), Some(&1));
+}
+
+#[test]
+fn vault_mode_file_title_byte_len_match() {
+    let td = write_vault(&[
+        ("a.org", "* A\n"),
+        ("b.org", "* A\n"),
+        ("c.org", "* BBB\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.mode_file_title_byte_len(), Some(1));
+}
+
+#[test]
+fn vault_file_title_byte_len_none_when_no_files() {
+    let td = write_vault(&[]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.max_file_title_byte_len(), None);
+    assert_eq!(v.min_file_title_byte_len(), None);
+    assert_eq!(v.total_file_title_byte_len(), 0);
+    assert_eq!(v.mean_file_title_byte_len(), 0);
+    assert_eq!(v.median_file_title_byte_len(), None);
+    assert_eq!(v.mode_file_title_byte_len(), None);
+}
