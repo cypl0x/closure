@@ -6663,3 +6663,87 @@ fn vault_mode_file_archived_count_none_when_no_files() {
     let v = Vault::open(td.path()).expect("open");
     assert_eq!(v.mode_file_archived_count(), None);
 }
+
+#[test]
+fn vault_max_min_file_distinct_todo_count_match() {
+    // a:{TODO}=1, b:{TODO,DONE}=2, c:{}=0
+    let td = write_vault(&[
+        ("a.org", "* TODO A\n"),
+        ("b.org", "* TODO A\n* DONE B\n"),
+        ("c.org", "* C\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.max_file_distinct_todo_count(), Some(2));
+    assert_eq!(v.min_file_distinct_todo_count(), Some(0));
+}
+
+#[test]
+fn vault_total_file_distinct_todo_count_match() {
+    let td = write_vault(&[
+        ("a.org", "* TODO A\n"),
+        ("b.org", "* TODO A\n* DONE B\n"),
+        ("c.org", "* C\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.total_file_distinct_todo_count(), 3);
+}
+
+#[test]
+fn vault_mean_file_distinct_todo_count_match() {
+    let td = write_vault(&[
+        ("a.org", "* TODO A\n"),
+        ("b.org", "* TODO A\n* DONE B\n"),
+        ("c.org", "* C\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.mean_file_distinct_todo_count(), 1);
+}
+
+#[test]
+fn vault_median_file_distinct_todo_count_match() {
+    let td = write_vault(&[
+        ("a.org", "* TODO A\n"),
+        ("b.org", "* TODO A\n* DONE B\n"),
+        ("c.org", "* C\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    // [0,1,2] median 1
+    assert_eq!(v.median_file_distinct_todo_count(), Some(1));
+}
+
+#[test]
+fn vault_file_distinct_todo_count_counts_match() {
+    let td = write_vault(&[
+        ("a.org", "* TODO A\n"),
+        ("b.org", "* TODO A\n* DONE B\n"),
+        ("c.org", "* C\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    let m = v.file_distinct_todo_count_counts();
+    assert_eq!(m.get(&1), Some(&1));
+    assert_eq!(m.get(&2), Some(&1));
+    assert_eq!(m.get(&0), Some(&1));
+}
+
+#[test]
+fn vault_mode_file_distinct_todo_count_match() {
+    let td = write_vault(&[
+        ("a.org", "* TODO A\n"),
+        ("b.org", "* DONE A\n"),
+        ("c.org", "* TODO A\n* DONE B\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.mode_file_distinct_todo_count(), Some(1));
+}
+
+#[test]
+fn vault_file_distinct_todo_count_none_when_no_files() {
+    let td = write_vault(&[]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.max_file_distinct_todo_count(), None);
+    assert_eq!(v.min_file_distinct_todo_count(), None);
+    assert_eq!(v.total_file_distinct_todo_count(), 0);
+    assert_eq!(v.mean_file_distinct_todo_count(), 0);
+    assert_eq!(v.median_file_distinct_todo_count(), None);
+    assert_eq!(v.mode_file_distinct_todo_count(), None);
+}
