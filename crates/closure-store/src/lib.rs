@@ -4044,6 +4044,28 @@ impl Vault {
         best.map(|(pc, _)| pc)
     }
 
+    /// Histogram of per-file archived-headline counts.
+    #[must_use]
+    pub fn file_archived_count_counts(&self) -> std::collections::BTreeMap<usize, usize> {
+        let mut m = std::collections::BTreeMap::new();
+        for d in self.documents.values() {
+            *m.entry(d.org().count_archived()).or_insert(0) += 1;
+        }
+        m
+    }
+
+    /// Most common per-file archived-headline count (lowest wins ties).
+    #[must_use]
+    pub fn mode_file_archived_count(&self) -> Option<usize> {
+        let mut best: Option<(usize, usize)> = None;
+        for (ac, c) in self.file_archived_count_counts() {
+            if best.is_none_or(|(_, bestc)| c > bestc) {
+                best = Some((ac, c));
+            }
+        }
+        best.map(|(ac, _)| ac)
+    }
+
     /// Percentage of distinct tags among total tag occurrences
     /// (`distinct * 100 / total`, `0` when no tags).
     #[must_use]

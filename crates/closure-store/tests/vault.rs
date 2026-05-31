@@ -6632,3 +6632,34 @@ fn vault_file_distinct_property_key_count_none_when_no_files() {
     assert_eq!(v.median_file_distinct_property_key_count(), None);
     assert_eq!(v.mode_file_distinct_property_key_count(), None);
 }
+
+#[test]
+fn vault_file_archived_count_counts_match() {
+    let td = write_vault(&[
+        ("a.org", "* A :ARCHIVE:\n"),
+        ("b.org", "* B :ARCHIVE:\n"),
+        ("c.org", "* C\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    let m = v.file_archived_count_counts();
+    assert_eq!(m.get(&1), Some(&2));
+    assert_eq!(m.get(&0), Some(&1));
+}
+
+#[test]
+fn vault_mode_file_archived_count_match() {
+    let td = write_vault(&[
+        ("a.org", "* A :ARCHIVE:\n"),
+        ("b.org", "* B :ARCHIVE:\n"),
+        ("c.org", "* C\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.mode_file_archived_count(), Some(1));
+}
+
+#[test]
+fn vault_mode_file_archived_count_none_when_no_files() {
+    let td = write_vault(&[]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.mode_file_archived_count(), None);
+}
