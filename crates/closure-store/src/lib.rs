@@ -3372,6 +3372,103 @@ impl Vault {
         best.map(|(len, _)| len)
     }
 
+    /// Maximum per-file summed title word count (`None` when no files).
+    #[must_use]
+    pub fn max_file_title_word_count(&self) -> Option<usize> {
+        self.documents
+            .values()
+            .map(|d| {
+                d.all_headlines()
+                    .map(|h| h.title().split_whitespace().count())
+                    .sum()
+            })
+            .max()
+    }
+
+    /// Minimum per-file summed title word count (`None` when no files).
+    #[must_use]
+    pub fn min_file_title_word_count(&self) -> Option<usize> {
+        self.documents
+            .values()
+            .map(|d| {
+                d.all_headlines()
+                    .map(|h| h.title().split_whitespace().count())
+                    .sum()
+            })
+            .min()
+    }
+
+    /// Sum of per-file summed title word counts.
+    #[must_use]
+    pub fn total_file_title_word_count(&self) -> usize {
+        self.documents
+            .values()
+            .map(|d| {
+                d.all_headlines()
+                    .map(|h| h.title().split_whitespace().count())
+                    .sum::<usize>()
+            })
+            .sum()
+    }
+
+    /// Integer mean per-file summed title word count (`0` when no files).
+    #[must_use]
+    pub fn mean_file_title_word_count(&self) -> usize {
+        self.total_file_title_word_count()
+            .checked_div(self.len())
+            .unwrap_or(0)
+    }
+
+    /// Median per-file summed title word count (`None` when no files).
+    #[must_use]
+    pub fn median_file_title_word_count(&self) -> Option<usize> {
+        let mut v: Vec<usize> = self
+            .documents
+            .values()
+            .map(|d| {
+                d.all_headlines()
+                    .map(|h| h.title().split_whitespace().count())
+                    .sum()
+            })
+            .collect();
+        if v.is_empty() {
+            return None;
+        }
+        v.sort_unstable();
+        let mid = v.len() / 2;
+        Some(if v.len() % 2 == 1 {
+            v[mid]
+        } else {
+            v[mid - 1].midpoint(v[mid])
+        })
+    }
+
+    /// Histogram of per-file summed title word counts.
+    #[must_use]
+    pub fn file_title_word_count_counts(&self) -> std::collections::BTreeMap<usize, usize> {
+        let mut m = std::collections::BTreeMap::new();
+        for d in self.documents.values() {
+            let c: usize = d
+                .all_headlines()
+                .map(|h| h.title().split_whitespace().count())
+                .sum();
+            *m.entry(c).or_insert(0) += 1;
+        }
+        m
+    }
+
+    /// Most common per-file summed title word count (lowest wins ties).
+    #[must_use]
+    pub fn mode_file_title_word_count(&self) -> Option<usize> {
+        let mut best: Option<(usize, usize)> = None;
+        for (wc, c) in self.file_title_word_count_counts() {
+            if best.is_none_or(|(_, bestc)| c > bestc) {
+                best = Some((wc, c));
+            }
+        }
+        best.map(|(wc, _)| wc)
+    }
+
     /// Percentage of distinct tags among total tag occurrences
     /// (`distinct * 100 / total`, `0` when no tags).
     #[must_use]

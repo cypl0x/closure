@@ -6021,3 +6021,86 @@ fn vault_file_title_byte_len_none_when_no_files() {
     assert_eq!(v.median_file_title_byte_len(), None);
     assert_eq!(v.mode_file_title_byte_len(), None);
 }
+
+#[test]
+fn vault_max_min_file_title_word_count_match() {
+    // titles "A B" 2 words, "C" 1, "D E F" 3
+    let td = write_vault(&[
+        ("a.org", "* A B\n"),
+        ("b.org", "* C\n"),
+        ("c.org", "* D E F\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.max_file_title_word_count(), Some(3));
+    assert_eq!(v.min_file_title_word_count(), Some(1));
+}
+
+#[test]
+fn vault_total_file_title_word_count_match() {
+    let td = write_vault(&[
+        ("a.org", "* A B\n"),
+        ("b.org", "* C\n"),
+        ("c.org", "* D E F\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.total_file_title_word_count(), 6);
+}
+
+#[test]
+fn vault_mean_file_title_word_count_match() {
+    let td = write_vault(&[
+        ("a.org", "* A B\n"),
+        ("b.org", "* C\n"),
+        ("c.org", "* D E F\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.mean_file_title_word_count(), 2);
+}
+
+#[test]
+fn vault_median_file_title_word_count_match() {
+    let td = write_vault(&[
+        ("a.org", "* A B\n"),
+        ("b.org", "* C\n"),
+        ("c.org", "* D E F\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.median_file_title_word_count(), Some(2));
+}
+
+#[test]
+fn vault_file_title_word_count_counts_match() {
+    let td = write_vault(&[
+        ("a.org", "* A B\n"),
+        ("b.org", "* C\n"),
+        ("c.org", "* D E F\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    let m = v.file_title_word_count_counts();
+    assert_eq!(m.get(&2), Some(&1));
+    assert_eq!(m.get(&1), Some(&1));
+    assert_eq!(m.get(&3), Some(&1));
+}
+
+#[test]
+fn vault_mode_file_title_word_count_match() {
+    let td = write_vault(&[
+        ("a.org", "* A B\n"),
+        ("b.org", "* C D\n"),
+        ("c.org", "* E\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.mode_file_title_word_count(), Some(2));
+}
+
+#[test]
+fn vault_file_title_word_count_none_when_no_files() {
+    let td = write_vault(&[]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.max_file_title_word_count(), None);
+    assert_eq!(v.min_file_title_word_count(), None);
+    assert_eq!(v.total_file_title_word_count(), 0);
+    assert_eq!(v.mean_file_title_word_count(), 0);
+    assert_eq!(v.median_file_title_word_count(), None);
+    assert_eq!(v.mode_file_title_word_count(), None);
+}
