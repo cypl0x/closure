@@ -5905,3 +5905,35 @@ fn vault_mode_file_body_char_count_none_when_no_files() {
     let v = Vault::open(td.path()).expect("open");
     assert_eq!(v.mode_file_body_char_count(), None);
 }
+
+#[test]
+fn vault_file_body_word_count_counts_match() {
+    let td = write_vault(&[
+        ("a.org", "* A\nx\n"),
+        ("b.org", "* B\nx\n"),
+        ("c.org", "* C\nx y\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    let m = v.file_body_word_count_counts();
+    // a,b body "x" -> 1 word; c body "x y" -> 2 words
+    assert_eq!(m.get(&1), Some(&2));
+    assert_eq!(m.get(&2), Some(&1));
+}
+
+#[test]
+fn vault_mode_file_body_word_count_match() {
+    let td = write_vault(&[
+        ("a.org", "* A\nx\n"),
+        ("b.org", "* B\nx\n"),
+        ("c.org", "* C\nx y\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.mode_file_body_word_count(), Some(1));
+}
+
+#[test]
+fn vault_mode_file_body_word_count_none_when_no_files() {
+    let td = write_vault(&[]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.mode_file_body_word_count(), None);
+}

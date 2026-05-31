@@ -3268,6 +3268,32 @@ impl Vault {
         best.map(|(cc, _)| cc)
     }
 
+    /// Histogram of per-file body word counts.
+    #[must_use]
+    pub fn file_body_word_count_counts(&self) -> std::collections::BTreeMap<usize, usize> {
+        let mut m = std::collections::BTreeMap::new();
+        for d in self.documents.values() {
+            let c: usize = d
+                .all_headlines()
+                .map(|h| h.body_text().split_whitespace().count())
+                .sum();
+            *m.entry(c).or_insert(0) += 1;
+        }
+        m
+    }
+
+    /// Most common per-file body word count (lowest wins ties).
+    #[must_use]
+    pub fn mode_file_body_word_count(&self) -> Option<usize> {
+        let mut best: Option<(usize, usize)> = None;
+        for (wc, c) in self.file_body_word_count_counts() {
+            if best.is_none_or(|(_, bestc)| c > bestc) {
+                best = Some((wc, c));
+            }
+        }
+        best.map(|(wc, _)| wc)
+    }
+
     /// Percentage of distinct tags among total tag occurrences
     /// (`distinct * 100 / total`, `0` when no tags).
     #[must_use]
