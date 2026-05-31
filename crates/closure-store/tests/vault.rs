@@ -6830,3 +6830,87 @@ fn vault_file_distinct_priority_count_none_when_no_files() {
     assert_eq!(v.median_file_distinct_priority_count(), None);
     assert_eq!(v.mode_file_distinct_priority_count(), None);
 }
+
+#[test]
+fn vault_max_min_file_distinct_level_count_match() {
+    // a={1}=1, b={1,2,3}=3, c={1,2}=2
+    let td = write_vault(&[
+        ("a.org", "* A\n"),
+        ("b.org", "* A\n** B\n*** C\n"),
+        ("c.org", "* A\n** B\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.max_file_distinct_level_count(), Some(3));
+    assert_eq!(v.min_file_distinct_level_count(), Some(1));
+}
+
+#[test]
+fn vault_total_file_distinct_level_count_match() {
+    let td = write_vault(&[
+        ("a.org", "* A\n"),
+        ("b.org", "* A\n** B\n*** C\n"),
+        ("c.org", "* A\n** B\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.total_file_distinct_level_count(), 6);
+}
+
+#[test]
+fn vault_mean_file_distinct_level_count_match() {
+    let td = write_vault(&[
+        ("a.org", "* A\n"),
+        ("b.org", "* A\n** B\n*** C\n"),
+        ("c.org", "* A\n** B\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.mean_file_distinct_level_count(), 2);
+}
+
+#[test]
+fn vault_median_file_distinct_level_count_match() {
+    let td = write_vault(&[
+        ("a.org", "* A\n"),
+        ("b.org", "* A\n** B\n*** C\n"),
+        ("c.org", "* A\n** B\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    // [1,2,3] median 2
+    assert_eq!(v.median_file_distinct_level_count(), Some(2));
+}
+
+#[test]
+fn vault_file_distinct_level_count_counts_match() {
+    let td = write_vault(&[
+        ("a.org", "* A\n"),
+        ("b.org", "* A\n** B\n*** C\n"),
+        ("c.org", "* A\n** B\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    let m = v.file_distinct_level_count_counts();
+    assert_eq!(m.get(&1), Some(&1));
+    assert_eq!(m.get(&3), Some(&1));
+    assert_eq!(m.get(&2), Some(&1));
+}
+
+#[test]
+fn vault_mode_file_distinct_level_count_match() {
+    let td = write_vault(&[
+        ("a.org", "* A\n** B\n"),
+        ("b.org", "* A\n** B\n"),
+        ("c.org", "* A\n** B\n*** C\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.mode_file_distinct_level_count(), Some(2));
+}
+
+#[test]
+fn vault_file_distinct_level_count_none_when_no_files() {
+    let td = write_vault(&[]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.max_file_distinct_level_count(), None);
+    assert_eq!(v.min_file_distinct_level_count(), None);
+    assert_eq!(v.total_file_distinct_level_count(), 0);
+    assert_eq!(v.mean_file_distinct_level_count(), 0);
+    assert_eq!(v.median_file_distinct_level_count(), None);
+    assert_eq!(v.mode_file_distinct_level_count(), None);
+}
