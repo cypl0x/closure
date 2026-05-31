@@ -6278,3 +6278,87 @@ fn vault_file_subtree_size_none_when_no_files() {
     assert_eq!(v.median_file_subtree_size(), None);
     assert_eq!(v.mode_file_subtree_size(), None);
 }
+
+#[test]
+fn vault_max_min_file_max_level_match() {
+    // per-file max_level: a=1, b=3, c=2
+    let td = write_vault(&[
+        ("a.org", "* A\n"),
+        ("b.org", "* A\n** B\n*** C\n"),
+        ("c.org", "* A\n** B\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.max_file_max_level(), Some(3));
+    assert_eq!(v.min_file_max_level(), Some(1));
+}
+
+#[test]
+fn vault_total_file_max_level_match() {
+    let td = write_vault(&[
+        ("a.org", "* A\n"),
+        ("b.org", "* A\n** B\n*** C\n"),
+        ("c.org", "* A\n** B\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.total_file_max_level(), 6);
+}
+
+#[test]
+fn vault_mean_file_max_level_match() {
+    let td = write_vault(&[
+        ("a.org", "* A\n"),
+        ("b.org", "* A\n** B\n*** C\n"),
+        ("c.org", "* A\n** B\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.mean_file_max_level(), 2);
+}
+
+#[test]
+fn vault_median_file_max_level_match() {
+    let td = write_vault(&[
+        ("a.org", "* A\n"),
+        ("b.org", "* A\n** B\n*** C\n"),
+        ("c.org", "* A\n** B\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    // [1,2,3] median 2
+    assert_eq!(v.median_file_max_level(), Some(2));
+}
+
+#[test]
+fn vault_file_max_level_counts_match() {
+    let td = write_vault(&[
+        ("a.org", "* A\n"),
+        ("b.org", "* A\n** B\n*** C\n"),
+        ("c.org", "* A\n** B\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    let m = v.file_max_level_counts();
+    assert_eq!(m.get(&1), Some(&1));
+    assert_eq!(m.get(&3), Some(&1));
+    assert_eq!(m.get(&2), Some(&1));
+}
+
+#[test]
+fn vault_mode_file_max_level_match() {
+    let td = write_vault(&[
+        ("a.org", "* A\n** B\n"),
+        ("b.org", "* A\n** B\n"),
+        ("c.org", "* A\n** B\n*** C\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.mode_file_max_level(), Some(2));
+}
+
+#[test]
+fn vault_file_max_level_none_when_no_files() {
+    let td = write_vault(&[]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.max_file_max_level(), None);
+    assert_eq!(v.min_file_max_level(), None);
+    assert_eq!(v.total_file_max_level(), 0);
+    assert_eq!(v.mean_file_max_level(), 0);
+    assert_eq!(v.median_file_max_level(), None);
+    assert_eq!(v.mode_file_max_level(), None);
+}
