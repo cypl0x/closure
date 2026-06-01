@@ -5185,6 +5185,112 @@ impl Vault {
         best.map(|(cc, _)| cc)
     }
 
+    /// Histogram of per-file COMMENT-headline counts.
+    #[must_use]
+    pub fn file_comment_count_counts(&self) -> std::collections::BTreeMap<usize, usize> {
+        let mut m = std::collections::BTreeMap::new();
+        for d in self.documents.values() {
+            *m.entry(d.org().count_comments()).or_insert(0) += 1;
+        }
+        m
+    }
+
+    /// Most common per-file COMMENT-headline count (lowest wins ties).
+    #[must_use]
+    pub fn mode_file_comment_count(&self) -> Option<usize> {
+        let mut best: Option<(usize, usize)> = None;
+        for (cc, c) in self.file_comment_count_counts() {
+            if best.is_none_or(|(_, bestc)| c > bestc) {
+                best = Some((cc, c));
+            }
+        }
+        best.map(|(cc, _)| cc)
+    }
+
+    /// Count of headlines with planning info across the vault.
+    #[must_use]
+    pub fn planning_count(&self) -> usize {
+        self.documents
+            .values()
+            .map(|d| d.org().count_with_planning())
+            .sum()
+    }
+
+    /// Count of headlines with planning info for a single file by path.
+    /// Returns `None` if the file isn't loaded.
+    #[must_use]
+    pub fn planning_count_of(&self, path: &Path) -> Option<usize> {
+        self.documents
+            .get(path)
+            .map(|d| d.org().count_with_planning())
+    }
+
+    /// Maximum per-file planning-headline count (`None` when no files).
+    #[must_use]
+    pub fn max_file_planning_count(&self) -> Option<usize> {
+        self.documents
+            .values()
+            .map(|d| d.org().count_with_planning())
+            .max()
+    }
+
+    /// Minimum per-file planning-headline count (`None` when no files).
+    #[must_use]
+    pub fn min_file_planning_count(&self) -> Option<usize> {
+        self.documents
+            .values()
+            .map(|d| d.org().count_with_planning())
+            .min()
+    }
+
+    /// Integer mean per-file planning-headline count (`0` when no files).
+    #[must_use]
+    pub fn mean_file_planning_count(&self) -> usize {
+        self.planning_count().checked_div(self.len()).unwrap_or(0)
+    }
+
+    /// Median per-file planning-headline count (`None` when no files).
+    #[must_use]
+    pub fn median_file_planning_count(&self) -> Option<usize> {
+        let mut v: Vec<usize> = self
+            .documents
+            .values()
+            .map(|d| d.org().count_with_planning())
+            .collect();
+        if v.is_empty() {
+            return None;
+        }
+        v.sort_unstable();
+        let mid = v.len() / 2;
+        Some(if v.len() % 2 == 1 {
+            v[mid]
+        } else {
+            v[mid - 1].midpoint(v[mid])
+        })
+    }
+
+    /// Histogram of per-file planning-headline counts.
+    #[must_use]
+    pub fn file_planning_count_counts(&self) -> std::collections::BTreeMap<usize, usize> {
+        let mut m = std::collections::BTreeMap::new();
+        for d in self.documents.values() {
+            *m.entry(d.org().count_with_planning()).or_insert(0) += 1;
+        }
+        m
+    }
+
+    /// Most common per-file planning-headline count (lowest wins ties).
+    #[must_use]
+    pub fn mode_file_planning_count(&self) -> Option<usize> {
+        let mut best: Option<(usize, usize)> = None;
+        for (pc, c) in self.file_planning_count_counts() {
+            if best.is_none_or(|(_, bestc)| c > bestc) {
+                best = Some((pc, c));
+            }
+        }
+        best.map(|(pc, _)| pc)
+    }
+
     /// Count of headlines carrying at least one link for a single file
     /// by path. Returns `None` if the file isn't loaded.
     #[must_use]
