@@ -482,6 +482,22 @@ impl Dispatcher {
             .count()
     }
 
+    /// Percentage of bound chords that are single-stroke (`0..=100`).
+    #[must_use]
+    pub fn single_stroke_pct(&self) -> usize {
+        (self.single_stroke_count() * 100)
+            .checked_div(self.bindings.len())
+            .unwrap_or(0)
+    }
+
+    /// Percentage of bound chords that are multi-stroke (`0..=100`).
+    #[must_use]
+    pub fn multi_stroke_pct(&self) -> usize {
+        (self.multi_stroke_count() * 100)
+            .checked_div(self.bindings.len())
+            .unwrap_or(0)
+    }
+
     /// Most common chord stroke count (lowest wins ties; `None` when empty).
     #[must_use]
     pub fn mode_chord_strokes(&self) -> Option<usize> {

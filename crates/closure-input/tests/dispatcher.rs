@@ -1414,3 +1414,35 @@ fn chord_trie_multi_stroke_pct_zero_when_empty() {
     let t = closure_input::ChordTrie::build(&[]);
     assert_eq!(t.multi_stroke_pct(), 0);
 }
+
+#[test]
+fn dispatcher_single_stroke_pct_match() {
+    let mut reg = Registry::new();
+    reg.register(Box::new(RenameHeadline::new_placeholder()));
+    let disp = Dispatcher::from_registry(&reg, InputMode::Doom);
+    // single binding "C-c C-x r" is 3 strokes → 0 single / 1 total = 0%
+    assert_eq!(disp.single_stroke_pct(), 0);
+}
+
+#[test]
+fn dispatcher_single_stroke_pct_zero_when_no_files() {
+    let reg = Registry::new();
+    let disp = Dispatcher::from_registry(&reg, InputMode::Doom);
+    assert_eq!(disp.single_stroke_pct(), 0);
+}
+
+#[test]
+fn dispatcher_multi_stroke_pct_match() {
+    let mut reg = Registry::new();
+    reg.register(Box::new(RenameHeadline::new_placeholder()));
+    let disp = Dispatcher::from_registry(&reg, InputMode::Doom);
+    // 1 multi / 1 total = 100%
+    assert_eq!(disp.multi_stroke_pct(), 100);
+}
+
+#[test]
+fn dispatcher_multi_stroke_pct_zero_when_empty() {
+    let reg = Registry::new();
+    let disp = Dispatcher::from_registry(&reg, InputMode::Doom);
+    assert_eq!(disp.multi_stroke_pct(), 0);
+}
