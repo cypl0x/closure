@@ -7015,3 +7015,96 @@ fn vault_file_distinct_id_count_none_when_no_files() {
     assert_eq!(v.median_file_distinct_id_count(), None);
     assert_eq!(v.mode_file_distinct_id_count(), None);
 }
+
+#[test]
+fn vault_with_todo_count_match() {
+    let td = write_vault(&[
+        ("a.org", "* TODO A\n"),
+        ("b.org", "* DONE B\n* C\n"),
+        ("c.org", "* D\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.with_todo_count(), 2);
+}
+
+#[test]
+fn vault_with_todo_count_of_match() {
+    let td = write_vault(&[("a.org", "* TODO A\n* B\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    let p = v.root().join("a.org");
+    assert_eq!(v.with_todo_count_of(&p), Some(1));
+    assert_eq!(v.with_todo_count_of(std::path::Path::new("missing.org")), None);
+}
+
+#[test]
+fn vault_max_min_file_with_todo_count_match() {
+    let td = write_vault(&[
+        ("a.org", "* TODO A\n* TODO X\n"),
+        ("b.org", "* DONE B\n"),
+        ("c.org", "* D\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.max_file_with_todo_count(), Some(2));
+    assert_eq!(v.min_file_with_todo_count(), Some(0));
+}
+
+#[test]
+fn vault_mean_file_with_todo_count_match() {
+    let td = write_vault(&[
+        ("a.org", "* TODO A\n* TODO X\n"),
+        ("b.org", "* DONE B\n"),
+        ("c.org", "* D\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    // 2+1+0=3, /3=1
+    assert_eq!(v.mean_file_with_todo_count(), 1);
+}
+
+#[test]
+fn vault_median_file_with_todo_count_match() {
+    let td = write_vault(&[
+        ("a.org", "* TODO A\n* TODO X\n"),
+        ("b.org", "* DONE B\n"),
+        ("c.org", "* D\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    // [0,1,2] median 1
+    assert_eq!(v.median_file_with_todo_count(), Some(1));
+}
+
+#[test]
+fn vault_file_with_todo_count_counts_match() {
+    let td = write_vault(&[
+        ("a.org", "* TODO A\n* TODO X\n"),
+        ("b.org", "* DONE B\n"),
+        ("c.org", "* D\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    let m = v.file_with_todo_count_counts();
+    assert_eq!(m.get(&2), Some(&1));
+    assert_eq!(m.get(&1), Some(&1));
+    assert_eq!(m.get(&0), Some(&1));
+}
+
+#[test]
+fn vault_mode_file_with_todo_count_match() {
+    let td = write_vault(&[
+        ("a.org", "* TODO A\n"),
+        ("b.org", "* DONE B\n"),
+        ("c.org", "* C\n* D\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.mode_file_with_todo_count(), Some(1));
+}
+
+#[test]
+fn vault_file_with_todo_count_none_when_no_files() {
+    let td = write_vault(&[]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.max_file_with_todo_count(), None);
+    assert_eq!(v.min_file_with_todo_count(), None);
+    assert_eq!(v.mean_file_with_todo_count(), 0);
+    assert_eq!(v.median_file_with_todo_count(), None);
+    assert_eq!(v.mode_file_with_todo_count(), None);
+    assert_eq!(v.with_todo_count(), 0);
+}

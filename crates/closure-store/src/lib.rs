@@ -5034,6 +5034,91 @@ impl Vault {
             .count()
     }
 
+    /// Count of headlines with any TODO keyword set, across the vault.
+    #[must_use]
+    pub fn with_todo_count(&self) -> usize {
+        self.iter()
+            .flat_map(|(_, d)| d.all_headlines())
+            .filter(|h| h.todo().is_some())
+            .count()
+    }
+
+    /// Count of TODO-marked headlines for a single file by path. Returns
+    /// `None` if the file isn't loaded.
+    #[must_use]
+    pub fn with_todo_count_of(&self, path: &Path) -> Option<usize> {
+        self.documents
+            .get(path)
+            .map(|d| d.all_headlines().filter(|h| h.todo().is_some()).count())
+    }
+
+    /// Maximum per-file TODO-marked headline count (`None` when no files).
+    #[must_use]
+    pub fn max_file_with_todo_count(&self) -> Option<usize> {
+        self.documents
+            .values()
+            .map(|d| d.all_headlines().filter(|h| h.todo().is_some()).count())
+            .max()
+    }
+
+    /// Minimum per-file TODO-marked headline count (`None` when no files).
+    #[must_use]
+    pub fn min_file_with_todo_count(&self) -> Option<usize> {
+        self.documents
+            .values()
+            .map(|d| d.all_headlines().filter(|h| h.todo().is_some()).count())
+            .min()
+    }
+
+    /// Integer mean per-file TODO-marked headline count (`0` when no files).
+    #[must_use]
+    pub fn mean_file_with_todo_count(&self) -> usize {
+        self.with_todo_count().checked_div(self.len()).unwrap_or(0)
+    }
+
+    /// Median per-file TODO-marked headline count (`None` when no files).
+    #[must_use]
+    pub fn median_file_with_todo_count(&self) -> Option<usize> {
+        let mut v: Vec<usize> = self
+            .documents
+            .values()
+            .map(|d| d.all_headlines().filter(|h| h.todo().is_some()).count())
+            .collect();
+        if v.is_empty() {
+            return None;
+        }
+        v.sort_unstable();
+        let mid = v.len() / 2;
+        Some(if v.len() % 2 == 1 {
+            v[mid]
+        } else {
+            v[mid - 1].midpoint(v[mid])
+        })
+    }
+
+    /// Histogram of per-file TODO-marked headline counts.
+    #[must_use]
+    pub fn file_with_todo_count_counts(&self) -> std::collections::BTreeMap<usize, usize> {
+        let mut m = std::collections::BTreeMap::new();
+        for d in self.documents.values() {
+            let c = d.all_headlines().filter(|h| h.todo().is_some()).count();
+            *m.entry(c).or_insert(0) += 1;
+        }
+        m
+    }
+
+    /// Most common per-file TODO-marked headline count (lowest wins ties).
+    #[must_use]
+    pub fn mode_file_with_todo_count(&self) -> Option<usize> {
+        let mut best: Option<(usize, usize)> = None;
+        for (tc, c) in self.file_with_todo_count_counts() {
+            if best.is_none_or(|(_, bestc)| c > bestc) {
+                best = Some((tc, c));
+            }
+        }
+        best.map(|(tc, _)| tc)
+    }
+
     /// Count of headlines carrying at least one link for a single file
     /// by path. Returns `None` if the file isn't loaded.
     #[must_use]
