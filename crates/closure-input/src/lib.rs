@@ -919,6 +919,30 @@ impl ChordTrie {
         self.nodes.iter().filter(|n| n.command.is_some()).count()
     }
 
+    /// Percentage of nodes that are leaves (`0..=100`).
+    #[must_use]
+    pub fn leaf_node_pct(&self) -> usize {
+        (self.leaf_node_count() * 100)
+            .checked_div(self.node_count())
+            .unwrap_or(0)
+    }
+
+    /// Percentage of nodes that are branches (`0..=100`).
+    #[must_use]
+    pub fn branch_node_pct(&self) -> usize {
+        (self.branch_node_count() * 100)
+            .checked_div(self.node_count())
+            .unwrap_or(0)
+    }
+
+    /// Percentage of nodes that carry a command (`0..=100`).
+    #[must_use]
+    pub fn command_node_pct(&self) -> usize {
+        (self.command_node_count() * 100)
+            .checked_div(self.node_count())
+            .unwrap_or(0)
+    }
+
     /// All bindings as `(chord, command)` pairs, sorted by chord.
     #[must_use]
     pub fn bindings(&self) -> Vec<(String, String)> {

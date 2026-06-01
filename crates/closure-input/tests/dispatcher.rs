@@ -1336,3 +1336,43 @@ fn chord_trie_command_node_count_zero_when_empty() {
     let t = closure_input::ChordTrie::build(&[]);
     assert_eq!(t.command_node_count(), 0);
 }
+
+#[test]
+fn chord_trie_leaf_node_pct_match() {
+    // nodes: root, a, ab, ac. 2 of 4 are leaves (b,c).
+    let t = closure_input::ChordTrie::build(&[("a b", "x"), ("a c", "y")]);
+    assert_eq!(t.leaf_node_pct(), 50);
+}
+
+#[test]
+fn chord_trie_leaf_node_pct_full_when_empty() {
+    // empty trie has only root, which is a leaf. 1/1=100%.
+    let t = closure_input::ChordTrie::build(&[]);
+    assert_eq!(t.leaf_node_pct(), 100);
+}
+
+#[test]
+fn chord_trie_branch_node_pct_match() {
+    let t = closure_input::ChordTrie::build(&[("a b", "x"), ("a c", "y")]);
+    // 2 branches / 4 nodes = 50%
+    assert_eq!(t.branch_node_pct(), 50);
+}
+
+#[test]
+fn chord_trie_branch_node_pct_zero_when_empty() {
+    let t = closure_input::ChordTrie::build(&[]);
+    assert_eq!(t.branch_node_pct(), 0);
+}
+
+#[test]
+fn chord_trie_command_node_pct_match() {
+    // 2 commands of 4 nodes = 50%
+    let t = closure_input::ChordTrie::build(&[("a b", "x"), ("a c", "y")]);
+    assert_eq!(t.command_node_pct(), 50);
+}
+
+#[test]
+fn chord_trie_command_node_pct_zero_when_empty() {
+    let t = closure_input::ChordTrie::build(&[]);
+    assert_eq!(t.command_node_pct(), 0);
+}
