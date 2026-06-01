@@ -510,6 +510,71 @@ impl Dispatcher {
         m
     }
 
+    /// Max chord count over distinct commands. None if empty.
+    #[must_use]
+    pub fn max_chords_per_command(&self) -> Option<usize> {
+        self.command_chord_counts().values().copied().max()
+    }
+
+    /// Min chord count over distinct commands. None if empty.
+    #[must_use]
+    pub fn min_chords_per_command(&self) -> Option<usize> {
+        self.command_chord_counts().values().copied().min()
+    }
+
+    /// Sum of chord counts over distinct commands.
+    #[must_use]
+    pub fn total_chords_per_command(&self) -> usize {
+        self.command_chord_counts().values().sum()
+    }
+
+    /// Integer mean chord count over distinct commands. 0 when empty.
+    #[must_use]
+    pub fn mean_chords_per_command(&self) -> usize {
+        let m = self.command_chord_counts();
+        self.total_chords_per_command()
+            .checked_div(m.len())
+            .unwrap_or(0)
+    }
+
+    /// Median chord count over distinct commands. None when empty.
+    #[must_use]
+    pub fn median_chords_per_command(&self) -> Option<usize> {
+        let mut v: Vec<usize> = self.command_chord_counts().values().copied().collect();
+        if v.is_empty() {
+            return None;
+        }
+        v.sort_unstable();
+        let mid = v.len() / 2;
+        Some(if v.len() % 2 == 1 {
+            v[mid]
+        } else {
+            v[mid - 1].midpoint(v[mid])
+        })
+    }
+
+    /// Histogram of chords-per-command counts.
+    #[must_use]
+    pub fn chords_per_command_counts(&self) -> std::collections::BTreeMap<usize, usize> {
+        let mut m = std::collections::BTreeMap::new();
+        for c in self.command_chord_counts().values() {
+            *m.entry(*c).or_insert(0) += 1;
+        }
+        m
+    }
+
+    /// Most common chord-count per command. None when empty. Lowest wins ties.
+    #[must_use]
+    pub fn mode_chords_per_command(&self) -> Option<usize> {
+        let mut best: Option<(usize, usize)> = None;
+        for (cc, c) in self.chords_per_command_counts() {
+            if best.is_none_or(|(_, bc)| c > bc) {
+                best = Some((cc, c));
+            }
+        }
+        best.map(|(cc, _)| cc)
+    }
+
     /// Command bound to the most chords (lowest name wins ties).
     #[must_use]
     pub fn most_bound_command(&self) -> Option<String> {

@@ -1233,3 +1233,66 @@ fn chord_trie_chords_per_command_none_when_empty() {
     assert_eq!(t.median_chords_per_command(), None);
     assert_eq!(t.mode_chords_per_command(), None);
 }
+
+#[test]
+fn dispatcher_max_min_chords_per_command_match() {
+    let mut reg = Registry::new();
+    reg.register(Box::new(RenameHeadline::new_placeholder()));
+    let disp = Dispatcher::from_registry(&reg, InputMode::Doom);
+    // single command, 1 chord
+    assert_eq!(disp.max_chords_per_command(), Some(1));
+    assert_eq!(disp.min_chords_per_command(), Some(1));
+}
+
+#[test]
+fn dispatcher_total_chords_per_command_match() {
+    let mut reg = Registry::new();
+    reg.register(Box::new(RenameHeadline::new_placeholder()));
+    let disp = Dispatcher::from_registry(&reg, InputMode::Doom);
+    assert_eq!(disp.total_chords_per_command(), 1);
+}
+
+#[test]
+fn dispatcher_mean_chords_per_command_match() {
+    let mut reg = Registry::new();
+    reg.register(Box::new(RenameHeadline::new_placeholder()));
+    let disp = Dispatcher::from_registry(&reg, InputMode::Doom);
+    assert_eq!(disp.mean_chords_per_command(), 1);
+}
+
+#[test]
+fn dispatcher_median_chords_per_command_match() {
+    let mut reg = Registry::new();
+    reg.register(Box::new(RenameHeadline::new_placeholder()));
+    let disp = Dispatcher::from_registry(&reg, InputMode::Doom);
+    assert_eq!(disp.median_chords_per_command(), Some(1));
+}
+
+#[test]
+fn dispatcher_chords_per_command_counts_match() {
+    let mut reg = Registry::new();
+    reg.register(Box::new(RenameHeadline::new_placeholder()));
+    let disp = Dispatcher::from_registry(&reg, InputMode::Doom);
+    let m = disp.chords_per_command_counts();
+    assert_eq!(m.get(&1), Some(&1));
+}
+
+#[test]
+fn dispatcher_mode_chords_per_command_match() {
+    let mut reg = Registry::new();
+    reg.register(Box::new(RenameHeadline::new_placeholder()));
+    let disp = Dispatcher::from_registry(&reg, InputMode::Doom);
+    assert_eq!(disp.mode_chords_per_command(), Some(1));
+}
+
+#[test]
+fn dispatcher_chords_per_command_none_when_empty() {
+    let reg = Registry::new();
+    let disp = Dispatcher::from_registry(&reg, InputMode::Doom);
+    assert_eq!(disp.max_chords_per_command(), None);
+    assert_eq!(disp.min_chords_per_command(), None);
+    assert_eq!(disp.total_chords_per_command(), 0);
+    assert_eq!(disp.mean_chords_per_command(), 0);
+    assert_eq!(disp.median_chords_per_command(), None);
+    assert_eq!(disp.mode_chords_per_command(), None);
+}
