@@ -6914,3 +6914,104 @@ fn vault_file_distinct_level_count_none_when_no_files() {
     assert_eq!(v.median_file_distinct_level_count(), None);
     assert_eq!(v.mode_file_distinct_level_count(), None);
 }
+
+#[test]
+fn vault_max_min_file_id_count_distinct_match() {
+    // a has 1 ID, b has 2 distinct IDs (in two headlines), c has 0
+    let td = write_vault(&[
+        ("a.org", "* A\n:PROPERTIES:\n:ID: x\n:END:\n"),
+        (
+            "b.org",
+            "* B\n:PROPERTIES:\n:ID: y\n:END:\n* B2\n:PROPERTIES:\n:ID: z\n:END:\n",
+        ),
+        ("c.org", "* C\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.max_file_distinct_id_count(), Some(2));
+    assert_eq!(v.min_file_distinct_id_count(), Some(0));
+}
+
+#[test]
+fn vault_total_file_distinct_id_count_match() {
+    let td = write_vault(&[
+        ("a.org", "* A\n:PROPERTIES:\n:ID: x\n:END:\n"),
+        (
+            "b.org",
+            "* B\n:PROPERTIES:\n:ID: y\n:END:\n* B2\n:PROPERTIES:\n:ID: z\n:END:\n",
+        ),
+        ("c.org", "* C\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.total_file_distinct_id_count(), 3);
+}
+
+#[test]
+fn vault_mean_file_distinct_id_count_match() {
+    let td = write_vault(&[
+        ("a.org", "* A\n:PROPERTIES:\n:ID: x\n:END:\n"),
+        (
+            "b.org",
+            "* B\n:PROPERTIES:\n:ID: y\n:END:\n* B2\n:PROPERTIES:\n:ID: z\n:END:\n",
+        ),
+        ("c.org", "* C\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.mean_file_distinct_id_count(), 1);
+}
+
+#[test]
+fn vault_median_file_distinct_id_count_match() {
+    let td = write_vault(&[
+        ("a.org", "* A\n:PROPERTIES:\n:ID: x\n:END:\n"),
+        (
+            "b.org",
+            "* B\n:PROPERTIES:\n:ID: y\n:END:\n* B2\n:PROPERTIES:\n:ID: z\n:END:\n",
+        ),
+        ("c.org", "* C\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.median_file_distinct_id_count(), Some(1));
+}
+
+#[test]
+fn vault_file_distinct_id_count_counts_match() {
+    let td = write_vault(&[
+        ("a.org", "* A\n:PROPERTIES:\n:ID: x\n:END:\n"),
+        (
+            "b.org",
+            "* B\n:PROPERTIES:\n:ID: y\n:END:\n* B2\n:PROPERTIES:\n:ID: z\n:END:\n",
+        ),
+        ("c.org", "* C\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    let m = v.file_distinct_id_count_counts();
+    assert_eq!(m.get(&1), Some(&1));
+    assert_eq!(m.get(&2), Some(&1));
+    assert_eq!(m.get(&0), Some(&1));
+}
+
+#[test]
+fn vault_mode_file_distinct_id_count_match() {
+    let td = write_vault(&[
+        ("a.org", "* A\n:PROPERTIES:\n:ID: x\n:END:\n"),
+        ("b.org", "* B\n:PROPERTIES:\n:ID: y\n:END:\n"),
+        (
+            "c.org",
+            "* C\n:PROPERTIES:\n:ID: u\n:END:\n* C2\n:PROPERTIES:\n:ID: v\n:END:\n",
+        ),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.mode_file_distinct_id_count(), Some(1));
+}
+
+#[test]
+fn vault_file_distinct_id_count_none_when_no_files() {
+    let td = write_vault(&[]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.max_file_distinct_id_count(), None);
+    assert_eq!(v.min_file_distinct_id_count(), None);
+    assert_eq!(v.total_file_distinct_id_count(), 0);
+    assert_eq!(v.mean_file_distinct_id_count(), 0);
+    assert_eq!(v.median_file_distinct_id_count(), None);
+    assert_eq!(v.mode_file_distinct_id_count(), None);
+}

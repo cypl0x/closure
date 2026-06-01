@@ -4299,6 +4299,121 @@ impl Vault {
         best.map(|(lc, _)| lc)
     }
 
+    /// Maximum per-file distinct `:ID:` value count (`None` when no files).
+    #[must_use]
+    pub fn max_file_distinct_id_count(&self) -> Option<usize> {
+        self.documents
+            .values()
+            .map(|d| {
+                let mut s: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+                for h in d.all_headlines() {
+                    if let Some(id) = h.property("ID") {
+                        s.insert(id.to_owned());
+                    }
+                }
+                s.len()
+            })
+            .max()
+    }
+
+    /// Minimum per-file distinct `:ID:` value count (`None` when no files).
+    #[must_use]
+    pub fn min_file_distinct_id_count(&self) -> Option<usize> {
+        self.documents
+            .values()
+            .map(|d| {
+                let mut s: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+                for h in d.all_headlines() {
+                    if let Some(id) = h.property("ID") {
+                        s.insert(id.to_owned());
+                    }
+                }
+                s.len()
+            })
+            .min()
+    }
+
+    /// Sum of per-file distinct `:ID:` value counts.
+    #[must_use]
+    pub fn total_file_distinct_id_count(&self) -> usize {
+        self.documents
+            .values()
+            .map(|d| {
+                let mut s: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+                for h in d.all_headlines() {
+                    if let Some(id) = h.property("ID") {
+                        s.insert(id.to_owned());
+                    }
+                }
+                s.len()
+            })
+            .sum()
+    }
+
+    /// Integer mean per-file distinct `:ID:` value count (`0` when no files).
+    #[must_use]
+    pub fn mean_file_distinct_id_count(&self) -> usize {
+        self.total_file_distinct_id_count()
+            .checked_div(self.len())
+            .unwrap_or(0)
+    }
+
+    /// Median per-file distinct `:ID:` value count (`None` when no files).
+    #[must_use]
+    pub fn median_file_distinct_id_count(&self) -> Option<usize> {
+        let mut v: Vec<usize> = self
+            .documents
+            .values()
+            .map(|d| {
+                let mut s: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+                for h in d.all_headlines() {
+                    if let Some(id) = h.property("ID") {
+                        s.insert(id.to_owned());
+                    }
+                }
+                s.len()
+            })
+            .collect();
+        if v.is_empty() {
+            return None;
+        }
+        v.sort_unstable();
+        let mid = v.len() / 2;
+        Some(if v.len() % 2 == 1 {
+            v[mid]
+        } else {
+            v[mid - 1].midpoint(v[mid])
+        })
+    }
+
+    /// Histogram of per-file distinct `:ID:` value counts.
+    #[must_use]
+    pub fn file_distinct_id_count_counts(&self) -> std::collections::BTreeMap<usize, usize> {
+        let mut m = std::collections::BTreeMap::new();
+        for d in self.documents.values() {
+            let mut s: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+            for h in d.all_headlines() {
+                if let Some(id) = h.property("ID") {
+                    s.insert(id.to_owned());
+                }
+            }
+            *m.entry(s.len()).or_insert(0) += 1;
+        }
+        m
+    }
+
+    /// Most common per-file distinct `:ID:` value count (lowest wins ties).
+    #[must_use]
+    pub fn mode_file_distinct_id_count(&self) -> Option<usize> {
+        let mut best: Option<(usize, usize)> = None;
+        for (ic, c) in self.file_distinct_id_count_counts() {
+            if best.is_none_or(|(_, bestc)| c > bestc) {
+                best = Some((ic, c));
+            }
+        }
+        best.map(|(ic, _)| ic)
+    }
+
     /// Percentage of distinct tags among total tag occurrences
     /// (`distinct * 100 / total`, `0` when no tags).
     #[must_use]
