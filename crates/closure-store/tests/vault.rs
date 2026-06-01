@@ -7408,3 +7408,57 @@ fn vault_file_subtree_depth_none_when_no_files() {
     assert_eq!(v.median_file_subtree_depth(), None);
     assert_eq!(v.mode_file_subtree_depth(), None);
 }
+
+#[test]
+fn vault_with_link_pct_match() {
+    let td = write_vault(&[
+        ("a.org", "* A\n[[x][X]]\n"),
+        ("b.org", "* B\n"),
+        ("c.org", "* C\n[[y][Y]]\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.with_link_pct(), 66);
+}
+
+#[test]
+fn vault_with_link_pct_zero_when_no_headlines() {
+    let td = write_vault(&[]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.with_link_pct(), 0);
+}
+
+#[test]
+fn vault_with_timestamp_pct_match() {
+    let td = write_vault(&[
+        ("a.org", "* A\n<2026-05-30 Sat>\n"),
+        ("b.org", "* B\n"),
+        ("c.org", "* C\n<2026-05-31 Sun>\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.with_timestamp_pct(), 66);
+}
+
+#[test]
+fn vault_with_timestamp_pct_zero_when_no_headlines() {
+    let td = write_vault(&[]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.with_timestamp_pct(), 0);
+}
+
+#[test]
+fn vault_with_todo_pct_match() {
+    let td = write_vault(&[
+        ("a.org", "* TODO A\n"),
+        ("b.org", "* B\n"),
+        ("c.org", "* DONE C\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.with_todo_pct(), 66);
+}
+
+#[test]
+fn vault_with_todo_pct_zero_when_no_headlines() {
+    let td = write_vault(&[]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.with_todo_pct(), 0);
+}

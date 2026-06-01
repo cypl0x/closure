@@ -5369,6 +5369,30 @@ impl Vault {
         best.map(|(d, _)| d)
     }
 
+    /// Percentage of headlines with at least one link (`0..=100`).
+    #[must_use]
+    pub fn with_link_pct(&self) -> usize {
+        (self.with_link_count() * 100)
+            .checked_div(self.headline_count())
+            .unwrap_or(0)
+    }
+
+    /// Percentage of headlines with at least one timestamp (`0..=100`).
+    #[must_use]
+    pub fn with_timestamp_pct(&self) -> usize {
+        (self.with_timestamp_count() * 100)
+            .checked_div(self.headline_count())
+            .unwrap_or(0)
+    }
+
+    /// Percentage of headlines with a TODO keyword (`0..=100`).
+    #[must_use]
+    pub fn with_todo_pct(&self) -> usize {
+        (self.with_todo_count() * 100)
+            .checked_div(self.headline_count())
+            .unwrap_or(0)
+    }
+
     /// Count of headlines carrying at least one link for a single file
     /// by path. Returns `None` if the file isn't loaded.
     #[must_use]
