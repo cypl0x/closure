@@ -7575,4 +7575,88 @@ fn vault_no_scheduled_pct_zero_when_no_headlines() {
     assert_eq!(v.no_scheduled_pct(), 0);
 }
 
+#[test]
+fn vault_count_no_comment_match() {
+    let td = write_vault(&[
+        ("a.org", "* COMMENT A\n* B\n"),
+        ("b.org", "* C\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.count_no_comment(), 2);
+}
+
+#[test]
+fn vault_no_comment_pct_match() {
+    let td = write_vault(&[
+        ("a.org", "* COMMENT A\n"),
+        ("b.org", "* B\n"),
+        ("c.org", "* C\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.no_comment_pct(), 66);
+}
+
+#[test]
+fn vault_no_comment_pct_zero_when_no_headlines() {
+    let td = write_vault(&[]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.no_comment_pct(), 0);
+}
+
+#[test]
+fn vault_count_no_planning_match() {
+    let td = write_vault(&[
+        ("a.org", "* A\nSCHEDULED: <2026-05-30 Sat>\n* B\n"),
+        ("b.org", "* C\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.count_no_planning(), 2);
+}
+
+#[test]
+fn vault_no_planning_pct_match() {
+    let td = write_vault(&[
+        ("a.org", "* A\nSCHEDULED: <2026-05-30 Sat>\n"),
+        ("b.org", "* B\n"),
+        ("c.org", "* C\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.no_planning_pct(), 66);
+}
+
+#[test]
+fn vault_no_planning_pct_zero_when_no_headlines() {
+    let td = write_vault(&[]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.no_planning_pct(), 0);
+}
+
+#[test]
+fn vault_count_no_closed_match() {
+    let td = write_vault(&[
+        ("a.org", "* A\nCLOSED: [2026-05-30 Sat]\n* B\n"),
+        ("b.org", "* C\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.count_no_closed(), 2);
+}
+
+#[test]
+fn vault_no_closed_pct_match() {
+    let td = write_vault(&[
+        ("a.org", "* A\nCLOSED: [2026-05-30 Sat]\n"),
+        ("b.org", "* B\n"),
+        ("c.org", "* C\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.no_closed_pct(), 66);
+}
+
+#[test]
+fn vault_no_closed_pct_zero_when_no_headlines() {
+    let td = write_vault(&[]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.no_closed_pct(), 0);
+}
+
 

@@ -5455,6 +5455,48 @@ impl Vault {
             .unwrap_or(0)
     }
 
+    /// Count of non-COMMENT headlines across the vault.
+    #[must_use]
+    pub fn count_no_comment(&self) -> usize {
+        self.headline_count() - self.comment_count()
+    }
+
+    /// Percentage of non-COMMENT headlines (`0..=100`).
+    #[must_use]
+    pub fn no_comment_pct(&self) -> usize {
+        (self.count_no_comment() * 100)
+            .checked_div(self.headline_count())
+            .unwrap_or(0)
+    }
+
+    /// Count of headlines without planning info across the vault.
+    #[must_use]
+    pub fn count_no_planning(&self) -> usize {
+        self.headline_count() - self.planning_count()
+    }
+
+    /// Percentage of headlines without planning info (`0..=100`).
+    #[must_use]
+    pub fn no_planning_pct(&self) -> usize {
+        (self.count_no_planning() * 100)
+            .checked_div(self.headline_count())
+            .unwrap_or(0)
+    }
+
+    /// Count of non-CLOSED headlines across the vault.
+    #[must_use]
+    pub fn count_no_closed(&self) -> usize {
+        self.headline_count() - self.closed_count()
+    }
+
+    /// Percentage of non-CLOSED headlines (`0..=100`).
+    #[must_use]
+    pub fn no_closed_pct(&self) -> usize {
+        (self.count_no_closed() * 100)
+            .checked_div(self.headline_count())
+            .unwrap_or(0)
+    }
+
     /// Count of headlines carrying at least one link for a single file
     /// by path. Returns `None` if the file isn't loaded.
     #[must_use]
