@@ -7108,3 +7108,96 @@ fn vault_file_with_todo_count_none_when_no_files() {
     assert_eq!(v.mode_file_with_todo_count(), None);
     assert_eq!(v.with_todo_count(), 0);
 }
+
+#[test]
+fn vault_file_scheduled_count_counts_match() {
+    let td = write_vault(&[
+        ("a.org", "* A\nSCHEDULED: <2026-05-30 Sat>\n"),
+        ("b.org", "* B\nSCHEDULED: <2026-05-31 Sun>\n"),
+        ("c.org", "* C\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    let m = v.file_scheduled_count_counts();
+    assert_eq!(m.get(&1), Some(&2));
+    assert_eq!(m.get(&0), Some(&1));
+}
+
+#[test]
+fn vault_mode_file_scheduled_count_match() {
+    let td = write_vault(&[
+        ("a.org", "* A\nSCHEDULED: <2026-05-30 Sat>\n"),
+        ("b.org", "* B\nSCHEDULED: <2026-05-31 Sun>\n"),
+        ("c.org", "* C\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.mode_file_scheduled_count(), Some(1));
+}
+
+#[test]
+fn vault_mode_file_scheduled_count_none_when_no_files() {
+    let td = write_vault(&[]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.mode_file_scheduled_count(), None);
+}
+
+#[test]
+fn vault_file_deadline_count_counts_match() {
+    let td = write_vault(&[
+        ("a.org", "* A\nDEADLINE: <2026-05-30 Sat>\n"),
+        ("b.org", "* B\nDEADLINE: <2026-05-31 Sun>\n"),
+        ("c.org", "* C\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    let m = v.file_deadline_count_counts();
+    assert_eq!(m.get(&1), Some(&2));
+    assert_eq!(m.get(&0), Some(&1));
+}
+
+#[test]
+fn vault_mode_file_deadline_count_match() {
+    let td = write_vault(&[
+        ("a.org", "* A\nDEADLINE: <2026-05-30 Sat>\n"),
+        ("b.org", "* B\nDEADLINE: <2026-05-31 Sun>\n"),
+        ("c.org", "* C\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.mode_file_deadline_count(), Some(1));
+}
+
+#[test]
+fn vault_mode_file_deadline_count_none_when_no_files() {
+    let td = write_vault(&[]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.mode_file_deadline_count(), None);
+}
+
+#[test]
+fn vault_file_closed_count_counts_match() {
+    let td = write_vault(&[
+        ("a.org", "* A\nCLOSED: [2026-05-30 Sat]\n"),
+        ("b.org", "* B\nCLOSED: [2026-05-31 Sun]\n"),
+        ("c.org", "* C\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    let m = v.file_closed_count_counts();
+    assert_eq!(m.get(&1), Some(&2));
+    assert_eq!(m.get(&0), Some(&1));
+}
+
+#[test]
+fn vault_mode_file_closed_count_match() {
+    let td = write_vault(&[
+        ("a.org", "* A\nCLOSED: [2026-05-30 Sat]\n"),
+        ("b.org", "* B\nCLOSED: [2026-05-31 Sun]\n"),
+        ("c.org", "* C\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.mode_file_closed_count(), Some(1));
+}
+
+#[test]
+fn vault_mode_file_closed_count_none_when_no_files() {
+    let td = write_vault(&[]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.mode_file_closed_count(), None);
+}

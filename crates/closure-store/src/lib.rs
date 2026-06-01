@@ -5119,6 +5119,72 @@ impl Vault {
         best.map(|(tc, _)| tc)
     }
 
+    /// Histogram of per-file SCHEDULED-headline counts.
+    #[must_use]
+    pub fn file_scheduled_count_counts(&self) -> std::collections::BTreeMap<usize, usize> {
+        let mut m = std::collections::BTreeMap::new();
+        for d in self.documents.values() {
+            *m.entry(d.org().count_scheduled()).or_insert(0) += 1;
+        }
+        m
+    }
+
+    /// Most common per-file SCHEDULED-headline count (lowest wins ties).
+    #[must_use]
+    pub fn mode_file_scheduled_count(&self) -> Option<usize> {
+        let mut best: Option<(usize, usize)> = None;
+        for (sc, c) in self.file_scheduled_count_counts() {
+            if best.is_none_or(|(_, bestc)| c > bestc) {
+                best = Some((sc, c));
+            }
+        }
+        best.map(|(sc, _)| sc)
+    }
+
+    /// Histogram of per-file DEADLINE-headline counts.
+    #[must_use]
+    pub fn file_deadline_count_counts(&self) -> std::collections::BTreeMap<usize, usize> {
+        let mut m = std::collections::BTreeMap::new();
+        for d in self.documents.values() {
+            *m.entry(d.org().count_with_deadline()).or_insert(0) += 1;
+        }
+        m
+    }
+
+    /// Most common per-file DEADLINE-headline count (lowest wins ties).
+    #[must_use]
+    pub fn mode_file_deadline_count(&self) -> Option<usize> {
+        let mut best: Option<(usize, usize)> = None;
+        for (dc, c) in self.file_deadline_count_counts() {
+            if best.is_none_or(|(_, bestc)| c > bestc) {
+                best = Some((dc, c));
+            }
+        }
+        best.map(|(dc, _)| dc)
+    }
+
+    /// Histogram of per-file CLOSED-headline counts.
+    #[must_use]
+    pub fn file_closed_count_counts(&self) -> std::collections::BTreeMap<usize, usize> {
+        let mut m = std::collections::BTreeMap::new();
+        for d in self.documents.values() {
+            *m.entry(d.org().count_closed()).or_insert(0) += 1;
+        }
+        m
+    }
+
+    /// Most common per-file CLOSED-headline count (lowest wins ties).
+    #[must_use]
+    pub fn mode_file_closed_count(&self) -> Option<usize> {
+        let mut best: Option<(usize, usize)> = None;
+        for (cc, c) in self.file_closed_count_counts() {
+            if best.is_none_or(|(_, bestc)| c > bestc) {
+                best = Some((cc, c));
+            }
+        }
+        best.map(|(cc, _)| cc)
+    }
+
     /// Count of headlines carrying at least one link for a single file
     /// by path. Returns `None` if the file isn't loaded.
     #[must_use]
