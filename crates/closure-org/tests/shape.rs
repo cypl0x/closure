@@ -7146,3 +7146,62 @@ fn doc_median_property_value_len_none_when_no_props() {
     assert_eq!(doc.median_property_value_len(), None);
     assert_eq!(doc.mode_property_value_len(), None);
 }
+
+#[test]
+fn doc_max_subtree_depth_match() {
+    // headlines: A (max_depth=3), B (max_depth=3), C (max_depth=3)
+    let doc = parse("* A\n** B\n*** C\n").expect("parse");
+    assert_eq!(doc.max_subtree_depth(), Some(3));
+}
+
+#[test]
+fn doc_min_subtree_depth_match() {
+    // sibling layout: A(max_depth=2), B(max_depth=2), C(max_depth=1)
+    let doc = parse("* A\n** B\n* C\n").expect("parse");
+    assert_eq!(doc.min_subtree_depth(), Some(1));
+}
+
+#[test]
+fn doc_total_subtree_depth_match() {
+    // A=2, B=2, C=1
+    let doc = parse("* A\n** B\n* C\n").expect("parse");
+    assert_eq!(doc.total_subtree_depth(), 5);
+}
+
+#[test]
+fn doc_mean_subtree_depth_match() {
+    let doc = parse("* A\n** B\n* C\n").expect("parse");
+    assert_eq!(doc.mean_subtree_depth(), 1);
+}
+
+#[test]
+fn doc_median_subtree_depth_match() {
+    let doc = parse("* A\n** B\n* C\n").expect("parse");
+    // [1,2,2] median 2
+    assert_eq!(doc.median_subtree_depth(), Some(2));
+}
+
+#[test]
+fn doc_subtree_depth_counts_match() {
+    let doc = parse("* A\n** B\n* C\n").expect("parse");
+    let m = doc.subtree_depth_counts();
+    assert_eq!(m.get(&2), Some(&2));
+    assert_eq!(m.get(&1), Some(&1));
+}
+
+#[test]
+fn doc_mode_subtree_depth_match() {
+    let doc = parse("* A\n** B\n* C\n").expect("parse");
+    assert_eq!(doc.mode_subtree_depth(), Some(2));
+}
+
+#[test]
+fn doc_subtree_depth_none_when_empty() {
+    let doc = parse("").expect("parse");
+    assert_eq!(doc.max_subtree_depth(), None);
+    assert_eq!(doc.min_subtree_depth(), None);
+    assert_eq!(doc.total_subtree_depth(), 0);
+    assert_eq!(doc.mean_subtree_depth(), 0);
+    assert_eq!(doc.median_subtree_depth(), None);
+    assert_eq!(doc.mode_subtree_depth(), None);
+}

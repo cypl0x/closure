@@ -195,6 +195,82 @@ impl OrgDoc {
         self.count_headlines_where(|h| h.todo().is_some())
     }
 
+    /// Maximum per-headline subtree depth (deepest descendant level).
+    #[must_use]
+    pub fn max_subtree_depth(&self) -> Option<usize> {
+        self.iter_headlines()
+            .into_iter()
+            .map(|h| h.max_depth() as usize)
+            .max()
+    }
+
+    /// Minimum per-headline subtree depth.
+    #[must_use]
+    pub fn min_subtree_depth(&self) -> Option<usize> {
+        self.iter_headlines()
+            .into_iter()
+            .map(|h| h.max_depth() as usize)
+            .min()
+    }
+
+    /// Sum of per-headline subtree depths.
+    #[must_use]
+    pub fn total_subtree_depth(&self) -> usize {
+        self.iter_headlines()
+            .into_iter()
+            .map(|h| h.max_depth() as usize)
+            .sum()
+    }
+
+    /// Integer mean per-headline subtree depth (`0` when empty).
+    #[must_use]
+    pub fn mean_subtree_depth(&self) -> usize {
+        let n = self.iter_headlines().len();
+        self.total_subtree_depth().checked_div(n).unwrap_or(0)
+    }
+
+    /// Median per-headline subtree depth (`None` when empty).
+    #[must_use]
+    pub fn median_subtree_depth(&self) -> Option<usize> {
+        let mut v: Vec<usize> = self
+            .iter_headlines()
+            .into_iter()
+            .map(|h| h.max_depth() as usize)
+            .collect();
+        if v.is_empty() {
+            return None;
+        }
+        v.sort_unstable();
+        let mid = v.len() / 2;
+        Some(if v.len() % 2 == 1 {
+            v[mid]
+        } else {
+            v[mid - 1].midpoint(v[mid])
+        })
+    }
+
+    /// Histogram of per-headline subtree depths.
+    #[must_use]
+    pub fn subtree_depth_counts(&self) -> std::collections::BTreeMap<usize, usize> {
+        let mut m = std::collections::BTreeMap::new();
+        for h in self.iter_headlines() {
+            *m.entry(h.max_depth() as usize).or_insert(0) += 1;
+        }
+        m
+    }
+
+    /// Most common per-headline subtree depth (lowest wins ties).
+    #[must_use]
+    pub fn mode_subtree_depth(&self) -> Option<usize> {
+        let mut best: Option<(usize, usize)> = None;
+        for (d, c) in self.subtree_depth_counts() {
+            if best.is_none_or(|(_, bc)| c > bc) {
+                best = Some((d, c));
+            }
+        }
+        best.map(|(d, _)| d)
+    }
+
     /// Count of headlines tagged with `tag` (recursive).
     #[must_use]
     pub fn count_tagged(&self, tag: &str) -> usize {
