@@ -195,6 +195,38 @@ impl OrgDoc {
         self.count_headlines_where(|h| h.todo().is_some())
     }
 
+    /// Percentage of headlines with at least one link (`0..=100`).
+    #[must_use]
+    pub fn with_link_pct(&self) -> usize {
+        let n = self.iter_headlines().len();
+        (self.count_with_link() * 100).checked_div(n).unwrap_or(0)
+    }
+
+    /// Percentage of headlines with at least one timestamp (`0..=100`).
+    #[must_use]
+    pub fn with_timestamp_pct(&self) -> usize {
+        let n = self.iter_headlines().len();
+        (self.count_with_timestamp() * 100)
+            .checked_div(n)
+            .unwrap_or(0)
+    }
+
+    /// Percentage of headlines with at least one property (`0..=100`).
+    #[must_use]
+    pub fn with_property_pct(&self) -> usize {
+        let n = self.iter_headlines().len();
+        (self.count_with_property() * 100)
+            .checked_div(n)
+            .unwrap_or(0)
+    }
+
+    /// Percentage of headlines with a TODO keyword (`0..=100`).
+    #[must_use]
+    pub fn with_todo_pct(&self) -> usize {
+        let n = self.iter_headlines().len();
+        (self.count_with_todo() * 100).checked_div(n).unwrap_or(0)
+    }
+
     /// Maximum per-headline subtree depth (deepest descendant level).
     #[must_use]
     pub fn max_subtree_depth(&self) -> Option<usize> {

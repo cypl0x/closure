@@ -7205,3 +7205,54 @@ fn doc_subtree_depth_none_when_empty() {
     assert_eq!(doc.median_subtree_depth(), None);
     assert_eq!(doc.mode_subtree_depth(), None);
 }
+
+#[test]
+fn doc_with_link_pct_match() {
+    let doc = parse("* A\n[[x][X]]\n* B\n* C\n[[y][Y]]\n").expect("parse");
+    // 2 of 3 = 66
+    assert_eq!(doc.with_link_pct(), 66);
+}
+
+#[test]
+fn doc_with_link_pct_zero_when_no_headlines() {
+    let doc = parse("").expect("parse");
+    assert_eq!(doc.with_link_pct(), 0);
+}
+
+#[test]
+fn doc_with_timestamp_pct_match() {
+    let doc = parse("* A\n<2026-05-30 Sat>\n* B\n* C\n<2026-05-31 Sun>\n").expect("parse");
+    assert_eq!(doc.with_timestamp_pct(), 66);
+}
+
+#[test]
+fn doc_with_timestamp_pct_zero_when_no_headlines() {
+    let doc = parse("").expect("parse");
+    assert_eq!(doc.with_timestamp_pct(), 0);
+}
+
+#[test]
+fn doc_with_property_pct_match() {
+    let doc =
+        parse("* A\n:PROPERTIES:\n:x: 1\n:END:\n* B\n* C\n:PROPERTIES:\n:y: 2\n:END:\n")
+            .expect("parse");
+    assert_eq!(doc.with_property_pct(), 66);
+}
+
+#[test]
+fn doc_with_property_pct_zero_when_no_headlines() {
+    let doc = parse("").expect("parse");
+    assert_eq!(doc.with_property_pct(), 0);
+}
+
+#[test]
+fn doc_with_todo_pct_match() {
+    let doc = parse("* TODO A\n* B\n* DONE C\n").expect("parse");
+    assert_eq!(doc.with_todo_pct(), 66);
+}
+
+#[test]
+fn doc_with_todo_pct_zero_when_no_headlines() {
+    let doc = parse("").expect("parse");
+    assert_eq!(doc.with_todo_pct(), 0);
+}
