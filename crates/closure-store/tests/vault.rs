@@ -7518,3 +7518,61 @@ fn vault_count_no_timestamp_match() {
     let v = Vault::open(td.path()).expect("open");
     assert_eq!(v.count_no_timestamp(), 2);
 }
+
+#[test]
+fn vault_count_no_archived_match() {
+    let td = write_vault(&[
+        ("a.org", "* A :ARCHIVE:\n* B\n"),
+        ("b.org", "* C\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.count_no_archived(), 2);
+}
+
+#[test]
+fn vault_no_archived_pct_match() {
+    let td = write_vault(&[
+        ("a.org", "* A :ARCHIVE:\n"),
+        ("b.org", "* B\n"),
+        ("c.org", "* C\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.no_archived_pct(), 66);
+}
+
+#[test]
+fn vault_no_archived_pct_zero_when_no_headlines() {
+    let td = write_vault(&[]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.no_archived_pct(), 0);
+}
+
+#[test]
+fn vault_count_no_scheduled_match() {
+    let td = write_vault(&[
+        ("a.org", "* A\nSCHEDULED: <2026-05-30 Sat>\n* B\n"),
+        ("b.org", "* C\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.count_no_scheduled(), 2);
+}
+
+#[test]
+fn vault_no_scheduled_pct_match() {
+    let td = write_vault(&[
+        ("a.org", "* A\nSCHEDULED: <2026-05-30 Sat>\n"),
+        ("b.org", "* B\n"),
+        ("c.org", "* C\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.no_scheduled_pct(), 66);
+}
+
+#[test]
+fn vault_no_scheduled_pct_zero_when_no_headlines() {
+    let td = write_vault(&[]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.no_scheduled_pct(), 0);
+}
+
+

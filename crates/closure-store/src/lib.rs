@@ -5427,6 +5427,34 @@ impl Vault {
             .unwrap_or(0)
     }
 
+    /// Count of non-archived headlines across the vault.
+    #[must_use]
+    pub fn count_no_archived(&self) -> usize {
+        self.headline_count() - self.archived_count()
+    }
+
+    /// Percentage of non-archived headlines (`0..=100`).
+    #[must_use]
+    pub fn no_archived_pct(&self) -> usize {
+        (self.count_no_archived() * 100)
+            .checked_div(self.headline_count())
+            .unwrap_or(0)
+    }
+
+    /// Count of non-scheduled headlines across the vault.
+    #[must_use]
+    pub fn count_no_scheduled(&self) -> usize {
+        self.headline_count() - self.scheduled_count()
+    }
+
+    /// Percentage of non-scheduled headlines (`0..=100`).
+    #[must_use]
+    pub fn no_scheduled_pct(&self) -> usize {
+        (self.count_no_scheduled() * 100)
+            .checked_div(self.headline_count())
+            .unwrap_or(0)
+    }
+
     /// Count of headlines carrying at least one link for a single file
     /// by path. Returns `None` if the file isn't loaded.
     #[must_use]
