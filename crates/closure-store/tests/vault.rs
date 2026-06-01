@@ -7988,4 +7988,52 @@ fn vault_file_subtree_tag_count_none_when_no_files() {
     assert_eq!(v.mode_file_subtree_tag_count(), None);
 }
 
+#[test]
+fn vault_file_subtree_todo_count_some() {
+    let td = write_vault(&[
+        ("a.org", "* TODO A\n** DONE B\n"),
+        ("b.org", "* C\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert!(v.max_file_subtree_todo_count().is_some());
+    assert!(v.min_file_subtree_todo_count().is_some());
+    assert!(v.total_file_subtree_todo_count() > 0);
+    assert!(v.mean_file_subtree_todo_count() > 0);
+    assert!(v.median_file_subtree_todo_count().is_some());
+}
+
+#[test]
+fn vault_file_subtree_todo_count_counts_nonempty() {
+    let td = write_vault(&[
+        ("a.org", "* TODO A\n** DONE B\n"),
+        ("b.org", "* C\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    let m = v.file_subtree_todo_count_counts();
+    assert!(!m.is_empty());
+}
+
+#[test]
+fn vault_mode_file_subtree_todo_count_some() {
+    let td = write_vault(&[
+        ("a.org", "* A\n"),
+        ("b.org", "* B\n"),
+        ("c.org", "* TODO C\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert!(v.mode_file_subtree_todo_count().is_some());
+}
+
+#[test]
+fn vault_file_subtree_todo_count_none_when_no_files() {
+    let td = write_vault(&[]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.max_file_subtree_todo_count(), None);
+    assert_eq!(v.min_file_subtree_todo_count(), None);
+    assert_eq!(v.total_file_subtree_todo_count(), 0);
+    assert_eq!(v.mean_file_subtree_todo_count(), 0);
+    assert_eq!(v.median_file_subtree_todo_count(), None);
+    assert_eq!(v.mode_file_subtree_todo_count(), None);
+}
+
 
