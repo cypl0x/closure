@@ -1179,3 +1179,57 @@ fn chord_trie_command_char_len_counts_match() {
     assert_eq!(counts.get(&2), Some(&2));
     assert_eq!(counts.get(&3), Some(&1));
 }
+
+#[test]
+fn chord_trie_max_min_chords_per_command_match() {
+    // x bound 2x, y bound 1x
+    let t = closure_input::ChordTrie::build(&[("a", "x"), ("b", "x"), ("c", "y")]);
+    assert_eq!(t.max_chords_per_command(), Some(2));
+    assert_eq!(t.min_chords_per_command(), Some(1));
+}
+
+#[test]
+fn chord_trie_total_chords_per_command_match() {
+    let t = closure_input::ChordTrie::build(&[("a", "x"), ("b", "x"), ("c", "y")]);
+    assert_eq!(t.total_chords_per_command(), 3);
+}
+
+#[test]
+fn chord_trie_mean_chords_per_command_match() {
+    let t = closure_input::ChordTrie::build(&[("a", "x"), ("b", "x"), ("c", "y")]);
+    // sum=3, distinct cmds=2 -> 1
+    assert_eq!(t.mean_chords_per_command(), 1);
+}
+
+#[test]
+fn chord_trie_median_chords_per_command_match() {
+    let t = closure_input::ChordTrie::build(&[("a", "x"), ("b", "x"), ("c", "y")]);
+    // counts sorted [1,2] -> midpoint 1
+    assert_eq!(t.median_chords_per_command(), Some(1));
+}
+
+#[test]
+fn chord_trie_chords_per_command_counts_match() {
+    let t = closure_input::ChordTrie::build(&[("a", "x"), ("b", "x"), ("c", "y")]);
+    let m = t.chords_per_command_counts();
+    assert_eq!(m.get(&2), Some(&1));
+    assert_eq!(m.get(&1), Some(&1));
+}
+
+#[test]
+fn chord_trie_mode_chords_per_command_match() {
+    let t = closure_input::ChordTrie::build(&[("a", "x"), ("b", "y"), ("c", "z")]);
+    // each cmd has 1 chord
+    assert_eq!(t.mode_chords_per_command(), Some(1));
+}
+
+#[test]
+fn chord_trie_chords_per_command_none_when_empty() {
+    let t = closure_input::ChordTrie::build(&[]);
+    assert_eq!(t.max_chords_per_command(), None);
+    assert_eq!(t.min_chords_per_command(), None);
+    assert_eq!(t.total_chords_per_command(), 0);
+    assert_eq!(t.mean_chords_per_command(), 0);
+    assert_eq!(t.median_chords_per_command(), None);
+    assert_eq!(t.mode_chords_per_command(), None);
+}
