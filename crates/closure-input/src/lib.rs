@@ -943,6 +943,30 @@ impl ChordTrie {
             .unwrap_or(0)
     }
 
+    /// Percentage of nodes that carry no command (`0..=100`).
+    #[must_use]
+    pub fn prefix_node_pct(&self) -> usize {
+        (self.prefix_node_count() * 100)
+            .checked_div(self.node_count())
+            .unwrap_or(0)
+    }
+
+    /// Percentage of bound chords that are single-stroke (`0..=100`).
+    #[must_use]
+    pub fn single_stroke_pct(&self) -> usize {
+        (self.single_stroke_count() * 100)
+            .checked_div(self.chord_count())
+            .unwrap_or(0)
+    }
+
+    /// Percentage of bound chords that are multi-stroke (`0..=100`).
+    #[must_use]
+    pub fn multi_stroke_pct(&self) -> usize {
+        (self.multi_stroke_count() * 100)
+            .checked_div(self.chord_count())
+            .unwrap_or(0)
+    }
+
     /// All bindings as `(chord, command)` pairs, sorted by chord.
     #[must_use]
     pub fn bindings(&self) -> Vec<(String, String)> {

@@ -1376,3 +1376,41 @@ fn chord_trie_command_node_pct_zero_when_empty() {
     let t = closure_input::ChordTrie::build(&[]);
     assert_eq!(t.command_node_pct(), 0);
 }
+
+#[test]
+fn chord_trie_prefix_node_pct_match() {
+    // nodes: root, a (no cmd), ab (cmd), ac (cmd). prefix=2 of 4=50%
+    let t = closure_input::ChordTrie::build(&[("a b", "x"), ("a c", "y")]);
+    assert_eq!(t.prefix_node_pct(), 50);
+}
+
+#[test]
+fn chord_trie_prefix_node_pct_full_when_empty() {
+    let t = closure_input::ChordTrie::build(&[]);
+    assert_eq!(t.prefix_node_pct(), 100);
+}
+
+#[test]
+fn chord_trie_single_stroke_pct_match() {
+    let t = closure_input::ChordTrie::build(&[("a", "x"), ("b c", "y")]);
+    // 1 of 2 single-stroke = 50%
+    assert_eq!(t.single_stroke_pct(), 50);
+}
+
+#[test]
+fn chord_trie_single_stroke_pct_zero_when_empty() {
+    let t = closure_input::ChordTrie::build(&[]);
+    assert_eq!(t.single_stroke_pct(), 0);
+}
+
+#[test]
+fn chord_trie_multi_stroke_pct_match() {
+    let t = closure_input::ChordTrie::build(&[("a", "x"), ("b c", "y")]);
+    assert_eq!(t.multi_stroke_pct(), 50);
+}
+
+#[test]
+fn chord_trie_multi_stroke_pct_zero_when_empty() {
+    let t = closure_input::ChordTrie::build(&[]);
+    assert_eq!(t.multi_stroke_pct(), 0);
+}
