@@ -7331,3 +7331,93 @@ fn doc_no_timestamp_pct_zero_when_no_headlines() {
     assert_eq!(doc.no_timestamp_pct(), 0);
 }
 
+#[test]
+fn doc_count_no_archived_match() {
+    let doc = parse("* A :ARCHIVE:\n* B\n* C\n").expect("parse");
+    assert_eq!(doc.count_no_archived(), 2);
+}
+
+#[test]
+fn doc_no_archived_pct_match() {
+    let doc = parse("* A :ARCHIVE:\n* B\n* C\n").expect("parse");
+    assert_eq!(doc.no_archived_pct(), 66);
+}
+
+#[test]
+fn doc_no_archived_pct_zero_when_no_headlines() {
+    let doc = parse("").expect("parse");
+    assert_eq!(doc.no_archived_pct(), 0);
+}
+
+#[test]
+fn doc_count_no_scheduled_match() {
+    let doc = parse("* A\nSCHEDULED: <2026-05-30 Sat>\n* B\n* C\n").expect("parse");
+    assert_eq!(doc.count_no_scheduled(), 2);
+}
+
+#[test]
+fn doc_no_scheduled_pct_match() {
+    let doc = parse("* A\nSCHEDULED: <2026-05-30 Sat>\n* B\n* C\n").expect("parse");
+    assert_eq!(doc.no_scheduled_pct(), 66);
+}
+
+#[test]
+fn doc_no_scheduled_pct_zero_when_no_headlines() {
+    let doc = parse("").expect("parse");
+    assert_eq!(doc.no_scheduled_pct(), 0);
+}
+
+#[test]
+fn doc_count_no_comment_match() {
+    let doc = parse("* COMMENT A\n* B\n* C\n").expect("parse");
+    assert_eq!(doc.count_no_comment(), 2);
+}
+
+#[test]
+fn doc_no_comment_pct_match() {
+    let doc = parse("* COMMENT A\n* B\n* C\n").expect("parse");
+    assert_eq!(doc.no_comment_pct(), 66);
+}
+
+#[test]
+fn doc_no_comment_pct_zero_when_no_headlines() {
+    let doc = parse("").expect("parse");
+    assert_eq!(doc.no_comment_pct(), 0);
+}
+
+#[test]
+fn doc_count_no_planning_match() {
+    let doc = parse("* A\nSCHEDULED: <2026-05-30 Sat>\n* B\n* C\n").expect("parse");
+    assert_eq!(doc.count_no_planning(), 2);
+}
+
+#[test]
+fn doc_no_planning_pct_match() {
+    let doc = parse("* A\nSCHEDULED: <2026-05-30 Sat>\n* B\n* C\n").expect("parse");
+    assert_eq!(doc.no_planning_pct(), 66);
+}
+
+#[test]
+fn doc_no_planning_pct_zero_when_no_headlines() {
+    let doc = parse("").expect("parse");
+    assert_eq!(doc.no_planning_pct(), 0);
+}
+
+#[test]
+fn doc_count_no_closed_match() {
+    let doc = parse("* A\nCLOSED: [2026-05-30 Sat]\n* B\n* C\n").expect("parse");
+    assert_eq!(doc.count_no_closed(), 2);
+}
+
+#[test]
+fn doc_no_closed_pct_match() {
+    let doc = parse("* A\nCLOSED: [2026-05-30 Sat]\n* B\n* C\n").expect("parse");
+    assert_eq!(doc.no_closed_pct(), 66);
+}
+
+#[test]
+fn doc_no_closed_pct_zero_when_no_headlines() {
+    let doc = parse("").expect("parse");
+    assert_eq!(doc.no_closed_pct(), 0);
+}
+

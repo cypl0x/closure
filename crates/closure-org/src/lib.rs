@@ -265,6 +265,71 @@ impl OrgDoc {
         (self.count_no_timestamp() * 100).checked_div(n).unwrap_or(0)
     }
 
+    /// Count of non-archived headlines.
+    #[must_use]
+    pub fn count_no_archived(&self) -> usize {
+        self.iter_headlines().len() - self.count_archived()
+    }
+
+    /// Percentage of non-archived headlines (`0..=100`).
+    #[must_use]
+    pub fn no_archived_pct(&self) -> usize {
+        let n = self.iter_headlines().len();
+        (self.count_no_archived() * 100).checked_div(n).unwrap_or(0)
+    }
+
+    /// Count of non-scheduled headlines.
+    #[must_use]
+    pub fn count_no_scheduled(&self) -> usize {
+        self.iter_headlines().len() - self.count_scheduled()
+    }
+
+    /// Percentage of non-scheduled headlines (`0..=100`).
+    #[must_use]
+    pub fn no_scheduled_pct(&self) -> usize {
+        let n = self.iter_headlines().len();
+        (self.count_no_scheduled() * 100).checked_div(n).unwrap_or(0)
+    }
+
+    /// Count of non-COMMENT headlines.
+    #[must_use]
+    pub fn count_no_comment(&self) -> usize {
+        self.iter_headlines().len() - self.count_comments()
+    }
+
+    /// Percentage of non-COMMENT headlines (`0..=100`).
+    #[must_use]
+    pub fn no_comment_pct(&self) -> usize {
+        let n = self.iter_headlines().len();
+        (self.count_no_comment() * 100).checked_div(n).unwrap_or(0)
+    }
+
+    /// Count of headlines without planning info.
+    #[must_use]
+    pub fn count_no_planning(&self) -> usize {
+        self.iter_headlines().len() - self.count_with_planning()
+    }
+
+    /// Percentage of headlines without planning info (`0..=100`).
+    #[must_use]
+    pub fn no_planning_pct(&self) -> usize {
+        let n = self.iter_headlines().len();
+        (self.count_no_planning() * 100).checked_div(n).unwrap_or(0)
+    }
+
+    /// Count of non-CLOSED headlines.
+    #[must_use]
+    pub fn count_no_closed(&self) -> usize {
+        self.iter_headlines().len() - self.count_closed()
+    }
+
+    /// Percentage of non-CLOSED headlines (`0..=100`).
+    #[must_use]
+    pub fn no_closed_pct(&self) -> usize {
+        let n = self.iter_headlines().len();
+        (self.count_no_closed() * 100).checked_div(n).unwrap_or(0)
+    }
+
     /// Maximum per-headline subtree depth (deepest descendant level).
     #[must_use]
     pub fn max_subtree_depth(&self) -> Option<usize> {
