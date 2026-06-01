@@ -7336,3 +7336,75 @@ fn vault_file_planning_count_none_when_no_files() {
     assert_eq!(v.mode_file_planning_count(), None);
     assert_eq!(v.planning_count(), 0);
 }
+
+#[test]
+fn vault_max_min_file_subtree_depth_match() {
+    // a: max_subtree_depth=3 (* A,** B,*** C all have max_depth=3), b: only "* C"=1
+    let td = write_vault(&[("a.org", "* A\n** B\n*** C\n"), ("b.org", "* C\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.max_file_subtree_depth(), Some(3));
+    assert_eq!(v.min_file_subtree_depth(), Some(1));
+}
+
+#[test]
+fn vault_total_file_subtree_depth_match() {
+    // a sums {3,3,3}=9, b sums {1}=1
+    let td = write_vault(&[("a.org", "* A\n** B\n*** C\n"), ("b.org", "* C\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    // file-level: max(a)=3, max(b)=1 → sum=4 if file-level is just max per file.
+    // We define file-level "subtree_depth" = OrgDoc::max_subtree_depth per file.
+    assert_eq!(v.total_file_subtree_depth(), 4);
+}
+
+#[test]
+fn vault_mean_file_subtree_depth_match() {
+    let td = write_vault(&[("a.org", "* A\n** B\n*** C\n"), ("b.org", "* C\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    // 4/2=2
+    assert_eq!(v.mean_file_subtree_depth(), 2);
+}
+
+#[test]
+fn vault_median_file_subtree_depth_match() {
+    let td = write_vault(&[("a.org", "* A\n** B\n*** C\n"), ("b.org", "* C\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    // [1,3] midpoint 2
+    assert_eq!(v.median_file_subtree_depth(), Some(2));
+}
+
+#[test]
+fn vault_file_subtree_depth_counts_match() {
+    let td = write_vault(&[
+        ("a.org", "* A\n** B\n*** C\n"),
+        ("b.org", "* C\n"),
+        ("c.org", "* D\n** E\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    let m = v.file_subtree_depth_counts();
+    assert_eq!(m.get(&3), Some(&1));
+    assert_eq!(m.get(&1), Some(&1));
+    assert_eq!(m.get(&2), Some(&1));
+}
+
+#[test]
+fn vault_mode_file_subtree_depth_match() {
+    let td = write_vault(&[
+        ("a.org", "* A\n** B\n"),
+        ("b.org", "* C\n** D\n"),
+        ("c.org", "* E\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.mode_file_subtree_depth(), Some(2));
+}
+
+#[test]
+fn vault_file_subtree_depth_none_when_no_files() {
+    let td = write_vault(&[]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.max_file_subtree_depth(), None);
+    assert_eq!(v.min_file_subtree_depth(), None);
+    assert_eq!(v.total_file_subtree_depth(), 0);
+    assert_eq!(v.mean_file_subtree_depth(), 0);
+    assert_eq!(v.median_file_subtree_depth(), None);
+    assert_eq!(v.mode_file_subtree_depth(), None);
+}

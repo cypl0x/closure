@@ -5291,6 +5291,84 @@ impl Vault {
         best.map(|(pc, _)| pc)
     }
 
+    /// Maximum per-file subtree depth (`None` when no files).
+    #[must_use]
+    pub fn max_file_subtree_depth(&self) -> Option<usize> {
+        self.documents
+            .values()
+            .map(|d| d.org().max_subtree_depth().unwrap_or(0))
+            .max()
+    }
+
+    /// Minimum per-file subtree depth (`None` when no files).
+    #[must_use]
+    pub fn min_file_subtree_depth(&self) -> Option<usize> {
+        self.documents
+            .values()
+            .map(|d| d.org().max_subtree_depth().unwrap_or(0))
+            .min()
+    }
+
+    /// Sum of per-file subtree depths.
+    #[must_use]
+    pub fn total_file_subtree_depth(&self) -> usize {
+        self.documents
+            .values()
+            .map(|d| d.org().max_subtree_depth().unwrap_or(0))
+            .sum()
+    }
+
+    /// Integer mean per-file subtree depth (`0` when no files).
+    #[must_use]
+    pub fn mean_file_subtree_depth(&self) -> usize {
+        self.total_file_subtree_depth()
+            .checked_div(self.len())
+            .unwrap_or(0)
+    }
+
+    /// Median per-file subtree depth (`None` when no files).
+    #[must_use]
+    pub fn median_file_subtree_depth(&self) -> Option<usize> {
+        let mut v: Vec<usize> = self
+            .documents
+            .values()
+            .map(|d| d.org().max_subtree_depth().unwrap_or(0))
+            .collect();
+        if v.is_empty() {
+            return None;
+        }
+        v.sort_unstable();
+        let mid = v.len() / 2;
+        Some(if v.len() % 2 == 1 {
+            v[mid]
+        } else {
+            v[mid - 1].midpoint(v[mid])
+        })
+    }
+
+    /// Histogram of per-file subtree depths.
+    #[must_use]
+    pub fn file_subtree_depth_counts(&self) -> std::collections::BTreeMap<usize, usize> {
+        let mut m = std::collections::BTreeMap::new();
+        for d in self.documents.values() {
+            *m.entry(d.org().max_subtree_depth().unwrap_or(0))
+                .or_insert(0) += 1;
+        }
+        m
+    }
+
+    /// Most common per-file subtree depth (lowest wins ties).
+    #[must_use]
+    pub fn mode_file_subtree_depth(&self) -> Option<usize> {
+        let mut best: Option<(usize, usize)> = None;
+        for (d, c) in self.file_subtree_depth_counts() {
+            if best.is_none_or(|(_, bc)| c > bc) {
+                best = Some((d, c));
+            }
+        }
+        best.map(|(d, _)| d)
+    }
+
     /// Count of headlines carrying at least one link for a single file
     /// by path. Returns `None` if the file isn't loaded.
     #[must_use]
