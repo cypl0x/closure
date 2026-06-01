@@ -7256,3 +7256,52 @@ fn doc_with_todo_pct_zero_when_no_headlines() {
     let doc = parse("").expect("parse");
     assert_eq!(doc.with_todo_pct(), 0);
 }
+
+#[test]
+fn doc_count_no_link_match() {
+    let doc = parse("* A\n[[x][X]]\n* B\n* C\n[[y][Y]]\n").expect("parse");
+    // 1 of 3 no link
+    assert_eq!(doc.count_no_link(), 1);
+}
+
+#[test]
+fn doc_count_no_link_zero_when_all_have_link() {
+    let doc = parse("* A\n[[x][X]]\n").expect("parse");
+    assert_eq!(doc.count_no_link(), 0);
+}
+
+#[test]
+fn doc_count_no_timestamp_match() {
+    let doc = parse("* A\n<2026-05-30 Sat>\n* B\n* C\n<2026-05-31 Sun>\n").expect("parse");
+    assert_eq!(doc.count_no_timestamp(), 1);
+}
+
+#[test]
+fn doc_count_no_timestamp_zero_when_all_have_timestamp() {
+    let doc = parse("* A\n<2026-05-30 Sat>\n").expect("parse");
+    assert_eq!(doc.count_no_timestamp(), 0);
+}
+
+#[test]
+fn doc_count_no_todo_match() {
+    let doc = parse("* TODO A\n* B\n* DONE C\n").expect("parse");
+    assert_eq!(doc.count_no_todo(), 1);
+}
+
+#[test]
+fn doc_count_no_todo_zero_when_all_have_todo() {
+    let doc = parse("* TODO A\n* DONE B\n").expect("parse");
+    assert_eq!(doc.count_no_todo(), 0);
+}
+
+#[test]
+fn doc_count_no_priority_match() {
+    let doc = parse("* [#A] A\n* B\n* [#B] C\n").expect("parse");
+    assert_eq!(doc.count_no_priority(), 1);
+}
+
+#[test]
+fn doc_count_no_priority_zero_when_all_have_priority() {
+    let doc = parse("* [#A] A\n* [#B] B\n").expect("parse");
+    assert_eq!(doc.count_no_priority(), 0);
+}

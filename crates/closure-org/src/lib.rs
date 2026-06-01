@@ -227,6 +227,30 @@ impl OrgDoc {
         (self.count_with_todo() * 100).checked_div(n).unwrap_or(0)
     }
 
+    /// Count of headlines with no links.
+    #[must_use]
+    pub fn count_no_link(&self) -> usize {
+        self.count_headlines_where(|h| h.link_targets().is_empty())
+    }
+
+    /// Count of headlines with no timestamps.
+    #[must_use]
+    pub fn count_no_timestamp(&self) -> usize {
+        self.count_headlines_where(|h| h.timestamp_count() == 0)
+    }
+
+    /// Count of headlines with no TODO keyword.
+    #[must_use]
+    pub fn count_no_todo(&self) -> usize {
+        self.count_headlines_where(|h| h.todo().is_none())
+    }
+
+    /// Count of headlines with no priority cookie.
+    #[must_use]
+    pub fn count_no_priority(&self) -> usize {
+        self.count_headlines_where(|h| h.priority().is_none())
+    }
+
     /// Maximum per-headline subtree depth (deepest descendant level).
     #[must_use]
     pub fn max_subtree_depth(&self) -> Option<usize> {
