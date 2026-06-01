@@ -7659,4 +7659,19 @@ fn vault_no_closed_pct_zero_when_no_headlines() {
     assert_eq!(v.no_closed_pct(), 0);
 }
 
+#[test]
+fn vault_root_pct_match() {
+    // a: 1 root, 2 headlines; b: 1 root, 1 headline. Total 2 roots / 3 headlines = 66%.
+    let td = write_vault(&[("a.org", "* A\n** B\n"), ("b.org", "* C\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.root_pct(), 66);
+}
+
+#[test]
+fn vault_root_pct_zero_when_no_headlines() {
+    let td = write_vault(&[]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.root_pct(), 0);
+}
+
 
