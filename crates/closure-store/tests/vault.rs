@@ -7762,4 +7762,61 @@ fn vault_file_subtree_word_count_none_when_no_files() {
     assert_eq!(v.mode_file_subtree_word_count(), None);
 }
 
+#[test]
+fn vault_max_min_file_subtree_byte_count_positive() {
+    let td = write_vault(&[("a.org", "* AAA\n** BB\n"), ("b.org", "* C\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert!(v.max_file_subtree_byte_count().is_some());
+    assert!(v.min_file_subtree_byte_count().is_some());
+    assert!(v.max_file_subtree_byte_count() >= v.min_file_subtree_byte_count());
+}
+
+#[test]
+fn vault_total_file_subtree_byte_count_positive() {
+    let td = write_vault(&[("a.org", "* AAA\n** BB\n"), ("b.org", "* C\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert!(v.total_file_subtree_byte_count() > 0);
+}
+
+#[test]
+fn vault_mean_file_subtree_byte_count_positive() {
+    let td = write_vault(&[("a.org", "* AAA\n** BB\n"), ("b.org", "* C\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert!(v.mean_file_subtree_byte_count() > 0);
+}
+
+#[test]
+fn vault_median_file_subtree_byte_count_positive() {
+    let td = write_vault(&[("a.org", "* AAA\n** BB\n"), ("b.org", "* C\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert!(v.median_file_subtree_byte_count().is_some());
+}
+
+#[test]
+fn vault_file_subtree_byte_count_counts_nonempty() {
+    let td = write_vault(&[("a.org", "* AAA\n** BB\n"), ("b.org", "* C\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    let m = v.file_subtree_byte_count_counts();
+    assert!(!m.is_empty());
+}
+
+#[test]
+fn vault_mode_file_subtree_byte_count_some() {
+    let td = write_vault(&[("a.org", "* A\n"), ("b.org", "* A\n"), ("c.org", "* B\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert!(v.mode_file_subtree_byte_count().is_some());
+}
+
+#[test]
+fn vault_file_subtree_byte_count_none_when_no_files() {
+    let td = write_vault(&[]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.max_file_subtree_byte_count(), None);
+    assert_eq!(v.min_file_subtree_byte_count(), None);
+    assert_eq!(v.total_file_subtree_byte_count(), 0);
+    assert_eq!(v.mean_file_subtree_byte_count(), 0);
+    assert_eq!(v.median_file_subtree_byte_count(), None);
+    assert_eq!(v.mode_file_subtree_byte_count(), None);
+}
+
 
