@@ -330,6 +330,25 @@ impl OrgDoc {
         (self.count_no_closed() * 100).checked_div(n).unwrap_or(0)
     }
 
+    /// Percentage of headlines that are roots (`0..=100`).
+    #[must_use]
+    pub fn root_pct(&self) -> usize {
+        let n = self.iter_headlines().len();
+        (self.root_count() * 100).checked_div(n).unwrap_or(0)
+    }
+
+    /// Count of leaf headlines (alias of [`Self::count_leaves`]).
+    #[must_use]
+    pub fn leaf_count(&self) -> usize {
+        self.count_leaves()
+    }
+
+    /// Count of branch headlines (alias of [`Self::count_branches`]).
+    #[must_use]
+    pub fn branch_count(&self) -> usize {
+        self.count_branches()
+    }
+
     /// Maximum per-headline subtree depth (deepest descendant level).
     #[must_use]
     pub fn max_subtree_depth(&self) -> Option<usize> {

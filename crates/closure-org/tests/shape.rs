@@ -7421,3 +7421,30 @@ fn doc_no_closed_pct_zero_when_no_headlines() {
     assert_eq!(doc.no_closed_pct(), 0);
 }
 
+#[test]
+fn doc_root_pct_match() {
+    // 2 roots, 3 headlines total → 2/3 = 66%
+    let doc = parse("* A\n** B\n* C\n").expect("parse");
+    assert_eq!(doc.root_pct(), 66);
+}
+
+#[test]
+fn doc_root_pct_zero_when_no_headlines() {
+    let doc = parse("").expect("parse");
+    assert_eq!(doc.root_pct(), 0);
+}
+
+#[test]
+fn doc_leaf_count_alias_match() {
+    let doc = parse("* A\n** B\n* C\n").expect("parse");
+    // leaves: B (no child), C (no child); A has child B
+    assert_eq!(doc.leaf_count(), 2);
+}
+
+#[test]
+fn doc_branch_count_alias_match() {
+    let doc = parse("* A\n** B\n* C\n").expect("parse");
+    // A is branch (has B); B, C leaves
+    assert_eq!(doc.branch_count(), 1);
+}
+
