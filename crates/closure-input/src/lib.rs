@@ -901,6 +901,24 @@ impl ChordTrie {
         self.nodes.iter().filter(|n| n.command.is_none()).count()
     }
 
+    /// Count of leaf nodes (no children).
+    #[must_use]
+    pub fn leaf_node_count(&self) -> usize {
+        self.nodes.iter().filter(|n| n.children.is_empty()).count()
+    }
+
+    /// Count of branch nodes (with at least one child).
+    #[must_use]
+    pub fn branch_node_count(&self) -> usize {
+        self.nodes.iter().filter(|n| !n.children.is_empty()).count()
+    }
+
+    /// Count of nodes that carry a command.
+    #[must_use]
+    pub fn command_node_count(&self) -> usize {
+        self.nodes.iter().filter(|n| n.command.is_some()).count()
+    }
+
     /// All bindings as `(chord, command)` pairs, sorted by chord.
     #[must_use]
     pub fn bindings(&self) -> Vec<(String, String)> {

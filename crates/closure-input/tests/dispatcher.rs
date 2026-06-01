@@ -1296,3 +1296,43 @@ fn dispatcher_chords_per_command_none_when_empty() {
     assert_eq!(disp.median_chords_per_command(), None);
     assert_eq!(disp.mode_chords_per_command(), None);
 }
+
+#[test]
+fn chord_trie_leaf_node_count_match() {
+    // bindings "a b" "a c" → nodes: root, a, a->b (leaf), a->c (leaf)
+    // leaves = 2
+    let t = closure_input::ChordTrie::build(&[("a b", "x"), ("a c", "y")]);
+    assert_eq!(t.leaf_node_count(), 2);
+}
+
+#[test]
+fn chord_trie_leaf_node_count_zero_when_only_root() {
+    // empty trie has just root, no children → root is leaf, count = 1
+    let t = closure_input::ChordTrie::build(&[]);
+    assert_eq!(t.leaf_node_count(), 1);
+}
+
+#[test]
+fn chord_trie_branch_node_count_match() {
+    // root + "a" both have children. b,c leaves.
+    let t = closure_input::ChordTrie::build(&[("a b", "x"), ("a c", "y")]);
+    assert_eq!(t.branch_node_count(), 2);
+}
+
+#[test]
+fn chord_trie_branch_node_count_zero_when_only_root() {
+    let t = closure_input::ChordTrie::build(&[]);
+    assert_eq!(t.branch_node_count(), 0);
+}
+
+#[test]
+fn chord_trie_command_node_count_match() {
+    let t = closure_input::ChordTrie::build(&[("a", "x"), ("b", "y")]);
+    assert_eq!(t.command_node_count(), 2);
+}
+
+#[test]
+fn chord_trie_command_node_count_zero_when_empty() {
+    let t = closure_input::ChordTrie::build(&[]);
+    assert_eq!(t.command_node_count(), 0);
+}
