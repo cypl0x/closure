@@ -5393,6 +5393,40 @@ impl Vault {
             .unwrap_or(0)
     }
 
+    /// Count of headlines without any link across the vault.
+    #[must_use]
+    pub fn count_no_link(&self) -> usize {
+        self.documents
+            .values()
+            .map(|d| d.org().count_no_link())
+            .sum()
+    }
+
+    /// Count of headlines without any timestamp across the vault.
+    #[must_use]
+    pub fn count_no_timestamp(&self) -> usize {
+        self.documents
+            .values()
+            .map(|d| d.org().count_no_timestamp())
+            .sum()
+    }
+
+    /// Percentage of headlines without links (`0..=100`).
+    #[must_use]
+    pub fn no_link_pct(&self) -> usize {
+        (self.count_no_link() * 100)
+            .checked_div(self.headline_count())
+            .unwrap_or(0)
+    }
+
+    /// Percentage of headlines without timestamps (`0..=100`).
+    #[must_use]
+    pub fn no_timestamp_pct(&self) -> usize {
+        (self.count_no_timestamp() * 100)
+            .checked_div(self.headline_count())
+            .unwrap_or(0)
+    }
+
     /// Count of headlines carrying at least one link for a single file
     /// by path. Returns `None` if the file isn't loaded.
     #[must_use]

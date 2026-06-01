@@ -7462,3 +7462,59 @@ fn vault_with_todo_pct_zero_when_no_headlines() {
     let v = Vault::open(td.path()).expect("open");
     assert_eq!(v.with_todo_pct(), 0);
 }
+
+#[test]
+fn vault_no_link_pct_match() {
+    let td = write_vault(&[
+        ("a.org", "* A\n[[x][X]]\n"),
+        ("b.org", "* B\n"),
+        ("c.org", "* C\n[[y][Y]]\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.no_link_pct(), 33);
+}
+
+#[test]
+fn vault_no_link_pct_zero_when_no_headlines() {
+    let td = write_vault(&[]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.no_link_pct(), 0);
+}
+
+#[test]
+fn vault_no_timestamp_pct_match() {
+    let td = write_vault(&[
+        ("a.org", "* A\n<2026-05-30 Sat>\n"),
+        ("b.org", "* B\n"),
+        ("c.org", "* C\n<2026-05-31 Sun>\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.no_timestamp_pct(), 33);
+}
+
+#[test]
+fn vault_no_timestamp_pct_zero_when_no_headlines() {
+    let td = write_vault(&[]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.no_timestamp_pct(), 0);
+}
+
+#[test]
+fn vault_count_no_link_match() {
+    let td = write_vault(&[
+        ("a.org", "* A\n[[x][X]]\n* B\n"),
+        ("b.org", "* C\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.count_no_link(), 2);
+}
+
+#[test]
+fn vault_count_no_timestamp_match() {
+    let td = write_vault(&[
+        ("a.org", "* A\n<2026-05-30 Sat>\n* B\n"),
+        ("b.org", "* C\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.count_no_timestamp(), 2);
+}
