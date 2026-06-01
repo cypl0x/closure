@@ -7305,3 +7305,29 @@ fn doc_count_no_priority_zero_when_all_have_priority() {
     let doc = parse("* [#A] A\n* [#B] B\n").expect("parse");
     assert_eq!(doc.count_no_priority(), 0);
 }
+
+#[test]
+fn doc_no_link_pct_match() {
+    let doc = parse("* A\n[[x][X]]\n* B\n* C\n[[y][Y]]\n").expect("parse");
+    // 1 of 3 = 33
+    assert_eq!(doc.no_link_pct(), 33);
+}
+
+#[test]
+fn doc_no_link_pct_zero_when_no_headlines() {
+    let doc = parse("").expect("parse");
+    assert_eq!(doc.no_link_pct(), 0);
+}
+
+#[test]
+fn doc_no_timestamp_pct_match() {
+    let doc = parse("* A\n<2026-05-30 Sat>\n* B\n* C\n<2026-05-31 Sun>\n").expect("parse");
+    assert_eq!(doc.no_timestamp_pct(), 33);
+}
+
+#[test]
+fn doc_no_timestamp_pct_zero_when_no_headlines() {
+    let doc = parse("").expect("parse");
+    assert_eq!(doc.no_timestamp_pct(), 0);
+}
+

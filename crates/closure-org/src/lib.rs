@@ -251,6 +251,20 @@ impl OrgDoc {
         self.count_headlines_where(|h| h.priority().is_none())
     }
 
+    /// Percentage of headlines without links (`0..=100`).
+    #[must_use]
+    pub fn no_link_pct(&self) -> usize {
+        let n = self.iter_headlines().len();
+        (self.count_no_link() * 100).checked_div(n).unwrap_or(0)
+    }
+
+    /// Percentage of headlines without timestamps (`0..=100`).
+    #[must_use]
+    pub fn no_timestamp_pct(&self) -> usize {
+        let n = self.iter_headlines().len();
+        (self.count_no_timestamp() * 100).checked_div(n).unwrap_or(0)
+    }
+
     /// Maximum per-headline subtree depth (deepest descendant level).
     #[must_use]
     pub fn max_subtree_depth(&self) -> Option<usize> {
