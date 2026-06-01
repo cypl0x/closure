@@ -349,6 +349,13 @@ impl OrgDoc {
         self.count_branches()
     }
 
+    /// Percentage of headlines with a CLOSED: timestamp (`0..=100`).
+    #[must_use]
+    pub fn closed_pct(&self) -> usize {
+        let n = self.iter_headlines().len();
+        (self.count_closed() * 100).checked_div(n).unwrap_or(0)
+    }
+
     /// Maximum per-headline subtree depth (deepest descendant level).
     #[must_use]
     pub fn max_subtree_depth(&self) -> Option<usize> {

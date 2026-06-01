@@ -7448,3 +7448,15 @@ fn doc_branch_count_alias_match() {
     assert_eq!(doc.branch_count(), 1);
 }
 
+#[test]
+fn doc_closed_pct_match() {
+    let doc = parse("* A\nCLOSED: [2026-05-30 Sat]\n* B\n* C\n").expect("parse");
+    assert_eq!(doc.closed_pct(), 33);
+}
+
+#[test]
+fn doc_closed_pct_zero_when_no_headlines() {
+    let doc = parse("").expect("parse");
+    assert_eq!(doc.closed_pct(), 0);
+}
+
