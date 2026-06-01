@@ -171,6 +171,30 @@ impl OrgDoc {
         self.count_headlines_where(Headline::is_closed)
     }
 
+    /// Count of headlines with at least one link.
+    #[must_use]
+    pub fn count_with_link(&self) -> usize {
+        self.count_headlines_where(|h| !h.link_targets().is_empty())
+    }
+
+    /// Count of headlines with at least one timestamp.
+    #[must_use]
+    pub fn count_with_timestamp(&self) -> usize {
+        self.count_headlines_where(|h| h.timestamp_count() > 0)
+    }
+
+    /// Count of headlines with at least one property.
+    #[must_use]
+    pub fn count_with_property(&self) -> usize {
+        self.count_headlines_where(|h| h.property_count() > 0)
+    }
+
+    /// Count of headlines with any TODO keyword set.
+    #[must_use]
+    pub fn count_with_todo(&self) -> usize {
+        self.count_headlines_where(|h| h.todo().is_some())
+    }
+
     /// Count of headlines tagged with `tag` (recursive).
     #[must_use]
     pub fn count_tagged(&self, tag: &str) -> usize {

@@ -7089,6 +7089,58 @@ fn doc_mode_property_value_len_match() {
 }
 
 #[test]
+fn doc_count_with_link_match() {
+    let doc = parse("* A\n[[x][X]]\n* B\n* C\n[[y][Y]] [[z][Z]]\n").expect("parse");
+    // A has 1 link, C has 2 links, B has none
+    assert_eq!(doc.count_with_link(), 2);
+}
+
+#[test]
+fn doc_count_with_link_zero_when_none() {
+    let doc = parse("* A\n* B\n").expect("parse");
+    assert_eq!(doc.count_with_link(), 0);
+}
+
+#[test]
+fn doc_count_with_timestamp_match() {
+    let doc = parse("* A\n<2026-05-30 Sat>\n* B\n* C\n<2026-05-31 Sun>\n").expect("parse");
+    assert_eq!(doc.count_with_timestamp(), 2);
+}
+
+#[test]
+fn doc_count_with_timestamp_zero_when_none() {
+    let doc = parse("* A\n* B\n").expect("parse");
+    assert_eq!(doc.count_with_timestamp(), 0);
+}
+
+#[test]
+fn doc_count_with_property_match() {
+    let doc = parse(
+        "* A\n:PROPERTIES:\n:x: 1\n:END:\n* B\n* C\n:PROPERTIES:\n:y: 2\n:END:\n",
+    )
+    .expect("parse");
+    assert_eq!(doc.count_with_property(), 2);
+}
+
+#[test]
+fn doc_count_with_property_zero_when_none() {
+    let doc = parse("* A\n* B\n").expect("parse");
+    assert_eq!(doc.count_with_property(), 0);
+}
+
+#[test]
+fn doc_count_with_todo_match() {
+    let doc = parse("* TODO A\n* B\n* DONE C\n").expect("parse");
+    assert_eq!(doc.count_with_todo(), 2);
+}
+
+#[test]
+fn doc_count_with_todo_zero_when_none() {
+    let doc = parse("* A\n* B\n").expect("parse");
+    assert_eq!(doc.count_with_todo(), 0);
+}
+
+#[test]
 fn doc_median_property_value_len_none_when_no_props() {
     let doc = parse("* A\n").expect("parse");
     assert_eq!(doc.median_property_value_len(), None);
