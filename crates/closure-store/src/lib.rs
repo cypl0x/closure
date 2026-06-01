@@ -5505,6 +5505,14 @@ impl Vault {
             .unwrap_or(0)
     }
 
+    /// Percentage of headlines with planning info (`0..=100`).
+    #[must_use]
+    pub fn planning_pct(&self) -> usize {
+        (self.planning_count() * 100)
+            .checked_div(self.headline_count())
+            .unwrap_or(0)
+    }
+
     /// Count of headlines carrying at least one link for a single file
     /// by path. Returns `None` if the file isn't loaded.
     #[must_use]

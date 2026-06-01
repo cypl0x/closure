@@ -7674,4 +7674,22 @@ fn vault_root_pct_zero_when_no_headlines() {
     assert_eq!(v.root_pct(), 0);
 }
 
+#[test]
+fn vault_planning_pct_match() {
+    let td = write_vault(&[
+        ("a.org", "* A\nSCHEDULED: <2026-05-30 Sat>\n"),
+        ("b.org", "* B\n"),
+        ("c.org", "* C\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.planning_pct(), 33);
+}
+
+#[test]
+fn vault_planning_pct_zero_when_no_headlines() {
+    let td = write_vault(&[]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.planning_pct(), 0);
+}
+
 
