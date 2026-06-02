@@ -540,6 +540,24 @@ impl Dispatcher {
         best.map(|(s, _)| s)
     }
 
+    /// Max usage frequency of any stroke across bound chords. None if empty.
+    #[must_use]
+    pub fn max_stroke_freq(&self) -> Option<usize> {
+        self.stroke_counts().values().copied().max()
+    }
+
+    /// Min usage frequency of any stroke across bound chords. None if empty.
+    #[must_use]
+    pub fn min_stroke_freq(&self) -> Option<usize> {
+        self.stroke_counts().values().copied().min()
+    }
+
+    /// Sum of stroke occurrences across bound chords.
+    #[must_use]
+    pub fn total_stroke_occurrences(&self) -> usize {
+        self.stroke_counts().values().sum()
+    }
+
     /// Most common chord stroke count (lowest wins ties; `None` when empty).
     #[must_use]
     pub fn mode_chord_strokes(&self) -> Option<usize> {
@@ -1065,6 +1083,24 @@ impl ChordTrie {
             }
         }
         best.map(|(s, _)| s)
+    }
+
+    /// Max usage frequency of any stroke. None if empty.
+    #[must_use]
+    pub fn max_stroke_freq(&self) -> Option<usize> {
+        self.stroke_counts().values().copied().max()
+    }
+
+    /// Min usage frequency of any stroke. None if empty.
+    #[must_use]
+    pub fn min_stroke_freq(&self) -> Option<usize> {
+        self.stroke_counts().values().copied().min()
+    }
+
+    /// Sum of stroke occurrences across all bound chords.
+    #[must_use]
+    pub fn total_stroke_occurrences(&self) -> usize {
+        self.stroke_counts().values().sum()
     }
 
     /// All bindings as `(chord, command)` pairs, sorted by chord.

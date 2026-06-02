@@ -1538,6 +1538,56 @@ fn dispatcher_most_common_stroke_none_when_empty() {
 }
 
 #[test]
+fn chord_trie_max_min_stroke_freq_match() {
+    let t = closure_input::ChordTrie::build(&[("a b", "x"), ("a c", "y")]);
+    // a:2, b:1, c:1
+    assert_eq!(t.max_stroke_freq(), Some(2));
+    assert_eq!(t.min_stroke_freq(), Some(1));
+}
+
+#[test]
+fn chord_trie_stroke_freq_none_when_empty() {
+    let t = closure_input::ChordTrie::build(&[]);
+    assert_eq!(t.max_stroke_freq(), None);
+    assert_eq!(t.min_stroke_freq(), None);
+    assert_eq!(t.total_stroke_occurrences(), 0);
+}
+
+#[test]
+fn chord_trie_total_stroke_occurrences_match() {
+    let t = closure_input::ChordTrie::build(&[("a b", "x"), ("a c", "y")]);
+    // 2+1+1 = 4 (also equals total strokes in chords)
+    assert_eq!(t.total_stroke_occurrences(), 4);
+}
+
+#[test]
+fn dispatcher_max_min_stroke_freq_match() {
+    let mut reg = Registry::new();
+    reg.register(Box::new(RenameHeadline::new_placeholder()));
+    let disp = Dispatcher::from_registry(&reg, InputMode::Doom);
+    // each stroke once
+    assert_eq!(disp.max_stroke_freq(), Some(1));
+    assert_eq!(disp.min_stroke_freq(), Some(1));
+}
+
+#[test]
+fn dispatcher_stroke_freq_none_when_empty() {
+    let reg = Registry::new();
+    let disp = Dispatcher::from_registry(&reg, InputMode::Doom);
+    assert_eq!(disp.max_stroke_freq(), None);
+    assert_eq!(disp.min_stroke_freq(), None);
+    assert_eq!(disp.total_stroke_occurrences(), 0);
+}
+
+#[test]
+fn dispatcher_total_stroke_occurrences_match() {
+    let mut reg = Registry::new();
+    reg.register(Box::new(RenameHeadline::new_placeholder()));
+    let disp = Dispatcher::from_registry(&reg, InputMode::Doom);
+    assert_eq!(disp.total_stroke_occurrences(), 3);
+}
+
+#[test]
 fn dispatcher_single_stroke_pct_match() {
     let mut reg = Registry::new();
     reg.register(Box::new(RenameHeadline::new_placeholder()));
