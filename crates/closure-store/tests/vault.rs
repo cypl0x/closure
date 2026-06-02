@@ -8212,4 +8212,47 @@ fn vault_file_subtree_level_count_none_when_no_files() {
     assert_eq!(v.mode_file_subtree_level_count(), None);
 }
 
+#[test]
+fn vault_with_body_pct_match() {
+    let td = write_vault(&[
+        ("a.org", "* A\nbody\n"),
+        ("b.org", "* B\n"),
+        ("c.org", "* C\nbody\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.with_body_pct(), 66);
+}
+
+#[test]
+fn vault_with_body_pct_zero_when_no_headlines() {
+    let td = write_vault(&[]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.with_body_pct(), 0);
+}
+
+#[test]
+fn vault_count_no_body_match() {
+    let td = write_vault(&[("a.org", "* A\nbody\n* B\n"), ("b.org", "* C\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.count_no_body(), 2);
+}
+
+#[test]
+fn vault_no_body_pct_match() {
+    let td = write_vault(&[
+        ("a.org", "* A\nbody\n"),
+        ("b.org", "* B\n"),
+        ("c.org", "* C\nbody\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.no_body_pct(), 33);
+}
+
+#[test]
+fn vault_no_body_pct_zero_when_no_headlines() {
+    let td = write_vault(&[]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.no_body_pct(), 0);
+}
+
 

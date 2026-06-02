@@ -6490,6 +6490,28 @@ impl Vault {
         best.map(|(lc, _)| lc)
     }
 
+    /// Percentage of headlines with a non-empty body (`0..=100`).
+    #[must_use]
+    pub fn with_body_pct(&self) -> usize {
+        (self.with_body_count() * 100)
+            .checked_div(self.headline_count())
+            .unwrap_or(0)
+    }
+
+    /// Count of headlines with an empty body across the vault.
+    #[must_use]
+    pub fn count_no_body(&self) -> usize {
+        self.headline_count() - self.with_body_count()
+    }
+
+    /// Percentage of headlines with an empty body (`0..=100`).
+    #[must_use]
+    pub fn no_body_pct(&self) -> usize {
+        (self.count_no_body() * 100)
+            .checked_div(self.headline_count())
+            .unwrap_or(0)
+    }
+
     /// Count of headlines carrying at least one link for a single file
     /// by path. Returns `None` if the file isn't loaded.
     #[must_use]
