@@ -1103,6 +1103,57 @@ impl Vault {
             .unwrap_or(0)
     }
 
+    /// Count of files containing at least one prioritized headline.
+    #[must_use]
+    pub fn files_with_priority(&self) -> usize {
+        self.documents
+            .values()
+            .filter(|d| d.all_headlines().any(|h| h.priority().is_some()))
+            .count()
+    }
+
+    /// Percentage of files containing at least one prioritized headline (`0..=100`).
+    #[must_use]
+    pub fn files_with_priority_pct(&self) -> usize {
+        (self.files_with_priority() * 100)
+            .checked_div(self.len())
+            .unwrap_or(0)
+    }
+
+    /// Count of files containing at least one `:ID:` property.
+    #[must_use]
+    pub fn files_with_id(&self) -> usize {
+        self.documents
+            .values()
+            .filter(|d| d.org().count_with_id() > 0)
+            .count()
+    }
+
+    /// Percentage of files containing at least one `:ID:` property (`0..=100`).
+    #[must_use]
+    pub fn files_with_id_pct(&self) -> usize {
+        (self.files_with_id() * 100)
+            .checked_div(self.len())
+            .unwrap_or(0)
+    }
+
+    /// Count of files containing at least one archived headline.
+    #[must_use]
+    pub fn files_with_archived(&self) -> usize {
+        self.documents
+            .values()
+            .filter(|d| d.org().count_archived() > 0)
+            .count()
+    }
+
+    /// Percentage of files containing at least one archived headline (`0..=100`).
+    #[must_use]
+    pub fn files_with_archived_pct(&self) -> usize {
+        (self.files_with_archived() * 100)
+            .checked_div(self.len())
+            .unwrap_or(0)
+    }
+
     /// Count of headlines with an `:ID:` property across the vault.
     #[must_use]
     pub fn id_count(&self) -> usize {

@@ -8845,5 +8845,95 @@ fn vault_files_with_todo_zero_when_empty() {
     assert_eq!(v.files_with_todo_pct(), 0);
 }
 
+#[test]
+fn vault_files_with_priority_match() {
+    let td = write_vault(&[
+        ("a.org", "* [#A] A\n"),
+        ("b.org", "* B\n"),
+        ("c.org", "* [#B] C\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.files_with_priority(), 2);
+}
+
+#[test]
+fn vault_files_with_priority_pct_match() {
+    let td = write_vault(&[
+        ("a.org", "* [#A] A\n"),
+        ("b.org", "* B\n"),
+        ("c.org", "* [#B] C\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.files_with_priority_pct(), 66);
+}
+
+#[test]
+fn vault_files_with_priority_zero_when_empty() {
+    let td = write_vault(&[]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.files_with_priority(), 0);
+    assert_eq!(v.files_with_priority_pct(), 0);
+}
+
+#[test]
+fn vault_files_with_id_match() {
+    let td = write_vault(&[
+        ("a.org", "* A\n:PROPERTIES:\n:ID: x\n:END:\n"),
+        ("b.org", "* B\n"),
+        ("c.org", "* C\n:PROPERTIES:\n:ID: y\n:END:\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.files_with_id(), 2);
+}
+
+#[test]
+fn vault_files_with_id_pct_match() {
+    let td = write_vault(&[
+        ("a.org", "* A\n:PROPERTIES:\n:ID: x\n:END:\n"),
+        ("b.org", "* B\n"),
+        ("c.org", "* C\n:PROPERTIES:\n:ID: y\n:END:\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.files_with_id_pct(), 66);
+}
+
+#[test]
+fn vault_files_with_id_zero_when_empty() {
+    let td = write_vault(&[]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.files_with_id(), 0);
+    assert_eq!(v.files_with_id_pct(), 0);
+}
+
+#[test]
+fn vault_files_with_archived_match() {
+    let td = write_vault(&[
+        ("a.org", "* A :ARCHIVE:\n"),
+        ("b.org", "* B\n"),
+        ("c.org", "* C :ARCHIVE:\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.files_with_archived(), 2);
+}
+
+#[test]
+fn vault_files_with_archived_pct_match() {
+    let td = write_vault(&[
+        ("a.org", "* A :ARCHIVE:\n"),
+        ("b.org", "* B\n"),
+        ("c.org", "* C :ARCHIVE:\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.files_with_archived_pct(), 66);
+}
+
+#[test]
+fn vault_files_with_archived_zero_when_empty() {
+    let td = write_vault(&[]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.files_with_archived(), 0);
+    assert_eq!(v.files_with_archived_pct(), 0);
+}
+
 
 
