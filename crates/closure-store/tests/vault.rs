@@ -8635,5 +8635,95 @@ fn vault_files_with_cookies_pct_zero_when_no_files() {
     assert_eq!(v.files_with_cookies_pct(), 0);
 }
 
+#[test]
+fn vault_files_with_headlines_match() {
+    let td = write_vault(&[
+        ("a.org", "* A\n"),
+        ("b.org", ""),
+        ("c.org", "* C\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.files_with_headlines(), 2);
+}
+
+#[test]
+fn vault_files_with_headlines_pct_match() {
+    let td = write_vault(&[
+        ("a.org", "* A\n"),
+        ("b.org", ""),
+        ("c.org", "* C\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.files_with_headlines_pct(), 66);
+}
+
+#[test]
+fn vault_files_with_headlines_zero_when_empty() {
+    let td = write_vault(&[]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.files_with_headlines(), 0);
+    assert_eq!(v.files_with_headlines_pct(), 0);
+}
+
+#[test]
+fn vault_files_with_body_match() {
+    let td = write_vault(&[
+        ("a.org", "* A\nbody\n"),
+        ("b.org", "* B\n"),
+        ("c.org", "* C\nbody\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.files_with_body(), 2);
+}
+
+#[test]
+fn vault_files_with_body_pct_match() {
+    let td = write_vault(&[
+        ("a.org", "* A\nbody\n"),
+        ("b.org", "* B\n"),
+        ("c.org", "* C\nbody\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.files_with_body_pct(), 66);
+}
+
+#[test]
+fn vault_files_with_body_zero_when_empty() {
+    let td = write_vault(&[]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.files_with_body(), 0);
+    assert_eq!(v.files_with_body_pct(), 0);
+}
+
+#[test]
+fn vault_files_with_properties_match() {
+    let td = write_vault(&[
+        ("a.org", "* A\n:PROPERTIES:\n:x: 1\n:END:\n"),
+        ("b.org", "* B\n"),
+        ("c.org", "* C\n:PROPERTIES:\n:y: 2\n:END:\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.files_with_properties(), 2);
+}
+
+#[test]
+fn vault_files_with_properties_pct_match() {
+    let td = write_vault(&[
+        ("a.org", "* A\n:PROPERTIES:\n:x: 1\n:END:\n"),
+        ("b.org", "* B\n"),
+        ("c.org", "* C\n:PROPERTIES:\n:y: 2\n:END:\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.files_with_properties_pct(), 66);
+}
+
+#[test]
+fn vault_files_with_properties_zero_when_empty() {
+    let td = write_vault(&[]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.files_with_properties(), 0);
+    assert_eq!(v.files_with_properties_pct(), 0);
+}
+
 
 

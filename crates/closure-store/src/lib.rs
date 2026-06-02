@@ -984,6 +984,57 @@ impl Vault {
             .unwrap_or(0)
     }
 
+    /// Count of files that contain at least one headline.
+    #[must_use]
+    pub fn files_with_headlines(&self) -> usize {
+        self.documents
+            .values()
+            .filter(|d| !d.org().iter_headlines().is_empty())
+            .count()
+    }
+
+    /// Percentage of files containing at least one headline (`0..=100`).
+    #[must_use]
+    pub fn files_with_headlines_pct(&self) -> usize {
+        (self.files_with_headlines() * 100)
+            .checked_div(self.len())
+            .unwrap_or(0)
+    }
+
+    /// Count of files containing at least one headline with non-empty body.
+    #[must_use]
+    pub fn files_with_body(&self) -> usize {
+        self.documents
+            .values()
+            .filter(|d| d.all_headlines().any(|h| !h.body_text().is_empty()))
+            .count()
+    }
+
+    /// Percentage of files containing at least one headline with non-empty body.
+    #[must_use]
+    pub fn files_with_body_pct(&self) -> usize {
+        (self.files_with_body() * 100)
+            .checked_div(self.len())
+            .unwrap_or(0)
+    }
+
+    /// Count of files containing at least one headline with a property.
+    #[must_use]
+    pub fn files_with_properties(&self) -> usize {
+        self.documents
+            .values()
+            .filter(|d| d.all_headlines().any(|h| !h.properties().is_empty()))
+            .count()
+    }
+
+    /// Percentage of files containing at least one headline with a property.
+    #[must_use]
+    pub fn files_with_properties_pct(&self) -> usize {
+        (self.files_with_properties() * 100)
+            .checked_div(self.len())
+            .unwrap_or(0)
+    }
+
     /// Count of headlines with an `:ID:` property across the vault.
     #[must_use]
     pub fn id_count(&self) -> usize {
