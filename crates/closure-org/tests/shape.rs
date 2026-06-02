@@ -7530,3 +7530,51 @@ fn doc_least_common_link_target_none_when_empty() {
     assert_eq!(doc.least_common_link_target(), None);
 }
 
+#[test]
+fn doc_has_link_true_when_link() {
+    let doc = parse("* A\n[[x][X]]\n").expect("parse");
+    assert!(doc.has_link());
+}
+
+#[test]
+fn doc_has_link_false_when_empty() {
+    let doc = parse("* A\n").expect("parse");
+    assert!(!doc.has_link());
+}
+
+#[test]
+fn doc_has_timestamp_true_when_timestamp() {
+    let doc = parse("* A\n<2026-05-30 Sat>\n").expect("parse");
+    assert!(doc.has_timestamp());
+}
+
+#[test]
+fn doc_has_timestamp_false_when_empty() {
+    let doc = parse("* A\n").expect("parse");
+    assert!(!doc.has_timestamp());
+}
+
+#[test]
+fn doc_has_archived_true_when_archived() {
+    let doc = parse("* A :ARCHIVE:\n").expect("parse");
+    assert!(doc.has_archived());
+}
+
+#[test]
+fn doc_has_archived_false_when_none() {
+    let doc = parse("* A\n").expect("parse");
+    assert!(!doc.has_archived());
+}
+
+#[test]
+fn doc_has_comment_true_when_comment() {
+    let doc = parse("* COMMENT A\n").expect("parse");
+    assert!(doc.has_comment());
+}
+
+#[test]
+fn doc_has_comment_false_when_none() {
+    let doc = parse("* A\n").expect("parse");
+    assert!(!doc.has_comment());
+}
+

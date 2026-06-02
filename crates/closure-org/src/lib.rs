@@ -412,6 +412,30 @@ impl OrgDoc {
         best.map(|(t, _)| t)
     }
 
+    /// True iff any headline carries at least one link.
+    #[must_use]
+    pub fn has_link(&self) -> bool {
+        self.count_with_link() > 0
+    }
+
+    /// True iff any headline carries at least one timestamp.
+    #[must_use]
+    pub fn has_timestamp(&self) -> bool {
+        self.count_with_timestamp() > 0
+    }
+
+    /// True iff any headline is tagged :ARCHIVE:.
+    #[must_use]
+    pub fn has_archived(&self) -> bool {
+        self.count_archived() > 0
+    }
+
+    /// True iff any headline is prefixed COMMENT.
+    #[must_use]
+    pub fn has_comment(&self) -> bool {
+        self.count_comments() > 0
+    }
+
     /// Maximum per-headline subtree depth (deepest descendant level).
     #[must_use]
     pub fn max_subtree_depth(&self) -> Option<usize> {
