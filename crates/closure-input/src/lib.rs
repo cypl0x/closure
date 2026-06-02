@@ -558,6 +558,47 @@ impl Dispatcher {
         self.stroke_counts().values().sum()
     }
 
+    /// Mean stroke frequency. 0 when empty.
+    #[must_use]
+    pub fn mean_stroke_freq(&self) -> usize {
+        let m = self.stroke_counts();
+        self.total_stroke_occurrences()
+            .checked_div(m.len())
+            .unwrap_or(0)
+    }
+
+    /// Median stroke frequency. None when empty.
+    #[must_use]
+    pub fn median_stroke_freq(&self) -> Option<usize> {
+        let mut v: Vec<usize> = self.stroke_counts().values().copied().collect();
+        if v.is_empty() {
+            return None;
+        }
+        v.sort_unstable();
+        let mid = v.len() / 2;
+        Some(if v.len() % 2 == 1 {
+            v[mid]
+        } else {
+            v[mid - 1].midpoint(v[mid])
+        })
+    }
+
+    /// Most common stroke-frequency value. None when empty. Lowest wins ties.
+    #[must_use]
+    pub fn mode_stroke_freq(&self) -> Option<usize> {
+        let mut hist: std::collections::BTreeMap<usize, usize> = std::collections::BTreeMap::new();
+        for f in self.stroke_counts().values() {
+            *hist.entry(*f).or_insert(0) += 1;
+        }
+        let mut best: Option<(usize, usize)> = None;
+        for (f, c) in hist {
+            if best.is_none_or(|(_, bc)| c > bc) {
+                best = Some((f, c));
+            }
+        }
+        best.map(|(f, _)| f)
+    }
+
     /// Most common chord stroke count (lowest wins ties; `None` when empty).
     #[must_use]
     pub fn mode_chord_strokes(&self) -> Option<usize> {
@@ -1101,6 +1142,47 @@ impl ChordTrie {
     #[must_use]
     pub fn total_stroke_occurrences(&self) -> usize {
         self.stroke_counts().values().sum()
+    }
+
+    /// Mean stroke frequency. 0 when empty.
+    #[must_use]
+    pub fn mean_stroke_freq(&self) -> usize {
+        let m = self.stroke_counts();
+        self.total_stroke_occurrences()
+            .checked_div(m.len())
+            .unwrap_or(0)
+    }
+
+    /// Median stroke frequency. None when empty.
+    #[must_use]
+    pub fn median_stroke_freq(&self) -> Option<usize> {
+        let mut v: Vec<usize> = self.stroke_counts().values().copied().collect();
+        if v.is_empty() {
+            return None;
+        }
+        v.sort_unstable();
+        let mid = v.len() / 2;
+        Some(if v.len() % 2 == 1 {
+            v[mid]
+        } else {
+            v[mid - 1].midpoint(v[mid])
+        })
+    }
+
+    /// Most common stroke-frequency value. None when empty. Lowest wins ties.
+    #[must_use]
+    pub fn mode_stroke_freq(&self) -> Option<usize> {
+        let mut hist: std::collections::BTreeMap<usize, usize> = std::collections::BTreeMap::new();
+        for f in self.stroke_counts().values() {
+            *hist.entry(*f).or_insert(0) += 1;
+        }
+        let mut best: Option<(usize, usize)> = None;
+        for (f, c) in hist {
+            if best.is_none_or(|(_, bc)| c > bc) {
+                best = Some((f, c));
+            }
+        }
+        best.map(|(f, _)| f)
     }
 
     /// All bindings as `(chord, command)` pairs, sorted by chord.

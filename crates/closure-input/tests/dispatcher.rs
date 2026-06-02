@@ -1588,6 +1588,78 @@ fn dispatcher_total_stroke_occurrences_match() {
 }
 
 #[test]
+fn chord_trie_mean_stroke_freq_match() {
+    let t = closure_input::ChordTrie::build(&[("a b", "x"), ("a c", "y")]);
+    // freqs: a:2, b:1, c:1; sum=4, distinct=3, mean=1
+    assert_eq!(t.mean_stroke_freq(), 1);
+}
+
+#[test]
+fn chord_trie_mean_stroke_freq_zero_when_empty() {
+    let t = closure_input::ChordTrie::build(&[]);
+    assert_eq!(t.mean_stroke_freq(), 0);
+}
+
+#[test]
+fn chord_trie_median_stroke_freq_match() {
+    let t = closure_input::ChordTrie::build(&[("a b", "x"), ("a c", "y")]);
+    // sorted [1,1,2] median 1
+    assert_eq!(t.median_stroke_freq(), Some(1));
+}
+
+#[test]
+fn chord_trie_median_stroke_freq_none_when_empty() {
+    let t = closure_input::ChordTrie::build(&[]);
+    assert_eq!(t.median_stroke_freq(), None);
+}
+
+#[test]
+fn chord_trie_mode_stroke_freq_match() {
+    let t = closure_input::ChordTrie::build(&[("a b", "x"), ("a c", "y")]);
+    // freqs 1,1,2 → mode 1
+    assert_eq!(t.mode_stroke_freq(), Some(1));
+}
+
+#[test]
+fn chord_trie_mode_stroke_freq_none_when_empty() {
+    let t = closure_input::ChordTrie::build(&[]);
+    assert_eq!(t.mode_stroke_freq(), None);
+}
+
+#[test]
+fn dispatcher_mean_stroke_freq_match() {
+    let mut reg = Registry::new();
+    reg.register(Box::new(RenameHeadline::new_placeholder()));
+    let disp = Dispatcher::from_registry(&reg, InputMode::Doom);
+    assert_eq!(disp.mean_stroke_freq(), 1);
+}
+
+#[test]
+fn dispatcher_median_stroke_freq_match() {
+    let mut reg = Registry::new();
+    reg.register(Box::new(RenameHeadline::new_placeholder()));
+    let disp = Dispatcher::from_registry(&reg, InputMode::Doom);
+    assert_eq!(disp.median_stroke_freq(), Some(1));
+}
+
+#[test]
+fn dispatcher_mode_stroke_freq_match() {
+    let mut reg = Registry::new();
+    reg.register(Box::new(RenameHeadline::new_placeholder()));
+    let disp = Dispatcher::from_registry(&reg, InputMode::Doom);
+    assert_eq!(disp.mode_stroke_freq(), Some(1));
+}
+
+#[test]
+fn dispatcher_stroke_freq_stats_none_when_empty() {
+    let reg = Registry::new();
+    let disp = Dispatcher::from_registry(&reg, InputMode::Doom);
+    assert_eq!(disp.mean_stroke_freq(), 0);
+    assert_eq!(disp.median_stroke_freq(), None);
+    assert_eq!(disp.mode_stroke_freq(), None);
+}
+
+#[test]
 fn dispatcher_single_stroke_pct_match() {
     let mut reg = Registry::new();
     reg.register(Box::new(RenameHeadline::new_placeholder()));
