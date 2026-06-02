@@ -8255,4 +8255,74 @@ fn vault_no_body_pct_zero_when_no_headlines() {
     assert_eq!(v.no_body_pct(), 0);
 }
 
+#[test]
+fn vault_max_min_file_child_count_match() {
+    // a: A has 2 children, B has 0, C has 0 → A=2, B=0, C=0; sum=2, max=2, min=0.
+    // Aggregating per file: a's per-headline child_count summed = 2. b: only D, sum=0.
+    let td = write_vault(&[("a.org", "* A\n** B\n** C\n"), ("b.org", "* D\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.max_file_child_count(), Some(2));
+    assert_eq!(v.min_file_child_count(), Some(0));
+}
+
+#[test]
+fn vault_total_file_child_count_match() {
+    let td = write_vault(&[("a.org", "* A\n** B\n** C\n"), ("b.org", "* D\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.total_file_child_count(), 2);
+}
+
+#[test]
+fn vault_mean_file_child_count_match() {
+    let td = write_vault(&[("a.org", "* A\n** B\n** C\n"), ("b.org", "* D\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    // 2/2=1
+    assert_eq!(v.mean_file_child_count(), 1);
+}
+
+#[test]
+fn vault_median_file_child_count_match() {
+    let td = write_vault(&[("a.org", "* A\n** B\n** C\n"), ("b.org", "* D\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    // [0,2] midpoint 1
+    assert_eq!(v.median_file_child_count(), Some(1));
+}
+
+#[test]
+fn vault_file_child_count_counts_match() {
+    let td = write_vault(&[
+        ("a.org", "* A\n** B\n** C\n"),
+        ("b.org", "* D\n"),
+        ("c.org", "* E\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    let m = v.file_child_count_counts();
+    assert_eq!(m.get(&2), Some(&1));
+    assert_eq!(m.get(&0), Some(&2));
+}
+
+#[test]
+fn vault_mode_file_child_count_match() {
+    let td = write_vault(&[
+        ("a.org", "* A\n** B\n** C\n"),
+        ("b.org", "* D\n"),
+        ("c.org", "* E\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.mode_file_child_count(), Some(0));
+}
+
+#[test]
+fn vault_file_child_count_none_when_no_files() {
+    let td = write_vault(&[]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.max_file_child_count(), None);
+    assert_eq!(v.min_file_child_count(), None);
+    assert_eq!(v.total_file_child_count(), 0);
+    assert_eq!(v.mean_file_child_count(), 0);
+    assert_eq!(v.median_file_child_count(), None);
+    assert_eq!(v.mode_file_child_count(), None);
+}
+
+
 
