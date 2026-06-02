@@ -8725,5 +8725,125 @@ fn vault_files_with_properties_zero_when_empty() {
     assert_eq!(v.files_with_properties_pct(), 0);
 }
 
+#[test]
+fn vault_files_with_links_match() {
+    let td = write_vault(&[
+        ("a.org", "* A\n[[x][X]]\n"),
+        ("b.org", "* B\n"),
+        ("c.org", "* C\n[[y][Y]]\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.files_with_links(), 2);
+}
+
+#[test]
+fn vault_files_with_links_pct_match() {
+    let td = write_vault(&[
+        ("a.org", "* A\n[[x][X]]\n"),
+        ("b.org", "* B\n"),
+        ("c.org", "* C\n[[y][Y]]\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.files_with_links_pct(), 66);
+}
+
+#[test]
+fn vault_files_with_links_zero_when_empty() {
+    let td = write_vault(&[]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.files_with_links(), 0);
+    assert_eq!(v.files_with_links_pct(), 0);
+}
+
+#[test]
+fn vault_files_with_timestamps_match() {
+    let td = write_vault(&[
+        ("a.org", "* A\n<2026-05-30 Sat>\n"),
+        ("b.org", "* B\n"),
+        ("c.org", "* C\n<2026-05-31 Sun>\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.files_with_timestamps(), 2);
+}
+
+#[test]
+fn vault_files_with_timestamps_pct_match() {
+    let td = write_vault(&[
+        ("a.org", "* A\n<2026-05-30 Sat>\n"),
+        ("b.org", "* B\n"),
+        ("c.org", "* C\n<2026-05-31 Sun>\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.files_with_timestamps_pct(), 66);
+}
+
+#[test]
+fn vault_files_with_timestamps_zero_when_empty() {
+    let td = write_vault(&[]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.files_with_timestamps(), 0);
+    assert_eq!(v.files_with_timestamps_pct(), 0);
+}
+
+#[test]
+fn vault_files_with_tags_match() {
+    let td = write_vault(&[
+        ("a.org", "* A :x:\n"),
+        ("b.org", "* B\n"),
+        ("c.org", "* C :y:\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.files_with_tags(), 2);
+}
+
+#[test]
+fn vault_files_with_tags_pct_match() {
+    let td = write_vault(&[
+        ("a.org", "* A :x:\n"),
+        ("b.org", "* B\n"),
+        ("c.org", "* C :y:\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.files_with_tags_pct(), 66);
+}
+
+#[test]
+fn vault_files_with_tags_zero_when_empty() {
+    let td = write_vault(&[]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.files_with_tags(), 0);
+    assert_eq!(v.files_with_tags_pct(), 0);
+}
+
+#[test]
+fn vault_files_with_todo_match() {
+    let td = write_vault(&[
+        ("a.org", "* TODO A\n"),
+        ("b.org", "* B\n"),
+        ("c.org", "* DONE C\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.files_with_todo(), 2);
+}
+
+#[test]
+fn vault_files_with_todo_pct_match() {
+    let td = write_vault(&[
+        ("a.org", "* TODO A\n"),
+        ("b.org", "* B\n"),
+        ("c.org", "* DONE C\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.files_with_todo_pct(), 66);
+}
+
+#[test]
+fn vault_files_with_todo_zero_when_empty() {
+    let td = write_vault(&[]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.files_with_todo(), 0);
+    assert_eq!(v.files_with_todo_pct(), 0);
+}
+
 
 

@@ -1035,6 +1035,74 @@ impl Vault {
             .unwrap_or(0)
     }
 
+    /// Count of files containing at least one link.
+    #[must_use]
+    pub fn files_with_links(&self) -> usize {
+        self.documents
+            .values()
+            .filter(|d| d.all_headlines().any(|h| !h.link_targets().is_empty()))
+            .count()
+    }
+
+    /// Percentage of files containing at least one link (`0..=100`).
+    #[must_use]
+    pub fn files_with_links_pct(&self) -> usize {
+        (self.files_with_links() * 100)
+            .checked_div(self.len())
+            .unwrap_or(0)
+    }
+
+    /// Count of files containing at least one timestamp.
+    #[must_use]
+    pub fn files_with_timestamps(&self) -> usize {
+        self.documents
+            .values()
+            .filter(|d| d.org().total_timestamp_count() > 0)
+            .count()
+    }
+
+    /// Percentage of files containing at least one timestamp (`0..=100`).
+    #[must_use]
+    pub fn files_with_timestamps_pct(&self) -> usize {
+        (self.files_with_timestamps() * 100)
+            .checked_div(self.len())
+            .unwrap_or(0)
+    }
+
+    /// Count of files containing at least one tagged headline.
+    #[must_use]
+    pub fn files_with_tags(&self) -> usize {
+        self.documents
+            .values()
+            .filter(|d| d.all_headlines().any(|h| !h.tags().is_empty()))
+            .count()
+    }
+
+    /// Percentage of files containing at least one tagged headline (`0..=100`).
+    #[must_use]
+    pub fn files_with_tags_pct(&self) -> usize {
+        (self.files_with_tags() * 100)
+            .checked_div(self.len())
+            .unwrap_or(0)
+    }
+
+    /// Count of files containing at least one headline with a TODO keyword.
+    #[must_use]
+    pub fn files_with_todo(&self) -> usize {
+        self.documents
+            .values()
+            .filter(|d| d.all_headlines().any(|h| h.todo().is_some()))
+            .count()
+    }
+
+    /// Percentage of files containing at least one TODO-marked headline (`0..=100`).
+    #[must_use]
+    pub fn files_with_todo_pct(&self) -> usize {
+        (self.files_with_todo() * 100)
+            .checked_div(self.len())
+            .unwrap_or(0)
+    }
+
     /// Count of headlines with an `:ID:` property across the vault.
     #[must_use]
     pub fn id_count(&self) -> usize {
