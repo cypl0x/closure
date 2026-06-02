@@ -1416,6 +1416,32 @@ fn chord_trie_multi_stroke_pct_zero_when_empty() {
 }
 
 #[test]
+fn chord_trie_distinct_strokes_match() {
+    // chords "a b" "a c" → distinct strokes {a,b,c}
+    let t = closure_input::ChordTrie::build(&[("a b", "x"), ("a c", "y")]);
+    let s = t.distinct_strokes();
+    assert_eq!(s, vec!["a".to_owned(), "b".to_owned(), "c".to_owned()]);
+}
+
+#[test]
+fn chord_trie_distinct_strokes_empty() {
+    let t = closure_input::ChordTrie::build(&[]);
+    assert!(t.distinct_strokes().is_empty());
+}
+
+#[test]
+fn chord_trie_distinct_stroke_count_match() {
+    let t = closure_input::ChordTrie::build(&[("a b", "x"), ("a c", "y")]);
+    assert_eq!(t.distinct_stroke_count(), 3);
+}
+
+#[test]
+fn chord_trie_distinct_stroke_count_zero_when_empty() {
+    let t = closure_input::ChordTrie::build(&[]);
+    assert_eq!(t.distinct_stroke_count(), 0);
+}
+
+#[test]
 fn dispatcher_single_stroke_pct_match() {
     let mut reg = Registry::new();
     reg.register(Box::new(RenameHeadline::new_placeholder()));

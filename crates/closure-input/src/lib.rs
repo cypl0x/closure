@@ -983,6 +983,24 @@ impl ChordTrie {
             .unwrap_or(0)
     }
 
+    /// Sorted distinct stroke list across all bound chords.
+    #[must_use]
+    pub fn distinct_strokes(&self) -> Vec<String> {
+        let mut s: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+        for c in self.all_chords() {
+            for stroke in c.split_whitespace() {
+                s.insert(stroke.to_owned());
+            }
+        }
+        s.into_iter().collect()
+    }
+
+    /// Count of distinct strokes across all bound chords.
+    #[must_use]
+    pub fn distinct_stroke_count(&self) -> usize {
+        self.distinct_strokes().len()
+    }
+
     /// All bindings as `(chord, command)` pairs, sorted by chord.
     #[must_use]
     pub fn bindings(&self) -> Vec<(String, String)> {
