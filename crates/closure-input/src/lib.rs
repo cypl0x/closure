@@ -498,6 +498,24 @@ impl Dispatcher {
             .unwrap_or(0)
     }
 
+    /// Sorted distinct stroke list across all bound chords.
+    #[must_use]
+    pub fn distinct_strokes(&self) -> Vec<String> {
+        let mut s: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+        for chord in self.bindings.keys() {
+            for stroke in chord.split_whitespace() {
+                s.insert(stroke.to_owned());
+            }
+        }
+        s.into_iter().collect()
+    }
+
+    /// Count of distinct strokes across all bound chords.
+    #[must_use]
+    pub fn distinct_stroke_count(&self) -> usize {
+        self.distinct_strokes().len()
+    }
+
     /// Most common chord stroke count (lowest wins ties; `None` when empty).
     #[must_use]
     pub fn mode_chord_strokes(&self) -> Option<usize> {

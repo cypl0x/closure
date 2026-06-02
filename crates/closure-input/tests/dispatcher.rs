@@ -1442,6 +1442,40 @@ fn chord_trie_distinct_stroke_count_zero_when_empty() {
 }
 
 #[test]
+fn dispatcher_distinct_strokes_match() {
+    let mut reg = Registry::new();
+    reg.register(Box::new(RenameHeadline::new_placeholder()));
+    let disp = Dispatcher::from_registry(&reg, InputMode::Doom);
+    // C-c C-x r → {C-c, C-x, r}
+    let s = disp.distinct_strokes();
+    assert!(s.contains(&"C-c".to_owned()));
+    assert!(s.contains(&"C-x".to_owned()));
+    assert!(s.contains(&"r".to_owned()));
+}
+
+#[test]
+fn dispatcher_distinct_strokes_empty() {
+    let reg = Registry::new();
+    let disp = Dispatcher::from_registry(&reg, InputMode::Doom);
+    assert!(disp.distinct_strokes().is_empty());
+}
+
+#[test]
+fn dispatcher_distinct_stroke_count_match() {
+    let mut reg = Registry::new();
+    reg.register(Box::new(RenameHeadline::new_placeholder()));
+    let disp = Dispatcher::from_registry(&reg, InputMode::Doom);
+    assert_eq!(disp.distinct_stroke_count(), 3);
+}
+
+#[test]
+fn dispatcher_distinct_stroke_count_zero_when_empty() {
+    let reg = Registry::new();
+    let disp = Dispatcher::from_registry(&reg, InputMode::Doom);
+    assert_eq!(disp.distinct_stroke_count(), 0);
+}
+
+#[test]
 fn dispatcher_single_stroke_pct_match() {
     let mut reg = Registry::new();
     reg.register(Box::new(RenameHeadline::new_placeholder()));
