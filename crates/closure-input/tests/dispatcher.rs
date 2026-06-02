@@ -1476,6 +1476,34 @@ fn dispatcher_distinct_stroke_count_zero_when_empty() {
 }
 
 #[test]
+fn chord_trie_stroke_counts_match() {
+    // "a b" "a c" → strokes a×2, b×1, c×1
+    let t = closure_input::ChordTrie::build(&[("a b", "x"), ("a c", "y")]);
+    let m = t.stroke_counts();
+    assert_eq!(m.get("a"), Some(&2));
+    assert_eq!(m.get("b"), Some(&1));
+    assert_eq!(m.get("c"), Some(&1));
+}
+
+#[test]
+fn chord_trie_stroke_counts_empty() {
+    let t = closure_input::ChordTrie::build(&[]);
+    assert!(t.stroke_counts().is_empty());
+}
+
+#[test]
+fn chord_trie_most_common_stroke_match() {
+    let t = closure_input::ChordTrie::build(&[("a b", "x"), ("a c", "y")]);
+    assert_eq!(t.most_common_stroke(), Some("a".to_owned()));
+}
+
+#[test]
+fn chord_trie_most_common_stroke_none_when_empty() {
+    let t = closure_input::ChordTrie::build(&[]);
+    assert_eq!(t.most_common_stroke(), None);
+}
+
+#[test]
 fn dispatcher_single_stroke_pct_match() {
     let mut reg = Registry::new();
     reg.register(Box::new(RenameHeadline::new_placeholder()));

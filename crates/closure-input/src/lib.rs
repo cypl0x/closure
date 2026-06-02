@@ -1019,6 +1019,30 @@ impl ChordTrie {
         self.distinct_strokes().len()
     }
 
+    /// Histogram of stroke usage frequency across all bound chords.
+    #[must_use]
+    pub fn stroke_counts(&self) -> std::collections::BTreeMap<String, usize> {
+        let mut m = std::collections::BTreeMap::new();
+        for c in self.all_chords() {
+            for stroke in c.split_whitespace() {
+                *m.entry(stroke.to_owned()).or_insert(0) += 1;
+            }
+        }
+        m
+    }
+
+    /// Most frequently used stroke across all bound chords (lowest name wins ties).
+    #[must_use]
+    pub fn most_common_stroke(&self) -> Option<String> {
+        let mut best: Option<(String, usize)> = None;
+        for (s, c) in self.stroke_counts() {
+            if best.as_ref().is_none_or(|(_, bc)| c > *bc) {
+                best = Some((s, c));
+            }
+        }
+        best.map(|(s, _)| s)
+    }
+
     /// All bindings as `(chord, command)` pairs, sorted by chord.
     #[must_use]
     pub fn bindings(&self) -> Vec<(String, String)> {
