@@ -8324,5 +8324,43 @@ fn vault_file_child_count_none_when_no_files() {
     assert_eq!(v.mode_file_child_count(), None);
 }
 
+#[test]
+fn vault_distinct_link_targets_match() {
+    let td = write_vault(&[
+        ("a.org", "* A\n[[x][X]] [[y][Y]]\n"),
+        ("b.org", "* B\n[[x][X]] [[z][Z]]\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    let s = v.distinct_link_targets();
+    assert!(s.contains(&"x".to_owned()));
+    assert!(s.contains(&"y".to_owned()));
+    assert!(s.contains(&"z".to_owned()));
+    assert_eq!(s.len(), 3);
+}
+
+#[test]
+fn vault_distinct_link_targets_empty() {
+    let td = write_vault(&[]);
+    let v = Vault::open(td.path()).expect("open");
+    assert!(v.distinct_link_targets().is_empty());
+}
+
+#[test]
+fn vault_distinct_link_target_count_match() {
+    let td = write_vault(&[
+        ("a.org", "* A\n[[x][X]] [[y][Y]]\n"),
+        ("b.org", "* B\n[[x][X]]\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.distinct_link_target_count(), 2);
+}
+
+#[test]
+fn vault_distinct_link_target_count_zero_when_empty() {
+    let td = write_vault(&[]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.distinct_link_target_count(), 0);
+}
+
 
 

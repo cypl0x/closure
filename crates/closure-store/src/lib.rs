@@ -6619,6 +6619,26 @@ impl Vault {
         best.map(|(cc, _)| cc)
     }
 
+    /// Sorted distinct link-target strings across the vault.
+    #[must_use]
+    pub fn distinct_link_targets(&self) -> Vec<String> {
+        let mut s: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+        for d in self.documents.values() {
+            for h in d.all_headlines() {
+                for t in h.link_targets() {
+                    s.insert(t.clone());
+                }
+            }
+        }
+        s.into_iter().collect()
+    }
+
+    /// Count of distinct link-target strings across the vault.
+    #[must_use]
+    pub fn distinct_link_target_count(&self) -> usize {
+        self.distinct_link_targets().len()
+    }
+
     /// Count of headlines carrying at least one link for a single file
     /// by path. Returns `None` if the file isn't loaded.
     #[must_use]
