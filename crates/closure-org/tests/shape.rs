@@ -7460,3 +7460,35 @@ fn doc_closed_pct_zero_when_no_headlines() {
     assert_eq!(doc.closed_pct(), 0);
 }
 
+#[test]
+fn doc_with_body_pct_match() {
+    let doc = parse("* A\nbody\n* B\n* C\nbody\n").expect("parse");
+    // 2 of 3 = 66
+    assert_eq!(doc.with_body_pct(), 66);
+}
+
+#[test]
+fn doc_with_body_pct_zero_when_no_headlines() {
+    let doc = parse("").expect("parse");
+    assert_eq!(doc.with_body_pct(), 0);
+}
+
+#[test]
+fn doc_count_no_body_match() {
+    let doc = parse("* A\nbody\n* B\n* C\n").expect("parse");
+    assert_eq!(doc.count_no_body(), 2);
+}
+
+#[test]
+fn doc_no_body_pct_match() {
+    let doc = parse("* A\nbody\n* B\n* C\nbody\n").expect("parse");
+    // 1 of 3 = 33
+    assert_eq!(doc.no_body_pct(), 33);
+}
+
+#[test]
+fn doc_no_body_pct_zero_when_no_headlines() {
+    let doc = parse("").expect("parse");
+    assert_eq!(doc.no_body_pct(), 0);
+}
+

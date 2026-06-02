@@ -356,6 +356,26 @@ impl OrgDoc {
         (self.count_closed() * 100).checked_div(n).unwrap_or(0)
     }
 
+    /// Percentage of headlines with a non-empty body (`0..=100`).
+    #[must_use]
+    pub fn with_body_pct(&self) -> usize {
+        let n = self.iter_headlines().len();
+        (self.with_body_count() * 100).checked_div(n).unwrap_or(0)
+    }
+
+    /// Count of headlines with an empty body.
+    #[must_use]
+    pub fn count_no_body(&self) -> usize {
+        self.iter_headlines().len() - self.with_body_count()
+    }
+
+    /// Percentage of headlines with an empty body (`0..=100`).
+    #[must_use]
+    pub fn no_body_pct(&self) -> usize {
+        let n = self.iter_headlines().len();
+        (self.count_no_body() * 100).checked_div(n).unwrap_or(0)
+    }
+
     /// Maximum per-headline subtree depth (deepest descendant level).
     #[must_use]
     pub fn max_subtree_depth(&self) -> Option<usize> {
