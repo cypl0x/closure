@@ -7492,3 +7492,41 @@ fn doc_no_body_pct_zero_when_no_headlines() {
     assert_eq!(doc.no_body_pct(), 0);
 }
 
+#[test]
+fn doc_link_target_counts_match() {
+    let doc = parse("* A\n[[x][X]] [[y][Y]]\n* B\n[[x][X]]\n").expect("parse");
+    let m = doc.link_target_counts();
+    assert_eq!(m.get("x"), Some(&2));
+    assert_eq!(m.get("y"), Some(&1));
+}
+
+#[test]
+fn doc_link_target_counts_empty() {
+    let doc = parse("").expect("parse");
+    assert!(doc.link_target_counts().is_empty());
+}
+
+#[test]
+fn doc_most_common_link_target_match() {
+    let doc = parse("* A\n[[x][X]] [[y][Y]]\n* B\n[[x][X]]\n").expect("parse");
+    assert_eq!(doc.most_common_link_target(), Some("x".to_owned()));
+}
+
+#[test]
+fn doc_most_common_link_target_none_when_empty() {
+    let doc = parse("").expect("parse");
+    assert_eq!(doc.most_common_link_target(), None);
+}
+
+#[test]
+fn doc_least_common_link_target_match() {
+    let doc = parse("* A\n[[x][X]] [[y][Y]]\n* B\n[[x][X]]\n").expect("parse");
+    assert_eq!(doc.least_common_link_target(), Some("y".to_owned()));
+}
+
+#[test]
+fn doc_least_common_link_target_none_when_empty() {
+    let doc = parse("").expect("parse");
+    assert_eq!(doc.least_common_link_target(), None);
+}
+

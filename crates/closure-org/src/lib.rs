@@ -376,6 +376,42 @@ impl OrgDoc {
         (self.count_no_body() * 100).checked_div(n).unwrap_or(0)
     }
 
+    /// Histogram of link-target frequency.
+    #[must_use]
+    pub fn link_target_counts(&self) -> std::collections::BTreeMap<String, usize> {
+        let mut m = std::collections::BTreeMap::new();
+        for h in self.iter_headlines() {
+            for t in h.link_targets() {
+                *m.entry(t.clone()).or_insert(0) += 1;
+            }
+        }
+        m
+    }
+
+    /// Most frequent link-target (lowest name wins ties).
+    #[must_use]
+    pub fn most_common_link_target(&self) -> Option<String> {
+        let mut best: Option<(String, usize)> = None;
+        for (t, c) in self.link_target_counts() {
+            if best.as_ref().is_none_or(|(_, bc)| c > *bc) {
+                best = Some((t, c));
+            }
+        }
+        best.map(|(t, _)| t)
+    }
+
+    /// Least frequent link-target (lowest name wins ties).
+    #[must_use]
+    pub fn least_common_link_target(&self) -> Option<String> {
+        let mut best: Option<(String, usize)> = None;
+        for (t, c) in self.link_target_counts() {
+            if best.as_ref().is_none_or(|(_, bc)| c < *bc) {
+                best = Some((t, c));
+            }
+        }
+        best.map(|(t, _)| t)
+    }
+
     /// Maximum per-headline subtree depth (deepest descendant level).
     #[must_use]
     pub fn max_subtree_depth(&self) -> Option<usize> {
