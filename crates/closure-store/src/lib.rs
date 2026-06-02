@@ -779,6 +779,160 @@ impl Vault {
         best.map(|(cc, _)| cc)
     }
 
+    /// Maximum per-file footnote count.
+    #[must_use]
+    pub fn max_file_footnote_count(&self) -> Option<usize> {
+        self.documents
+            .values()
+            .map(|d| d.org().total_footnote_count())
+            .max()
+    }
+
+    /// Minimum per-file footnote count.
+    #[must_use]
+    pub fn min_file_footnote_count(&self) -> Option<usize> {
+        self.documents
+            .values()
+            .map(|d| d.org().total_footnote_count())
+            .min()
+    }
+
+    /// Sum of per-file footnote counts.
+    #[must_use]
+    pub fn total_file_footnote_count(&self) -> usize {
+        self.documents
+            .values()
+            .map(|d| d.org().total_footnote_count())
+            .sum()
+    }
+
+    /// Integer mean per-file footnote count.
+    #[must_use]
+    pub fn mean_file_footnote_count(&self) -> usize {
+        self.total_file_footnote_count()
+            .checked_div(self.len())
+            .unwrap_or(0)
+    }
+
+    /// Median per-file footnote count.
+    #[must_use]
+    pub fn median_file_footnote_count(&self) -> Option<usize> {
+        let mut v: Vec<usize> = self
+            .documents
+            .values()
+            .map(|d| d.org().total_footnote_count())
+            .collect();
+        if v.is_empty() {
+            return None;
+        }
+        v.sort_unstable();
+        let mid = v.len() / 2;
+        Some(if v.len() % 2 == 1 {
+            v[mid]
+        } else {
+            v[mid - 1].midpoint(v[mid])
+        })
+    }
+
+    /// Histogram of per-file footnote counts.
+    #[must_use]
+    pub fn file_footnote_count_counts(&self) -> std::collections::BTreeMap<usize, usize> {
+        let mut m = std::collections::BTreeMap::new();
+        for d in self.documents.values() {
+            *m.entry(d.org().total_footnote_count()).or_insert(0) += 1;
+        }
+        m
+    }
+
+    /// Most common per-file footnote count.
+    #[must_use]
+    pub fn mode_file_footnote_count(&self) -> Option<usize> {
+        let mut best: Option<(usize, usize)> = None;
+        for (fc, c) in self.file_footnote_count_counts() {
+            if best.is_none_or(|(_, bestc)| c > bestc) {
+                best = Some((fc, c));
+            }
+        }
+        best.map(|(fc, _)| fc)
+    }
+
+    /// Maximum per-file macro count.
+    #[must_use]
+    pub fn max_file_macro_count(&self) -> Option<usize> {
+        self.documents
+            .values()
+            .map(|d| d.org().total_macro_count())
+            .max()
+    }
+
+    /// Minimum per-file macro count.
+    #[must_use]
+    pub fn min_file_macro_count(&self) -> Option<usize> {
+        self.documents
+            .values()
+            .map(|d| d.org().total_macro_count())
+            .min()
+    }
+
+    /// Sum of per-file macro counts.
+    #[must_use]
+    pub fn total_file_macro_count(&self) -> usize {
+        self.documents
+            .values()
+            .map(|d| d.org().total_macro_count())
+            .sum()
+    }
+
+    /// Integer mean per-file macro count.
+    #[must_use]
+    pub fn mean_file_macro_count(&self) -> usize {
+        self.total_file_macro_count()
+            .checked_div(self.len())
+            .unwrap_or(0)
+    }
+
+    /// Median per-file macro count.
+    #[must_use]
+    pub fn median_file_macro_count(&self) -> Option<usize> {
+        let mut v: Vec<usize> = self
+            .documents
+            .values()
+            .map(|d| d.org().total_macro_count())
+            .collect();
+        if v.is_empty() {
+            return None;
+        }
+        v.sort_unstable();
+        let mid = v.len() / 2;
+        Some(if v.len() % 2 == 1 {
+            v[mid]
+        } else {
+            v[mid - 1].midpoint(v[mid])
+        })
+    }
+
+    /// Histogram of per-file macro counts.
+    #[must_use]
+    pub fn file_macro_count_counts(&self) -> std::collections::BTreeMap<usize, usize> {
+        let mut m = std::collections::BTreeMap::new();
+        for d in self.documents.values() {
+            *m.entry(d.org().total_macro_count()).or_insert(0) += 1;
+        }
+        m
+    }
+
+    /// Most common per-file macro count.
+    #[must_use]
+    pub fn mode_file_macro_count(&self) -> Option<usize> {
+        let mut best: Option<(usize, usize)> = None;
+        for (mc, c) in self.file_macro_count_counts() {
+            if best.is_none_or(|(_, bestc)| c > bestc) {
+                best = Some((mc, c));
+            }
+        }
+        best.map(|(mc, _)| mc)
+    }
+
     /// Count of headlines with an `:ID:` property across the vault.
     #[must_use]
     pub fn id_count(&self) -> usize {

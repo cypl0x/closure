@@ -8498,5 +8498,57 @@ fn vault_file_cookie_count_none_when_no_files() {
     assert_eq!(v.total_file_cookie_count(), 0);
 }
 
+#[test]
+fn vault_file_footnote_count_some() {
+    let td = write_vault(&[("a.org", "* A\nbody[fn:1]\n"), ("b.org", "* B\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert!(v.max_file_footnote_count().is_some());
+    assert!(v.min_file_footnote_count().is_some());
+    assert!(v.median_file_footnote_count().is_some());
+    let _ = v.mean_file_footnote_count();
+    let _ = v.total_file_footnote_count();
+    let m = v.file_footnote_count_counts();
+    assert!(!m.is_empty());
+    assert!(v.mode_file_footnote_count().is_some());
+}
+
+#[test]
+fn vault_file_footnote_count_none_when_no_files() {
+    let td = write_vault(&[]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.max_file_footnote_count(), None);
+    assert_eq!(v.min_file_footnote_count(), None);
+    assert_eq!(v.total_file_footnote_count(), 0);
+    assert_eq!(v.mean_file_footnote_count(), 0);
+    assert_eq!(v.median_file_footnote_count(), None);
+    assert_eq!(v.mode_file_footnote_count(), None);
+}
+
+#[test]
+fn vault_file_macro_count_some() {
+    let td = write_vault(&[("a.org", "* A\n{{{m(x)}}}\n"), ("b.org", "* B\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert!(v.max_file_macro_count().is_some());
+    assert!(v.min_file_macro_count().is_some());
+    assert!(v.median_file_macro_count().is_some());
+    let _ = v.mean_file_macro_count();
+    let _ = v.total_file_macro_count();
+    let m = v.file_macro_count_counts();
+    assert!(!m.is_empty());
+    assert!(v.mode_file_macro_count().is_some());
+}
+
+#[test]
+fn vault_file_macro_count_none_when_no_files() {
+    let td = write_vault(&[]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.max_file_macro_count(), None);
+    assert_eq!(v.min_file_macro_count(), None);
+    assert_eq!(v.total_file_macro_count(), 0);
+    assert_eq!(v.mean_file_macro_count(), 0);
+    assert_eq!(v.median_file_macro_count(), None);
+    assert_eq!(v.mode_file_macro_count(), None);
+}
+
 
 
