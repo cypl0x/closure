@@ -1504,6 +1504,40 @@ fn chord_trie_most_common_stroke_none_when_empty() {
 }
 
 #[test]
+fn dispatcher_stroke_counts_match() {
+    let mut reg = Registry::new();
+    reg.register(Box::new(RenameHeadline::new_placeholder()));
+    let disp = Dispatcher::from_registry(&reg, InputMode::Doom);
+    // "C-c C-x r" → each stroke once
+    let m = disp.stroke_counts();
+    assert_eq!(m.get("C-c"), Some(&1));
+    assert_eq!(m.get("C-x"), Some(&1));
+    assert_eq!(m.get("r"), Some(&1));
+}
+
+#[test]
+fn dispatcher_stroke_counts_empty() {
+    let reg = Registry::new();
+    let disp = Dispatcher::from_registry(&reg, InputMode::Doom);
+    assert!(disp.stroke_counts().is_empty());
+}
+
+#[test]
+fn dispatcher_most_common_stroke_some() {
+    let mut reg = Registry::new();
+    reg.register(Box::new(RenameHeadline::new_placeholder()));
+    let disp = Dispatcher::from_registry(&reg, InputMode::Doom);
+    assert!(disp.most_common_stroke().is_some());
+}
+
+#[test]
+fn dispatcher_most_common_stroke_none_when_empty() {
+    let reg = Registry::new();
+    let disp = Dispatcher::from_registry(&reg, InputMode::Doom);
+    assert_eq!(disp.most_common_stroke(), None);
+}
+
+#[test]
 fn dispatcher_single_stroke_pct_match() {
     let mut reg = Registry::new();
     reg.register(Box::new(RenameHeadline::new_placeholder()));
