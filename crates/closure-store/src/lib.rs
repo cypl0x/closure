@@ -6679,6 +6679,18 @@ impl Vault {
         best.map(|(t, _)| t)
     }
 
+    /// Least frequently appearing link-target (lowest name wins ties).
+    #[must_use]
+    pub fn least_common_link_target(&self) -> Option<String> {
+        let mut best: Option<(String, usize)> = None;
+        for (t, c) in self.link_target_counts() {
+            if best.as_ref().is_none_or(|(_, bc)| c < *bc) {
+                best = Some((t, c));
+            }
+        }
+        best.map(|(t, _)| t)
+    }
+
     /// Count of headlines carrying at least one link for a single file
     /// by path. Returns `None` if the file isn't loaded.
     #[must_use]

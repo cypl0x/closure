@@ -8410,5 +8410,23 @@ fn vault_most_common_link_target_none_when_empty() {
     assert_eq!(v.most_common_link_target(), None);
 }
 
+#[test]
+fn vault_least_common_link_target_match() {
+    let td = write_vault(&[
+        ("a.org", "* A\n[[x][X]] [[y][Y]]\n"),
+        ("b.org", "* B\n[[x][X]]\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    // x:2, y:1 → least common = y
+    assert_eq!(v.least_common_link_target(), Some("y".to_owned()));
+}
+
+#[test]
+fn vault_least_common_link_target_none_when_empty() {
+    let td = write_vault(&[]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.least_common_link_target(), None);
+}
+
 
 
