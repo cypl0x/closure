@@ -8428,5 +8428,32 @@ fn vault_least_common_link_target_none_when_empty() {
     assert_eq!(v.least_common_link_target(), None);
 }
 
+#[test]
+fn vault_cookie_count_of_match() {
+    let td = write_vault(&[("a.org", "* A [/]\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    let p = v.root().join("a.org");
+    assert!(v.cookie_count_of(&p).is_some());
+    assert_eq!(v.cookie_count_of(std::path::Path::new("missing.org")), None);
+}
+
+#[test]
+fn vault_footnote_count_of_match() {
+    let td = write_vault(&[("a.org", "* A\nbody[fn:1]\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    let p = v.root().join("a.org");
+    assert!(v.footnote_count_of(&p).is_some());
+    assert_eq!(v.footnote_count_of(std::path::Path::new("missing.org")), None);
+}
+
+#[test]
+fn vault_macro_count_of_match() {
+    let td = write_vault(&[("a.org", "* A\n{{{macro(x)}}}\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    let p = v.root().join("a.org");
+    assert!(v.macro_count_of(&p).is_some());
+    assert_eq!(v.macro_count_of(std::path::Path::new("missing.org")), None);
+}
+
 
 

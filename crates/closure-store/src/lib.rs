@@ -682,6 +682,26 @@ impl Vault {
         self.documents.values().map(|d| d.org().total_macro_count()).sum()
     }
 
+    /// Cookie count for a single file by path.
+    #[must_use]
+    pub fn cookie_count_of(&self, path: &Path) -> Option<usize> {
+        self.documents.get(path).map(|d| d.org().total_cookie_count())
+    }
+
+    /// Footnote count for a single file by path.
+    #[must_use]
+    pub fn footnote_count_of(&self, path: &Path) -> Option<usize> {
+        self.documents
+            .get(path)
+            .map(|d| d.org().total_footnote_count())
+    }
+
+    /// Macro count for a single file by path.
+    #[must_use]
+    pub fn macro_count_of(&self, path: &Path) -> Option<usize> {
+        self.documents.get(path).map(|d| d.org().total_macro_count())
+    }
+
     /// Count of headlines with an `:ID:` property across the vault.
     #[must_use]
     pub fn id_count(&self) -> usize {
