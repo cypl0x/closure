@@ -8935,5 +8935,105 @@ fn vault_files_with_archived_zero_when_empty() {
     assert_eq!(v.files_with_archived_pct(), 0);
 }
 
+#[test]
+fn vault_files_with_scheduled_match() {
+    let td = write_vault(&[
+        ("a.org", "* A\nSCHEDULED: <2026-05-30 Sat>\n"),
+        ("b.org", "* B\n"),
+        ("c.org", "* C\nSCHEDULED: <2026-05-31 Sun>\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.files_with_scheduled(), 2);
+    assert_eq!(v.files_with_scheduled_pct(), 66);
+}
+
+#[test]
+fn vault_files_with_scheduled_zero_when_empty() {
+    let td = write_vault(&[]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.files_with_scheduled(), 0);
+    assert_eq!(v.files_with_scheduled_pct(), 0);
+}
+
+#[test]
+fn vault_files_with_deadline_match() {
+    let td = write_vault(&[
+        ("a.org", "* A\nDEADLINE: <2026-05-30 Sat>\n"),
+        ("b.org", "* B\n"),
+        ("c.org", "* C\nDEADLINE: <2026-05-31 Sun>\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.files_with_deadline(), 2);
+    assert_eq!(v.files_with_deadline_pct(), 66);
+}
+
+#[test]
+fn vault_files_with_deadline_zero_when_empty() {
+    let td = write_vault(&[]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.files_with_deadline(), 0);
+    assert_eq!(v.files_with_deadline_pct(), 0);
+}
+
+#[test]
+fn vault_files_with_closed_match() {
+    let td = write_vault(&[
+        ("a.org", "* A\nCLOSED: [2026-05-30 Sat]\n"),
+        ("b.org", "* B\n"),
+        ("c.org", "* C\nCLOSED: [2026-05-31 Sun]\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.files_with_closed(), 2);
+    assert_eq!(v.files_with_closed_pct(), 66);
+}
+
+#[test]
+fn vault_files_with_closed_zero_when_empty() {
+    let td = write_vault(&[]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.files_with_closed(), 0);
+    assert_eq!(v.files_with_closed_pct(), 0);
+}
+
+#[test]
+fn vault_files_with_planning_match() {
+    let td = write_vault(&[
+        ("a.org", "* A\nSCHEDULED: <2026-05-30 Sat>\n"),
+        ("b.org", "* B\n"),
+        ("c.org", "* C\nDEADLINE: <2026-05-31 Sun>\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.files_with_planning(), 2);
+    assert_eq!(v.files_with_planning_pct(), 66);
+}
+
+#[test]
+fn vault_files_with_planning_zero_when_empty() {
+    let td = write_vault(&[]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.files_with_planning(), 0);
+    assert_eq!(v.files_with_planning_pct(), 0);
+}
+
+#[test]
+fn vault_files_with_comment_match() {
+    let td = write_vault(&[
+        ("a.org", "* COMMENT A\n"),
+        ("b.org", "* B\n"),
+        ("c.org", "* COMMENT C\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.files_with_comment(), 2);
+    assert_eq!(v.files_with_comment_pct(), 66);
+}
+
+#[test]
+fn vault_files_with_comment_zero_when_empty() {
+    let td = write_vault(&[]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.files_with_comment(), 0);
+    assert_eq!(v.files_with_comment_pct(), 0);
+}
+
 
 

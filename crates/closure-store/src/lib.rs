@@ -1154,6 +1154,91 @@ impl Vault {
             .unwrap_or(0)
     }
 
+    /// Count of files containing at least one SCHEDULED headline.
+    #[must_use]
+    pub fn files_with_scheduled(&self) -> usize {
+        self.documents
+            .values()
+            .filter(|d| d.org().count_scheduled() > 0)
+            .count()
+    }
+
+    /// Percentage of files containing at least one SCHEDULED headline (`0..=100`).
+    #[must_use]
+    pub fn files_with_scheduled_pct(&self) -> usize {
+        (self.files_with_scheduled() * 100)
+            .checked_div(self.len())
+            .unwrap_or(0)
+    }
+
+    /// Count of files containing at least one DEADLINE headline.
+    #[must_use]
+    pub fn files_with_deadline(&self) -> usize {
+        self.documents
+            .values()
+            .filter(|d| d.org().count_with_deadline() > 0)
+            .count()
+    }
+
+    /// Percentage of files containing at least one DEADLINE headline (`0..=100`).
+    #[must_use]
+    pub fn files_with_deadline_pct(&self) -> usize {
+        (self.files_with_deadline() * 100)
+            .checked_div(self.len())
+            .unwrap_or(0)
+    }
+
+    /// Count of files containing at least one CLOSED headline.
+    #[must_use]
+    pub fn files_with_closed(&self) -> usize {
+        self.documents
+            .values()
+            .filter(|d| d.org().count_closed() > 0)
+            .count()
+    }
+
+    /// Percentage of files containing at least one CLOSED headline (`0..=100`).
+    #[must_use]
+    pub fn files_with_closed_pct(&self) -> usize {
+        (self.files_with_closed() * 100)
+            .checked_div(self.len())
+            .unwrap_or(0)
+    }
+
+    /// Count of files containing at least one headline with planning info.
+    #[must_use]
+    pub fn files_with_planning(&self) -> usize {
+        self.documents
+            .values()
+            .filter(|d| d.org().count_with_planning() > 0)
+            .count()
+    }
+
+    /// Percentage of files containing at least one headline with planning info.
+    #[must_use]
+    pub fn files_with_planning_pct(&self) -> usize {
+        (self.files_with_planning() * 100)
+            .checked_div(self.len())
+            .unwrap_or(0)
+    }
+
+    /// Count of files containing at least one COMMENT-prefixed headline.
+    #[must_use]
+    pub fn files_with_comment(&self) -> usize {
+        self.documents
+            .values()
+            .filter(|d| d.org().count_comments() > 0)
+            .count()
+    }
+
+    /// Percentage of files containing at least one COMMENT-prefixed headline.
+    #[must_use]
+    pub fn files_with_comment_pct(&self) -> usize {
+        (self.files_with_comment() * 100)
+            .checked_div(self.len())
+            .unwrap_or(0)
+    }
+
     /// Count of headlines with an `:ID:` property across the vault.
     #[must_use]
     pub fn id_count(&self) -> usize {
