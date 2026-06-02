@@ -8362,5 +8362,53 @@ fn vault_distinct_link_target_count_zero_when_empty() {
     assert_eq!(v.distinct_link_target_count(), 0);
 }
 
+#[test]
+fn vault_all_link_targets_match() {
+    let td = write_vault(&[
+        ("a.org", "* A\n[[x][X]] [[y][Y]]\n"),
+        ("b.org", "* B\n[[x][X]]\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    let mut targets = v.all_link_targets();
+    targets.sort();
+    assert_eq!(targets, vec!["x".to_owned(), "x".to_owned(), "y".to_owned()]);
+}
+
+#[test]
+fn vault_all_link_targets_empty() {
+    let td = write_vault(&[]);
+    let v = Vault::open(td.path()).expect("open");
+    assert!(v.all_link_targets().is_empty());
+}
+
+#[test]
+fn vault_link_target_counts_match() {
+    let td = write_vault(&[
+        ("a.org", "* A\n[[x][X]] [[y][Y]]\n"),
+        ("b.org", "* B\n[[x][X]]\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    let m = v.link_target_counts();
+    assert_eq!(m.get("x"), Some(&2));
+    assert_eq!(m.get("y"), Some(&1));
+}
+
+#[test]
+fn vault_most_common_link_target_match() {
+    let td = write_vault(&[
+        ("a.org", "* A\n[[x][X]] [[y][Y]]\n"),
+        ("b.org", "* B\n[[x][X]]\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.most_common_link_target(), Some("x".to_owned()));
+}
+
+#[test]
+fn vault_most_common_link_target_none_when_empty() {
+    let td = write_vault(&[]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.most_common_link_target(), None);
+}
+
 
 

@@ -6639,6 +6639,46 @@ impl Vault {
         self.distinct_link_targets().len()
     }
 
+    /// All link-target strings across the vault (with duplicates).
+    #[must_use]
+    pub fn all_link_targets(&self) -> Vec<String> {
+        let mut out = Vec::new();
+        for d in self.documents.values() {
+            for h in d.all_headlines() {
+                for t in h.link_targets() {
+                    out.push(t.clone());
+                }
+            }
+        }
+        out
+    }
+
+    /// Histogram of link-target frequency across the vault.
+    #[must_use]
+    pub fn link_target_counts(&self) -> std::collections::BTreeMap<String, usize> {
+        let mut m = std::collections::BTreeMap::new();
+        for d in self.documents.values() {
+            for h in d.all_headlines() {
+                for t in h.link_targets() {
+                    *m.entry(t.clone()).or_insert(0) += 1;
+                }
+            }
+        }
+        m
+    }
+
+    /// Most frequently appearing link-target across the vault (lowest name wins ties).
+    #[must_use]
+    pub fn most_common_link_target(&self) -> Option<String> {
+        let mut best: Option<(String, usize)> = None;
+        for (t, c) in self.link_target_counts() {
+            if best.as_ref().is_none_or(|(_, bc)| c > *bc) {
+                best = Some((t, c));
+            }
+        }
+        best.map(|(t, _)| t)
+    }
+
     /// Count of headlines carrying at least one link for a single file
     /// by path. Returns `None` if the file isn't loaded.
     #[must_use]
