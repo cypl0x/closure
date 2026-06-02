@@ -960,6 +960,30 @@ impl Vault {
             .count()
     }
 
+    /// Percentage of files that contain at least one cookie (`0..=100`).
+    #[must_use]
+    pub fn files_with_cookies_pct(&self) -> usize {
+        (self.files_with_cookies() * 100)
+            .checked_div(self.len())
+            .unwrap_or(0)
+    }
+
+    /// Percentage of files that contain at least one footnote (`0..=100`).
+    #[must_use]
+    pub fn files_with_footnotes_pct(&self) -> usize {
+        (self.files_with_footnotes() * 100)
+            .checked_div(self.len())
+            .unwrap_or(0)
+    }
+
+    /// Percentage of files that contain at least one macro (`0..=100`).
+    #[must_use]
+    pub fn files_with_macros_pct(&self) -> usize {
+        (self.files_with_macros() * 100)
+            .checked_div(self.len())
+            .unwrap_or(0)
+    }
+
     /// Count of headlines with an `:ID:` property across the vault.
     #[must_use]
     pub fn id_count(&self) -> usize {

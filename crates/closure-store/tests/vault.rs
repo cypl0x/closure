@@ -8592,5 +8592,48 @@ fn vault_files_with_macros_match() {
     assert_eq!(v.files_with_macros(), 2);
 }
 
+#[test]
+fn vault_files_with_footnotes_pct_match() {
+    let td = write_vault(&[
+        ("a.org", "* A\nbody[fn:1]\n"),
+        ("b.org", "* B\n"),
+        ("c.org", "* C\nbody[fn:2]\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.files_with_footnotes_pct(), 66);
+}
+
+#[test]
+fn vault_files_with_footnotes_pct_zero_when_no_files() {
+    let td = write_vault(&[]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.files_with_footnotes_pct(), 0);
+}
+
+#[test]
+fn vault_files_with_macros_pct_match() {
+    let td = write_vault(&[
+        ("a.org", "* A\n{{{m(x)}}}\n"),
+        ("b.org", "* B\n"),
+        ("c.org", "* C\n{{{n(y)}}}\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.files_with_macros_pct(), 66);
+}
+
+#[test]
+fn vault_files_with_macros_pct_zero_when_no_files() {
+    let td = write_vault(&[]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.files_with_macros_pct(), 0);
+}
+
+#[test]
+fn vault_files_with_cookies_pct_zero_when_no_files() {
+    let td = write_vault(&[]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.files_with_cookies_pct(), 0);
+}
+
 
 
