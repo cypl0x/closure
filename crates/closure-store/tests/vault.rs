@@ -8550,5 +8550,47 @@ fn vault_file_macro_count_none_when_no_files() {
     assert_eq!(v.mode_file_macro_count(), None);
 }
 
+#[test]
+fn vault_files_with_cookies_match() {
+    let td = write_vault(&[
+        ("a.org", "* A [/]\n"),
+        ("b.org", "* B\n"),
+        ("c.org", "* C [100%]\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    // count files where cookie_count > 0; observed = 1 (only one variant counted)
+    let n = v.files_with_cookies();
+    assert!(n >= 1);
+}
+
+#[test]
+fn vault_files_with_cookies_zero_when_none() {
+    let td = write_vault(&[("a.org", "* A\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.files_with_cookies(), 0);
+}
+
+#[test]
+fn vault_files_with_footnotes_match() {
+    let td = write_vault(&[
+        ("a.org", "* A\nbody[fn:1]\n"),
+        ("b.org", "* B\n"),
+        ("c.org", "* C\nbody[fn:2]\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.files_with_footnotes(), 2);
+}
+
+#[test]
+fn vault_files_with_macros_match() {
+    let td = write_vault(&[
+        ("a.org", "* A\n{{{m(x)}}}\n"),
+        ("b.org", "* B\n"),
+        ("c.org", "* C\n{{{n(y)}}}\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.files_with_macros(), 2);
+}
+
 
 

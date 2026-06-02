@@ -933,6 +933,33 @@ impl Vault {
         best.map(|(mc, _)| mc)
     }
 
+    /// Count of files that contain at least one cookie.
+    #[must_use]
+    pub fn files_with_cookies(&self) -> usize {
+        self.documents
+            .values()
+            .filter(|d| d.org().total_cookie_count() > 0)
+            .count()
+    }
+
+    /// Count of files that contain at least one footnote.
+    #[must_use]
+    pub fn files_with_footnotes(&self) -> usize {
+        self.documents
+            .values()
+            .filter(|d| d.org().total_footnote_count() > 0)
+            .count()
+    }
+
+    /// Count of files that contain at least one macro.
+    #[must_use]
+    pub fn files_with_macros(&self) -> usize {
+        self.documents
+            .values()
+            .filter(|d| d.org().total_macro_count() > 0)
+            .count()
+    }
+
     /// Count of headlines with an `:ID:` property across the vault.
     #[must_use]
     pub fn id_count(&self) -> usize {
