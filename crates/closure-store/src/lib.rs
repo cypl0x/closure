@@ -6163,6 +6163,115 @@ impl Vault {
         best.map(|(pc, _)| pc)
     }
 
+    /// Maximum per-file summed headline subtree property count.
+    #[must_use]
+    pub fn max_file_subtree_property_count(&self) -> Option<usize> {
+        self.documents
+            .values()
+            .map(|d| {
+                d.org()
+                    .iter_headlines()
+                    .into_iter()
+                    .map(closure_org::Headline::subtree_property_count)
+                    .sum()
+            })
+            .max()
+    }
+
+    /// Minimum per-file summed headline subtree property count.
+    #[must_use]
+    pub fn min_file_subtree_property_count(&self) -> Option<usize> {
+        self.documents
+            .values()
+            .map(|d| {
+                d.org()
+                    .iter_headlines()
+                    .into_iter()
+                    .map(closure_org::Headline::subtree_property_count)
+                    .sum()
+            })
+            .min()
+    }
+
+    /// Sum of per-file summed headline subtree property counts.
+    #[must_use]
+    pub fn total_file_subtree_property_count(&self) -> usize {
+        self.documents
+            .values()
+            .map(|d| {
+                d.org()
+                    .iter_headlines()
+                    .into_iter()
+                    .map(closure_org::Headline::subtree_property_count)
+                    .sum::<usize>()
+            })
+            .sum()
+    }
+
+    /// Integer mean per-file summed headline subtree property count.
+    #[must_use]
+    pub fn mean_file_subtree_property_count(&self) -> usize {
+        self.total_file_subtree_property_count()
+            .checked_div(self.len())
+            .unwrap_or(0)
+    }
+
+    /// Median per-file summed headline subtree property count.
+    #[must_use]
+    pub fn median_file_subtree_property_count(&self) -> Option<usize> {
+        let mut v: Vec<usize> = self
+            .documents
+            .values()
+            .map(|d| {
+                d.org()
+                    .iter_headlines()
+                    .into_iter()
+                    .map(closure_org::Headline::subtree_property_count)
+                    .sum()
+            })
+            .collect();
+        if v.is_empty() {
+            return None;
+        }
+        v.sort_unstable();
+        let mid = v.len() / 2;
+        Some(if v.len() % 2 == 1 {
+            v[mid]
+        } else {
+            v[mid - 1].midpoint(v[mid])
+        })
+    }
+
+    /// Histogram of per-file summed headline subtree property counts.
+    #[must_use]
+    pub fn file_subtree_property_count_counts(
+        &self,
+    ) -> std::collections::BTreeMap<usize, usize> {
+        let mut m = std::collections::BTreeMap::new();
+        for d in self.documents.values() {
+            let c: usize = d
+                .org()
+                .iter_headlines()
+                .into_iter()
+                .map(closure_org::Headline::subtree_property_count)
+                .sum();
+            *m.entry(c).or_insert(0) += 1;
+        }
+        m
+    }
+
+    /// Most common per-file summed headline subtree property count.
+    #[must_use]
+    pub fn mode_file_subtree_property_count(&self) -> Option<usize> {
+        let mut best: Option<(usize, usize)> = None;
+        for (pc, c) in self.file_subtree_property_count_counts() {
+            if best.is_none_or(|(_, bestc)| c > bestc) {
+                best = Some((pc, c));
+            }
+        }
+        best.map(|(pc, _)| pc)
+    }
+
     /// Count of headlines carrying at least one link for a single file
     /// by path. Returns `None` if the file isn't loaded.
     #[must_use]
