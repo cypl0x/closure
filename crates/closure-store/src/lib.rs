@@ -1239,6 +1239,54 @@ impl Vault {
             .unwrap_or(0)
     }
 
+    /// True iff any link appears across the vault.
+    #[must_use]
+    pub fn has_link(&self) -> bool {
+        self.with_link_count() > 0
+    }
+
+    /// True iff any timestamp appears across the vault.
+    #[must_use]
+    pub fn has_timestamp(&self) -> bool {
+        self.timestamp_count() > 0
+    }
+
+    /// True iff any archived headline appears across the vault.
+    #[must_use]
+    pub fn has_archived(&self) -> bool {
+        self.archived_count() > 0
+    }
+
+    /// True iff any COMMENT headline appears across the vault.
+    #[must_use]
+    pub fn has_comment(&self) -> bool {
+        self.comment_count() > 0
+    }
+
+    /// True iff any prioritized headline appears across the vault.
+    #[must_use]
+    pub fn has_any_priority(&self) -> bool {
+        self.with_priority_count() > 0
+    }
+
+    /// True iff any TODO-marked headline appears across the vault.
+    #[must_use]
+    pub fn has_any_todo(&self) -> bool {
+        self.with_todo_count() > 0
+    }
+
+    /// True iff any headline with planning info appears across the vault.
+    #[must_use]
+    pub fn has_planning(&self) -> bool {
+        self.planning_count() > 0
+    }
+
+    /// True iff any headline with an `:ID:` property appears across the vault.
+    #[must_use]
+    pub fn has_any_id(&self) -> bool {
+        self.id_count() > 0
+    }
+
     /// Count of headlines with an `:ID:` property across the vault.
     #[must_use]
     pub fn id_count(&self) -> usize {

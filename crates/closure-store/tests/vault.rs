@@ -9035,5 +9035,117 @@ fn vault_files_with_comment_zero_when_empty() {
     assert_eq!(v.files_with_comment_pct(), 0);
 }
 
+#[test]
+fn vault_has_link_true_when_link() {
+    let td = write_vault(&[("a.org", "* A\n[[x][X]]\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert!(v.has_link());
+}
+
+#[test]
+fn vault_has_link_false_when_none() {
+    let td = write_vault(&[]);
+    let v = Vault::open(td.path()).expect("open");
+    assert!(!v.has_link());
+}
+
+#[test]
+fn vault_has_timestamp_true_when_timestamp() {
+    let td = write_vault(&[("a.org", "* A\n<2026-05-30 Sat>\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert!(v.has_timestamp());
+}
+
+#[test]
+fn vault_has_timestamp_false_when_none() {
+    let td = write_vault(&[]);
+    let v = Vault::open(td.path()).expect("open");
+    assert!(!v.has_timestamp());
+}
+
+#[test]
+fn vault_has_archived_true_when_archived() {
+    let td = write_vault(&[("a.org", "* A :ARCHIVE:\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert!(v.has_archived());
+}
+
+#[test]
+fn vault_has_archived_false_when_none() {
+    let td = write_vault(&[]);
+    let v = Vault::open(td.path()).expect("open");
+    assert!(!v.has_archived());
+}
+
+#[test]
+fn vault_has_comment_true_when_comment() {
+    let td = write_vault(&[("a.org", "* COMMENT A\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert!(v.has_comment());
+}
+
+#[test]
+fn vault_has_comment_false_when_none() {
+    let td = write_vault(&[]);
+    let v = Vault::open(td.path()).expect("open");
+    assert!(!v.has_comment());
+}
+
+#[test]
+fn vault_has_any_priority_true_when_priority() {
+    let td = write_vault(&[("a.org", "* [#A] A\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert!(v.has_any_priority());
+}
+
+#[test]
+fn vault_has_any_priority_false_when_none() {
+    let td = write_vault(&[]);
+    let v = Vault::open(td.path()).expect("open");
+    assert!(!v.has_any_priority());
+}
+
+#[test]
+fn vault_has_any_todo_true_when_todo() {
+    let td = write_vault(&[("a.org", "* TODO A\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert!(v.has_any_todo());
+}
+
+#[test]
+fn vault_has_any_todo_false_when_none() {
+    let td = write_vault(&[]);
+    let v = Vault::open(td.path()).expect("open");
+    assert!(!v.has_any_todo());
+}
+
+#[test]
+fn vault_has_planning_true_when_planning() {
+    let td = write_vault(&[("a.org", "* A\nSCHEDULED: <2026-05-30 Sat>\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert!(v.has_planning());
+}
+
+#[test]
+fn vault_has_planning_false_when_none() {
+    let td = write_vault(&[]);
+    let v = Vault::open(td.path()).expect("open");
+    assert!(!v.has_planning());
+}
+
+#[test]
+fn vault_has_any_id_true_when_id() {
+    let td = write_vault(&[("a.org", "* A\n:PROPERTIES:\n:ID: x\n:END:\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert!(v.has_any_id());
+}
+
+#[test]
+fn vault_has_any_id_false_when_none() {
+    let td = write_vault(&[]);
+    let v = Vault::open(td.path()).expect("open");
+    assert!(!v.has_any_id());
+}
+
 
 
