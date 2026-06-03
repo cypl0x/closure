@@ -7789,3 +7789,46 @@ fn doc_has_level_false_when_empty() {
     assert!(!doc.has_level(1));
 }
 
+#[test]
+fn doc_count_title_exact_match() {
+    let doc = parse("* Apple\n* Apple\n* Other\n").expect("parse");
+    assert_eq!(doc.count_title_exact("Apple"), 2);
+    assert_eq!(doc.count_title_exact("Other"), 1);
+}
+
+#[test]
+fn doc_count_title_exact_zero_when_empty() {
+    let doc = parse("").expect("parse");
+    assert_eq!(doc.count_title_exact("Any"), 0);
+}
+
+#[test]
+fn doc_count_link_target_match() {
+    let doc = parse("* A\n[[x][X]] [[x][Y]]\n* B\n[[y][Y]]\n").expect("parse");
+    assert_eq!(doc.count_link_target("x"), 2);
+    assert_eq!(doc.count_link_target("y"), 1);
+}
+
+#[test]
+fn doc_count_link_target_zero_when_empty() {
+    let doc = parse("").expect("parse");
+    assert_eq!(doc.count_link_target("any"), 0);
+}
+
+#[test]
+fn doc_count_id_value_match() {
+    let doc = parse("* A\n:PROPERTIES:\n:ID: abc\n:END:\n* B\n").expect("parse");
+    assert_eq!(doc.count_id_value("abc"), 1);
+    assert_eq!(doc.count_id_value("xyz"), 0);
+}
+
+#[test]
+fn doc_count_property_key_match() {
+    let doc = parse(
+        "* A\n:PROPERTIES:\n:foo: 1\n:END:\n* B\n:PROPERTIES:\n:foo: 2\n:END:\n",
+    )
+    .expect("parse");
+    assert_eq!(doc.count_property_key("foo"), 2);
+    assert_eq!(doc.count_property_key("bar"), 0);
+}
+

@@ -510,6 +510,35 @@ impl OrgDoc {
         self.count_at_level(level) > 0
     }
 
+    /// Count of headlines whose title exactly equals `title`.
+    #[must_use]
+    pub fn count_title_exact(&self, title: &str) -> usize {
+        self.count_headlines_where(|h| h.title() == title)
+    }
+
+    /// Count of link-target occurrences equal to `target`.
+    #[must_use]
+    pub fn count_link_target(&self, target: &str) -> usize {
+        self.iter_headlines()
+            .into_iter()
+            .map(|h| h.link_targets().iter().filter(|t| t.as_str() == target).count())
+            .sum()
+    }
+
+    /// Count of headlines with `:ID:` equal to `value`.
+    #[must_use]
+    pub fn count_id_value(&self, value: &str) -> usize {
+        self.count_headlines_where(|h| h.id_property() == Some(value))
+    }
+
+    /// Count of headlines carrying property `key`.
+    #[must_use]
+    pub fn count_property_key(&self, key: &str) -> usize {
+        self.count_headlines_where(|h| {
+            h.properties().is_some_and(|p| p.get(key).is_some())
+        })
+    }
+
     /// True iff any headline is SCHEDULED.
     #[must_use]
     pub fn has_scheduled(&self) -> bool {
