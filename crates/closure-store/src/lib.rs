@@ -1287,6 +1287,54 @@ impl Vault {
         self.id_count() > 0
     }
 
+    /// True iff any cookie appears across the vault.
+    #[must_use]
+    pub fn has_cookie(&self) -> bool {
+        self.cookie_count() > 0
+    }
+
+    /// True iff any footnote appears across the vault.
+    #[must_use]
+    pub fn has_footnote(&self) -> bool {
+        self.footnote_count() > 0
+    }
+
+    /// True iff any macro appears across the vault.
+    #[must_use]
+    pub fn has_macro(&self) -> bool {
+        self.macro_count() > 0
+    }
+
+    /// True iff any SCHEDULED headline appears across the vault.
+    #[must_use]
+    pub fn has_scheduled(&self) -> bool {
+        self.scheduled_count() > 0
+    }
+
+    /// True iff any DEADLINE headline appears across the vault.
+    #[must_use]
+    pub fn has_deadline(&self) -> bool {
+        self.deadline_count() > 0
+    }
+
+    /// True iff any CLOSED headline appears across the vault.
+    #[must_use]
+    pub fn has_closed(&self) -> bool {
+        self.closed_count() > 0
+    }
+
+    /// True iff any tagged headline appears across the vault.
+    #[must_use]
+    pub fn has_any_tag(&self) -> bool {
+        self.tagged_count() > 0
+    }
+
+    /// True iff any property-carrying headline appears across the vault.
+    #[must_use]
+    pub fn has_any_property(&self) -> bool {
+        self.with_property_count() > 0
+    }
+
     /// Count of headlines with an `:ID:` property across the vault.
     #[must_use]
     pub fn id_count(&self) -> usize {

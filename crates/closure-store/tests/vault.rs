@@ -9147,5 +9147,119 @@ fn vault_has_any_id_false_when_none() {
     assert!(!v.has_any_id());
 }
 
+#[test]
+fn vault_has_cookie_false_when_none() {
+    let td = write_vault(&[("a.org", "* A\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert!(!v.has_cookie());
+}
+
+#[test]
+fn vault_has_cookie_true_when_cookie() {
+    let td = write_vault(&[("a.org", "* TODO A [1/2]\n** TODO X\n** DONE Y\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    let _ = v.has_cookie();
+}
+
+#[test]
+fn vault_has_footnote_true_when_footnote() {
+    let td = write_vault(&[("a.org", "* A\nbody[fn:1]\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert!(v.has_footnote());
+}
+
+#[test]
+fn vault_has_footnote_false_when_none() {
+    let td = write_vault(&[]);
+    let v = Vault::open(td.path()).expect("open");
+    assert!(!v.has_footnote());
+}
+
+#[test]
+fn vault_has_macro_true_when_macro() {
+    let td = write_vault(&[("a.org", "* A\n{{{m(x)}}}\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert!(v.has_macro());
+}
+
+#[test]
+fn vault_has_macro_false_when_none() {
+    let td = write_vault(&[]);
+    let v = Vault::open(td.path()).expect("open");
+    assert!(!v.has_macro());
+}
+
+#[test]
+fn vault_has_scheduled_true_when_scheduled() {
+    let td = write_vault(&[("a.org", "* A\nSCHEDULED: <2026-05-30 Sat>\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert!(v.has_scheduled());
+}
+
+#[test]
+fn vault_has_scheduled_false_when_none() {
+    let td = write_vault(&[]);
+    let v = Vault::open(td.path()).expect("open");
+    assert!(!v.has_scheduled());
+}
+
+#[test]
+fn vault_has_deadline_true_when_deadline() {
+    let td = write_vault(&[("a.org", "* A\nDEADLINE: <2026-05-30 Sat>\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert!(v.has_deadline());
+}
+
+#[test]
+fn vault_has_deadline_false_when_none() {
+    let td = write_vault(&[]);
+    let v = Vault::open(td.path()).expect("open");
+    assert!(!v.has_deadline());
+}
+
+#[test]
+fn vault_has_closed_true_when_closed() {
+    let td = write_vault(&[("a.org", "* A\nCLOSED: [2026-05-30 Sat]\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert!(v.has_closed());
+}
+
+#[test]
+fn vault_has_closed_false_when_none() {
+    let td = write_vault(&[]);
+    let v = Vault::open(td.path()).expect("open");
+    assert!(!v.has_closed());
+}
+
+#[test]
+fn vault_has_any_tag_true_when_tag() {
+    let td = write_vault(&[("a.org", "* A :x:\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert!(v.has_any_tag());
+}
+
+#[test]
+fn vault_has_any_tag_false_when_none() {
+    let td = write_vault(&[]);
+    let v = Vault::open(td.path()).expect("open");
+    assert!(!v.has_any_tag());
+}
+
+#[test]
+fn vault_has_any_property_true_when_property() {
+    let td = write_vault(&[
+        ("a.org", "* A\n:PROPERTIES:\n:x: 1\n:END:\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert!(v.has_any_property());
+}
+
+#[test]
+fn vault_has_any_property_false_when_none() {
+    let td = write_vault(&[]);
+    let v = Vault::open(td.path()).expect("open");
+    assert!(!v.has_any_property());
+}
+
 
 
