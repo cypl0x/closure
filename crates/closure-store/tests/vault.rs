@@ -9826,5 +9826,53 @@ fn vault_files_with_arg2_pct_zero_when_no_files() {
     assert_eq!(v.files_with_link_target_pct("x"), 0);
 }
 
+#[test]
+fn vault_count_title_exact_match() {
+    let td = write_vault(&[
+        ("a.org", "* Apple\n"),
+        ("b.org", "* Apple\n"),
+        ("c.org", "* Other\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.count_title_exact("Apple"), 2);
+    assert_eq!(v.count_title_exact("Other"), 1);
+    assert_eq!(v.count_title_exact("None"), 0);
+}
+
+#[test]
+fn vault_count_link_target_match() {
+    let td = write_vault(&[
+        ("a.org", "* A\n[[x][X]] [[x][Y]]\n"),
+        ("b.org", "* B\n[[y][Y]]\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.count_link_target("x"), 2);
+    assert_eq!(v.count_link_target("y"), 1);
+    assert_eq!(v.count_link_target("z"), 0);
+}
+
+#[test]
+fn vault_count_id_value_match() {
+    let td = write_vault(&[
+        ("a.org", "* A\n:PROPERTIES:\n:ID: abc\n:END:\n"),
+        ("b.org", "* B\n:PROPERTIES:\n:ID: def\n:END:\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.count_id_value("abc"), 1);
+    assert_eq!(v.count_id_value("xyz"), 0);
+}
+
+#[test]
+fn vault_count_property_key_match() {
+    let td = write_vault(&[
+        ("a.org", "* A\n:PROPERTIES:\n:foo: 1\n:END:\n"),
+        ("b.org", "* B\n:PROPERTIES:\n:foo: 2\n:END:\n"),
+        ("c.org", "* C\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.count_property_key("foo"), 2);
+    assert_eq!(v.count_property_key("bar"), 0);
+}
+
 
 

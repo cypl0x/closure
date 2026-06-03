@@ -1625,6 +1625,50 @@ impl Vault {
             .unwrap_or(0)
     }
 
+    /// Count of headlines whose title exactly equals `title` across the vault.
+    #[must_use]
+    pub fn count_title_exact(&self, title: &str) -> usize {
+        self.documents
+            .values()
+            .map(|d| d.all_headlines().filter(|h| h.title() == title).count())
+            .sum()
+    }
+
+    /// Count of link-target occurrences equal to `target` across the vault.
+    #[must_use]
+    pub fn count_link_target(&self, target: &str) -> usize {
+        self.documents
+            .values()
+            .map(|d| {
+                d.all_headlines()
+                    .map(|h| h.link_targets().iter().filter(|t| *t == target).count())
+                    .sum::<usize>()
+            })
+            .sum()
+    }
+
+    /// Count of headlines with `:ID:` equal to `value` across the vault.
+    #[must_use]
+    pub fn count_id_value(&self, value: &str) -> usize {
+        self.documents
+            .values()
+            .map(|d| {
+                d.all_headlines()
+                    .filter(|h| h.property("ID") == Some(value))
+                    .count()
+            })
+            .sum()
+    }
+
+    /// Count of headlines carrying property `key` across the vault.
+    #[must_use]
+    pub fn count_property_key(&self, key: &str) -> usize {
+        self.documents
+            .values()
+            .map(|d| d.all_headlines().filter(|h| h.property(key).is_some()).count())
+            .sum()
+    }
+
     /// Count of headlines with an `:ID:` property across the vault.
     #[must_use]
     pub fn id_count(&self) -> usize {
