@@ -539,6 +539,39 @@ impl OrgDoc {
         })
     }
 
+    /// Percentage of headlines tagged `tag` (`0..=100`).
+    #[must_use]
+    pub fn tag_pct(&self, tag: &str) -> usize {
+        let n = self.iter_headlines().len();
+        (self.count_tagged(tag) * 100).checked_div(n).unwrap_or(0)
+    }
+
+    /// Percentage of headlines with TODO `keyword` (`0..=100`).
+    #[must_use]
+    pub fn todo_keyword_pct(&self, keyword: &str) -> usize {
+        let n = self.iter_headlines().len();
+        (self.count_todo(keyword) * 100).checked_div(n).unwrap_or(0)
+    }
+
+    /// Percentage of headlines with priority `letter` (`0..=100`).
+    #[must_use]
+    pub fn priority_letter_pct(&self, letter: char) -> usize {
+        let n = self.iter_headlines().len();
+        let count = self
+            .iter_headlines()
+            .into_iter()
+            .filter(|h| h.priority() == Some(letter))
+            .count();
+        (count * 100).checked_div(n).unwrap_or(0)
+    }
+
+    /// Percentage of headlines at the given level (`0..=100`).
+    #[must_use]
+    pub fn level_pct(&self, level: u8) -> usize {
+        let n = self.iter_headlines().len();
+        (self.count_at_level(level) * 100).checked_div(n).unwrap_or(0)
+    }
+
     /// True iff any headline is SCHEDULED.
     #[must_use]
     pub fn has_scheduled(&self) -> bool {

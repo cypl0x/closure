@@ -7832,3 +7832,34 @@ fn doc_count_property_key_match() {
     assert_eq!(doc.count_property_key("bar"), 0);
 }
 
+#[test]
+fn doc_tag_pct_match() {
+    let doc = parse("* A :x:\n* B :y:\n* C\n").expect("parse");
+    assert_eq!(doc.tag_pct("x"), 33);
+}
+
+#[test]
+fn doc_tag_pct_zero_when_no_headlines() {
+    let doc = parse("").expect("parse");
+    assert_eq!(doc.tag_pct("x"), 0);
+}
+
+#[test]
+fn doc_todo_keyword_pct_match() {
+    let doc = parse("* TODO A\n* DONE B\n* C\n").expect("parse");
+    assert_eq!(doc.todo_keyword_pct("TODO"), 33);
+}
+
+#[test]
+fn doc_priority_letter_pct_match() {
+    let doc = parse("* [#A] X\n* [#B] Y\n* C\n").expect("parse");
+    assert_eq!(doc.priority_letter_pct('A'), 33);
+}
+
+#[test]
+fn doc_level_pct_match() {
+    let doc = parse("* A\n** B\n** C\n").expect("parse");
+    assert_eq!(doc.level_pct(1), 33);
+    assert_eq!(doc.level_pct(2), 66);
+}
+
