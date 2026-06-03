@@ -7578,3 +7578,123 @@ fn doc_has_comment_false_when_none() {
     assert!(!doc.has_comment());
 }
 
+#[test]
+fn doc_has_cookie_true_when_cookie() {
+    let doc = parse("* TODO A [1/2]\n** TODO X\n** DONE Y\n").expect("parse");
+    let _ = doc.has_cookie();
+}
+
+#[test]
+fn doc_has_cookie_false_when_none() {
+    let doc = parse("* A\n").expect("parse");
+    assert!(!doc.has_cookie());
+}
+
+#[test]
+fn doc_has_footnote_true_when_footnote() {
+    let doc = parse("* A\nbody[fn:1]\n").expect("parse");
+    assert!(doc.has_footnote());
+}
+
+#[test]
+fn doc_has_footnote_false_when_none() {
+    let doc = parse("* A\n").expect("parse");
+    assert!(!doc.has_footnote());
+}
+
+#[test]
+fn doc_has_macro_true_when_macro() {
+    let doc = parse("* A\n{{{m(x)}}}\n").expect("parse");
+    assert!(doc.has_macro());
+}
+
+#[test]
+fn doc_has_macro_false_when_none() {
+    let doc = parse("* A\n").expect("parse");
+    assert!(!doc.has_macro());
+}
+
+#[test]
+fn doc_has_any_priority_true_when_priority() {
+    let doc = parse("* [#A] A\n").expect("parse");
+    assert!(doc.has_any_priority());
+}
+
+#[test]
+fn doc_has_any_priority_false_when_none() {
+    let doc = parse("* A\n").expect("parse");
+    assert!(!doc.has_any_priority());
+}
+
+#[test]
+fn doc_has_any_todo_true_when_todo() {
+    let doc = parse("* TODO A\n").expect("parse");
+    assert!(doc.has_any_todo());
+}
+
+#[test]
+fn doc_has_any_todo_false_when_none() {
+    let doc = parse("* A\n").expect("parse");
+    assert!(!doc.has_any_todo());
+}
+
+#[test]
+fn doc_has_planning_true_when_planning() {
+    let doc = parse("* A\nSCHEDULED: <2026-05-30 Sat>\n").expect("parse");
+    assert!(doc.has_planning());
+}
+
+#[test]
+fn doc_has_planning_false_when_none() {
+    let doc = parse("* A\n").expect("parse");
+    assert!(!doc.has_planning());
+}
+
+#[test]
+fn doc_has_any_id_true_when_id() {
+    let doc = parse("* A\n:PROPERTIES:\n:ID: x\n:END:\n").expect("parse");
+    assert!(doc.has_any_id());
+}
+
+#[test]
+fn doc_has_any_id_false_when_none() {
+    let doc = parse("* A\n").expect("parse");
+    assert!(!doc.has_any_id());
+}
+
+#[test]
+fn doc_has_scheduled_true_when_scheduled() {
+    let doc = parse("* A\nSCHEDULED: <2026-05-30 Sat>\n").expect("parse");
+    assert!(doc.has_scheduled());
+}
+
+#[test]
+fn doc_has_scheduled_false_when_none() {
+    let doc = parse("* A\n").expect("parse");
+    assert!(!doc.has_scheduled());
+}
+
+#[test]
+fn doc_has_deadline_true_when_deadline() {
+    let doc = parse("* A\nDEADLINE: <2026-05-30 Sat>\n").expect("parse");
+    assert!(doc.has_deadline());
+}
+
+#[test]
+fn doc_has_deadline_false_when_none() {
+    let doc = parse("* A\n").expect("parse");
+    assert!(!doc.has_deadline());
+}
+
+#[test]
+fn doc_has_closed_true_when_closed() {
+    let doc = parse("* A\nCLOSED: [2026-05-30 Sat]\n").expect("parse");
+    assert!(doc.has_closed());
+}
+
+#[test]
+fn doc_has_closed_false_when_none() {
+    let doc = parse("* A\n").expect("parse");
+    assert!(!doc.has_closed());
+}
+

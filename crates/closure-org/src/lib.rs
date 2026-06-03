@@ -436,6 +436,48 @@ impl OrgDoc {
         self.count_comments() > 0
     }
 
+    /// True iff any cookie appears in the document.
+    #[must_use]
+    pub fn has_cookie(&self) -> bool {
+        self.total_cookie_count() > 0
+    }
+
+    /// True iff any footnote appears in the document.
+    #[must_use]
+    pub fn has_footnote(&self) -> bool {
+        self.total_footnote_count() > 0
+    }
+
+    /// True iff any macro appears in the document.
+    #[must_use]
+    pub fn has_macro(&self) -> bool {
+        self.total_macro_count() > 0
+    }
+
+    /// True iff any headline carries planning info.
+    #[must_use]
+    pub fn has_planning(&self) -> bool {
+        self.count_with_planning() > 0
+    }
+
+    /// True iff any headline is SCHEDULED.
+    #[must_use]
+    pub fn has_scheduled(&self) -> bool {
+        self.count_scheduled() > 0
+    }
+
+    /// True iff any headline has a DEADLINE.
+    #[must_use]
+    pub fn has_deadline(&self) -> bool {
+        self.count_with_deadline() > 0
+    }
+
+    /// True iff any headline is CLOSED.
+    #[must_use]
+    pub fn has_closed(&self) -> bool {
+        self.count_closed() > 0
+    }
+
     /// Maximum per-headline subtree depth (deepest descendant level).
     #[must_use]
     pub fn max_subtree_depth(&self) -> Option<usize> {
