@@ -1412,6 +1412,28 @@ impl Vault {
         self.count_at_level(level) > 0
     }
 
+    /// True iff any headline title contains `needle` across the vault.
+    #[must_use]
+    pub fn has_title_contains(&self, needle: &str) -> bool {
+        self.count_title_contains(needle) > 0
+    }
+
+    /// True iff any headline carries a link to `target` across the vault.
+    #[must_use]
+    pub fn has_link_target(&self, target: &str) -> bool {
+        self.documents
+            .values()
+            .any(|d| d.all_headlines().any(|h| h.link_targets().iter().any(|t| t == target)))
+    }
+
+    /// True iff any headline title exactly equals `title` across the vault.
+    #[must_use]
+    pub fn has_title_exact(&self, title: &str) -> bool {
+        self.documents
+            .values()
+            .any(|d| d.all_headlines().any(|h| h.title() == title))
+    }
+
     /// Count of headlines with an `:ID:` property across the vault.
     #[must_use]
     pub fn id_count(&self) -> usize {

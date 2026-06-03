@@ -9436,5 +9436,50 @@ fn vault_has_level_false_when_empty() {
     assert!(!v.has_level(1));
 }
 
+#[test]
+fn vault_has_title_contains_true_when_match() {
+    let td = write_vault(&[("a.org", "* Apple Pie\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert!(v.has_title_contains("Apple"));
+    assert!(!v.has_title_contains("Banana"));
+}
+
+#[test]
+fn vault_has_title_contains_false_when_empty() {
+    let td = write_vault(&[]);
+    let v = Vault::open(td.path()).expect("open");
+    assert!(!v.has_title_contains("anything"));
+}
+
+#[test]
+fn vault_has_link_target_true_when_match() {
+    let td = write_vault(&[("a.org", "* A\n[[abc][X]]\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert!(v.has_link_target("abc"));
+    assert!(!v.has_link_target("xyz"));
+}
+
+#[test]
+fn vault_has_link_target_false_when_empty() {
+    let td = write_vault(&[]);
+    let v = Vault::open(td.path()).expect("open");
+    assert!(!v.has_link_target("anything"));
+}
+
+#[test]
+fn vault_has_title_exact_true_when_match() {
+    let td = write_vault(&[("a.org", "* Apple\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert!(v.has_title_exact("Apple"));
+    assert!(!v.has_title_exact("Banana"));
+}
+
+#[test]
+fn vault_has_title_exact_false_when_empty() {
+    let td = write_vault(&[]);
+    let v = Vault::open(td.path()).expect("open");
+    assert!(!v.has_title_exact("anything"));
+}
+
 
 
