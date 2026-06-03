@@ -624,6 +624,18 @@ impl Dispatcher {
         out
     }
 
+    /// Sorted distinct command names whose chord begins with `prefix`.
+    #[must_use]
+    pub fn commands_with_prefix(&self, prefix: &str) -> Vec<String> {
+        let mut s: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+        for (chord, cmd) in &self.bindings {
+            if chord.starts_with(prefix) {
+                s.insert(cmd.clone());
+            }
+        }
+        s.into_iter().collect()
+    }
+
     /// Most common chord stroke count (lowest wins ties; `None` when empty).
     #[must_use]
     pub fn mode_chord_strokes(&self) -> Option<usize> {
@@ -1256,6 +1268,18 @@ impl ChordTrie {
             .collect();
         out.sort();
         out
+    }
+
+    /// Sorted distinct command names whose chord begins with `prefix`.
+    #[must_use]
+    pub fn commands_with_prefix(&self, prefix: &str) -> Vec<String> {
+        let mut s: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+        for (chord, cmd) in self.bindings() {
+            if chord.starts_with(prefix) {
+                s.insert(cmd);
+            }
+        }
+        s.into_iter().collect()
     }
 
     /// All bindings as `(chord, command)` pairs, sorted by chord.
