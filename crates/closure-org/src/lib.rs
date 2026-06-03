@@ -466,6 +466,28 @@ impl OrgDoc {
         self.count_with_property() > 0
     }
 
+    /// True iff any headline title contains `needle`.
+    #[must_use]
+    pub fn has_title_contains(&self, needle: &str) -> bool {
+        self.count_title_contains(needle) > 0
+    }
+
+    /// True iff any headline title exactly equals `title`.
+    #[must_use]
+    pub fn has_title_exact(&self, title: &str) -> bool {
+        self.iter_headlines()
+            .into_iter()
+            .any(|h| h.title() == title)
+    }
+
+    /// True iff any headline carries a link to `target`.
+    #[must_use]
+    pub fn has_link_target(&self, target: &str) -> bool {
+        self.iter_headlines()
+            .into_iter()
+            .any(|h| h.link_targets().iter().any(|t| t == target))
+    }
+
     /// True iff any headline is SCHEDULED.
     #[must_use]
     pub fn has_scheduled(&self) -> bool {

@@ -7710,3 +7710,42 @@ fn doc_has_any_property_false_when_none() {
     assert!(!doc.has_any_property());
 }
 
+#[test]
+fn doc_has_title_contains_true_when_match() {
+    let doc = parse("* Apple Pie\n").expect("parse");
+    assert!(doc.has_title_contains("Apple"));
+    assert!(!doc.has_title_contains("Banana"));
+}
+
+#[test]
+fn doc_has_title_contains_false_when_empty() {
+    let doc = parse("").expect("parse");
+    assert!(!doc.has_title_contains("any"));
+}
+
+#[test]
+fn doc_has_title_exact_true_when_match() {
+    let doc = parse("* Apple\n").expect("parse");
+    assert!(doc.has_title_exact("Apple"));
+    assert!(!doc.has_title_exact("Banana"));
+}
+
+#[test]
+fn doc_has_title_exact_false_when_empty() {
+    let doc = parse("").expect("parse");
+    assert!(!doc.has_title_exact("any"));
+}
+
+#[test]
+fn doc_has_link_target_true_when_match() {
+    let doc = parse("* A\n[[abc][X]]\n").expect("parse");
+    assert!(doc.has_link_target("abc"));
+    assert!(!doc.has_link_target("xyz"));
+}
+
+#[test]
+fn doc_has_link_target_false_when_empty() {
+    let doc = parse("").expect("parse");
+    assert!(!doc.has_link_target("any"));
+}
+
