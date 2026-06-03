@@ -1362,6 +1362,33 @@ impl Vault {
             .sum()
     }
 
+    /// Count of headlines whose title contains `needle` across the vault.
+    #[must_use]
+    pub fn count_title_contains(&self, needle: &str) -> usize {
+        self.documents
+            .values()
+            .map(|d| d.org().count_title_contains(needle))
+            .sum()
+    }
+
+    /// True iff any headline carries priority `letter` across the vault.
+    #[must_use]
+    pub fn has_priority_letter(&self, letter: char) -> bool {
+        self.documents.values().any(|d| d.org().has_priority(letter))
+    }
+
+    /// True iff any headline carries TODO `keyword` across the vault.
+    #[must_use]
+    pub fn has_todo_keyword(&self, keyword: &str) -> bool {
+        self.count_todo(keyword) > 0
+    }
+
+    /// True iff any headline is tagged `tag` across the vault.
+    #[must_use]
+    pub fn has_tag(&self, tag: &str) -> bool {
+        self.count_tagged(tag) > 0
+    }
+
     /// Count of headlines with an `:ID:` property across the vault.
     #[must_use]
     pub fn id_count(&self) -> usize {

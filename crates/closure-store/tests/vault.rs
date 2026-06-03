@@ -9321,5 +9321,70 @@ fn vault_count_todo_zero_when_empty() {
     assert_eq!(v.count_todo("TODO"), 0);
 }
 
+#[test]
+fn vault_count_title_contains_match() {
+    let td = write_vault(&[
+        ("a.org", "* Apple\n"),
+        ("b.org", "* Banana\n"),
+        ("c.org", "* Apricot\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.count_title_contains("Ap"), 2);
+    assert_eq!(v.count_title_contains("B"), 1);
+    assert_eq!(v.count_title_contains("Z"), 0);
+}
+
+#[test]
+fn vault_count_title_contains_zero_when_empty() {
+    let td = write_vault(&[]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.count_title_contains("A"), 0);
+}
+
+#[test]
+fn vault_has_priority_letter_true_when_match() {
+    let td = write_vault(&[("a.org", "* [#A] X\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert!(v.has_priority_letter('A'));
+    assert!(!v.has_priority_letter('B'));
+}
+
+#[test]
+fn vault_has_priority_letter_false_when_empty() {
+    let td = write_vault(&[]);
+    let v = Vault::open(td.path()).expect("open");
+    assert!(!v.has_priority_letter('A'));
+}
+
+#[test]
+fn vault_has_todo_keyword_true_when_match() {
+    let td = write_vault(&[("a.org", "* TODO X\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert!(v.has_todo_keyword("TODO"));
+    assert!(!v.has_todo_keyword("WAITING"));
+}
+
+#[test]
+fn vault_has_todo_keyword_false_when_empty() {
+    let td = write_vault(&[]);
+    let v = Vault::open(td.path()).expect("open");
+    assert!(!v.has_todo_keyword("TODO"));
+}
+
+#[test]
+fn vault_has_tag_true_when_match() {
+    let td = write_vault(&[("a.org", "* A :x:\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert!(v.has_tag("x"));
+    assert!(!v.has_tag("y"));
+}
+
+#[test]
+fn vault_has_tag_false_when_empty() {
+    let td = write_vault(&[]);
+    let v = Vault::open(td.path()).expect("open");
+    assert!(!v.has_tag("x"));
+}
+
 
 
