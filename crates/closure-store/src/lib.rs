@@ -1479,6 +1479,46 @@ impl Vault {
             .count()
     }
 
+    /// Percentage of files containing a headline tagged `tag` (`0..=100`).
+    #[must_use]
+    pub fn files_with_tag_pct(&self, tag: &str) -> usize {
+        (self.files_with_tag(tag) * 100)
+            .checked_div(self.len())
+            .unwrap_or(0)
+    }
+
+    /// Percentage of files containing a headline with TODO `keyword` (`0..=100`).
+    #[must_use]
+    pub fn files_with_todo_keyword_pct(&self, keyword: &str) -> usize {
+        (self.files_with_todo_keyword(keyword) * 100)
+            .checked_div(self.len())
+            .unwrap_or(0)
+    }
+
+    /// Percentage of files containing a headline with priority `letter` (`0..=100`).
+    #[must_use]
+    pub fn files_with_priority_letter_pct(&self, letter: char) -> usize {
+        (self.files_with_priority_letter(letter) * 100)
+            .checked_div(self.len())
+            .unwrap_or(0)
+    }
+
+    /// Percentage of files containing a headline with property `key` (`0..=100`).
+    #[must_use]
+    pub fn files_with_property_key_pct(&self, key: &str) -> usize {
+        (self.files_with_property_key(key) * 100)
+            .checked_div(self.len())
+            .unwrap_or(0)
+    }
+
+    /// Percentage of files containing a headline at the given level (`0..=100`).
+    #[must_use]
+    pub fn files_with_level_pct(&self, level: u8) -> usize {
+        (self.files_with_level(level) * 100)
+            .checked_div(self.len())
+            .unwrap_or(0)
+    }
+
     /// Count of headlines with an `:ID:` property across the vault.
     #[must_use]
     pub fn id_count(&self) -> usize {

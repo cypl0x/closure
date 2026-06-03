@@ -9543,5 +9543,74 @@ fn vault_files_with_level_match() {
     assert_eq!(v.files_with_level(2), 2);
 }
 
+#[test]
+fn vault_files_with_tag_pct_match() {
+    let td = write_vault(&[
+        ("a.org", "* A :x:\n"),
+        ("b.org", "* B :y:\n"),
+        ("c.org", "* C :x:\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.files_with_tag_pct("x"), 66);
+    assert_eq!(v.files_with_tag_pct("y"), 33);
+    assert_eq!(v.files_with_tag_pct("z"), 0);
+}
+
+#[test]
+fn vault_files_with_todo_keyword_pct_match() {
+    let td = write_vault(&[
+        ("a.org", "* TODO A\n"),
+        ("b.org", "* DONE B\n"),
+        ("c.org", "* TODO C\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.files_with_todo_keyword_pct("TODO"), 66);
+}
+
+#[test]
+fn vault_files_with_priority_letter_pct_match() {
+    let td = write_vault(&[
+        ("a.org", "* [#A] X\n"),
+        ("b.org", "* [#B] Y\n"),
+        ("c.org", "* [#A] Z\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.files_with_priority_letter_pct('A'), 66);
+}
+
+#[test]
+fn vault_files_with_property_key_pct_match() {
+    let td = write_vault(&[
+        ("a.org", "* A\n:PROPERTIES:\n:foo: 1\n:END:\n"),
+        ("b.org", "* B\n:PROPERTIES:\n:bar: 2\n:END:\n"),
+        ("c.org", "* C\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.files_with_property_key_pct("foo"), 33);
+}
+
+#[test]
+fn vault_files_with_level_pct_match() {
+    let td = write_vault(&[
+        ("a.org", "* A\n** B\n"),
+        ("b.org", "* C\n"),
+        ("c.org", "* D\n** E\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.files_with_level_pct(1), 100);
+    assert_eq!(v.files_with_level_pct(2), 66);
+}
+
+#[test]
+fn vault_files_with_arg_pct_zero_when_no_files() {
+    let td = write_vault(&[]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.files_with_tag_pct("x"), 0);
+    assert_eq!(v.files_with_todo_keyword_pct("TODO"), 0);
+    assert_eq!(v.files_with_priority_letter_pct('A'), 0);
+    assert_eq!(v.files_with_property_key_pct("foo"), 0);
+    assert_eq!(v.files_with_level_pct(1), 0);
+}
+
 
 
