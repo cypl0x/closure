@@ -9481,5 +9481,67 @@ fn vault_has_title_exact_false_when_empty() {
     assert!(!v.has_title_exact("anything"));
 }
 
+#[test]
+fn vault_files_with_tag_match() {
+    let td = write_vault(&[
+        ("a.org", "* A :x:\n"),
+        ("b.org", "* B :y:\n"),
+        ("c.org", "* C :x:\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.files_with_tag("x"), 2);
+    assert_eq!(v.files_with_tag("y"), 1);
+    assert_eq!(v.files_with_tag("z"), 0);
+}
+
+#[test]
+fn vault_files_with_todo_keyword_match() {
+    let td = write_vault(&[
+        ("a.org", "* TODO A\n"),
+        ("b.org", "* DONE B\n"),
+        ("c.org", "* TODO C\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.files_with_todo_keyword("TODO"), 2);
+    assert_eq!(v.files_with_todo_keyword("DONE"), 1);
+}
+
+#[test]
+fn vault_files_with_priority_letter_match() {
+    let td = write_vault(&[
+        ("a.org", "* [#A] X\n"),
+        ("b.org", "* [#B] Y\n"),
+        ("c.org", "* [#A] Z\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.files_with_priority_letter('A'), 2);
+    assert_eq!(v.files_with_priority_letter('B'), 1);
+    assert_eq!(v.files_with_priority_letter('C'), 0);
+}
+
+#[test]
+fn vault_files_with_property_key_match() {
+    let td = write_vault(&[
+        ("a.org", "* A\n:PROPERTIES:\n:foo: 1\n:END:\n"),
+        ("b.org", "* B\n:PROPERTIES:\n:bar: 2\n:END:\n"),
+        ("c.org", "* C\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.files_with_property_key("foo"), 1);
+    assert_eq!(v.files_with_property_key("baz"), 0);
+}
+
+#[test]
+fn vault_files_with_level_match() {
+    let td = write_vault(&[
+        ("a.org", "* A\n** B\n"),
+        ("b.org", "* C\n"),
+        ("c.org", "* D\n** E\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.files_with_level(1), 3);
+    assert_eq!(v.files_with_level(2), 2);
+}
+
 
 

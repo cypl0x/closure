@@ -1434,6 +1434,51 @@ impl Vault {
             .any(|d| d.all_headlines().any(|h| h.title() == title))
     }
 
+    /// Count of files containing a headline tagged `tag`.
+    #[must_use]
+    pub fn files_with_tag(&self, tag: &str) -> usize {
+        self.documents
+            .values()
+            .filter(|d| d.org().count_tagged(tag) > 0)
+            .count()
+    }
+
+    /// Count of files containing a headline with TODO `keyword`.
+    #[must_use]
+    pub fn files_with_todo_keyword(&self, keyword: &str) -> usize {
+        self.documents
+            .values()
+            .filter(|d| d.org().count_todo(keyword) > 0)
+            .count()
+    }
+
+    /// Count of files containing a headline with priority `letter`.
+    #[must_use]
+    pub fn files_with_priority_letter(&self, letter: char) -> usize {
+        self.documents
+            .values()
+            .filter(|d| d.org().has_priority(letter))
+            .count()
+    }
+
+    /// Count of files containing a headline with property `key`.
+    #[must_use]
+    pub fn files_with_property_key(&self, key: &str) -> usize {
+        self.documents
+            .values()
+            .filter(|d| d.org().has_property_key(key))
+            .count()
+    }
+
+    /// Count of files containing a headline at the given level.
+    #[must_use]
+    pub fn files_with_level(&self, level: u8) -> usize {
+        self.documents
+            .values()
+            .filter(|d| d.org().count_at_level(level) > 0)
+            .count()
+    }
+
     /// Count of headlines with an `:ID:` property across the vault.
     #[must_use]
     pub fn id_count(&self) -> usize {
