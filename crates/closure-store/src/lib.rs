@@ -1335,6 +1335,15 @@ impl Vault {
         self.with_property_count() > 0
     }
 
+    /// Count of headlines at the given level across the vault.
+    #[must_use]
+    pub fn count_at_level(&self, level: u8) -> usize {
+        self.documents
+            .values()
+            .map(|d| d.org().count_at_level(level))
+            .sum()
+    }
+
     /// Count of headlines with an `:ID:` property across the vault.
     #[must_use]
     pub fn id_count(&self) -> usize {

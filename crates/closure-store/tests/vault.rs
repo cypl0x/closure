@@ -9261,5 +9261,25 @@ fn vault_has_any_property_false_when_none() {
     assert!(!v.has_any_property());
 }
 
+#[test]
+fn vault_count_at_level_match() {
+    let td = write_vault(&[
+        ("a.org", "* A\n** B\n** C\n"),
+        ("b.org", "* D\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    // level 1: A, D = 2; level 2: B, C = 2
+    assert_eq!(v.count_at_level(1), 2);
+    assert_eq!(v.count_at_level(2), 2);
+    assert_eq!(v.count_at_level(3), 0);
+}
+
+#[test]
+fn vault_count_at_level_zero_when_empty() {
+    let td = write_vault(&[]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.count_at_level(1), 0);
+}
+
 
 
