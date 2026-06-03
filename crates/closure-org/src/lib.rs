@@ -460,6 +460,12 @@ impl OrgDoc {
         self.count_with_planning() > 0
     }
 
+    /// True iff any headline carries at least one property.
+    #[must_use]
+    pub fn has_any_property(&self) -> bool {
+        self.count_with_property() > 0
+    }
+
     /// True iff any headline is SCHEDULED.
     #[must_use]
     pub fn has_scheduled(&self) -> bool {

@@ -7698,3 +7698,15 @@ fn doc_has_closed_false_when_none() {
     assert!(!doc.has_closed());
 }
 
+#[test]
+fn doc_has_any_property_true_when_property() {
+    let doc = parse("* A\n:PROPERTIES:\n:x: 1\n:END:\n").expect("parse");
+    assert!(doc.has_any_property());
+}
+
+#[test]
+fn doc_has_any_property_false_when_none() {
+    let doc = parse("* A\n").expect("parse");
+    assert!(!doc.has_any_property());
+}
+
