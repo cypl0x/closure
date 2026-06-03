@@ -1743,6 +1743,44 @@ fn chord_trie_chords_for_command_empty_when_unknown() {
 }
 
 #[test]
+fn chord_trie_chords_with_prefix_match() {
+    let t = closure_input::ChordTrie::build(&[("a b", "x"), ("a c", "y"), ("d", "z")]);
+    let mut v = t.chords_with_prefix("a");
+    v.sort();
+    assert_eq!(v, vec!["a b".to_owned(), "a c".to_owned()]);
+}
+
+#[test]
+fn chord_trie_chords_with_prefix_empty_when_no_match() {
+    let t = closure_input::ChordTrie::build(&[("a", "x")]);
+    assert!(t.chords_with_prefix("z").is_empty());
+}
+
+#[test]
+fn chord_trie_chords_with_prefix_empty_string_matches_all() {
+    let t = closure_input::ChordTrie::build(&[("a b", "x"), ("c", "y")]);
+    let v = t.chords_with_prefix("");
+    assert_eq!(v.len(), 2);
+}
+
+#[test]
+fn dispatcher_chords_with_prefix_match() {
+    let mut reg = Registry::new();
+    reg.register(Box::new(RenameHeadline::new_placeholder()));
+    let disp = Dispatcher::from_registry(&reg, InputMode::Doom);
+    let v = disp.chords_with_prefix("C-c");
+    assert!(!v.is_empty());
+}
+
+#[test]
+fn dispatcher_chords_with_prefix_empty_when_no_match() {
+    let mut reg = Registry::new();
+    reg.register(Box::new(RenameHeadline::new_placeholder()));
+    let disp = Dispatcher::from_registry(&reg, InputMode::Doom);
+    assert!(disp.chords_with_prefix("Z-z").is_empty());
+}
+
+#[test]
 fn dispatcher_single_stroke_pct_match() {
     let mut reg = Registry::new();
     reg.register(Box::new(RenameHeadline::new_placeholder()));

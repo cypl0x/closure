@@ -611,6 +611,19 @@ impl Dispatcher {
         self.bindings.get(chord).map(String::as_str)
     }
 
+    /// Sorted chord strings beginning with `prefix`.
+    #[must_use]
+    pub fn chords_with_prefix(&self, prefix: &str) -> Vec<String> {
+        let mut out: Vec<String> = self
+            .bindings
+            .keys()
+            .filter(|k| k.starts_with(prefix))
+            .cloned()
+            .collect();
+        out.sort();
+        out
+    }
+
     /// Most common chord stroke count (lowest wins ties; `None` when empty).
     #[must_use]
     pub fn mode_chord_strokes(&self) -> Option<usize> {
@@ -1228,6 +1241,18 @@ impl ChordTrie {
             .into_iter()
             .filter(|(_, c)| c == command)
             .map(|(ch, _)| ch)
+            .collect();
+        out.sort();
+        out
+    }
+
+    /// Sorted chord strings beginning with `prefix`.
+    #[must_use]
+    pub fn chords_with_prefix(&self, prefix: &str) -> Vec<String> {
+        let mut out: Vec<String> = self
+            .all_chords()
+            .into_iter()
+            .filter(|c| c.starts_with(prefix))
             .collect();
         out.sort();
         out
