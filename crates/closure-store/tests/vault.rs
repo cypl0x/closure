@@ -9612,5 +9612,70 @@ fn vault_files_with_arg_pct_zero_when_no_files() {
     assert_eq!(v.files_with_level_pct(1), 0);
 }
 
+#[test]
+fn vault_paths_with_tag_match() {
+    let td = write_vault(&[
+        ("a.org", "* A :x:\n"),
+        ("b.org", "* B\n"),
+        ("c.org", "* C :x:\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    let mut paths = v.paths_with_tag("x");
+    paths.sort();
+    assert_eq!(paths.len(), 2);
+}
+
+#[test]
+fn vault_paths_with_tag_empty_when_no_files() {
+    let td = write_vault(&[]);
+    let v = Vault::open(td.path()).expect("open");
+    assert!(v.paths_with_tag("x").is_empty());
+}
+
+#[test]
+fn vault_paths_with_todo_match() {
+    let td = write_vault(&[
+        ("a.org", "* TODO A\n"),
+        ("b.org", "* B\n"),
+        ("c.org", "* TODO C\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    let paths = v.paths_with_todo("TODO");
+    assert_eq!(paths.len(), 2);
+}
+
+#[test]
+fn vault_paths_with_priority_match() {
+    let td = write_vault(&[
+        ("a.org", "* [#A] X\n"),
+        ("b.org", "* [#B] Y\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    let paths = v.paths_with_priority('A');
+    assert_eq!(paths.len(), 1);
+}
+
+#[test]
+fn vault_paths_with_property_key_match() {
+    let td = write_vault(&[
+        ("a.org", "* A\n:PROPERTIES:\n:foo: 1\n:END:\n"),
+        ("b.org", "* B\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    let paths = v.paths_with_property_key("foo");
+    assert_eq!(paths.len(), 1);
+}
+
+#[test]
+fn vault_paths_at_level_match() {
+    let td = write_vault(&[
+        ("a.org", "* A\n** B\n"),
+        ("b.org", "* C\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.paths_at_level(2).len(), 1);
+    assert_eq!(v.paths_at_level(1).len(), 2);
+}
+
 
 

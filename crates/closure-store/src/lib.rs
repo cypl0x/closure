@@ -1519,6 +1519,16 @@ impl Vault {
             .unwrap_or(0)
     }
 
+    /// Paths of files containing a headline with property `key`.
+    #[must_use]
+    pub fn paths_with_property_key(&self, key: &str) -> Vec<&Path> {
+        self.documents
+            .iter()
+            .filter(|(_, d)| d.org().has_property_key(key))
+            .map(|(p, _)| p.as_path())
+            .collect()
+    }
+
     /// Count of headlines with an `:ID:` property across the vault.
     #[must_use]
     pub fn id_count(&self) -> usize {
