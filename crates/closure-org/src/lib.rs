@@ -488,6 +488,28 @@ impl OrgDoc {
             .any(|h| h.link_targets().iter().any(|t| t == target))
     }
 
+    /// True iff any headline carries property `key`.
+    #[must_use]
+    pub fn has_property_key(&self, key: &str) -> bool {
+        self.iter_headlines()
+            .into_iter()
+            .any(|h| h.properties().is_some_and(|p| p.get(key).is_some()))
+    }
+
+    /// True iff any headline carries `:ID:` equal to `value`.
+    #[must_use]
+    pub fn has_id_value(&self, value: &str) -> bool {
+        self.iter_headlines()
+            .into_iter()
+            .any(|h| h.id_property() == Some(value))
+    }
+
+    /// True iff any headline exists at the given level.
+    #[must_use]
+    pub fn has_level(&self, level: u8) -> bool {
+        self.count_at_level(level) > 0
+    }
+
     /// True iff any headline is SCHEDULED.
     #[must_use]
     pub fn has_scheduled(&self) -> bool {

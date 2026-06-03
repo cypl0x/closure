@@ -7749,3 +7749,43 @@ fn doc_has_link_target_false_when_empty() {
     assert!(!doc.has_link_target("any"));
 }
 
+#[test]
+fn doc_has_property_key_true_when_match() {
+    let doc = parse("* A\n:PROPERTIES:\n:custom: 1\n:END:\n").expect("parse");
+    assert!(doc.has_property_key("custom"));
+    assert!(!doc.has_property_key("missing"));
+}
+
+#[test]
+fn doc_has_property_key_false_when_empty() {
+    let doc = parse("").expect("parse");
+    assert!(!doc.has_property_key("any"));
+}
+
+#[test]
+fn doc_has_id_value_true_when_match() {
+    let doc = parse("* A\n:PROPERTIES:\n:ID: abc\n:END:\n").expect("parse");
+    assert!(doc.has_id_value("abc"));
+    assert!(!doc.has_id_value("xyz"));
+}
+
+#[test]
+fn doc_has_id_value_false_when_empty() {
+    let doc = parse("").expect("parse");
+    assert!(!doc.has_id_value("any"));
+}
+
+#[test]
+fn doc_has_level_true_when_match() {
+    let doc = parse("* A\n** B\n").expect("parse");
+    assert!(doc.has_level(1));
+    assert!(doc.has_level(2));
+    assert!(!doc.has_level(3));
+}
+
+#[test]
+fn doc_has_level_false_when_empty() {
+    let doc = parse("").expect("parse");
+    assert!(!doc.has_level(1));
+}
+
