@@ -1389,6 +1389,29 @@ impl Vault {
         self.count_tagged(tag) > 0
     }
 
+    /// True iff any headline carries property `key` across the vault.
+    #[must_use]
+    pub fn has_property_key(&self, key: &str) -> bool {
+        self.documents
+            .values()
+            .any(|d| d.all_headlines().any(|h| h.property(key).is_some()))
+    }
+
+    /// True iff any headline carries `:ID:` equal to `value` across the vault.
+    #[must_use]
+    pub fn has_id_value(&self, value: &str) -> bool {
+        self.documents.values().any(|d| {
+            d.all_headlines()
+                .any(|h| h.property("ID") == Some(value))
+        })
+    }
+
+    /// True iff any headline exists at the given level across the vault.
+    #[must_use]
+    pub fn has_level(&self, level: u8) -> bool {
+        self.count_at_level(level) > 0
+    }
+
     /// Count of headlines with an `:ID:` property across the vault.
     #[must_use]
     pub fn id_count(&self) -> usize {

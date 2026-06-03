@@ -9386,5 +9386,55 @@ fn vault_has_tag_false_when_empty() {
     assert!(!v.has_tag("x"));
 }
 
+#[test]
+fn vault_has_property_key_true_when_match() {
+    let td = write_vault(&[
+        ("a.org", "* A\n:PROPERTIES:\n:custom: 1\n:END:\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert!(v.has_property_key("custom"));
+    assert!(!v.has_property_key("missing"));
+}
+
+#[test]
+fn vault_has_property_key_false_when_empty() {
+    let td = write_vault(&[]);
+    let v = Vault::open(td.path()).expect("open");
+    assert!(!v.has_property_key("any"));
+}
+
+#[test]
+fn vault_has_id_value_true_when_match() {
+    let td = write_vault(&[
+        ("a.org", "* A\n:PROPERTIES:\n:ID: abc\n:END:\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert!(v.has_id_value("abc"));
+    assert!(!v.has_id_value("xyz"));
+}
+
+#[test]
+fn vault_has_id_value_false_when_empty() {
+    let td = write_vault(&[]);
+    let v = Vault::open(td.path()).expect("open");
+    assert!(!v.has_id_value("abc"));
+}
+
+#[test]
+fn vault_has_level_true_when_match() {
+    let td = write_vault(&[("a.org", "* A\n** B\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert!(v.has_level(1));
+    assert!(v.has_level(2));
+    assert!(!v.has_level(3));
+}
+
+#[test]
+fn vault_has_level_false_when_empty() {
+    let td = write_vault(&[]);
+    let v = Vault::open(td.path()).expect("open");
+    assert!(!v.has_level(1));
+}
+
 
 
