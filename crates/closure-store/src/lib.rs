@@ -1609,6 +1609,22 @@ impl Vault {
         self.paths_with_id_value(value).len()
     }
 
+    /// Percentage of files containing a headline whose title equals `title` (`0..=100`).
+    #[must_use]
+    pub fn files_with_title_exact_pct(&self, title: &str) -> usize {
+        (self.files_with_title_exact(title) * 100)
+            .checked_div(self.len())
+            .unwrap_or(0)
+    }
+
+    /// Percentage of files containing a headline with `:ID:` equal to `value` (`0..=100`).
+    #[must_use]
+    pub fn files_with_id_value_pct(&self, value: &str) -> usize {
+        (self.files_with_id_value(value) * 100)
+            .checked_div(self.len())
+            .unwrap_or(0)
+    }
+
     /// Count of headlines with an `:ID:` property across the vault.
     #[must_use]
     pub fn id_count(&self) -> usize {

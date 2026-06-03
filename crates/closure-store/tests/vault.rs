@@ -9798,5 +9798,33 @@ fn vault_files_with_id_value_match() {
     assert_eq!(v.files_with_id_value("abc"), 1);
 }
 
+#[test]
+fn vault_files_with_title_exact_pct_match() {
+    let td = write_vault(&[("a.org", "* Apple\n"), ("b.org", "* Apple\n"), ("c.org", "* Other\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.files_with_title_exact_pct("Apple"), 66);
+}
+
+#[test]
+fn vault_files_with_id_value_pct_match() {
+    let td = write_vault(&[
+        ("a.org", "* A\n:PROPERTIES:\n:ID: abc\n:END:\n"),
+        ("b.org", "* B\n"),
+        ("c.org", "* C\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.files_with_id_value_pct("abc"), 33);
+}
+
+#[test]
+fn vault_files_with_arg2_pct_zero_when_no_files() {
+    let td = write_vault(&[]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.files_with_title_exact_pct("X"), 0);
+    assert_eq!(v.files_with_id_value_pct("x"), 0);
+    assert_eq!(v.files_with_title_contains_pct("X"), 0);
+    assert_eq!(v.files_with_link_target_pct("x"), 0);
+}
+
 
 
