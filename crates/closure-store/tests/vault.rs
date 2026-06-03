@@ -9281,5 +9281,45 @@ fn vault_count_at_level_zero_when_empty() {
     assert_eq!(v.count_at_level(1), 0);
 }
 
+#[test]
+fn vault_count_tagged_match() {
+    let td = write_vault(&[
+        ("a.org", "* A :x:\n"),
+        ("b.org", "* B :y:\n"),
+        ("c.org", "* C :x:\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.count_tagged("x"), 2);
+    assert_eq!(v.count_tagged("y"), 1);
+    assert_eq!(v.count_tagged("missing"), 0);
+}
+
+#[test]
+fn vault_count_tagged_zero_when_empty() {
+    let td = write_vault(&[]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.count_tagged("x"), 0);
+}
+
+#[test]
+fn vault_count_todo_match() {
+    let td = write_vault(&[
+        ("a.org", "* TODO A\n"),
+        ("b.org", "* DONE B\n"),
+        ("c.org", "* TODO C\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.count_todo("TODO"), 2);
+    assert_eq!(v.count_todo("DONE"), 1);
+    assert_eq!(v.count_todo("WAITING"), 0);
+}
+
+#[test]
+fn vault_count_todo_zero_when_empty() {
+    let td = write_vault(&[]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.count_todo("TODO"), 0);
+}
+
 
 

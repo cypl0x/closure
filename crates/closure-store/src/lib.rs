@@ -1344,6 +1344,24 @@ impl Vault {
             .sum()
     }
 
+    /// Count of headlines tagged with `tag` across the vault.
+    #[must_use]
+    pub fn count_tagged(&self, tag: &str) -> usize {
+        self.documents
+            .values()
+            .map(|d| d.org().count_tagged(tag))
+            .sum()
+    }
+
+    /// Count of headlines with TODO `keyword` across the vault.
+    #[must_use]
+    pub fn count_todo(&self, keyword: &str) -> usize {
+        self.documents
+            .values()
+            .map(|d| d.org().count_todo(keyword))
+            .sum()
+    }
+
     /// Count of headlines with an `:ID:` property across the vault.
     #[must_use]
     pub fn id_count(&self) -> usize {
