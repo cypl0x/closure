@@ -636,6 +636,18 @@ impl Dispatcher {
         s.into_iter().collect()
     }
 
+    /// Count of chord strings beginning with `prefix`.
+    #[must_use]
+    pub fn chords_with_prefix_count(&self, prefix: &str) -> usize {
+        self.bindings.keys().filter(|k| k.starts_with(prefix)).count()
+    }
+
+    /// Count of distinct command names whose chord begins with `prefix`.
+    #[must_use]
+    pub fn commands_with_prefix_count(&self, prefix: &str) -> usize {
+        self.commands_with_prefix(prefix).len()
+    }
+
     /// Most common chord stroke count (lowest wins ties; `None` when empty).
     #[must_use]
     pub fn mode_chord_strokes(&self) -> Option<usize> {
@@ -1280,6 +1292,18 @@ impl ChordTrie {
             }
         }
         s.into_iter().collect()
+    }
+
+    /// Count of chord strings beginning with `prefix`.
+    #[must_use]
+    pub fn chords_with_prefix_count(&self, prefix: &str) -> usize {
+        self.chords_with_prefix(prefix).len()
+    }
+
+    /// Count of distinct command names whose chord begins with `prefix`.
+    #[must_use]
+    pub fn commands_with_prefix_count(&self, prefix: &str) -> usize {
+        self.commands_with_prefix(prefix).len()
     }
 
     /// All bindings as `(chord, command)` pairs, sorted by chord.
