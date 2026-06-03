@@ -599,6 +599,12 @@ impl Dispatcher {
         best.map(|(f, _)| f)
     }
 
+    /// True iff `chord` is bound to a command.
+    #[must_use]
+    pub fn has_chord(&self, chord: &str) -> bool {
+        self.bindings.contains_key(chord)
+    }
+
     /// Most common chord stroke count (lowest wins ties; `None` when empty).
     #[must_use]
     pub fn mode_chord_strokes(&self) -> Option<usize> {
@@ -1183,6 +1189,18 @@ impl ChordTrie {
             }
         }
         best.map(|(f, _)| f)
+    }
+
+    /// True iff `command` is bound somewhere in the trie.
+    #[must_use]
+    pub fn has_command(&self, command: &str) -> bool {
+        self.all_commands().contains(&command)
+    }
+
+    /// True iff `chord` is bound to a command in the trie.
+    #[must_use]
+    pub fn has_chord(&self, chord: &str) -> bool {
+        self.all_chords().iter().any(|c| c == chord)
     }
 
     /// All bindings as `(chord, command)` pairs, sorted by chord.

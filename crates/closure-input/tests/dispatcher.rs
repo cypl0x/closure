@@ -1660,6 +1660,46 @@ fn dispatcher_stroke_freq_stats_none_when_empty() {
 }
 
 #[test]
+fn dispatcher_has_chord_true_when_bound() {
+    let mut reg = Registry::new();
+    reg.register(Box::new(RenameHeadline::new_placeholder()));
+    let disp = Dispatcher::from_registry(&reg, InputMode::Doom);
+    assert!(disp.has_chord("C-c C-x r"));
+}
+
+#[test]
+fn dispatcher_has_chord_false_when_unknown() {
+    let mut reg = Registry::new();
+    reg.register(Box::new(RenameHeadline::new_placeholder()));
+    let disp = Dispatcher::from_registry(&reg, InputMode::Doom);
+    assert!(!disp.has_chord("X-x X-x x"));
+}
+
+#[test]
+fn chord_trie_has_command_true_when_bound() {
+    let t = closure_input::ChordTrie::build(&[("a b", "foo")]);
+    assert!(t.has_command("foo"));
+}
+
+#[test]
+fn chord_trie_has_command_false_when_unknown() {
+    let t = closure_input::ChordTrie::build(&[("a b", "foo")]);
+    assert!(!t.has_command("bar"));
+}
+
+#[test]
+fn chord_trie_has_chord_true_when_bound() {
+    let t = closure_input::ChordTrie::build(&[("a b", "foo")]);
+    assert!(t.has_chord("a b"));
+}
+
+#[test]
+fn chord_trie_has_chord_false_when_unknown() {
+    let t = closure_input::ChordTrie::build(&[("a b", "foo")]);
+    assert!(!t.has_chord("x y"));
+}
+
+#[test]
 fn dispatcher_single_stroke_pct_match() {
     let mut reg = Registry::new();
     reg.register(Box::new(RenameHeadline::new_placeholder()));
