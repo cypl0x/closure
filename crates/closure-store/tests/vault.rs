@@ -9874,5 +9874,56 @@ fn vault_count_property_key_match() {
     assert_eq!(v.count_property_key("bar"), 0);
 }
 
+#[test]
+fn vault_tag_pct_match() {
+    let td = write_vault(&[
+        ("a.org", "* A :x:\n"),
+        ("b.org", "* B :y:\n"),
+        ("c.org", "* C\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    // 1 tagged x of 3 headlines = 33
+    assert_eq!(v.tag_pct("x"), 33);
+}
+
+#[test]
+fn vault_tag_pct_zero_when_no_headlines() {
+    let td = write_vault(&[]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.tag_pct("x"), 0);
+}
+
+#[test]
+fn vault_todo_keyword_pct_match() {
+    let td = write_vault(&[
+        ("a.org", "* TODO A\n"),
+        ("b.org", "* DONE B\n"),
+        ("c.org", "* C\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.todo_keyword_pct("TODO"), 33);
+    assert_eq!(v.todo_keyword_pct("DONE"), 33);
+}
+
+#[test]
+fn vault_priority_letter_pct_match() {
+    let td = write_vault(&[
+        ("a.org", "* [#A] X\n"),
+        ("b.org", "* [#B] Y\n"),
+        ("c.org", "* C\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.priority_letter_pct('A'), 33);
+}
+
+#[test]
+fn vault_level_pct_match() {
+    let td = write_vault(&[("a.org", "* A\n** B\n** C\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    // level 1: 1, level 2: 2 of 3 = 66
+    assert_eq!(v.level_pct(1), 33);
+    assert_eq!(v.level_pct(2), 66);
+}
+
 
 

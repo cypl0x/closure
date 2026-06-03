@@ -1669,6 +1669,43 @@ impl Vault {
             .sum()
     }
 
+    /// Percentage of headlines tagged `tag` (`0..=100`).
+    #[must_use]
+    pub fn tag_pct(&self, tag: &str) -> usize {
+        (self.count_tagged(tag) * 100)
+            .checked_div(self.headline_count())
+            .unwrap_or(0)
+    }
+
+    /// Percentage of headlines with TODO `keyword` (`0..=100`).
+    #[must_use]
+    pub fn todo_keyword_pct(&self, keyword: &str) -> usize {
+        (self.count_todo(keyword) * 100)
+            .checked_div(self.headline_count())
+            .unwrap_or(0)
+    }
+
+    /// Percentage of headlines with priority `letter` (`0..=100`).
+    #[must_use]
+    pub fn priority_letter_pct(&self, letter: char) -> usize {
+        let count: usize = self
+            .documents
+            .values()
+            .map(|d| d.all_headlines().filter(|h| h.priority() == Some(letter)).count())
+            .sum();
+        (count * 100)
+            .checked_div(self.headline_count())
+            .unwrap_or(0)
+    }
+
+    /// Percentage of headlines at the given level (`0..=100`).
+    #[must_use]
+    pub fn level_pct(&self, level: u8) -> usize {
+        (self.count_at_level(level) * 100)
+            .checked_div(self.headline_count())
+            .unwrap_or(0)
+    }
+
     /// Count of headlines with an `:ID:` property across the vault.
     #[must_use]
     pub fn id_count(&self) -> usize {
