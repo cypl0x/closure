@@ -1569,6 +1569,46 @@ impl Vault {
             .collect()
     }
 
+    /// Count of files containing a headline whose title contains `needle`.
+    #[must_use]
+    pub fn files_with_title_contains(&self, needle: &str) -> usize {
+        self.paths_with_title_contains(needle).len()
+    }
+
+    /// Percentage of files containing a headline whose title contains `needle`.
+    #[must_use]
+    pub fn files_with_title_contains_pct(&self, needle: &str) -> usize {
+        (self.files_with_title_contains(needle) * 100)
+            .checked_div(self.len())
+            .unwrap_or(0)
+    }
+
+    /// Count of files containing a link to `target`.
+    #[must_use]
+    pub fn files_with_link_target(&self, target: &str) -> usize {
+        self.paths_with_link_target(target).len()
+    }
+
+    /// Percentage of files containing a link to `target` (`0..=100`).
+    #[must_use]
+    pub fn files_with_link_target_pct(&self, target: &str) -> usize {
+        (self.files_with_link_target(target) * 100)
+            .checked_div(self.len())
+            .unwrap_or(0)
+    }
+
+    /// Count of files containing a headline whose title equals `title`.
+    #[must_use]
+    pub fn files_with_title_exact(&self, title: &str) -> usize {
+        self.paths_with_title_exact(title).len()
+    }
+
+    /// Count of files containing a headline with `:ID:` equal to `value`.
+    #[must_use]
+    pub fn files_with_id_value(&self, value: &str) -> usize {
+        self.paths_with_id_value(value).len()
+    }
+
     /// Count of headlines with an `:ID:` property across the vault.
     #[must_use]
     pub fn id_count(&self) -> usize {

@@ -9735,5 +9735,68 @@ fn vault_paths_with_id_value_match() {
     assert_eq!(v.paths_with_id_value("xyz").len(), 0);
 }
 
+#[test]
+fn vault_files_with_title_contains_match() {
+    let td = write_vault(&[
+        ("a.org", "* Apple Pie\n"),
+        ("b.org", "* Banana\n"),
+        ("c.org", "* Apricot\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.files_with_title_contains("Ap"), 2);
+    assert_eq!(v.files_with_title_contains("B"), 1);
+    assert_eq!(v.files_with_title_contains("Z"), 0);
+}
+
+#[test]
+fn vault_files_with_title_contains_pct_match() {
+    let td = write_vault(&[
+        ("a.org", "* Apple Pie\n"),
+        ("b.org", "* Banana\n"),
+        ("c.org", "* Apricot\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.files_with_title_contains_pct("Ap"), 66);
+}
+
+#[test]
+fn vault_files_with_link_target_match() {
+    let td = write_vault(&[
+        ("a.org", "* A\n[[x][X]]\n"),
+        ("b.org", "* B\n"),
+        ("c.org", "* C\n[[x][X]]\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.files_with_link_target("x"), 2);
+}
+
+#[test]
+fn vault_files_with_link_target_pct_match() {
+    let td = write_vault(&[
+        ("a.org", "* A\n[[x][X]]\n"),
+        ("b.org", "* B\n"),
+        ("c.org", "* C\n[[x][X]]\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.files_with_link_target_pct("x"), 66);
+}
+
+#[test]
+fn vault_files_with_title_exact_match() {
+    let td = write_vault(&[("a.org", "* Apple\n"), ("b.org", "* Apple\n"), ("c.org", "* Other\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.files_with_title_exact("Apple"), 2);
+}
+
+#[test]
+fn vault_files_with_id_value_match() {
+    let td = write_vault(&[
+        ("a.org", "* A\n:PROPERTIES:\n:ID: abc\n:END:\n"),
+        ("b.org", "* B\n:PROPERTIES:\n:ID: def\n:END:\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.files_with_id_value("abc"), 1);
+}
+
 
 
