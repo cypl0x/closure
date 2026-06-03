@@ -605,6 +605,12 @@ impl Dispatcher {
         self.bindings.contains_key(chord)
     }
 
+    /// Command name bound to `chord`, if any.
+    #[must_use]
+    pub fn command_for_chord(&self, chord: &str) -> Option<&str> {
+        self.bindings.get(chord).map(String::as_str)
+    }
+
     /// Most common chord stroke count (lowest wins ties; `None` when empty).
     #[must_use]
     pub fn mode_chord_strokes(&self) -> Option<usize> {
@@ -1201,6 +1207,30 @@ impl ChordTrie {
     #[must_use]
     pub fn has_chord(&self, chord: &str) -> bool {
         self.all_chords().iter().any(|c| c == chord)
+    }
+
+    /// Command name bound to `chord` in the trie, if any.
+    #[must_use]
+    pub fn command_for_chord(&self, chord: &str) -> Option<String> {
+        for (c, cmd) in self.bindings() {
+            if c == chord {
+                return Some(cmd);
+            }
+        }
+        None
+    }
+
+    /// Sorted distinct chord strings bound to `command`.
+    #[must_use]
+    pub fn chords_for_command(&self, command: &str) -> Vec<String> {
+        let mut out: Vec<String> = self
+            .bindings()
+            .into_iter()
+            .filter(|(_, c)| c == command)
+            .map(|(ch, _)| ch)
+            .collect();
+        out.sort();
+        out
     }
 
     /// All bindings as `(chord, command)` pairs, sorted by chord.

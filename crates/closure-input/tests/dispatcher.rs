@@ -1700,6 +1700,49 @@ fn chord_trie_has_chord_false_when_unknown() {
 }
 
 #[test]
+fn dispatcher_command_for_chord_match() {
+    let mut reg = Registry::new();
+    reg.register(Box::new(RenameHeadline::new_placeholder()));
+    let disp = Dispatcher::from_registry(&reg, InputMode::Doom);
+    assert_eq!(disp.command_for_chord("C-c C-x r"), Some("rename-headline"));
+}
+
+#[test]
+fn dispatcher_command_for_chord_none_when_unknown() {
+    let mut reg = Registry::new();
+    reg.register(Box::new(RenameHeadline::new_placeholder()));
+    let disp = Dispatcher::from_registry(&reg, InputMode::Doom);
+    assert_eq!(disp.command_for_chord("X-x X-x x"), None);
+}
+
+#[test]
+fn chord_trie_command_for_chord_match() {
+    let t = closure_input::ChordTrie::build(&[("a b", "foo"), ("c", "bar")]);
+    assert_eq!(t.command_for_chord("a b"), Some("foo".to_owned()));
+    assert_eq!(t.command_for_chord("c"), Some("bar".to_owned()));
+}
+
+#[test]
+fn chord_trie_command_for_chord_none_when_unknown() {
+    let t = closure_input::ChordTrie::build(&[("a b", "foo")]);
+    assert_eq!(t.command_for_chord("x y"), None);
+}
+
+#[test]
+fn chord_trie_chords_for_command_match() {
+    let t = closure_input::ChordTrie::build(&[("a", "x"), ("b", "x"), ("c", "y")]);
+    let mut v = t.chords_for_command("x");
+    v.sort();
+    assert_eq!(v, vec!["a".to_owned(), "b".to_owned()]);
+}
+
+#[test]
+fn chord_trie_chords_for_command_empty_when_unknown() {
+    let t = closure_input::ChordTrie::build(&[("a", "x")]);
+    assert!(t.chords_for_command("missing").is_empty());
+}
+
+#[test]
 fn dispatcher_single_stroke_pct_match() {
     let mut reg = Registry::new();
     reg.register(Box::new(RenameHeadline::new_placeholder()));
