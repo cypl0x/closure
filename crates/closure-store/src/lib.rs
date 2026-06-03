@@ -1529,6 +1529,46 @@ impl Vault {
             .collect()
     }
 
+    /// Paths of files containing a headline whose title contains `needle`.
+    #[must_use]
+    pub fn paths_with_title_contains(&self, needle: &str) -> Vec<&Path> {
+        self.documents
+            .iter()
+            .filter(|(_, d)| d.org().has_title_contains(needle))
+            .map(|(p, _)| p.as_path())
+            .collect()
+    }
+
+    /// Paths of files containing a headline whose title equals `title`.
+    #[must_use]
+    pub fn paths_with_title_exact(&self, title: &str) -> Vec<&Path> {
+        self.documents
+            .iter()
+            .filter(|(_, d)| d.org().has_title_exact(title))
+            .map(|(p, _)| p.as_path())
+            .collect()
+    }
+
+    /// Paths of files containing a link to `target`.
+    #[must_use]
+    pub fn paths_with_link_target(&self, target: &str) -> Vec<&Path> {
+        self.documents
+            .iter()
+            .filter(|(_, d)| d.org().has_link_target(target))
+            .map(|(p, _)| p.as_path())
+            .collect()
+    }
+
+    /// Paths of files containing a headline with `:ID:` equal to `value`.
+    #[must_use]
+    pub fn paths_with_id_value(&self, value: &str) -> Vec<&Path> {
+        self.documents
+            .iter()
+            .filter(|(_, d)| d.org().has_id_value(value))
+            .map(|(p, _)| p.as_path())
+            .collect()
+    }
+
     /// Count of headlines with an `:ID:` property across the vault.
     #[must_use]
     pub fn id_count(&self) -> usize {

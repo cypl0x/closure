@@ -9677,5 +9677,63 @@ fn vault_paths_at_level_match() {
     assert_eq!(v.paths_at_level(1).len(), 2);
 }
 
+#[test]
+fn vault_paths_with_title_contains_match() {
+    let td = write_vault(&[
+        ("a.org", "* Apple Pie\n"),
+        ("b.org", "* Banana\n"),
+        ("c.org", "* Apricot\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.paths_with_title_contains("Ap").len(), 2);
+    assert_eq!(v.paths_with_title_contains("Banana").len(), 1);
+    assert_eq!(v.paths_with_title_contains("Z").len(), 0);
+}
+
+#[test]
+fn vault_paths_with_title_contains_empty_when_no_files() {
+    let td = write_vault(&[]);
+    let v = Vault::open(td.path()).expect("open");
+    assert!(v.paths_with_title_contains("a").is_empty());
+}
+
+#[test]
+fn vault_paths_with_link_target_match() {
+    let td = write_vault(&[
+        ("a.org", "* A\n[[x][X]]\n"),
+        ("b.org", "* B\n[[y][Y]]\n"),
+        ("c.org", "* C\n[[x][X]]\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.paths_with_link_target("x").len(), 2);
+    assert_eq!(v.paths_with_link_target("y").len(), 1);
+    assert_eq!(v.paths_with_link_target("z").len(), 0);
+}
+
+#[test]
+fn vault_paths_with_link_target_empty_when_no_files() {
+    let td = write_vault(&[]);
+    let v = Vault::open(td.path()).expect("open");
+    assert!(v.paths_with_link_target("x").is_empty());
+}
+
+#[test]
+fn vault_paths_with_title_exact_match() {
+    let td = write_vault(&[("a.org", "* Apple\n"), ("b.org", "* Apple\n"), ("c.org", "* Other\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.paths_with_title_exact("Apple").len(), 2);
+}
+
+#[test]
+fn vault_paths_with_id_value_match() {
+    let td = write_vault(&[
+        ("a.org", "* A\n:PROPERTIES:\n:ID: abc\n:END:\n"),
+        ("b.org", "* B\n:PROPERTIES:\n:ID: def\n:END:\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.paths_with_id_value("abc").len(), 1);
+    assert_eq!(v.paths_with_id_value("xyz").len(), 0);
+}
+
 
 
