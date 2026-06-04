@@ -9925,5 +9925,41 @@ fn vault_level_pct_match() {
     assert_eq!(v.level_pct(2), 66);
 }
 
+#[test]
+fn vault_distinct_todo_keyword_count_match() {
+    let td = write_vault(&[
+        ("a.org", "* TODO A\n* DONE B\n"),
+        ("b.org", "* TODO C\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    // distinct: TODO, DONE
+    assert_eq!(v.distinct_todo_keyword_count(), 2);
+}
+
+#[test]
+fn vault_distinct_todo_keyword_count_zero_when_empty() {
+    let td = write_vault(&[]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.distinct_todo_keyword_count(), 0);
+}
+
+#[test]
+fn vault_distinct_priority_letter_count_match() {
+    let td = write_vault(&[
+        ("a.org", "* [#A] X\n* [#B] Y\n"),
+        ("b.org", "* [#A] Z\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.distinct_priority_letter_count(), 2);
+}
+
+#[test]
+fn vault_distinct_priority_letter_count_zero_when_empty() {
+    let td = write_vault(&[]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.distinct_priority_letter_count(), 0);
+}
+
+
 
 
