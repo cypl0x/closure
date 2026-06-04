@@ -10247,6 +10247,42 @@ fn vault_count_with_todo_match() {
 }
 
 #[test]
+fn vault_with_priority_pct_match() {
+    let td = write_vault(&[
+        ("a.org", "* [#A] X\n"),
+        ("b.org", "* B\n"),
+        ("c.org", "* [#B] C\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.with_priority_pct(), 66);
+}
+
+#[test]
+fn vault_with_priority_pct_zero_when_no_headlines() {
+    let td = write_vault(&[]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.with_priority_pct(), 0);
+}
+
+#[test]
+fn vault_with_property_pct_match() {
+    let td = write_vault(&[
+        ("a.org", "* A\n:PROPERTIES:\n:x: 1\n:END:\n"),
+        ("b.org", "* B\n"),
+        ("c.org", "* C\n:PROPERTIES:\n:y: 2\n:END:\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.with_property_pct(), 66);
+}
+
+#[test]
+fn vault_with_property_pct_zero_when_no_headlines() {
+    let td = write_vault(&[]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.with_property_pct(), 0);
+}
+
+#[test]
 fn vault_line_count_of_match() {
     let td = write_vault(&[("a.org", "* A\nbody\n* B\n")]);
     let v = Vault::open(td.path()).expect("open");

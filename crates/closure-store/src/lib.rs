@@ -1905,6 +1905,22 @@ impl Vault {
             .sum()
     }
 
+    /// Percentage of headlines with a priority cookie (`0..=100`).
+    #[must_use]
+    pub fn with_priority_pct(&self) -> usize {
+        (self.with_priority_count() * 100)
+            .checked_div(self.headline_count())
+            .unwrap_or(0)
+    }
+
+    /// Percentage of headlines with at least one property (`0..=100`).
+    #[must_use]
+    pub fn with_property_pct(&self) -> usize {
+        (self.with_property_count() * 100)
+            .checked_div(self.headline_count())
+            .unwrap_or(0)
+    }
+
     /// Count of headlines with an `:ID:` property across the vault.
     #[must_use]
     pub fn id_count(&self) -> usize {
