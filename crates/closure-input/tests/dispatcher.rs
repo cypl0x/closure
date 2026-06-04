@@ -2035,6 +2035,34 @@ fn chord_trie_depth_zero_when_empty() {
 }
 
 #[test]
+fn chord_trie_has_command_at_depth_true_when_match() {
+    let t = closure_input::ChordTrie::build(&[("a b", "x")]);
+    assert!(t.has_command_at_depth(2));
+    assert!(!t.has_command_at_depth(1));
+    assert!(!t.has_command_at_depth(3));
+}
+
+#[test]
+fn chord_trie_has_command_at_depth_false_when_empty() {
+    let t = closure_input::ChordTrie::build(&[]);
+    assert!(!t.has_command_at_depth(0));
+}
+
+#[test]
+fn chord_trie_commands_at_depth_count_match() {
+    let t = closure_input::ChordTrie::build(&[("a", "x"), ("b", "y"), ("c d", "z")]);
+    assert_eq!(t.commands_at_depth_count(1), 2);
+    assert_eq!(t.commands_at_depth_count(2), 1);
+    assert_eq!(t.commands_at_depth_count(5), 0);
+}
+
+#[test]
+fn chord_trie_commands_at_depth_count_zero_when_empty() {
+    let t = closure_input::ChordTrie::build(&[]);
+    assert_eq!(t.commands_at_depth_count(1), 0);
+}
+
+#[test]
 fn dispatcher_single_stroke_pct_match() {
     let mut reg = Registry::new();
     reg.register(Box::new(RenameHeadline::new_placeholder()));

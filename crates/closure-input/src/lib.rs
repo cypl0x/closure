@@ -1097,6 +1097,18 @@ impl ChordTrie {
         self.max_depth()
     }
 
+    /// True iff any bound command sits at exactly `depth`.
+    #[must_use]
+    pub fn has_command_at_depth(&self, depth: usize) -> bool {
+        !self.commands_at_depth(depth).is_empty()
+    }
+
+    /// Count of bound commands at exactly `depth`.
+    #[must_use]
+    pub fn commands_at_depth_count(&self, depth: usize) -> usize {
+        self.commands_at_depth(depth).len()
+    }
+
     /// Total node count in the trie (including the root).
     #[must_use]
     pub const fn node_count(&self) -> usize {
