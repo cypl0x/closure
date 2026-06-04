@@ -1922,6 +1922,41 @@ fn dispatcher_command_names_with_prefix_match() {
 }
 
 #[test]
+fn chord_trie_min_chord_strokes_match() {
+    let t = closure_input::ChordTrie::build(&[("a b c", "x"), ("d", "y")]);
+    assert_eq!(t.min_chord_strokes(), Some(1));
+    assert_eq!(t.max_chord_strokes(), Some(3));
+}
+
+#[test]
+fn chord_trie_min_chord_strokes_none_when_empty() {
+    let t = closure_input::ChordTrie::build(&[]);
+    assert_eq!(t.min_chord_strokes(), None);
+    assert_eq!(t.max_chord_strokes(), None);
+}
+
+#[test]
+fn chord_trie_total_chord_strokes_match() {
+    let t = closure_input::ChordTrie::build(&[("a b", "x"), ("c", "y")]);
+    // 2 + 1
+    assert_eq!(t.total_chord_strokes(), 3);
+}
+
+#[test]
+fn chord_trie_mean_chord_strokes_match() {
+    let t = closure_input::ChordTrie::build(&[("a b", "x"), ("c", "y")]);
+    // 3/2 = 1
+    assert_eq!(t.mean_chord_strokes(), 1);
+}
+
+#[test]
+fn chord_trie_chord_strokes_zero_when_empty() {
+    let t = closure_input::ChordTrie::build(&[]);
+    assert_eq!(t.total_chord_strokes(), 0);
+    assert_eq!(t.mean_chord_strokes(), 0);
+}
+
+#[test]
 fn dispatcher_single_stroke_pct_match() {
     let mut reg = Registry::new();
     reg.register(Box::new(RenameHeadline::new_placeholder()));

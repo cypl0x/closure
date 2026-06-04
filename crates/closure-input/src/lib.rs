@@ -1354,6 +1354,42 @@ impl ChordTrie {
         s.into_iter().collect()
     }
 
+    /// Maximum stroke count across bound chords. None if empty.
+    #[must_use]
+    pub fn max_chord_strokes(&self) -> Option<usize> {
+        self.all_chords()
+            .iter()
+            .map(|c| c.split_whitespace().count())
+            .max()
+    }
+
+    /// Minimum stroke count across bound chords. None if empty.
+    #[must_use]
+    pub fn min_chord_strokes(&self) -> Option<usize> {
+        self.all_chords()
+            .iter()
+            .map(|c| c.split_whitespace().count())
+            .min()
+    }
+
+    /// Sum of stroke counts across bound chords.
+    #[must_use]
+    pub fn total_chord_strokes(&self) -> usize {
+        self.all_chords()
+            .iter()
+            .map(|c| c.split_whitespace().count())
+            .sum()
+    }
+
+    /// Integer mean stroke count across bound chords. 0 when empty.
+    #[must_use]
+    pub fn mean_chord_strokes(&self) -> usize {
+        let chords = self.all_chords();
+        self.total_chord_strokes()
+            .checked_div(chords.len())
+            .unwrap_or(0)
+    }
+
     /// All bindings as `(chord, command)` pairs, sorted by chord.
     #[must_use]
     pub fn bindings(&self) -> Vec<(String, String)> {
