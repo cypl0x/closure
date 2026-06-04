@@ -1841,6 +1841,41 @@ fn dispatcher_commands_with_prefix_count_match() {
 }
 
 #[test]
+fn chord_trie_has_prefix_true_when_match() {
+    let t = closure_input::ChordTrie::build(&[("a b", "x")]);
+    assert!(t.has_prefix("a"));
+    assert!(!t.has_prefix("z"));
+}
+
+#[test]
+fn chord_trie_has_prefix_empty_string_true_when_any() {
+    let t = closure_input::ChordTrie::build(&[("a", "x")]);
+    assert!(t.has_prefix(""));
+}
+
+#[test]
+fn chord_trie_has_prefix_false_when_empty() {
+    let t = closure_input::ChordTrie::build(&[]);
+    assert!(!t.has_prefix("a"));
+}
+
+#[test]
+fn dispatcher_has_prefix_true_when_match() {
+    let mut reg = Registry::new();
+    reg.register(Box::new(RenameHeadline::new_placeholder()));
+    let disp = Dispatcher::from_registry(&reg, InputMode::Doom);
+    assert!(disp.has_prefix("C-c"));
+    assert!(!disp.has_prefix("Z-z"));
+}
+
+#[test]
+fn dispatcher_has_prefix_false_when_empty() {
+    let reg = Registry::new();
+    let disp = Dispatcher::from_registry(&reg, InputMode::Doom);
+    assert!(!disp.has_prefix("a"));
+}
+
+#[test]
 fn dispatcher_single_stroke_pct_match() {
     let mut reg = Registry::new();
     reg.register(Box::new(RenameHeadline::new_placeholder()));
