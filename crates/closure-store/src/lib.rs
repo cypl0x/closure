@@ -1869,6 +1869,42 @@ impl Vault {
         out
     }
 
+    /// Count of headlines with at least one link across the vault.
+    #[must_use]
+    pub fn count_with_link(&self) -> usize {
+        self.documents
+            .values()
+            .map(|d| d.org().count_with_link())
+            .sum()
+    }
+
+    /// Count of headlines with at least one property across the vault.
+    #[must_use]
+    pub fn count_with_property(&self) -> usize {
+        self.documents
+            .values()
+            .map(|d| d.org().count_with_property())
+            .sum()
+    }
+
+    /// Count of headlines with at least one timestamp across the vault.
+    #[must_use]
+    pub fn count_with_timestamp(&self) -> usize {
+        self.documents
+            .values()
+            .map(|d| d.org().count_with_timestamp())
+            .sum()
+    }
+
+    /// Count of headlines with any TODO keyword set across the vault.
+    #[must_use]
+    pub fn count_with_todo(&self) -> usize {
+        self.documents
+            .values()
+            .map(|d| d.org().count_with_todo())
+            .sum()
+    }
+
     /// Count of headlines with an `:ID:` property across the vault.
     #[must_use]
     pub fn id_count(&self) -> usize {

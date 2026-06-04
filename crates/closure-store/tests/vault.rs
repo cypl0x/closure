@@ -10193,6 +10193,60 @@ fn vault_total_body_text_empty_when_no_files() {
 }
 
 #[test]
+fn vault_count_with_link_match() {
+    let td = write_vault(&[
+        ("a.org", "* A\n[[x][X]]\n* B\n"),
+        ("b.org", "* C\n[[y][Y]]\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.count_with_link(), 2);
+}
+
+#[test]
+fn vault_count_with_link_zero_when_empty() {
+    let td = write_vault(&[]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.count_with_link(), 0);
+}
+
+#[test]
+fn vault_count_with_property_match() {
+    let td = write_vault(&[
+        ("a.org", "* A\n:PROPERTIES:\n:x: 1\n:END:\n* B\n"),
+        ("b.org", "* C\n:PROPERTIES:\n:y: 2\n:END:\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.count_with_property(), 2);
+}
+
+#[test]
+fn vault_count_with_property_zero_when_empty() {
+    let td = write_vault(&[]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.count_with_property(), 0);
+}
+
+#[test]
+fn vault_count_with_timestamp_match() {
+    let td = write_vault(&[
+        ("a.org", "* A\n<2026-05-30 Sat>\n* B\n"),
+        ("b.org", "* C\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.count_with_timestamp(), 1);
+}
+
+#[test]
+fn vault_count_with_todo_match() {
+    let td = write_vault(&[
+        ("a.org", "* TODO A\n* B\n"),
+        ("b.org", "* DONE C\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.count_with_todo(), 2);
+}
+
+#[test]
 fn vault_line_count_of_match() {
     let td = write_vault(&[("a.org", "* A\nbody\n* B\n")]);
     let v = Vault::open(td.path()).expect("open");
