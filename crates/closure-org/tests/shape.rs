@@ -7845,6 +7845,38 @@ fn doc_line_count_zero_when_empty() {
 }
 
 #[test]
+fn doc_title_counts_match() {
+    let doc = parse("* Apple\n* Apple\n* Banana\n").expect("parse");
+    let m = doc.title_counts();
+    assert_eq!(m.get("Apple"), Some(&2));
+    assert_eq!(m.get("Banana"), Some(&1));
+}
+
+#[test]
+fn doc_title_counts_empty_when_no_headlines() {
+    let doc = parse("").expect("parse");
+    assert!(doc.title_counts().is_empty());
+}
+
+#[test]
+fn doc_most_common_title_match() {
+    let doc = parse("* Apple\n* Apple\n* Banana\n").expect("parse");
+    assert_eq!(doc.most_common_title(), Some("Apple".to_owned()));
+}
+
+#[test]
+fn doc_most_common_title_none_when_empty() {
+    let doc = parse("").expect("parse");
+    assert_eq!(doc.most_common_title(), None);
+}
+
+#[test]
+fn doc_least_common_title_match() {
+    let doc = parse("* Apple\n* Apple\n* Banana\n").expect("parse");
+    assert_eq!(doc.least_common_title(), Some("Banana".to_owned()));
+}
+
+#[test]
 fn doc_tag_pct_match() {
     let doc = parse("* A :x:\n* B :y:\n* C\n").expect("parse");
     assert_eq!(doc.tag_pct("x"), 33);
