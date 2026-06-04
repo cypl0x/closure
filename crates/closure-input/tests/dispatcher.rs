@@ -2063,6 +2063,48 @@ fn chord_trie_commands_at_depth_count_zero_when_empty() {
 }
 
 #[test]
+fn dispatcher_chords_at_depth_match() {
+    let mut reg = Registry::new();
+    reg.register(Box::new(RenameHeadline::new_placeholder()));
+    let disp = Dispatcher::from_registry(&reg, InputMode::Doom);
+    // C-c C-x r → depth 3
+    assert_eq!(disp.chords_at_depth(3), vec!["C-c C-x r".to_owned()]);
+    assert!(disp.chords_at_depth(1).is_empty());
+}
+
+#[test]
+fn dispatcher_chords_at_depth_empty_when_no_files() {
+    let reg = Registry::new();
+    let disp = Dispatcher::from_registry(&reg, InputMode::Doom);
+    assert!(disp.chords_at_depth(0).is_empty());
+}
+
+#[test]
+fn dispatcher_has_chord_at_depth_true_when_match() {
+    let mut reg = Registry::new();
+    reg.register(Box::new(RenameHeadline::new_placeholder()));
+    let disp = Dispatcher::from_registry(&reg, InputMode::Doom);
+    assert!(disp.has_chord_at_depth(3));
+    assert!(!disp.has_chord_at_depth(1));
+}
+
+#[test]
+fn dispatcher_has_chord_at_depth_false_when_empty() {
+    let reg = Registry::new();
+    let disp = Dispatcher::from_registry(&reg, InputMode::Doom);
+    assert!(!disp.has_chord_at_depth(0));
+}
+
+#[test]
+fn dispatcher_chords_at_depth_count_match() {
+    let mut reg = Registry::new();
+    reg.register(Box::new(RenameHeadline::new_placeholder()));
+    let disp = Dispatcher::from_registry(&reg, InputMode::Doom);
+    assert_eq!(disp.chords_at_depth_count(3), 1);
+    assert_eq!(disp.chords_at_depth_count(1), 0);
+}
+
+#[test]
 fn dispatcher_single_stroke_pct_match() {
     let mut reg = Registry::new();
     reg.register(Box::new(RenameHeadline::new_placeholder()));

@@ -660,6 +660,33 @@ impl Dispatcher {
         self.binding_count()
     }
 
+    /// Sorted bound chord strings at exactly `depth`.
+    #[must_use]
+    pub fn chords_at_depth(&self, depth: usize) -> Vec<String> {
+        let mut out: Vec<String> = self
+            .bindings
+            .keys()
+            .filter(|k| k.split_whitespace().count() == depth)
+            .cloned()
+            .collect();
+        out.sort();
+        out
+    }
+
+    /// True iff any bound chord sits at exactly `depth`.
+    #[must_use]
+    pub fn has_chord_at_depth(&self, depth: usize) -> bool {
+        self.bindings
+            .keys()
+            .any(|k| k.split_whitespace().count() == depth)
+    }
+
+    /// Count of bound chords at exactly `depth`.
+    #[must_use]
+    pub fn chords_at_depth_count(&self, depth: usize) -> usize {
+        self.chords_at_depth(depth).len()
+    }
+
     /// True iff any bound command name begins with `prefix`.
     #[must_use]
     pub fn has_command_with_prefix(&self, prefix: &str) -> bool {
