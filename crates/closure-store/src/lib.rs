@@ -1762,6 +1762,21 @@ impl Vault {
         s.into_iter().collect()
     }
 
+    /// All priority letters across the vault (with duplicates).
+    #[must_use]
+    pub fn all_priorities(&self) -> Vec<char> {
+        let mut out = Vec::new();
+        for d in self.documents.values() {
+            for h in d.all_headlines() {
+                if let Some(p) = h.priority() {
+                    out.push(p);
+                }
+            }
+        }
+        out
+    }
+
+
     /// Count of headlines with an `:ID:` property across the vault.
     #[must_use]
     pub fn id_count(&self) -> usize {

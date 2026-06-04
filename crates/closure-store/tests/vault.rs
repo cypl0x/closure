@@ -10030,6 +10030,44 @@ fn vault_all_tags_empty_when_no_files() {
     assert!(v.all_tags().is_empty());
 }
 
+#[test]
+fn vault_all_priorities_match() {
+    let td = write_vault(&[
+        ("a.org", "* [#A] X\n* [#A] Y\n* [#B] Z\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    let mut priorities = v.all_priorities();
+    priorities.sort_unstable();
+    assert_eq!(priorities, vec!['A', 'A', 'B']);
+}
+
+#[test]
+fn vault_all_priorities_empty_when_no_files() {
+    let td = write_vault(&[]);
+    let v = Vault::open(td.path()).expect("open");
+    assert!(v.all_priorities().is_empty());
+}
+
+#[test]
+fn vault_all_todos_match() {
+    let td = write_vault(&[
+        ("a.org", "* TODO A\n* TODO B\n"),
+        ("b.org", "* DONE C\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    let mut todos = v.all_todos();
+    todos.sort();
+    // existing semantics: sorted distinct
+    assert_eq!(todos, vec!["DONE".to_owned(), "TODO".to_owned()]);
+}
+
+#[test]
+fn vault_all_todos_empty_when_no_files() {
+    let td = write_vault(&[]);
+    let v = Vault::open(td.path()).expect("open");
+    assert!(v.all_todos().is_empty());
+}
+
 
 
 
