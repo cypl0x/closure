@@ -1136,6 +1136,32 @@ impl ChordTrie {
         self.commands_at_depth(depth).len()
     }
 
+    /// Sorted bound chord strings at exactly `depth`.
+    #[must_use]
+    pub fn chords_at_depth(&self, depth: usize) -> Vec<String> {
+        let mut out: Vec<String> = self
+            .all_chords()
+            .into_iter()
+            .filter(|c| c.split_whitespace().count() == depth)
+            .collect();
+        out.sort();
+        out
+    }
+
+    /// True iff any bound chord sits at exactly `depth`.
+    #[must_use]
+    pub fn has_chord_at_depth(&self, depth: usize) -> bool {
+        self.all_chords()
+            .iter()
+            .any(|c| c.split_whitespace().count() == depth)
+    }
+
+    /// Count of bound chords at exactly `depth`.
+    #[must_use]
+    pub fn chords_at_depth_count(&self, depth: usize) -> usize {
+        self.chords_at_depth(depth).len()
+    }
+
     /// Total node count in the trie (including the root).
     #[must_use]
     pub const fn node_count(&self) -> usize {

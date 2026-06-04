@@ -2105,6 +2105,40 @@ fn dispatcher_chords_at_depth_count_match() {
 }
 
 #[test]
+fn chord_trie_chords_at_depth_match() {
+    let t = closure_input::ChordTrie::build(&[("a b", "x"), ("c", "y"), ("d e", "z")]);
+    let mut v = t.chords_at_depth(2);
+    v.sort();
+    assert_eq!(v, vec!["a b".to_owned(), "d e".to_owned()]);
+}
+
+#[test]
+fn chord_trie_chords_at_depth_empty_when_no_match() {
+    let t = closure_input::ChordTrie::build(&[("a", "x")]);
+    assert!(t.chords_at_depth(5).is_empty());
+}
+
+#[test]
+fn chord_trie_has_chord_at_depth_true_when_match() {
+    let t = closure_input::ChordTrie::build(&[("a b", "x")]);
+    assert!(t.has_chord_at_depth(2));
+    assert!(!t.has_chord_at_depth(1));
+}
+
+#[test]
+fn chord_trie_has_chord_at_depth_false_when_empty() {
+    let t = closure_input::ChordTrie::build(&[]);
+    assert!(!t.has_chord_at_depth(0));
+}
+
+#[test]
+fn chord_trie_chords_at_depth_count_match() {
+    let t = closure_input::ChordTrie::build(&[("a b", "x"), ("c", "y"), ("d e", "z")]);
+    assert_eq!(t.chords_at_depth_count(2), 2);
+    assert_eq!(t.chords_at_depth_count(1), 1);
+}
+
+#[test]
 fn dispatcher_single_stroke_pct_match() {
     let mut reg = Registry::new();
     reg.register(Box::new(RenameHeadline::new_placeholder()));
