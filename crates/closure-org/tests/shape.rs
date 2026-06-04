@@ -7904,6 +7904,30 @@ fn doc_total_body_text_empty_when_no_headlines() {
 }
 
 #[test]
+fn doc_with_priority_pct_match() {
+    let doc = parse("* [#A] X\n* B\n* [#B] C\n").expect("parse");
+    assert_eq!(doc.with_priority_pct(), 66);
+}
+
+#[test]
+fn doc_with_priority_pct_zero_when_no_headlines() {
+    let doc = parse("").expect("parse");
+    assert_eq!(doc.with_priority_pct(), 0);
+}
+
+#[test]
+fn doc_with_id_pct_match() {
+    let doc = parse("* A\n:PROPERTIES:\n:ID: x\n:END:\n* B\n* C\n:PROPERTIES:\n:ID: y\n:END:\n").expect("parse");
+    assert_eq!(doc.with_id_pct(), 66);
+}
+
+#[test]
+fn doc_with_id_pct_zero_when_no_headlines() {
+    let doc = parse("").expect("parse");
+    assert_eq!(doc.with_id_pct(), 0);
+}
+
+#[test]
 fn doc_tag_pct_match() {
     let doc = parse("* A :x:\n* B :y:\n* C\n").expect("parse");
     assert_eq!(doc.tag_pct("x"), 33);

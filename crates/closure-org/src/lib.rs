@@ -573,6 +573,20 @@ impl OrgDoc {
         best.map(|(t, _)| t)
     }
 
+    /// Percentage of headlines with a priority cookie (`0..=100`).
+    #[must_use]
+    pub fn with_priority_pct(&self) -> usize {
+        let n = self.iter_headlines().len();
+        (self.count_with_priority() * 100).checked_div(n).unwrap_or(0)
+    }
+
+    /// Percentage of headlines with `:ID:` property (`0..=100`).
+    #[must_use]
+    pub fn with_id_pct(&self) -> usize {
+        let n = self.iter_headlines().len();
+        (self.count_with_id() * 100).checked_div(n).unwrap_or(0)
+    }
+
     /// All headline body texts.
     #[must_use]
     pub fn all_bodies(&self) -> Vec<String> {
