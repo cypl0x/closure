@@ -1085,6 +1085,18 @@ impl ChordTrie {
         self.nodes.iter().filter(|n| n.command.is_some()).count()
     }
 
+    /// Number of bound chords (alias of [`Self::chord_count`]).
+    #[must_use]
+    pub fn binding_count(&self) -> usize {
+        self.chord_count()
+    }
+
+    /// Maximum chord depth (alias of [`Self::max_depth`]).
+    #[must_use]
+    pub fn depth(&self) -> usize {
+        self.max_depth()
+    }
+
     /// Total node count in the trie (including the root).
     #[must_use]
     pub const fn node_count(&self) -> usize {

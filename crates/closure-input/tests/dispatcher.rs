@@ -2011,6 +2011,30 @@ fn dispatcher_chord_count_zero_when_empty() {
 }
 
 #[test]
+fn chord_trie_binding_count_alias_match() {
+    let t = closure_input::ChordTrie::build(&[("a", "x"), ("b", "y")]);
+    assert_eq!(t.binding_count(), 2);
+}
+
+#[test]
+fn chord_trie_binding_count_zero_when_empty() {
+    let t = closure_input::ChordTrie::build(&[]);
+    assert_eq!(t.binding_count(), 0);
+}
+
+#[test]
+fn chord_trie_depth_alias_match() {
+    let t = closure_input::ChordTrie::build(&[("a b c", "x")]);
+    assert_eq!(t.depth(), 3);
+}
+
+#[test]
+fn chord_trie_depth_zero_when_empty() {
+    let t = closure_input::ChordTrie::build(&[]);
+    assert_eq!(t.depth(), 0);
+}
+
+#[test]
 fn dispatcher_single_stroke_pct_match() {
     let mut reg = Registry::new();
     reg.register(Box::new(RenameHeadline::new_placeholder()));
