@@ -1776,6 +1776,30 @@ impl Vault {
         out
     }
 
+    /// Source text for a single file by path.
+    #[must_use]
+    pub fn source_of(&self, path: &Path) -> Option<String> {
+        self.documents.get(path).map(closure_core::Document::source)
+    }
+
+    /// Concatenation of all source texts across the vault.
+    #[must_use]
+    pub fn total_source(&self) -> String {
+        let mut out = String::new();
+        for d in self.documents.values() {
+            out.push_str(&d.source());
+        }
+        out
+    }
+
+    /// Total source line count across the vault.
+    #[must_use]
+    pub fn line_count(&self) -> usize {
+        self.documents
+            .values()
+            .map(|d| d.source().lines().count())
+            .sum()
+    }
 
     /// Count of headlines with an `:ID:` property across the vault.
     #[must_use]

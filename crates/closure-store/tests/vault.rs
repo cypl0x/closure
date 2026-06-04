@@ -10068,6 +10068,46 @@ fn vault_all_todos_empty_when_no_files() {
     assert!(v.all_todos().is_empty());
 }
 
+#[test]
+fn vault_source_of_match() {
+    let td = write_vault(&[("a.org", "* A\nbody\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    let p = v.root().join("a.org");
+    assert_eq!(v.source_of(&p), Some("* A\nbody\n".to_owned()));
+    assert_eq!(v.source_of(std::path::Path::new("missing.org")), None);
+}
+
+#[test]
+fn vault_total_source_match() {
+    let td = write_vault(&[("a.org", "abc"), ("b.org", "de")]);
+    let v = Vault::open(td.path()).expect("open");
+    let total = v.total_source();
+    // contains both
+    assert!(total.contains("abc"));
+    assert!(total.contains("de"));
+}
+
+#[test]
+fn vault_total_source_empty_when_no_files() {
+    let td = write_vault(&[]);
+    let v = Vault::open(td.path()).expect("open");
+    assert!(v.total_source().is_empty());
+}
+
+#[test]
+fn vault_line_count_match() {
+    let td = write_vault(&[("a.org", "* A\nbody\n* B\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.line_count(), 3);
+}
+
+#[test]
+fn vault_line_count_zero_when_empty() {
+    let td = write_vault(&[]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.line_count(), 0);
+}
+
 
 
 
