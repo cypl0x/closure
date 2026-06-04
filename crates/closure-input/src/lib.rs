@@ -654,6 +654,12 @@ impl Dispatcher {
         self.bindings.keys().any(|k| k.starts_with(prefix))
     }
 
+    /// Number of bound chords (alias of [`Self::binding_count`]).
+    #[must_use]
+    pub fn chord_count(&self) -> usize {
+        self.binding_count()
+    }
+
     /// True iff any bound command name begins with `prefix`.
     #[must_use]
     pub fn has_command_with_prefix(&self, prefix: &str) -> bool {

@@ -1996,6 +1996,21 @@ fn chord_trie_mode_chord_strokes_none_when_empty() {
 }
 
 #[test]
+fn dispatcher_chord_count_alias_match() {
+    let mut reg = Registry::new();
+    reg.register(Box::new(RenameHeadline::new_placeholder()));
+    let disp = Dispatcher::from_registry(&reg, InputMode::Doom);
+    assert_eq!(disp.chord_count(), 1);
+}
+
+#[test]
+fn dispatcher_chord_count_zero_when_empty() {
+    let reg = Registry::new();
+    let disp = Dispatcher::from_registry(&reg, InputMode::Doom);
+    assert_eq!(disp.chord_count(), 0);
+}
+
+#[test]
 fn dispatcher_single_stroke_pct_match() {
     let mut reg = Registry::new();
     reg.register(Box::new(RenameHeadline::new_placeholder()));
