@@ -7833,6 +7833,18 @@ fn doc_count_property_key_match() {
 }
 
 #[test]
+fn doc_line_count_match() {
+    let doc = parse("* A\nbody\n* B\n").expect("parse");
+    assert_eq!(doc.line_count(), 3);
+}
+
+#[test]
+fn doc_line_count_zero_when_empty() {
+    let doc = parse("").expect("parse");
+    assert_eq!(doc.line_count(), 0);
+}
+
+#[test]
 fn doc_tag_pct_match() {
     let doc = parse("* A :x:\n* B :y:\n* C\n").expect("parse");
     assert_eq!(doc.tag_pct("x"), 33);

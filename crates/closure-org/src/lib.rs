@@ -1521,6 +1521,12 @@ impl OrgDoc {
         self.source().len()
     }
 
+    /// Total line count of the document source (alias of [`Self::source_line_count`]).
+    #[must_use]
+    pub fn line_count(&self) -> usize {
+        self.source_line_count()
+    }
+
     /// Total line count of the document source.
     #[must_use]
     pub fn source_line_count(&self) -> usize {
