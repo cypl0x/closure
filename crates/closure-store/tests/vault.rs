@@ -9998,6 +9998,38 @@ fn vault_distinct_priority_letters_empty_when_no_files() {
     assert!(v.distinct_priority_letters().is_empty());
 }
 
+#[test]
+fn vault_distinct_levels_match() {
+    let td = write_vault(&[("a.org", "* A\n** B\n*** C\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    let levels = v.distinct_levels();
+    assert_eq!(levels, vec![1, 2, 3]);
+}
+
+#[test]
+fn vault_distinct_levels_empty_when_no_files() {
+    let td = write_vault(&[]);
+    let v = Vault::open(td.path()).expect("open");
+    assert!(v.distinct_levels().is_empty());
+}
+
+#[test]
+fn vault_all_tags_match() {
+    let td = write_vault(&[("a.org", "* A :x:\n* B :y:x:\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    let mut tags = v.all_tags();
+    tags.sort();
+    // distinct {x, y} sorted
+    assert_eq!(tags, vec!["x".to_owned(), "y".to_owned()]);
+}
+
+#[test]
+fn vault_all_tags_empty_when_no_files() {
+    let td = write_vault(&[]);
+    let v = Vault::open(td.path()).expect("open");
+    assert!(v.all_tags().is_empty());
+}
+
 
 
 
