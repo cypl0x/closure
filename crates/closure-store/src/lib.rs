@@ -1845,6 +1845,30 @@ impl Vault {
         best.map(|(t, _)| t)
     }
 
+    /// All headline body texts across the vault.
+    #[must_use]
+    pub fn all_bodies(&self) -> Vec<String> {
+        let mut out = Vec::new();
+        for d in self.documents.values() {
+            for h in d.all_headlines() {
+                out.push(h.body_text().to_owned());
+            }
+        }
+        out
+    }
+
+    /// Concatenation of all headline body texts across the vault.
+    #[must_use]
+    pub fn total_body_text(&self) -> String {
+        let mut out = String::new();
+        for d in self.documents.values() {
+            for h in d.all_headlines() {
+                out.push_str(h.body_text());
+            }
+        }
+        out
+    }
+
     /// Count of headlines with an `:ID:` property across the vault.
     #[must_use]
     pub fn id_count(&self) -> usize {

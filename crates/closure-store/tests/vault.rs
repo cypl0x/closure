@@ -10158,6 +10158,41 @@ fn vault_least_common_title_match() {
 }
 
 #[test]
+fn vault_all_bodies_match() {
+    let td = write_vault(&[
+        ("a.org", "* A\nbody1\n* B\nbody2\n"),
+        ("b.org", "* C\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    let mut bodies = v.all_bodies();
+    bodies.sort();
+    // bodies: "body1", "body2", "" (in some order)
+    assert!(bodies.iter().any(|b| b.contains("body1")));
+    assert!(bodies.iter().any(|b| b.contains("body2")));
+}
+
+#[test]
+fn vault_all_bodies_empty_when_no_files() {
+    let td = write_vault(&[]);
+    let v = Vault::open(td.path()).expect("open");
+    assert!(v.all_bodies().is_empty());
+}
+
+#[test]
+fn vault_total_body_text_nonempty_when_bodies() {
+    let td = write_vault(&[("a.org", "* A\nbody1\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert!(v.total_body_text().contains("body1"));
+}
+
+#[test]
+fn vault_total_body_text_empty_when_no_files() {
+    let td = write_vault(&[]);
+    let v = Vault::open(td.path()).expect("open");
+    assert!(v.total_body_text().is_empty());
+}
+
+#[test]
 fn vault_line_count_of_match() {
     let td = write_vault(&[("a.org", "* A\nbody\n* B\n")]);
     let v = Vault::open(td.path()).expect("open");
