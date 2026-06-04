@@ -10301,6 +10301,62 @@ fn vault_with_id_pct_zero_when_no_headlines() {
 }
 
 #[test]
+fn vault_count_scheduled_alias_match() {
+    let td = write_vault(&[("a.org", "* A\nSCHEDULED: <2026-05-30 Sat>\n* B\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.count_scheduled(), 1);
+}
+
+#[test]
+fn vault_count_archived_alias_match() {
+    let td = write_vault(&[("a.org", "* A :ARCHIVE:\n* B\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.count_archived(), 1);
+}
+
+#[test]
+fn vault_count_comments_alias_match() {
+    let td = write_vault(&[("a.org", "* COMMENT A\n* B\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.count_comments(), 1);
+}
+
+#[test]
+fn vault_count_with_deadline_alias_match() {
+    let td = write_vault(&[("a.org", "* A\nDEADLINE: <2026-05-30 Sat>\n* B\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.count_with_deadline(), 1);
+}
+
+#[test]
+fn vault_count_closed_alias_match() {
+    let td = write_vault(&[("a.org", "* A\nCLOSED: [2026-05-30 Sat]\n* B\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.count_closed(), 1);
+}
+
+#[test]
+fn vault_count_with_planning_alias_match() {
+    let td = write_vault(&[("a.org", "* A\nSCHEDULED: <2026-05-30 Sat>\n* B\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.count_with_planning(), 1);
+}
+
+#[test]
+fn vault_count_with_id_alias_match() {
+    let td = write_vault(&[("a.org", "* A\n:PROPERTIES:\n:ID: x\n:END:\n* B\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.count_with_id(), 1);
+}
+
+#[test]
+fn vault_count_with_priority_alias_match() {
+    let td = write_vault(&[("a.org", "* [#A] X\n* B\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.count_with_priority(), 1);
+}
+
+#[test]
 fn vault_line_count_of_match() {
     let td = write_vault(&[("a.org", "* A\nbody\n* B\n")]);
     let v = Vault::open(td.path()).expect("open");

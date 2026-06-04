@@ -1929,6 +1929,54 @@ impl Vault {
             .unwrap_or(0)
     }
 
+    /// Count of SCHEDULED headlines across the vault (alias of `scheduled_count`).
+    #[must_use]
+    pub fn count_scheduled(&self) -> usize {
+        self.scheduled_count()
+    }
+
+    /// Count of archived headlines across the vault (alias of `archived_count`).
+    #[must_use]
+    pub fn count_archived(&self) -> usize {
+        self.archived_count()
+    }
+
+    /// Count of COMMENT-prefixed headlines across the vault (alias of `comment_count`).
+    #[must_use]
+    pub fn count_comments(&self) -> usize {
+        self.comment_count()
+    }
+
+    /// Count of headlines with DEADLINE timestamp (alias of `deadline_count`).
+    #[must_use]
+    pub fn count_with_deadline(&self) -> usize {
+        self.deadline_count()
+    }
+
+    /// Count of CLOSED headlines (alias of `closed_count`).
+    #[must_use]
+    pub fn count_closed(&self) -> usize {
+        self.closed_count()
+    }
+
+    /// Count of headlines with planning info (alias of `planning_count`).
+    #[must_use]
+    pub fn count_with_planning(&self) -> usize {
+        self.planning_count()
+    }
+
+    /// Count of headlines with `:ID:` (alias of `id_count`).
+    #[must_use]
+    pub fn count_with_id(&self) -> usize {
+        self.id_count()
+    }
+
+    /// Count of headlines with priority cookie (alias of `with_priority_count`).
+    #[must_use]
+    pub fn count_with_priority(&self) -> usize {
+        self.with_priority_count()
+    }
+
     /// Count of headlines with an `:ID:` property across the vault.
     #[must_use]
     pub fn id_count(&self) -> usize {
