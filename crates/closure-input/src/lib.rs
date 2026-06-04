@@ -1390,6 +1390,48 @@ impl ChordTrie {
             .unwrap_or(0)
     }
 
+    /// Median chord stroke count. None when empty.
+    #[must_use]
+    pub fn median_chord_strokes(&self) -> Option<usize> {
+        let mut v: Vec<usize> = self
+            .all_chords()
+            .iter()
+            .map(|c| c.split_whitespace().count())
+            .collect();
+        if v.is_empty() {
+            return None;
+        }
+        v.sort_unstable();
+        let mid = v.len() / 2;
+        Some(if v.len() % 2 == 1 {
+            v[mid]
+        } else {
+            v[mid - 1].midpoint(v[mid])
+        })
+    }
+
+    /// Histogram of chord stroke counts.
+    #[must_use]
+    pub fn chord_stroke_counts(&self) -> std::collections::BTreeMap<usize, usize> {
+        let mut m = std::collections::BTreeMap::new();
+        for c in self.all_chords() {
+            *m.entry(c.split_whitespace().count()).or_insert(0) += 1;
+        }
+        m
+    }
+
+    /// Most common chord stroke count. None when empty. Lowest wins ties.
+    #[must_use]
+    pub fn mode_chord_strokes(&self) -> Option<usize> {
+        let mut best: Option<(usize, usize)> = None;
+        for (sc, c) in self.chord_stroke_counts() {
+            if best.is_none_or(|(_, bc)| c > bc) {
+                best = Some((sc, c));
+            }
+        }
+        best.map(|(sc, _)| sc)
+    }
+
     /// All bindings as `(chord, command)` pairs, sorted by chord.
     #[must_use]
     pub fn bindings(&self) -> Vec<(String, String)> {

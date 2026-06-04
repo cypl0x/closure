@@ -1957,6 +1957,45 @@ fn chord_trie_chord_strokes_zero_when_empty() {
 }
 
 #[test]
+fn chord_trie_median_chord_strokes_match() {
+    let t = closure_input::ChordTrie::build(&[("a", "x"), ("b c", "y"), ("d e f", "z")]);
+    // strokes: 1, 2, 3 → median 2
+    assert_eq!(t.median_chord_strokes(), Some(2));
+}
+
+#[test]
+fn chord_trie_median_chord_strokes_none_when_empty() {
+    let t = closure_input::ChordTrie::build(&[]);
+    assert_eq!(t.median_chord_strokes(), None);
+}
+
+#[test]
+fn chord_trie_chord_stroke_counts_match() {
+    let t = closure_input::ChordTrie::build(&[("a", "x"), ("b c", "y"), ("d e", "z")]);
+    let m = t.chord_stroke_counts();
+    assert_eq!(m.get(&1), Some(&1));
+    assert_eq!(m.get(&2), Some(&2));
+}
+
+#[test]
+fn chord_trie_chord_stroke_counts_empty_when_empty() {
+    let t = closure_input::ChordTrie::build(&[]);
+    assert!(t.chord_stroke_counts().is_empty());
+}
+
+#[test]
+fn chord_trie_mode_chord_strokes_match() {
+    let t = closure_input::ChordTrie::build(&[("a", "x"), ("b c", "y"), ("d e", "z")]);
+    assert_eq!(t.mode_chord_strokes(), Some(2));
+}
+
+#[test]
+fn chord_trie_mode_chord_strokes_none_when_empty() {
+    let t = closure_input::ChordTrie::build(&[]);
+    assert_eq!(t.mode_chord_strokes(), None);
+}
+
+#[test]
 fn dispatcher_single_stroke_pct_match() {
     let mut reg = Registry::new();
     reg.register(Box::new(RenameHeadline::new_placeholder()));
