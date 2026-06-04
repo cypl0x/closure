@@ -1876,6 +1876,52 @@ fn dispatcher_has_prefix_false_when_empty() {
 }
 
 #[test]
+fn chord_trie_has_command_with_prefix_true_when_match() {
+    let t = closure_input::ChordTrie::build(&[("a b", "rename-foo"), ("c", "delete-bar")]);
+    assert!(t.has_command_with_prefix("rename"));
+    assert!(!t.has_command_with_prefix("missing"));
+}
+
+#[test]
+fn chord_trie_has_command_with_prefix_false_when_empty() {
+    let t = closure_input::ChordTrie::build(&[]);
+    assert!(!t.has_command_with_prefix("any"));
+}
+
+#[test]
+fn dispatcher_has_command_with_prefix_true_when_match() {
+    let mut reg = Registry::new();
+    reg.register(Box::new(RenameHeadline::new_placeholder()));
+    let disp = Dispatcher::from_registry(&reg, InputMode::Doom);
+    assert!(disp.has_command_with_prefix("rename"));
+    assert!(!disp.has_command_with_prefix("missing"));
+}
+
+#[test]
+fn dispatcher_has_command_with_prefix_false_when_empty() {
+    let reg = Registry::new();
+    let disp = Dispatcher::from_registry(&reg, InputMode::Doom);
+    assert!(!disp.has_command_with_prefix("any"));
+}
+
+#[test]
+fn chord_trie_command_names_with_prefix_match() {
+    let t = closure_input::ChordTrie::build(&[("a", "rename-foo"), ("b", "rename-bar"), ("c", "delete")]);
+    let mut v = t.command_names_with_prefix("rename");
+    v.sort();
+    assert_eq!(v, vec!["rename-bar".to_owned(), "rename-foo".to_owned()]);
+}
+
+#[test]
+fn dispatcher_command_names_with_prefix_match() {
+    let mut reg = Registry::new();
+    reg.register(Box::new(RenameHeadline::new_placeholder()));
+    let disp = Dispatcher::from_registry(&reg, InputMode::Doom);
+    let v = disp.command_names_with_prefix("rename");
+    assert_eq!(v, vec!["rename-headline".to_owned()]);
+}
+
+#[test]
 fn dispatcher_single_stroke_pct_match() {
     let mut reg = Registry::new();
     reg.register(Box::new(RenameHeadline::new_placeholder()));

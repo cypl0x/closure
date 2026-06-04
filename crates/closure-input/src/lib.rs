@@ -654,6 +654,24 @@ impl Dispatcher {
         self.bindings.keys().any(|k| k.starts_with(prefix))
     }
 
+    /// True iff any bound command name begins with `prefix`.
+    #[must_use]
+    pub fn has_command_with_prefix(&self, prefix: &str) -> bool {
+        self.bindings.values().any(|c| c.starts_with(prefix))
+    }
+
+    /// Sorted distinct command names beginning with `prefix`.
+    #[must_use]
+    pub fn command_names_with_prefix(&self, prefix: &str) -> Vec<String> {
+        let mut s: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+        for cmd in self.bindings.values() {
+            if cmd.starts_with(prefix) {
+                s.insert(cmd.clone());
+            }
+        }
+        s.into_iter().collect()
+    }
+
     /// Most common chord stroke count (lowest wins ties; `None` when empty).
     #[must_use]
     pub fn mode_chord_strokes(&self) -> Option<usize> {
@@ -1316,6 +1334,24 @@ impl ChordTrie {
     #[must_use]
     pub fn has_prefix(&self, prefix: &str) -> bool {
         self.all_chords().iter().any(|c| c.starts_with(prefix))
+    }
+
+    /// True iff any bound command name begins with `prefix`.
+    #[must_use]
+    pub fn has_command_with_prefix(&self, prefix: &str) -> bool {
+        self.all_commands().iter().any(|c| c.starts_with(prefix))
+    }
+
+    /// Sorted distinct command names beginning with `prefix`.
+    #[must_use]
+    pub fn command_names_with_prefix(&self, prefix: &str) -> Vec<String> {
+        let mut s: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+        for c in self.all_commands() {
+            if c.starts_with(prefix) {
+                s.insert(c.to_owned());
+            }
+        }
+        s.into_iter().collect()
     }
 
     /// All bindings as `(chord, command)` pairs, sorted by chord.
