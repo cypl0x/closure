@@ -1801,6 +1801,14 @@ impl Vault {
             .sum()
     }
 
+    /// Source line count for a single file by path.
+    #[must_use]
+    pub fn line_count_of(&self, path: &Path) -> Option<usize> {
+        self.documents
+            .get(path)
+            .map(|d| d.source().lines().count())
+    }
+
     /// Count of headlines with an `:ID:` property across the vault.
     #[must_use]
     pub fn id_count(&self) -> usize {

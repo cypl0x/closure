@@ -10108,6 +10108,16 @@ fn vault_line_count_zero_when_empty() {
     assert_eq!(v.line_count(), 0);
 }
 
+#[test]
+fn vault_line_count_of_match() {
+    let td = write_vault(&[("a.org", "* A\nbody\n* B\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    let p = v.root().join("a.org");
+    assert_eq!(v.line_count_of(&p), Some(3));
+    assert_eq!(v.line_count_of(std::path::Path::new("missing.org")), None);
+}
+
+
 
 
 
