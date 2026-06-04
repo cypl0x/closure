@@ -7877,6 +7877,33 @@ fn doc_least_common_title_match() {
 }
 
 #[test]
+fn doc_all_bodies_match() {
+    let doc = parse("* A\nbody1\n* B\nbody2\n").expect("parse");
+    let bodies = doc.all_bodies();
+    assert_eq!(bodies.len(), 2);
+    assert!(bodies.iter().any(|b| b.contains("body1")));
+    assert!(bodies.iter().any(|b| b.contains("body2")));
+}
+
+#[test]
+fn doc_all_bodies_empty_when_no_headlines() {
+    let doc = parse("").expect("parse");
+    assert!(doc.all_bodies().is_empty());
+}
+
+#[test]
+fn doc_total_body_text_match() {
+    let doc = parse("* A\nbody1\n").expect("parse");
+    assert!(doc.total_body_text().contains("body1"));
+}
+
+#[test]
+fn doc_total_body_text_empty_when_no_headlines() {
+    let doc = parse("").expect("parse");
+    assert!(doc.total_body_text().is_empty());
+}
+
+#[test]
 fn doc_tag_pct_match() {
     let doc = parse("* A :x:\n* B :y:\n* C\n").expect("parse");
     assert_eq!(doc.tag_pct("x"), 33);

@@ -573,6 +573,25 @@ impl OrgDoc {
         best.map(|(t, _)| t)
     }
 
+    /// All headline body texts.
+    #[must_use]
+    pub fn all_bodies(&self) -> Vec<String> {
+        self.iter_headlines()
+            .into_iter()
+            .map(|h| h.body_source().to_owned())
+            .collect()
+    }
+
+    /// Concatenation of all headline body texts.
+    #[must_use]
+    pub fn total_body_text(&self) -> String {
+        let mut out = String::new();
+        for h in self.iter_headlines() {
+            out.push_str(h.body_source());
+        }
+        out
+    }
+
     /// Percentage of headlines tagged `tag` (`0..=100`).
     #[must_use]
     pub fn tag_pct(&self, tag: &str) -> usize {
