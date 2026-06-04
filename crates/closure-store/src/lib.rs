@@ -1809,6 +1809,42 @@ impl Vault {
             .map(|d| d.source().lines().count())
     }
 
+    /// Histogram of headline-title frequency across the vault.
+    #[must_use]
+    pub fn title_counts(&self) -> std::collections::BTreeMap<String, usize> {
+        let mut m = std::collections::BTreeMap::new();
+        for d in self.documents.values() {
+            for h in d.all_headlines() {
+                *m.entry(h.title().to_owned()).or_insert(0) += 1;
+            }
+        }
+        m
+    }
+
+    /// Most frequently appearing headline title (lowest name wins ties).
+    #[must_use]
+    pub fn most_common_title(&self) -> Option<String> {
+        let mut best: Option<(String, usize)> = None;
+        for (t, c) in self.title_counts() {
+            if best.as_ref().is_none_or(|(_, bc)| c > *bc) {
+                best = Some((t, c));
+            }
+        }
+        best.map(|(t, _)| t)
+    }
+
+    /// Least frequently appearing headline title (lowest name wins ties).
+    #[must_use]
+    pub fn least_common_title(&self) -> Option<String> {
+        let mut best: Option<(String, usize)> = None;
+        for (t, c) in self.title_counts() {
+            if best.as_ref().is_none_or(|(_, bc)| c < *bc) {
+                best = Some((t, c));
+            }
+        }
+        best.map(|(t, _)| t)
+    }
+
     /// Count of headlines with an `:ID:` property across the vault.
     #[must_use]
     pub fn id_count(&self) -> usize {

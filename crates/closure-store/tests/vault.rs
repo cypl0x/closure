@@ -10109,6 +10109,55 @@ fn vault_line_count_zero_when_empty() {
 }
 
 #[test]
+fn vault_title_counts_match() {
+    let td = write_vault(&[
+        ("a.org", "* Apple\n"),
+        ("b.org", "* Apple\n"),
+        ("c.org", "* Banana\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    let m = v.title_counts();
+    assert_eq!(m.get("Apple"), Some(&2));
+    assert_eq!(m.get("Banana"), Some(&1));
+}
+
+#[test]
+fn vault_title_counts_empty_when_no_files() {
+    let td = write_vault(&[]);
+    let v = Vault::open(td.path()).expect("open");
+    assert!(v.title_counts().is_empty());
+}
+
+#[test]
+fn vault_most_common_title_match() {
+    let td = write_vault(&[
+        ("a.org", "* Apple\n"),
+        ("b.org", "* Apple\n"),
+        ("c.org", "* Banana\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.most_common_title(), Some("Apple".to_owned()));
+}
+
+#[test]
+fn vault_most_common_title_none_when_no_files() {
+    let td = write_vault(&[]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.most_common_title(), None);
+}
+
+#[test]
+fn vault_least_common_title_match() {
+    let td = write_vault(&[
+        ("a.org", "* Apple\n"),
+        ("b.org", "* Apple\n"),
+        ("c.org", "* Banana\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.least_common_title(), Some("Banana".to_owned()));
+}
+
+#[test]
 fn vault_line_count_of_match() {
     let td = write_vault(&[("a.org", "* A\nbody\n* B\n")]);
     let v = Vault::open(td.path()).expect("open");
