@@ -1921,6 +1921,14 @@ impl Vault {
             .unwrap_or(0)
     }
 
+    /// Percentage of headlines with `:ID:` property (`0..=100`).
+    #[must_use]
+    pub fn with_id_pct(&self) -> usize {
+        (self.id_count() * 100)
+            .checked_div(self.headline_count())
+            .unwrap_or(0)
+    }
+
     /// Count of headlines with an `:ID:` property across the vault.
     #[must_use]
     pub fn id_count(&self) -> usize {

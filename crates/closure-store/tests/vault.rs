@@ -10283,6 +10283,24 @@ fn vault_with_property_pct_zero_when_no_headlines() {
 }
 
 #[test]
+fn vault_with_id_pct_match() {
+    let td = write_vault(&[
+        ("a.org", "* A\n:PROPERTIES:\n:ID: x\n:END:\n"),
+        ("b.org", "* B\n"),
+        ("c.org", "* C\n:PROPERTIES:\n:ID: y\n:END:\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.with_id_pct(), 66);
+}
+
+#[test]
+fn vault_with_id_pct_zero_when_no_headlines() {
+    let td = write_vault(&[]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.with_id_pct(), 0);
+}
+
+#[test]
 fn vault_line_count_of_match() {
     let td = write_vault(&[("a.org", "* A\nbody\n* B\n")]);
     let v = Vault::open(td.path()).expect("open");
