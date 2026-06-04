@@ -10357,6 +10357,22 @@ fn vault_count_with_priority_alias_match() {
 }
 
 #[test]
+fn vault_count_no_property_alias_match() {
+    let td = write_vault(&[("a.org", "* A\n:PROPERTIES:\n:x: 1\n:END:\n* B\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    // 1 without property
+    assert_eq!(v.count_no_property(), 1);
+}
+
+#[test]
+fn vault_count_no_id_alias_match() {
+    let td = write_vault(&[("a.org", "* A\n:PROPERTIES:\n:ID: x\n:END:\n* B\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.count_no_id(), 1);
+}
+
+
+#[test]
 fn vault_line_count_of_match() {
     let td = write_vault(&[("a.org", "* A\nbody\n* B\n")]);
     let v = Vault::open(td.path()).expect("open");
