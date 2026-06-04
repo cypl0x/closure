@@ -9960,6 +9960,44 @@ fn vault_distinct_priority_letter_count_zero_when_empty() {
     assert_eq!(v.distinct_priority_letter_count(), 0);
 }
 
+#[test]
+fn vault_distinct_todo_keywords_match() {
+    let td = write_vault(&[
+        ("a.org", "* TODO A\n* DONE B\n"),
+        ("b.org", "* TODO C\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    let mut kws = v.distinct_todo_keywords();
+    kws.sort();
+    assert_eq!(kws, vec!["DONE".to_owned(), "TODO".to_owned()]);
+}
+
+#[test]
+fn vault_distinct_todo_keywords_empty_when_no_files() {
+    let td = write_vault(&[]);
+    let v = Vault::open(td.path()).expect("open");
+    assert!(v.distinct_todo_keywords().is_empty());
+}
+
+#[test]
+fn vault_distinct_priority_letters_match() {
+    let td = write_vault(&[
+        ("a.org", "* [#A] X\n* [#B] Y\n"),
+        ("b.org", "* [#A] Z\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    let mut letters = v.distinct_priority_letters();
+    letters.sort_unstable();
+    assert_eq!(letters, vec!['A', 'B']);
+}
+
+#[test]
+fn vault_distinct_priority_letters_empty_when_no_files() {
+    let td = write_vault(&[]);
+    let v = Vault::open(td.path()).expect("open");
+    assert!(v.distinct_priority_letters().is_empty());
+}
+
 
 
 

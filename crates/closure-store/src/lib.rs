@@ -1734,6 +1734,34 @@ impl Vault {
         s.len()
     }
 
+    /// Sorted distinct TODO-keywords across the vault.
+    #[must_use]
+    pub fn distinct_todo_keywords(&self) -> Vec<String> {
+        let mut s: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+        for d in self.documents.values() {
+            for h in d.all_headlines() {
+                if let Some(t) = h.todo() {
+                    s.insert(t.to_owned());
+                }
+            }
+        }
+        s.into_iter().collect()
+    }
+
+    /// Sorted distinct priority letters across the vault.
+    #[must_use]
+    pub fn distinct_priority_letters(&self) -> Vec<char> {
+        let mut s: std::collections::BTreeSet<char> = std::collections::BTreeSet::new();
+        for d in self.documents.values() {
+            for h in d.all_headlines() {
+                if let Some(p) = h.priority() {
+                    s.insert(p);
+                }
+            }
+        }
+        s.into_iter().collect()
+    }
+
     /// Count of headlines with an `:ID:` property across the vault.
     #[must_use]
     pub fn id_count(&self) -> usize {
