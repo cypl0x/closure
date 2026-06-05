@@ -10465,6 +10465,39 @@ fn vault_has_path_false_when_no_files() {
     assert!(!v.has_path(std::path::Path::new("a.org")));
 }
 
+#[test]
+fn vault_contains_text_true_when_match() {
+    let td = write_vault(&[("a.org", "* A\nhello world\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert!(v.contains_text("hello"));
+    assert!(!v.contains_text("missing"));
+}
+
+#[test]
+fn vault_contains_text_false_when_no_files() {
+    let td = write_vault(&[]);
+    let v = Vault::open(td.path()).expect("open");
+    assert!(!v.contains_text("any"));
+}
+
+#[test]
+fn vault_count_text_match() {
+    let td = write_vault(&[
+        ("a.org", "* A\nhello\n"),
+        ("b.org", "* B\nhello hello\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.count_text("hello"), 3);
+    assert_eq!(v.count_text("missing"), 0);
+}
+
+#[test]
+fn vault_count_text_zero_when_no_files() {
+    let td = write_vault(&[]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.count_text("any"), 0);
+}
+
 
 #[test]
 fn vault_line_count_of_match() {

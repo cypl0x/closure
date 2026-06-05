@@ -2010,6 +2010,24 @@ impl Vault {
         self.documents.contains_key(path)
     }
 
+    /// True iff `needle` appears in any document's source across the vault.
+    #[must_use]
+    pub fn contains_text(&self, needle: &str) -> bool {
+        self.documents.values().any(|d| d.source().contains(needle))
+    }
+
+    /// Count of `needle` occurrences across all document sources.
+    #[must_use]
+    pub fn count_text(&self, needle: &str) -> usize {
+        if needle.is_empty() {
+            return 0;
+        }
+        self.documents
+            .values()
+            .map(|d| d.source().matches(needle).count())
+            .sum()
+    }
+
     /// Count of headlines with an `:ID:` property across the vault.
     #[must_use]
     pub fn id_count(&self) -> usize {
