@@ -660,6 +660,30 @@ impl Dispatcher {
         self.binding_count()
     }
 
+    /// Maximum chord depth across bound chords. 0 when empty.
+    #[must_use]
+    pub fn max_depth(&self) -> usize {
+        self.max_chord_strokes().unwrap_or(0)
+    }
+
+    /// Minimum chord depth across bound chords. 0 when empty.
+    #[must_use]
+    pub fn min_depth(&self) -> usize {
+        self.min_chord_strokes().unwrap_or(0)
+    }
+
+    /// Total chord depth across bound chords.
+    #[must_use]
+    pub fn total_depth(&self) -> usize {
+        self.total_chord_strokes()
+    }
+
+    /// Integer mean chord depth across bound chords. 0 when empty.
+    #[must_use]
+    pub fn mean_depth(&self) -> usize {
+        self.mean_chord_strokes()
+    }
+
     /// Sorted bound chord strings at exactly `depth`.
     #[must_use]
     pub fn chords_at_depth(&self, depth: usize) -> Vec<String> {
