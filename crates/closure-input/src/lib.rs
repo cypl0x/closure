@@ -684,6 +684,24 @@ impl Dispatcher {
         self.mean_chord_strokes()
     }
 
+    /// Median chord depth (alias of [`Self::median_chord_strokes`]).
+    #[must_use]
+    pub fn median_depth(&self) -> Option<usize> {
+        self.median_chord_strokes()
+    }
+
+    /// Mode chord depth (alias of [`Self::mode_chord_strokes`]).
+    #[must_use]
+    pub fn mode_depth(&self) -> Option<usize> {
+        self.mode_chord_strokes()
+    }
+
+    /// Depth histogram (alias of [`Self::chord_stroke_counts`]).
+    #[must_use]
+    pub fn depth_counts(&self) -> std::collections::BTreeMap<usize, usize> {
+        self.chord_stroke_counts()
+    }
+
     /// Sorted bound chord strings at exactly `depth`.
     #[must_use]
     pub fn chords_at_depth(&self, depth: usize) -> Vec<String> {

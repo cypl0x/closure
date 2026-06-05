@@ -2218,6 +2218,52 @@ fn dispatcher_mean_depth_match() {
 }
 
 #[test]
+fn dispatcher_median_depth_alias_match() {
+    let mut reg = Registry::new();
+    reg.register(Box::new(RenameHeadline::new_placeholder()));
+    let disp = Dispatcher::from_registry(&reg, InputMode::Doom);
+    assert_eq!(disp.median_depth(), Some(3));
+}
+
+#[test]
+fn dispatcher_median_depth_none_when_empty() {
+    let reg = Registry::new();
+    let disp = Dispatcher::from_registry(&reg, InputMode::Doom);
+    assert_eq!(disp.median_depth(), None);
+}
+
+#[test]
+fn dispatcher_mode_depth_match() {
+    let mut reg = Registry::new();
+    reg.register(Box::new(RenameHeadline::new_placeholder()));
+    let disp = Dispatcher::from_registry(&reg, InputMode::Doom);
+    assert_eq!(disp.mode_depth(), Some(3));
+}
+
+#[test]
+fn dispatcher_mode_depth_none_when_empty() {
+    let reg = Registry::new();
+    let disp = Dispatcher::from_registry(&reg, InputMode::Doom);
+    assert_eq!(disp.mode_depth(), None);
+}
+
+#[test]
+fn dispatcher_depth_counts_match() {
+    let mut reg = Registry::new();
+    reg.register(Box::new(RenameHeadline::new_placeholder()));
+    let disp = Dispatcher::from_registry(&reg, InputMode::Doom);
+    let m = disp.depth_counts();
+    assert_eq!(m.get(&3), Some(&1));
+}
+
+#[test]
+fn dispatcher_depth_counts_empty_when_no_bindings() {
+    let reg = Registry::new();
+    let disp = Dispatcher::from_registry(&reg, InputMode::Doom);
+    assert!(disp.depth_counts().is_empty());
+}
+
+#[test]
 fn dispatcher_single_stroke_pct_match() {
     let mut reg = Registry::new();
     reg.register(Box::new(RenameHeadline::new_placeholder()));
