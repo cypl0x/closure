@@ -2028,6 +2028,23 @@ impl Vault {
             .sum()
     }
 
+    /// Count of files whose source contains `needle`.
+    #[must_use]
+    pub fn files_containing(&self, needle: &str) -> usize {
+        self.documents
+            .values()
+            .filter(|d| d.source().contains(needle))
+            .count()
+    }
+
+    /// Percentage of files whose source contains `needle` (`0..=100`).
+    #[must_use]
+    pub fn files_containing_pct(&self, needle: &str) -> usize {
+        (self.files_containing(needle) * 100)
+            .checked_div(self.len())
+            .unwrap_or(0)
+    }
+
     /// Count of headlines with an `:ID:` property across the vault.
     #[must_use]
     pub fn id_count(&self) -> usize {

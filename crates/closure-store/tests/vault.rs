@@ -10498,6 +10498,37 @@ fn vault_count_text_zero_when_no_files() {
     assert_eq!(v.count_text("any"), 0);
 }
 
+#[test]
+fn vault_files_containing_match() {
+    let td = write_vault(&[
+        ("a.org", "* A\nhello\n"),
+        ("b.org", "* B\n"),
+        ("c.org", "* C\nhello\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.files_containing("hello"), 2);
+    assert_eq!(v.files_containing("missing"), 0);
+}
+
+#[test]
+fn vault_files_containing_pct_match() {
+    let td = write_vault(&[
+        ("a.org", "* A\nhello\n"),
+        ("b.org", "* B\n"),
+        ("c.org", "* C\nhello\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.files_containing_pct("hello"), 66);
+}
+
+#[test]
+fn vault_files_containing_zero_when_no_files() {
+    let td = write_vault(&[]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.files_containing("any"), 0);
+    assert_eq!(v.files_containing_pct("any"), 0);
+}
+
 
 #[test]
 fn vault_line_count_of_match() {
