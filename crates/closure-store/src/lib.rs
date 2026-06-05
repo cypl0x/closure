@@ -1341,6 +1341,30 @@ impl Vault {
         self.len()
     }
 
+    /// Total word count across the vault (alias of [`Self::word_count`]).
+    #[must_use]
+    pub fn count_words(&self) -> usize {
+        self.word_count()
+    }
+
+    /// Total byte count across the vault (alias of [`Self::byte_count`]).
+    #[must_use]
+    pub fn count_bytes(&self) -> usize {
+        self.byte_count()
+    }
+
+    /// Total character count across the vault (alias of [`Self::char_count`]).
+    #[must_use]
+    pub fn count_chars(&self) -> usize {
+        self.char_count()
+    }
+
+    /// Total source line count across the vault (alias of [`Self::line_count`]).
+    #[must_use]
+    pub fn count_lines(&self) -> usize {
+        self.line_count()
+    }
+
     /// True iff any timestamp appears across the vault.
     #[must_use]
     pub fn has_timestamp(&self) -> bool {

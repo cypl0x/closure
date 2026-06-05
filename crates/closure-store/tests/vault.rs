@@ -10743,6 +10743,62 @@ fn vault_count_files_zero_when_empty() {
     assert_eq!(v.count_files(), 0);
 }
 
+#[test]
+fn vault_count_words_alias_match() {
+    let td = write_vault(&[("a.org", "* A B C\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.count_words(), 4);
+}
+
+#[test]
+fn vault_count_words_zero_when_empty() {
+    let td = write_vault(&[]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.count_words(), 0);
+}
+
+#[test]
+fn vault_count_bytes_alias_match() {
+    let td = write_vault(&[("a.org", "* A\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.count_bytes(), 4);
+}
+
+#[test]
+fn vault_count_bytes_zero_when_empty() {
+    let td = write_vault(&[]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.count_bytes(), 0);
+}
+
+#[test]
+fn vault_count_chars_alias_match() {
+    let td = write_vault(&[("a.org", "* A\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.count_chars(), 4);
+}
+
+#[test]
+fn vault_count_chars_zero_when_empty() {
+    let td = write_vault(&[]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.count_chars(), 0);
+}
+
+#[test]
+fn vault_count_lines_alias_match() {
+    let td = write_vault(&[("a.org", "* A\nbody\n* B\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.count_lines(), 3);
+}
+
+#[test]
+fn vault_count_lines_zero_when_empty() {
+    let td = write_vault(&[]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.count_lines(), 0);
+}
+
 
 
 #[test]
