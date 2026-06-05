@@ -10529,6 +10529,35 @@ fn vault_files_containing_zero_when_no_files() {
     assert_eq!(v.files_containing_pct("any"), 0);
 }
 
+#[test]
+fn vault_paths_containing_count_match() {
+    let td = write_vault(&[
+        ("a.org", "* Apple\n"),
+        ("b.org", "* Banana\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.paths_containing_count("App"), 1);
+    assert_eq!(v.paths_containing_count("missing"), 0);
+}
+
+#[test]
+fn vault_paths_containing_ignore_case_count_match() {
+    let td = write_vault(&[
+        ("a.org", "* Apple\n"),
+        ("b.org", "* APPLE\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.paths_containing_ignore_case_count("apple"), 2);
+}
+
+#[test]
+fn vault_paths_containing_count_zero_when_no_files() {
+    let td = write_vault(&[]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.paths_containing_count("any"), 0);
+    assert_eq!(v.paths_containing_ignore_case_count("any"), 0);
+}
+
 
 #[test]
 fn vault_line_count_of_match() {

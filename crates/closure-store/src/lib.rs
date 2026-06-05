@@ -2045,6 +2045,18 @@ impl Vault {
             .unwrap_or(0)
     }
 
+    /// Count of paths containing `needle` in any headline title.
+    #[must_use]
+    pub fn paths_containing_count(&self, needle: &str) -> usize {
+        self.paths_containing(needle).len()
+    }
+
+    /// Count of paths containing `needle` (case-insensitive) in any headline title.
+    #[must_use]
+    pub fn paths_containing_ignore_case_count(&self, needle: &str) -> usize {
+        self.paths_containing_ignore_case(needle).len()
+    }
+
     /// Count of headlines with an `:ID:` property across the vault.
     #[must_use]
     pub fn id_count(&self) -> usize {
