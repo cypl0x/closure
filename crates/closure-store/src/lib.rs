@@ -1311,6 +1311,24 @@ impl Vault {
         self.has_cookie()
     }
 
+    /// Count of tag occurrences across the vault (alias of [`Self::total_tag_count`]).
+    #[must_use]
+    pub fn count_tags(&self) -> usize {
+        self.total_tag_count()
+    }
+
+    /// Count of link-target occurrences (alias of [`Self::link_count`]).
+    #[must_use]
+    pub fn count_links(&self) -> usize {
+        self.link_count()
+    }
+
+    /// Count of timestamp occurrences (alias of [`Self::timestamp_count`]).
+    #[must_use]
+    pub fn count_timestamps(&self) -> usize {
+        self.timestamp_count()
+    }
+
     /// True iff any timestamp appears across the vault.
     #[must_use]
     pub fn has_timestamp(&self) -> bool {

@@ -10672,6 +10672,49 @@ fn vault_has_any_cookie_false_when_empty() {
     assert!(!v.has_any_cookie());
 }
 
+#[test]
+fn vault_count_tags_alias_match() {
+    let td = write_vault(&[("a.org", "* A :x:y:\n* B :z:\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    // tags x, y, z = 3 occurrences
+    assert_eq!(v.count_tags(), 3);
+}
+
+#[test]
+fn vault_count_tags_zero_when_empty() {
+    let td = write_vault(&[]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.count_tags(), 0);
+}
+
+#[test]
+fn vault_count_links_alias_match() {
+    let td = write_vault(&[("a.org", "* A\n[[x][X]] [[y][Y]]\n* B\n[[z][Z]]\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.count_links(), 3);
+}
+
+#[test]
+fn vault_count_links_zero_when_empty() {
+    let td = write_vault(&[]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.count_links(), 0);
+}
+
+#[test]
+fn vault_count_timestamps_alias_match() {
+    let td = write_vault(&[("a.org", "* A\n<2026-05-30 Sat>\n* B\n<2026-05-31 Sun>\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.count_timestamps(), 2);
+}
+
+#[test]
+fn vault_count_timestamps_zero_when_empty() {
+    let td = write_vault(&[]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.count_timestamps(), 0);
+}
+
 
 
 #[test]
