@@ -605,6 +605,21 @@ impl OrgDoc {
         })
     }
 
+    /// True iff `needle` appears in document source.
+    #[must_use]
+    pub fn contains_text(&self, needle: &str) -> bool {
+        self.source().contains(needle)
+    }
+
+    /// Count of `needle` occurrences in document source.
+    #[must_use]
+    pub fn count_text(&self, needle: &str) -> usize {
+        if needle.is_empty() {
+            return 0;
+        }
+        self.source().matches(needle).count()
+    }
+
     /// All headline body texts.
     #[must_use]
     pub fn all_bodies(&self) -> Vec<String> {

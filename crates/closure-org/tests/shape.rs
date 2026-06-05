@@ -7951,6 +7951,31 @@ fn doc_count_property_value_match() {
 }
 
 #[test]
+fn doc_contains_text_true_when_match() {
+    let doc = parse("* A\nhello world\n").expect("parse");
+    assert!(doc.contains_text("hello"));
+    assert!(!doc.contains_text("missing"));
+}
+
+#[test]
+fn doc_contains_text_false_when_empty() {
+    let doc = parse("").expect("parse");
+    assert!(!doc.contains_text("any"));
+}
+
+#[test]
+fn doc_count_text_match() {
+    let doc = parse("* A\nhello hello\n").expect("parse");
+    assert_eq!(doc.count_text("hello"), 2);
+}
+
+#[test]
+fn doc_count_text_zero_when_empty() {
+    let doc = parse("").expect("parse");
+    assert_eq!(doc.count_text("any"), 0);
+}
+
+#[test]
 fn doc_tag_pct_match() {
     let doc = parse("* A :x:\n* B :y:\n* C\n").expect("parse");
     assert_eq!(doc.tag_pct("x"), 33);
