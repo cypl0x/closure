@@ -2309,6 +2309,53 @@ fn chord_trie_contains_chord_false_when_empty() {
 }
 
 #[test]
+fn chord_trie_count_chords_alias_match() {
+    let t = closure_input::ChordTrie::build(&[("a", "x"), ("b", "y")]);
+    assert_eq!(t.count_chords(), 2);
+}
+
+#[test]
+fn chord_trie_count_chords_zero_when_empty() {
+    let t = closure_input::ChordTrie::build(&[]);
+    assert_eq!(t.count_chords(), 0);
+}
+
+#[test]
+fn chord_trie_count_commands_alias_match() {
+    let t = closure_input::ChordTrie::build(&[("a", "x"), ("b", "x"), ("c", "y")]);
+    assert_eq!(t.count_commands(), 2);
+}
+
+#[test]
+fn chord_trie_count_commands_zero_when_empty() {
+    let t = closure_input::ChordTrie::build(&[]);
+    assert_eq!(t.count_commands(), 0);
+}
+
+#[test]
+fn dispatcher_count_chords_alias_match() {
+    let mut reg = Registry::new();
+    reg.register(Box::new(RenameHeadline::new_placeholder()));
+    let disp = Dispatcher::from_registry(&reg, InputMode::Doom);
+    assert_eq!(disp.count_chords(), 1);
+}
+
+#[test]
+fn dispatcher_count_commands_alias_match() {
+    let mut reg = Registry::new();
+    reg.register(Box::new(RenameHeadline::new_placeholder()));
+    let disp = Dispatcher::from_registry(&reg, InputMode::Doom);
+    assert_eq!(disp.count_commands(), 1);
+}
+
+#[test]
+fn dispatcher_count_chords_zero_when_empty() {
+    let reg = Registry::new();
+    let disp = Dispatcher::from_registry(&reg, InputMode::Doom);
+    assert_eq!(disp.count_chords(), 0);
+}
+
+#[test]
 fn dispatcher_single_stroke_pct_match() {
     let mut reg = Registry::new();
     reg.register(Box::new(RenameHeadline::new_placeholder()));

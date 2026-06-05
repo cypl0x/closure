@@ -714,6 +714,18 @@ impl Dispatcher {
         self.has_chord(chord)
     }
 
+    /// Count of bound chords (alias of [`Self::chord_count`]).
+    #[must_use]
+    pub fn count_chords(&self) -> usize {
+        self.chord_count()
+    }
+
+    /// Count of distinct commands (alias of [`Self::command_count`]).
+    #[must_use]
+    pub fn count_commands(&self) -> usize {
+        self.command_count()
+    }
+
     /// Sorted bound chord strings at exactly `depth`.
     #[must_use]
     pub fn chords_at_depth(&self, depth: usize) -> Vec<String> {
@@ -1164,6 +1176,18 @@ impl ChordTrie {
     #[must_use]
     pub fn contains_chord(&self, chord: &str) -> bool {
         self.has_chord(chord)
+    }
+
+    /// Count of bound chords (alias of [`Self::chord_count`]).
+    #[must_use]
+    pub fn count_chords(&self) -> usize {
+        self.chord_count()
+    }
+
+    /// Count of distinct commands (alias of [`Self::all_commands`].len).
+    #[must_use]
+    pub fn count_commands(&self) -> usize {
+        self.all_commands().len()
     }
 
     /// Number of distinct chords bound (each leaf with a command).
