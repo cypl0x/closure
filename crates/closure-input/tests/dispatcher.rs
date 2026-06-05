@@ -2296,6 +2296,19 @@ fn dispatcher_contains_chord_false_when_empty() {
 }
 
 #[test]
+fn chord_trie_contains_chord_alias_match() {
+    let t = closure_input::ChordTrie::build(&[("a b", "x")]);
+    assert!(t.contains_chord("a b"));
+    assert!(!t.contains_chord("z"));
+}
+
+#[test]
+fn chord_trie_contains_chord_false_when_empty() {
+    let t = closure_input::ChordTrie::build(&[]);
+    assert!(!t.contains_chord("a"));
+}
+
+#[test]
 fn dispatcher_single_stroke_pct_match() {
     let mut reg = Registry::new();
     reg.register(Box::new(RenameHeadline::new_placeholder()));

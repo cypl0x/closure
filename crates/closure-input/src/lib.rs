@@ -1160,6 +1160,12 @@ impl ChordTrie {
         self.nodes.iter().any(|n| n.command.as_deref() == Some(command))
     }
 
+    /// True iff `chord` is bound in the trie (alias of [`Self::has_chord`]).
+    #[must_use]
+    pub fn contains_chord(&self, chord: &str) -> bool {
+        self.has_chord(chord)
+    }
+
     /// Number of distinct chords bound (each leaf with a command).
     #[must_use]
     pub fn chord_count(&self) -> usize {
