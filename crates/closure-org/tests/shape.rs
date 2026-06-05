@@ -7976,6 +7976,30 @@ fn doc_count_text_zero_when_empty() {
 }
 
 #[test]
+fn doc_has_any_link_alias_match() {
+    let doc = parse("* A\n[[x][X]]\n").expect("parse");
+    assert!(doc.has_any_link());
+}
+
+#[test]
+fn doc_has_any_link_false_when_empty() {
+    let doc = parse("").expect("parse");
+    assert!(!doc.has_any_link());
+}
+
+#[test]
+fn doc_has_any_timestamp_alias_match() {
+    let doc = parse("* A\n<2026-05-30 Sat>\n").expect("parse");
+    assert!(doc.has_any_timestamp());
+}
+
+#[test]
+fn doc_has_any_timestamp_false_when_empty() {
+    let doc = parse("").expect("parse");
+    assert!(!doc.has_any_timestamp());
+}
+
+#[test]
 fn doc_tag_pct_match() {
     let doc = parse("* A :x:\n* B :y:\n* C\n").expect("parse");
     assert_eq!(doc.tag_pct("x"), 33);

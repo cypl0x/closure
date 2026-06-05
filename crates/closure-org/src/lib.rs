@@ -418,6 +418,18 @@ impl OrgDoc {
         self.count_with_link() > 0
     }
 
+    /// True iff any headline carries a link (alias of [`Self::has_link`]).
+    #[must_use]
+    pub fn has_any_link(&self) -> bool {
+        self.has_link()
+    }
+
+    /// True iff any headline carries a timestamp (alias of [`Self::has_timestamp`]).
+    #[must_use]
+    pub fn has_any_timestamp(&self) -> bool {
+        self.has_timestamp()
+    }
+
     /// True iff any headline carries at least one timestamp.
     #[must_use]
     pub fn has_timestamp(&self) -> bool {
