@@ -1305,6 +1305,12 @@ impl Vault {
         self.has_macro()
     }
 
+    /// True iff any cookie appears (alias of [`Self::has_cookie`]).
+    #[must_use]
+    pub fn has_any_cookie(&self) -> bool {
+        self.has_cookie()
+    }
+
     /// True iff any timestamp appears across the vault.
     #[must_use]
     pub fn has_timestamp(&self) -> bool {

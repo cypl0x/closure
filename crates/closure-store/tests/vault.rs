@@ -10658,6 +10658,20 @@ fn vault_has_any_macro_alias_match() {
     assert!(v.has_any_macro());
 }
 
+#[test]
+fn vault_has_any_cookie_alias_match() {
+    let td = write_vault(&[("a.org", "* TODO A [1/2]\n** TODO X\n** DONE Y\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    let _ = v.has_any_cookie();
+}
+
+#[test]
+fn vault_has_any_cookie_false_when_empty() {
+    let td = write_vault(&[]);
+    let v = Vault::open(td.path()).expect("open");
+    assert!(!v.has_any_cookie());
+}
+
 
 
 #[test]
