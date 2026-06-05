@@ -2264,6 +2264,38 @@ fn dispatcher_depth_counts_empty_when_no_bindings() {
 }
 
 #[test]
+fn dispatcher_contains_command_alias_match() {
+    let mut reg = Registry::new();
+    reg.register(Box::new(RenameHeadline::new_placeholder()));
+    let disp = Dispatcher::from_registry(&reg, InputMode::Doom);
+    assert!(disp.contains_command("rename-headline"));
+    assert!(!disp.contains_command("missing"));
+}
+
+#[test]
+fn dispatcher_contains_command_false_when_empty() {
+    let reg = Registry::new();
+    let disp = Dispatcher::from_registry(&reg, InputMode::Doom);
+    assert!(!disp.contains_command("any"));
+}
+
+#[test]
+fn dispatcher_contains_chord_alias_match() {
+    let mut reg = Registry::new();
+    reg.register(Box::new(RenameHeadline::new_placeholder()));
+    let disp = Dispatcher::from_registry(&reg, InputMode::Doom);
+    assert!(disp.contains_chord("C-c C-x r"));
+    assert!(!disp.contains_chord("Z-z"));
+}
+
+#[test]
+fn dispatcher_contains_chord_false_when_empty() {
+    let reg = Registry::new();
+    let disp = Dispatcher::from_registry(&reg, InputMode::Doom);
+    assert!(!disp.contains_chord("a"));
+}
+
+#[test]
 fn dispatcher_single_stroke_pct_match() {
     let mut reg = Registry::new();
     reg.register(Box::new(RenameHeadline::new_placeholder()));

@@ -702,6 +702,18 @@ impl Dispatcher {
         self.chord_stroke_counts()
     }
 
+    /// True iff `command` is bound (alias of [`Self::has_command`]).
+    #[must_use]
+    pub fn contains_command(&self, command: &str) -> bool {
+        self.has_command(command)
+    }
+
+    /// True iff `chord` is bound (alias of [`Self::has_chord`]).
+    #[must_use]
+    pub fn contains_chord(&self, chord: &str) -> bool {
+        self.has_chord(chord)
+    }
+
     /// Sorted bound chord strings at exactly `depth`.
     #[must_use]
     pub fn chords_at_depth(&self, depth: usize) -> Vec<String> {
