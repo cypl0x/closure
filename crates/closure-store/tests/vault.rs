@@ -10715,6 +10715,34 @@ fn vault_count_timestamps_zero_when_empty() {
     assert_eq!(v.count_timestamps(), 0);
 }
 
+#[test]
+fn vault_count_headlines_alias_match() {
+    let td = write_vault(&[("a.org", "* A\n* B\n* C\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.count_headlines(), 3);
+}
+
+#[test]
+fn vault_count_headlines_zero_when_empty() {
+    let td = write_vault(&[]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.count_headlines(), 0);
+}
+
+#[test]
+fn vault_count_files_alias_match() {
+    let td = write_vault(&[("a.org", "* A\n"), ("b.org", "* B\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.count_files(), 2);
+}
+
+#[test]
+fn vault_count_files_zero_when_empty() {
+    let td = write_vault(&[]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.count_files(), 0);
+}
+
 
 
 #[test]

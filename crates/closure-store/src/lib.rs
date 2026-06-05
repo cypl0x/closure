@@ -1329,6 +1329,18 @@ impl Vault {
         self.timestamp_count()
     }
 
+    /// Count of headlines across the vault (alias of [`Self::headline_count`]).
+    #[must_use]
+    pub fn count_headlines(&self) -> usize {
+        self.headline_count()
+    }
+
+    /// Count of files (alias of [`Self::len`]).
+    #[must_use]
+    pub fn count_files(&self) -> usize {
+        self.len()
+    }
+
     /// True iff any timestamp appears across the vault.
     #[must_use]
     pub fn has_timestamp(&self) -> bool {
