@@ -1162,6 +1162,12 @@ impl ChordTrie {
         self.chords_at_depth(depth).len()
     }
 
+    /// True iff any trie node sits at exactly `depth`.
+    #[must_use]
+    pub fn has_node_at_depth(&self, depth: usize) -> bool {
+        self.nodes_at_depth_count(depth) > 0
+    }
+
     /// Count of trie nodes at exactly `depth`.
     #[must_use]
     pub fn nodes_at_depth_count(&self, depth: usize) -> usize {
