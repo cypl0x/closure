@@ -502,6 +502,12 @@ impl OrgDoc {
         self.total_timestamp_count()
     }
 
+    /// Count of headlines (alias of [`Self::headline_count`]).
+    #[must_use]
+    pub fn count_headlines(&self) -> usize {
+        self.headline_count()
+    }
+
     /// True iff any headline carries at least one timestamp.
     #[must_use]
     pub fn has_timestamp(&self) -> bool {

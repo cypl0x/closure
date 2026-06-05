@@ -8072,6 +8072,18 @@ fn doc_count_timestamps_alias_match() {
 }
 
 #[test]
+fn doc_count_headlines_alias_match() {
+    let doc = parse("* A\n* B\n* C\n").expect("parse");
+    assert_eq!(doc.count_headlines(), 3);
+}
+
+#[test]
+fn doc_count_headlines_zero_when_empty() {
+    let doc = parse("").expect("parse");
+    assert_eq!(doc.count_headlines(), 0);
+}
+
+#[test]
 fn doc_tag_pct_match() {
     let doc = parse("* A :x:\n* B :y:\n* C\n").expect("parse");
     assert_eq!(doc.tag_pct("x"), 33);
