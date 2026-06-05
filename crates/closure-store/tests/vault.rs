@@ -10574,6 +10574,34 @@ fn vault_headline_count_at_level_zero_when_no_files() {
     assert_eq!(v.headline_count_at_level(1), 0);
 }
 
+#[test]
+fn vault_has_any_link_alias_match() {
+    let td = write_vault(&[("a.org", "* A\n[[x][X]]\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert!(v.has_any_link());
+}
+
+#[test]
+fn vault_has_any_link_false_when_empty() {
+    let td = write_vault(&[]);
+    let v = Vault::open(td.path()).expect("open");
+    assert!(!v.has_any_link());
+}
+
+#[test]
+fn vault_has_any_timestamp_alias_match() {
+    let td = write_vault(&[("a.org", "* A\n<2026-05-30 Sat>\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert!(v.has_any_timestamp());
+}
+
+#[test]
+fn vault_has_any_timestamp_false_when_empty() {
+    let td = write_vault(&[]);
+    let v = Vault::open(td.path()).expect("open");
+    assert!(!v.has_any_timestamp());
+}
+
 
 
 #[test]

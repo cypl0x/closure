@@ -1245,6 +1245,18 @@ impl Vault {
         self.with_link_count() > 0
     }
 
+    /// True iff any link appears (alias of [`Self::has_link`]).
+    #[must_use]
+    pub fn has_any_link(&self) -> bool {
+        self.has_link()
+    }
+
+    /// True iff any timestamp appears (alias of [`Self::has_timestamp`]).
+    #[must_use]
+    pub fn has_any_timestamp(&self) -> bool {
+        self.has_timestamp()
+    }
+
     /// True iff any timestamp appears across the vault.
     #[must_use]
     pub fn has_timestamp(&self) -> bool {
