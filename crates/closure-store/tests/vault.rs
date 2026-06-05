@@ -10371,6 +10371,52 @@ fn vault_count_no_id_alias_match() {
     assert_eq!(v.count_no_id(), 1);
 }
 
+#[test]
+fn vault_has_property_value_true_when_match() {
+    let td = write_vault(&[("a.org", "* A\n:PROPERTIES:\n:custom: foo\n:END:\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert!(v.has_property_value("custom", "foo"));
+    assert!(!v.has_property_value("custom", "bar"));
+}
+
+#[test]
+fn vault_has_property_value_false_when_empty() {
+    let td = write_vault(&[]);
+    let v = Vault::open(td.path()).expect("open");
+    assert!(!v.has_property_value("custom", "foo"));
+}
+
+#[test]
+fn vault_count_property_value_match() {
+    let td = write_vault(&[
+        ("a.org", "* A\n:PROPERTIES:\n:k: a\n:END:\n"),
+        ("b.org", "* B\n:PROPERTIES:\n:k: a\n:END:\n"),
+        ("c.org", "* C\n:PROPERTIES:\n:k: b\n:END:\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.count_property_value("k", "a"), 2);
+    assert_eq!(v.count_property_value("k", "b"), 1);
+    assert_eq!(v.count_property_value("k", "z"), 0);
+}
+
+#[test]
+fn vault_count_property_value_zero_when_empty() {
+    let td = write_vault(&[]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.count_property_value("k", "a"), 0);
+}
+
+#[test]
+fn vault_paths_with_property_value_match() {
+    let td = write_vault(&[
+        ("a.org", "* A\n:PROPERTIES:\n:k: a\n:END:\n"),
+        ("b.org", "* B\n:PROPERTIES:\n:k: b\n:END:\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.paths_with_property_value("k", "a").len(), 1);
+    assert_eq!(v.paths_with_property_value("k", "z").len(), 0);
+}
+
 
 #[test]
 fn vault_line_count_of_match() {

@@ -1977,6 +1977,33 @@ impl Vault {
         self.with_priority_count()
     }
 
+    /// True iff any headline carries property `key` equal to `value`.
+    #[must_use]
+    pub fn has_property_value(&self, key: &str, value: &str) -> bool {
+        self.documents
+            .values()
+            .any(|d| d.all_headlines().any(|h| h.property(key) == Some(value)))
+    }
+
+    /// Count of headlines carrying property `key` equal to `value`.
+    #[must_use]
+    pub fn count_property_value(&self, key: &str, value: &str) -> usize {
+        self.documents
+            .values()
+            .map(|d| d.all_headlines().filter(|h| h.property(key) == Some(value)).count())
+            .sum()
+    }
+
+    /// Paths of files containing a headline with property `key` equal to `value`.
+    #[must_use]
+    pub fn paths_with_property_value(&self, key: &str, value: &str) -> Vec<&Path> {
+        self.documents
+            .iter()
+            .filter(|(_, d)| d.all_headlines().any(|h| h.property(key) == Some(value)))
+            .map(|(p, _)| p.as_path())
+            .collect()
+    }
+
     /// Count of headlines with an `:ID:` property across the vault.
     #[must_use]
     pub fn id_count(&self) -> usize {
