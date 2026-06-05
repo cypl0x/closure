@@ -10558,6 +10558,23 @@ fn vault_paths_containing_count_zero_when_no_files() {
     assert_eq!(v.paths_containing_ignore_case_count("any"), 0);
 }
 
+#[test]
+fn vault_headline_count_at_level_alias_match() {
+    let td = write_vault(&[("a.org", "* A\n** B\n** C\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.headline_count_at_level(1), 1);
+    assert_eq!(v.headline_count_at_level(2), 2);
+    assert_eq!(v.headline_count_at_level(3), 0);
+}
+
+#[test]
+fn vault_headline_count_at_level_zero_when_no_files() {
+    let td = write_vault(&[]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.headline_count_at_level(1), 0);
+}
+
+
 
 #[test]
 fn vault_line_count_of_match() {
