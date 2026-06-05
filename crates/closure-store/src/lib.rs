@@ -1365,6 +1365,12 @@ impl Vault {
         self.line_count()
     }
 
+    /// Count of paths (alias of [`Self::path_count`]).
+    #[must_use]
+    pub fn count_paths(&self) -> usize {
+        self.path_count()
+    }
+
     /// True iff any timestamp appears across the vault.
     #[must_use]
     pub fn has_timestamp(&self) -> bool {

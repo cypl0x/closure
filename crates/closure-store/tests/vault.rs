@@ -10799,6 +10799,20 @@ fn vault_count_lines_zero_when_empty() {
     assert_eq!(v.count_lines(), 0);
 }
 
+#[test]
+fn vault_count_paths_alias_match() {
+    let td = write_vault(&[("a.org", "* A\n"), ("b.org", "* B\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.count_paths(), 2);
+}
+
+#[test]
+fn vault_count_paths_zero_when_empty() {
+    let td = write_vault(&[]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.count_paths(), 0);
+}
+
 
 
 #[test]
