@@ -8054,6 +8054,24 @@ fn doc_has_any_cookie_alias_match() {
 }
 
 #[test]
+fn doc_count_tags_alias_match() {
+    let doc = parse("* A :x:y:\n* B :z:\n").expect("parse");
+    assert_eq!(doc.count_tags(), 3);
+}
+
+#[test]
+fn doc_count_links_alias_match() {
+    let doc = parse("* A\n[[x][X]] [[y][Y]]\n* B\n[[z][Z]]\n").expect("parse");
+    assert_eq!(doc.count_links(), 3);
+}
+
+#[test]
+fn doc_count_timestamps_alias_match() {
+    let doc = parse("* A\n<2026-05-30 Sat>\n* B\n<2026-05-31 Sun>\n").expect("parse");
+    assert_eq!(doc.count_timestamps(), 2);
+}
+
+#[test]
 fn doc_tag_pct_match() {
     let doc = parse("* A :x:\n* B :y:\n* C\n").expect("parse");
     assert_eq!(doc.tag_pct("x"), 33);

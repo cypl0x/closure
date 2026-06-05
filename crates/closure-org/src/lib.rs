@@ -484,6 +484,24 @@ impl OrgDoc {
         self.has_cookie()
     }
 
+    /// Count of tag occurrences (alias of [`Self::total_tag_count`]).
+    #[must_use]
+    pub fn count_tags(&self) -> usize {
+        self.total_tag_count()
+    }
+
+    /// Count of link-target occurrences (alias of [`Self::total_link_count`]).
+    #[must_use]
+    pub fn count_links(&self) -> usize {
+        self.total_link_count()
+    }
+
+    /// Count of timestamp occurrences (alias of [`Self::total_timestamp_count`]).
+    #[must_use]
+    pub fn count_timestamps(&self) -> usize {
+        self.total_timestamp_count()
+    }
+
     /// True iff any headline carries at least one timestamp.
     #[must_use]
     pub fn has_timestamp(&self) -> bool {
