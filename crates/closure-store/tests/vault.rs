@@ -10417,6 +10417,54 @@ fn vault_paths_with_property_value_match() {
     assert_eq!(v.paths_with_property_value("k", "z").len(), 0);
 }
 
+#[test]
+fn vault_paths_containing_match() {
+    let td = write_vault(&[
+        ("a.org", "* Apple\n"),
+        ("b.org", "* Banana\n"),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    let paths = v.paths_containing("App");
+    assert_eq!(paths.len(), 1);
+}
+
+#[test]
+fn vault_paths_containing_empty_when_no_match() {
+    let td = write_vault(&[("a.org", "* Apple\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert!(v.paths_containing("xyz").is_empty());
+}
+
+#[test]
+fn vault_paths_containing_ignore_case_match() {
+    let td = write_vault(&[("a.org", "* Apple\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.paths_containing_ignore_case("app").len(), 1);
+}
+
+#[test]
+fn vault_paths_containing_ignore_case_empty_when_no_match() {
+    let td = write_vault(&[("a.org", "* Apple\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert!(v.paths_containing_ignore_case("zzz").is_empty());
+}
+
+#[test]
+fn vault_has_path_true_when_loaded() {
+    let td = write_vault(&[("a.org", "* A\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    let p = v.root().join("a.org");
+    assert!(v.has_path(&p));
+    assert!(!v.has_path(std::path::Path::new("missing.org")));
+}
+
+#[test]
+fn vault_has_path_false_when_no_files() {
+    let td = write_vault(&[]);
+    let v = Vault::open(td.path()).expect("open");
+    assert!(!v.has_path(std::path::Path::new("a.org")));
+}
+
 
 #[test]
 fn vault_line_count_of_match() {

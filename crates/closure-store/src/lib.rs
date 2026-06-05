@@ -2004,6 +2004,12 @@ impl Vault {
             .collect()
     }
 
+    /// True iff `path` is loaded in the vault.
+    #[must_use]
+    pub fn has_path(&self, path: &Path) -> bool {
+        self.documents.contains_key(path)
+    }
+
     /// Count of headlines with an `:ID:` property across the vault.
     #[must_use]
     pub fn id_count(&self) -> usize {
