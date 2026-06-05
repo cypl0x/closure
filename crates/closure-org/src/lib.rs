@@ -508,6 +508,30 @@ impl OrgDoc {
         self.headline_count()
     }
 
+    /// Total word count (alias of [`Self::source_word_count`]).
+    #[must_use]
+    pub fn count_words(&self) -> usize {
+        self.source_word_count()
+    }
+
+    /// Total character count (alias of [`Self::source_char_count`]).
+    #[must_use]
+    pub fn count_chars(&self) -> usize {
+        self.source_char_count()
+    }
+
+    /// Total byte count of document source.
+    #[must_use]
+    pub fn count_bytes(&self) -> usize {
+        self.source().len()
+    }
+
+    /// Total source line count (alias of [`Self::line_count`]).
+    #[must_use]
+    pub fn count_lines(&self) -> usize {
+        self.line_count()
+    }
+
     /// True iff any headline carries at least one timestamp.
     #[must_use]
     pub fn has_timestamp(&self) -> bool {

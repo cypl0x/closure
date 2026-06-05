@@ -8084,6 +8084,30 @@ fn doc_count_headlines_zero_when_empty() {
 }
 
 #[test]
+fn doc_count_words_alias_match() {
+    let doc = parse("* A B C\n").expect("parse");
+    assert_eq!(doc.count_words(), 4);
+}
+
+#[test]
+fn doc_count_chars_alias_match() {
+    let doc = parse("* A\n").expect("parse");
+    assert_eq!(doc.count_chars(), 4);
+}
+
+#[test]
+fn doc_count_bytes_alias_match() {
+    let doc = parse("* A\n").expect("parse");
+    assert_eq!(doc.count_bytes(), 4);
+}
+
+#[test]
+fn doc_count_lines_alias_match() {
+    let doc = parse("* A\nbody\n* B\n").expect("parse");
+    assert_eq!(doc.count_lines(), 3);
+}
+
+#[test]
 fn doc_tag_pct_match() {
     let doc = parse("* A :x:\n* B :y:\n* C\n").expect("parse");
     assert_eq!(doc.tag_pct("x"), 33);
