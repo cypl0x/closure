@@ -430,6 +430,60 @@ impl OrgDoc {
         self.has_timestamp()
     }
 
+    /// True iff any archived headline appears (alias of [`Self::has_archived`]).
+    #[must_use]
+    pub fn has_any_archived(&self) -> bool {
+        self.has_archived()
+    }
+
+    /// True iff any SCHEDULED headline appears (alias of [`Self::has_scheduled`]).
+    #[must_use]
+    pub fn has_any_scheduled(&self) -> bool {
+        self.has_scheduled()
+    }
+
+    /// True iff any DEADLINE headline appears (alias of [`Self::has_deadline`]).
+    #[must_use]
+    pub fn has_any_deadline(&self) -> bool {
+        self.has_deadline()
+    }
+
+    /// True iff any CLOSED headline appears (alias of [`Self::has_closed`]).
+    #[must_use]
+    pub fn has_any_closed(&self) -> bool {
+        self.has_closed()
+    }
+
+    /// True iff any COMMENT headline appears (alias of [`Self::has_comment`]).
+    #[must_use]
+    pub fn has_any_comment(&self) -> bool {
+        self.has_comment()
+    }
+
+    /// True iff any planning info appears (alias of [`Self::has_planning`]).
+    #[must_use]
+    pub fn has_any_planning(&self) -> bool {
+        self.has_planning()
+    }
+
+    /// True iff any footnote appears (alias of [`Self::has_footnote`]).
+    #[must_use]
+    pub fn has_any_footnote(&self) -> bool {
+        self.has_footnote()
+    }
+
+    /// True iff any macro appears (alias of [`Self::has_macro`]).
+    #[must_use]
+    pub fn has_any_macro(&self) -> bool {
+        self.has_macro()
+    }
+
+    /// True iff any cookie appears (alias of [`Self::has_cookie`]).
+    #[must_use]
+    pub fn has_any_cookie(&self) -> bool {
+        self.has_cookie()
+    }
+
     /// True iff any headline carries at least one timestamp.
     #[must_use]
     pub fn has_timestamp(&self) -> bool {

@@ -8000,6 +8000,60 @@ fn doc_has_any_timestamp_false_when_empty() {
 }
 
 #[test]
+fn doc_has_any_archived_alias_match() {
+    let doc = parse("* A :ARCHIVE:\n").expect("parse");
+    assert!(doc.has_any_archived());
+}
+
+#[test]
+fn doc_has_any_scheduled_alias_match() {
+    let doc = parse("* A\nSCHEDULED: <2026-05-30 Sat>\n").expect("parse");
+    assert!(doc.has_any_scheduled());
+}
+
+#[test]
+fn doc_has_any_deadline_alias_match() {
+    let doc = parse("* A\nDEADLINE: <2026-05-30 Sat>\n").expect("parse");
+    assert!(doc.has_any_deadline());
+}
+
+#[test]
+fn doc_has_any_closed_alias_match() {
+    let doc = parse("* A\nCLOSED: [2026-05-30 Sat]\n").expect("parse");
+    assert!(doc.has_any_closed());
+}
+
+#[test]
+fn doc_has_any_comment_alias_match() {
+    let doc = parse("* COMMENT A\n").expect("parse");
+    assert!(doc.has_any_comment());
+}
+
+#[test]
+fn doc_has_any_planning_alias_match() {
+    let doc = parse("* A\nSCHEDULED: <2026-05-30 Sat>\n").expect("parse");
+    assert!(doc.has_any_planning());
+}
+
+#[test]
+fn doc_has_any_footnote_alias_match() {
+    let doc = parse("* A\nbody[fn:1]\n").expect("parse");
+    assert!(doc.has_any_footnote());
+}
+
+#[test]
+fn doc_has_any_macro_alias_match() {
+    let doc = parse("* A\n{{{m(x)}}}\n").expect("parse");
+    assert!(doc.has_any_macro());
+}
+
+#[test]
+fn doc_has_any_cookie_alias_match() {
+    let doc = parse("* TODO A [1/2]\n** TODO X\n** DONE Y\n").expect("parse");
+    let _ = doc.has_any_cookie();
+}
+
+#[test]
 fn doc_tag_pct_match() {
     let doc = parse("* A :x:\n* B :y:\n* C\n").expect("parse");
     assert_eq!(doc.tag_pct("x"), 33);
