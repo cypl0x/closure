@@ -1162,6 +1162,31 @@ impl ChordTrie {
         self.chords_at_depth(depth).len()
     }
 
+    /// Count of trie nodes at exactly `depth`.
+    #[must_use]
+    pub fn nodes_at_depth_count(&self, depth: usize) -> usize {
+        fn walk(
+            idx: usize,
+            current: usize,
+            target: usize,
+            nodes: &[TrieNode],
+            count: &mut usize,
+        ) {
+            if current == target {
+                *count += 1;
+                return;
+            }
+            for &child in nodes[idx].children.values() {
+                walk(child, current + 1, target, nodes, count);
+            }
+        }
+        let mut c = 0usize;
+        if !self.nodes.is_empty() {
+            walk(0, 0, depth, &self.nodes, &mut c);
+        }
+        c
+    }
+
     /// Total node count in the trie (including the root).
     #[must_use]
     pub const fn node_count(&self) -> usize {

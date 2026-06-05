@@ -2139,6 +2139,23 @@ fn chord_trie_chords_at_depth_count_match() {
 }
 
 #[test]
+fn chord_trie_nodes_at_depth_count_match() {
+    let t = closure_input::ChordTrie::build(&[("a b", "x"), ("a c", "y")]);
+    // root at depth 0; a at 1; b,c at 2
+    assert_eq!(t.nodes_at_depth_count(0), 1);
+    assert_eq!(t.nodes_at_depth_count(1), 1);
+    assert_eq!(t.nodes_at_depth_count(2), 2);
+    assert_eq!(t.nodes_at_depth_count(5), 0);
+}
+
+#[test]
+fn chord_trie_nodes_at_depth_count_zero_when_empty() {
+    let t = closure_input::ChordTrie::build(&[]);
+    assert_eq!(t.nodes_at_depth_count(0), 1);
+    assert_eq!(t.nodes_at_depth_count(1), 0);
+}
+
+#[test]
 fn dispatcher_single_stroke_pct_match() {
     let mut reg = Registry::new();
     reg.register(Box::new(RenameHeadline::new_placeholder()));
