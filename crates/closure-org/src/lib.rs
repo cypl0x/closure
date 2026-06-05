@@ -587,6 +587,24 @@ impl OrgDoc {
         (self.count_with_id() * 100).checked_div(n).unwrap_or(0)
     }
 
+    /// True iff any headline carries property `key` equal to `value`.
+    #[must_use]
+    pub fn has_property_value(&self, key: &str, value: &str) -> bool {
+        self.iter_headlines().into_iter().any(|h| {
+            h.properties()
+                .is_some_and(|p| p.get(key) == Some(value))
+        })
+    }
+
+    /// Count of headlines carrying property `key` equal to `value`.
+    #[must_use]
+    pub fn count_property_value(&self, key: &str, value: &str) -> usize {
+        self.count_headlines_where(|h| {
+            h.properties()
+                .is_some_and(|p| p.get(key) == Some(value))
+        })
+    }
+
     /// All headline body texts.
     #[must_use]
     pub fn all_bodies(&self) -> Vec<String> {

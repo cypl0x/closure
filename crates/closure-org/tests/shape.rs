@@ -7928,6 +7928,29 @@ fn doc_with_id_pct_zero_when_no_headlines() {
 }
 
 #[test]
+fn doc_has_property_value_true_when_match() {
+    let doc = parse("* A\n:PROPERTIES:\n:k: v\n:END:\n").expect("parse");
+    assert!(doc.has_property_value("k", "v"));
+    assert!(!doc.has_property_value("k", "other"));
+}
+
+#[test]
+fn doc_has_property_value_false_when_empty() {
+    let doc = parse("").expect("parse");
+    assert!(!doc.has_property_value("k", "v"));
+}
+
+#[test]
+fn doc_count_property_value_match() {
+    let doc = parse(
+        "* A\n:PROPERTIES:\n:k: a\n:END:\n* B\n:PROPERTIES:\n:k: a\n:END:\n* C\n:PROPERTIES:\n:k: b\n:END:\n",
+    )
+    .expect("parse");
+    assert_eq!(doc.count_property_value("k", "a"), 2);
+    assert_eq!(doc.count_property_value("k", "b"), 1);
+}
+
+#[test]
 fn doc_tag_pct_match() {
     let doc = parse("* A :x:\n* B :y:\n* C\n").expect("parse");
     assert_eq!(doc.tag_pct("x"), 33);
