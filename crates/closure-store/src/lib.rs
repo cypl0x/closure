@@ -1371,6 +1371,42 @@ impl Vault {
         self.path_count()
     }
 
+    /// Count of headlines with `:ID:` (alias of [`Self::id_count`]).
+    #[must_use]
+    pub fn with_id_count(&self) -> usize {
+        self.id_count()
+    }
+
+    /// Count of archived headlines (alias of [`Self::archived_count`]).
+    #[must_use]
+    pub fn with_archived_count(&self) -> usize {
+        self.archived_count()
+    }
+
+    /// Count of SCHEDULED headlines (alias of [`Self::scheduled_count`]).
+    #[must_use]
+    pub fn with_scheduled_count(&self) -> usize {
+        self.scheduled_count()
+    }
+
+    /// Count of DEADLINE headlines (alias of [`Self::deadline_count`]).
+    #[must_use]
+    pub fn with_deadline_count(&self) -> usize {
+        self.deadline_count()
+    }
+
+    /// Count of CLOSED headlines (alias of [`Self::closed_count`]).
+    #[must_use]
+    pub fn with_closed_count(&self) -> usize {
+        self.closed_count()
+    }
+
+    /// Count of COMMENT headlines (alias of [`Self::comment_count`]).
+    #[must_use]
+    pub fn with_comment_count(&self) -> usize {
+        self.comment_count()
+    }
+
     /// True iff any timestamp appears across the vault.
     #[must_use]
     pub fn has_timestamp(&self) -> bool {

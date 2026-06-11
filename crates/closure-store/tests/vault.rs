@@ -10813,6 +10813,48 @@ fn vault_count_paths_zero_when_empty() {
     assert_eq!(v.count_paths(), 0);
 }
 
+#[test]
+fn vault_with_id_count_alias_match() {
+    let td = write_vault(&[("a.org", "* A\n:PROPERTIES:\n:ID: x\n:END:\n* B\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.with_id_count(), 1);
+}
+
+#[test]
+fn vault_with_archived_count_alias_match() {
+    let td = write_vault(&[("a.org", "* A :ARCHIVE:\n* B\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.with_archived_count(), 1);
+}
+
+#[test]
+fn vault_with_scheduled_count_alias_match() {
+    let td = write_vault(&[("a.org", "* A\nSCHEDULED: <2026-05-30 Sat>\n* B\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.with_scheduled_count(), 1);
+}
+
+#[test]
+fn vault_with_deadline_count_alias_match() {
+    let td = write_vault(&[("a.org", "* A\nDEADLINE: <2026-05-30 Sat>\n* B\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.with_deadline_count(), 1);
+}
+
+#[test]
+fn vault_with_closed_count_alias_match() {
+    let td = write_vault(&[("a.org", "* A\nCLOSED: [2026-05-30 Sat]\n* B\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.with_closed_count(), 1);
+}
+
+#[test]
+fn vault_with_comment_count_alias_match() {
+    let td = write_vault(&[("a.org", "* COMMENT A\n* B\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.with_comment_count(), 1);
+}
+
 
 
 #[test]
