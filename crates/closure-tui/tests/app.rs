@@ -147,3 +147,123 @@ fn app_unknown_command_name_is_ignored() {
     assert!(!app.should_quit());
     assert_eq!(app.selected_index(), Some(0));
 }
+
+// --- search mode -----------------------------------------------------
+
+use closure_tui::AppMode;
+
+#[test]
+fn slash_enters_search_mode() {
+    let mut app = App::new(paths());
+    assert_eq!(app.mode(), AppMode::Browse);
+    app.handle_stroke("/");
+    assert_eq!(app.mode(), AppMode::Search);
+    assert_eq!(app.query(), "");
+}
+
+#[test]
+fn typing_appends_to_query() {
+    let mut app = App::new(paths());
+    app.handle_stroke("/");
+    app.handle_stroke("f");
+    app.handle_stroke("o");
+    assert_eq!(app.query(), "fo");
+}
+
+#[test]
+fn spc_stroke_appends_space_to_query() {
+    let mut app = App::new(paths());
+    app.handle_stroke("/");
+    app.handle_stroke("a");
+    app.handle_stroke("SPC");
+    app.handle_stroke("b");
+    assert_eq!(app.query(), "a b");
+}
+
+#[test]
+fn del_pops_last_query_char() {
+    let mut app = App::new(paths());
+    app.handle_stroke("/");
+    app.handle_stroke("f");
+    app.handle_stroke("o");
+    app.handle_stroke("DEL");
+    assert_eq!(app.query(), "f");
+    app.handle_stroke("DEL");
+    app.handle_stroke("DEL");
+    assert_eq!(app.query(), "");
+}
+
+#[test]
+fn esc_cancels_search_and_keeps_selection() {
+    let mut app = App::new(paths());
+    app.handle_stroke("j");
+    app.handle_stroke("/");
+    app.handle_stroke("x");
+    app.handle_stroke("ESC");
+    assert_eq!(app.mode(), AppMode::Browse);
+    assert_eq!(app.query(), "");
+    assert_eq!(app.selected_index(), Some(1));
+}
+
+#[test]
+fn search_strokes_do_not_fire_browse_commands() {
+    let mut app = App::new(paths());
+    app.handle_stroke("/");
+    app.handle_stroke("q");
+    assert!(!app.should_quit());
+    assert_eq!(app.query(), "q");
+}
+
+#[test]
+fn results_are_fuzzy_filtered() {
+    let mut app = App::new(vec![
+        std::path::PathBuf::from("alpha.org"),
+        std::path::PathBuf::from("beta.org"),
+        std::path::PathBuf::from("notes.org"),
+    ]);
+    app.handle_stroke("/");
+    app.handle_stroke("n");
+    app.handle_stroke("s");
+    let results: Vec<String> = app
+        .results()
+        .iter()
+        .map(|p| p.display().to_string())
+        .collect();
+    assert_eq!(results, vec!["notes.org".to_owned()]);
+}
+
+#[test]
+fn empty_query_results_list_every_path() {
+    let mut app = App::new(paths());
+    app.handle_stroke("/");
+    assert_eq!(app.results().len(), 3);
+}
+
+#[test]
+fn ret_accepts_best_match_and_returns_to_browse() {
+    let mut app = App::new(vec![
+        std::path::PathBuf::from("alpha.org"),
+        std::path::PathBuf::from("beta.org"),
+        std::path::PathBuf::from("notes.org"),
+    ]);
+    app.handle_stroke("/");
+    app.handle_stroke("n");
+    app.handle_stroke("RET");
+    assert_eq!(app.mode(), AppMode::Browse);
+    assert_eq!(
+        app.selected_path(),
+        Some(std::path::Path::new("notes.org"))
+    );
+    assert_eq!(app.query(), "");
+}
+
+#[test]
+fn ret_with_no_match_cancels_without_moving() {
+    let mut app = App::new(paths());
+    app.handle_stroke("/");
+    app.handle_stroke("z");
+    app.handle_stroke("z");
+    app.handle_stroke("RET");
+    assert_eq!(app.mode(), AppMode::Browse);
+    assert_eq!(app.selected_index(), Some(0));
+}

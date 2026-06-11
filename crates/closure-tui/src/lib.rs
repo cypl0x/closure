@@ -47,7 +47,18 @@ const DEFAULT_BINDINGS: &[(&str, &str)] = &[
     ("G", "last-file"),
     ("q", "quit"),
     ("ESC", "quit"),
+    ("/", "search-start"),
 ];
+
+/// Which input surface the shell is on.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AppMode {
+    /// Navigating the file list via chord bindings.
+    Browse,
+    /// Typing a fuzzy file query; strokes edit the query instead of
+    /// firing chords.
+    Search,
+}
 
 /// Elm-style application state for the terminal shell. Strokes go in
 /// via [`Self::handle_stroke`]; rendering reads the accessors. No
@@ -60,6 +71,8 @@ pub struct App {
     pending: Vec<String>,
     popup: Option<Vec<String>>,
     quit: bool,
+    mode: AppMode,
+    query: String,
 }
 
 impl App {
@@ -85,7 +98,42 @@ impl App {
             pending: Vec::new(),
             popup: None,
             quit: false,
+            mode: AppMode::Browse,
+            query: String::new(),
         }
+    }
+
+    /// Current input surface.
+    #[must_use]
+    pub const fn mode(&self) -> AppMode {
+        self.mode
+    }
+
+    /// The live fuzzy query (empty outside search mode).
+    #[must_use]
+    pub fn query(&self) -> &str {
+        &self.query
+    }
+
+    /// Paths matching the live query, best fuzzy score first. With an
+    /// empty query every path is returned in display order.
+    #[must_use]
+    pub fn results(&self) -> Vec<&Path> {
+        let names: Vec<String> = self
+            .paths
+            .iter()
+            .map(|p| p.display().to_string())
+            .collect();
+        let name_refs: Vec<&str> = names.iter().map(String::as_str).collect();
+        closure_query::fuzzy_filter(&self.query, &name_refs)
+            .iter()
+            .filter_map(|(name, _)| {
+                self.paths
+                    .iter()
+                    .find(|p| p.display().to_string() == *name)
+                    .map(PathBuf::as_path)
+            })
+            .collect()
     }
 
     /// The browsable file paths, in display order.
@@ -128,9 +176,13 @@ impl App {
         self.popup.as_deref()
     }
 
-    /// Feed one key stroke into the chord trie and apply whatever it
-    /// resolves to.
+    /// Feed one key stroke into the active surface: query editing in
+    /// search mode, the chord trie otherwise.
     pub fn handle_stroke(&mut self, stroke: &str) {
+        if self.mode == AppMode::Search {
+            self.handle_search_stroke(stroke);
+            return;
+        }
         match self.trie.step(stroke) {
             TrieStep::Resolved(cmd) => {
                 self.pending.clear();
@@ -161,6 +213,36 @@ impl App {
         }
     }
 
+    fn handle_search_stroke(&mut self, stroke: &str) {
+        match stroke {
+            "ESC" => {
+                self.mode = AppMode::Browse;
+                self.query.clear();
+            }
+            "RET" => {
+                let idx = self
+                    .results()
+                    .first()
+                    .and_then(|best| self.paths.iter().position(|p| p.as_path() == *best));
+                if idx.is_some() {
+                    self.selected = idx;
+                }
+                self.mode = AppMode::Browse;
+                self.query.clear();
+            }
+            "DEL" => {
+                self.query.pop();
+            }
+            "SPC" => self.query.push(' '),
+            s => {
+                let mut chars = s.chars();
+                if let (Some(c), None) = (chars.next(), chars.next()) {
+                    self.query.push(c);
+                }
+            }
+        }
+    }
+
     fn apply_command(&mut self, cmd: &str) {
         let last = self.paths.len().checked_sub(1);
         match cmd {
@@ -181,6 +263,10 @@ impl App {
                 self.selected = last;
             }
             "quit" => self.quit = true,
+            "search-start" => {
+                self.mode = AppMode::Search;
+                self.query.clear();
+            }
             _ => {}
         }
     }
@@ -290,6 +376,26 @@ fn run_loop(
             let body = Paragraph::new(body_text)
                 .block(Block::default().title("headlines").borders(Borders::ALL));
             f.render_widget(body, chunks[1]);
+
+            if app.mode() == AppMode::Search {
+                let results: Vec<String> = app
+                    .results()
+                    .iter()
+                    .map(|p| p.display().to_string())
+                    .collect();
+                let title = format!("find file: {}", app.query());
+                let height = area.height / 2;
+                let search_area = ratatui::layout::Rect {
+                    x: area.x,
+                    y: area.height.saturating_sub(height),
+                    width: area.width,
+                    height,
+                };
+                let pane = Paragraph::new(results.join("\n"))
+                    .block(Block::default().title(title).borders(Borders::ALL));
+                f.render_widget(ratatui::widgets::Clear, search_area);
+                f.render_widget(pane, search_area);
+            }
 
             if let Some(lines) = app.popup_lines() {
                 let height = u16::try_from(lines.len()).unwrap_or(u16::MAX);
