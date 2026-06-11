@@ -12,6 +12,7 @@ use std::io;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
+use closure_core::Document;
 use closure_input::{ChordTrie, TrieStep};
 use closure_store::Vault;
 use crossterm::event::{self, Event, KeyCode, KeyEventKind};
@@ -40,9 +41,12 @@ pub enum TuiError {
 const DEFAULT_BINDINGS: &[(&str, &str)] = &[
     ("j", "next-file"),
     ("k", "prev-file"),
+    ("<down>", "next-file"),
+    ("<up>", "prev-file"),
     ("g g", "first-file"),
     ("G", "last-file"),
     ("q", "quit"),
+    ("ESC", "quit"),
 ];
 
 /// Elm-style application state for the terminal shell. Strokes go in
@@ -82,6 +86,12 @@ impl App {
             popup: None,
             quit: false,
         }
+    }
+
+    /// The browsable file paths, in display order.
+    #[must_use]
+    pub fn paths(&self) -> &[PathBuf] {
+        &self.paths
     }
 
     /// Index of the selected file, if any.
@@ -176,6 +186,62 @@ impl App {
     }
 }
 
+/// Translate a terminal key event into a chord stroke in Emacs/doom
+/// notation (`j`, `G`, `SPC`, `C-c`, `M-x`, `RET`, …). Returns `None`
+/// for keys the shell does not map.
+#[must_use]
+pub fn stroke_of(ev: &crossterm::event::KeyEvent) -> Option<String> {
+    use crossterm::event::KeyModifiers;
+    let base = match ev.code {
+        KeyCode::Char(' ') => "SPC".to_owned(),
+        KeyCode::Char(c) => c.to_string(),
+        KeyCode::Esc => "ESC".to_owned(),
+        KeyCode::Enter => "RET".to_owned(),
+        KeyCode::Tab => "TAB".to_owned(),
+        KeyCode::Backspace => "DEL".to_owned(),
+        KeyCode::Up => "<up>".to_owned(),
+        KeyCode::Down => "<down>".to_owned(),
+        _ => return None,
+    };
+    if ev.modifiers.contains(KeyModifiers::CONTROL) {
+        return Some(format!("C-{base}"));
+    }
+    if ev.modifiers.contains(KeyModifiers::ALT) {
+        return Some(format!("M-{base}"));
+    }
+    Some(base)
+}
+
+/// Render the headline tree of `doc` as indented text lines:
+/// `indent * TODO [#P] title :tags:    [id]`.
+#[must_use]
+pub fn headline_lines(doc: &Document) -> String {
+    let mut s = String::new();
+    for h in doc.all_headlines() {
+        let indent = "  ".repeat(usize::from(h.level()).saturating_sub(1));
+        let mut prefix = String::new();
+        if let Some(t) = h.todo() {
+            prefix.push_str(t);
+            prefix.push(' ');
+        }
+        if let Some(p) = h.priority() {
+            let _ = write!(prefix, "[#{p}] ");
+        }
+        let tags = if h.tags().is_empty() {
+            String::new()
+        } else {
+            format!(" :{}:", h.tags().join(":"))
+        };
+        let _ = writeln!(
+            s,
+            "{indent}* {prefix}{title}{tags}    [{id}]",
+            title = h.title(),
+            id = h.id()
+        );
+    }
+    s
+}
+
 /// Run the TUI against an already-loaded vault. Returns when the user
 /// quits via `q` or `Esc`.
 pub fn run(vault: &Vault) -> Result<(), TuiError> {
@@ -195,11 +261,7 @@ fn run_loop(
     terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
     vault: &Vault,
 ) -> Result<(), TuiError> {
-    let paths: Vec<PathBuf> = vault.paths();
-    let mut file_state = ListState::default();
-    if !paths.is_empty() {
-        file_state.select(Some(0));
-    }
+    let mut app = App::new(vault.paths());
 
     loop {
         terminal.draw(|f| {
@@ -209,69 +271,50 @@ fn run_loop(
                 .constraints([Constraint::Percentage(35), Constraint::Percentage(65)])
                 .split(area);
 
-            let file_items: Vec<ListItem<'_>> = paths
+            let file_items: Vec<ListItem<'_>> = app
+                .paths()
                 .iter()
                 .map(|p| ListItem::new(p.display().to_string()))
                 .collect();
+            let mut file_state = ListState::default();
+            file_state.select(app.selected_index());
             let files = List::new(file_items)
                 .block(Block::default().title("files").borders(Borders::ALL))
                 .highlight_style(Style::default().add_modifier(Modifier::REVERSED));
             f.render_stateful_widget(files, chunks[0], &mut file_state);
 
-            let body_text = file_state
-                .selected()
-                .and_then(|i| paths.get(i))
+            let body_text = app
+                .selected_path()
                 .and_then(|p| vault.document(p))
-                .map_or_else(String::new, |doc| {
-                    let mut s = String::new();
-                    for h in doc.all_headlines() {
-                        let indent = "  ".repeat(usize::from(h.level()).saturating_sub(1));
-                        let mut prefix = String::new();
-                        if let Some(t) = h.todo() {
-                            prefix.push_str(t);
-                            prefix.push(' ');
-                        }
-                        if let Some(p) = h.priority() {
-                            let _ = write!(prefix, "[#{p}] ");
-                        }
-                        let tags = if h.tags().is_empty() {
-                            String::new()
-                        } else {
-                            format!(" :{}:", h.tags().join(":"))
-                        };
-                        let _ = writeln!(
-                            s,
-                            "{indent}* {prefix}{title}{tags}    [{id}]",
-                            title = h.title(),
-                            id = h.id()
-                        );
-                    }
-                    s
-                });
+                .map_or_else(String::new, headline_lines);
             let body = Paragraph::new(body_text)
                 .block(Block::default().title("headlines").borders(Borders::ALL));
             f.render_widget(body, chunks[1]);
+
+            if let Some(lines) = app.popup_lines() {
+                let height = u16::try_from(lines.len()).unwrap_or(u16::MAX);
+                let popup_area = ratatui::layout::Rect {
+                    x: area.x,
+                    y: area.height.saturating_sub(height.saturating_add(2)),
+                    width: area.width,
+                    height: height.saturating_add(2).min(area.height),
+                };
+                let title = format!("which-key: {}", app.pending_chord());
+                let popup = Paragraph::new(lines.join("\n"))
+                    .block(Block::default().title(title).borders(Borders::ALL));
+                f.render_widget(ratatui::widgets::Clear, popup_area);
+                f.render_widget(popup, popup_area);
+            }
         })?;
 
         if event::poll(Duration::from_millis(200))?
             && let Event::Key(key) = event::read()?
             && key.kind == KeyEventKind::Press
+            && let Some(stroke) = stroke_of(&key)
         {
-            match key.code {
-                KeyCode::Char('q') | KeyCode::Esc => return Ok(()),
-                KeyCode::Down | KeyCode::Char('j') => {
-                    let i = file_state.selected().unwrap_or(0);
-                    if !paths.is_empty() && i + 1 < paths.len() {
-                        file_state.select(Some(i + 1));
-                    }
-                }
-                KeyCode::Up | KeyCode::Char('k') => {
-                    let i = file_state.selected().unwrap_or(0);
-                    if i > 0 {
-                        file_state.select(Some(i - 1));
-                    }
-                }
-                _ => {}
+            app.handle_stroke(&stroke);
+            if app.should_quit() {
+                return Ok(());
             }
         }
     }
