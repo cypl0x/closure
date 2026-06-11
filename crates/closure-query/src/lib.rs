@@ -196,3 +196,42 @@ impl<'a> DatabaseView<'a> {
             .collect()
     }
 }
+
+/// Score a fuzzy match of `needle` against `hay`, higher is better.
+///
+/// `None` when `needle` is not a case-insensitive subsequence of
+/// `hay`. Contiguous matches outrank scattered ones (10 points per
+/// gap), earlier starts outrank later ones (1 point per column).
+#[must_use]
+pub fn fuzzy_score(needle: &str, hay: &str) -> Option<u32> {
+    const BASE: u32 = 1_000_000;
+    if needle.is_empty() {
+        return Some(BASE);
+    }
+    let hay_lower: Vec<char> = hay.chars().flat_map(char::to_lowercase).collect();
+    let mut positions: Vec<usize> = Vec::new();
+    let mut from = 0usize;
+    for nc in needle.chars().flat_map(char::to_lowercase) {
+        let rel = hay_lower[from..].iter().position(|&hc| hc == nc)?;
+        positions.push(from + rel);
+        from += rel + 1;
+    }
+    let first = *positions.first()?;
+    let last = *positions.last()?;
+    let gaps = last - first + 1 - positions.len();
+    let penalty = u32::try_from(gaps).unwrap_or(u32::MAX).saturating_mul(10);
+    let start = u32::try_from(first).unwrap_or(u32::MAX);
+    Some(BASE.saturating_sub(penalty).saturating_sub(start))
+}
+
+/// Filter `items` by fuzzy-matching `needle`, best score first.
+/// Ties keep the input order (stable sort).
+#[must_use]
+pub fn fuzzy_filter<'a>(needle: &str, items: &[&'a str]) -> Vec<(&'a str, u32)> {
+    let mut out: Vec<(&'a str, u32)> = items
+        .iter()
+        .filter_map(|s| fuzzy_score(needle, s).map(|sc| (*s, sc)))
+        .collect();
+    out.sort_by_key(|&(_, sc)| std::cmp::Reverse(sc));
+    out
+}
