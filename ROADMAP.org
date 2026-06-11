@@ -1,0 +1,72 @@
+#+title: closure — capability roadmap
+#+todo: TODO(t) WIP(w) | DONE(d) DROP(x)
+
+Working agreement for autonomous sessions: work top-down, pick the
+highest =TODO=, split it into small TDD cycles, flip it to =DONE= in the
+same commit that finishes it. Every item must pass the test "after this
+the user can ___, which they could not before" — if the blank only
+names a new method, the item does not belong here. Statistics/alias
+accessor methods on closure-org/store/input are done; add no more
+unless a feature in the same cycle calls one. Architecture contract
+lives in [[file:docs/spec.md][spec.md]] (invariants I1–I10) and [[file:docs/phases.md][phases.md]] (milestones); this
+file is the fine-grained, capability-level queue between them. Blocked
+on a design decision? Record it under [[*Decisions][Decisions]], pick the most
+reversible option, keep moving.
+
+* DONE Foundation recap (already shipped)
+- closure-org span-preserving parser/printer, golden corpus, fuzz (M1)
+- closure-core Document/Command/Registry/Edit + undo-tree (M2)
+- closure-store Vault: load, ids, backlink index, link graph, queries (M3)
+- closure-input ChordTrie/Dispatcher; closure-whichkey render (M4)
+- closure-tui: trie-driven App, which-key popup, fuzzy find-file (M3/M4)
+- closure-query fuzzy_score/fuzzy_filter
+- closure-cli wires =closure tui=
+
+* TODO TUI becomes a real browser [0/4]
+** TODO Search result cursor: =<up>=/=<down>= move selection in result list, =RET= picks cursor item (not just best match)
+** TODO Headline-level fuzzy search: query matches headline titles across the vault, =RET= jumps to file + headline
+** TODO File body view: show the selected file's full org source (or selected headline's subtree), scrollable
+** TODO Backlinks pane: for the selected headline, list incoming links from Vault::backlinks_of; =RET= follows
+* TODO org-capture [0/3]
+** TODO Capture template type in closure-core: target file + headline prefix + body skeleton
+** TODO =closure capture "title"= CLI: appends a templated entry to the inbox file, span-preserving, allocates ULID (I2)
+** TODO TUI capture: bound chord opens minibuffer-style prompt, writes through the same command
+* TODO Editing writes back to disk [0/4]
+** TODO Save round-trip: TUI/CLI command persists a mutated Document to its file, byte-exact for untouched spans (I1)
+** TODO Rename headline from TUI via closure-core command, undoable (I3)
+** TODO Add/delete headline commands wired into TUI with bindings (I4)
+** TODO Undo/redo bound in TUI, driven by the undo-tree
+* TODO Input modes end-to-end [0/3]
+** TODO Binding tables per mode (notion-default/emacs/vim/doom/helix) as data over the one registry (I4)
+** TODO Mode switch at runtime: command + config key in closure-config
+** TODO which-key popup on every pending prefix in every mode; palette lists command + chord
+* TODO Databases (Notion-inspired) [0/3]
+** TODO View definition in org: a dynamic block naming source (tag/file/query) + property columns
+** TODO Sort/filter on columns; render as aligned table in CLI and TUI
+** TODO Edit a cell in TUI → property mutation through a command (I3)
+* TODO Formulas (Coda-inspired, user's language) [0/2]
+** TODO closure-eval: code block reads database rows as stdin/env JSON-free plain text, result written as block output
+** TODO Column formula: per-row evaluation populating a computed column
+* TODO Links as a first-class UI [0/2]
+** TODO =closure links --dead= report (dead_link_targets) with file:line locations
+** TODO Link graph export (dot/text) from Vault::link_graph
+* TODO Web shell [0/3]
+** TODO Read-only vault browse over localhost (closure-shell-web::serve grows real pages)
+** TODO Fuzzy search endpoint + page reusing closure-query
+** TODO Capture form posting through the same command path
+* TODO LLM integration [0/3]
+** TODO Tool-use loop: provider trait gains tool calls; tools = command registry entries (mutate via commands only, I8)
+** TODO BYOK config in org via closure-config (provider, key env var, model)
+** TODO =closure ask "..."= CLI: question + vault context in, answer or applied edit out
+* TODO Sync/CRDT for real [0/3]
+** TODO Block-level merge in closure-crdt covering body edits, not just titles; property tests: ids stable under merge (I2)
+** TODO Git transport round-trip: two vault clones diverge, merge, both converge
+** TODO Conflict corpus as golden fixtures
+* TODO Protocol servers [0/2]
+** TODO MCP server exposes registry commands with schemas; mutation only through commands
+** TODO LSP for org: document symbols (headlines), go-to-definition on id links
+* TODO Plugin host [0/1]
+** TODO Load a wasm plugin that registers one command callable from CLI/TUI
+* Decisions
+Open questions land here as subheadings: context, options considered,
+the reversible default taken, date.
