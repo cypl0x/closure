@@ -13,6 +13,7 @@ workspace = true
 
 [dependencies]
 closure-core = { path = "../closure-core" }
+closure-input = { path = "../closure-input" }
 closure-org = { path = "../closure-org" }
 closure-query = { path = "../closure-query" }
 closure-store = { path = "../closure-store" }

@@ -9,9 +9,10 @@
 
 use std::fmt::Write as _;
 use std::io;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
+use closure_input::{ChordTrie, TrieStep};
 use closure_store::Vault;
 use crossterm::event::{self, Event, KeyCode, KeyEventKind};
 use crossterm::execute;
@@ -31,6 +32,148 @@ pub enum TuiError {
     /// IO failure setting up the terminal.
     #[error("io: {0}")]
     Io(#[from] io::Error),
+}
+
+/// Default browse-mode bindings. Multi-stroke chords exercise the
+/// which-key popup (spec invariant I4: bindings drive the popup, no
+/// hand-maintained table).
+const DEFAULT_BINDINGS: &[(&str, &str)] = &[
+    ("j", "next-file"),
+    ("k", "prev-file"),
+    ("g g", "first-file"),
+    ("G", "last-file"),
+    ("q", "quit"),
+];
+
+/// Elm-style application state for the terminal shell. Strokes go in
+/// via [`Self::handle_stroke`]; rendering reads the accessors. No
+/// terminal I/O lives here, which keeps every transition testable.
+pub struct App {
+    paths: Vec<PathBuf>,
+    selected: Option<usize>,
+    bindings: Vec<(String, String)>,
+    trie: ChordTrie,
+    pending: Vec<String>,
+    popup: Option<Vec<String>>,
+    quit: bool,
+}
+
+impl App {
+    /// Build an app over `paths` with the default browse bindings.
+    #[must_use]
+    pub fn new(paths: Vec<PathBuf>) -> Self {
+        Self::with_bindings(paths, DEFAULT_BINDINGS)
+    }
+
+    /// Build an app over `paths` with caller-supplied
+    /// `(chord, command)` bindings, replacing the defaults entirely.
+    #[must_use]
+    pub fn with_bindings(paths: Vec<PathBuf>, bindings: &[(&str, &str)]) -> Self {
+        let selected = if paths.is_empty() { None } else { Some(0) };
+        Self {
+            paths,
+            selected,
+            bindings: bindings
+                .iter()
+                .map(|(c, n)| ((*c).to_owned(), (*n).to_owned()))
+                .collect(),
+            trie: ChordTrie::build(bindings),
+            pending: Vec::new(),
+            popup: None,
+            quit: false,
+        }
+    }
+
+    /// Index of the selected file, if any.
+    #[must_use]
+    pub const fn selected_index(&self) -> Option<usize> {
+        self.selected
+    }
+
+    /// Path of the selected file, if any.
+    #[must_use]
+    pub fn selected_path(&self) -> Option<&Path> {
+        self.selected
+            .and_then(|i| self.paths.get(i))
+            .map(PathBuf::as_path)
+    }
+
+    /// Whether the user asked to quit.
+    #[must_use]
+    pub const fn should_quit(&self) -> bool {
+        self.quit
+    }
+
+    /// The strokes of the in-progress chord, space-joined; empty when
+    /// no chord is pending.
+    #[must_use]
+    pub fn pending_chord(&self) -> String {
+        self.pending.join(" ")
+    }
+
+    /// Which-key popup lines (`chord → command`) while a chord prefix
+    /// is pending, `None` otherwise.
+    #[must_use]
+    pub fn popup_lines(&self) -> Option<&[String]> {
+        self.popup.as_deref()
+    }
+
+    /// Feed one key stroke into the chord trie and apply whatever it
+    /// resolves to.
+    pub fn handle_stroke(&mut self, stroke: &str) {
+        match self.trie.step(stroke) {
+            TrieStep::Resolved(cmd) => {
+                self.pending.clear();
+                self.popup = None;
+                self.apply_command(&cmd);
+            }
+            TrieStep::Pending(_) => {
+                self.pending.push(stroke.to_owned());
+                let prefix = self.pending_chord();
+                let mut lines: Vec<String> = self
+                    .bindings
+                    .iter()
+                    .filter(|(chord, _)| {
+                        chord.starts_with(&prefix) && chord.as_str() != prefix
+                    })
+                    .map(|(chord, cmd)| {
+                        let rest = chord[prefix.len()..].trim_start();
+                        format!("{rest} → {cmd}")
+                    })
+                    .collect();
+                lines.sort();
+                self.popup = Some(lines);
+            }
+            TrieStep::Unbound => {
+                self.pending.clear();
+                self.popup = None;
+            }
+        }
+    }
+
+    fn apply_command(&mut self, cmd: &str) {
+        let last = self.paths.len().checked_sub(1);
+        match cmd {
+            "next-file" => {
+                if let (Some(i), Some(last)) = (self.selected, last) {
+                    self.selected = Some((i + 1).min(last));
+                }
+            }
+            "prev-file" => {
+                if let Some(i) = self.selected {
+                    self.selected = Some(i.saturating_sub(1));
+                }
+            }
+            "first-file" if self.selected.is_some() => {
+                self.selected = Some(0);
+            }
+            "last-file" => {
+                self.selected = last;
+            }
+            "quit" => self.quit = true,
+            _ => {}
+        }
+    }
 }
 
 /// Run the TUI against an already-loaded vault. Returns when the user
