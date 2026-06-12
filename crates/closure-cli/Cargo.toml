@@ -18,6 +18,7 @@ workspace = true
 [dependencies]
 closure-core = { path = "../closure-core" }
 closure-org = { path = "../closure-org" }
+closure-plugin-host = { path = "../closure-plugin-host" }
 closure-query = { path = "../closure-query" }
 closure-store = { path = "../closure-store" }
 closure-tui = { path = "../closure-tui" }

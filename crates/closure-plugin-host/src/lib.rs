@@ -48,6 +48,7 @@ pub trait Plugin {
 #[derive(Debug, Default)]
 pub struct Host {
     plugins: Vec<Manifest>,
+    commands: Vec<PluginCommand>,
 }
 
 impl Host {
@@ -56,6 +57,7 @@ impl Host {
     pub const fn new() -> Self {
         Self {
             plugins: Vec::new(),
+            commands: Vec::new(),
         }
     }
 
@@ -118,4 +120,83 @@ pub enum PluginError {
     /// The plugin tried to call an undefined import.
     #[error("undefined import: {0}")]
     UndefinedImport(String),
+}
+
+/// The argv used to run a plugin executable: `.wasm` files run under
+/// an external `wasmtime` (sandboxed, no embedded runtime dep);
+/// anything else executes directly.
+#[must_use]
+pub fn runner_for(path: &std::path::Path) -> Vec<String> {
+    let p = path.display().to_string();
+    if path.extension().is_some_and(|e| e == "wasm") {
+        vec!["wasmtime".to_owned(), p]
+    } else {
+        vec![p]
+    }
+}
+
+/// A command contributed by a plugin executable.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct PluginCommand {
+    name: String,
+    executable: std::path::PathBuf,
+}
+
+impl Host {
+    /// Register the command declared by `manifest` (its `command`
+    /// meta key), backed by `executable`. Invocation appends the
+    /// caller's args to [`runner_for`]'s argv.
+    ///
+    /// # Errors
+    ///
+    /// [`PluginError::Load`] when the manifest declares no `command`.
+    pub fn register_command(
+        &mut self,
+        manifest: &Manifest,
+        executable: &std::path::Path,
+    ) -> Result<(), PluginError> {
+        let name = manifest
+            .meta
+            .get("command")
+            .ok_or_else(|| PluginError::Load("manifest missing `command`".into()))?;
+        self.commands.push(PluginCommand {
+            name: name.clone(),
+            executable: executable.to_path_buf(),
+        });
+        self.plugins.push(manifest.clone());
+        Ok(())
+    }
+
+    /// Names of every plugin-contributed command.
+    #[must_use]
+    pub fn commands(&self) -> Vec<String> {
+        self.commands.iter().map(|c| c.name.clone()).collect()
+    }
+
+    /// Invoke a plugin command with `args`, returning its stdout.
+    ///
+    /// # Errors
+    ///
+    /// [`PluginError::Load`] for unknown commands or spawn/exit
+    /// failures.
+    pub fn invoke(&mut self, command: &str, args: &[&str]) -> Result<String, PluginError> {
+        let cmd = self
+            .commands
+            .iter()
+            .find(|c| c.name == command)
+            .ok_or_else(|| PluginError::Load(format!("unknown command `{command}`")))?;
+        let runner = runner_for(&cmd.executable);
+        let mut proc = std::process::Command::new(&runner[0]);
+        proc.args(&runner[1..]).args(args);
+        let out = proc
+            .output()
+            .map_err(|e| PluginError::Load(e.to_string()))?;
+        if !out.status.success() {
+            return Err(PluginError::Load(format!(
+                "plugin `{command}` exited {}",
+                out.status.code().unwrap_or(-1)
+            )));
+        }
+        Ok(String::from_utf8_lossy(&out.stdout).into_owned())
+    }
 }

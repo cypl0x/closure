@@ -72,6 +72,17 @@ enum Cmd {
         #[arg(long, default_value = "formula")]
         formula_name: String,
     },
+    /// Run a plugin-contributed command (native or .wasm executable).
+    Plugin {
+        /// Manifest file with `key = value` lines (`id`, `name`,
+        /// `api_version`, `command`).
+        manifest: PathBuf,
+        /// Plugin executable; `.wasm` runs under external wasmtime.
+        executable: PathBuf,
+        /// Arguments handed to the plugin.
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+        args: Vec<String>,
+    },
     /// Parse a single org file and print a summary.
     Parse {
         /// Path to a `*.org` file.
@@ -911,6 +922,11 @@ fn run(cmd: &Cmd) -> Result<(), String> {
             formula,
             formula_name,
         } => cmd_view(vault, params, formula.as_deref(), formula_name),
+        Cmd::Plugin {
+            manifest,
+            executable,
+            args,
+        } => cmd_plugin(manifest, executable, args),
         Cmd::Parse { file } => cmd_parse(file),
         Cmd::Fmt { file } => cmd_fmt(file),
         Cmd::Check { vault } => cmd_check(vault),
@@ -1082,6 +1098,23 @@ fn run(cmd: &Cmd) -> Result<(), String> {
             value,
         } => cmd_set_property(file, id, key, value),
     }
+}
+
+fn cmd_plugin(manifest: &Path, executable: &Path, args: &[String]) -> Result<(), String> {
+    let content = fs::read_to_string(manifest).map_err(|e| format!("read manifest: {e}"))?;
+    let m = closure_plugin_host::parse_manifest(&content).map_err(|e| format!("{e}"))?;
+    let mut host = closure_plugin_host::Host::new();
+    host.register_command(&m, executable)
+        .map_err(|e| format!("{e}"))?;
+    let command = host
+        .commands()
+        .first()
+        .cloned()
+        .ok_or_else(|| "no command registered".to_owned())?;
+    let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
+    let out = host.invoke(&command, &arg_refs).map_err(|e| format!("{e}"))?;
+    print!("{out}");
+    Ok(())
 }
 
 fn cmd_view(

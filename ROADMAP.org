@@ -66,11 +66,17 @@ reversible option, keep moving.
 * DONE Protocol servers [2/2]
 ** DONE MCP JSON-RPC server: initialize / tools/list (schemas) / tools/call over =Vault::run_tool= (I8), dependency-free JSON subset
 ** DONE LSP basics: =document_symbols= (headline name/line/level) + =definition_of= for id: links
-* TODO Plugin host [0/1]
-** TODO Load a wasm plugin that registers one command callable from CLI/TUI
+* DONE Plugin host [1/1]
+** DONE Plugin executables (native or =.wasm= via external wasmtime) register a manifest-declared command; =closure plugin <manifest> <exe> [args]= invokes it
 * Decisions
 Open questions land here as subheadings: context, options considered,
 the reversible default taken, date.
+** Wasm plugins run under external wasmtime, not an embedded runtime (2026-06-12)
+Embedding wasmtime/wasmer adds a heavyweight dependency to the
+kernel build. Host::invoke shells out instead: =.wasm= executables
+run via the =wasmtime= CLI, native executables run directly, both
+behind the same manifest-declared command surface. Reversible: swap
+=runner_for= for an embedded runtime behind a feature flag later.
 ** Dead-link locations use block ids, not line numbers (2026-06-12)
 The roadmap asked for file:line. The parser is span-preserving but
 DocHeadline exposes tree paths + stable ids, not byte offsets; ids
