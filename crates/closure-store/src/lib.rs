@@ -10,7 +10,7 @@ use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{Receiver, Sender, channel};
 
-use closure_core::{BlockId, Document};
+use closure_core::{BlockId, Command, Document, RenameHeadline};
 use notify::{EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use thiserror::Error;
 
@@ -55,6 +55,12 @@ pub enum VaultError {
     /// Watcher subsystem error.
     #[error("watch: {0}")]
     Watch(String),
+    /// No headline with this block id exists in the vault.
+    #[error("unknown block id: {0}")]
+    UnknownId(String),
+    /// A kernel command refused the edit.
+    #[error("command: {0}")]
+    Command(String),
 }
 
 impl Vault {
@@ -177,6 +183,31 @@ impl Vault {
         }
         self.documents.insert(target, doc);
         Ok(id)
+    }
+
+    /// Rename a headline through the kernel [`RenameHeadline`]
+    /// command (undoable, I3; the block id stays put, I2) and persist
+    /// the document to disk.
+    ///
+    /// # Errors
+    ///
+    /// [`VaultError::UnknownId`] when no headline carries `id`,
+    /// [`VaultError::Command`] when the kernel refuses the edit,
+    /// [`VaultError::Io`] on write failures.
+    pub fn rename_headline(&mut self, id: &BlockId, title: &str) -> Result<(), VaultError> {
+        let path = self
+            .by_id
+            .get(id)
+            .cloned()
+            .ok_or_else(|| VaultError::UnknownId(id.as_str().to_owned()))?;
+        let doc = self
+            .documents
+            .get_mut(&path)
+            .ok_or_else(|| VaultError::UnknownId(id.as_str().to_owned()))?;
+        let cmd = RenameHeadline::new(id.clone(), title.to_owned());
+        Command::apply(&cmd, doc).map_err(|e| VaultError::Command(e.to_string()))?;
+        fs::write(&path, doc.source())?;
+        Ok(())
     }
 
     /// Root directory of the vault.
