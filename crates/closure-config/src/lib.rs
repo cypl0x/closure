@@ -34,6 +34,13 @@ pub struct Config {
     pub tag_inheritance: bool,
     /// Per-vault override files included in the agenda view.
     pub agenda_files: Vec<PathBuf>,
+    /// LLM provider name (`anthropic`, `openai`, `echo`, …). BYOK.
+    pub llm_provider: Option<String>,
+    /// Model identifier passed to the provider.
+    pub llm_model: Option<String>,
+    /// Name of the environment variable holding the API key — the
+    /// key itself never lives in the org file.
+    pub llm_key_env: Option<String>,
 }
 
 impl Default for Config {
@@ -46,6 +53,9 @@ impl Default for Config {
             priority_levels: vec!['A', 'B', 'C'],
             tag_inheritance: true,
             agenda_files: Vec::new(),
+            llm_provider: None,
+            llm_model: None,
+            llm_key_env: None,
         }
     }
 }
@@ -196,6 +206,9 @@ impl Config {
                         .map(PathBuf::from)
                         .collect();
                 }
+                "llm_provider" => cfg.llm_provider = Some(value.into()),
+                "llm_model" => cfg.llm_model = Some(value.into()),
+                "llm_key_env" => cfg.llm_key_env = Some(value.into()),
                 other => return Err(ConfigError::UnknownKey(other.into())),
             }
         }

@@ -86,3 +86,24 @@ fn config_loads_from_path() {
     let c = Config::from_path(&path).expect("load");
     assert_eq!(c.input_mode, InputMode::Helix);
 }
+
+// --- LLM BYOK config ---------------------------------------------------
+
+#[test]
+fn llm_keys_parse() {
+    let cfg = Config::from_kv_block(
+        "llm_provider = anthropic\nllm_model = claude-sonnet-4-6\nllm_key_env = ANTHROPIC_API_KEY\n",
+    )
+    .expect("parse");
+    assert_eq!(cfg.llm_provider.as_deref(), Some("anthropic"));
+    assert_eq!(cfg.llm_model.as_deref(), Some("claude-sonnet-4-6"));
+    assert_eq!(cfg.llm_key_env.as_deref(), Some("ANTHROPIC_API_KEY"));
+}
+
+#[test]
+fn llm_keys_default_to_none() {
+    let cfg = Config::from_kv_block("theme = dark\n").expect("parse");
+    assert_eq!(cfg.llm_provider, None);
+    assert_eq!(cfg.llm_model, None);
+    assert_eq!(cfg.llm_key_env, None);
+}
