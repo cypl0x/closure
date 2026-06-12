@@ -269,3 +269,31 @@ fn run_via_stdin(
         exit: out.status.code().unwrap_or(-1),
     })
 }
+
+/// Run a shell `program` with `input` piped to its stdin — the
+/// formula primitive: callers feed database rows in, stdout comes
+/// back as the result block.
+///
+/// # Errors
+///
+/// [`EvalError::Spawn`]/[`EvalError::Io`] on process failures.
+pub fn eval_with_input(program: &str, input: &str) -> Result<Output, EvalError> {
+    run_via_stdin("/bin/sh", &["-c", program], input, None)
+}
+
+/// Evaluate `program` once per row, feeding the row's cells as one
+/// tab-separated stdin line; the trimmed stdout becomes the computed
+/// cell. Coda-style column formulas in the user's language of choice.
+///
+/// # Errors
+///
+/// Propagates the first row's [`EvalError`].
+pub fn formula_column(program: &str, rows: &[Vec<String>]) -> Result<Vec<String>, EvalError> {
+    let mut out = Vec::with_capacity(rows.len());
+    for row in rows {
+        let line = format!("{}\n", row.join("\t"));
+        let result = eval_with_input(program, &line)?;
+        out.push(result.stdout.trim_end().to_owned());
+    }
+    Ok(out)
+}
