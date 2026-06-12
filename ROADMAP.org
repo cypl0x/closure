@@ -63,9 +63,9 @@ reversible option, keep moving.
 ** DONE Block-level merge: per-field LWW registers (title+body), =snapshot_against= base, commutative; ids stable (I2); =apply_to= via kernel commands (I3)
 ** DONE Git transport round-trip: bare origin + two clones diverge, push/pull, byte-identical convergence
 ** DONE Conflict corpus: =fixtures/conflicts/{title-vs-body,both-titles,disjoint-blocks}= golden merges, order-independent
-* TODO Protocol servers [0/2]
-** TODO MCP server exposes registry commands with schemas; mutation only through commands
-** TODO LSP for org: document symbols (headlines), go-to-definition on id links
+* DONE Protocol servers [2/2]
+** DONE MCP JSON-RPC server: initialize / tools/list (schemas) / tools/call over =Vault::run_tool= (I8), dependency-free JSON subset
+** DONE LSP basics: =document_symbols= (headline name/line/level) + =definition_of= for id: links
 * TODO Plugin host [0/1]
 ** TODO Load a wasm plugin that registers one command callable from CLI/TUI
 * Decisions
