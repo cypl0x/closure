@@ -1065,3 +1065,75 @@ fn cycle_mode_keeps_selection_and_browse() {
     assert_eq!(app.selected_index(), Some(1));
     assert_eq!(app.mode(), AppMode::Browse);
 }
+
+// --- command palette --------------------------------------------------------
+
+#[test]
+fn colon_opens_palette() {
+    let mut app = App::new(paths());
+    app.handle_stroke(":");
+    assert_eq!(app.mode(), AppMode::Palette);
+    assert_eq!(app.query(), "");
+}
+
+#[test]
+fn palette_lists_every_command_with_chord() {
+    let mut app = App::new(paths());
+    app.handle_stroke(":");
+    let rows = app.palette_results();
+    assert!(rows.iter().any(|(c, k)| c == "quit" && (k == "q" || k == "ESC")));
+    assert!(rows.iter().any(|(c, _)| c == "capture-start"));
+    let mut names: Vec<&str> = rows.iter().map(|(c, _)| c.as_str()).collect();
+    names.dedup();
+    assert_eq!(names.len(), rows.len(), "one row per command");
+}
+
+#[test]
+fn palette_filters_fuzzy() {
+    let mut app = App::new(paths());
+    app.handle_stroke(":");
+    app.handle_stroke("c");
+    app.handle_stroke("a");
+    app.handle_stroke("p");
+    let rows = app.palette_results();
+    assert!(rows.iter().all(|(c, _)| c.contains('c')));
+    assert_eq!(rows.first().map(|(c, _)| c.as_str()), Some("capture-start"));
+}
+
+#[test]
+fn palette_ret_executes_best_match() {
+    let mut app = App::new(paths());
+    app.handle_stroke(":");
+    app.handle_stroke("q");
+    app.handle_stroke("u");
+    app.handle_stroke("i");
+    app.handle_stroke("t");
+    app.handle_stroke("RET");
+    assert!(app.should_quit());
+}
+
+#[test]
+fn palette_cursor_executes_picked_row() {
+    let mut app = App::new(paths());
+    app.handle_stroke(":");
+    let rows = app.palette_results();
+    let second = rows.get(1).map(|(c, _)| c.clone()).unwrap_or_default();
+    assert!(!second.is_empty(), "need at least two commands");
+    app.handle_stroke("<down>");
+    app.handle_stroke("RET");
+    if second == "quit" {
+        assert!(app.should_quit());
+    } else {
+        assert!(!app.should_quit(), "executed {second}, not quit");
+    }
+}
+
+#[test]
+fn palette_esc_cancels() {
+    let mut app = App::new(paths());
+    app.handle_stroke(":");
+    app.handle_stroke("x");
+    app.handle_stroke("ESC");
+    assert_eq!(app.mode(), AppMode::Browse);
+    assert!(!app.should_quit());
+}

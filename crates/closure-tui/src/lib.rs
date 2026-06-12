@@ -59,6 +59,7 @@ const DEFAULT_BINDINGS: &[(&str, &str)] = &[
     ("u", "undo"),
     ("C-r", "redo"),
     ("M", "cycle-mode"),
+    (":", "palette"),
 ];
 
 /// Emacs-style bindings: Ctrl/Meta chords, `C-x C-c` quits.
@@ -79,6 +80,7 @@ const EMACS_BINDINGS: &[(&str, &str)] = &[
     ("C-x u", "undo"),
     ("C-x r", "redo"),
     ("C-c m", "cycle-mode"),
+    (":", "palette"),
 ];
 
 /// Vim-style bindings: modal navigation keys.
@@ -100,6 +102,7 @@ const VIM_BINDINGS: &[(&str, &str)] = &[
     ("u", "undo"),
     ("C-r", "redo"),
     ("M", "cycle-mode"),
+    (":", "palette"),
 ];
 
 /// Helix-style bindings: vim-like with `U` redo and `g e` end.
@@ -121,6 +124,7 @@ const HELIX_BINDINGS: &[(&str, &str)] = &[
     ("u", "undo"),
     ("U", "redo"),
     ("M", "cycle-mode"),
+    (":", "palette"),
 ];
 
 /// Notion-style bindings: arrows + slash command, minimal chords.
@@ -140,6 +144,7 @@ const NOTION_BINDINGS: &[(&str, &str)] = &[
     ("u", "undo"),
     ("C-r", "redo"),
     ("M", "cycle-mode"),
+    (":", "palette"),
 ];
 
 /// The `(chord, command)` table for an input mode. Every mode binds
@@ -193,6 +198,8 @@ pub enum AppMode {
     AddHeadline,
     /// Awaiting =y= to confirm deleting the cursor subtree.
     ConfirmDelete,
+    /// Fuzzy-picking a command by name; rows show the chord (I4).
+    Palette,
 }
 
 /// Elm-style application state for the terminal shell. Strokes go in
@@ -280,6 +287,29 @@ impl App {
     #[must_use]
     pub const fn input_mode(&self) -> closure_config::InputMode {
         self.input_mode
+    }
+
+    /// `(command, chord)` rows matching the live query, best fuzzy
+    /// score first (alphabetical on ties); one row per command with
+    /// its first bound chord in the active table.
+    #[must_use]
+    pub fn palette_results(&self) -> Vec<(String, String)> {
+        let mut commands: std::collections::BTreeMap<&str, &str> =
+            std::collections::BTreeMap::new();
+        for (chord, cmd) in &self.bindings {
+            commands.entry(cmd.as_str()).or_insert(chord.as_str());
+        }
+        let mut scored: Vec<(&str, &str, u32)> = commands
+            .iter()
+            .filter_map(|(cmd, chord)| {
+                closure_query::fuzzy_score(&self.query, cmd).map(|sc| (*cmd, *chord, sc))
+            })
+            .collect();
+        scored.sort_by_key(|&(_, _, sc)| std::cmp::Reverse(sc));
+        scored
+            .into_iter()
+            .map(|(cmd, chord, _)| (cmd.to_owned(), chord.to_owned()))
+            .collect()
     }
 
     /// Consume the pending undo request, true at most once per `u`.
@@ -525,6 +555,10 @@ impl App {
             self.handle_add_stroke(stroke);
             return;
         }
+        if self.mode == AppMode::Palette {
+            self.handle_palette_stroke(stroke);
+            return;
+        }
         if self.mode == AppMode::ConfirmDelete {
             if stroke == "y" {
                 self.delete_request = self.delete_target.take();
@@ -608,6 +642,48 @@ impl App {
                 self.result_cursor = 0;
             }
             _ => {}
+        }
+    }
+
+    fn handle_palette_stroke(&mut self, stroke: &str) {
+        match stroke {
+            "ESC" => {
+                self.mode = AppMode::Browse;
+                self.query.clear();
+                self.result_cursor = 0;
+            }
+            "RET" => {
+                let pick = self
+                    .palette_results()
+                    .get(self.result_cursor)
+                    .map(|(cmd, _)| cmd.clone());
+                self.mode = AppMode::Browse;
+                self.query.clear();
+                self.result_cursor = 0;
+                if let Some(cmd) = pick {
+                    self.apply_command(&cmd);
+                }
+            }
+            "<down>" => {
+                let last = self.palette_results().len().saturating_sub(1);
+                self.result_cursor = (self.result_cursor + 1).min(last);
+            }
+            "<up>" => self.result_cursor = self.result_cursor.saturating_sub(1),
+            "DEL" => {
+                self.query.pop();
+                self.result_cursor = 0;
+            }
+            "SPC" => {
+                self.query.push(' ');
+                self.result_cursor = 0;
+            }
+            s => {
+                let mut chars = s.chars();
+                if let (Some(c), None) = (chars.next(), chars.next()) {
+                    self.query.push(c);
+                    self.result_cursor = 0;
+                }
+            }
         }
     }
 
@@ -833,6 +909,11 @@ impl App {
             }
             "undo" => self.undo_request = true,
             "redo" => self.redo_request = true,
+            "palette" => {
+                self.mode = AppMode::Palette;
+                self.query.clear();
+                self.result_cursor = 0;
+            }
             "cycle-mode" => {
                 use closure_config::InputMode as M;
                 let next = match self.input_mode {
@@ -1119,6 +1200,13 @@ fn draw(f: &mut ratatui::Frame<'_>, app: &App, vault: &Vault) {
         AppMode::ConfirmDelete => Some((
             "delete subtree? y = confirm, other = cancel".to_owned(),
             Vec::new(),
+        )),
+        AppMode::Palette => Some((
+            format!("command: {}", app.query()),
+            app.palette_results()
+                .iter()
+                .map(|(cmd, chord)| format!("{cmd:24} {chord}"))
+                .collect(),
         )),
         AppMode::Headlines => Some((
             app.selected_path().map_or_else(
