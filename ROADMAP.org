@@ -59,10 +59,10 @@ reversible option, keep moving.
 ** DONE Tool-use loop (=closure_llm::tool_loop=): CALL/DONE text protocol, mutations via executor only (I8)
 ** DONE BYOK config in org: =llm_provider= / =llm_model= / =llm_key_env= (key stays in the env)
 ** DONE =closure ask --vault=: agentic loop over =Vault::run_tool= (list/read/search/capture/rename/set-property)
-* TODO Sync/CRDT for real [0/3]
-** TODO Block-level merge in closure-crdt covering body edits, not just titles; property tests: ids stable under merge (I2)
-** TODO Git transport round-trip: two vault clones diverge, merge, both converge
-** TODO Conflict corpus as golden fixtures
+* DONE Sync/CRDT for real [3/3]
+** DONE Block-level merge: per-field LWW registers (title+body), =snapshot_against= base, commutative; ids stable (I2); =apply_to= via kernel commands (I3)
+** DONE Git transport round-trip: bare origin + two clones diverge, push/pull, byte-identical convergence
+** DONE Conflict corpus: =fixtures/conflicts/{title-vs-body,both-titles,disjoint-blocks}= golden merges, order-independent
 * TODO Protocol servers [0/2]
 ** TODO MCP server exposes registry commands with schemas; mutation only through commands
 ** TODO LSP for org: document symbols (headlines), go-to-definition on id links
