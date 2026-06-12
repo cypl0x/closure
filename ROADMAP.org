@@ -45,9 +45,9 @@ reversible option, keep moving.
 ** DONE View definition in org (=ViewSpec::parse=): =:from tag:X/todo:X/file:X/all :columns title,todo,PROP :sort col=
 ** DONE =:sort= / =:filter col=value= on columns; =closure view= renders an aligned org table
 ** DONE Database view in TUI (=v=) + edit a cell (=RET=, =KEY=VALUE=) → SetProperty command (I3)
-* TODO Formulas (Coda-inspired, user's language) [0/2]
-** TODO closure-eval: code block reads database rows as stdin/env JSON-free plain text, result written as block output
-** TODO Column formula: per-row evaluation populating a computed column
+* DONE Formulas (Coda-inspired, user's language) [2/2]
+** DONE closure-eval: =eval_with_input= pipes rows as plain-text stdin, stdout is the result
+** DONE Column formula: =closure view --formula '<prog>'= computes an extra column per row (tab-separated cells on stdin)
 * TODO Links as a first-class UI [0/2]
 ** TODO =closure links --dead= report (dead_link_targets) with file:line locations
 ** TODO Link graph export (dot/text) from Vault::link_graph

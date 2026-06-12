@@ -64,6 +64,13 @@ enum Cmd {
         /// View params, e.g. ":from tag:work :columns title,todo,EFFORT :sort title".
         #[arg(default_value = "")]
         params: String,
+        /// Shell formula computing an extra column: each row's cells
+        /// arrive tab-separated on stdin, stdout is the cell value.
+        #[arg(long, allow_hyphen_values = true)]
+        formula: Option<String>,
+        /// Header name of the computed column.
+        #[arg(long, default_value = "formula")]
+        formula_name: String,
     },
     /// Parse a single org file and print a summary.
     Parse {
@@ -894,7 +901,12 @@ fn run(cmd: &Cmd) -> Result<(), String> {
             prefix,
             body,
         } => cmd_capture(vault, title, target, prefix, body),
-        Cmd::View { vault, params } => cmd_view(vault, params),
+        Cmd::View {
+            vault,
+            params,
+            formula,
+            formula_name,
+        } => cmd_view(vault, params, formula.as_deref(), formula_name),
         Cmd::Parse { file } => cmd_parse(file),
         Cmd::Fmt { file } => cmd_fmt(file),
         Cmd::Check { vault } => cmd_check(vault),
@@ -1064,11 +1076,24 @@ fn run(cmd: &Cmd) -> Result<(), String> {
     }
 }
 
-fn cmd_view(vault: &Path, params: &str) -> Result<(), String> {
+fn cmd_view(
+    vault: &Path,
+    params: &str,
+    formula: Option<&str>,
+    formula_name: &str,
+) -> Result<(), String> {
     let v = Vault::open(vault).map_err(|e| format!("{e}"))?;
     let spec = closure_query::ViewSpec::parse(params).map_err(|e| format!("{e}"))?;
-    let header = spec.header();
-    let cells = spec.cells(&v);
+    let mut header = spec.header();
+    let mut cells = spec.cells(&v);
+    if let Some(program) = formula {
+        let computed =
+            closure_eval::formula_column(program, &cells).map_err(|e| format!("{e}"))?;
+        header.push(formula_name.to_owned());
+        for (row, value) in cells.iter_mut().zip(computed) {
+            row.push(value);
+        }
+    }
     print!("{}", closure_query::render_table(&header, &cells));
     Ok(())
 }
