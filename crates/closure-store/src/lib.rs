@@ -10,7 +10,7 @@ use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{Receiver, Sender, channel};
 
-use closure_core::{BlockId, Command, Document, RenameHeadline};
+use closure_core::{AddSibling, BlockId, Command, Document, RemoveSubtree, RenameHeadline};
 use notify::{EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use thiserror::Error;
 
@@ -195,6 +195,35 @@ impl Vault {
     /// [`VaultError::Command`] when the kernel refuses the edit,
     /// [`VaultError::Io`] on write failures.
     pub fn rename_headline(&mut self, id: &BlockId, title: &str) -> Result<(), VaultError> {
+        let cmd = RenameHeadline::new(id.clone(), title.to_owned());
+        self.apply_to_block(id, &cmd)
+    }
+
+    /// Insert a new sibling headline after `after` through the kernel
+    /// [`AddSibling`] command (undoable, I3) and persist to disk.
+    ///
+    /// # Errors
+    ///
+    /// Same contract as [`Self::rename_headline`].
+    pub fn add_sibling(&mut self, after: &BlockId, title: &str) -> Result<(), VaultError> {
+        let cmd = AddSibling::new(after.clone(), title.to_owned());
+        self.apply_to_block(after, &cmd)
+    }
+
+    /// Remove the subtree rooted at `id` through the kernel
+    /// [`RemoveSubtree`] command (undoable, I3) and persist to disk.
+    ///
+    /// # Errors
+    ///
+    /// Same contract as [`Self::rename_headline`].
+    pub fn remove_subtree(&mut self, id: &BlockId) -> Result<(), VaultError> {
+        let cmd = RemoveSubtree::new(id.clone());
+        self.apply_to_block(id, &cmd)
+    }
+
+    /// Apply a kernel command to the document containing `id`,
+    /// persist it, and rebuild the file's id/backlink index entries.
+    fn apply_to_block(&mut self, id: &BlockId, cmd: &dyn Command) -> Result<(), VaultError> {
         let path = self
             .by_id
             .get(id)
@@ -204,10 +233,41 @@ impl Vault {
             .documents
             .get_mut(&path)
             .ok_or_else(|| VaultError::UnknownId(id.as_str().to_owned()))?;
-        let cmd = RenameHeadline::new(id.clone(), title.to_owned());
-        Command::apply(&cmd, doc).map_err(|e| VaultError::Command(e.to_string()))?;
+        cmd.apply(doc).map_err(|e| VaultError::Command(e.to_string()))?;
         fs::write(&path, doc.source())?;
+        self.reindex_file(&path);
         Ok(())
+    }
+
+    /// Drop and rebuild every id/backlink index entry derived from
+    /// `path`'s document.
+    fn reindex_file(&mut self, path: &Path) {
+        self.by_id.retain(|_, p| p != path);
+        for v in self.backlinks.values_mut() {
+            v.retain(|(p, _)| p != path);
+        }
+        self.backlinks.retain(|_, v| !v.is_empty());
+        let mut harvested: Vec<(BlockId, Vec<String>)> = Vec::new();
+        if let Some(doc) = self.documents.get(path) {
+            for h in doc.all_headlines() {
+                harvested.push((h.id().clone(), h.link_targets().to_vec()));
+            }
+        }
+        for (id, links) in harvested {
+            self.by_id.insert(id.clone(), path.to_path_buf());
+            for link in links {
+                if let Some(stripped) = link.strip_prefix("id:") {
+                    self.backlinks
+                        .entry(stripped.to_owned())
+                        .or_default()
+                        .push((path.to_path_buf(), id.clone()));
+                }
+                self.backlinks
+                    .entry(link)
+                    .or_default()
+                    .push((path.to_path_buf(), id.clone()));
+            }
+        }
     }
 
     /// Root directory of the vault.

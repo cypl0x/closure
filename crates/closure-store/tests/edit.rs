@@ -1,0 +1,114 @@
+//! Vault-level structural edits: add a sibling headline, remove a
+//! subtree. Both run through kernel commands (undoable, I3) and keep
+//! disk, in-memory documents, and the id index in sync.
+
+#![allow(clippy::unwrap_used, clippy::expect_used)]
+
+use std::fs;
+
+use closure_core::BlockId;
+use closure_store::{Vault, VaultError};
+use tempfile::TempDir;
+
+fn write_vault(files: &[(&str, &str)]) -> TempDir {
+    let dir = tempfile::tempdir().expect("tempdir");
+    for (name, body) in files {
+        fs::write(dir.path().join(name), body).expect("write");
+    }
+    dir
+}
+
+fn id_of(v: &Vault, title: &str) -> BlockId {
+    let (h, _) = v.find_by_title(title).expect("headline exists");
+    h.id().clone()
+}
+
+#[test]
+fn add_sibling_appears_after_target_on_disk() {
+    let td = write_vault(&[("a.org", "* First\n* Last\n")]);
+    let mut v = Vault::open(td.path()).expect("open");
+    let id = id_of(&v, "First");
+    v.add_sibling(&id, "Middle").expect("add");
+    let disk = fs::read_to_string(td.path().join("a.org")).expect("read");
+    let first = disk.find("* First").expect("first");
+    let middle = disk.find("* Middle").expect("middle");
+    let last = disk.find("* Last").expect("last");
+    assert!(first < middle && middle < last, "order: {disk:?}");
+}
+
+#[test]
+fn add_sibling_is_resolvable_in_the_index() {
+    let td = write_vault(&[("a.org", "* First\n")]);
+    let mut v = Vault::open(td.path()).expect("open");
+    let id = id_of(&v, "First");
+    v.add_sibling(&id, "Fresh").expect("add");
+    let (h, _) = v.find_by_title("Fresh").expect("indexed");
+    assert!(v.find_by_id(&h.id().clone()).is_some());
+}
+
+#[test]
+fn add_sibling_unknown_id_errors_without_disk_change() {
+    let td = write_vault(&[("a.org", "* A\n")]);
+    let before = fs::read_to_string(td.path().join("a.org")).expect("read");
+    let mut v = Vault::open(td.path()).expect("open");
+    let bogus = BlockId::from_existing("01XXXXXXXXXXXXXXXXXXXXXXXX");
+    assert!(matches!(
+        v.add_sibling(&bogus, "Nope"),
+        Err(VaultError::UnknownId(_))
+    ));
+    assert_eq!(
+        before,
+        fs::read_to_string(td.path().join("a.org")).expect("read")
+    );
+}
+
+#[test]
+fn remove_subtree_deletes_headline_and_children() {
+    let td = write_vault(&[("a.org", "* Keep\n* Doomed\n** Child\nbody\n* Tail\n")]);
+    let mut v = Vault::open(td.path()).expect("open");
+    let id = id_of(&v, "Doomed");
+    v.remove_subtree(&id).expect("remove");
+    let disk = fs::read_to_string(td.path().join("a.org")).expect("read");
+    assert!(disk.contains("* Keep"));
+    assert!(disk.contains("* Tail"));
+    assert!(!disk.contains("Doomed"));
+    assert!(!disk.contains("Child"));
+}
+
+#[test]
+fn remove_subtree_unindexes_removed_ids() {
+    let td = write_vault(&[("a.org", "* Keep\n* Doomed\n** Child\n")]);
+    let mut v = Vault::open(td.path()).expect("open");
+    let doomed = id_of(&v, "Doomed");
+    let child = id_of(&v, "Child");
+    v.remove_subtree(&doomed).expect("remove");
+    assert!(v.find_by_id(&doomed).is_none());
+    assert!(v.find_by_id(&child).is_none());
+    assert!(v.find_by_title("Keep").is_some());
+}
+
+#[test]
+fn edits_keep_vault_and_disk_in_sync() {
+    let td = write_vault(&[("a.org", "* One\n* Two\n")]);
+    let mut v = Vault::open(td.path()).expect("open");
+    let one = id_of(&v, "One");
+    v.add_sibling(&one, "One half").expect("add");
+    let two = id_of(&v, "Two");
+    v.remove_subtree(&two).expect("remove");
+    let disk = fs::read_to_string(td.path().join("a.org")).expect("read");
+    let mem = v
+        .document(&td.path().join("a.org"))
+        .expect("doc cached")
+        .source();
+    assert_eq!(mem, disk);
+}
+
+#[test]
+fn edited_file_reopens_cleanly() {
+    let td = write_vault(&[("a.org", "* Base\n")]);
+    let mut v = Vault::open(td.path()).expect("open");
+    let id = id_of(&v, "Base");
+    v.add_sibling(&id, "Added").expect("add");
+    let reopened = Vault::open(td.path()).expect("reopen");
+    assert!(reopened.find_by_title("Added").is_some());
+}
