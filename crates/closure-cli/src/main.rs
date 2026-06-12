@@ -130,10 +130,10 @@ enum Cmd {
         /// each evaluated code block.
         #[arg(long)]
         write: bool,
-        /// Evaluate only the Nth code block (0-based, document-wide
-        /// source order).
+        /// Evaluate only one code block: a 0-based document-wide
+        /// index or a `#+NAME:` value.
         #[arg(long)]
-        block: Option<usize>,
+        block: Option<String>,
     },
     /// Print headlines that link to the given block id.
     Backlinks {
@@ -948,7 +948,7 @@ fn run(cmd: &Cmd) -> Result<(), String> {
             *level,
         ),
         Cmd::Whichkey { prefix } => cmd_whichkey(prefix.as_deref()),
-        Cmd::Eval { file, write, block } => cmd_eval(file, *write, *block),
+        Cmd::Eval { file, write, block } => cmd_eval(file, *write, block.as_deref()),
         Cmd::Backlinks { vault, id } => cmd_backlinks(vault, id),
         Cmd::Id { file } => cmd_id(file),
         Cmd::Db { vault } => cmd_db(vault),
@@ -2794,18 +2794,25 @@ fn cmd_whichkey(prefix: Option<&str>) -> Result<(), String> {
     Ok(())
 }
 
-fn cmd_eval(path: &Path, write: bool, only_block: Option<usize>) -> Result<(), String> {
+fn cmd_eval(path: &Path, write: bool, selector: Option<&str>) -> Result<(), String> {
     let src = fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))?;
     let doc = parse(&src).map_err(|e| format!("{e}"))?;
     let blocks = doc.code_blocks();
-    if let Some(idx) = only_block
-        && idx >= blocks.len()
-    {
-        return Err(format!(
-            "--block {idx} out of range: file has {} code block(s)",
-            blocks.len()
-        ));
-    }
+    let only_block: Option<usize> = match selector {
+        None => None,
+        Some(s) => Some(if let Ok(idx) = s.parse::<usize>() {
+            if idx >= blocks.len() {
+                return Err(format!(
+                    "--block {idx} out of range: file has {} code block(s)",
+                    blocks.len()
+                ));
+            }
+            idx
+        } else {
+            doc.code_block_index_by_name(s)
+                .ok_or_else(|| format!("no code block named `{s}`"))?
+        }),
+    };
     let mut ran = 0usize;
     let mut results: Vec<(usize, String)> = Vec::new();
     for (i, n) in blocks.iter().enumerate() {
@@ -2825,7 +2832,11 @@ fn cmd_eval(path: &Path, write: bool, only_block: Option<usize>) -> Result<(), S
         } else {
             Box::new(ShellBackend)
         };
-        let out = backend.eval(cb.content).map_err(|e| format!("{e}"))?;
+        let header = closure_eval::HeaderArgs::parse(cb.args.unwrap_or(""));
+        let prelude =
+            closure_eval::var_prelude(cb.language.unwrap_or("shell"), &header.vars);
+        let program = format!("{prelude}{}", cb.content);
+        let out = backend.eval(&program).map_err(|e| format!("{e}"))?;
         println!(
             "---- block #{i} {lang} exit={} ----",
             out.exit,
@@ -2837,7 +2848,7 @@ fn cmd_eval(path: &Path, write: bool, only_block: Option<usize>) -> Result<(), S
         if !out.stderr.is_empty() {
             eprint!("{}", out.stderr);
         }
-        if write {
+        if write && !header.is_silent() {
             results.push((i, out.stdout.clone()));
         }
         ran += 1;

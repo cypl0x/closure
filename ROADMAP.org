@@ -68,9 +68,9 @@ reversible option, keep moving.
 ** DONE LSP basics: =document_symbols= (headline name/line/level) + =definition_of= for id: links
 * DONE Plugin host [1/1]
 ** DONE Plugin executables (native or =.wasm= via external wasmtime) register a manifest-declared command; =closure plugin <manifest> <exe> [args]= invokes it
-* TODO Org-babel & literate programming [1/5]
-** DONE Execute code block at point: =closure eval <file> --block <n>= runs one block (doc-wide index, incl. under headlines) through closure-eval, writes =#+RESULTS:= back span-preserving (I1); =--block <name>= lands with named blocks below
-** TODO Header args subset: =:results output/value=, =:var x=...=, named blocks (=#+NAME:=)
+* TODO Org-babel & literate programming [2/5]
+** DONE Execute code block at point: =closure eval <file> --block <n|name>= runs one block (doc-wide, incl. under headlines), writes =#+RESULTS:= back span-preserving (I1)
+** DONE Header args subset: =:results output/silent=, =:var x=...= (shell/python preludes), named blocks (=#+NAME:=)
 ** TODO TUI: =e= on a code block in file view evaluates it and refreshes; result visible inline
 ** TODO org-edit-special: =closure edit-block <file> <n>= extracts a block to a temp file, =$EDITOR= edits, writes back span-preserving; TUI binding
 ** TODO Tangle (literate programming): =closure tangle <file>= writes =:tangle <path>= blocks to their targets; golden fixtures
