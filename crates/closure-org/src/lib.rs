@@ -37,6 +37,26 @@ impl OrgDoc {
         &self.preamble
     }
 
+    /// Name of the Nth doc-wide code block, read from a `#+NAME:`
+    /// keyword line directly above it (case-insensitive).
+    #[must_use]
+    pub fn code_block_name(&self, index: usize) -> Option<String> {
+        let block = self.code_blocks().get(index).map(|n| n.span.start)?;
+        let before = &self.source[..block];
+        let line = before.trim_end_matches('\n').rsplit('\n').next()?;
+        let value = line
+            .strip_prefix("#+NAME:")
+            .or_else(|| line.strip_prefix("#+name:"))?;
+        Some(value.trim().to_owned())
+    }
+
+    /// Doc-wide index of the code block carrying `#+NAME: name`.
+    #[must_use]
+    pub fn code_block_index_by_name(&self, name: &str) -> Option<usize> {
+        (0..self.code_blocks().len())
+            .find(|&i| self.code_block_name(i).as_deref() == Some(name))
+    }
+
     /// Every code block in the document — preamble and headline
     /// bodies alike — in source order.
     #[must_use]

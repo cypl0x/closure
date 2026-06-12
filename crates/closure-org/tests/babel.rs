@@ -76,3 +76,41 @@ fn attach_results_out_of_range_errors() {
     let doc = parse(MIXED).expect("parse");
     assert!(rewrite_attach_results_to_code_block(&doc, 9, "x\n").is_err());
 }
+
+const NAMED: &str = "\
+#+NAME: first
+#+BEGIN_SRC shell
+echo one
+#+END_SRC
+* H
+#+NAME: deep
+#+BEGIN_SRC shell
+echo two
+#+END_SRC
+#+BEGIN_SRC shell
+echo anon
+#+END_SRC
+";
+
+#[test]
+fn code_block_name_reads_name_keyword_above() {
+    let doc = parse(NAMED).expect("parse");
+    assert_eq!(doc.code_block_name(0).as_deref(), Some("first"));
+    assert_eq!(doc.code_block_name(1).as_deref(), Some("deep"));
+    assert_eq!(doc.code_block_name(2), None, "anonymous block");
+    assert_eq!(doc.code_block_name(9), None, "out of range");
+}
+
+#[test]
+fn code_block_name_is_case_insensitive() {
+    let doc = parse("#+name: lower\n#+BEGIN_SRC shell\ntrue\n#+END_SRC\n").expect("parse");
+    assert_eq!(doc.code_block_name(0).as_deref(), Some("lower"));
+}
+
+#[test]
+fn code_block_index_by_name_resolves() {
+    let doc = parse(NAMED).expect("parse");
+    assert_eq!(doc.code_block_index_by_name("deep"), Some(1));
+    assert_eq!(doc.code_block_index_by_name("first"), Some(0));
+    assert_eq!(doc.code_block_index_by_name("nope"), None);
+}
