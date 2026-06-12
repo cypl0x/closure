@@ -514,3 +514,90 @@ fn reopening_view_resets_scroll() {
     app.handle_stroke("RET");
     assert_eq!(app.scroll(), 0);
 }
+
+// --- backlinks pane ----------------------------------------------------
+
+fn app_with_backlinks() -> App {
+    let mut app = App::new(paths());
+    app.set_backlinks(vec![
+        (
+            std::path::PathBuf::from("a.org"),
+            std::path::PathBuf::from("b.org"),
+            "Beta note".to_owned(),
+        ),
+        (
+            std::path::PathBuf::from("a.org"),
+            std::path::PathBuf::from("c.org"),
+            "Gamma note".to_owned(),
+        ),
+        (
+            std::path::PathBuf::from("b.org"),
+            std::path::PathBuf::from("a.org"),
+            "Alpha note".to_owned(),
+        ),
+    ]);
+    app
+}
+
+#[test]
+fn b_enters_backlinks_mode() {
+    let mut app = app_with_backlinks();
+    app.handle_stroke("b");
+    assert_eq!(app.mode(), AppMode::Backlinks);
+}
+
+#[test]
+fn backlink_results_list_sources_for_selected_file() {
+    let mut app = app_with_backlinks();
+    app.handle_stroke("b");
+    let rows: Vec<(String, &str)> = app
+        .backlink_results()
+        .iter()
+        .map(|(p, t)| (p.display().to_string(), *t))
+        .collect();
+    assert_eq!(
+        rows,
+        vec![
+            ("b.org".to_owned(), "Beta note"),
+            ("c.org".to_owned(), "Gamma note"),
+        ]
+    );
+}
+
+#[test]
+fn backlink_results_empty_without_incoming_links() {
+    let mut app = app_with_backlinks();
+    app.handle_stroke("j");
+    app.handle_stroke("j");
+    app.handle_stroke("b");
+    assert!(app.backlink_results().is_empty(), "c.org has no backlinks");
+}
+
+#[test]
+fn backlink_cursor_and_ret_jump_to_linking_file() {
+    let mut app = app_with_backlinks();
+    app.handle_stroke("b");
+    app.handle_stroke("<down>");
+    app.handle_stroke("RET");
+    assert_eq!(app.mode(), AppMode::Browse);
+    assert_eq!(app.selected_path(), Some(std::path::Path::new("c.org")));
+}
+
+#[test]
+fn backlink_esc_closes_and_keeps_selection() {
+    let mut app = app_with_backlinks();
+    app.handle_stroke("b");
+    app.handle_stroke("<down>");
+    app.handle_stroke("ESC");
+    assert_eq!(app.mode(), AppMode::Browse);
+    assert_eq!(app.selected_index(), Some(0));
+}
+
+#[test]
+fn backlink_ret_on_empty_list_returns_to_browse() {
+    let mut app = App::new(paths());
+    app.handle_stroke("b");
+    app.handle_stroke("RET");
+    assert_eq!(app.mode(), AppMode::Browse);
+    assert_eq!(app.selected_index(), Some(0));
+}

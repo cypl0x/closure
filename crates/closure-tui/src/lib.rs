@@ -50,6 +50,7 @@ const DEFAULT_BINDINGS: &[(&str, &str)] = &[
     ("/", "search-start"),
     ("s", "search-headline-start"),
     ("RET", "open-file"),
+    ("b", "backlinks"),
 ];
 
 /// Which input surface the shell is on.
@@ -64,6 +65,8 @@ pub enum AppMode {
     SearchHeadlines,
     /// Reading the selected file's full org source; =j=/=k= scroll.
     FileView,
+    /// Listing the notes that link into the selected file.
+    Backlinks,
 }
 
 /// Elm-style application state for the terminal shell. Strokes go in
@@ -83,6 +86,7 @@ pub struct App {
     headlines: Vec<(PathBuf, String)>,
     sources: Vec<(PathBuf, String)>,
     scroll: usize,
+    backlinks: Vec<(PathBuf, PathBuf, String)>,
 }
 
 impl App {
@@ -114,7 +118,28 @@ impl App {
             headlines: Vec::new(),
             sources: Vec::new(),
             scroll: 0,
+            backlinks: Vec::new(),
         }
+    }
+
+    /// Provide the vault's backlink records as
+    /// `(target file, linking file, linking headline title)` rows.
+    pub fn set_backlinks(&mut self, backlinks: Vec<(PathBuf, PathBuf, String)>) {
+        self.backlinks = backlinks;
+    }
+
+    /// `(linking file, linking headline title)` rows pointing at the
+    /// selected file, in insertion order.
+    #[must_use]
+    pub fn backlink_results(&self) -> Vec<(&Path, &str)> {
+        let Some(sel) = self.selected_path() else {
+            return Vec::new();
+        };
+        self.backlinks
+            .iter()
+            .filter(|(target, _, _)| target.as_path() == sel)
+            .map(|(_, src, title)| (src.as_path(), title.as_str()))
+            .collect()
     }
 
     /// Provide the `(file, org source)` records shown by the file
@@ -256,6 +281,10 @@ impl App {
             self.handle_view_stroke(stroke);
             return;
         }
+        if self.mode == AppMode::Backlinks {
+            self.handle_backlinks_stroke(stroke);
+            return;
+        }
         match self.trie.step(stroke) {
             TrieStep::Resolved(cmd) => {
                 self.pending.clear();
@@ -281,6 +310,33 @@ impl App {
                 self.pending.clear();
                 self.popup = None;
             }
+        }
+    }
+
+    fn handle_backlinks_stroke(&mut self, stroke: &str) {
+        match stroke {
+            "j" | "<down>" => {
+                let last = self.backlink_results().len().saturating_sub(1);
+                self.result_cursor = (self.result_cursor + 1).min(last);
+            }
+            "k" | "<up>" => self.result_cursor = self.result_cursor.saturating_sub(1),
+            "RET" => {
+                let idx = self
+                    .backlink_results()
+                    .get(self.result_cursor)
+                    .map(|(src, _)| src.to_path_buf())
+                    .and_then(|pb| self.paths.iter().position(|p| *p == pb));
+                if idx.is_some() {
+                    self.selected = idx;
+                }
+                self.mode = AppMode::Browse;
+                self.result_cursor = 0;
+            }
+            "ESC" | "q" | "h" | "DEL" => {
+                self.mode = AppMode::Browse;
+                self.result_cursor = 0;
+            }
+            _ => {}
         }
     }
 
@@ -380,6 +436,10 @@ impl App {
             "search-headline-start" => {
                 self.mode = AppMode::SearchHeadlines;
                 self.query.clear();
+            }
+            "backlinks" => {
+                self.mode = AppMode::Backlinks;
+                self.result_cursor = 0;
             }
             "open-file" => {
                 let has_source = self
@@ -483,6 +543,18 @@ fn run_loop(
         .map(|(path, doc)| (path.to_path_buf(), doc.source()))
         .collect();
     app.set_sources(sources);
+    let mut backlinks: Vec<(PathBuf, PathBuf, String)> = Vec::new();
+    for (path, doc) in vault.iter() {
+        for h in doc.all_headlines() {
+            for (src_path, src_id) in vault.backlinks_of(&h.id().to_string()) {
+                let title = vault
+                    .find_by_id(src_id)
+                    .map_or_else(String::new, |(sh, _)| sh.title().to_owned());
+                backlinks.push((path.to_path_buf(), src_path.clone(), title));
+            }
+        }
+    }
+    app.set_backlinks(backlinks);
 
     loop {
         terminal.draw(|f| draw(f, &app, vault))?;
@@ -539,51 +611,84 @@ fn draw(f: &mut ratatui::Frame<'_>, app: &App, vault: &Vault) {
         f.render_widget(body, chunks[1]);
     }
 
-    if matches!(app.mode(), AppMode::Search | AppMode::SearchHeadlines) {
-        let title = if app.mode() == AppMode::Search {
-            format!("find file: {}", app.query())
-        } else {
-            format!("find headline: {}", app.query())
-        };
-        let height = area.height / 2;
-        let search_area = ratatui::layout::Rect {
-            x: area.x,
-            y: area.height.saturating_sub(height),
-            width: area.width,
-            height,
-        };
-        let items: Vec<ListItem<'_>> = if app.mode() == AppMode::Search {
+    let overlay = match app.mode() {
+        AppMode::Search => Some((
+            format!("find file: {}", app.query()),
             app.results()
                 .iter()
-                .map(|p| ListItem::new(p.display().to_string()))
-                .collect()
-        } else {
+                .map(|p| p.display().to_string())
+                .collect::<Vec<String>>(),
+        )),
+        AppMode::SearchHeadlines => Some((
+            format!("find headline: {}", app.query()),
             app.headline_results()
                 .iter()
-                .map(|(p, t)| ListItem::new(format!("{t}    ({})", p.display())))
-                .collect()
-        };
-        let mut state = ListState::default();
-        state.select(Some(app.result_cursor()));
-        let pane = List::new(items)
-            .block(Block::default().title(title).borders(Borders::ALL))
-            .highlight_style(Style::default().add_modifier(Modifier::REVERSED));
-        f.render_widget(ratatui::widgets::Clear, search_area);
-        f.render_stateful_widget(pane, search_area, &mut state);
+                .map(|(p, t)| format!("{t}    ({})", p.display()))
+                .collect(),
+        )),
+        AppMode::Backlinks => Some((
+            app.selected_path().map_or_else(
+                || "backlinks".to_owned(),
+                |p| format!("backlinks: {}", p.display()),
+            ),
+            app.backlink_results()
+                .iter()
+                .map(|(p, t)| format!("{t}    ({})", p.display()))
+                .collect(),
+        )),
+        AppMode::Browse | AppMode::FileView => None,
+    };
+    if let Some((title, rows)) = overlay {
+        draw_overlay_list(f, area, title, rows, app.result_cursor());
     }
 
     if let Some(lines) = app.popup_lines() {
-        let height = u16::try_from(lines.len()).unwrap_or(u16::MAX);
-        let popup_area = ratatui::layout::Rect {
-            x: area.x,
-            y: area.height.saturating_sub(height.saturating_add(2)),
-            width: area.width,
-            height: height.saturating_add(2).min(area.height),
-        };
-        let title = format!("which-key: {}", app.pending_chord());
-        let popup = Paragraph::new(lines.join("\n"))
-            .block(Block::default().title(title).borders(Borders::ALL));
-        f.render_widget(ratatui::widgets::Clear, popup_area);
-        f.render_widget(popup, popup_area);
+        draw_whichkey(f, area, app, lines);
     }
+}
+
+/// Bottom-half overlay list with a cursor row, used by the fuzzy
+/// finders and the backlinks pane.
+fn draw_overlay_list(
+    f: &mut ratatui::Frame<'_>,
+    area: ratatui::layout::Rect,
+    title: String,
+    rows: Vec<String>,
+    cursor: usize,
+) {
+    let height = area.height / 2;
+    let overlay_area = ratatui::layout::Rect {
+        x: area.x,
+        y: area.height.saturating_sub(height),
+        width: area.width,
+        height,
+    };
+    let items: Vec<ListItem<'_>> = rows.into_iter().map(ListItem::new).collect();
+    let mut state = ListState::default();
+    state.select(Some(cursor));
+    let pane = List::new(items)
+        .block(Block::default().title(title).borders(Borders::ALL))
+        .highlight_style(Style::default().add_modifier(Modifier::REVERSED));
+    f.render_widget(ratatui::widgets::Clear, overlay_area);
+    f.render_stateful_widget(pane, overlay_area, &mut state);
+}
+
+fn draw_whichkey(
+    f: &mut ratatui::Frame<'_>,
+    area: ratatui::layout::Rect,
+    app: &App,
+    lines: &[String],
+) {
+    let height = u16::try_from(lines.len()).unwrap_or(u16::MAX);
+    let popup_area = ratatui::layout::Rect {
+        x: area.x,
+        y: area.height.saturating_sub(height.saturating_add(2)),
+        width: area.width,
+        height: height.saturating_add(2).min(area.height),
+    };
+    let title = format!("which-key: {}", app.pending_chord());
+    let popup =
+        Paragraph::new(lines.join("\n")).block(Block::default().title(title).borders(Borders::ALL));
+    f.render_widget(ratatui::widgets::Clear, popup_area);
+    f.render_widget(popup, popup_area);
 }
