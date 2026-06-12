@@ -68,6 +68,81 @@ reversible option, keep moving.
 ** DONE LSP basics: =document_symbols= (headline name/line/level) + =definition_of= for id: links
 * DONE Plugin host [1/1]
 ** DONE Plugin executables (native or =.wasm= via external wasmtime) register a manifest-declared command; =closure plugin <manifest> <exe> [args]= invokes it
+* TODO Org-babel & literate programming [0/5]
+** TODO Execute code block at point: =closure eval <file> --block <n|name>= runs the block through closure-eval, writes =#+RESULTS:= back span-preserving (I1)
+** TODO Header args subset: =:results output/value=, =:var x=...=, named blocks (=#+NAME:=)
+** TODO TUI: =e= on a code block in file view evaluates it and refreshes; result visible inline
+** TODO org-edit-special: =closure edit-block <file> <n>= extracts a block to a temp file, =$EDITOR= edits, writes back span-preserving; TUI binding
+** TODO Tangle (literate programming): =closure tangle <file>= writes =:tangle <path>= blocks to their targets; golden fixtures
+* TODO Notion-default editing mode for real [0/5]
+** TODO Block model over headlines+paragraphs: every block addressable, =+=-style insert-below command in TUI (any block type: headline, code, table)
+** TODO Slash commands: =/= in Notion mode opens the command palette scoped to block insertion (already-built palette reused)
+** TODO Inline body editing in TUI: edit the selected block's text in a multi-line minibuffer through SetBody (I3)
+** TODO Structure ops bound in every mode: promote/demote/move-subtree-up/down (kernel commands exist) with which-key entries (I4)
+** TODO Kill ring: cut/copy/paste blocks via commands; ring stored in memory + optionally persisted (see record-everything)
+* TODO Record-everything (configurable) [0/3]
+** TODO closure-record crate: append-only org journal in the vault (=journal.org=) capturing executed commands with timestamps; off by default, =record_commands = true= in config
+** TODO Kill-ring persistence: yanked/killed block text recorded to the journal when enabled
+** TODO =closure history= + TUI view: query/filter the journal (reuses ViewSpec); replay a command from history
+* TODO Scheduled tasks (cron-compatible) [0/3]
+** TODO Jobs declared in org: =#+BEGIN_SRC closure-cron= block with =<cron-expr> <registry-command-line>= lines, parsed by closure-cron
+** TODO =closure cron tick= runs due jobs once (testable, deterministic clock injection); =closure cron daemon= loops
+** TODO Agenda: =closure agenda= lists SCHEDULED/DEADLINE headlines for today/this week, sorted; TUI binding
+* TODO Search at scale, pluggable [0/4]
+** TODO Search backend trait: built-in fuzzy (default), ripgrep, fd as engines selected via =search_backend= config key; same results shape
+** TODO Body full-text search in TUI (=S=): fuzzy over body lines, jump to file
+** TODO Persistent index cache keyed by Document content hash; benchmark proves rescan avoided
+** TODO Input-lag budget test: keystroke→render under 16ms on a 1k-file synthetic vault (criterion bench, CI-checked threshold)
+* TODO Markdown compatibility [0/3]
+** TODO closure-markdown: parse/print roundtrip subset (headings, lists, code fences) with golden fixtures (I1 for md)
+** TODO =closure export md <file>= / =closure import md <file>=: org↔md conversion, lossy parts reported, never silently dropped
+** TODO Vault may mix =.md= files read-only first; same search/backlinks over them
+* TODO Tree-sitter support [0/2]
+** TODO closure-tree-sitter: highlight spans for code-block languages via tree-sitter parsers (pluggable, external CLI or feature-gated crate — record decision)
+** TODO TUI file view renders code blocks with TS-derived highlight spans
+* TODO Config validation (CUE-inspired) [0/3]
+** TODO Validators per key with line/column errors at parse time (unknown keys already error); =closure check-config <vault>= command
+** TODO Validate-on-save: vault watcher revalidates config.org and surfaces errors in TUI status line
+** TODO Typed cross-key constraints (e.g. llm_provider set ⇒ llm_key_env set); errors at load, not first use (yesod principle)
+* TODO Shell capability matrix (type-level) [0/2]
+** TODO =Capability= enum + per-shell =const CAPABILITIES: &[Capability]= in cli/tui/web/egui; test pins every shell ⊇ kernel core set
+** TODO =closure shells= renders the diff/venn table from those constants — code is the single source of truth
+* TODO GUI shells [0/6]
+** TODO egui desktop parity slice: vault browse + fuzzy search + capture through the same App-style state model (HeadlessAdapter already exists)
+** TODO egui editing: rename/add/delete/undo wired to vault methods, which-key overlay (I4)
+** TODO Self-contained single HTML file: =closure export html= renders the whole vault (browse + client-side JS fuzzy search) into one file
+** TODO Tauri app: wraps the web shell against a localhost server; capability matrix entry
+** TODO Native gpui shell: evaluate gpui as the high-performance desktop shell; walking skeleton or recorded DROP decision
+** TODO Flutter/GTK4/Qt6 embedders: evaluate each against the capability matrix; implement or record DROP per framework (suggestion-tier per vision)
+* TODO Network sniffer (lean, pluggable) [0/3]
+** TODO closure-sniffer: capture backend trait with a mock backend + external-tool backend (=tcpdump=/=ss= line parsing); core stays dependency-free
+** TODO Org-native log: captures append to =network.org= as headlines (host, port, proto, ts) — searchable/queryable like any vault data
+** TODO Blocklist config block + =closure sniff= CLI/TUI view; block events surfaced
+* TODO LLM deep access & live permissions [0/4]
+** TODO Shell-state tool: =view-state= run_tool returns the rendered UI state (mode, selection, visible rows) so the model can "see" what the user sees
+** TODO Per-tool permission model in config (=llm_tools = read,search= etc.); =llm-allow=/=llm-deny= runtime commands toggle live
+** TODO Local models: ollama provider (OpenAI-compatible endpoint via existing CurlProvider) + config preset
+** TODO Multi-turn TUI chat pane driving tool_loop with streaming-friendly rendering
+* TODO Agents: ACP / A2A / swarm [0/3]
+** TODO closure-acp: agent card (name, tools, schemas) served over the MCP JSON subset; handshake test between two in-process agents
+** TODO closure-a2a: task delegation — agent A posts a task, agent B (separate vault) executes via its registry, returns result; round-trip test
+** TODO Swarm: N workers drain a task queue stored as an org file (TODO headlines = tasks, DONE = finished); property test: every task done exactly once
+* TODO P2P sync & collaboration [0/3]
+** TODO Vector-clock (or Lamport) timestamps replace manual ts in closure-crdt; property tests for causality
+** TODO P2P transport behind the Transport trait via external binary (iroh or IPFS CLI) — record decision, round-trip test gated on binary presence
+** TODO Live collaboration session: two processes on localhost exchange replica deltas over TCP, converge while both edit; conflict corpus reused
+* TODO Built-to-last kernel spec [0/3]
+** TODO Document the minimal kernel primitives ("LISP-7" idea): parse, print, apply, undo, query, snapshot, merge — spec.md section with the rule that every feature reduces to these
+** TODO org2 decision: track upstream org-mode as the compatibility target; org2 as export-only experiment — record in Decisions with rationale
+** TODO Self-documentation: =closure doc <command>= prints registry-derived docs + bindings for every command (Emacs-style describe-function)
+* TODO Wasm/WASI core [0/2]
+** TODO closure-org + closure-core compile to =wasm32-wasip1= (feature-gate fs/process); CI target check in flake
+** TODO Single-HTML export embeds the wasm kernel for client-side parsing (ties into GUI shells item)
+* TODO Quality gates to 100% [0/4]
+** TODO Coverage gate: cargo-llvm-cov in =nix flake check=, ratchet threshold upward per milestone toward 100%
+** TODO Fuzz targets run in CI (60s budget) for closure-org and closure-markdown parsers
+** TODO treefmt + deadnix + alejandra + clippy all wired into =nix flake check= (one command = whole truth)
+** TODO Property tests for every invariant I1–I10 enumerated in spec.md, cross-referenced from the test files
 * Decisions
 Open questions land here as subheadings: context, options considered,
 the reversible default taken, date.
