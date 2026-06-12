@@ -22,10 +22,10 @@ reversible option, keep moving.
 - closure-query fuzzy_score/fuzzy_filter
 - closure-cli wires =closure tui=
 
-* TODO TUI becomes a real browser [2/4]
+* TODO TUI becomes a real browser [3/4]
 ** DONE Search result cursor: =<up>=/=<down>= move selection in result list, =RET= picks cursor item (not just best match)
 ** DONE Headline-level fuzzy search: query matches headline titles across the vault, =RET= jumps to file + headline
-** TODO File body view: show the selected file's full org source (or selected headline's subtree), scrollable
+** DONE File body view: show the selected file's full org source (or selected headline's subtree), scrollable
 ** TODO Backlinks pane: for the selected headline, list incoming links from Vault::backlinks_of; =RET= follows
 * TODO org-capture [0/3]
 ** TODO Capture template type in closure-core: target file + headline prefix + body skeleton

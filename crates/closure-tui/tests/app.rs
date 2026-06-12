@@ -250,10 +250,7 @@ fn ret_accepts_best_match_and_returns_to_browse() {
     app.handle_stroke("n");
     app.handle_stroke("RET");
     assert_eq!(app.mode(), AppMode::Browse);
-    assert_eq!(
-        app.selected_path(),
-        Some(std::path::Path::new("notes.org"))
-    );
+    assert_eq!(app.selected_path(), Some(std::path::Path::new("notes.org")));
     assert_eq!(app.query(), "");
 }
 
@@ -347,7 +344,10 @@ fn app_with_headlines() -> App {
     app.set_headlines(vec![
         (std::path::PathBuf::from("a.org"), "Inbox".to_owned()),
         (std::path::PathBuf::from("b.org"), "Project plan".to_owned()),
-        (std::path::PathBuf::from("c.org"), "Personal notes".to_owned()),
+        (
+            std::path::PathBuf::from("c.org"),
+            "Personal notes".to_owned(),
+        ),
     ]);
     app
 }
@@ -419,4 +419,98 @@ fn headline_search_without_headline_data_is_safe() {
     app.handle_stroke("RET");
     assert_eq!(app.mode(), AppMode::Browse);
     assert_eq!(app.selected_index(), Some(0));
+}
+
+// --- file body view ----------------------------------------------------
+
+fn app_with_sources() -> App {
+    let mut app = App::new(paths());
+    app.set_sources(vec![
+        (
+            std::path::PathBuf::from("a.org"),
+            "* One\nbody line\n* Two\n".to_owned(),
+        ),
+        (std::path::PathBuf::from("b.org"), "* Beta\n".to_owned()),
+    ]);
+    app
+}
+
+#[test]
+fn ret_opens_file_view_on_selected_file() {
+    let mut app = app_with_sources();
+    app.handle_stroke("RET");
+    assert_eq!(app.mode(), AppMode::FileView);
+    assert_eq!(app.view_source(), Some("* One\nbody line\n* Two\n"));
+    assert_eq!(app.scroll(), 0);
+}
+
+#[test]
+fn ret_without_source_data_stays_in_browse() {
+    let mut app = App::new(paths());
+    app.handle_stroke("RET");
+    assert_eq!(app.mode(), AppMode::Browse);
+    assert_eq!(app.view_source(), None);
+}
+
+#[test]
+fn j_scrolls_down_and_clamps_at_last_line() {
+    let mut app = app_with_sources();
+    app.handle_stroke("RET");
+    app.handle_stroke("j");
+    assert_eq!(app.scroll(), 1);
+    for _ in 0..10 {
+        app.handle_stroke("j");
+    }
+    assert_eq!(app.scroll(), 2, "three lines, max offset 2");
+}
+
+#[test]
+fn k_scrolls_up_and_clamps_at_zero() {
+    let mut app = app_with_sources();
+    app.handle_stroke("RET");
+    app.handle_stroke("j");
+    app.handle_stroke("k");
+    assert_eq!(app.scroll(), 0);
+    app.handle_stroke("k");
+    assert_eq!(app.scroll(), 0);
+}
+
+#[test]
+fn esc_closes_view_and_keeps_selection() {
+    let mut app = app_with_sources();
+    app.handle_stroke("j");
+    app.handle_stroke("RET");
+    app.handle_stroke("ESC");
+    assert_eq!(app.mode(), AppMode::Browse);
+    assert_eq!(app.selected_index(), Some(1));
+    assert!(!app.should_quit());
+}
+
+#[test]
+fn q_in_view_closes_view_not_app() {
+    let mut app = app_with_sources();
+    app.handle_stroke("RET");
+    app.handle_stroke("q");
+    assert_eq!(app.mode(), AppMode::Browse);
+    assert!(!app.should_quit());
+}
+
+#[test]
+fn view_scrolling_does_not_move_file_selection() {
+    let mut app = app_with_sources();
+    app.handle_stroke("RET");
+    app.handle_stroke("j");
+    app.handle_stroke("j");
+    app.handle_stroke("ESC");
+    assert_eq!(app.selected_index(), Some(0));
+}
+
+#[test]
+fn reopening_view_resets_scroll() {
+    let mut app = app_with_sources();
+    app.handle_stroke("RET");
+    app.handle_stroke("j");
+    app.handle_stroke("ESC");
+    app.handle_stroke("RET");
+    assert_eq!(app.scroll(), 0);
 }
