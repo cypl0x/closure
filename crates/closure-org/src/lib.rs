@@ -37,6 +37,22 @@ impl OrgDoc {
         &self.preamble
     }
 
+    /// Every code block in the document — preamble and headline
+    /// bodies alike — in source order.
+    #[must_use]
+    pub fn code_blocks(&self) -> Vec<&Node> {
+        let mut out: Vec<&Node> = self
+            .preamble
+            .iter()
+            .filter(|n| n.kind() == NodeKind::CodeBlock)
+            .collect();
+        for h in self.iter_headlines() {
+            out.extend(h.body_nodes_by_kind(NodeKind::CodeBlock));
+        }
+        out.sort_by_key(|n| n.span.start);
+        out
+    }
+
     /// Top-level headlines. In the current cycle they are siblings; the
     /// nesting cycle restructures into a tree.
     #[must_use]
@@ -8707,19 +8723,13 @@ pub fn rewrite_attach_results_to_code_block(
     block_index: usize,
     results: &str,
 ) -> Result<OrgDoc, RewriteError> {
-    // Find the Nth CodeBlock node in the preamble, get its end span.
-    let mut idx = 0usize;
-    let mut block_end: Option<usize> = None;
-    for n in doc.preamble() {
-        if n.kind() == NodeKind::CodeBlock {
-            if idx == block_index {
-                block_end = Some(n.span.end);
-                break;
-            }
-            idx += 1;
-        }
-    }
-    let block_end = block_end.ok_or(RewriteError::NotFound)?;
+    // Find the Nth code block document-wide (preamble + headline
+    // bodies, source order).
+    let block_end = doc
+        .code_blocks()
+        .get(block_index)
+        .map(|n| n.span.end)
+        .ok_or(RewriteError::NotFound)?;
 
     let mut formatted = String::from("#+RESULTS:\n");
     for line in results.lines() {
