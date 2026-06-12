@@ -321,6 +321,60 @@ impl Vault {
         }
     }
 
+    /// Evaluate the Nth doc-wide code block of `path` through
+    /// closure-eval, honouring `:var` bindings and `:results silent`;
+    /// non-silent stdout is attached as `#+RESULTS:` span-preserving
+    /// (I1), persisted, and reindexed. Returns the block's stdout.
+    ///
+    /// # Errors
+    ///
+    /// [`VaultError::UnknownId`] for unknown paths,
+    /// [`VaultError::Command`] for missing blocks, unsupported
+    /// languages, or evaluation failures, [`VaultError::Io`] on write
+    /// failures.
+    pub fn eval_block(&mut self, path: &Path, index: usize) -> Result<String, VaultError> {
+        use closure_eval::Backend as _;
+        let doc = self
+            .documents
+            .get(path)
+            .ok_or_else(|| VaultError::UnknownId(path.display().to_string()))?;
+        let org = doc.org();
+        let blocks = org.code_blocks();
+        let node = blocks.get(index).ok_or_else(|| {
+            VaultError::Command(format!("no code block #{index} in {}", path.display()))
+        })?;
+        let cb = node
+            .as_code_block()
+            .ok_or_else(|| VaultError::Command("not a code block".into()))?;
+        let lang = cb.language.unwrap_or("shell");
+        let header = closure_eval::HeaderArgs::parse(cb.args.unwrap_or(""));
+        let program = format!(
+            "{}{}",
+            closure_eval::var_prelude(lang, &header.vars),
+            cb.content
+        );
+        let out = match lang {
+            "shell" | "sh" | "bash" => closure_eval::ShellBackend.eval(&program),
+            "python" => closure_eval::PythonBackend.eval(&program),
+            other => {
+                return Err(VaultError::Command(format!("no backend for `{other}`")));
+            }
+        }
+        .map_err(|e| VaultError::Command(e.to_string()))?;
+        if !header.is_silent() {
+            let new_org =
+                closure_org::rewrite_attach_results_to_code_block(org, index, &out.stdout)
+                    .map_err(|e| VaultError::Command(e.to_string()))?;
+            let new_src = closure_org::print(&new_org);
+            let new_doc = Document::load_str(&new_src)
+                .map_err(|_| VaultError::Parse { path: path.into() })?;
+            fs::write(path, new_doc.source())?;
+            self.documents.insert(path.to_path_buf(), new_doc);
+            self.reindex_file(path);
+        }
+        Ok(out.stdout)
+    }
+
     /// Undo the most recent edit in `path`'s document (undo-tree,
     /// I3), persist, and reindex.
     ///
