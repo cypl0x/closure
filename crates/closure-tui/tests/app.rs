@@ -339,3 +339,84 @@ fn esc_resets_cursor_too() {
     app.handle_stroke("/");
     assert_eq!(app.result_cursor(), 0);
 }
+
+// --- headline fuzzy search --------------------------------------------
+
+fn app_with_headlines() -> App {
+    let mut app = App::new(paths());
+    app.set_headlines(vec![
+        (std::path::PathBuf::from("a.org"), "Inbox".to_owned()),
+        (std::path::PathBuf::from("b.org"), "Project plan".to_owned()),
+        (std::path::PathBuf::from("c.org"), "Personal notes".to_owned()),
+    ]);
+    app
+}
+
+#[test]
+fn s_enters_headline_search_mode() {
+    let mut app = app_with_headlines();
+    app.handle_stroke("s");
+    assert_eq!(app.mode(), AppMode::SearchHeadlines);
+    assert_eq!(app.query(), "");
+}
+
+#[test]
+fn headline_results_fuzzy_filter_titles() {
+    let mut app = app_with_headlines();
+    app.handle_stroke("s");
+    app.handle_stroke("p");
+    app.handle_stroke("l");
+    app.handle_stroke("a");
+    app.handle_stroke("n");
+    let titles: Vec<&str> = app.headline_results().iter().map(|(_, t)| *t).collect();
+    assert_eq!(titles, vec!["Project plan"]);
+}
+
+#[test]
+fn headline_search_empty_query_lists_all() {
+    let mut app = app_with_headlines();
+    app.handle_stroke("s");
+    assert_eq!(app.headline_results().len(), 3);
+}
+
+#[test]
+fn headline_ret_jumps_to_containing_file() {
+    let mut app = app_with_headlines();
+    app.handle_stroke("s");
+    app.handle_stroke("n");
+    app.handle_stroke("o");
+    app.handle_stroke("t");
+    app.handle_stroke("RET");
+    assert_eq!(app.mode(), AppMode::Browse);
+    assert_eq!(app.selected_path(), Some(std::path::Path::new("c.org")));
+}
+
+#[test]
+fn headline_search_cursor_picks_highlighted() {
+    let mut app = app_with_headlines();
+    app.handle_stroke("s");
+    app.handle_stroke("<down>");
+    app.handle_stroke("RET");
+    assert_eq!(app.selected_path(), Some(std::path::Path::new("b.org")));
+}
+
+#[test]
+fn headline_search_esc_cancels() {
+    let mut app = app_with_headlines();
+    app.handle_stroke("s");
+    app.handle_stroke("x");
+    app.handle_stroke("ESC");
+    assert_eq!(app.mode(), AppMode::Browse);
+    assert_eq!(app.query(), "");
+    assert_eq!(app.selected_index(), Some(0));
+}
+
+#[test]
+fn headline_search_without_headline_data_is_safe() {
+    let mut app = App::new(paths());
+    app.handle_stroke("s");
+    assert!(app.headline_results().is_empty());
+    app.handle_stroke("RET");
+    assert_eq!(app.mode(), AppMode::Browse);
+    assert_eq!(app.selected_index(), Some(0));
+}

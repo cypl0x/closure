@@ -48,6 +48,7 @@ const DEFAULT_BINDINGS: &[(&str, &str)] = &[
     ("q", "quit"),
     ("ESC", "quit"),
     ("/", "search-start"),
+    ("s", "search-headline-start"),
 ];
 
 /// Which input surface the shell is on.
@@ -58,6 +59,8 @@ pub enum AppMode {
     /// Typing a fuzzy file query; strokes edit the query instead of
     /// firing chords.
     Search,
+    /// Typing a fuzzy query over headline titles across the vault.
+    SearchHeadlines,
 }
 
 /// Elm-style application state for the terminal shell. Strokes go in
@@ -74,6 +77,7 @@ pub struct App {
     mode: AppMode,
     query: String,
     result_cursor: usize,
+    headlines: Vec<(PathBuf, String)>,
 }
 
 impl App {
@@ -102,7 +106,34 @@ impl App {
             mode: AppMode::Browse,
             query: String::new(),
             result_cursor: 0,
+            headlines: Vec::new(),
         }
+    }
+
+    /// Provide the `(file, headline title)` records searched by
+    /// headline mode. Typically harvested from the vault once at
+    /// startup.
+    pub fn set_headlines(&mut self, headlines: Vec<(PathBuf, String)>) {
+        self.headlines = headlines;
+    }
+
+    /// Headlines matching the live query, best fuzzy score first.
+    #[must_use]
+    pub fn headline_results(&self) -> Vec<(&Path, &str)> {
+        let mut scored: Vec<(usize, u32)> = self
+            .headlines
+            .iter()
+            .enumerate()
+            .filter_map(|(i, (_, t))| closure_query::fuzzy_score(&self.query, t).map(|sc| (i, sc)))
+            .collect();
+        scored.sort_by_key(|&(_, sc)| std::cmp::Reverse(sc));
+        scored
+            .iter()
+            .map(|&(i, _)| {
+                let (p, t) = &self.headlines[i];
+                (p.as_path(), t.as_str())
+            })
+            .collect()
     }
 
     /// Index of the highlighted row in [`Self::results`].
@@ -187,7 +218,7 @@ impl App {
     /// Feed one key stroke into the active surface: query editing in
     /// search mode, the chord trie otherwise.
     pub fn handle_stroke(&mut self, stroke: &str) {
-        if self.mode == AppMode::Search {
+        if matches!(self.mode, AppMode::Search | AppMode::SearchHeadlines) {
             self.handle_search_stroke(stroke);
             return;
         }
@@ -229,10 +260,18 @@ impl App {
                 self.result_cursor = 0;
             }
             "RET" => {
-                let idx = self
-                    .results()
-                    .get(self.result_cursor)
-                    .and_then(|pick| self.paths.iter().position(|p| p.as_path() == *pick));
+                let pick = if self.mode == AppMode::SearchHeadlines {
+                    self.headline_results()
+                        .get(self.result_cursor)
+                        .map(|(p, _)| p.to_path_buf())
+                } else {
+                    self.results()
+                        .get(self.result_cursor)
+                        .copied()
+                        .map(Path::to_path_buf)
+                };
+                let idx =
+                    pick.and_then(|pb| self.paths.iter().position(|p| *p == pb));
                 if idx.is_some() {
                     self.selected = idx;
                 }
@@ -241,8 +280,12 @@ impl App {
                 self.result_cursor = 0;
             }
             "<down>" => {
-                let last = self.results().len().saturating_sub(1);
-                self.result_cursor = (self.result_cursor + 1).min(last);
+                let len = if self.mode == AppMode::SearchHeadlines {
+                    self.headline_results().len()
+                } else {
+                    self.results().len()
+                };
+                self.result_cursor = (self.result_cursor + 1).min(len.saturating_sub(1));
             }
             "<up>" => {
                 self.result_cursor = self.result_cursor.saturating_sub(1);
@@ -287,6 +330,10 @@ impl App {
             "quit" => self.quit = true,
             "search-start" => {
                 self.mode = AppMode::Search;
+                self.query.clear();
+            }
+            "search-headline-start" => {
+                self.mode = AppMode::SearchHeadlines;
                 self.query.clear();
             }
             _ => {}
@@ -370,6 +417,13 @@ fn run_loop(
     vault: &Vault,
 ) -> Result<(), TuiError> {
     let mut app = App::new(vault.paths());
+    let mut headlines: Vec<(PathBuf, String)> = Vec::new();
+    for (path, doc) in vault.iter() {
+        for h in doc.all_headlines() {
+            headlines.push((path.to_path_buf(), h.title().to_owned()));
+        }
+    }
+    app.set_headlines(headlines);
 
     loop {
         terminal.draw(|f| {
@@ -399,8 +453,12 @@ fn run_loop(
                 .block(Block::default().title("headlines").borders(Borders::ALL));
             f.render_widget(body, chunks[1]);
 
-            if app.mode() == AppMode::Search {
-                let title = format!("find file: {}", app.query());
+            if matches!(app.mode(), AppMode::Search | AppMode::SearchHeadlines) {
+                let title = if app.mode() == AppMode::Search {
+                    format!("find file: {}", app.query())
+                } else {
+                    format!("find headline: {}", app.query())
+                };
                 let height = area.height / 2;
                 let search_area = ratatui::layout::Rect {
                     x: area.x,
@@ -408,11 +466,17 @@ fn run_loop(
                     width: area.width,
                     height,
                 };
-                let items: Vec<ListItem<'_>> = app
-                    .results()
-                    .iter()
-                    .map(|p| ListItem::new(p.display().to_string()))
-                    .collect();
+                let items: Vec<ListItem<'_>> = if app.mode() == AppMode::Search {
+                    app.results()
+                        .iter()
+                        .map(|p| ListItem::new(p.display().to_string()))
+                        .collect()
+                } else {
+                    app.headline_results()
+                        .iter()
+                        .map(|(p, t)| ListItem::new(format!("{t}    ({})", p.display())))
+                        .collect()
+                };
                 let mut state = ListState::default();
                 state.select(Some(app.result_cursor()));
                 let pane = List::new(items)
