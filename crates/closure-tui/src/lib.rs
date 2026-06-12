@@ -88,6 +88,8 @@ pub enum AppMode {
     Capture,
     /// Navigating the selected file's headlines with a cursor.
     Headlines,
+    /// Editing a headline's title in a minibuffer.
+    Rename,
 }
 
 /// Elm-style application state for the terminal shell. Strokes go in
@@ -109,6 +111,8 @@ pub struct App {
     scroll: usize,
     backlinks: Vec<(PathBuf, PathBuf, String)>,
     capture_request: Option<String>,
+    rename_target: Option<String>,
+    rename_request: Option<(String, String)>,
 }
 
 impl App {
@@ -142,7 +146,15 @@ impl App {
             scroll: 0,
             backlinks: Vec::new(),
             capture_request: None,
+            rename_target: None,
+            rename_request: None,
         }
+    }
+
+    /// Consume the `(block id, new title)` rename confirmed by the
+    /// user, if any. The shell performs the vault write.
+    pub const fn take_rename_request(&mut self) -> Option<(String, String)> {
+        self.rename_request.take()
     }
 
     /// Consume the capture title confirmed by the user, if any. The
@@ -348,6 +360,10 @@ impl App {
             self.handle_headlines_stroke(stroke);
             return;
         }
+        if self.mode == AppMode::Rename {
+            self.handle_rename_stroke(stroke);
+            return;
+        }
         match self.trie.step(stroke) {
             TrieStep::Resolved(cmd) => {
                 self.pending.clear();
@@ -383,11 +399,51 @@ impl App {
                 self.result_cursor = (self.result_cursor + 1).min(last);
             }
             "k" | "<up>" => self.result_cursor = self.result_cursor.saturating_sub(1),
+            "r" => {
+                let target = self
+                    .file_headlines()
+                    .get(self.result_cursor)
+                    .map(|(title, id)| ((*title).to_owned(), (*id).to_owned()));
+                if let Some((title, id)) = target {
+                    self.rename_target = Some(id);
+                    self.query = title;
+                    self.mode = AppMode::Rename;
+                }
+            }
             "ESC" | "q" | "h" | "DEL" => {
                 self.mode = AppMode::Browse;
                 self.result_cursor = 0;
             }
             _ => {}
+        }
+    }
+
+    fn handle_rename_stroke(&mut self, stroke: &str) {
+        match stroke {
+            "ESC" => {
+                self.mode = AppMode::Browse;
+                self.query.clear();
+                self.rename_target = None;
+            }
+            "RET" => {
+                if let Some(id) = self.rename_target.take()
+                    && !self.query.is_empty()
+                {
+                    self.rename_request = Some((id, std::mem::take(&mut self.query)));
+                }
+                self.mode = AppMode::Browse;
+                self.query.clear();
+            }
+            "DEL" => {
+                self.query.pop();
+            }
+            "SPC" => self.query.push(' '),
+            s => {
+                let mut chars = s.chars();
+                if let (Some(c), None) = (chars.next(), chars.next()) {
+                    self.query.push(c);
+                }
+            }
         }
     }
 
@@ -705,6 +761,12 @@ fn run_loop(
                     .map_err(|e| TuiError::Vault(e.to_string()))?;
                 sync_app(&mut app, vault);
             }
+            if let Some((id, title)) = app.take_rename_request() {
+                vault
+                    .rename_headline(&closure_core::BlockId::from_existing(&id), &title)
+                    .map_err(|e| TuiError::Vault(e.to_string()))?;
+                sync_app(&mut app, vault);
+            }
             if app.should_quit() {
                 return Ok(());
             }
@@ -777,6 +839,7 @@ fn draw(f: &mut ratatui::Frame<'_>, app: &App, vault: &Vault) {
                 .collect(),
         )),
         AppMode::Capture => Some((format!("capture: {}", app.query()), Vec::new())),
+        AppMode::Rename => Some((format!("rename: {}", app.query()), Vec::new())),
         AppMode::Headlines => Some((
             app.selected_path().map_or_else(
                 || "headlines".to_owned(),

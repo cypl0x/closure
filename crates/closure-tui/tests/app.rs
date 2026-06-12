@@ -752,3 +752,79 @@ fn headline_list_empty_file_is_safe() {
     app.handle_stroke("j");
     assert_eq!(app.result_cursor(), 0);
 }
+
+// --- rename minibuffer ---------------------------------------------------
+
+#[test]
+fn r_in_headline_list_opens_rename_prefilled() {
+    let mut app = app_with_headlines();
+    app.handle_stroke("l");
+    app.handle_stroke("r");
+    assert_eq!(app.mode(), AppMode::Rename);
+    assert_eq!(app.query(), "Inbox", "prefilled with current title");
+}
+
+#[test]
+fn rename_targets_cursor_headline() {
+    let mut app = app_with_headlines();
+    app.handle_stroke("l");
+    app.handle_stroke("j");
+    app.handle_stroke("r");
+    assert_eq!(app.query(), "Inbox archive");
+    app.handle_stroke("RET");
+    assert_eq!(
+        app.take_rename_request(),
+        Some(("id-a2".to_owned(), "Inbox archive".to_owned()))
+    );
+}
+
+#[test]
+fn rename_edit_and_ret_emit_request_once() {
+    let mut app = app_with_headlines();
+    app.handle_stroke("l");
+    app.handle_stroke("r");
+    for _ in 0.."Inbox".len() {
+        app.handle_stroke("DEL");
+    }
+    app.handle_stroke("N");
+    app.handle_stroke("u");
+    app.handle_stroke("RET");
+    assert_eq!(app.mode(), AppMode::Browse);
+    assert_eq!(
+        app.take_rename_request(),
+        Some(("id-a1".to_owned(), "Nu".to_owned()))
+    );
+    assert_eq!(app.take_rename_request(), None);
+}
+
+#[test]
+fn rename_esc_cancels_without_request() {
+    let mut app = app_with_headlines();
+    app.handle_stroke("l");
+    app.handle_stroke("r");
+    app.handle_stroke("X");
+    app.handle_stroke("ESC");
+    assert_eq!(app.mode(), AppMode::Browse);
+    assert_eq!(app.take_rename_request(), None);
+}
+
+#[test]
+fn rename_ret_with_empty_title_cancels() {
+    let mut app = app_with_headlines();
+    app.handle_stroke("l");
+    app.handle_stroke("r");
+    for _ in 0.."Inbox".len() + 2 {
+        app.handle_stroke("DEL");
+    }
+    app.handle_stroke("RET");
+    assert_eq!(app.take_rename_request(), None);
+}
+
+#[test]
+fn r_on_empty_headline_list_is_noop() {
+    let mut app = App::new(paths());
+    app.handle_stroke("l");
+    app.handle_stroke("r");
+    assert_eq!(app.mode(), AppMode::Headlines, "nothing to rename");
+    assert_eq!(app.take_rename_request(), None);
+}
