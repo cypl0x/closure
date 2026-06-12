@@ -235,3 +235,177 @@ pub fn fuzzy_filter<'a>(needle: &str, items: &[&'a str]) -> Vec<(&'a str, u32)> 
     out.sort_by_key(|&(_, sc)| std::cmp::Reverse(sc));
     out
 }
+
+/// View definition failure.
+#[derive(Debug, thiserror::Error)]
+pub enum ViewError {
+    /// A `:key` other than `:from` / `:columns` / `:sort` appeared.
+    #[error("unknown directive: {0}")]
+    UnknownDirective(String),
+    /// The `:from` value is not `all`, `tag:X`, `todo:X`, or `file:X`.
+    #[error("bad source: {0}")]
+    BadSource(String),
+}
+
+/// Row source of a view.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Source {
+    /// Every headline in the vault.
+    All,
+    /// Headlines carrying a tag.
+    Tag(String),
+    /// Headlines with a TODO keyword.
+    Todo(String),
+    /// Headlines of one file (path suffix match).
+    File(String),
+}
+
+/// One view column: a built-in field or a property key.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Column {
+    /// Headline title.
+    Title,
+    /// TODO keyword (empty when none).
+    Todo,
+    /// Priority letter (empty when none).
+    Priority,
+    /// Outline level.
+    Level,
+    /// Stable block id.
+    Id,
+    /// `:KEY:` property value (empty when absent).
+    Property(String),
+}
+
+impl Column {
+    fn parse(s: &str) -> Self {
+        match s {
+            "title" => Self::Title,
+            "todo" => Self::Todo,
+            "priority" => Self::Priority,
+            "level" => Self::Level,
+            "id" => Self::Id,
+            other => Self::Property(other.to_owned()),
+        }
+    }
+
+    fn name(&self) -> String {
+        match self {
+            Self::Title => "title".to_owned(),
+            Self::Todo => "todo".to_owned(),
+            Self::Priority => "priority".to_owned(),
+            Self::Level => "level".to_owned(),
+            Self::Id => "id".to_owned(),
+            Self::Property(k) => k.clone(),
+        }
+    }
+
+    fn extract(&self, h: &DocHeadline) -> String {
+        match self {
+            Self::Title => h.title().to_owned(),
+            Self::Todo => h.todo().unwrap_or("").to_owned(),
+            Self::Priority => h.priority().map(String::from).unwrap_or_default(),
+            Self::Level => h.level().to_string(),
+            Self::Id => h.id().to_string(),
+            Self::Property(k) => h.property(k).unwrap_or("").to_owned(),
+        }
+    }
+}
+
+/// An org-defined database view: parsed from the params of a
+/// `#+BEGIN: closure-view` dynamic block, e.g.
+/// `:from tag:work :columns title,todo,EFFORT :sort title`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ViewSpec {
+    /// Where rows come from.
+    pub from: Source,
+    /// Columns, left to right.
+    pub columns: Vec<Column>,
+    /// Optional sort column (string ascending).
+    pub sort: Option<Column>,
+}
+
+impl ViewSpec {
+    /// Parse a params string. Missing `:from` means `all`; missing
+    /// `:columns` means `title,todo`.
+    ///
+    /// # Errors
+    ///
+    /// [`ViewError::UnknownDirective`] for unrecognised `:key`s,
+    /// [`ViewError::BadSource`] for malformed `:from` values.
+    pub fn parse(params: &str) -> Result<Self, ViewError> {
+        let mut from = Source::All;
+        let mut columns = vec![Column::Title, Column::Todo];
+        let mut sort = None;
+        let mut tokens = params.split_whitespace();
+        while let Some(tok) = tokens.next() {
+            let value = tokens.next().unwrap_or("");
+            match tok {
+                ":from" => {
+                    from = if value == "all" {
+                        Source::All
+                    } else if let Some(t) = value.strip_prefix("tag:") {
+                        Source::Tag(t.to_owned())
+                    } else if let Some(t) = value.strip_prefix("todo:") {
+                        Source::Todo(t.to_owned())
+                    } else if let Some(t) = value.strip_prefix("file:") {
+                        Source::File(t.to_owned())
+                    } else {
+                        return Err(ViewError::BadSource(value.to_owned()));
+                    };
+                }
+                ":columns" => {
+                    columns = value
+                        .split(',')
+                        .filter(|c| !c.is_empty())
+                        .map(Column::parse)
+                        .collect();
+                }
+                ":sort" => sort = Some(Column::parse(value)),
+                other => return Err(ViewError::UnknownDirective(other.to_owned())),
+            }
+        }
+        Ok(Self {
+            from,
+            columns,
+            sort,
+        })
+    }
+
+    /// Column header names, left to right.
+    #[must_use]
+    pub fn header(&self) -> Vec<String> {
+        self.columns.iter().map(Column::name).collect()
+    }
+
+    /// Rows matching [`Self::from`], in file order.
+    #[must_use]
+    pub fn rows<'a>(&self, vault: &'a Vault) -> Vec<Match<'a>> {
+        match &self.from {
+            Source::All => all_headlines(vault),
+            Source::Tag(t) => by_tag(vault, t),
+            Source::Todo(k) => by_todo(vault, k),
+            Source::File(f) => all_headlines(vault)
+                .into_iter()
+                .filter(|m| m.path.ends_with(f))
+                .collect(),
+        }
+    }
+
+    /// Materialised cells: one `Vec<String>` per row, sorted by the
+    /// `:sort` column when present.
+    #[must_use]
+    pub fn cells(&self, vault: &Vault) -> Vec<Vec<String>> {
+        let mut out: Vec<Vec<String>> = self
+            .rows(vault)
+            .iter()
+            .map(|m| self.columns.iter().map(|c| c.extract(m.headline)).collect())
+            .collect();
+        if let Some(sort) = &self.sort
+            && let Some(idx) = self.columns.iter().position(|c| c == sort)
+        {
+            out.sort_by(|a, b| a[idx].cmp(&b[idx]));
+        }
+        out
+    }
+}

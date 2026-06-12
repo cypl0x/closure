@@ -41,8 +41,8 @@ reversible option, keep moving.
 ** DONE Mode switch via =input_mode= key in the vault's =config.org=
 ** DONE Runtime mode switch: =cycle-mode= command (=M= / =C-c m=) rebuilds the live binding trie; which-key follows automatically
 ** DONE Command palette (=:=): fuzzy list of every command with its chord in the active mode; =RET= executes
-* TODO Databases (Notion-inspired) [0/3]
-** TODO View definition in org: a dynamic block naming source (tag/file/query) + property columns
+* TODO Databases (Notion-inspired) [1/3]
+** DONE View definition in org (=ViewSpec::parse=): =:from tag:X/todo:X/file:X/all :columns title,todo,PROP :sort col=
 ** TODO Sort/filter on columns; render as aligned table in CLI and TUI
 ** TODO Edit a cell in TUI → property mutation through a command (I3)
 * TODO Formulas (Coda-inspired, user's language) [0/2]
