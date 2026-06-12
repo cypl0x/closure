@@ -12,6 +12,7 @@
 
 #![forbid(unsafe_code)]
 
+use std::fmt::Write as _;
 use std::process::{Command, Stdio};
 
 use thiserror::Error;
@@ -296,4 +297,62 @@ pub fn formula_column(program: &str, rows: &[Vec<String>]) -> Result<Vec<String>
         out.push(result.stdout.trim_end().to_owned());
     }
     Ok(out)
+}
+
+/// Parsed babel header arguments (subset): `:results <mode>` and
+/// repeated `:var name=value`.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct HeaderArgs {
+    /// `:results` mode (`output`, `silent`, …), verbatim.
+    pub results: Option<String>,
+    /// `:var name=value` pairs in source order.
+    pub vars: Vec<(String, String)>,
+}
+
+impl HeaderArgs {
+    /// Parse the raw header-arg string from a `#+BEGIN_SRC` line.
+    /// Unknown directives are ignored (forward-compatible).
+    #[must_use]
+    pub fn parse(raw: &str) -> Self {
+        let mut out = Self::default();
+        let mut tokens = raw.split_whitespace();
+        while let Some(tok) = tokens.next() {
+            match tok {
+                ":results" => out.results = tokens.next().map(str::to_owned),
+                ":var" => {
+                    if let Some((k, v)) = tokens.next().and_then(|kv| kv.split_once('=')) {
+                        out.vars.push((k.to_owned(), v.to_owned()));
+                    }
+                }
+                _ => {}
+            }
+        }
+        out
+    }
+
+    /// True when `:results silent` — evaluate but never attach
+    /// `#+RESULTS:`.
+    #[must_use]
+    pub fn is_silent(&self) -> bool {
+        self.results.as_deref() == Some("silent")
+    }
+}
+
+/// Language-specific prelude assigning `:var` bindings before the
+/// block source. Unknown languages get no prelude.
+#[must_use]
+pub fn var_prelude(language: &str, vars: &[(String, String)]) -> String {
+    let mut out = String::new();
+    for (k, v) in vars {
+        match language {
+            "shell" | "sh" | "bash" => {
+                let _ = writeln!(out, "{k}='{v}'");
+            }
+            "python" => {
+                let _ = writeln!(out, "{k} = \"{v}\"");
+            }
+            _ => {}
+        }
+    }
+    out
 }

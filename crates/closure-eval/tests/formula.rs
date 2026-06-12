@@ -46,3 +46,51 @@ fn formula_column_empty_rows_is_empty() {
     let col = formula_column("cat", &[]).expect("formula");
     assert!(col.is_empty());
 }
+
+// --- header args -----------------------------------------------------------
+
+use closure_eval::{HeaderArgs, var_prelude};
+
+#[test]
+fn header_args_parse_results_and_vars() {
+    let h = HeaderArgs::parse(":results output :var x=5 :var name=world");
+    assert_eq!(h.results.as_deref(), Some("output"));
+    assert_eq!(
+        h.vars,
+        vec![
+            ("x".to_owned(), "5".to_owned()),
+            ("name".to_owned(), "world".to_owned())
+        ]
+    );
+}
+
+#[test]
+fn header_args_empty_and_none_are_default() {
+    let h = HeaderArgs::parse("");
+    assert_eq!(h.results, None);
+    assert!(h.vars.is_empty());
+}
+
+#[test]
+fn header_args_silent_results() {
+    let h = HeaderArgs::parse(":results silent");
+    assert!(h.is_silent());
+    assert!(!HeaderArgs::parse(":results output").is_silent());
+}
+
+#[test]
+fn var_prelude_for_shell_and_python() {
+    let vars = vec![("x".to_owned(), "5".to_owned())];
+    assert_eq!(var_prelude("shell", &vars), "x='5'\n");
+    assert_eq!(var_prelude("python", &vars), "x = \"5\"\n");
+    assert_eq!(var_prelude("unknown-lang", &vars), "");
+}
+
+#[test]
+fn shell_eval_with_var_prelude_sees_the_variable() {
+    use closure_eval::{Backend, ShellBackend};
+    let vars = vec![("name".to_owned(), "world".to_owned())];
+    let src = format!("{}echo \"hi $name\"", var_prelude("shell", &vars));
+    let out = ShellBackend.eval(&src).expect("eval");
+    assert_eq!(out.stdout.trim(), "hi world");
+}
