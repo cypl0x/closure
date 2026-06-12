@@ -36,9 +36,9 @@ reversible option, keep moving.
 ** DONE Rename headline from TUI via closure-core command, undoable (I3)
 ** DONE Add/delete headline commands wired into TUI with bindings (I4)
 ** DONE Undo/redo bound in TUI, driven by the undo-tree
-* TODO Input modes end-to-end [0/3]
-** TODO Binding tables per mode (notion-default/emacs/vim/doom/helix) as data over the one registry (I4)
-** TODO Mode switch at runtime: command + config key in closure-config
+* TODO Input modes end-to-end [2/3]
+** DONE Binding tables per mode (notion-default/emacs/vim/doom/helix) as data over the one registry (I4)
+** DONE Mode switch via =input_mode= key in the vault's =config.org= (runtime command pending)
 ** TODO which-key popup on every pending prefix in every mode; palette lists command + chord
 * TODO Databases (Notion-inspired) [0/3]
 ** TODO View definition in org: a dynamic block naming source (tag/file/query) + property columns

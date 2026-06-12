@@ -12,6 +12,7 @@ authors.workspace = true
 workspace = true
 
 [dependencies]
+closure-config = { path = "../closure-config" }
 closure-core = { path = "../closure-core" }
 closure-input = { path = "../closure-input" }
 closure-org = { path = "../closure-org" }

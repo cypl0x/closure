@@ -956,3 +956,72 @@ fn undo_redo_unbound_in_search_mode() {
     assert!(!app.take_undo_request());
     assert_eq!(app.query(), "u");
 }
+
+// --- per-mode binding tables ---------------------------------------------
+
+use closure_config::InputMode;
+
+#[test]
+fn emacs_mode_uses_ctrl_navigation() {
+    let mut app = App::with_mode(paths(), InputMode::Emacs);
+    app.handle_stroke("C-n");
+    assert_eq!(app.selected_index(), Some(1));
+    app.handle_stroke("C-p");
+    assert_eq!(app.selected_index(), Some(0));
+}
+
+#[test]
+fn emacs_quit_is_a_chord_with_whichkey() {
+    let mut app = App::with_mode(paths(), InputMode::Emacs);
+    app.handle_stroke("C-x");
+    assert!(
+        app.popup_lines()
+            .is_some_and(|ls| ls.iter().any(|l| l.contains("quit"))),
+        "C-x prefix must show quit in which-key"
+    );
+    app.handle_stroke("C-c");
+    assert!(app.should_quit());
+}
+
+#[test]
+fn vim_mode_keeps_jk_navigation() {
+    let mut app = App::with_mode(paths(), InputMode::Vim);
+    app.handle_stroke("j");
+    assert_eq!(app.selected_index(), Some(1));
+}
+
+#[test]
+fn helix_redo_is_capital_u() {
+    let mut app = App::with_mode(paths(), InputMode::Helix);
+    app.handle_stroke("U");
+    assert!(app.take_redo_request());
+}
+
+#[test]
+fn notion_mode_slash_opens_search() {
+    let mut app = App::with_mode(paths(), InputMode::Notion);
+    app.handle_stroke("/");
+    assert_eq!(app.mode(), AppMode::Search);
+}
+
+#[test]
+fn every_mode_reaches_every_command() {
+    let reference: std::collections::BTreeSet<&str> = closure_tui::mode_bindings(InputMode::Doom)
+        .iter()
+        .map(|(_, cmd)| *cmd)
+        .collect();
+    assert!(reference.contains("quit") && reference.contains("undo"));
+    for mode in [
+        InputMode::Emacs,
+        InputMode::Vim,
+        InputMode::Doom,
+        InputMode::Helix,
+        InputMode::Notion,
+    ] {
+        let cmds: std::collections::BTreeSet<&str> = closure_tui::mode_bindings(mode)
+            .iter()
+            .map(|(_, cmd)| *cmd)
+            .collect();
+        assert_eq!(cmds, reference, "{mode:?} must bind every command");
+    }
+}
