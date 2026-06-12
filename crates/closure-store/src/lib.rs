@@ -10,7 +10,9 @@ use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{Receiver, Sender, channel};
 
-use closure_core::{AddSibling, BlockId, Command, Document, RemoveSubtree, RenameHeadline};
+use closure_core::{
+    AddSibling, BlockId, Command, Document, RemoveSubtree, RenameHeadline, SetProperty,
+};
 use notify::{EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use thiserror::Error;
 
@@ -211,6 +213,22 @@ impl Vault {
     pub fn add_sibling(&mut self, after: &BlockId, title: &str) -> Result<(), VaultError> {
         let cmd = AddSibling::new(after.clone(), title.to_owned());
         self.apply_to_block(after, &cmd)
+    }
+
+    /// Set (or overwrite) a `:KEY: value` property through the kernel
+    /// [`SetProperty`] command (undoable, I3) and persist to disk.
+    ///
+    /// # Errors
+    ///
+    /// Same contract as [`Self::rename_headline`].
+    pub fn set_property(
+        &mut self,
+        id: &BlockId,
+        key: &str,
+        value: &str,
+    ) -> Result<(), VaultError> {
+        let cmd = SetProperty::new(id.clone(), key.to_owned(), value.to_owned());
+        self.apply_to_block(id, &cmd)
     }
 
     /// Remove the subtree rooted at `id` through the kernel

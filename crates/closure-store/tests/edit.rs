@@ -112,3 +112,40 @@ fn edited_file_reopens_cleanly() {
     let reopened = Vault::open(td.path()).expect("reopen");
     assert!(reopened.find_by_title("Added").is_some());
 }
+
+#[test]
+fn set_property_writes_drawer_to_disk() {
+    let td = write_vault(&[("a.org", "* Task\n")]);
+    let mut v = Vault::open(td.path()).expect("open");
+    let id = id_of(&v, "Task");
+    v.set_property(&id, "EFFORT", "2d").expect("set");
+    let disk = fs::read_to_string(td.path().join("a.org")).expect("read");
+    assert!(disk.contains(":EFFORT: 2d"));
+    let (h, _) = v.find_by_id(&id).expect("resolves");
+    assert_eq!(h.property("EFFORT"), Some("2d"));
+}
+
+#[test]
+fn set_property_overwrites_existing_value() {
+    let td = write_vault(&[(
+        "a.org",
+        "* Task\n:PROPERTIES:\n:EFFORT: 1d\n:END:\n",
+    )]);
+    let mut v = Vault::open(td.path()).expect("open");
+    let id = id_of(&v, "Task");
+    v.set_property(&id, "EFFORT", "5d").expect("set");
+    let disk = fs::read_to_string(td.path().join("a.org")).expect("read");
+    assert!(disk.contains(":EFFORT: 5d"));
+    assert!(!disk.contains(":EFFORT: 1d"));
+}
+
+#[test]
+fn set_property_unknown_id_errors() {
+    let td = write_vault(&[("a.org", "* A\n")]);
+    let mut v = Vault::open(td.path()).expect("open");
+    let bogus = BlockId::from_existing("01XXXXXXXXXXXXXXXXXXXXXXXX");
+    assert!(matches!(
+        v.set_property(&bogus, "K", "V"),
+        Err(VaultError::UnknownId(_))
+    ));
+}
