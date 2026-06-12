@@ -929,3 +929,30 @@ fn delete_targets_cursor_headline() {
     app.handle_stroke("y");
     assert_eq!(app.take_delete_request(), Some("id-a2".to_owned()));
 }
+
+// --- undo / redo ----------------------------------------------------------
+
+#[test]
+fn u_emits_undo_request_once() {
+    let mut app = App::new(paths());
+    app.handle_stroke("u");
+    assert!(app.take_undo_request());
+    assert!(!app.take_undo_request(), "consumed");
+}
+
+#[test]
+fn ctrl_r_emits_redo_request_once() {
+    let mut app = App::new(paths());
+    app.handle_stroke("C-r");
+    assert!(app.take_redo_request());
+    assert!(!app.take_redo_request(), "consumed");
+}
+
+#[test]
+fn undo_redo_unbound_in_search_mode() {
+    let mut app = App::new(paths());
+    app.handle_stroke("/");
+    app.handle_stroke("u");
+    assert!(!app.take_undo_request());
+    assert_eq!(app.query(), "u");
+}

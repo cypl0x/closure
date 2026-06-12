@@ -31,11 +31,11 @@ reversible option, keep moving.
 ** DONE Capture template type (=closure_store::CaptureTemplate=): target file + headline prefix + body skeleton
 ** DONE =closure capture "title"= CLI: appends a templated entry to the inbox file, span-preserving, allocates ULID (I2)
 ** DONE TUI capture: bound chord opens minibuffer-style prompt, writes through the same command
-* TODO Editing writes back to disk [3/4]
+* DONE Editing writes back to disk [4/4]
 ** DONE Save round-trip: TUI/CLI command persists a mutated Document to its file, byte-exact for untouched spans (I1)
 ** DONE Rename headline from TUI via closure-core command, undoable (I3)
 ** DONE Add/delete headline commands wired into TUI with bindings (I4)
-** TODO Undo/redo bound in TUI, driven by the undo-tree
+** DONE Undo/redo bound in TUI, driven by the undo-tree
 * TODO Input modes end-to-end [0/3]
 ** TODO Binding tables per mode (notion-default/emacs/vim/doom/helix) as data over the one registry (I4)
 ** TODO Mode switch at runtime: command + config key in closure-config

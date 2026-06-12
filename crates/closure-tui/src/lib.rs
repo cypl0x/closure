@@ -56,6 +56,8 @@ const DEFAULT_BINDINGS: &[(&str, &str)] = &[
     ("b", "backlinks"),
     ("c", "capture-start"),
     ("l", "headline-list"),
+    ("u", "undo"),
+    ("C-r", "redo"),
 ];
 
 /// One headline as the shell sees it: where it lives, its stable
@@ -121,6 +123,8 @@ pub struct App {
     add_request: Option<(String, String)>,
     delete_target: Option<String>,
     delete_request: Option<String>,
+    undo_request: bool,
+    redo_request: bool,
 }
 
 impl App {
@@ -160,7 +164,23 @@ impl App {
             add_request: None,
             delete_target: None,
             delete_request: None,
+            undo_request: false,
+            redo_request: false,
         }
+    }
+
+    /// Consume the pending undo request, true at most once per `u`.
+    pub const fn take_undo_request(&mut self) -> bool {
+        let r = self.undo_request;
+        self.undo_request = false;
+        r
+    }
+
+    /// Consume the pending redo request, true at most once per `C-r`.
+    pub const fn take_redo_request(&mut self) -> bool {
+        let r = self.redo_request;
+        self.redo_request = false;
+        r
     }
 
     /// Consume the `(after-id, title)` add-sibling confirmed by the
@@ -698,6 +718,8 @@ impl App {
                 self.mode = AppMode::Headlines;
                 self.result_cursor = 0;
             }
+            "undo" => self.undo_request = true,
+            "redo" => self.redo_request = true,
             "open-file" => {
                 let has_source = self
                     .selected_path()
@@ -867,6 +889,24 @@ fn run_loop(
                     .remove_subtree(&closure_core::BlockId::from_existing(&id))
                     .map_err(|e| TuiError::Vault(e.to_string()))?;
                 sync_app(&mut app, vault);
+            }
+            if app.take_undo_request()
+                && let Some(path) = app.selected_path().map(Path::to_path_buf)
+            {
+                match vault.undo_in(&path) {
+                    Ok(()) => sync_app(&mut app, vault),
+                    Err(closure_store::VaultError::Undo(_)) => {}
+                    Err(e) => return Err(TuiError::Vault(e.to_string())),
+                }
+            }
+            if app.take_redo_request()
+                && let Some(path) = app.selected_path().map(Path::to_path_buf)
+            {
+                match vault.redo_in(&path) {
+                    Ok(()) => sync_app(&mut app, vault),
+                    Err(closure_store::VaultError::Undo(_)) => {}
+                    Err(e) => return Err(TuiError::Vault(e.to_string())),
+                }
             }
             if app.should_quit() {
                 return Ok(());
