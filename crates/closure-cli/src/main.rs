@@ -57,6 +57,14 @@ enum Cmd {
         #[arg(long, default_value = "", allow_hyphen_values = true)]
         body: String,
     },
+    /// Render an org-defined database view as an aligned table.
+    View {
+        /// Path to the vault directory.
+        vault: PathBuf,
+        /// View params, e.g. ":from tag:work :columns title,todo,EFFORT :sort title".
+        #[arg(default_value = "")]
+        params: String,
+    },
     /// Parse a single org file and print a summary.
     Parse {
         /// Path to a `*.org` file.
@@ -886,6 +894,7 @@ fn run(cmd: &Cmd) -> Result<(), String> {
             prefix,
             body,
         } => cmd_capture(vault, title, target, prefix, body),
+        Cmd::View { vault, params } => cmd_view(vault, params),
         Cmd::Parse { file } => cmd_parse(file),
         Cmd::Fmt { file } => cmd_fmt(file),
         Cmd::Check { vault } => cmd_check(vault),
@@ -1053,6 +1062,15 @@ fn run(cmd: &Cmd) -> Result<(), String> {
             value,
         } => cmd_set_property(file, id, key, value),
     }
+}
+
+fn cmd_view(vault: &Path, params: &str) -> Result<(), String> {
+    let v = Vault::open(vault).map_err(|e| format!("{e}"))?;
+    let spec = closure_query::ViewSpec::parse(params).map_err(|e| format!("{e}"))?;
+    let header = spec.header();
+    let cells = spec.cells(&v);
+    print!("{}", closure_query::render_table(&header, &cells));
+    Ok(())
 }
 
 fn cmd_capture(

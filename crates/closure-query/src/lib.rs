@@ -5,6 +5,7 @@
 
 #![forbid(unsafe_code)]
 
+use std::fmt::Write as _;
 use std::path::Path;
 
 use closure_core::{BlockId, DocHeadline};
@@ -323,6 +324,8 @@ pub struct ViewSpec {
     pub columns: Vec<Column>,
     /// Optional sort column (string ascending).
     pub sort: Option<Column>,
+    /// Optional `column = value` row filter.
+    pub filter: Option<(Column, String)>,
 }
 
 impl ViewSpec {
@@ -337,6 +340,7 @@ impl ViewSpec {
         let mut from = Source::All;
         let mut columns = vec![Column::Title, Column::Todo];
         let mut sort = None;
+        let mut filter = None;
         let mut tokens = params.split_whitespace();
         while let Some(tok) = tokens.next() {
             let value = tokens.next().unwrap_or("");
@@ -362,6 +366,12 @@ impl ViewSpec {
                         .collect();
                 }
                 ":sort" => sort = Some(Column::parse(value)),
+                ":filter" => {
+                    let (col, want) = value
+                        .split_once('=')
+                        .ok_or_else(|| ViewError::BadSource(value.to_owned()))?;
+                    filter = Some((Column::parse(col), want.to_owned()));
+                }
                 other => return Err(ViewError::UnknownDirective(other.to_owned())),
             }
         }
@@ -369,6 +379,7 @@ impl ViewSpec {
             from,
             columns,
             sort,
+            filter,
         })
     }
 
@@ -378,16 +389,23 @@ impl ViewSpec {
         self.columns.iter().map(Column::name).collect()
     }
 
-    /// Rows matching [`Self::from`], in file order.
+    /// Rows matching [`Self::from`] (and `:filter`), in file order.
     #[must_use]
     pub fn rows<'a>(&self, vault: &'a Vault) -> Vec<Match<'a>> {
-        match &self.from {
+        let base = match &self.from {
             Source::All => all_headlines(vault),
             Source::Tag(t) => by_tag(vault, t),
             Source::Todo(k) => by_todo(vault, k),
             Source::File(f) => all_headlines(vault)
                 .into_iter()
                 .filter(|m| m.path.ends_with(f))
+                .collect(),
+        };
+        match &self.filter {
+            None => base,
+            Some((col, want)) => base
+                .into_iter()
+                .filter(|m| col.extract(m.headline) == *want)
                 .collect(),
         }
     }
@@ -408,4 +426,38 @@ impl ViewSpec {
         }
         out
     }
+}
+
+/// Render header + rows as an aligned org-mode table.
+#[must_use]
+pub fn render_table(header: &[String], rows: &[Vec<String>]) -> String {
+    let cols = header.len();
+    let mut widths: Vec<usize> = header.iter().map(String::len).collect();
+    for row in rows {
+        for (i, cell) in row.iter().enumerate().take(cols) {
+            if cell.len() > widths[i] {
+                widths[i] = cell.len();
+            }
+        }
+    }
+    let mut out = String::new();
+    let push_row = |cells: &[String], out: &mut String| {
+        out.push('|');
+        for (i, w) in widths.iter().enumerate() {
+            let cell = cells.get(i).map_or("", String::as_str);
+            let _ = write!(out, " {cell:<w$} |");
+        }
+        out.push('\n');
+    };
+    push_row(header, &mut out);
+    out.push('|');
+    for (i, w) in widths.iter().enumerate() {
+        out.push_str(&"-".repeat(w + 2));
+        out.push(if i + 1 == widths.len() { '|' } else { '+' });
+    }
+    out.push('\n');
+    for row in rows {
+        push_row(row, &mut out);
+    }
+    out
 }

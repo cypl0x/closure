@@ -106,3 +106,55 @@ fn level_and_priority_builtin_columns() {
         ]]
     );
 }
+
+#[test]
+fn filter_directive_narrows_rows() {
+    let (_td, v) = vault();
+    let spec = ViewSpec::parse(":from tag:work :filter todo=TODO :columns title").expect("parse");
+    let cells = spec.cells(&v);
+    assert_eq!(cells, vec![vec!["Ship parser".to_owned()]]);
+}
+
+#[test]
+fn filter_on_property_column() {
+    let (_td, v) = vault();
+    let spec = ViewSpec::parse(":from all :filter EFFORT=1d :columns title").expect("parse");
+    assert_eq!(spec.cells(&v), vec![vec!["Write spec".to_owned()]]);
+}
+
+#[test]
+fn sort_directive_orders_rows() {
+    let (_td, v) = vault();
+    let spec = ViewSpec::parse(":from tag:work :columns title :sort title").expect("parse");
+    let cells = spec.cells(&v);
+    assert_eq!(
+        cells,
+        vec![
+            vec!["Ship parser".to_owned()],
+            vec!["Write spec".to_owned()]
+        ]
+    );
+}
+
+#[test]
+fn render_produces_aligned_org_table() {
+    let header = vec!["title".to_owned(), "todo".to_owned()];
+    let rows = vec![
+        vec!["Ship parser".to_owned(), "TODO".to_owned()],
+        vec!["Go".to_owned(), String::new()],
+    ];
+    let out = closure_query::render_table(&header, &rows);
+    let lines: Vec<&str> = out.lines().collect();
+    assert_eq!(lines[0], "| title       | todo |");
+    assert_eq!(lines[1], "|-------------+------|");
+    assert_eq!(lines[2], "| Ship parser | TODO |");
+    assert_eq!(lines[3], "| Go          |      |");
+}
+
+#[test]
+fn render_empty_rows_is_header_only() {
+    let header = vec!["a".to_owned()];
+    let out = closure_query::render_table(&header, &[]);
+    let lines: Vec<&str> = out.lines().collect();
+    assert_eq!(lines, vec!["| a |", "|---|"]);
+}
