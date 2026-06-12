@@ -55,10 +55,10 @@ reversible option, keep moving.
 ** DONE Read-only vault browse over localhost (collapsible headline tree, escaped HTML)
 ** DONE =/search?q== fuzzy endpoint + page reusing =closure_query::fuzzy_score=
 ** DONE =POST /capture= form writing through =Vault::capture= (303 redirect); routes unit-tested via pure =respond()=
-* TODO LLM integration [0/3]
-** TODO Tool-use loop: provider trait gains tool calls; tools = command registry entries (mutate via commands only, I8)
-** TODO BYOK config in org via closure-config (provider, key env var, model)
-** TODO =closure ask "..."= CLI: question + vault context in, answer or applied edit out
+* DONE LLM integration [3/3]
+** DONE Tool-use loop (=closure_llm::tool_loop=): CALL/DONE text protocol, mutations via executor only (I8)
+** DONE BYOK config in org: =llm_provider= / =llm_model= / =llm_key_env= (key stays in the env)
+** DONE =closure ask --vault=: agentic loop over =Vault::run_tool= (list/read/search/capture/rename/set-property)
 * TODO Sync/CRDT for real [0/3]
 ** TODO Block-level merge in closure-crdt covering body edits, not just titles; property tests: ids stable under merge (I2)
 ** TODO Git transport round-trip: two vault clones diverge, merge, both converge

@@ -289,6 +289,10 @@ enum Cmd {
         /// Model id (defaults to `claude-sonnet-4-6`).
         #[arg(long, default_value = "claude-sonnet-4-6")]
         model: String,
+        /// Vault to expose as agent tools; the model may read, search,
+        /// capture, rename, and set properties via the registry (I8).
+        #[arg(long)]
+        vault: Option<PathBuf>,
     },
     /// Print tag occurrence counts in descending order.
     TagCloud {
@@ -951,7 +955,11 @@ fn run(cmd: &Cmd) -> Result<(), String> {
         Cmd::Spec => cmd_spec(),
         Cmd::DefaultConfig => cmd_default_config(),
         Cmd::New { vault, path, title } => cmd_new(vault, path, title),
-        Cmd::Ask { prompt, model } => cmd_ask(prompt, model),
+        Cmd::Ask {
+            prompt,
+            model,
+            vault,
+        } => cmd_ask(prompt, model, vault.as_deref()),
         Cmd::TagCloud { vault } => cmd_tag_cloud(vault),
         Cmd::Outline { file } => cmd_outline(file),
         Cmd::Tree { file } => cmd_tree(file),
@@ -2414,13 +2422,38 @@ fn cmd_tag_cloud(vault: &Path) -> Result<(), String> {
     Ok(())
 }
 
-fn cmd_ask(prompt: &str, model: &str) -> Result<(), String> {
+fn cmd_ask(prompt: &str, model: &str, vault: Option<&Path>) -> Result<(), String> {
     use closure_llm::Provider;
-    let key =
-        std::env::var("ANTHROPIC_API_KEY").map_err(|_| "ANTHROPIC_API_KEY not set".to_owned())?;
-    let provider = closure_llm::anthropic(&key, model);
-    let response = provider.complete(prompt).map_err(|e| format!("{e}"))?;
-    println!("{response}");
+    let Some(vault_dir) = vault else {
+        let key = std::env::var("ANTHROPIC_API_KEY")
+            .map_err(|_| "ANTHROPIC_API_KEY not set".to_owned())?;
+        let provider = closure_llm::anthropic(&key, model);
+        let response = provider.complete(prompt).map_err(|e| format!("{e}"))?;
+        println!("{response}");
+        return Ok(());
+    };
+    let mut v = Vault::open(vault_dir).map_err(|e| format!("{e}"))?;
+    let cfg = closure_config::Config::from_path(&vault_dir.join("config.org"))
+        .unwrap_or_default();
+    let key_env = cfg
+        .llm_key_env
+        .unwrap_or_else(|| "ANTHROPIC_API_KEY".to_owned());
+    let model = cfg.llm_model.unwrap_or_else(|| model.to_owned());
+    let provider: Box<dyn Provider> = match cfg.llm_provider.as_deref() {
+        Some("echo") => Box::new(closure_llm::EchoProvider),
+        Some("openai") => {
+            let key = std::env::var(&key_env).map_err(|_| format!("{key_env} not set"))?;
+            Box::new(closure_llm::openai(&key, &model))
+        }
+        _ => {
+            let key = std::env::var(&key_env).map_err(|_| format!("{key_env} not set"))?;
+            Box::new(closure_llm::anthropic(&key, &model))
+        }
+    };
+    let task = format!("{prompt}\n\nVault tools (use via CALL): list-files | read <file> | search <text> | capture <title> | rename <id> <title> | set-property <id> <key> <value>");
+    let answer = closure_llm::tool_loop(provider.as_ref(), |line| v.run_tool(line), &task, 16)
+        .map_err(|e| format!("{e}"))?;
+    println!("{answer}");
     Ok(())
 }
 
