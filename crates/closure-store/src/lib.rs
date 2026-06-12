@@ -4,6 +4,7 @@
 #![forbid(unsafe_code)]
 
 use std::collections::HashMap;
+use std::fmt::Write as _;
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
@@ -24,6 +25,19 @@ pub struct Vault {
     /// Inverted index: target id (or full URL) → set of (path, source-id)
     /// pairs whose headline links to it.
     backlinks: HashMap<String, Vec<(PathBuf, BlockId)>>,
+}
+
+/// An org-capture template: where a new entry lands and what it
+/// looks like. The title is supplied per capture; the entry always
+/// receives a fresh `:ID:` drawer (I2).
+#[derive(Debug, Clone)]
+pub struct CaptureTemplate {
+    /// Target file, relative to the vault root. Created when missing.
+    pub target: PathBuf,
+    /// Text inserted between the stars and the title, e.g. `"TODO "`.
+    pub headline_prefix: String,
+    /// Skeleton lines appended below the property drawer.
+    pub body: String,
 }
 
 /// Errors while operating on a vault.
@@ -100,6 +114,69 @@ impl Vault {
     pub fn backlinks_of(&self, target: &str) -> &[(PathBuf, BlockId)] {
         static EMPTY: Vec<(PathBuf, BlockId)> = Vec::new();
         self.backlinks.get(target).map_or(&EMPTY, Vec::as_slice)
+    }
+
+    /// Capture a new templated entry: render a top-level headline
+    /// with a fresh `:ID:` drawer (I2), append it to the template's
+    /// target file (creating the file when missing), persist to disk,
+    /// and fold the new document into the vault's indexes. Existing
+    /// bytes are preserved as an exact prefix (I1).
+    ///
+    /// # Errors
+    ///
+    /// [`VaultError::Io`] on read/write failures, [`VaultError::Parse`]
+    /// when the appended result does not parse (disk is left
+    /// untouched in that case).
+    pub fn capture(
+        &mut self,
+        template: &CaptureTemplate,
+        title: &str,
+    ) -> Result<BlockId, VaultError> {
+        let target = self.root.join(&template.target);
+        let existing = match fs::read_to_string(&target) {
+            Ok(s) => s,
+            Err(e) if e.kind() == io::ErrorKind::NotFound => String::new(),
+            Err(e) => return Err(e.into()),
+        };
+        let id = BlockId::fresh();
+        let mut out = existing;
+        if !out.is_empty() && !out.ends_with('\n') {
+            out.push('\n');
+        }
+        let _ = writeln!(
+            out,
+            "* {prefix}{title}\n:PROPERTIES:\n:ID: {id}\n:END:",
+            prefix = template.headline_prefix,
+            id = id.as_str()
+        );
+        if !template.body.is_empty() {
+            out.push_str(&template.body);
+            if !template.body.ends_with('\n') {
+                out.push('\n');
+            }
+        }
+        let doc =
+            Document::load_str(&out).map_err(|_| VaultError::Parse { path: target.clone() })?;
+        fs::write(&target, doc.source())?;
+        for h in doc.all_headlines() {
+            if h.id() == &id {
+                self.by_id.insert(id.clone(), target.clone());
+                for link in h.link_targets() {
+                    self.backlinks
+                        .entry(link.clone())
+                        .or_default()
+                        .push((target.clone(), id.clone()));
+                    if let Some(stripped) = link.strip_prefix("id:") {
+                        self.backlinks
+                            .entry(stripped.to_owned())
+                            .or_default()
+                            .push((target.clone(), id.clone()));
+                    }
+                }
+            }
+        }
+        self.documents.insert(target, doc);
+        Ok(id)
     }
 
     /// Root directory of the vault.
