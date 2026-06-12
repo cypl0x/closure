@@ -33,7 +33,7 @@ pub enum TuiError {
     /// IO failure setting up the terminal.
     #[error("io: {0}")]
     Io(#[from] io::Error),
-    /// A vault write (capture) failed.
+    /// A vault write (capture/rename/add/delete) failed.
     #[error("vault: {0}")]
     Vault(String),
 }
@@ -90,6 +90,10 @@ pub enum AppMode {
     Headlines,
     /// Editing a headline's title in a minibuffer.
     Rename,
+    /// Typing the title of a new sibling headline.
+    AddHeadline,
+    /// Awaiting =y= to confirm deleting the cursor subtree.
+    ConfirmDelete,
 }
 
 /// Elm-style application state for the terminal shell. Strokes go in
@@ -113,6 +117,10 @@ pub struct App {
     capture_request: Option<String>,
     rename_target: Option<String>,
     rename_request: Option<(String, String)>,
+    add_target: Option<String>,
+    add_request: Option<(String, String)>,
+    delete_target: Option<String>,
+    delete_request: Option<String>,
 }
 
 impl App {
@@ -148,7 +156,23 @@ impl App {
             capture_request: None,
             rename_target: None,
             rename_request: None,
+            add_target: None,
+            add_request: None,
+            delete_target: None,
+            delete_request: None,
         }
+    }
+
+    /// Consume the `(after-id, title)` add-sibling confirmed by the
+    /// user, if any. The shell performs the vault write.
+    pub const fn take_add_request(&mut self) -> Option<(String, String)> {
+        self.add_request.take()
+    }
+
+    /// Consume the block id whose subtree deletion the user
+    /// confirmed, if any. The shell performs the vault write.
+    pub const fn take_delete_request(&mut self) -> Option<String> {
+        self.delete_request.take()
     }
 
     /// Consume the `(block id, new title)` rename confirmed by the
@@ -364,6 +388,21 @@ impl App {
             self.handle_rename_stroke(stroke);
             return;
         }
+        if self.mode == AppMode::AddHeadline {
+            self.handle_add_stroke(stroke);
+            return;
+        }
+        if self.mode == AppMode::ConfirmDelete {
+            if stroke == "y" {
+                self.delete_request = self.delete_target.take();
+                self.mode = AppMode::Browse;
+                self.result_cursor = 0;
+            } else {
+                self.delete_target = None;
+                self.mode = AppMode::Headlines;
+            }
+            return;
+        }
         match self.trie.step(stroke) {
             TrieStep::Resolved(cmd) => {
                 self.pending.clear();
@@ -410,11 +449,61 @@ impl App {
                     self.mode = AppMode::Rename;
                 }
             }
+            "a" => {
+                let target = self
+                    .file_headlines()
+                    .get(self.result_cursor)
+                    .map(|(_, id)| (*id).to_owned());
+                if let Some(id) = target {
+                    self.add_target = Some(id);
+                    self.query.clear();
+                    self.mode = AppMode::AddHeadline;
+                }
+            }
+            "d" => {
+                let target = self
+                    .file_headlines()
+                    .get(self.result_cursor)
+                    .map(|(_, id)| (*id).to_owned());
+                if let Some(id) = target {
+                    self.delete_target = Some(id);
+                    self.mode = AppMode::ConfirmDelete;
+                }
+            }
             "ESC" | "q" | "h" | "DEL" => {
                 self.mode = AppMode::Browse;
                 self.result_cursor = 0;
             }
             _ => {}
+        }
+    }
+
+    fn handle_add_stroke(&mut self, stroke: &str) {
+        match stroke {
+            "ESC" => {
+                self.mode = AppMode::Browse;
+                self.query.clear();
+                self.add_target = None;
+            }
+            "RET" => {
+                if let Some(id) = self.add_target.take()
+                    && !self.query.is_empty()
+                {
+                    self.add_request = Some((id, std::mem::take(&mut self.query)));
+                }
+                self.mode = AppMode::Browse;
+                self.query.clear();
+            }
+            "DEL" => {
+                self.query.pop();
+            }
+            "SPC" => self.query.push(' '),
+            s => {
+                let mut chars = s.chars();
+                if let (Some(c), None) = (chars.next(), chars.next()) {
+                    self.query.push(c);
+                }
+            }
         }
     }
 
@@ -767,6 +856,18 @@ fn run_loop(
                     .map_err(|e| TuiError::Vault(e.to_string()))?;
                 sync_app(&mut app, vault);
             }
+            if let Some((after, title)) = app.take_add_request() {
+                vault
+                    .add_sibling(&closure_core::BlockId::from_existing(&after), &title)
+                    .map_err(|e| TuiError::Vault(e.to_string()))?;
+                sync_app(&mut app, vault);
+            }
+            if let Some(id) = app.take_delete_request() {
+                vault
+                    .remove_subtree(&closure_core::BlockId::from_existing(&id))
+                    .map_err(|e| TuiError::Vault(e.to_string()))?;
+                sync_app(&mut app, vault);
+            }
             if app.should_quit() {
                 return Ok(());
             }
@@ -840,6 +941,11 @@ fn draw(f: &mut ratatui::Frame<'_>, app: &App, vault: &Vault) {
         )),
         AppMode::Capture => Some((format!("capture: {}", app.query()), Vec::new())),
         AppMode::Rename => Some((format!("rename: {}", app.query()), Vec::new())),
+        AppMode::AddHeadline => Some((format!("add headline: {}", app.query()), Vec::new())),
+        AppMode::ConfirmDelete => Some((
+            "delete subtree? y = confirm, other = cancel".to_owned(),
+            Vec::new(),
+        )),
         AppMode::Headlines => Some((
             app.selected_path().map_or_else(
                 || "headlines".to_owned(),

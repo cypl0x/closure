@@ -828,3 +828,104 @@ fn r_on_empty_headline_list_is_noop() {
     assert_eq!(app.mode(), AppMode::Headlines, "nothing to rename");
     assert_eq!(app.take_rename_request(), None);
 }
+
+// --- add / delete headline ----------------------------------------------
+
+#[test]
+fn a_in_headline_list_opens_add_minibuffer() {
+    let mut app = app_with_headlines();
+    app.handle_stroke("l");
+    app.handle_stroke("a");
+    assert_eq!(app.mode(), AppMode::AddHeadline);
+    assert_eq!(app.query(), "");
+}
+
+#[test]
+fn add_ret_emits_after_id_and_title_once() {
+    let mut app = app_with_headlines();
+    app.handle_stroke("l");
+    app.handle_stroke("j");
+    app.handle_stroke("a");
+    app.handle_stroke("N");
+    app.handle_stroke("u");
+    app.handle_stroke("RET");
+    assert_eq!(app.mode(), AppMode::Browse);
+    assert_eq!(
+        app.take_add_request(),
+        Some(("id-a2".to_owned(), "Nu".to_owned()))
+    );
+    assert_eq!(app.take_add_request(), None);
+}
+
+#[test]
+fn add_esc_or_empty_title_cancels() {
+    let mut app = app_with_headlines();
+    app.handle_stroke("l");
+    app.handle_stroke("a");
+    app.handle_stroke("x");
+    app.handle_stroke("ESC");
+    assert_eq!(app.take_add_request(), None);
+    app.handle_stroke("l");
+    app.handle_stroke("a");
+    app.handle_stroke("RET");
+    assert_eq!(app.take_add_request(), None);
+}
+
+#[test]
+fn a_on_empty_headline_list_is_noop() {
+    let mut app = App::new(paths());
+    app.handle_stroke("l");
+    app.handle_stroke("a");
+    assert_eq!(app.mode(), AppMode::Headlines);
+}
+
+#[test]
+fn d_opens_delete_confirm() {
+    let mut app = app_with_headlines();
+    app.handle_stroke("l");
+    app.handle_stroke("d");
+    assert_eq!(app.mode(), AppMode::ConfirmDelete);
+    assert_eq!(app.take_delete_request(), None, "not yet confirmed");
+}
+
+#[test]
+fn y_confirms_delete_request_once() {
+    let mut app = app_with_headlines();
+    app.handle_stroke("l");
+    app.handle_stroke("d");
+    app.handle_stroke("y");
+    assert_eq!(app.mode(), AppMode::Browse);
+    assert_eq!(app.take_delete_request(), Some("id-a1".to_owned()));
+    assert_eq!(app.take_delete_request(), None);
+}
+
+#[test]
+fn anything_but_y_cancels_delete() {
+    let mut app = app_with_headlines();
+    app.handle_stroke("l");
+    app.handle_stroke("d");
+    app.handle_stroke("n");
+    assert_eq!(app.mode(), AppMode::Headlines, "back to the list");
+    assert_eq!(app.take_delete_request(), None);
+    app.handle_stroke("d");
+    app.handle_stroke("ESC");
+    assert_eq!(app.take_delete_request(), None);
+}
+
+#[test]
+fn d_on_empty_headline_list_is_noop() {
+    let mut app = App::new(paths());
+    app.handle_stroke("l");
+    app.handle_stroke("d");
+    assert_eq!(app.mode(), AppMode::Headlines);
+}
+
+#[test]
+fn delete_targets_cursor_headline() {
+    let mut app = app_with_headlines();
+    app.handle_stroke("l");
+    app.handle_stroke("j");
+    app.handle_stroke("d");
+    app.handle_stroke("y");
+    assert_eq!(app.take_delete_request(), Some("id-a2".to_owned()));
+}
