@@ -257,3 +257,44 @@ pub fn json_string(s: &str) -> String {
     out.push('"');
     out
 }
+
+/// Drive a provider through a text tool-use protocol.
+///
+/// Each turn the model replies either `CALL <command line>` —
+/// executed by `execute` (the command registry surface, I8) with the
+/// result fed back — or `DONE <answer>` / a bare answer, which ends
+/// the loop.
+///
+/// # Errors
+///
+/// Provider failures propagate; exceeding `max_turns` is
+/// [`LlmError::Provider`].
+pub fn tool_loop(
+    provider: &dyn Provider,
+    mut execute: impl FnMut(&str) -> String,
+    task: &str,
+    max_turns: usize,
+) -> Result<String, LlmError> {
+    use std::fmt::Write as _;
+    let mut transcript = format!(
+        "TASK: {task}\n\
+         Reply with exactly one line per turn:\n\
+         CALL <command line>  — execute a registry command\n\
+         DONE <answer>        — finish with your answer\n"
+    );
+    for _ in 0..max_turns {
+        let reply = provider.complete(&transcript)?;
+        let reply = reply.trim();
+        if let Some(cmd) = reply.strip_prefix("CALL ") {
+            let observation = execute(cmd);
+            let _ = write!(transcript, "\nCALL {cmd}\nRESULT: {observation}\n");
+        } else if let Some(answer) = reply.strip_prefix("DONE") {
+            return Ok(answer.trim().to_owned());
+        } else {
+            return Ok(reply.to_owned());
+        }
+    }
+    Err(LlmError::Provider(format!(
+        "max turns ({max_turns}) exceeded"
+    )))
+}
