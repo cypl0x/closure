@@ -24,7 +24,7 @@ use closure_core::{
 };
 use closure_eval::{Backend, ShellBackend, backend_for};
 use closure_input::Dispatcher;
-use closure_org::{NodeKind, parse};
+use closure_org::parse;
 use closure_store::Vault;
 
 #[derive(Parser, Debug)]
@@ -130,6 +130,10 @@ enum Cmd {
         /// each evaluated code block.
         #[arg(long)]
         write: bool,
+        /// Evaluate only the Nth code block (0-based, document-wide
+        /// source order).
+        #[arg(long)]
+        block: Option<usize>,
     },
     /// Print headlines that link to the given block id.
     Backlinks {
@@ -944,7 +948,7 @@ fn run(cmd: &Cmd) -> Result<(), String> {
             *level,
         ),
         Cmd::Whichkey { prefix } => cmd_whichkey(prefix.as_deref()),
-        Cmd::Eval { file, write } => cmd_eval(file, *write),
+        Cmd::Eval { file, write, block } => cmd_eval(file, *write, *block),
         Cmd::Backlinks { vault, id } => cmd_backlinks(vault, id),
         Cmd::Id { file } => cmd_id(file),
         Cmd::Db { vault } => cmd_db(vault),
@@ -2790,13 +2794,22 @@ fn cmd_whichkey(prefix: Option<&str>) -> Result<(), String> {
     Ok(())
 }
 
-fn cmd_eval(path: &Path, write: bool) -> Result<(), String> {
+fn cmd_eval(path: &Path, write: bool, only_block: Option<usize>) -> Result<(), String> {
     let src = fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))?;
     let doc = parse(&src).map_err(|e| format!("{e}"))?;
+    let blocks = doc.code_blocks();
+    if let Some(idx) = only_block
+        && idx >= blocks.len()
+    {
+        return Err(format!(
+            "--block {idx} out of range: file has {} code block(s)",
+            blocks.len()
+        ));
+    }
     let mut ran = 0usize;
     let mut results: Vec<(usize, String)> = Vec::new();
-    for n in doc.preamble() {
-        if n.kind() != NodeKind::CodeBlock {
+    for (i, n) in blocks.iter().enumerate() {
+        if only_block.is_some_and(|idx| idx != i) {
             continue;
         }
         let Some(cb) = n.as_code_block() else {
@@ -2806,8 +2819,7 @@ fn cmd_eval(path: &Path, write: bool) -> Result<(), String> {
             if let Some(b) = backend_for(lang) {
                 b
             } else {
-                eprintln!("---- block #{ran} skipped (no backend for `{lang}`) ----");
-                ran += 1;
+                eprintln!("---- block #{i} skipped (no backend for `{lang}`) ----");
                 continue;
             }
         } else {
@@ -2815,7 +2827,7 @@ fn cmd_eval(path: &Path, write: bool) -> Result<(), String> {
         };
         let out = backend.eval(cb.content).map_err(|e| format!("{e}"))?;
         println!(
-            "---- block #{ran} {lang} exit={} ----",
+            "---- block #{i} {lang} exit={} ----",
             out.exit,
             lang = cb.language.unwrap_or("shell")
         );
@@ -2826,7 +2838,7 @@ fn cmd_eval(path: &Path, write: bool) -> Result<(), String> {
             eprint!("{}", out.stderr);
         }
         if write {
-            results.push((ran, out.stdout.clone()));
+            results.push((i, out.stdout.clone()));
         }
         ran += 1;
     }
