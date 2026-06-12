@@ -41,6 +41,22 @@ enum Cmd {
         /// Path to the vault directory.
         vault: PathBuf,
     },
+    /// Capture a new entry into a vault file (org-capture).
+    Capture {
+        /// Path to the vault directory.
+        vault: PathBuf,
+        /// Title of the new entry.
+        title: String,
+        /// Target file relative to the vault root.
+        #[arg(long, default_value = "inbox.org")]
+        target: PathBuf,
+        /// Prefix between the stars and the title, e.g. "TODO ".
+        #[arg(long, default_value = "TODO ")]
+        prefix: String,
+        /// Skeleton body appended below the property drawer.
+        #[arg(long, default_value = "", allow_hyphen_values = true)]
+        body: String,
+    },
     /// Parse a single org file and print a summary.
     Parse {
         /// Path to a `*.org` file.
@@ -863,6 +879,13 @@ fn main() -> ExitCode {
 fn run(cmd: &Cmd) -> Result<(), String> {
     match cmd {
         Cmd::Tui { vault } => cmd_tui(vault),
+        Cmd::Capture {
+            vault,
+            title,
+            target,
+            prefix,
+            body,
+        } => cmd_capture(vault, title, target, prefix, body),
         Cmd::Parse { file } => cmd_parse(file),
         Cmd::Fmt { file } => cmd_fmt(file),
         Cmd::Check { vault } => cmd_check(vault),
@@ -1030,6 +1053,24 @@ fn run(cmd: &Cmd) -> Result<(), String> {
             value,
         } => cmd_set_property(file, id, key, value),
     }
+}
+
+fn cmd_capture(
+    vault: &Path,
+    title: &str,
+    target: &Path,
+    prefix: &str,
+    body: &str,
+) -> Result<(), String> {
+    let mut v = Vault::open(vault).map_err(|e| format!("{e}"))?;
+    let tpl = closure_store::CaptureTemplate {
+        target: target.to_path_buf(),
+        headline_prefix: prefix.to_owned(),
+        body: body.to_owned(),
+    };
+    let id = v.capture(&tpl, title).map_err(|e| format!("{e}"))?;
+    println!("captured {} -> {}", id.as_str(), vault.join(target).display());
+    Ok(())
 }
 
 fn cmd_set_property(path: &Path, id: &str, key: &str, value: &str) -> Result<(), String> {

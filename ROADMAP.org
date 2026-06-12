@@ -27,9 +27,9 @@ reversible option, keep moving.
 ** DONE Headline-level fuzzy search: query matches headline titles across the vault, =RET= jumps to file + headline
 ** DONE File body view: show the selected file's full org source (or selected headline's subtree), scrollable
 ** DONE Backlinks pane: for the selected headline, list incoming links from Vault::backlinks_of; =RET= follows
-* TODO org-capture [0/3]
-** TODO Capture template type in closure-core: target file + headline prefix + body skeleton
-** TODO =closure capture "title"= CLI: appends a templated entry to the inbox file, span-preserving, allocates ULID (I2)
+* TODO org-capture [2/3]
+** DONE Capture template type (=closure_store::CaptureTemplate=): target file + headline prefix + body skeleton
+** DONE =closure capture "title"= CLI: appends a templated entry to the inbox file, span-preserving, allocates ULID (I2)
 ** TODO TUI capture: bound chord opens minibuffer-style prompt, writes through the same command
 * TODO Editing writes back to disk [0/4]
 ** TODO Save round-trip: TUI/CLI command persists a mutated Document to its file, byte-exact for untouched spans (I1)
