@@ -58,6 +58,9 @@ pub enum VaultError {
     /// No headline with this block id exists in the vault.
     #[error("unknown block id: {0}")]
     UnknownId(String),
+    /// Undo/redo could not walk the history.
+    #[error("undo: {0}")]
+    Undo(String),
     /// A kernel command refused the edit.
     #[error("command: {0}")]
     Command(String),
@@ -219,6 +222,41 @@ impl Vault {
     pub fn remove_subtree(&mut self, id: &BlockId) -> Result<(), VaultError> {
         let cmd = RemoveSubtree::new(id.clone());
         self.apply_to_block(id, &cmd)
+    }
+
+    /// Undo the most recent edit in `path`'s document (undo-tree,
+    /// I3), persist, and reindex.
+    ///
+    /// # Errors
+    ///
+    /// [`VaultError::UnknownId`] for unknown paths, [`VaultError::Undo`]
+    /// when the history is empty, [`VaultError::Io`] on write failure.
+    pub fn undo_in(&mut self, path: &Path) -> Result<(), VaultError> {
+        let doc = self
+            .documents
+            .get_mut(path)
+            .ok_or_else(|| VaultError::UnknownId(path.display().to_string()))?;
+        doc.undo().map_err(|e| VaultError::Undo(e.to_string()))?;
+        fs::write(path, doc.source())?;
+        self.reindex_file(path);
+        Ok(())
+    }
+
+    /// Re-apply the most recently undone edit in `path`'s document,
+    /// persist, and reindex.
+    ///
+    /// # Errors
+    ///
+    /// Same contract as [`Self::undo_in`].
+    pub fn redo_in(&mut self, path: &Path) -> Result<(), VaultError> {
+        let doc = self
+            .documents
+            .get_mut(path)
+            .ok_or_else(|| VaultError::UnknownId(path.display().to_string()))?;
+        doc.redo(None).map_err(|e| VaultError::Undo(e.to_string()))?;
+        fs::write(path, doc.source())?;
+        self.reindex_file(path);
+        Ok(())
     }
 
     /// Apply a kernel command to the document containing `id`,
