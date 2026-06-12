@@ -58,6 +58,7 @@ const DEFAULT_BINDINGS: &[(&str, &str)] = &[
     ("l", "headline-list"),
     ("u", "undo"),
     ("C-r", "redo"),
+    ("M", "cycle-mode"),
 ];
 
 /// Emacs-style bindings: Ctrl/Meta chords, `C-x C-c` quits.
@@ -77,6 +78,7 @@ const EMACS_BINDINGS: &[(&str, &str)] = &[
     ("C-c l", "headline-list"),
     ("C-x u", "undo"),
     ("C-x r", "redo"),
+    ("C-c m", "cycle-mode"),
 ];
 
 /// Vim-style bindings: modal navigation keys.
@@ -97,6 +99,7 @@ const VIM_BINDINGS: &[(&str, &str)] = &[
     ("l", "headline-list"),
     ("u", "undo"),
     ("C-r", "redo"),
+    ("M", "cycle-mode"),
 ];
 
 /// Helix-style bindings: vim-like with `U` redo and `g e` end.
@@ -117,6 +120,7 @@ const HELIX_BINDINGS: &[(&str, &str)] = &[
     ("l", "headline-list"),
     ("u", "undo"),
     ("U", "redo"),
+    ("M", "cycle-mode"),
 ];
 
 /// Notion-style bindings: arrows + slash command, minimal chords.
@@ -135,6 +139,7 @@ const NOTION_BINDINGS: &[(&str, &str)] = &[
     ("l", "headline-list"),
     ("u", "undo"),
     ("C-r", "redo"),
+    ("M", "cycle-mode"),
 ];
 
 /// The `(chord, command)` table for an input mode. Every mode binds
@@ -217,6 +222,7 @@ pub struct App {
     delete_request: Option<String>,
     undo_request: bool,
     redo_request: bool,
+    input_mode: closure_config::InputMode,
 }
 
 impl App {
@@ -229,7 +235,9 @@ impl App {
     /// Build an app over `paths` with the binding table of `mode`.
     #[must_use]
     pub fn with_mode(paths: Vec<PathBuf>, mode: closure_config::InputMode) -> Self {
-        Self::with_bindings(paths, mode_bindings(mode))
+        let mut app = Self::with_bindings(paths, mode_bindings(mode));
+        app.input_mode = mode;
+        app
     }
 
     /// Build an app over `paths` with caller-supplied
@@ -264,7 +272,14 @@ impl App {
             delete_request: None,
             undo_request: false,
             redo_request: false,
+            input_mode: closure_config::InputMode::Doom,
         }
+    }
+
+    /// The active keybinding dialect.
+    #[must_use]
+    pub const fn input_mode(&self) -> closure_config::InputMode {
+        self.input_mode
     }
 
     /// Consume the pending undo request, true at most once per `u`.
@@ -818,6 +833,25 @@ impl App {
             }
             "undo" => self.undo_request = true,
             "redo" => self.redo_request = true,
+            "cycle-mode" => {
+                use closure_config::InputMode as M;
+                let next = match self.input_mode {
+                    M::Notion => M::Emacs,
+                    M::Emacs => M::Vim,
+                    M::Vim => M::Doom,
+                    M::Doom => M::Helix,
+                    M::Helix => M::Notion,
+                };
+                let table = mode_bindings(next);
+                self.input_mode = next;
+                self.bindings = table
+                    .iter()
+                    .map(|(c, n)| ((*c).to_owned(), (*n).to_owned()))
+                    .collect();
+                self.trie = ChordTrie::build(table);
+                self.pending.clear();
+                self.popup = None;
+            }
             "open-file" => {
                 let has_source = self
                     .selected_path()

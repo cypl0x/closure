@@ -1025,3 +1025,43 @@ fn every_mode_reaches_every_command() {
         assert_eq!(cmds, reference, "{mode:?} must bind every command");
     }
 }
+
+// --- runtime mode switch ---------------------------------------------------
+
+#[test]
+fn cycle_mode_switches_binding_table_live() {
+    let mut app = App::with_mode(paths(), InputMode::Doom);
+    assert_eq!(app.input_mode(), InputMode::Doom);
+    app.handle_stroke("M");
+    assert_eq!(app.input_mode(), InputMode::Helix);
+    app.handle_stroke("U");
+    assert!(app.take_redo_request(), "helix chords active after switch");
+}
+
+#[test]
+fn cycle_mode_wraps_through_all_modes() {
+    let mut app = App::with_mode(paths(), InputMode::Doom);
+    let mut seen = vec![app.input_mode()];
+    for _ in 0..4 {
+        let chord = match app.input_mode() {
+            InputMode::Emacs => vec!["C-c", "m"],
+            _ => vec!["M"],
+        };
+        for s in chord {
+            app.handle_stroke(s);
+        }
+        seen.push(app.input_mode());
+    }
+    seen.sort_by_key(|m| format!("{m:?}"));
+    seen.dedup();
+    assert_eq!(seen.len(), 5, "all five modes reachable: {seen:?}");
+}
+
+#[test]
+fn cycle_mode_keeps_selection_and_browse() {
+    let mut app = App::with_mode(paths(), InputMode::Doom);
+    app.handle_stroke("j");
+    app.handle_stroke("M");
+    assert_eq!(app.selected_index(), Some(1));
+    assert_eq!(app.mode(), AppMode::Browse);
+}
