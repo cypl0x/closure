@@ -29,9 +29,134 @@ pub enum WebError {
     Io(String),
 }
 
+/// An HTTP response produced by [`respond`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Response {
+    /// HTTP status code.
+    pub status: u16,
+    /// `Content-Type` header value.
+    pub content_type: String,
+    /// Response body.
+    pub body: String,
+}
+
+impl Response {
+    fn html(status: u16, body: String) -> Self {
+        Self {
+            status,
+            content_type: "text/html; charset=utf-8".to_owned(),
+            body,
+        }
+    }
+}
+
+/// Route a request to a response. Pure aside from vault writes on
+/// `POST /capture`, so every route is unit-testable without sockets.
+pub fn respond(vault: &mut Vault, method: &str, target: &str, body: &str) -> Response {
+    let (path, query) = target.split_once('?').unwrap_or((target, ""));
+    match (method, path) {
+        ("GET", "/") => Response::html(200, render(vault)),
+        ("GET", "/search") => {
+            let q = query
+                .split('&')
+                .find_map(|kv| kv.strip_prefix("q="))
+                .map(url_decode)
+                .unwrap_or_default();
+            Response::html(200, render_search(vault, &q))
+        }
+        ("POST", "/capture") => {
+            let title = body
+                .split('&')
+                .find_map(|kv| kv.strip_prefix("title="))
+                .map(url_decode)
+                .unwrap_or_default();
+            if title.is_empty() {
+                return Response::html(400, "<p>title required</p>".to_owned());
+            }
+            let template = closure_store::CaptureTemplate {
+                target: std::path::PathBuf::from("inbox.org"),
+                headline_prefix: "TODO ".to_owned(),
+                body: String::new(),
+            };
+            match vault.capture(&template, &title) {
+                Ok(_) => Response {
+                    status: 303,
+                    content_type: "text/html; charset=utf-8".to_owned(),
+                    body: String::new(),
+                },
+                Err(e) => Response::html(500, format!("<p>{}</p>", escape_html(&e.to_string()))),
+            }
+        }
+        _ => Response::html(404, "<p>not found</p>".to_owned()),
+    }
+}
+
+/// Decode `+` and `%XX` form encoding.
+fn url_decode(s: &str) -> String {
+    let bytes = s.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        match bytes[i] {
+            b'+' => {
+                out.push(b' ');
+                i += 1;
+            }
+            b'%' => {
+                if let Some(h) = s.get(i + 1..i + 3)
+                    && let Ok(v) = u8::from_str_radix(h, 16)
+                {
+                    out.push(v);
+                    i += 3;
+                } else {
+                    out.push(b'%');
+                    i += 1;
+                }
+            }
+            b => {
+                out.push(b);
+                i += 1;
+            }
+        }
+    }
+    String::from_utf8_lossy(&out).into_owned()
+}
+
+fn render_search(vault: &Vault, q: &str) -> String {
+    let mut html = String::new();
+    html.push_str("<!doctype html><html><head><meta charset=\"utf-8\">");
+    html.push_str("<title>closure search</title></head><body>");
+    let _ = writeln!(
+        html,
+        "<form action=\"/search\" method=\"get\">\
+         <input name=\"q\" value=\"{}\" autofocus>\
+         <button>search</button></form>",
+        escape_html(q)
+    );
+    if !q.is_empty() {
+        html.push_str("<ul>");
+        for (path, doc) in vault.iter() {
+            for h in doc.all_headlines() {
+                if closure_query::fuzzy_score(q, h.title()).is_some() {
+                    let _ = writeln!(
+                        html,
+                        "<li>{} <span class=\"id\">({})</span></li>",
+                        escape_html(h.title()),
+                        escape_html(&path.display().to_string())
+                    );
+                }
+            }
+        }
+        html.push_str("</ul>");
+    }
+    html.push_str("<p><a href=\"/\">back</a></p></body></html>");
+    html
+}
+
 /// Bind a TCP listener at `addr` (e.g. `"127.0.0.1:7878"`) and serve
-/// the vault read-only. Blocks until the listener fails.
-pub fn serve(vault: &Vault, addr: &str) -> Result<(), WebError> {
+/// the vault. Blocks until the listener fails. Captures (`POST
+/// /capture`) write back through the vault, hence the mutable borrow.
+pub fn serve(vault: &mut Vault, addr: &str) -> Result<(), WebError> {
     let listener = TcpListener::bind(addr).map_err(|e| WebError::Bind(e.to_string()))?;
     for stream in listener.incoming() {
         let stream = stream.map_err(|e| WebError::Io(e.to_string()))?;
@@ -42,11 +167,15 @@ pub fn serve(vault: &Vault, addr: &str) -> Result<(), WebError> {
     Ok(())
 }
 
-fn handle(mut stream: TcpStream, vault: &Vault) -> std::io::Result<()> {
+fn handle(mut stream: TcpStream, vault: &mut Vault) -> std::io::Result<()> {
     let mut reader = BufReader::new(&stream);
     let mut request_line = String::new();
     reader.read_line(&mut request_line)?;
-    // Discard headers up to blank line.
+    let mut parts = request_line.split_whitespace();
+    let method = parts.next().unwrap_or("GET").to_owned();
+    let target = parts.next().unwrap_or("/").to_owned();
+    // Read headers, tracking Content-Length for POST bodies.
+    let mut content_length = 0usize;
     let mut line = String::new();
     loop {
         line.clear();
@@ -54,12 +183,25 @@ fn handle(mut stream: TcpStream, vault: &Vault) -> std::io::Result<()> {
         if line == "\r\n" || line.is_empty() {
             break;
         }
+        if let Some(v) = line.to_ascii_lowercase().strip_prefix("content-length:") {
+            content_length = v.trim().parse().unwrap_or(0);
+        }
     }
-    let body = render(vault);
+    let mut body_bytes = vec![0u8; content_length];
+    if content_length > 0 {
+        use std::io::Read as _;
+        reader.read_exact(&mut body_bytes)?;
+    }
+    let body = String::from_utf8_lossy(&body_bytes).into_owned();
+    let r = respond(vault, &method, &target, &body);
+    let location = if r.status == 303 { "Location: /\r\n" } else { "" };
     let response = format!(
-        "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {}\r\n\r\n{}",
-        body.len(),
-        body,
+        "HTTP/1.1 {} X\r\nContent-Type: {}\r\n{}Content-Length: {}\r\n\r\n{}",
+        r.status,
+        r.content_type,
+        location,
+        r.body.len(),
+        r.body,
     );
     stream.write_all(response.as_bytes())?;
     stream.flush()?;
@@ -79,6 +221,12 @@ fn render(vault: &Vault) -> String {
     );
     html.push_str("</head><body>");
     let _ = writeln!(html, "<h1>closure vault — {} file(s)</h1>", vault.len());
+    html.push_str(
+        "<p><a href=\"/search\">search</a></p>\
+         <form action=\"/capture\" method=\"post\">\
+         <input name=\"title\" placeholder=\"capture a TODO\">\
+         <button>capture</button></form>",
+    );
     for (path, doc) in vault.iter() {
         let _ = writeln!(html, "<details open><summary>{}</summary>", path.display());
         let mut open_level: u8 = 0;

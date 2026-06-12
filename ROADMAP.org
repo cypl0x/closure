@@ -51,10 +51,10 @@ reversible option, keep moving.
 * DONE Links as a first-class UI [2/2]
 ** DONE =closure dead-links= report: file, source block id, target per dead link
 ** DONE =closure graph=: dot export of the id-link graph; backlinks pane in TUI (=b=)
-* TODO Web shell [0/3]
-** TODO Read-only vault browse over localhost (closure-shell-web::serve grows real pages)
-** TODO Fuzzy search endpoint + page reusing closure-query
-** TODO Capture form posting through the same command path
+* DONE Web shell [3/3]
+** DONE Read-only vault browse over localhost (collapsible headline tree, escaped HTML)
+** DONE =/search?q== fuzzy endpoint + page reusing =closure_query::fuzzy_score=
+** DONE =POST /capture= form writing through =Vault::capture= (303 redirect); routes unit-tested via pure =respond()=
 * TODO LLM integration [0/3]
 ** TODO Tool-use loop: provider trait gains tool calls; tools = command registry entries (mutate via commands only, I8)
 ** TODO BYOK config in org via closure-config (provider, key env var, model)

@@ -2677,9 +2677,9 @@ fn cmd_db(vault: &Path) -> Result<(), String> {
 }
 
 fn cmd_serve(vault: &Path, addr: &str) -> Result<(), String> {
-    let v = Vault::open(vault).map_err(|e| format!("{e}"))?;
+    let mut v = Vault::open(vault).map_err(|e| format!("{e}"))?;
     eprintln!("closure serve: listening on http://{addr}");
-    closure_shell_web::serve(&v, addr).map_err(|e| format!("{e}"))
+    closure_shell_web::serve(&mut v, addr).map_err(|e| format!("{e}"))
 }
 
 fn cmd_backlinks(vault: &Path, id: &str) -> Result<(), String> {
