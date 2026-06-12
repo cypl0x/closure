@@ -601,3 +601,87 @@ fn backlink_ret_on_empty_list_returns_to_browse() {
     assert_eq!(app.mode(), AppMode::Browse);
     assert_eq!(app.selected_index(), Some(0));
 }
+
+// --- capture minibuffer -------------------------------------------------
+
+#[test]
+fn c_enters_capture_mode() {
+    let mut app = App::new(paths());
+    app.handle_stroke("c");
+    assert_eq!(app.mode(), AppMode::Capture);
+    assert_eq!(app.query(), "");
+}
+
+#[test]
+fn capture_strokes_edit_title_not_commands() {
+    let mut app = App::new(paths());
+    app.handle_stroke("c");
+    app.handle_stroke("q");
+    app.handle_stroke("SPC");
+    app.handle_stroke("j");
+    assert!(!app.should_quit());
+    assert_eq!(app.selected_index(), Some(0));
+    assert_eq!(app.query(), "q j");
+}
+
+#[test]
+fn capture_del_edits_title() {
+    let mut app = App::new(paths());
+    app.handle_stroke("c");
+    app.handle_stroke("a");
+    app.handle_stroke("b");
+    app.handle_stroke("DEL");
+    assert_eq!(app.query(), "a");
+}
+
+#[test]
+fn capture_esc_cancels_without_request() {
+    let mut app = App::new(paths());
+    app.handle_stroke("c");
+    app.handle_stroke("x");
+    app.handle_stroke("ESC");
+    assert_eq!(app.mode(), AppMode::Browse);
+    assert_eq!(app.take_capture_request(), None);
+}
+
+#[test]
+fn capture_ret_emits_request_once() {
+    let mut app = App::new(paths());
+    app.handle_stroke("c");
+    app.handle_stroke("M");
+    app.handle_stroke("i");
+    app.handle_stroke("l");
+    app.handle_stroke("k");
+    app.handle_stroke("RET");
+    assert_eq!(app.mode(), AppMode::Browse);
+    assert_eq!(app.take_capture_request(), Some("Milk".to_owned()));
+    assert_eq!(app.take_capture_request(), None, "request is consumed");
+}
+
+#[test]
+fn capture_ret_on_empty_title_is_cancel() {
+    let mut app = App::new(paths());
+    app.handle_stroke("c");
+    app.handle_stroke("RET");
+    assert_eq!(app.mode(), AppMode::Browse);
+    assert_eq!(app.take_capture_request(), None);
+}
+
+#[test]
+fn set_paths_keeps_selection_by_path() {
+    let mut app = App::new(paths());
+    app.handle_stroke("j");
+    app.set_paths(vec![
+        std::path::PathBuf::from("b.org"),
+        std::path::PathBuf::from("new.org"),
+    ]);
+    assert_eq!(app.selected_path(), Some(std::path::Path::new("b.org")));
+}
+
+#[test]
+fn set_paths_selects_first_when_old_selection_gone() {
+    let mut app = App::new(paths());
+    app.handle_stroke("j");
+    app.set_paths(vec![std::path::PathBuf::from("z.org")]);
+    assert_eq!(app.selected_index(), Some(0));
+}

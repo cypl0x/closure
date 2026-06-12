@@ -2737,8 +2737,8 @@ fn cmd_eval(path: &Path, write: bool) -> Result<(), String> {
 }
 
 fn cmd_tui(vault: &Path) -> Result<(), String> {
-    let v = Vault::open(vault).map_err(|e| format!("{e}"))?;
-    closure_tui::run(&v).map_err(|e| format!("{e}"))
+    let mut v = Vault::open(vault).map_err(|e| format!("{e}"))?;
+    closure_tui::run(&mut v).map_err(|e| format!("{e}"))
 }
 
 fn cmd_parse(path: &Path) -> Result<(), String> {

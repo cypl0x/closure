@@ -33,6 +33,9 @@ pub enum TuiError {
     /// IO failure setting up the terminal.
     #[error("io: {0}")]
     Io(#[from] io::Error),
+    /// A vault write (capture) failed.
+    #[error("vault: {0}")]
+    Vault(String),
 }
 
 /// Default browse-mode bindings. Multi-stroke chords exercise the
@@ -51,6 +54,7 @@ const DEFAULT_BINDINGS: &[(&str, &str)] = &[
     ("s", "search-headline-start"),
     ("RET", "open-file"),
     ("b", "backlinks"),
+    ("c", "capture-start"),
 ];
 
 /// Which input surface the shell is on.
@@ -67,6 +71,8 @@ pub enum AppMode {
     FileView,
     /// Listing the notes that link into the selected file.
     Backlinks,
+    /// Typing the title of a new capture entry in a minibuffer.
+    Capture,
 }
 
 /// Elm-style application state for the terminal shell. Strokes go in
@@ -87,6 +93,7 @@ pub struct App {
     sources: Vec<(PathBuf, String)>,
     scroll: usize,
     backlinks: Vec<(PathBuf, PathBuf, String)>,
+    capture_request: Option<String>,
 }
 
 impl App {
@@ -119,7 +126,24 @@ impl App {
             sources: Vec::new(),
             scroll: 0,
             backlinks: Vec::new(),
+            capture_request: None,
         }
+    }
+
+    /// Consume the capture title confirmed by the user, if any. The
+    /// shell performs the actual vault write and clears the request.
+    pub const fn take_capture_request(&mut self) -> Option<String> {
+        self.capture_request.take()
+    }
+
+    /// Replace the browsable paths, keeping the selection on the same
+    /// file when it still exists and falling back to the first path.
+    pub fn set_paths(&mut self, paths: Vec<PathBuf>) {
+        let keep = self.selected_path().map(Path::to_path_buf);
+        self.paths = paths;
+        self.selected = keep
+            .and_then(|k| self.paths.iter().position(|p| *p == k))
+            .or(if self.paths.is_empty() { None } else { Some(0) });
     }
 
     /// Provide the vault's backlink records as
@@ -285,6 +309,10 @@ impl App {
             self.handle_backlinks_stroke(stroke);
             return;
         }
+        if self.mode == AppMode::Capture {
+            self.handle_capture_stroke(stroke);
+            return;
+        }
         match self.trie.step(stroke) {
             TrieStep::Resolved(cmd) => {
                 self.pending.clear();
@@ -309,6 +337,32 @@ impl App {
             TrieStep::Unbound => {
                 self.pending.clear();
                 self.popup = None;
+            }
+        }
+    }
+
+    fn handle_capture_stroke(&mut self, stroke: &str) {
+        match stroke {
+            "ESC" => {
+                self.mode = AppMode::Browse;
+                self.query.clear();
+            }
+            "RET" => {
+                if !self.query.is_empty() {
+                    self.capture_request = Some(std::mem::take(&mut self.query));
+                }
+                self.mode = AppMode::Browse;
+                self.query.clear();
+            }
+            "DEL" => {
+                self.query.pop();
+            }
+            "SPC" => self.query.push(' '),
+            s => {
+                let mut chars = s.chars();
+                if let (Some(c), None) = (chars.next(), chars.next()) {
+                    self.query.push(c);
+                }
             }
         }
     }
@@ -441,6 +495,10 @@ impl App {
                 self.mode = AppMode::Backlinks;
                 self.result_cursor = 0;
             }
+            "capture-start" => {
+                self.mode = AppMode::Capture;
+                self.query.clear();
+            }
             "open-file" => {
                 let has_source = self
                     .selected_path()
@@ -511,9 +569,15 @@ pub fn headline_lines(doc: &Document) -> String {
     s
 }
 
+/// Default capture target inside the vault for TUI captures.
+const CAPTURE_TARGET: &str = "inbox.org";
+/// Default headline prefix for TUI captures.
+const CAPTURE_PREFIX: &str = "TODO ";
+
 /// Run the TUI against an already-loaded vault. Returns when the user
-/// quits via `q` or `Esc`.
-pub fn run(vault: &Vault) -> Result<(), TuiError> {
+/// quits via `q` or `Esc`. Captures (`c`) write back through
+/// [`Vault::capture`], hence the mutable borrow.
+pub fn run(vault: &mut Vault) -> Result<(), TuiError> {
     enable_raw_mode()?;
     let mut stdout = io::stdout();
     execute!(stdout, EnterAlternateScreen)?;
@@ -526,11 +590,10 @@ pub fn run(vault: &Vault) -> Result<(), TuiError> {
     result
 }
 
-fn run_loop(
-    terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
-    vault: &Vault,
-) -> Result<(), TuiError> {
-    let mut app = App::new(vault.paths());
+/// Refresh every vault-derived record in the app: paths, headline
+/// titles, file sources, and the backlink rows.
+fn sync_app(app: &mut App, vault: &Vault) {
+    app.set_paths(vault.paths());
     let mut headlines: Vec<(PathBuf, String)> = Vec::new();
     for (path, doc) in vault.iter() {
         for h in doc.all_headlines() {
@@ -555,6 +618,14 @@ fn run_loop(
         }
     }
     app.set_backlinks(backlinks);
+}
+
+fn run_loop(
+    terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
+    vault: &mut Vault,
+) -> Result<(), TuiError> {
+    let mut app = App::new(Vec::new());
+    sync_app(&mut app, vault);
 
     loop {
         terminal.draw(|f| draw(f, &app, vault))?;
@@ -565,6 +636,17 @@ fn run_loop(
             && let Some(stroke) = stroke_of(&key)
         {
             app.handle_stroke(&stroke);
+            if let Some(title) = app.take_capture_request() {
+                let template = closure_store::CaptureTemplate {
+                    target: PathBuf::from(CAPTURE_TARGET),
+                    headline_prefix: CAPTURE_PREFIX.to_owned(),
+                    body: String::new(),
+                };
+                vault
+                    .capture(&template, &title)
+                    .map_err(|e| TuiError::Vault(e.to_string()))?;
+                sync_app(&mut app, vault);
+            }
             if app.should_quit() {
                 return Ok(());
             }
@@ -636,6 +718,7 @@ fn draw(f: &mut ratatui::Frame<'_>, app: &App, vault: &Vault) {
                 .map(|(p, t)| format!("{t}    ({})", p.display()))
                 .collect(),
         )),
+        AppMode::Capture => Some((format!("capture: {}", app.query()), Vec::new())),
         AppMode::Browse | AppMode::FileView => None,
     };
     if let Some((title, rows)) = overlay {
