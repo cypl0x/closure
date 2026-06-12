@@ -65,3 +65,118 @@ fn merge_adds_new_blocks_from_other() {
         Some("B")
     );
 }
+
+// --- block-level body merge + apply-back -----------------------------------
+
+const ID_A: &str = "01HXAAAAAAAAAAAAAAAAAAAAAA";
+
+fn doc(src: &str) -> Document {
+    Document::load_str(src).expect("load")
+}
+
+#[test]
+fn snapshot_captures_body() {
+    let d = doc("* T\n:PROPERTIES:\n:ID: 01HXAAAAAAAAAAAAAAAAAAAAAA\n:END:\nbody line\n");
+    let r = Replica::snapshot(&d, 1);
+    let id = BlockId::from_existing(ID_A);
+    assert!(r.body_of(&id).is_some_and(|b| b.contains("body line")));
+}
+
+#[test]
+fn concurrent_title_and_body_edits_both_survive() {
+    let base = "* Old\n:PROPERTIES:\n:ID: 01HXAAAAAAAAAAAAAAAAAAAAAA\n:END:\nold body\n";
+    // Replica A edits only the body (later than base).
+    let a = doc("* Old\n:PROPERTIES:\n:ID: 01HXAAAAAAAAAAAAAAAAAAAAAA\n:END:\nnew body\n");
+    // Replica B edits only the title.
+    let b = doc("* New\n:PROPERTIES:\n:ID: 01HXAAAAAAAAAAAAAAAAAAAAAA\n:END:\nold body\n");
+    let r_base = Replica::snapshot(&doc(base), 1);
+    // snapshot_against only advances the timestamp of fields that
+    // actually changed relative to the common base.
+    let r_a = Replica::snapshot_against(&r_base, &a, 2);
+    let r_b = Replica::snapshot_against(&r_base, &b, 3);
+    let mut merged = r_base;
+    merged.merge(&r_a);
+    merged.merge(&r_b);
+    let id = BlockId::from_existing(ID_A);
+    assert_eq!(merged.title_of(&id), Some("New"), "B's title wins");
+    assert!(
+        merged.body_of(&id).is_some_and(|x| x.contains("new body")),
+        "A's body must not be clobbered by B's unchanged body register"
+    );
+}
+
+#[test]
+fn merge_is_commutative_for_distinct_fields() {
+    let base = doc("* Old\n:PROPERTIES:\n:ID: 01HXAAAAAAAAAAAAAAAAAAAAAA\n:END:\nold body\n");
+    let a = doc("* Old\n:PROPERTIES:\n:ID: 01HXAAAAAAAAAAAAAAAAAAAAAA\n:END:\nnew body\n");
+    let b = doc("* New\n:PROPERTIES:\n:ID: 01HXAAAAAAAAAAAAAAAAAAAAAA\n:END:\nold body\n");
+    let r_base = Replica::snapshot(&base, 1);
+    let r_a = Replica::snapshot_against(&r_base, &a, 2);
+    let r_b = Replica::snapshot_against(&r_base, &b, 3);
+    let mut ab = r_a.clone();
+    ab.merge(&r_b);
+    let mut ba = r_b.clone();
+    ba.merge(&r_a);
+    let id = BlockId::from_existing(ID_A);
+    assert_eq!(ab.title_of(&id), ba.title_of(&id));
+    assert_eq!(ab.body_of(&id), ba.body_of(&id));
+}
+
+#[test]
+fn merge_never_invents_ids() {
+    let a = doc("* A\n");
+    let b = doc("* B\n");
+    let mut r = Replica::snapshot(&a, 1);
+    let r_b = Replica::snapshot(&b, 2);
+    let union: std::collections::BTreeSet<String> = a
+        .all_block_ids()
+        .into_iter()
+        .chain(b.all_block_ids())
+        .map(|i| i.to_string())
+        .collect();
+    r.merge(&r_b);
+    for id in r.block_ids() {
+        assert!(union.contains(&id.to_string()), "I2: no fresh ids in merge");
+    }
+}
+
+#[test]
+fn apply_to_reconciles_document_via_commands() {
+    let mut target =
+        doc("* Old\n:PROPERTIES:\n:ID: 01HXAAAAAAAAAAAAAAAAAAAAAA\n:END:\nold body\n");
+    let newer = doc("* New\n:PROPERTIES:\n:ID: 01HXAAAAAAAAAAAAAAAAAAAAAA\n:END:\nnew body\n");
+    let mut r = Replica::snapshot(&target, 1);
+    r.merge(&Replica::snapshot(&newer, 2));
+    let changed = r.apply_to(&mut target).expect("apply");
+    assert_eq!(changed, 2, "title + body both reconciled");
+    let id = BlockId::from_existing(ID_A);
+    let h = target.headline_by_id(&id).expect("still there");
+    assert_eq!(h.title(), "New");
+    assert!(h.body_text().contains("new body"));
+}
+
+#[test]
+fn apply_to_is_undoable() {
+    let mut target =
+        doc("* Old\n:PROPERTIES:\n:ID: 01HXAAAAAAAAAAAAAAAAAAAAAA\n:END:\n");
+    let newer = doc("* New\n:PROPERTIES:\n:ID: 01HXAAAAAAAAAAAAAAAAAAAAAA\n:END:\n");
+    let mut r = Replica::snapshot(&target, 1);
+    r.merge(&Replica::snapshot(&newer, 2));
+    let changed = r.apply_to(&mut target).expect("apply");
+    assert_eq!(changed, 1);
+    target.undo().expect("undo");
+    let id = BlockId::from_existing(ID_A);
+    assert_eq!(
+        target.headline_by_id(&id).map(|h| h.title().to_owned()),
+        Some("Old".to_owned()),
+        "I3: merge edits ride the undo-tree"
+    );
+}
+
+#[test]
+fn apply_to_noop_when_already_converged() {
+    let mut target = doc("* Same\n:PROPERTIES:\n:ID: 01HXAAAAAAAAAAAAAAAAAAAAAA\n:END:\n");
+    let r = Replica::snapshot(&target, 5);
+    let changed = r.apply_to(&mut target).expect("apply");
+    assert_eq!(changed, 0);
+}
