@@ -1081,7 +1081,10 @@ fn palette_lists_every_command_with_chord() {
     let mut app = App::new(paths());
     app.handle_stroke(":");
     let rows = app.palette_results();
-    assert!(rows.iter().any(|(c, k)| c == "quit" && (k == "q" || k == "ESC")));
+    assert!(
+        rows.iter()
+            .any(|(c, k)| c == "quit" && (k == "q" || k == "ESC"))
+    );
     assert!(rows.iter().any(|(c, _)| c == "capture-start"));
     let mut names: Vec<&str> = rows.iter().map(|(c, _)| c.as_str()).collect();
     names.dedup();
@@ -1136,4 +1139,104 @@ fn palette_esc_cancels() {
     app.handle_stroke("ESC");
     assert_eq!(app.mode(), AppMode::Browse);
     assert!(!app.should_quit());
+}
+
+// --- database view + cell edit ---------------------------------------------
+
+fn app_with_view_rows() -> App {
+    let mut app = App::new(paths());
+    app.set_view_rows(vec![
+        (
+            "id-r1".to_owned(),
+            vec!["Ship".to_owned(), "TODO".to_owned()],
+        ),
+        (
+            "id-r2".to_owned(),
+            vec!["Spec".to_owned(), "DONE".to_owned()],
+        ),
+    ]);
+    app
+}
+
+#[test]
+fn v_enters_db_view() {
+    let mut app = app_with_view_rows();
+    app.handle_stroke("v");
+    assert_eq!(app.mode(), AppMode::DbView);
+    assert_eq!(app.view_rows().len(), 2);
+}
+
+#[test]
+fn db_view_cursor_moves_and_clamps() {
+    let mut app = app_with_view_rows();
+    app.handle_stroke("v");
+    app.handle_stroke("j");
+    app.handle_stroke("j");
+    assert_eq!(app.result_cursor(), 1);
+    app.handle_stroke("k");
+    assert_eq!(app.result_cursor(), 0);
+}
+
+#[test]
+fn db_view_esc_closes() {
+    let mut app = app_with_view_rows();
+    app.handle_stroke("v");
+    app.handle_stroke("ESC");
+    assert_eq!(app.mode(), AppMode::Browse);
+}
+
+#[test]
+fn ret_on_row_opens_cell_editor() {
+    let mut app = app_with_view_rows();
+    app.handle_stroke("v");
+    app.handle_stroke("j");
+    app.handle_stroke("RET");
+    assert_eq!(app.mode(), AppMode::EditCell);
+    assert_eq!(app.query(), "");
+}
+
+#[test]
+fn cell_editor_emits_property_request_once() {
+    let mut app = app_with_view_rows();
+    app.handle_stroke("v");
+    app.handle_stroke("RET");
+    for c in "EFFORT=2d".chars() {
+        app.handle_stroke(&c.to_string());
+    }
+    app.handle_stroke("RET");
+    assert_eq!(app.mode(), AppMode::Browse);
+    assert_eq!(
+        app.take_property_request(),
+        Some(("id-r1".to_owned(), "EFFORT".to_owned(), "2d".to_owned()))
+    );
+    assert_eq!(app.take_property_request(), None);
+}
+
+#[test]
+fn cell_editor_without_equals_cancels() {
+    let mut app = app_with_view_rows();
+    app.handle_stroke("v");
+    app.handle_stroke("RET");
+    app.handle_stroke("x");
+    app.handle_stroke("RET");
+    assert_eq!(app.take_property_request(), None);
+}
+
+#[test]
+fn cell_editor_esc_cancels() {
+    let mut app = app_with_view_rows();
+    app.handle_stroke("v");
+    app.handle_stroke("RET");
+    app.handle_stroke("ESC");
+    assert_eq!(app.mode(), AppMode::Browse);
+    assert_eq!(app.take_property_request(), None);
+}
+
+#[test]
+fn db_view_on_empty_rows_is_safe() {
+    let mut app = App::new(paths());
+    app.handle_stroke("v");
+    assert_eq!(app.mode(), AppMode::DbView);
+    app.handle_stroke("RET");
+    assert_eq!(app.mode(), AppMode::DbView, "no row to edit");
 }

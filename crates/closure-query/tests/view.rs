@@ -99,11 +99,7 @@ fn level_and_priority_builtin_columns() {
     let cells = spec.cells(&v);
     assert_eq!(
         cells,
-        vec![vec![
-            "1".to_owned(),
-            String::new(),
-            "Groceries".to_owned()
-        ]]
+        vec![vec!["1".to_owned(), String::new(), "Groceries".to_owned()]]
     );
 }
 

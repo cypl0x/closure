@@ -301,7 +301,9 @@ impl Column {
         }
     }
 
-    fn extract(&self, h: &DocHeadline) -> String {
+    /// Cell value of this column for `h` (empty string when absent).
+    #[must_use]
+    pub fn extract(&self, h: &DocHeadline) -> String {
         match self {
             Self::Title => h.title().to_owned(),
             Self::Todo => h.todo().unwrap_or("").to_owned(),

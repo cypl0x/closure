@@ -102,10 +102,7 @@ fn full_text_misses_when_neither_matches() {
 
 #[test]
 fn by_tags_all_requires_every_tag() {
-    let td = build_vault(&[(
-        "a.org",
-        "* A :work:urgent:\n* B :work:\n* C :urgent:\n",
-    )]);
+    let td = build_vault(&[("a.org", "* A :work:urgent:\n* B :work:\n* C :urgent:\n")]);
     let v = Vault::open(td.path()).expect("open");
     let m = closure_query::by_tags_all(&v, &["work", "urgent"]);
     assert_eq!(m.len(), 1);

@@ -60,6 +60,7 @@ const DEFAULT_BINDINGS: &[(&str, &str)] = &[
     ("C-r", "redo"),
     ("M", "cycle-mode"),
     (":", "palette"),
+    ("v", "db-view"),
 ];
 
 /// Emacs-style bindings: Ctrl/Meta chords, `C-x C-c` quits.
@@ -81,6 +82,7 @@ const EMACS_BINDINGS: &[(&str, &str)] = &[
     ("C-x r", "redo"),
     ("C-c m", "cycle-mode"),
     (":", "palette"),
+    ("v", "db-view"),
 ];
 
 /// Vim-style bindings: modal navigation keys.
@@ -103,6 +105,7 @@ const VIM_BINDINGS: &[(&str, &str)] = &[
     ("C-r", "redo"),
     ("M", "cycle-mode"),
     (":", "palette"),
+    ("v", "db-view"),
 ];
 
 /// Helix-style bindings: vim-like with `U` redo and `g e` end.
@@ -125,6 +128,7 @@ const HELIX_BINDINGS: &[(&str, &str)] = &[
     ("U", "redo"),
     ("M", "cycle-mode"),
     (":", "palette"),
+    ("v", "db-view"),
 ];
 
 /// Notion-style bindings: arrows + slash command, minimal chords.
@@ -145,6 +149,7 @@ const NOTION_BINDINGS: &[(&str, &str)] = &[
     ("C-r", "redo"),
     ("M", "cycle-mode"),
     (":", "palette"),
+    ("v", "db-view"),
 ];
 
 /// The `(chord, command)` table for an input mode. Every mode binds
@@ -200,6 +205,10 @@ pub enum AppMode {
     ConfirmDelete,
     /// Fuzzy-picking a command by name; rows show the chord (I4).
     Palette,
+    /// Browsing database view rows with a cursor.
+    DbView,
+    /// Typing `KEY=VALUE` to set a property on the cursor row.
+    EditCell,
 }
 
 /// Elm-style application state for the terminal shell. Strokes go in
@@ -230,6 +239,9 @@ pub struct App {
     undo_request: bool,
     redo_request: bool,
     input_mode: closure_config::InputMode,
+    view_rows: Vec<(String, Vec<String>)>,
+    cell_target: Option<String>,
+    property_request: Option<(String, String, String)>,
 }
 
 impl App {
@@ -280,7 +292,27 @@ impl App {
             undo_request: false,
             redo_request: false,
             input_mode: closure_config::InputMode::Doom,
+            view_rows: Vec::new(),
+            cell_target: None,
+            property_request: None,
         }
+    }
+
+    /// Provide the database view rows as `(block id, cells)` pairs.
+    pub fn set_view_rows(&mut self, rows: Vec<(String, Vec<String>)>) {
+        self.view_rows = rows;
+    }
+
+    /// The database view rows.
+    #[must_use]
+    pub fn view_rows(&self) -> &[(String, Vec<String>)] {
+        &self.view_rows
+    }
+
+    /// Consume the `(id, key, value)` property edit confirmed by the
+    /// user, if any. The shell performs the vault write.
+    pub const fn take_property_request(&mut self) -> Option<(String, String, String)> {
+        self.property_request.take()
     }
 
     /// The active keybinding dialect.
@@ -559,6 +591,14 @@ impl App {
             self.handle_palette_stroke(stroke);
             return;
         }
+        if self.mode == AppMode::DbView {
+            self.handle_dbview_stroke(stroke);
+            return;
+        }
+        if self.mode == AppMode::EditCell {
+            self.handle_editcell_stroke(stroke);
+            return;
+        }
         if self.mode == AppMode::ConfirmDelete {
             if stroke == "y" {
                 self.delete_request = self.delete_target.take();
@@ -642,6 +682,67 @@ impl App {
                 self.result_cursor = 0;
             }
             _ => {}
+        }
+    }
+
+    fn handle_dbview_stroke(&mut self, stroke: &str) {
+        match stroke {
+            "j" | "<down>" => {
+                let last = self.view_rows.len().saturating_sub(1);
+                self.result_cursor = (self.result_cursor + 1).min(last);
+            }
+            "k" | "<up>" => self.result_cursor = self.result_cursor.saturating_sub(1),
+            "RET" => {
+                let target = self
+                    .view_rows
+                    .get(self.result_cursor)
+                    .map(|(id, _)| id.clone());
+                if let Some(id) = target {
+                    self.cell_target = Some(id);
+                    self.query.clear();
+                    self.mode = AppMode::EditCell;
+                }
+            }
+            "ESC" | "q" | "h" | "DEL" => {
+                self.mode = AppMode::Browse;
+                self.result_cursor = 0;
+            }
+            _ => {}
+        }
+    }
+
+    fn handle_editcell_stroke(&mut self, stroke: &str) {
+        match stroke {
+            "ESC" => {
+                self.mode = AppMode::Browse;
+                self.query.clear();
+                self.cell_target = None;
+            }
+            "RET" => {
+                let parsed = self.cell_target.take().zip(
+                    self.query
+                        .split_once('=')
+                        .map(|(k, v)| (k.trim().to_owned(), v.trim().to_owned())),
+                );
+                if let Some((id, (key, value))) = parsed
+                    && !key.is_empty()
+                {
+                    self.property_request = Some((id, key, value));
+                }
+                self.mode = AppMode::Browse;
+                self.query.clear();
+                self.result_cursor = 0;
+            }
+            "DEL" => {
+                self.query.pop();
+            }
+            "SPC" => self.query.push(' '),
+            s => {
+                let mut chars = s.chars();
+                if let (Some(c), None) = (chars.next(), chars.next()) {
+                    self.query.push(c);
+                }
+            }
         }
     }
 
@@ -914,6 +1015,10 @@ impl App {
                 self.query.clear();
                 self.result_cursor = 0;
             }
+            "db-view" => {
+                self.mode = AppMode::DbView;
+                self.result_cursor = 0;
+            }
             "cycle-mode" => {
                 use closure_config::InputMode as M;
                 let next = match self.input_mode {
@@ -1056,6 +1161,22 @@ fn sync_app(app: &mut App, vault: &Vault) {
         }
     }
     app.set_backlinks(backlinks);
+    let spec = closure_query::ViewSpec::parse(":from all :columns title,todo,priority")
+        .unwrap_or_else(|_| closure_query::ViewSpec {
+            from: closure_query::Source::All,
+            columns: Vec::new(),
+            sort: None,
+            filter: None,
+        });
+    let rows: Vec<(String, Vec<String>)> = spec
+        .rows(vault)
+        .iter()
+        .map(|m| {
+            let cells: Vec<String> = spec.columns.iter().map(|c| c.extract(m.headline)).collect();
+            (m.headline.id().to_string(), cells)
+        })
+        .collect();
+    app.set_view_rows(rows);
 }
 
 fn run_loop(
@@ -1102,6 +1223,12 @@ fn run_loop(
             if let Some(id) = app.take_delete_request() {
                 vault
                     .remove_subtree(&closure_core::BlockId::from_existing(&id))
+                    .map_err(|e| TuiError::Vault(e.to_string()))?;
+                sync_app(&mut app, vault);
+            }
+            if let Some((id, key, value)) = app.take_property_request() {
+                vault
+                    .set_property(&closure_core::BlockId::from_existing(&id), &key, &value)
                     .map_err(|e| TuiError::Vault(e.to_string()))?;
                 sync_app(&mut app, vault);
             }
@@ -1169,7 +1296,19 @@ fn draw(f: &mut ratatui::Frame<'_>, app: &App, vault: &Vault) {
         f.render_widget(body, chunks[1]);
     }
 
-    let overlay = match app.mode() {
+    if let Some((title, rows)) = overlay_content(app) {
+        draw_overlay_list(f, area, title, rows, app.result_cursor());
+    }
+
+    if let Some(lines) = app.popup_lines() {
+        draw_whichkey(f, area, app, lines);
+    }
+}
+
+/// Title + rows of the bottom overlay for the active surface, `None`
+/// when no overlay is shown.
+fn overlay_content(app: &App) -> Option<(String, Vec<String>)> {
+    match app.mode() {
         AppMode::Search => Some((
             format!("find file: {}", app.query()),
             app.results()
@@ -1201,6 +1340,17 @@ fn draw(f: &mut ratatui::Frame<'_>, app: &App, vault: &Vault) {
             "delete subtree? y = confirm, other = cancel".to_owned(),
             Vec::new(),
         )),
+        AppMode::DbView => Some((
+            "database: title | todo | priority".to_owned(),
+            app.view_rows()
+                .iter()
+                .map(|(_, cells)| cells.join("  |  "))
+                .collect(),
+        )),
+        AppMode::EditCell => Some((
+            format!("set property KEY=VALUE: {}", app.query()),
+            Vec::new(),
+        )),
         AppMode::Palette => Some((
             format!("command: {}", app.query()),
             app.palette_results()
@@ -1219,13 +1369,6 @@ fn draw(f: &mut ratatui::Frame<'_>, app: &App, vault: &Vault) {
                 .collect(),
         )),
         AppMode::Browse | AppMode::FileView => None,
-    };
-    if let Some((title, rows)) = overlay {
-        draw_overlay_list(f, area, title, rows, app.result_cursor());
-    }
-
-    if let Some(lines) = app.popup_lines() {
-        draw_whichkey(f, area, app, lines);
     }
 }
 
