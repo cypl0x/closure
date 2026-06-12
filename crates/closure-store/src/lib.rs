@@ -242,6 +242,85 @@ impl Vault {
         self.apply_to_block(id, &cmd)
     }
 
+    /// Execute one LLM-facing tool line and return a text result.
+    ///
+    /// Tools: `list-files`, `read <file>`, `search <text>`,
+    /// `capture <title>`, `rename <id> <title>`,
+    /// `set-property <id> <key> <value>`. Mutations route through the
+    /// same kernel-command methods as every shell (I8); failures come
+    /// back as `ERROR …` text, never panics.
+    pub fn run_tool(&mut self, line: &str) -> String {
+        const HELP: &str = "available tools: list-files | read <file> | search <text> | \
+                            capture <title> | rename <id> <title> | \
+                            set-property <id> <key> <value>";
+        let line = line.trim();
+        let (tool, rest) = line.split_once(' ').unwrap_or((line, ""));
+        let rest = rest.trim();
+        match tool {
+            "list-files" => self
+                .paths()
+                .iter()
+                .map(|p| p.display().to_string())
+                .collect::<Vec<_>>()
+                .join("\n"),
+            "read" => self.document_relative(Path::new(rest)).map_or_else(
+                || format!("ERROR no such file: {rest}"),
+                closure_core::Document::source,
+            ),
+            "search" => {
+                let needle = rest.to_lowercase();
+                let mut out = String::new();
+                for (path, doc) in self.iter() {
+                    for h in doc.all_headlines() {
+                        if h.title().to_lowercase().contains(&needle) {
+                            let _ = writeln!(
+                                out,
+                                "{}\t{}\t{}",
+                                h.id(),
+                                h.title(),
+                                path.display()
+                            );
+                        }
+                    }
+                }
+                out
+            }
+            "capture" if !rest.is_empty() => {
+                let template = CaptureTemplate {
+                    target: PathBuf::from("inbox.org"),
+                    headline_prefix: "TODO ".to_owned(),
+                    body: String::new(),
+                };
+                match self.capture(&template, rest) {
+                    Ok(id) => format!("OK captured {id}"),
+                    Err(e) => format!("ERROR {e}"),
+                }
+            }
+            "rename" => {
+                let Some((id, title)) = rest.split_once(' ') else {
+                    return format!("ERROR rename needs <id> <title>; {HELP}");
+                };
+                match self.rename_headline(&BlockId::from_existing(id), title.trim()) {
+                    Ok(()) => format!("OK renamed {id}"),
+                    Err(e) => format!("ERROR {e}"),
+                }
+            }
+            "set-property" => {
+                let mut parts = rest.splitn(3, ' ');
+                let (Some(id), Some(key), Some(value)) =
+                    (parts.next(), parts.next(), parts.next())
+                else {
+                    return format!("ERROR set-property needs <id> <key> <value>; {HELP}");
+                };
+                match self.set_property(&BlockId::from_existing(id), key, value) {
+                    Ok(()) => format!("OK set {key}"),
+                    Err(e) => format!("ERROR {e}"),
+                }
+            }
+            _ => format!("ERROR unknown tool `{tool}`; {HELP}"),
+        }
+    }
+
     /// Undo the most recent edit in `path`'s document (undo-tree,
     /// I3), persist, and reindex.
     ///
