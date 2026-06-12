@@ -339,15 +339,21 @@ fn esc_resets_cursor_too() {
 
 // --- headline fuzzy search --------------------------------------------
 
+fn rec(path: &str, id: &str, title: &str) -> closure_tui::HeadlineRecord {
+    closure_tui::HeadlineRecord {
+        path: std::path::PathBuf::from(path),
+        id: id.to_owned(),
+        title: title.to_owned(),
+    }
+}
+
 fn app_with_headlines() -> App {
     let mut app = App::new(paths());
     app.set_headlines(vec![
-        (std::path::PathBuf::from("a.org"), "Inbox".to_owned()),
-        (std::path::PathBuf::from("b.org"), "Project plan".to_owned()),
-        (
-            std::path::PathBuf::from("c.org"),
-            "Personal notes".to_owned(),
-        ),
+        rec("a.org", "id-a1", "Inbox"),
+        rec("a.org", "id-a2", "Inbox archive"),
+        rec("b.org", "id-b1", "Project plan"),
+        rec("c.org", "id-c1", "Personal notes"),
     ]);
     app
 }
@@ -376,7 +382,7 @@ fn headline_results_fuzzy_filter_titles() {
 fn headline_search_empty_query_lists_all() {
     let mut app = app_with_headlines();
     app.handle_stroke("s");
-    assert_eq!(app.headline_results().len(), 3);
+    assert_eq!(app.headline_results().len(), 4);
 }
 
 #[test]
@@ -395,6 +401,7 @@ fn headline_ret_jumps_to_containing_file() {
 fn headline_search_cursor_picks_highlighted() {
     let mut app = app_with_headlines();
     app.handle_stroke("s");
+    app.handle_stroke("<down>");
     app.handle_stroke("<down>");
     app.handle_stroke("RET");
     assert_eq!(app.selected_path(), Some(std::path::Path::new("b.org")));
@@ -684,4 +691,64 @@ fn set_paths_selects_first_when_old_selection_gone() {
     app.handle_stroke("j");
     app.set_paths(vec![std::path::PathBuf::from("z.org")]);
     assert_eq!(app.selected_index(), Some(0));
+}
+
+// --- per-file headline list (l) -----------------------------------------
+
+#[test]
+fn l_enters_headlines_mode() {
+    let mut app = app_with_headlines();
+    app.handle_stroke("l");
+    assert_eq!(app.mode(), AppMode::Headlines);
+}
+
+#[test]
+fn headline_list_shows_only_selected_files_headlines() {
+    let mut app = app_with_headlines();
+    app.handle_stroke("l");
+    let rows: Vec<(&str, &str)> = app.file_headlines();
+    assert_eq!(rows, vec![("Inbox", "id-a1"), ("Inbox archive", "id-a2")]);
+}
+
+#[test]
+fn headline_list_follows_file_selection() {
+    let mut app = app_with_headlines();
+    app.handle_stroke("j");
+    app.handle_stroke("l");
+    assert_eq!(app.file_headlines(), vec![("Project plan", "id-b1")]);
+}
+
+#[test]
+fn headline_list_cursor_moves_and_clamps() {
+    let mut app = app_with_headlines();
+    app.handle_stroke("l");
+    assert_eq!(app.result_cursor(), 0);
+    app.handle_stroke("j");
+    assert_eq!(app.result_cursor(), 1);
+    app.handle_stroke("j");
+    assert_eq!(app.result_cursor(), 1, "two headlines in a.org");
+    app.handle_stroke("k");
+    assert_eq!(app.result_cursor(), 0);
+}
+
+#[test]
+fn headline_list_esc_and_h_close() {
+    let mut app = app_with_headlines();
+    app.handle_stroke("l");
+    app.handle_stroke("ESC");
+    assert_eq!(app.mode(), AppMode::Browse);
+    app.handle_stroke("l");
+    app.handle_stroke("h");
+    assert_eq!(app.mode(), AppMode::Browse);
+    assert!(!app.should_quit());
+}
+
+#[test]
+fn headline_list_empty_file_is_safe() {
+    let mut app = App::new(paths());
+    app.handle_stroke("l");
+    assert_eq!(app.mode(), AppMode::Headlines);
+    assert!(app.file_headlines().is_empty());
+    app.handle_stroke("j");
+    assert_eq!(app.result_cursor(), 0);
 }

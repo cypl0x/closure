@@ -55,7 +55,20 @@ const DEFAULT_BINDINGS: &[(&str, &str)] = &[
     ("RET", "open-file"),
     ("b", "backlinks"),
     ("c", "capture-start"),
+    ("l", "headline-list"),
 ];
+
+/// One headline as the shell sees it: where it lives, its stable
+/// block id, and its title.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HeadlineRecord {
+    /// File containing the headline.
+    pub path: PathBuf,
+    /// Stable block id (`:ID:`, I2).
+    pub id: String,
+    /// Headline title.
+    pub title: String,
+}
 
 /// Which input surface the shell is on.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -73,6 +86,8 @@ pub enum AppMode {
     Backlinks,
     /// Typing the title of a new capture entry in a minibuffer.
     Capture,
+    /// Navigating the selected file's headlines with a cursor.
+    Headlines,
 }
 
 /// Elm-style application state for the terminal shell. Strokes go in
@@ -89,7 +104,7 @@ pub struct App {
     mode: AppMode,
     query: String,
     result_cursor: usize,
-    headlines: Vec<(PathBuf, String)>,
+    headlines: Vec<HeadlineRecord>,
     sources: Vec<(PathBuf, String)>,
     scroll: usize,
     backlinks: Vec<(PathBuf, PathBuf, String)>,
@@ -193,10 +208,10 @@ impl App {
         self.scroll
     }
 
-    /// Provide the `(file, headline title)` records searched by
-    /// headline mode. Typically harvested from the vault once at
-    /// startup.
-    pub fn set_headlines(&mut self, headlines: Vec<(PathBuf, String)>) {
+    /// Provide the headline records searched by headline mode and
+    /// listed by the per-file headline list. Typically harvested from
+    /// the vault once at startup.
+    pub fn set_headlines(&mut self, headlines: Vec<HeadlineRecord>) {
         self.headlines = headlines;
     }
 
@@ -207,15 +222,31 @@ impl App {
             .headlines
             .iter()
             .enumerate()
-            .filter_map(|(i, (_, t))| closure_query::fuzzy_score(&self.query, t).map(|sc| (i, sc)))
+            .filter_map(|(i, r)| {
+                closure_query::fuzzy_score(&self.query, &r.title).map(|sc| (i, sc))
+            })
             .collect();
         scored.sort_by_key(|&(_, sc)| std::cmp::Reverse(sc));
         scored
             .iter()
             .map(|&(i, _)| {
-                let (p, t) = &self.headlines[i];
-                (p.as_path(), t.as_str())
+                let r = &self.headlines[i];
+                (r.path.as_path(), r.title.as_str())
             })
+            .collect()
+    }
+
+    /// `(title, id)` rows of the selected file's headlines, in record
+    /// order.
+    #[must_use]
+    pub fn file_headlines(&self) -> Vec<(&str, &str)> {
+        let Some(sel) = self.selected_path() else {
+            return Vec::new();
+        };
+        self.headlines
+            .iter()
+            .filter(|r| r.path.as_path() == sel)
+            .map(|r| (r.title.as_str(), r.id.as_str()))
             .collect()
     }
 
@@ -313,6 +344,10 @@ impl App {
             self.handle_capture_stroke(stroke);
             return;
         }
+        if self.mode == AppMode::Headlines {
+            self.handle_headlines_stroke(stroke);
+            return;
+        }
         match self.trie.step(stroke) {
             TrieStep::Resolved(cmd) => {
                 self.pending.clear();
@@ -338,6 +373,21 @@ impl App {
                 self.pending.clear();
                 self.popup = None;
             }
+        }
+    }
+
+    fn handle_headlines_stroke(&mut self, stroke: &str) {
+        match stroke {
+            "j" | "<down>" => {
+                let last = self.file_headlines().len().saturating_sub(1);
+                self.result_cursor = (self.result_cursor + 1).min(last);
+            }
+            "k" | "<up>" => self.result_cursor = self.result_cursor.saturating_sub(1),
+            "ESC" | "q" | "h" | "DEL" => {
+                self.mode = AppMode::Browse;
+                self.result_cursor = 0;
+            }
+            _ => {}
         }
     }
 
@@ -499,6 +549,10 @@ impl App {
                 self.mode = AppMode::Capture;
                 self.query.clear();
             }
+            "headline-list" => {
+                self.mode = AppMode::Headlines;
+                self.result_cursor = 0;
+            }
             "open-file" => {
                 let has_source = self
                     .selected_path()
@@ -594,10 +648,14 @@ pub fn run(vault: &mut Vault) -> Result<(), TuiError> {
 /// titles, file sources, and the backlink rows.
 fn sync_app(app: &mut App, vault: &Vault) {
     app.set_paths(vault.paths());
-    let mut headlines: Vec<(PathBuf, String)> = Vec::new();
+    let mut headlines: Vec<HeadlineRecord> = Vec::new();
     for (path, doc) in vault.iter() {
         for h in doc.all_headlines() {
-            headlines.push((path.to_path_buf(), h.title().to_owned()));
+            headlines.push(HeadlineRecord {
+                path: path.to_path_buf(),
+                id: h.id().as_str().to_owned(),
+                title: h.title().to_owned(),
+            });
         }
     }
     app.set_headlines(headlines);
@@ -719,6 +777,16 @@ fn draw(f: &mut ratatui::Frame<'_>, app: &App, vault: &Vault) {
                 .collect(),
         )),
         AppMode::Capture => Some((format!("capture: {}", app.query()), Vec::new())),
+        AppMode::Headlines => Some((
+            app.selected_path().map_or_else(
+                || "headlines".to_owned(),
+                |p| format!("headlines: {}", p.display()),
+            ),
+            app.file_headlines()
+                .iter()
+                .map(|(t, id)| format!("{t}    [{id}]"))
+                .collect(),
+        )),
         AppMode::Browse | AppMode::FileView => None,
     };
     if let Some((title, rows)) = overlay {
