@@ -48,9 +48,9 @@ reversible option, keep moving.
 * DONE Formulas (Coda-inspired, user's language) [2/2]
 ** DONE closure-eval: =eval_with_input= pipes rows as plain-text stdin, stdout is the result
 ** DONE Column formula: =closure view --formula '<prog>'= computes an extra column per row (tab-separated cells on stdin)
-* TODO Links as a first-class UI [0/2]
-** TODO =closure links --dead= report (dead_link_targets) with file:line locations
-** TODO Link graph export (dot/text) from Vault::link_graph
+* DONE Links as a first-class UI [2/2]
+** DONE =closure dead-links= report: file, source block id, target per dead link
+** DONE =closure graph=: dot export of the id-link graph; backlinks pane in TUI (=b=)
 * TODO Web shell [0/3]
 ** TODO Read-only vault browse over localhost (closure-shell-web::serve grows real pages)
 ** TODO Fuzzy search endpoint + page reusing closure-query
@@ -71,3 +71,10 @@ reversible option, keep moving.
 * Decisions
 Open questions land here as subheadings: context, options considered,
 the reversible default taken, date.
+** Dead-link locations use block ids, not line numbers (2026-06-12)
+The roadmap asked for file:line. The parser is span-preserving but
+DocHeadline exposes tree paths + stable ids, not byte offsets; ids
+are the project's canonical locator (I2) and survive edits where
+line numbers rot. =closure dead-links= therefore prints
+=file<TAB>source-id<TAB>target=. Reversible: add line numbers later
+by exposing headline spans from closure-org.
