@@ -73,6 +73,7 @@ pub struct App {
     quit: bool,
     mode: AppMode,
     query: String,
+    result_cursor: usize,
 }
 
 impl App {
@@ -100,7 +101,14 @@ impl App {
             quit: false,
             mode: AppMode::Browse,
             query: String::new(),
+            result_cursor: 0,
         }
+    }
+
+    /// Index of the highlighted row in [`Self::results`].
+    #[must_use]
+    pub const fn result_cursor(&self) -> usize {
+        self.result_cursor
     }
 
     /// Current input surface.
@@ -218,26 +226,40 @@ impl App {
             "ESC" => {
                 self.mode = AppMode::Browse;
                 self.query.clear();
+                self.result_cursor = 0;
             }
             "RET" => {
                 let idx = self
                     .results()
-                    .first()
-                    .and_then(|best| self.paths.iter().position(|p| p.as_path() == *best));
+                    .get(self.result_cursor)
+                    .and_then(|pick| self.paths.iter().position(|p| p.as_path() == *pick));
                 if idx.is_some() {
                     self.selected = idx;
                 }
                 self.mode = AppMode::Browse;
                 self.query.clear();
+                self.result_cursor = 0;
+            }
+            "<down>" => {
+                let last = self.results().len().saturating_sub(1);
+                self.result_cursor = (self.result_cursor + 1).min(last);
+            }
+            "<up>" => {
+                self.result_cursor = self.result_cursor.saturating_sub(1);
             }
             "DEL" => {
                 self.query.pop();
+                self.result_cursor = 0;
             }
-            "SPC" => self.query.push(' '),
+            "SPC" => {
+                self.query.push(' ');
+                self.result_cursor = 0;
+            }
             s => {
                 let mut chars = s.chars();
                 if let (Some(c), None) = (chars.next(), chars.next()) {
                     self.query.push(c);
+                    self.result_cursor = 0;
                 }
             }
         }
@@ -378,11 +400,6 @@ fn run_loop(
             f.render_widget(body, chunks[1]);
 
             if app.mode() == AppMode::Search {
-                let results: Vec<String> = app
-                    .results()
-                    .iter()
-                    .map(|p| p.display().to_string())
-                    .collect();
                 let title = format!("find file: {}", app.query());
                 let height = area.height / 2;
                 let search_area = ratatui::layout::Rect {
@@ -391,10 +408,18 @@ fn run_loop(
                     width: area.width,
                     height,
                 };
-                let pane = Paragraph::new(results.join("\n"))
-                    .block(Block::default().title(title).borders(Borders::ALL));
+                let items: Vec<ListItem<'_>> = app
+                    .results()
+                    .iter()
+                    .map(|p| ListItem::new(p.display().to_string()))
+                    .collect();
+                let mut state = ListState::default();
+                state.select(Some(app.result_cursor()));
+                let pane = List::new(items)
+                    .block(Block::default().title(title).borders(Borders::ALL))
+                    .highlight_style(Style::default().add_modifier(Modifier::REVERSED));
                 f.render_widget(ratatui::widgets::Clear, search_area);
-                f.render_widget(pane, search_area);
+                f.render_stateful_widget(pane, search_area, &mut state);
             }
 
             if let Some(lines) = app.popup_lines() {

@@ -267,3 +267,75 @@ fn ret_with_no_match_cancels_without_moving() {
     assert_eq!(app.mode(), AppMode::Browse);
     assert_eq!(app.selected_index(), Some(0));
 }
+
+// --- search result cursor ---------------------------------------------
+
+#[test]
+fn search_cursor_starts_at_zero() {
+    let mut app = App::new(paths());
+    app.handle_stroke("/");
+    assert_eq!(app.result_cursor(), 0);
+}
+
+#[test]
+fn down_moves_cursor_and_clamps_at_last_result() {
+    let mut app = App::new(paths());
+    app.handle_stroke("/");
+    app.handle_stroke("o");
+    assert_eq!(app.results().len(), 3, "all paths contain 'o'");
+    app.handle_stroke("<down>");
+    assert_eq!(app.result_cursor(), 1);
+    app.handle_stroke("<down>");
+    app.handle_stroke("<down>");
+    app.handle_stroke("<down>");
+    assert_eq!(app.result_cursor(), 2);
+}
+
+#[test]
+fn up_moves_cursor_and_clamps_at_zero() {
+    let mut app = App::new(paths());
+    app.handle_stroke("/");
+    app.handle_stroke("<down>");
+    app.handle_stroke("<up>");
+    assert_eq!(app.result_cursor(), 0);
+    app.handle_stroke("<up>");
+    assert_eq!(app.result_cursor(), 0);
+}
+
+#[test]
+fn editing_query_resets_cursor() {
+    let mut app = App::new(paths());
+    app.handle_stroke("/");
+    app.handle_stroke("<down>");
+    assert_eq!(app.result_cursor(), 1);
+    app.handle_stroke("o");
+    assert_eq!(app.result_cursor(), 0);
+    app.handle_stroke("<down>");
+    app.handle_stroke("DEL");
+    assert_eq!(app.result_cursor(), 0);
+}
+
+#[test]
+fn ret_picks_cursor_item_not_best_match() {
+    let mut app = App::new(paths());
+    app.handle_stroke("/");
+    app.handle_stroke("o");
+    app.handle_stroke("<down>");
+    app.handle_stroke("RET");
+    assert_eq!(app.mode(), AppMode::Browse);
+    assert_eq!(
+        app.selected_path(),
+        Some(std::path::Path::new("b.org")),
+        "cursor was on the second result"
+    );
+}
+
+#[test]
+fn esc_resets_cursor_too() {
+    let mut app = App::new(paths());
+    app.handle_stroke("/");
+    app.handle_stroke("<down>");
+    app.handle_stroke("ESC");
+    app.handle_stroke("/");
+    assert_eq!(app.result_cursor(), 0);
+}
