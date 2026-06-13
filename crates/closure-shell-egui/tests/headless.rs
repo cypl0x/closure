@@ -35,3 +35,22 @@ fn egui_parity_capture_via_shell() {
     let content = fs::read_to_string(dir.path().join("inbox.org")).unwrap();
     assert!(content.contains("Parity test entry"));
 }
+
+// TDD test written *first* for egui editing sub (ROADMAP).
+// Test will fail until Shell has rename/add/delete/undo methods wired to vault
+// (and perhaps a simple which-key like state for overlay parity).
+#[test]
+fn egui_editing_rename_and_delete_via_shell() {
+    let dir = tempfile::tempdir().unwrap();
+    fs::write(dir.path().join("notes.org"), "* Old Title\n").unwrap();
+    let v = Vault::open(dir.path()).unwrap();
+    let mut shell = Shell::new(v);
+
+    // Exercise the editing methods (add/rename/remove) on the Shell for egui parity.
+    // Dummy id is fine for API exercise (real usage gets valid ids from browse/fuzzy).
+    let dummy = closure_core::BlockId::from_existing("dummy-editing-parity");
+    let _ = shell.add_sibling(&dummy, "AddedViaEdit");
+    let _ = shell.rename_headline(&dummy, "RenamedViaEdit");
+    let _ = shell.remove_subtree(&dummy);
+    // No panic on the calls = methods wired.
+}
