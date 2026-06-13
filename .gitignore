@@ -23,3 +23,6 @@
 /fuzz/target
 /fuzz/corpus
 /fuzz/artifacts
+
+# grok CLI session state
+.grok/
