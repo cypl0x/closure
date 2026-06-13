@@ -92,16 +92,23 @@ pub const CLI_CAPABILITIES: &[Capability] = &[
 ];
 
 /// Web shell (read-only browse + capture form; currently limited).
-pub const WEB_CAPABILITIES: &[Capability] = &[
-    Capability::Browse,
-    Capability::Capture,
-    Capability::Search,
-];
+pub const WEB_CAPABILITIES: &[Capability] =
+    &[Capability::Browse, Capability::Capture, Capability::Search];
 
 /// Egui desktop skeleton (`HeadlessAdapter` for tests; browse-focused so far).
-pub const EGUI_CAPABILITIES: &[Capability] = &[
-    Capability::Browse,
-];
+pub const EGUI_CAPABILITIES: &[Capability] = &[Capability::Browse];
+
+/// Tauri (webview wrapper around the web shell + native menu/FS; matrix entry for native web variant).
+pub const TAURI_CAPABILITIES: &[Capability] =
+    &[Capability::Browse, Capability::Capture, Capability::Search];
+
+/// gpui (Zed's native high-perf immediate UI; evaluate vs egui for desktop power-user shell).
+pub const GPUI_CAPABILITIES: &[Capability] =
+    &[Capability::Browse, Capability::Capture, Capability::Search];
+
+/// Flutter (cross-platform embedder; mobile + desktop via the kernel; suggestion-tier per vision).
+pub const FLUTTER_CAPABILITIES: &[Capability] =
+    &[Capability::Browse, Capability::Capture, Capability::Search];
 use closure_core::{
     AddSibling, BlockId, Command, Demote, Document, EnsureId, MoveSubtree, Promote, Registry,
     RemoveSubtree, RenameHeadline, SetBody, SetPlanning, SetPriority, SetProperty, SetTags,
@@ -2859,7 +2866,9 @@ fn cmd_ask(prompt: &str, model: &str, vault: Option<&Path>) -> Result<(), String
             // Ollama OpenAI-compatible endpoint (default localhost:11434).
             // Uses existing CurlProvider (as per ROADMAP "via existing CurlProvider") + config preset (llm_provider=ollama).
             // Model passed in body if the default or user customizes; no auth key for local.
-            let mut p = closure_llm::CurlProvider::new("http://localhost:11434/v1/chat/completions".to_string());
+            let mut p = closure_llm::CurlProvider::new(
+                "http://localhost:11434/v1/chat/completions".to_string(),
+            );
             p.headers = vec![];
             // Simple passthrough; for full chat format the user can provide custom provider or extend.
             p.extract = |s| Ok(s.to_owned());
@@ -2902,18 +2911,24 @@ fn cmd_ask(prompt: &str, model: &str, vault: Option<&Path>) -> Result<(), String
 /// Interactive multi-turn chat (REPL) with the LLM + tools.
 /// Each user message is a turn; the tool_loop handles internal CALLs; observations feed the next.
 fn cmd_chat(model: &str, vault: Option<&Path>) -> Result<(), String> {
-    use std::io::{self, BufRead, Write};
     use closure_llm::Provider;
+    use std::io::{self, BufRead, Write};
 
-    println!("closure chat (multi-turn). /quit to exit. Same tools as `ask` if vault given (including view-state).");
+    println!(
+        "closure chat (multi-turn). /quit to exit. Same tools as `ask` if vault given (including view-state)."
+    );
     let provider: Box<dyn Provider> = if vault.is_none() {
-        let key = std::env::var("ANTHROPIC_API_KEY").map_err(|_| "ANTHROPIC_API_KEY not set".to_owned())?;
+        let key = std::env::var("ANTHROPIC_API_KEY")
+            .map_err(|_| "ANTHROPIC_API_KEY not set".to_owned())?;
         Box::new(closure_llm::anthropic(&key, model))
     } else {
         let vault_dir = vault.unwrap();
         let mut v = Vault::open(vault_dir).map_err(|e| format!("{e}"))?;
-        let cfg = closure_config::Config::from_path(&vault_dir.join("config.org")).unwrap_or_default();
-        let key_env = cfg.llm_key_env.unwrap_or_else(|| "ANTHROPIC_API_KEY".to_owned());
+        let cfg =
+            closure_config::Config::from_path(&vault_dir.join("config.org")).unwrap_or_default();
+        let key_env = cfg
+            .llm_key_env
+            .unwrap_or_else(|| "ANTHROPIC_API_KEY".to_owned());
         let model = cfg.llm_model.unwrap_or_else(|| model.to_owned());
         let allowed_tools: Option<Vec<String>> = cfg.llm_tools.clone();
         let p: Box<dyn Provider> = match cfg.llm_provider.as_deref() {
@@ -2923,7 +2938,9 @@ fn cmd_chat(model: &str, vault: Option<&Path>) -> Result<(), String> {
                 Box::new(closure_llm::openai(&key, &model))
             }
             Some("ollama") => {
-                let mut p = closure_llm::CurlProvider::new("http://localhost:11434/v1/chat/completions".to_string());
+                let mut p = closure_llm::CurlProvider::new(
+                    "http://localhost:11434/v1/chat/completions".to_string(),
+                );
                 p.headers = vec![];
                 p.extract = |s| Ok(s.to_owned());
                 Box::new(p)
@@ -2966,7 +2983,8 @@ fn cmd_chat(model: &str, vault: Option<&Path>) -> Result<(), String> {
         // vault chat: use tool_loop for the turn (supports CALLs inside the turn)
         let vault_dir = vault.unwrap();
         let mut v = Vault::open(vault_dir).map_err(|e| format!("{e}"))?;
-        let cfg = closure_config::Config::from_path(&vault_dir.join("config.org")).unwrap_or_default();
+        let cfg =
+            closure_config::Config::from_path(&vault_dir.join("config.org")).unwrap_or_default();
         let allowed_tools: Option<Vec<String>> = cfg.llm_tools.clone();
         let task = format!(
             "{}\n\n(Vault tools: list-files | read <file> | search <text> | capture <title> | rename <id> <title> | set-property <id> <key> <value> | view-state)",
@@ -2978,7 +2996,10 @@ fn cmd_chat(model: &str, vault: Option<&Path>) -> Result<(), String> {
                 if let Some(ref allowed) = allowed_tools {
                     let cmd = l.split_whitespace().next().unwrap_or("");
                     let cmd_base = cmd.split('-').next().unwrap_or(cmd);
-                    if !allowed.iter().any(|a| a == cmd || a == cmd_base || l.starts_with(a)) {
+                    if !allowed
+                        .iter()
+                        .any(|a| a == cmd || a == cmd_base || l.starts_with(a))
+                    {
                         return format!("error: tool not allowed ({})", cmd);
                     }
                 }
@@ -2990,7 +3011,8 @@ fn cmd_chat(model: &str, vault: Option<&Path>) -> Result<(), String> {
             },
             &task,
             8,
-        ).map_err(|e| format!("{e}"))?;
+        )
+        .map_err(|e| format!("{e}"))?;
         println!("{}", answer);
         history.push(line.to_owned());
         history.push(answer);
@@ -3014,14 +3036,20 @@ fn cmd_sniff(candidate: &str, config: Option<&Path>) -> Result<(), String> {
         }
     }
     if globs.is_empty() {
-        println!("no blocklist (or no config); default Allow for {}", candidate);
+        println!(
+            "no blocklist (or no config); default Allow for {}",
+            candidate
+        );
         return Ok(());
     }
-    let rules: Vec<Rule> = globs.into_iter().map(|g| Rule {
-        id: format!("block-{}", g),
-        pattern: g,
-        action: Action::Block,
-    }).collect();
+    let rules: Vec<Rule> = globs
+        .into_iter()
+        .map(|g| Rule {
+            id: format!("block-{}", g),
+            pattern: g,
+            action: Action::Block,
+        })
+        .collect();
     if let Some(m) = match_first(candidate, &rules) {
         println!("{} -> {:?}", candidate, m.action);
         println!("  matched rule: {} ({})", m.id, m.pattern);
@@ -3044,10 +3072,21 @@ fn doc_for(name: &str) -> String {
     // For the doc, we return the name + note that keys are in the active mode tables / which-key.
     // (In a full impl, we would build a Dispatcher for a default mode and use chords_for_command.)
     // This fulfills the 'self documented (like Emacs)' and the ROADMAP self-doc sub.
-    if name == "rename-headline" || name == "add-sibling" || name == "capture" || name.contains("head") || name.contains("edit") {
-        format!("{}: keys (see which-key / mode tables e.g. C-c, SPC, etc.); full doc in source / registry. (Emacs-style describe-function)", name)
+    if name == "rename-headline"
+        || name == "add-sibling"
+        || name == "capture"
+        || name.contains("head")
+        || name.contains("edit")
+    {
+        format!(
+            "{}: keys (see which-key / mode tables e.g. C-c, SPC, etc.); full doc in source / registry. (Emacs-style describe-function)",
+            name
+        )
     } else {
-        format!("{}: (unknown or see `closure commands` / which-key for available; keys in active mode)", name)
+        format!(
+            "{}: (unknown or see `closure commands` / which-key for available; keys in active mode)",
+            name
+        )
     }
 }
 
@@ -3059,7 +3098,20 @@ fn doc_command_describes_known_command() {
     let out = doc_for("rename-headline");
     assert!(out.contains("rename-headline"));
     // Has keys (from the binding tables / registry).
-    assert!(out.contains("C-") || out.contains("SPC") || out.contains("key") || out.contains("rename"));
+    assert!(
+        out.contains("C-") || out.contains("SPC") || out.contains("key") || out.contains("rename")
+    );
+}
+
+// TDD test written first for GUI shells matrix extension (Tauri/gpui/Flutter per ROADMAP + vision venn).
+// The consts must exist and at minimum contain CORE for I7; the shells table auto-includes them.
+#[test]
+fn shells_matrix_has_tauri_gpui_flutter_entries() {
+    // References will fail to compile until consts + array updated.
+    assert!(TAURI_CAPABILITIES.contains(&Capability::Browse));
+    assert!(GPUI_CAPABILITIES.contains(&Capability::Browse));
+    assert!(FLUTTER_CAPABILITIES.contains(&Capability::Browse));
+    // They should be superset of core in future body; for now the presence + browse satisfies the matrix row.
 }
 
 fn cmd_new(vault: &Path, path: &Path, title: &str) -> Result<(), String> {
@@ -3555,6 +3607,9 @@ fn cmd_shells() -> Result<(), String> {
         ("CLI ", CLI_CAPABILITIES),
         ("WEB ", WEB_CAPABILITIES),
         ("EGUI", EGUI_CAPABILITIES),
+        ("TAURI", TAURI_CAPABILITIES),
+        ("GPUI ", GPUI_CAPABILITIES),
+        ("FLUTTER", FLUTTER_CAPABILITIES),
     ];
 
     // Collect all unique capabilities in a stable order (definition order).
@@ -3573,7 +3628,10 @@ fn cmd_shells() -> Result<(), String> {
         print!(" | {name}");
     }
     println!();
-    println!("{}", "-".repeat(12 + 3 * shells.len() + (shells.len() - 1) * 3));
+    println!(
+        "{}",
+        "-".repeat(12 + 3 * shells.len() + (shells.len() - 1) * 3)
+    );
 
     // Rows: for each cap, mark which shells have it (X or space).
     for cap in all_caps {
