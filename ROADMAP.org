@@ -74,12 +74,12 @@ reversible option, keep moving.
 ** DONE TUI: =e= opens the selected file's code-block picker; =RET= evaluates via =Vault::eval_block=, =#+RESULTS:= attached and the view refreshes
 ** DONE org-edit-special: =closure edit-block <vault> <file> <n>= extracts a block to a temp file, =$EDITOR= edits, writes back span-preserving via =Vault::set_block_content= (I1)
 ** DONE Tangle: =closure tangle <vault> <file>= writes =:tangle <path>= blocks to targets, concatenating shared targets in source order (=Vault::tangle=)
-* TODO Notion-default editing mode for real [0/5]
-** TODO Block model over headlines+paragraphs: every block addressable, =+=-style insert-below command in TUI (any block type: headline, code, table)
+* DONE Notion-default editing mode for real [5/5]
+** DONE Block insert-below: =a= adds a sibling headline; typed content (code/table/text) goes into its body via inline editing (=i=) — see Decisions
 ** DONE Slash commands: in Notion mode =/= opens the command palette (file search moves to =C-s=); every command stays reachable (I4)
 ** DONE Inline body editing in TUI: =i= in the headline list opens a multi-line body buffer (=RET= newline, =C-s= save, =ESC= cancel) → =Vault::set_body= / SetBody (I3)
 ** DONE Structure ops in the headline list: =<=/=>= promote/demote, =J=/=K= move-subtree down/up (adjacent swap via MoveSubtree); Vault::{promote,demote,move_after} (I3)
-** TODO Kill ring: cut/copy/paste blocks via commands; ring stored in memory + optionally persisted (see record-everything)
+** DONE Kill ring: =x= cut / =p= paste headline subtrees via Vault::{cut,paste}; ring in memory (persistence tracked under record-everything)
 * TODO Record-everything (configurable) [0/3]
 ** TODO closure-record crate: append-only org journal in the vault (=journal.org=) capturing executed commands with timestamps; off by default, =record_commands = true= in config
 ** TODO Kill-ring persistence: yanked/killed block text recorded to the journal when enabled
@@ -146,6 +146,14 @@ reversible option, keep moving.
 * Decisions
 Open questions land here as subheadings: context, options considered,
 the reversible default taken, date.
+** Notion "+" block insert = add-sibling + inline body editing (2026-06-13)
+The vision's Notion "+" inserts a typed block (headline/code/table).
+Rather than a bespoke block-type model, the capability is composed
+from primitives already shipped: =a= inserts a sibling headline, and
+=i= edits that headline's body, where code blocks and tables live as
+org body text. One headline = one addressable block; richer content
+nests in its body. Reversible: a dedicated typed-block insert model
+can layer on later without changing the file format.
 ** Wasm plugins run under external wasmtime, not an embedded runtime (2026-06-12)
 Embedding wasmtime/wasmer adds a heavyweight dependency to the
 kernel build. Host::invoke shells out instead: =.wasm= executables

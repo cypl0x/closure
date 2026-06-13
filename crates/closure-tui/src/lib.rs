@@ -261,6 +261,8 @@ pub struct App {
     body_request: Option<(String, String)>,
     struct_request: Option<(String, String)>,
     move_request: Option<(String, String)>,
+    cut_request: Option<String>,
+    paste_request: Option<String>,
 }
 
 impl App {
@@ -321,7 +323,21 @@ impl App {
             body_request: None,
             struct_request: None,
             move_request: None,
+            cut_request: None,
+            paste_request: None,
         }
+    }
+
+    /// Consume the block id whose subtree the user cut. The shell
+    /// pushes it onto the kill ring and removes it.
+    pub const fn take_cut_request(&mut self) -> Option<String> {
+        self.cut_request.take()
+    }
+
+    /// Consume the block id after which the user pasted the kill-ring
+    /// top. The shell performs the splice.
+    pub const fn take_paste_request(&mut self) -> Option<String> {
+        self.paste_request.take()
     }
 
     /// Consume the `(id, after-id)` subtree move confirmed by the
@@ -761,6 +777,16 @@ impl App {
                 let op = if stroke == "<" { "promote" } else { "demote" };
                 if let Some((_, id)) = self.file_headlines().get(self.result_cursor) {
                     self.struct_request = Some((op.to_owned(), (*id).to_owned()));
+                }
+            }
+            "x" => {
+                if let Some((_, id)) = self.file_headlines().get(self.result_cursor) {
+                    self.cut_request = Some((*id).to_owned());
+                }
+            }
+            "p" => {
+                if let Some((_, id)) = self.file_headlines().get(self.result_cursor) {
+                    self.paste_request = Some((*id).to_owned());
                 }
             }
             "J" => {
@@ -1412,12 +1438,6 @@ fn run_loop(
 /// the app on success. Soft errors (missing block, empty history) are
 /// no-ops; hard errors propagate.
 fn apply_requests(app: &mut App, vault: &mut Vault) -> Result<(), TuiError> {
-    let soft = |e: &closure_store::VaultError| {
-        matches!(
-            e,
-            closure_store::VaultError::Command(_) | closure_store::VaultError::Undo(_)
-        )
-    };
     let vault_err = |e: closure_store::VaultError| TuiError::Vault(e.to_string());
     if let Some(title) = app.take_capture_request() {
         let template = closure_store::CaptureTemplate {
@@ -1452,59 +1472,79 @@ fn apply_requests(app: &mut App, vault: &mut Vault) -> Result<(), TuiError> {
             .map_err(vault_err)?;
         sync_app(app, vault);
     }
-    if let Some((op, id)) = app.take_struct_request() {
-        let bid = closure_core::BlockId::from_existing(&id);
-        let r = if op == "promote" {
-            vault.promote(&bid)
-        } else {
-            vault.demote(&bid)
-        };
-        match r {
-            Ok(()) => sync_app(app, vault),
-            Err(e) if soft(&e) => {}
-            Err(e) => return Err(vault_err(e)),
-        }
-    }
-    if let Some((id, after)) = app.take_move_request() {
-        match vault.move_after(
-            &closure_core::BlockId::from_existing(&id),
-            &closure_core::BlockId::from_existing(&after),
-        ) {
-            Ok(()) => sync_app(app, vault),
-            Err(e) if soft(&e) => {}
-            Err(e) => return Err(vault_err(e)),
-        }
-    }
-    if let Some((path, index)) = app.take_eval_request() {
-        match vault.eval_block(&path, index) {
-            Ok(_) => sync_app(app, vault),
-            Err(e) if soft(&e) => {}
-            Err(e) => return Err(vault_err(e)),
-        }
-    }
     if let Some((id, key, value)) = app.take_property_request() {
         vault
             .set_property(&closure_core::BlockId::from_existing(&id), &key, &value)
             .map_err(vault_err)?;
         sync_app(app, vault);
     }
+    apply_structure_requests(app, vault)
+}
+
+/// Drain the structural / history requests (promote, demote, move,
+/// cut, paste, eval, undo, redo). These tolerate soft errors —
+/// a missing block or empty history is a no-op, not a crash.
+fn apply_structure_requests(app: &mut App, vault: &mut Vault) -> Result<(), TuiError> {
+    let soft = |e: &closure_store::VaultError| {
+        matches!(
+            e,
+            closure_store::VaultError::Command(_) | closure_store::VaultError::Undo(_)
+        )
+    };
+    // Run a vault op that may soft-fail, re-syncing on success.
+    let run = |r: Result<(), closure_store::VaultError>,
+               app: &mut App,
+               vault: &mut Vault|
+     -> Result<(), TuiError> {
+        match r {
+            Ok(()) => {
+                sync_app(app, vault);
+                Ok(())
+            }
+            Err(e) if soft(&e) => Ok(()),
+            Err(e) => Err(TuiError::Vault(e.to_string())),
+        }
+    };
+    let bid = closure_core::BlockId::from_existing;
+    if let Some((op, id)) = app.take_struct_request() {
+        let r = if op == "promote" {
+            vault.promote(&bid(&id))
+        } else {
+            vault.demote(&bid(&id))
+        };
+        run(r, app, vault)?;
+    }
+    if let Some((id, after)) = app.take_move_request() {
+        let r = vault.move_after(&bid(&id), &bid(&after));
+        run(r, app, vault)?;
+    }
+    if let Some(id) = app.take_cut_request()
+        && let Some(path) = app.selected_path().map(Path::to_path_buf)
+    {
+        let r = vault.cut(&path, &bid(&id));
+        run(r, app, vault)?;
+    }
+    if let Some(id) = app.take_paste_request()
+        && let Some(path) = app.selected_path().map(Path::to_path_buf)
+    {
+        let r = vault.paste(&path, &bid(&id));
+        run(r, app, vault)?;
+    }
+    if let Some((path, index)) = app.take_eval_request() {
+        let r = vault.eval_block(&path, index).map(|_| ());
+        run(r, app, vault)?;
+    }
     if app.take_undo_request()
         && let Some(path) = app.selected_path().map(Path::to_path_buf)
     {
-        match vault.undo_in(&path) {
-            Ok(()) => sync_app(app, vault),
-            Err(e) if soft(&e) => {}
-            Err(e) => return Err(vault_err(e)),
-        }
+        let r = vault.undo_in(&path);
+        run(r, app, vault)?;
     }
     if app.take_redo_request()
         && let Some(path) = app.selected_path().map(Path::to_path_buf)
     {
-        match vault.redo_in(&path) {
-            Ok(()) => sync_app(app, vault),
-            Err(e) if soft(&e) => {}
-            Err(e) => return Err(vault_err(e)),
-        }
+        let r = vault.redo_in(&path);
+        run(r, app, vault)?;
     }
     Ok(())
 }

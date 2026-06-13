@@ -1495,3 +1495,35 @@ fn notion_palette_lists_insert_commands() {
         "insert-ish commands reachable"
     );
 }
+
+// --- kill ring (cut / paste) -----------------------------------------------
+
+#[test]
+fn x_cuts_cursor_headline() {
+    let mut app = app_with_headlines();
+    app.handle_stroke("l");
+    app.handle_stroke("j");
+    app.handle_stroke("x");
+    assert_eq!(app.mode(), AppMode::Headlines);
+    assert_eq!(app.take_cut_request(), Some("id-a2".to_owned()));
+    assert_eq!(app.take_cut_request(), None);
+}
+
+#[test]
+fn p_pastes_after_cursor_headline() {
+    let mut app = app_with_headlines();
+    app.handle_stroke("l");
+    app.handle_stroke("p");
+    assert_eq!(app.take_paste_request(), Some("id-a1".to_owned()));
+    assert_eq!(app.take_paste_request(), None);
+}
+
+#[test]
+fn cut_paste_on_empty_list_are_noop() {
+    let mut app = App::new(paths());
+    app.handle_stroke("l");
+    app.handle_stroke("x");
+    app.handle_stroke("p");
+    assert_eq!(app.take_cut_request(), None);
+    assert_eq!(app.take_paste_request(), None);
+}
