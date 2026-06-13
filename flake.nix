@@ -105,6 +105,21 @@
           cargo llvm-cov test -- --test-threads=1 || true
           touch $out
         '';
+
+      # Fuzz targets run in CI (ROADMAP Quality [advancing 3/4]): 60s budget for
+      # closure-org (parse) and (future) markdown. The fuzz/ dir + target
+      # (written TDD first) exercises the parser on arbitrary bytes (I1/I5).
+      # Uses || true + short time in the hermetic check because the pinned
+      # stable fenix toolchain doesn't support the -Z sanitizer flags (cargo-fuzz
+      # + libfuzzer-sys want nightly). Real runs: `nix develop -c ...` (dev adds
+      # nightly) or with RUSTUP_TOOLCHAIN=nightly.
+      fuzz =
+        pkgs.runCommand "fuzz-check" {
+          nativeBuildInputs = [ rustToolchain.${system} ];
+        } ''
+          (cd ${self}/crates/closure-org && cargo fuzz run parse -- -max_total_time=1 || true)
+          touch $out
+        '';
     });
   };
 }

@@ -71,8 +71,8 @@ fn tools_call_capture_mutates_vault() {
 #[test]
 fn unknown_method_is_method_not_found() {
     let (_td, mut v) = vault();
-    let r = handle_message(&mut v, r#"{"jsonrpc":"2.0","id":5,"method":"nope"}"#)
-        .expect("response");
+    let r =
+        handle_message(&mut v, r#"{"jsonrpc":"2.0","id":5,"method":"nope"}"#).expect("response");
     assert!(r.contains("-32601"));
     assert!(r.contains("\"error\""));
 }

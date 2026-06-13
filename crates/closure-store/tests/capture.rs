@@ -32,9 +32,13 @@ fn todo_template(target: &str) -> CaptureTemplate {
 fn capture_appends_to_existing_file_preserving_bytes() {
     let td = write_vault(&[("a.org", "* A\nbody\n")]);
     let mut v = Vault::open(td.path()).expect("open");
-    v.capture(&todo_template("a.org"), "Buy milk").expect("capture");
+    v.capture(&todo_template("a.org"), "Buy milk")
+        .expect("capture");
     let disk = fs::read_to_string(td.path().join("a.org")).expect("read");
-    assert!(disk.starts_with("* A\nbody\n"), "old bytes must be a prefix");
+    assert!(
+        disk.starts_with("* A\nbody\n"),
+        "old bytes must be a prefix"
+    );
     assert!(disk.contains("Buy milk"));
     assert!(disk.contains(":ID:"));
 }
@@ -43,7 +47,9 @@ fn capture_appends_to_existing_file_preserving_bytes() {
 fn capture_entry_has_todo_keyword_and_title() {
     let td = write_vault(&[("a.org", "* A\n")]);
     let mut v = Vault::open(td.path()).expect("open");
-    let id = v.capture(&todo_template("a.org"), "Buy milk").expect("capture");
+    let id = v
+        .capture(&todo_template("a.org"), "Buy milk")
+        .expect("capture");
     let (h, path) = v.find_by_id(&id).expect("captured headline resolvable");
     assert_eq!(h.title(), "Buy milk");
     assert_eq!(h.todo(), Some("TODO"));
@@ -55,7 +61,8 @@ fn capture_creates_missing_target_file() {
     let td = write_vault(&[("a.org", "* A\n")]);
     let mut v = Vault::open(td.path()).expect("open");
     assert_eq!(v.len(), 1);
-    v.capture(&todo_template("inbox.org"), "First").expect("capture");
+    v.capture(&todo_template("inbox.org"), "First")
+        .expect("capture");
     assert_eq!(v.len(), 2, "new file joins the vault");
     assert!(td.path().join("inbox.org").exists());
 }
@@ -97,7 +104,8 @@ fn capture_ids_are_unique() {
 fn capture_keeps_vault_and_disk_in_sync() {
     let td = write_vault(&[("a.org", "* A\n")]);
     let mut v = Vault::open(td.path()).expect("open");
-    v.capture(&todo_template("a.org"), "Synced").expect("capture");
+    v.capture(&todo_template("a.org"), "Synced")
+        .expect("capture");
     let disk = fs::read_to_string(td.path().join("a.org")).expect("read");
     let mem = v
         .document(&td.path().join("a.org"))
@@ -110,7 +118,8 @@ fn capture_keeps_vault_and_disk_in_sync() {
 fn captured_file_reopens_cleanly() {
     let td = write_vault(&[("a.org", "* A\n")]);
     let mut v = Vault::open(td.path()).expect("open");
-    v.capture(&todo_template("a.org"), "Reopen me").expect("capture");
+    v.capture(&todo_template("a.org"), "Reopen me")
+        .expect("capture");
     let reopened = Vault::open(td.path()).expect("reopen");
     assert_eq!(reopened.len(), 1);
     assert!(reopened.find_by_title("Reopen me").is_some());

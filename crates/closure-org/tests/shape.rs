@@ -605,8 +605,7 @@ fn set_planning_clear_removes_line() {
 fn rewrite_clear_drawer_removes_named_drawer() {
     let src = "* Task\n:LOGBOOK:\n- old entry\n:END:\nbody\n";
     let doc = parse(src).expect("parse");
-    let new = closure_org::rewrite_headline_clear_drawer(&doc, &[0], "LOGBOOK")
-        .expect("clear");
+    let new = closure_org::rewrite_headline_clear_drawer(&doc, &[0], "LOGBOOK").expect("clear");
     let out = closure_org::print(&new);
     assert!(!out.contains(":LOGBOOK:"));
     assert!(!out.contains("old entry"));
@@ -617,8 +616,7 @@ fn rewrite_clear_drawer_removes_named_drawer() {
 fn rewrite_clear_drawer_no_op_if_absent() {
     let src = "* Task\nbody\n";
     let doc = parse(src).expect("parse");
-    let new = closure_org::rewrite_headline_clear_drawer(&doc, &[0], "LOGBOOK")
-        .expect("clear");
+    let new = closure_org::rewrite_headline_clear_drawer(&doc, &[0], "LOGBOOK").expect("clear");
     assert_eq!(closure_org::print(&new), src);
 }
 
@@ -1098,7 +1096,8 @@ fn empty_title_count_walks_tree() {
 
 #[test]
 fn id_edges_returns_id_links() {
-    let src = "* A\n:PROPERTIES:\n:ID: SRC\n:END:\nLink [[id:TGT]]\n* B\n:PROPERTIES:\n:ID: TGT\n:END:\n";
+    let src =
+        "* A\n:PROPERTIES:\n:ID: SRC\n:END:\nLink [[id:TGT]]\n* B\n:PROPERTIES:\n:ID: TGT\n:END:\n";
     let doc = parse(src).expect("parse");
     let edges = doc.id_edges();
     assert_eq!(edges.len(), 1);
@@ -1172,7 +1171,10 @@ fn id_pct_returns_percent() {
 #[test]
 fn longest_title_picks_widest() {
     let doc = parse("* short\n* a much longer title here\n* mid\n").expect("parse");
-    assert_eq!(doc.longest_title().expect("h").title(), "a much longer title here");
+    assert_eq!(
+        doc.longest_title().expect("h").title(),
+        "a much longer title here"
+    );
 }
 
 #[test]
@@ -1261,10 +1263,7 @@ fn first_with_priority_returns_match() {
 fn first_with_property_returns_match() {
     let src = "* A\n* B\n:PROPERTIES:\n:EFFORT: 2h\n:END:\n* C\n";
     let doc = parse(src).expect("parse");
-    assert_eq!(
-        doc.first_with_property("EFFORT").expect("h").title(),
-        "B"
-    );
+    assert_eq!(doc.first_with_property("EFFORT").expect("h").title(), "B");
 }
 
 #[test]
@@ -1326,7 +1325,8 @@ fn count_descendant_leaves_only_terminal() {
 
 #[test]
 fn count_descendants_with_id_filters() {
-    let src = "* Root\n** A\n:PROPERTIES:\n:ID: x\n:END:\n** B\n*** C\n:PROPERTIES:\n:ID: y\n:END:\n";
+    let src =
+        "* Root\n** A\n:PROPERTIES:\n:ID: x\n:END:\n** B\n*** C\n:PROPERTIES:\n:ID: y\n:END:\n";
     let doc = parse(src).expect("parse");
     let root = &doc.roots()[0];
     assert_eq!(root.count_descendants_with_id(), 2);
@@ -1350,11 +1350,7 @@ fn descendant_leaves_returns_matching() {
     let src = "* A\n** B\n*** C\n** D\n";
     let doc = parse(src).expect("parse");
     let root = &doc.roots()[0];
-    let leaves: Vec<&str> = root
-        .descendant_leaves()
-        .iter()
-        .map(|h| h.title())
-        .collect();
+    let leaves: Vec<&str> = root.descendant_leaves().iter().map(|h| h.title()).collect();
     assert_eq!(leaves, vec!["C", "D"]);
 }
 
@@ -1363,11 +1359,7 @@ fn descendant_todos_returns_todo_subtree() {
     let src = "* Root\n** TODO A\n*** B\n** DONE C\n";
     let doc = parse(src).expect("parse");
     let root = &doc.roots()[0];
-    let titles: Vec<&str> = root
-        .descendant_todos()
-        .iter()
-        .map(|h| h.title())
-        .collect();
+    let titles: Vec<&str> = root.descendant_todos().iter().map(|h| h.title()).collect();
     assert_eq!(titles, vec!["A", "C"]);
 }
 
@@ -1830,10 +1822,7 @@ fn doc_last_root_returns_last() {
 #[test]
 fn doc_root_titles_iter_match() {
     let doc = parse("* A\n* B\n* C\n").expect("parse");
-    let titles: Vec<&str> = doc
-        .iter_roots()
-        .map(closure_org::Headline::title)
-        .collect();
+    let titles: Vec<&str> = doc.iter_roots().map(closure_org::Headline::title).collect();
     assert_eq!(titles, vec!["A", "B", "C"]);
 }
 
@@ -1934,14 +1923,8 @@ fn doc_root_at_or_default_returns_first_or_target() {
 #[test]
 fn doc_position_predicate_returns_index() {
     let doc = parse("* A\n** B\n** C :match:\n").expect("parse");
-    assert_eq!(
-        doc.headline_index_of(|h| h.has_tag("match")),
-        Some(2)
-    );
-    assert_eq!(
-        doc.headline_index_of(|h| h.has_tag("none")),
-        None
-    );
+    assert_eq!(doc.headline_index_of(|h| h.has_tag("match")), Some(2));
+    assert_eq!(doc.headline_index_of(|h| h.has_tag("none")), None);
 }
 
 #[test]
@@ -2209,10 +2192,7 @@ fn doc_descendant_with_id_returns_match() {
 fn doc_descendant_with_title_returns_match() {
     let src = "* Top\n** Inner\n*** Leaf\n";
     let doc = parse(src).expect("parse");
-    assert_eq!(
-        doc.descendant_with_title("Leaf").expect("hit").level(),
-        3
-    );
+    assert_eq!(doc.descendant_with_title("Leaf").expect("hit").level(), 3);
     assert!(doc.descendant_with_title("Missing").is_none());
 }
 
@@ -2365,7 +2345,8 @@ fn doc_descendants_commented_returns_all() {
 
 #[test]
 fn doc_descendants_with_property_returns_all() {
-    let src = "* A\n:PROPERTIES:\n:CATEGORY: x\n:END:\n* B\n:PROPERTIES:\n:CATEGORY: y\n:END:\n* C\n";
+    let src =
+        "* A\n:PROPERTIES:\n:CATEGORY: x\n:END:\n* B\n:PROPERTIES:\n:CATEGORY: y\n:END:\n* C\n";
     let doc = parse(src).expect("parse");
     let v = doc.descendants_with_property("CATEGORY");
     assert_eq!(v.iter().map(|h| h.title()).collect::<Vec<_>>(), ["A", "B"]);
@@ -2538,10 +2519,7 @@ fn doc_root_titles_archived_returns_strs() {
 fn doc_root_titles_commented_returns_strs() {
     let src = "* COMMENT A\n* B\n* COMMENT C\n";
     let doc = parse(src).expect("parse");
-    assert_eq!(
-        doc.root_titles_commented(),
-        vec!["COMMENT A", "COMMENT C"]
-    );
+    assert_eq!(doc.root_titles_commented(), vec!["COMMENT A", "COMMENT C"]);
 }
 
 #[test]
@@ -3807,7 +3785,10 @@ fn doc_subtree_count_with_id_of_match() {
 fn doc_subtree_tags_of_match() {
     let src = "* A :a:\n:PROPERTIES:\n:ID: a\n:END:\n** B :b:a:\n";
     let doc = parse(src).expect("parse");
-    assert_eq!(doc.subtree_tags_of("a").expect("hit"), vec!["a".to_owned(), "b".to_owned()]);
+    assert_eq!(
+        doc.subtree_tags_of("a").expect("hit"),
+        vec!["a".to_owned(), "b".to_owned()]
+    );
     assert!(doc.subtree_tags_of("missing").is_none());
 }
 
@@ -3815,7 +3796,10 @@ fn doc_subtree_tags_of_match() {
 fn doc_subtree_todos_of_match() {
     let src = "* TODO A\n:PROPERTIES:\n:ID: a\n:END:\n** DONE B\n";
     let doc = parse(src).expect("parse");
-    assert_eq!(doc.subtree_todos_of("a").expect("hit"), vec!["DONE".to_owned(), "TODO".to_owned()]);
+    assert_eq!(
+        doc.subtree_todos_of("a").expect("hit"),
+        vec!["DONE".to_owned(), "TODO".to_owned()]
+    );
 }
 
 #[test]
@@ -3877,7 +3861,8 @@ fn headline_subtree_id_count_match() {
 
 #[test]
 fn headline_subtree_property_keys_sorted_unique() {
-    let src = "* A\n:PROPERTIES:\n:K1: 1\n:K2: 2\n:END:\n** B\n:PROPERTIES:\n:K2: 3\n:K3: 4\n:END:\n";
+    let src =
+        "* A\n:PROPERTIES:\n:K1: 1\n:K2: 2\n:END:\n** B\n:PROPERTIES:\n:K2: 3\n:K3: 4\n:END:\n";
     let doc = parse(src).expect("parse");
     let top = &doc.roots()[0];
     assert_eq!(
@@ -3932,7 +3917,8 @@ fn doc_subtree_total_property_count_of_match() {
 
 #[test]
 fn doc_distinct_property_keys_sorted_unique() {
-    let src = "* A\n:PROPERTIES:\n:K1: 1\n:K2: 2\n:END:\n* B\n:PROPERTIES:\n:K2: 3\n:K3: 4\n:END:\n";
+    let src =
+        "* A\n:PROPERTIES:\n:K1: 1\n:K2: 2\n:END:\n* B\n:PROPERTIES:\n:K2: 3\n:K3: 4\n:END:\n";
     let doc = parse(src).expect("parse");
     assert_eq!(
         doc.distinct_property_keys(),
@@ -5420,10 +5406,9 @@ fn doc_median_subtree_todo_count_none_when_empty() {
 
 #[test]
 fn doc_max_min_subtree_property_count_match() {
-    let doc = parse(
-        "* A\n:PROPERTIES:\n:K1: v\n:K2: w\n:END:\n** B\n:PROPERTIES:\n:K3: x\n:END:\n* C\n",
-    )
-    .expect("parse");
+    let doc =
+        parse("* A\n:PROPERTIES:\n:K1: v\n:K2: w\n:END:\n** B\n:PROPERTIES:\n:K3: x\n:END:\n* C\n")
+            .expect("parse");
     // subtree props: A=2+1=3, B=1, C=0 -> max 3, min 0
     assert_eq!(doc.max_subtree_property_count(), 3);
     assert_eq!(doc.min_subtree_property_count(), 0);
@@ -5431,10 +5416,9 @@ fn doc_max_min_subtree_property_count_match() {
 
 #[test]
 fn doc_total_subtree_property_count_match() {
-    let doc = parse(
-        "* A\n:PROPERTIES:\n:K1: v\n:K2: w\n:END:\n** B\n:PROPERTIES:\n:K3: x\n:END:\n* C\n",
-    )
-    .expect("parse");
+    let doc =
+        parse("* A\n:PROPERTIES:\n:K1: v\n:K2: w\n:END:\n** B\n:PROPERTIES:\n:K3: x\n:END:\n* C\n")
+            .expect("parse");
     // 3+1+0 = 4
     assert_eq!(doc.total_subtree_property_count(), 4);
 }
@@ -5460,10 +5444,9 @@ fn doc_subtree_property_count_zero_when_empty() {
 
 #[test]
 fn doc_median_subtree_property_count_match() {
-    let doc = parse(
-        "* A\n:PROPERTIES:\n:K1: v\n:K2: w\n:END:\n** B\n:PROPERTIES:\n:K3: x\n:END:\n* C\n",
-    )
-    .expect("parse");
+    let doc =
+        parse("* A\n:PROPERTIES:\n:K1: v\n:K2: w\n:END:\n** B\n:PROPERTIES:\n:K3: x\n:END:\n* C\n")
+            .expect("parse");
     // counts: A=3, B=1, C=0 -> sorted 0,1,3 -> median 1
     assert_eq!(doc.median_subtree_property_count(), Some(1));
 }
@@ -5498,8 +5481,8 @@ fn doc_median_subtree_property_count_none_when_empty() {
 
 #[test]
 fn doc_max_min_subtree_timestamp_count_match() {
-    let doc = parse("* A\n<2026-01-01> <2026-01-02>\n** B\n<2026-01-03>\n* C\nno ts\n")
-        .expect("parse");
+    let doc =
+        parse("* A\n<2026-01-01> <2026-01-02>\n** B\n<2026-01-03>\n* C\nno ts\n").expect("parse");
     // subtree ts: A=2+1=3, B=1, C=0 -> max 3, min 0
     assert_eq!(doc.max_subtree_timestamp_count(), 3);
     assert_eq!(doc.min_subtree_timestamp_count(), 0);
@@ -5507,8 +5490,8 @@ fn doc_max_min_subtree_timestamp_count_match() {
 
 #[test]
 fn doc_total_subtree_timestamp_count_match() {
-    let doc = parse("* A\n<2026-01-01> <2026-01-02>\n** B\n<2026-01-03>\n* C\nno ts\n")
-        .expect("parse");
+    let doc =
+        parse("* A\n<2026-01-01> <2026-01-02>\n** B\n<2026-01-03>\n* C\nno ts\n").expect("parse");
     // 3+1+0=4
     assert_eq!(doc.total_subtree_timestamp_count(), 4);
 }
@@ -5531,18 +5514,16 @@ fn doc_subtree_timestamp_count_zero_when_empty() {
 
 #[test]
 fn doc_median_subtree_timestamp_count_match() {
-    let doc = parse("* A\n<2026-01-01> <2026-01-02>\n** B\n<2026-01-03>\n* C\nno ts\n")
-        .expect("parse");
+    let doc =
+        parse("* A\n<2026-01-01> <2026-01-02>\n** B\n<2026-01-03>\n* C\nno ts\n").expect("parse");
     // counts: A=3, B=1, C=0 -> sorted 0,1,3 -> median 1
     assert_eq!(doc.median_subtree_timestamp_count(), Some(1));
 }
 
 #[test]
 fn doc_subtree_timestamp_count_counts_match() {
-    let doc = parse(
-        "* A\n<2026-01-01>\n* B\n<2026-01-02>\n* C\n<2026-01-03> <2026-01-04>\n",
-    )
-    .expect("parse");
+    let doc = parse("* A\n<2026-01-01>\n* B\n<2026-01-02>\n* C\n<2026-01-03> <2026-01-04>\n")
+        .expect("parse");
     // 1,1,2 -> 1->2, 2->1
     let m = doc.subtree_timestamp_count_counts();
     assert_eq!(m.get(&1), Some(&2));
@@ -5551,10 +5532,8 @@ fn doc_subtree_timestamp_count_counts_match() {
 
 #[test]
 fn doc_mode_subtree_timestamp_count_match() {
-    let doc = parse(
-        "* A\n<2026-01-01>\n* B\n<2026-01-02>\n* C\n<2026-01-03> <2026-01-04>\n",
-    )
-    .expect("parse");
+    let doc = parse("* A\n<2026-01-01>\n* B\n<2026-01-02>\n* C\n<2026-01-03> <2026-01-04>\n")
+        .expect("parse");
     assert_eq!(doc.mode_subtree_timestamp_count(), Some(1));
 }
 
@@ -5748,30 +5727,27 @@ fn doc_median_root_descendant_count_none_when_empty() {
 
 #[test]
 fn doc_min_property_count_match() {
-    let doc = parse(
-        "* A\n:PROPERTIES:\n:K1: v\n:K2: w\n:END:\n* B\n:PROPERTIES:\n:K1: v\n:END:\n* C\n",
-    )
-    .expect("parse");
+    let doc =
+        parse("* A\n:PROPERTIES:\n:K1: v\n:K2: w\n:END:\n* B\n:PROPERTIES:\n:K1: v\n:END:\n* C\n")
+            .expect("parse");
     // prop counts A=2,B=1,C=0 -> min 0
     assert_eq!(doc.min_property_count(), 0);
 }
 
 #[test]
 fn doc_mean_property_count_match() {
-    let doc = parse(
-        "* A\n:PROPERTIES:\n:K1: v\n:K2: w\n:END:\n* B\n:PROPERTIES:\n:K1: v\n:END:\n* C\n",
-    )
-    .expect("parse");
+    let doc =
+        parse("* A\n:PROPERTIES:\n:K1: v\n:K2: w\n:END:\n* B\n:PROPERTIES:\n:K1: v\n:END:\n* C\n")
+            .expect("parse");
     // 2,1,0 total 3 / 3 = 1
     assert_eq!(doc.mean_property_count(), 1);
 }
 
 #[test]
 fn doc_median_property_count_match() {
-    let doc = parse(
-        "* A\n:PROPERTIES:\n:K1: v\n:K2: w\n:END:\n* B\n:PROPERTIES:\n:K1: v\n:END:\n* C\n",
-    )
-    .expect("parse");
+    let doc =
+        parse("* A\n:PROPERTIES:\n:K1: v\n:K2: w\n:END:\n* B\n:PROPERTIES:\n:K1: v\n:END:\n* C\n")
+            .expect("parse");
     // sorted [0,1,2] -> median 1
     assert_eq!(doc.median_property_count(), Some(1));
 }
@@ -5809,30 +5785,24 @@ fn doc_total_root_property_count_match() {
 
 #[test]
 fn doc_max_min_root_property_count_match() {
-    let doc = parse(
-        "* A\n:PROPERTIES:\n:K1: v\n:K2: w\n:END:\n* B\n",
-    )
-    .expect("parse");
+    let doc = parse("* A\n:PROPERTIES:\n:K1: v\n:K2: w\n:END:\n* B\n").expect("parse");
     assert_eq!(doc.max_root_property_count(), Some(2));
     assert_eq!(doc.min_root_property_count(), Some(0));
 }
 
 #[test]
 fn doc_mean_root_property_count_match() {
-    let doc = parse(
-        "* A\n:PROPERTIES:\n:K1: v\n:K2: w\n:K3: x\n:K4: y\n:END:\n* B\n",
-    )
-    .expect("parse");
+    let doc =
+        parse("* A\n:PROPERTIES:\n:K1: v\n:K2: w\n:K3: x\n:K4: y\n:END:\n* B\n").expect("parse");
     // 4,0 -> mean 2
     assert_eq!(doc.mean_root_property_count(), 2);
 }
 
 #[test]
 fn doc_median_root_property_count_match() {
-    let doc = parse(
-        "* A\n* B\n:PROPERTIES:\n:K1: v\n:END:\n* C\n:PROPERTIES:\n:K2: v\n:K3: w\n:END:\n",
-    )
-    .expect("parse");
+    let doc =
+        parse("* A\n* B\n:PROPERTIES:\n:K1: v\n:END:\n* C\n:PROPERTIES:\n:K2: v\n:K3: w\n:END:\n")
+            .expect("parse");
     // 0,1,2 -> median 1
     assert_eq!(doc.median_root_property_count(), Some(1));
 }
@@ -5850,16 +5820,16 @@ fn doc_root_property_count_counts_match() {
 
 #[test]
 fn doc_max_min_timestamp_count_match() {
-    let doc = parse("* A\n<2026-01-01> <2026-01-02>\n* B\n<2026-01-03>\n* C\nno ts\n")
-        .expect("parse");
+    let doc =
+        parse("* A\n<2026-01-01> <2026-01-02>\n* B\n<2026-01-03>\n* C\nno ts\n").expect("parse");
     assert_eq!(doc.max_timestamp_count(), Some(2));
     assert_eq!(doc.min_timestamp_count(), Some(0));
 }
 
 #[test]
 fn doc_mean_timestamp_count_match() {
-    let doc = parse("* A\n<2026-01-01> <2026-01-02>\n* B\n<2026-01-03>\n* C\nno ts\n")
-        .expect("parse");
+    let doc =
+        parse("* A\n<2026-01-01> <2026-01-02>\n* B\n<2026-01-03>\n* C\nno ts\n").expect("parse");
     // A=2, B=1, C=0 -> total 3 / 3 = 1
     assert_eq!(doc.mean_timestamp_count(), 1);
 }
@@ -5872,8 +5842,7 @@ fn doc_mean_timestamp_count_zero_when_empty() {
 
 #[test]
 fn doc_median_timestamp_count_match() {
-    let doc = parse("* A\nno\n* B\n<2026-01-01>\n* C\n<2026-01-02> <2026-01-03>\n")
-        .expect("parse");
+    let doc = parse("* A\nno\n* B\n<2026-01-01>\n* C\n<2026-01-02> <2026-01-03>\n").expect("parse");
     // 0,1,2 -> median 1
     assert_eq!(doc.median_timestamp_count(), Some(1));
 }
@@ -5920,8 +5889,7 @@ fn doc_mean_root_timestamp_count_match() {
 
 #[test]
 fn doc_median_root_timestamp_count_match() {
-    let doc = parse("* A\nno\n* B\n<2026-01-01>\n* C\n<2026-01-02> <2026-01-03>\n")
-        .expect("parse");
+    let doc = parse("* A\nno\n* B\n<2026-01-01>\n* C\n<2026-01-02> <2026-01-03>\n").expect("parse");
     // 0,1,2 -> median 1
     assert_eq!(doc.median_root_timestamp_count(), Some(1));
 }
@@ -6033,8 +6001,8 @@ fn doc_count_roots_scheduled_match() {
 
 #[test]
 fn doc_count_roots_with_deadline_match() {
-    let doc = parse("* A\nDEADLINE: <2026-01-01>\n* B\n* C\nDEADLINE: <2026-03-03>\n")
-        .expect("parse");
+    let doc =
+        parse("* A\nDEADLINE: <2026-01-01>\n* B\n* C\nDEADLINE: <2026-03-03>\n").expect("parse");
     assert_eq!(doc.count_roots_with_deadline(), 2);
 }
 
@@ -6360,10 +6328,8 @@ fn doc_most_common_tag_none_when_none() {
 
 #[test]
 fn doc_property_values_for_key_match() {
-    let doc = parse(
-        "* A\n:PROPERTIES:\n:Foo: 1\n:END:\n* B\n:PROPERTIES:\n:Foo: 2\n:END:\n",
-    )
-    .expect("parse");
+    let doc = parse("* A\n:PROPERTIES:\n:Foo: 1\n:END:\n* B\n:PROPERTIES:\n:Foo: 2\n:END:\n")
+        .expect("parse");
     let mut vals = doc.property_values_for_key("Foo");
     vals.sort();
     assert_eq!(vals, vec!["1".to_owned(), "2".to_owned()]);
@@ -6402,19 +6368,15 @@ fn doc_distinct_root_property_keys_sorted() {
 
 #[test]
 fn doc_distinct_root_property_key_count_match() {
-    let doc = parse(
-        "* A\n:PROPERTIES:\n:Foo: 1\n:Bar: 2\n:END:\n",
-    )
-    .expect("parse");
+    let doc = parse("* A\n:PROPERTIES:\n:Foo: 1\n:Bar: 2\n:END:\n").expect("parse");
     assert_eq!(doc.distinct_root_property_key_count(), 2);
 }
 
 #[test]
 fn doc_root_property_key_counts_match() {
-    let doc = parse(
-        "* A\n:PROPERTIES:\n:Foo: 1\n:Bar: 2\n:END:\n* B\n:PROPERTIES:\n:Foo: 3\n:END:\n",
-    )
-    .expect("parse");
+    let doc =
+        parse("* A\n:PROPERTIES:\n:Foo: 1\n:Bar: 2\n:END:\n* B\n:PROPERTIES:\n:Foo: 3\n:END:\n")
+            .expect("parse");
     let m = doc.root_property_key_counts();
     assert_eq!(m.get("Foo"), Some(&2));
     assert_eq!(m.get("Bar"), Some(&1));
@@ -6446,10 +6408,8 @@ fn doc_distinct_root_property_values_for_key_sorted() {
 
 #[test]
 fn doc_distinct_root_property_value_count_for_key_match() {
-    let doc = parse(
-        "* A\n:PROPERTIES:\n:Foo: x\n:END:\n* B\n:PROPERTIES:\n:Foo: y\n:END:\n",
-    )
-    .expect("parse");
+    let doc = parse("* A\n:PROPERTIES:\n:Foo: x\n:END:\n* B\n:PROPERTIES:\n:Foo: y\n:END:\n")
+        .expect("parse");
     assert_eq!(doc.distinct_root_property_value_count_for_key("Foo"), 2);
 }
 
@@ -6474,47 +6434,34 @@ fn doc_least_common_property_value_for_key_none_for_unknown() {
 
 #[test]
 fn doc_property_pct_match() {
-    let doc = parse(
-        "* A\n:PROPERTIES:\n:Foo: 1\n:END:\n* B\n* C\n* D\n",
-    )
-    .expect("parse");
+    let doc = parse("* A\n:PROPERTIES:\n:Foo: 1\n:END:\n* B\n* C\n* D\n").expect("parse");
     assert_eq!(doc.property_pct(), 25);
 }
 
 #[test]
 fn doc_count_no_property_match() {
-    let doc = parse(
-        "* A\n:PROPERTIES:\n:Foo: 1\n:END:\n* B\n* C\n",
-    )
-    .expect("parse");
+    let doc = parse("* A\n:PROPERTIES:\n:Foo: 1\n:END:\n* B\n* C\n").expect("parse");
     assert_eq!(doc.count_no_property(), 2);
 }
 
 #[test]
 fn doc_no_property_pct_match() {
-    let doc = parse(
-        "* A\n:PROPERTIES:\n:Foo: 1\n:END:\n* B\n",
-    )
-    .expect("parse");
+    let doc = parse("* A\n:PROPERTIES:\n:Foo: 1\n:END:\n* B\n").expect("parse");
     assert_eq!(doc.no_property_pct(), 50);
 }
 
 #[test]
 fn doc_count_roots_with_any_property_match() {
-    let doc = parse(
-        "* A\n:PROPERTIES:\n:Foo: 1\n:END:\n** child\n:PROPERTIES:\n:Bar: 9\n:END:\n* B\n",
-    )
-    .expect("parse");
+    let doc =
+        parse("* A\n:PROPERTIES:\n:Foo: 1\n:END:\n** child\n:PROPERTIES:\n:Bar: 9\n:END:\n* B\n")
+            .expect("parse");
     // roots only: A has props, B not -> 1
     assert_eq!(doc.count_roots_with_any_property(), 1);
 }
 
 #[test]
 fn doc_root_property_pct_match() {
-    let doc = parse(
-        "* A\n:PROPERTIES:\n:Foo: 1\n:END:\n* B\n* C\n* D\n",
-    )
-    .expect("parse");
+    let doc = parse("* A\n:PROPERTIES:\n:Foo: 1\n:END:\n* B\n* C\n* D\n").expect("parse");
     assert_eq!(doc.root_property_pct(), 25);
 }
 
@@ -6728,10 +6675,8 @@ fn doc_property_key_diversity_pct_zero_when_none() {
 
 #[test]
 fn doc_property_key_diversity_pct_full_when_all_distinct() {
-    let doc = parse(
-        "* A\n:PROPERTIES:\n:Foo: 1\n:END:\n* B\n:PROPERTIES:\n:Bar: 2\n:END:\n",
-    )
-    .expect("parse");
+    let doc = parse("* A\n:PROPERTIES:\n:Foo: 1\n:END:\n* B\n:PROPERTIES:\n:Bar: 2\n:END:\n")
+        .expect("parse");
     assert_eq!(doc.property_key_diversity_pct(), 100);
 }
 
@@ -6941,10 +6886,7 @@ fn doc_median_todo_len_none_when_no_todos() {
 
 #[test]
 fn doc_max_min_property_key_len_match() {
-    let doc = parse(
-        "* A\n:PROPERTIES:\n:Foo: 1\n:LongerKey: 2\n:END:\n",
-    )
-    .expect("parse");
+    let doc = parse("* A\n:PROPERTIES:\n:Foo: 1\n:LongerKey: 2\n:END:\n").expect("parse");
     // keys: Foo=3, LongerKey=9
     assert_eq!(doc.max_property_key_len(), Some(9));
     assert_eq!(doc.min_property_key_len(), Some(3));
@@ -6952,20 +6894,14 @@ fn doc_max_min_property_key_len_match() {
 
 #[test]
 fn doc_mean_property_key_len_match() {
-    let doc = parse(
-        "* A\n:PROPERTIES:\n:Foo: 1\n:LongerKey: 2\n:END:\n",
-    )
-    .expect("parse");
+    let doc = parse("* A\n:PROPERTIES:\n:Foo: 1\n:LongerKey: 2\n:END:\n").expect("parse");
     // 3,9 -> mean 6
     assert_eq!(doc.mean_property_key_len(), 6);
 }
 
 #[test]
 fn doc_total_property_key_len_match() {
-    let doc = parse(
-        "* A\n:PROPERTIES:\n:Foo: 1\n:Bar: 2\n:END:\n",
-    )
-    .expect("parse");
+    let doc = parse("* A\n:PROPERTIES:\n:Foo: 1\n:Bar: 2\n:END:\n").expect("parse");
     // 3+3 = 6
     assert_eq!(doc.total_property_key_len(), 6);
 }
@@ -6981,20 +6917,14 @@ fn doc_property_key_len_none_when_no_props() {
 
 #[test]
 fn doc_median_property_key_len_match() {
-    let doc = parse(
-        "* A\n:PROPERTIES:\n:A: 1\n:BB: 2\n:DDDD: 3\n:END:\n",
-    )
-    .expect("parse");
+    let doc = parse("* A\n:PROPERTIES:\n:A: 1\n:BB: 2\n:DDDD: 3\n:END:\n").expect("parse");
     // 1,2,4 -> median 2
     assert_eq!(doc.median_property_key_len(), Some(2));
 }
 
 #[test]
 fn doc_property_key_len_counts_match() {
-    let doc = parse(
-        "* A\n:PROPERTIES:\n:Foo: 1\n:Bar: 2\n:LongKey: 3\n:END:\n",
-    )
-    .expect("parse");
+    let doc = parse("* A\n:PROPERTIES:\n:Foo: 1\n:Bar: 2\n:LongKey: 3\n:END:\n").expect("parse");
     // 3,3,7
     let m = doc.property_key_len_counts();
     assert_eq!(m.get(&3), Some(&2));
@@ -7003,10 +6933,7 @@ fn doc_property_key_len_counts_match() {
 
 #[test]
 fn doc_mode_property_key_len_match() {
-    let doc = parse(
-        "* A\n:PROPERTIES:\n:Foo: 1\n:Bar: 2\n:LongKey: 3\n:END:\n",
-    )
-    .expect("parse");
+    let doc = parse("* A\n:PROPERTIES:\n:Foo: 1\n:Bar: 2\n:LongKey: 3\n:END:\n").expect("parse");
     assert_eq!(doc.mode_property_key_len(), Some(3));
 }
 
@@ -7019,10 +6946,7 @@ fn doc_median_property_key_len_none_when_no_props() {
 
 #[test]
 fn doc_max_min_property_value_len_match() {
-    let doc = parse(
-        "* A\n:PROPERTIES:\n:Foo: abc\n:Bar: defghij\n:END:\n",
-    )
-    .expect("parse");
+    let doc = parse("* A\n:PROPERTIES:\n:Foo: abc\n:Bar: defghij\n:END:\n").expect("parse");
     // values: "abc"=3, "defghij"=7
     assert_eq!(doc.max_property_value_len(), Some(7));
     assert_eq!(doc.min_property_value_len(), Some(3));
@@ -7030,20 +6954,14 @@ fn doc_max_min_property_value_len_match() {
 
 #[test]
 fn doc_mean_property_value_len_match() {
-    let doc = parse(
-        "* A\n:PROPERTIES:\n:Foo: abc\n:Bar: defghij\n:END:\n",
-    )
-    .expect("parse");
+    let doc = parse("* A\n:PROPERTIES:\n:Foo: abc\n:Bar: defghij\n:END:\n").expect("parse");
     // 3,7 -> mean 5
     assert_eq!(doc.mean_property_value_len(), 5);
 }
 
 #[test]
 fn doc_total_property_value_len_match() {
-    let doc = parse(
-        "* A\n:PROPERTIES:\n:Foo: abc\n:Bar: def\n:END:\n",
-    )
-    .expect("parse");
+    let doc = parse("* A\n:PROPERTIES:\n:Foo: abc\n:Bar: def\n:END:\n").expect("parse");
     // 3+3=6
     assert_eq!(doc.total_property_value_len(), 6);
 }
@@ -7059,20 +6977,14 @@ fn doc_property_value_len_none_when_no_props() {
 
 #[test]
 fn doc_median_property_value_len_match() {
-    let doc = parse(
-        "* A\n:PROPERTIES:\n:A: a\n:B: bb\n:C: dddd\n:END:\n",
-    )
-    .expect("parse");
+    let doc = parse("* A\n:PROPERTIES:\n:A: a\n:B: bb\n:C: dddd\n:END:\n").expect("parse");
     // vals lens: 1, 2, 4 -> median 2
     assert_eq!(doc.median_property_value_len(), Some(2));
 }
 
 #[test]
 fn doc_property_value_len_counts_match() {
-    let doc = parse(
-        "* A\n:PROPERTIES:\n:A: aa\n:B: bb\n:C: longer\n:END:\n",
-    )
-    .expect("parse");
+    let doc = parse("* A\n:PROPERTIES:\n:A: aa\n:B: bb\n:C: longer\n:END:\n").expect("parse");
     // 2,2,6
     let m = doc.property_value_len_counts();
     assert_eq!(m.get(&2), Some(&2));
@@ -7081,10 +6993,7 @@ fn doc_property_value_len_counts_match() {
 
 #[test]
 fn doc_mode_property_value_len_match() {
-    let doc = parse(
-        "* A\n:PROPERTIES:\n:A: aa\n:B: bb\n:C: longer\n:END:\n",
-    )
-    .expect("parse");
+    let doc = parse("* A\n:PROPERTIES:\n:A: aa\n:B: bb\n:C: longer\n:END:\n").expect("parse");
     assert_eq!(doc.mode_property_value_len(), Some(2));
 }
 
@@ -7115,10 +7024,8 @@ fn doc_count_with_timestamp_zero_when_none() {
 
 #[test]
 fn doc_count_with_property_match() {
-    let doc = parse(
-        "* A\n:PROPERTIES:\n:x: 1\n:END:\n* B\n* C\n:PROPERTIES:\n:y: 2\n:END:\n",
-    )
-    .expect("parse");
+    let doc = parse("* A\n:PROPERTIES:\n:x: 1\n:END:\n* B\n* C\n:PROPERTIES:\n:y: 2\n:END:\n")
+        .expect("parse");
     assert_eq!(doc.count_with_property(), 2);
 }
 
@@ -7233,9 +7140,8 @@ fn doc_with_timestamp_pct_zero_when_no_headlines() {
 
 #[test]
 fn doc_with_property_pct_match() {
-    let doc =
-        parse("* A\n:PROPERTIES:\n:x: 1\n:END:\n* B\n* C\n:PROPERTIES:\n:y: 2\n:END:\n")
-            .expect("parse");
+    let doc = parse("* A\n:PROPERTIES:\n:x: 1\n:END:\n* B\n* C\n:PROPERTIES:\n:y: 2\n:END:\n")
+        .expect("parse");
     assert_eq!(doc.with_property_pct(), 66);
 }
 
@@ -7824,10 +7730,8 @@ fn doc_count_id_value_match() {
 
 #[test]
 fn doc_count_property_key_match() {
-    let doc = parse(
-        "* A\n:PROPERTIES:\n:foo: 1\n:END:\n* B\n:PROPERTIES:\n:foo: 2\n:END:\n",
-    )
-    .expect("parse");
+    let doc = parse("* A\n:PROPERTIES:\n:foo: 1\n:END:\n* B\n:PROPERTIES:\n:foo: 2\n:END:\n")
+        .expect("parse");
     assert_eq!(doc.count_property_key("foo"), 2);
     assert_eq!(doc.count_property_key("bar"), 0);
 }
@@ -7917,7 +7821,8 @@ fn doc_with_priority_pct_zero_when_no_headlines() {
 
 #[test]
 fn doc_with_id_pct_match() {
-    let doc = parse("* A\n:PROPERTIES:\n:ID: x\n:END:\n* B\n* C\n:PROPERTIES:\n:ID: y\n:END:\n").expect("parse");
+    let doc = parse("* A\n:PROPERTIES:\n:ID: x\n:END:\n* B\n* C\n:PROPERTIES:\n:ID: y\n:END:\n")
+        .expect("parse");
     assert_eq!(doc.with_id_pct(), 66);
 }
 
@@ -8137,4 +8042,3 @@ fn doc_level_pct_match() {
     assert_eq!(doc.level_pct(1), 33);
     assert_eq!(doc.level_pct(2), 66);
 }
-

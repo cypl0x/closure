@@ -214,9 +214,7 @@ fn is_list_item(body: &str) -> bool {
     }
     // Ordered: digits then `. ` or `) `.
     let digits = t.chars().take_while(char::is_ascii_digit).count();
-    digits > 0
-        && t[digits..].starts_with('.')
-        && t[digits + 1..].starts_with(' ')
+    digits > 0 && t[digits..].starts_with('.') && t[digits + 1..].starts_with(' ')
 }
 
 /// Serialise back to markdown. Concatenates block spans verbatim — I1
@@ -265,7 +263,8 @@ pub fn from_org(org: &str) -> (String, Vec<String>) {
             warnings.push(format!("dropped drawer `{trimmed}`"));
             continue;
         }
-        if trimmed.starts_with("SCHEDULED:") || trimmed.starts_with("DEADLINE:")
+        if trimmed.starts_with("SCHEDULED:")
+            || trimmed.starts_with("DEADLINE:")
             || trimmed.starts_with("CLOSED:")
         {
             warnings.push(format!("dropped planning `{trimmed}`"));

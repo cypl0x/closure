@@ -112,9 +112,15 @@ const TOOLS: &[(&str, &str)] = &[
     ("list-files", "List every org file in the vault"),
     ("read", "Read one file's org source: read <file>"),
     ("search", "Search headline titles: search <text>"),
-    ("capture", "Append a TODO entry to inbox.org: capture <title>"),
+    (
+        "capture",
+        "Append a TODO entry to inbox.org: capture <title>",
+    ),
     ("rename", "Rename a headline: rename <id> <title>"),
-    ("set-property", "Set a property: set-property <id> <key> <value>"),
+    (
+        "set-property",
+        "Set a property: set-property <id> <key> <value>",
+    ),
 ];
 
 /// Handle one MCP JSON-RPC message against a vault.
@@ -127,11 +133,9 @@ pub fn handle_message(vault: &mut closure_store::Vault, json: &str) -> Option<St
     let id = raw_field(json, "id")?;
     let method = string_field(json, "method").unwrap_or_default();
     let result = match method.as_str() {
-        "initialize" => {
-            "{\"protocolVersion\":\"2024-11-05\",\"capabilities\":{\"tools\":{}},\
+        "initialize" => "{\"protocolVersion\":\"2024-11-05\",\"capabilities\":{\"tools\":{}},\
              \"serverInfo\":{\"name\":\"closure\",\"version\":\"0.0.0\"}}"
-                .to_owned()
-        }
+            .to_owned(),
         "tools/list" => {
             let tools: Vec<String> = TOOLS
                 .iter()
@@ -180,9 +184,7 @@ fn raw_field(json: &str, key: &str) -> Option<String> {
     if rest.starts_with('"') {
         return string_value(rest).map(|s| format!("\"{}\"", json_escape(&s)));
     }
-    let end = rest
-        .find([',', '}', ']'])
-        .unwrap_or(rest.len());
+    let end = rest.find([',', '}', ']']).unwrap_or(rest.len());
     let tok = rest[..end].trim();
     if tok.is_empty() {
         None

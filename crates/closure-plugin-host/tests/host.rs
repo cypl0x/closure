@@ -34,10 +34,9 @@ fn runner_for_native_is_direct_exec() {
 fn registered_command_invokes_plugin_and_captures_stdout() {
     let dir = tempfile::tempdir().expect("tempdir");
     let exe = script_plugin(dir.path());
-    let manifest = parse_manifest(
-        "id = greeter\nname = Greeter\napi_version = 1.0.0\ncommand = greet\n",
-    )
-    .expect("manifest");
+    let manifest =
+        parse_manifest("id = greeter\nname = Greeter\napi_version = 1.0.0\ncommand = greet\n")
+            .expect("manifest");
     let mut host = Host::new();
     host.register_command(&manifest, &exe).expect("register");
     let out = host.invoke("greet", &["world"]).expect("invoke");
@@ -48,8 +47,7 @@ fn registered_command_invokes_plugin_and_captures_stdout() {
 fn manifest_without_command_key_cannot_register() {
     let dir = tempfile::tempdir().expect("tempdir");
     let exe = script_plugin(dir.path());
-    let manifest =
-        parse_manifest("id = x\nname = X\napi_version = 1.0.0\n").expect("manifest");
+    let manifest = parse_manifest("id = x\nname = X\napi_version = 1.0.0\n").expect("manifest");
     let mut host = Host::new();
     assert!(host.register_command(&manifest, &exe).is_err());
 }
@@ -62,10 +60,8 @@ fn invoking_unknown_command_errors() {
 
 #[test]
 fn invoking_missing_executable_errors() {
-    let manifest = parse_manifest(
-        "id = gone\nname = Gone\napi_version = 1.0.0\ncommand = gone\n",
-    )
-    .expect("manifest");
+    let manifest = parse_manifest("id = gone\nname = Gone\napi_version = 1.0.0\ncommand = gone\n")
+        .expect("manifest");
     let mut host = Host::new();
     host.register_command(&manifest, std::path::Path::new("/no/such/exe"))
         .expect("register records the path");
@@ -76,10 +72,9 @@ fn invoking_missing_executable_errors() {
 fn commands_lists_registered_names() {
     let dir = tempfile::tempdir().expect("tempdir");
     let exe = script_plugin(dir.path());
-    let manifest = parse_manifest(
-        "id = greeter\nname = Greeter\napi_version = 1.0.0\ncommand = greet\n",
-    )
-    .expect("manifest");
+    let manifest =
+        parse_manifest("id = greeter\nname = Greeter\napi_version = 1.0.0\ncommand = greet\n")
+            .expect("manifest");
     let mut host = Host::new();
     host.register_command(&manifest, &exe).expect("register");
     assert_eq!(host.commands(), vec!["greet".to_owned()]);

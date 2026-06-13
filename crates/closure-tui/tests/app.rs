@@ -1258,8 +1258,14 @@ fn db_view_on_empty_rows_is_safe() {
 fn app_with_blocks() -> App {
     let mut app = App::new(paths());
     app.set_blocks(vec![
-        (std::path::PathBuf::from("a.org"), "shell: echo one".to_owned()),
-        (std::path::PathBuf::from("a.org"), "python: print(2)".to_owned()),
+        (
+            std::path::PathBuf::from("a.org"),
+            "shell: echo one".to_owned(),
+        ),
+        (
+            std::path::PathBuf::from("a.org"),
+            "python: print(2)".to_owned(),
+        ),
         (std::path::PathBuf::from("b.org"), "shell: ls".to_owned()),
     ]);
     app
@@ -1405,7 +1411,10 @@ fn shift_l_emits_promote_request() {
     app.handle_stroke("j");
     app.handle_stroke("<");
     assert_eq!(app.mode(), AppMode::Headlines, "stays in the list");
-    assert_eq!(app.take_struct_request(), Some(("promote".to_owned(), "id-a2".to_owned())));
+    assert_eq!(
+        app.take_struct_request(),
+        Some(("promote".to_owned(), "id-a2".to_owned()))
+    );
     assert_eq!(app.take_struct_request(), None);
 }
 
@@ -1414,7 +1423,10 @@ fn shift_r_emits_demote_request() {
     let mut app = app_with_headlines();
     app.handle_stroke("l");
     app.handle_stroke(">");
-    assert_eq!(app.take_struct_request(), Some(("demote".to_owned(), "id-a1".to_owned())));
+    assert_eq!(
+        app.take_struct_request(),
+        Some(("demote".to_owned(), "id-a1".to_owned()))
+    );
 }
 
 #[test]
@@ -1475,7 +1487,11 @@ fn move_up_at_first_is_noop() {
 fn notion_slash_opens_palette_not_file_search() {
     let mut app = App::with_mode(paths(), InputMode::Notion);
     app.handle_stroke("/");
-    assert_eq!(app.mode(), AppMode::Palette, "slash = command palette in Notion");
+    assert_eq!(
+        app.mode(),
+        AppMode::Palette,
+        "slash = command palette in Notion"
+    );
 }
 
 #[test]
@@ -1533,8 +1549,14 @@ fn cut_paste_on_empty_list_are_noop() {
 fn app_with_agenda() -> App {
     let mut app = App::new(paths());
     app.set_agenda(vec![
-        (std::path::PathBuf::from("b.org"), "2026-06-13 SCHEDULED Near".to_owned()),
-        (std::path::PathBuf::from("a.org"), "2026-07-01 DEADLINE Far".to_owned()),
+        (
+            std::path::PathBuf::from("b.org"),
+            "2026-06-13 SCHEDULED Near".to_owned(),
+        ),
+        (
+            std::path::PathBuf::from("a.org"),
+            "2026-07-01 DEADLINE Far".to_owned(),
+        ),
     ]);
     app
 }
@@ -1583,8 +1605,14 @@ fn agenda_empty_is_safe() {
 fn app_with_sources_body() -> App {
     let mut app = App::new(paths());
     app.set_sources(vec![
-        (std::path::PathBuf::from("a.org"), "* T\nalpha line\nbeta here\n".to_owned()),
-        (std::path::PathBuf::from("b.org"), "* U\ngamma line\n".to_owned()),
+        (
+            std::path::PathBuf::from("a.org"),
+            "* T\nalpha line\nbeta here\n".to_owned(),
+        ),
+        (
+            std::path::PathBuf::from("b.org"),
+            "* U\ngamma line\n".to_owned(),
+        ),
     ]);
     app
 }

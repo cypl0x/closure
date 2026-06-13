@@ -74,20 +74,14 @@ fn eval_block_out_of_range_errors() {
 
 #[test]
 fn eval_block_unknown_language_errors() {
-    let td = write_vault(&[(
-        "a.org",
-        "#+BEGIN_SRC brainfuck\n+++\n#+END_SRC\n",
-    )]);
+    let td = write_vault(&[("a.org", "#+BEGIN_SRC brainfuck\n+++\n#+END_SRC\n")]);
     let mut v = Vault::open(td.path()).expect("open");
     assert!(v.eval_block(&file(&td), 0).is_err());
 }
 
 #[test]
 fn eval_block_reeval_replaces_results() {
-    let td = write_vault(&[(
-        "a.org",
-        "#+BEGIN_SRC shell\necho once\n#+END_SRC\n",
-    )]);
+    let td = write_vault(&[("a.org", "#+BEGIN_SRC shell\necho once\n#+END_SRC\n")]);
     let mut v = Vault::open(td.path()).expect("open");
     v.eval_block(&file(&td), 0).expect("eval");
     v.eval_block(&file(&td), 0).expect("re-eval");
@@ -102,7 +96,8 @@ fn set_block_content_replaces_and_persists() {
         "* H\n#+BEGIN_SRC shell\necho old\n#+END_SRC\ntail\n",
     )]);
     let mut v = Vault::open(td.path()).expect("open");
-    v.set_block_content(&file(&td), 0, "echo new\n").expect("set");
+    v.set_block_content(&file(&td), 0, "echo new\n")
+        .expect("set");
     let disk = fs::read_to_string(file(&td)).expect("read");
     assert!(disk.contains("echo new\n"));
     assert!(!disk.contains("echo old"));
@@ -158,7 +153,11 @@ fn tangle_concatenates_blocks_to_same_target() {
 fn tangle_no_targets_writes_nothing() {
     let td = write_vault(&[("lit.org", "#+BEGIN_SRC shell\necho x\n#+END_SRC\n")]);
     let v = Vault::open(td.path()).expect("open");
-    assert!(v.tangle(&td.path().join("lit.org")).expect("tangle").is_empty());
+    assert!(
+        v.tangle(&td.path().join("lit.org"))
+            .expect("tangle")
+            .is_empty()
+    );
 }
 
 #[test]

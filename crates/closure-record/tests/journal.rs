@@ -35,7 +35,10 @@ fn record_appends_to_journal_when_enabled() {
     j.record(1_700_000_000, "capture", "First").expect("record");
     j.record(1_700_000_060, "rename", "Second").expect("record");
     let disk = fs::read_to_string(td.path().join("journal.org")).expect("read");
-    assert!(disk.find("First").unwrap() < disk.find("Second").unwrap(), "append order");
+    assert!(
+        disk.find("First").unwrap() < disk.find("Second").unwrap(),
+        "append order"
+    );
     assert_eq!(disk.matches("* ").count(), 2);
 }
 
@@ -44,7 +47,10 @@ fn record_is_noop_when_disabled() {
     let td = vault();
     let j = Journal::new(td.path(), false);
     j.record(0, "capture", "x").expect("record");
-    assert!(!td.path().join("journal.org").exists(), "disabled writes nothing");
+    assert!(
+        !td.path().join("journal.org").exists(),
+        "disabled writes nothing"
+    );
 }
 
 #[test]

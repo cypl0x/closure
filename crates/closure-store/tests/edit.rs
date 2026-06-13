@@ -127,10 +127,7 @@ fn set_property_writes_drawer_to_disk() {
 
 #[test]
 fn set_property_overwrites_existing_value() {
-    let td = write_vault(&[(
-        "a.org",
-        "* Task\n:PROPERTIES:\n:EFFORT: 1d\n:END:\n",
-    )]);
+    let td = write_vault(&[("a.org", "* Task\n:PROPERTIES:\n:EFFORT: 1d\n:END:\n")]);
     let mut v = Vault::open(td.path()).expect("open");
     let id = id_of(&v, "Task");
     v.set_property(&id, "EFFORT", "5d").expect("set");
@@ -155,7 +152,8 @@ fn set_body_replaces_headline_body() {
     let td = write_vault(&[("a.org", "* Task\nold body\n")]);
     let mut v = Vault::open(td.path()).expect("open");
     let id = id_of(&v, "Task");
-    v.set_body(&id, "new body line\nsecond\n").expect("set body");
+    v.set_body(&id, "new body line\nsecond\n")
+        .expect("set body");
     let disk = fs::read_to_string(td.path().join("a.org")).expect("read");
     assert!(disk.contains("new body line\nsecond\n"));
     assert!(!disk.contains("old body"));
@@ -249,7 +247,10 @@ fn move_after_reorders_siblings() {
 
 #[test]
 fn move_after_unknown_id_errors() {
-    let td = write_vault(&[("a.org", "* A\n:PROPERTIES:\n:ID: 01HXAAAAAAAAAAAAAAAAAAAAAA\n:END:\n")]);
+    let td = write_vault(&[(
+        "a.org",
+        "* A\n:PROPERTIES:\n:ID: 01HXAAAAAAAAAAAAAAAAAAAAAA\n:END:\n",
+    )]);
     let mut v = Vault::open(td.path()).expect("open");
     let a = BlockId::from_existing("01HXAAAAAAAAAAAAAAAAAAAAAA");
     let bogus = BlockId::from_existing("01HXZZZZZZZZZZZZZZZZZZZZZZ");

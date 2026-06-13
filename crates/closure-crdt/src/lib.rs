@@ -15,6 +15,7 @@ use closure_core::{BlockId, Command, Document, RenameHeadline, SetBody};
 use thiserror::Error;
 
 /// Simple vector clock for P2P causality (replaces manual u64 ts per ROADMAP).
+///
 /// Each replica has an entry; local events increment own counter; merge takes max per entry.
 /// The 'time' for LWW can be a summary (e.g. max or sum); full vector for causality tests.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -24,6 +25,7 @@ pub struct VectorClock {
 
 impl VectorClock {
     #[must_use]
+    #[allow(missing_docs)]
     pub fn new(replica: &str) -> Self {
         let mut c = HashMap::new();
         c.insert(replica.to_owned(), 0);
@@ -135,7 +137,7 @@ impl Replica {
         snap
     }
 
-    /// Snapshot using a VectorClock (for P2P causality per ROADMAP).
+    /// Snapshot using a `VectorClock` (for P2P causality per ROADMAP).
     /// Bumps the replica's counter, uses the logical time for the register ts.
     #[must_use]
     pub fn snapshot_with_clock(doc: &Document, clock: &mut VectorClock, replica: &str) -> Self {

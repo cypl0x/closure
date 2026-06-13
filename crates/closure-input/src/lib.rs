@@ -281,11 +281,7 @@ impl Dispatcher {
     /// Median chord character length (`None` when empty).
     #[must_use]
     pub fn median_chord_char_len(&self) -> Option<usize> {
-        let mut v: Vec<usize> = self
-            .bindings
-            .keys()
-            .map(|k| k.chars().count())
-            .collect();
+        let mut v: Vec<usize> = self.bindings.keys().map(|k| k.chars().count()).collect();
         if v.is_empty() {
             return None;
         }
@@ -639,7 +635,10 @@ impl Dispatcher {
     /// Count of chord strings beginning with `prefix`.
     #[must_use]
     pub fn chords_with_prefix_count(&self, prefix: &str) -> usize {
-        self.bindings.keys().filter(|k| k.starts_with(prefix)).count()
+        self.bindings
+            .keys()
+            .filter(|k| k.starts_with(prefix))
+            .count()
     }
 
     /// Count of distinct command names whose chord begins with `prefix`.
@@ -883,9 +882,7 @@ impl Dispatcher {
         keys.sort();
         let mut best: Option<&String> = None;
         for k in keys {
-            if best.is_none_or(|b| {
-                k.split_whitespace().count() > b.split_whitespace().count()
-            }) {
+            if best.is_none_or(|b| k.split_whitespace().count() > b.split_whitespace().count()) {
                 best = Some(k);
             }
         }
@@ -899,9 +896,7 @@ impl Dispatcher {
         keys.sort();
         let mut best: Option<&String> = None;
         for k in keys {
-            if best.is_none_or(|b| {
-                k.split_whitespace().count() < b.split_whitespace().count()
-            }) {
+            if best.is_none_or(|b| k.split_whitespace().count() < b.split_whitespace().count()) {
                 best = Some(k);
             }
         }
@@ -1115,10 +1110,7 @@ impl ChordTrie {
     /// Sum of depths over every bound chord.
     #[must_use]
     pub fn total_depth(&self) -> usize {
-        self.chord_depth_counts()
-            .iter()
-            .map(|(d, c)| d * c)
-            .sum()
+        self.chord_depth_counts().iter().map(|(d, c)| d * c).sum()
     }
 
     /// Median chord depth (`None` when empty).
@@ -1153,7 +1145,9 @@ impl ChordTrie {
             out: &mut Vec<&'a str>,
         ) {
             let n = &nodes[idx];
-            if cur == target && let Some(c) = &n.command {
+            if cur == target
+                && let Some(c) = &n.command
+            {
                 out.push(c.as_str());
             }
             for &child in n.children.values() {
@@ -1169,7 +1163,9 @@ impl ChordTrie {
     /// True iff `command` is bound somewhere in the trie.
     #[must_use]
     pub fn contains_command(&self, command: &str) -> bool {
-        self.nodes.iter().any(|n| n.command.as_deref() == Some(command))
+        self.nodes
+            .iter()
+            .any(|n| n.command.as_deref() == Some(command))
     }
 
     /// True iff `chord` is bound in the trie (alias of [`Self::has_chord`]).
@@ -1255,13 +1251,7 @@ impl ChordTrie {
     /// Count of trie nodes at exactly `depth`.
     #[must_use]
     pub fn nodes_at_depth_count(&self, depth: usize) -> usize {
-        fn walk(
-            idx: usize,
-            current: usize,
-            target: usize,
-            nodes: &[TrieNode],
-            count: &mut usize,
-        ) {
+        fn walk(idx: usize, current: usize, target: usize, nodes: &[TrieNode], count: &mut usize) {
             if current == target {
                 *count += 1;
                 return;
@@ -1658,12 +1648,7 @@ impl ChordTrie {
     /// Sorted distinct chord strings bound in the trie. Strokes joined by spaces.
     #[must_use]
     pub fn all_chords(&self) -> Vec<String> {
-        fn walk(
-            idx: usize,
-            prefix: &mut Vec<String>,
-            nodes: &[TrieNode],
-            out: &mut Vec<String>,
-        ) {
+        fn walk(idx: usize, prefix: &mut Vec<String>, nodes: &[TrieNode], out: &mut Vec<String>) {
             let n = &nodes[idx];
             if n.command.is_some() {
                 out.push(prefix.join(" "));
@@ -1919,7 +1904,11 @@ impl ChordTrie {
     /// Median char length over distinct command names. None if empty.
     #[must_use]
     pub fn median_command_char_len(&self) -> Option<usize> {
-        let mut v: Vec<usize> = self.all_commands().iter().map(|c| c.chars().count()).collect();
+        let mut v: Vec<usize> = self
+            .all_commands()
+            .iter()
+            .map(|c| c.chars().count())
+            .collect();
         if v.is_empty() {
             return None;
         }
@@ -1957,7 +1946,11 @@ impl ChordTrie {
     /// Median chord char length. None if empty. Even count takes midpoint.
     #[must_use]
     pub fn median_chord_char_len(&self) -> Option<usize> {
-        let mut v: Vec<usize> = self.all_chords().iter().map(|c| c.chars().count()).collect();
+        let mut v: Vec<usize> = self
+            .all_chords()
+            .iter()
+            .map(|c| c.chars().count())
+            .collect();
         if v.is_empty() {
             return None;
         }

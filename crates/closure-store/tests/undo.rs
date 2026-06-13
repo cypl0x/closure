@@ -68,10 +68,7 @@ fn redo_reapplies_undone_edit() {
 fn undo_with_empty_history_errors() {
     let td = write_vault(&[("a.org", "* Untouched\n")]);
     let mut v = Vault::open(td.path()).expect("open");
-    assert!(matches!(
-        v.undo_in(&file(&td)),
-        Err(VaultError::Undo(_))
-    ));
+    assert!(matches!(v.undo_in(&file(&td)), Err(VaultError::Undo(_))));
 }
 
 #[test]

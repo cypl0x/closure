@@ -32,7 +32,11 @@ fn cron_jobs_parses_block_with_command_lines() {
 fn cron_jobs_empty_without_block() {
     let td = vault_with("* No jobs here\n");
     let v = Vault::open(td.path()).expect("open");
-    assert!(v.cron_jobs(&td.path().join("jobs.org")).expect("jobs").is_empty());
+    assert!(
+        v.cron_jobs(&td.path().join("jobs.org"))
+            .expect("jobs")
+            .is_empty()
+    );
 }
 
 #[test]

@@ -23,7 +23,12 @@ fn big_app(n: usize) -> App {
     app.set_headlines(headlines);
     app.set_sources(
         (0..n)
-            .map(|i| (PathBuf::from(format!("f{i}.org")), format!("* H{i}\nbody {i}\n")))
+            .map(|i| {
+                (
+                    PathBuf::from(format!("f{i}.org")),
+                    format!("* H{i}\nbody {i}\n"),
+                )
+            })
             .collect(),
     );
     app

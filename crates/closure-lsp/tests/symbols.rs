@@ -16,10 +16,7 @@ fn symbols_list_headlines_with_lines_and_levels() {
         .iter()
         .map(|s| (s.name.as_str(), s.line, s.level))
         .collect();
-    assert_eq!(
-        view,
-        vec![("Top", 0, 1), ("Child", 2, 2), ("Second", 3, 1)]
-    );
+    assert_eq!(view, vec![("Top", 0, 1), ("Child", 2, 2), ("Second", 3, 1)]);
 }
 
 #[test]
@@ -43,8 +40,7 @@ fn definition_resolves_id_link_to_file_and_headline_line() {
     )
     .expect("write");
     let v = Vault::open(dir.path()).expect("open");
-    let (path, line) =
-        definition_of(&v, "id:01HXAAAAAAAAAAAAAAAAAAAAAA").expect("resolves");
+    let (path, line) = definition_of(&v, "id:01HXAAAAAAAAAAAAAAAAAAAAAA").expect("resolves");
     assert!(path.ends_with("target.org"));
     assert_eq!(line, 1, "headline line, not the drawer line");
 }

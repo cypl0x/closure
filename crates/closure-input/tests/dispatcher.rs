@@ -181,11 +181,8 @@ fn chord_trie_is_at_root_after_unbound() {
 
 #[test]
 fn chord_trie_all_commands_sorted_unique() {
-    let t = closure_input::ChordTrie::build(&[
-        ("a b", "second"),
-        ("a c", "first"),
-        ("d e", "first"),
-    ]);
+    let t =
+        closure_input::ChordTrie::build(&[("a b", "second"), ("a c", "first"), ("d e", "first")]);
     assert_eq!(t.all_commands(), vec!["first", "second"]);
 }
 
@@ -218,11 +215,7 @@ fn chord_trie_contains_command_match() {
 
 #[test]
 fn chord_trie_chord_count_match() {
-    let t = closure_input::ChordTrie::build(&[
-        ("a b", "x"),
-        ("a c", "y"),
-        ("d e", "y"),
-    ]);
+    let t = closure_input::ChordTrie::build(&[("a b", "x"), ("a c", "y"), ("d e", "y")]);
     assert_eq!(t.chord_count(), 3);
 }
 
@@ -237,7 +230,13 @@ fn chord_trie_node_count_match() {
 fn chord_trie_bindings_returns_sorted_pairs() {
     let t = closure_input::ChordTrie::build(&[("a b", "y"), ("a c", "x")]);
     let pairs = t.bindings();
-    assert_eq!(pairs, vec![("a b".to_owned(), "y".to_owned()), ("a c".to_owned(), "x".to_owned())]);
+    assert_eq!(
+        pairs,
+        vec![
+            ("a b".to_owned(), "y".to_owned()),
+            ("a c".to_owned(), "x".to_owned())
+        ]
+    );
 }
 
 #[test]
@@ -264,11 +263,7 @@ fn chord_trie_min_depth_zero_when_empty() {
 
 #[test]
 fn chord_trie_chord_depth_counts_match() {
-    let t = closure_input::ChordTrie::build(&[
-        ("a b", "x"),
-        ("c d", "y"),
-        ("e f g", "z"),
-    ]);
+    let t = closure_input::ChordTrie::build(&[("a b", "x"), ("c d", "y"), ("e f g", "z")]);
     let m = t.chord_depth_counts();
     assert_eq!(m.get(&2), Some(&2));
     assert_eq!(m.get(&3), Some(&1));
@@ -289,11 +284,7 @@ fn chord_trie_mean_depth_zero_when_empty() {
 
 #[test]
 fn chord_trie_mode_depth_match() {
-    let t = closure_input::ChordTrie::build(&[
-        ("a b", "x"),
-        ("c d", "y"),
-        ("e f g", "z"),
-    ]);
+    let t = closure_input::ChordTrie::build(&[("a b", "x"), ("c d", "y"), ("e f g", "z")]);
     // depths 2,2,3 -> mode 2
     assert_eq!(t.mode_depth(), Some(2));
 }
@@ -592,7 +583,10 @@ fn dispatcher_most_bound_command_match() {
     let mut reg = Registry::new();
     reg.register(Box::new(RenameHeadline::new_placeholder()));
     let disp = Dispatcher::from_registry(&reg, InputMode::Doom);
-    assert_eq!(disp.most_bound_command(), Some("rename-headline".to_owned()));
+    assert_eq!(
+        disp.most_bound_command(),
+        Some("rename-headline".to_owned())
+    );
 }
 
 #[test]
@@ -685,11 +679,7 @@ fn chord_trie_single_stroke_count_zero_when_empty() {
 
 #[test]
 fn chord_trie_command_chord_counts_match() {
-    let t = closure_input::ChordTrie::build(&[
-        ("a b", "foo"),
-        ("a c", "foo"),
-        ("d e", "bar"),
-    ]);
+    let t = closure_input::ChordTrie::build(&[("a b", "foo"), ("a c", "foo"), ("d e", "bar")]);
     let m = t.command_chord_counts();
     assert_eq!(m.get("foo"), Some(&2));
     assert_eq!(m.get("bar"), Some(&1));
@@ -697,11 +687,7 @@ fn chord_trie_command_chord_counts_match() {
 
 #[test]
 fn chord_trie_most_bound_command_match() {
-    let t = closure_input::ChordTrie::build(&[
-        ("a b", "foo"),
-        ("a c", "foo"),
-        ("d e", "bar"),
-    ]);
+    let t = closure_input::ChordTrie::build(&[("a b", "foo"), ("a c", "foo"), ("d e", "bar")]);
     assert_eq!(t.most_bound_command(), Some("foo".to_owned()));
 }
 
@@ -739,11 +725,8 @@ fn chord_trie_longest_chord_tie_first_sorted() {
 
 #[test]
 fn chord_trie_commands_at_depth_match() {
-    let t = closure_input::ChordTrie::build(&[
-        ("a b", "first"),
-        ("c d", "second"),
-        ("e f g", "third"),
-    ]);
+    let t =
+        closure_input::ChordTrie::build(&[("a b", "first"), ("c d", "second"), ("e f g", "third")]);
     assert_eq!(t.commands_at_depth(2), vec!["first", "second"]);
     assert_eq!(t.commands_at_depth(3), vec!["third"]);
     assert!(t.commands_at_depth(9).is_empty());
@@ -1906,7 +1889,11 @@ fn dispatcher_has_command_with_prefix_false_when_empty() {
 
 #[test]
 fn chord_trie_command_names_with_prefix_match() {
-    let t = closure_input::ChordTrie::build(&[("a", "rename-foo"), ("b", "rename-bar"), ("c", "delete")]);
+    let t = closure_input::ChordTrie::build(&[
+        ("a", "rename-foo"),
+        ("b", "rename-bar"),
+        ("c", "delete"),
+    ]);
     let mut v = t.command_names_with_prefix("rename");
     v.sort();
     assert_eq!(v, vec!["rename-bar".to_owned(), "rename-foo".to_owned()]);

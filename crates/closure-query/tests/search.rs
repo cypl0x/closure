@@ -9,7 +9,11 @@ use tempfile::TempDir;
 
 fn vault() -> TempDir {
     let dir = tempfile::tempdir().expect("tempdir");
-    fs::write(dir.path().join("a.org"), "* Title\nalpha body line\nsecond beta\n").expect("w");
+    fs::write(
+        dir.path().join("a.org"),
+        "* Title\nalpha body line\nsecond beta\n",
+    )
+    .expect("w");
     fs::write(dir.path().join("b.org"), "* Other\ngamma here\n").expect("w");
     dir
 }
@@ -54,7 +58,11 @@ fn backend_for_selects_engine_by_name() {
 
 #[test]
 fn ripgrep_matches_builtin_when_available() {
-    if std::process::Command::new("rg").arg("--version").output().is_err() {
+    if std::process::Command::new("rg")
+        .arg("--version")
+        .output()
+        .is_err()
+    {
         return; // skip when ripgrep absent
     }
     let td = vault();
@@ -69,7 +77,11 @@ fn ripgrep_matches_builtin_when_available() {
 #[test]
 fn builtin_searches_markdown_files_too() {
     let td = vault();
-    fs::write(td.path().join("notes.md"), "# Heading\nmarkdown delta line\n").expect("w");
+    fs::write(
+        td.path().join("notes.md"),
+        "# Heading\nmarkdown delta line\n",
+    )
+    .expect("w");
     let hits = BuiltinSearch.search(td.path(), "delta");
     assert_eq!(hits.len(), 1);
     assert!(hits[0].path.extension().unwrap() == "md");

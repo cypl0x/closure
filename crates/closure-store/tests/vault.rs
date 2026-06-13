@@ -303,17 +303,20 @@ fn vault_distinct_tags_returns_sorted_unique() {
         ("b.org", "* Z :work:\n"),
     ]);
     let v = Vault::open(td.path()).expect("open");
-    assert_eq!(v.distinct_tags(), vec!["home".to_owned(), "work".to_owned()]);
+    assert_eq!(
+        v.distinct_tags(),
+        vec!["home".to_owned(), "work".to_owned()]
+    );
 }
 
 #[test]
 fn vault_distinct_todos_returns_sorted_unique() {
-    let td = write_vault(&[
-        ("a.org", "* TODO X\n* DONE Y\n"),
-        ("b.org", "* TODO Z\n"),
-    ]);
+    let td = write_vault(&[("a.org", "* TODO X\n* DONE Y\n"), ("b.org", "* TODO Z\n")]);
     let v = Vault::open(td.path()).expect("open");
-    assert_eq!(v.distinct_todos(), vec!["DONE".to_owned(), "TODO".to_owned()]);
+    assert_eq!(
+        v.distinct_todos(),
+        vec!["DONE".to_owned(), "TODO".to_owned()]
+    );
 }
 
 #[test]
@@ -328,10 +331,7 @@ fn vault_distinct_priorities_returns_sorted_unique() {
 
 #[test]
 fn vault_distinct_levels_returns_sorted_unique() {
-    let td = write_vault(&[
-        ("a.org", "* A\n** B\n*** C\n"),
-        ("b.org", "* D\n** E\n"),
-    ]);
+    let td = write_vault(&[("a.org", "* A\n** B\n*** C\n"), ("b.org", "* D\n** E\n")]);
     let v = Vault::open(td.path()).expect("open");
     assert_eq!(v.distinct_levels(), vec![1, 2, 3]);
 }
@@ -348,10 +348,7 @@ fn vault_distinct_tag_count_match() {
 
 #[test]
 fn vault_distinct_todo_count_match() {
-    let td = write_vault(&[
-        ("a.org", "* TODO X\n* DONE Y\n"),
-        ("b.org", "* TODO Z\n"),
-    ]);
+    let td = write_vault(&[("a.org", "* TODO X\n* DONE Y\n"), ("b.org", "* TODO Z\n")]);
     let v = Vault::open(td.path()).expect("open");
     assert_eq!(v.distinct_todo_count(), 2);
 }
@@ -368,10 +365,7 @@ fn vault_distinct_priority_count_match() {
 
 #[test]
 fn vault_distinct_level_count_match() {
-    let td = write_vault(&[
-        ("a.org", "* A\n** B\n*** C\n"),
-        ("b.org", "* D\n** E\n"),
-    ]);
+    let td = write_vault(&[("a.org", "* A\n** B\n*** C\n"), ("b.org", "* D\n** E\n")]);
     let v = Vault::open(td.path()).expect("open");
     assert_eq!(v.distinct_level_count(), 3);
 }
@@ -563,10 +557,7 @@ fn vault_distinct_property_keys_sorted() {
 
 #[test]
 fn vault_distinct_property_key_count_match() {
-    let td = write_vault(&[(
-        "a.org",
-        "* A\n:PROPERTIES:\n:Foo: 1\n:Bar: 2\n:END:\n",
-    )]);
+    let td = write_vault(&[("a.org", "* A\n:PROPERTIES:\n:Foo: 1\n:Bar: 2\n:END:\n")]);
     let v = Vault::open(td.path()).expect("open");
     assert_eq!(v.distinct_property_key_count(), 2);
 }
@@ -683,10 +674,7 @@ fn vault_least_common_property_value_match() {
     )]);
     let v = Vault::open(td.path()).expect("open");
     // x=2, y=1 -> least y
-    assert_eq!(
-        v.least_common_property_value("Foo"),
-        Some("y".to_owned())
-    );
+    assert_eq!(v.least_common_property_value("Foo"), Some("y".to_owned()));
 }
 
 #[test]
@@ -718,20 +706,14 @@ fn vault_property_pct_match() {
 
 #[test]
 fn vault_count_no_property_match() {
-    let td = write_vault(&[(
-        "a.org",
-        "* A\n:PROPERTIES:\n:Foo: 1\n:END:\n* B\n* C\n",
-    )]);
+    let td = write_vault(&[("a.org", "* A\n:PROPERTIES:\n:Foo: 1\n:END:\n* B\n* C\n")]);
     let v = Vault::open(td.path()).expect("open");
     assert_eq!(v.count_no_property(), 2);
 }
 
 #[test]
 fn vault_no_property_pct_match() {
-    let td = write_vault(&[(
-        "a.org",
-        "* A\n:PROPERTIES:\n:Foo: 1\n:END:\n* B\n",
-    )]);
+    let td = write_vault(&[("a.org", "* A\n:PROPERTIES:\n:Foo: 1\n:END:\n* B\n")]);
     let v = Vault::open(td.path()).expect("open");
     assert_eq!(v.no_property_pct(), 50);
 }
@@ -1297,10 +1279,7 @@ fn vault_mean_property_value_len_match() {
 
 #[test]
 fn vault_total_property_value_len_match() {
-    let td = write_vault(&[(
-        "a.org",
-        "* A\n:PROPERTIES:\n:Foo: abc\n:Bar: def\n:END:\n",
-    )]);
+    let td = write_vault(&[("a.org", "* A\n:PROPERTIES:\n:Foo: abc\n:Bar: def\n:END:\n")]);
     let v = Vault::open(td.path()).expect("open");
     assert_eq!(v.total_property_value_len(), 6);
 }
@@ -1460,10 +1439,7 @@ fn vault_timestamp_pct_zero_when_empty() {
 
 #[test]
 fn vault_max_min_link_count_match() {
-    let td = write_vault(&[(
-        "a.org",
-        "* A\n[[l1]] [[l2]]\n* B\n[[l3]]\n* C\nno links\n",
-    )]);
+    let td = write_vault(&[("a.org", "* A\n[[l1]] [[l2]]\n* B\n[[l3]]\n* C\nno links\n")]);
     let v = Vault::open(td.path()).expect("open");
     assert_eq!(v.max_link_count(), Some(2));
     assert_eq!(v.min_link_count(), Some(0));
@@ -1471,10 +1447,7 @@ fn vault_max_min_link_count_match() {
 
 #[test]
 fn vault_mean_link_count_match() {
-    let td = write_vault(&[(
-        "a.org",
-        "* A\n[[l1]] [[l2]]\n* B\n[[l3]]\n* C\nno links\n",
-    )]);
+    let td = write_vault(&[("a.org", "* A\n[[l1]] [[l2]]\n* B\n[[l3]]\n* C\nno links\n")]);
     let v = Vault::open(td.path()).expect("open");
     // 2,1,0 -> 3/3=1
     assert_eq!(v.mean_link_count(), 1);
@@ -1491,20 +1464,14 @@ fn vault_link_count_none_when_empty() {
 
 #[test]
 fn vault_median_link_count_match() {
-    let td = write_vault(&[(
-        "a.org",
-        "* A\nno\n* B\n[[l1]]\n* C\n[[l2]] [[l3]]\n",
-    )]);
+    let td = write_vault(&[("a.org", "* A\nno\n* B\n[[l1]]\n* C\n[[l2]] [[l3]]\n")]);
     let v = Vault::open(td.path()).expect("open");
     assert_eq!(v.median_link_count(), Some(1));
 }
 
 #[test]
 fn vault_link_count_counts_match() {
-    let td = write_vault(&[(
-        "a.org",
-        "* A\n[[l1]]\n* B\n[[l2]]\n* C\n[[l3]] [[l4]]\n",
-    )]);
+    let td = write_vault(&[("a.org", "* A\n[[l1]]\n* B\n[[l2]]\n* C\n[[l3]] [[l4]]\n")]);
     let v = Vault::open(td.path()).expect("open");
     let m = v.link_count_counts();
     assert_eq!(m.get(&1), Some(&2));
@@ -1513,10 +1480,7 @@ fn vault_link_count_counts_match() {
 
 #[test]
 fn vault_mode_link_count_match() {
-    let td = write_vault(&[(
-        "a.org",
-        "* A\n[[l1]]\n* B\n[[l2]]\n* C\n[[l3]] [[l4]]\n",
-    )]);
+    let td = write_vault(&[("a.org", "* A\n[[l1]]\n* B\n[[l2]]\n* C\n[[l3]] [[l4]]\n")]);
     let v = Vault::open(td.path()).expect("open");
     assert_eq!(v.mode_link_count(), Some(1));
 }
@@ -1531,7 +1495,10 @@ fn vault_median_link_count_none_when_empty() {
 
 #[test]
 fn vault_with_link_count_match() {
-    let td = write_vault(&[("a.org", "* A\n[[l1]]\n* B\nno links\n* C\n[[l2]] [[l3]]\n* D\n")]);
+    let td = write_vault(&[(
+        "a.org",
+        "* A\n[[l1]]\n* B\nno links\n* C\n[[l2]] [[l3]]\n* D\n",
+    )]);
     let v = Vault::open(td.path()).expect("open");
     // A and C carry links
     assert_eq!(v.with_link_count(), 2);
@@ -1999,10 +1966,7 @@ fn vault_file_link_count_none_when_no_files() {
 
 #[test]
 fn vault_tag_count_of_match() {
-    let td = write_vault(&[
-        ("a.org", "* A :x:y:\n* B :z:\n"),
-        ("b.org", "* C\n"),
-    ]);
+    let td = write_vault(&[("a.org", "* A :x:y:\n* B :z:\n"), ("b.org", "* C\n")]);
     let v = Vault::open(td.path()).expect("open");
     // a.org tag occurrences 3, b.org 0
     assert_eq!(v.tag_count_of(&td.path().join("a.org")), Some(3));
@@ -2012,10 +1976,7 @@ fn vault_tag_count_of_match() {
 
 #[test]
 fn vault_max_min_file_tag_count_match() {
-    let td = write_vault(&[
-        ("a.org", "* A :x:y:\n* B :z:\n"),
-        ("b.org", "* C\n"),
-    ]);
+    let td = write_vault(&[("a.org", "* A :x:y:\n* B :z:\n"), ("b.org", "* C\n")]);
     let v = Vault::open(td.path()).expect("open");
     assert_eq!(v.max_file_tag_count(), Some(3));
     assert_eq!(v.min_file_tag_count(), Some(0));
@@ -2023,10 +1984,7 @@ fn vault_max_min_file_tag_count_match() {
 
 #[test]
 fn vault_mean_file_tag_count_match() {
-    let td = write_vault(&[
-        ("a.org", "* A :x:y:z:\n"),
-        ("b.org", "* C :w:\n"),
-    ]);
+    let td = write_vault(&[("a.org", "* A :x:y:z:\n"), ("b.org", "* C :w:\n")]);
     let v = Vault::open(td.path()).expect("open");
     // 3+1=4, 2 files -> 2
     assert_eq!(v.mean_file_tag_count(), 2);
@@ -2056,10 +2014,7 @@ fn vault_file_tag_count_none_when_no_files() {
 
 #[test]
 fn vault_todo_count_of_match() {
-    let td = write_vault(&[
-        ("a.org", "* TODO A\n* DONE B\n* C\n"),
-        ("b.org", "* D\n"),
-    ]);
+    let td = write_vault(&[("a.org", "* TODO A\n* DONE B\n* C\n"), ("b.org", "* D\n")]);
     let v = Vault::open(td.path()).expect("open");
     // a.org TODO-marked 2, b.org 0
     assert_eq!(v.todo_count_of(&td.path().join("a.org")), Some(2));
@@ -2069,10 +2024,7 @@ fn vault_todo_count_of_match() {
 
 #[test]
 fn vault_max_min_file_todo_count_match() {
-    let td = write_vault(&[
-        ("a.org", "* TODO A\n* DONE B\n"),
-        ("b.org", "* C\n"),
-    ]);
+    let td = write_vault(&[("a.org", "* TODO A\n* DONE B\n"), ("b.org", "* C\n")]);
     let v = Vault::open(td.path()).expect("open");
     assert_eq!(v.max_file_todo_count(), Some(2));
     assert_eq!(v.min_file_todo_count(), Some(0));
@@ -2114,7 +2066,10 @@ fn vault_file_todo_count_none_when_no_files() {
 #[test]
 fn vault_timestamp_count_of_match() {
     let td = write_vault(&[
-        ("a.org", "* A\n<2026-01-01> <2026-01-02>\n* B\n<2026-01-03>\n"),
+        (
+            "a.org",
+            "* A\n<2026-01-01> <2026-01-02>\n* B\n<2026-01-03>\n",
+        ),
         ("b.org", "* C\nno ts\n"),
     ]);
     let v = Vault::open(td.path()).expect("open");
@@ -2127,7 +2082,10 @@ fn vault_timestamp_count_of_match() {
 #[test]
 fn vault_max_min_file_timestamp_count_match() {
     let td = write_vault(&[
-        ("a.org", "* A\n<2026-01-01> <2026-01-02>\n* B\n<2026-01-03>\n"),
+        (
+            "a.org",
+            "* A\n<2026-01-01> <2026-01-02>\n* B\n<2026-01-03>\n",
+        ),
         ("b.org", "* C\nno ts\n"),
     ]);
     let v = Vault::open(td.path()).expect("open");
@@ -2171,7 +2129,10 @@ fn vault_file_timestamp_count_none_when_no_files() {
 #[test]
 fn vault_property_count_of_match() {
     let td = write_vault(&[
-        ("a.org", "* A\n:PROPERTIES:\n:K1: v\n:K2: w\n:END:\n* B\n:PROPERTIES:\n:K3: x\n:END:\n"),
+        (
+            "a.org",
+            "* A\n:PROPERTIES:\n:K1: v\n:K2: w\n:END:\n* B\n:PROPERTIES:\n:K3: x\n:END:\n",
+        ),
         ("b.org", "* C\n"),
     ]);
     let v = Vault::open(td.path()).expect("open");
@@ -2195,7 +2156,10 @@ fn vault_max_min_file_property_count_match() {
 #[test]
 fn vault_mean_file_property_count_match() {
     let td = write_vault(&[
-        ("a.org", "* A\n:PROPERTIES:\n:K1: v\n:K2: w\n:K3: x\n:END:\n"),
+        (
+            "a.org",
+            "* A\n:PROPERTIES:\n:K1: v\n:K2: w\n:K3: x\n:END:\n",
+        ),
         ("b.org", "* C\n:PROPERTIES:\n:K4: y\n:END:\n"),
     ]);
     let v = Vault::open(td.path()).expect("open");
@@ -2284,10 +2248,7 @@ fn vault_file_body_word_count_none_when_no_files() {
 
 #[test]
 fn vault_body_byte_count_of_match() {
-    let td = write_vault(&[
-        ("a.org", "* A\nxy\n* B\nz\n"),
-        ("b.org", "* C\n"),
-    ]);
+    let td = write_vault(&[("a.org", "* A\nxy\n* B\nz\n"), ("b.org", "* C\n")]);
     let v = Vault::open(td.path()).expect("open");
     // a.org body bytes "xy\n"=3 + "z\n"=2 = 5, b.org 0
     assert_eq!(v.body_byte_count_of(&td.path().join("a.org")), Some(5));
@@ -2297,10 +2258,7 @@ fn vault_body_byte_count_of_match() {
 
 #[test]
 fn vault_max_min_file_body_byte_count_match() {
-    let td = write_vault(&[
-        ("a.org", "* A\nxy\n* B\nz\n"),
-        ("b.org", "* C\n"),
-    ]);
+    let td = write_vault(&[("a.org", "* A\nxy\n* B\nz\n"), ("b.org", "* C\n")]);
     let v = Vault::open(td.path()).expect("open");
     assert_eq!(v.max_file_body_byte_count(), Some(5));
     assert_eq!(v.min_file_body_byte_count(), Some(0));
@@ -2308,10 +2266,7 @@ fn vault_max_min_file_body_byte_count_match() {
 
 #[test]
 fn vault_mean_file_body_byte_count_match() {
-    let td = write_vault(&[
-        ("a.org", "* A\nxyz\n"),
-        ("b.org", "* C\n"),
-    ]);
+    let td = write_vault(&[("a.org", "* A\nxyz\n"), ("b.org", "* C\n")]);
     let v = Vault::open(td.path()).expect("open");
     // a.org "xyz\n"=4, b.org 0 -> total 4, 2 files -> 2
     assert_eq!(v.mean_file_body_byte_count(), 2);
@@ -2341,10 +2296,7 @@ fn vault_file_body_byte_count_none_when_no_files() {
 
 #[test]
 fn vault_body_char_count_of_match() {
-    let td = write_vault(&[
-        ("a.org", "* A\náb\n"),
-        ("b.org", "* C\n"),
-    ]);
+    let td = write_vault(&[("a.org", "* A\náb\n"), ("b.org", "* C\n")]);
     let v = Vault::open(td.path()).expect("open");
     // a.org body "áb\n" = 3 chars, b.org 0
     assert_eq!(v.body_char_count_of(&td.path().join("a.org")), Some(3));
@@ -2354,10 +2306,7 @@ fn vault_body_char_count_of_match() {
 
 #[test]
 fn vault_max_min_file_body_char_count_match() {
-    let td = write_vault(&[
-        ("a.org", "* A\náb\n* B\nz\n"),
-        ("b.org", "* C\n"),
-    ]);
+    let td = write_vault(&[("a.org", "* A\náb\n* B\nz\n"), ("b.org", "* C\n")]);
     let v = Vault::open(td.path()).expect("open");
     // a.org "áb\n"=3 + "z\n"=2 = 5 chars, b.org 0
     assert_eq!(v.max_file_body_char_count(), Some(5));
@@ -2366,10 +2315,7 @@ fn vault_max_min_file_body_char_count_match() {
 
 #[test]
 fn vault_mean_file_body_char_count_match() {
-    let td = write_vault(&[
-        ("a.org", "* A\nxyz\n"),
-        ("b.org", "* C\n"),
-    ]);
+    let td = write_vault(&[("a.org", "* A\nxyz\n"), ("b.org", "* C\n")]);
     let v = Vault::open(td.path()).expect("open");
     // a.org "xyz\n"=4, b.org 0 -> total 4, 2 files -> 2
     assert_eq!(v.mean_file_body_char_count(), 2);
@@ -2399,10 +2345,7 @@ fn vault_file_body_char_count_none_when_no_files() {
 
 #[test]
 fn vault_body_line_count_of_match() {
-    let td = write_vault(&[
-        ("a.org", "* A\nl1\nl2\n* B\nl3\n"),
-        ("b.org", "* C\n"),
-    ]);
+    let td = write_vault(&[("a.org", "* A\nl1\nl2\n* B\nl3\n"), ("b.org", "* C\n")]);
     let v = Vault::open(td.path()).expect("open");
     // a.org body lines 2+1=3, b.org 0
     assert_eq!(v.body_line_count_of(&td.path().join("a.org")), Some(3));
@@ -2412,10 +2355,7 @@ fn vault_body_line_count_of_match() {
 
 #[test]
 fn vault_max_min_file_body_line_count_match() {
-    let td = write_vault(&[
-        ("a.org", "* A\nl1\nl2\n* B\nl3\n"),
-        ("b.org", "* C\n"),
-    ]);
+    let td = write_vault(&[("a.org", "* A\nl1\nl2\n* B\nl3\n"), ("b.org", "* C\n")]);
     let v = Vault::open(td.path()).expect("open");
     assert_eq!(v.max_file_body_line_count(), Some(3));
     assert_eq!(v.min_file_body_line_count(), Some(0));
@@ -2423,10 +2363,7 @@ fn vault_max_min_file_body_line_count_match() {
 
 #[test]
 fn vault_mean_file_body_line_count_match() {
-    let td = write_vault(&[
-        ("a.org", "* A\nl1\nl2\nl3\n"),
-        ("b.org", "* C\nl4\n"),
-    ]);
+    let td = write_vault(&[("a.org", "* A\nl1\nl2\nl3\n"), ("b.org", "* C\nl4\n")]);
     let v = Vault::open(td.path()).expect("open");
     // 3+1=4, 2 files -> 2
     assert_eq!(v.mean_file_body_line_count(), 2);
@@ -2457,7 +2394,10 @@ fn vault_file_body_line_count_none_when_no_files() {
 #[test]
 fn vault_scheduled_count_of_match() {
     let td = write_vault(&[
-        ("a.org", "* A\nSCHEDULED: <2026-01-01>\n* B\nSCHEDULED: <2026-01-02>\n* C\n"),
+        (
+            "a.org",
+            "* A\nSCHEDULED: <2026-01-01>\n* B\nSCHEDULED: <2026-01-02>\n* C\n",
+        ),
         ("b.org", "* D\n"),
     ]);
     let v = Vault::open(td.path()).expect("open");
@@ -2470,7 +2410,10 @@ fn vault_scheduled_count_of_match() {
 #[test]
 fn vault_max_min_file_scheduled_count_match() {
     let td = write_vault(&[
-        ("a.org", "* A\nSCHEDULED: <2026-01-01>\n* B\nSCHEDULED: <2026-01-02>\n"),
+        (
+            "a.org",
+            "* A\nSCHEDULED: <2026-01-01>\n* B\nSCHEDULED: <2026-01-02>\n",
+        ),
         ("b.org", "* C\n"),
     ]);
     let v = Vault::open(td.path()).expect("open");
@@ -2481,7 +2424,10 @@ fn vault_max_min_file_scheduled_count_match() {
 #[test]
 fn vault_mean_file_scheduled_count_match() {
     let td = write_vault(&[
-        ("a.org", "* A\nSCHEDULED: <2026-01-01>\n* B\nSCHEDULED: <2026-01-02>\n* C\nSCHEDULED: <2026-01-03>\n"),
+        (
+            "a.org",
+            "* A\nSCHEDULED: <2026-01-01>\n* B\nSCHEDULED: <2026-01-02>\n* C\nSCHEDULED: <2026-01-03>\n",
+        ),
         ("b.org", "* D\nSCHEDULED: <2026-01-04>\n"),
     ]);
     let v = Vault::open(td.path()).expect("open");
@@ -2494,7 +2440,10 @@ fn vault_median_file_scheduled_count_match() {
     let td = write_vault(&[
         ("a.org", "* A\n"),
         ("b.org", "* B\nSCHEDULED: <2026-01-01>\n"),
-        ("c.org", "* C\nSCHEDULED: <2026-01-02>\n* D\nSCHEDULED: <2026-01-03>\n"),
+        (
+            "c.org",
+            "* C\nSCHEDULED: <2026-01-02>\n* D\nSCHEDULED: <2026-01-03>\n",
+        ),
     ]);
     let v = Vault::open(td.path()).expect("open");
     // 0,1,2 -> median 1
@@ -2514,7 +2463,10 @@ fn vault_file_scheduled_count_none_when_no_files() {
 #[test]
 fn vault_deadline_count_of_match() {
     let td = write_vault(&[
-        ("a.org", "* A\nDEADLINE: <2026-01-01>\n* B\nDEADLINE: <2026-01-02>\n* C\n"),
+        (
+            "a.org",
+            "* A\nDEADLINE: <2026-01-01>\n* B\nDEADLINE: <2026-01-02>\n* C\n",
+        ),
         ("b.org", "* D\n"),
     ]);
     let v = Vault::open(td.path()).expect("open");
@@ -2526,7 +2478,10 @@ fn vault_deadline_count_of_match() {
 #[test]
 fn vault_max_min_file_deadline_count_match() {
     let td = write_vault(&[
-        ("a.org", "* A\nDEADLINE: <2026-01-01>\n* B\nDEADLINE: <2026-01-02>\n"),
+        (
+            "a.org",
+            "* A\nDEADLINE: <2026-01-01>\n* B\nDEADLINE: <2026-01-02>\n",
+        ),
         ("b.org", "* C\n"),
     ]);
     let v = Vault::open(td.path()).expect("open");
@@ -2537,7 +2492,10 @@ fn vault_max_min_file_deadline_count_match() {
 #[test]
 fn vault_mean_file_deadline_count_match() {
     let td = write_vault(&[
-        ("a.org", "* A\nDEADLINE: <2026-01-01>\n* B\nDEADLINE: <2026-01-02>\n* C\nDEADLINE: <2026-01-03>\n"),
+        (
+            "a.org",
+            "* A\nDEADLINE: <2026-01-01>\n* B\nDEADLINE: <2026-01-02>\n* C\nDEADLINE: <2026-01-03>\n",
+        ),
         ("b.org", "* D\nDEADLINE: <2026-01-04>\n"),
     ]);
     let v = Vault::open(td.path()).expect("open");
@@ -2550,7 +2508,10 @@ fn vault_median_file_deadline_count_match() {
     let td = write_vault(&[
         ("a.org", "* A\n"),
         ("b.org", "* B\nDEADLINE: <2026-01-01>\n"),
-        ("c.org", "* C\nDEADLINE: <2026-01-02>\n* D\nDEADLINE: <2026-01-03>\n"),
+        (
+            "c.org",
+            "* C\nDEADLINE: <2026-01-02>\n* D\nDEADLINE: <2026-01-03>\n",
+        ),
     ]);
     let v = Vault::open(td.path()).expect("open");
     // 0,1,2 -> median 1
@@ -2570,7 +2531,10 @@ fn vault_file_deadline_count_none_when_no_files() {
 #[test]
 fn vault_closed_count_of_match() {
     let td = write_vault(&[
-        ("a.org", "* A\nCLOSED: [2026-01-01]\n* B\nCLOSED: [2026-01-02]\n* C\n"),
+        (
+            "a.org",
+            "* A\nCLOSED: [2026-01-01]\n* B\nCLOSED: [2026-01-02]\n* C\n",
+        ),
         ("b.org", "* D\n"),
     ]);
     let v = Vault::open(td.path()).expect("open");
@@ -2582,7 +2546,10 @@ fn vault_closed_count_of_match() {
 #[test]
 fn vault_max_min_file_closed_count_match() {
     let td = write_vault(&[
-        ("a.org", "* A\nCLOSED: [2026-01-01]\n* B\nCLOSED: [2026-01-02]\n"),
+        (
+            "a.org",
+            "* A\nCLOSED: [2026-01-01]\n* B\nCLOSED: [2026-01-02]\n",
+        ),
         ("b.org", "* C\n"),
     ]);
     let v = Vault::open(td.path()).expect("open");
@@ -2593,7 +2560,10 @@ fn vault_max_min_file_closed_count_match() {
 #[test]
 fn vault_mean_file_closed_count_match() {
     let td = write_vault(&[
-        ("a.org", "* A\nCLOSED: [2026-01-01]\n* B\nCLOSED: [2026-01-02]\n* C\nCLOSED: [2026-01-03]\n"),
+        (
+            "a.org",
+            "* A\nCLOSED: [2026-01-01]\n* B\nCLOSED: [2026-01-02]\n* C\nCLOSED: [2026-01-03]\n",
+        ),
         ("b.org", "* D\nCLOSED: [2026-01-04]\n"),
     ]);
     let v = Vault::open(td.path()).expect("open");
@@ -2606,7 +2576,10 @@ fn vault_median_file_closed_count_match() {
     let td = write_vault(&[
         ("a.org", "* A\n"),
         ("b.org", "* B\nCLOSED: [2026-01-01]\n"),
-        ("c.org", "* C\nCLOSED: [2026-01-02]\n* D\nCLOSED: [2026-01-03]\n"),
+        (
+            "c.org",
+            "* C\nCLOSED: [2026-01-02]\n* D\nCLOSED: [2026-01-03]\n",
+        ),
     ]);
     let v = Vault::open(td.path()).expect("open");
     // 0,1,2 -> median 1
@@ -2626,7 +2599,10 @@ fn vault_file_closed_count_none_when_no_files() {
 #[test]
 fn vault_id_count_of_match() {
     let td = write_vault(&[
-        ("a.org", "* A\n:PROPERTIES:\n:ID: id1\n:END:\n* B\n:PROPERTIES:\n:ID: id2\n:END:\n* C\n"),
+        (
+            "a.org",
+            "* A\n:PROPERTIES:\n:ID: id1\n:END:\n* B\n:PROPERTIES:\n:ID: id2\n:END:\n* C\n",
+        ),
         ("b.org", "* D\n"),
     ]);
     let v = Vault::open(td.path()).expect("open");
@@ -2638,7 +2614,10 @@ fn vault_id_count_of_match() {
 #[test]
 fn vault_max_min_file_id_count_match() {
     let td = write_vault(&[
-        ("a.org", "* A\n:PROPERTIES:\n:ID: id1\n:END:\n* B\n:PROPERTIES:\n:ID: id2\n:END:\n"),
+        (
+            "a.org",
+            "* A\n:PROPERTIES:\n:ID: id1\n:END:\n* B\n:PROPERTIES:\n:ID: id2\n:END:\n",
+        ),
         ("b.org", "* C\n"),
     ]);
     let v = Vault::open(td.path()).expect("open");
@@ -2649,7 +2628,10 @@ fn vault_max_min_file_id_count_match() {
 #[test]
 fn vault_mean_file_id_count_match() {
     let td = write_vault(&[
-        ("a.org", "* A\n:PROPERTIES:\n:ID: id1\n:END:\n* B\n:PROPERTIES:\n:ID: id2\n:END:\n* C\n:PROPERTIES:\n:ID: id3\n:END:\n"),
+        (
+            "a.org",
+            "* A\n:PROPERTIES:\n:ID: id1\n:END:\n* B\n:PROPERTIES:\n:ID: id2\n:END:\n* C\n:PROPERTIES:\n:ID: id3\n:END:\n",
+        ),
         ("b.org", "* D\n:PROPERTIES:\n:ID: id4\n:END:\n"),
     ]);
     let v = Vault::open(td.path()).expect("open");
@@ -2662,7 +2644,10 @@ fn vault_median_file_id_count_match() {
     let td = write_vault(&[
         ("a.org", "* A\n"),
         ("b.org", "* B\n:PROPERTIES:\n:ID: id1\n:END:\n"),
-        ("c.org", "* C\n:PROPERTIES:\n:ID: id2\n:END:\n* D\n:PROPERTIES:\n:ID: id3\n:END:\n"),
+        (
+            "c.org",
+            "* C\n:PROPERTIES:\n:ID: id2\n:END:\n* D\n:PROPERTIES:\n:ID: id3\n:END:\n",
+        ),
     ]);
     let v = Vault::open(td.path()).expect("open");
     // 0,1,2 -> median 1
@@ -2749,10 +2734,7 @@ fn vault_comment_count_of_match() {
 
 #[test]
 fn vault_max_min_file_comment_count_match() {
-    let td = write_vault(&[
-        ("a.org", "* COMMENT A\n* COMMENT B\n"),
-        ("b.org", "* C\n"),
-    ]);
+    let td = write_vault(&[("a.org", "* COMMENT A\n* COMMENT B\n"), ("b.org", "* C\n")]);
     let v = Vault::open(td.path()).expect("open");
     assert_eq!(v.max_file_comment_count(), Some(2));
     assert_eq!(v.min_file_comment_count(), Some(0));
@@ -2793,10 +2775,7 @@ fn vault_file_comment_count_none_when_no_files() {
 
 #[test]
 fn vault_leaf_count_of_match() {
-    let td = write_vault(&[
-        ("a.org", "* A\n** B\n* C\n"),
-        ("b.org", "* D\n"),
-    ]);
+    let td = write_vault(&[("a.org", "* A\n** B\n* C\n"), ("b.org", "* D\n")]);
     let v = Vault::open(td.path()).expect("open");
     // a.org leaves: B, C = 2 (A has child); b.org D = 1
     assert_eq!(v.leaf_count_of(&td.path().join("a.org")), Some(2));
@@ -2806,10 +2785,7 @@ fn vault_leaf_count_of_match() {
 
 #[test]
 fn vault_max_min_file_leaf_count_match() {
-    let td = write_vault(&[
-        ("a.org", "* A\n* B\n* C\n"),
-        ("b.org", "* D\n** E\n"),
-    ]);
+    let td = write_vault(&[("a.org", "* A\n* B\n* C\n"), ("b.org", "* D\n** E\n")]);
     let v = Vault::open(td.path()).expect("open");
     // a.org 3 leaves, b.org 1 leaf (E)
     assert_eq!(v.max_file_leaf_count(), Some(3));
@@ -2818,10 +2794,7 @@ fn vault_max_min_file_leaf_count_match() {
 
 #[test]
 fn vault_mean_file_leaf_count_match() {
-    let td = write_vault(&[
-        ("a.org", "* A\n* B\n* C\n"),
-        ("b.org", "* D\n"),
-    ]);
+    let td = write_vault(&[("a.org", "* A\n* B\n* C\n"), ("b.org", "* D\n")]);
     let v = Vault::open(td.path()).expect("open");
     // 3+1=4, 2 files -> 2
     assert_eq!(v.mean_file_leaf_count(), 2);
@@ -2851,10 +2824,7 @@ fn vault_file_leaf_count_none_when_no_files() {
 
 #[test]
 fn vault_branch_count_of_match() {
-    let td = write_vault(&[
-        ("a.org", "* A\n** B\n*** C\n* D\n"),
-        ("b.org", "* E\n"),
-    ]);
+    let td = write_vault(&[("a.org", "* A\n** B\n*** C\n* D\n"), ("b.org", "* E\n")]);
     let v = Vault::open(td.path()).expect("open");
     // a.org branches: A, B = 2; b.org 0
     assert_eq!(v.branch_count_of(&td.path().join("a.org")), Some(2));
@@ -2864,10 +2834,7 @@ fn vault_branch_count_of_match() {
 
 #[test]
 fn vault_max_min_file_branch_count_match() {
-    let td = write_vault(&[
-        ("a.org", "* A\n** B\n*** C\n"),
-        ("b.org", "* D\n"),
-    ]);
+    let td = write_vault(&[("a.org", "* A\n** B\n*** C\n"), ("b.org", "* D\n")]);
     let v = Vault::open(td.path()).expect("open");
     // a.org branches A,B = 2; b.org 0
     assert_eq!(v.max_file_branch_count(), Some(2));
@@ -2909,22 +2876,19 @@ fn vault_file_branch_count_none_when_no_files() {
 
 #[test]
 fn vault_with_priority_count_of_match() {
-    let td = write_vault(&[
-        ("a.org", "* [#A] X\n* [#C] Y\n* Z\n"),
-        ("b.org", "* D\n"),
-    ]);
+    let td = write_vault(&[("a.org", "* [#A] X\n* [#C] Y\n* Z\n"), ("b.org", "* D\n")]);
     let v = Vault::open(td.path()).expect("open");
     assert_eq!(v.with_priority_count_of(&td.path().join("a.org")), Some(2));
     assert_eq!(v.with_priority_count_of(&td.path().join("b.org")), Some(0));
-    assert_eq!(v.with_priority_count_of(&td.path().join("missing.org")), None);
+    assert_eq!(
+        v.with_priority_count_of(&td.path().join("missing.org")),
+        None
+    );
 }
 
 #[test]
 fn vault_max_min_file_priority_count_match() {
-    let td = write_vault(&[
-        ("a.org", "* [#A] X\n* [#C] Y\n"),
-        ("b.org", "* D\n"),
-    ]);
+    let td = write_vault(&[("a.org", "* [#A] X\n* [#C] Y\n"), ("b.org", "* D\n")]);
     let v = Vault::open(td.path()).expect("open");
     assert_eq!(v.max_file_priority_count(), Some(2));
     assert_eq!(v.min_file_priority_count(), Some(0));
@@ -2965,10 +2929,7 @@ fn vault_file_priority_count_none_when_no_files() {
 
 #[test]
 fn vault_with_body_count_of_match() {
-    let td = write_vault(&[
-        ("a.org", "* A\nbody\n* B\nmore\n* C\n"),
-        ("b.org", "* D\n"),
-    ]);
+    let td = write_vault(&[("a.org", "* A\nbody\n* B\nmore\n* C\n"), ("b.org", "* D\n")]);
     let v = Vault::open(td.path()).expect("open");
     // a.org A,B have body = 2; b.org 0
     assert_eq!(v.with_body_count_of(&td.path().join("a.org")), Some(2));
@@ -2978,10 +2939,7 @@ fn vault_with_body_count_of_match() {
 
 #[test]
 fn vault_max_min_file_with_body_count_match() {
-    let td = write_vault(&[
-        ("a.org", "* A\nbody\n* B\nmore\n"),
-        ("b.org", "* D\n"),
-    ]);
+    let td = write_vault(&[("a.org", "* A\nbody\n* B\nmore\n"), ("b.org", "* D\n")]);
     let v = Vault::open(td.path()).expect("open");
     assert_eq!(v.max_file_with_body_count(), Some(2));
     assert_eq!(v.min_file_with_body_count(), Some(0));
@@ -3035,10 +2993,7 @@ fn vault_with_link_count_of_match() {
 
 #[test]
 fn vault_max_min_file_with_link_count_match() {
-    let td = write_vault(&[
-        ("a.org", "* A\n[[l1]]\n* B\n[[l2]]\n"),
-        ("b.org", "* D\n"),
-    ]);
+    let td = write_vault(&[("a.org", "* A\n[[l1]]\n* B\n[[l2]]\n"), ("b.org", "* D\n")]);
     let v = Vault::open(td.path()).expect("open");
     assert_eq!(v.max_file_with_link_count(), Some(2));
     assert_eq!(v.min_file_with_link_count(), Some(0));
@@ -3080,20 +3035,29 @@ fn vault_file_with_link_count_none_when_no_files() {
 #[test]
 fn vault_with_property_count_of_match() {
     let td = write_vault(&[
-        ("a.org", "* A\n:PROPERTIES:\n:K: v\n:END:\n* B\n:PROPERTIES:\n:K: w\n:END:\n* C\n"),
+        (
+            "a.org",
+            "* A\n:PROPERTIES:\n:K: v\n:END:\n* B\n:PROPERTIES:\n:K: w\n:END:\n* C\n",
+        ),
         ("b.org", "* D\n"),
     ]);
     let v = Vault::open(td.path()).expect("open");
     // a.org headlines with properties: A, B = 2; b.org 0
     assert_eq!(v.with_property_count_of(&td.path().join("a.org")), Some(2));
     assert_eq!(v.with_property_count_of(&td.path().join("b.org")), Some(0));
-    assert_eq!(v.with_property_count_of(&td.path().join("missing.org")), None);
+    assert_eq!(
+        v.with_property_count_of(&td.path().join("missing.org")),
+        None
+    );
 }
 
 #[test]
 fn vault_max_min_file_with_property_count_match() {
     let td = write_vault(&[
-        ("a.org", "* A\n:PROPERTIES:\n:K: v\n:END:\n* B\n:PROPERTIES:\n:K: w\n:END:\n"),
+        (
+            "a.org",
+            "* A\n:PROPERTIES:\n:K: v\n:END:\n* B\n:PROPERTIES:\n:K: w\n:END:\n",
+        ),
         ("b.org", "* D\n"),
     ]);
     let v = Vault::open(td.path()).expect("open");
@@ -3104,7 +3068,10 @@ fn vault_max_min_file_with_property_count_match() {
 #[test]
 fn vault_mean_file_with_property_count_match() {
     let td = write_vault(&[
-        ("a.org", "* A\n:PROPERTIES:\n:K: v\n:END:\n* B\n:PROPERTIES:\n:K: w\n:END:\n* C\n:PROPERTIES:\n:K: x\n:END:\n"),
+        (
+            "a.org",
+            "* A\n:PROPERTIES:\n:K: v\n:END:\n* B\n:PROPERTIES:\n:K: w\n:END:\n* C\n:PROPERTIES:\n:K: x\n:END:\n",
+        ),
         ("b.org", "* D\n:PROPERTIES:\n:K: y\n:END:\n"),
     ]);
     let v = Vault::open(td.path()).expect("open");
@@ -3117,7 +3084,10 @@ fn vault_median_file_with_property_count_match() {
     let td = write_vault(&[
         ("a.org", "* A\n"),
         ("b.org", "* B\n:PROPERTIES:\n:K: v\n:END:\n"),
-        ("c.org", "* C\n:PROPERTIES:\n:K: w\n:END:\n* D\n:PROPERTIES:\n:K: x\n:END:\n"),
+        (
+            "c.org",
+            "* C\n:PROPERTIES:\n:K: w\n:END:\n* D\n:PROPERTIES:\n:K: x\n:END:\n",
+        ),
     ]);
     let v = Vault::open(td.path()).expect("open");
     // 0,1,2 -> median 1
@@ -3137,14 +3107,20 @@ fn vault_file_with_property_count_none_when_no_files() {
 #[test]
 fn vault_with_timestamp_count_of_match() {
     let td = write_vault(&[
-        ("a.org", "* A\n<2026-01-01>\n* B\n<2026-01-02> <2026-01-03>\n* C\n"),
+        (
+            "a.org",
+            "* A\n<2026-01-01>\n* B\n<2026-01-02> <2026-01-03>\n* C\n",
+        ),
         ("b.org", "* D\n"),
     ]);
     let v = Vault::open(td.path()).expect("open");
     // a.org headlines with timestamps: A, B = 2; b.org 0
     assert_eq!(v.with_timestamp_count_of(&td.path().join("a.org")), Some(2));
     assert_eq!(v.with_timestamp_count_of(&td.path().join("b.org")), Some(0));
-    assert_eq!(v.with_timestamp_count_of(&td.path().join("missing.org")), None);
+    assert_eq!(
+        v.with_timestamp_count_of(&td.path().join("missing.org")),
+        None
+    );
 }
 
 #[test]
@@ -3161,7 +3137,10 @@ fn vault_max_min_file_with_timestamp_count_match() {
 #[test]
 fn vault_mean_file_with_timestamp_count_match() {
     let td = write_vault(&[
-        ("a.org", "* A\n<2026-01-01>\n* B\n<2026-01-02>\n* C\n<2026-01-03>\n"),
+        (
+            "a.org",
+            "* A\n<2026-01-01>\n* B\n<2026-01-02>\n* C\n<2026-01-03>\n",
+        ),
         ("b.org", "* D\n<2026-01-04>\n"),
     ]);
     let v = Vault::open(td.path()).expect("open");
@@ -3283,20 +3262,14 @@ fn vault_file_word_count_none_when_empty() {
 
 #[test]
 fn vault_most_common_todo_returns_top() {
-    let td = write_vault(&[
-        ("a.org", "* TODO X\n* DONE Y\n"),
-        ("b.org", "* TODO Z\n"),
-    ]);
+    let td = write_vault(&[("a.org", "* TODO X\n* DONE Y\n"), ("b.org", "* TODO Z\n")]);
     let v = Vault::open(td.path()).expect("open");
     assert_eq!(v.most_common_todo(), Some("TODO".to_owned()));
 }
 
 #[test]
 fn vault_most_common_priority_returns_top() {
-    let td = write_vault(&[
-        ("a.org", "* [#A] X\n* [#B] Y\n"),
-        ("b.org", "* [#A] Z\n"),
-    ]);
+    let td = write_vault(&[("a.org", "* [#A] X\n* [#B] Y\n"), ("b.org", "* [#A] Z\n")]);
     let v = Vault::open(td.path()).expect("open");
     assert_eq!(v.most_common_priority(), Some('A'));
 }
@@ -3313,20 +3286,14 @@ fn vault_most_common_level_returns_top() {
 
 #[test]
 fn vault_max_level_match() {
-    let td = write_vault(&[
-        ("a.org", "* A\n** B\n*** C\n"),
-        ("b.org", "* D\n** E\n"),
-    ]);
+    let td = write_vault(&[("a.org", "* A\n** B\n*** C\n"), ("b.org", "* D\n** E\n")]);
     let v = Vault::open(td.path()).expect("open");
     assert_eq!(v.max_level(), Some(3));
 }
 
 #[test]
 fn vault_min_level_match() {
-    let td = write_vault(&[
-        ("a.org", "* A\n** B\n*** C\n"),
-        ("b.org", "** D\n"),
-    ]);
+    let td = write_vault(&[("a.org", "* A\n** B\n*** C\n"), ("b.org", "** D\n")]);
     let v = Vault::open(td.path()).expect("open");
     assert_eq!(v.min_level(), Some(1));
 }
@@ -3393,10 +3360,7 @@ fn vault_level_range_none_on_empty() {
 
 #[test]
 fn vault_root_count_match() {
-    let td = write_vault(&[
-        ("a.org", "* A\n** B\n* C\n"),
-        ("b.org", "* D\n"),
-    ]);
+    let td = write_vault(&[("a.org", "* A\n** B\n* C\n"), ("b.org", "* D\n")]);
     let v = Vault::open(td.path()).expect("open");
     // roots: a.org A,C + b.org D = 3
     assert_eq!(v.root_count(), 3);
@@ -3617,20 +3581,14 @@ fn vault_total_tag_count_match() {
 
 #[test]
 fn vault_total_priority_count_match() {
-    let td = write_vault(&[
-        ("a.org", "* [#A] X\n* Y\n"),
-        ("b.org", "* [#B] Z\n"),
-    ]);
+    let td = write_vault(&[("a.org", "* [#A] X\n* Y\n"), ("b.org", "* [#B] Z\n")]);
     let v = Vault::open(td.path()).expect("open");
     assert_eq!(v.total_priority_count(), 2);
 }
 
 #[test]
 fn vault_total_todo_count_match() {
-    let td = write_vault(&[
-        ("a.org", "* TODO X\n* Y\n"),
-        ("b.org", "* DONE Z\n"),
-    ]);
+    let td = write_vault(&[("a.org", "* TODO X\n* Y\n"), ("b.org", "* DONE Z\n")]);
     let v = Vault::open(td.path()).expect("open");
     assert_eq!(v.total_todo_count(), 2);
 }
@@ -3667,10 +3625,7 @@ fn vault_headline_count_with_tag_match() {
 
 #[test]
 fn vault_headline_count_with_todo_match() {
-    let td = write_vault(&[
-        ("a.org", "* TODO X\n* DONE Y\n"),
-        ("b.org", "* TODO Z\n"),
-    ]);
+    let td = write_vault(&[("a.org", "* TODO X\n* DONE Y\n"), ("b.org", "* TODO Z\n")]);
     let v = Vault::open(td.path()).expect("open");
     assert_eq!(v.headline_count_with_todo("TODO"), 2);
     assert_eq!(v.headline_count_with_todo("DONE"), 1);
@@ -3678,10 +3633,7 @@ fn vault_headline_count_with_todo_match() {
 
 #[test]
 fn vault_headline_count_with_priority_match() {
-    let td = write_vault(&[
-        ("a.org", "* [#A] X\n* [#B] Y\n"),
-        ("b.org", "* [#A] Z\n"),
-    ]);
+    let td = write_vault(&[("a.org", "* [#A] X\n* [#B] Y\n"), ("b.org", "* [#A] Z\n")]);
     let v = Vault::open(td.path()).expect("open");
     assert_eq!(v.headline_count_with_priority('A'), 2);
     assert_eq!(v.headline_count_with_priority('B'), 1);
@@ -3689,10 +3641,7 @@ fn vault_headline_count_with_priority_match() {
 
 #[test]
 fn vault_headline_count_at_level_match() {
-    let td = write_vault(&[
-        ("a.org", "* A\n** B\n** C\n"),
-        ("b.org", "* D\n"),
-    ]);
+    let td = write_vault(&[("a.org", "* A\n** B\n** C\n"), ("b.org", "* D\n")]);
     let v = Vault::open(td.path()).expect("open");
     assert_eq!(v.headline_count_at_level(1), 2);
     assert_eq!(v.headline_count_at_level(2), 2);
@@ -3732,30 +3681,21 @@ fn vault_empty_path_count_match() {
 
 #[test]
 fn vault_max_headlines_per_path_match() {
-    let td = write_vault(&[
-        ("a.org", "* X\n* Y\n* Z\n"),
-        ("b.org", "* W\n"),
-    ]);
+    let td = write_vault(&[("a.org", "* X\n* Y\n* Z\n"), ("b.org", "* W\n")]);
     let v = Vault::open(td.path()).expect("open");
     assert_eq!(v.max_headlines_per_path(), Some(3));
 }
 
 #[test]
 fn vault_min_headlines_per_path_match() {
-    let td = write_vault(&[
-        ("a.org", "* X\n* Y\n"),
-        ("b.org", "* W\n"),
-    ]);
+    let td = write_vault(&[("a.org", "* X\n* Y\n"), ("b.org", "* W\n")]);
     let v = Vault::open(td.path()).expect("open");
     assert_eq!(v.min_headlines_per_path(), Some(1));
 }
 
 #[test]
 fn vault_total_headline_count_match() {
-    let td = write_vault(&[
-        ("a.org", "* X\n** Y\n"),
-        ("b.org", "* Z\n"),
-    ]);
+    let td = write_vault(&[("a.org", "* X\n** Y\n"), ("b.org", "* Z\n")]);
     let v = Vault::open(td.path()).expect("open");
     assert_eq!(v.total_headline_count(), 3);
 }
@@ -3824,10 +3764,7 @@ fn vault_mode_headlines_per_path_none_on_empty() {
 
 #[test]
 fn vault_max_min_property_count_match() {
-    let td = write_vault(&[(
-        "a.org",
-        "* A\n:PROPERTIES:\n:K1: v\n:K2: w\n:END:\n* B\n",
-    )]);
+    let td = write_vault(&[("a.org", "* A\n:PROPERTIES:\n:K1: v\n:K2: w\n:END:\n* B\n")]);
     let v = Vault::open(td.path()).expect("open");
     assert_eq!(v.max_property_count(), Some(2));
     assert_eq!(v.min_property_count(), Some(0));
@@ -4120,20 +4057,14 @@ fn vault_id_pct_match() {
 
 #[test]
 fn vault_count_no_id_match() {
-    let td = write_vault(&[(
-        "a.org",
-        "* A\n:PROPERTIES:\n:ID: x1\n:END:\n* B\n* C\n",
-    )]);
+    let td = write_vault(&[("a.org", "* A\n:PROPERTIES:\n:ID: x1\n:END:\n* B\n* C\n")]);
     let v = Vault::open(td.path()).expect("open");
     assert_eq!(v.count_no_id(), 2);
 }
 
 #[test]
 fn vault_no_id_pct_match() {
-    let td = write_vault(&[(
-        "a.org",
-        "* A\n:PROPERTIES:\n:ID: x1\n:END:\n* B\n",
-    )]);
+    let td = write_vault(&[("a.org", "* A\n:PROPERTIES:\n:ID: x1\n:END:\n* B\n")]);
     let v = Vault::open(td.path()).expect("open");
     assert_eq!(v.no_id_pct(), 50);
 }
@@ -4159,10 +4090,7 @@ fn vault_path_with_max_headlines_match() {
 
 #[test]
 fn vault_path_with_min_headlines_match() {
-    let td = write_vault(&[
-        ("a.org", "* X\n* Y\n"),
-        ("b.org", "* X\n"),
-    ]);
+    let td = write_vault(&[("a.org", "* X\n* Y\n"), ("b.org", "* X\n")]);
     let v = Vault::open(td.path()).expect("open");
     let p = v.path_with_min_headlines().expect("hit");
     assert_eq!(p.file_name().and_then(|s| s.to_str()), Some("b.org"));
@@ -4186,10 +4114,7 @@ fn vault_all_titles_returns_collection() {
 
 #[test]
 fn vault_distinct_titles_returns_sorted_unique() {
-    let td = write_vault(&[
-        ("a.org", "* X\n* Y\n"),
-        ("b.org", "* X\n* Z\n"),
-    ]);
+    let td = write_vault(&[("a.org", "* X\n* Y\n"), ("b.org", "* X\n* Z\n")]);
     let v = Vault::open(td.path()).expect("open");
     assert_eq!(
         v.distinct_titles(),
@@ -4212,9 +4137,10 @@ fn vault_distinct_id_properties_returns_sorted() {
 
 #[test]
 fn vault_all_id_properties_returns_collection() {
-    let td = write_vault(&[
-        ("a.org", "* X\n:PROPERTIES:\n:ID: x\n:END:\n* Y\n:PROPERTIES:\n:ID: y\n:END:\n"),
-    ]);
+    let td = write_vault(&[(
+        "a.org",
+        "* X\n:PROPERTIES:\n:ID: x\n:END:\n* Y\n:PROPERTIES:\n:ID: y\n:END:\n",
+    )]);
     let v = Vault::open(td.path()).expect("open");
     let mut ids = v.all_id_properties();
     ids.sort();
@@ -4240,10 +4166,7 @@ fn vault_distinct_id_property_count_match() {
 
 #[test]
 fn vault_distinct_title_count_match() {
-    let td = write_vault(&[
-        ("a.org", "* X\n* Y\n"),
-        ("b.org", "* X\n* Z\n"),
-    ]);
+    let td = write_vault(&[("a.org", "* X\n* Y\n"), ("b.org", "* X\n* Z\n")]);
     let v = Vault::open(td.path()).expect("open");
     assert_eq!(v.distinct_title_count(), 3);
 }
@@ -4713,10 +4636,7 @@ fn vault_subtree_byte_count_counts_nonempty() {
 #[test]
 fn vault_max_min_subtree_link_count_match() {
     // root A body has 2 links, child B body has 1, child C none
-    let td = write_vault(&[(
-        "a.org",
-        "* A\n[[x][X]] [[y][Y]]\n** B\n[[z][Z]]\n** C\n",
-    )]);
+    let td = write_vault(&[("a.org", "* A\n[[x][X]] [[y][Y]]\n** B\n[[z][Z]]\n** C\n")]);
     let v = Vault::open(td.path()).expect("open");
     // subtree counts: A=3, B=1, C=0
     assert_eq!(v.max_subtree_link_count(), Some(3));
@@ -4725,10 +4645,7 @@ fn vault_max_min_subtree_link_count_match() {
 
 #[test]
 fn vault_total_subtree_link_count_match() {
-    let td = write_vault(&[(
-        "a.org",
-        "* A\n[[x][X]] [[y][Y]]\n** B\n[[z][Z]]\n** C\n",
-    )]);
+    let td = write_vault(&[("a.org", "* A\n[[x][X]] [[y][Y]]\n** B\n[[z][Z]]\n** C\n")]);
     let v = Vault::open(td.path()).expect("open");
     // 3 + 1 + 0 = 4
     assert_eq!(v.total_subtree_link_count(), 4);
@@ -4736,10 +4653,7 @@ fn vault_total_subtree_link_count_match() {
 
 #[test]
 fn vault_mean_subtree_link_count_match() {
-    let td = write_vault(&[(
-        "a.org",
-        "* A\n[[x][X]] [[y][Y]]\n** B\n[[z][Z]]\n** C\n",
-    )]);
+    let td = write_vault(&[("a.org", "* A\n[[x][X]] [[y][Y]]\n** B\n[[z][Z]]\n** C\n")]);
     let v = Vault::open(td.path()).expect("open");
     // 4/3 = 1
     assert_eq!(v.mean_subtree_link_count(), 1);
@@ -4758,10 +4672,7 @@ fn vault_subtree_link_count_none_when_empty() {
 #[test]
 fn vault_median_subtree_link_count_match() {
     // counts: A=3, B=1, C=0 sorted [0,1,3] -> median 1
-    let td = write_vault(&[(
-        "a.org",
-        "* A\n[[x][X]] [[y][Y]]\n** B\n[[z][Z]]\n** C\n",
-    )]);
+    let td = write_vault(&[("a.org", "* A\n[[x][X]] [[y][Y]]\n** B\n[[z][Z]]\n** C\n")]);
     let v = Vault::open(td.path()).expect("open");
     assert_eq!(v.median_subtree_link_count(), Some(1));
 }
@@ -4790,10 +4701,7 @@ fn vault_mode_subtree_link_count_none_when_empty() {
 
 #[test]
 fn vault_subtree_link_count_counts_match() {
-    let td = write_vault(&[(
-        "a.org",
-        "* A\n[[x][X]] [[y][Y]]\n** B\n[[z][Z]]\n** C\n",
-    )]);
+    let td = write_vault(&[("a.org", "* A\n[[x][X]] [[y][Y]]\n** B\n[[z][Z]]\n** C\n")]);
     let v = Vault::open(td.path()).expect("open");
     let m = v.subtree_link_count_counts();
     assert_eq!(m.get(&3), Some(&1));
@@ -6001,11 +5909,7 @@ fn vault_file_title_byte_len_counts_match() {
 
 #[test]
 fn vault_mode_file_title_byte_len_match() {
-    let td = write_vault(&[
-        ("a.org", "* A\n"),
-        ("b.org", "* A\n"),
-        ("c.org", "* BBB\n"),
-    ]);
+    let td = write_vault(&[("a.org", "* A\n"), ("b.org", "* A\n"), ("c.org", "* BBB\n")]);
     let v = Vault::open(td.path()).expect("open");
     assert_eq!(v.mode_file_title_byte_len(), Some(1));
 }
@@ -6536,10 +6440,7 @@ fn vault_max_min_file_distinct_property_key_count_match() {
     // a: keys={x}=1, b: keys={x,y}=2, c: 0
     let td = write_vault(&[
         ("a.org", "* A\n:PROPERTIES:\n:x: 1\n:END:\n"),
-        (
-            "b.org",
-            "* B\n:PROPERTIES:\n:x: 1\n:y: 2\n:END:\n",
-        ),
+        ("b.org", "* B\n:PROPERTIES:\n:x: 1\n:y: 2\n:END:\n"),
         ("c.org", "* C\n"),
     ]);
     let v = Vault::open(td.path()).expect("open");
@@ -6551,10 +6452,7 @@ fn vault_max_min_file_distinct_property_key_count_match() {
 fn vault_total_file_distinct_property_key_count_match() {
     let td = write_vault(&[
         ("a.org", "* A\n:PROPERTIES:\n:x: 1\n:END:\n"),
-        (
-            "b.org",
-            "* B\n:PROPERTIES:\n:x: 1\n:y: 2\n:END:\n",
-        ),
+        ("b.org", "* B\n:PROPERTIES:\n:x: 1\n:y: 2\n:END:\n"),
         ("c.org", "* C\n"),
     ]);
     let v = Vault::open(td.path()).expect("open");
@@ -6565,10 +6463,7 @@ fn vault_total_file_distinct_property_key_count_match() {
 fn vault_mean_file_distinct_property_key_count_match() {
     let td = write_vault(&[
         ("a.org", "* A\n:PROPERTIES:\n:x: 1\n:END:\n"),
-        (
-            "b.org",
-            "* B\n:PROPERTIES:\n:x: 1\n:y: 2\n:END:\n",
-        ),
+        ("b.org", "* B\n:PROPERTIES:\n:x: 1\n:y: 2\n:END:\n"),
         ("c.org", "* C\n"),
     ]);
     let v = Vault::open(td.path()).expect("open");
@@ -6579,10 +6474,7 @@ fn vault_mean_file_distinct_property_key_count_match() {
 fn vault_median_file_distinct_property_key_count_match() {
     let td = write_vault(&[
         ("a.org", "* A\n:PROPERTIES:\n:x: 1\n:END:\n"),
-        (
-            "b.org",
-            "* B\n:PROPERTIES:\n:x: 1\n:y: 2\n:END:\n",
-        ),
+        ("b.org", "* B\n:PROPERTIES:\n:x: 1\n:y: 2\n:END:\n"),
         ("c.org", "* C\n"),
     ]);
     let v = Vault::open(td.path()).expect("open");
@@ -6594,10 +6486,7 @@ fn vault_median_file_distinct_property_key_count_match() {
 fn vault_file_distinct_property_key_count_counts_match() {
     let td = write_vault(&[
         ("a.org", "* A\n:PROPERTIES:\n:x: 1\n:END:\n"),
-        (
-            "b.org",
-            "* B\n:PROPERTIES:\n:x: 1\n:y: 2\n:END:\n",
-        ),
+        ("b.org", "* B\n:PROPERTIES:\n:x: 1\n:y: 2\n:END:\n"),
         ("c.org", "* C\n"),
     ]);
     let v = Vault::open(td.path()).expect("open");
@@ -6612,10 +6501,7 @@ fn vault_mode_file_distinct_property_key_count_match() {
     let td = write_vault(&[
         ("a.org", "* A\n:PROPERTIES:\n:x: 1\n:END:\n"),
         ("b.org", "* B\n:PROPERTIES:\n:y: 2\n:END:\n"),
-        (
-            "c.org",
-            "* C\n:PROPERTIES:\n:z: 3\n:w: 4\n:END:\n",
-        ),
+        ("c.org", "* C\n:PROPERTIES:\n:z: 3\n:w: 4\n:END:\n"),
     ]);
     let v = Vault::open(td.path()).expect("open");
     assert_eq!(v.mode_file_distinct_property_key_count(), Some(1));
@@ -7033,7 +6919,10 @@ fn vault_with_todo_count_of_match() {
     let v = Vault::open(td.path()).expect("open");
     let p = v.root().join("a.org");
     assert_eq!(v.with_todo_count_of(&p), Some(1));
-    assert_eq!(v.with_todo_count_of(std::path::Path::new("missing.org")), None);
+    assert_eq!(
+        v.with_todo_count_of(std::path::Path::new("missing.org")),
+        None
+    );
 }
 
 #[test]
@@ -7249,7 +7138,10 @@ fn vault_planning_count_of_match() {
     let v = Vault::open(td.path()).expect("open");
     let p = v.root().join("a.org");
     assert_eq!(v.planning_count_of(&p), Some(1));
-    assert_eq!(v.planning_count_of(std::path::Path::new("missing.org")), None);
+    assert_eq!(
+        v.planning_count_of(std::path::Path::new("missing.org")),
+        None
+    );
 }
 
 #[test]
@@ -7501,10 +7393,7 @@ fn vault_no_timestamp_pct_zero_when_no_headlines() {
 
 #[test]
 fn vault_count_no_link_match() {
-    let td = write_vault(&[
-        ("a.org", "* A\n[[x][X]]\n* B\n"),
-        ("b.org", "* C\n"),
-    ]);
+    let td = write_vault(&[("a.org", "* A\n[[x][X]]\n* B\n"), ("b.org", "* C\n")]);
     let v = Vault::open(td.path()).expect("open");
     assert_eq!(v.count_no_link(), 2);
 }
@@ -7521,10 +7410,7 @@ fn vault_count_no_timestamp_match() {
 
 #[test]
 fn vault_count_no_archived_match() {
-    let td = write_vault(&[
-        ("a.org", "* A :ARCHIVE:\n* B\n"),
-        ("b.org", "* C\n"),
-    ]);
+    let td = write_vault(&[("a.org", "* A :ARCHIVE:\n* B\n"), ("b.org", "* C\n")]);
     let v = Vault::open(td.path()).expect("open");
     assert_eq!(v.count_no_archived(), 2);
 }
@@ -7577,10 +7463,7 @@ fn vault_no_scheduled_pct_zero_when_no_headlines() {
 
 #[test]
 fn vault_count_no_comment_match() {
-    let td = write_vault(&[
-        ("a.org", "* COMMENT A\n* B\n"),
-        ("b.org", "* C\n"),
-    ]);
+    let td = write_vault(&[("a.org", "* COMMENT A\n* B\n"), ("b.org", "* C\n")]);
     let v = Vault::open(td.path()).expect("open");
     assert_eq!(v.count_no_comment(), 2);
 }
@@ -7696,7 +7579,10 @@ fn vault_planning_pct_zero_when_no_headlines() {
 fn vault_max_min_file_subtree_word_count_match() {
     // a.org: A body "one two" + B body "three" → subtree counts A=3, B=1; sum=4
     // b.org: C body "x" → subtree count 1; sum=1
-    let td = write_vault(&[("a.org", "* A\none two\n** B\nthree\n"), ("b.org", "* C\nx\n")]);
+    let td = write_vault(&[
+        ("a.org", "* A\none two\n** B\nthree\n"),
+        ("b.org", "* C\nx\n"),
+    ]);
     let v = Vault::open(td.path()).expect("open");
     assert_eq!(v.max_file_subtree_word_count(), Some(4));
     assert_eq!(v.min_file_subtree_word_count(), Some(1));
@@ -7704,7 +7590,10 @@ fn vault_max_min_file_subtree_word_count_match() {
 
 #[test]
 fn vault_total_file_subtree_word_count_match() {
-    let td = write_vault(&[("a.org", "* A\none two\n** B\nthree\n"), ("b.org", "* C\nx\n")]);
+    let td = write_vault(&[
+        ("a.org", "* A\none two\n** B\nthree\n"),
+        ("b.org", "* C\nx\n"),
+    ]);
     let v = Vault::open(td.path()).expect("open");
     // 4+1
     assert_eq!(v.total_file_subtree_word_count(), 5);
@@ -7712,7 +7601,10 @@ fn vault_total_file_subtree_word_count_match() {
 
 #[test]
 fn vault_mean_file_subtree_word_count_match() {
-    let td = write_vault(&[("a.org", "* A\none two\n** B\nthree\n"), ("b.org", "* C\nx\n")]);
+    let td = write_vault(&[
+        ("a.org", "* A\none two\n** B\nthree\n"),
+        ("b.org", "* C\nx\n"),
+    ]);
     let v = Vault::open(td.path()).expect("open");
     // 5/2=2
     assert_eq!(v.mean_file_subtree_word_count(), 2);
@@ -7720,7 +7612,10 @@ fn vault_mean_file_subtree_word_count_match() {
 
 #[test]
 fn vault_median_file_subtree_word_count_match() {
-    let td = write_vault(&[("a.org", "* A\none two\n** B\nthree\n"), ("b.org", "* C\nx\n")]);
+    let td = write_vault(&[
+        ("a.org", "* A\none two\n** B\nthree\n"),
+        ("b.org", "* C\nx\n"),
+    ]);
     let v = Vault::open(td.path()).expect("open");
     // [1,4] midpoint 2
     assert_eq!(v.median_file_subtree_word_count(), Some(2));
@@ -7990,10 +7885,7 @@ fn vault_file_subtree_tag_count_none_when_no_files() {
 
 #[test]
 fn vault_file_subtree_todo_count_some() {
-    let td = write_vault(&[
-        ("a.org", "* TODO A\n** DONE B\n"),
-        ("b.org", "* C\n"),
-    ]);
+    let td = write_vault(&[("a.org", "* TODO A\n** DONE B\n"), ("b.org", "* C\n")]);
     let v = Vault::open(td.path()).expect("open");
     assert!(v.max_file_subtree_todo_count().is_some());
     assert!(v.min_file_subtree_todo_count().is_some());
@@ -8004,10 +7896,7 @@ fn vault_file_subtree_todo_count_some() {
 
 #[test]
 fn vault_file_subtree_todo_count_counts_nonempty() {
-    let td = write_vault(&[
-        ("a.org", "* TODO A\n** DONE B\n"),
-        ("b.org", "* C\n"),
-    ]);
+    let td = write_vault(&[("a.org", "* TODO A\n** DONE B\n"), ("b.org", "* C\n")]);
     let v = Vault::open(td.path()).expect("open");
     let m = v.file_subtree_todo_count_counts();
     assert!(!m.is_empty());
@@ -8080,7 +7969,10 @@ fn vault_file_subtree_priority_count_none_when_no_files() {
 #[test]
 fn vault_file_subtree_property_count_some() {
     let td = write_vault(&[
-        ("a.org", "* A\n:PROPERTIES:\n:x: 1\n:END:\n** B\n:PROPERTIES:\n:y: 2\n:END:\n"),
+        (
+            "a.org",
+            "* A\n:PROPERTIES:\n:x: 1\n:END:\n** B\n:PROPERTIES:\n:y: 2\n:END:\n",
+        ),
         ("b.org", "* C\n"),
     ]);
     let v = Vault::open(td.path()).expect("open");
@@ -8139,10 +8031,7 @@ fn vault_file_subtree_timestamp_count_some() {
 
 #[test]
 fn vault_file_subtree_timestamp_count_counts_nonempty() {
-    let td = write_vault(&[
-        ("a.org", "* A\n<2026-05-30 Sat>\n"),
-        ("b.org", "* B\n"),
-    ]);
+    let td = write_vault(&[("a.org", "* A\n<2026-05-30 Sat>\n"), ("b.org", "* B\n")]);
     let v = Vault::open(td.path()).expect("open");
     let m = v.file_subtree_timestamp_count_counts();
     assert!(!m.is_empty());
@@ -8371,7 +8260,10 @@ fn vault_all_link_targets_match() {
     let v = Vault::open(td.path()).expect("open");
     let mut targets = v.all_link_targets();
     targets.sort();
-    assert_eq!(targets, vec!["x".to_owned(), "x".to_owned(), "y".to_owned()]);
+    assert_eq!(
+        targets,
+        vec!["x".to_owned(), "x".to_owned(), "y".to_owned()]
+    );
 }
 
 #[test]
@@ -8443,7 +8335,10 @@ fn vault_footnote_count_of_match() {
     let v = Vault::open(td.path()).expect("open");
     let p = v.root().join("a.org");
     assert!(v.footnote_count_of(&p).is_some());
-    assert_eq!(v.footnote_count_of(std::path::Path::new("missing.org")), None);
+    assert_eq!(
+        v.footnote_count_of(std::path::Path::new("missing.org")),
+        None
+    );
 }
 
 #[test]
@@ -8637,22 +8532,14 @@ fn vault_files_with_cookies_pct_zero_when_no_files() {
 
 #[test]
 fn vault_files_with_headlines_match() {
-    let td = write_vault(&[
-        ("a.org", "* A\n"),
-        ("b.org", ""),
-        ("c.org", "* C\n"),
-    ]);
+    let td = write_vault(&[("a.org", "* A\n"), ("b.org", ""), ("c.org", "* C\n")]);
     let v = Vault::open(td.path()).expect("open");
     assert_eq!(v.files_with_headlines(), 2);
 }
 
 #[test]
 fn vault_files_with_headlines_pct_match() {
-    let td = write_vault(&[
-        ("a.org", "* A\n"),
-        ("b.org", ""),
-        ("c.org", "* C\n"),
-    ]);
+    let td = write_vault(&[("a.org", "* A\n"), ("b.org", ""), ("c.org", "* C\n")]);
     let v = Vault::open(td.path()).expect("open");
     assert_eq!(v.files_with_headlines_pct(), 66);
 }
@@ -9247,9 +9134,7 @@ fn vault_has_any_tag_false_when_none() {
 
 #[test]
 fn vault_has_any_property_true_when_property() {
-    let td = write_vault(&[
-        ("a.org", "* A\n:PROPERTIES:\n:x: 1\n:END:\n"),
-    ]);
+    let td = write_vault(&[("a.org", "* A\n:PROPERTIES:\n:x: 1\n:END:\n")]);
     let v = Vault::open(td.path()).expect("open");
     assert!(v.has_any_property());
 }
@@ -9263,10 +9148,7 @@ fn vault_has_any_property_false_when_none() {
 
 #[test]
 fn vault_count_at_level_match() {
-    let td = write_vault(&[
-        ("a.org", "* A\n** B\n** C\n"),
-        ("b.org", "* D\n"),
-    ]);
+    let td = write_vault(&[("a.org", "* A\n** B\n** C\n"), ("b.org", "* D\n")]);
     let v = Vault::open(td.path()).expect("open");
     // level 1: A, D = 2; level 2: B, C = 2
     assert_eq!(v.count_at_level(1), 2);
@@ -9388,9 +9270,7 @@ fn vault_has_tag_false_when_empty() {
 
 #[test]
 fn vault_has_property_key_true_when_match() {
-    let td = write_vault(&[
-        ("a.org", "* A\n:PROPERTIES:\n:custom: 1\n:END:\n"),
-    ]);
+    let td = write_vault(&[("a.org", "* A\n:PROPERTIES:\n:custom: 1\n:END:\n")]);
     let v = Vault::open(td.path()).expect("open");
     assert!(v.has_property_key("custom"));
     assert!(!v.has_property_key("missing"));
@@ -9405,9 +9285,7 @@ fn vault_has_property_key_false_when_empty() {
 
 #[test]
 fn vault_has_id_value_true_when_match() {
-    let td = write_vault(&[
-        ("a.org", "* A\n:PROPERTIES:\n:ID: abc\n:END:\n"),
-    ]);
+    let td = write_vault(&[("a.org", "* A\n:PROPERTIES:\n:ID: abc\n:END:\n")]);
     let v = Vault::open(td.path()).expect("open");
     assert!(v.has_id_value("abc"));
     assert!(!v.has_id_value("xyz"));
@@ -9646,10 +9524,7 @@ fn vault_paths_with_todo_match() {
 
 #[test]
 fn vault_paths_with_priority_match() {
-    let td = write_vault(&[
-        ("a.org", "* [#A] X\n"),
-        ("b.org", "* [#B] Y\n"),
-    ]);
+    let td = write_vault(&[("a.org", "* [#A] X\n"), ("b.org", "* [#B] Y\n")]);
     let v = Vault::open(td.path()).expect("open");
     let paths = v.paths_with_priority('A');
     assert_eq!(paths.len(), 1);
@@ -9668,10 +9543,7 @@ fn vault_paths_with_property_key_match() {
 
 #[test]
 fn vault_paths_at_level_match() {
-    let td = write_vault(&[
-        ("a.org", "* A\n** B\n"),
-        ("b.org", "* C\n"),
-    ]);
+    let td = write_vault(&[("a.org", "* A\n** B\n"), ("b.org", "* C\n")]);
     let v = Vault::open(td.path()).expect("open");
     assert_eq!(v.paths_at_level(2).len(), 1);
     assert_eq!(v.paths_at_level(1).len(), 2);
@@ -9719,7 +9591,11 @@ fn vault_paths_with_link_target_empty_when_no_files() {
 
 #[test]
 fn vault_paths_with_title_exact_match() {
-    let td = write_vault(&[("a.org", "* Apple\n"), ("b.org", "* Apple\n"), ("c.org", "* Other\n")]);
+    let td = write_vault(&[
+        ("a.org", "* Apple\n"),
+        ("b.org", "* Apple\n"),
+        ("c.org", "* Other\n"),
+    ]);
     let v = Vault::open(td.path()).expect("open");
     assert_eq!(v.paths_with_title_exact("Apple").len(), 2);
 }
@@ -9783,7 +9659,11 @@ fn vault_files_with_link_target_pct_match() {
 
 #[test]
 fn vault_files_with_title_exact_match() {
-    let td = write_vault(&[("a.org", "* Apple\n"), ("b.org", "* Apple\n"), ("c.org", "* Other\n")]);
+    let td = write_vault(&[
+        ("a.org", "* Apple\n"),
+        ("b.org", "* Apple\n"),
+        ("c.org", "* Other\n"),
+    ]);
     let v = Vault::open(td.path()).expect("open");
     assert_eq!(v.files_with_title_exact("Apple"), 2);
 }
@@ -9800,7 +9680,11 @@ fn vault_files_with_id_value_match() {
 
 #[test]
 fn vault_files_with_title_exact_pct_match() {
-    let td = write_vault(&[("a.org", "* Apple\n"), ("b.org", "* Apple\n"), ("c.org", "* Other\n")]);
+    let td = write_vault(&[
+        ("a.org", "* Apple\n"),
+        ("b.org", "* Apple\n"),
+        ("c.org", "* Other\n"),
+    ]);
     let v = Vault::open(td.path()).expect("open");
     assert_eq!(v.files_with_title_exact_pct("Apple"), 66);
 }
@@ -9927,10 +9811,7 @@ fn vault_level_pct_match() {
 
 #[test]
 fn vault_distinct_todo_keyword_count_match() {
-    let td = write_vault(&[
-        ("a.org", "* TODO A\n* DONE B\n"),
-        ("b.org", "* TODO C\n"),
-    ]);
+    let td = write_vault(&[("a.org", "* TODO A\n* DONE B\n"), ("b.org", "* TODO C\n")]);
     let v = Vault::open(td.path()).expect("open");
     // distinct: TODO, DONE
     assert_eq!(v.distinct_todo_keyword_count(), 2);
@@ -9945,10 +9826,7 @@ fn vault_distinct_todo_keyword_count_zero_when_empty() {
 
 #[test]
 fn vault_distinct_priority_letter_count_match() {
-    let td = write_vault(&[
-        ("a.org", "* [#A] X\n* [#B] Y\n"),
-        ("b.org", "* [#A] Z\n"),
-    ]);
+    let td = write_vault(&[("a.org", "* [#A] X\n* [#B] Y\n"), ("b.org", "* [#A] Z\n")]);
     let v = Vault::open(td.path()).expect("open");
     assert_eq!(v.distinct_priority_letter_count(), 2);
 }
@@ -9962,10 +9840,7 @@ fn vault_distinct_priority_letter_count_zero_when_empty() {
 
 #[test]
 fn vault_distinct_todo_keywords_match() {
-    let td = write_vault(&[
-        ("a.org", "* TODO A\n* DONE B\n"),
-        ("b.org", "* TODO C\n"),
-    ]);
+    let td = write_vault(&[("a.org", "* TODO A\n* DONE B\n"), ("b.org", "* TODO C\n")]);
     let v = Vault::open(td.path()).expect("open");
     let mut kws = v.distinct_todo_keywords();
     kws.sort();
@@ -9981,10 +9856,7 @@ fn vault_distinct_todo_keywords_empty_when_no_files() {
 
 #[test]
 fn vault_distinct_priority_letters_match() {
-    let td = write_vault(&[
-        ("a.org", "* [#A] X\n* [#B] Y\n"),
-        ("b.org", "* [#A] Z\n"),
-    ]);
+    let td = write_vault(&[("a.org", "* [#A] X\n* [#B] Y\n"), ("b.org", "* [#A] Z\n")]);
     let v = Vault::open(td.path()).expect("open");
     let mut letters = v.distinct_priority_letters();
     letters.sort_unstable();
@@ -10032,9 +9904,7 @@ fn vault_all_tags_empty_when_no_files() {
 
 #[test]
 fn vault_all_priorities_match() {
-    let td = write_vault(&[
-        ("a.org", "* [#A] X\n* [#A] Y\n* [#B] Z\n"),
-    ]);
+    let td = write_vault(&[("a.org", "* [#A] X\n* [#A] Y\n* [#B] Z\n")]);
     let v = Vault::open(td.path()).expect("open");
     let mut priorities = v.all_priorities();
     priorities.sort_unstable();
@@ -10050,10 +9920,7 @@ fn vault_all_priorities_empty_when_no_files() {
 
 #[test]
 fn vault_all_todos_match() {
-    let td = write_vault(&[
-        ("a.org", "* TODO A\n* TODO B\n"),
-        ("b.org", "* DONE C\n"),
-    ]);
+    let td = write_vault(&[("a.org", "* TODO A\n* TODO B\n"), ("b.org", "* DONE C\n")]);
     let v = Vault::open(td.path()).expect("open");
     let mut todos = v.all_todos();
     todos.sort();
@@ -10159,10 +10026,7 @@ fn vault_least_common_title_match() {
 
 #[test]
 fn vault_all_bodies_match() {
-    let td = write_vault(&[
-        ("a.org", "* A\nbody1\n* B\nbody2\n"),
-        ("b.org", "* C\n"),
-    ]);
+    let td = write_vault(&[("a.org", "* A\nbody1\n* B\nbody2\n"), ("b.org", "* C\n")]);
     let v = Vault::open(td.path()).expect("open");
     let mut bodies = v.all_bodies();
     bodies.sort();
@@ -10238,10 +10102,7 @@ fn vault_count_with_timestamp_match() {
 
 #[test]
 fn vault_count_with_todo_match() {
-    let td = write_vault(&[
-        ("a.org", "* TODO A\n* B\n"),
-        ("b.org", "* DONE C\n"),
-    ]);
+    let td = write_vault(&[("a.org", "* TODO A\n* B\n"), ("b.org", "* DONE C\n")]);
     let v = Vault::open(td.path()).expect("open");
     assert_eq!(v.count_with_todo(), 2);
 }
@@ -10419,10 +10280,7 @@ fn vault_paths_with_property_value_match() {
 
 #[test]
 fn vault_paths_containing_match() {
-    let td = write_vault(&[
-        ("a.org", "* Apple\n"),
-        ("b.org", "* Banana\n"),
-    ]);
+    let td = write_vault(&[("a.org", "* Apple\n"), ("b.org", "* Banana\n")]);
     let v = Vault::open(td.path()).expect("open");
     let paths = v.paths_containing("App");
     assert_eq!(paths.len(), 1);
@@ -10482,10 +10340,7 @@ fn vault_contains_text_false_when_no_files() {
 
 #[test]
 fn vault_count_text_match() {
-    let td = write_vault(&[
-        ("a.org", "* A\nhello\n"),
-        ("b.org", "* B\nhello hello\n"),
-    ]);
+    let td = write_vault(&[("a.org", "* A\nhello\n"), ("b.org", "* B\nhello hello\n")]);
     let v = Vault::open(td.path()).expect("open");
     assert_eq!(v.count_text("hello"), 3);
     assert_eq!(v.count_text("missing"), 0);
@@ -10531,10 +10386,7 @@ fn vault_files_containing_zero_when_no_files() {
 
 #[test]
 fn vault_paths_containing_count_match() {
-    let td = write_vault(&[
-        ("a.org", "* Apple\n"),
-        ("b.org", "* Banana\n"),
-    ]);
+    let td = write_vault(&[("a.org", "* Apple\n"), ("b.org", "* Banana\n")]);
     let v = Vault::open(td.path()).expect("open");
     assert_eq!(v.paths_containing_count("App"), 1);
     assert_eq!(v.paths_containing_count("missing"), 0);
@@ -10542,10 +10394,7 @@ fn vault_paths_containing_count_match() {
 
 #[test]
 fn vault_paths_containing_ignore_case_count_match() {
-    let td = write_vault(&[
-        ("a.org", "* Apple\n"),
-        ("b.org", "* APPLE\n"),
-    ]);
+    let td = write_vault(&[("a.org", "* Apple\n"), ("b.org", "* APPLE\n")]);
     let v = Vault::open(td.path()).expect("open");
     assert_eq!(v.paths_containing_ignore_case_count("apple"), 2);
 }
@@ -10855,8 +10704,6 @@ fn vault_with_comment_count_alias_match() {
     assert_eq!(v.with_comment_count(), 1);
 }
 
-
-
 #[test]
 fn vault_line_count_of_match() {
     let td = write_vault(&[("a.org", "* A\nbody\n* B\n")]);
@@ -10865,8 +10712,3 @@ fn vault_line_count_of_match() {
     assert_eq!(v.line_count_of(&p), Some(3));
     assert_eq!(v.line_count_of(std::path::Path::new("missing.org")), None);
 }
-
-
-
-
-

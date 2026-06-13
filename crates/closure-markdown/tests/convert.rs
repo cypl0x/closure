@@ -18,9 +18,8 @@ fn org_src_block_becomes_fence() {
 
 #[test]
 fn org_drawers_and_planning_are_dropped_and_warned() {
-    let (md, warn) = from_org(
-        "* Task\nSCHEDULED: <2026-06-13 Fri>\n:PROPERTIES:\n:ID: x\n:END:\nbody\n",
-    );
+    let (md, warn) =
+        from_org("* Task\nSCHEDULED: <2026-06-13 Fri>\n:PROPERTIES:\n:ID: x\n:END:\nbody\n");
     assert!(md.contains("# Task"));
     assert!(md.contains("body"));
     assert!(!md.contains(":PROPERTIES:"));
@@ -43,7 +42,10 @@ fn md_fence_becomes_org_src_block() {
 
 #[test]
 fn md_fence_without_language_uses_example() {
-    assert_eq!(to_org("```\nplain\n```\n"), "#+BEGIN_SRC\nplain\n#+END_SRC\n");
+    assert_eq!(
+        to_org("```\nplain\n```\n"),
+        "#+BEGIN_SRC\nplain\n#+END_SRC\n"
+    );
 }
 
 #[test]

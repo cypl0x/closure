@@ -53,8 +53,7 @@ impl OrgDoc {
     /// Doc-wide index of the code block carrying `#+NAME: name`.
     #[must_use]
     pub fn code_block_index_by_name(&self, name: &str) -> Option<usize> {
-        (0..self.code_blocks().len())
-            .find(|&i| self.code_block_name(i).as_deref() == Some(name))
+        (0..self.code_blocks().len()).find(|&i| self.code_block_name(i).as_deref() == Some(name))
     }
 
     /// Every code block in the document — preamble and headline
@@ -298,7 +297,9 @@ impl OrgDoc {
     #[must_use]
     pub fn no_timestamp_pct(&self) -> usize {
         let n = self.iter_headlines().len();
-        (self.count_no_timestamp() * 100).checked_div(n).unwrap_or(0)
+        (self.count_no_timestamp() * 100)
+            .checked_div(n)
+            .unwrap_or(0)
     }
 
     /// Count of non-archived headlines.
@@ -324,7 +325,9 @@ impl OrgDoc {
     #[must_use]
     pub fn no_scheduled_pct(&self) -> usize {
         let n = self.iter_headlines().len();
-        (self.count_no_scheduled() * 100).checked_div(n).unwrap_or(0)
+        (self.count_no_scheduled() * 100)
+            .checked_div(n)
+            .unwrap_or(0)
     }
 
     /// Count of non-COMMENT headlines.
@@ -671,7 +674,12 @@ impl OrgDoc {
     pub fn count_link_target(&self, target: &str) -> usize {
         self.iter_headlines()
             .into_iter()
-            .map(|h| h.link_targets().iter().filter(|t| t.as_str() == target).count())
+            .map(|h| {
+                h.link_targets()
+                    .iter()
+                    .filter(|t| t.as_str() == target)
+                    .count()
+            })
             .sum()
     }
 
@@ -684,9 +692,7 @@ impl OrgDoc {
     /// Count of headlines carrying property `key`.
     #[must_use]
     pub fn count_property_key(&self, key: &str) -> usize {
-        self.count_headlines_where(|h| {
-            h.properties().is_some_and(|p| p.get(key).is_some())
-        })
+        self.count_headlines_where(|h| h.properties().is_some_and(|p| p.get(key).is_some()))
     }
 
     /// Histogram of headline-title frequency.
@@ -727,7 +733,9 @@ impl OrgDoc {
     #[must_use]
     pub fn with_priority_pct(&self) -> usize {
         let n = self.iter_headlines().len();
-        (self.count_with_priority() * 100).checked_div(n).unwrap_or(0)
+        (self.count_with_priority() * 100)
+            .checked_div(n)
+            .unwrap_or(0)
     }
 
     /// Percentage of headlines with `:ID:` property (`0..=100`).
@@ -740,19 +748,15 @@ impl OrgDoc {
     /// True iff any headline carries property `key` equal to `value`.
     #[must_use]
     pub fn has_property_value(&self, key: &str, value: &str) -> bool {
-        self.iter_headlines().into_iter().any(|h| {
-            h.properties()
-                .is_some_and(|p| p.get(key) == Some(value))
-        })
+        self.iter_headlines()
+            .into_iter()
+            .any(|h| h.properties().is_some_and(|p| p.get(key) == Some(value)))
     }
 
     /// Count of headlines carrying property `key` equal to `value`.
     #[must_use]
     pub fn count_property_value(&self, key: &str, value: &str) -> usize {
-        self.count_headlines_where(|h| {
-            h.properties()
-                .is_some_and(|p| p.get(key) == Some(value))
-        })
+        self.count_headlines_where(|h| h.properties().is_some_and(|p| p.get(key) == Some(value)))
     }
 
     /// True iff `needle` appears in document source.
@@ -819,7 +823,9 @@ impl OrgDoc {
     #[must_use]
     pub fn level_pct(&self, level: u8) -> usize {
         let n = self.iter_headlines().len();
-        (self.count_at_level(level) * 100).checked_div(n).unwrap_or(0)
+        (self.count_at_level(level) * 100)
+            .checked_div(n)
+            .unwrap_or(0)
     }
 
     /// True iff any headline is SCHEDULED.
@@ -1378,7 +1384,10 @@ impl OrgDoc {
             .into_iter()
             .map(|t| t.chars().count())
             .collect();
-        lens.iter().sum::<usize>().checked_div(lens.len()).unwrap_or(0)
+        lens.iter()
+            .sum::<usize>()
+            .checked_div(lens.len())
+            .unwrap_or(0)
     }
 
     /// Total tag length in characters across all tag occurrences.
@@ -1940,9 +1949,7 @@ impl OrgDoc {
     /// Index of the root carrying `:ID: id`.
     #[must_use]
     pub fn root_index_of_id(&self, id: &str) -> Option<usize> {
-        self.roots
-            .iter()
-            .position(|h| h.id_property() == Some(id))
+        self.roots.iter().position(|h| h.id_property() == Some(id))
     }
 
     /// Index of the first root whose title equals `needle`.
@@ -1986,7 +1993,8 @@ impl OrgDoc {
     /// Highest priority letter in the subtree of `id`-tagged headline.
     #[must_use]
     pub fn subtree_max_priority_of(&self, id: &str) -> Option<char> {
-        self.headline_by_id(id).and_then(Headline::max_priority_letter)
+        self.headline_by_id(id)
+            .and_then(Headline::max_priority_letter)
     }
 
     /// Minimum level in the subtree of `id`-tagged headline.
@@ -1998,7 +2006,8 @@ impl OrgDoc {
     /// Lowest priority letter in the subtree of `id`-tagged headline.
     #[must_use]
     pub fn subtree_min_priority_of(&self, id: &str) -> Option<char> {
-        self.headline_by_id(id).and_then(Headline::min_priority_letter)
+        self.headline_by_id(id)
+            .and_then(Headline::min_priority_letter)
     }
 
     /// Whether subtree of `id`-tagged headline carries `tag`.
@@ -2016,7 +2025,8 @@ impl OrgDoc {
     /// Whether subtree of `id`-tagged headline has priority `letter`.
     #[must_use]
     pub fn subtree_has_priority_of(&self, id: &str, letter: char) -> Option<bool> {
-        self.headline_by_id(id).map(|h| h.subtree_has_priority(letter))
+        self.headline_by_id(id)
+            .map(|h| h.subtree_has_priority(letter))
     }
 
     /// Whether subtree of `id`-tagged headline carries any `:ID:`.
@@ -2028,22 +2038,20 @@ impl OrgDoc {
     /// Count of headlines in the subtree of `id`-tagged headline carrying `tag`.
     #[must_use]
     pub fn subtree_count_with_tag_of(&self, id: &str, tag: &str) -> Option<usize> {
-        self.headline_by_id(id).map(|h| h.subtree_count_with_tag(tag))
+        self.headline_by_id(id)
+            .map(|h| h.subtree_count_with_tag(tag))
     }
 
     /// Count of headlines in the subtree of `id`-tagged headline with TODO `kw`.
     #[must_use]
     pub fn subtree_count_with_todo_of(&self, id: &str, kw: &str) -> Option<usize> {
-        self.headline_by_id(id).map(|h| h.subtree_count_with_todo(kw))
+        self.headline_by_id(id)
+            .map(|h| h.subtree_count_with_todo(kw))
     }
 
     /// Count of headlines in the subtree of `id`-tagged headline with priority `letter`.
     #[must_use]
-    pub fn subtree_count_with_priority_of(
-        &self,
-        id: &str,
-        letter: char,
-    ) -> Option<usize> {
+    pub fn subtree_count_with_priority_of(&self, id: &str, letter: char) -> Option<usize> {
         self.headline_by_id(id)
             .map(|h| h.subtree_count_with_priority(letter))
     }
@@ -2057,11 +2065,7 @@ impl OrgDoc {
 
     /// Count of headlines in the subtree of `id`-tagged headline with property `key`.
     #[must_use]
-    pub fn subtree_count_with_property_of(
-        &self,
-        id: &str,
-        key: &str,
-    ) -> Option<usize> {
+    pub fn subtree_count_with_property_of(&self, id: &str, key: &str) -> Option<usize> {
         self.headline_by_id(id)
             .map(|h| h.subtree_count_with_property(key))
     }
@@ -2117,7 +2121,8 @@ impl OrgDoc {
     /// Distinct titles across the subtree of `id`-tagged headline, sorted.
     #[must_use]
     pub fn subtree_distinct_titles_of(&self, id: &str) -> Option<Vec<String>> {
-        self.headline_by_id(id).map(Headline::subtree_distinct_titles)
+        self.headline_by_id(id)
+            .map(Headline::subtree_distinct_titles)
     }
 
     /// Total property entry count across the subtree of `id`-tagged headline.
@@ -2173,8 +2178,7 @@ impl OrgDoc {
         &self,
         key: &str,
     ) -> std::collections::BTreeMap<String, usize> {
-        let mut m: std::collections::BTreeMap<String, usize> =
-            std::collections::BTreeMap::new();
+        let mut m: std::collections::BTreeMap<String, usize> = std::collections::BTreeMap::new();
         for h in self.iter_headlines() {
             if let Some(p) = h.properties()
                 && let Some(v) = p.get(key)
@@ -2224,8 +2228,7 @@ impl OrgDoc {
     /// Histogram of property keys across the document.
     #[must_use]
     pub fn property_key_counts(&self) -> std::collections::BTreeMap<String, usize> {
-        let mut m: std::collections::BTreeMap<String, usize> =
-            std::collections::BTreeMap::new();
+        let mut m: std::collections::BTreeMap<String, usize> = std::collections::BTreeMap::new();
         for h in self.iter_headlines() {
             if let Some(p) = h.properties() {
                 for k in p.keys() {
@@ -3127,9 +3130,7 @@ impl OrgDoc {
     #[must_use]
     pub fn mean_root_title_byte_len(&self) -> usize {
         let n = self.roots.len();
-        self.total_root_title_byte_len()
-            .checked_div(n)
-            .unwrap_or(0)
+        self.total_root_title_byte_len().checked_div(n).unwrap_or(0)
     }
 
     /// Maximum root title byte length.
@@ -4313,7 +4314,9 @@ impl OrgDoc {
     #[must_use]
     pub fn mean_subtree_property_count(&self) -> usize {
         let n = self.iter_headlines().len();
-        self.total_subtree_property_count().checked_div(n).unwrap_or(0)
+        self.total_subtree_property_count()
+            .checked_div(n)
+            .unwrap_or(0)
     }
 
     /// Median subtree property count across all headlines (`None` when empty).
@@ -4391,7 +4394,9 @@ impl OrgDoc {
     #[must_use]
     pub fn mean_subtree_timestamp_count(&self) -> usize {
         let n = self.iter_headlines().len();
-        self.total_subtree_timestamp_count().checked_div(n).unwrap_or(0)
+        self.total_subtree_timestamp_count()
+            .checked_div(n)
+            .unwrap_or(0)
     }
 
     /// Median subtree timestamp count across all headlines (`None` when empty).
@@ -4469,7 +4474,9 @@ impl OrgDoc {
     #[must_use]
     pub fn mean_subtree_priority_count(&self) -> usize {
         let n = self.iter_headlines().len();
-        self.total_subtree_priority_count().checked_div(n).unwrap_or(0)
+        self.total_subtree_priority_count()
+            .checked_div(n)
+            .unwrap_or(0)
     }
 
     /// Median subtree distinct-priority count across all headlines (`None` when empty).
@@ -5179,9 +5186,7 @@ impl OrgDoc {
     #[must_use]
     pub fn mean_root_property_count(&self) -> usize {
         let n = self.roots.len();
-        self.total_root_property_count()
-            .checked_div(n)
-            .unwrap_or(0)
+        self.total_root_property_count().checked_div(n).unwrap_or(0)
     }
 
     /// Median root property count (`None` when no roots).
@@ -5815,8 +5820,7 @@ impl OrgDoc {
     /// Level histogram across the document.
     #[must_use]
     pub fn level_counts(&self) -> std::collections::BTreeMap<u8, usize> {
-        let mut counts: std::collections::BTreeMap<u8, usize> =
-            std::collections::BTreeMap::new();
+        let mut counts: std::collections::BTreeMap<u8, usize> = std::collections::BTreeMap::new();
         for h in self.iter_headlines() {
             *counts.entry(h.level()).or_insert(0) += 1;
         }
@@ -5826,8 +5830,7 @@ impl OrgDoc {
     /// Priority-letter counts across the document.
     #[must_use]
     pub fn priority_counts(&self) -> std::collections::BTreeMap<char, usize> {
-        let mut counts: std::collections::BTreeMap<char, usize> =
-            std::collections::BTreeMap::new();
+        let mut counts: std::collections::BTreeMap<char, usize> = std::collections::BTreeMap::new();
         for h in self.iter_headlines() {
             if let Some(c) = h.priority() {
                 *counts.entry(c).or_insert(0) += 1;
@@ -5914,8 +5917,7 @@ impl OrgDoc {
     #[must_use]
     pub fn duplicate_ids(&self) -> Vec<&str> {
         let all = self.all_ids();
-        let mut counts: std::collections::HashMap<&str, usize> =
-            std::collections::HashMap::new();
+        let mut counts: std::collections::HashMap<&str, usize> = std::collections::HashMap::new();
         for id in &all {
             *counts.entry(*id).or_insert(0) += 1;
         }
@@ -5997,12 +5999,7 @@ impl OrgDoc {
     /// Path indices for `id`-tagged headline (root-relative).
     #[must_use]
     pub fn path_of(&self, id: &str) -> Option<Vec<usize>> {
-        fn walk(
-            h: &Headline,
-            id: &str,
-            path: &mut Vec<usize>,
-            out: &mut Option<Vec<usize>>,
-        ) {
+        fn walk(h: &Headline, id: &str, path: &mut Vec<usize>, out: &mut Option<Vec<usize>>) {
             if h.id_property() == Some(id) {
                 *out = Some(path.clone());
                 return;
@@ -6107,8 +6104,7 @@ impl OrgDoc {
     /// Distinct link targets across the document.
     #[must_use]
     pub fn distinct_link_targets(&self) -> Vec<String> {
-        let set: std::collections::BTreeSet<String> =
-            self.all_link_targets().into_iter().collect();
+        let set: std::collections::BTreeSet<String> = self.all_link_targets().into_iter().collect();
         set.into_iter().collect()
     }
 
@@ -6728,22 +6724,14 @@ impl OrgDoc {
 
     /// Descendants whose property `key` equals `value`.
     #[must_use]
-    pub fn descendants_with_property_value(
-        &self,
-        key: &str,
-        value: &str,
-    ) -> Vec<&Headline> {
-        self.collect_descendants_where(|h| {
-            h.properties().and_then(|p| p.get(key)) == Some(value)
-        })
+    pub fn descendants_with_property_value(&self, key: &str, value: &str) -> Vec<&Headline> {
+        self.collect_descendants_where(|h| h.properties().and_then(|p| p.get(key)) == Some(value))
     }
 
     /// Count of descendants whose property `key` equals `value`.
     #[must_use]
     pub fn count_descendants_with_property_value(&self, key: &str, value: &str) -> usize {
-        self.count_descendants_where(|h| {
-            h.properties().and_then(|p| p.get(key)) == Some(value)
-        })
+        self.count_descendants_where(|h| h.properties().and_then(|p| p.get(key)) == Some(value))
     }
 
     /// Roots tagged `:ARCHIVE:`.
@@ -7121,8 +7109,7 @@ impl OrgDoc {
     /// Tag-to-count map across roots.
     #[must_use]
     pub fn root_tag_counts(&self) -> std::collections::BTreeMap<String, usize> {
-        let mut m: std::collections::BTreeMap<String, usize> =
-            std::collections::BTreeMap::new();
+        let mut m: std::collections::BTreeMap<String, usize> = std::collections::BTreeMap::new();
         for r in &self.roots {
             for t in r.tags() {
                 *m.entry(t.to_owned()).or_insert(0) += 1;
@@ -7134,8 +7121,7 @@ impl OrgDoc {
     /// TODO-to-count map across roots.
     #[must_use]
     pub fn root_todo_counts(&self) -> std::collections::BTreeMap<String, usize> {
-        let mut m: std::collections::BTreeMap<String, usize> =
-            std::collections::BTreeMap::new();
+        let mut m: std::collections::BTreeMap<String, usize> = std::collections::BTreeMap::new();
         for r in &self.roots {
             if let Some(t) = r.todo() {
                 *m.entry(t.to_owned()).or_insert(0) += 1;
@@ -7147,8 +7133,7 @@ impl OrgDoc {
     /// Priority-to-count map across roots.
     #[must_use]
     pub fn root_priority_counts(&self) -> std::collections::BTreeMap<char, usize> {
-        let mut m: std::collections::BTreeMap<char, usize> =
-            std::collections::BTreeMap::new();
+        let mut m: std::collections::BTreeMap<char, usize> = std::collections::BTreeMap::new();
         for r in &self.roots {
             if let Some(p) = r.priority() {
                 *m.entry(p).or_insert(0) += 1;
@@ -7160,8 +7145,7 @@ impl OrgDoc {
     /// Tag-to-count map across all descendants.
     #[must_use]
     pub fn descendant_tag_counts(&self) -> std::collections::BTreeMap<String, usize> {
-        let mut m: std::collections::BTreeMap<String, usize> =
-            std::collections::BTreeMap::new();
+        let mut m: std::collections::BTreeMap<String, usize> = std::collections::BTreeMap::new();
         for h in self.collect_descendants_where(|_| true) {
             for t in h.tags() {
                 *m.entry(t.to_owned()).or_insert(0) += 1;
@@ -7173,8 +7157,7 @@ impl OrgDoc {
     /// TODO-to-count map across all descendants.
     #[must_use]
     pub fn descendant_todo_counts(&self) -> std::collections::BTreeMap<String, usize> {
-        let mut m: std::collections::BTreeMap<String, usize> =
-            std::collections::BTreeMap::new();
+        let mut m: std::collections::BTreeMap<String, usize> = std::collections::BTreeMap::new();
         for h in self.collect_descendants_where(|_| true) {
             if let Some(t) = h.todo() {
                 *m.entry(t.to_owned()).or_insert(0) += 1;
@@ -7186,8 +7169,7 @@ impl OrgDoc {
     /// Priority-to-count map across all descendants.
     #[must_use]
     pub fn descendant_priority_counts(&self) -> std::collections::BTreeMap<char, usize> {
-        let mut m: std::collections::BTreeMap<char, usize> =
-            std::collections::BTreeMap::new();
+        let mut m: std::collections::BTreeMap<char, usize> = std::collections::BTreeMap::new();
         for h in self.collect_descendants_where(|_| true) {
             if let Some(p) = h.priority() {
                 *m.entry(p).or_insert(0) += 1;
@@ -7199,8 +7181,7 @@ impl OrgDoc {
     /// Level-to-count map across all descendants.
     #[must_use]
     pub fn descendant_level_counts(&self) -> std::collections::BTreeMap<u8, usize> {
-        let mut m: std::collections::BTreeMap<u8, usize> =
-            std::collections::BTreeMap::new();
+        let mut m: std::collections::BTreeMap<u8, usize> = std::collections::BTreeMap::new();
         for h in self.collect_descendants_where(|_| true) {
             *m.entry(h.level()).or_insert(0) += 1;
         }
@@ -7270,10 +7251,7 @@ impl OrgDoc {
             .map(|(k, _)| k)
     }
 
-    fn collect_descendants_where<F: Fn(&Headline) -> bool>(
-        &self,
-        pred: F,
-    ) -> Vec<&Headline> {
+    fn collect_descendants_where<F: Fn(&Headline) -> bool>(&self, pred: F) -> Vec<&Headline> {
         fn walk<'a, F: Fn(&Headline) -> bool>(
             h: &'a Headline,
             pred: &F,
@@ -7305,10 +7283,7 @@ impl OrgDoc {
     }
 
     fn find_descendant<F: Fn(&Headline) -> bool>(&self, pred: F) -> Option<&Headline> {
-        fn walk<'a, F: Fn(&Headline) -> bool>(
-            h: &'a Headline,
-            pred: &F,
-        ) -> Option<&'a Headline> {
+        fn walk<'a, F: Fn(&Headline) -> bool>(h: &'a Headline, pred: &F) -> Option<&'a Headline> {
             if pred(h) {
                 return Some(h);
             }
@@ -7566,7 +7541,9 @@ impl OrgDoc {
     #[must_use]
     pub fn non_archived_pct(&self) -> usize {
         let n = self.iter_headlines().len();
-        (self.count_non_archived() * 100).checked_div(n).unwrap_or(0)
+        (self.count_non_archived() * 100)
+            .checked_div(n)
+            .unwrap_or(0)
     }
 
     /// Count of headlines that are not COMMENT.
@@ -7645,7 +7622,9 @@ impl OrgDoc {
     /// True iff any headline carries a TODO keyword.
     #[must_use]
     pub fn has_any_todo(&self) -> bool {
-        self.iter_headlines().into_iter().any(|h| h.todo().is_some())
+        self.iter_headlines()
+            .into_iter()
+            .any(|h| h.todo().is_some())
     }
 
     /// True iff any headline carries at least one tag.
@@ -7671,7 +7650,9 @@ impl OrgDoc {
     /// True iff any headline has TODO keyword equal to `kw`.
     #[must_use]
     pub fn contains_todo(&self, kw: &str) -> bool {
-        self.iter_headlines().into_iter().any(|h| h.todo() == Some(kw))
+        self.iter_headlines()
+            .into_iter()
+            .any(|h| h.todo() == Some(kw))
     }
 
     /// True iff any headline has priority letter equal to `letter`.
@@ -7681,7 +7662,6 @@ impl OrgDoc {
             .into_iter()
             .any(|h| h.priority() == Some(letter))
     }
-
 
     /// Total properties drawer entries across all headlines.
     #[must_use]
@@ -8028,12 +8008,7 @@ impl OrgDoc {
         self.preamble
             .iter()
             .filter_map(Node::as_list_item)
-            .filter(|li| {
-                matches!(
-                    li.checkbox,
-                    Some(Checkbox::Unchecked | Checkbox::Partial)
-                )
-            })
+            .filter(|li| matches!(li.checkbox, Some(Checkbox::Unchecked | Checkbox::Partial)))
             .collect()
     }
 
@@ -10356,13 +10331,19 @@ impl Headline {
     /// Maximum level in this subtree.
     #[must_use]
     pub fn subtree_max_level(&self) -> u8 {
-        self.subtree_levels().into_iter().max().unwrap_or(self.level)
+        self.subtree_levels()
+            .into_iter()
+            .max()
+            .unwrap_or(self.level)
     }
 
     /// Minimum level in this subtree (always this headline's own level).
     #[must_use]
     pub fn subtree_min_level(&self) -> u8 {
-        self.subtree_levels().into_iter().min().unwrap_or(self.level)
+        self.subtree_levels()
+            .into_iter()
+            .min()
+            .unwrap_or(self.level)
     }
 
     /// Number of headlines in this subtree (self + descendants).
@@ -10380,8 +10361,7 @@ impl Headline {
     /// True iff this headline or any descendant has TODO keyword `kw`.
     #[must_use]
     pub fn subtree_has_todo(&self, kw: &str) -> bool {
-        self.todo() == Some(kw)
-            || self.descendants().iter().any(|h| h.todo() == Some(kw))
+        self.todo() == Some(kw) || self.descendants().iter().any(|h| h.todo() == Some(kw))
     }
 
     /// True iff this headline or any descendant has priority `letter`.
@@ -10398,14 +10378,16 @@ impl Headline {
     #[must_use]
     pub fn subtree_contains_id(&self, id: &str) -> bool {
         self.id_property() == Some(id)
-            || self.descendants().iter().any(|h| h.id_property() == Some(id))
+            || self
+                .descendants()
+                .iter()
+                .any(|h| h.id_property() == Some(id))
     }
 
     /// True iff this headline or any descendant carries any `:ID:`.
     #[must_use]
     pub fn subtree_has_id(&self) -> bool {
-        self.id_property().is_some()
-            || self.descendants().iter().any(|h| h.id_property().is_some())
+        self.id_property().is_some() || self.descendants().iter().any(|h| h.id_property().is_some())
     }
 
     /// Count of headlines in this subtree (self + descendants) carrying `tag`.
@@ -10567,8 +10549,7 @@ impl Headline {
     /// True iff this headline carries an `:ID:` property.
     #[must_use]
     pub fn has_id(&self) -> bool {
-        self.properties()
-            .is_some_and(|p| p.id().is_some())
+        self.properties().is_some_and(|p| p.id().is_some())
     }
 
     /// `:ID:` property if set.
@@ -10767,7 +10748,12 @@ impl Headline {
     /// Total link count over the entire subtree (self + descendants).
     #[must_use]
     pub fn subtree_link_count(&self) -> usize {
-        self.link_count() + self.children.iter().map(Self::subtree_link_count).sum::<usize>()
+        self.link_count()
+            + self
+                .children
+                .iter()
+                .map(Self::subtree_link_count)
+                .sum::<usize>()
     }
 
     /// Body word count over the entire subtree (self + descendants).
@@ -10888,9 +10874,9 @@ impl Headline {
     /// True iff any descendant has TODO `keyword`.
     #[must_use]
     pub fn descendant_has_todo(&self, keyword: &str) -> bool {
-        self.children.iter().any(|c| {
-            c.todo() == Some(keyword) || c.descendant_has_todo(keyword)
-        })
+        self.children
+            .iter()
+            .any(|c| c.todo() == Some(keyword) || c.descendant_has_todo(keyword))
     }
 
     /// First descendant carrying `tag` (depth-first).
@@ -10994,9 +10980,7 @@ impl Headline {
     pub fn count_descendants_with_property(&self, key: &str) -> usize {
         self.children
             .iter()
-            .map(|c| {
-                usize::from(c.has_property(key)) + c.count_descendants_with_property(key)
-            })
+            .map(|c| usize::from(c.has_property(key)) + c.count_descendants_with_property(key))
             .sum()
     }
 
@@ -11202,11 +11186,7 @@ impl Headline {
 
     /// Descendants with property `key` equal to `value`.
     #[must_use]
-    pub fn descendants_with_property_value<'a>(
-        &'a self,
-        key: &str,
-        value: &str,
-    ) -> Vec<&'a Self> {
+    pub fn descendants_with_property_value<'a>(&'a self, key: &str, value: &str) -> Vec<&'a Self> {
         let mut out: Vec<&Self> = Vec::new();
         for c in &self.children {
             if c.properties()
@@ -11292,10 +11272,7 @@ impl Headline {
     /// First descendant matching a predicate.
     #[must_use]
     pub fn find_descendant<F: Fn(&Self) -> bool>(&self, pred: F) -> Option<&Self> {
-        fn walk<'a, F: Fn(&Headline) -> bool>(
-            h: &'a Headline,
-            pred: &F,
-        ) -> Option<&'a Headline> {
+        fn walk<'a, F: Fn(&Headline) -> bool>(h: &'a Headline, pred: &F) -> Option<&'a Headline> {
             for c in h.children() {
                 if pred(c) {
                     return Some(c);
@@ -11402,8 +11379,7 @@ pub enum ParseError {}
 /// Read and parse an org file from disk in one call.
 #[allow(clippy::missing_errors_doc)]
 pub fn parse_path(path: &std::path::Path) -> Result<OrgDoc, ParseFromPathError> {
-    let src =
-        std::fs::read_to_string(path).map_err(|e| ParseFromPathError::Io(e.to_string()))?;
+    let src = std::fs::read_to_string(path).map_err(|e| ParseFromPathError::Io(e.to_string()))?;
     parse(&src).map_err(|_| ParseFromPathError::Parse)
 }
 
