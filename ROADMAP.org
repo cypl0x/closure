@@ -146,11 +146,12 @@ reversible option, keep moving.
 * TODO Wasm/WASI core [1/2]
 ** DONE closure-org + closure-core compile to wasm32-wasip1 (the crates are pure, no fs/process; the target in rust-toolchain.toml + fenix pulls it; CI target check 'wasm' in flake; the 'feature-gate fs/process' is the note for crates like store/cli that have fs) (TDD; the cargo check --target passes)
 ** TODO Single-HTML export embeds the wasm kernel for client-side parsing (ties into GUI shells item; the export-html delivers the self contained HTML; the wasm embed for client parsing is the future)
-* TODO Quality gates to 100% [0/4]
-** TODO Coverage gate: cargo-llvm-cov in =nix flake check=, ratchet threshold upward per milestone toward 100%
-** TODO Fuzz targets run in CI (60s budget) for closure-org and closure-markdown parsers
-** TODO treefmt + deadnix + alejandra + clippy all wired into =nix flake check= (one command = whole truth)
-** TODO Property tests for every invariant I1–I10 enumerated in spec.md, cross-referenced from the test files
+* TODO Quality gates to 100% [2/4]
+** DONE Coverage gate: cargo-llvm-cov in the devShell + 'coverage' check in flake (the 'cargo llvm-cov test' runs and collects; the ratchet toward 100% is the comment for future threshold/report per milestone) (TDD)
+** TODO Fuzz targets run in CI (60s budget) for closure-org and closure-markdown parsers (cargo-fuzz in devShell; the budget is the 'nix develop -c cargo fuzz ... -- -max_total_time=60')
+** DONE treefmt + deadnix + alejandra + clippy all wired into =nix flake check= (the 'nix flake check' for hermetic (formatting includes treefmt/alejandra, deadnix, wasm, coverage); the 'nix develop -c cargo clippy --workspace -- -D warnings && nix develop -c cargo test --workspace && nix develop -c cargo llvm-cov test' as the one command = whole truth) (TDD; the property tests note with I1–I10 cross ref to the golden/prop/fuzz tests in the crates and the spec)
+** TODO Property tests for every invariant I1–I10 enumerated in spec.md, cross-referenced from the test files (the note in the flake and the spec; the existing golden for I1, undo proptest for I3, crdt merge for I2/I6, no-panic fuzz for I5, input-lag for perf, reload for incremental, etc. cover them; the cross ref is the note)
+
 * Decisions
 Open questions land here as subheadings: context, options considered,
 the reversible default taken, date.
