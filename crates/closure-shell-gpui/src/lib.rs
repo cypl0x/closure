@@ -152,6 +152,229 @@ impl ShellAdapter for HeadlessAdapter {
 /// Marker.
 pub const GPUI_SHELL: &str = "gpui";
 
+/// One rendered row in the gpui browse/search list.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Row {
+    /// File the headline lives in (display path).
+    pub path: String,
+    /// Headline title.
+    pub title: String,
+    /// Outline level (1-based).
+    pub level: u8,
+    /// TODO keyword, if any.
+    pub todo: Option<String>,
+}
+
+/// Which input surface the gpui shell is on.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GpuiMode {
+    /// Browsing/filtering the headline list.
+    Browse,
+    /// Typing the title of a new capture entry.
+    Capture,
+}
+
+/// Pure, GPU-free state core for the gpui shell.
+///
+/// All keyboard behaviour lives here so it is unit-testable without a
+/// window (mirrors the TUI `App`). The gpui `Render` adapter (behind
+/// the `gpui` feature) only translates key events into [`Self::on_key`]
+/// and reads the accessors. Mutations route through [`Shell`], i.e.
+/// kernel commands (I8); search reuses `closure_query` (I7).
+#[derive(Debug)]
+pub struct GpuiApp {
+    query: String,
+    selected: usize,
+    mode: GpuiMode,
+    capture_buf: String,
+    status: String,
+    quit: bool,
+}
+
+impl Default for GpuiApp {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl GpuiApp {
+    /// Fresh app in Browse mode with an empty query.
+    #[must_use]
+    pub fn new() -> Self {
+        Self {
+            query: String::new(),
+            selected: 0,
+            mode: GpuiMode::Browse,
+            capture_buf: String::new(),
+            status: "browse — type to filter".to_owned(),
+            quit: false,
+        }
+    }
+
+    /// Live filter query.
+    #[must_use]
+    pub fn query(&self) -> &str {
+        &self.query
+    }
+
+    /// Highlighted row index.
+    #[must_use]
+    pub const fn selected(&self) -> usize {
+        self.selected
+    }
+
+    /// Active input surface.
+    #[must_use]
+    pub const fn mode(&self) -> GpuiMode {
+        self.mode
+    }
+
+    /// In-progress capture title.
+    #[must_use]
+    pub fn capture_buffer(&self) -> &str {
+        &self.capture_buf
+    }
+
+    /// One-line status / feedback message.
+    #[must_use]
+    pub fn status(&self) -> &str {
+        &self.status
+    }
+
+    /// Whether the user asked to quit.
+    #[must_use]
+    pub const fn should_quit(&self) -> bool {
+        self.quit
+    }
+
+    /// Which-key style hint line for the active mode (vision: every
+    /// UI element shows its keybindings).
+    #[must_use]
+    pub const fn key_hints(&self) -> &'static str {
+        match self.mode {
+            GpuiMode::Browse => {
+                "type: filter   up/down or C-n/C-p: move   Enter: open   \
+                 C-c: capture   Esc: clear   C-q: quit"
+            }
+            GpuiMode::Capture => "capture title — Enter: save   Esc: cancel",
+        }
+    }
+
+    /// Rows for the current query: every headline in Browse with an
+    /// empty query, else the fuzzy matches (best first).
+    #[must_use]
+    pub fn rows(&self, shell: &Shell) -> Vec<Row> {
+        if self.query.is_empty() {
+            let mut out = Vec::new();
+            for (p, doc) in shell.vault.iter() {
+                for h in doc.all_headlines() {
+                    out.push(Row {
+                        path: p.display().to_string(),
+                        title: h.title().to_owned(),
+                        level: h.level(),
+                        todo: h.todo().map(ToOwned::to_owned),
+                    });
+                }
+            }
+            out
+        } else {
+            shell
+                .fuzzy_search(&self.query)
+                .into_iter()
+                .map(|(p, title)| Row {
+                    path: p.display().to_string(),
+                    title,
+                    level: 1,
+                    todo: None,
+                })
+                .collect()
+        }
+    }
+
+    /// Feed one key. `key` is the gpui key name (`"a"`, `"enter"`,
+    /// `"backspace"`, `"escape"`, `"down"`, `"up"`, …); `ctrl` is the
+    /// control modifier; `text` is the typed character when the key
+    /// produced printable, unmodified input.
+    pub fn on_key(&mut self, shell: &mut Shell, key: &str, ctrl: bool, text: Option<char>) {
+        if ctrl && key == "q" {
+            self.quit = true;
+            return;
+        }
+        match self.mode {
+            GpuiMode::Capture => self.on_capture_key(shell, key, text),
+            GpuiMode::Browse => self.on_browse_key(shell, key, ctrl, text),
+        }
+    }
+
+    fn set_status(&mut self, s: &str) {
+        self.status.clear();
+        self.status.push_str(s);
+    }
+
+    fn on_capture_key(&mut self, shell: &mut Shell, key: &str, text: Option<char>) {
+        match key {
+            "escape" => {
+                self.mode = GpuiMode::Browse;
+                self.capture_buf.clear();
+                self.set_status("capture cancelled");
+            }
+            "enter" => {
+                if !self.capture_buf.is_empty() {
+                    match shell.capture(&self.capture_buf) {
+                        Ok(()) => self.status = format!("captured: {}", self.capture_buf),
+                        Err(e) => self.status = format!("capture failed: {e}"),
+                    }
+                }
+                self.mode = GpuiMode::Browse;
+                self.capture_buf.clear();
+            }
+            "backspace" => {
+                self.capture_buf.pop();
+            }
+            _ => {
+                if let Some(c) = text {
+                    self.capture_buf.push(c);
+                }
+            }
+        }
+    }
+
+    fn on_browse_key(&mut self, shell: &Shell, key: &str, ctrl: bool, text: Option<char>) {
+        let last = self.rows(shell).len().saturating_sub(1);
+        match key {
+            "c" if ctrl => {
+                self.mode = GpuiMode::Capture;
+                self.capture_buf.clear();
+                self.set_status("capture: type a title");
+            }
+            "escape" => {
+                self.query.clear();
+                self.selected = 0;
+                self.set_status("browse — type to filter");
+            }
+            "down" => self.selected = (self.selected + 1).min(last),
+            "up" => self.selected = self.selected.saturating_sub(1),
+            "n" if ctrl => self.selected = (self.selected + 1).min(last),
+            "p" if ctrl => self.selected = self.selected.saturating_sub(1),
+            "enter" => {
+                if let Some(row) = self.rows(shell).get(self.selected) {
+                    self.status = format!("{} — {}", row.path, row.title);
+                }
+            }
+            "backspace" => {
+                self.query.pop();
+                self.selected = 0;
+            }
+            _ => {
+                if let Some(c) = text.filter(|_| !ctrl) {
+                    self.query.push(c);
+                    self.selected = 0;
+                }
+            }
+        }
+    }
+}
+
 /// Launch fallback when the `gpui` feature is disabled (the default,
 /// hermetic build). The kernel-side [`Shell`] is always available; the
 /// GPU window requires `--features gpui` and the system GPU/X11 libs.
@@ -166,96 +389,177 @@ pub fn run(_vault_path: &std::path::Path) -> Result<(), String> {
 }
 
 // === Polished gpui app (high-perf desktop per vision) ===
-// Reuses the Shell model above for consistency with egui/TUI.
-// GPU rendered tree + live fuzzy (closure_query) + key dispatch + which-key hints.
-// High UX: dark theme, level indented, todo colors, key hints everywhere.
-// To run: from cli or directly.
+// A real Zed/gpui window over the dep-free, unit-tested GpuiApp state
+// core above: dark Tokyo-night theme, level-indented headline tree
+// with TODO colours, live fuzzy filter, capture, and a which-key
+// footer that always shows the active bindings. Keyboard-first and
+// consistent with the TUI/egui shells (I7/I8). Compiled only under
+// `--features gpui`.
 
 #[cfg(feature = "gpui")]
-use std::sync::{Arc, Mutex};
+use gpui::{
+    App, Application, Bounds, Context, FocusHandle, Focusable, KeyDownEvent, Window, WindowBounds,
+    WindowOptions, div, prelude::*, px, rgb, size,
+};
 
-#[cfg(feature = "gpui")]
-use gpui::*;
-
+/// Launch the gpui desktop window against the vault at `vault_path`.
+/// Blocks until the window closes.
+///
+/// # Errors
+///
+/// Returns the vault open error as a string; window/runtime failures
+/// surface through gpui's own panics on the UI thread.
 #[cfg(feature = "gpui")]
 pub fn run(vault_path: &std::path::Path) -> Result<(), String> {
-    // Polished gpui shell per vision: high-perf GPU, kernel agnostic (Shell + Vault only),
-    // registry aligned, consistent multi-UI (same methods as egui), live fuzzy, tree with levels/todo,
-    // dark polished theme, key hints, ready for chords/which-key/input modes.
-    let _v = Vault::open(vault_path).map_err(|e| format!("{e}"))?;
-    // Real launch (outside test): Application::new().run(|cx| { cx.open_window(..., |cx| cx.new_view(|cx| GpuiPolishedView { shell: Arc::new(Mutex::new(Shell::new(_v))), ... })); });
-    // The GpuiPolishedView render below is the polished UI (tree, search, etc.).
-    println!(
-        "gpui polished variant ready — high-perf desktop shell (see GpuiPolishedView render for the UI)"
-    );
+    let vault = Vault::open(vault_path).map_err(|e| format!("{e}"))?;
+    Application::new().run(move |cx: &mut App| {
+        let bounds = Bounds::centered(None, size(px(900.0), px(640.0)), cx);
+        let opened = cx.open_window(
+            WindowOptions {
+                window_bounds: Some(WindowBounds::Windowed(bounds)),
+                ..Default::default()
+            },
+            |_, cx| {
+                cx.new(|cx| GpuiView {
+                    shell: Shell::new(vault),
+                    app: GpuiApp::new(),
+                    focus_handle: cx.focus_handle(),
+                })
+            },
+        );
+        if let Ok(window) = opened {
+            window
+                .update(cx, |view, window, cx| {
+                    window.focus(&view.focus_handle(cx));
+                })
+                .ok();
+        }
+        cx.activate(true);
+    });
     Ok(())
 }
 
+/// gpui view: owns the kernel-side [`Shell`] and the pure [`GpuiApp`]
+/// state, plus a focus handle so the root receives key events.
 #[cfg(feature = "gpui")]
-struct GpuiPolishedView {
-    shell: Arc<Mutex<Shell>>,
-    query: String,
-    selected: usize,
+struct GpuiView {
+    shell: Shell,
+    app: GpuiApp,
+    focus_handle: FocusHandle,
 }
 
 #[cfg(feature = "gpui")]
-impl Render for GpuiPolishedView {
-    fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
-        let shell = self.shell.lock().unwrap();
-        let items: Vec<_> = if self.query.is_empty() {
-            shell
-                .vault
-                .iter()
-                .flat_map(|(p, d)| {
-                    d.all_headlines().map(move |h| {
-                        (
-                            p.display().to_string(),
-                            h.title().to_string(),
-                            h.level(),
-                            h.todo().map(|s| s.to_string()),
-                        )
-                    })
-                })
-                .collect()
+impl Focusable for GpuiView {
+    fn focus_handle(&self, _: &App) -> FocusHandle {
+        self.focus_handle.clone()
+    }
+}
+
+#[cfg(feature = "gpui")]
+impl GpuiView {
+    fn on_key(&mut self, ev: &KeyDownEvent, _window: &mut Window, cx: &mut Context<Self>) {
+        let ks = &ev.keystroke;
+        let m = &ks.modifiers;
+        let text = ks
+            .key_char
+            .as_ref()
+            .and_then(|s| s.chars().next())
+            .filter(|_| !m.control && !m.alt && !m.platform && !m.function);
+        self.app.on_key(&mut self.shell, &ks.key, m.control, text);
+        if self.app.should_quit() {
+            cx.quit();
+        }
+        cx.notify();
+    }
+}
+
+#[cfg(feature = "gpui")]
+impl Render for GpuiView {
+    #[allow(clippy::unreadable_literal)] // RGB hex literals read clearest ungrouped
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        // Tokyo-night palette.
+        let bg = rgb(0x1a1b26);
+        let fg = rgb(0xc0caf5);
+        let dim = rgb(0x565f89);
+        let sel = rgb(0x414868);
+        let accent = rgb(0x7aa2f7);
+        let todo_col = rgb(0xf7768e);
+
+        let rows = self.app.rows(&self.shell);
+        let selected = self.app.selected();
+        let in_capture = self.app.mode() == GpuiMode::Capture;
+
+        let header = if in_capture {
+            format!("＋ capture: {}▏", self.app.capture_buffer())
         } else {
-            shell
-                .fuzzy_search(&self.query)
-                .into_iter()
-                .map(|(p, t)| (p.display().to_string(), t, 1u8, None))
-                .collect()
+            format!("⌕ {}▏", self.app.query())
         };
 
+        let list =
+            div()
+                .flex()
+                .flex_col()
+                .flex_grow()
+                .gap_0()
+                .children(rows.into_iter().enumerate().map(|(i, row)| {
+                    let mut line = div()
+                        .flex()
+                        .px_2()
+                        .py_1()
+                        .text_size(px(14.0))
+                        .bg(if i == selected { sel } else { bg });
+                    let indent = "  ".repeat(usize::from(row.level).saturating_sub(1));
+                    if let Some(todo) = &row.todo {
+                        line = line.child(div().text_color(todo_col).mr_2().child(todo.clone()));
+                    }
+                    line.child(format!("{indent}{}", row.title))
+                        .child(div().flex_grow())
+                        .child(div().text_color(dim).text_size(px(11.0)).child(row.path))
+                }));
+
         div()
+            .key_context("ClosureGpui")
+            .track_focus(&self.focus_handle(cx))
+            .on_key_down(cx.listener(Self::on_key))
+            .flex()
             .flex_col()
-            .bg(rgb(0x1a1b26))
-            .text_color(rgb(0xc0caf5))
-            .p(px(8.0))
-            .min_w(px(600.0))
-            .child(div().text_xl().child("closure • gpui (high-perf polished)"))
-            .child(div().text_sm().child(format!("query: {}", self.query)))
+            .size_full()
+            .bg(bg)
+            .text_color(fg)
+            .font_family("monospace")
             .child(
                 div()
-                    .flex_col()
-                    .max_h(px(400.0))
-                    .children(items.iter().enumerate().map(|(i, (path, title, level, todo))| {
-                        let is_sel = i == self.selected;
-                        let bg = if is_sel { rgb(0x414868) } else { rgb(0x1a1b26) };
-                        let mut el = div()
-                            .bg(bg)
-                            .p_1()
-                            .text_size(px(13.0))
-                            .child("  ".repeat(*level as usize) + title);
-                        if let Some(td) = todo {
-                            el = el.child(format!(" [{}]", td));
-                        }
-                        el.child(format!("  ({})", path))
-                    })),
+                    .px_2()
+                    .py_1()
+                    .text_color(accent)
+                    .text_lg()
+                    .child("closure · gpui"),
             )
             .child(
                 div()
-                    .text_xs()
-                    .text_color(rgb(0x7f849c))
-                    .child("c=capture  /=search  arrows=nav  enter=select (demo)  • registry keys • high-perf GPU"),
+                    .px_2()
+                    .py_1()
+                    .bg(rgb(0x24283b))
+                    .text_color(fg)
+                    .child(header),
+            )
+            .child(list)
+            .child(
+                div()
+                    .px_2()
+                    .py_1()
+                    .bg(rgb(0x24283b))
+                    .text_color(dim)
+                    .text_size(px(11.0))
+                    .child(self.app.status().to_owned()),
+            )
+            .child(
+                div()
+                    .px_2()
+                    .py_1()
+                    .text_color(dim)
+                    .text_size(px(11.0))
+                    .child(self.app.key_hints()),
             )
     }
 }

@@ -43,7 +43,25 @@
       system,
       pkgs,
       ...
-    }: {
+    }:
+    # System libraries the optional `gpui` native shell needs to
+    # link and run (Zed's GPU stack: Vulkan, Wayland/X11, xkbcommon,
+    # fontconfig/freetype). Only required for
+    # `cargo build -p closure-cli --features gpui`; the default
+    # hermetic build never touches them.
+    let
+      gpuiLibs = with pkgs; [
+        vulkan-loader
+        libxkbcommon
+        wayland
+        xorg.libxcb
+        xorg.libX11
+        xorg.libXext
+        fontconfig
+        freetype
+        libGL
+      ];
+    in {
       default = pkgs.mkShell {
         packages = [
           rustToolchain.${system}
@@ -58,11 +76,17 @@
           pkgs.deadnix
           pkgs.taplo
           pkgs.prettier
+          pkgs.pkg-config
         ];
+
+        buildInputs = gpuiLibs;
 
         env = {
           RUST_BACKTRACE = "1";
         };
+
+        # gpui dlopen's the Vulkan/Wayland/xkb libs at runtime.
+        LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath gpuiLibs;
       };
     });
 
