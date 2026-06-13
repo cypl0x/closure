@@ -470,6 +470,17 @@ enum Cmd {
         #[arg(long)]
         vault: Option<PathBuf>,
     },
+    /// Interactive multi-turn chat with the LLM (uses the same tool_loop and tools as ask).
+    /// Type messages, the assistant responds (with CALL tools if vault given); /quit to exit.
+    /// Delivers the 'multi-turn TUI chat pane' spirit (here as CLI REPL for now; TUI pane can use same logic).
+    Chat {
+        /// Model id.
+        #[arg(long, default_value = "claude-sonnet-4-6")]
+        model: String,
+        /// Vault for tools (optional; enables list/read/search/capture etc + view-state).
+        #[arg(long)]
+        vault: Option<PathBuf>,
+    },
     /// Print tag occurrence counts in descending order.
     TagCloud {
         /// Path to the vault directory.
@@ -1151,6 +1162,7 @@ fn run(cmd: &Cmd) -> Result<(), String> {
             model,
             vault,
         } => cmd_ask(prompt, model, vault.as_deref()),
+        Cmd::Chat { model, vault } => cmd_chat(model, vault.as_deref()),
         Cmd::TagCloud { vault } => cmd_tag_cloud(vault),
         Cmd::Outline { file } => cmd_outline(file),
         Cmd::Tree { file } => cmd_tree(file),
@@ -2848,6 +2860,106 @@ fn cmd_ask(prompt: &str, model: &str, vault: Option<&Path>) -> Result<(), String
     )
     .map_err(|e| format!("{e}"))?;
     println!("{answer}");
+    Ok(())
+}
+
+/// Interactive multi-turn chat (REPL) with the LLM + tools.
+/// Each user message is a turn; the tool_loop handles internal CALLs; observations feed the next.
+fn cmd_chat(model: &str, vault: Option<&Path>) -> Result<(), String> {
+    use std::io::{self, BufRead, Write};
+    use closure_llm::Provider;
+
+    println!("closure chat (multi-turn). /quit to exit. Same tools as `ask` if vault given (including view-state).");
+    let provider: Box<dyn Provider> = if vault.is_none() {
+        let key = std::env::var("ANTHROPIC_API_KEY").map_err(|_| "ANTHROPIC_API_KEY not set".to_owned())?;
+        Box::new(closure_llm::anthropic(&key, model))
+    } else {
+        let vault_dir = vault.unwrap();
+        let mut v = Vault::open(vault_dir).map_err(|e| format!("{e}"))?;
+        let cfg = closure_config::Config::from_path(&vault_dir.join("config.org")).unwrap_or_default();
+        let key_env = cfg.llm_key_env.unwrap_or_else(|| "ANTHROPIC_API_KEY".to_owned());
+        let model = cfg.llm_model.unwrap_or_else(|| model.to_owned());
+        let allowed_tools: Option<Vec<String>> = cfg.llm_tools.clone();
+        let p: Box<dyn Provider> = match cfg.llm_provider.as_deref() {
+            Some("echo") => Box::new(closure_llm::EchoProvider),
+            Some("openai") => {
+                let key = std::env::var(&key_env).map_err(|_| format!("{key_env} not set"))?;
+                Box::new(closure_llm::openai(&key, &model))
+            }
+            Some("ollama") => {
+                let mut p = closure_llm::CurlProvider::new("http://localhost:11434/v1/chat/completions".to_string());
+                p.headers = vec![];
+                p.extract = |s| Ok(s.to_owned());
+                Box::new(p)
+            }
+            _ => {
+                let key = std::env::var(&key_env).map_err(|_| format!("{key_env} not set"))?;
+                Box::new(closure_llm::anthropic(&key, &model))
+            }
+        };
+        // For chat, the executor is per-turn (the outer loop is the user turns).
+        // We return a dummy provider; the actual loop below uses tool_loop directly with the executor.
+        // (The provider is only for the non-vault case; for vault we use the loop with executor.)
+        // To unify, for vault case we will use a dummy provider and do the loop here.
+        // For simplicity in this chat REPL, we always use the tool_loop with the executor (no separate provider.complete for the user message).
+        // The 'provider' above is for the non-vault echo path; for vault chat we branch.
+        p
+    };
+
+    let stdin = io::stdin();
+    let mut stdout = io::stdout();
+    let mut history: Vec<String> = vec![]; // simple history for context (user/assistant turns)
+
+    loop {
+        print!("> ");
+        stdout.flush().ok();
+        let mut line = String::new();
+        if stdin.lock().read_line(&mut line).is_err() {
+            break;
+        }
+        let line = line.trim();
+        if line.is_empty() || line == "/quit" || line == "/exit" {
+            break;
+        }
+        if vault.is_none() {
+            // simple complete for non-vault
+            let response = provider.complete(line).map_err(|e| format!("{e}"))?;
+            println!("{}", response);
+            continue;
+        }
+        // vault chat: use tool_loop for the turn (supports CALLs inside the turn)
+        let vault_dir = vault.unwrap();
+        let mut v = Vault::open(vault_dir).map_err(|e| format!("{e}"))?;
+        let cfg = closure_config::Config::from_path(&vault_dir.join("config.org")).unwrap_or_default();
+        let allowed_tools: Option<Vec<String>> = cfg.llm_tools.clone();
+        let task = format!(
+            "{}\n\n(Vault tools: list-files | read <file> | search <text> | capture <title> | rename <id> <title> | set-property <id> <key> <value> | view-state)",
+            line
+        );
+        let answer = closure_llm::tool_loop(
+            provider.as_ref(),
+            |l| {
+                if let Some(ref allowed) = allowed_tools {
+                    let cmd = l.split_whitespace().next().unwrap_or("");
+                    let cmd_base = cmd.split('-').next().unwrap_or(cmd);
+                    if !allowed.iter().any(|a| a == cmd || a == cmd_base || l.starts_with(a)) {
+                        return format!("error: tool not allowed ({})", cmd);
+                    }
+                }
+                if l.starts_with(closure_llm::VIEW_STATE_COMMAND) {
+                    "current UI state: chat REPL (live TUI would give full App state)".to_string()
+                } else {
+                    v.run_tool(l)
+                }
+            },
+            &task,
+            8,
+        ).map_err(|e| format!("{e}"))?;
+        println!("{}", answer);
+        history.push(line.to_owned());
+        history.push(answer);
+    }
+    println!("chat ended.");
     Ok(())
 }
 

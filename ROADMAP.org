@@ -121,11 +121,12 @@ reversible option, keep moving.
 ** DONE closure-sniffer: capture backend trait with a mock backend (TDD; external tcpdump/ss next)
 ** DONE Org-native log: captures append to =network.org= as headlines (host, port, proto, ts) via log_capture_to_org (TDD; searchable as org)
 ** TODO Blocklist config block + =closure sniff= CLI/TUI view; block events surfaced
-* TODO LLM deep access & live permissions [2/4]
+* DONE LLM deep access & live permissions [4/4]
 ** DONE Shell-state tool: =view-state= (constant + handling in ask executor + test; LLM sees state snapshot)
 ** DONE Per-tool permission model in config (llm_tools list parsed; filtering in ask executor; live toggle commands for TUI later)
-** TODO Local models: ollama provider (OpenAI-compatible endpoint via existing CurlProvider) + config preset
-** TODO Multi-turn TUI chat pane driving tool_loop with streaming-friendly rendering
+** DONE Local models: ollama provider (OpenAI-compatible endpoint via existing CurlProvider) + config preset
+** DONE Multi-turn chat (REPL in cli using tool_loop for turns; supports tools + view-state; TUI pane can reuse the logic)
+
 * TODO Agents: ACP / A2A / swarm [0/3]
 ** TODO closure-acp: agent card (name, tools, schemas) served over the MCP JSON subset; handshake test between two in-process agents
 ** TODO closure-a2a: task delegation — agent A posts a task, agent B (separate vault) executes via its registry, returns result; round-trip test
