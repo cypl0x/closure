@@ -231,6 +231,8 @@ name = "closure-acp"
 version = "0.0.0"
 dependencies = [
  "closure-core",
+ "closure-store",
+ "tempfile",
  "thiserror 2.0.18",
 ]
 
@@ -239,6 +241,7 @@ name = "closure-cli"
 version = "0.0.0"
 dependencies = [
  "clap",
+ "closure-acp",
  "closure-config",
  "closure-core",
  "closure-cron",
@@ -252,6 +255,7 @@ dependencies = [
  "closure-query",
  "closure-record",
  "closure-shell-web",
+ "closure-sniffer",
  "closure-store",
  "closure-sync",
  "closure-tui",
@@ -390,6 +394,7 @@ name = "closure-shell-egui"
 version = "0.0.0"
 dependencies = [
  "closure-core",
+ "closure-query",
  "closure-store",
  "tempfile",
  "thiserror 2.0.18",
@@ -411,6 +416,7 @@ name = "closure-sniffer"
 version = "0.0.0"
 dependencies = [
  "closure-config",
+ "tempfile",
  "thiserror 2.0.18",
 ]
 
@@ -418,6 +424,7 @@ dependencies = [
 name = "closure-store"
 version = "0.0.0"
 dependencies = [
+ "closure-config",
  "closure-core",
  "closure-cron",
  "closure-eval",
@@ -431,6 +438,7 @@ dependencies = [
 name = "closure-sync"
 version = "0.0.0"
 dependencies = [
+ "closure-core",
  "closure-crdt",
  "closure-store",
  "tempfile",
@@ -455,6 +463,7 @@ dependencies = [
  "closure-query",
  "closure-record",
  "closure-store",
+ "closure-tree-sitter",
  "closure-undo",
  "crossterm",
  "insta",

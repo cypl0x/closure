@@ -794,6 +794,10 @@ enum Cmd {
     /// Run the MCP stdio dispatcher (one command name per line; `LIST`
     /// to enumerate). Quits on EOF.
     Mcp,
+    /// Run the ACP stdio dispatcher (agent card + registry commands over
+    /// text protocol; JSON card served via handle_message for agent
+    /// discovery/handshake per ROADMAP).
+    Acp,
     /// Print headlines that have no incoming `id:` links.
     Orphans {
         /// Path to the vault directory.
@@ -1247,6 +1251,7 @@ fn run(cmd: &Cmd) -> Result<(), String> {
         Cmd::SourceOnlyIds { file } => cmd_source_only_ids(file),
         Cmd::SinkOnlyIds { file } => cmd_sink_only_ids(file),
         Cmd::Mcp => cmd_mcp(),
+        Cmd::Acp => cmd_acp(),
         Cmd::Orphans { vault } => cmd_orphans(vault),
         Cmd::DeadLinks { vault } => cmd_dead_links(vault),
         Cmd::Hubs { vault, limit } => cmd_hubs(vault, *limit),
@@ -1676,6 +1681,11 @@ fn cmd_paths(vault: &Path) -> Result<(), String> {
 fn cmd_mcp() -> Result<(), String> {
     let registry = closure_core::default_registry();
     closure_mcp::run_stdio(&registry).map_err(|e| format!("{e}"))
+}
+
+fn cmd_acp() -> Result<(), String> {
+    let registry = closure_core::default_registry();
+    closure_acp::run_stdio(&registry).map_err(|e| format!("{e}"))
 }
 
 fn cmd_dead_links(vault: &Path) -> Result<(), String> {
