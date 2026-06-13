@@ -143,9 +143,9 @@ reversible option, keep moving.
 ** TODO org2 decision: track upstream org-mode as the compatibility target; org2 as export-only experiment — record in Decisions with rationale
 ** DONE Self-documentation: =closure doc <command>= (cmd_doc + doc_for; prints name + keys note from registry; test for known command) (TDD; Emacs-style describe-function)
 
-* TODO Wasm/WASI core [0/2]
-** TODO closure-org + closure-core compile to =wasm32-wasip1= (feature-gate fs/process); CI target check in flake
-** TODO Single-HTML export embeds the wasm kernel for client-side parsing (ties into GUI shells item)
+* TODO Wasm/WASI core [1/2]
+** DONE closure-org + closure-core compile to wasm32-wasip1 (the crates are pure, no fs/process; the target in rust-toolchain.toml + fenix pulls it; CI target check 'wasm' in flake; the 'feature-gate fs/process' is the note for crates like store/cli that have fs) (TDD; the cargo check --target passes)
+** TODO Single-HTML export embeds the wasm kernel for client-side parsing (ties into GUI shells item; the export-html delivers the self contained HTML; the wasm embed for client parsing is the future)
 * TODO Quality gates to 100% [0/4]
 ** TODO Coverage gate: cargo-llvm-cov in =nix flake check=, ratchet threshold upward per milestone toward 100%
 ** TODO Fuzz targets run in CI (60s budget) for closure-org and closure-markdown parsers

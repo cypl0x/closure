@@ -82,6 +82,16 @@
           deadnix --fail .
           touch $out
         '';
+      # Wasm/WASI core (ROADMAP): org + core compile to wasm32-wasip1 (feature-gate fs/process in crates that have it; org/core are pure).
+      # CI target check in flake.
+      # The rust-toolchain.toml includes the target; fenix pulls it.
+      wasm =
+        pkgs.runCommand "wasm-check" {
+          nativeBuildInputs = [ rustToolchain.${system} ];
+        } ''
+          cargo check --target wasm32-wasip1 -p closure-org -p closure-core
+          touch $out
+        '';
     });
   };
 }
