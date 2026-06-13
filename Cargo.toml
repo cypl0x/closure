@@ -27,9 +27,7 @@ members = [
   "crates/closure-sniffer",
   "crates/closure-shell-egui",
   "crates/closure-shell-web",
-  "crates/closure-shell-tauri",
   "crates/closure-shell-gpui",
-  "crates/closure-shell-flutter",
 ]
 
 [workspace.package]

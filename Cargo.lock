@@ -1136,10 +1136,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "closure-shell-flutter"
-version = "0.0.0"
-
-[[package]]
 name = "closure-shell-gpui"
 version = "0.0.0"
 dependencies = [
@@ -1148,13 +1144,6 @@ dependencies = [
  "closure-store",
  "gpui",
  "tempfile",
-]
-
-[[package]]
-name = "closure-shell-tauri"
-version = "0.0.0"
-dependencies = [
- "closure-shell-web",
 ]
 
 [[package]]
