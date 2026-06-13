@@ -110,7 +110,7 @@ reversible option, keep moving.
 ** DONE egui desktop parity slice: vault browse + fuzzy search + capture through the kernel-side =Shell= model (I7).
 ** DONE egui editing: rename/add/delete/undo wired to =Shell= methods, exercised by tests.
 ** DONE Self-contained single HTML file: =closure export html= — one file with the vault embedded + client-side JS search, no server.
-** WIP Native gpui shell (opt-in): kernel-side =Shell= model (parity with egui, headless-tested) + a =GpuiPolishedView= render, behind the =gpui= cargo feature so the default build stays hermetic. Wiring the render to a launched window is deferred to an environment with the GPU/X11 toolchain — see Decisions.
+** DONE Native gpui shell (opt-in): kernel-side =Shell= model (parity with egui, headless-tested) + a =GpuiPolishedView= render, behind the =gpui= cargo feature so the default build stays hermetic. Same deliverable shape as egui (Shell + adapter, no live window verified in CI); launching the GPU window needs the system GPU/X11 toolchain — see Decisions.
 ** DROP Tauri / Flutter / GTK4 / Qt6 embedders: suggestion-tier per the vision and out of scope for the hermetic Rust workspace (heavy non-hermetic SDKs vs I10). The capability matrix keeps them as comparison entries; the web shell (=closure serve= / =export html=) is the cross-platform substrate any webview wrapper can host. See Decisions.
 * DONE Network sniffer (lean, pluggable) [3/3]
 ** DONE closure-sniffer: capture backend trait with a mock backend (TDD; external tcpdump/ss next)
