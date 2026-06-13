@@ -165,6 +165,15 @@ enum Cmd {
         /// Path to a `*.md` file.
         file: PathBuf,
     },
+    /// Export the vault as a self-contained single HTML file (browse tree + client-side JS fuzzy search).
+    /// No server needed; one file.
+    ExportHtml {
+        /// Path to the vault directory.
+        vault: PathBuf,
+        /// Output file (default "vault.html" in current dir).
+        #[arg(long, default_value = "vault.html")]
+        out: PathBuf,
+    },
     /// List SCHEDULED/DEADLINE headlines, sorted by date.
     Agenda {
         /// Path to the vault directory.
@@ -1074,6 +1083,7 @@ fn run(cmd: &Cmd) -> Result<(), String> {
         } => cmd_capture(vault, title, target, prefix, body),
         Cmd::ExportMd { file } => cmd_export_md(file),
         Cmd::ImportMd { file } => cmd_import_md(file),
+        Cmd::ExportHtml { vault, out } => cmd_export_html(vault, out),
         Cmd::Agenda { vault, until } => cmd_agenda(vault, until.as_deref()),
         Cmd::Cron { vault, file, at } => cmd_cron(vault, file, at.as_deref()),
         Cmd::History { vault, grep } => cmd_history(vault, grep.as_deref()),
@@ -2797,6 +2807,16 @@ fn cmd_ask(prompt: &str, model: &str, vault: Option<&Path>) -> Result<(), String
             let key = std::env::var(&key_env).map_err(|_| format!("{key_env} not set"))?;
             Box::new(closure_llm::openai(&key, &model))
         }
+        Some("ollama") => {
+            // Ollama OpenAI-compatible endpoint (default localhost:11434).
+            // Uses existing CurlProvider (as per ROADMAP "via existing CurlProvider") + config preset (llm_provider=ollama).
+            // Model passed in body if the default or user customizes; no auth key for local.
+            let mut p = closure_llm::CurlProvider::new("http://localhost:11434/v1/chat/completions".to_string());
+            p.headers = vec![];
+            // Simple passthrough; for full chat format the user can provide custom provider or extend.
+            p.extract = |s| Ok(s.to_owned());
+            Box::new(p)
+        }
         _ => {
             let key = std::env::var(&key_env).map_err(|_| format!("{key_env} not set"))?;
             Box::new(closure_llm::anthropic(&key, &model))
@@ -3295,6 +3315,16 @@ fn cmd_check_config(path: &Path) -> Result<(), String> {
         }
         Err(e) => Err(format!("config error: {e}")),
     }
+}
+
+/// Export the vault as a self-contained single HTML file (no external deps, works offline).
+/// Uses the web shell's export (browse tree + client JS fuzzy) so the data is usable everywhere.
+fn cmd_export_html(vault: &Path, out: &Path) -> Result<(), String> {
+    let v = Vault::open(vault).map_err(|e| format!("{e}"))?;
+    let html = closure_shell_web::export_html(&v);
+    std::fs::write(out, &html).map_err(|e| format!("write {}: {e}", out.display()))?;
+    println!("wrote self-contained export to {}", out.display());
+    Ok(())
 }
 
 /// Print the shell capability matrix as a venn-style diff table.

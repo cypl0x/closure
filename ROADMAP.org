@@ -109,7 +109,7 @@ reversible option, keep moving.
 * TODO GUI shells [0/6]
 ** DONE egui desktop parity slice (first part): vault browse + fuzzy search + capture through the Shell model (TDD)
 ** DONE egui editing: rename/add/delete/undo wired to Shell methods (TDD; editing methods + test exercising them)
-** TODO Self-contained single HTML file: =closure export html= renders the whole vault (browse + client-side JS fuzzy search) into one file
+** DONE Self-contained single HTML file: =closure export html= (web export + cli command; static browse tree + client JS fuzzy/search in one file) (TDD)
 ** TODO Tauri app: wraps the web shell against a localhost server; capability matrix entry
 ** TODO Native gpui shell: evaluate gpui as the high-performance desktop shell; walking skeleton or recorded DROP decision
 ** TODO Flutter/GTK4/Qt6 embedders: evaluate each against the capability matrix; implement or record DROP per framework (suggestion-tier per vision)

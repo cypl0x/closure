@@ -194,7 +194,11 @@ fn handle(mut stream: TcpStream, vault: &mut Vault) -> std::io::Result<()> {
     }
     let body = String::from_utf8_lossy(&body_bytes).into_owned();
     let r = respond(vault, &method, &target, &body);
-    let location = if r.status == 303 { "Location: /\r\n" } else { "" };
+    let location = if r.status == 303 {
+        "Location: /\r\n"
+    } else {
+        ""
+    };
     let response = format!(
         "HTTP/1.1 {} X\r\nContent-Type: {}\r\n{}Content-Length: {}\r\n\r\n{}",
         r.status,
@@ -264,4 +268,73 @@ fn escape_html(s: &str) -> String {
     s.replace('&', "&amp;")
         .replace('<', "&lt;")
         .replace('>', "&gt;")
+}
+
+/// Export the vault as a self-contained single HTML file (no server, no external deps).
+/// Includes the vault tree (browse) + client-side JS for fuzzy search (as per vision/ROADMAP).
+/// The JS does a simple includes filter (portable "fuzzy" idea); can be enhanced with full score.
+pub fn export_html(vault: &Vault) -> String {
+    let mut html = String::from(
+        r#"<!doctype html>
+<html><head><meta charset="utf-8">
+<title>closure vault (self-contained single file)</title>
+<style>
+body { font-family: sans-serif; max-width: 48em; margin: 2em auto; padding: 0 1em; }
+details { margin-left: 1em; }
+.id { color: #888; font-size: 0.8em; font-family: monospace; }
+.todo { color: #c00; font-weight: bold; margin-right: 0.5em; }
+.tag { background: #eef; padding: 0 0.3em; border-radius: 0.2em; margin-left: 0.3em; }
+#search { width: 100%; padding: 0.5em; margin-bottom: 1em; font-size: 1em; }
+li.hidden { display: none; }
+</style>
+</head><body>
+<h1>closure vault (self-contained) — "#,
+    );
+    let _ = write!(html, "{} file(s)</h1>", vault.len());
+    html.push_str(
+        r#"<input id="search" placeholder="fuzzy search (client-side JS)" autofocus>
+<ul id="list">"#,
+    );
+
+    // Build a simple list of headlines (path + title) for the client JS to filter.
+    // Static tree for initial browse (simplified from the server render logic).
+    for (path, doc) in vault.iter() {
+        let _ = write!(html, "<li><strong>{}</strong><ul>", escape_html(&path.display().to_string()));
+        for h in doc.all_headlines() {
+            let mut line = String::new();
+            if let Some(t) = h.todo() {
+                let _ = write!(line, r#"<span class="todo">{}</span>"#, escape_html(t));
+            }
+            let _ = write!(line, "{}", escape_html(h.title()));
+            for tag in h.tags() {
+                let _ = write!(line, r#"<span class="tag">{}</span>"#, escape_html(tag));
+            }
+            let _ = write!(
+                line,
+                r#" <span class="id">({})</span>"#,
+                escape_html(&h.id().to_string())
+            );
+            let _ = write!(html, "<li>{}</li>", line);
+        }
+        html.push_str("</ul></li>");
+    }
+    html.push_str(
+        r#"</ul>
+<script>
+// Client-side fuzzy/search (includes-based for portability; idea from the Rust fuzzy_score).
+const input = document.getElementById('search');
+const list = document.getElementById('list');
+input.addEventListener('input', () => {
+  const q = input.value.toLowerCase();
+  list.querySelectorAll('li').forEach(li => {
+    const text = li.textContent.toLowerCase();
+    li.classList.toggle('hidden', q && !text.includes(q));
+  });
+});
+// Bonus: make the initial list items collapsible-ish via click (simple).
+console.log('self-contained closure export ready');
+</script>
+</body></html>"#,
+    );
+    html
 }

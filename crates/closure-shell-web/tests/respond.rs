@@ -54,6 +54,21 @@ fn get_search_finds_headlines_fuzzy() {
     assert!(!r.body.contains("Write spec"), "non-match filtered");
 }
 
+// TDD test written *first* for self-contained single HTML export (vision + ROADMAP GUI/web item).
+// =closure export html= should produce one file with the vault content + client JS for browse/fuzzy (no server).
+// Test will fail until export_html exists and produces a self-contained page.
+#[test]
+fn export_html_is_self_contained_with_data_and_search() {
+    let (_td, v) = vault();
+    // Will not exist yet.
+    let html = closure_shell_web::export_html(&v);
+    assert!(html.contains("<!doctype html") || html.contains("<html"));
+    assert!(html.contains("work.org")); // the vault data is embedded
+    assert!(html.contains("<script"), "has client JS for fuzzy/search");
+    // The JS or data enables client side search (fuzzy or filter).
+    assert!(html.contains("fuzzy") || html.contains("search") || html.contains("Ship parser"));
+}
+
 #[test]
 fn search_results_are_html_escaped() {
     let td = tempfile::tempdir().expect("tempdir");
@@ -69,7 +84,10 @@ fn post_capture_appends_entry_and_redirects() {
     let (_td, mut v) = vault();
     let r = respond(&mut v, "POST", "/capture", "title=Buy+milk%21");
     assert_eq!(r.status, 303);
-    assert!(v.find_by_title("Buy milk!").is_some(), "captured into vault");
+    assert!(
+        v.find_by_title("Buy milk!").is_some(),
+        "captured into vault"
+    );
 }
 
 #[test]
