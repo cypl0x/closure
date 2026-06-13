@@ -112,6 +112,19 @@ pub enum VaultError {
     Command(String),
 }
 
+/// FNV-1a hash of a string, matching `closure_org::OrgDoc::source_hash`
+/// so an on-disk file can be hash-compared without re-parsing.
+fn fnv1a(s: &str) -> u64 {
+    const OFFSET: u64 = 0xcbf2_9ce4_8422_2325;
+    const PRIME: u64 = 0x0000_0100_0000_01b3;
+    let mut h = OFFSET;
+    for b in s.as_bytes() {
+        h ^= u64::from(*b);
+        h = h.wrapping_mul(PRIME);
+    }
+    h
+}
+
 impl Vault {
     /// Reload the vault from disk: re-walks the root, re-parses every
     /// `*.org` file, and rebuilds the id and backlink indices.
@@ -121,6 +134,65 @@ impl Vault {
         self.by_id = fresh.by_id;
         self.backlinks = fresh.backlinks;
         Ok(())
+    }
+
+    /// Incrementally reload from disk: re-parse only files whose
+    /// on-disk content hash differs from the cached document, add new
+    /// files, drop deleted ones. Indices are rebuilt only when
+    /// something changed. Returns the number of files re-parsed or
+    /// added (0 ⇒ full rescan avoided).
+    ///
+    /// # Errors
+    ///
+    /// [`VaultError::Io`] / [`VaultError::Parse`] on read/parse
+    /// failures.
+    pub fn reload_incremental(&mut self) -> Result<usize, VaultError> {
+        let mut on_disk: Vec<PathBuf> = Vec::new();
+        walk_org(&self.root, &mut |path| {
+            on_disk.push(path.to_path_buf());
+            Ok(())
+        })?;
+        let mut changed = 0usize;
+        let mut seen: std::collections::HashSet<PathBuf> = std::collections::HashSet::new();
+        for path in on_disk {
+            seen.insert(path.clone());
+            let src = fs::read_to_string(&path)?;
+            let same = self
+                .documents
+                .get(&path)
+                .is_some_and(|doc| doc.source_hash() == fnv1a(&src));
+            if same {
+                continue;
+            }
+            let doc =
+                Document::load_str(&src).map_err(|_| VaultError::Parse { path: path.clone() })?;
+            self.documents.insert(path, doc);
+            changed += 1;
+        }
+        // Drop documents whose files vanished.
+        let removed: Vec<PathBuf> = self
+            .documents
+            .keys()
+            .filter(|p| !seen.contains(*p))
+            .cloned()
+            .collect();
+        for path in &removed {
+            self.documents.remove(path);
+        }
+        if changed > 0 || !removed.is_empty() {
+            self.rebuild_indices();
+        }
+        Ok(changed)
+    }
+
+    /// Rebuild the id and backlink indices from the current documents.
+    fn rebuild_indices(&mut self) {
+        self.by_id.clear();
+        self.backlinks.clear();
+        let paths: Vec<PathBuf> = self.documents.keys().cloned().collect();
+        for path in paths {
+            self.reindex_file(&path);
+        }
     }
 
     /// Open the vault at `root`, loading every `*.org` file underneath.
