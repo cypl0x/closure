@@ -160,6 +160,17 @@ fn llm_tools_parses_list() {
     );
 }
 
+// TDD for sniffer blocklist (last sub for sniffer).
+// sniffer_blocklist = comma globs; used for =closure sniff= view.
+#[test]
+fn sniffer_blocklist_parses() {
+    let cfg = Config::from_kv_block("sniffer_blocklist = *tracker*,*evil*\n").expect("parse");
+    assert_eq!(
+        cfg.sniffer_blocklist.as_deref(),
+        Some(&["*tracker*".to_owned(), "*evil*".to_owned()][..])
+    );
+}
+
 // TDD for the final Config validation sub-item (typed cross-key constraints,
 // yesod principle: error at load time, not first use).
 // Example from ROADMAP: llm_provider set ⇒ llm_key_env must also be set.

@@ -49,6 +49,9 @@ pub struct Config {
     /// Allowed tools for LLM (comma list; e.g. read,search,capture,rename,set-property,view-state).
     /// Per-tool permission model (live configurable via llm-allow/deny later).
     pub llm_tools: Option<Vec<String>>,
+    /// Blocklist globs for the network sniffer (comma patterns; * wildcards).
+    /// Used by =closure sniff= and block events.
+    pub sniffer_blocklist: Option<Vec<String>>,
 }
 
 impl Default for Config {
@@ -67,6 +70,7 @@ impl Default for Config {
             record_commands: false,
             search_backend: None,
             llm_tools: None,
+            sniffer_blocklist: None,
         }
     }
 }
@@ -145,7 +149,8 @@ impl Config {
     }
 
     /// Parse `key = value` lines, returning a fully-typed [`Config`]
-    /// with the default for any field the user didn't specify.
+    /// with the default for any field the user didn't specified.
+    #[allow(clippy::too_many_lines)]
     pub fn from_kv_block(content: &str) -> Result<Self, ConfigError> {
         let mut cfg = Self::default();
         for (line_no, raw) in content.lines().enumerate() {
@@ -223,6 +228,15 @@ impl Config {
                 "search_backend" => cfg.search_backend = Some(value.into()),
                 "llm_tools" => {
                     cfg.llm_tools = Some(
+                        value
+                            .split(',')
+                            .map(|s| s.trim().to_owned())
+                            .filter(|s| !s.is_empty())
+                            .collect(),
+                    );
+                }
+                "sniffer_blocklist" => {
+                    cfg.sniffer_blocklist = Some(
                         value
                             .split(',')
                             .map(|s| s.trim().to_owned())

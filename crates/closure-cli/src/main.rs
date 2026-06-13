@@ -841,6 +841,15 @@ enum Cmd {
     },
     /// Print the closure-cli crate version.
     Version,
+    /// Sniff a candidate against the blocklist (from config sniffer_blocklist globs).
+    /// Prints the matched action (Block/Allow) and rule. Blocklist config + =closure sniff= view.
+    Sniff {
+        /// Candidate (e.g. "host:port" or "url" or any string matched by the globs).
+        candidate: String,
+        /// Config .org with #+BEGIN_SRC closure-config sniffer_blocklist=... (or vault dir).
+        #[arg(long)]
+        config: Option<PathBuf>,
+    },
     /// Print build info: name, version, target triple.
     Build,
     /// Print the keybinding(s) registered for a command name.
@@ -1247,6 +1256,7 @@ fn run(cmd: &Cmd) -> Result<(), String> {
             dow,
         } => cmd_cron_tick(file, *minute, *hour, *dom, *month, *dow),
         Cmd::Version => cmd_version(),
+        Cmd::Sniff { candidate, config } => cmd_sniff(&candidate, config.as_deref()),
         Cmd::Build => cmd_build(),
         Cmd::WhereIs { name } => cmd_where_is(name),
         Cmd::TagsOf { file, id } => cmd_tags_of(file, id),
@@ -2960,6 +2970,38 @@ fn cmd_chat(model: &str, vault: Option<&Path>) -> Result<(), String> {
         history.push(answer);
     }
     println!("chat ended.");
+    Ok(())
+}
+
+/// Sniff a candidate using the blocklist from a config (sniffer_blocklist globs).
+/// Builds Rules with Block action for the globs, uses the sniffer match_first, prints the result.
+/// This is the =closure sniff= view + blocklist config support (surfaces the block decision).
+fn cmd_sniff(candidate: &str, config: Option<&Path>) -> Result<(), String> {
+    use closure_sniffer::{Action, Rule, match_first};
+
+    let mut globs: Vec<String> = vec![];
+    if let Some(p) = config {
+        if let Ok(cfg) = closure_config::Config::from_path(p) {
+            if let Some(list) = cfg.sniffer_blocklist {
+                globs = list;
+            }
+        }
+    }
+    if globs.is_empty() {
+        println!("no blocklist (or no config); default Allow for {}", candidate);
+        return Ok(());
+    }
+    let rules: Vec<Rule> = globs.into_iter().map(|g| Rule {
+        id: format!("block-{}", g),
+        pattern: g,
+        action: Action::Block,
+    }).collect();
+    if let Some(m) = match_first(candidate, &rules) {
+        println!("{} -> {:?}", candidate, m.action);
+        println!("  matched rule: {} ({})", m.id, m.pattern);
+    } else {
+        println!("{} -> Allow (no blocklist match)", candidate);
+    }
     Ok(())
 }
 

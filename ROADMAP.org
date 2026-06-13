@@ -117,10 +117,11 @@ reversible option, keep moving.
 ** TODO Tauri app: wraps the web shell against a localhost server; capability matrix entry
 ** TODO Native gpui shell: evaluate gpui as the high-performance desktop shell; walking skeleton or recorded DROP decision
 ** TODO Flutter/GTK4/Qt6 embedders: evaluate each against the capability matrix; implement or record DROP per framework (suggestion-tier per vision)
-* TODO Network sniffer (lean, pluggable) [2/3]
+* DONE Network sniffer (lean, pluggable) [3/3]
 ** DONE closure-sniffer: capture backend trait with a mock backend (TDD; external tcpdump/ss next)
 ** DONE Org-native log: captures append to =network.org= as headlines (host, port, proto, ts) via log_capture_to_org (TDD; searchable as org)
-** TODO Blocklist config block + =closure sniff= CLI/TUI view; block events surfaced
+** DONE Blocklist config block (sniffer_blocklist globs in closure-config) + =closure sniff= CLI view (prints action using match_first); block events surfaced as the decision print (TDD)
+
 * DONE LLM deep access & live permissions [4/4]
 ** DONE Shell-state tool: =view-state= (constant + handling in ask executor + test; LLM sees state snapshot)
 ** DONE Per-tool permission model in config (llm_tools list parsed; filtering in ask executor; live toggle commands for TUI later)

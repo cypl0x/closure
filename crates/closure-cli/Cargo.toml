@@ -34,5 +34,6 @@ closure-sync = { path = "../closure-sync" }
 closure-llm = { path = "../closure-llm" }
 closure-mcp = { path = "../closure-mcp" }
 closure-cron = { path = "../closure-cron" }
+closure-sniffer = { path = "../closure-sniffer" }
 clap.workspace = true
 thiserror.workspace = true
