@@ -57,6 +57,14 @@ enum Cmd {
         #[arg(long, default_value = "", allow_hyphen_values = true)]
         body: String,
     },
+    /// Tangle a literate org file: write `:tangle <path>` blocks to
+    /// their targets.
+    Tangle {
+        /// Path to the vault directory.
+        vault: PathBuf,
+        /// Org file (relative to the vault root or absolute).
+        file: PathBuf,
+    },
     /// Edit one code block in $EDITOR (org-edit-special), writing the
     /// edited content back span-preserving.
     EditBlock {
@@ -930,6 +938,7 @@ fn run(cmd: &Cmd) -> Result<(), String> {
             prefix,
             body,
         } => cmd_capture(vault, title, target, prefix, body),
+        Cmd::Tangle { vault, file } => cmd_tangle(vault, file),
         Cmd::EditBlock { vault, file, index } => cmd_edit_block(vault, file, *index),
         Cmd::View {
             vault,
@@ -1129,6 +1138,23 @@ fn cmd_plugin(manifest: &Path, executable: &Path, args: &[String]) -> Result<(),
     let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
     let out = host.invoke(&command, &arg_refs).map_err(|e| format!("{e}"))?;
     print!("{out}");
+    Ok(())
+}
+
+fn cmd_tangle(vault: &Path, file: &Path) -> Result<(), String> {
+    let v = Vault::open(vault).map_err(|e| format!("{e}"))?;
+    let abs = if file.is_absolute() {
+        file.to_path_buf()
+    } else {
+        vault.join(file)
+    };
+    let written = v.tangle(&abs).map_err(|e| format!("{e}"))?;
+    if written.is_empty() {
+        eprintln!("no :tangle blocks in {}", abs.display());
+    }
+    for p in written {
+        println!("tangled {}", p.display());
+    }
     Ok(())
 }
 

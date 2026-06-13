@@ -68,12 +68,12 @@ reversible option, keep moving.
 ** DONE LSP basics: =document_symbols= (headline name/line/level) + =definition_of= for id: links
 * DONE Plugin host [1/1]
 ** DONE Plugin executables (native or =.wasm= via external wasmtime) register a manifest-declared command; =closure plugin <manifest> <exe> [args]= invokes it
-* TODO Org-babel & literate programming [4/5]
+* DONE Org-babel & literate programming [5/5]
 ** DONE Execute code block at point: =closure eval <file> --block <n|name>= runs one block (doc-wide, incl. under headlines), writes =#+RESULTS:= back span-preserving (I1)
 ** DONE Header args subset: =:results output/silent=, =:var x=...= (shell/python preludes), named blocks (=#+NAME:=)
 ** DONE TUI: =e= opens the selected file's code-block picker; =RET= evaluates via =Vault::eval_block=, =#+RESULTS:= attached and the view refreshes
 ** DONE org-edit-special: =closure edit-block <vault> <file> <n>= extracts a block to a temp file, =$EDITOR= edits, writes back span-preserving via =Vault::set_block_content= (I1)
-** TODO Tangle (literate programming): =closure tangle <file>= writes =:tangle <path>= blocks to their targets; golden fixtures
+** DONE Tangle: =closure tangle <vault> <file>= writes =:tangle <path>= blocks to targets, concatenating shared targets in source order (=Vault::tangle=)
 * TODO Notion-default editing mode for real [0/5]
 ** TODO Block model over headlines+paragraphs: every block addressable, =+=-style insert-below command in TUI (any block type: headline, code, table)
 ** TODO Slash commands: =/= in Notion mode opens the command palette scoped to block insertion (already-built palette reused)

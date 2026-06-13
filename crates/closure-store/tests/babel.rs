@@ -117,3 +117,53 @@ fn set_block_content_out_of_range_errors() {
     let mut v = Vault::open(td.path()).expect("open");
     assert!(v.set_block_content(&file(&td), 0, "x\n").is_err());
 }
+
+#[test]
+fn tangle_writes_blocks_to_targets() {
+    let td = write_vault(&[(
+        "lit.org",
+        "#+BEGIN_SRC shell :tangle build.sh\necho one\n#+END_SRC\n\
+         * H\n#+BEGIN_SRC python :tangle app.py\nprint('hi')\n#+END_SRC\n\
+         #+BEGIN_SRC shell\necho untangled\n#+END_SRC\n",
+    )]);
+    let v = Vault::open(td.path()).expect("open");
+    let written = v.tangle(&td.path().join("lit.org")).expect("tangle");
+    assert_eq!(written.len(), 2, "only :tangle blocks written");
+    assert_eq!(
+        fs::read_to_string(td.path().join("build.sh")).expect("build.sh"),
+        "echo one\n"
+    );
+    assert_eq!(
+        fs::read_to_string(td.path().join("app.py")).expect("app.py"),
+        "print('hi')\n"
+    );
+}
+
+#[test]
+fn tangle_concatenates_blocks_to_same_target() {
+    let td = write_vault(&[(
+        "lit.org",
+        "#+BEGIN_SRC shell :tangle out.sh\nfirst\n#+END_SRC\n\
+         #+BEGIN_SRC shell :tangle out.sh\nsecond\n#+END_SRC\n",
+    )]);
+    let v = Vault::open(td.path()).expect("open");
+    v.tangle(&td.path().join("lit.org")).expect("tangle");
+    assert_eq!(
+        fs::read_to_string(td.path().join("out.sh")).expect("out.sh"),
+        "first\nsecond\n"
+    );
+}
+
+#[test]
+fn tangle_no_targets_writes_nothing() {
+    let td = write_vault(&[("lit.org", "#+BEGIN_SRC shell\necho x\n#+END_SRC\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert!(v.tangle(&td.path().join("lit.org")).expect("tangle").is_empty());
+}
+
+#[test]
+fn tangle_unknown_file_errors() {
+    let td = write_vault(&[("lit.org", "* x\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert!(v.tangle(&td.path().join("nope.org")).is_err());
+}

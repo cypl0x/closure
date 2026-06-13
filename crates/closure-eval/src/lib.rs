@@ -307,6 +307,8 @@ pub struct HeaderArgs {
     pub results: Option<String>,
     /// `:var name=value` pairs in source order.
     pub vars: Vec<(String, String)>,
+    /// `:tangle <path>` target, `None` when absent or `:tangle no`.
+    pub tangle: Option<String>,
 }
 
 impl HeaderArgs {
@@ -323,6 +325,9 @@ impl HeaderArgs {
                     if let Some((k, v)) = tokens.next().and_then(|kv| kv.split_once('=')) {
                         out.vars.push((k.to_owned(), v.to_owned()));
                     }
+                }
+                ":tangle" => {
+                    out.tangle = tokens.next().filter(|&t| t != "no").map(str::to_owned);
                 }
                 _ => {}
             }

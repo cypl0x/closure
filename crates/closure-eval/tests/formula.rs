@@ -94,3 +94,11 @@ fn shell_eval_with_var_prelude_sees_the_variable() {
     let out = ShellBackend.eval(&src).expect("eval");
     assert_eq!(out.stdout.trim(), "hi world");
 }
+
+#[test]
+fn header_args_tangle_target() {
+    let h = HeaderArgs::parse(":tangle out.sh :results silent");
+    assert_eq!(h.tangle.as_deref(), Some("out.sh"));
+    assert!(HeaderArgs::parse(":results output").tangle.is_none());
+    assert!(HeaderArgs::parse(":tangle no").tangle.is_none(), "':tangle no' disables");
+}

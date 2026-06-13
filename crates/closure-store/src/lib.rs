@@ -375,6 +375,44 @@ impl Vault {
         Ok(out.stdout)
     }
 
+    /// Tangle `path`: write each code block carrying `:tangle
+    /// <target>` to that target (relative to the file's directory),
+    /// concatenating blocks that share a target in source order.
+    /// Returns the written target paths. Literate-programming export.
+    ///
+    /// # Errors
+    ///
+    /// [`VaultError::UnknownId`] for unknown paths, [`VaultError::Io`]
+    /// on write failures.
+    pub fn tangle(&self, path: &Path) -> Result<Vec<PathBuf>, VaultError> {
+        let doc = self
+            .documents
+            .get(path)
+            .ok_or_else(|| VaultError::UnknownId(path.display().to_string()))?;
+        let base = path.parent().unwrap_or_else(|| Path::new("."));
+        let mut bytarget: Vec<(PathBuf, String)> = Vec::new();
+        for node in doc.org().code_blocks() {
+            let Some(cb) = node.as_code_block() else {
+                continue;
+            };
+            let header = closure_eval::HeaderArgs::parse(cb.args.unwrap_or(""));
+            let Some(target) = header.tangle else {
+                continue;
+            };
+            let abs = base.join(&target);
+            match bytarget.iter_mut().find(|(p, _)| *p == abs) {
+                Some((_, acc)) => acc.push_str(cb.content),
+                None => bytarget.push((abs, cb.content.to_owned())),
+            }
+        }
+        let mut written = Vec::with_capacity(bytarget.len());
+        for (abs, content) in bytarget {
+            fs::write(&abs, content)?;
+            written.push(abs);
+        }
+        Ok(written)
+    }
+
     /// Replace the content of the Nth doc-wide code block of `path`
     /// (fences preserved, I1), persist, and reindex. Backs
     /// org-edit-special.
