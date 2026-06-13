@@ -100,12 +100,10 @@ reversible option, keep moving.
 * DONE Tree-sitter support [2/2]
 ** DONE closure-tree-sitter: KeywordHighlighter (dep-free pluggable default) + trait contract (TDD)
 ** DONE TUI file view renders code blocks with TS-derived highlight spans (TDD)
-* TODO Config validation (CUE-inspired) [0/3]
-* TODO Config validation (CUE-inspired) [0/3]
-* TODO Config validation (CUE-inspired) [1/3]
+* DONE Config validation (CUE-inspired) [3/3]
 ** DONE Validators per key with line/column errors at parse time + =closure check-config <file>= (TDD)
 ** DONE Validate-on-save: vault watcher revalidates config.org (new revalidate_config) and surfaces rich errors (with location) in TUI status line (TDD)
-** TODO Typed cross-key constraints (e.g. llm_provider set ⇒ llm_key_env set); errors at load, not first use (yesod principle)
+** DONE Typed cross-key constraints (e.g. llm_provider set ⇒ llm_key_env set); errors at load via post-pass in from_kv_block (TDD)
 * TODO Shell capability matrix (type-level) [0/2]
 ** TODO =Capability= enum + per-shell =const CAPABILITIES: &[Capability]= in cli/tui/web/egui; test pins every shell ⊇ kernel core set
 ** TODO =closure shells= renders the diff/venn table from those constants — code is the single source of truth

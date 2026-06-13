@@ -148,6 +148,27 @@ fn search_backend_parses() {
     );
 }
 
+// TDD for the final Config validation sub-item (typed cross-key constraints,
+// yesod principle: error at load time, not first use).
+// Example from ROADMAP: llm_provider set ⇒ llm_key_env must also be set.
+#[test]
+fn llm_provider_without_key_env_is_rejected_at_load() {
+    let src = "#+BEGIN_SRC closure-config\n\
+               llm_provider = anthropic\n\
+               llm_model = claude-sonnet-4-6\n\
+               #+END_SRC\n";
+    let err = Config::from_org_source(src).expect_err("cross-key should fail at load");
+    // Will fail until we add the check at end of from_kv_block.
+    // For now the test documents the desired behavior.
+    match err {
+        ConfigError::BadValue { reason, .. } => {
+            assert!(reason.contains("llm_key_env") || reason.contains("cross") || reason.contains("required"),
+                    "expected cross-key error mentioning llm_key_env, got: {}", reason);
+        }
+        other => panic!("expected BadValue for missing dependent key, got {:?}", other),
+    }
+}
+
 // --- CUE-inspired validation (line/col at load) tests written first per TDD ---
 // These will fail until ConfigError carries structured location and from_kv_block
 // (and from_org_source) attach line + column for BadValue/UnknownKey.

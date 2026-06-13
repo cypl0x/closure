@@ -223,6 +223,17 @@ impl Config {
                 other => return Err(ConfigError::UnknownKey(other.into())),
             }
         }
+
+        // Typed cross-key constraints (yesod/CUE principle from spec I9 and
+        // ROADMAP: error at *load* time, not at first use of the feature).
+        // Example: llm_provider set ⇒ llm_key_env must be present (BYOK).
+        if cfg.llm_provider.is_some() && cfg.llm_key_env.is_none() {
+            return Err(ConfigError::BadValue {
+                key: "llm_key_env".into(),
+                reason: "llm_provider is set but llm_key_env is required for BYOK".into(),
+            });
+        }
+
         Ok(cfg)
     }
 }
