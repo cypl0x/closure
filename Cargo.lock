@@ -223,6 +223,8 @@ name = "closure-a2a"
 version = "0.0.0"
 dependencies = [
  "closure-core",
+ "closure-store",
+ "tempfile",
  "thiserror 2.0.18",
 ]
 
@@ -241,6 +243,7 @@ name = "closure-cli"
 version = "0.0.0"
 dependencies = [
  "clap",
+ "closure-a2a",
  "closure-acp",
  "closure-config",
  "closure-core",

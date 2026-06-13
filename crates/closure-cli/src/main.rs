@@ -798,6 +798,9 @@ enum Cmd {
     /// text protocol; JSON card served via handle_message for agent
     /// discovery/handshake per ROADMAP).
     Acp,
+    /// Run the A2A stdio dispatcher (task delegation surface for agent
+    /// swarms; `delegate_task` for roundtrip execution on peer vault).
+    A2a,
     /// Print headlines that have no incoming `id:` links.
     Orphans {
         /// Path to the vault directory.
@@ -1252,6 +1255,7 @@ fn run(cmd: &Cmd) -> Result<(), String> {
         Cmd::SinkOnlyIds { file } => cmd_sink_only_ids(file),
         Cmd::Mcp => cmd_mcp(),
         Cmd::Acp => cmd_acp(),
+        Cmd::A2a => cmd_a2a(),
         Cmd::Orphans { vault } => cmd_orphans(vault),
         Cmd::DeadLinks { vault } => cmd_dead_links(vault),
         Cmd::Hubs { vault, limit } => cmd_hubs(vault, *limit),
@@ -1686,6 +1690,11 @@ fn cmd_mcp() -> Result<(), String> {
 fn cmd_acp() -> Result<(), String> {
     let registry = closure_core::default_registry();
     closure_acp::run_stdio(&registry).map_err(|e| format!("{e}"))
+}
+
+fn cmd_a2a() -> Result<(), String> {
+    let registry = closure_core::default_registry();
+    closure_a2a::run_stdio(&registry).map_err(|e| format!("{e}"))
 }
 
 fn cmd_dead_links(vault: &Path) -> Result<(), String> {

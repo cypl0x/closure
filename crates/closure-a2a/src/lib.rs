@@ -9,6 +9,7 @@
 use std::io::{BufRead, BufReader};
 
 use closure_core::Registry;
+use closure_store::Vault;
 use thiserror::Error;
 
 /// A2A bridge error.
@@ -80,4 +81,15 @@ pub fn run_stdio(registry: &Registry) -> Result<(), A2aError> {
     let mut stdout = std::io::stdout();
     let reader = BufReader::new(stdin.lock());
     run(registry, reader, &mut stdout)
+}
+
+/// Delegate and execute a task line against the target vault.
+///
+/// Execution goes exclusively through `Vault::run_tool` (dispatches to
+/// registered commands only, per I8). Used for A2A round-trip: agent A
+/// posts the task string; agent B (separate vault) calls this, mutates,
+/// and returns the result text to the caller.
+#[must_use]
+pub fn delegate_task(vault: &mut Vault, task: &str) -> String {
+    vault.run_tool(task)
 }
