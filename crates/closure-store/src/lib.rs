@@ -487,6 +487,30 @@ impl Vault {
         Ok(out.stdout)
     }
 
+    /// Parse the `#+BEGIN_SRC closure-cron` block of `path` into
+    /// scheduled jobs (`<cron-expr> <command line>` per line). Empty
+    /// when the file has no such block.
+    ///
+    /// # Errors
+    ///
+    /// [`VaultError::UnknownId`] for unknown paths,
+    /// [`VaultError::Command`] for a malformed cron line.
+    pub fn cron_jobs(&self, path: &Path) -> Result<Vec<closure_cron::Job>, VaultError> {
+        let doc = self
+            .documents
+            .get(path)
+            .ok_or_else(|| VaultError::UnknownId(path.display().to_string()))?;
+        for node in doc.org().code_blocks() {
+            if let Some(cb) = node.as_code_block()
+                && cb.language == Some("closure-cron")
+            {
+                return closure_cron::parse_jobs(cb.content)
+                    .map_err(|e| VaultError::Command(e.to_string()));
+            }
+        }
+        Ok(Vec::new())
+    }
+
     /// Tangle `path`: write each code block carrying `:tangle
     /// <target>` to that target (relative to the file's directory),
     /// concatenating blocks that share a target in source order.

@@ -418,6 +418,7 @@ name = "closure-store"
 version = "0.0.0"
 dependencies = [
  "closure-core",
+ "closure-cron",
  "closure-eval",
  "closure-org",
  "notify",
