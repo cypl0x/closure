@@ -184,3 +184,47 @@ fn set_body_is_undoable() {
     let (h, _) = v.find_by_id(&id).expect("resolves");
     assert!(h.body_text().contains("orig"), "I3: body edit on undo-tree");
 }
+
+#[test]
+fn promote_decreases_level_on_disk() {
+    let td = write_vault(&[("a.org", "* Parent\n** Child\n")]);
+    let mut v = Vault::open(td.path()).expect("open");
+    let id = id_of(&v, "Child");
+    v.promote(&id).expect("promote");
+    let disk = fs::read_to_string(td.path().join("a.org")).expect("read");
+    assert!(disk.contains("* Child"), "got {disk:?}");
+    assert!(!disk.contains("** Child"));
+}
+
+#[test]
+fn demote_increases_level() {
+    let td = write_vault(&[("a.org", "* One\n* Two\n")]);
+    let mut v = Vault::open(td.path()).expect("open");
+    let id = id_of(&v, "Two");
+    v.demote(&id).expect("demote");
+    let disk = fs::read_to_string(td.path().join("a.org")).expect("read");
+    assert!(disk.contains("** Two"));
+}
+
+#[test]
+fn promote_is_undoable() {
+    let td = write_vault(&[(
+        "a.org",
+        "* P\n:PROPERTIES:\n:ID: 01HXAAAAAAAAAAAAAAAAAAAAAA\n:END:\n\
+         ** C\n:PROPERTIES:\n:ID: 01HXBBBBBBBBBBBBBBBBBBBBBB\n:END:\n",
+    )]);
+    let mut v = Vault::open(td.path()).expect("open");
+    let id = id_of(&v, "C");
+    v.promote(&id).expect("promote");
+    v.undo_in(&td.path().join("a.org")).expect("undo");
+    let disk = fs::read_to_string(td.path().join("a.org")).expect("read");
+    assert!(disk.contains("** C"), "I3: level edit on undo-tree");
+}
+
+#[test]
+fn promote_unknown_id_errors() {
+    let td = write_vault(&[("a.org", "* A\n")]);
+    let mut v = Vault::open(td.path()).expect("open");
+    let bogus = BlockId::from_existing("01XXXXXXXXXXXXXXXXXXXXXXXX");
+    assert!(matches!(v.promote(&bogus), Err(VaultError::UnknownId(_))));
+}

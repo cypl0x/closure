@@ -11,7 +11,8 @@ use std::path::{Path, PathBuf};
 use std::sync::mpsc::{Receiver, Sender, channel};
 
 use closure_core::{
-    AddSibling, BlockId, Command, Document, RemoveSubtree, RenameHeadline, SetBody, SetProperty,
+    AddSibling, BlockId, Command, Demote, Document, Promote, RemoveSubtree, RenameHeadline,
+    SetBody, SetProperty,
 };
 use notify::{EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use thiserror::Error;
@@ -213,6 +214,28 @@ impl Vault {
     pub fn add_sibling(&mut self, after: &BlockId, title: &str) -> Result<(), VaultError> {
         let cmd = AddSibling::new(after.clone(), title.to_owned());
         self.apply_to_block(after, &cmd)
+    }
+
+    /// Promote a headline one level (fewer stars) through the kernel
+    /// [`Promote`] command (undoable, I3) and persist.
+    ///
+    /// # Errors
+    ///
+    /// Same contract as [`Self::rename_headline`].
+    pub fn promote(&mut self, id: &BlockId) -> Result<(), VaultError> {
+        let cmd = Promote::new(id.clone());
+        self.apply_to_block(id, &cmd)
+    }
+
+    /// Demote a headline one level (more stars) through the kernel
+    /// [`Demote`] command (undoable, I3) and persist.
+    ///
+    /// # Errors
+    ///
+    /// Same contract as [`Self::rename_headline`].
+    pub fn demote(&mut self, id: &BlockId) -> Result<(), VaultError> {
+        let cmd = Demote::new(id.clone());
+        self.apply_to_block(id, &cmd)
     }
 
     /// Replace a headline's body text through the kernel [`SetBody`]
