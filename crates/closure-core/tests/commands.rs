@@ -1,8 +1,10 @@
 //! Command-registry and Edit log tests.
 //!
-//! I3: every mutation goes through a `Command` and produces an `Edit`
-//! that the undo-tree can replay in reverse.
-//! I4: every command carries a keybinding entry in the registry.
+//! Cross-refs to spec.md invariants (Quality):
+//! - I3: every mutation goes through a `Command` and produces an `Edit`
+//!   that the undo-tree can replay in reverse. Property-tested apply+undo identity.
+//! - I4: every command carries a keybinding entry in the registry (no hand tables;
+//!   which-key / doc / modes read from it).
 
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 

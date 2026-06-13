@@ -1,5 +1,9 @@
 #![allow(clippy::unwrap_used, clippy::expect_used, missing_docs)]
 
+// Cross-refs to spec.md invariants (Quality gate):
+// - I2: stable BlockId survive snapshot/merge (ULID preserved; no regen on CRDT).
+// - I6: determinism (merge + snapshot produce identical results given same inputs; order-independent via LWW+vector clocks; golden conflict corpus).
+
 use closure_core::{BlockId, Document};
 use closure_crdt::Replica;
 

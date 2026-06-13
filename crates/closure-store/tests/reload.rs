@@ -1,4 +1,9 @@
 //! Content-hash caching reload: unchanged files are not re-parsed.
+//!
+//! Cross-ref to spec.md:
+//! - I10 (deterministic, hermetic, reproducible): incremental reload uses content hash (FNV)
+//!   to avoid reparse; test asserts count==0 on unchanged vault proves the guard.
+//! - Supports I6 determinism (same input files => same in-mem state).
 
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
