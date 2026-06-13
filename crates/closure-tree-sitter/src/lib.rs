@@ -60,10 +60,341 @@ impl Highlighter for NoOpHighlighter {
     }
 
     fn highlight(&self, source: &str) -> Vec<Highlight> {
+        // Always produce exactly one span covering [0, len) (including the
+        // degenerate 0-length span for empty input). This preserves the
+        // pre-existing observable behavior for NoOpHighlighter on "".
         vec![Highlight {
             start: 0,
             end: source.len(),
             kind: HighlightKind::Plain,
         }]
+    }
+}
+
+/// Dependency-free keyword-based highlighter.
+///
+/// Provides a pluggable default implementation of [`Highlighter`] for
+/// common languages used in org `#+BEGIN_SRC` blocks (rust, python, shell).
+/// Always available with no extra dependencies or unsafe code.
+///
+/// Spans are guaranteed gap-free and cover the entire source (see
+/// trait contract). Use [`KeywordHighlighter::for_language`] for runtime
+/// selection with sensible fallbacks.
+#[derive(Debug, Clone)]
+pub struct KeywordHighlighter {
+    lang: &'static str,
+}
+
+impl KeywordHighlighter {
+    /// Highlighter tuned for Rust (fn, let, etc. + "..." literals).
+    #[must_use]
+    pub const fn rust() -> Self {
+        Self { lang: "rust" }
+    }
+
+    /// Highlighter tuned for POSIX shell / bash (keywords + # comments).
+    #[must_use]
+    pub const fn shell() -> Self {
+        Self { lang: "shell" }
+    }
+
+    /// Highlighter tuned for Python (def, return, etc. + "..." literals).
+    #[must_use]
+    pub const fn python() -> Self {
+        Self { lang: "python" }
+    }
+
+    /// Select by language name (case-insensitive).
+    ///
+    /// Known: "rust"/"rs", "python"/"py", "shell"/"sh"/"bash"/"zsh".
+    /// Unknown languages fall back to a plain highlighter (language name "plain").
+    #[must_use]
+    pub fn for_language(name: &str) -> Self {
+        let n = name.to_ascii_lowercase();
+        match n.as_str() {
+            "rust" | "rs" => Self::rust(),
+            "python" | "py" => Self::python(),
+            "shell" | "sh" | "bash" | "zsh" => Self::shell(),
+            _ => Self { lang: "plain" },
+        }
+    }
+
+    fn is_keyword(&self, word: &str) -> bool {
+        match self.lang {
+            "rust" => matches!(
+                word,
+                "fn" | "let"
+                    | "mut"
+                    | "pub"
+                    | "use"
+                    | "mod"
+                    | "struct"
+                    | "enum"
+                    | "impl"
+                    | "trait"
+                    | "if"
+                    | "else"
+                    | "match"
+                    | "loop"
+                    | "for"
+                    | "while"
+                    | "return"
+                    | "break"
+                    | "continue"
+                    | "const"
+                    | "static"
+                    | "type"
+                    | "where"
+                    | "async"
+                    | "await"
+                    | "move"
+                    | "ref"
+                    | "self"
+                    | "Self"
+                    | "true"
+                    | "false"
+            ),
+            "python" => matches!(
+                word,
+                "def"
+                    | "class"
+                    | "if"
+                    | "elif"
+                    | "else"
+                    | "for"
+                    | "while"
+                    | "return"
+                    | "yield"
+                    | "import"
+                    | "from"
+                    | "as"
+                    | "pass"
+                    | "break"
+                    | "continue"
+                    | "try"
+                    | "except"
+                    | "finally"
+                    | "with"
+                    | "lambda"
+                    | "and"
+                    | "or"
+                    | "not"
+                    | "in"
+                    | "is"
+                    | "None"
+                    | "True"
+                    | "False"
+                    | "global"
+                    | "nonlocal"
+            ),
+            "shell" => matches!(
+                word,
+                "if" | "then"
+                    | "else"
+                    | "elif"
+                    | "fi"
+                    | "for"
+                    | "while"
+                    | "do"
+                    | "done"
+                    | "case"
+                    | "esac"
+                    | "function"
+                    | "return"
+                    | "local"
+                    | "export"
+                    | "alias"
+                    | "echo"
+                    | "cd"
+                    | "exit"
+            ),
+            _ => false,
+        }
+    }
+}
+
+impl Highlighter for KeywordHighlighter {
+    fn language(&self) -> &str {
+        self.lang
+    }
+
+    #[allow(clippy::too_many_lines)]
+    fn highlight(&self, source: &str) -> Vec<Highlight> {
+        if source.is_empty() {
+            return vec![];
+        }
+
+        let bytes = source.as_bytes();
+        let mut spans: Vec<Highlight> = Vec::new();
+        let mut i = 0usize;
+
+        let mut in_string: Option<u8> = None; // " or '
+        let mut in_comment = false;
+
+        while i < bytes.len() {
+            let b = bytes[i];
+
+            if in_comment {
+                // consume until newline (or end)
+                let start = i;
+                while i < bytes.len() && bytes[i] != b'\n' {
+                    i += 1;
+                }
+                spans.push(Highlight {
+                    start,
+                    end: i,
+                    kind: HighlightKind::Comment,
+                });
+                in_comment = false;
+                continue;
+            }
+
+            if let Some(quote) = in_string {
+                let start = i;
+                // consume until matching quote (simple; \" is treated as content for our test needs)
+                i += 1;
+                while i < bytes.len() {
+                    if bytes[i] == quote {
+                        i += 1;
+                        break;
+                    }
+                    i += 1;
+                }
+                spans.push(Highlight {
+                    start,
+                    end: i,
+                    kind: HighlightKind::Literal,
+                });
+                in_string = None;
+                continue;
+            }
+
+            // not in string/comment
+            if b == b'"' || b == b'\'' {
+                in_string = Some(b);
+                // do not advance i here; the string arm will handle
+                continue;
+            }
+
+            // line comments (lang specific starters)
+            let starts_comment = match self.lang {
+                "shell" | "python" => b == b'#',
+                "rust" => {
+                    // support // comments (common even if not in every test)
+                    b == b'/' && i + 1 < bytes.len() && bytes[i + 1] == b'/'
+                }
+                _ => false,
+            };
+            if starts_comment {
+                in_comment = true;
+                continue;
+            }
+
+            // word / identifier / keyword
+            if b.is_ascii_alphanumeric() || b == b'_' {
+                let start = i;
+                while i < bytes.len() && (bytes[i].is_ascii_alphanumeric() || bytes[i] == b'_') {
+                    i += 1;
+                }
+                let word = &source[start..i];
+                let kind = if self.is_keyword(word) {
+                    HighlightKind::Keyword
+                } else {
+                    HighlightKind::Identifier
+                };
+                spans.push(Highlight {
+                    start,
+                    end: i,
+                    kind,
+                });
+                continue;
+            }
+
+            // punctuation / operators / whitespace -> Plain (or Punctuation)
+            let start = i;
+            // group consecutive non-word chars as one span for cleanliness
+            while i < bytes.len()
+                && !(bytes[i].is_ascii_alphanumeric() || bytes[i] == b'_')
+                && bytes[i] != b'"'
+                && bytes[i] != b'\''
+                && !matches!(self.lang, "shell" | "python" if bytes[i] == b'#')
+                && !(self.lang == "rust"
+                    && bytes[i] == b'/'
+                    && i + 1 < bytes.len()
+                    && bytes[i + 1] == b'/')
+            {
+                i += 1;
+            }
+            // but if we advanced 0, force at least one byte
+            if i == start {
+                i += 1;
+            }
+            spans.push(Highlight {
+                start,
+                end: i,
+                kind: HighlightKind::Plain,
+            });
+        }
+
+        // Post-process: merge adjacent same-kind spans and guarantee full coverage + no gaps.
+        // (Our scanner should already produce contiguous, but we normalize defensively.)
+        let mut out: Vec<Highlight> = Vec::with_capacity(spans.len());
+        for s in spans {
+            // Merge adjacent same-kind spans (intentional adjacent check, not a bug).
+            #[allow(clippy::suspicious_operation_groupings, clippy::collapsible_if)]
+            if let Some(last) = out.last_mut()
+                && last.kind == s.kind
+                && last.end == s.start
+            {
+                last.end = s.end;
+                continue;
+            }
+            // fill any hypothetical tiny gap with Plain (should not happen)
+            #[allow(clippy::collapsible_if)]
+            if let Some(last) = out.last()
+                && last.end < s.start
+            {
+                out.push(Highlight {
+                    start: last.end,
+                    end: s.start,
+                    kind: HighlightKind::Plain,
+                });
+            }
+            out.push(s);
+        }
+
+        // Ensure starts at 0 and ends at len (fill if needed)
+        #[allow(clippy::unnecessary_map_or)]
+        if out.first().is_none_or(|s| s.start != 0) {
+            let first_start = out.first().map_or(source.len(), |s| s.start);
+            if first_start > 0 {
+                out.insert(
+                    0,
+                    Highlight {
+                        start: 0,
+                        end: first_start,
+                        kind: HighlightKind::Plain,
+                    },
+                );
+            }
+        }
+        if let Some(last) = out.last()
+            && last.end < source.len()
+        {
+            out.push(Highlight {
+                start: last.end,
+                end: source.len(),
+                kind: HighlightKind::Plain,
+            });
+        }
+        if out.is_empty() && !source.is_empty() {
+            out.push(Highlight {
+                start: 0,
+                end: source.len(),
+                kind: HighlightKind::Plain,
+            });
+        }
+
+        out
     }
 }

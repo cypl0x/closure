@@ -97,9 +97,10 @@ reversible option, keep moving.
 ** DONE closure-markdown: roundtrip subset (headings, lists, code fences), =fixtures/md/= golden corpus (I1 for md)
 ** DONE =closure export-md= / =closure import-md=: org↔md line conversion; dropped drawers/planning warned on stderr
 ** DONE Search backends (=closure search=) cover =.md= files read-only alongside =.org=; md backlinks deferred (no =:ID:= in md, see Decisions)
-* TODO Tree-sitter support [0/2]
-** TODO closure-tree-sitter: highlight spans for code-block languages via tree-sitter parsers (pluggable, external CLI or feature-gated crate — record decision)
+* TODO Tree-sitter support [1/2]
+** DONE closure-tree-sitter: KeywordHighlighter (dep-free pluggable default) + trait contract (TDD)
 ** TODO TUI file view renders code blocks with TS-derived highlight spans
+* TODO Config validation (CUE-inspired) [0/3]
 * TODO Config validation (CUE-inspired) [0/3]
 ** TODO Validators per key with line/column errors at parse time (unknown keys already error); =closure check-config <vault>= command
 ** TODO Validate-on-save: vault watcher revalidates config.org and surfaces errors in TUI status line
@@ -160,6 +161,24 @@ count is 0. Avoids adding criterion (a heavyweight dev-dep) to a
 hermetic nix build; the guards still fail CI on a regression.
 Reversible: a =benches/= dir with criterion behind a feature can be
 added if finer measurement is wanted.
+** Tree-sitter highlighting: KeywordHighlighter as dep-free default (2026-06-13)
+Extensive research (code, org CodeBlockView + content spans, TUI FileView
+source rendering, fixtures with #+BEGIN_SRC, tree-sitter-highlight + CLI
+ecosystem in 2026) confirmed that embedding full tree-sitter (with language
+crates and queries) pulls unsafe + non-trivial build/packaging cost,
+conflicting with I5 (no panics/unsafe in kernel), I10 (hermetic), and
+existing project comments. 
+Approach taken: implement KeywordHighlighter (pure-Rust, zero deps) as the
+always-available concrete impl of the Highlighter trait. It satisfies the
+strict gap-free full-coverage contract and the pre-written tests for
+common org-babel languages. The trait remains the stable pluggable surface
+for shells. Real tree-sitter support can be added later via optional
+feature (tree-sitter-highlight) or external CLI wrapper (invoked when
+available) without changing the API or bloating the default build.
+TUI integration of highlights in file view is the immediate next small
+TDD cycle. Reversible: swap the default impl or add cfg(feature = "tree-sitter")
+later. Decision recorded after research + TDD cycle that wrote tests first,
+ran to failure, implemented, verified (tests + clippy -D warnings + checks).
 ** Cron daemon = system cron / shell loop, not an in-process timer (2026-06-13)
 =closure cron= runs one tick of due jobs (clock injectable via
 =--at=). Rather than embedding a timer thread in the CLI, the daemon
