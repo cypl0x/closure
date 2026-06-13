@@ -488,15 +488,15 @@ pub trait SearchBackend {
 #[derive(Debug, Default, Clone, Copy)]
 pub struct BuiltinSearch;
 
-fn walk_org_files(root: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
+fn walk_text_files(root: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
     let Ok(entries) = std::fs::read_dir(root) else {
         return;
     };
     for entry in entries.flatten() {
         let path = entry.path();
         if path.is_dir() {
-            walk_org_files(&path, out);
-        } else if path.extension().is_some_and(|e| e == "org") {
+            walk_text_files(&path, out);
+        } else if path.extension().is_some_and(|e| e == "org" || e == "md") {
             out.push(path);
         }
     }
@@ -511,7 +511,7 @@ impl SearchBackend for BuiltinSearch {
     fn search(&self, root: &std::path::Path, needle: &str) -> Vec<Hit> {
         let lower = needle.to_lowercase();
         let mut files = Vec::new();
-        walk_org_files(root, &mut files);
+        walk_text_files(root, &mut files);
         files.sort();
         let mut hits = Vec::new();
         for path in files {
@@ -545,7 +545,16 @@ impl SearchBackend for RipgrepSearch {
 
     fn search(&self, root: &std::path::Path, needle: &str) -> Vec<Hit> {
         let Ok(out) = std::process::Command::new("rg")
-            .args(["--line-number", "--no-heading", "--color=never", "-g", "*.org", "-i"])
+            .args([
+                "--line-number",
+                "--no-heading",
+                "--color=never",
+                "-g",
+                "*.org",
+                "-g",
+                "*.md",
+                "-i",
+            ])
             .arg(needle)
             .arg(root)
             .output()

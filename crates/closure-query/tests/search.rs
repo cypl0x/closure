@@ -65,3 +65,23 @@ fn ripgrep_matches_builtin_when_available() {
     assert_eq!(rg.len(), bi.len());
     assert_eq!(rg[0].line, bi[0].line);
 }
+
+#[test]
+fn builtin_searches_markdown_files_too() {
+    let td = vault();
+    fs::write(td.path().join("notes.md"), "# Heading\nmarkdown delta line\n").expect("w");
+    let hits = BuiltinSearch.search(td.path(), "delta");
+    assert_eq!(hits.len(), 1);
+    assert!(hits[0].path.extension().unwrap() == "md");
+}
+
+#[test]
+fn builtin_still_ignores_non_text_extensions() {
+    let td = vault();
+    fs::write(td.path().join("data.json"), "alpha in json\n").expect("w");
+    let hits = BuiltinSearch.search(td.path(), "alpha");
+    assert!(hits.iter().all(|h| {
+        let e = h.path.extension().unwrap();
+        e == "org" || e == "md"
+    }));
+}
