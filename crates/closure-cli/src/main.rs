@@ -57,6 +57,18 @@ enum Cmd {
         #[arg(long, default_value = "", allow_hyphen_values = true)]
         body: String,
     },
+    /// Run scheduled jobs from a file's closure-cron block whose
+    /// spec matches the given time (or now).
+    Cron {
+        /// Path to the vault directory.
+        vault: PathBuf,
+        /// Org file with a `#+BEGIN_SRC closure-cron` block.
+        file: PathBuf,
+        /// Fire jobs matching this `"min hour dom month dow"` instead
+        /// of the current local time (deterministic testing).
+        #[arg(long)]
+        at: Option<String>,
+    },
     /// Show the recorded command journal (journal.org).
     History {
         /// Path to the vault directory.
@@ -946,6 +958,7 @@ fn run(cmd: &Cmd) -> Result<(), String> {
             prefix,
             body,
         } => cmd_capture(vault, title, target, prefix, body),
+        Cmd::Cron { vault, file, at } => cmd_cron(vault, file, at.as_deref()),
         Cmd::History { vault, grep } => cmd_history(vault, grep.as_deref()),
         Cmd::Tangle { vault, file } => cmd_tangle(vault, file),
         Cmd::EditBlock { vault, file, index } => cmd_edit_block(vault, file, *index),
@@ -1148,6 +1161,58 @@ fn cmd_plugin(manifest: &Path, executable: &Path, args: &[String]) -> Result<(),
     let out = host.invoke(&command, &arg_refs).map_err(|e| format!("{e}"))?;
     print!("{out}");
     Ok(())
+}
+
+fn cmd_cron(vault: &Path, file: &Path, at: Option<&str>) -> Result<(), String> {
+    let mut v = Vault::open(vault).map_err(|e| format!("{e}"))?;
+    let abs = if file.is_absolute() {
+        file.to_path_buf()
+    } else {
+        vault.join(file)
+    };
+    let (m, h, d, mo, dw) = match at {
+        Some(spec) => parse_time_tuple(spec)?,
+        None => now_time_tuple(),
+    };
+    let jobs = v.cron_jobs(&abs).map_err(|e| format!("{e}"))?;
+    let due: Vec<String> = jobs
+        .iter()
+        .filter(|j| j.matches(m, h, d, mo, dw))
+        .map(|j| j.command.clone())
+        .collect();
+    if due.is_empty() {
+        eprintln!("no jobs due at {m:02}:{h:02}");
+    }
+    for command in due {
+        let out = v.run_tool(&command);
+        println!("[{command}] -> {out}");
+    }
+    Ok(())
+}
+
+/// Parse a `"min hour dom month dow"` tuple of small integers.
+fn parse_time_tuple(spec: &str) -> Result<(u8, u8, u8, u8, u8), String> {
+    let fields: Vec<u8> = spec
+        .split_whitespace()
+        .map(|p| p.parse::<u8>().map_err(|_| format!("bad time field `{p}`")))
+        .collect::<Result<_, _>>()?;
+    match fields.as_slice() {
+        [min, hour, dom, month, dow] => Ok((*min, *hour, *dom, *month, *dow)),
+        _ => Err("expected `min hour dom month dow`".to_owned()),
+    }
+}
+
+/// Current local-ish time tuple (UTC) as cron fields.
+fn now_time_tuple() -> (u8, u8, u8, u8, u8) {
+    let secs = now_secs();
+    let days = secs / 86_400;
+    let m = ((secs / 60) % 60) as u8;
+    let h = ((secs / 3_600) % 24) as u8;
+    // Day-of-week: 1970-01-01 was a Thursday (=4).
+    let dw = ((days + 4) % 7) as u8;
+    // dom/month left as 1/1 — wall-calendar fields need a date lib;
+    // jobs that use them should pass --at.
+    (m, h, 1, 1, dw)
 }
 
 fn cmd_history(vault: &Path, grep: Option<&str>) -> Result<(), String> {
