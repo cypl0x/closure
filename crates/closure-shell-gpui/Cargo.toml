@@ -1,0 +1,15 @@
+[package]
+name = "closure-shell-gpui"
+description = "gpui (Zed) native desktop shell for closure. High-perf alternative to egui; matrix entry."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+# gpui crate (when integrated); for now stub to satisfy workspace + matrix + vision eval.
