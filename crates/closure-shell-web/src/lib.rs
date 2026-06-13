@@ -271,8 +271,10 @@ fn escape_html(s: &str) -> String {
 }
 
 /// Export the vault as a self-contained single HTML file (no server, no external deps).
+///
 /// Includes the vault tree (browse) + client-side JS for fuzzy search (as per vision/ROADMAP).
 /// The JS does a simple includes filter (portable "fuzzy" idea); can be enhanced with full score.
+#[must_use]
 pub fn export_html(vault: &Vault) -> String {
     let mut html = String::from(
         r#"<!doctype html>
@@ -299,7 +301,11 @@ li.hidden { display: none; }
     // Build a simple list of headlines (path + title) for the client JS to filter.
     // Static tree for initial browse (simplified from the server render logic).
     for (path, doc) in vault.iter() {
-        let _ = write!(html, "<li><strong>{}</strong><ul>", escape_html(&path.display().to_string()));
+        let _ = write!(
+            html,
+            "<li><strong>{}</strong><ul>",
+            escape_html(&path.display().to_string())
+        );
         for h in doc.all_headlines() {
             let mut line = String::new();
             if let Some(t) = h.todo() {
@@ -314,12 +320,12 @@ li.hidden { display: none; }
                 r#" <span class="id">({})</span>"#,
                 escape_html(&h.id().to_string())
             );
-            let _ = write!(html, "<li>{}</li>", line);
+            let _ = write!(html, "<li>{line}</li>");
         }
         html.push_str("</ul></li>");
     }
     html.push_str(
-        r#"</ul>
+        r"</ul>
 <script>
 // Client-side fuzzy/search (includes-based for portability; idea from the Rust fuzzy_score).
 const input = document.getElementById('search');
@@ -334,7 +340,9 @@ input.addEventListener('input', () => {
 // Bonus: make the initial list items collapsible-ish via click (simple).
 console.log('self-contained closure export ready');
 </script>
-</body></html>"#,
+<!-- wasm-kernel-embed: wasip1-client parser stub; real wasm + glue to be inlined in export_html when CI produces the artifact (org+core to wasm32-wasip1) -->
+<script>/* wasm glue stub: WebAssembly.instantiate(...) then closure_org.parse via exported fn */</script>
+</body></html>",
     );
     html
 }
