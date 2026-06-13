@@ -11,8 +11,8 @@ use std::path::{Path, PathBuf};
 use std::sync::mpsc::{Receiver, Sender, channel};
 
 use closure_core::{
-    AddSibling, BlockId, Command, Demote, Document, Promote, RemoveSubtree, RenameHeadline,
-    SetBody, SetProperty,
+    AddSibling, BlockId, Command, Demote, Document, MoveSubtree, Promote, RemoveSubtree,
+    RenameHeadline, SetBody, SetProperty,
 };
 use notify::{EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use thiserror::Error;
@@ -214,6 +214,18 @@ impl Vault {
     pub fn add_sibling(&mut self, after: &BlockId, title: &str) -> Result<(), VaultError> {
         let cmd = AddSibling::new(after.clone(), title.to_owned());
         self.apply_to_block(after, &cmd)
+    }
+
+    /// Move headline `id`'s subtree to right after `after`'s subtree
+    /// through the kernel [`MoveSubtree`] command (undoable, I3) and
+    /// persist.
+    ///
+    /// # Errors
+    ///
+    /// Same contract as [`Self::rename_headline`].
+    pub fn move_after(&mut self, id: &BlockId, after: &BlockId) -> Result<(), VaultError> {
+        let cmd = MoveSubtree::new(id.clone(), after.clone());
+        self.apply_to_block(id, &cmd)
     }
 
     /// Promote a headline one level (fewer stars) through the kernel

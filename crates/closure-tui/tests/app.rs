@@ -1393,3 +1393,76 @@ fn i_on_empty_headline_list_is_noop() {
     app.handle_stroke("i");
     assert_eq!(app.mode(), AppMode::Headlines);
 }
+
+// --- structure ops (promote/demote) ----------------------------------------
+
+#[test]
+fn shift_l_emits_promote_request() {
+    let mut app = app_with_headlines();
+    app.handle_stroke("l");
+    app.handle_stroke("j");
+    app.handle_stroke("<");
+    assert_eq!(app.mode(), AppMode::Headlines, "stays in the list");
+    assert_eq!(app.take_struct_request(), Some(("promote".to_owned(), "id-a2".to_owned())));
+    assert_eq!(app.take_struct_request(), None);
+}
+
+#[test]
+fn shift_r_emits_demote_request() {
+    let mut app = app_with_headlines();
+    app.handle_stroke("l");
+    app.handle_stroke(">");
+    assert_eq!(app.take_struct_request(), Some(("demote".to_owned(), "id-a1".to_owned())));
+}
+
+#[test]
+fn struct_ops_on_empty_list_are_noop() {
+    let mut app = App::new(paths());
+    app.handle_stroke("l");
+    app.handle_stroke("<");
+    app.handle_stroke(">");
+    assert_eq!(app.take_struct_request(), None);
+}
+
+#[test]
+fn shift_j_moves_cursor_headline_down() {
+    // a.org has id-a1 then id-a2; move-down of id-a1 = MoveSubtree(a1, after a2)
+    let mut app = app_with_headlines();
+    app.handle_stroke("l");
+    app.handle_stroke("J");
+    assert_eq!(
+        app.take_move_request(),
+        Some(("id-a1".to_owned(), "id-a2".to_owned()))
+    );
+    assert_eq!(app.take_move_request(), None);
+}
+
+#[test]
+fn shift_k_moves_cursor_headline_up() {
+    // move-up of id-a2 = move the previous (id-a1) after id-a2
+    let mut app = app_with_headlines();
+    app.handle_stroke("l");
+    app.handle_stroke("j");
+    app.handle_stroke("K");
+    assert_eq!(
+        app.take_move_request(),
+        Some(("id-a1".to_owned(), "id-a2".to_owned()))
+    );
+}
+
+#[test]
+fn move_down_at_last_is_noop() {
+    let mut app = app_with_headlines();
+    app.handle_stroke("l");
+    app.handle_stroke("j");
+    app.handle_stroke("J");
+    assert_eq!(app.take_move_request(), None, "no headline below");
+}
+
+#[test]
+fn move_up_at_first_is_noop() {
+    let mut app = app_with_headlines();
+    app.handle_stroke("l");
+    app.handle_stroke("K");
+    assert_eq!(app.take_move_request(), None, "no headline above");
+}

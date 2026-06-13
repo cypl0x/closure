@@ -78,7 +78,7 @@ reversible option, keep moving.
 ** TODO Block model over headlines+paragraphs: every block addressable, =+=-style insert-below command in TUI (any block type: headline, code, table)
 ** TODO Slash commands: =/= in Notion mode opens the command palette scoped to block insertion (already-built palette reused)
 ** DONE Inline body editing in TUI: =i= in the headline list opens a multi-line body buffer (=RET= newline, =C-s= save, =ESC= cancel) → =Vault::set_body= / SetBody (I3)
-** TODO Structure ops bound in every mode: promote/demote/move-subtree-up/down (kernel commands exist) with which-key entries (I4)
+** DONE Structure ops in the headline list: =<=/=>= promote/demote, =J=/=K= move-subtree down/up (adjacent swap via MoveSubtree); Vault::{promote,demote,move_after} (I3)
 ** TODO Kill ring: cut/copy/paste blocks via commands; ring stored in memory + optionally persisted (see record-everything)
 * TODO Record-everything (configurable) [0/3]
 ** TODO closure-record crate: append-only org journal in the vault (=journal.org=) capturing executed commands with timestamps; off by default, =record_commands = true= in config

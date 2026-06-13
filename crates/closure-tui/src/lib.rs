@@ -258,6 +258,8 @@ pub struct App {
     buffer: String,
     body_target: Option<String>,
     body_request: Option<(String, String)>,
+    struct_request: Option<(String, String)>,
+    move_request: Option<(String, String)>,
 }
 
 impl App {
@@ -316,7 +318,22 @@ impl App {
             buffer: String::new(),
             body_target: None,
             body_request: None,
+            struct_request: None,
+            move_request: None,
         }
+    }
+
+    /// Consume the `(id, after-id)` subtree move confirmed by the
+    /// user. The shell performs the vault write.
+    pub const fn take_move_request(&mut self) -> Option<(String, String)> {
+        self.move_request.take()
+    }
+
+    /// Consume the `(op, id)` structure operation confirmed by the
+    /// user (`op` is `promote`/`demote`). The shell performs the
+    /// vault write.
+    pub const fn take_struct_request(&mut self) -> Option<(String, String)> {
+        self.struct_request.take()
     }
 
     /// The multi-line edit buffer (body editor).
@@ -737,6 +754,31 @@ impl App {
                     self.body_target = Some(id);
                     self.buffer = body;
                     self.mode = AppMode::EditBody;
+                }
+            }
+            "<" | ">" => {
+                let op = if stroke == "<" { "promote" } else { "demote" };
+                if let Some((_, id)) = self.file_headlines().get(self.result_cursor) {
+                    self.struct_request = Some((op.to_owned(), (*id).to_owned()));
+                }
+            }
+            "J" => {
+                let hs = self.file_headlines();
+                if let (Some((_, cur)), Some((_, next))) =
+                    (hs.get(self.result_cursor), hs.get(self.result_cursor + 1))
+                {
+                    self.move_request = Some(((*cur).to_owned(), (*next).to_owned()));
+                }
+            }
+            "K" => {
+                let hs = self.file_headlines();
+                if self.result_cursor > 0
+                    && let (Some((_, prev)), Some((_, cur))) = (
+                        hs.get(self.result_cursor - 1),
+                        hs.get(self.result_cursor),
+                    )
+                {
+                    self.move_request = Some(((*prev).to_owned(), (*cur).to_owned()));
                 }
             }
             "a" => {
@@ -1356,77 +1398,114 @@ fn run_loop(
             && let Some(stroke) = stroke_of(&key)
         {
             app.handle_stroke(&stroke);
-            if let Some(title) = app.take_capture_request() {
-                let template = closure_store::CaptureTemplate {
-                    target: PathBuf::from(CAPTURE_TARGET),
-                    headline_prefix: CAPTURE_PREFIX.to_owned(),
-                    body: String::new(),
-                };
-                vault
-                    .capture(&template, &title)
-                    .map_err(|e| TuiError::Vault(e.to_string()))?;
-                sync_app(&mut app, vault);
-            }
-            if let Some((id, title)) = app.take_rename_request() {
-                vault
-                    .rename_headline(&closure_core::BlockId::from_existing(&id), &title)
-                    .map_err(|e| TuiError::Vault(e.to_string()))?;
-                sync_app(&mut app, vault);
-            }
-            if let Some((after, title)) = app.take_add_request() {
-                vault
-                    .add_sibling(&closure_core::BlockId::from_existing(&after), &title)
-                    .map_err(|e| TuiError::Vault(e.to_string()))?;
-                sync_app(&mut app, vault);
-            }
-            if let Some(id) = app.take_delete_request() {
-                vault
-                    .remove_subtree(&closure_core::BlockId::from_existing(&id))
-                    .map_err(|e| TuiError::Vault(e.to_string()))?;
-                sync_app(&mut app, vault);
-            }
-            if let Some((id, body)) = app.take_body_request() {
-                vault
-                    .set_body(&closure_core::BlockId::from_existing(&id), &body)
-                    .map_err(|e| TuiError::Vault(e.to_string()))?;
-                sync_app(&mut app, vault);
-            }
-            if let Some((path, index)) = app.take_eval_request() {
-                match vault.eval_block(&path, index) {
-                    Ok(_) => sync_app(&mut app, vault),
-                    Err(closure_store::VaultError::Command(_)) => {}
-                    Err(e) => return Err(TuiError::Vault(e.to_string())),
-                }
-            }
-            if let Some((id, key, value)) = app.take_property_request() {
-                vault
-                    .set_property(&closure_core::BlockId::from_existing(&id), &key, &value)
-                    .map_err(|e| TuiError::Vault(e.to_string()))?;
-                sync_app(&mut app, vault);
-            }
-            if app.take_undo_request()
-                && let Some(path) = app.selected_path().map(Path::to_path_buf)
-            {
-                match vault.undo_in(&path) {
-                    Ok(()) => sync_app(&mut app, vault),
-                    Err(closure_store::VaultError::Undo(_)) => {}
-                    Err(e) => return Err(TuiError::Vault(e.to_string())),
-                }
-            }
-            if app.take_redo_request()
-                && let Some(path) = app.selected_path().map(Path::to_path_buf)
-            {
-                match vault.redo_in(&path) {
-                    Ok(()) => sync_app(&mut app, vault),
-                    Err(closure_store::VaultError::Undo(_)) => {}
-                    Err(e) => return Err(TuiError::Vault(e.to_string())),
-                }
-            }
+            apply_requests(&mut app, vault)?;
             if app.should_quit() {
                 return Ok(());
             }
         }
     }
+}
+
+/// Drain every pending vault-write request the last stroke produced,
+/// executing it through the kernel-backed vault methods and re-syncing
+/// the app on success. Soft errors (missing block, empty history) are
+/// no-ops; hard errors propagate.
+fn apply_requests(app: &mut App, vault: &mut Vault) -> Result<(), TuiError> {
+    let soft = |e: &closure_store::VaultError| {
+        matches!(
+            e,
+            closure_store::VaultError::Command(_) | closure_store::VaultError::Undo(_)
+        )
+    };
+    let vault_err = |e: closure_store::VaultError| TuiError::Vault(e.to_string());
+    if let Some(title) = app.take_capture_request() {
+        let template = closure_store::CaptureTemplate {
+            target: PathBuf::from(CAPTURE_TARGET),
+            headline_prefix: CAPTURE_PREFIX.to_owned(),
+            body: String::new(),
+        };
+        vault.capture(&template, &title).map_err(vault_err)?;
+        sync_app(app, vault);
+    }
+    if let Some((id, title)) = app.take_rename_request() {
+        vault
+            .rename_headline(&closure_core::BlockId::from_existing(&id), &title)
+            .map_err(vault_err)?;
+        sync_app(app, vault);
+    }
+    if let Some((after, title)) = app.take_add_request() {
+        vault
+            .add_sibling(&closure_core::BlockId::from_existing(&after), &title)
+            .map_err(vault_err)?;
+        sync_app(app, vault);
+    }
+    if let Some(id) = app.take_delete_request() {
+        vault
+            .remove_subtree(&closure_core::BlockId::from_existing(&id))
+            .map_err(vault_err)?;
+        sync_app(app, vault);
+    }
+    if let Some((id, body)) = app.take_body_request() {
+        vault
+            .set_body(&closure_core::BlockId::from_existing(&id), &body)
+            .map_err(vault_err)?;
+        sync_app(app, vault);
+    }
+    if let Some((op, id)) = app.take_struct_request() {
+        let bid = closure_core::BlockId::from_existing(&id);
+        let r = if op == "promote" {
+            vault.promote(&bid)
+        } else {
+            vault.demote(&bid)
+        };
+        match r {
+            Ok(()) => sync_app(app, vault),
+            Err(e) if soft(&e) => {}
+            Err(e) => return Err(vault_err(e)),
+        }
+    }
+    if let Some((id, after)) = app.take_move_request() {
+        match vault.move_after(
+            &closure_core::BlockId::from_existing(&id),
+            &closure_core::BlockId::from_existing(&after),
+        ) {
+            Ok(()) => sync_app(app, vault),
+            Err(e) if soft(&e) => {}
+            Err(e) => return Err(vault_err(e)),
+        }
+    }
+    if let Some((path, index)) = app.take_eval_request() {
+        match vault.eval_block(&path, index) {
+            Ok(_) => sync_app(app, vault),
+            Err(e) if soft(&e) => {}
+            Err(e) => return Err(vault_err(e)),
+        }
+    }
+    if let Some((id, key, value)) = app.take_property_request() {
+        vault
+            .set_property(&closure_core::BlockId::from_existing(&id), &key, &value)
+            .map_err(vault_err)?;
+        sync_app(app, vault);
+    }
+    if app.take_undo_request()
+        && let Some(path) = app.selected_path().map(Path::to_path_buf)
+    {
+        match vault.undo_in(&path) {
+            Ok(()) => sync_app(app, vault),
+            Err(e) if soft(&e) => {}
+            Err(e) => return Err(vault_err(e)),
+        }
+    }
+    if app.take_redo_request()
+        && let Some(path) = app.selected_path().map(Path::to_path_buf)
+    {
+        match vault.redo_in(&path) {
+            Ok(()) => sync_app(app, vault),
+            Err(e) if soft(&e) => {}
+            Err(e) => return Err(vault_err(e)),
+        }
+    }
+    Ok(())
 }
 
 fn draw(f: &mut ratatui::Frame<'_>, app: &App, vault: &Vault) {

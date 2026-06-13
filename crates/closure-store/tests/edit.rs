@@ -228,3 +228,30 @@ fn promote_unknown_id_errors() {
     let bogus = BlockId::from_existing("01XXXXXXXXXXXXXXXXXXXXXXXX");
     assert!(matches!(v.promote(&bogus), Err(VaultError::UnknownId(_))));
 }
+
+#[test]
+fn move_after_reorders_siblings() {
+    let td = write_vault(&[(
+        "a.org",
+        "* One\n:PROPERTIES:\n:ID: 01HXAAAAAAAAAAAAAAAAAAAAAA\n:END:\n\
+         * Two\n:PROPERTIES:\n:ID: 01HXBBBBBBBBBBBBBBBBBBBBBB\n:END:\n",
+    )]);
+    let mut v = Vault::open(td.path()).expect("open");
+    let one = BlockId::from_existing("01HXAAAAAAAAAAAAAAAAAAAAAA");
+    let two = BlockId::from_existing("01HXBBBBBBBBBBBBBBBBBBBBBB");
+    v.move_after(&one, &two).expect("move");
+    let disk = fs::read_to_string(td.path().join("a.org")).expect("read");
+    assert!(
+        disk.find("* Two").unwrap() < disk.find("* One").unwrap(),
+        "One now after Two: {disk:?}"
+    );
+}
+
+#[test]
+fn move_after_unknown_id_errors() {
+    let td = write_vault(&[("a.org", "* A\n:PROPERTIES:\n:ID: 01HXAAAAAAAAAAAAAAAAAAAAAA\n:END:\n")]);
+    let mut v = Vault::open(td.path()).expect("open");
+    let a = BlockId::from_existing("01HXAAAAAAAAAAAAAAAAAAAAAA");
+    let bogus = BlockId::from_existing("01HXZZZZZZZZZZZZZZZZZZZZZZ");
+    assert!(v.move_after(&bogus, &a).is_err());
+}
