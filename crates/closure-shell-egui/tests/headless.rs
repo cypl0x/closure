@@ -18,3 +18,20 @@ fn headless_counts_frames_and_records_chords() {
     assert_eq!(adapter.frames, 2);
     assert_eq!(adapter.last_chord.as_deref(), Some("C-x C-s"));
 }
+
+// TDD test written *first* for egui parity slice (ROADMAP GUI shells first sub).
+// "vault browse + fuzzy search + capture through the same App-style state model".
+// Currently Shell only has basic selection; this will fail until we add
+// support for capture (and basic browse/fuzzy state) driven via the model.
+#[test]
+fn egui_parity_capture_via_shell() {
+    let dir = tempfile::tempdir().unwrap();
+    fs::write(dir.path().join("inbox.org"), "* Existing\n").unwrap();
+    let v = Vault::open(dir.path()).unwrap();
+    let mut shell = Shell::new(v);
+    // Simulate driving the model (like TUI App requests or direct for parity).
+    shell.capture("Parity test entry").expect("capture");
+    // Verify the capture through the Shell wrote the entry to disk (persistence parity).
+    let content = fs::read_to_string(dir.path().join("inbox.org")).unwrap();
+    assert!(content.contains("Parity test entry"));
+}

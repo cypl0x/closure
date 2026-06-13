@@ -45,6 +45,39 @@ impl Shell {
             },
         }
     }
+
+    /// Capture (org-capture style) into the vault (parity with TUI/CLI).
+    /// Uses a default inbox + TODO prefix for the parity slice.
+    pub fn capture(&mut self, title: &str) -> Result<(), closure_store::VaultError> {
+        let template = closure_store::CaptureTemplate {
+            target: std::path::PathBuf::from("inbox.org"),
+            headline_prefix: "TODO ".to_owned(),
+            body: String::new(),
+        };
+        self.vault.capture(&template, title).map(|_| ())
+    }
+
+    /// Basic browse support: select a file by path (updates selection for render parity).
+    pub fn select_file(&mut self, path: Option<std::path::PathBuf>) {
+        self.selection.file = path;
+        self.selection.headline = 0;
+    }
+
+    /// Simple fuzzy search over headlines (re-uses query crate for parity).
+    /// Returns (path, title) matches for the embedder to render.
+    #[must_use]
+    pub fn fuzzy_search(&self, q: &str) -> Vec<(std::path::PathBuf, String)> {
+        let mut scored: Vec<(u32, std::path::PathBuf, String)> = vec![];
+        for (p, doc) in self.vault.iter() {
+            for h in doc.all_headlines() {
+                if let Some(sc) = closure_query::fuzzy_score(q, h.title()) {
+                    scored.push((sc, p.to_path_buf(), h.title().to_owned()));
+                }
+            }
+        }
+        scored.sort_by_key(|(sc, _, _)| std::cmp::Reverse(*sc));
+        scored.into_iter().map(|(_, p, t)| (p, t)).take(20).collect()
+    }
 }
 
 /// Adapter trait. An embedder (eframe / native window / wasm canvas)

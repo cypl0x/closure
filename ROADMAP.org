@@ -107,7 +107,7 @@ reversible option, keep moving.
 * DONE Shell capability matrix (type-level) [2/2]
 ** DONE =Capability= enum + per-shell consts (CORE, TUI, CLI, WEB, EGUI) + `closure shells` with nice venn/diff table output + superset tests (TDD)
 * TODO GUI shells [0/6]
-** TODO egui desktop parity slice: vault browse + fuzzy search + capture through the same App-style state model (HeadlessAdapter already exists)
+** DONE egui desktop parity slice (first part): vault browse + fuzzy search + capture through the Shell model (TDD; capture + fuzzy + select added, headless test passes)
 ** TODO egui editing: rename/add/delete/undo wired to vault methods, which-key overlay (I4)
 ** TODO Self-contained single HTML file: =closure export html= renders the whole vault (browse + client-side JS fuzzy search) into one file
 ** TODO Tauri app: wraps the web shell against a localhost server; capability matrix entry
