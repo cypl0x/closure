@@ -45,3 +45,24 @@ fn match_first_picks_first_match() {
     let m = match_first("https://example.com", &rules).unwrap();
     assert_eq!(m.id, "allow-rest");
 }
+
+// TDD test written *first* for sniffer capture backend trait (first sub of [0/3]).
+// Requires the trait + mock backend. Will fail to compile until implemented.
+#[test]
+fn capture_backend_trait_with_mock() {
+    use closure_sniffer::CaptureBackend; // will not exist
+
+    let rules = vec![
+        closure_sniffer::Rule {
+            id: "block-evil".into(),
+            pattern: "*evil*".into(),
+            action: closure_sniffer::Action::Block,
+        },
+    ];
+    let mock = closure_sniffer::MockBackend::new(rules);
+    let action = mock.match_action("https://evil-tracker.com");
+    assert!(matches!(action, Some(closure_sniffer::Action::Block)));
+
+    let allow = mock.match_action("https://good.com");
+    assert!(matches!(allow, None)); // or default allow, depending on impl
+}

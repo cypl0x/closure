@@ -77,3 +77,31 @@ fn glob_inner(pat: &[u8], cand: &[u8]) -> bool {
     }
     false
 }
+
+/// Capture backend trait (pluggable for live sniffer, mock for tests, external for tcpdump/ss).
+/// Core stays dependency-free (no pcap etc in this crate).
+pub trait CaptureBackend {
+    /// Given a candidate (e.g. "host:port proto"), return the action if a rule matches.
+    fn match_action(&self, candidate: &str) -> Option<Action>;
+}
+
+/// Mock backend for tests (uses in-memory rules + existing `glob/match_first`).
+#[derive(Debug, Clone)]
+pub struct MockBackend {
+    rules: Vec<Rule>,
+}
+
+impl MockBackend {
+    /// Create a mock with the given rules (for tests).
+    #[must_use]
+    #[allow(clippy::missing_const_for_fn)]
+    pub fn new(rules: Vec<Rule>) -> Self {
+        Self { rules }
+    }
+}
+
+impl CaptureBackend for MockBackend {
+    fn match_action(&self, candidate: &str) -> Option<Action> {
+        match_first(candidate, &self.rules).map(|r| r.action)
+    }
+}
