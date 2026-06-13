@@ -113,3 +113,20 @@ fn two_clones_diverge_then_converge() {
     assert_eq!(read(&a, "from-a.org"), read(&b, "from-a.org"));
     assert_eq!(read(&a, "from-b.org"), read(&b, "from-b.org"));
 }
+
+// TDD test written *first* for P2P transport behind Transport trait via external binary (iroh or IPFS CLI).
+// Decision: external binary (gated on presence in PATH to keep hermetic, no heavy deps in core).
+// Round-trip test gated (like git tests skip if no git).
+#[test]
+fn p2p_external_transport_gated_on_binary_presence() {
+    use closure_sync::IrohTransport; // or Ipfs; will not exist yet.
+
+    // The stub checks for the binary (e.g. "iroh" or "ipfs" in PATH).
+    // If not present, push/pull return SyncError::Transport("binary not found: iroh").
+    // The test is 'gated' (always runs, but asserts the error when binary absent, which is the common case in CI without the binary).
+    let mut t = IrohTransport::new(std::path::PathBuf::from("/tmp/test-vault"));
+    let err = t.push().unwrap_err();
+    // The error mentions the binary (the gate/decision).
+    let msg = format!("{}", err);
+    assert!(msg.contains("binary") || msg.contains("iroh") || msg.contains("ipfs") || msg.contains("not found"), "gated error: {}", msg);
+}

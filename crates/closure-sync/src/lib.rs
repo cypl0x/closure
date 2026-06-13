@@ -99,3 +99,46 @@ impl Transport for GitTransport {
         self.run(&["pull", "--rebase"])
     }
 }
+
+/// P2P transport via external binary (iroh or IPFS CLI).
+///
+/// Decision (recorded per ROADMAP): use external binary (iroh/ipfs) so the core stays hermetic,
+/// no heavy deps, and the presence is gated (test skips or errors if binary not in PATH, like git tests).
+/// The binary is called for push/pull; for the stub, we check presence and error "not implemented / binary not found".
+#[derive(Debug, Clone)]
+pub struct IrohTransport {
+    /// Vault directory.
+    pub dir: PathBuf,
+}
+
+impl IrohTransport {
+    /// Build an Iroh (or IPFS) P2P transport rooted at `dir` (external binary gated).
+    #[must_use]
+    #[allow(clippy::missing_const_for_fn)]
+    pub fn new(dir: PathBuf) -> Self {
+        Self { dir }
+    }
+
+    #[allow(clippy::unused_self)]
+    fn binary_present(&self, name: &str) -> bool {
+        Command::new(name).arg("--version").output().is_ok()
+            || Command::new("which").arg(name).output().is_ok_and(|o| o.status.success())
+    }
+}
+
+impl Transport for IrohTransport {
+    fn push(&mut self) -> Result<(), SyncError> {
+        if !self.binary_present("iroh") && !self.binary_present("ipfs") {
+            return Err(SyncError::Transport("binary not found: iroh or ipfs (decision: external for P2P, gated on presence to keep core hermetic)".to_owned()));
+        }
+        // Stub: the real would shell `iroh send ...` or `ipfs add ...` etc with the vault state.
+        Err(SyncError::Transport("iroh/ipfs push not implemented in stub (binary present; real impl would do the P2P transfer)".to_owned()))
+    }
+
+    fn pull(&mut self) -> Result<(), SyncError> {
+        if !self.binary_present("iroh") && !self.binary_present("ipfs") {
+            return Err(SyncError::Transport("binary not found: iroh or ipfs (decision: external for P2P, gated on presence to keep core hermetic)".to_owned()));
+        }
+        Err(SyncError::Transport("iroh/ipfs pull not implemented in stub (binary present; real impl would fetch and apply deltas)".to_owned()))
+    }
+}
