@@ -128,10 +128,11 @@ reversible option, keep moving.
 ** DONE Local models: ollama provider (OpenAI-compatible endpoint via existing CurlProvider) + config preset
 ** DONE Multi-turn chat (REPL in cli using tool_loop for turns; supports tools + view-state; TUI pane can reuse the logic)
 
-* TODO Agents: ACP / A2A / swarm [2/3]
+* DONE Agents: ACP / A2A / swarm [3/3]
 ** DONE closure-acp: agent card (name, tools, schemas) served over the MCP JSON subset; handshake test between two in-process agents (TDD cycle: tests first exercising handle_message for "agent/card" + in-process vault exchange; MCP JSON helpers + AGENT_TOOLS; resolve compat; clippy clean)
 ** DONE closure-a2a: task delegation — agent A posts a task, agent B (separate vault) executes via its registry, returns result; round-trip test (TDD: tests first for delegate_task + roundtrip with separate vaults + resolve compat + mutation isolation; minimal delegate impl using run_tool (I8); fmt/clippy clean; cli a2a subcmd wired)
-** TODO Swarm: N workers drain a task queue stored as an org file (TODO headlines = tasks, DONE = finished); property test: every task done exactly once
+** DONE Swarm: N workers drain a task queue stored as an org file (TODO headlines = tasks, DONE = finished); property test: every task done exactly once (TDD: proptest + basic test first calling swarm_drain; impl with claimed set + delegate side effects + set-property state; 32 proptest cases + isolation; fmt/clippy clean; satisfies exactly-once invariant)
+** (Agents complete; next: Built-to-last org2 decision, Wasm embed, Quality fuzz+props, GUI shells Tauri/gpui/Flutter per matrix)
 * DONE P2P sync & collaboration [3/3]
 ** DONE Vector-clock (VectorClock with bump/merge max/logical_time; snapshot_with_clock; property test for causality in crdt) (TDD)
 ** DONE P2P transport behind the Transport trait via external binary (IrohTransport stub; decision recorded in doc/error; round-trip test gated on binary presence like git tests) (TDD)

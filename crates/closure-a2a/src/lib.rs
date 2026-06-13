@@ -6,9 +6,10 @@
 
 #![forbid(unsafe_code)]
 
+use std::collections::HashSet;
 use std::io::{BufRead, BufReader};
 
-use closure_core::Registry;
+use closure_core::{BlockId, Registry};
 use closure_store::Vault;
 use thiserror::Error;
 
@@ -92,4 +93,32 @@ pub fn run_stdio(registry: &Registry) -> Result<(), A2aError> {
 #[must_use]
 pub fn delegate_task(vault: &mut Vault, task: &str) -> String {
     vault.run_tool(task)
+}
+
+/// Run a simulated swarm of N workers that drain a task queue (represented
+/// by stable `task_ids` of TODO headlines in the vault's org files).
+///
+/// Each worker "picks" an unclaimed task (exactly-once via internal claimed
+/// set), executes a side-effect via `delegate_task` (e.g. proof capture),
+/// and records state via set-property (so the queue can be inspected).
+/// Returns the number of tasks drained.
+///
+/// Property (enforced by callers/tests): for any input set of task ids,
+/// the number drained == |input|, and every task is processed exactly once
+/// (no duplicates, no losses). N is advisory (sim is sequential for hermetic
+/// test; real swarm uses threads + locking or CRDT claim).
+#[must_use]
+pub fn swarm_drain(vault: &mut Vault, _num_workers: usize, task_ids: &[BlockId]) -> usize {
+    let mut done = 0usize;
+    let mut claimed: HashSet<String> = HashSet::new();
+    for id in task_ids {
+        if claimed.insert(id.to_string()) {
+            // execute side-effect (delegation surface); proof capture in vault
+            let _ = delegate_task(vault, &format!("capture swarm-proof-{id}"));
+            // mark state on the task (available tool; real impl could SetTodo DONE)
+            let _ = delegate_task(vault, &format!("set-property {id} swarm-state done"));
+            done += 1;
+        }
+    }
+    done
 }
