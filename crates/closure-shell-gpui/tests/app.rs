@@ -337,3 +337,60 @@ fn detail_tracks_fuzzy_selection() {
     let d = app.detail(&sh).expect("detail");
     assert_eq!(d.title, "Plain headline");
 }
+
+// --- add-sibling (C-a) + mouse-style select(i) -----------------------------
+
+#[test]
+fn ctrl_a_adds_sibling_after_selected() {
+    let (_d, mut sh) = shell();
+    let mut app = GpuiApp::new(); // selected = Ship parser
+    app.on_key(&mut sh, "a", true, None);
+    assert_eq!(app.mode(), GpuiMode::AddSibling);
+    typ(&mut app, &mut sh, "New task");
+    app.on_key(&mut sh, "enter", false, None);
+    assert_eq!(app.mode(), GpuiMode::Browse);
+    assert!(
+        sh.vault.find_by_title("New task").is_some(),
+        "added via Vault (I8)"
+    );
+}
+
+#[test]
+fn add_sibling_escape_cancels() {
+    let (_d, mut sh) = shell();
+    let mut app = GpuiApp::new();
+    app.on_key(&mut sh, "a", true, None);
+    typ(&mut app, &mut sh, "Nope");
+    app.on_key(&mut sh, "escape", false, None);
+    assert_eq!(app.mode(), GpuiMode::Browse);
+    assert!(sh.vault.find_by_title("Nope").is_none());
+}
+
+#[test]
+fn add_sibling_on_empty_list_is_noop() {
+    let dir = tempfile::tempdir().expect("tmp");
+    let v = Vault::open(dir.path()).expect("open");
+    let mut sh = Shell::new(v);
+    let mut app = GpuiApp::new();
+    app.on_key(&mut sh, "a", true, None);
+    assert_eq!(app.mode(), GpuiMode::Browse, "nothing to add after");
+}
+
+#[test]
+fn select_sets_cursor_clamped() {
+    let (_d, sh) = shell();
+    let mut app = GpuiApp::new();
+    app.select(2, &sh);
+    assert_eq!(app.selected(), 2);
+    app.select(99, &sh); // out of range -> clamped to last
+    assert_eq!(app.selected(), 3);
+}
+
+#[test]
+fn add_sibling_key_hint_shown() {
+    let (_d, mut sh) = shell();
+    let mut app = GpuiApp::new();
+    assert!(app.key_hints().contains("add"));
+    app.on_key(&mut sh, "a", true, None);
+    assert!(app.key_hints().contains("Enter"));
+}

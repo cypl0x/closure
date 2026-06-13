@@ -203,6 +203,8 @@ pub enum GpuiMode {
     Capture,
     /// Editing the selected headline's title.
     Rename,
+    /// Typing the title of a new sibling after the selected headline.
+    AddSibling,
 }
 
 /// Pure, GPU-free state core for the gpui shell.
@@ -219,6 +221,7 @@ pub struct GpuiApp {
     mode: GpuiMode,
     capture_buf: String,
     rename_target: Option<String>,
+    add_target: Option<String>,
     status: String,
     quit: bool,
 }
@@ -239,9 +242,17 @@ impl GpuiApp {
             mode: GpuiMode::Browse,
             capture_buf: String::new(),
             rename_target: None,
+            add_target: None,
             status: "browse — type to filter".to_owned(),
             quit: false,
         }
+    }
+
+    /// Move the selection to row `i`, clamped to the current result
+    /// set. Used by mouse clicks on a row.
+    pub fn select(&mut self, i: usize, shell: &Shell) {
+        let last = self.rows(shell).len().saturating_sub(1);
+        self.selected = i.min(last);
     }
 
     /// Live filter query.
@@ -287,10 +298,12 @@ impl GpuiApp {
         match self.mode {
             GpuiMode::Browse => {
                 "type: filter   up/down or C-n/C-p: move   Enter: open   \
-                 C-c: capture   C-r: rename   C-d: delete   Esc: clear   C-q: quit"
+                 C-c: capture   C-a: add   C-r: rename   C-d: delete   \
+                 Esc: clear   C-q: quit"
             }
             GpuiMode::Capture => "capture title — Enter: save   Esc: cancel",
             GpuiMode::Rename => "rename — Enter: save   Esc: cancel",
+            GpuiMode::AddSibling => "add sibling — Enter: save   Esc: cancel",
         }
     }
 
@@ -361,7 +374,40 @@ impl GpuiApp {
         match self.mode {
             GpuiMode::Capture => self.on_capture_key(shell, key, text),
             GpuiMode::Rename => self.on_rename_key(shell, key, text),
+            GpuiMode::AddSibling => self.on_add_key(shell, key, text),
             GpuiMode::Browse => self.on_browse_key(shell, key, ctrl, text),
+        }
+    }
+
+    fn on_add_key(&mut self, shell: &mut Shell, key: &str, text: Option<char>) {
+        match key {
+            "escape" => {
+                self.mode = GpuiMode::Browse;
+                self.capture_buf.clear();
+                self.add_target = None;
+                self.set_status("add cancelled");
+            }
+            "enter" => {
+                if let Some(after) = self.add_target.take()
+                    && !self.capture_buf.is_empty()
+                {
+                    let bid = closure_core::BlockId::from_existing(&after);
+                    match shell.add_sibling(&bid, &self.capture_buf) {
+                        Ok(()) => self.status = format!("added: {}", self.capture_buf),
+                        Err(e) => self.status = format!("add failed: {e}"),
+                    }
+                }
+                self.mode = GpuiMode::Browse;
+                self.capture_buf.clear();
+            }
+            "backspace" => {
+                self.capture_buf.pop();
+            }
+            _ => {
+                if let Some(c) = text {
+                    self.capture_buf.push(c);
+                }
+            }
         }
     }
 
@@ -439,6 +485,14 @@ impl GpuiApp {
                 self.capture_buf.clear();
                 self.set_status("capture: type a title");
             }
+            "a" if ctrl => {
+                if let Some(row) = rows.get(self.selected) {
+                    self.add_target = Some(row.id.clone());
+                    self.capture_buf.clear();
+                    self.mode = GpuiMode::AddSibling;
+                    self.set_status("add sibling: type a title");
+                }
+            }
             "r" if ctrl => {
                 if let Some(row) = rows.get(self.selected) {
                     self.rename_target = Some(row.id.clone());
@@ -513,8 +567,8 @@ pub fn run(_vault_path: &std::path::Path) -> Result<(), String> {
 
 #[cfg(feature = "gpui")]
 use gpui::{
-    App, Application, Bounds, Context, FocusHandle, Focusable, KeyDownEvent, Window, WindowBounds,
-    WindowOptions, div, prelude::*, px, rgb, size,
+    App, Application, Bounds, Context, FocusHandle, Focusable, KeyDownEvent, MouseButton, Window,
+    WindowBounds, WindowOptions, div, prelude::*, px, rgb, size,
 };
 
 /// Launch the gpui desktop window against the vault at `vault_path`.
@@ -675,6 +729,7 @@ impl Render for GpuiView {
 
         let header = match self.app.mode() {
             GpuiMode::Capture => format!("＋ capture: {}▏", self.app.capture_buffer()),
+            GpuiMode::AddSibling => format!("＋ add: {}▏", self.app.capture_buffer()),
             GpuiMode::Rename => format!("✎ rename: {}▏", self.app.capture_buffer()),
             GpuiMode::Browse => format!("⌕ {}▏", self.app.query()),
         };
@@ -693,7 +748,15 @@ impl Render for GpuiView {
                     .px_2()
                     .py_1()
                     .text_size(px(14.0))
-                    .bg(if i == selected { sel } else { bg });
+                    .bg(if i == selected { sel } else { bg })
+                    // Mouse: click a row to select it (Notion-style pointer use).
+                    .on_mouse_down(
+                        MouseButton::Left,
+                        cx.listener(move |this, _ev, _window, cx| {
+                            this.app.select(i, &this.shell);
+                            cx.notify();
+                        }),
+                    );
                 let indent = "  ".repeat(usize::from(row.level).saturating_sub(1));
                 if let Some(todo) = &row.todo {
                     line = line.child(div().text_color(todo_col).mr_2().child(todo.clone()));
