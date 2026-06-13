@@ -1,0 +1,17 @@
+[package]
+name = "closure-shell-tauri"
+description = "Tauri embedder for closure web shell (native wrapper + matrix entry)."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+# Web shell reused; Tauri provides the native host (menu, FS, single binary).
+closure-shell-web = { path = "../closure-shell-web" }
+# tauri = "2" (added when body implemented; stub for matrix/roadmap first)
