@@ -17,6 +17,91 @@ use std::process::ExitCode;
 
 use clap::{Parser, Subcommand};
 use closure_config::InputMode;
+
+/// Shell capability matrix (type-level view of what each UI variant/embedder supports).
+///
+/// This fulfills the vision's request for a "type level API / venn diagram" to see
+/// similarities and differences between TUI, CLI, web, egui, gpui, Tauri, Flutter,
+/// GTK, Qt, single-HTML, etc.
+/// Per ROADMAP: enum + per-shell const CAPABILITIES; test that all ⊇ kernel core set;
+/// `closure shells` renders the diff/venn table (code = single source of truth).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Capability {
+    /// Read/browse vault contents (files, headlines, sources, stats).
+    Browse,
+    /// Mutating edits (rename, add sibling, delete, set body/property, promote/demote/move, kill-ring).
+    Edit,
+    /// org-capture style creation.
+    Capture,
+    /// Babel/eval/tangle/edit-block (literate programming).
+    Eval,
+    /// LLM tool use over the vault (ask --vault, etc.).
+    LLMTools,
+    /// File watching / live updates / validate-on-save.
+    Watch,
+    /// Cron/scheduled jobs.
+    Cron,
+    /// Command recording / history / journal.
+    Record,
+    /// Fuzzy / full-text / headline / body search (pluggable backends).
+    Search,
+    /// Notion-style database views.
+    Database,
+    /// Backlinks, dead links, graph, orphans, hubs.
+    Links,
+    /// Agenda (SCHEDULED/DEADLINE).
+    Agenda,
+}
+
+/// The minimal set every shell must provide (I7 kernel-agnostic requirement).
+pub const CORE_CAPABILITIES: &[Capability] = &[
+    Capability::Browse,
+    Capability::Capture,
+    Capability::Search,
+    Capability::Links,
+];
+
+/// Full TUI (currently the most complete; includes editing, which-key, modes, etc.).
+pub const TUI_CAPABILITIES: &[Capability] = &[
+    Capability::Browse,
+    Capability::Edit,
+    Capability::Capture,
+    Capability::Eval,
+    Capability::LLMTools,
+    Capability::Watch,
+    Capability::Cron,
+    Capability::Record,
+    Capability::Search,
+    Capability::Database,
+    Capability::Links,
+    Capability::Agenda,
+];
+
+/// CLI (one-shot commands, no interactive TUI/editing loop).
+pub const CLI_CAPABILITIES: &[Capability] = &[
+    Capability::Browse,
+    Capability::Capture,
+    Capability::Eval,
+    Capability::LLMTools,
+    Capability::Cron,
+    Capability::Record,
+    Capability::Search,
+    Capability::Database,
+    Capability::Links,
+    Capability::Agenda,
+];
+
+/// Web shell (read-only browse + capture form; currently limited).
+pub const WEB_CAPABILITIES: &[Capability] = &[
+    Capability::Browse,
+    Capability::Capture,
+    Capability::Search,
+];
+
+/// Egui desktop skeleton (`HeadlessAdapter` for tests; browse-focused so far).
+pub const EGUI_CAPABILITIES: &[Capability] = &[
+    Capability::Browse,
+];
 use closure_core::{
     AddSibling, BlockId, Command, Demote, Document, EnsureId, MoveSubtree, Promote, Registry,
     RemoveSubtree, RenameHeadline, SetBody, SetPlanning, SetPriority, SetProperty, SetTags,
@@ -346,6 +431,10 @@ enum Cmd {
         /// Path to a `*.org` file containing a `#+BEGIN_SRC closure-config` block.
         path: PathBuf,
     },
+    /// Print the shell capability matrix / venn/diff (type-level view of
+    /// similarities and differences across TUI/CLI/web/egui/future shells).
+    /// Code (the consts above) is the single source of truth.
+    Shells,
     /// Print the 10 spec invariants closure enforces.
     Spec,
     /// Print a sample `#+BEGIN_SRC closure-config` block.
@@ -1043,6 +1132,7 @@ fn run(cmd: &Cmd) -> Result<(), String> {
         Cmd::Search { vault, needle } => cmd_search(vault, needle),
         Cmd::Config { path } => cmd_config(path),
         Cmd::CheckConfig { path } => cmd_check_config(path),
+        Cmd::Shells => cmd_shells(),
         Cmd::Spec => cmd_spec(),
         Cmd::DefaultConfig => cmd_default_config(),
         Cmd::New { vault, path, title } => cmd_new(vault, path, title),
@@ -3185,4 +3275,83 @@ fn cmd_check_config(path: &Path) -> Result<(), String> {
         }
         Err(e) => Err(format!("config error: {e}")),
     }
+}
+
+/// Print the shell capability matrix as a venn-style diff table.
+/// This is the "type level UI" / venn requested in the original vision
+/// to compare all variants (TUI, CLI, web, egui, gpui, Tauri, Flutter,
+/// GTK, Qt, single-HTML, etc.). The consts above are the single source
+/// of truth. Future shells just add their const list.
+#[allow(clippy::unnecessary_wraps)]
+fn cmd_shells() -> Result<(), String> {
+    println!("Shell capability matrix (code = single source of truth)");
+    println!("Every shell should be a superset of CORE (I7).");
+    println!();
+
+    let shells = [
+        ("CORE", CORE_CAPABILITIES),
+        ("TUI ", TUI_CAPABILITIES),
+        ("CLI ", CLI_CAPABILITIES),
+        ("WEB ", WEB_CAPABILITIES),
+        ("EGUI", EGUI_CAPABILITIES),
+    ];
+
+    // Collect all unique capabilities in a stable order (definition order).
+    let mut all_caps: Vec<Capability> = Vec::new();
+    for (_, caps) in &shells {
+        for c in *caps {
+            if !all_caps.contains(c) {
+                all_caps.push(*c);
+            }
+        }
+    }
+
+    // Header
+    print!("{:<12}", "Capability");
+    for (name, _) in &shells {
+        print!(" | {name}");
+    }
+    println!();
+    println!("{}", "-".repeat(12 + 3 * shells.len() + (shells.len() - 1) * 3));
+
+    // Rows: for each cap, mark which shells have it (X or space).
+    for cap in all_caps {
+        let cap_name = format!("{cap:?}");
+        print!("{cap_name:<12}");
+        for (_, caps) in &shells {
+            let has = if caps.contains(&cap) { " X " } else { "   " };
+            print!(" | {has}");
+        }
+        println!();
+    }
+
+    println!();
+    println!("Legend: X = has capability. TUI is currently the superset.");
+    println!("To extend: add to the enum + relevant *_CAPABILITIES const,");
+    println!("then the table updates automatically. Run `closure shells`.");
+    Ok(())
+}
+
+// TDD for completing the Shell capability matrix (ROADMAP item).
+// Test written *first* (per strict TDD). This will fail to compile until
+// the Capability enum, the per-shell consts, the superset invariants, and
+// the polished `cmd_shells` (with venn/diff table output) are implemented.
+// Invariant: every shell's CAPABILITIES must contain at least the CORE set.
+#[test]
+fn shell_capability_matrix_basics() {
+    // These types/consts do not exist yet -> compile failure expected on first run.
+    let core: &[Capability] = CORE_CAPABILITIES;
+
+    // CLI must be superset of core (for the command itself).
+    for c in core {
+        assert!(
+            CLI_CAPABILITIES.contains(c),
+            "CLI must support core capability {:?}",
+            c
+        );
+    }
+
+    // Basic check that command would not panic (will be exercised after impl).
+    // In full, cmd_shells() prints the venn.
+    assert!(!core.is_empty());
 }

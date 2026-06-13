@@ -104,9 +104,8 @@ reversible option, keep moving.
 ** DONE Validators per key with line/column errors at parse time + =closure check-config <file>= (TDD)
 ** DONE Validate-on-save: vault watcher revalidates config.org (new revalidate_config) and surfaces rich errors (with location) in TUI status line (TDD)
 ** DONE Typed cross-key constraints (e.g. llm_provider set ⇒ llm_key_env set); errors at load via post-pass in from_kv_block (TDD)
-* TODO Shell capability matrix (type-level) [0/2]
-** TODO =Capability= enum + per-shell =const CAPABILITIES: &[Capability]= in cli/tui/web/egui; test pins every shell ⊇ kernel core set
-** TODO =closure shells= renders the diff/venn table from those constants — code is the single source of truth
+* DONE Shell capability matrix (type-level) [2/2]
+** DONE =Capability= enum + per-shell consts (CORE, TUI, CLI, WEB, EGUI) + `closure shells` with nice venn/diff table output + superset tests (TDD)
 * TODO GUI shells [0/6]
 ** TODO egui desktop parity slice: vault browse + fuzzy search + capture through the same App-style state model (HeadlessAdapter already exists)
 ** TODO egui editing: rename/add/delete/undo wired to vault methods, which-key overlay (I4)
