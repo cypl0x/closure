@@ -80,9 +80,9 @@ reversible option, keep moving.
 ** DONE Inline body editing in TUI: =i= in the headline list opens a multi-line body buffer (=RET= newline, =C-s= save, =ESC= cancel) → =Vault::set_body= / SetBody (I3)
 ** DONE Structure ops in the headline list: =<=/=>= promote/demote, =J=/=K= move-subtree down/up (adjacent swap via MoveSubtree); Vault::{promote,demote,move_after} (I3)
 ** DONE Kill ring: =x= cut / =p= paste headline subtrees via Vault::{cut,paste}; ring in memory (persistence tracked under record-everything)
-* TODO Record-everything (configurable) [1/3]
+* TODO Record-everything (configurable) [2/3]
 ** DONE closure-record crate: append-only =journal.org= of executed commands (=record_commands= config, off by default); wired into =closure capture=, verified on/off
-** TODO Kill-ring persistence: yanked/killed block text recorded to the journal when enabled
+** DONE Kill-ring persistence: TUI records =kill=/=yank= entries with the subtree text to the journal when =record_commands= is on
 ** TODO =closure history= + TUI view: query/filter the journal (reuses ViewSpec); replay a command from history
 * TODO Scheduled tasks (cron-compatible) [0/3]
 ** TODO Jobs declared in org: =#+BEGIN_SRC closure-cron= block with =<cron-expr> <registry-command-line>= lines, parsed by closure-cron

@@ -451,6 +451,7 @@ dependencies = [
  "closure-input",
  "closure-org",
  "closure-query",
+ "closure-record",
  "closure-store",
  "closure-undo",
  "crossterm",

@@ -1339,6 +1339,13 @@ pub fn run(vault: &mut Vault) -> Result<(), TuiError> {
     result
 }
 
+/// Current unix time in seconds (0 if the clock predates the epoch).
+fn now_secs() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs())
+}
+
 /// Refresh every vault-derived record in the app: paths, headline
 /// titles, file sources, and the backlink rows.
 fn sync_app(app: &mut App, vault: &Vault) {
@@ -1411,8 +1418,14 @@ fn run_loop(
     terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
     vault: &mut Vault,
 ) -> Result<(), TuiError> {
-    let mode = closure_config::Config::from_path(&vault.root().join("config.org"))
+    let cfg = closure_config::Config::from_path(&vault.root().join("config.org")).ok();
+    let mode = cfg
+        .as_ref()
         .map_or(closure_config::InputMode::Doom, |c| c.input_mode);
+    let journal = closure_record::Journal::new(
+        vault.root(),
+        cfg.is_some_and(|c| c.record_commands),
+    );
     let mut app = App::with_mode(Vec::new(), mode);
     sync_app(&mut app, vault);
 
@@ -1425,7 +1438,7 @@ fn run_loop(
             && let Some(stroke) = stroke_of(&key)
         {
             app.handle_stroke(&stroke);
-            apply_requests(&mut app, vault)?;
+            apply_requests(&mut app, vault, &journal)?;
             if app.should_quit() {
                 return Ok(());
             }
@@ -1437,7 +1450,11 @@ fn run_loop(
 /// executing it through the kernel-backed vault methods and re-syncing
 /// the app on success. Soft errors (missing block, empty history) are
 /// no-ops; hard errors propagate.
-fn apply_requests(app: &mut App, vault: &mut Vault) -> Result<(), TuiError> {
+fn apply_requests(
+    app: &mut App,
+    vault: &mut Vault,
+    journal: &closure_record::Journal,
+) -> Result<(), TuiError> {
     let vault_err = |e: closure_store::VaultError| TuiError::Vault(e.to_string());
     if let Some(title) = app.take_capture_request() {
         let template = closure_store::CaptureTemplate {
@@ -1478,13 +1495,17 @@ fn apply_requests(app: &mut App, vault: &mut Vault) -> Result<(), TuiError> {
             .map_err(vault_err)?;
         sync_app(app, vault);
     }
-    apply_structure_requests(app, vault)
+    apply_structure_requests(app, vault, journal)
 }
 
 /// Drain the structural / history requests (promote, demote, move,
 /// cut, paste, eval, undo, redo). These tolerate soft errors —
 /// a missing block or empty history is a no-op, not a crash.
-fn apply_structure_requests(app: &mut App, vault: &mut Vault) -> Result<(), TuiError> {
+fn apply_structure_requests(
+    app: &mut App,
+    vault: &mut Vault,
+    journal: &closure_record::Journal,
+) -> Result<(), TuiError> {
     let soft = |e: &closure_store::VaultError| {
         matches!(
             e,
@@ -1522,12 +1543,20 @@ fn apply_structure_requests(app: &mut App, vault: &mut Vault) -> Result<(), TuiE
         && let Some(path) = app.selected_path().map(Path::to_path_buf)
     {
         let r = vault.cut(&path, &bid(&id));
+        if r.is_ok() {
+            let killed = vault.ring_top().unwrap_or_default().to_owned();
+            journal.record(now_secs(), "kill", &killed).ok();
+        }
         run(r, app, vault)?;
     }
     if let Some(id) = app.take_paste_request()
         && let Some(path) = app.selected_path().map(Path::to_path_buf)
     {
+        let yanked = vault.ring_top().unwrap_or_default().to_owned();
         let r = vault.paste(&path, &bid(&id));
+        if r.is_ok() {
+            journal.record(now_secs(), "yank", &yanked).ok();
+        }
         run(r, app, vault)?;
     }
     if let Some((path, index)) = app.take_eval_request() {
