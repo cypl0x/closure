@@ -394,3 +394,69 @@ fn add_sibling_key_hint_shown() {
     app.on_key(&mut sh, "a", true, None);
     assert!(app.key_hints().contains("Enter"));
 }
+
+// --- viewport windowing (keep selection visible, cap render nodes) ---------
+
+fn big_shell(n: usize) -> (TempDir, Shell) {
+    use std::fmt::Write as _;
+    let dir = tempfile::tempdir().expect("tmp");
+    let mut s = String::new();
+    for i in 0..n {
+        let _ = writeln!(s, "* Item {i:03}");
+    }
+    fs::write(dir.path().join("big.org"), s).expect("write");
+    let v = Vault::open(dir.path()).expect("open");
+    (dir, Shell::new(v))
+}
+
+#[test]
+fn view_window_returns_all_when_smaller_than_page() {
+    let (_d, sh) = big_shell(5);
+    let app = GpuiApp::new();
+    let (offset, rows) = app.view_window(&sh, 30);
+    assert_eq!(offset, 0);
+    assert_eq!(rows.len(), 5);
+}
+
+#[test]
+fn view_window_caps_to_page_and_keeps_selection_visible() {
+    let (_d, mut sh) = big_shell(200);
+    let mut app = GpuiApp::new();
+    for _ in 0..120 {
+        app.on_key(&mut sh, "down", false, None);
+    }
+    assert_eq!(app.selected(), 120);
+    let page = 30;
+    let (offset, rows) = app.view_window(&sh, page);
+    assert_eq!(rows.len(), page, "never renders more than a page");
+    assert!(
+        (offset..offset + page).contains(&app.selected()),
+        "selection {} must be within window [{}, {})",
+        app.selected(),
+        offset,
+        offset + page
+    );
+}
+
+#[test]
+fn view_window_offset_zero_near_top() {
+    let (_d, mut sh) = big_shell(200);
+    let mut app = GpuiApp::new();
+    app.on_key(&mut sh, "down", false, None);
+    let (offset, _) = app.view_window(&sh, 30);
+    assert_eq!(offset, 0, "no scroll needed near the top");
+}
+
+#[test]
+fn view_window_clamps_offset_at_end() {
+    let (_d, mut sh) = big_shell(40);
+    let mut app = GpuiApp::new();
+    for _ in 0..50 {
+        app.on_key(&mut sh, "down", false, None);
+    }
+    let page = 30;
+    let (offset, rows) = app.view_window(&sh, page);
+    assert_eq!(offset, 40 - page, "last page fully filled, no overscroll");
+    assert_eq!(rows.len(), page);
+    assert_eq!(rows.last().unwrap().title, "Item 039");
+}

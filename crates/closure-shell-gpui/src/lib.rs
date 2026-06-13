@@ -341,6 +341,22 @@ impl GpuiApp {
         scored.into_iter().map(|(_, r)| r).collect()
     }
 
+    /// The visible slice of rows for a viewport of `page` rows, plus
+    /// its start offset, chosen so the selection stays on screen. Caps
+    /// the number of rendered nodes for large vaults; stateless (offset
+    /// derived from the selection each call).
+    #[must_use]
+    pub fn view_window(&self, shell: &Shell, page: usize) -> (usize, Vec<Row>) {
+        let rows = self.rows(shell);
+        if page == 0 || rows.len() <= page {
+            return (0, rows);
+        }
+        let max_offset = rows.len() - page;
+        let offset = self.selected.saturating_sub(page - 1).min(max_offset);
+        let slice = rows[offset..offset + page].to_vec();
+        (offset, slice)
+    }
+
     /// Full preview of the currently-selected headline (resolved by
     /// its stable id through the vault index), for the detail pane.
     #[must_use]
@@ -716,6 +732,8 @@ fn meta_line(d: &Detail) -> String {
 impl Render for GpuiView {
     #[allow(clippy::unreadable_literal)] // RGB hex literals read clearest ungrouped
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        // Window the list so huge vaults stay snappy; ~40 rows per page.
+        const PAGE: usize = 40;
         // Tokyo-night palette.
         let bg = rgb(0x1a1b26);
         let fg = rgb(0xc0caf5);
@@ -724,14 +742,16 @@ impl Render for GpuiView {
         let accent = rgb(0x7aa2f7);
         let todo_col = rgb(0xf7768e);
 
-        let rows = self.app.rows(&self.shell);
+        let total = self.app.rows(&self.shell).len();
+        let (offset, rows) = self.app.view_window(&self.shell, PAGE);
         let selected = self.app.selected();
+        let count = format!("{total} headline(s)");
 
         let header = match self.app.mode() {
             GpuiMode::Capture => format!("＋ capture: {}▏", self.app.capture_buffer()),
             GpuiMode::AddSibling => format!("＋ add: {}▏", self.app.capture_buffer()),
             GpuiMode::Rename => format!("✎ rename: {}▏", self.app.capture_buffer()),
-            GpuiMode::Browse => format!("⌕ {}▏", self.app.query()),
+            GpuiMode::Browse => format!("⌕ {}▏   {count}", self.app.query()),
         };
 
         let list = div()
@@ -742,7 +762,8 @@ impl Render for GpuiView {
             .gap_0()
             .border_r_1()
             .border_color(rgb(0x2a2e42))
-            .children(rows.into_iter().enumerate().map(|(i, row)| {
+            .children(rows.into_iter().enumerate().map(|(vis, row)| {
+                let i = offset + vis;
                 let mut line = div()
                     .flex()
                     .px_2()
