@@ -44,6 +44,8 @@ pub struct Config {
     /// Record every executed command to `journal.org` (off by
     /// default).
     pub record_commands: bool,
+    /// Full-text search engine (`builtin`, `ripgrep`/`rg`, `fd`).
+    pub search_backend: Option<String>,
 }
 
 impl Default for Config {
@@ -60,6 +62,7 @@ impl Default for Config {
             llm_model: None,
             llm_key_env: None,
             record_commands: false,
+            search_backend: None,
         }
     }
 }
@@ -212,6 +215,7 @@ impl Config {
                         .collect();
                 }
                 "record_commands" => cfg.record_commands = parse_bool(key, value)?,
+                "search_backend" => cfg.search_backend = Some(value.into()),
                 "llm_provider" => cfg.llm_provider = Some(value.into()),
                 "llm_model" => cfg.llm_model = Some(value.into()),
                 "llm_key_env" => cfg.llm_key_env = Some(value.into()),

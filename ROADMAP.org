@@ -88,8 +88,8 @@ reversible option, keep moving.
 ** DONE Jobs declared in org: =#+BEGIN_SRC closure-cron= block, =<cron-expr> <command line>= per line → =Vault::cron_jobs=
 ** DONE =closure cron <vault> <file> [--at "m h dom mo dw"]= runs due jobs via run_tool; deterministic clock injection. Daemon = system cron / shell loop (see Decisions)
 ** DONE Agenda: =Vault::agenda=/=agenda_until= sort SCHEDULED/DEADLINE by date; =closure agenda [--until]= CLI + TUI =g a= overlay (=RET= jumps to file)
-* TODO Search at scale, pluggable [0/4]
-** TODO Search backend trait: built-in fuzzy (default), ripgrep, fd as engines selected via =search_backend= config key; same results shape
+* TODO Search at scale, pluggable [1/4]
+** DONE Search backend trait (=SearchBackend=): builtin substring (default) + ripgrep (external rg); =search_backend= config key; =closure search= selects per config; same Hit shape
 ** TODO Body full-text search in TUI (=S=): fuzzy over body lines, jump to file
 ** TODO Persistent index cache keyed by Document content hash; benchmark proves rescan avoided
 ** TODO Input-lag budget test: keystroke→render under 16ms on a 1k-file synthetic vault (criterion bench, CI-checked threshold)

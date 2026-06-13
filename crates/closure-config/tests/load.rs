@@ -118,3 +118,12 @@ fn record_commands_parses_bool() {
 fn record_commands_defaults_false() {
     assert!(!Config::from_kv_block("theme = dark\n").expect("p").record_commands);
 }
+
+#[test]
+fn search_backend_parses() {
+    assert_eq!(
+        Config::from_kv_block("search_backend = ripgrep\n").expect("p").search_backend.as_deref(),
+        Some("ripgrep")
+    );
+    assert!(Config::from_kv_block("theme = x\n").expect("p").search_backend.is_none());
+}

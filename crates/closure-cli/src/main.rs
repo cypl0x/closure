@@ -2744,15 +2744,15 @@ fn cmd_config(path: &Path) -> Result<(), String> {
     Ok(())
 }
 
+#[allow(clippy::unnecessary_wraps)]
 fn cmd_search(vault: &Path, needle: &str) -> Result<(), String> {
-    let v = Vault::open(vault).map_err(|e| format!("{e}"))?;
-    for m in closure_query::full_text(&v, needle) {
-        println!(
-            "{}:{}:{}",
-            m.path.display(),
-            m.headline.level(),
-            m.headline.title()
-        );
+    let name = closure_config::Config::from_path(&vault.join("config.org"))
+        .ok()
+        .and_then(|c| c.search_backend)
+        .unwrap_or_else(|| "builtin".to_owned());
+    let backend = closure_query::backend_for(&name);
+    for hit in backend.search(vault, needle) {
+        println!("{}:{}:{}", hit.path.display(), hit.line, hit.text);
     }
     Ok(())
 }
