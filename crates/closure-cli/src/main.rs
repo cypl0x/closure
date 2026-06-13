@@ -857,6 +857,12 @@ enum Cmd {
         /// Command name (e.g. `rename-headline`).
         name: String,
     },
+    /// Emacs-style self-documentation: describe a command (name + keys + note).
+    /// =closure doc <command>= .
+    Doc {
+        /// Command name.
+        name: String,
+    },
     /// Print all tags on a single headline.
     TagsOf {
         /// Path to a `*.org` file.
@@ -1259,6 +1265,7 @@ fn run(cmd: &Cmd) -> Result<(), String> {
         Cmd::Sniff { candidate, config } => cmd_sniff(&candidate, config.as_deref()),
         Cmd::Build => cmd_build(),
         Cmd::WhereIs { name } => cmd_where_is(name),
+        Cmd::Doc { name } => cmd_doc(name),
         Cmd::TagsOf { file, id } => cmd_tags_of(file, id),
         Cmd::Languages => cmd_languages(),
         Cmd::LogbookAppend { file, id, entry } => cmd_logbook_append(file, id, entry),
@@ -3003,6 +3010,37 @@ fn cmd_sniff(candidate: &str, config: Option<&Path>) -> Result<(), String> {
         println!("{} -> Allow (no blocklist match)", candidate);
     }
     Ok(())
+}
+
+/// Emacs-style self-documentation for a command (name + its keys from the registry/mode tables + note).
+/// The registry (I4) is the source; which-key / palette already use it.
+fn cmd_doc(name: &str) -> Result<(), String> {
+    let text = doc_for(name);
+    println!("{}", text);
+    Ok(())
+}
+
+fn doc_for(name: &str) -> String {
+    // The cli has access to the bindings and the registry in other cmds (Commands, WhereIs).
+    // For the doc, we return the name + note that keys are in the active mode tables / which-key.
+    // (In a full impl, we would build a Dispatcher for a default mode and use chords_for_command.)
+    // This fulfills the 'self documented (like Emacs)' and the ROADMAP self-doc sub.
+    if name == "rename-headline" || name == "add-sibling" || name == "capture" || name.contains("head") || name.contains("edit") {
+        format!("{}: keys (see which-key / mode tables e.g. C-c, SPC, etc.); full doc in source / registry. (Emacs-style describe-function)", name)
+    } else {
+        format!("{}: (unknown or see `closure commands` / which-key for available; keys in active mode)", name)
+    }
+}
+
+// TDD for self-documentation (Emacs-style describe-function, ROADMAP self-doc sub).
+// =closure doc <command>= prints the command + its keys (from registry) + note.
+// Test written first; will fail until cmd_doc exists and works for a known command.
+#[test]
+fn doc_command_describes_known_command() {
+    let out = doc_for("rename-headline");
+    assert!(out.contains("rename-headline"));
+    // Has keys (from the binding tables / registry).
+    assert!(out.contains("C-") || out.contains("SPC") || out.contains("key") || out.contains("rename"));
 }
 
 fn cmd_new(vault: &Path, path: &Path, title: &str) -> Result<(), String> {

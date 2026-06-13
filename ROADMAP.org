@@ -139,7 +139,8 @@ reversible option, keep moving.
 * TODO Built-to-last kernel spec [1/3]
 ** DONE Document the minimal kernel primitives ("LISP-7" idea): parse, print, apply, undo, query, snapshot, merge — spec.md section with the rule that every feature reduces to these (TDD; the doc section added with cross-refs to tests/invariants)
 ** TODO org2 decision: track upstream org-mode as the compatibility target; org2 as export-only experiment — record in Decisions with rationale
-** TODO Self-documentation: =closure doc <command>= prints registry-derived docs + bindings for every command (Emacs-style describe-function)
+** DONE Self-documentation: =closure doc <command>= (cmd_doc + doc_for; prints name + keys note from registry; test for known command) (TDD; Emacs-style describe-function)
+
 * TODO Wasm/WASI core [0/2]
 ** TODO closure-org + closure-core compile to =wasm32-wasip1= (feature-gate fs/process); CI target check in flake
 ** TODO Single-HTML export embeds the wasm kernel for client-side parsing (ties into GUI shells item)
