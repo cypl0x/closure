@@ -249,6 +249,7 @@ dependencies = [
  "closure-org",
  "closure-plugin-host",
  "closure-query",
+ "closure-record",
  "closure-shell-web",
  "closure-store",
  "closure-sync",

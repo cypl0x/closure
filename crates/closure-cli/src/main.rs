@@ -1229,8 +1229,23 @@ fn cmd_capture(
         body: body.to_owned(),
     };
     let id = v.capture(&tpl, title).map_err(|e| format!("{e}"))?;
+    journal_for(vault).record(now_secs(), "capture", title).ok();
     println!("captured {} -> {}", id.as_str(), vault.join(target).display());
     Ok(())
+}
+
+/// Build a command journal for `vault`, enabled per its config.org.
+fn journal_for(vault: &Path) -> closure_record::Journal {
+    let enabled = closure_config::Config::from_path(&vault.join("config.org"))
+        .is_ok_and(|c| c.record_commands);
+    closure_record::Journal::new(vault, enabled)
+}
+
+/// Current unix time in seconds (0 if the clock is before the epoch).
+fn now_secs() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs())
 }
 
 fn cmd_set_property(path: &Path, id: &str, key: &str, value: &str) -> Result<(), String> {
