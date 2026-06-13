@@ -57,6 +57,14 @@ enum Cmd {
         #[arg(long, default_value = "", allow_hyphen_values = true)]
         body: String,
     },
+    /// Show the recorded command journal (journal.org).
+    History {
+        /// Path to the vault directory.
+        vault: PathBuf,
+        /// Only entries containing this text (case-insensitive).
+        #[arg(long)]
+        grep: Option<String>,
+    },
     /// Tangle a literate org file: write `:tangle <path>` blocks to
     /// their targets.
     Tangle {
@@ -938,6 +946,7 @@ fn run(cmd: &Cmd) -> Result<(), String> {
             prefix,
             body,
         } => cmd_capture(vault, title, target, prefix, body),
+        Cmd::History { vault, grep } => cmd_history(vault, grep.as_deref()),
         Cmd::Tangle { vault, file } => cmd_tangle(vault, file),
         Cmd::EditBlock { vault, file, index } => cmd_edit_block(vault, file, *index),
         Cmd::View {
@@ -1138,6 +1147,17 @@ fn cmd_plugin(manifest: &Path, executable: &Path, args: &[String]) -> Result<(),
     let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
     let out = host.invoke(&command, &arg_refs).map_err(|e| format!("{e}"))?;
     print!("{out}");
+    Ok(())
+}
+
+fn cmd_history(vault: &Path, grep: Option<&str>) -> Result<(), String> {
+    let journal = closure_record::Journal::new(vault, true);
+    let entries = grep
+        .map_or_else(|| journal.entries(), |needle| journal.filtered(needle))
+        .map_err(|e| format!("{e}"))?;
+    for e in entries {
+        println!("{e}");
+    }
     Ok(())
 }
 

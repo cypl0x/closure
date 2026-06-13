@@ -58,6 +58,38 @@ impl Journal {
         self.enabled
     }
 
+    /// Read back the journal entries (one per recorded headline), in
+    /// order. Empty when the journal does not exist yet.
+    ///
+    /// # Errors
+    ///
+    /// [`RecordError::Io`] when the file exists but cannot be read.
+    pub fn entries(&self) -> Result<Vec<String>, RecordError> {
+        match std::fs::read_to_string(&self.path) {
+            Ok(s) => Ok(s
+                .lines()
+                .filter(|l| l.starts_with("* "))
+                .map(str::to_owned)
+                .collect()),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Vec::new()),
+            Err(e) => Err(RecordError::Io(e.to_string())),
+        }
+    }
+
+    /// Entries containing `needle` (case-insensitive).
+    ///
+    /// # Errors
+    ///
+    /// Propagates [`Self::entries`] failures.
+    pub fn filtered(&self, needle: &str) -> Result<Vec<String>, RecordError> {
+        let lower = needle.to_lowercase();
+        Ok(self
+            .entries()?
+            .into_iter()
+            .filter(|l| l.to_lowercase().contains(&lower))
+            .collect())
+    }
+
     /// Append a command entry. No-op when disabled.
     ///
     /// # Errors

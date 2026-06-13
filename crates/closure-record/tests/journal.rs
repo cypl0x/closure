@@ -64,3 +64,33 @@ fn enabled_reflects_flag() {
     assert!(Journal::new(td.path(), true).enabled());
     assert!(!Journal::new(td.path(), false).enabled());
 }
+
+#[test]
+fn entries_reads_back_recorded_lines() {
+    let td = vault();
+    let j = Journal::new(td.path(), true);
+    j.record(1, "capture", "Alpha").expect("r");
+    j.record(2, "rename", "Beta").expect("r");
+    let got = j.entries().expect("entries");
+    assert_eq!(got.len(), 2);
+    assert!(got[0].contains("Alpha"));
+    assert!(got[1].contains("Beta"));
+}
+
+#[test]
+fn entries_on_missing_journal_is_empty() {
+    let td = vault();
+    let j = Journal::new(td.path(), true);
+    assert!(j.entries().expect("entries").is_empty());
+}
+
+#[test]
+fn filtered_entries_match_needle_case_insensitive() {
+    let td = vault();
+    let j = Journal::new(td.path(), true);
+    j.record(1, "capture", "Buy milk").expect("r");
+    j.record(2, "capture", "Call bank").expect("r");
+    let got = j.filtered("BANK").expect("filtered");
+    assert_eq!(got.len(), 1);
+    assert!(got[0].contains("Call bank"));
+}
