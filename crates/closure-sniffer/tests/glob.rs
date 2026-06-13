@@ -52,19 +52,17 @@ fn match_first_picks_first_match() {
 fn capture_backend_trait_with_mock() {
     use closure_sniffer::CaptureBackend; // will not exist
 
-    let rules = vec![
-        closure_sniffer::Rule {
-            id: "block-evil".into(),
-            pattern: "*evil*".into(),
-            action: closure_sniffer::Action::Block,
-        },
-    ];
+    let rules = vec![closure_sniffer::Rule {
+        id: "block-evil".into(),
+        pattern: "*evil*".into(),
+        action: closure_sniffer::Action::Block,
+    }];
     let mock = closure_sniffer::MockBackend::new(rules);
     let action = mock.match_action("https://evil-tracker.com");
     assert!(matches!(action, Some(closure_sniffer::Action::Block)));
 
     let allow = mock.match_action("https://good.com");
-    assert!(matches!(allow, None)); // or default allow, depending on impl
+    assert!(allow.is_none()); // or default allow, depending on impl
 }
 
 // TDD test written *first* for sniffer org-native log (second sub).
@@ -81,12 +79,8 @@ fn org_log_appends_headline_on_capture() {
 
     // Simulate a capture event that should log.
     // Requires the log helper (will not exist).
-    closure_sniffer::log_capture_to_org(
-        &net_path,
-        "192.0.2.1:443",
-        "TCP",
-        "2026-06-13T12:00:00Z",
-    ).expect("log");
+    closure_sniffer::log_capture_to_org(&net_path, "192.0.2.1:443", "TCP", "2026-06-13T12:00:00Z")
+        .expect("log");
 
     let content = fs::read_to_string(&net_path).unwrap();
     assert!(content.contains("* <2026-06-13") || content.contains("192.0.2.1"));

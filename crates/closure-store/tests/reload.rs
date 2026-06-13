@@ -65,7 +65,10 @@ fn reload_drops_removed_files() {
 fn revalidate_config_detects_bad_config_with_line_info() {
     use closure_config::ConfigError;
 
-    let td = vault(&[("config.org", "#+BEGIN_SRC closure-config\ninput_mode = whatever\n#+END_SRC\n")]);
+    let td = vault(&[(
+        "config.org",
+        "#+BEGIN_SRC closure-config\ninput_mode = whatever\n#+END_SRC\n",
+    )]);
     let v = Vault::open(td.path()).expect("open");
 
     // The new API (to be implemented) should return the improved ConfigError
@@ -74,9 +77,11 @@ fn revalidate_config_detects_bad_config_with_line_info() {
     match err {
         ConfigError::BadValue { reason, .. } => {
             // Must contain the line info we added in previous cycle.
-            assert!(reason.contains("line") || reason.contains("unknown input_mode"),
-                    "expected line/col context in config validation error, got: {}", reason);
+            assert!(
+                reason.contains("line") || reason.contains("unknown input_mode"),
+                "expected line/col context in config validation error, got: {reason}"
+            );
         }
-        other => panic!("expected BadValue with location, got {:?}", other),
+        other => panic!("expected BadValue with location, got {other:?}"),
     }
 }

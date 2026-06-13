@@ -76,25 +76,51 @@ impl Shell {
             }
         }
         scored.sort_by_key(|(sc, _, _)| std::cmp::Reverse(*sc));
-        scored.into_iter().map(|(_, p, t)| (p, t)).take(20).collect()
+        scored
+            .into_iter()
+            .map(|(_, p, t)| (p, t))
+            .take(20)
+            .collect()
     }
 
     // Editing methods for egui parity (wired to vault, same as TUI/CLI use via commands).
-    #[must_use]
-    #[allow(clippy::must_use_candidate)]
-    pub fn rename_headline(&mut self, id: &closure_core::BlockId, title: &str) -> Result<(), closure_store::VaultError> {
+
+    /// Rename a headline through the kernel command (I8).
+    ///
+    /// # Errors
+    ///
+    /// Propagates [`closure_store::VaultError`].
+    pub fn rename_headline(
+        &mut self,
+        id: &closure_core::BlockId,
+        title: &str,
+    ) -> Result<(), closure_store::VaultError> {
         self.vault.rename_headline(id, title)
     }
 
-    #[must_use]
-    #[allow(clippy::must_use_candidate)]
-    pub fn remove_subtree(&mut self, id: &closure_core::BlockId) -> Result<(), closure_store::VaultError> {
+    /// Remove a subtree through the kernel command (I8).
+    ///
+    /// # Errors
+    ///
+    /// Propagates [`closure_store::VaultError`].
+    pub fn remove_subtree(
+        &mut self,
+        id: &closure_core::BlockId,
+    ) -> Result<(), closure_store::VaultError> {
         self.vault.remove_subtree(id)
     }
 
-    #[must_use]
-    #[allow(clippy::must_use_candidate)]
-    pub fn add_sibling(&mut self, after_id: &closure_core::BlockId, title: &str) -> Result<(), closure_store::VaultError> {
+    /// Add a sibling headline after `after_id` through the kernel
+    /// command (I8).
+    ///
+    /// # Errors
+    ///
+    /// Propagates [`closure_store::VaultError`].
+    pub fn add_sibling(
+        &mut self,
+        after_id: &closure_core::BlockId,
+        title: &str,
+    ) -> Result<(), closure_store::VaultError> {
         self.vault.add_sibling(after_id, title)
     }
 }

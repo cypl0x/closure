@@ -132,26 +132,32 @@ fn live_collab_over_localhost_tcp_stub() {
 
     // Load from the conflict corpus (title-vs-body: base + title edit for A, base + body edit for B; merged has both).
     // 'Two processes on localhost'.
-    let base = std::fs::read_to_string("../../fixtures/conflicts/title-vs-body/base.org").expect("fixture");
-    let ours = std::fs::read_to_string("../../fixtures/conflicts/title-vs-body/ours.org").expect("fixture");
-    let theirs = std::fs::read_to_string("../../fixtures/conflicts/title-vs-body/theirs.org").expect("fixture");
-    let _merged = std::fs::read_to_string("../../fixtures/conflicts/title-vs-body/merged.org").expect("fixture");
+    let base = std::fs::read_to_string("../../fixtures/conflicts/title-vs-body/base.org")
+        .expect("fixture");
+    let ours = std::fs::read_to_string("../../fixtures/conflicts/title-vs-body/ours.org")
+        .expect("fixture");
+    let theirs = std::fs::read_to_string("../../fixtures/conflicts/title-vs-body/theirs.org")
+        .expect("fixture");
+    let _merged = std::fs::read_to_string("../../fixtures/conflicts/title-vs-body/merged.org")
+        .expect("fixture");
 
     let doc_a = Document::load_str(&(base.clone() + &ours)).expect("load A (base+ours)");
     let doc_b = Document::load_str(&(base + &theirs)).expect("load B (base+theirs)");
 
-    let mut r_a = closure_crdt::Replica::snapshot(&doc_a, 10);
-    let mut r_b = closure_crdt::Replica::snapshot(&doc_b, 20);
+    let mut replica_a = closure_crdt::Replica::snapshot(&doc_a, 10);
+    let mut replica_b = closure_crdt::Replica::snapshot(&doc_b, 20);
 
     // 'Exchange replica deltas over TCP' (the channels as localhost TCP stub; send the snapshot).
-    tx_a.send(r_a.clone()).expect("A sends delta to B over TCP");
-    tx_b.send(r_b.clone()).expect("B sends delta to A over TCP");
+    tx_a.send(replica_a.clone())
+        .expect("A sends delta to B over TCP");
+    tx_b.send(replica_b.clone())
+        .expect("B sends delta to A over TCP");
 
     let r_from_b = rx_a.recv().expect("A receives from B over TCP");
     let r_from_a = rx_b.recv().expect("B receives from A over TCP");
 
-    r_a.merge(&r_from_a);
-    r_b.merge(&r_from_b);
+    replica_a.merge(&r_from_a);
+    replica_b.merge(&r_from_b);
 
     // 'Converge while both edit' (the merge produces the combined state; the conflict corpus 'merged' has the title from one and body from the other; the concurrent test in crdt confirms both survive).
     // The 'TCP' exchange + merge is the collab session.
@@ -161,12 +167,19 @@ fn live_collab_over_localhost_tcp_stub() {
     // The 'converge' is the merge after the TCP exchange; the corpus is 'reused' by loading the orgs.
     // The test 'passes' if the send/recv/merge completed (the live collab over the TCP stub worked).
     // To make it stronger, assert that after the exchange the replica has the 'from a' or 'from b' content in the state (the merge incorporated the delta).
-    // Since the LWW with the ts (10 vs 20) will pick the later, the test can assert the merge happened (the r_a or r_b has the id).
+    // Since the LWW with the ts (10 vs 20) will pick the later, the test can assert the merge happened (the replica_a or replica_b has the id).
     // The 'while both edit' is the diverge (ours vs theirs) and the exchange.
     // The test passes the 'collab session' if the channels carried the replicas and the merge was called.
     // To have a failing assert until the 'converge' logic (perhaps the apply or the file write), we can just assert the channels were used (the send/recv succeeded) and the merge was done (no error).
     // For the cycle, the 'panic' is replaced by the exchange code + a simple assert that the 'TCP' worked (the recv got the replica) and the merge succeeded.
-    assert!(r_a.title_of(&BlockId::from_existing("01HXAAAAAAAAAAAAAAAAAAAAAA")).is_some() || r_b.title_of(&BlockId::from_existing("01HXAAAAAAAAAAAAAAAAAAAAAA")).is_some());
+    assert!(
+        replica_a
+            .title_of(&BlockId::from_existing("01HXAAAAAAAAAAAAAAAAAAAAAA"))
+            .is_some()
+            || replica_b
+                .title_of(&BlockId::from_existing("01HXAAAAAAAAAAAAAAAAAAAAAA"))
+                .is_some()
+    );
     // The 'converge' happened (the replicas after the TCP exchange and merge have the id from the corpus).
     // The conflict corpus was reused (the orgs loaded for the diverge edits).
     // This is the 'live collaboration session: two processes on localhost exchange replica deltas over TCP, converge while both edit; conflict corpus reused'.
@@ -185,6 +198,12 @@ fn p2p_external_transport_gated_on_binary_presence() {
     let mut t = IrohTransport::new(std::path::PathBuf::from("/tmp/test-vault"));
     let err = t.push().unwrap_err();
     // The error mentions the binary (the gate/decision).
-    let msg = format!("{}", err);
-    assert!(msg.contains("binary") || msg.contains("iroh") || msg.contains("ipfs") || msg.contains("not found"), "gated error: {}", msg);
+    let msg = format!("{err}");
+    assert!(
+        msg.contains("binary")
+            || msg.contains("iroh")
+            || msg.contains("ipfs")
+            || msg.contains("not found"),
+        "gated error: {msg}"
+    );
 }

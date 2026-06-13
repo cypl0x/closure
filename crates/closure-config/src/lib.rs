@@ -204,13 +204,17 @@ impl Config {
                     if levels.is_empty() {
                         return Err(ConfigError::BadValue {
                             key: key.into(),
-                            reason: format!("{line_info}: priority_levels requires at least one letter"),
+                            reason: format!(
+                                "{line_info}: priority_levels requires at least one letter"
+                            ),
                         });
                     }
                     if !levels.iter().all(char::is_ascii_uppercase) {
                         return Err(ConfigError::BadValue {
                             key: key.into(),
-                            reason: format!("{line_info}: priority_levels must be ASCII uppercase letters"),
+                            reason: format!(
+                                "{line_info}: priority_levels must be ASCII uppercase letters"
+                            ),
                         });
                     }
                     cfg.priority_levels = levels;

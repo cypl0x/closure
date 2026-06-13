@@ -2,30 +2,28 @@
 //! execute, mark DONE; property: every task done exactly once (no loss, no dup).
 //!
 //! TDD: written first, will fail until swarm logic + prop added.
-//! Uses core commands (SetTodo) + Document for the queue model (I3/I8).
+//! Uses core commands (`SetTodo`) + Document for the queue model (I3/I8).
 //! Ties to A2A delegation surface where workers could delegate actual work.
 
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
-use closure_a2a::{delegate_task, swarm_drain};
+use std::collections::HashSet;
+use std::fmt::Write as _;
+
+use closure_a2a::swarm_drain;
 use closure_core::BlockId;
 use closure_store::Vault;
 use proptest::prelude::*;
-use std::collections::HashSet;
 use tempfile::TempDir;
 
 fn make_queue_with_tasks(tasks: &[String]) -> (TempDir, Vault, Vec<BlockId>) {
     let dir = tempfile::tempdir().expect("tmp");
     let mut content = String::new();
     let mut ids = vec![];
-    for (_i, t) in tasks.iter().enumerate() {
+    for t in tasks {
         let id = BlockId::fresh();
         ids.push(id.clone());
-        content.push_str(&format!(
-            "* TODO {t}\n:PROPERTIES:\n:ID: {id}\n:END:\n\n",
-            t = t,
-            id = id
-        ));
+        let _ = write!(content, "* TODO {t}\n:PROPERTIES:\n:ID: {id}\n:END:\n\n");
     }
     std::fs::write(dir.path().join("queue.org"), &content).expect("write queue");
     let v = Vault::open(dir.path()).expect("open vault with queue");
@@ -49,7 +47,7 @@ proptest! {
 
         // Property: every original task id was processed exactly once (via the claimed set logic + side proof captures)
         // We also assert side effects: for each task a proof capture landed (searchable)
-        for t in &unique {
+        for _t in &unique {
             // The proof capture title contains swarm-proof + id, but we asserted via claimed count.
             // To cross check "DONE" state we can search or read the queue doc; here the drain count + unique ids is the exactly-once.
         }

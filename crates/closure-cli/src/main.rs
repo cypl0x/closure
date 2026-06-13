@@ -477,7 +477,7 @@ enum Cmd {
         #[arg(long)]
         vault: Option<PathBuf>,
     },
-    /// Interactive multi-turn chat with the LLM (uses the same tool_loop and tools as ask).
+    /// Interactive multi-turn chat with the LLM (uses the same `tool_loop` and tools as `ask`).
     /// Type messages, the assistant responds (with CALL tools if vault given); /quit to exit.
     /// Delivers the 'multi-turn TUI chat pane' spirit (here as CLI REPL for now; TUI pane can use same logic).
     Chat {
@@ -802,7 +802,7 @@ enum Cmd {
     /// to enumerate). Quits on EOF.
     Mcp,
     /// Run the ACP stdio dispatcher (agent card + registry commands over
-    /// text protocol; JSON card served via handle_message for agent
+    /// text protocol; JSON card served via `handle_message` for agent
     /// discovery/handshake per ROADMAP).
     Acp,
     /// Run the A2A stdio dispatcher (task delegation surface for agent
@@ -855,12 +855,12 @@ enum Cmd {
     },
     /// Print the closure-cli crate version.
     Version,
-    /// Sniff a candidate against the blocklist (from config sniffer_blocklist globs).
+    /// Sniff a candidate against the blocklist (from config `sniffer_blocklist` globs).
     /// Prints the matched action (Block/Allow) and rule. Blocklist config + =closure sniff= view.
     Sniff {
         /// Candidate (e.g. "host:port" or "url" or any string matched by the globs).
         candidate: String,
-        /// Config .org with #+BEGIN_SRC closure-config sniffer_blocklist=... (or vault dir).
+        /// Config `.org` with `#+BEGIN_SRC closure-config` `sniffer_blocklist=...` (or vault dir).
         #[arg(long)]
         config: Option<PathBuf>,
     },
@@ -1283,7 +1283,7 @@ fn run(cmd: &Cmd) -> Result<(), String> {
             dow,
         } => cmd_cron_tick(file, *minute, *hour, *dom, *month, *dow),
         Cmd::Version => cmd_version(),
-        Cmd::Sniff { candidate, config } => cmd_sniff(&candidate, config.as_deref()),
+        Cmd::Sniff { candidate, config } => cmd_sniff(candidate, config.as_deref()),
         Cmd::Build => cmd_build(),
         Cmd::Gpui { vault } => cmd_gpui(vault),
         Cmd::WhereIs { name } => cmd_where_is(name),
@@ -2075,7 +2075,7 @@ fn cmd_build() -> Result<(), String> {
 }
 
 fn cmd_gpui(vault: &Path) -> Result<(), String> {
-    closure_shell_gpui::run(vault).map_err(|e| e.to_string())
+    closure_shell_gpui::run(vault)
 }
 
 #[allow(clippy::unnecessary_wraps)]
@@ -2850,6 +2850,67 @@ fn cmd_tag_cloud(vault: &Path) -> Result<(), String> {
     Ok(())
 }
 
+/// Build an LLM provider from vault config (BYOK): provider name +
+/// model + key env var. Defaults to Anthropic. The API key itself is
+/// read from the named environment variable, never the org file.
+fn build_llm_provider(
+    cfg: &closure_config::Config,
+    default_model: &str,
+) -> Result<Box<dyn closure_llm::Provider>, String> {
+    let key_env = cfg
+        .llm_key_env
+        .clone()
+        .unwrap_or_else(|| "ANTHROPIC_API_KEY".to_owned());
+    let model = cfg
+        .llm_model
+        .clone()
+        .unwrap_or_else(|| default_model.to_owned());
+    let key = || std::env::var(&key_env).map_err(|_| format!("{key_env} not set"));
+    let provider: Box<dyn closure_llm::Provider> = match cfg.llm_provider.as_deref() {
+        Some("echo") => Box::new(closure_llm::EchoProvider),
+        Some("openai") => Box::new(closure_llm::openai(&key()?, &model)),
+        Some("ollama") => {
+            // Ollama's OpenAI-compatible endpoint (default localhost:11434), no auth key.
+            let mut p = closure_llm::CurlProvider::new(
+                "http://localhost:11434/v1/chat/completions".to_owned(),
+            );
+            p.headers = vec![];
+            p.extract = |s| Ok(s.to_owned());
+            Box::new(p)
+        }
+        _ => Box::new(closure_llm::anthropic(&key()?, &model)),
+    };
+    Ok(provider)
+}
+
+/// Execute one tool line for the LLM loop: enforce the optional
+/// `llm_tools` allowlist, answer `view-state` with `view_msg`, and
+/// otherwise route to the vault tool surface — mutations stay behind
+/// kernel commands (I8).
+fn run_vault_tool(v: &mut Vault, allowed: Option<&[String]>, view_msg: &str, line: &str) -> String {
+    if let Some(allowed) = allowed {
+        let cmd = line.split_whitespace().next().unwrap_or("");
+        let cmd_base = cmd.split('-').next().unwrap_or(cmd);
+        if !allowed
+            .iter()
+            .any(|a| a == cmd || a == cmd_base || cmd.starts_with(a.as_str()))
+        {
+            return format!(
+                "error: tool '{cmd}' not allowed by llm_tools config (allowed: {allowed:?})"
+            );
+        }
+    }
+    if line.starts_with(closure_llm::VIEW_STATE_COMMAND) {
+        view_msg.to_owned()
+    } else {
+        v.run_tool(line)
+    }
+}
+
+const ASK_TOOLS_HELP: &str = "Vault tools (use via CALL): list-files | read <file> | \
+     search <text> | capture <title> | rename <id> <title> | \
+     set-property <id> <key> <value> | view-state";
+
 fn cmd_ask(prompt: &str, model: &str, vault: Option<&Path>) -> Result<(), String> {
     use closure_llm::Provider;
     let Some(vault_dir) = vault else {
@@ -2862,54 +2923,13 @@ fn cmd_ask(prompt: &str, model: &str, vault: Option<&Path>) -> Result<(), String
     };
     let mut v = Vault::open(vault_dir).map_err(|e| format!("{e}"))?;
     let cfg = closure_config::Config::from_path(&vault_dir.join("config.org")).unwrap_or_default();
-    let key_env = cfg
-        .llm_key_env
-        .unwrap_or_else(|| "ANTHROPIC_API_KEY".to_owned());
-    let model = cfg.llm_model.unwrap_or_else(|| model.to_owned());
-    let provider: Box<dyn Provider> = match cfg.llm_provider.as_deref() {
-        Some("echo") => Box::new(closure_llm::EchoProvider),
-        Some("openai") => {
-            let key = std::env::var(&key_env).map_err(|_| format!("{key_env} not set"))?;
-            Box::new(closure_llm::openai(&key, &model))
-        }
-        Some("ollama") => {
-            // Ollama OpenAI-compatible endpoint (default localhost:11434).
-            // Uses existing CurlProvider (as per ROADMAP "via existing CurlProvider") + config preset (llm_provider=ollama).
-            // Model passed in body if the default or user customizes; no auth key for local.
-            let mut p = closure_llm::CurlProvider::new(
-                "http://localhost:11434/v1/chat/completions".to_string(),
-            );
-            p.headers = vec![];
-            // Simple passthrough; for full chat format the user can provide custom provider or extend.
-            p.extract = |s| Ok(s.to_owned());
-            Box::new(p)
-        }
-        _ => {
-            let key = std::env::var(&key_env).map_err(|_| format!("{key_env} not set"))?;
-            Box::new(closure_llm::anthropic(&key, &model))
-        }
-    };
-    let task = format!(
-        "{prompt}\n\nVault tools (use via CALL): list-files | read <file> | search <text> | capture <title> | rename <id> <title> | set-property <id> <key> <value> | view-state (returns description of current rendered UI state so the LLM can 'see' what you see)"
-    );
-    let allowed_tools: Option<Vec<String>> = cfg.llm_tools.clone();
+    let provider = build_llm_provider(&cfg, model)?;
+    let allowed = cfg.llm_tools.clone();
+    let task = format!("{prompt}\n\n{ASK_TOOLS_HELP}");
+    let view_msg = "current UI state: batch ask (no live render); vault loaded; use the TUI for live view-state";
     let answer = closure_llm::tool_loop(
         provider.as_ref(),
-        |line| {
-            if let Some(ref allowed) = allowed_tools {
-                let cmd = line.split_whitespace().next().unwrap_or("");
-                let cmd_base = cmd.split('-').next().unwrap_or(cmd);
-                if !allowed.iter().any(|a| a == cmd || a == cmd_base || cmd.starts_with(a)) {
-                    return format!("error: tool '{}' not allowed by llm_tools config (allowed: {:?})", cmd, allowed);
-                }
-            }
-            if line.starts_with(closure_llm::VIEW_STATE_COMMAND) {
-                // For batch ask, provide a snapshot (in interactive TUI/chat the shell can supply live App state).
-                "current UI state: batch ask (no live TUI render); vault loaded with files/headlines; use TUI for full live view-state".to_string()
-            } else {
-                v.run_tool(line)
-            }
-        },
+        |line| run_vault_tool(&mut v, allowed.as_deref(), view_msg, line),
         &task,
         16,
     )
@@ -2918,162 +2938,103 @@ fn cmd_ask(prompt: &str, model: &str, vault: Option<&Path>) -> Result<(), String
     Ok(())
 }
 
-/// Interactive multi-turn chat (REPL) with the LLM + tools.
-/// Each user message is a turn; the tool_loop handles internal CALLs; observations feed the next.
+/// Read one prompt line from stdin into `buf`. Returns `false` at EOF
+/// or on a `/quit`/`/exit`/empty line so the caller can stop.
+fn read_chat_line(buf: &mut String) -> bool {
+    use std::io::{self, BufRead, Write};
+    print!("> ");
+    io::stdout().flush().ok();
+    buf.clear();
+    if io::stdin().lock().read_line(buf).is_err() {
+        return false;
+    }
+    let line = buf.trim();
+    !(line.is_empty() || line == "/quit" || line == "/exit")
+}
+
+/// Interactive multi-turn chat (REPL) with the LLM. Without a vault it
+/// is a plain completion loop; with a vault each turn runs the tool
+/// loop over a single long-lived [`Vault`] (captures persist across
+/// turns), with the same BYOK config and `llm_tools` allowlist as
+/// [`cmd_ask`].
 fn cmd_chat(model: &str, vault: Option<&Path>) -> Result<(), String> {
     use closure_llm::Provider;
-    use std::io::{self, BufRead, Write};
+    println!("closure chat (multi-turn). /quit to exit.");
 
-    println!(
-        "closure chat (multi-turn). /quit to exit. Same tools as `ask` if vault given (including view-state)."
-    );
-    let provider: Box<dyn Provider> = if vault.is_none() {
+    let Some(vault_dir) = vault else {
         let key = std::env::var("ANTHROPIC_API_KEY")
             .map_err(|_| "ANTHROPIC_API_KEY not set".to_owned())?;
-        Box::new(closure_llm::anthropic(&key, model))
-    } else {
-        let vault_dir = vault.unwrap();
-        let mut v = Vault::open(vault_dir).map_err(|e| format!("{e}"))?;
-        let cfg =
-            closure_config::Config::from_path(&vault_dir.join("config.org")).unwrap_or_default();
-        let key_env = cfg
-            .llm_key_env
-            .unwrap_or_else(|| "ANTHROPIC_API_KEY".to_owned());
-        let model = cfg.llm_model.unwrap_or_else(|| model.to_owned());
-        let allowed_tools: Option<Vec<String>> = cfg.llm_tools.clone();
-        let p: Box<dyn Provider> = match cfg.llm_provider.as_deref() {
-            Some("echo") => Box::new(closure_llm::EchoProvider),
-            Some("openai") => {
-                let key = std::env::var(&key_env).map_err(|_| format!("{key_env} not set"))?;
-                Box::new(closure_llm::openai(&key, &model))
+        let provider = closure_llm::anthropic(&key, model);
+        let mut line = String::new();
+        while read_chat_line(&mut line) {
+            match provider.complete(line.trim()) {
+                Ok(r) => println!("{r}"),
+                Err(e) => eprintln!("error: {e}"),
             }
-            Some("ollama") => {
-                let mut p = closure_llm::CurlProvider::new(
-                    "http://localhost:11434/v1/chat/completions".to_string(),
-                );
-                p.headers = vec![];
-                p.extract = |s| Ok(s.to_owned());
-                Box::new(p)
-            }
-            _ => {
-                let key = std::env::var(&key_env).map_err(|_| format!("{key_env} not set"))?;
-                Box::new(closure_llm::anthropic(&key, &model))
-            }
-        };
-        // For chat, the executor is per-turn (the outer loop is the user turns).
-        // We return a dummy provider; the actual loop below uses tool_loop directly with the executor.
-        // (The provider is only for the non-vault case; for vault we use the loop with executor.)
-        // To unify, for vault case we will use a dummy provider and do the loop here.
-        // For simplicity in this chat REPL, we always use the tool_loop with the executor (no separate provider.complete for the user message).
-        // The 'provider' above is for the non-vault echo path; for vault chat we branch.
-        p
+        }
+        println!("chat ended.");
+        return Ok(());
     };
 
-    let stdin = io::stdin();
-    let mut stdout = io::stdout();
-    let mut history: Vec<String> = vec![]; // simple history for context (user/assistant turns)
-
-    loop {
-        print!("> ");
-        stdout.flush().ok();
-        let mut line = String::new();
-        if stdin.lock().read_line(&mut line).is_err() {
-            break;
-        }
-        let line = line.trim();
-        if line.is_empty() || line == "/quit" || line == "/exit" {
-            break;
-        }
-        if vault.is_none() {
-            // simple complete for non-vault
-            let response = provider.complete(line).map_err(|e| format!("{e}"))?;
-            println!("{}", response);
-            continue;
-        }
-        // vault chat: use tool_loop for the turn (supports CALLs inside the turn)
-        let vault_dir = vault.unwrap();
-        let mut v = Vault::open(vault_dir).map_err(|e| format!("{e}"))?;
-        let cfg =
-            closure_config::Config::from_path(&vault_dir.join("config.org")).unwrap_or_default();
-        let allowed_tools: Option<Vec<String>> = cfg.llm_tools.clone();
-        let task = format!(
-            "{}\n\n(Vault tools: list-files | read <file> | search <text> | capture <title> | rename <id> <title> | set-property <id> <key> <value> | view-state)",
-            line
-        );
+    let mut v = Vault::open(vault_dir).map_err(|e| format!("{e}"))?;
+    let cfg = closure_config::Config::from_path(&vault_dir.join("config.org")).unwrap_or_default();
+    let provider = build_llm_provider(&cfg, model)?;
+    let allowed = cfg.llm_tools.clone();
+    let view_msg = "current UI state: chat REPL (the live TUI would give full App state)";
+    let mut line = String::new();
+    while read_chat_line(&mut line) {
+        let task = format!("{}\n\n{ASK_TOOLS_HELP}", line.trim());
         let answer = closure_llm::tool_loop(
             provider.as_ref(),
-            |l| {
-                if let Some(ref allowed) = allowed_tools {
-                    let cmd = l.split_whitespace().next().unwrap_or("");
-                    let cmd_base = cmd.split('-').next().unwrap_or(cmd);
-                    if !allowed
-                        .iter()
-                        .any(|a| a == cmd || a == cmd_base || l.starts_with(a))
-                    {
-                        return format!("error: tool not allowed ({})", cmd);
-                    }
-                }
-                if l.starts_with(closure_llm::VIEW_STATE_COMMAND) {
-                    "current UI state: chat REPL (live TUI would give full App state)".to_string()
-                } else {
-                    v.run_tool(l)
-                }
-            },
+            |l| run_vault_tool(&mut v, allowed.as_deref(), view_msg, l),
             &task,
             8,
         )
         .map_err(|e| format!("{e}"))?;
-        println!("{}", answer);
-        history.push(line.to_owned());
-        history.push(answer);
+        println!("{answer}");
     }
     println!("chat ended.");
     Ok(())
 }
 
-/// Sniff a candidate using the blocklist from a config (sniffer_blocklist globs).
-/// Builds Rules with Block action for the globs, uses the sniffer match_first, prints the result.
-/// This is the =closure sniff= view + blocklist config support (surfaces the block decision).
+/// Sniff a candidate against the `sniffer_blocklist` globs from a
+/// config: builds `Block` rules, runs `match_first`, prints the
+/// decision. The `closure sniff` view + blocklist config support.
+#[allow(clippy::unnecessary_wraps)]
 fn cmd_sniff(candidate: &str, config: Option<&Path>) -> Result<(), String> {
     use closure_sniffer::{Action, Rule, match_first};
 
-    let mut globs: Vec<String> = vec![];
-    if let Some(p) = config {
-        if let Ok(cfg) = closure_config::Config::from_path(p) {
-            if let Some(list) = cfg.sniffer_blocklist {
-                globs = list;
-            }
-        }
-    }
+    let globs: Vec<String> = config
+        .and_then(|p| closure_config::Config::from_path(p).ok())
+        .and_then(|cfg| cfg.sniffer_blocklist)
+        .unwrap_or_default();
     if globs.is_empty() {
-        println!(
-            "no blocklist (or no config); default Allow for {}",
-            candidate
-        );
+        println!("no blocklist (or no config); default Allow for {candidate}");
         return Ok(());
     }
     let rules: Vec<Rule> = globs
         .into_iter()
         .map(|g| Rule {
-            id: format!("block-{}", g),
+            id: format!("block-{g}"),
             pattern: g,
             action: Action::Block,
         })
         .collect();
     if let Some(m) = match_first(candidate, &rules) {
-        println!("{} -> {:?}", candidate, m.action);
+        println!("{candidate} -> {:?}", m.action);
         println!("  matched rule: {} ({})", m.id, m.pattern);
     } else {
-        println!("{} -> Allow (no blocklist match)", candidate);
+        println!("{candidate} -> Allow (no blocklist match)");
     }
     Ok(())
 }
 
-/// Emacs-style self-documentation for a command (name + its keys from the registry/mode tables + note).
-/// The registry (I4) is the source; which-key / palette already use it.
+/// Emacs-style self-documentation for a command (name + its keys from
+/// the registry/mode tables). The registry (I4) is the source;
+/// which-key / palette already use it.
+#[allow(clippy::unnecessary_wraps)]
 fn cmd_doc(name: &str) -> Result<(), String> {
-    let text = doc_for(name);
-    println!("{}", text);
+    println!("{}", doc_for(name));
     Ok(())
 }
 
@@ -3089,13 +3050,11 @@ fn doc_for(name: &str) -> String {
         || name.contains("edit")
     {
         format!(
-            "{}: keys (see which-key / mode tables e.g. C-c, SPC, etc.); full doc in source / registry. (Emacs-style describe-function)",
-            name
+            "{name}: keys (see which-key / mode tables e.g. C-c, SPC, etc.); full doc in source / registry. (Emacs-style describe-function)"
         )
     } else {
         format!(
-            "{}: (unknown or see `closure commands` / which-key for available; keys in active mode)",
-            name
+            "{name}: (unknown or see `closure commands` / which-key for available; keys in active mode)"
         )
     }
 }
@@ -3675,8 +3634,7 @@ fn shell_capability_matrix_basics() {
     for c in core {
         assert!(
             CLI_CAPABILITIES.contains(c),
-            "CLI must support core capability {:?}",
-            c
+            "CLI must support core capability {c:?}",
         );
     }
 

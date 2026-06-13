@@ -105,8 +105,10 @@ fn max_turns_is_enforced() {
 fn view_state_tool_is_known_and_observation_fed() {
     // References the (not yet) constant for the tool name.
     let cmd = closure_llm::VIEW_STATE_COMMAND;
-    let p = Scripted::new(&[&format!("CALL {}", cmd), "DONE saw it"]);
-    let observations = RefCell::new(vec!["UI STATE: mode=FileView selected=foo.org visible=[h1 h2]".to_owned()]);
+    let p = Scripted::new(&[&format!("CALL {cmd}"), "DONE saw it"]);
+    let observations = RefCell::new(vec![
+        "UI STATE: mode=FileView selected=foo.org visible=[h1 h2]".to_owned(),
+    ]);
     let out = tool_loop(
         &p,
         |c| {
@@ -118,8 +120,12 @@ fn view_state_tool_is_known_and_observation_fed() {
         },
         "describe what you see",
         5,
-    ).expect("loop");
+    )
+    .expect("loop");
     assert_eq!(out, "saw it");
     let prompts = p.prompts.into_inner();
-    assert!(prompts.iter().any(|pr| pr.contains("UI STATE")), "state fed back into prompt");
+    assert!(
+        prompts.iter().any(|pr| pr.contains("UI STATE")),
+        "state fed back into prompt"
+    );
 }

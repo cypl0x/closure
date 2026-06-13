@@ -122,7 +122,10 @@ impl IrohTransport {
     #[allow(clippy::unused_self)]
     fn binary_present(&self, name: &str) -> bool {
         Command::new(name).arg("--version").output().is_ok()
-            || Command::new("which").arg(name).output().is_ok_and(|o| o.status.success())
+            || Command::new("which")
+                .arg(name)
+                .output()
+                .is_ok_and(|o| o.status.success())
     }
 }
 

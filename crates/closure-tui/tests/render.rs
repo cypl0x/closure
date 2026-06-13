@@ -92,5 +92,8 @@ fn file_view_with_code_block_produces_styled_spans() {
                 && sp.content.contains("fn")
         })
     });
-    assert!(has_styled_keyword, "expected at least one styled keyword span (e.g. 'fn') from the highlighter in the rendered lines");
+    assert!(
+        has_styled_keyword,
+        "expected at least one styled keyword span (e.g. 'fn') from the highlighter in the rendered lines"
+    );
 }

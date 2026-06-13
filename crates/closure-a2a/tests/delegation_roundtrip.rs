@@ -3,7 +3,7 @@
 //! TDD written FIRST. Must fail until impl.
 //! Per ROADMAP: "task delegation — agent A posts a task, agent B (separate vault)
 //! executes via its registry, returns result; round-trip test"
-//! I8: execution only through registered commands / Vault::run_tool surface.
+//! I8: execution only through registered commands / `Vault::run_tool` surface.
 
 #![allow(clippy::unwrap_used, clippy::expect_used, missing_docs)]
 
@@ -32,9 +32,7 @@ fn empty_vault() -> (TempDir, Vault) {
 fn resolve_line_compat_for_a2a_registry() {
     let reg = registry_with_rename();
     let out = resolve_line(&reg, "rename-headline id New");
-    assert!(
-        format!("{:?}", out).contains("rename-headline") || format!("{:?}", out).contains("Found")
-    );
+    assert!(format!("{out:?}").contains("rename-headline") || format!("{out:?}").contains("Found"));
 }
 
 #[test]
@@ -95,7 +93,7 @@ fn delegate_via_registry_check() {
     let (_td, mut b) = empty_vault();
     // resolve first (simulates A2A peer doing discovery before delegate)
     let decision = resolve_line(&reg, "rename-headline");
-    assert!(format!("{:?}", decision).contains("Found"));
+    assert!(format!("{decision:?}").contains("Found"));
     // then delegate a known (via run_tool which is registry backed)
     let _ = delegate_task(&mut b, "capture Delegated after resolve");
     assert!(b.find_by_title("Delegated after resolve").is_some());

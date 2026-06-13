@@ -185,10 +185,14 @@ fn llm_provider_without_key_env_is_rejected_at_load() {
     // For now the test documents the desired behavior.
     match err {
         ConfigError::BadValue { reason, .. } => {
-            assert!(reason.contains("llm_key_env") || reason.contains("cross") || reason.contains("required"),
-                    "expected cross-key error mentioning llm_key_env, got: {}", reason);
+            assert!(
+                reason.contains("llm_key_env")
+                    || reason.contains("cross")
+                    || reason.contains("required"),
+                "expected cross-key error mentioning llm_key_env, got: {reason}"
+            );
         }
-        other => panic!("expected BadValue for missing dependent key, got {:?}", other),
+        other => panic!("expected BadValue for missing dependent key, got {other:?}"),
     }
 }
 
@@ -211,11 +215,10 @@ fn bad_value_reports_line_in_block() {
             // Current code only puts "line N" in the key field for the "no =" parse error.
             assert!(
                 reason.contains("line") || key.contains("line"),
-                "expected line info in BadValue for CUE-style early error, got key={:?} reason={:?}",
-                key, reason
+                "expected line info in BadValue for CUE-style early error, got key={key:?} reason={reason:?}"
             );
         }
-        other => panic!("expected BadValue, got {:?}", other),
+        other => panic!("expected BadValue, got {other:?}"),
     }
 }
 

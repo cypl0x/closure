@@ -110,7 +110,12 @@ impl CaptureBackend for MockBackend {
 ///
 /// Headline format: * <ts> host=<host> proto=<proto>
 /// (Simple append for lean sniffer; later can use Vault for span-preserving if needed.)
-pub fn log_capture_to_org(path: &std::path::Path, host: &str, proto: &str, ts: &str) -> std::io::Result<()> {
+pub fn log_capture_to_org(
+    path: &std::path::Path,
+    host: &str,
+    proto: &str,
+    ts: &str,
+) -> std::io::Result<()> {
     use std::fs::OpenOptions;
     use std::io::Write;
 

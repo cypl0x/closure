@@ -5,8 +5,8 @@
 //! a handshake between two in-process agents (I8: via registry/vault only).
 //!
 //! Research (done before writing): acp currently only has text resolve/run
-//! mirroring early mcp; mcp has handle_message + TOOLS + json helpers for
-//! initialize/tools/list/tools/call over Vault::run_tool. ACP must serve
+//! mirroring early mcp; mcp has `handle_message` + TOOLS + json helpers for
+//! initialize/tools/list/tools/call over `Vault::run_tool`. ACP must serve
 //! "agent/card" analog over same JSON subset for agent discovery.
 
 #![allow(clippy::unwrap_used, clippy::expect_used, missing_docs)]
@@ -44,9 +44,7 @@ fn resolve_line_compat_still_works_for_registry() {
     let out = closure_acp::resolve_line(&reg, "rename-headline target Foo");
     // Outcome is re-exported or defined in acp; assert shape via string or match once defined.
     // For now, existence + basic: we will assert after impl that Found/Unknown preserved.
-    assert!(
-        format!("{:?}", out).contains("rename-headline") || format!("{:?}", out).contains("Found")
-    );
+    assert!(format!("{out:?}").contains("rename-headline") || format!("{out:?}").contains("Found"));
 }
 
 #[test]

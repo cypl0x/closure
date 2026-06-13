@@ -1917,9 +1917,9 @@ pub fn highlight_org_source(src: &str) -> Vec<Line<'static>> {
 
 fn style_for(kind: closure_tree_sitter::HighlightKind) -> Style {
     match kind {
-        closure_tree_sitter::HighlightKind::Keyword => {
-            Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)
-        }
+        closure_tree_sitter::HighlightKind::Keyword => Style::default()
+            .fg(Color::Yellow)
+            .add_modifier(Modifier::BOLD),
         closure_tree_sitter::HighlightKind::Literal => Style::default().fg(Color::Green),
         closure_tree_sitter::HighlightKind::Comment => Style::default().fg(Color::DarkGray),
         closure_tree_sitter::HighlightKind::Identifier => Style::default().fg(Color::Cyan),

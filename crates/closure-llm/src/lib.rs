@@ -13,9 +13,11 @@
 
 use thiserror::Error;
 
-/// Special command the executor can handle to return a description of the
-/// current rendered UI state (mode, selection, visible headlines/source).
-/// This lets the LLM "see" what the user sees (vision + ROADMAP deep access).
+/// Special command the executor handles to describe the current UI.
+///
+/// Returns the rendered state (mode, selection, visible
+/// headlines/source) so the LLM can "see" what the user sees (vision
+/// + ROADMAP deep access).
 pub const VIEW_STATE_COMMAND: &str = "view-state";
 
 /// LLM provider trait.

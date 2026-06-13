@@ -74,22 +74,29 @@ fn vector_clock_or_lamport_preserves_causality() {
     let mut clock_a = closure_crdt::VectorClock::new("a");
     let mut clock_b = closure_crdt::VectorClock::new("b");
 
-    let doc_a = Document::load_str("* FromA\n:PROPERTIES:\n:ID: 01HXAAAAAAAAAAAAAAAAAAAAAA\n:END:\n")
-        .expect("load");
+    let doc_a =
+        Document::load_str("* FromA\n:PROPERTIES:\n:ID: 01HXAAAAAAAAAAAAAAAAAAAAAA\n:END:\n")
+            .expect("load");
     let r_a = closure_crdt::Replica::snapshot_with_clock(&doc_a, &mut clock_a, "a");
 
     // B happens 'after' (causally later in some sense; for test, bump B after A has acted).
     clock_b.bump("b"); // simulate B saw something after
-    let doc_b = Document::load_str("* FromB\n:PROPERTIES:\n:ID: 01HXAAAAAAAAAAAAAAAAAAAAAA\n:END:\n")
-        .expect("load");
+    let doc_b =
+        Document::load_str("* FromB\n:PROPERTIES:\n:ID: 01HXAAAAAAAAAAAAAAAAAAAAAA\n:END:\n")
+            .expect("load");
     let r_b = closure_crdt::Replica::snapshot_with_clock(&doc_b, &mut clock_b, "b");
 
-    let mut merged = r_a.clone();
+    let mut merged = r_a;
     merged.merge(&r_b);
 
     // Causality: B's counter for "b" should reflect it happened 'later' relative to the merge.
     // (The logical times and per-replica counters preserve the order.)
-    assert!(clock_b.get("b") >= clock_a.get("a") || merged.title_of(&BlockId::from_existing("01HXAAAAAAAAAAAAAAAAAAAAAA")).is_some());
+    assert!(
+        clock_b.get("b") >= clock_a.get("a")
+            || merged
+                .title_of(&BlockId::from_existing("01HXAAAAAAAAAAAAAAAAAAAAAA"))
+                .is_some()
+    );
     // The merge picked a winner without losing the 'later' event (property holds via the clock max).
 }
 
