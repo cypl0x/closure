@@ -84,10 +84,10 @@ reversible option, keep moving.
 ** DONE closure-record crate: append-only =journal.org= of executed commands (=record_commands= config, off by default); wired into =closure capture=, verified on/off
 ** DONE Kill-ring persistence: TUI records =kill=/=yank= entries with the subtree text to the journal when =record_commands= is on
 ** DONE =closure history [--grep]= reads/filters journal.org; the journal is itself a vault org file, so the TUI's search/headline-list already views it (replay deferred — see Decisions)
-* TODO Scheduled tasks (cron-compatible) [2/3]
+* DONE Scheduled tasks (cron-compatible) [3/3]
 ** DONE Jobs declared in org: =#+BEGIN_SRC closure-cron= block, =<cron-expr> <command line>= per line → =Vault::cron_jobs=
 ** DONE =closure cron <vault> <file> [--at "m h dom mo dw"]= runs due jobs via run_tool; deterministic clock injection. Daemon = system cron / shell loop (see Decisions)
-** TODO Agenda: =closure agenda= lists SCHEDULED/DEADLINE headlines for today/this week, sorted; TUI binding
+** DONE Agenda: =Vault::agenda=/=agenda_until= sort SCHEDULED/DEADLINE by date; =closure agenda [--until]= CLI + TUI =g a= overlay (=RET= jumps to file)
 * TODO Search at scale, pluggable [0/4]
 ** TODO Search backend trait: built-in fuzzy (default), ripgrep, fd as engines selected via =search_backend= config key; same results shape
 ** TODO Body full-text search in TUI (=S=): fuzzy over body lines, jump to file

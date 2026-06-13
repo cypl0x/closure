@@ -62,6 +62,7 @@ const DEFAULT_BINDINGS: &[(&str, &str)] = &[
     (":", "palette"),
     ("v", "db-view"),
     ("e", "block-list"),
+    ("g a", "agenda"),
 ];
 
 /// Emacs-style bindings: Ctrl/Meta chords, `C-x C-c` quits.
@@ -85,6 +86,7 @@ const EMACS_BINDINGS: &[(&str, &str)] = &[
     (":", "palette"),
     ("v", "db-view"),
     ("e", "block-list"),
+    ("g a", "agenda"),
 ];
 
 /// Vim-style bindings: modal navigation keys.
@@ -109,6 +111,7 @@ const VIM_BINDINGS: &[(&str, &str)] = &[
     (":", "palette"),
     ("v", "db-view"),
     ("e", "block-list"),
+    ("g a", "agenda"),
 ];
 
 /// Helix-style bindings: vim-like with `U` redo and `g e` end.
@@ -133,6 +136,7 @@ const HELIX_BINDINGS: &[(&str, &str)] = &[
     (":", "palette"),
     ("v", "db-view"),
     ("e", "block-list"),
+    ("g a", "agenda"),
 ];
 
 /// Notion-style bindings: arrows + slash command, minimal chords.
@@ -156,6 +160,7 @@ const NOTION_BINDINGS: &[(&str, &str)] = &[
     (":", "palette"),
     ("v", "db-view"),
     ("e", "block-list"),
+    ("g a", "agenda"),
 ];
 
 /// The `(chord, command)` table for an input mode. Every mode binds
@@ -221,6 +226,8 @@ pub enum AppMode {
     Blocks,
     /// Editing a headline's body in a multi-line buffer.
     EditBody,
+    /// Browsing the SCHEDULED/DEADLINE agenda with a cursor.
+    Agenda,
 }
 
 /// Elm-style application state for the terminal shell. Strokes go in
@@ -263,6 +270,7 @@ pub struct App {
     move_request: Option<(String, String)>,
     cut_request: Option<String>,
     paste_request: Option<String>,
+    agenda: Vec<(PathBuf, String)>,
 }
 
 impl App {
@@ -325,7 +333,19 @@ impl App {
             move_request: None,
             cut_request: None,
             paste_request: None,
+            agenda: Vec::new(),
         }
+    }
+
+    /// Provide the agenda rows as `(file, "date KIND title")`, sorted.
+    pub fn set_agenda(&mut self, agenda: Vec<(PathBuf, String)>) {
+        self.agenda = agenda;
+    }
+
+    /// The agenda row labels, in order.
+    #[must_use]
+    pub fn agenda_results(&self) -> Vec<&str> {
+        self.agenda.iter().map(|(_, label)| label.as_str()).collect()
     }
 
     /// Consume the block id whose subtree the user cut. The shell
@@ -695,6 +715,10 @@ impl App {
             self.handle_editbody_stroke(stroke);
             return;
         }
+        if self.mode == AppMode::Agenda {
+            self.handle_agenda_stroke(stroke);
+            return;
+        }
         if self.mode == AppMode::EditCell {
             self.handle_editcell_stroke(stroke);
             return;
@@ -827,6 +851,31 @@ impl App {
                 if let Some(id) = target {
                     self.delete_target = Some(id);
                     self.mode = AppMode::ConfirmDelete;
+                }
+            }
+            "ESC" | "q" | "h" | "DEL" => {
+                self.mode = AppMode::Browse;
+                self.result_cursor = 0;
+            }
+            _ => {}
+        }
+    }
+
+    fn handle_agenda_stroke(&mut self, stroke: &str) {
+        match stroke {
+            "j" | "<down>" => {
+                let last = self.agenda.len().saturating_sub(1);
+                self.result_cursor = (self.result_cursor + 1).min(last);
+            }
+            "k" | "<up>" => self.result_cursor = self.result_cursor.saturating_sub(1),
+            "RET" => {
+                let target = self.agenda.get(self.result_cursor).map(|(p, _)| p.clone());
+                if let Some(path) = target
+                    && let Some(i) = self.paths.iter().position(|p| *p == path)
+                {
+                    self.selected = Some(i);
+                    self.mode = AppMode::Browse;
+                    self.result_cursor = 0;
                 }
             }
             "ESC" | "q" | "h" | "DEL" => {
@@ -1229,6 +1278,10 @@ impl App {
                 self.mode = AppMode::Blocks;
                 self.result_cursor = 0;
             }
+            "agenda" => {
+                self.mode = AppMode::Agenda;
+                self.result_cursor = 0;
+            }
             "cycle-mode" => {
                 use closure_config::InputMode as M;
                 let next = match self.input_mode {
@@ -1412,6 +1465,18 @@ fn sync_app(app: &mut App, vault: &Vault) {
         }
     }
     app.set_blocks(blocks);
+    let agenda: Vec<(PathBuf, String)> = vault
+        .agenda()
+        .into_iter()
+        .map(|e| {
+            let kind = match e.kind {
+                closure_store::AgendaKind::Scheduled => "SCHEDULED",
+                closure_store::AgendaKind::Deadline => "DEADLINE",
+            };
+            (e.path, format!("{}  {kind:9}  {}", e.date, e.title))
+        })
+        .collect();
+    app.set_agenda(agenda);
 }
 
 fn run_loop(
@@ -1692,6 +1757,10 @@ fn overlay_content(app: &App) -> Option<(String, Vec<String>)> {
         AppMode::EditBody => Some((
             "edit body — C-s save, ESC cancel".to_owned(),
             app.buffer().lines().map(str::to_owned).collect(),
+        )),
+        AppMode::Agenda => Some((
+            "agenda (SCHEDULED / DEADLINE)".to_owned(),
+            app.agenda_results().iter().map(|s| (*s).to_owned()).collect(),
         )),
         AppMode::Blocks => Some((
             app.selected_path().map_or_else(

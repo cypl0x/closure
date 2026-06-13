@@ -45,6 +45,47 @@ pub struct CaptureTemplate {
     pub body: String,
 }
 
+/// Extract a `YYYY-MM-DD` date from an org timestamp such as
+/// `<2026-06-13 Fri>` or `[2026-06-13]`. `None` when no 10-char
+/// `dddd-dd-dd` prefix is present.
+fn agenda_date(timestamp: &str) -> Option<String> {
+    let body = timestamp.trim_start_matches(['<', '[']);
+    let date: String = body.chars().take(10).collect();
+    let ok = date.len() == 10
+        && date.as_bytes().iter().enumerate().all(|(i, &b)| {
+            if i == 4 || i == 7 {
+                b == b'-'
+            } else {
+                b.is_ascii_digit()
+            }
+        });
+    ok.then_some(date)
+}
+
+/// Which planning line produced an [`AgendaEntry`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AgendaKind {
+    /// `SCHEDULED:` planning line.
+    Scheduled,
+    /// `DEADLINE:` planning line.
+    Deadline,
+}
+
+/// One agenda row: a planned headline.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AgendaEntry {
+    /// File containing the headline.
+    pub path: PathBuf,
+    /// Stable block id.
+    pub id: String,
+    /// Headline title.
+    pub title: String,
+    /// Scheduled or deadline.
+    pub kind: AgendaKind,
+    /// `YYYY-MM-DD` extracted from the org timestamp.
+    pub date: String,
+}
+
 /// Errors while operating on a vault.
 #[derive(Debug, Error)]
 pub enum VaultError {
@@ -485,6 +526,44 @@ impl Vault {
             self.reindex_file(path);
         }
         Ok(out.stdout)
+    }
+
+    /// Collect every SCHEDULED/DEADLINE headline across the vault as
+    /// [`AgendaEntry`] rows, sorted by date then title. Dates are the
+    /// `YYYY-MM-DD` prefix of the org timestamp (lexical sort = date
+    /// order).
+    #[must_use]
+    pub fn agenda(&self) -> Vec<AgendaEntry> {
+        let mut out: Vec<AgendaEntry> = Vec::new();
+        for (path, doc) in self.iter() {
+            for h in doc.all_headlines() {
+                for (kind, ts) in [
+                    (AgendaKind::Scheduled, h.scheduled()),
+                    (AgendaKind::Deadline, h.deadline()),
+                ] {
+                    if let Some(date) = ts.and_then(agenda_date) {
+                        out.push(AgendaEntry {
+                            path: path.to_path_buf(),
+                            id: h.id().to_string(),
+                            title: h.title().to_owned(),
+                            kind,
+                            date,
+                        });
+                    }
+                }
+            }
+        }
+        out.sort_by(|a, b| a.date.cmp(&b.date).then_with(|| a.title.cmp(&b.title)));
+        out
+    }
+
+    /// Agenda entries on or before `date` (`YYYY-MM-DD`), sorted.
+    #[must_use]
+    pub fn agenda_until(&self, date: &str) -> Vec<AgendaEntry> {
+        self.agenda()
+            .into_iter()
+            .filter(|e| e.date.as_str() <= date)
+            .collect()
     }
 
     /// Parse the `#+BEGIN_SRC closure-cron` block of `path` into

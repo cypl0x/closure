@@ -69,6 +69,14 @@ enum Cmd {
         #[arg(long)]
         at: Option<String>,
     },
+    /// List SCHEDULED/DEADLINE headlines, sorted by date.
+    Agenda {
+        /// Path to the vault directory.
+        vault: PathBuf,
+        /// Only entries on or before this `YYYY-MM-DD`.
+        #[arg(long)]
+        until: Option<String>,
+    },
     /// Show the recorded command journal (journal.org).
     History {
         /// Path to the vault directory.
@@ -409,7 +417,7 @@ enum Cmd {
     },
     /// Print every TODO headline across the vault, sorted by
     /// priority (A first) then by file path.
-    Agenda {
+    TodoList {
         /// Path to the vault directory.
         vault: PathBuf,
     },
@@ -958,6 +966,7 @@ fn run(cmd: &Cmd) -> Result<(), String> {
             prefix,
             body,
         } => cmd_capture(vault, title, target, prefix, body),
+        Cmd::Agenda { vault, until } => cmd_agenda(vault, until.as_deref()),
         Cmd::Cron { vault, file, at } => cmd_cron(vault, file, at.as_deref()),
         Cmd::History { vault, grep } => cmd_history(vault, grep.as_deref()),
         Cmd::Tangle { vault, file } => cmd_tangle(vault, file),
@@ -1031,9 +1040,9 @@ fn run(cmd: &Cmd) -> Result<(), String> {
         Cmd::SubtreeStats { file, id } => cmd_subtree_stats(file, id),
         Cmd::DeleteFile { vault, file } => cmd_delete_file(vault, file),
         Cmd::RenameFile { vault, from, to } => cmd_rename_file(vault, from, to),
-        Cmd::Agenda { vault } => cmd_agenda(vault),
-        Cmd::Tags { vault } => cmd_tags(vault),
         Cmd::Todos { vault } => cmd_todos(vault),
+        Cmd::Tags { vault } => cmd_tags(vault),
+        Cmd::TodoList { vault } => cmd_todo_list(vault),
         Cmd::SetPlanning {
             file,
             id,
@@ -1160,6 +1169,19 @@ fn cmd_plugin(manifest: &Path, executable: &Path, args: &[String]) -> Result<(),
     let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
     let out = host.invoke(&command, &arg_refs).map_err(|e| format!("{e}"))?;
     print!("{out}");
+    Ok(())
+}
+
+fn cmd_agenda(vault: &Path, until: Option<&str>) -> Result<(), String> {
+    let v = Vault::open(vault).map_err(|e| format!("{e}"))?;
+    let entries = until.map_or_else(|| v.agenda(), |date| v.agenda_until(date));
+    for e in entries {
+        let kind = match e.kind {
+            closure_store::AgendaKind::Scheduled => "SCHEDULED",
+            closure_store::AgendaKind::Deadline => "DEADLINE",
+        };
+        println!("{}  {kind:9}  {}", e.date, e.title);
+    }
     Ok(())
 }
 
@@ -2474,7 +2496,7 @@ fn cmd_todos(vault: &Path) -> Result<(), String> {
     Ok(())
 }
 
-fn cmd_agenda(vault: &Path) -> Result<(), String> {
+fn cmd_todo_list(vault: &Path) -> Result<(), String> {
     let v = Vault::open(vault).map_err(|e| format!("{e}"))?;
     let mut items: Vec<(char, String, String, String, String)> = Vec::new();
     for (path, doc) in v.iter() {

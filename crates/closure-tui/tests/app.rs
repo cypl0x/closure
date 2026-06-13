@@ -1527,3 +1527,53 @@ fn cut_paste_on_empty_list_are_noop() {
     assert_eq!(app.take_cut_request(), None);
     assert_eq!(app.take_paste_request(), None);
 }
+
+// --- agenda view -----------------------------------------------------------
+
+fn app_with_agenda() -> App {
+    let mut app = App::new(paths());
+    app.set_agenda(vec![
+        (std::path::PathBuf::from("b.org"), "2026-06-13 SCHEDULED Near".to_owned()),
+        (std::path::PathBuf::from("a.org"), "2026-07-01 DEADLINE Far".to_owned()),
+    ]);
+    app
+}
+
+#[test]
+fn g_a_opens_agenda() {
+    let mut app = app_with_agenda();
+    app.handle_stroke("g");
+    app.handle_stroke("a");
+    assert_eq!(app.mode(), AppMode::Agenda);
+    assert_eq!(app.agenda_results().len(), 2);
+}
+
+#[test]
+fn agenda_cursor_and_ret_jump_to_file() {
+    let mut app = app_with_agenda();
+    app.handle_stroke("g");
+    app.handle_stroke("a");
+    app.handle_stroke("j");
+    app.handle_stroke("RET");
+    assert_eq!(app.mode(), AppMode::Browse);
+    assert_eq!(app.selected_path(), Some(std::path::Path::new("a.org")));
+}
+
+#[test]
+fn agenda_esc_closes() {
+    let mut app = app_with_agenda();
+    app.handle_stroke("g");
+    app.handle_stroke("a");
+    app.handle_stroke("ESC");
+    assert_eq!(app.mode(), AppMode::Browse);
+}
+
+#[test]
+fn agenda_empty_is_safe() {
+    let mut app = App::new(paths());
+    app.handle_stroke("g");
+    app.handle_stroke("a");
+    assert_eq!(app.mode(), AppMode::Agenda);
+    app.handle_stroke("RET");
+    assert_eq!(app.mode(), AppMode::Agenda);
+}
