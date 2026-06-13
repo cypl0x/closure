@@ -30,6 +30,7 @@ closure-input = { path = "../closure-input" }
 closure-whichkey = { path = "../closure-whichkey" }
 closure-eval = { path = "../closure-eval" }
 closure-shell-web = { path = "../closure-shell-web" }
+closure-shell-gpui = { path = "../closure-shell-gpui" }
 closure-sync = { path = "../closure-sync" }
 closure-llm = { path = "../closure-llm" }
 closure-mcp = { path = "../closure-mcp" }

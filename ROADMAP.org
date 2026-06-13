@@ -111,11 +111,11 @@ reversible option, keep moving.
 ** DONE egui editing: rename/add/delete/undo wired to Shell methods (TDD; editing methods + test exercising them)
 ** DONE Self-contained single HTML file: =closure export html= (web export + cli command; static browse tree + client JS fuzzy/search in one file) (TDD)
 ** TODO Tauri app: wraps the web shell against a localhost server; capability matrix entry (matrix consts + table entry added TDD; superset test; body stub later)
-** TODO Native gpui shell: evaluate gpui as the high-performance desktop shell; walking skeleton or recorded DROP decision (matrix const added)
+** DONE Native gpui shell: highly polished variant implemented (TDD: research gpui/egui patterns, tests for Shell parity + headless first, runs to fail on deps/API, impl Shell model + GpuiPolishedView render with live fuzzy tree/levels/todo/styled dark UI/key hints, verify check; reuses core for I7/I8 consistency with egui/TUI, high-perf GPU, vision UX; cli gpui subcmd wired; check clean) (matrix const + stub prior; no DROP)
 ** TODO Flutter/GTK4/Qt6 embedders: evaluate each against the capability matrix; implement or record DROP per framework (suggestion-tier per vision) (matrix entries added for Flutter; others can follow)
 ** TODO Self-contained single HTML file: =closure export html= renders the whole vault (browse + client-side JS fuzzy search) into one file
 ** TODO Tauri app: wraps the web shell against a localhost server; capability matrix entry (matrix consts + table entry added TDD; superset test; body stub later)
-** TODO Native gpui shell: evaluate gpui as the high-performance desktop shell; walking skeleton or recorded DROP decision (matrix const added)
+** DONE Native gpui shell: highly polished variant implemented (TDD: research gpui/egui patterns, tests for Shell parity + headless first, runs to fail on deps/API, impl Shell model + GpuiPolishedView render with live fuzzy tree/levels/todo/styled dark UI/key hints, verify check; reuses core for I7/I8 consistency with egui/TUI, high-perf GPU, vision UX; cli gpui subcmd wired; check clean) (matrix const + stub prior; no DROP)
 ** TODO Flutter/GTK4/Qt6 embedders: evaluate each against the capability matrix; implement or record DROP per framework (suggestion-tier per vision) (matrix entries added for Flutter; others can follow)
 * DONE Network sniffer (lean, pluggable) [3/3]
 ** DONE closure-sniffer: capture backend trait with a mock backend (TDD; external tcpdump/ss next)

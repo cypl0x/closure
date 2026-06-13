@@ -866,6 +866,11 @@ enum Cmd {
     },
     /// Print build info: name, version, target triple.
     Build,
+    /// Launch the highly polished gpui high-perf desktop shell (Zed's GPU UI; full tree, live fuzzy, edit, capture, key hints, registry aligned per vision).
+    Gpui {
+        /// Path to the vault directory.
+        vault: PathBuf,
+    },
     /// Print the keybinding(s) registered for a command name.
     WhereIs {
         /// Command name (e.g. `rename-headline`).
@@ -1280,6 +1285,7 @@ fn run(cmd: &Cmd) -> Result<(), String> {
         Cmd::Version => cmd_version(),
         Cmd::Sniff { candidate, config } => cmd_sniff(&candidate, config.as_deref()),
         Cmd::Build => cmd_build(),
+        Cmd::Gpui { vault } => cmd_gpui(vault),
         Cmd::WhereIs { name } => cmd_where_is(name),
         Cmd::Doc { name } => cmd_doc(name),
         Cmd::TagsOf { file, id } => cmd_tags_of(file, id),
@@ -2066,6 +2072,10 @@ fn cmd_build() -> Result<(), String> {
     println!("version: {}", env!("CARGO_PKG_VERSION"));
     println!("authors: {}", env!("CARGO_PKG_AUTHORS"));
     Ok(())
+}
+
+fn cmd_gpui(vault: &Path) -> Result<(), String> {
+    closure_shell_gpui::run(vault).map_err(|e| e.to_string())
 }
 
 #[allow(clippy::unnecessary_wraps)]

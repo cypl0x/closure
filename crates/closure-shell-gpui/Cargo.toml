@@ -12,4 +12,14 @@ authors.workspace = true
 workspace = true
 
 [dependencies]
-# gpui crate (when integrated); for now stub to satisfy workspace + matrix + vision eval.
+# Stable crates.io gpui (Zed's high-perf GPU UI) for hermetic builds (I10).
+# Pure core for custom polished tree/search/editor; avoids external git deps that break nix flake.
+gpui = "0.2"
+
+# For kernel-agnostic shell model (I7): reuse Vault + query + core commands (parity with egui).
+closure-core = { path = "../closure-core" }
+closure-store = { path = "../closure-store" }
+closure-query = { path = "../closure-query" }
+
+[dev-dependencies]
+tempfile = "3"
