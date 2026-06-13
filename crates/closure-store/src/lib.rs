@@ -375,6 +375,36 @@ impl Vault {
         Ok(out.stdout)
     }
 
+    /// Replace the content of the Nth doc-wide code block of `path`
+    /// (fences preserved, I1), persist, and reindex. Backs
+    /// org-edit-special.
+    ///
+    /// # Errors
+    ///
+    /// [`VaultError::UnknownId`] for unknown paths,
+    /// [`VaultError::Command`] for a missing block or a result that
+    /// fails to parse, [`VaultError::Io`] on write failures.
+    pub fn set_block_content(
+        &mut self,
+        path: &Path,
+        index: usize,
+        content: &str,
+    ) -> Result<(), VaultError> {
+        let doc = self
+            .documents
+            .get(path)
+            .ok_or_else(|| VaultError::UnknownId(path.display().to_string()))?;
+        let new_org = closure_org::rewrite_code_block_content(doc.org(), index, content)
+            .map_err(|e| VaultError::Command(e.to_string()))?;
+        let new_src = closure_org::print(&new_org);
+        let new_doc =
+            Document::load_str(&new_src).map_err(|_| VaultError::Parse { path: path.into() })?;
+        fs::write(path, new_doc.source())?;
+        self.documents.insert(path.to_path_buf(), new_doc);
+        self.reindex_file(path);
+        Ok(())
+    }
+
     /// Undo the most recent edit in `path`'s document (undo-tree,
     /// I3), persist, and reindex.
     ///

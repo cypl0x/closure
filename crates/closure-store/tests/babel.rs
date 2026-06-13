@@ -94,3 +94,26 @@ fn eval_block_reeval_replaces_results() {
     let disk = fs::read_to_string(file(&td)).expect("read");
     assert_eq!(disk.matches("#+RESULTS:").count(), 1, "no duplication");
 }
+
+#[test]
+fn set_block_content_replaces_and_persists() {
+    let td = write_vault(&[(
+        "a.org",
+        "* H\n#+BEGIN_SRC shell\necho old\n#+END_SRC\ntail\n",
+    )]);
+    let mut v = Vault::open(td.path()).expect("open");
+    v.set_block_content(&file(&td), 0, "echo new\n").expect("set");
+    let disk = fs::read_to_string(file(&td)).expect("read");
+    assert!(disk.contains("echo new\n"));
+    assert!(!disk.contains("echo old"));
+    assert!(disk.contains("tail\n"), "neighbour bytes survive (I1)");
+    let mem = v.document(&file(&td)).expect("doc").source();
+    assert_eq!(mem, disk);
+}
+
+#[test]
+fn set_block_content_out_of_range_errors() {
+    let td = write_vault(&[("a.org", "* no blocks\n")]);
+    let mut v = Vault::open(td.path()).expect("open");
+    assert!(v.set_block_content(&file(&td), 0, "x\n").is_err());
+}

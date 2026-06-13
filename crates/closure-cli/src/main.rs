@@ -57,6 +57,16 @@ enum Cmd {
         #[arg(long, default_value = "", allow_hyphen_values = true)]
         body: String,
     },
+    /// Edit one code block in $EDITOR (org-edit-special), writing the
+    /// edited content back span-preserving.
+    EditBlock {
+        /// Path to the vault directory.
+        vault: PathBuf,
+        /// Org file (relative to the vault root or absolute).
+        file: PathBuf,
+        /// 0-based document-wide code block index.
+        index: usize,
+    },
     /// Render an org-defined database view as an aligned table.
     View {
         /// Path to the vault directory.
@@ -920,6 +930,7 @@ fn run(cmd: &Cmd) -> Result<(), String> {
             prefix,
             body,
         } => cmd_capture(vault, title, target, prefix, body),
+        Cmd::EditBlock { vault, file, index } => cmd_edit_block(vault, file, *index),
         Cmd::View {
             vault,
             params,
@@ -1118,6 +1129,41 @@ fn cmd_plugin(manifest: &Path, executable: &Path, args: &[String]) -> Result<(),
     let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
     let out = host.invoke(&command, &arg_refs).map_err(|e| format!("{e}"))?;
     print!("{out}");
+    Ok(())
+}
+
+fn cmd_edit_block(vault: &Path, file: &Path, index: usize) -> Result<(), String> {
+    let mut v = Vault::open(vault).map_err(|e| format!("{e}"))?;
+    let abs = if file.is_absolute() {
+        file.to_path_buf()
+    } else {
+        vault.join(file)
+    };
+    let doc = v
+        .document(&abs)
+        .ok_or_else(|| format!("not in vault: {}", abs.display()))?;
+    let blocks = doc.org().code_blocks();
+    let cb = blocks
+        .get(index)
+        .and_then(|n| n.as_code_block())
+        .ok_or_else(|| format!("no code block #{index} in {}", abs.display()))?;
+    let ext = cb.language.unwrap_or("txt");
+    let tmp = std::env::temp_dir().join(format!("closure-edit-{}.{ext}", std::process::id()));
+    fs::write(&tmp, cb.content).map_err(|e| format!("write temp: {e}"))?;
+    let editor = std::env::var("EDITOR").unwrap_or_else(|_| "vi".to_owned());
+    let status = std::process::Command::new(&editor)
+        .arg(&tmp)
+        .status()
+        .map_err(|e| format!("spawn {editor}: {e}"))?;
+    if !status.success() {
+        let _ = fs::remove_file(&tmp);
+        return Err(format!("{editor} exited {}", status.code().unwrap_or(-1)));
+    }
+    let edited = fs::read_to_string(&tmp).map_err(|e| format!("read temp: {e}"))?;
+    let _ = fs::remove_file(&tmp);
+    v.set_block_content(&abs, index, &edited)
+        .map_err(|e| format!("{e}"))?;
+    println!("updated block #{index} in {}", abs.display());
     Ok(())
 }
 
