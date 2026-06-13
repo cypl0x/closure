@@ -22,6 +22,7 @@ members = [
   "crates/closure-acp",
   "crates/closure-a2a",
   "crates/closure-cron",
+  "crates/closure-record",
   "crates/closure-plugin-host",
   "crates/closure-sniffer",
   "crates/closure-shell-egui",

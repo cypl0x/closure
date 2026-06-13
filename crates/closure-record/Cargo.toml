@@ -1,0 +1,18 @@
+[package]
+name = "closure-record"
+description = "Append-only org journal recording executed commands (Layer 4). Off by default."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+thiserror.workspace = true
+
+[dev-dependencies]
+tempfile = "3"

@@ -376,6 +376,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "closure-record"
+version = "0.0.0"
+dependencies = [
+ "tempfile",
+ "thiserror 2.0.18",
+]
+
+[[package]]
 name = "closure-shell-egui"
 version = "0.0.0"
 dependencies = [
@@ -409,6 +417,7 @@ name = "closure-store"
 version = "0.0.0"
 dependencies = [
  "closure-core",
+ "closure-eval",
  "closure-org",
  "notify",
  "tempfile",
