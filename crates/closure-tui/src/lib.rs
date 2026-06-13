@@ -23,9 +23,12 @@ use crossterm::terminal::{
 use ratatui::Terminal;
 use ratatui::backend::CrosstermBackend;
 use ratatui::layout::{Constraint, Direction, Layout};
-use ratatui::style::{Modifier, Style};
+use ratatui::style::{Color, Modifier, Style};
+use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, List, ListItem, ListState, Paragraph};
 use thiserror::Error;
+
+use closure_tree_sitter::Highlighter;
 
 /// Shell errors.
 #[derive(Debug, Error)]
@@ -352,7 +355,10 @@ impl App {
     /// The agenda row labels, in order.
     #[must_use]
     pub fn agenda_results(&self) -> Vec<&str> {
-        self.agenda.iter().map(|(_, label)| label.as_str()).collect()
+        self.agenda
+            .iter()
+            .map(|(_, label)| label.as_str())
+            .collect()
     }
 
     /// Body-search hits matching the live query: `(file, "file:line:
@@ -858,10 +864,8 @@ impl App {
             "K" => {
                 let hs = self.file_headlines();
                 if self.result_cursor > 0
-                    && let (Some((_, prev)), Some((_, cur))) = (
-                        hs.get(self.result_cursor - 1),
-                        hs.get(self.result_cursor),
-                    )
+                    && let (Some((_, prev)), Some((_, cur))) =
+                        (hs.get(self.result_cursor - 1), hs.get(self.result_cursor))
                 {
                     self.move_request = Some(((*prev).to_owned(), (*cur).to_owned()));
                 }
@@ -1570,10 +1574,8 @@ fn run_loop(
     let mode = cfg
         .as_ref()
         .map_or(closure_config::InputMode::Doom, |c| c.input_mode);
-    let journal = closure_record::Journal::new(
-        vault.root(),
-        cfg.is_some_and(|c| c.record_commands),
-    );
+    let journal =
+        closure_record::Journal::new(vault.root(), cfg.is_some_and(|c| c.record_commands));
     let mut app = App::with_mode(Vec::new(), mode);
     sync_app(&mut app, vault);
 
@@ -1746,12 +1748,16 @@ fn draw(f: &mut ratatui::Frame<'_>, app: &App, vault: &Vault) {
     f.render_stateful_widget(files, chunks[0], &mut file_state);
 
     if app.mode() == AppMode::FileView {
-        let src = app.view_source().unwrap_or_default().to_owned();
+        let src = app.view_source().unwrap_or_default();
         let title = app
             .selected_path()
             .map_or_else(String::new, |p| p.display().to_string());
         let offset = u16::try_from(app.scroll()).unwrap_or(u16::MAX);
-        let view = Paragraph::new(src)
+        // Use the tree-sitter powered helper so code blocks inside the
+        // displayed source get real highlight spans (KeywordHighlighter
+        // by default, pluggable via the trait).
+        let highlighted = highlight_org_source(src);
+        let view = Paragraph::new(highlighted)
             .scroll((offset, 0))
             .block(Block::default().title(title).borders(Borders::ALL));
         f.render_widget(view, chunks[1]);
@@ -1771,6 +1777,112 @@ fn draw(f: &mut ratatui::Frame<'_>, app: &App, vault: &Vault) {
 
     if let Some(lines) = app.popup_lines() {
         draw_whichkey(f, area, app, lines);
+    }
+}
+
+/// Render helper: turn an org source into ratatui `Line`s with styled spans
+/// for code block contents (using the pluggable tree-sitter highlighter).
+///
+/// Delivers "TUI file view renders code blocks with TS-derived highlight spans".
+/// Light fence scan (no full org parse in shell required).
+#[must_use]
+#[allow(clippy::too_long_first_doc_paragraph)]
+pub fn highlight_org_source(src: &str) -> Vec<Line<'static>> {
+    let mut out: Vec<Line<'static>> = Vec::new();
+    let lines: Vec<&str> = src.lines().collect();
+    let mut i = 0;
+
+    while i < lines.len() {
+        let line = lines[i];
+        let trimmed = line.trim_start();
+
+        if trimmed.to_ascii_uppercase().starts_with("#+BEGIN_SRC") {
+            // fence line - plain
+            out.push(Line::from(Span::raw(line.to_owned())));
+            i += 1;
+
+            // parse lang from the begin line (after BEGIN_SRC)
+            let lang = trimmed
+                .split_whitespace()
+                .nth(1)
+                .unwrap_or("plain")
+                .to_ascii_lowercase();
+            let highlighter = closure_tree_sitter::KeywordHighlighter::for_language(&lang);
+
+            // accumulate + highlight block content until #+END_SRC
+            let mut block_content = String::new();
+
+            while i < lines.len() {
+                let cl = lines[i];
+                let ct = cl.trim_start().to_ascii_uppercase();
+                if ct.starts_with("#+END_SRC") {
+                    break;
+                }
+                if !block_content.is_empty() {
+                    block_content.push('\n');
+                }
+                block_content.push_str(cl);
+                i += 1;
+            }
+
+            // highlight the whole content (guarantees the contract)
+            let hl = highlighter.highlight(&block_content);
+
+            // For output, split the highlighted content back to original lines
+            // and build styled Spans. (Simple per-char map for the ranges.)
+            let content_lines: Vec<&str> = block_content.lines().collect();
+            let mut hl_cursor = 0usize;
+            for &cl in &content_lines {
+                let mut line_spans: Vec<Span<'static>> = Vec::new();
+                let mut pos = 0usize;
+                while pos < cl.len() {
+                    // find if current pos is covered by a highlight range (relative to block_content)
+                    let abs = hl_cursor + pos;
+                    if let Some(h) = hl.iter().find(|h| abs >= h.start && abs < h.end) {
+                        let end_in_line = (h.end - hl_cursor).min(cl.len());
+                        let piece = &cl[pos..end_in_line];
+                        let style = style_for(h.kind);
+                        line_spans.push(Span::styled(piece.to_owned(), style));
+                        pos = end_in_line;
+                    } else {
+                        // plain char
+                        let end = pos + 1;
+                        line_spans.push(Span::raw(cl[pos..end].to_owned()));
+                        pos = end;
+                    }
+                }
+                out.push(Line::from(line_spans));
+                hl_cursor += cl.len() + 1; // + newline
+            }
+
+            // the end fence (if we stopped on it)
+            if i < lines.len() {
+                out.push(Line::from(Span::raw(lines[i].to_owned())));
+                i += 1;
+            }
+            continue;
+        }
+
+        // normal line
+        out.push(Line::from(Span::raw(line.to_owned())));
+        i += 1;
+    }
+
+    if out.is_empty() && !src.is_empty() {
+        out.push(Line::from(Span::raw(src.to_owned())));
+    }
+    out
+}
+
+fn style_for(kind: closure_tree_sitter::HighlightKind) -> Style {
+    match kind {
+        closure_tree_sitter::HighlightKind::Keyword => {
+            Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)
+        }
+        closure_tree_sitter::HighlightKind::Literal => Style::default().fg(Color::Green),
+        closure_tree_sitter::HighlightKind::Comment => Style::default().fg(Color::DarkGray),
+        closure_tree_sitter::HighlightKind::Identifier => Style::default().fg(Color::Cyan),
+        _ => Style::default(),
     }
 }
 
@@ -1843,7 +1955,10 @@ fn overlay_content(app: &App) -> Option<(String, Vec<String>)> {
         )),
         AppMode::Agenda => Some((
             "agenda (SCHEDULED / DEADLINE)".to_owned(),
-            app.agenda_results().iter().map(|s| (*s).to_owned()).collect(),
+            app.agenda_results()
+                .iter()
+                .map(|s| (*s).to_owned())
+                .collect(),
         )),
         AppMode::BodySearch => Some((
             format!("body search: {}", app.query()),

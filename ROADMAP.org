@@ -97,9 +97,10 @@ reversible option, keep moving.
 ** DONE closure-markdown: roundtrip subset (headings, lists, code fences), =fixtures/md/= golden corpus (I1 for md)
 ** DONE =closure export-md= / =closure import-md=: org↔md line conversion; dropped drawers/planning warned on stderr
 ** DONE Search backends (=closure search=) cover =.md= files read-only alongside =.org=; md backlinks deferred (no =:ID:= in md, see Decisions)
-* TODO Tree-sitter support [1/2]
+* DONE Tree-sitter support [2/2]
 ** DONE closure-tree-sitter: KeywordHighlighter (dep-free pluggable default) + trait contract (TDD)
-** TODO TUI file view renders code blocks with TS-derived highlight spans
+** DONE TUI file view renders code blocks with TS-derived highlight spans (TDD)
+* TODO Config validation (CUE-inspired) [0/3]
 * TODO Config validation (CUE-inspired) [0/3]
 * TODO Config validation (CUE-inspired) [0/3]
 ** TODO Validators per key with line/column errors at parse time (unknown keys already error); =closure check-config <vault>= command

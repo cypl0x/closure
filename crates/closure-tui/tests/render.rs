@@ -72,3 +72,25 @@ fn headline_lines_empty_doc_is_empty() {
     let rendered = doc.as_ref().map(headline_lines);
     assert_eq!(rendered.unwrap_or_default(), String::new());
 }
+
+// New test written first (TDD) for the tree-sitter TUI integration cycle.
+// It exercises the helper that produces ratatui-styled lines for a source
+// containing a code block (using the pluggable KeywordHighlighter from
+// closure-tree-sitter). The FileView render will be wired to use it.
+#[test]
+fn file_view_with_code_block_produces_styled_spans() {
+    // Small self-contained block content (equivalent to the rust fixture inner).
+    // Avoids fragile relative include_str from the tests/ subdirectory.
+    let src = "#+BEGIN_SRC rust\nfn main() {\n    println!(\"hi\");\n}\n#+END_SRC\n";
+    let lines = closure_tui::highlight_org_source(src);
+    // Must produce lines, and the helper must have applied styling to
+    // keywords inside the detected block content (e.g. "fn").
+    assert!(!lines.is_empty());
+    let has_styled_keyword = lines.iter().any(|line| {
+        line.spans.iter().any(|sp| {
+            (sp.style.add_modifier != ratatui::style::Modifier::empty() || sp.style.fg.is_some())
+                && sp.content.contains("fn")
+        })
+    });
+    assert!(has_styled_keyword, "expected at least one styled keyword span (e.g. 'fn') from the highlighter in the rendered lines");
+}

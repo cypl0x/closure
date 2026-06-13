@@ -20,6 +20,7 @@ closure-org = { path = "../closure-org" }
 closure-query = { path = "../closure-query" }
 closure-store = { path = "../closure-store" }
 closure-undo = { path = "../closure-undo" }
+closure-tree-sitter = { path = "../closure-tree-sitter" }
 crossterm.workspace = true
 ratatui.workspace = true
 thiserror.workspace = true
