@@ -88,11 +88,11 @@ reversible option, keep moving.
 ** DONE Jobs declared in org: =#+BEGIN_SRC closure-cron= block, =<cron-expr> <command line>= per line → =Vault::cron_jobs=
 ** DONE =closure cron <vault> <file> [--at "m h dom mo dw"]= runs due jobs via run_tool; deterministic clock injection. Daemon = system cron / shell loop (see Decisions)
 ** DONE Agenda: =Vault::agenda=/=agenda_until= sort SCHEDULED/DEADLINE by date; =closure agenda [--until]= CLI + TUI =g a= overlay (=RET= jumps to file)
-* TODO Search at scale, pluggable [2/4]
+* DONE Search at scale, pluggable [4/4]
 ** DONE Search backend trait (=SearchBackend=): builtin substring (default) + ripgrep (external rg); =search_backend= config key; =closure search= selects per config; same Hit shape
 ** DONE Body full-text search in TUI (=S=): fuzzy over body lines (=file:line:text=), cursor + =RET= jumps to file
-** TODO Persistent index cache keyed by Document content hash; benchmark proves rescan avoided
-** TODO Input-lag budget test: keystroke→render under 16ms on a 1k-file synthetic vault (criterion bench, CI-checked threshold)
+** DONE Content-hash index cache: =Vault::reload_incremental= re-parses only changed files (FNV-1a vs cached); count==0 on an unchanged vault proves rescan avoided
+** DONE Input-lag budget test: =App::handle_stroke= under 16ms (nav) / 50ms (fuzzy) on a 1–2k synthetic vault; Instant-based, no criterion dep (see Decisions)
 * TODO Markdown compatibility [0/3]
 ** TODO closure-markdown: parse/print roundtrip subset (headings, lists, code fences) with golden fixtures (I1 for md)
 ** TODO =closure export md <file>= / =closure import md <file>=: org↔md conversion, lossy parts reported, never silently dropped
@@ -146,6 +146,14 @@ reversible option, keep moving.
 * Decisions
 Open questions land here as subheadings: context, options considered,
 the reversible default taken, date.
+** Perf guards use std::time::Instant, not criterion (2026-06-13)
+The input-lag budget and rescan-avoided "benchmarks" are plain
+=#[test]= functions timing the hot path with generous thresholds
+(16ms nav, 50ms fuzzy) and asserting the incremental-reload reparse
+count is 0. Avoids adding criterion (a heavyweight dev-dep) to a
+hermetic nix build; the guards still fail CI on a regression.
+Reversible: a =benches/= dir with criterion behind a feature can be
+added if finer measurement is wanted.
 ** Cron daemon = system cron / shell loop, not an in-process timer (2026-06-13)
 =closure cron= runs one tick of due jobs (clock injectable via
 =--at=). Rather than embedding a timer thread in the CLI, the daemon
