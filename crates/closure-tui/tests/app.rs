@@ -1240,3 +1240,68 @@ fn db_view_on_empty_rows_is_safe() {
     app.handle_stroke("RET");
     assert_eq!(app.mode(), AppMode::DbView, "no row to edit");
 }
+
+// --- code block evaluation -------------------------------------------------
+
+fn app_with_blocks() -> App {
+    let mut app = App::new(paths());
+    app.set_blocks(vec![
+        (std::path::PathBuf::from("a.org"), "shell: echo one".to_owned()),
+        (std::path::PathBuf::from("a.org"), "python: print(2)".to_owned()),
+        (std::path::PathBuf::from("b.org"), "shell: ls".to_owned()),
+    ]);
+    app
+}
+
+#[test]
+fn e_enters_blocks_mode() {
+    let mut app = app_with_blocks();
+    app.handle_stroke("e");
+    assert_eq!(app.mode(), AppMode::Blocks);
+}
+
+#[test]
+fn block_list_shows_only_selected_files_blocks() {
+    let mut app = app_with_blocks();
+    app.handle_stroke("e");
+    assert_eq!(
+        app.block_results(),
+        vec!["shell: echo one", "python: print(2)"]
+    );
+    app.handle_stroke("ESC");
+    app.handle_stroke("j");
+    app.handle_stroke("e");
+    assert_eq!(app.block_results(), vec!["shell: ls"]);
+}
+
+#[test]
+fn block_cursor_and_ret_emit_eval_request_once() {
+    let mut app = app_with_blocks();
+    app.handle_stroke("e");
+    app.handle_stroke("j");
+    app.handle_stroke("RET");
+    assert_eq!(app.mode(), AppMode::Browse);
+    assert_eq!(
+        app.take_eval_request(),
+        Some((std::path::PathBuf::from("a.org"), 1))
+    );
+    assert_eq!(app.take_eval_request(), None);
+}
+
+#[test]
+fn blocks_esc_closes_without_request() {
+    let mut app = app_with_blocks();
+    app.handle_stroke("e");
+    app.handle_stroke("ESC");
+    assert_eq!(app.mode(), AppMode::Browse);
+    assert_eq!(app.take_eval_request(), None);
+}
+
+#[test]
+fn blocks_ret_on_empty_list_is_safe() {
+    let mut app = App::new(paths());
+    app.handle_stroke("e");
+    app.handle_stroke("RET");
+    assert_eq!(app.mode(), AppMode::Blocks, "nothing to run");
+    assert_eq!(app.take_eval_request(), None);
+}

@@ -61,6 +61,7 @@ const DEFAULT_BINDINGS: &[(&str, &str)] = &[
     ("M", "cycle-mode"),
     (":", "palette"),
     ("v", "db-view"),
+    ("e", "block-list"),
 ];
 
 /// Emacs-style bindings: Ctrl/Meta chords, `C-x C-c` quits.
@@ -83,6 +84,7 @@ const EMACS_BINDINGS: &[(&str, &str)] = &[
     ("C-c m", "cycle-mode"),
     (":", "palette"),
     ("v", "db-view"),
+    ("e", "block-list"),
 ];
 
 /// Vim-style bindings: modal navigation keys.
@@ -106,6 +108,7 @@ const VIM_BINDINGS: &[(&str, &str)] = &[
     ("M", "cycle-mode"),
     (":", "palette"),
     ("v", "db-view"),
+    ("e", "block-list"),
 ];
 
 /// Helix-style bindings: vim-like with `U` redo and `g e` end.
@@ -129,6 +132,7 @@ const HELIX_BINDINGS: &[(&str, &str)] = &[
     ("M", "cycle-mode"),
     (":", "palette"),
     ("v", "db-view"),
+    ("e", "block-list"),
 ];
 
 /// Notion-style bindings: arrows + slash command, minimal chords.
@@ -150,6 +154,7 @@ const NOTION_BINDINGS: &[(&str, &str)] = &[
     ("M", "cycle-mode"),
     (":", "palette"),
     ("v", "db-view"),
+    ("e", "block-list"),
 ];
 
 /// The `(chord, command)` table for an input mode. Every mode binds
@@ -209,6 +214,8 @@ pub enum AppMode {
     DbView,
     /// Typing `KEY=VALUE` to set a property on the cursor row.
     EditCell,
+    /// Picking a code block of the selected file to evaluate.
+    Blocks,
 }
 
 /// Elm-style application state for the terminal shell. Strokes go in
@@ -242,6 +249,8 @@ pub struct App {
     view_rows: Vec<(String, Vec<String>)>,
     cell_target: Option<String>,
     property_request: Option<(String, String, String)>,
+    blocks: Vec<(PathBuf, String)>,
+    eval_request: Option<(PathBuf, usize)>,
 }
 
 impl App {
@@ -295,7 +304,34 @@ impl App {
             view_rows: Vec::new(),
             cell_target: None,
             property_request: None,
+            blocks: Vec::new(),
+            eval_request: None,
         }
+    }
+
+    /// Provide the `(file, label)` code-block records listed by the
+    /// block picker, in per-file source order.
+    pub fn set_blocks(&mut self, blocks: Vec<(PathBuf, String)>) {
+        self.blocks = blocks;
+    }
+
+    /// Labels of the selected file's code blocks, in source order.
+    #[must_use]
+    pub fn block_results(&self) -> Vec<&str> {
+        let Some(sel) = self.selected_path() else {
+            return Vec::new();
+        };
+        self.blocks
+            .iter()
+            .filter(|(p, _)| p.as_path() == sel)
+            .map(|(_, label)| label.as_str())
+            .collect()
+    }
+
+    /// Consume the `(file, block index)` evaluation confirmed by the
+    /// user, if any. The shell performs the vault write.
+    pub const fn take_eval_request(&mut self) -> Option<(PathBuf, usize)> {
+        self.eval_request.take()
     }
 
     /// Provide the database view rows as `(block id, cells)` pairs.
@@ -595,6 +631,10 @@ impl App {
             self.handle_dbview_stroke(stroke);
             return;
         }
+        if self.mode == AppMode::Blocks {
+            self.handle_blocks_stroke(stroke);
+            return;
+        }
         if self.mode == AppMode::EditCell {
             self.handle_editcell_stroke(stroke);
             return;
@@ -675,6 +715,32 @@ impl App {
                 if let Some(id) = target {
                     self.delete_target = Some(id);
                     self.mode = AppMode::ConfirmDelete;
+                }
+            }
+            "ESC" | "q" | "h" | "DEL" => {
+                self.mode = AppMode::Browse;
+                self.result_cursor = 0;
+            }
+            _ => {}
+        }
+    }
+
+    fn handle_blocks_stroke(&mut self, stroke: &str) {
+        match stroke {
+            "j" | "<down>" => {
+                let last = self.block_results().len().saturating_sub(1);
+                self.result_cursor = (self.result_cursor + 1).min(last);
+            }
+            "k" | "<up>" => self.result_cursor = self.result_cursor.saturating_sub(1),
+            "RET" => {
+                let target = self
+                    .selected_path()
+                    .filter(|_| !self.block_results().is_empty())
+                    .map(Path::to_path_buf);
+                if let Some(path) = target {
+                    self.eval_request = Some((path, self.result_cursor));
+                    self.mode = AppMode::Browse;
+                    self.result_cursor = 0;
                 }
             }
             "ESC" | "q" | "h" | "DEL" => {
@@ -1019,6 +1085,10 @@ impl App {
                 self.mode = AppMode::DbView;
                 self.result_cursor = 0;
             }
+            "block-list" => {
+                self.mode = AppMode::Blocks;
+                self.result_cursor = 0;
+            }
             "cycle-mode" => {
                 use closure_config::InputMode as M;
                 let next = match self.input_mode {
@@ -1177,6 +1247,23 @@ fn sync_app(app: &mut App, vault: &Vault) {
         })
         .collect();
     app.set_view_rows(rows);
+    let mut blocks: Vec<(PathBuf, String)> = Vec::new();
+    for (path, doc) in vault.iter() {
+        for (i, n) in doc.org().code_blocks().iter().enumerate() {
+            if let Some(cb) = n.as_code_block() {
+                let name = doc
+                    .org()
+                    .code_block_name(i)
+                    .map_or_else(String::new, |n| format!(" ({n})"));
+                let first = cb.content.lines().next().unwrap_or("");
+                blocks.push((
+                    path.to_path_buf(),
+                    format!("{}{name}: {first}", cb.language.unwrap_or("shell")),
+                ));
+            }
+        }
+    }
+    app.set_blocks(blocks);
 }
 
 fn run_loop(
@@ -1225,6 +1312,13 @@ fn run_loop(
                     .remove_subtree(&closure_core::BlockId::from_existing(&id))
                     .map_err(|e| TuiError::Vault(e.to_string()))?;
                 sync_app(&mut app, vault);
+            }
+            if let Some((path, index)) = app.take_eval_request() {
+                match vault.eval_block(&path, index) {
+                    Ok(_) => sync_app(&mut app, vault),
+                    Err(closure_store::VaultError::Command(_)) => {}
+                    Err(e) => return Err(TuiError::Vault(e.to_string())),
+                }
             }
             if let Some((id, key, value)) = app.take_property_request() {
                 vault
@@ -1366,6 +1460,16 @@ fn overlay_content(app: &App) -> Option<(String, Vec<String>)> {
             app.file_headlines()
                 .iter()
                 .map(|(t, id)| format!("{t}    [{id}]"))
+                .collect(),
+        )),
+        AppMode::Blocks => Some((
+            app.selected_path().map_or_else(
+                || "code blocks".to_owned(),
+                |p| format!("code blocks: {}", p.display()),
+            ),
+            app.block_results()
+                .iter()
+                .map(|s| (*s).to_owned())
                 .collect(),
         )),
         AppMode::Browse | AppMode::FileView => None,

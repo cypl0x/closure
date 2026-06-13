@@ -68,10 +68,10 @@ reversible option, keep moving.
 ** DONE LSP basics: =document_symbols= (headline name/line/level) + =definition_of= for id: links
 * DONE Plugin host [1/1]
 ** DONE Plugin executables (native or =.wasm= via external wasmtime) register a manifest-declared command; =closure plugin <manifest> <exe> [args]= invokes it
-* TODO Org-babel & literate programming [2/5]
+* TODO Org-babel & literate programming [3/5]
 ** DONE Execute code block at point: =closure eval <file> --block <n|name>= runs one block (doc-wide, incl. under headlines), writes =#+RESULTS:= back span-preserving (I1)
 ** DONE Header args subset: =:results output/silent=, =:var x=...= (shell/python preludes), named blocks (=#+NAME:=)
-** TODO TUI: =e= on a code block in file view evaluates it and refreshes; result visible inline
+** DONE TUI: =e= opens the selected file's code-block picker; =RET= evaluates via =Vault::eval_block=, =#+RESULTS:= attached and the view refreshes
 ** TODO org-edit-special: =closure edit-block <file> <n>= extracts a block to a temp file, =$EDITOR= edits, writes back span-preserving; TUI binding
 ** TODO Tangle (literate programming): =closure tangle <file>= writes =:tangle <path>= blocks to their targets; golden fixtures
 * TODO Notion-default editing mode for real [0/5]
