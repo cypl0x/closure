@@ -171,6 +171,29 @@ pub struct Row {
     pub todo: Option<String>,
 }
 
+/// Full preview of the selected headline for the detail pane.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct Detail {
+    /// Headline title.
+    pub title: String,
+    /// TODO keyword, if any.
+    pub todo: Option<String>,
+    /// Priority letter, if any.
+    pub priority: Option<char>,
+    /// Tags, in order.
+    pub tags: Vec<String>,
+    /// `SCHEDULED:` timestamp, if any.
+    pub scheduled: Option<String>,
+    /// `DEADLINE:` timestamp, if any.
+    pub deadline: Option<String>,
+    /// `:KEY: value` property pairs.
+    pub properties: Vec<(String, String)>,
+    /// Body text below the headline.
+    pub body: String,
+    /// File the headline lives in (display path).
+    pub path: String,
+}
+
 /// Which input surface the gpui shell is on.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum GpuiMode {
@@ -303,6 +326,27 @@ impl GpuiApp {
             scored.sort_by_key(|(sc, _)| std::cmp::Reverse(*sc));
         }
         scored.into_iter().map(|(_, r)| r).collect()
+    }
+
+    /// Full preview of the currently-selected headline (resolved by
+    /// its stable id through the vault index), for the detail pane.
+    #[must_use]
+    pub fn detail(&self, shell: &Shell) -> Option<Detail> {
+        let rows = self.rows(shell);
+        let row = rows.get(self.selected)?;
+        let bid = closure_core::BlockId::from_existing(&row.id);
+        let (h, path) = shell.vault.find_by_id(&bid)?;
+        Some(Detail {
+            title: h.title().to_owned(),
+            todo: h.todo().map(ToOwned::to_owned),
+            priority: h.priority(),
+            tags: h.tags().to_vec(),
+            scheduled: h.scheduled().map(ToOwned::to_owned),
+            deadline: h.deadline().map(ToOwned::to_owned),
+            properties: h.properties().to_vec(),
+            body: h.body_text().to_owned(),
+            path: path.display().to_string(),
+        })
     }
 
     /// Feed one key. `key` is the gpui key name (`"a"`, `"enter"`,
@@ -542,6 +586,76 @@ impl GpuiView {
         }
         cx.notify();
     }
+
+    /// Right-hand detail/preview pane for the selected headline.
+    #[allow(clippy::unreadable_literal)]
+    fn detail_pane(&self) -> impl IntoElement {
+        let fg = rgb(0xc0caf5);
+        let dim = rgb(0x565f89);
+        let accent = rgb(0x7aa2f7);
+        let todo_col = rgb(0xf7768e);
+        let pane = div().flex().flex_col().flex_grow().px_3().py_2().gap_2();
+        let Some(d) = self.app.detail(&self.shell) else {
+            return pane.child(div().text_color(dim).child("no selection"));
+        };
+        let props = d
+            .properties
+            .iter()
+            .map(|(k, v)| format!(":{k}: {v}"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        pane.child(
+            div()
+                .flex()
+                .flex_col()
+                .gap_1()
+                .child(div().text_color(accent).text_lg().child(d.title.clone()))
+                .child(
+                    div()
+                        .text_color(dim)
+                        .text_size(px(12.0))
+                        .child(meta_line(&d)),
+                )
+                .child(
+                    div()
+                        .text_color(dim)
+                        .text_size(px(11.0))
+                        .child(d.path.clone()),
+                )
+                .child(div().text_color(todo_col).text_size(px(12.0)).child(props))
+                .child(
+                    div()
+                        .mt_2()
+                        .text_color(fg)
+                        .text_size(px(13.0))
+                        .child(d.body.clone()),
+                ),
+        )
+    }
+}
+
+/// One-line metadata summary (TODO / priority / tags / planning) for
+/// the detail pane.
+#[cfg(feature = "gpui")]
+fn meta_line(d: &Detail) -> String {
+    use std::fmt::Write as _;
+    let mut meta = String::new();
+    if let Some(t) = &d.todo {
+        let _ = write!(meta, "{t} ");
+    }
+    if let Some(p) = d.priority {
+        let _ = write!(meta, "[#{p}] ");
+    }
+    if !d.tags.is_empty() {
+        let _ = write!(meta, ":{}: ", d.tags.join(":"));
+    }
+    if let Some(s) = &d.scheduled {
+        let _ = write!(meta, "SCHEDULED {s} ");
+    }
+    if let Some(s) = &d.deadline {
+        let _ = write!(meta, "DEADLINE {s} ");
+    }
+    meta
 }
 
 #[cfg(feature = "gpui")]
@@ -565,27 +679,36 @@ impl Render for GpuiView {
             GpuiMode::Browse => format!("⌕ {}▏", self.app.query()),
         };
 
-        let list =
-            div()
-                .flex()
-                .flex_col()
-                .flex_grow()
-                .gap_0()
-                .children(rows.into_iter().enumerate().map(|(i, row)| {
-                    let mut line = div()
-                        .flex()
-                        .px_2()
-                        .py_1()
-                        .text_size(px(14.0))
-                        .bg(if i == selected { sel } else { bg });
-                    let indent = "  ".repeat(usize::from(row.level).saturating_sub(1));
-                    if let Some(todo) = &row.todo {
-                        line = line.child(div().text_color(todo_col).mr_2().child(todo.clone()));
-                    }
-                    line.child(format!("{indent}{}", row.title))
-                        .child(div().flex_grow())
-                        .child(div().text_color(dim).text_size(px(11.0)).child(row.path))
-                }));
+        let list = div()
+            .flex()
+            .flex_col()
+            .w(px(380.0))
+            .min_w(px(280.0))
+            .gap_0()
+            .border_r_1()
+            .border_color(rgb(0x2a2e42))
+            .children(rows.into_iter().enumerate().map(|(i, row)| {
+                let mut line = div()
+                    .flex()
+                    .px_2()
+                    .py_1()
+                    .text_size(px(14.0))
+                    .bg(if i == selected { sel } else { bg });
+                let indent = "  ".repeat(usize::from(row.level).saturating_sub(1));
+                if let Some(todo) = &row.todo {
+                    line = line.child(div().text_color(todo_col).mr_2().child(todo.clone()));
+                }
+                line.child(format!("{indent}{}", row.title))
+                    .child(div().flex_grow())
+                    .child(div().text_color(dim).text_size(px(11.0)).child(row.path))
+            }));
+
+        let body_row = div()
+            .flex()
+            .flex_row()
+            .flex_grow()
+            .child(list)
+            .child(self.detail_pane());
 
         div()
             .key_context("ClosureGpui")
@@ -613,7 +736,7 @@ impl Render for GpuiView {
                     .text_color(fg)
                     .child(header),
             )
-            .child(list)
+            .child(body_row)
             .child(
                 div()
                     .px_2()

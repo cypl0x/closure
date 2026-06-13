@@ -263,3 +263,77 @@ fn ctrl_r_on_empty_list_is_noop() {
     app.on_key(&mut sh, "r", true, None);
     assert_eq!(app.mode(), GpuiMode::Browse, "nothing to rename");
 }
+
+// --- detail / preview pane (vision: a real browser, not just a list) -------
+
+fn rich_shell() -> (TempDir, Shell) {
+    // closure-org attaches a :PROPERTIES: drawer or a planning line
+    // when it immediately follows the headline (one or the other), so
+    // the fixture keeps the property-bearing and planning-bearing
+    // headlines separate.
+    let dir = tempfile::tempdir().expect("tmp");
+    fs::write(
+        dir.path().join("notes.org"),
+        "* TODO [#A] Ship parser :work:urgent:\n\
+         :PROPERTIES:\n:EFFORT: 3d\n:END:\n\
+         body line one\nbody line two\n\
+         * Plain headline\n\
+         * DONE Review\nSCHEDULED: <2026-06-20>\n",
+    )
+    .expect("write");
+    let v = Vault::open(dir.path()).expect("open");
+    (dir, Shell::new(v))
+}
+
+#[test]
+fn detail_of_selected_carries_full_headline() {
+    let (_d, sh) = rich_shell();
+    let app = GpuiApp::new();
+    let d = app.detail(&sh).expect("a row is selected");
+    assert_eq!(d.title, "Ship parser");
+    assert_eq!(d.todo.as_deref(), Some("TODO"));
+    assert_eq!(d.priority, Some('A'));
+    assert_eq!(d.tags, vec!["work".to_owned(), "urgent".to_owned()]);
+    assert!(d.properties.iter().any(|(k, v)| k == "EFFORT" && v == "3d"));
+    assert!(d.body.contains("body line one"));
+    assert!(d.body.contains("body line two"));
+}
+
+#[test]
+fn detail_surfaces_planning() {
+    let (_d, mut sh) = rich_shell();
+    let mut app = GpuiApp::new();
+    typ(&mut app, &mut sh, "Review");
+    let d = app.detail(&sh).expect("detail");
+    assert_eq!(d.todo.as_deref(), Some("DONE"));
+    assert_eq!(d.scheduled.as_deref(), Some("<2026-06-20>"));
+}
+
+#[test]
+fn detail_follows_selection() {
+    let (_d, mut sh) = rich_shell();
+    let mut app = GpuiApp::new();
+    app.on_key(&mut sh, "down", false, None);
+    let d = app.detail(&sh).expect("detail");
+    assert_eq!(d.title, "Plain headline");
+    assert_eq!(d.todo, None);
+    assert!(d.tags.is_empty());
+}
+
+#[test]
+fn detail_none_on_empty_vault() {
+    let dir = tempfile::tempdir().expect("tmp");
+    let v = Vault::open(dir.path()).expect("open");
+    let sh = Shell::new(v);
+    let app = GpuiApp::new();
+    assert!(app.detail(&sh).is_none());
+}
+
+#[test]
+fn detail_tracks_fuzzy_selection() {
+    let (_d, mut sh) = rich_shell();
+    let mut app = GpuiApp::new();
+    typ(&mut app, &mut sh, "plain");
+    let d = app.detail(&sh).expect("detail");
+    assert_eq!(d.title, "Plain headline");
+}
