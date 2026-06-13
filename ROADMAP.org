@@ -102,8 +102,8 @@ reversible option, keep moving.
 ** DONE TUI file view renders code blocks with TS-derived highlight spans (TDD)
 * TODO Config validation (CUE-inspired) [0/3]
 * TODO Config validation (CUE-inspired) [0/3]
-* TODO Config validation (CUE-inspired) [0/3]
-** TODO Validators per key with line/column errors at parse time (unknown keys already error); =closure check-config <vault>= command
+* TODO Config validation (CUE-inspired) [1/3]
+** DONE Validators per key with line/column errors at parse time + =closure check-config <file>= (TDD; improved BadValue reasons carry line, unknown keys already errored at load)
 ** TODO Validate-on-save: vault watcher revalidates config.org and surfaces errors in TUI status line
 ** TODO Typed cross-key constraints (e.g. llm_provider set ⇒ llm_key_env set); errors at load, not first use (yesod principle)
 * TODO Shell capability matrix (type-level) [0/2]

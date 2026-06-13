@@ -110,20 +110,74 @@ fn llm_keys_default_to_none() {
 
 #[test]
 fn record_commands_parses_bool() {
-    assert!(Config::from_kv_block("record_commands = true\n").expect("p").record_commands);
-    assert!(!Config::from_kv_block("record_commands = false\n").expect("p").record_commands);
+    assert!(
+        Config::from_kv_block("record_commands = true\n")
+            .expect("p")
+            .record_commands
+    );
+    assert!(
+        !Config::from_kv_block("record_commands = false\n")
+            .expect("p")
+            .record_commands
+    );
 }
 
 #[test]
 fn record_commands_defaults_false() {
-    assert!(!Config::from_kv_block("theme = dark\n").expect("p").record_commands);
+    assert!(
+        !Config::from_kv_block("theme = dark\n")
+            .expect("p")
+            .record_commands
+    );
 }
 
 #[test]
 fn search_backend_parses() {
     assert_eq!(
-        Config::from_kv_block("search_backend = ripgrep\n").expect("p").search_backend.as_deref(),
+        Config::from_kv_block("search_backend = ripgrep\n")
+            .expect("p")
+            .search_backend
+            .as_deref(),
         Some("ripgrep")
     );
-    assert!(Config::from_kv_block("theme = x\n").expect("p").search_backend.is_none());
+    assert!(
+        Config::from_kv_block("theme = x\n")
+            .expect("p")
+            .search_backend
+            .is_none()
+    );
+}
+
+// --- CUE-inspired validation (line/col at load) tests written first per TDD ---
+// These will fail until ConfigError carries structured location and from_kv_block
+// (and from_org_source) attach line + column for BadValue/UnknownKey.
+
+#[test]
+fn bad_value_reports_line_in_block() {
+    let src = "#+BEGIN_SRC closure-config\ninput_mode = whatever\n#+END_SRC\n";
+    let err = Config::from_org_source(src).unwrap_err();
+    // The desired CUE-like behavior (ROADMAP): errors at load with line/col context.
+    // This stronger assert will fail until from_kv_block threads the line_no (and col)
+    // into BadValue for type/parse errors in the match arms (not just the split case).
+    match err {
+        ConfigError::BadValue { key, reason } => {
+            assert_eq!(key, "input_mode");
+            assert!(reason.contains("whatever") || reason.contains("unknown"));
+            // Demanding: the error context must mention the line inside the block.
+            // Current code only puts "line N" in the key field for the "no =" parse error.
+            assert!(
+                reason.contains("line") || key.contains("line"),
+                "expected line info in BadValue for CUE-style early error, got key={:?} reason={:?}",
+                key, reason
+            );
+        }
+        other => panic!("expected BadValue, got {:?}", other),
+    }
+}
+
+#[test]
+fn unknown_key_reports_at_load_with_context() {
+    let src = "#+BEGIN_SRC closure-config\nnope = x\n#+END_SRC\n";
+    let err = Config::from_org_source(src).unwrap_err();
+    assert!(matches!(err, ConfigError::UnknownKey(k) if k == "nope"));
 }

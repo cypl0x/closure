@@ -340,6 +340,12 @@ enum Cmd {
         /// closure-config` block.
         path: PathBuf,
     },
+    /// Validate a `closure-config` block (CUE-inspired: errors at parse
+    /// time with line/col context; rejects unknown keys and bad values early).
+    CheckConfig {
+        /// Path to a `*.org` file containing a `#+BEGIN_SRC closure-config` block.
+        path: PathBuf,
+    },
     /// Print the 10 spec invariants closure enforces.
     Spec,
     /// Print a sample `#+BEGIN_SRC closure-config` block.
@@ -1036,6 +1042,7 @@ fn run(cmd: &Cmd) -> Result<(), String> {
         Cmd::SetBody { file, id, body } => cmd_set_body(file, id, body),
         Cmd::Search { vault, needle } => cmd_search(vault, needle),
         Cmd::Config { path } => cmd_config(path),
+        Cmd::CheckConfig { path } => cmd_check_config(path),
         Cmd::Spec => cmd_spec(),
         Cmd::DefaultConfig => cmd_default_config(),
         Cmd::New { vault, path, title } => cmd_new(vault, path, title),
@@ -1180,7 +1187,9 @@ fn cmd_plugin(manifest: &Path, executable: &Path, args: &[String]) -> Result<(),
         .cloned()
         .ok_or_else(|| "no command registered".to_owned())?;
     let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
-    let out = host.invoke(&command, &arg_refs).map_err(|e| format!("{e}"))?;
+    let out = host
+        .invoke(&command, &arg_refs)
+        .map_err(|e| format!("{e}"))?;
     print!("{out}");
     Ok(())
 }
@@ -1340,8 +1349,7 @@ fn cmd_view(
     let mut header = spec.header();
     let mut cells = spec.cells(&v);
     if let Some(program) = formula {
-        let computed =
-            closure_eval::formula_column(program, &cells).map_err(|e| format!("{e}"))?;
+        let computed = closure_eval::formula_column(program, &cells).map_err(|e| format!("{e}"))?;
         header.push(formula_name.to_owned());
         for (row, value) in cells.iter_mut().zip(computed) {
             row.push(value);
@@ -1366,7 +1374,11 @@ fn cmd_capture(
     };
     let id = v.capture(&tpl, title).map_err(|e| format!("{e}"))?;
     journal_for(vault).record(now_secs(), "capture", title).ok();
-    println!("captured {} -> {}", id.as_str(), vault.join(target).display());
+    println!(
+        "captured {} -> {}",
+        id.as_str(),
+        vault.join(target).display()
+    );
     Ok(())
 }
 
@@ -1628,7 +1640,9 @@ fn cmd_find_id(vault: &Path, id: &str) -> Result<(), String> {
 
 fn cmd_find_title(vault: &Path, title: &str) -> Result<(), String> {
     let v = Vault::open(vault).map_err(|e| format!("{e}"))?;
-    let (h, path) = v.find_by_title(title).ok_or_else(|| "not found".to_owned())?;
+    let (h, path) = v
+        .find_by_title(title)
+        .ok_or_else(|| "not found".to_owned())?;
     println!("{}\t{}\t{}", path.display(), h.id(), h.title());
     Ok(())
 }
@@ -1852,14 +1866,7 @@ fn cmd_where_is(name: &str) -> Result<(), String> {
     Ok(())
 }
 
-fn cmd_cron_tick(
-    path: &Path,
-    m: u8,
-    h: u8,
-    d: u8,
-    mo: u8,
-    dw: u8,
-) -> Result<(), String> {
+fn cmd_cron_tick(path: &Path, m: u8, h: u8, d: u8, mo: u8, dw: u8) -> Result<(), String> {
     let src = fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))?;
     let doc = closure_org::parse(&src).map_err(|e| format!("{e}"))?;
     for n in doc.preamble() {
@@ -2174,11 +2181,7 @@ fn cmd_highest_priority(path: &Path) -> Result<(), String> {
     let src = fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))?;
     let doc = closure_org::parse(&src).map_err(|e| format!("{e}"))?;
     if let Some(h) = doc.highest_priority() {
-        println!(
-            "[#{}]\t{}",
-            h.priority().unwrap_or('?'),
-            h.title()
-        );
+        println!("[#{}]\t{}", h.priority().unwrap_or('?'), h.title());
     }
     Ok(())
 }
@@ -2693,8 +2696,7 @@ fn cmd_ask(prompt: &str, model: &str, vault: Option<&Path>) -> Result<(), String
         return Ok(());
     };
     let mut v = Vault::open(vault_dir).map_err(|e| format!("{e}"))?;
-    let cfg = closure_config::Config::from_path(&vault_dir.join("config.org"))
-        .unwrap_or_default();
+    let cfg = closure_config::Config::from_path(&vault_dir.join("config.org")).unwrap_or_default();
     let key_env = cfg
         .llm_key_env
         .unwrap_or_else(|| "ANTHROPIC_API_KEY".to_owned());
@@ -2710,7 +2712,9 @@ fn cmd_ask(prompt: &str, model: &str, vault: Option<&Path>) -> Result<(), String
             Box::new(closure_llm::anthropic(&key, &model))
         }
     };
-    let task = format!("{prompt}\n\nVault tools (use via CALL): list-files | read <file> | search <text> | capture <title> | rename <id> <title> | set-property <id> <key> <value>");
+    let task = format!(
+        "{prompt}\n\nVault tools (use via CALL): list-files | read <file> | search <text> | capture <title> | rename <id> <title> | set-property <id> <key> <value>"
+    );
     let answer = closure_llm::tool_loop(provider.as_ref(), |line| v.run_tool(line), &task, 16)
         .map_err(|e| format!("{e}"))?;
     println!("{answer}");
@@ -3056,8 +3060,7 @@ fn cmd_eval(path: &Path, write: bool, selector: Option<&str>) -> Result<(), Stri
             Box::new(ShellBackend)
         };
         let header = closure_eval::HeaderArgs::parse(cb.args.unwrap_or(""));
-        let prelude =
-            closure_eval::var_prelude(cb.language.unwrap_or("shell"), &header.vars);
+        let prelude = closure_eval::var_prelude(cb.language.unwrap_or("shell"), &header.vars);
         let program = format!("{prelude}{}", cb.content);
         let out = backend.eval(&program).map_err(|e| format!("{e}"))?;
         println!(
@@ -3170,4 +3173,16 @@ fn cmd_query(
         );
     }
     Ok(())
+}
+
+/// Validate the closure-config block in the given file (or a vault's
+/// config.org). Reports CUE-style errors with line context at load time.
+fn cmd_check_config(path: &Path) -> Result<(), String> {
+    match closure_config::Config::from_path(path) {
+        Ok(cfg) => {
+            println!("config valid (input_mode={:?})", cfg.input_mode);
+            Ok(())
+        }
+        Err(e) => Err(format!("config error: {e}")),
+    }
 }

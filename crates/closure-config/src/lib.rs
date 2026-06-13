@@ -157,6 +157,7 @@ impl Config {
             };
             let key = key.trim();
             let value = value.trim().trim_matches('"');
+            let line_info = format!("line {}", line_no + 1);
             match key {
                 "default_vault" => {
                     cfg.default_vault = Some(PathBuf::from(value));
@@ -171,7 +172,7 @@ impl Config {
                         other => {
                             return Err(ConfigError::BadValue {
                                 key: key.into(),
-                                reason: format!("unknown input_mode `{other}`"),
+                                reason: format!("{line_info}: unknown input_mode `{other}`"),
                             });
                         }
                     };
@@ -194,13 +195,13 @@ impl Config {
                     if levels.is_empty() {
                         return Err(ConfigError::BadValue {
                             key: key.into(),
-                            reason: "priority_levels requires at least one letter".into(),
+                            reason: format!("{line_info}: priority_levels requires at least one letter"),
                         });
                     }
                     if !levels.iter().all(char::is_ascii_uppercase) {
                         return Err(ConfigError::BadValue {
                             key: key.into(),
-                            reason: "priority_levels must be ASCII uppercase letters".into(),
+                            reason: format!("{line_info}: priority_levels must be ASCII uppercase letters"),
                         });
                     }
                     cfg.priority_levels = levels;
