@@ -139,9 +139,9 @@ reversible option, keep moving.
 ** DONE Live collaboration session: two processes on localhost exchange replica deltas over TCP (mpsc channels as localhost TCP stub), converge while both edit (merge after exchange), conflict corpus reused (loaded the title-vs-body orgs for the diverge edits, assert with the id from the corpus) (TDD; the 'processes' in one test for hermetic, the real would be actual TCP between two processes)
 
 
-* TODO Built-to-last kernel spec [1/3]
+* TODO Built-to-last kernel spec [2/3]
 ** DONE Document the minimal kernel primitives ("LISP-7" idea): parse, print, apply, undo, query, snapshot, merge — spec.md section with the rule that every feature reduces to these (TDD; the doc section added with cross-refs to tests/invariants)
-** TODO org2 decision: track upstream org-mode as the compatibility target; org2 as export-only experiment — record in Decisions with rationale
+** DONE org2 decision: track upstream org-mode as the compatibility target; org2 as export-only experiment — record in Decisions with rationale (TDD/doc: research spec scope + existing decisions + parser; added full entry under Decisions 2026-06-13 with context/options/reversible/rationale tied to I1/I5/I10; no behaviour change, verifies clean)
 ** DONE Self-documentation: =closure doc <command>= (cmd_doc + doc_for; prints name + keys note from registry; test for known command) (TDD; Emacs-style describe-function)
 
 * TODO Wasm/WASI core [1/2]
@@ -226,3 +226,29 @@ are the project's canonical locator (I2) and survive edits where
 line numbers rot. =closure dead-links= therefore prints
 =file<TAB>source-id<TAB>target=. Reversible: add line numbers later
 by exposing headline spans from closure-org.
+** org2 decision: track upstream org-mode as compatibility target; org2 export-only (2026-06-13)
+Context: org-mode (Emacs) is the de-facto plain-text PKM format with
+decades of files, tooling, and users. The parser scope (spec.md) and
+all golden roundtrips (I1) target a practical subset of current upstream
+org (headlines+TODO+tags+drawers+babel blocks+lists+timestamps+links+...).
+Options considered: (a) track Emacs org git master as "the" target and
+only add constructs when they land upstream + we can roundtrip them
+byte-exact; (b) invent "org2" as a forward-compatible evolution inside
+this project and make the parser accept both; (c) treat org2 as a
+separate future format.
+Reversible default taken (a): treat current Emacs org-mode as the
+compatibility target for closure-org. Any "org2" (major syntax rev or
+new upstream experiment) is export-only (via closure-markdown style
+crate or dedicated exporter) — never the on-disk default or primary
+parse target. Rationale: chasing an in-flight org2 would violate I1
+(byte-exact on committed corpus), I5 (hand-written recursive descent
++ fuzz + #![forbid(unsafe)] stays tractable only for a bounded subset),
+I10 (hermetic reproducible nix builds; external grammar crates or
+complex conditionals hurt), and the "built to last" primitives (parse
+stays simple + span-preserving). Existing org files and workflows keep
+working; richer export paths can be added without perturbing the kernel
+or forcing users to migrate. Reversible: later add an org2 feature
+crate or export mode (behind cfg or CLI flag) that consumes the same
+Document IR and emits the new syntax; the core parser contract and
+vault stay on upstream-org-compat. Recorded after full project review
+of parser, fixtures, invariants, and prior md-compat decision.
