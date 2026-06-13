@@ -76,7 +76,7 @@ reversible option, keep moving.
 ** DONE Tangle: =closure tangle <vault> <file>= writes =:tangle <path>= blocks to targets, concatenating shared targets in source order (=Vault::tangle=)
 * TODO Notion-default editing mode for real [0/5]
 ** TODO Block model over headlines+paragraphs: every block addressable, =+=-style insert-below command in TUI (any block type: headline, code, table)
-** TODO Slash commands: =/= in Notion mode opens the command palette scoped to block insertion (already-built palette reused)
+** DONE Slash commands: in Notion mode =/= opens the command palette (file search moves to =C-s=); every command stays reachable (I4)
 ** DONE Inline body editing in TUI: =i= in the headline list opens a multi-line body buffer (=RET= newline, =C-s= save, =ESC= cancel) → =Vault::set_body= / SetBody (I3)
 ** DONE Structure ops in the headline list: =<=/=>= promote/demote, =J=/=K= move-subtree down/up (adjacent swap via MoveSubtree); Vault::{promote,demote,move_after} (I3)
 ** TODO Kill ring: cut/copy/paste blocks via commands; ring stored in memory + optionally persisted (see record-everything)

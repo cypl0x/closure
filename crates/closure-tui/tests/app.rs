@@ -1008,9 +1008,11 @@ fn helix_redo_is_capital_u() {
 }
 
 #[test]
-fn notion_mode_slash_opens_search() {
+fn notion_mode_ctrl_s_opens_file_search() {
+    // In Notion mode '/' is the slash-command palette; file search
+    // moves to C-s so every command stays reachable (I4).
     let mut app = App::with_mode(paths(), InputMode::Notion);
-    app.handle_stroke("/");
+    app.handle_stroke("C-s");
     assert_eq!(app.mode(), AppMode::Search);
 }
 
@@ -1465,4 +1467,31 @@ fn move_up_at_first_is_noop() {
     app.handle_stroke("l");
     app.handle_stroke("K");
     assert_eq!(app.take_move_request(), None, "no headline above");
+}
+
+// --- notion slash commands -------------------------------------------------
+
+#[test]
+fn notion_slash_opens_palette_not_file_search() {
+    let mut app = App::with_mode(paths(), InputMode::Notion);
+    app.handle_stroke("/");
+    assert_eq!(app.mode(), AppMode::Palette, "slash = command palette in Notion");
+}
+
+#[test]
+fn non_notion_slash_still_file_search() {
+    let mut app = App::with_mode(paths(), InputMode::Doom);
+    app.handle_stroke("/");
+    assert_eq!(app.mode(), AppMode::Search);
+}
+
+#[test]
+fn notion_palette_lists_insert_commands() {
+    let mut app = App::with_mode(paths(), InputMode::Notion);
+    app.handle_stroke("/");
+    let rows = app.palette_results();
+    assert!(
+        rows.iter().any(|(c, _)| c == "capture-start"),
+        "insert-ish commands reachable"
+    );
 }
