@@ -182,3 +182,84 @@ fn empty_vault_is_safe() {
     app.on_key(&mut sh, "enter", false, None);
     assert_eq!(app.selected(), 0);
 }
+
+// --- editing parity: rename + delete (vision: editing in every UI) ---------
+
+#[test]
+fn rows_carry_block_id() {
+    let (_d, sh) = shell();
+    let app = GpuiApp::new();
+    let rows = app.rows(&sh);
+    assert!(
+        rows.iter().all(|r| !r.id.is_empty()),
+        "every row has an :ID:"
+    );
+}
+
+#[test]
+fn fuzzy_rows_keep_level_todo_and_id() {
+    let (_d, mut sh) = shell();
+    let mut app = GpuiApp::new();
+    typ(&mut app, &mut sh, "ship");
+    let rows = app.rows(&sh);
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].title, "Ship parser");
+    assert_eq!(rows[0].todo.as_deref(), Some("TODO"));
+    assert!(!rows[0].id.is_empty());
+}
+
+#[test]
+fn ctrl_r_renames_selected_through_vault() {
+    let (_d, mut sh) = shell();
+    let mut app = GpuiApp::new();
+    app.on_key(&mut sh, "down", false, None); // Personal wiki
+    app.on_key(&mut sh, "r", true, None);
+    assert_eq!(app.mode(), GpuiMode::Rename);
+    assert_eq!(
+        app.capture_buffer(),
+        "Personal wiki",
+        "prefilled with current title"
+    );
+    // clear + retype
+    for _ in 0.."Personal wiki".len() {
+        app.on_key(&mut sh, "backspace", false, None);
+    }
+    typ(&mut app, &mut sh, "Shared wiki");
+    app.on_key(&mut sh, "enter", false, None);
+    assert_eq!(app.mode(), GpuiMode::Browse);
+    assert!(sh.vault.find_by_title("Shared wiki").is_some());
+    assert!(sh.vault.find_by_title("Personal wiki").is_none());
+}
+
+#[test]
+fn rename_escape_cancels() {
+    let (_d, mut sh) = shell();
+    let mut app = GpuiApp::new();
+    app.on_key(&mut sh, "r", true, None);
+    app.on_key(&mut sh, "escape", false, None);
+    assert_eq!(app.mode(), GpuiMode::Browse);
+    assert!(sh.vault.find_by_title("Ship parser").is_some(), "unchanged");
+}
+
+#[test]
+fn ctrl_d_deletes_selected_subtree() {
+    let (_d, mut sh) = shell();
+    let mut app = GpuiApp::new();
+    // select "Ship parser" (row 0)
+    app.on_key(&mut sh, "d", true, None);
+    assert!(
+        sh.vault.find_by_title("Ship parser").is_none(),
+        "deleted via Vault (I8)"
+    );
+    assert_eq!(app.mode(), GpuiMode::Browse);
+}
+
+#[test]
+fn ctrl_r_on_empty_list_is_noop() {
+    let dir = tempfile::tempdir().expect("tmp");
+    let v = Vault::open(dir.path()).expect("open");
+    let mut sh = Shell::new(v);
+    let mut app = GpuiApp::new();
+    app.on_key(&mut sh, "r", true, None);
+    assert_eq!(app.mode(), GpuiMode::Browse, "nothing to rename");
+}

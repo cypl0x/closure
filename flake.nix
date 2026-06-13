@@ -56,7 +56,7 @@
         wayland
         xorg.libxcb
         xorg.libX11
-        xorg.libXext
+        libxext
         fontconfig
         freetype
         libGL

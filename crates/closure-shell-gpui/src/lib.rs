@@ -159,6 +159,8 @@ pub const GPUI_SHELL: &str = "gpui";
 /// One rendered row in the gpui browse/search list.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Row {
+    /// Stable block id (`:ID:`, I2) — the edit target.
+    pub id: String,
     /// File the headline lives in (display path).
     pub path: String,
     /// Headline title.
@@ -176,6 +178,8 @@ pub enum GpuiMode {
     Browse,
     /// Typing the title of a new capture entry.
     Capture,
+    /// Editing the selected headline's title.
+    Rename,
 }
 
 /// Pure, GPU-free state core for the gpui shell.
@@ -191,6 +195,7 @@ pub struct GpuiApp {
     selected: usize,
     mode: GpuiMode,
     capture_buf: String,
+    rename_target: Option<String>,
     status: String,
     quit: bool,
 }
@@ -210,6 +215,7 @@ impl GpuiApp {
             selected: 0,
             mode: GpuiMode::Browse,
             capture_buf: String::new(),
+            rename_target: None,
             status: "browse — type to filter".to_owned(),
             quit: false,
         }
@@ -258,41 +264,45 @@ impl GpuiApp {
         match self.mode {
             GpuiMode::Browse => {
                 "type: filter   up/down or C-n/C-p: move   Enter: open   \
-                 C-c: capture   Esc: clear   C-q: quit"
+                 C-c: capture   C-r: rename   C-d: delete   Esc: clear   C-q: quit"
             }
             GpuiMode::Capture => "capture title — Enter: save   Esc: cancel",
+            GpuiMode::Rename => "rename — Enter: save   Esc: cancel",
         }
     }
 
-    /// Rows for the current query: every headline in Browse with an
-    /// empty query, else the fuzzy matches (best first).
+    /// Rows for the current query, each carrying its block id, level,
+    /// and TODO keyword. Empty query lists every headline in file
+    /// order; otherwise fuzzy matches, best first (reusing
+    /// `closure_query`, I7).
     #[must_use]
     pub fn rows(&self, shell: &Shell) -> Vec<Row> {
-        if self.query.is_empty() {
-            let mut out = Vec::new();
-            for (p, doc) in shell.vault.iter() {
-                for h in doc.all_headlines() {
-                    out.push(Row {
-                        path: p.display().to_string(),
-                        title: h.title().to_owned(),
-                        level: h.level(),
-                        todo: h.todo().map(ToOwned::to_owned),
-                    });
+        let mut scored: Vec<(u32, Row)> = Vec::new();
+        for (p, doc) in shell.vault.iter() {
+            for h in doc.all_headlines() {
+                let score = if self.query.is_empty() {
+                    Some(0)
+                } else {
+                    closure_query::fuzzy_score(&self.query, h.title())
+                };
+                if let Some(sc) = score {
+                    scored.push((
+                        sc,
+                        Row {
+                            id: h.id().to_string(),
+                            path: p.display().to_string(),
+                            title: h.title().to_owned(),
+                            level: h.level(),
+                            todo: h.todo().map(ToOwned::to_owned),
+                        },
+                    ));
                 }
             }
-            out
-        } else {
-            shell
-                .fuzzy_search(&self.query)
-                .into_iter()
-                .map(|(p, title)| Row {
-                    path: p.display().to_string(),
-                    title,
-                    level: 1,
-                    todo: None,
-                })
-                .collect()
         }
+        if !self.query.is_empty() {
+            scored.sort_by_key(|(sc, _)| std::cmp::Reverse(*sc));
+        }
+        scored.into_iter().map(|(_, r)| r).collect()
     }
 
     /// Feed one key. `key` is the gpui key name (`"a"`, `"enter"`,
@@ -306,7 +316,40 @@ impl GpuiApp {
         }
         match self.mode {
             GpuiMode::Capture => self.on_capture_key(shell, key, text),
+            GpuiMode::Rename => self.on_rename_key(shell, key, text),
             GpuiMode::Browse => self.on_browse_key(shell, key, ctrl, text),
+        }
+    }
+
+    fn on_rename_key(&mut self, shell: &mut Shell, key: &str, text: Option<char>) {
+        match key {
+            "escape" => {
+                self.mode = GpuiMode::Browse;
+                self.capture_buf.clear();
+                self.rename_target = None;
+                self.set_status("rename cancelled");
+            }
+            "enter" => {
+                if let Some(id) = self.rename_target.take()
+                    && !self.capture_buf.is_empty()
+                {
+                    let bid = closure_core::BlockId::from_existing(&id);
+                    match shell.rename_headline(&bid, &self.capture_buf) {
+                        Ok(()) => self.status = format!("renamed to {}", self.capture_buf),
+                        Err(e) => self.status = format!("rename failed: {e}"),
+                    }
+                }
+                self.mode = GpuiMode::Browse;
+                self.capture_buf.clear();
+            }
+            "backspace" => {
+                self.capture_buf.pop();
+            }
+            _ => {
+                if let Some(c) = text {
+                    self.capture_buf.push(c);
+                }
+            }
         }
     }
 
@@ -343,13 +386,37 @@ impl GpuiApp {
         }
     }
 
-    fn on_browse_key(&mut self, shell: &Shell, key: &str, ctrl: bool, text: Option<char>) {
-        let last = self.rows(shell).len().saturating_sub(1);
+    fn on_browse_key(&mut self, shell: &mut Shell, key: &str, ctrl: bool, text: Option<char>) {
+        let rows = self.rows(shell);
+        let last = rows.len().saturating_sub(1);
         match key {
             "c" if ctrl => {
                 self.mode = GpuiMode::Capture;
                 self.capture_buf.clear();
                 self.set_status("capture: type a title");
+            }
+            "r" if ctrl => {
+                if let Some(row) = rows.get(self.selected) {
+                    self.rename_target = Some(row.id.clone());
+                    self.capture_buf.clear();
+                    self.capture_buf.push_str(&row.title);
+                    self.mode = GpuiMode::Rename;
+                    self.set_status("rename: edit the title");
+                }
+            }
+            "d" if ctrl => {
+                if let Some(row) = rows.get(self.selected) {
+                    let bid = closure_core::BlockId::from_existing(&row.id);
+                    let title = row.title.clone();
+                    match shell.remove_subtree(&bid) {
+                        Ok(()) => {
+                            self.status = format!("deleted: {title}");
+                            self.selected =
+                                self.selected.min(self.rows(shell).len().saturating_sub(1));
+                        }
+                        Err(e) => self.status = format!("delete failed: {e}"),
+                    }
+                }
             }
             "escape" => {
                 self.query.clear();
@@ -361,7 +428,7 @@ impl GpuiApp {
             "n" if ctrl => self.selected = (self.selected + 1).min(last),
             "p" if ctrl => self.selected = self.selected.saturating_sub(1),
             "enter" => {
-                if let Some(row) = self.rows(shell).get(self.selected) {
+                if let Some(row) = rows.get(self.selected) {
                     self.status = format!("{} — {}", row.path, row.title);
                 }
             }
@@ -491,12 +558,11 @@ impl Render for GpuiView {
 
         let rows = self.app.rows(&self.shell);
         let selected = self.app.selected();
-        let in_capture = self.app.mode() == GpuiMode::Capture;
 
-        let header = if in_capture {
-            format!("＋ capture: {}▏", self.app.capture_buffer())
-        } else {
-            format!("⌕ {}▏", self.app.query())
+        let header = match self.app.mode() {
+            GpuiMode::Capture => format!("＋ capture: {}▏", self.app.capture_buffer()),
+            GpuiMode::Rename => format!("✎ rename: {}▏", self.app.capture_buffer()),
+            GpuiMode::Browse => format!("⌕ {}▏", self.app.query()),
         };
 
         let list =
