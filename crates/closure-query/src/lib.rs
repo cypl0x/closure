@@ -463,3 +463,120 @@ pub fn render_table(header: &[String], rows: &[Vec<String>]) -> String {
     }
     out
 }
+
+/// A full-text search hit: file, 1-based line, and the matched line.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Hit {
+    /// File containing the match.
+    pub path: std::path::PathBuf,
+    /// 1-based line number.
+    pub line: usize,
+    /// The matching line's text (trimmed of the trailing newline).
+    pub text: String,
+}
+
+/// A pluggable full-text search engine over a vault directory.
+pub trait SearchBackend {
+    /// Engine identifier (matches the `search_backend` config value).
+    fn name(&self) -> &str;
+    /// Search `*.org` files under `root` for `needle`, returning hits.
+    fn search(&self, root: &std::path::Path, needle: &str) -> Vec<Hit>;
+}
+
+/// Built-in case-insensitive substring search (the default; no
+/// external dependency).
+#[derive(Debug, Default, Clone, Copy)]
+pub struct BuiltinSearch;
+
+fn walk_org_files(root: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
+    let Ok(entries) = std::fs::read_dir(root) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            walk_org_files(&path, out);
+        } else if path.extension().is_some_and(|e| e == "org") {
+            out.push(path);
+        }
+    }
+}
+
+impl SearchBackend for BuiltinSearch {
+    #[allow(clippy::unnecessary_literal_bound)]
+    fn name(&self) -> &str {
+        "builtin"
+    }
+
+    fn search(&self, root: &std::path::Path, needle: &str) -> Vec<Hit> {
+        let lower = needle.to_lowercase();
+        let mut files = Vec::new();
+        walk_org_files(root, &mut files);
+        files.sort();
+        let mut hits = Vec::new();
+        for path in files {
+            let Ok(content) = std::fs::read_to_string(&path) else {
+                continue;
+            };
+            for (i, line) in content.lines().enumerate() {
+                if line.to_lowercase().contains(&lower) {
+                    hits.push(Hit {
+                        path: path.clone(),
+                        line: i + 1,
+                        text: line.to_owned(),
+                    });
+                }
+            }
+        }
+        hits
+    }
+}
+
+/// Ripgrep-backed search (external `rg` binary). Falls back to no
+/// hits if `rg` is unavailable.
+#[derive(Debug, Default, Clone, Copy)]
+pub struct RipgrepSearch;
+
+impl SearchBackend for RipgrepSearch {
+    #[allow(clippy::unnecessary_literal_bound)]
+    fn name(&self) -> &str {
+        "ripgrep"
+    }
+
+    fn search(&self, root: &std::path::Path, needle: &str) -> Vec<Hit> {
+        let Ok(out) = std::process::Command::new("rg")
+            .args(["--line-number", "--no-heading", "--color=never", "-g", "*.org", "-i"])
+            .arg(needle)
+            .arg(root)
+            .output()
+        else {
+            return Vec::new();
+        };
+        let text = String::from_utf8_lossy(&out.stdout);
+        let mut hits = Vec::new();
+        for raw in text.lines() {
+            // rg output: <path>:<line>:<text>
+            let mut parts = raw.splitn(3, ':');
+            if let (Some(p), Some(l), Some(t)) = (parts.next(), parts.next(), parts.next())
+                && let Ok(line) = l.parse::<usize>()
+            {
+                hits.push(Hit {
+                    path: std::path::PathBuf::from(p),
+                    line,
+                    text: t.to_owned(),
+                });
+            }
+        }
+        hits
+    }
+}
+
+/// Select a search backend by name (`builtin`, `ripgrep`/`rg`).
+/// Unknown names fall back to the built-in engine.
+#[must_use]
+pub fn backend_for(name: &str) -> Box<dyn SearchBackend> {
+    match name {
+        "ripgrep" | "rg" => Box::new(RipgrepSearch),
+        _ => Box::new(BuiltinSearch),
+    }
+}
