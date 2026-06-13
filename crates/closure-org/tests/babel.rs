@@ -114,3 +114,32 @@ fn code_block_index_by_name_resolves() {
     assert_eq!(doc.code_block_index_by_name("first"), Some(0));
     assert_eq!(doc.code_block_index_by_name("nope"), None);
 }
+
+#[test]
+fn rewrite_content_doc_wide_under_headline() {
+    use closure_org::rewrite_code_block_content;
+    let doc = parse(MIXED).expect("parse");
+    let new = rewrite_code_block_content(&doc, 1, "echo replaced\n").expect("rewrite");
+    let out = print(&new);
+    assert!(out.contains("echo replaced\n"));
+    assert!(!out.contains("echo under-headline"));
+    assert!(out.contains("echo pre\n"), "other blocks untouched");
+    assert!(out.contains("print('child')\n"));
+}
+
+#[test]
+fn rewrite_content_preserves_fences_and_neighbours() {
+    use closure_org::rewrite_code_block_content;
+    let doc = parse(MIXED).expect("parse");
+    let new = rewrite_code_block_content(&doc, 2, "print('x')\n").expect("rewrite");
+    let out = print(&new);
+    let without = out.replace("print('x')\n", "print('child')\n");
+    assert_eq!(without, MIXED, "I1: only the Nth block content changed");
+}
+
+#[test]
+fn rewrite_content_out_of_range_errors() {
+    use closure_org::rewrite_code_block_content;
+    let doc = parse(MIXED).expect("parse");
+    assert!(rewrite_code_block_content(&doc, 9, "x\n").is_err());
+}

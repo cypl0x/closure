@@ -8711,23 +8711,18 @@ pub fn rewrite_code_block_content(
     block_index: usize,
     new_content: &str,
 ) -> Result<OrgDoc, RewriteError> {
-    let mut idx = 0usize;
-    let mut content_span: Option<Span> = None;
-    for n in doc.preamble() {
-        if n.kind() == NodeKind::CodeBlock {
-            if idx == block_index {
-                if let NodeMeta::CodeBlock {
-                    content_span: cs, ..
-                } = &n.meta
-                {
-                    content_span = Some(*cs);
-                }
-                break;
-            }
-            idx += 1;
-        }
-    }
-    let span = content_span.ok_or(RewriteError::NotFound)?;
+    let node = doc
+        .code_blocks()
+        .get(block_index)
+        .copied()
+        .ok_or(RewriteError::NotFound)?;
+    let NodeMeta::CodeBlock {
+        content_span: span, ..
+    } = &node.meta
+    else {
+        return Err(RewriteError::NotFound);
+    };
+    let span = *span;
     let mut src = doc.source().to_owned();
     src.replace_range(span.start..span.end, new_content);
     parse(&src).map_err(|_| RewriteError::Parse)
