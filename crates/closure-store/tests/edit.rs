@@ -149,3 +149,38 @@ fn set_property_unknown_id_errors() {
         Err(VaultError::UnknownId(_))
     ));
 }
+
+#[test]
+fn set_body_replaces_headline_body() {
+    let td = write_vault(&[("a.org", "* Task\nold body\n")]);
+    let mut v = Vault::open(td.path()).expect("open");
+    let id = id_of(&v, "Task");
+    v.set_body(&id, "new body line\nsecond\n").expect("set body");
+    let disk = fs::read_to_string(td.path().join("a.org")).expect("read");
+    assert!(disk.contains("new body line\nsecond\n"));
+    assert!(!disk.contains("old body"));
+    let (h, _) = v.find_by_id(&id).expect("resolves");
+    assert!(h.body_text().contains("new body line"));
+}
+
+#[test]
+fn set_body_unknown_id_errors() {
+    let td = write_vault(&[("a.org", "* A\n")]);
+    let mut v = Vault::open(td.path()).expect("open");
+    let bogus = BlockId::from_existing("01XXXXXXXXXXXXXXXXXXXXXXXX");
+    assert!(matches!(
+        v.set_body(&bogus, "x\n"),
+        Err(VaultError::UnknownId(_))
+    ));
+}
+
+#[test]
+fn set_body_is_undoable() {
+    let td = write_vault(&[("a.org", "* T\norig\n")]);
+    let mut v = Vault::open(td.path()).expect("open");
+    let id = id_of(&v, "T");
+    v.set_body(&id, "changed\n").expect("set");
+    v.undo_in(&td.path().join("a.org")).expect("undo");
+    let (h, _) = v.find_by_id(&id).expect("resolves");
+    assert!(h.body_text().contains("orig"), "I3: body edit on undo-tree");
+}

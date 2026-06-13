@@ -11,7 +11,7 @@ use std::path::{Path, PathBuf};
 use std::sync::mpsc::{Receiver, Sender, channel};
 
 use closure_core::{
-    AddSibling, BlockId, Command, Document, RemoveSubtree, RenameHeadline, SetProperty,
+    AddSibling, BlockId, Command, Document, RemoveSubtree, RenameHeadline, SetBody, SetProperty,
 };
 use notify::{EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use thiserror::Error;
@@ -213,6 +213,17 @@ impl Vault {
     pub fn add_sibling(&mut self, after: &BlockId, title: &str) -> Result<(), VaultError> {
         let cmd = AddSibling::new(after.clone(), title.to_owned());
         self.apply_to_block(after, &cmd)
+    }
+
+    /// Replace a headline's body text through the kernel [`SetBody`]
+    /// command (undoable, I3) and persist to disk.
+    ///
+    /// # Errors
+    ///
+    /// Same contract as [`Self::rename_headline`].
+    pub fn set_body(&mut self, id: &BlockId, body: &str) -> Result<(), VaultError> {
+        let cmd = SetBody::new(id.clone(), body.to_owned());
+        self.apply_to_block(id, &cmd)
     }
 
     /// Set (or overwrite) a `:KEY: value` property through the kernel
