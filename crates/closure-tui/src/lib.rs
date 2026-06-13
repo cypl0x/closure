@@ -257,6 +257,9 @@ pub struct App {
     headlines: Vec<HeadlineRecord>,
     sources: Vec<(PathBuf, String)>,
     scroll: usize,
+    /// Last error surfaced from re-validating config.org on save
+    /// (validate-on-save). Contains the rich message with line info.
+    last_config_error: Option<String>,
     backlinks: Vec<(PathBuf, PathBuf, String)>,
     capture_request: Option<String>,
     rename_target: Option<String>,
@@ -320,6 +323,7 @@ impl App {
             headlines: Vec::new(),
             sources: Vec::new(),
             scroll: 0,
+            last_config_error: None,
             backlinks: Vec::new(),
             capture_request: None,
             rename_target: None,
@@ -702,6 +706,19 @@ impl App {
     #[must_use]
     pub fn popup_lines(&self) -> Option<&[String]> {
         self.popup.as_deref()
+    }
+
+    /// Set the last config validation error (from validate-on-save using
+    /// the vault watcher + `revalidate_config`). The error string includes
+    /// the rich CUE-style line/col context.
+    pub fn set_config_error(&mut self, err: Option<String>) {
+        self.last_config_error = err;
+    }
+
+    /// Current config validation error to surface in the TUI (status line).
+    #[must_use]
+    pub fn config_error(&self) -> Option<&str> {
+        self.last_config_error.as_deref()
     }
 
     /// Feed one key stroke into the active surface: query editing in
@@ -1593,6 +1610,16 @@ fn run_loop(
                 return Ok(());
             }
         }
+
+        // validate-on-save: periodically (or on every loop tick) re-validate
+        // config.org using the vault's watcher-friendly method. Surface the
+        // rich error (with line/col) so the user sees CUE-style problems
+        // immediately after saving a bad config.
+        if let Err(e) = vault.revalidate_config() {
+            app.set_config_error(Some(e.to_string()));
+        } else {
+            app.set_config_error(None);
+        }
     }
 }
 
@@ -1777,6 +1804,20 @@ fn draw(f: &mut ratatui::Frame<'_>, app: &App, vault: &Vault) {
 
     if let Some(lines) = app.popup_lines() {
         draw_whichkey(f, area, app, lines);
+    }
+
+    // validate-on-save status: show last config error (rich message with
+    // line info from the CUE-style loader) at the bottom when present.
+    if let Some(err) = app.config_error() {
+        let status_area = ratatui::layout::Rect {
+            x: area.x,
+            y: area.bottom().saturating_sub(1),
+            width: area.width,
+            height: 1,
+        };
+        let status = Paragraph::new(format!("CONFIG ERROR: {err}"))
+            .style(Style::default().fg(Color::Red).add_modifier(Modifier::BOLD));
+        f.render_widget(status, status_area);
     }
 }
 

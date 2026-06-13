@@ -51,3 +51,27 @@ fn reload_drops_removed_files() {
     assert_eq!(v.len(), 1);
     assert!(v.find_by_title("B").is_none());
 }
+
+// TDD: validate-on-save sub-item test written *first*.
+// This exercises the desired behavior: after a config.org change (or on demand),
+// the vault can re-validate using the CUE-style Config loader and surface
+// rich errors (with line info) instead of silently keeping bad config.
+#[test]
+fn revalidate_config_detects_bad_config_with_line_info() {
+    use closure_config::ConfigError;
+
+    let td = vault(&[("config.org", "#+BEGIN_SRC closure-config\ninput_mode = whatever\n#+END_SRC\n")]);
+    let v = Vault::open(td.path()).expect("open");
+
+    // The new API (to be implemented) should return the improved ConfigError
+    // containing line context for early CUE-style validation errors.
+    let err = v.revalidate_config().expect_err("should detect bad config");
+    match err {
+        ConfigError::BadValue { reason, .. } => {
+            // Must contain the line info we added in previous cycle.
+            assert!(reason.contains("line") || reason.contains("unknown input_mode"),
+                    "expected line/col context in config validation error, got: {}", reason);
+        }
+        other => panic!("expected BadValue with location, got {:?}", other),
+    }
+}

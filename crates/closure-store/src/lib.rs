@@ -185,6 +185,26 @@ impl Vault {
         Ok(changed)
     }
 
+    /// Re-validate the vault's `config.org` (if present) using the
+    /// typed CUE-style loader from `closure-config`.
+    ///
+    /// Returns the rich `ConfigError` (carrying line context from our
+    /// validators) on failure. This enables "validate-on-save":
+    /// shells or daemons can call this on watcher `Modified` events for
+    /// config files and surface the error (e.g. in TUI status line).
+    ///
+    /// If no `config.org` exists, this succeeds (consistent with
+    /// optional config).
+    pub fn revalidate_config(&self) -> Result<(), closure_config::ConfigError> {
+        let cfg_path = self.root.join("config.org");
+        if !cfg_path.exists() {
+            return Ok(());
+        }
+        // from_path performs the full load-time validation (unknown keys,
+        // bad values, and now our threaded line info).
+        closure_config::Config::from_path(&cfg_path).map(|_| ())
+    }
+
     /// Rebuild the id and backlink indices from the current documents.
     fn rebuild_indices(&mut self) {
         self.by_id.clear();
@@ -283,8 +303,9 @@ impl Vault {
                 out.push('\n');
             }
         }
-        let doc =
-            Document::load_str(&out).map_err(|_| VaultError::Parse { path: target.clone() })?;
+        let doc = Document::load_str(&out).map_err(|_| VaultError::Parse {
+            path: target.clone(),
+        })?;
         fs::write(&target, doc.source())?;
         for h in doc.all_headlines() {
             if h.id() == &id {
@@ -383,9 +404,8 @@ impl Vault {
         let after_path = doc
             .path_of(after)
             .ok_or_else(|| VaultError::Command(format!("no headline {after}")))?;
-        let new_org =
-            closure_org::rewrite_splice_subtree_after(doc.org(), &after_path, &source)
-                .map_err(|e| VaultError::Command(e.to_string()))?;
+        let new_org = closure_org::rewrite_splice_subtree_after(doc.org(), &after_path, &source)
+            .map_err(|e| VaultError::Command(e.to_string()))?;
         let new_src = closure_org::print(&new_org);
         let new_doc =
             Document::load_str(&new_src).map_err(|_| VaultError::Parse { path: path.into() })?;
@@ -446,12 +466,7 @@ impl Vault {
     /// # Errors
     ///
     /// Same contract as [`Self::rename_headline`].
-    pub fn set_property(
-        &mut self,
-        id: &BlockId,
-        key: &str,
-        value: &str,
-    ) -> Result<(), VaultError> {
+    pub fn set_property(&mut self, id: &BlockId, key: &str, value: &str) -> Result<(), VaultError> {
         let cmd = SetProperty::new(id.clone(), key.to_owned(), value.to_owned());
         self.apply_to_block(id, &cmd)
     }
@@ -498,13 +513,7 @@ impl Vault {
                 for (path, doc) in self.iter() {
                     for h in doc.all_headlines() {
                         if h.title().to_lowercase().contains(&needle) {
-                            let _ = writeln!(
-                                out,
-                                "{}\t{}\t{}",
-                                h.id(),
-                                h.title(),
-                                path.display()
-                            );
+                            let _ = writeln!(out, "{}\t{}\t{}", h.id(), h.title(), path.display());
                         }
                     }
                 }
@@ -532,8 +541,7 @@ impl Vault {
             }
             "set-property" => {
                 let mut parts = rest.splitn(3, ' ');
-                let (Some(id), Some(key), Some(value)) =
-                    (parts.next(), parts.next(), parts.next())
+                let (Some(id), Some(key), Some(value)) = (parts.next(), parts.next(), parts.next())
                 else {
                     return format!("ERROR set-property needs <id> <key> <value>; {HELP}");
                 };
@@ -759,7 +767,8 @@ impl Vault {
             .documents
             .get_mut(path)
             .ok_or_else(|| VaultError::UnknownId(path.display().to_string()))?;
-        doc.redo(None).map_err(|e| VaultError::Undo(e.to_string()))?;
+        doc.redo(None)
+            .map_err(|e| VaultError::Undo(e.to_string()))?;
         fs::write(path, doc.source())?;
         self.reindex_file(path);
         Ok(())
@@ -777,7 +786,8 @@ impl Vault {
             .documents
             .get_mut(&path)
             .ok_or_else(|| VaultError::UnknownId(id.as_str().to_owned()))?;
-        cmd.apply(doc).map_err(|e| VaultError::Command(e.to_string()))?;
+        cmd.apply(doc)
+            .map_err(|e| VaultError::Command(e.to_string()))?;
         fs::write(&path, doc.source())?;
         self.reindex_file(&path);
         Ok(())
@@ -1028,9 +1038,7 @@ impl Vault {
     /// if the file isn't loaded.
     #[must_use]
     pub fn char_count_of(&self, path: &Path) -> Option<usize> {
-        self.documents
-            .get(path)
-            .map(|d| d.source().chars().count())
+        self.documents.get(path).map(|d| d.source().chars().count())
     }
 
     /// Total source character count across the vault.
@@ -1261,16 +1269,17 @@ impl Vault {
     /// Total link count across every headline in the vault.
     #[must_use]
     pub fn link_count(&self) -> usize {
-        self.documents.values().map(|d| d.org().total_link_count()).sum()
+        self.documents
+            .values()
+            .map(|d| d.org().total_link_count())
+            .sum()
     }
 
     /// Total link count for a single file by path. Returns `None` if the
     /// file isn't loaded.
     #[must_use]
     pub fn link_count_of(&self, path: &Path) -> Option<usize> {
-        self.documents
-            .get(path)
-            .map(|d| d.org().total_link_count())
+        self.documents.get(path).map(|d| d.org().total_link_count())
     }
 
     /// Maximum per-file total link count (`None` when no files).
@@ -1320,7 +1329,10 @@ impl Vault {
     /// Total timestamp count across every headline in the vault.
     #[must_use]
     pub fn timestamp_count(&self) -> usize {
-        self.documents.values().map(|d| d.org().total_timestamp_count()).sum()
+        self.documents
+            .values()
+            .map(|d| d.org().total_timestamp_count())
+            .sum()
     }
 
     /// Total timestamp count for a single file by path. Returns `None`
@@ -1379,25 +1391,36 @@ impl Vault {
     /// Total cookie count across the vault.
     #[must_use]
     pub fn cookie_count(&self) -> usize {
-        self.documents.values().map(|d| d.org().total_cookie_count()).sum()
+        self.documents
+            .values()
+            .map(|d| d.org().total_cookie_count())
+            .sum()
     }
 
     /// Total footnote count across the vault.
     #[must_use]
     pub fn footnote_count(&self) -> usize {
-        self.documents.values().map(|d| d.org().total_footnote_count()).sum()
+        self.documents
+            .values()
+            .map(|d| d.org().total_footnote_count())
+            .sum()
     }
 
     /// Total macro count across the vault.
     #[must_use]
     pub fn macro_count(&self) -> usize {
-        self.documents.values().map(|d| d.org().total_macro_count()).sum()
+        self.documents
+            .values()
+            .map(|d| d.org().total_macro_count())
+            .sum()
     }
 
     /// Cookie count for a single file by path.
     #[must_use]
     pub fn cookie_count_of(&self, path: &Path) -> Option<usize> {
-        self.documents.get(path).map(|d| d.org().total_cookie_count())
+        self.documents
+            .get(path)
+            .map(|d| d.org().total_cookie_count())
     }
 
     /// Footnote count for a single file by path.
@@ -1411,7 +1434,9 @@ impl Vault {
     /// Macro count for a single file by path.
     #[must_use]
     pub fn macro_count_of(&self, path: &Path) -> Option<usize> {
-        self.documents.get(path).map(|d| d.org().total_macro_count())
+        self.documents
+            .get(path)
+            .map(|d| d.org().total_macro_count())
     }
 
     /// Maximum per-file cookie count.
@@ -2248,7 +2273,9 @@ impl Vault {
     /// True iff any headline carries priority `letter` across the vault.
     #[must_use]
     pub fn has_priority_letter(&self, letter: char) -> bool {
-        self.documents.values().any(|d| d.org().has_priority(letter))
+        self.documents
+            .values()
+            .any(|d| d.org().has_priority(letter))
     }
 
     /// True iff any headline carries TODO `keyword` across the vault.
@@ -2274,10 +2301,9 @@ impl Vault {
     /// True iff any headline carries `:ID:` equal to `value` across the vault.
     #[must_use]
     pub fn has_id_value(&self, value: &str) -> bool {
-        self.documents.values().any(|d| {
-            d.all_headlines()
-                .any(|h| h.property("ID") == Some(value))
-        })
+        self.documents
+            .values()
+            .any(|d| d.all_headlines().any(|h| h.property("ID") == Some(value)))
     }
 
     /// True iff any headline exists at the given level across the vault.
@@ -2295,9 +2321,10 @@ impl Vault {
     /// True iff any headline carries a link to `target` across the vault.
     #[must_use]
     pub fn has_link_target(&self, target: &str) -> bool {
-        self.documents
-            .values()
-            .any(|d| d.all_headlines().any(|h| h.link_targets().iter().any(|t| t == target)))
+        self.documents.values().any(|d| {
+            d.all_headlines()
+                .any(|h| h.link_targets().iter().any(|t| t == target))
+        })
     }
 
     /// True iff any headline title exactly equals `title` across the vault.
@@ -2539,7 +2566,11 @@ impl Vault {
     pub fn count_property_key(&self, key: &str) -> usize {
         self.documents
             .values()
-            .map(|d| d.all_headlines().filter(|h| h.property(key).is_some()).count())
+            .map(|d| {
+                d.all_headlines()
+                    .filter(|h| h.property(key).is_some())
+                    .count()
+            })
             .sum()
     }
 
@@ -2565,7 +2596,11 @@ impl Vault {
         let count: usize = self
             .documents
             .values()
-            .map(|d| d.all_headlines().filter(|h| h.priority() == Some(letter)).count())
+            .map(|d| {
+                d.all_headlines()
+                    .filter(|h| h.priority() == Some(letter))
+                    .count()
+            })
             .sum();
         (count * 100)
             .checked_div(self.headline_count())
@@ -2678,9 +2713,7 @@ impl Vault {
     /// Source line count for a single file by path.
     #[must_use]
     pub fn line_count_of(&self, path: &Path) -> Option<usize> {
-        self.documents
-            .get(path)
-            .map(|d| d.source().lines().count())
+        self.documents.get(path).map(|d| d.source().lines().count())
     }
 
     /// Histogram of headline-title frequency across the vault.
@@ -2864,7 +2897,11 @@ impl Vault {
     pub fn count_property_value(&self, key: &str, value: &str) -> usize {
         self.documents
             .values()
-            .map(|d| d.all_headlines().filter(|h| h.property(key) == Some(value)).count())
+            .map(|d| {
+                d.all_headlines()
+                    .filter(|h| h.property(key) == Some(value))
+                    .count()
+            })
             .sum()
     }
 
@@ -2934,7 +2971,10 @@ impl Vault {
     /// Count of headlines with an `:ID:` property across the vault.
     #[must_use]
     pub fn id_count(&self) -> usize {
-        self.documents.values().map(|d| d.org().count_with_id()).sum()
+        self.documents
+            .values()
+            .map(|d| d.org().count_with_id())
+            .sum()
     }
 
     /// Count of headlines with an `:ID:` property for a single file by
@@ -3410,7 +3450,9 @@ impl Vault {
     /// Integer mean per-file prioritized-headline count (`0` when no files).
     #[must_use]
     pub fn mean_file_priority_count(&self) -> usize {
-        self.with_priority_count().checked_div(self.len()).unwrap_or(0)
+        self.with_priority_count()
+            .checked_div(self.len())
+            .unwrap_or(0)
     }
 
     /// Median per-file prioritized-headline count (`None` when no files).
@@ -3881,10 +3923,8 @@ impl Vault {
     /// All `(path, byte_count)` pairs sorted descending.
     #[must_use]
     pub fn files_by_byte_count(&self) -> Vec<(&Path, usize)> {
-        let mut pairs: Vec<(&Path, usize)> = self
-            .iter()
-            .map(|(p, d)| (p, d.source().len()))
-            .collect();
+        let mut pairs: Vec<(&Path, usize)> =
+            self.iter().map(|(p, d)| (p, d.source().len())).collect();
         pairs.sort_by_key(|(_, n)| std::cmp::Reverse(*n));
         pairs
     }
@@ -3974,10 +4014,7 @@ impl Vault {
     /// (`distinct ids * 100 / total ids`, `0` when no ids).
     #[must_use]
     pub fn id_uniqueness_pct(&self) -> usize {
-        let total: usize = self
-            .iter()
-            .map(|(_, d)| d.org().all_ids().len())
-            .sum();
+        let total: usize = self.iter().map(|(_, d)| d.org().all_ids().len()).sum();
         (self.unique_id_count() * 100)
             .checked_div(total)
             .unwrap_or(0)
@@ -4474,9 +4511,13 @@ impl Vault {
     /// if the file isn't loaded.
     #[must_use]
     pub fn leaf_count_of(&self, path: &Path) -> Option<usize> {
-        self.documents
-            .get(path)
-            .map(|d| d.org().iter_headlines().into_iter().filter(|h| h.is_leaf()).count())
+        self.documents.get(path).map(|d| {
+            d.org()
+                .iter_headlines()
+                .into_iter()
+                .filter(|h| h.is_leaf())
+                .count()
+        })
     }
 
     /// Maximum per-file leaf count (`None` when no files).
@@ -4484,7 +4525,13 @@ impl Vault {
     pub fn max_file_leaf_count(&self) -> Option<usize> {
         self.documents
             .values()
-            .map(|d| d.org().iter_headlines().into_iter().filter(|h| h.is_leaf()).count())
+            .map(|d| {
+                d.org()
+                    .iter_headlines()
+                    .into_iter()
+                    .filter(|h| h.is_leaf())
+                    .count()
+            })
             .max()
     }
 
@@ -4493,7 +4540,13 @@ impl Vault {
     pub fn min_file_leaf_count(&self) -> Option<usize> {
         self.documents
             .values()
-            .map(|d| d.org().iter_headlines().into_iter().filter(|h| h.is_leaf()).count())
+            .map(|d| {
+                d.org()
+                    .iter_headlines()
+                    .into_iter()
+                    .filter(|h| h.is_leaf())
+                    .count()
+            })
             .min()
     }
 
@@ -4509,7 +4562,13 @@ impl Vault {
         let mut v: Vec<usize> = self
             .documents
             .values()
-            .map(|d| d.org().iter_headlines().into_iter().filter(|h| h.is_leaf()).count())
+            .map(|d| {
+                d.org()
+                    .iter_headlines()
+                    .into_iter()
+                    .filter(|h| h.is_leaf())
+                    .count()
+            })
             .collect();
         if v.is_empty() {
             return None;
@@ -4545,9 +4604,13 @@ impl Vault {
     /// `None` if the file isn't loaded.
     #[must_use]
     pub fn branch_count_of(&self, path: &Path) -> Option<usize> {
-        self.documents
-            .get(path)
-            .map(|d| d.org().iter_headlines().into_iter().filter(|h| !h.is_leaf()).count())
+        self.documents.get(path).map(|d| {
+            d.org()
+                .iter_headlines()
+                .into_iter()
+                .filter(|h| !h.is_leaf())
+                .count()
+        })
     }
 
     /// Maximum per-file branch count (`None` when no files).
@@ -4555,7 +4618,13 @@ impl Vault {
     pub fn max_file_branch_count(&self) -> Option<usize> {
         self.documents
             .values()
-            .map(|d| d.org().iter_headlines().into_iter().filter(|h| !h.is_leaf()).count())
+            .map(|d| {
+                d.org()
+                    .iter_headlines()
+                    .into_iter()
+                    .filter(|h| !h.is_leaf())
+                    .count()
+            })
             .max()
     }
 
@@ -4564,7 +4633,13 @@ impl Vault {
     pub fn min_file_branch_count(&self) -> Option<usize> {
         self.documents
             .values()
-            .map(|d| d.org().iter_headlines().into_iter().filter(|h| !h.is_leaf()).count())
+            .map(|d| {
+                d.org()
+                    .iter_headlines()
+                    .into_iter()
+                    .filter(|h| !h.is_leaf())
+                    .count()
+            })
             .min()
     }
 
@@ -4580,7 +4655,13 @@ impl Vault {
         let mut v: Vec<usize> = self
             .documents
             .values()
-            .map(|d| d.org().iter_headlines().into_iter().filter(|h| !h.is_leaf()).count())
+            .map(|d| {
+                d.org()
+                    .iter_headlines()
+                    .into_iter()
+                    .filter(|h| !h.is_leaf())
+                    .count()
+            })
             .collect();
         if v.is_empty() {
             return None;
@@ -4639,7 +4720,10 @@ impl Vault {
     #[must_use]
     pub fn archive_paths(&self) -> Vec<&Path> {
         self.iter()
-            .filter(|(_, d)| d.all_headlines().any(|h| h.tags().iter().any(|t| t == "ARCHIVE")))
+            .filter(|(_, d)| {
+                d.all_headlines()
+                    .any(|h| h.tags().iter().any(|t| t == "ARCHIVE"))
+            })
             .map(|(p, _)| p)
             .collect()
     }
@@ -5265,7 +5349,10 @@ impl Vault {
     pub fn file_with_body_count_counts(&self) -> std::collections::BTreeMap<usize, usize> {
         let mut m = std::collections::BTreeMap::new();
         for d in self.documents.values() {
-            let c = d.all_headlines().filter(|h| !h.body_text().is_empty()).count();
+            let c = d
+                .all_headlines()
+                .filter(|h| !h.body_text().is_empty())
+                .count();
             *m.entry(c).or_insert(0) += 1;
         }
         m
@@ -5288,7 +5375,10 @@ impl Vault {
     pub fn file_with_property_count_counts(&self) -> std::collections::BTreeMap<usize, usize> {
         let mut m = std::collections::BTreeMap::new();
         for d in self.documents.values() {
-            let c = d.all_headlines().filter(|h| !h.properties().is_empty()).count();
+            let c = d
+                .all_headlines()
+                .filter(|h| !h.properties().is_empty())
+                .count();
             *m.entry(c).or_insert(0) += 1;
         }
         m
@@ -5399,7 +5489,10 @@ impl Vault {
     pub fn file_with_link_count_counts(&self) -> std::collections::BTreeMap<usize, usize> {
         let mut m = std::collections::BTreeMap::new();
         for d in self.documents.values() {
-            let c = d.all_headlines().filter(|h| !h.link_targets().is_empty()).count();
+            let c = d
+                .all_headlines()
+                .filter(|h| !h.link_targets().is_empty())
+                .count();
             *m.entry(c).or_insert(0) += 1;
         }
         m
@@ -5473,7 +5566,10 @@ impl Vault {
     pub fn file_body_line_count_counts(&self) -> std::collections::BTreeMap<usize, usize> {
         let mut m = std::collections::BTreeMap::new();
         for d in self.documents.values() {
-            let c: usize = d.all_headlines().map(|h| h.body_text().lines().count()).sum();
+            let c: usize = d
+                .all_headlines()
+                .map(|h| h.body_text().lines().count())
+                .sum();
             *m.entry(c).or_insert(0) += 1;
         }
         m
@@ -6275,8 +6371,7 @@ impl Vault {
     ) -> std::collections::BTreeMap<usize, usize> {
         let mut m = std::collections::BTreeMap::new();
         for d in self.documents.values() {
-            *m.entry(d.org().distinct_property_keys().len())
-                .or_insert(0) += 1;
+            *m.entry(d.org().distinct_property_keys().len()).or_insert(0) += 1;
         }
         m
     }
@@ -6449,9 +6544,7 @@ impl Vault {
 
     /// Histogram of per-file distinct priority counts.
     #[must_use]
-    pub fn file_distinct_priority_count_counts(
-        &self,
-    ) -> std::collections::BTreeMap<usize, usize> {
+    pub fn file_distinct_priority_count_counts(&self) -> std::collections::BTreeMap<usize, usize> {
         let mut m = std::collections::BTreeMap::new();
         for d in self.documents.values() {
             *m.entry(d.org().distinct_priority_count()).or_insert(0) += 1;
@@ -7161,7 +7254,9 @@ impl Vault {
     /// Integer mean per-file timestamp-carrying headline count (`0` when no files).
     #[must_use]
     pub fn mean_file_with_timestamp_count(&self) -> usize {
-        self.with_timestamp_count().checked_div(self.len()).unwrap_or(0)
+        self.with_timestamp_count()
+            .checked_div(self.len())
+            .unwrap_or(0)
     }
 
     /// Median per-file timestamp-carrying headline count (`None` when no files).
@@ -7843,9 +7938,7 @@ impl Vault {
 
     /// Histogram of per-file summed headline subtree word counts.
     #[must_use]
-    pub fn file_subtree_word_count_counts(
-        &self,
-    ) -> std::collections::BTreeMap<usize, usize> {
+    pub fn file_subtree_word_count_counts(&self) -> std::collections::BTreeMap<usize, usize> {
         let mut m = std::collections::BTreeMap::new();
         for d in self.documents.values() {
             let c: usize = d
@@ -7952,9 +8045,7 @@ impl Vault {
 
     /// Histogram of per-file summed headline subtree byte counts.
     #[must_use]
-    pub fn file_subtree_byte_count_counts(
-        &self,
-    ) -> std::collections::BTreeMap<usize, usize> {
+    pub fn file_subtree_byte_count_counts(&self) -> std::collections::BTreeMap<usize, usize> {
         let mut m = std::collections::BTreeMap::new();
         for d in self.documents.values() {
             let c: usize = d
@@ -8061,9 +8152,7 @@ impl Vault {
 
     /// Histogram of per-file summed headline subtree link counts.
     #[must_use]
-    pub fn file_subtree_link_count_counts(
-        &self,
-    ) -> std::collections::BTreeMap<usize, usize> {
+    pub fn file_subtree_link_count_counts(&self) -> std::collections::BTreeMap<usize, usize> {
         let mut m = std::collections::BTreeMap::new();
         for d in self.documents.values() {
             let c: usize = d
@@ -8384,9 +8473,7 @@ impl Vault {
 
     /// Histogram of per-file summed headline subtree priority counts.
     #[must_use]
-    pub fn file_subtree_priority_count_counts(
-        &self,
-    ) -> std::collections::BTreeMap<usize, usize> {
+    pub fn file_subtree_priority_count_counts(&self) -> std::collections::BTreeMap<usize, usize> {
         let mut m = std::collections::BTreeMap::new();
         for d in self.documents.values() {
             let c: usize = d
@@ -8493,9 +8580,7 @@ impl Vault {
 
     /// Histogram of per-file summed headline subtree property counts.
     #[must_use]
-    pub fn file_subtree_property_count_counts(
-        &self,
-    ) -> std::collections::BTreeMap<usize, usize> {
+    pub fn file_subtree_property_count_counts(&self) -> std::collections::BTreeMap<usize, usize> {
         let mut m = std::collections::BTreeMap::new();
         for d in self.documents.values() {
             let c: usize = d
@@ -8602,9 +8687,7 @@ impl Vault {
 
     /// Histogram of per-file summed headline subtree timestamp counts.
     #[must_use]
-    pub fn file_subtree_timestamp_count_counts(
-        &self,
-    ) -> std::collections::BTreeMap<usize, usize> {
+    pub fn file_subtree_timestamp_count_counts(&self) -> std::collections::BTreeMap<usize, usize> {
         let mut m = std::collections::BTreeMap::new();
         for d in self.documents.values() {
             let c: usize = d
@@ -8711,9 +8794,7 @@ impl Vault {
 
     /// Histogram of per-file summed headline subtree level counts.
     #[must_use]
-    pub fn file_subtree_level_count_counts(
-        &self,
-    ) -> std::collections::BTreeMap<usize, usize> {
+    pub fn file_subtree_level_count_counts(&self) -> std::collections::BTreeMap<usize, usize> {
         let mut m = std::collections::BTreeMap::new();
         for d in self.documents.values() {
             let c: usize = d
@@ -8944,9 +9025,11 @@ impl Vault {
     /// by path. Returns `None` if the file isn't loaded.
     #[must_use]
     pub fn with_link_count_of(&self, path: &Path) -> Option<usize> {
-        self.documents
-            .get(path)
-            .map(|d| d.all_headlines().filter(|h| !h.link_targets().is_empty()).count())
+        self.documents.get(path).map(|d| {
+            d.all_headlines()
+                .filter(|h| !h.link_targets().is_empty())
+                .count()
+        })
     }
 
     /// Maximum per-file link-carrying headline count (`None` when no files).
@@ -8954,7 +9037,11 @@ impl Vault {
     pub fn max_file_with_link_count(&self) -> Option<usize> {
         self.documents
             .values()
-            .map(|d| d.all_headlines().filter(|h| !h.link_targets().is_empty()).count())
+            .map(|d| {
+                d.all_headlines()
+                    .filter(|h| !h.link_targets().is_empty())
+                    .count()
+            })
             .max()
     }
 
@@ -8963,7 +9050,11 @@ impl Vault {
     pub fn min_file_with_link_count(&self) -> Option<usize> {
         self.documents
             .values()
-            .map(|d| d.all_headlines().filter(|h| !h.link_targets().is_empty()).count())
+            .map(|d| {
+                d.all_headlines()
+                    .filter(|h| !h.link_targets().is_empty())
+                    .count()
+            })
             .min()
     }
 
@@ -8979,7 +9070,11 @@ impl Vault {
         let mut v: Vec<usize> = self
             .documents
             .values()
-            .map(|d| d.all_headlines().filter(|h| !h.link_targets().is_empty()).count())
+            .map(|d| {
+                d.all_headlines()
+                    .filter(|h| !h.link_targets().is_empty())
+                    .count()
+            })
             .collect();
         if v.is_empty() {
             return None;
@@ -9888,9 +9983,7 @@ impl Vault {
             .values()
             .map(|d| d.org().iter_headlines().len())
             .sum();
-        self.total_subtree_level_count()
-            .checked_div(n)
-            .unwrap_or(0)
+        self.total_subtree_level_count().checked_div(n).unwrap_or(0)
     }
 
     /// Median per-headline subtree level count (`None` when no headlines).
@@ -10127,9 +10220,11 @@ impl Vault {
     /// path. Returns `None` if the file isn't loaded.
     #[must_use]
     pub fn with_body_count_of(&self, path: &Path) -> Option<usize> {
-        self.documents
-            .get(path)
-            .map(|d| d.all_headlines().filter(|h| !h.body_text().is_empty()).count())
+        self.documents.get(path).map(|d| {
+            d.all_headlines()
+                .filter(|h| !h.body_text().is_empty())
+                .count()
+        })
     }
 
     /// Maximum per-file non-empty-body headline count (`None` when no files).
@@ -10137,7 +10232,11 @@ impl Vault {
     pub fn max_file_with_body_count(&self) -> Option<usize> {
         self.documents
             .values()
-            .map(|d| d.all_headlines().filter(|h| !h.body_text().is_empty()).count())
+            .map(|d| {
+                d.all_headlines()
+                    .filter(|h| !h.body_text().is_empty())
+                    .count()
+            })
             .max()
     }
 
@@ -10146,7 +10245,11 @@ impl Vault {
     pub fn min_file_with_body_count(&self) -> Option<usize> {
         self.documents
             .values()
-            .map(|d| d.all_headlines().filter(|h| !h.body_text().is_empty()).count())
+            .map(|d| {
+                d.all_headlines()
+                    .filter(|h| !h.body_text().is_empty())
+                    .count()
+            })
             .min()
     }
 
@@ -10162,7 +10265,11 @@ impl Vault {
         let mut v: Vec<usize> = self
             .documents
             .values()
-            .map(|d| d.all_headlines().filter(|h| !h.body_text().is_empty()).count())
+            .map(|d| {
+                d.all_headlines()
+                    .filter(|h| !h.body_text().is_empty())
+                    .count()
+            })
             .collect();
         if v.is_empty() {
             return None;
@@ -10310,10 +10417,7 @@ impl Vault {
     /// Integer mean headline title length (`0` when no headlines).
     #[must_use]
     pub fn mean_title_len(&self) -> usize {
-        let n = self
-            .iter()
-            .flat_map(|(_, d)| d.all_headlines())
-            .count();
+        let n = self.iter().flat_map(|(_, d)| d.all_headlines()).count();
         self.total_title_len().checked_div(n).unwrap_or(0)
     }
 
@@ -10548,9 +10652,11 @@ impl Vault {
     /// `None` if the file isn't loaded.
     #[must_use]
     pub fn body_line_count_of(&self, path: &Path) -> Option<usize> {
-        self.documents
-            .get(path)
-            .map(|d| d.all_headlines().map(|h| h.body_text().lines().count()).sum())
+        self.documents.get(path).map(|d| {
+            d.all_headlines()
+                .map(|h| h.body_text().lines().count())
+                .sum()
+        })
     }
 
     /// Maximum per-file body line count (`None` when no files).
@@ -10558,7 +10664,11 @@ impl Vault {
     pub fn max_file_body_line_count(&self) -> Option<usize> {
         self.documents
             .values()
-            .map(|d| d.all_headlines().map(|h| h.body_text().lines().count()).sum())
+            .map(|d| {
+                d.all_headlines()
+                    .map(|h| h.body_text().lines().count())
+                    .sum()
+            })
             .max()
     }
 
@@ -10567,7 +10677,11 @@ impl Vault {
     pub fn min_file_body_line_count(&self) -> Option<usize> {
         self.documents
             .values()
-            .map(|d| d.all_headlines().map(|h| h.body_text().lines().count()).sum())
+            .map(|d| {
+                d.all_headlines()
+                    .map(|h| h.body_text().lines().count())
+                    .sum()
+            })
             .min()
     }
 
@@ -10585,7 +10699,11 @@ impl Vault {
         let mut v: Vec<usize> = self
             .documents
             .values()
-            .map(|d| d.all_headlines().map(|h| h.body_text().lines().count()).sum())
+            .map(|d| {
+                d.all_headlines()
+                    .map(|h| h.body_text().lines().count())
+                    .sum()
+            })
             .collect();
         if v.is_empty() {
             return None;
@@ -10988,9 +11106,11 @@ impl Vault {
     /// file by path. Returns `None` if the file isn't loaded.
     #[must_use]
     pub fn with_property_count_of(&self, path: &Path) -> Option<usize> {
-        self.documents
-            .get(path)
-            .map(|d| d.all_headlines().filter(|h| !h.properties().is_empty()).count())
+        self.documents.get(path).map(|d| {
+            d.all_headlines()
+                .filter(|h| !h.properties().is_empty())
+                .count()
+        })
     }
 
     /// Maximum per-file property-carrying headline count (`None` when no files).
@@ -10998,7 +11118,11 @@ impl Vault {
     pub fn max_file_with_property_count(&self) -> Option<usize> {
         self.documents
             .values()
-            .map(|d| d.all_headlines().filter(|h| !h.properties().is_empty()).count())
+            .map(|d| {
+                d.all_headlines()
+                    .filter(|h| !h.properties().is_empty())
+                    .count()
+            })
             .max()
     }
 
@@ -11007,14 +11131,20 @@ impl Vault {
     pub fn min_file_with_property_count(&self) -> Option<usize> {
         self.documents
             .values()
-            .map(|d| d.all_headlines().filter(|h| !h.properties().is_empty()).count())
+            .map(|d| {
+                d.all_headlines()
+                    .filter(|h| !h.properties().is_empty())
+                    .count()
+            })
             .min()
     }
 
     /// Integer mean per-file property-carrying headline count (`0` when no files).
     #[must_use]
     pub fn mean_file_with_property_count(&self) -> usize {
-        self.with_property_count().checked_div(self.len()).unwrap_or(0)
+        self.with_property_count()
+            .checked_div(self.len())
+            .unwrap_or(0)
     }
 
     /// Median per-file property-carrying headline count (`None` when no files).
@@ -11023,7 +11153,11 @@ impl Vault {
         let mut v: Vec<usize> = self
             .documents
             .values()
-            .map(|d| d.all_headlines().filter(|h| !h.properties().is_empty()).count())
+            .map(|d| {
+                d.all_headlines()
+                    .filter(|h| !h.properties().is_empty())
+                    .count()
+            })
             .collect();
         if v.is_empty() {
             return None;
@@ -11148,8 +11282,10 @@ impl Vault {
     /// Median headline count per path (integer, lower-middle for even sets).
     #[must_use]
     pub fn median_headlines_per_path(&self) -> Option<usize> {
-        let mut counts: Vec<usize> =
-            self.iter().map(|(_, d)| d.all_headlines().count()).collect();
+        let mut counts: Vec<usize> = self
+            .iter()
+            .map(|(_, d)| d.all_headlines().count())
+            .collect();
         if counts.is_empty() {
             return None;
         }
