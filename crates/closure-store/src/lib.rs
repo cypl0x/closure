@@ -28,6 +28,8 @@ pub struct Vault {
     /// Inverted index: target id (or full URL) → set of (path, source-id)
     /// pairs whose headline links to it.
     backlinks: HashMap<String, Vec<(PathBuf, BlockId)>>,
+    /// Kill ring: cut subtree sources, most-recent last.
+    kill_ring: Vec<String>,
 }
 
 /// An org-capture template: where a new entry lands and what it
@@ -116,6 +118,7 @@ impl Vault {
             documents,
             by_id,
             backlinks,
+            kill_ring: Vec::new(),
         })
     }
 
@@ -214,6 +217,69 @@ impl Vault {
     pub fn add_sibling(&mut self, after: &BlockId, title: &str) -> Result<(), VaultError> {
         let cmd = AddSibling::new(after.clone(), title.to_owned());
         self.apply_to_block(after, &cmd)
+    }
+
+    /// The most recently cut subtree source, if the kill ring is
+    /// non-empty.
+    #[must_use]
+    pub fn ring_top(&self) -> Option<&str> {
+        self.kill_ring.last().map(String::as_str)
+    }
+
+    /// Cut the subtree rooted at `id`: push its source onto the kill
+    /// ring, then remove it (kernel [`RemoveSubtree`], undoable I3)
+    /// and persist. Cut+paste is a move, so the id stays unique (I2).
+    ///
+    /// # Errors
+    ///
+    /// [`VaultError::Command`] for a missing block, otherwise the
+    /// [`Self::remove_subtree`] contract.
+    pub fn cut(&mut self, path: &Path, id: &BlockId) -> Result<(), VaultError> {
+        let doc = self
+            .documents
+            .get(path)
+            .ok_or_else(|| VaultError::UnknownId(path.display().to_string()))?;
+        let source = doc
+            .org()
+            .subtree_of(id.as_str())
+            .ok_or_else(|| VaultError::Command(format!("no headline {id}")))?
+            .to_owned();
+        self.remove_subtree(id)?;
+        self.kill_ring.push(source);
+        Ok(())
+    }
+
+    /// Paste the kill-ring top after the subtree rooted at `after` in
+    /// `path`, span-preserving. Not yet undoable (rewrite-based, like
+    /// block edits).
+    ///
+    /// # Errors
+    ///
+    /// [`VaultError::Command`] for an empty ring, an unknown target,
+    /// or a result that fails to parse; [`VaultError::Io`] on write.
+    pub fn paste(&mut self, path: &Path, after: &BlockId) -> Result<(), VaultError> {
+        let source = self
+            .kill_ring
+            .last()
+            .cloned()
+            .ok_or_else(|| VaultError::Command("kill ring is empty".into()))?;
+        let doc = self
+            .documents
+            .get(path)
+            .ok_or_else(|| VaultError::UnknownId(path.display().to_string()))?;
+        let after_path = doc
+            .path_of(after)
+            .ok_or_else(|| VaultError::Command(format!("no headline {after}")))?;
+        let new_org =
+            closure_org::rewrite_splice_subtree_after(doc.org(), &after_path, &source)
+                .map_err(|e| VaultError::Command(e.to_string()))?;
+        let new_src = closure_org::print(&new_org);
+        let new_doc =
+            Document::load_str(&new_src).map_err(|_| VaultError::Parse { path: path.into() })?;
+        fs::write(path, new_doc.source())?;
+        self.documents.insert(path.to_path_buf(), new_doc);
+        self.reindex_file(path);
+        Ok(())
     }
 
     /// Move headline `id`'s subtree to right after `after`'s subtree
