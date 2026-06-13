@@ -217,3 +217,27 @@ The kernel stays CRDT-ready even before `closure-crdt` ships:
 
 A future `closure-crdt` crate wraps `Document` and reinterprets `Edit` as a
 CRDT op without changing shells or parsers.
+
+## Built-to-last kernel primitives (the "LISP-7" idea)
+
+The kernel is defined by a minimal set of primitives. Every feature (views,
+formulas, LLM tools, sync, etc.) reduces to these. This is the "well thought
+basics" and "spec that has well thought basics" from the vision (analogous to
+a LISP with 7 primitives).
+
+The primitives (documented here as the contract; implemented across closure-org,
+closure-core, closure-store, closure-query, closure-undo, closure-crdt, etc.):
+
+- **parse**: turn plain text (org) into a Document (span-preserving, I1).
+- **print**: turn Document back to exact source text (I1).
+- **apply**: a Command mutates a Document, producing an Edit on the undo tree (I3, I8).
+- **undo**: reverse the last Edit (branching undo tree, I3).
+- **query**: read-only access (backlinks, fuzzy, agenda, views, all_headlines, etc.).
+- **snapshot**: capture a point-in-time Replica for CRDT (with logical/vector time).
+- **merge**: combine replicas (LWW per field + vector clocks for causality; apply back via commands, I2).
+
+The rule: if a proposed feature cannot be expressed using only these (plus stable BlockId addressing and the command registry as the only mutation surface), the feature is wrong or the spec must be revised in the same commit.
+
+This section is the "Built-to-last kernel spec" (ROADMAP item). The invariants I1–I10 and the layer firewalls ensure nothing bypasses the primitives.
+
+(Tests in closure-org, closure-core, closure-crdt, etc. exercise these primitives and the "reduces to" rule via the golden, proptest, and merge fixtures.)
