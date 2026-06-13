@@ -11,10 +11,19 @@ authors.workspace = true
 [lints]
 workspace = true
 
+[features]
+# Off by default: gpui pulls ~570 transitive crates and needs system
+# GPU/X11/xkbcommon/freetype libs, which breaks the hermetic build and
+# the `cargo test --workspace` gate (I10). The kernel-side Shell model
+# is dep-free and always compiled; the real window only builds under
+# `--features gpui`.
+default = []
+gpui = ["dep:gpui"]
+
 [dependencies]
-# Stable crates.io gpui (Zed's high-perf GPU UI) for hermetic builds (I10).
-# Pure core for custom polished tree/search/editor; avoids external git deps that break nix flake.
-gpui = "0.2"
+# Stable crates.io gpui (Zed's high-perf GPU UI), opt-in via the `gpui`
+# feature so the default workspace build stays hermetic (I10).
+gpui = { version = "0.2", optional = true }
 
 # For kernel-agnostic shell model (I7): reuse Vault + query + core commands (parity with egui).
 closure-core = { path = "../closure-core" }

@@ -153,16 +153,30 @@ mod tests {
     }
 }
 
+/// Launch fallback when the `gpui` feature is disabled (the default,
+/// hermetic build). The kernel-side [`Shell`] is always available; the
+/// GPU window requires `--features gpui` and the system GPU/X11 libs.
+#[cfg(not(feature = "gpui"))]
+pub fn run(_vault_path: &std::path::Path) -> Result<(), String> {
+    Err("gpui shell not compiled: rebuild closure-cli with `--features gpui` \
+         (pulls Zed's GPU stack + system X11/xkbcommon/freetype). \
+         The egui shell is the default native path."
+        .to_owned())
+}
+
 // === Polished gpui app (high-perf desktop per vision) ===
 // Reuses the Shell model above for consistency with egui/TUI.
 // GPU rendered tree + live fuzzy (closure_query) + key dispatch + which-key hints.
 // High UX: dark theme, level indented, todo colors, key hints everywhere.
 // To run: from cli or directly.
 
+#[cfg(feature = "gpui")]
 use std::sync::{Arc, Mutex};
 
+#[cfg(feature = "gpui")]
 use gpui::*;
 
+#[cfg(feature = "gpui")]
 pub fn run(vault_path: &std::path::Path) -> Result<(), String> {
     // Polished gpui shell per vision: high-perf GPU, kernel agnostic (Shell + Vault only),
     // registry aligned, consistent multi-UI (same methods as egui), live fuzzy, tree with levels/todo,
@@ -174,12 +188,14 @@ pub fn run(vault_path: &std::path::Path) -> Result<(), String> {
     Ok(())
 }
 
+#[cfg(feature = "gpui")]
 struct GpuiPolishedView {
     shell: Arc<Mutex<Shell>>,
     query: String,
     selected: usize,
 }
 
+#[cfg(feature = "gpui")]
 impl Render for GpuiPolishedView {
     fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
         let shell = self.shell.lock().unwrap();

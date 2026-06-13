@@ -15,6 +15,13 @@ path = "src/main.rs"
 [lints]
 workspace = true
 
+[features]
+# `closure gpui` is a real GPU window only when built with this feature
+# (pulls Zed's stack + system libs). Default builds stay hermetic (I10);
+# the subcommand then returns an instructive error.
+default = []
+gpui = ["closure-shell-gpui/gpui"]
+
 [dependencies]
 closure-core = { path = "../closure-core" }
 closure-org = { path = "../closure-org" }
