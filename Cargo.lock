@@ -245,6 +245,7 @@ dependencies = [
  "closure-eval",
  "closure-input",
  "closure-llm",
+ "closure-markdown",
  "closure-mcp",
  "closure-org",
  "closure-plugin-host",

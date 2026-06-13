@@ -24,6 +24,7 @@ closure-store = { path = "../closure-store" }
 closure-tui = { path = "../closure-tui" }
 closure-undo = { path = "../closure-undo" }
 closure-config = { path = "../closure-config" }
+closure-markdown = { path = "../closure-markdown" }
 closure-record = { path = "../closure-record" }
 closure-input = { path = "../closure-input" }
 closure-whichkey = { path = "../closure-whichkey" }

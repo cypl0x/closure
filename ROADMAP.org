@@ -93,9 +93,9 @@ reversible option, keep moving.
 ** DONE Body full-text search in TUI (=S=): fuzzy over body lines (=file:line:text=), cursor + =RET= jumps to file
 ** DONE Content-hash index cache: =Vault::reload_incremental= re-parses only changed files (FNV-1a vs cached); count==0 on an unchanged vault proves rescan avoided
 ** DONE Input-lag budget test: =App::handle_stroke= under 16ms (nav) / 50ms (fuzzy) on a 1–2k synthetic vault; Instant-based, no criterion dep (see Decisions)
-* TODO Markdown compatibility [0/3]
-** TODO closure-markdown: parse/print roundtrip subset (headings, lists, code fences) with golden fixtures (I1 for md)
-** TODO =closure export md <file>= / =closure import md <file>=: org↔md conversion, lossy parts reported, never silently dropped
+* TODO Markdown compatibility [2/3]
+** DONE closure-markdown: roundtrip subset (headings, lists, code fences), =fixtures/md/= golden corpus (I1 for md)
+** DONE =closure export-md= / =closure import-md=: org↔md line conversion; dropped drawers/planning warned on stderr
 ** TODO Vault may mix =.md= files read-only first; same search/backlinks over them
 * TODO Tree-sitter support [0/2]
 ** TODO closure-tree-sitter: highlight spans for code-block languages via tree-sitter parsers (pluggable, external CLI or feature-gated crate — record decision)

@@ -10,6 +10,7 @@
 
 #![forbid(unsafe_code)]
 
+use std::fmt::Write as _;
 use std::sync::Arc;
 
 use thiserror::Error;
@@ -240,4 +241,89 @@ fn classify_atx_heading(body: &str) -> Option<u8> {
     } else {
         None
     }
+}
+
+/// Convert org source to markdown (line-level subset). Returns the
+/// markdown plus warnings for lossy parts (drawers, planning lines,
+/// TODO keywords) that are dropped.
+#[must_use]
+pub fn from_org(org: &str) -> (String, Vec<String>) {
+    let mut out = String::with_capacity(org.len());
+    let mut warnings = Vec::new();
+    let mut in_drawer = false;
+    for line in org.split_inclusive('\n') {
+        let body = line.strip_suffix('\n').unwrap_or(line);
+        let trimmed = body.trim();
+        if in_drawer {
+            if trimmed.eq_ignore_ascii_case(":END:") {
+                in_drawer = false;
+            }
+            continue;
+        }
+        if trimmed.starts_with(':') && trimmed.ends_with(':') && trimmed.len() > 2 {
+            in_drawer = true;
+            warnings.push(format!("dropped drawer `{trimmed}`"));
+            continue;
+        }
+        if trimmed.starts_with("SCHEDULED:") || trimmed.starts_with("DEADLINE:")
+            || trimmed.starts_with("CLOSED:")
+        {
+            warnings.push(format!("dropped planning `{trimmed}`"));
+            continue;
+        }
+        if let Some(lang) = trimmed.strip_prefix("#+BEGIN_SRC") {
+            let _ = writeln!(out, "```{}", lang.trim());
+            continue;
+        }
+        if trimmed.eq_ignore_ascii_case("#+END_SRC") {
+            out.push_str("```\n");
+            continue;
+        }
+        let stars = body.bytes().take_while(|&b| b == b'*').count();
+        if stars > 0 && body.as_bytes().get(stars) == Some(&b' ') {
+            let _ = writeln!(out, "{} {}", "#".repeat(stars), &body[stars + 1..]);
+            continue;
+        }
+        out.push_str(line);
+    }
+    (out, warnings)
+}
+
+/// Convert markdown source to org (line-level subset).
+#[must_use]
+pub fn to_org(md: &str) -> String {
+    let mut out = String::with_capacity(md.len());
+    let mut in_fence = false;
+    for line in md.split_inclusive('\n') {
+        let body = line.strip_suffix('\n').unwrap_or(line);
+        let trimmed = body.trim_start();
+        if let Some(rest) = fence_marker(body).and_then(|m| trimmed.strip_prefix(m.as_str())) {
+            if in_fence {
+                out.push_str("#+END_SRC\n");
+                in_fence = false;
+            } else {
+                let _ = writeln!(out, "#+BEGIN_SRC{}", {
+                    let lang = rest.trim();
+                    if lang.is_empty() {
+                        String::new()
+                    } else {
+                        format!(" {lang}")
+                    }
+                });
+                in_fence = true;
+            }
+            continue;
+        }
+        if in_fence {
+            out.push_str(line);
+            continue;
+        }
+        let hashes = body.bytes().take_while(|&b| b == b'#').count();
+        if (1..=6).contains(&hashes) && body.as_bytes().get(hashes) == Some(&b' ') {
+            let _ = writeln!(out, "{} {}", "*".repeat(hashes), &body[hashes + 1..]);
+            continue;
+        }
+        out.push_str(line);
+    }
+    out
 }

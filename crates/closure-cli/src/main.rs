@@ -69,6 +69,17 @@ enum Cmd {
         #[arg(long)]
         at: Option<String>,
     },
+    /// Convert an org file to markdown on stdout (lossy parts warned
+    /// on stderr).
+    ExportMd {
+        /// Path to a `*.org` file.
+        file: PathBuf,
+    },
+    /// Convert a markdown file to org on stdout.
+    ImportMd {
+        /// Path to a `*.md` file.
+        file: PathBuf,
+    },
     /// List SCHEDULED/DEADLINE headlines, sorted by date.
     Agenda {
         /// Path to the vault directory.
@@ -966,6 +977,8 @@ fn run(cmd: &Cmd) -> Result<(), String> {
             prefix,
             body,
         } => cmd_capture(vault, title, target, prefix, body),
+        Cmd::ExportMd { file } => cmd_export_md(file),
+        Cmd::ImportMd { file } => cmd_import_md(file),
         Cmd::Agenda { vault, until } => cmd_agenda(vault, until.as_deref()),
         Cmd::Cron { vault, file, at } => cmd_cron(vault, file, at.as_deref()),
         Cmd::History { vault, grep } => cmd_history(vault, grep.as_deref()),
@@ -1169,6 +1182,22 @@ fn cmd_plugin(manifest: &Path, executable: &Path, args: &[String]) -> Result<(),
     let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
     let out = host.invoke(&command, &arg_refs).map_err(|e| format!("{e}"))?;
     print!("{out}");
+    Ok(())
+}
+
+fn cmd_export_md(file: &Path) -> Result<(), String> {
+    let src = fs::read_to_string(file).map_err(|e| format!("read {}: {e}", file.display()))?;
+    let (md, warnings) = closure_markdown::from_org(&src);
+    for w in warnings {
+        eprintln!("warning: {w}");
+    }
+    print!("{md}");
+    Ok(())
+}
+
+fn cmd_import_md(file: &Path) -> Result<(), String> {
+    let src = fs::read_to_string(file).map_err(|e| format!("read {}: {e}", file.display()))?;
+    print!("{}", closure_markdown::to_org(&src));
     Ok(())
 }
 
