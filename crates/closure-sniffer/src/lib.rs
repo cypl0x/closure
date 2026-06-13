@@ -105,3 +105,17 @@ impl CaptureBackend for MockBackend {
         match_first(candidate, &self.rules).map(|r| r.action)
     }
 }
+
+/// Append a capture as an org headline to the given network.org path (org-native log).
+///
+/// Headline format: * <ts> host=<host> proto=<proto>
+/// (Simple append for lean sniffer; later can use Vault for span-preserving if needed.)
+pub fn log_capture_to_org(path: &std::path::Path, host: &str, proto: &str, ts: &str) -> std::io::Result<()> {
+    use std::fs::OpenOptions;
+    use std::io::Write;
+
+    let line = format!("* <{ts}> host={host} proto={proto}\n");
+    let mut f = OpenOptions::new().create(true).append(true).open(path)?;
+    f.write_all(line.as_bytes())?;
+    Ok(())
+}

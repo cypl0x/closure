@@ -66,3 +66,29 @@ fn capture_backend_trait_with_mock() {
     let allow = mock.match_action("https://good.com");
     assert!(matches!(allow, None)); // or default allow, depending on impl
 }
+
+// TDD test written *first* for sniffer org-native log (second sub).
+// On a 'log' action or explicit, append a headline to a network.org file
+// with host/port/proto/ts. Test will fail until the log helper exists and writes org.
+#[test]
+fn org_log_appends_headline_on_capture() {
+    use std::fs;
+    use tempfile::tempdir;
+
+    let dir = tempdir().unwrap();
+    let net_path = dir.path().join("network.org");
+    fs::write(&net_path, "").unwrap();
+
+    // Simulate a capture event that should log.
+    // Requires the log helper (will not exist).
+    closure_sniffer::log_capture_to_org(
+        &net_path,
+        "192.0.2.1:443",
+        "TCP",
+        "2026-06-13T12:00:00Z",
+    ).expect("log");
+
+    let content = fs::read_to_string(&net_path).unwrap();
+    assert!(content.contains("* <2026-06-13") || content.contains("192.0.2.1"));
+    assert!(content.contains("TCP"));
+}
