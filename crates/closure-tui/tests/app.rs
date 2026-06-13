@@ -344,6 +344,16 @@ fn rec(path: &str, id: &str, title: &str) -> closure_tui::HeadlineRecord {
         path: std::path::PathBuf::from(path),
         id: id.to_owned(),
         title: title.to_owned(),
+        body: String::new(),
+    }
+}
+
+fn rec_body(path: &str, id: &str, title: &str, body: &str) -> closure_tui::HeadlineRecord {
+    closure_tui::HeadlineRecord {
+        path: std::path::PathBuf::from(path),
+        id: id.to_owned(),
+        title: title.to_owned(),
+        body: body.to_owned(),
     }
 }
 
@@ -1304,4 +1314,82 @@ fn blocks_ret_on_empty_list_is_safe() {
     app.handle_stroke("RET");
     assert_eq!(app.mode(), AppMode::Blocks, "nothing to run");
     assert_eq!(app.take_eval_request(), None);
+}
+
+// --- inline body editing ---------------------------------------------------
+
+fn app_with_bodies() -> App {
+    let mut app = App::new(paths());
+    app.set_headlines(vec![
+        rec_body("a.org", "id-a1", "Note", "line one\n"),
+        rec_body("a.org", "id-a2", "Other", ""),
+    ]);
+    app
+}
+
+#[test]
+fn i_in_headline_list_opens_body_editor_prefilled() {
+    let mut app = app_with_bodies();
+    app.handle_stroke("l");
+    app.handle_stroke("i");
+    assert_eq!(app.mode(), AppMode::EditBody);
+    assert_eq!(app.buffer(), "line one\n");
+}
+
+#[test]
+fn body_editor_printable_and_newline_build_buffer() {
+    let mut app = app_with_bodies();
+    app.handle_stroke("l");
+    app.handle_stroke("j");
+    app.handle_stroke("i");
+    assert_eq!(app.buffer(), "", "empty body starts blank");
+    app.handle_stroke("a");
+    app.handle_stroke("RET");
+    app.handle_stroke("b");
+    assert_eq!(app.buffer(), "a\nb");
+}
+
+#[test]
+fn body_editor_del_removes_last_char() {
+    let mut app = app_with_bodies();
+    app.handle_stroke("l");
+    app.handle_stroke("j");
+    app.handle_stroke("i");
+    app.handle_stroke("x");
+    app.handle_stroke("DEL");
+    assert_eq!(app.buffer(), "");
+}
+
+#[test]
+fn ctrl_s_confirms_body_request_once() {
+    let mut app = app_with_bodies();
+    app.handle_stroke("l");
+    app.handle_stroke("i");
+    app.handle_stroke("DEL");
+    app.handle_stroke("Z");
+    app.handle_stroke("C-s");
+    assert_eq!(app.mode(), AppMode::Browse);
+    let req = app.take_body_request();
+    assert!(req.as_ref().is_some_and(|(id, _)| id == "id-a1"));
+    assert!(req.is_some_and(|(_, body)| body.contains('Z')));
+    assert_eq!(app.take_body_request(), None);
+}
+
+#[test]
+fn body_editor_esc_cancels() {
+    let mut app = app_with_bodies();
+    app.handle_stroke("l");
+    app.handle_stroke("i");
+    app.handle_stroke("x");
+    app.handle_stroke("ESC");
+    assert_eq!(app.mode(), AppMode::Browse);
+    assert_eq!(app.take_body_request(), None);
+}
+
+#[test]
+fn i_on_empty_headline_list_is_noop() {
+    let mut app = App::new(paths());
+    app.handle_stroke("l");
+    app.handle_stroke("i");
+    assert_eq!(app.mode(), AppMode::Headlines);
 }

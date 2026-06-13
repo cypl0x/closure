@@ -182,6 +182,8 @@ pub struct HeadlineRecord {
     pub id: String,
     /// Headline title.
     pub title: String,
+    /// Headline body text (for inline editing).
+    pub body: String,
 }
 
 /// Which input surface the shell is on.
@@ -216,6 +218,8 @@ pub enum AppMode {
     EditCell,
     /// Picking a code block of the selected file to evaluate.
     Blocks,
+    /// Editing a headline's body in a multi-line buffer.
+    EditBody,
 }
 
 /// Elm-style application state for the terminal shell. Strokes go in
@@ -251,6 +255,9 @@ pub struct App {
     property_request: Option<(String, String, String)>,
     blocks: Vec<(PathBuf, String)>,
     eval_request: Option<(PathBuf, usize)>,
+    buffer: String,
+    body_target: Option<String>,
+    body_request: Option<(String, String)>,
 }
 
 impl App {
@@ -306,7 +313,22 @@ impl App {
             property_request: None,
             blocks: Vec::new(),
             eval_request: None,
+            buffer: String::new(),
+            body_target: None,
+            body_request: None,
         }
+    }
+
+    /// The multi-line edit buffer (body editor).
+    #[must_use]
+    pub fn buffer(&self) -> &str {
+        &self.buffer
+    }
+
+    /// Consume the `(id, body)` body edit confirmed by the user, if
+    /// any. The shell performs the vault write.
+    pub const fn take_body_request(&mut self) -> Option<(String, String)> {
+        self.body_request.take()
     }
 
     /// Provide the `(file, label)` code-block records listed by the
@@ -635,6 +657,10 @@ impl App {
             self.handle_blocks_stroke(stroke);
             return;
         }
+        if self.mode == AppMode::EditBody {
+            self.handle_editbody_stroke(stroke);
+            return;
+        }
         if self.mode == AppMode::EditCell {
             self.handle_editcell_stroke(stroke);
             return;
@@ -696,6 +722,23 @@ impl App {
                     self.mode = AppMode::Rename;
                 }
             }
+            "i" => {
+                let target = self
+                    .file_headlines()
+                    .get(self.result_cursor)
+                    .map(|(_, id)| (*id).to_owned());
+                if let Some(id) = target {
+                    let body = self
+                        .headlines
+                        .iter()
+                        .find(|r| r.id == id)
+                        .map(|r| r.body.clone())
+                        .unwrap_or_default();
+                    self.body_target = Some(id);
+                    self.buffer = body;
+                    self.mode = AppMode::EditBody;
+                }
+            }
             "a" => {
                 let target = self
                     .file_headlines()
@@ -722,6 +765,34 @@ impl App {
                 self.result_cursor = 0;
             }
             _ => {}
+        }
+    }
+
+    fn handle_editbody_stroke(&mut self, stroke: &str) {
+        match stroke {
+            "ESC" => {
+                self.mode = AppMode::Browse;
+                self.buffer.clear();
+                self.body_target = None;
+            }
+            "C-s" => {
+                if let Some(id) = self.body_target.take() {
+                    self.body_request = Some((id, std::mem::take(&mut self.buffer)));
+                }
+                self.mode = AppMode::Browse;
+                self.buffer.clear();
+            }
+            "RET" => self.buffer.push('\n'),
+            "SPC" => self.buffer.push(' '),
+            "DEL" => {
+                self.buffer.pop();
+            }
+            s => {
+                let mut chars = s.chars();
+                if let (Some(c), None) = (chars.next(), chars.next()) {
+                    self.buffer.push(c);
+                }
+            }
         }
     }
 
@@ -1210,6 +1281,7 @@ fn sync_app(app: &mut App, vault: &Vault) {
                 path: path.to_path_buf(),
                 id: h.id().as_str().to_owned(),
                 title: h.title().to_owned(),
+                body: h.body_text().to_owned(),
             });
         }
     }
@@ -1310,6 +1382,12 @@ fn run_loop(
             if let Some(id) = app.take_delete_request() {
                 vault
                     .remove_subtree(&closure_core::BlockId::from_existing(&id))
+                    .map_err(|e| TuiError::Vault(e.to_string()))?;
+                sync_app(&mut app, vault);
+            }
+            if let Some((id, body)) = app.take_body_request() {
+                vault
+                    .set_body(&closure_core::BlockId::from_existing(&id), &body)
                     .map_err(|e| TuiError::Vault(e.to_string()))?;
                 sync_app(&mut app, vault);
             }
@@ -1461,6 +1539,10 @@ fn overlay_content(app: &App) -> Option<(String, Vec<String>)> {
                 .iter()
                 .map(|(t, id)| format!("{t}    [{id}]"))
                 .collect(),
+        )),
+        AppMode::EditBody => Some((
+            "edit body — C-s save, ESC cancel".to_owned(),
+            app.buffer().lines().map(str::to_owned).collect(),
         )),
         AppMode::Blocks => Some((
             app.selected_path().map_or_else(

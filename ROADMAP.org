@@ -77,7 +77,7 @@ reversible option, keep moving.
 * TODO Notion-default editing mode for real [0/5]
 ** TODO Block model over headlines+paragraphs: every block addressable, =+=-style insert-below command in TUI (any block type: headline, code, table)
 ** TODO Slash commands: =/= in Notion mode opens the command palette scoped to block insertion (already-built palette reused)
-** TODO Inline body editing in TUI: edit the selected block's text in a multi-line minibuffer through SetBody (I3)
+** DONE Inline body editing in TUI: =i= in the headline list opens a multi-line body buffer (=RET= newline, =C-s= save, =ESC= cancel) → =Vault::set_body= / SetBody (I3)
 ** TODO Structure ops bound in every mode: promote/demote/move-subtree-up/down (kernel commands exist) with which-key entries (I4)
 ** TODO Kill ring: cut/copy/paste blocks via commands; ring stored in memory + optionally persisted (see record-everything)
 * TODO Record-everything (configurable) [0/3]
