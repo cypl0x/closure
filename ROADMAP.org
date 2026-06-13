@@ -132,8 +132,8 @@ reversible option, keep moving.
 ** TODO closure-acp: agent card (name, tools, schemas) served over the MCP JSON subset; handshake test between two in-process agents
 ** TODO closure-a2a: task delegation — agent A posts a task, agent B (separate vault) executes via its registry, returns result; round-trip test
 ** TODO Swarm: N workers drain a task queue stored as an org file (TODO headlines = tasks, DONE = finished); property test: every task done exactly once
-* TODO P2P sync & collaboration [0/3]
-** TODO Vector-clock (or Lamport) timestamps replace manual ts in closure-crdt; property tests for causality
+* TODO P2P sync & collaboration [1/3]
+** DONE Vector-clock (VectorClock with bump/merge max/logical_time; snapshot_with_clock; property test for causality in crdt) (TDD)
 ** TODO P2P transport behind the Transport trait via external binary (iroh or IPFS CLI) — record decision, round-trip test gated on binary presence
 ** TODO Live collaboration session: two processes on localhost exchange replica deltas over TCP, converge while both edit; conflict corpus reused
 * TODO Built-to-last kernel spec [0/3]

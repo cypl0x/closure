@@ -14,6 +14,51 @@ use std::collections::HashMap;
 use closure_core::{BlockId, Command, Document, RenameHeadline, SetBody};
 use thiserror::Error;
 
+/// Simple vector clock for P2P causality (replaces manual u64 ts per ROADMAP).
+/// Each replica has an entry; local events increment own counter; merge takes max per entry.
+/// The 'time' for LWW can be a summary (e.g. max or sum); full vector for causality tests.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct VectorClock {
+    counters: HashMap<String, u64>,
+}
+
+impl VectorClock {
+    #[must_use]
+    pub fn new(replica: &str) -> Self {
+        let mut c = HashMap::new();
+        c.insert(replica.to_owned(), 0);
+        Self { counters: c }
+    }
+
+    /// Increment local counter (on local event/snapshot).
+    pub fn bump(&mut self, replica: &str) {
+        let e = self.counters.entry(replica.to_owned()).or_insert(0);
+        *e += 1;
+    }
+
+    /// Merge: per replica, take the max.
+    pub fn merge(&mut self, other: &Self) {
+        for (r, &c) in &other.counters {
+            let e = self.counters.entry(r.clone()).or_insert(0);
+            if c > *e {
+                *e = c;
+            }
+        }
+    }
+
+    /// Logical time for LWW comparison (e.g. max counter across; or sum for total order approximation).
+    #[must_use]
+    pub fn logical_time(&self) -> u64 {
+        self.counters.values().copied().max().unwrap_or(0)
+    }
+
+    /// For causality property tests: the counter for a replica.
+    #[must_use]
+    pub fn get(&self, replica: &str) -> u64 {
+        self.counters.get(replica).copied().unwrap_or(0)
+    }
+}
+
 /// A last-writer-wins register.
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct Register {
@@ -90,6 +135,15 @@ impl Replica {
         snap
     }
 
+    /// Snapshot using a VectorClock (for P2P causality per ROADMAP).
+    /// Bumps the replica's counter, uses the logical time for the register ts.
+    #[must_use]
+    pub fn snapshot_with_clock(doc: &Document, clock: &mut VectorClock, replica: &str) -> Self {
+        clock.bump(replica);
+        let ts = clock.logical_time();
+        Self::snapshot(doc, ts)
+    }
+
     /// Merge another replica in: per block and per field, the
     /// register with the higher timestamp wins; ties keep the current
     /// entry. No merge ever creates a fresh id (I2).
@@ -147,12 +201,14 @@ impl Replica {
             };
             if state.title.value != title {
                 let cmd = RenameHeadline::new(id.clone(), state.title.value.clone());
-                cmd.apply(doc).map_err(|e| CrdtError::Apply(e.to_string()))?;
+                cmd.apply(doc)
+                    .map_err(|e| CrdtError::Apply(e.to_string()))?;
                 changed += 1;
             }
             if state.body.value != body {
                 let cmd = SetBody::new(id.clone(), state.body.value.clone());
-                cmd.apply(doc).map_err(|e| CrdtError::Apply(e.to_string()))?;
+                cmd.apply(doc)
+                    .map_err(|e| CrdtError::Apply(e.to_string()))?;
                 changed += 1;
             }
         }
