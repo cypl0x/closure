@@ -106,20 +106,23 @@
           touch $out
         '';
 
-      # Fuzz targets run in CI (ROADMAP Quality [advancing 3/4]): 60s budget for
-      # closure-org (parse) and (future) markdown. The fuzz/ dir + target
-      # (written TDD first) exercises the parser on arbitrary bytes (I1/I5).
-      # Uses || true + short time in the hermetic check because the pinned
-      # stable fenix toolchain doesn't support the -Z sanitizer flags (cargo-fuzz
-      # + libfuzzer-sys want nightly). Real runs: `nix develop -c ...` (dev adds
-      # nightly) or with RUSTUP_TOOLCHAIN=nightly.
+      # Parser fuzz/replay gate (I1/I5/I6). This is a REAL gate — no
+      # `|| true`: the closure-org `fuzz_replay` test drives `parse`
+      # over the committed corpus, 40k deterministic full-byte-range
+      # inputs, and adversarial cases on the pinned stable toolchain,
+      # asserting no panic + byte-exact roundtrip. (The `fuzz/` dir
+      # keeps a cargo-fuzz libFuzzer target for opt-in nightly runs:
+      # `cargo fuzz run parse -- -max_total_time=60`, but coverage no
+      # longer depends on nightly being present.)
       fuzz =
-        pkgs.runCommand "fuzz-check" {
-          nativeBuildInputs = [ rustToolchain.${system} ];
-        } ''
-          (cd ${self}/crates/closure-org && cargo fuzz run parse -- -max_total_time=1 || true)
-          touch $out
-        '';
+        pkgs.runCommand "fuzz-check"
+          {
+            nativeBuildInputs = [ rustToolchain.${system} ];
+          }
+          ''
+            cd ${self} && cargo test -p closure-org --test fuzz_replay --test properties
+            touch $out
+          '';
     });
   };
 }

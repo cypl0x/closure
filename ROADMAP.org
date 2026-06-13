@@ -135,19 +135,19 @@ reversible option, keep moving.
 ** DONE Live collaboration session: two processes on localhost exchange replica deltas over TCP (mpsc channels as localhost TCP stub), converge while both edit (merge after exchange), conflict corpus reused (loaded the title-vs-body orgs for the diverge edits, assert with the id from the corpus) (TDD; the 'processes' in one test for hermetic, the real would be actual TCP between two processes)
 
 
-* TODO Built-to-last kernel spec [2/3]
-** DONE Document the minimal kernel primitives ("LISP-7" idea): parse, print, apply, undo, query, snapshot, merge — spec.md section with the rule that every feature reduces to these (TDD; the doc section added with cross-refs to tests/invariants)
-** DONE org2 decision: track upstream org-mode as the compatibility target; org2 as export-only experiment — record in Decisions with rationale (TDD/doc: research spec scope + existing decisions + parser; added full entry under Decisions 2026-06-13 with context/options/reversible/rationale tied to I1/I5/I10; no behaviour change, verifies clean)
-** DONE Self-documentation: =closure doc <command>= (cmd_doc + doc_for; prints name + keys note from registry; test for known command) (TDD; Emacs-style describe-function)
+* DONE Built-to-last kernel spec [3/3]
+** DONE Minimal kernel primitives ("LISP-7"): parse, print, apply, undo, query, snapshot, merge — a spec.md section with the rule that every feature reduces to these, cross-referenced to tests/invariants.
+** DONE org2 decision: track upstream org-mode as the compatibility target, org2 as export-only — recorded under [[*Decisions][Decisions]] with rationale tied to I1/I5/I10.
+** DONE Self-documentation: =closure doc <command>= prints the command + its keybindings from the registry (Emacs-style describe-function).
 
 * WIP Wasm/WASI core [1/2]
 ** DONE closure-org + closure-core compile to wasm32-wasip1 (the crates are pure, no fs/process; the target in rust-toolchain.toml + fenix pulls it; CI target check 'wasm' in flake) (TDD; the cargo check --target passes)
 ** TODO Single-HTML export embeds a wasm kernel for client-side parsing. NOT done: =export_html= delivers a working read-only browse+search snapshot, but no wasm is embedded yet (only a TODO comment). Real work: build closure-org to wasm32, base64 it into the page, add JS glue calling parse in a worker.
-* WIP Quality gates to 100% [3/4]
-** DONE Coverage gate: cargo-llvm-cov in the devShell + 'coverage' check in flake (the 'cargo llvm-cov test' runs and collects; the ratchet toward 100% is the comment for future threshold/report per milestone) (TDD)
-** TODO Fuzz targets as a REAL gate. fuzz/fuzz_targets/parse.rs exists, but the flake check runs =-max_total_time=1 || true= so it can never fail — advisory only (cargo-fuzz needs nightly; the pinned stable toolchain can't run libFuzzer). The actual no-panic/roundtrip coverage is the closure-org proptests (parse_never_panics, roundtrip_is_byte_exact_on_random_input). Make the gate real (nightly job) or drop the CI-gate claim.
-** DONE treefmt + deadnix + alejandra + clippy all wired into =nix flake check= (the 'nix flake check' for hermetic (formatting includes treefmt/alejandra, deadnix, wasm, coverage); the 'nix develop -c cargo clippy --workspace -- -D warnings && nix develop -c cargo test --workspace && nix develop -c cargo llvm-cov test' as the one command = whole truth) (TDD; the property tests note with I1–I10 cross ref to the golden/prop/fuzz tests in the crates and the spec)
-** DONE Property tests for every invariant I1–I10 enumerated in spec.md, cross-referenced from the test files (the note in the flake and the spec; the existing golden for I1, undo proptest for I3, crdt merge for I2/I6, no-panic fuzz for I5, input-lag for perf, reload for incremental, etc. cover them; the cross ref is the note) (TDD/docs: augmented org/roundtrip+properties (I1/I5/I6), core/commands (I3/I4), crdt/merge (I2/I6), store/reload (I10), fuzz target (I5); tests remain green; Quality now [4/4])
+* DONE Quality gates to 100% [4/4]
+** DONE Coverage gate: cargo-llvm-cov in the devShell + a =coverage= flake check; threshold ratchet is a future tightening.
+** DONE Real parser fuzz/replay gate (=closure-org= =fuzz_replay= test): corpus replay + 40k deterministic full-byte-range inputs + adversarial cases, all byte-exact + panic-free on the pinned stable toolchain — no =|| true=. The =fuzz/= libFuzzer target stays for opt-in nightly =cargo fuzz= runs.
+** DONE treefmt + deadnix + alejandra + clippy wired into =nix flake check=; the one-command truth is =nix develop -c cargo clippy --workspace --tests -- -D warnings && nix develop -c cargo nextest run --workspace=.
+** DONE Property tests for invariants I1–I10, cross-referenced from the test files to spec.md (roundtrip/properties I1/I5/I6, commands I3/I4, crdt merge I2/I6, reload I10, fuzz_replay I1/I5/I6).
 
 * Decisions
 Open questions land here as subheadings: context, options considered,
