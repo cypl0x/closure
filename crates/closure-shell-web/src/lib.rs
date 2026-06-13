@@ -337,11 +337,11 @@ input.addEventListener('input', () => {
     li.classList.toggle('hidden', q && !text.includes(q));
   });
 });
-// Bonus: make the initial list items collapsible-ish via click (simple).
 console.log('self-contained closure export ready');
 </script>
-<!-- wasm-kernel-embed: wasip1-client parser stub; real wasm + glue to be inlined in export_html when CI produces the artifact (org+core to wasm32-wasip1) -->
-<script>/* wasm glue stub: WebAssembly.instantiate(...) then closure_org.parse via exported fn */</script>
+<!-- TODO (not implemented): inline a wasm32 build of closure-org so the
+     page can re-parse edited org client-side. Today the export is a
+     read-only browse+search snapshot; no wasm is embedded. -->
 </body></html>",
     );
     html
