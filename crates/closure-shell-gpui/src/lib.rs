@@ -1,10 +1,14 @@
-//! gpui shell for closure (Zed's native UI framework).
+//! gpui shell for closure (Zed's native GPU UI framework).
 //!
-//! High-performance immediate-mode native desktop (mac/linux/win).
-//! Polished variant per vision: kernel-agnostic (I7), command-registry only (I8),
-//! high-perf (input-lag budgets), consistent with other shells (browse/edit/capture/fuzzy/which-key/chords),
-//! uses closure-input for modes, shows keybindings everywhere, reuses core primitives.
-//! Complies to "built to last", hermetic, multiple UIs matrix.
+//! Native desktop window built on gpui, behind the opt-in `gpui`
+//! cargo feature so the default workspace stays hermetic (I10). All
+//! behaviour lives in the dep-free, unit-tested [`GpuiApp`] state core
+//! (mirrors the TUI `App`); the gpui `Render`/`run` adapter is a thin
+//! translation of key events plus drawing. Kernel-agnostic (I7,
+//! consumes Vault + closure-query only); mutations route through the
+//! [`Shell`] / vault commands (I8). Live fuzzy filter, level-indented
+//! tree with TODO colours, capture, and a which-key footer that always
+//! shows the active bindings.
 
 #![forbid(unsafe_code)]
 #![recursion_limit = "512"]

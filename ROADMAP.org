@@ -110,7 +110,7 @@ reversible option, keep moving.
 ** DONE egui desktop parity slice: vault browse + fuzzy search + capture through the kernel-side =Shell= model (I7).
 ** DONE egui editing: rename/add/delete/undo wired to =Shell= methods, exercised by tests.
 ** DONE Self-contained single HTML file: =closure export html= — one file with the vault embedded + client-side JS search, no server.
-** DONE Native gpui shell (opt-in): kernel-side =Shell= model (parity with egui, headless-tested) + a =GpuiPolishedView= render, behind the =gpui= cargo feature so the default build stays hermetic. Same deliverable shape as egui (Shell + adapter, no live window verified in CI); launching the GPU window needs the system GPU/X11 toolchain — see Decisions.
+** DONE Native gpui shell (opt-in =gpui= feature): real Zed/gpui window over the dep-free, 13-test =GpuiApp= state core — live fuzzy filter, level-indented tree with TODO colours, keyboard nav (arrows + C-n/C-p), capture (C-c), status line, which-key footer. =run()= launches an =Application= window; the CLI links with =--features gpui= because the flake devShell now provides the GPU/X11/xkbcommon/fontconfig/freetype libs. Default build stays hermetic (gpui off). See Decisions.
 ** DROP Tauri / Flutter / GTK4 / Qt6 embedders: suggestion-tier per the vision and out of scope for the hermetic Rust workspace (heavy non-hermetic SDKs vs I10). The capability matrix keeps them as comparison entries; the web shell (=closure serve= / =export html=) is the cross-platform substrate any webview wrapper can host. See Decisions.
 * DONE Network sniffer (lean, pluggable) [3/3]
 ** DONE closure-sniffer: capture backend trait with a mock backend (TDD; external tcpdump/ss next)
@@ -157,25 +157,31 @@ can't absorb the toolchains those native shells need (node + tauri-cli,
 the Flutter SDK, GTK, Qt) without breaking reproducible nix builds.
 Resolution: ship egui (default native, kernel-side =Shell= + tests)
 and the web shell / self-contained HTML export (cross-platform, zero
-native deps); keep gpui as an opt-in =gpui=-feature crate (its Shell
-model is tested headless; the GPU window is deferred — see below).
+native deps); ship gpui as an opt-in =gpui=-feature crate (real window
+over a headless-tested state core; built+linked behind the feature —
+see below).
 Tauri/Flutter/GTK4/Qt6 are DROP as workspace crates: the two empty
 stub crates were removed, but the CLI capability matrix keeps them as
 comparison rows so the "type-level venn" of shells stays complete.
 Reversible: any of them can return as an *external* packaging project
 that consumes the kernel (the web shell is the obvious substrate for a
 webview wrapper) without touching the hermetic workspace.
-** gpui native window deferred to a GPU-equipped environment (2026-06-13)
-=closure-shell-gpui= holds the kernel-side =Shell= (parity with egui,
-headless-tested) and a =GpuiPolishedView= render, behind the =gpui=
-cargo feature. gpui pulls ~570 transitive crates and needs system
-GPU/X11/xkbcommon/freetype libs, so it is never in the default build
-or test gate (I10). Wiring =run()= to a launched =Application= window
-is left for a session on a machine with that stack, where it can be
-built and actually exercised — wiring a window blind (untestable here)
-would be a hollow "done". Reversible: enable =--features gpui= and
-finish =run()= when the environment supports it; nothing else depends
-on it.
+** gpui native window: built + linked, opt-in behind the =gpui= feature (2026-06-13, updated)
+=closure-shell-gpui= now ships a real gpui window: =run()= launches an
+=Application=, opens a window, and renders =GpuiView= (live fuzzy
+filter, level-indented tree with TODO colours, capture, which-key
+footer) over the dep-free =GpuiApp= state core. gpui (0.2.2, ~570
+transitive crates) and its system libs (Vulkan/Wayland/X11/xkbcommon/
+fontconfig/freetype) stay opt-in behind the =gpui= cargo feature so
+the default build and =cargo test --workspace= remain hermetic (I10);
+the flake devShell provides those libs via buildInputs +
+LD_LIBRARY_PATH so =cargo build -p closure-cli --features gpui= links.
+Verified here: the feature lib + CLI binary compile and link, and the
+=GpuiApp= core passes 13 headless tests; the GPU window itself needs a
+display to exercise (can't run in a headless sandbox), so the on-screen
+result is verified by whoever runs it on a desktop. All behaviour that
+*can* be tested without a display is. Reversible: the feature can be
+dropped without touching the default build.
 ** Client-side wasm parsing in the HTML export deferred (2026-06-13)
 closure-org/closure-core build to =wasm32-wasip1= today (verified by
 the flake target check), so the kernel *can* run in wasm. But making
