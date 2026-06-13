@@ -106,7 +106,7 @@ reversible option, keep moving.
 ** DONE Typed cross-key constraints (e.g. llm_provider set ⇒ llm_key_env set); errors at load via post-pass in from_kv_block (TDD)
 * DONE Shell capability matrix (type-level) [2/2]
 ** DONE =Capability= enum + per-shell consts (CORE, TUI, CLI, WEB, EGUI) + `closure shells` with nice venn/diff table output + superset tests (TDD)
-* TODO GUI shells [0/6]
+* TODO GUI shells [3/6] (matrix full for Tauri/gpui/Flutter + 3 stub crates scaffolded; bodies/eval/DROP next)
 ** DONE egui desktop parity slice (first part): vault browse + fuzzy search + capture through the Shell model (TDD)
 ** DONE egui editing: rename/add/delete/undo wired to Shell methods (TDD; editing methods + test exercising them)
 ** DONE Self-contained single HTML file: =closure export html= (web export + cli command; static browse tree + client JS fuzzy/search in one file) (TDD)
