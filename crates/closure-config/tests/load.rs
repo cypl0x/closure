@@ -148,6 +148,18 @@ fn search_backend_parses() {
     );
 }
 
+// TDD for LLM per-tool permissions (live configurable, part of deep access).
+// llm_tools = comma list of allowed tools for the LLM (read,search,capture...).
+// Error or filter at load/use.
+#[test]
+fn llm_tools_parses_list() {
+    let cfg = Config::from_kv_block("llm_tools = read,search,capture\n").expect("parse");
+    assert_eq!(
+        cfg.llm_tools.as_deref(),
+        Some(&["read".to_owned(), "search".to_owned(), "capture".to_owned()][..])
+    );
+}
+
 // TDD for the final Config validation sub-item (typed cross-key constraints,
 // yesod principle: error at load time, not first use).
 // Example from ROADMAP: llm_provider set ⇒ llm_key_env must also be set.

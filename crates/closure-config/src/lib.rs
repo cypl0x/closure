@@ -46,6 +46,9 @@ pub struct Config {
     pub record_commands: bool,
     /// Full-text search engine (`builtin`, `ripgrep`/`rg`, `fd`).
     pub search_backend: Option<String>,
+    /// Allowed tools for LLM (comma list; e.g. read,search,capture,rename,set-property,view-state).
+    /// Per-tool permission model (live configurable via llm-allow/deny later).
+    pub llm_tools: Option<Vec<String>>,
 }
 
 impl Default for Config {
@@ -63,6 +66,7 @@ impl Default for Config {
             llm_key_env: None,
             record_commands: false,
             search_backend: None,
+            llm_tools: None,
         }
     }
 }
@@ -217,6 +221,15 @@ impl Config {
                 }
                 "record_commands" => cfg.record_commands = parse_bool(key, value)?,
                 "search_backend" => cfg.search_backend = Some(value.into()),
+                "llm_tools" => {
+                    cfg.llm_tools = Some(
+                        value
+                            .split(',')
+                            .map(|s| s.trim().to_owned())
+                            .filter(|s| !s.is_empty())
+                            .collect(),
+                    );
+                }
                 "llm_provider" => cfg.llm_provider = Some(value.into()),
                 "llm_model" => cfg.llm_model = Some(value.into()),
                 "llm_key_env" => cfg.llm_key_env = Some(value.into()),

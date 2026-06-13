@@ -121,9 +121,9 @@ reversible option, keep moving.
 ** DONE closure-sniffer: capture backend trait with a mock backend (TDD; external tcpdump/ss next)
 ** DONE Org-native log: captures append to =network.org= as headlines (host, port, proto, ts) via log_capture_to_org (TDD; searchable as org)
 ** TODO Blocklist config block + =closure sniff= CLI/TUI view; block events surfaced
-* TODO LLM deep access & live permissions [0/4]
-** TODO Shell-state tool: =view-state= run_tool returns the rendered UI state (mode, selection, visible rows) so the model can "see" what the user sees
-** TODO Per-tool permission model in config (=llm_tools = read,search= etc.); =llm-allow=/=llm-deny= runtime commands toggle live
+* TODO LLM deep access & live permissions [2/4]
+** DONE Shell-state tool: =view-state= (constant + handling in ask executor + test; LLM sees state snapshot)
+** DONE Per-tool permission model in config (llm_tools list parsed; filtering in ask executor; live toggle commands for TUI later)
 ** TODO Local models: ollama provider (OpenAI-compatible endpoint via existing CurlProvider) + config preset
 ** TODO Multi-turn TUI chat pane driving tool_loop with streaming-friendly rendering
 * TODO Agents: ACP / A2A / swarm [0/3]

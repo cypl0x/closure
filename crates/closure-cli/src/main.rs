@@ -2803,10 +2803,30 @@ fn cmd_ask(prompt: &str, model: &str, vault: Option<&Path>) -> Result<(), String
         }
     };
     let task = format!(
-        "{prompt}\n\nVault tools (use via CALL): list-files | read <file> | search <text> | capture <title> | rename <id> <title> | set-property <id> <key> <value>"
+        "{prompt}\n\nVault tools (use via CALL): list-files | read <file> | search <text> | capture <title> | rename <id> <title> | set-property <id> <key> <value> | view-state (returns description of current rendered UI state so the LLM can 'see' what you see)"
     );
-    let answer = closure_llm::tool_loop(provider.as_ref(), |line| v.run_tool(line), &task, 16)
-        .map_err(|e| format!("{e}"))?;
+    let allowed_tools: Option<Vec<String>> = cfg.llm_tools.clone();
+    let answer = closure_llm::tool_loop(
+        provider.as_ref(),
+        |line| {
+            if let Some(ref allowed) = allowed_tools {
+                let cmd = line.split_whitespace().next().unwrap_or("");
+                let cmd_base = cmd.split('-').next().unwrap_or(cmd);
+                if !allowed.iter().any(|a| a == cmd || a == cmd_base || cmd.starts_with(a)) {
+                    return format!("error: tool '{}' not allowed by llm_tools config (allowed: {:?})", cmd, allowed);
+                }
+            }
+            if line.starts_with(closure_llm::VIEW_STATE_COMMAND) {
+                // For batch ask, provide a snapshot (in interactive TUI/chat the shell can supply live App state).
+                "current UI state: batch ask (no live TUI render); vault loaded with files/headlines; use TUI for full live view-state".to_string()
+            } else {
+                v.run_tool(line)
+            }
+        },
+        &task,
+        16,
+    )
+    .map_err(|e| format!("{e}"))?;
     println!("{answer}");
     Ok(())
 }

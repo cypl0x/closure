@@ -96,3 +96,30 @@ fn max_turns_is_enforced() {
     let err = tool_loop(&p, |_| "ok".to_owned(), "spin", 3);
     assert!(matches!(err, Err(LlmError::Provider(_))));
 }
+
+// TDD for LLM view-state tool (deep access / "see rendered result" per vision and ROADMAP).
+// The LLM can CALL view-state to get a description of the current UI state
+// (mode, selection, visible content) so it can 'see' what the user sees.
+// Test written first; will fail until the constant and handling exist.
+#[test]
+fn view_state_tool_is_known_and_observation_fed() {
+    // References the (not yet) constant for the tool name.
+    let cmd = closure_llm::VIEW_STATE_COMMAND;
+    let p = Scripted::new(&[&format!("CALL {}", cmd), "DONE saw it"]);
+    let observations = RefCell::new(vec!["UI STATE: mode=FileView selected=foo.org visible=[h1 h2]".to_owned()]);
+    let out = tool_loop(
+        &p,
+        |c| {
+            if c == cmd {
+                observations.borrow_mut().pop().unwrap_or_default()
+            } else {
+                "ok".to_owned()
+            }
+        },
+        "describe what you see",
+        5,
+    ).expect("loop");
+    assert_eq!(out, "saw it");
+    let prompts = p.prompts.into_inner();
+    assert!(prompts.iter().any(|pr| pr.contains("UI STATE")), "state fed back into prompt");
+}
