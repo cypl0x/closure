@@ -107,3 +107,14 @@ fn llm_keys_default_to_none() {
     assert_eq!(cfg.llm_model, None);
     assert_eq!(cfg.llm_key_env, None);
 }
+
+#[test]
+fn record_commands_parses_bool() {
+    assert!(Config::from_kv_block("record_commands = true\n").expect("p").record_commands);
+    assert!(!Config::from_kv_block("record_commands = false\n").expect("p").record_commands);
+}
+
+#[test]
+fn record_commands_defaults_false() {
+    assert!(!Config::from_kv_block("theme = dark\n").expect("p").record_commands);
+}

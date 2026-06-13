@@ -41,6 +41,9 @@ pub struct Config {
     /// Name of the environment variable holding the API key — the
     /// key itself never lives in the org file.
     pub llm_key_env: Option<String>,
+    /// Record every executed command to `journal.org` (off by
+    /// default).
+    pub record_commands: bool,
 }
 
 impl Default for Config {
@@ -56,6 +59,7 @@ impl Default for Config {
             llm_provider: None,
             llm_model: None,
             llm_key_env: None,
+            record_commands: false,
         }
     }
 }
@@ -95,6 +99,18 @@ pub enum ConfigError {
         /// Human-readable reason.
         reason: String,
     },
+}
+
+/// Parse an org-config boolean (`true`/`yes`/`1` or `false`/`no`/`0`).
+fn parse_bool(key: &str, value: &str) -> Result<bool, ConfigError> {
+    match value {
+        "true" | "yes" | "1" => Ok(true),
+        "false" | "no" | "0" => Ok(false),
+        other => Err(ConfigError::BadValue {
+            key: key.into(),
+            reason: format!("expected boolean, got `{other}`"),
+        }),
+    }
 }
 
 impl Config {
@@ -186,18 +202,7 @@ impl Config {
                     }
                     cfg.priority_levels = levels;
                 }
-                "tag_inheritance" => {
-                    cfg.tag_inheritance = match value {
-                        "true" | "yes" | "1" => true,
-                        "false" | "no" | "0" => false,
-                        other => {
-                            return Err(ConfigError::BadValue {
-                                key: key.into(),
-                                reason: format!("expected boolean, got `{other}`"),
-                            });
-                        }
-                    };
-                }
+                "tag_inheritance" => cfg.tag_inheritance = parse_bool(key, value)?,
                 "agenda_files" => {
                     cfg.agenda_files = value
                         .split(',')
@@ -206,6 +211,7 @@ impl Config {
                         .map(PathBuf::from)
                         .collect();
                 }
+                "record_commands" => cfg.record_commands = parse_bool(key, value)?,
                 "llm_provider" => cfg.llm_provider = Some(value.into()),
                 "llm_model" => cfg.llm_model = Some(value.into()),
                 "llm_key_env" => cfg.llm_key_env = Some(value.into()),
