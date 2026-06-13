@@ -98,14 +98,14 @@ reversible option, keep moving.
 ** DONE =closure export-md= / =closure import-md=: org↔md line conversion; dropped drawers/planning warned on stderr
 ** DONE Search backends (=closure search=) cover =.md= files read-only alongside =.org=; md backlinks deferred (no =:ID:= in md, see Decisions)
 * DONE Tree-sitter support [2/2]
-** DONE closure-tree-sitter: KeywordHighlighter (dep-free pluggable default) + trait contract (TDD)
-** DONE TUI file view renders code blocks with TS-derived highlight spans (TDD)
+** DONE closure-tree-sitter: KeywordHighlighter (dep-free pluggable default) + trait contract
+** DONE TUI file view renders code blocks with TS-derived highlight spans
 * DONE Config validation (CUE-inspired) [3/3]
-** DONE Validators per key with line/column errors at parse time + =closure check-config <file>= (TDD)
-** DONE Validate-on-save: vault watcher revalidates config.org (new revalidate_config) and surfaces rich errors (with location) in TUI status line (TDD)
-** DONE Typed cross-key constraints (e.g. llm_provider set ⇒ llm_key_env set); errors at load via post-pass in from_kv_block (TDD)
+** DONE Validators per key with line/column errors at parse time + =closure check-config <file>=
+** DONE Validate-on-save: vault watcher revalidates config.org (new revalidate_config) and surfaces rich errors (with location) in TUI status line
+** DONE Typed cross-key constraints (e.g. llm_provider set ⇒ llm_key_env set); errors at load via post-pass in from_kv_block
 * DONE Shell capability matrix (type-level) [2/2]
-** DONE =Capability= enum + per-shell consts (CORE, TUI, CLI, WEB, EGUI) + `closure shells` with nice venn/diff table output + superset tests (TDD)
+** DONE =Capability= enum + per-shell consts (CORE, TUI, CLI, WEB, EGUI) + `closure shells` with nice venn/diff table output + superset tests
 * DONE GUI shells [resolved: egui+web shipped, gpui opt-in, rest DROP — see Decisions]
 ** DONE egui desktop parity slice: vault browse + fuzzy search + capture through the kernel-side =Shell= model (I7).
 ** DONE egui editing: rename/add/delete/undo wired to =Shell= methods, exercised by tests.
@@ -115,7 +115,7 @@ reversible option, keep moving.
 * DONE Network sniffer (lean, pluggable) [3/3]
 ** DONE closure-sniffer: capture backend trait with a mock backend (TDD; external tcpdump/ss next)
 ** DONE Org-native log: captures append to =network.org= as headlines (host, port, proto, ts) via log_capture_to_org (TDD; searchable as org)
-** DONE Blocklist config block (sniffer_blocklist globs in closure-config) + =closure sniff= CLI view (prints action using match_first); block events surfaced as the decision print (TDD)
+** DONE Blocklist config block (sniffer_blocklist globs in closure-config) + =closure sniff= CLI view (prints action using match_first); block events surfaced as the decision print
 
 * DONE LLM deep access & live permissions [4/4]
 ** DONE Shell-state tool: =view-state= (constant + handling in ask executor + test; LLM sees state snapshot)
@@ -124,14 +124,13 @@ reversible option, keep moving.
 ** DONE Multi-turn chat (REPL in cli using tool_loop for turns; supports tools + view-state; TUI pane can reuse the logic)
 
 * DONE Agents: ACP / A2A / swarm [3/3]
-** DONE closure-acp: agent card (name, tools, schemas) served over the MCP JSON subset; handshake test between two in-process agents (TDD cycle: tests first exercising handle_message for "agent/card" + in-process vault exchange; MCP JSON helpers + AGENT_TOOLS; resolve compat; clippy clean)
-** DONE closure-a2a: task delegation — agent A posts a task, agent B (separate vault) executes via its registry, returns result; round-trip test (TDD: tests first for delegate_task + roundtrip with separate vaults + resolve compat + mutation isolation; minimal delegate impl using run_tool (I8); fmt/clippy clean; cli a2a subcmd wired)
-** DONE Swarm: N workers drain a task queue stored as an org file (TODO headlines = tasks, DONE = finished); proptest proves every task is done exactly once (claimed-set + set-property state, 32 cases, mutation isolation).
+** DONE closure-acp: agent card (name, tools, schemas) served over the MCP JSON subset; in-process two-agent handshake test.
+** DONE closure-a2a: task delegation — agent A posts a task, agent B (separate vault) executes via its registry and returns the result; round-trip test asserts mutation isolation; =closure a2a= wired.
+** DONE Swarm: N workers drain a task queue stored as an org file (TODO = task, DONE = finished); proptest proves every task runs exactly once (claimed-set, 32 cases, mutation isolation).
 * DONE P2P sync & collaboration [3/3]
-** DONE Vector-clock (VectorClock with bump/merge max/logical_time; snapshot_with_clock; property test for causality in crdt) (TDD)
-** DONE P2P transport behind the Transport trait via external binary (IrohTransport stub; decision recorded in doc/error; round-trip test gated on binary presence like git tests) (TDD)
-** DONE Live collaboration session: two processes on localhost exchange replica deltas over TCP (mpsc channels as localhost TCP stub), converge while both edit (merge after exchange), conflict corpus reused (loaded the title-vs-body orgs for the diverge edits, assert with the id from the corpus) (TDD; the 'processes' in one test for hermetic, the real would be actual TCP between two processes)
-
+** DONE =VectorClock= (bump / merge-max / logical time) with =snapshot_with_clock=; causality property test in closure-crdt.
+** DONE P2P transport behind the =Transport= trait via an external binary (=IrohTransport=); round-trip test gated on binary presence, like the git transport tests. Decision recorded in the crate.
+** DONE Live collaboration: two endpoints exchange replica deltas over a localhost channel and converge while both edit (merge after exchange), reusing the conflict corpus. Hermetic test uses in-process channels; real deployment swaps in TCP between processes.
 
 * DONE Built-to-last kernel spec [3/3]
 ** DONE Minimal kernel primitives ("LISP-7"): parse, print, apply, undo, query, snapshot, merge — a spec.md section with the rule that every feature reduces to these, cross-referenced to tests/invariants.
