@@ -63,6 +63,7 @@ const DEFAULT_BINDINGS: &[(&str, &str)] = &[
     ("v", "db-view"),
     ("e", "block-list"),
     ("g a", "agenda"),
+    ("S", "body-search"),
 ];
 
 /// Emacs-style bindings: Ctrl/Meta chords, `C-x C-c` quits.
@@ -87,6 +88,7 @@ const EMACS_BINDINGS: &[(&str, &str)] = &[
     ("v", "db-view"),
     ("e", "block-list"),
     ("g a", "agenda"),
+    ("S", "body-search"),
 ];
 
 /// Vim-style bindings: modal navigation keys.
@@ -112,6 +114,7 @@ const VIM_BINDINGS: &[(&str, &str)] = &[
     ("v", "db-view"),
     ("e", "block-list"),
     ("g a", "agenda"),
+    ("S", "body-search"),
 ];
 
 /// Helix-style bindings: vim-like with `U` redo and `g e` end.
@@ -137,6 +140,7 @@ const HELIX_BINDINGS: &[(&str, &str)] = &[
     ("v", "db-view"),
     ("e", "block-list"),
     ("g a", "agenda"),
+    ("S", "body-search"),
 ];
 
 /// Notion-style bindings: arrows + slash command, minimal chords.
@@ -161,6 +165,7 @@ const NOTION_BINDINGS: &[(&str, &str)] = &[
     ("v", "db-view"),
     ("e", "block-list"),
     ("g a", "agenda"),
+    ("S", "body-search"),
 ];
 
 /// The `(chord, command)` table for an input mode. Every mode binds
@@ -228,6 +233,8 @@ pub enum AppMode {
     EditBody,
     /// Browsing the SCHEDULED/DEADLINE agenda with a cursor.
     Agenda,
+    /// Typing a fuzzy query over body lines across the vault.
+    BodySearch,
 }
 
 /// Elm-style application state for the terminal shell. Strokes go in
@@ -346,6 +353,29 @@ impl App {
     #[must_use]
     pub fn agenda_results(&self) -> Vec<&str> {
         self.agenda.iter().map(|(_, label)| label.as_str()).collect()
+    }
+
+    /// Body-search hits matching the live query: `(file, "file:line:
+    /// text")`, best fuzzy score first. Empty query yields nothing.
+    #[must_use]
+    pub fn body_results(&self) -> Vec<(&Path, String)> {
+        if self.query.is_empty() {
+            return Vec::new();
+        }
+        let mut scored: Vec<(&Path, String, u32)> = Vec::new();
+        for (path, src) in &self.sources {
+            for (i, line) in src.lines().enumerate() {
+                if let Some(score) = closure_query::fuzzy_score(&self.query, line) {
+                    scored.push((
+                        path.as_path(),
+                        format!("{}:{}:{}", path.display(), i + 1, line),
+                        score,
+                    ));
+                }
+            }
+        }
+        scored.sort_by_key(|&(_, _, s)| std::cmp::Reverse(s));
+        scored.into_iter().map(|(p, t, _)| (p, t)).collect()
     }
 
     /// Consume the block id whose subtree the user cut. The shell
@@ -719,6 +749,10 @@ impl App {
             self.handle_agenda_stroke(stroke);
             return;
         }
+        if self.mode == AppMode::BodySearch {
+            self.handle_bodysearch_stroke(stroke);
+            return;
+        }
         if self.mode == AppMode::EditCell {
             self.handle_editcell_stroke(stroke);
             return;
@@ -858,6 +892,50 @@ impl App {
                 self.result_cursor = 0;
             }
             _ => {}
+        }
+    }
+
+    fn handle_bodysearch_stroke(&mut self, stroke: &str) {
+        match stroke {
+            "ESC" => {
+                self.mode = AppMode::Browse;
+                self.query.clear();
+                self.result_cursor = 0;
+            }
+            "RET" => {
+                let pick = self
+                    .body_results()
+                    .get(self.result_cursor)
+                    .map(|(p, _)| p.to_path_buf());
+                if let Some(path) = pick
+                    && let Some(i) = self.paths.iter().position(|p| *p == path)
+                {
+                    self.selected = Some(i);
+                }
+                self.mode = AppMode::Browse;
+                self.query.clear();
+                self.result_cursor = 0;
+            }
+            "<down>" => {
+                let last = self.body_results().len().saturating_sub(1);
+                self.result_cursor = (self.result_cursor + 1).min(last);
+            }
+            "<up>" => self.result_cursor = self.result_cursor.saturating_sub(1),
+            "DEL" => {
+                self.query.pop();
+                self.result_cursor = 0;
+            }
+            "SPC" => {
+                self.query.push(' ');
+                self.result_cursor = 0;
+            }
+            s => {
+                let mut chars = s.chars();
+                if let (Some(c), None) = (chars.next(), chars.next()) {
+                    self.query.push(c);
+                    self.result_cursor = 0;
+                }
+            }
         }
     }
 
@@ -1280,6 +1358,11 @@ impl App {
             }
             "agenda" => {
                 self.mode = AppMode::Agenda;
+                self.result_cursor = 0;
+            }
+            "body-search" => {
+                self.mode = AppMode::BodySearch;
+                self.query.clear();
                 self.result_cursor = 0;
             }
             "cycle-mode" => {
@@ -1761,6 +1844,10 @@ fn overlay_content(app: &App) -> Option<(String, Vec<String>)> {
         AppMode::Agenda => Some((
             "agenda (SCHEDULED / DEADLINE)".to_owned(),
             app.agenda_results().iter().map(|s| (*s).to_owned()).collect(),
+        )),
+        AppMode::BodySearch => Some((
+            format!("body search: {}", app.query()),
+            app.body_results().into_iter().map(|(_, t)| t).collect(),
         )),
         AppMode::Blocks => Some((
             app.selected_path().map_or_else(

@@ -1577,3 +1577,55 @@ fn agenda_empty_is_safe() {
     app.handle_stroke("RET");
     assert_eq!(app.mode(), AppMode::Agenda);
 }
+
+// --- body full-text search -------------------------------------------------
+
+fn app_with_sources_body() -> App {
+    let mut app = App::new(paths());
+    app.set_sources(vec![
+        (std::path::PathBuf::from("a.org"), "* T\nalpha line\nbeta here\n".to_owned()),
+        (std::path::PathBuf::from("b.org"), "* U\ngamma line\n".to_owned()),
+    ]);
+    app
+}
+
+#[test]
+fn shift_s_enters_body_search() {
+    let mut app = app_with_sources_body();
+    app.handle_stroke("S");
+    assert_eq!(app.mode(), AppMode::BodySearch);
+    assert_eq!(app.query(), "");
+}
+
+#[test]
+fn body_search_filters_lines_fuzzy() {
+    let mut app = app_with_sources_body();
+    app.handle_stroke("S");
+    for c in "beta".chars() {
+        app.handle_stroke(&c.to_string());
+    }
+    let rows = app.body_results();
+    assert_eq!(rows.len(), 1);
+    assert!(rows[0].1.contains("beta here"));
+}
+
+#[test]
+fn body_search_ret_jumps_to_file() {
+    let mut app = app_with_sources_body();
+    app.handle_stroke("S");
+    for c in "gamma".chars() {
+        app.handle_stroke(&c.to_string());
+    }
+    app.handle_stroke("RET");
+    assert_eq!(app.mode(), AppMode::Browse);
+    assert_eq!(app.selected_path(), Some(std::path::Path::new("b.org")));
+}
+
+#[test]
+fn body_search_esc_cancels() {
+    let mut app = app_with_sources_body();
+    app.handle_stroke("S");
+    app.handle_stroke("x");
+    app.handle_stroke("ESC");
+    assert_eq!(app.mode(), AppMode::Browse);
+}
