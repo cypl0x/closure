@@ -41,149 +41,19 @@ pub enum TuiError {
     Vault(String),
 }
 
-/// Default browse-mode bindings. Multi-stroke chords exercise the
-/// which-key popup (spec invariant I4: bindings drive the popup, no
-/// hand-maintained table).
-const DEFAULT_BINDINGS: &[(&str, &str)] = &[
-    ("j", "next-file"),
-    ("k", "prev-file"),
-    ("<down>", "next-file"),
-    ("<up>", "prev-file"),
-    ("g g", "first-file"),
-    ("G", "last-file"),
-    ("q", "quit"),
-    ("ESC", "quit"),
-    ("/", "search-start"),
-    ("s", "search-headline-start"),
-    ("RET", "open-file"),
-    ("b", "backlinks"),
-    ("c", "capture-start"),
-    ("l", "headline-list"),
-    ("u", "undo"),
-    ("C-r", "redo"),
-    ("M", "cycle-mode"),
-    (":", "palette"),
-    ("v", "db-view"),
-    ("e", "block-list"),
-    ("g a", "agenda"),
-    ("S", "body-search"),
-];
+/// Doom/default browse bindings, from the shared canonical keymap
+/// ([`closure_input::mode_keymap`]) so the TUI and every other shell
+/// stay identical per mode (I4).
+const DEFAULT_BINDINGS: &[(&str, &str)] = closure_input::mode_keymap(closure_config::InputMode::Doom);
 
-/// Emacs-style bindings: Ctrl/Meta chords, `C-x C-c` quits.
-const EMACS_BINDINGS: &[(&str, &str)] = &[
-    ("C-n", "next-file"),
-    ("C-p", "prev-file"),
-    ("<down>", "next-file"),
-    ("<up>", "prev-file"),
-    ("M-<", "first-file"),
-    ("M->", "last-file"),
-    ("C-x C-c", "quit"),
-    ("C-s", "search-start"),
-    ("C-c s", "search-headline-start"),
-    ("RET", "open-file"),
-    ("C-c b", "backlinks"),
-    ("C-c c", "capture-start"),
-    ("C-c l", "headline-list"),
-    ("C-x u", "undo"),
-    ("C-x r", "redo"),
-    ("C-c m", "cycle-mode"),
-    (":", "palette"),
-    ("v", "db-view"),
-    ("e", "block-list"),
-    ("g a", "agenda"),
-    ("S", "body-search"),
-];
-
-/// Vim-style bindings: modal navigation keys.
-const VIM_BINDINGS: &[(&str, &str)] = &[
-    ("j", "next-file"),
-    ("k", "prev-file"),
-    ("<down>", "next-file"),
-    ("<up>", "prev-file"),
-    ("g g", "first-file"),
-    ("G", "last-file"),
-    ("Z Z", "quit"),
-    ("q", "quit"),
-    ("/", "search-start"),
-    ("s", "search-headline-start"),
-    ("RET", "open-file"),
-    ("b", "backlinks"),
-    ("c", "capture-start"),
-    ("l", "headline-list"),
-    ("u", "undo"),
-    ("C-r", "redo"),
-    ("M", "cycle-mode"),
-    (":", "palette"),
-    ("v", "db-view"),
-    ("e", "block-list"),
-    ("g a", "agenda"),
-    ("S", "body-search"),
-];
-
-/// Helix-style bindings: vim-like with `U` redo and `g e` end.
-const HELIX_BINDINGS: &[(&str, &str)] = &[
-    ("j", "next-file"),
-    ("k", "prev-file"),
-    ("<down>", "next-file"),
-    ("<up>", "prev-file"),
-    ("g g", "first-file"),
-    ("g e", "last-file"),
-    ("q", "quit"),
-    ("ESC", "quit"),
-    ("/", "search-start"),
-    ("s", "search-headline-start"),
-    ("RET", "open-file"),
-    ("b", "backlinks"),
-    ("c", "capture-start"),
-    ("l", "headline-list"),
-    ("u", "undo"),
-    ("U", "redo"),
-    ("M", "cycle-mode"),
-    (":", "palette"),
-    ("v", "db-view"),
-    ("e", "block-list"),
-    ("g a", "agenda"),
-    ("S", "body-search"),
-];
-
-/// Notion-style bindings: arrows + slash command, minimal chords.
-const NOTION_BINDINGS: &[(&str, &str)] = &[
-    ("<down>", "next-file"),
-    ("<up>", "prev-file"),
-    ("g g", "first-file"),
-    ("G", "last-file"),
-    ("ESC", "quit"),
-    ("q", "quit"),
-    ("/", "palette"),
-    ("s", "search-headline-start"),
-    ("C-s", "search-start"),
-    ("RET", "open-file"),
-    ("b", "backlinks"),
-    ("c", "capture-start"),
-    ("l", "headline-list"),
-    ("u", "undo"),
-    ("C-r", "redo"),
-    ("M", "cycle-mode"),
-    (":", "palette"),
-    ("v", "db-view"),
-    ("e", "block-list"),
-    ("g a", "agenda"),
-    ("S", "body-search"),
-];
-
-/// The `(chord, command)` table for an input mode. Every mode binds
-/// the same command set (I4); only the chords differ.
+/// The `(chord, command)` table for an input mode — delegates to the
+/// canonical [`closure_input::mode_keymap`], the single source of
+/// truth shared by all shells.
 #[must_use]
 pub const fn mode_bindings(
     mode: closure_config::InputMode,
 ) -> &'static [(&'static str, &'static str)] {
-    match mode {
-        closure_config::InputMode::Emacs => EMACS_BINDINGS,
-        closure_config::InputMode::Vim => VIM_BINDINGS,
-        closure_config::InputMode::Doom => DEFAULT_BINDINGS,
-        closure_config::InputMode::Helix => HELIX_BINDINGS,
-        closure_config::InputMode::Notion => NOTION_BINDINGS,
-    }
+    closure_input::mode_keymap(mode)
 }
 
 /// One headline as the shell sees it: where it lives, its stable
