@@ -12,6 +12,181 @@ use closure_config::InputMode;
 use closure_core::{KeyChord, Registry};
 use thiserror::Error;
 
+// ===========================================================================
+// Canonical shell keymap — the single source of truth every UI shell
+// (TUI, gpui, egui, web) consumes so the five editing modes and their
+// which-key listings are identical everywhere (vision: "every mode
+// consistently in every UI element"; spec I4). Each mode binds the same
+// command set; only the chords differ.
+// ===========================================================================
+
+/// Doom/default bindings: SPC-leader friendly, single-key navigation.
+const DOOM_KEYMAP: &[(&str, &str)] = &[
+    ("j", "next-file"),
+    ("k", "prev-file"),
+    ("<down>", "next-file"),
+    ("<up>", "prev-file"),
+    ("g g", "first-file"),
+    ("G", "last-file"),
+    ("q", "quit"),
+    ("ESC", "quit"),
+    ("/", "search-start"),
+    ("s", "search-headline-start"),
+    ("RET", "open-file"),
+    ("b", "backlinks"),
+    ("c", "capture-start"),
+    ("a", "add-sibling"),
+    ("r", "rename"),
+    ("d", "delete"),
+    ("l", "headline-list"),
+    ("u", "undo"),
+    ("C-r", "redo"),
+    ("M", "cycle-mode"),
+    (":", "palette"),
+    ("v", "db-view"),
+    ("e", "block-list"),
+    ("g a", "agenda"),
+    ("S", "body-search"),
+];
+
+/// Emacs bindings: Ctrl/Meta chords, `C-x C-c` quits.
+const EMACS_KEYMAP: &[(&str, &str)] = &[
+    ("C-n", "next-file"),
+    ("C-p", "prev-file"),
+    ("<down>", "next-file"),
+    ("<up>", "prev-file"),
+    ("M-<", "first-file"),
+    ("M->", "last-file"),
+    ("C-x C-c", "quit"),
+    ("C-s", "search-start"),
+    ("C-c s", "search-headline-start"),
+    ("RET", "open-file"),
+    ("C-c b", "backlinks"),
+    ("C-c c", "capture-start"),
+    ("C-c a", "add-sibling"),
+    ("C-c r", "rename"),
+    ("C-c k", "delete"),
+    ("C-c l", "headline-list"),
+    ("C-x u", "undo"),
+    ("C-x r", "redo"),
+    ("C-c m", "cycle-mode"),
+    (":", "palette"),
+    ("v", "db-view"),
+    ("e", "block-list"),
+    ("g a", "agenda"),
+    ("S", "body-search"),
+];
+
+/// Vim bindings: modal navigation keys.
+const VIM_KEYMAP: &[(&str, &str)] = &[
+    ("j", "next-file"),
+    ("k", "prev-file"),
+    ("<down>", "next-file"),
+    ("<up>", "prev-file"),
+    ("g g", "first-file"),
+    ("G", "last-file"),
+    ("Z Z", "quit"),
+    ("q", "quit"),
+    ("/", "search-start"),
+    ("s", "search-headline-start"),
+    ("RET", "open-file"),
+    ("b", "backlinks"),
+    ("c", "capture-start"),
+    ("a", "add-sibling"),
+    ("r", "rename"),
+    ("d", "delete"),
+    ("l", "headline-list"),
+    ("u", "undo"),
+    ("C-r", "redo"),
+    ("M", "cycle-mode"),
+    (":", "palette"),
+    ("v", "db-view"),
+    ("e", "block-list"),
+    ("g a", "agenda"),
+    ("S", "body-search"),
+];
+
+/// Helix bindings: vim-like with `U` redo and `g e` for end.
+const HELIX_KEYMAP: &[(&str, &str)] = &[
+    ("j", "next-file"),
+    ("k", "prev-file"),
+    ("<down>", "next-file"),
+    ("<up>", "prev-file"),
+    ("g g", "first-file"),
+    ("g e", "last-file"),
+    ("q", "quit"),
+    ("ESC", "quit"),
+    ("/", "search-start"),
+    ("s", "search-headline-start"),
+    ("RET", "open-file"),
+    ("b", "backlinks"),
+    ("c", "capture-start"),
+    ("a", "add-sibling"),
+    ("r", "rename"),
+    ("d", "delete"),
+    ("l", "headline-list"),
+    ("u", "undo"),
+    ("U", "redo"),
+    ("M", "cycle-mode"),
+    (":", "palette"),
+    ("v", "db-view"),
+    ("e", "block-list"),
+    ("g a", "agenda"),
+    ("S", "body-search"),
+];
+
+/// Notion bindings: mouse + arrows + slash command, minimal chords.
+const NOTION_KEYMAP: &[(&str, &str)] = &[
+    ("<down>", "next-file"),
+    ("<up>", "prev-file"),
+    ("g g", "first-file"),
+    ("G", "last-file"),
+    ("ESC", "quit"),
+    ("q", "quit"),
+    ("/", "palette"),
+    ("s", "search-headline-start"),
+    ("C-s", "search-start"),
+    ("RET", "open-file"),
+    ("b", "backlinks"),
+    ("c", "capture-start"),
+    ("a", "add-sibling"),
+    ("r", "rename"),
+    ("d", "delete"),
+    ("l", "headline-list"),
+    ("u", "undo"),
+    ("C-r", "redo"),
+    ("M", "cycle-mode"),
+    (":", "palette"),
+    ("v", "db-view"),
+    ("e", "block-list"),
+    ("g a", "agenda"),
+    ("S", "body-search"),
+];
+
+/// The canonical `(chord, command)` keymap for an input mode — the
+/// single source of truth shared by every shell. Every mode binds the
+/// same command set (I4); only the chords differ.
+#[must_use]
+pub const fn mode_keymap(mode: InputMode) -> &'static [(&'static str, &'static str)] {
+    match mode {
+        InputMode::Emacs => EMACS_KEYMAP,
+        InputMode::Vim => VIM_KEYMAP,
+        InputMode::Doom => DOOM_KEYMAP,
+        InputMode::Helix => HELIX_KEYMAP,
+        InputMode::Notion => NOTION_KEYMAP,
+    }
+}
+
+/// Resolve a full chord string (e.g. `"C-x C-c"`) to its command in
+/// `mode`, or `None` if unbound.
+#[must_use]
+pub fn command_for(mode: InputMode, chord: &str) -> Option<&'static str> {
+    mode_keymap(mode)
+        .iter()
+        .find(|(c, _)| *c == chord)
+        .map(|(_, cmd)| *cmd)
+}
+
 /// Active modal state.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ModeState {
