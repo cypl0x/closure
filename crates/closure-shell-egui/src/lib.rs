@@ -1,155 +1,184 @@
 //! Native desktop shell built on egui + eframe.
 //!
-//! I7: consumes [`closure_core`] / [`closure_store`] only. No direct
-//! `closure_org` access. Spans never cross the shell boundary.
-//!
-//! M8 skeleton: an abstract [`ShellAdapter`] trait that an eframe
-//! embedder implements. The kernel-side `Shell` holds the loaded
-//! `Vault` and the active selection; the adapter renders. This keeps
-//! egui / eframe out of the kernel build until the desktop shell ships.
+//! I7: consumes the shell-agnostic [`closure_shell_core`] launcher
+//! (which itself touches only `closure_core` / `closure_store` /
+//! `closure_query`). The launcher state ([`App`], [`Shell`], browse/
+//! filter/detail/palette/edit/modes) is shared with the gpui shell and
+//! fully unit-tested without a window; this crate re-exports it and
+//! adds the eframe window behind the opt-in `egui` cargo feature so the
+//! default workspace stays hermetic (I10).
 
 #![forbid(unsafe_code)]
 
-use std::path::PathBuf;
+// Re-export the shared launcher core (one tested state machine across
+// every GUI shell).
+pub use closure_shell_core::{
+    App, Detail, HeadlessAdapter, Mode, Row, Selection, Shell, ShellAdapter,
+};
 
-use closure_store::Vault;
+/// Marker for the capability matrix.
+pub const EGUI_SHELL: &str = "egui";
 
-/// Selection state shared between the shell and its adapter.
-#[derive(Debug, Clone, Default)]
-pub struct Selection {
-    /// Currently-focused file, if any.
-    pub file: Option<PathBuf>,
-    /// Index into the headline list of the focused file.
-    pub headline: usize,
+/// Launch fallback when the `egui` feature is disabled (default,
+/// hermetic build). The kernel-side launcher core is always available;
+/// the window requires `--features egui` + the system GL/X11 libs.
+#[cfg(not(feature = "egui"))]
+pub fn run(_vault_path: &std::path::Path) -> Result<(), String> {
+    Err("egui shell not compiled: rebuild with `--features egui` \
+         (pulls eframe + system GL/X11/wayland libs)."
+        .to_owned())
 }
 
-/// Kernel-side shell state. Owns the [`Vault`] and the [`Selection`];
-/// receives input events from a [`ShellAdapter`] and exposes them to
-/// the command registry.
-pub struct Shell {
-    /// Loaded vault.
-    pub vault: Vault,
-    /// Current selection.
-    pub selection: Selection,
-}
+// === eframe window over the shared launcher core ===
+// Behind the `egui` feature. The state + behaviour live in
+// closure-shell-core (App), fully unit-tested without a window; this
+// adapter only translates egui input + draws. Parity with the gpui
+// shell (I7/I8). The window itself needs a display to exercise.
+#[cfg(feature = "egui")]
+mod window {
+    use closure_shell_core::{App, Mode};
+    use closure_store::Vault;
+    use eframe::egui;
 
-impl Shell {
-    /// Build a shell over an already-loaded vault.
-    #[must_use]
-    pub const fn new(vault: Vault) -> Self {
-        Self {
-            vault,
-            selection: Selection {
-                file: None,
-                headline: 0,
-            },
-        }
-    }
+    use super::Shell;
 
-    /// Capture (org-capture style) into the vault (parity with TUI/CLI).
-    /// Uses a default inbox + TODO prefix for the parity slice.
-    pub fn capture(&mut self, title: &str) -> Result<(), closure_store::VaultError> {
-        let template = closure_store::CaptureTemplate {
-            target: std::path::PathBuf::from("inbox.org"),
-            headline_prefix: "TODO ".to_owned(),
-            body: String::new(),
+    /// Launch the egui desktop window against the vault at `path`.
+    ///
+    /// # Errors
+    ///
+    /// Vault open or eframe runtime failures as a string.
+    pub fn run(path: &std::path::Path) -> Result<(), String> {
+        let vault = Vault::open(path).map_err(|e| format!("{e}"))?;
+        let app = EguiApp {
+            shell: Shell::new(vault),
+            app: App::new(),
         };
-        self.vault.capture(&template, title).map(|_| ())
+        eframe::run_native(
+            "closure · egui",
+            eframe::NativeOptions::default(),
+            Box::new(|_cc| Ok(Box::new(app))),
+        )
+        .map_err(|e| format!("{e}"))
     }
 
-    /// Basic browse support: select a file by path (updates selection for render parity).
-    pub fn select_file(&mut self, path: Option<std::path::PathBuf>) {
-        self.selection.file = path;
-        self.selection.headline = 0;
+    struct EguiApp {
+        shell: Shell,
+        app: App,
     }
 
-    /// Simple fuzzy search over headlines (re-uses query crate for parity).
-    /// Returns (path, title) matches for the embedder to render.
-    #[must_use]
-    pub fn fuzzy_search(&self, q: &str) -> Vec<(std::path::PathBuf, String)> {
-        let mut scored: Vec<(u32, std::path::PathBuf, String)> = vec![];
-        for (p, doc) in self.vault.iter() {
-            for h in doc.all_headlines() {
-                if let Some(sc) = closure_query::fuzzy_score(q, h.title()) {
-                    scored.push((sc, p.to_path_buf(), h.title().to_owned()));
+    impl EguiApp {
+        fn handle_input(&mut self, ctx: &egui::Context) {
+            let events = ctx.input(|i| i.events.clone());
+            for ev in events {
+                match ev {
+                    egui::Event::Text(s) => {
+                        for c in s.chars() {
+                            self.app
+                                .on_key(&mut self.shell, &c.to_string(), false, Some(c));
+                        }
+                    }
+                    egui::Event::Key {
+                        key,
+                        pressed: true,
+                        modifiers,
+                        ..
+                    } => {
+                        if modifiers.ctrl {
+                            let token = key.name().to_ascii_lowercase();
+                            self.app.on_key(&mut self.shell, &token, true, None);
+                        } else {
+                            let token = match key {
+                                egui::Key::Enter => "enter",
+                                egui::Key::Escape => "escape",
+                                egui::Key::Backspace => "backspace",
+                                egui::Key::ArrowDown => "down",
+                                egui::Key::ArrowUp => "up",
+                                _ => continue,
+                            };
+                            self.app.on_key(&mut self.shell, token, false, None);
+                        }
+                    }
+                    _ => {}
                 }
             }
         }
-        scored.sort_by_key(|(sc, _, _)| std::cmp::Reverse(*sc));
-        scored
-            .into_iter()
-            .map(|(_, p, t)| (p, t))
-            .take(20)
-            .collect()
+
+        fn header(&self) -> String {
+            match self.app.mode() {
+                Mode::Capture => format!("＋ capture: {}", self.app.capture_buffer()),
+                Mode::AddSibling => format!("＋ add: {}", self.app.capture_buffer()),
+                Mode::Rename => format!("✎ rename: {}", self.app.capture_buffer()),
+                Mode::Palette => format!("❯ command: {}", self.app.capture_buffer()),
+                Mode::Browse => format!("⌕ {}", self.app.query()),
+            }
+        }
     }
 
-    // Editing methods for egui parity (wired to vault, same as TUI/CLI use via commands).
-
-    /// Rename a headline through the kernel command (I8).
-    ///
-    /// # Errors
-    ///
-    /// Propagates [`closure_store::VaultError`].
-    pub fn rename_headline(
-        &mut self,
-        id: &closure_core::BlockId,
-        title: &str,
-    ) -> Result<(), closure_store::VaultError> {
-        self.vault.rename_headline(id, title)
+    impl eframe::App for EguiApp {
+        fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+            self.handle_input(ctx);
+            if self.app.should_quit() {
+                ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+            }
+            egui::TopBottomPanel::top("header").show(ctx, |ui| {
+                ui.heading("closure · egui");
+                ui.label(self.header());
+            });
+            egui::TopBottomPanel::bottom("footer").show(ctx, |ui| {
+                ui.label(self.app.status().to_owned());
+                ui.small(self.app.key_hints());
+            });
+            egui::CentralPanel::default().show(ctx, |ui| {
+                ui.columns(2, |cols| {
+                    self.list_pane(&mut cols[0]);
+                    self.right_pane(&mut cols[1]);
+                });
+            });
+        }
     }
 
-    /// Remove a subtree through the kernel command (I8).
-    ///
-    /// # Errors
-    ///
-    /// Propagates [`closure_store::VaultError`].
-    pub fn remove_subtree(
-        &mut self,
-        id: &closure_core::BlockId,
-    ) -> Result<(), closure_store::VaultError> {
-        self.vault.remove_subtree(id)
-    }
+    impl EguiApp {
+        fn list_pane(&mut self, ui: &mut egui::Ui) {
+            const PAGE: usize = 40;
+            let (offset, rows) = self.app.view_window(&self.shell, PAGE);
+            let selected = self.app.selected();
+            egui::ScrollArea::vertical().show(ui, |ui| {
+                for (vis, row) in rows.into_iter().enumerate() {
+                    let i = offset + vis;
+                    let indent = "  ".repeat(usize::from(row.level).saturating_sub(1));
+                    let todo = row.todo.map_or_else(String::new, |t| format!("{t} "));
+                    let label = format!("{indent}{todo}{}", row.title);
+                    if ui.selectable_label(i == selected, label).clicked() {
+                        self.app.select(i, &self.shell);
+                    }
+                }
+            });
+        }
 
-    /// Add a sibling headline after `after_id` through the kernel
-    /// command (I8).
-    ///
-    /// # Errors
-    ///
-    /// Propagates [`closure_store::VaultError`].
-    pub fn add_sibling(
-        &mut self,
-        after_id: &closure_core::BlockId,
-        title: &str,
-    ) -> Result<(), closure_store::VaultError> {
-        self.vault.add_sibling(after_id, title)
+        fn right_pane(&self, ui: &mut egui::Ui) {
+            if self.app.mode() == Mode::Palette {
+                let cursor = self.app.palette_cursor();
+                for (i, (name, keyhint)) in self.app.palette_results().into_iter().enumerate() {
+                    let _ = ui.selectable_label(i == cursor, format!("{name:24} {keyhint}"));
+                }
+                return;
+            }
+            let Some(d) = self.app.detail(&self.shell) else {
+                ui.label("no selection");
+                return;
+            };
+            ui.heading(&d.title);
+            if let Some(t) = &d.todo {
+                ui.label(format!("TODO: {t}"));
+            }
+            for (k, v) in &d.properties {
+                ui.label(format!(":{k}: {v}"));
+            }
+            ui.separator();
+            ui.label(&d.body);
+        }
     }
 }
 
-/// Adapter trait. An embedder (eframe / native window / wasm canvas)
-/// implements this and drives the kernel-side [`Shell`].
-pub trait ShellAdapter {
-    /// Render one frame for the current shell state.
-    fn frame(&mut self, shell: &Shell);
-    /// Handle a single typed key chord.
-    fn input(&mut self, shell: &mut Shell, chord: &str);
-}
-
-/// Headless adapter for tests: counts frames and forwards key chords
-/// without rendering.
-#[derive(Debug, Default)]
-pub struct HeadlessAdapter {
-    /// Number of `frame` calls.
-    pub frames: u64,
-    /// Last chord seen by `input`.
-    pub last_chord: Option<String>,
-}
-
-impl ShellAdapter for HeadlessAdapter {
-    fn frame(&mut self, _shell: &Shell) {
-        self.frames += 1;
-    }
-
-    fn input(&mut self, _shell: &mut Shell, chord: &str) {
-        self.last_chord = Some(chord.to_owned());
-    }
-}
+#[cfg(feature = "egui")]
+pub use window::run;

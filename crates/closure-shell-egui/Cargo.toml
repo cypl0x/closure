@@ -11,10 +11,17 @@ authors.workspace = true
 [lints]
 workspace = true
 
+[features]
+default = []
+egui = ["dep:eframe", "dep:egui"]
+
 [dependencies]
 closure-core = { path = "../closure-core" }
 closure-store = { path = "../closure-store" }
 closure-query = { path = "../closure-query" }
+closure-shell-core = { path = "../closure-shell-core" }
+eframe = { version = "0.31", optional = true, default-features = false, features = ["default_fonts", "glow", "wayland", "x11"] }
+egui = { version = "0.31", optional = true }
 thiserror.workspace = true
 
 [dev-dependencies]

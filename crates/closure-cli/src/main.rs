@@ -871,6 +871,12 @@ enum Cmd {
         /// Path to the vault directory.
         vault: PathBuf,
     },
+    /// Launch the egui/eframe desktop shell (browse, fuzzy filter,
+    /// detail pane, capture/rename/delete, command palette).
+    Egui {
+        /// Path to the vault directory.
+        vault: PathBuf,
+    },
     /// Print the keybinding(s) registered for a command name.
     WhereIs {
         /// Command name (e.g. `rename-headline`).
@@ -1286,6 +1292,7 @@ fn run(cmd: &Cmd) -> Result<(), String> {
         Cmd::Sniff { candidate, config } => cmd_sniff(candidate, config.as_deref()),
         Cmd::Build => cmd_build(),
         Cmd::Gpui { vault } => cmd_gpui(vault),
+        Cmd::Egui { vault } => cmd_egui(vault),
         Cmd::WhereIs { name } => cmd_where_is(name),
         Cmd::Doc { name } => cmd_doc(name),
         Cmd::TagsOf { file, id } => cmd_tags_of(file, id),
@@ -2076,6 +2083,10 @@ fn cmd_build() -> Result<(), String> {
 
 fn cmd_gpui(vault: &Path) -> Result<(), String> {
     closure_shell_gpui::run(vault)
+}
+
+fn cmd_egui(vault: &Path) -> Result<(), String> {
+    closure_shell_egui::run(vault)
 }
 
 #[allow(clippy::unnecessary_wraps)]
