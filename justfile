@@ -7,9 +7,12 @@ check:
     cargo clippy --workspace --tests -- -D warnings
     cargo nextest run --workspace
 
-# Line-coverage floor (ratchet toward 100%). Fails under the threshold.
+# Library line-coverage floor (ratchet toward 100%). Excludes the
+# closure-cli binary glue (cmd_* wrappers are thin IO/print shims,
+# exercised end-to-end, not unit-coverage targets — see ROADMAP
+# Decisions). Fails under the threshold.
 coverage:
-    cargo llvm-cov --workspace --fail-under-lines 78
+    cargo llvm-cov --workspace --ignore-filename-regex 'closure-cli/src/main\.rs' --fail-under-lines 85
 
 # Parser fuzz/replay + property gate (I1/I5/I6) on stable.
 fuzz:
