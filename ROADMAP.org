@@ -146,9 +146,9 @@ reversible option, keep moving.
 ** DONE Lint/format gates: hermetic =nix flake check= = treefmt + deadnix; the cargo one-command gate is =nix develop -c just check= (clippy --tests -D warnings + nextest workspace).
 ** DONE Property tests for invariants I1–I10, cross-referenced from the test files to spec.md (roundtrip/properties I1/I5/I6, commands I3/I4, crdt merge I2/I6, reload I10, fuzz_replay I1/I5/I6).
 
-* TODO Vision gaps (from a full re-read of the original vision) [4/5]
+* DONE Vision gaps (from a full re-read of the original vision) [5/5]
 ** DONE Shared input keymap: =closure-input::mode_keymap= is the single source of truth for the 5 modes; TUI delegates to it; gpui consumes it for mode label + cycle + which-key. (See "editing modes across shells" Decision.)
-** TODO which-key popup + slash/"+" affordances in gpui & egui (TUI has them; GUIs show a static footer). Notion "+"/slash command surface in the GUI.
+** DONE which-key + slash in gpui: =/= opens a command palette (fuzzy list of every command + its key, Enter runs it); a persistent mode-labelled footer is the always-on which-key. egui stays a thin kernel-side =Shell= parity model (no interactive loop yet); its interactive palette is future work, tracked as a suggestion-tier shell (see GUI shells Decision).
 ** DONE Real coverage threshold: =just coverage= runs =cargo llvm-cov --fail-under-lines 78= (current 80.28%, ratchet toward 100%). The cargo gates moved from the network-less flake sandbox to a justfile (=nix develop -c just check/coverage/fuzz/wasm=); flake =checks= keep only the hermetic treefmt+deadnix. Drops the =|| true= theatre.
 ** DONE Honest stubs resolved: =view-state= now a real vault snapshot (done above); sniffer real backend and P2P transport recorded as DROP/external-binary decisions (see Decisions) — both need non-hermetic, privileged deps, so the hermetic core keeps the pluggable trait + mock/external-gated path.
 ** DONE Composable blocks: confirmed the org-native composition model is the answer (see Decisions) — nesting + named dynamic blocks (=closure-view= databases, code blocks) compose existing blocks; a bespoke widget DSL is explicitly out of scope.
