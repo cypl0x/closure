@@ -222,6 +222,7 @@ pub struct GpuiApp {
     capture_buf: String,
     rename_target: Option<String>,
     add_target: Option<String>,
+    input_mode: closure_config::InputMode,
     status: String,
     quit: bool,
 }
@@ -243,9 +244,34 @@ impl GpuiApp {
             capture_buf: String::new(),
             rename_target: None,
             add_target: None,
+            input_mode: closure_config::InputMode::Notion,
             status: "browse — type to filter".to_owned(),
             quit: false,
         }
+    }
+
+    /// The active editing mode (label/which-key only — the GUI is a
+    /// launcher shell, see ROADMAP Decisions).
+    #[must_use]
+    pub const fn input_mode(&self) -> closure_config::InputMode {
+        self.input_mode
+    }
+
+    /// Set the active editing mode.
+    pub const fn set_mode(&mut self, mode: closure_config::InputMode) {
+        self.input_mode = mode;
+    }
+
+    fn cycle_mode(&mut self) {
+        use closure_config::InputMode as M;
+        self.input_mode = match self.input_mode {
+            M::Notion => M::Emacs,
+            M::Emacs => M::Vim,
+            M::Vim => M::Doom,
+            M::Doom => M::Helix,
+            M::Helix => M::Notion,
+        };
+        self.set_status(&format!("mode: {:?}", self.input_mode));
     }
 
     /// Move the selection to row `i`, clamped to the current result
@@ -294,17 +320,18 @@ impl GpuiApp {
     /// Which-key style hint line for the active mode (vision: every
     /// UI element shows its keybindings).
     #[must_use]
-    pub const fn key_hints(&self) -> &'static str {
-        match self.mode {
+    pub fn key_hints(&self) -> String {
+        let body = match self.mode {
             GpuiMode::Browse => {
                 "type: filter   up/down or C-n/C-p: move   Enter: open   \
                  C-c: capture   C-a: add   C-r: rename   C-d: delete   \
-                 Esc: clear   C-q: quit"
+                 C-t: cycle-mode   Esc: clear   C-q: quit"
             }
             GpuiMode::Capture => "capture title — Enter: save   Esc: cancel",
             GpuiMode::Rename => "rename — Enter: save   Esc: cancel",
             GpuiMode::AddSibling => "add sibling — Enter: save   Esc: cancel",
-        }
+        };
+        format!("[{:?}] {body}", self.input_mode)
     }
 
     /// Rows for the current query, each carrying its block id, level,
@@ -501,6 +528,7 @@ impl GpuiApp {
                 self.capture_buf.clear();
                 self.set_status("capture: type a title");
             }
+            "t" if ctrl => self.cycle_mode(),
             "a" if ctrl => {
                 if let Some(row) = rows.get(self.selected) {
                     self.add_target = Some(row.id.clone());

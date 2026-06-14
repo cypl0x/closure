@@ -460,3 +460,73 @@ fn view_window_clamps_offset_at_end() {
     assert_eq!(rows.len(), page);
     assert_eq!(rows.last().unwrap().title, "Item 039");
 }
+
+// --- input mode display + cycle (launcher shell; see Decisions) ------------
+// The GUI is a Notion/launcher-style shell (type-to-filter). The five
+// editing modes are realized fully in the TUI; here the shared
+// closure-input keymap drives the mode label, which-key hints, and a
+// cycle affordance. Bare-letter modal command surfaces (vim j/k) stay
+// the TUI's domain so they don't fight type-to-filter.
+
+use closure_config::InputMode;
+
+#[test]
+fn default_mode_is_notion_and_types_to_filter() {
+    let (_d, mut sh) = shell();
+    let mut app = GpuiApp::new();
+    assert_eq!(app.input_mode(), InputMode::Notion);
+    typ(&mut app, &mut sh, "wiki");
+    assert_eq!(app.query(), "wiki");
+}
+
+#[test]
+fn set_mode_changes_the_active_mode() {
+    let mut app = GpuiApp::new();
+    app.set_mode(InputMode::Emacs);
+    assert_eq!(app.input_mode(), InputMode::Emacs);
+}
+
+#[test]
+fn ctrl_t_cycles_through_all_five_modes() {
+    let (_d, mut sh) = shell();
+    let mut app = GpuiApp::new();
+    let mut seen = std::collections::BTreeSet::new();
+    seen.insert(format!("{:?}", app.input_mode()));
+    for _ in 0..5 {
+        app.on_key(&mut sh, "t", true, None); // C-t = cycle-mode (gpui affordance)
+        seen.insert(format!("{:?}", app.input_mode()));
+    }
+    assert_eq!(seen.len(), 5, "cycle visits all five modes: {seen:?}");
+}
+
+#[test]
+fn key_hints_name_the_active_mode_and_its_bindings() {
+    let mut app = GpuiApp::new();
+    let notion = app.key_hints();
+    assert!(
+        notion.to_lowercase().contains("notion"),
+        "hints name the mode: {notion}"
+    );
+    app.set_mode(InputMode::Emacs);
+    let emacs = app.key_hints();
+    assert!(emacs.to_lowercase().contains("emacs"));
+    assert_ne!(notion, emacs, "hints differ per mode");
+}
+
+#[test]
+fn type_to_filter_works_in_every_mode() {
+    // Launcher behaviour is mode-independent: bare letters always filter.
+    for mode in [
+        InputMode::Notion,
+        InputMode::Vim,
+        InputMode::Emacs,
+        InputMode::Doom,
+        InputMode::Helix,
+    ] {
+        let (_d, mut sh) = shell();
+        let mut app = GpuiApp::new();
+        app.set_mode(mode);
+        typ(&mut app, &mut sh, "ship");
+        assert_eq!(app.query(), "ship", "{mode:?} still type-to-filter");
+    }
+}
