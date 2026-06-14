@@ -7,7 +7,7 @@
 
 use std::fs;
 
-use closure_shell_gpui::{GpuiApp, GpuiMode, Shell};
+use closure_shell_core::{App, Mode, Shell};
 use closure_store::Vault;
 use tempfile::TempDir;
 
@@ -23,7 +23,7 @@ fn shell() -> (TempDir, Shell) {
 }
 
 /// Type a string of plain characters into the app.
-fn typ(app: &mut GpuiApp, sh: &mut Shell, s: &str) {
+fn typ(app: &mut App, sh: &mut Shell, s: &str) {
     for c in s.chars() {
         app.on_key(sh, &c.to_string(), false, Some(c));
     }
@@ -32,8 +32,8 @@ fn typ(app: &mut GpuiApp, sh: &mut Shell, s: &str) {
 #[test]
 fn starts_in_browse_listing_all_headlines() {
     let (_d, sh) = shell();
-    let app = GpuiApp::new();
-    assert_eq!(app.mode(), GpuiMode::Browse);
+    let app = App::new();
+    assert_eq!(app.mode(), Mode::Browse);
     assert_eq!(app.query(), "");
     assert_eq!(app.rows(&sh).len(), 4, "all headlines listed");
     assert_eq!(app.selected(), 0);
@@ -42,7 +42,7 @@ fn starts_in_browse_listing_all_headlines() {
 #[test]
 fn rows_carry_level_and_todo() {
     let (_d, sh) = shell();
-    let app = GpuiApp::new();
+    let app = App::new();
     let rows = app.rows(&sh);
     let ship = rows
         .iter()
@@ -56,7 +56,7 @@ fn rows_carry_level_and_todo() {
 #[test]
 fn typing_filters_fuzzily_and_resets_cursor() {
     let (_d, mut sh) = shell();
-    let mut app = GpuiApp::new();
+    let mut app = App::new();
     app.on_key(&mut sh, "down", false, None);
     assert_eq!(app.selected(), 1);
     typ(&mut app, &mut sh, "wiki");
@@ -71,7 +71,7 @@ fn typing_filters_fuzzily_and_resets_cursor() {
 #[test]
 fn backspace_edits_query() {
     let (_d, mut sh) = shell();
-    let mut app = GpuiApp::new();
+    let mut app = App::new();
     typ(&mut app, &mut sh, "spec");
     app.on_key(&mut sh, "backspace", false, None);
     assert_eq!(app.query(), "spe");
@@ -80,7 +80,7 @@ fn backspace_edits_query() {
 #[test]
 fn down_up_move_and_clamp() {
     let (_d, mut sh) = shell();
-    let mut app = GpuiApp::new();
+    let mut app = App::new();
     for _ in 0..10 {
         app.on_key(&mut sh, "down", false, None);
     }
@@ -94,7 +94,7 @@ fn down_up_move_and_clamp() {
 #[test]
 fn ctrl_n_ctrl_p_also_navigate() {
     let (_d, mut sh) = shell();
-    let mut app = GpuiApp::new();
+    let mut app = App::new();
     app.on_key(&mut sh, "n", true, None);
     assert_eq!(app.selected(), 1);
     app.on_key(&mut sh, "p", true, None);
@@ -104,7 +104,7 @@ fn ctrl_n_ctrl_p_also_navigate() {
 #[test]
 fn enter_opens_selected_and_sets_status() {
     let (_d, mut sh) = shell();
-    let mut app = GpuiApp::new();
+    let mut app = App::new();
     app.on_key(&mut sh, "down", false, None); // Personal wiki
     app.on_key(&mut sh, "enter", false, None);
     assert!(
@@ -117,7 +117,7 @@ fn enter_opens_selected_and_sets_status() {
 #[test]
 fn escape_clears_query() {
     let (_d, mut sh) = shell();
-    let mut app = GpuiApp::new();
+    let mut app = App::new();
     typ(&mut app, &mut sh, "wiki");
     app.on_key(&mut sh, "escape", false, None);
     assert_eq!(app.query(), "");
@@ -127,14 +127,14 @@ fn escape_clears_query() {
 #[test]
 fn ctrl_c_capture_then_commit_writes_through_vault() {
     let (_d, mut sh) = shell();
-    let mut app = GpuiApp::new();
+    let mut app = App::new();
     app.on_key(&mut sh, "c", true, None);
-    assert_eq!(app.mode(), GpuiMode::Capture);
+    assert_eq!(app.mode(), Mode::Capture);
     typ(&mut app, &mut sh, "Buy milk"); // goes to capture buffer, not query
     assert_eq!(app.capture_buffer(), "Buy milk");
     assert_eq!(app.query(), "", "capture typing does not touch the filter");
     app.on_key(&mut sh, "enter", false, None);
-    assert_eq!(app.mode(), GpuiMode::Browse);
+    assert_eq!(app.mode(), Mode::Browse);
     assert!(
         sh.vault.find_by_title("Buy milk").is_some(),
         "captured via Vault (I8)"
@@ -144,18 +144,18 @@ fn ctrl_c_capture_then_commit_writes_through_vault() {
 #[test]
 fn capture_escape_cancels_without_writing() {
     let (_d, mut sh) = shell();
-    let mut app = GpuiApp::new();
+    let mut app = App::new();
     app.on_key(&mut sh, "c", true, None);
     typ(&mut app, &mut sh, "Nope");
     app.on_key(&mut sh, "escape", false, None);
-    assert_eq!(app.mode(), GpuiMode::Browse);
+    assert_eq!(app.mode(), Mode::Browse);
     assert!(sh.vault.find_by_title("Nope").is_none());
 }
 
 #[test]
 fn ctrl_q_requests_quit() {
     let (_d, mut sh) = shell();
-    let mut app = GpuiApp::new();
+    let mut app = App::new();
     assert!(!app.should_quit());
     app.on_key(&mut sh, "q", true, None);
     assert!(app.should_quit());
@@ -164,7 +164,7 @@ fn ctrl_q_requests_quit() {
 #[test]
 fn key_hints_shown_and_mode_specific() {
     let (_d, mut sh) = shell();
-    let mut app = GpuiApp::new();
+    let mut app = App::new();
     assert!(app.key_hints().contains("capture"));
     assert!(app.key_hints().contains("quit"));
     app.on_key(&mut sh, "c", true, None);
@@ -176,7 +176,7 @@ fn empty_vault_is_safe() {
     let dir = tempfile::tempdir().expect("tmp");
     let v = Vault::open(dir.path()).expect("open");
     let mut sh = Shell::new(v);
-    let mut app = GpuiApp::new();
+    let mut app = App::new();
     assert!(app.rows(&sh).is_empty());
     app.on_key(&mut sh, "down", false, None);
     app.on_key(&mut sh, "enter", false, None);
@@ -188,7 +188,7 @@ fn empty_vault_is_safe() {
 #[test]
 fn rows_carry_block_id() {
     let (_d, sh) = shell();
-    let app = GpuiApp::new();
+    let app = App::new();
     let rows = app.rows(&sh);
     assert!(
         rows.iter().all(|r| !r.id.is_empty()),
@@ -199,7 +199,7 @@ fn rows_carry_block_id() {
 #[test]
 fn fuzzy_rows_keep_level_todo_and_id() {
     let (_d, mut sh) = shell();
-    let mut app = GpuiApp::new();
+    let mut app = App::new();
     typ(&mut app, &mut sh, "ship");
     let rows = app.rows(&sh);
     assert_eq!(rows.len(), 1);
@@ -211,10 +211,10 @@ fn fuzzy_rows_keep_level_todo_and_id() {
 #[test]
 fn ctrl_r_renames_selected_through_vault() {
     let (_d, mut sh) = shell();
-    let mut app = GpuiApp::new();
+    let mut app = App::new();
     app.on_key(&mut sh, "down", false, None); // Personal wiki
     app.on_key(&mut sh, "r", true, None);
-    assert_eq!(app.mode(), GpuiMode::Rename);
+    assert_eq!(app.mode(), Mode::Rename);
     assert_eq!(
         app.capture_buffer(),
         "Personal wiki",
@@ -226,7 +226,7 @@ fn ctrl_r_renames_selected_through_vault() {
     }
     typ(&mut app, &mut sh, "Shared wiki");
     app.on_key(&mut sh, "enter", false, None);
-    assert_eq!(app.mode(), GpuiMode::Browse);
+    assert_eq!(app.mode(), Mode::Browse);
     assert!(sh.vault.find_by_title("Shared wiki").is_some());
     assert!(sh.vault.find_by_title("Personal wiki").is_none());
 }
@@ -234,24 +234,24 @@ fn ctrl_r_renames_selected_through_vault() {
 #[test]
 fn rename_escape_cancels() {
     let (_d, mut sh) = shell();
-    let mut app = GpuiApp::new();
+    let mut app = App::new();
     app.on_key(&mut sh, "r", true, None);
     app.on_key(&mut sh, "escape", false, None);
-    assert_eq!(app.mode(), GpuiMode::Browse);
+    assert_eq!(app.mode(), Mode::Browse);
     assert!(sh.vault.find_by_title("Ship parser").is_some(), "unchanged");
 }
 
 #[test]
 fn ctrl_d_deletes_selected_subtree() {
     let (_d, mut sh) = shell();
-    let mut app = GpuiApp::new();
+    let mut app = App::new();
     // select "Ship parser" (row 0)
     app.on_key(&mut sh, "d", true, None);
     assert!(
         sh.vault.find_by_title("Ship parser").is_none(),
         "deleted via Vault (I8)"
     );
-    assert_eq!(app.mode(), GpuiMode::Browse);
+    assert_eq!(app.mode(), Mode::Browse);
 }
 
 #[test]
@@ -259,9 +259,9 @@ fn ctrl_r_on_empty_list_is_noop() {
     let dir = tempfile::tempdir().expect("tmp");
     let v = Vault::open(dir.path()).expect("open");
     let mut sh = Shell::new(v);
-    let mut app = GpuiApp::new();
+    let mut app = App::new();
     app.on_key(&mut sh, "r", true, None);
-    assert_eq!(app.mode(), GpuiMode::Browse, "nothing to rename");
+    assert_eq!(app.mode(), Mode::Browse, "nothing to rename");
 }
 
 // --- detail / preview pane (vision: a real browser, not just a list) -------
@@ -288,7 +288,7 @@ fn rich_shell() -> (TempDir, Shell) {
 #[test]
 fn detail_of_selected_carries_full_headline() {
     let (_d, sh) = rich_shell();
-    let app = GpuiApp::new();
+    let app = App::new();
     let d = app.detail(&sh).expect("a row is selected");
     assert_eq!(d.title, "Ship parser");
     assert_eq!(d.todo.as_deref(), Some("TODO"));
@@ -302,7 +302,7 @@ fn detail_of_selected_carries_full_headline() {
 #[test]
 fn detail_surfaces_planning() {
     let (_d, mut sh) = rich_shell();
-    let mut app = GpuiApp::new();
+    let mut app = App::new();
     typ(&mut app, &mut sh, "Review");
     let d = app.detail(&sh).expect("detail");
     assert_eq!(d.todo.as_deref(), Some("DONE"));
@@ -312,7 +312,7 @@ fn detail_surfaces_planning() {
 #[test]
 fn detail_follows_selection() {
     let (_d, mut sh) = rich_shell();
-    let mut app = GpuiApp::new();
+    let mut app = App::new();
     app.on_key(&mut sh, "down", false, None);
     let d = app.detail(&sh).expect("detail");
     assert_eq!(d.title, "Plain headline");
@@ -325,14 +325,14 @@ fn detail_none_on_empty_vault() {
     let dir = tempfile::tempdir().expect("tmp");
     let v = Vault::open(dir.path()).expect("open");
     let sh = Shell::new(v);
-    let app = GpuiApp::new();
+    let app = App::new();
     assert!(app.detail(&sh).is_none());
 }
 
 #[test]
 fn detail_tracks_fuzzy_selection() {
     let (_d, mut sh) = rich_shell();
-    let mut app = GpuiApp::new();
+    let mut app = App::new();
     typ(&mut app, &mut sh, "plain");
     let d = app.detail(&sh).expect("detail");
     assert_eq!(d.title, "Plain headline");
@@ -343,12 +343,12 @@ fn detail_tracks_fuzzy_selection() {
 #[test]
 fn ctrl_a_adds_sibling_after_selected() {
     let (_d, mut sh) = shell();
-    let mut app = GpuiApp::new(); // selected = Ship parser
+    let mut app = App::new(); // selected = Ship parser
     app.on_key(&mut sh, "a", true, None);
-    assert_eq!(app.mode(), GpuiMode::AddSibling);
+    assert_eq!(app.mode(), Mode::AddSibling);
     typ(&mut app, &mut sh, "New task");
     app.on_key(&mut sh, "enter", false, None);
-    assert_eq!(app.mode(), GpuiMode::Browse);
+    assert_eq!(app.mode(), Mode::Browse);
     assert!(
         sh.vault.find_by_title("New task").is_some(),
         "added via Vault (I8)"
@@ -358,11 +358,11 @@ fn ctrl_a_adds_sibling_after_selected() {
 #[test]
 fn add_sibling_escape_cancels() {
     let (_d, mut sh) = shell();
-    let mut app = GpuiApp::new();
+    let mut app = App::new();
     app.on_key(&mut sh, "a", true, None);
     typ(&mut app, &mut sh, "Nope");
     app.on_key(&mut sh, "escape", false, None);
-    assert_eq!(app.mode(), GpuiMode::Browse);
+    assert_eq!(app.mode(), Mode::Browse);
     assert!(sh.vault.find_by_title("Nope").is_none());
 }
 
@@ -371,15 +371,15 @@ fn add_sibling_on_empty_list_is_noop() {
     let dir = tempfile::tempdir().expect("tmp");
     let v = Vault::open(dir.path()).expect("open");
     let mut sh = Shell::new(v);
-    let mut app = GpuiApp::new();
+    let mut app = App::new();
     app.on_key(&mut sh, "a", true, None);
-    assert_eq!(app.mode(), GpuiMode::Browse, "nothing to add after");
+    assert_eq!(app.mode(), Mode::Browse, "nothing to add after");
 }
 
 #[test]
 fn select_sets_cursor_clamped() {
     let (_d, sh) = shell();
-    let mut app = GpuiApp::new();
+    let mut app = App::new();
     app.select(2, &sh);
     assert_eq!(app.selected(), 2);
     app.select(99, &sh); // out of range -> clamped to last
@@ -389,7 +389,7 @@ fn select_sets_cursor_clamped() {
 #[test]
 fn add_sibling_key_hint_shown() {
     let (_d, mut sh) = shell();
-    let mut app = GpuiApp::new();
+    let mut app = App::new();
     assert!(app.key_hints().contains("add"));
     app.on_key(&mut sh, "a", true, None);
     assert!(app.key_hints().contains("Enter"));
@@ -412,7 +412,7 @@ fn big_shell(n: usize) -> (TempDir, Shell) {
 #[test]
 fn view_window_returns_all_when_smaller_than_page() {
     let (_d, sh) = big_shell(5);
-    let app = GpuiApp::new();
+    let app = App::new();
     let (offset, rows) = app.view_window(&sh, 30);
     assert_eq!(offset, 0);
     assert_eq!(rows.len(), 5);
@@ -421,7 +421,7 @@ fn view_window_returns_all_when_smaller_than_page() {
 #[test]
 fn view_window_caps_to_page_and_keeps_selection_visible() {
     let (_d, mut sh) = big_shell(200);
-    let mut app = GpuiApp::new();
+    let mut app = App::new();
     for _ in 0..120 {
         app.on_key(&mut sh, "down", false, None);
     }
@@ -441,7 +441,7 @@ fn view_window_caps_to_page_and_keeps_selection_visible() {
 #[test]
 fn view_window_offset_zero_near_top() {
     let (_d, mut sh) = big_shell(200);
-    let mut app = GpuiApp::new();
+    let mut app = App::new();
     app.on_key(&mut sh, "down", false, None);
     let (offset, _) = app.view_window(&sh, 30);
     assert_eq!(offset, 0, "no scroll needed near the top");
@@ -450,7 +450,7 @@ fn view_window_offset_zero_near_top() {
 #[test]
 fn view_window_clamps_offset_at_end() {
     let (_d, mut sh) = big_shell(40);
-    let mut app = GpuiApp::new();
+    let mut app = App::new();
     for _ in 0..50 {
         app.on_key(&mut sh, "down", false, None);
     }
@@ -473,7 +473,7 @@ use closure_config::InputMode;
 #[test]
 fn default_mode_is_notion_and_types_to_filter() {
     let (_d, mut sh) = shell();
-    let mut app = GpuiApp::new();
+    let mut app = App::new();
     assert_eq!(app.input_mode(), InputMode::Notion);
     typ(&mut app, &mut sh, "wiki");
     assert_eq!(app.query(), "wiki");
@@ -481,7 +481,7 @@ fn default_mode_is_notion_and_types_to_filter() {
 
 #[test]
 fn set_mode_changes_the_active_mode() {
-    let mut app = GpuiApp::new();
+    let mut app = App::new();
     app.set_mode(InputMode::Emacs);
     assert_eq!(app.input_mode(), InputMode::Emacs);
 }
@@ -489,7 +489,7 @@ fn set_mode_changes_the_active_mode() {
 #[test]
 fn ctrl_t_cycles_through_all_five_modes() {
     let (_d, mut sh) = shell();
-    let mut app = GpuiApp::new();
+    let mut app = App::new();
     let mut seen = std::collections::BTreeSet::new();
     seen.insert(format!("{:?}", app.input_mode()));
     for _ in 0..5 {
@@ -501,7 +501,7 @@ fn ctrl_t_cycles_through_all_five_modes() {
 
 #[test]
 fn key_hints_name_the_active_mode_and_its_bindings() {
-    let mut app = GpuiApp::new();
+    let mut app = App::new();
     let notion = app.key_hints();
     assert!(
         notion.to_lowercase().contains("notion"),
@@ -524,7 +524,7 @@ fn type_to_filter_works_in_every_mode() {
         InputMode::Helix,
     ] {
         let (_d, mut sh) = shell();
-        let mut app = GpuiApp::new();
+        let mut app = App::new();
         app.set_mode(mode);
         typ(&mut app, &mut sh, "ship");
         assert_eq!(app.query(), "ship", "{mode:?} still type-to-filter");
@@ -536,29 +536,25 @@ fn type_to_filter_works_in_every_mode() {
 #[test]
 fn slash_on_empty_query_opens_palette() {
     let (_d, mut sh) = shell();
-    let mut app = GpuiApp::new();
+    let mut app = App::new();
     app.on_key(&mut sh, "/", false, Some('/'));
-    assert_eq!(app.mode(), GpuiMode::Palette);
+    assert_eq!(app.mode(), Mode::Palette);
 }
 
 #[test]
 fn slash_with_nonempty_query_still_filters() {
     let (_d, mut sh) = shell();
-    let mut app = GpuiApp::new();
+    let mut app = App::new();
     typ(&mut app, &mut sh, "wi");
     app.on_key(&mut sh, "/", false, Some('/'));
-    assert_eq!(
-        app.mode(),
-        GpuiMode::Browse,
-        "slash mid-query is a filter char"
-    );
+    assert_eq!(app.mode(), Mode::Browse, "slash mid-query is a filter char");
     assert_eq!(app.query(), "wi/");
 }
 
 #[test]
 fn palette_lists_commands_with_key_hints() {
     let (_d, mut sh) = shell();
-    let mut app = GpuiApp::new();
+    let mut app = App::new();
     app.on_key(&mut sh, "/", false, Some('/'));
     let rows = app.palette_results();
     assert!(
@@ -572,7 +568,7 @@ fn palette_lists_commands_with_key_hints() {
 #[test]
 fn palette_filters_and_runs_selected_command() {
     let (_d, mut sh) = shell();
-    let mut app = GpuiApp::new();
+    let mut app = App::new();
     app.on_key(&mut sh, "/", false, Some('/'));
     for c in "capture".chars() {
         app.on_key(&mut sh, &c.to_string(), false, Some(c));
@@ -584,7 +580,7 @@ fn palette_filters_and_runs_selected_command() {
     app.on_key(&mut sh, "enter", false, None);
     assert_eq!(
         app.mode(),
-        GpuiMode::Capture,
+        Mode::Capture,
         "selecting capture entered capture mode"
     );
 }
@@ -592,16 +588,16 @@ fn palette_filters_and_runs_selected_command() {
 #[test]
 fn palette_escape_returns_to_browse() {
     let (_d, mut sh) = shell();
-    let mut app = GpuiApp::new();
+    let mut app = App::new();
     app.on_key(&mut sh, "/", false, Some('/'));
     app.on_key(&mut sh, "escape", false, None);
-    assert_eq!(app.mode(), GpuiMode::Browse);
+    assert_eq!(app.mode(), Mode::Browse);
 }
 
 #[test]
 fn palette_runs_quit() {
     let (_d, mut sh) = shell();
-    let mut app = GpuiApp::new();
+    let mut app = App::new();
     app.on_key(&mut sh, "/", false, Some('/'));
     for c in "quit".chars() {
         app.on_key(&mut sh, &c.to_string(), false, Some(c));

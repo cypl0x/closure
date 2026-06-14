@@ -27,6 +27,7 @@ members = [
   "crates/closure-sniffer",
   "crates/closure-shell-egui",
   "crates/closure-shell-web",
+  "crates/closure-shell-core",
   "crates/closure-shell-gpui",
 ]
 

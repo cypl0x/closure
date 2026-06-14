@@ -1,0 +1,22 @@
+[package]
+name = "closure-shell-core"
+description = "Shell-agnostic launcher state core (browse/filter/detail/palette/edit/modes) shared by the gpui, egui, and future GUI shells. Dep-free of any UI toolkit."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+closure-core = { path = "../closure-core" }
+closure-store = { path = "../closure-store" }
+closure-query = { path = "../closure-query" }
+closure-config = { path = "../closure-config" }
+closure-input = { path = "../closure-input" }
+
+[dev-dependencies]
+tempfile = "3"

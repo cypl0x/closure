@@ -1125,6 +1125,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "closure-shell-core"
+version = "0.0.0"
+dependencies = [
+ "closure-config",
+ "closure-core",
+ "closure-input",
+ "closure-query",
+ "closure-store",
+ "tempfile",
+]
+
+[[package]]
 name = "closure-shell-egui"
 version = "0.0.0"
 dependencies = [
@@ -1143,6 +1155,7 @@ dependencies = [
  "closure-core",
  "closure-input",
  "closure-query",
+ "closure-shell-core",
  "closure-store",
  "gpui",
  "tempfile",
