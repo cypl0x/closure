@@ -37,7 +37,11 @@ fn org_files(dir: &Path, out: &mut Vec<PathBuf>) {
 fn every_committed_org_fixture_roundtrips_byte_exact() {
     let mut files = Vec::new();
     org_files(&workspace_fixtures(), &mut files);
-    assert!(files.len() >= 20, "corpus shrank unexpectedly: {}", files.len());
+    assert!(
+        files.len() >= 20,
+        "corpus shrank unexpectedly: {}",
+        files.len()
+    );
     for f in files {
         let src = std::fs::read_to_string(&f).expect("read fixture");
         let doc = closure_org::parse(&src).expect("fixture parses");
@@ -111,8 +115,8 @@ fn adversarial_inputs_roundtrip() {
         "*\t",
         "\u{feff}* BOM heading\n",
         "* a\r\n** b\r\n",
-        "* h\n:PROPERTIES:\n:ID: x\n", // unterminated drawer
-        "#+BEGIN_SRC rust\nfn main() {}\n",   // unterminated block
+        "* h\n:PROPERTIES:\n:ID: x\n",      // unterminated drawer
+        "#+BEGIN_SRC rust\nfn main() {}\n", // unterminated block
         "#+begin_src\n#+end_src\n",
         ":PROPERTIES:\n:END:\n",
         "* \n\n\n* \n",
@@ -124,7 +128,11 @@ fn adversarial_inputs_roundtrip() {
     ];
     let deep_stars = "*".repeat(1000);
     let owned: Vec<String> = vec![deep_stars, format!("{}\n", "*".repeat(500))];
-    for input in nasty.iter().copied().chain(owned.iter().map(String::as_str)) {
+    for input in nasty
+        .iter()
+        .copied()
+        .chain(owned.iter().map(String::as_str))
+    {
         let doc = closure_org::parse(input).expect("parse is infallible");
         assert_eq!(
             closure_org::print(&doc),
