@@ -20,7 +20,8 @@ use closure_store::Vault;
 // closure-shell-core; the gpui crate re-exports it (GpuiApp/GpuiMode
 // aliases preserve the historical names) and adds the gpui window.
 pub use closure_shell_core::{
-    App as GpuiApp, Detail, HeadlessAdapter, Mode as GpuiMode, Row, Selection, Shell, ShellAdapter,
+    App as GpuiApp, Detail, HeadlessAdapter, ModalApp, ModalSurface, Mode as GpuiMode, Row,
+    Selection, Shell, ShellAdapter,
 };
 
 /// Marker for the capability matrix.

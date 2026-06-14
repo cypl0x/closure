@@ -13,7 +13,7 @@
 // Re-export the shared launcher core (one tested state machine across
 // every GUI shell).
 pub use closure_shell_core::{
-    App, Detail, HeadlessAdapter, Mode, Row, Selection, Shell, ShellAdapter,
+    App, Detail, HeadlessAdapter, ModalApp, ModalSurface, Mode, Row, Selection, Shell, ShellAdapter,
 };
 
 /// Marker for the capability matrix.

@@ -12,6 +12,7 @@
 
 use std::path::PathBuf;
 
+use closure_config::InputMode;
 use closure_store::Vault;
 
 /// Selection state (parity with egui Shell for consistent multi-UI model).
@@ -718,5 +719,301 @@ impl App {
                 }
             }
         }
+    }
+}
+
+/// Input surface for the modal command-surface experiment.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ModalSurface {
+    /// Keys are commands resolved against the active mode's keymap.
+    Browse,
+    /// A search overlay: typing filters, Enter picks, Esc cancels.
+    Search,
+    /// Typing the title of a new capture entry.
+    Capture,
+}
+
+/// Modal command-surface launcher (the "modal GUI" experiment).
+///
+/// Unlike [`App`] (a Notion-style type-to-filter launcher), `ModalApp`
+/// treats Browse as a command surface: every key resolves against
+/// [`closure_input::mode_keymap`] for the active [`InputMode`], so the
+/// five editing modes (vim `j`/`k`, `g g`; emacs `C-x C-c`; …) drive a
+/// GUI exactly as in the TUI. Typing happens only in the Search/Capture
+/// overlays. Pure + headless-testable; mutations via [`Shell`] (I8).
+#[derive(Debug)]
+pub struct ModalApp {
+    mode: InputMode,
+    surface: ModalSurface,
+    selected: usize,
+    query: String,
+    capture_buf: String,
+    pending: Vec<String>,
+    status: String,
+    quit: bool,
+}
+
+impl ModalApp {
+    /// New modal app in the given editing mode, Browse surface.
+    #[must_use]
+    pub const fn new(mode: InputMode) -> Self {
+        Self {
+            mode,
+            surface: ModalSurface::Browse,
+            selected: 0,
+            query: String::new(),
+            capture_buf: String::new(),
+            pending: Vec::new(),
+            status: String::new(),
+            quit: false,
+        }
+    }
+
+    /// Active editing mode.
+    #[must_use]
+    pub const fn input_mode(&self) -> InputMode {
+        self.mode
+    }
+    /// Active surface.
+    #[must_use]
+    pub const fn surface(&self) -> ModalSurface {
+        self.surface
+    }
+    /// Highlighted row index.
+    #[must_use]
+    pub const fn selected(&self) -> usize {
+        self.selected
+    }
+    /// Search filter (only meaningful on the Search surface).
+    #[must_use]
+    pub fn query(&self) -> &str {
+        &self.query
+    }
+    /// In-progress capture title.
+    #[must_use]
+    pub fn capture_buffer(&self) -> &str {
+        &self.capture_buf
+    }
+    /// One-line status.
+    #[must_use]
+    pub fn status(&self) -> &str {
+        &self.status
+    }
+    /// Whether the user asked to quit.
+    #[must_use]
+    pub const fn should_quit(&self) -> bool {
+        self.quit
+    }
+
+    /// The active mode's full chord→command listing (which-key).
+    #[must_use]
+    pub fn key_hints(&self) -> String {
+        closure_input::mode_keymap(self.mode)
+            .iter()
+            .map(|(c, cmd)| format!("{c}:{cmd}"))
+            .collect::<Vec<_>>()
+            .join("  ")
+    }
+
+    /// Rows: all headlines on Browse, fuzzy-filtered while searching.
+    #[must_use]
+    pub fn rows(&self, shell: &Shell) -> Vec<Row> {
+        let filter = if self.surface == ModalSurface::Search {
+            self.query.as_str()
+        } else {
+            ""
+        };
+        let mut scored: Vec<(u32, Row)> = Vec::new();
+        for (p, doc) in shell.vault.iter() {
+            for h in doc.all_headlines() {
+                let score = if filter.is_empty() {
+                    Some(0)
+                } else {
+                    closure_query::fuzzy_score(filter, h.title())
+                };
+                if let Some(sc) = score {
+                    scored.push((
+                        sc,
+                        Row {
+                            id: h.id().to_string(),
+                            path: p.display().to_string(),
+                            title: h.title().to_owned(),
+                            level: h.level(),
+                            todo: h.todo().map(ToOwned::to_owned),
+                        },
+                    ));
+                }
+            }
+        }
+        if !filter.is_empty() {
+            scored.sort_by_key(|(sc, _)| std::cmp::Reverse(*sc));
+        }
+        scored.into_iter().map(|(_, r)| r).collect()
+    }
+
+    /// Feed one key. `key` is the gpui/egui-style name; `ctrl`/`alt`
+    /// are modifiers; `text` is the printable char when any.
+    pub fn on_key(
+        &mut self,
+        shell: &mut Shell,
+        key: &str,
+        ctrl: bool,
+        alt: bool,
+        text: Option<char>,
+    ) {
+        match self.surface {
+            ModalSurface::Search => self.on_search_key(shell, key, text),
+            ModalSurface::Capture => self.on_capture_key(shell, key, text),
+            ModalSurface::Browse => self.on_browse_key(shell, key, ctrl, alt, text),
+        }
+    }
+
+    fn on_search_key(&mut self, shell: &Shell, key: &str, text: Option<char>) {
+        match key {
+            "escape" => {
+                self.query.clear();
+                self.selected = 0;
+                self.surface = ModalSurface::Browse;
+            }
+            "enter" => {
+                self.query.clear();
+                self.surface = ModalSurface::Browse;
+            }
+            "backspace" => {
+                self.query.pop();
+                self.selected = 0;
+            }
+            "down" => {
+                let last = self.rows(shell).len().saturating_sub(1);
+                self.selected = (self.selected + 1).min(last);
+            }
+            "up" => self.selected = self.selected.saturating_sub(1),
+            _ => {
+                if let Some(c) = text {
+                    self.query.push(c);
+                    self.selected = 0;
+                }
+            }
+        }
+    }
+
+    fn on_capture_key(&mut self, shell: &mut Shell, key: &str, text: Option<char>) {
+        match key {
+            "escape" => {
+                self.surface = ModalSurface::Browse;
+                self.capture_buf.clear();
+            }
+            "enter" => {
+                if !self.capture_buf.is_empty() {
+                    match shell.capture(&self.capture_buf) {
+                        Ok(()) => self.status = format!("captured: {}", self.capture_buf),
+                        Err(e) => self.status = format!("capture failed: {e}"),
+                    }
+                }
+                self.surface = ModalSurface::Browse;
+                self.capture_buf.clear();
+            }
+            "backspace" => {
+                self.capture_buf.pop();
+            }
+            _ => {
+                if let Some(c) = text {
+                    self.capture_buf.push(c);
+                }
+            }
+        }
+    }
+
+    fn on_browse_key(
+        &mut self,
+        shell: &Shell,
+        key: &str,
+        ctrl: bool,
+        alt: bool,
+        text: Option<char>,
+    ) {
+        let stroke = modal_stroke(key, ctrl, alt, text);
+        let Some(stroke) = stroke else {
+            self.pending.clear();
+            return;
+        };
+        self.pending.push(stroke);
+        let chord = self.pending.join(" ");
+        let km = closure_input::mode_keymap(self.mode);
+        if let Some((_, cmd)) = km.iter().find(|(c, _)| *c == chord) {
+            self.pending.clear();
+            let cmd = *cmd;
+            self.run_command(shell, cmd);
+        } else if km.iter().any(|(c, _)| c.starts_with(&format!("{chord} "))) {
+            // Valid prefix — keep the pending strokes.
+        } else {
+            self.pending.clear();
+        }
+    }
+
+    fn run_command(&mut self, shell: &Shell, cmd: &str) {
+        let last = self.rows(shell).len().saturating_sub(1);
+        match cmd {
+            "next-file" => self.selected = (self.selected + 1).min(last),
+            "prev-file" => self.selected = self.selected.saturating_sub(1),
+            "first-file" => self.selected = 0,
+            "last-file" => self.selected = last,
+            "quit" => self.quit = true,
+            "capture-start" => {
+                self.surface = ModalSurface::Capture;
+                self.capture_buf.clear();
+            }
+            "search-start" | "search-headline-start" => {
+                self.surface = ModalSurface::Search;
+                self.query.clear();
+                self.selected = 0;
+            }
+            "open-file" => {
+                if let Some(row) = self.rows(shell).get(self.selected) {
+                    self.status = format!("{} — {}", row.path, row.title);
+                }
+            }
+            "cycle-mode" => {
+                self.mode = match self.mode {
+                    InputMode::Notion => InputMode::Emacs,
+                    InputMode::Emacs => InputMode::Vim,
+                    InputMode::Vim => InputMode::Doom,
+                    InputMode::Doom => InputMode::Helix,
+                    InputMode::Helix => InputMode::Notion,
+                };
+            }
+            other => self.status = format!("{other}: not available in the modal GUI experiment"),
+        }
+    }
+}
+
+/// Translate a GUI key event into a keymap chord stroke (`C-n`, `M-<`,
+/// `<down>`, `RET`, bare `g`/`G`). Returns `None` for keys with no
+/// stroke representation.
+fn modal_stroke(key: &str, ctrl: bool, alt: bool, text: Option<char>) -> Option<String> {
+    let base = match key {
+        "enter" => "RET".to_owned(),
+        "escape" => "ESC".to_owned(),
+        "backspace" => "DEL".to_owned(),
+        "tab" => "TAB".to_owned(),
+        "space" => "SPC".to_owned(),
+        "down" => "<down>".to_owned(),
+        "up" => "<up>".to_owned(),
+        _ => {
+            if let Some(c) = text {
+                c.to_string()
+            } else if ctrl || alt {
+                key.to_ascii_lowercase()
+            } else {
+                return None;
+            }
+        }
+    };
+    if ctrl {
+        Some(format!("C-{base}"))
+    } else if alt {
+        Some(format!("M-{base}"))
+    } else {
+        Some(base)
     }
 }
