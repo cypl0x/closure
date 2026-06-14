@@ -146,9 +146,33 @@ reversible option, keep moving.
 ** DONE treefmt + deadnix + alejandra + clippy wired into =nix flake check=; the one-command truth is =nix develop -c cargo clippy --workspace --tests -- -D warnings && nix develop -c cargo nextest run --workspace=.
 ** DONE Property tests for invariants I1–I10, cross-referenced from the test files to spec.md (roundtrip/properties I1/I5/I6, commands I3/I4, crdt merge I2/I6, reload I10, fuzz_replay I1/I5/I6).
 
+* TODO Vision gaps (from a full re-read of the original vision) [1/5]
+** DONE Shared input keymap: =closure-input::mode_keymap= is the single source of truth for the 5 modes; TUI delegates to it; gpui consumes it for mode label + cycle + which-key. (See "editing modes across shells" Decision.)
+** TODO which-key popup + slash/"+" affordances in gpui & egui (TUI has them; GUIs show a static footer). Notion "+"/slash command surface in the GUI.
+** TODO Enforce a real coverage threshold in the flake (drop the =|| true=; pick a floor and fail under it), or DROP with rationale.
+** TODO Deepen or DROP the honest stubs with a recorded decision each: sniffer real backend (tcpdump/ss), LLM =view-state= real snapshot (currently fixed text), P2P transport (currently "binary not found").
+** TODO Composable blocks/widgets: a real user-defined composition primitive, or confirm the existing add-sibling+body Decision is the final answer and mark DROP.
+
 * Decisions
 Open questions land here as subheadings: context, options considered,
 the reversible default taken, date.
+** Editing modes across shells: TUI is modal, GUIs are launcher-style (2026-06-14)
+The vision wants notion/emacs/vim/doom/helix "consistently in every UI
+element." =closure-input::mode_keymap= is now the single source of
+truth for all five modes (TUI consumes it directly). But the GUI
+shells (gpui, egui) are type-to-filter launchers (the vision's
+"Notion-like default ... should probably be the default", vertico
+feel), and a launcher fundamentally conflicts with bare-letter modal
+command surfaces — you can't type "ship" to filter if "s" is a
+command. Options: (a) force a modal command-surface Browse on the
+GUIs (kills the launcher feel, and I can't visually verify a GUI
+interaction rewrite headless); (b) keep GUIs as launchers and realize
+full modes only in the keyboard-centric TUI. Taken (b): the TUI is the
+modal shell; the GUIs consume the shared keymap for the mode label,
+which-key hints, and a cycle affordance (C-t in gpui), while keeping
+type-to-filter in every mode. Reversible: a future "modal GUI" can add
+a command-surface Browse consuming the full keymap once it can be
+tried on screen.
 ** GUI shells: egui + web shipped, gpui opt-in, Tauri/Flutter/GTK4/Qt6 dropped (2026-06-13)
 The vision lists CLI, TUI, gpui, single-HTML, web, Tauri, Flutter,
 GTK4, Qt6 as *suggestions, not must-haves*, and explicitly invites
