@@ -530,3 +530,82 @@ fn type_to_filter_works_in_every_mode() {
         assert_eq!(app.query(), "ship", "{mode:?} still type-to-filter");
     }
 }
+
+// --- slash command palette (which-key-as-palette for the launcher) ---------
+
+#[test]
+fn slash_on_empty_query_opens_palette() {
+    let (_d, mut sh) = shell();
+    let mut app = GpuiApp::new();
+    app.on_key(&mut sh, "/", false, Some('/'));
+    assert_eq!(app.mode(), GpuiMode::Palette);
+}
+
+#[test]
+fn slash_with_nonempty_query_still_filters() {
+    let (_d, mut sh) = shell();
+    let mut app = GpuiApp::new();
+    typ(&mut app, &mut sh, "wi");
+    app.on_key(&mut sh, "/", false, Some('/'));
+    assert_eq!(
+        app.mode(),
+        GpuiMode::Browse,
+        "slash mid-query is a filter char"
+    );
+    assert_eq!(app.query(), "wi/");
+}
+
+#[test]
+fn palette_lists_commands_with_key_hints() {
+    let (_d, mut sh) = shell();
+    let mut app = GpuiApp::new();
+    app.on_key(&mut sh, "/", false, Some('/'));
+    let rows = app.palette_results();
+    assert!(
+        rows.iter()
+            .any(|(name, key)| name == "capture" && !key.is_empty())
+    );
+    assert!(rows.iter().any(|(name, _)| name == "quit"));
+    assert!(rows.iter().any(|(name, _)| name == "rename"));
+}
+
+#[test]
+fn palette_filters_and_runs_selected_command() {
+    let (_d, mut sh) = shell();
+    let mut app = GpuiApp::new();
+    app.on_key(&mut sh, "/", false, Some('/'));
+    for c in "capture".chars() {
+        app.on_key(&mut sh, &c.to_string(), false, Some(c));
+    }
+    assert_eq!(
+        app.palette_results().first().map(|(n, _)| n.as_str()),
+        Some("capture")
+    );
+    app.on_key(&mut sh, "enter", false, None);
+    assert_eq!(
+        app.mode(),
+        GpuiMode::Capture,
+        "selecting capture entered capture mode"
+    );
+}
+
+#[test]
+fn palette_escape_returns_to_browse() {
+    let (_d, mut sh) = shell();
+    let mut app = GpuiApp::new();
+    app.on_key(&mut sh, "/", false, Some('/'));
+    app.on_key(&mut sh, "escape", false, None);
+    assert_eq!(app.mode(), GpuiMode::Browse);
+}
+
+#[test]
+fn palette_runs_quit() {
+    let (_d, mut sh) = shell();
+    let mut app = GpuiApp::new();
+    app.on_key(&mut sh, "/", false, Some('/'));
+    for c in "quit".chars() {
+        app.on_key(&mut sh, &c.to_string(), false, Some(c));
+    }
+    app.on_key(&mut sh, "enter", false, None);
+    assert!(app.should_quit());
+}

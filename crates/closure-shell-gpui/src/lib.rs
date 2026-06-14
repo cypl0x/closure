@@ -205,7 +205,24 @@ pub enum GpuiMode {
     Rename,
     /// Typing the title of a new sibling after the selected headline.
     AddSibling,
+    /// Slash command palette: fuzzy-pick a command (which-key list).
+    Palette,
 }
+
+/// Commands offered by the slash palette, with their gpui key hint.
+/// The launcher's which-key surface: every command is reachable and
+/// labelled here.
+const PALETTE_COMMANDS: &[(&str, &str)] = &[
+    ("next-file", "down / C-n"),
+    ("prev-file", "up / C-p"),
+    ("capture", "C-c"),
+    ("add-sibling", "C-a"),
+    ("rename", "C-r"),
+    ("delete", "C-d"),
+    ("open", "Enter"),
+    ("cycle-mode", "C-t"),
+    ("quit", "C-q / Esc"),
+];
 
 /// Pure, GPU-free state core for the gpui shell.
 ///
@@ -223,6 +240,7 @@ pub struct GpuiApp {
     rename_target: Option<String>,
     add_target: Option<String>,
     input_mode: closure_config::InputMode,
+    palette_cursor: usize,
     status: String,
     quit: bool,
 }
@@ -245,9 +263,37 @@ impl GpuiApp {
             rename_target: None,
             add_target: None,
             input_mode: closure_config::InputMode::Notion,
+            palette_cursor: 0,
             status: "browse — type to filter".to_owned(),
             quit: false,
         }
+    }
+
+    /// Palette rows `(command, key-hint)` matching the live palette
+    /// filter (held in the capture buffer while in [`GpuiMode::Palette`]),
+    /// best fuzzy match first.
+    #[must_use]
+    pub fn palette_results(&self) -> Vec<(String, String)> {
+        let q = &self.capture_buf;
+        let mut scored: Vec<(u32, (String, String))> = PALETTE_COMMANDS
+            .iter()
+            .filter_map(|(name, key)| {
+                let sc = if q.is_empty() {
+                    Some(0)
+                } else {
+                    closure_query::fuzzy_score(q, name)
+                };
+                sc.map(|s| (s, ((*name).to_owned(), (*key).to_owned())))
+            })
+            .collect();
+        scored.sort_by_key(|(s, _)| std::cmp::Reverse(*s));
+        scored.into_iter().map(|(_, row)| row).collect()
+    }
+
+    /// Index of the highlighted palette row.
+    #[must_use]
+    pub const fn palette_cursor(&self) -> usize {
+        self.palette_cursor
     }
 
     /// The active editing mode (label/which-key only — the GUI is a
@@ -330,6 +376,7 @@ impl GpuiApp {
             GpuiMode::Capture => "capture title — Enter: save   Esc: cancel",
             GpuiMode::Rename => "rename — Enter: save   Esc: cancel",
             GpuiMode::AddSibling => "add sibling — Enter: save   Esc: cancel",
+            GpuiMode::Palette => "command palette — type to filter   Enter: run   Esc: cancel",
         };
         format!("[{:?}] {body}", self.input_mode)
     }
@@ -418,7 +465,91 @@ impl GpuiApp {
             GpuiMode::Capture => self.on_capture_key(shell, key, text),
             GpuiMode::Rename => self.on_rename_key(shell, key, text),
             GpuiMode::AddSibling => self.on_add_key(shell, key, text),
+            GpuiMode::Palette => self.on_palette_key(shell, key, text),
             GpuiMode::Browse => self.on_browse_key(shell, key, ctrl, text),
+        }
+    }
+
+    fn on_palette_key(&mut self, shell: &mut Shell, key: &str, text: Option<char>) {
+        match key {
+            "escape" => {
+                self.mode = GpuiMode::Browse;
+                self.capture_buf.clear();
+            }
+            "down" => {
+                let last = self.palette_results().len().saturating_sub(1);
+                self.palette_cursor = (self.palette_cursor + 1).min(last);
+            }
+            "up" => self.palette_cursor = self.palette_cursor.saturating_sub(1),
+            "backspace" => {
+                self.capture_buf.pop();
+                self.palette_cursor = 0;
+            }
+            "enter" => {
+                let pick = self
+                    .palette_results()
+                    .get(self.palette_cursor)
+                    .map(|(name, _)| name.clone());
+                self.mode = GpuiMode::Browse;
+                self.capture_buf.clear();
+                if let Some(cmd) = pick {
+                    self.run_palette_command(shell, &cmd);
+                }
+            }
+            _ => {
+                if let Some(c) = text {
+                    self.capture_buf.push(c);
+                    self.palette_cursor = 0;
+                }
+            }
+        }
+    }
+
+    /// Execute a command chosen from the palette, reusing the same
+    /// surfaces the key bindings drive.
+    fn run_palette_command(&mut self, shell: &mut Shell, cmd: &str) {
+        let rows = self.rows(shell);
+        match cmd {
+            "next-file" => {
+                let last = rows.len().saturating_sub(1);
+                self.selected = (self.selected + 1).min(last);
+            }
+            "prev-file" => self.selected = self.selected.saturating_sub(1),
+            "capture" => {
+                self.mode = GpuiMode::Capture;
+                self.capture_buf.clear();
+                self.set_status("capture: type a title");
+            }
+            "add-sibling" => {
+                if let Some(row) = rows.get(self.selected) {
+                    self.add_target = Some(row.id.clone());
+                    self.capture_buf.clear();
+                    self.mode = GpuiMode::AddSibling;
+                }
+            }
+            "rename" => {
+                if let Some(row) = rows.get(self.selected) {
+                    self.rename_target = Some(row.id.clone());
+                    self.capture_buf.clear();
+                    self.capture_buf.push_str(&row.title);
+                    self.mode = GpuiMode::Rename;
+                }
+            }
+            "delete" => {
+                if let Some(row) = rows.get(self.selected) {
+                    let bid = closure_core::BlockId::from_existing(&row.id);
+                    let _ = shell.remove_subtree(&bid);
+                    self.selected = self.selected.min(self.rows(shell).len().saturating_sub(1));
+                }
+            }
+            "open" => {
+                if let Some(row) = rows.get(self.selected) {
+                    self.status = format!("{} — {}", row.path, row.title);
+                }
+            }
+            "cycle-mode" => self.cycle_mode(),
+            "quit" => self.quit = true,
+            _ => {}
         }
     }
 
@@ -527,6 +658,14 @@ impl GpuiApp {
                 self.mode = GpuiMode::Capture;
                 self.capture_buf.clear();
                 self.set_status("capture: type a title");
+            }
+            // Notion-style slash command: `/` on an empty filter opens
+            // the command palette; mid-query it's a literal filter char.
+            "/" if !ctrl && self.query.is_empty() => {
+                self.mode = GpuiMode::Palette;
+                self.capture_buf.clear();
+                self.palette_cursor = 0;
+                self.set_status("command palette — type to filter, Enter to run");
             }
             "t" if ctrl => self.cycle_mode(),
             "a" if ctrl => {
@@ -692,7 +831,29 @@ impl GpuiView {
         let dim = rgb(0x565f89);
         let accent = rgb(0x7aa2f7);
         let todo_col = rgb(0xf7768e);
+        let sel = rgb(0x414868);
         let pane = div().flex().flex_col().flex_grow().px_3().py_2().gap_2();
+        // While the palette is open, the right pane is the which-key
+        // command list (name + key), with the cursor row highlighted.
+        if self.app.mode() == GpuiMode::Palette {
+            let cursor = self.app.palette_cursor();
+            return pane.child(
+                div().flex().flex_col().children(
+                    self.app.palette_results().into_iter().enumerate().map(
+                        |(i, (name, keyhint))| {
+                            div()
+                                .flex()
+                                .px_2()
+                                .py_1()
+                                .bg(if i == cursor { sel } else { rgb(0x1a1b26) })
+                                .child(div().text_color(fg).child(name))
+                                .child(div().flex_grow())
+                                .child(div().text_color(dim).text_size(px(11.0)).child(keyhint))
+                        },
+                    ),
+                ),
+            );
+        }
         let Some(d) = self.app.detail(&self.shell) else {
             return pane.child(div().text_color(dim).child("no selection"));
         };
@@ -779,6 +940,7 @@ impl Render for GpuiView {
             GpuiMode::Capture => format!("＋ capture: {}▏", self.app.capture_buffer()),
             GpuiMode::AddSibling => format!("＋ add: {}▏", self.app.capture_buffer()),
             GpuiMode::Rename => format!("✎ rename: {}▏", self.app.capture_buffer()),
+            GpuiMode::Palette => format!("❯ command: {}▏", self.app.capture_buffer()),
             GpuiMode::Browse => format!("⌕ {}▏   {count}", self.app.query()),
         };
 
