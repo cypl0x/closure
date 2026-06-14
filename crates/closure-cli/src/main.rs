@@ -2884,10 +2884,10 @@ fn build_llm_provider(
 }
 
 /// Execute one tool line for the LLM loop: enforce the optional
-/// `llm_tools` allowlist, answer `view-state` with `view_msg`, and
-/// otherwise route to the vault tool surface — mutations stay behind
+/// `llm_tools` allowlist, then route to the vault tool surface (which
+/// handles `view-state` as a real snapshot). Mutations stay behind
 /// kernel commands (I8).
-fn run_vault_tool(v: &mut Vault, allowed: Option<&[String]>, view_msg: &str, line: &str) -> String {
+fn run_vault_tool(v: &mut Vault, allowed: Option<&[String]>, line: &str) -> String {
     if let Some(allowed) = allowed {
         let cmd = line.split_whitespace().next().unwrap_or("");
         let cmd_base = cmd.split('-').next().unwrap_or(cmd);
@@ -2900,11 +2900,7 @@ fn run_vault_tool(v: &mut Vault, allowed: Option<&[String]>, view_msg: &str, lin
             );
         }
     }
-    if line.starts_with(closure_llm::VIEW_STATE_COMMAND) {
-        view_msg.to_owned()
-    } else {
-        v.run_tool(line)
-    }
+    v.run_tool(line)
 }
 
 const ASK_TOOLS_HELP: &str = "Vault tools (use via CALL): list-files | read <file> | \
@@ -2926,10 +2922,9 @@ fn cmd_ask(prompt: &str, model: &str, vault: Option<&Path>) -> Result<(), String
     let provider = build_llm_provider(&cfg, model)?;
     let allowed = cfg.llm_tools.clone();
     let task = format!("{prompt}\n\n{ASK_TOOLS_HELP}");
-    let view_msg = "current UI state: batch ask (no live render); vault loaded; use the TUI for live view-state";
     let answer = closure_llm::tool_loop(
         provider.as_ref(),
-        |line| run_vault_tool(&mut v, allowed.as_deref(), view_msg, line),
+        |line| run_vault_tool(&mut v, allowed.as_deref(), line),
         &task,
         16,
     )
@@ -2980,13 +2975,12 @@ fn cmd_chat(model: &str, vault: Option<&Path>) -> Result<(), String> {
     let cfg = closure_config::Config::from_path(&vault_dir.join("config.org")).unwrap_or_default();
     let provider = build_llm_provider(&cfg, model)?;
     let allowed = cfg.llm_tools.clone();
-    let view_msg = "current UI state: chat REPL (the live TUI would give full App state)";
     let mut line = String::new();
     while read_chat_line(&mut line) {
         let task = format!("{}\n\n{ASK_TOOLS_HELP}", line.trim());
         let answer = closure_llm::tool_loop(
             provider.as_ref(),
-            |l| run_vault_tool(&mut v, allowed.as_deref(), view_msg, l),
+            |l| run_vault_tool(&mut v, allowed.as_deref(), l),
             &task,
             8,
         )

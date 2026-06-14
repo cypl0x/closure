@@ -497,6 +497,25 @@ impl Vault {
         let (tool, rest) = line.split_once(' ').unwrap_or((line, ""));
         let rest = rest.trim();
         match tool {
+            "view-state" => {
+                let todos = self.all_todos();
+                let tags = self.all_tags();
+                format!(
+                    "vault snapshot:\nfiles: {}\nheadlines: {}\nTODO keywords: {}\ntags: {}",
+                    self.len(),
+                    self.headline_count(),
+                    if todos.is_empty() {
+                        "(none)".to_owned()
+                    } else {
+                        todos.join(", ")
+                    },
+                    if tags.is_empty() {
+                        "(none)".to_owned()
+                    } else {
+                        tags.join(", ")
+                    },
+                )
+            }
             "list-files" => self
                 .paths()
                 .iter()
