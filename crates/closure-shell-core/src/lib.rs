@@ -137,6 +137,21 @@ impl Shell {
     ) -> Result<(), closure_store::VaultError> {
         self.vault.set_body(id, body)
     }
+
+    /// Set or overwrite a `:KEY: value` property through the kernel
+    /// command (I8).
+    ///
+    /// # Errors
+    ///
+    /// Propagates [`closure_store::VaultError`].
+    pub fn set_property(
+        &mut self,
+        id: &closure_core::BlockId,
+        key: &str,
+        value: &str,
+    ) -> Result<(), closure_store::VaultError> {
+        self.vault.set_property(id, key, value)
+    }
 }
 
 /// Adapter for gpui embedder (parity with egui).
@@ -219,6 +234,9 @@ pub enum Mode {
     /// Editing the selected headline's body in a multiline buffer
     /// (org-edit-special). Commit via [`App::commit_edit_body`].
     EditBody,
+    /// Editing a `(key, value)` property on the selected headline.
+    /// Commit via [`App::commit_property`].
+    PropertyEdit,
 }
 
 /// Commands offered by the slash palette as `(display, canonical)`:
@@ -256,6 +274,11 @@ pub struct App {
     edit_target: Option<String>,
     /// Multiline body buffer for the `EditBody` surface.
     body_buf: String,
+    /// Block id whose property the `PropertyEdit` surface is editing.
+    prop_target: Option<String>,
+    /// Property key + value buffers for the `PropertyEdit` surface.
+    prop_key: String,
+    prop_value: String,
     input_mode: closure_config::InputMode,
     palette_cursor: usize,
     status: String,
@@ -281,6 +304,9 @@ impl App {
             add_target: None,
             edit_target: None,
             body_buf: String::new(),
+            prop_target: None,
+            prop_key: String::new(),
+            prop_value: String::new(),
             input_mode: closure_config::InputMode::Notion,
             palette_cursor: 0,
             status: "browse — type to filter".to_owned(),
@@ -437,6 +463,89 @@ impl App {
         self.set_status("edit cancelled");
     }
 
+    /// Begin adding a new property to the selected headline (empty
+    /// key+value form). No-op without a selection.
+    pub fn begin_add_property(&mut self, shell: &Shell) {
+        let Some(row) = self.rows(shell).get(self.selected).cloned() else {
+            return;
+        };
+        self.prop_target = Some(row.id);
+        self.prop_key.clear();
+        self.prop_value.clear();
+        self.mode = Mode::PropertyEdit;
+        self.set_status("property — key + value, save to commit");
+    }
+
+    /// Begin editing an existing property `key` on the selected
+    /// headline, prefilling its current value. No-op without a
+    /// selection.
+    pub fn begin_edit_property(&mut self, shell: &Shell, key: &str) {
+        let Some(row) = self.rows(shell).get(self.selected).cloned() else {
+            return;
+        };
+        let value = self
+            .detail(shell)
+            .and_then(|d| {
+                d.properties
+                    .into_iter()
+                    .find(|(k, _)| k == key)
+                    .map(|(_, v)| v)
+            })
+            .unwrap_or_default();
+        self.prop_target = Some(row.id);
+        self.prop_key.clear();
+        self.prop_key.push_str(key);
+        self.prop_value = value;
+        self.mode = Mode::PropertyEdit;
+        self.set_status("property — edit value, save to commit");
+    }
+
+    /// Property key buffer (read) + its mutable form for the egui field.
+    #[must_use]
+    pub fn prop_key(&self) -> &str {
+        &self.prop_key
+    }
+    /// Mutable property-key buffer for the egui text field.
+    pub const fn prop_key_mut(&mut self) -> &mut String {
+        &mut self.prop_key
+    }
+    /// Property value buffer (read).
+    #[must_use]
+    pub fn prop_value(&self) -> &str {
+        &self.prop_value
+    }
+    /// Mutable property-value buffer for the egui text field.
+    pub const fn prop_value_mut(&mut self) -> &mut String {
+        &mut self.prop_value
+    }
+
+    /// Commit the property (key,value) to the target headline through
+    /// the kernel command (I8), then return to Browse. No-op if not
+    /// editing or the key is empty.
+    pub fn commit_property(&mut self, shell: &mut Shell) {
+        if let Some(id) = self.prop_target.take()
+            && !self.prop_key.trim().is_empty()
+        {
+            let bid = closure_core::BlockId::from_existing(&id);
+            match shell.set_property(&bid, self.prop_key.trim(), &self.prop_value) {
+                Ok(()) => self.set_status("property saved"),
+                Err(e) => self.status = format!("property save failed: {e}"),
+            }
+        }
+        self.prop_key.clear();
+        self.prop_value.clear();
+        self.mode = Mode::Browse;
+    }
+
+    /// Cancel property editing without writing.
+    fn cancel_property(&mut self) {
+        self.prop_target = None;
+        self.prop_key.clear();
+        self.prop_value.clear();
+        self.mode = Mode::Browse;
+        self.set_status("property edit cancelled");
+    }
+
     /// Live filter query.
     #[must_use]
     pub fn query(&self) -> &str {
@@ -490,6 +599,7 @@ impl App {
             Mode::AddSibling => "add sibling — Enter: save   Esc: cancel",
             Mode::Palette => "command palette — type to filter   Enter: run   Esc: cancel",
             Mode::EditBody => "edit body — C-Enter: save   Enter: newline   Esc: cancel",
+            Mode::PropertyEdit => "property — fill key + value   Save: commit   Esc: cancel",
         };
         format!("[{:?}] {body}", self.input_mode)
     }
@@ -598,7 +708,17 @@ impl App {
             Mode::AddSibling => self.on_add_key(shell, key, text),
             Mode::Palette => self.on_palette_key(shell, key, text),
             Mode::EditBody => self.on_editbody_key(shell, key, ctrl, text),
+            Mode::PropertyEdit => self.on_property_key(key),
             Mode::Browse => self.on_browse_key(shell, key, ctrl, text),
+        }
+    }
+
+    /// Property editor keys for keyboard fallback: Esc cancels. Typing
+    /// the key/value uses the egui text fields (`prop_key_mut` /
+    /// `prop_value_mut`); commit is the Save affordance / `commit_property`.
+    fn on_property_key(&mut self, key: &str) {
+        if key == "escape" {
+            self.cancel_property();
         }
     }
 

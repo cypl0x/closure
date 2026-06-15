@@ -767,3 +767,74 @@ fn begin_edit_body_on_empty_vault_is_noop() {
     app.begin_edit_body(&sh);
     assert_eq!(app.mode(), Mode::Browse);
 }
+
+// === E2 property editing: set/overwrite a :KEY: value through the
+// Vault (I8). The egui detail pane binds key/value fields + Save.
+
+#[test]
+fn begin_add_property_enters_clean_form() {
+    let (_d, sh) = shell();
+    let mut app = App::new();
+    app.begin_add_property(&sh);
+    assert_eq!(app.mode(), Mode::PropertyEdit);
+    assert_eq!(app.prop_key(), "");
+    assert_eq!(app.prop_value(), "");
+}
+
+#[test]
+fn add_property_commit_writes_through_vault() {
+    let (_d, mut sh) = shell();
+    let mut app = App::new();
+    app.begin_add_property(&sh);
+    app.prop_key_mut().push_str("Status");
+    app.prop_value_mut().push_str("active");
+    app.commit_property(&mut sh);
+    assert_eq!(app.mode(), Mode::Browse);
+    let props = app.detail(&sh).expect("detail").properties;
+    assert!(
+        props.iter().any(|(k, v)| k == "Status" && v == "active"),
+        "props: {props:?}"
+    );
+}
+
+#[test]
+fn edit_existing_property_prefills_and_overwrites() {
+    let (_d, mut sh) = shell();
+    let mut app = App::new();
+    // seed a property
+    app.begin_add_property(&sh);
+    app.prop_key_mut().push_str("Status");
+    app.prop_value_mut().push_str("draft");
+    app.commit_property(&mut sh);
+    // edit it
+    app.begin_edit_property(&sh, "Status");
+    assert_eq!(app.prop_key(), "Status");
+    assert_eq!(app.prop_value(), "draft", "prefilled with current value");
+    app.prop_value_mut().clear();
+    app.prop_value_mut().push_str("final");
+    app.commit_property(&mut sh);
+    let props = app.detail(&sh).expect("detail").properties;
+    assert!(props.iter().any(|(k, v)| k == "Status" && v == "final"));
+    assert!(!props.iter().any(|(_, v)| v == "draft"), "old value gone");
+}
+
+#[test]
+fn commit_property_with_empty_key_is_noop() {
+    let (_d, mut sh) = shell();
+    let mut app = App::new();
+    app.begin_add_property(&sh);
+    app.prop_value_mut().push_str("orphan");
+    app.commit_property(&mut sh); // no key -> nothing written
+    assert_eq!(app.mode(), Mode::Browse);
+    assert!(app.detail(&sh).expect("d").properties.is_empty());
+}
+
+#[test]
+fn begin_add_property_on_empty_vault_is_noop() {
+    let dir = tempfile::tempdir().expect("tmp");
+    let v = Vault::open(dir.path()).expect("open");
+    let sh = Shell::new(v);
+    let mut app = App::new();
+    app.begin_add_property(&sh);
+    assert_eq!(app.mode(), Mode::Browse);
+}

@@ -126,6 +126,7 @@ mod window {
                     Mode::Rename => format!("✎ rename: {}", a.capture_buffer()),
                     Mode::Palette => format!("❯ command: {}", a.capture_buffer()),
                     Mode::EditBody => "✎ edit body".to_owned(),
+                    Mode::PropertyEdit => "＋ property".to_owned(),
                     Mode::Browse => format!("⌕ {}", a.query()),
                 },
                 Self::Modal(a) => match a.surface() {
@@ -180,6 +181,19 @@ mod window {
                 Self::Modal(a) => matches!(a.surface(), ModalSurface::EditBody),
             }
         }
+        /// Whether the property editor is active (launcher surface only;
+        /// the modal modes don't edit properties yet).
+        const fn editing_property(&self) -> bool {
+            matches!(self, Self::Launcher(a) if matches!(a.mode(), Mode::PropertyEdit))
+        }
+        /// The launcher `App` when active, for property editing (which is
+        /// launcher-only this cycle).
+        const fn launcher_mut(&mut self) -> Option<&mut App> {
+            match self {
+                Self::Launcher(a) => Some(a),
+                Self::Modal(_) => None,
+            }
+        }
         /// Multiline body buffer the `TextEdit` widget binds to.
         const fn body_buffer_mut(&mut self) -> &mut String {
             match self {
@@ -192,6 +206,12 @@ mod window {
             match self {
                 Self::Launcher(a) => a.commit_edit_body(shell),
                 Self::Modal(a) => a.commit_edit_body(shell),
+            }
+        }
+        /// Commit the property form (launcher only).
+        fn commit_property(&mut self, shell: &mut Shell) {
+            if let Self::Launcher(a) = self {
+                a.commit_property(shell);
             }
         }
         /// Whether the mouse affordances apply (launcher surface only).
@@ -258,11 +278,12 @@ mod window {
     impl EguiApp {
         fn handle_input(&mut self, ctx: &egui::Context) {
             let events = ctx.input(|i| i.events.clone());
-            // While the body editor is open the multiline TextEdit widget
-            // owns typing (Enter=newline, Backspace, arrows); feeding the
-            // same chars to on_key would double-insert. Route only Esc
-            // (cancel) and C-Enter (commit) globally.
-            if self.surface.editing_body() {
+            // While an editor surface is open the TextEdit widgets own
+            // typing; feeding the same chars to on_key would
+            // double-insert. Route only Esc (cancel) and, for the body
+            // editor, C-Enter (commit) globally.
+            if self.surface.editing_body() || self.surface.editing_property() {
+                let body = self.surface.editing_body();
                 for ev in events {
                     if let egui::Event::Key {
                         key,
@@ -275,7 +296,7 @@ mod window {
                             egui::Key::Escape => {
                                 self.surface.on_named(&mut self.shell, "escape", false, false);
                             }
-                            egui::Key::Enter if modifiers.ctrl => {
+                            egui::Key::Enter if modifiers.ctrl && body => {
                                 self.surface.commit_edit_body(&mut self.shell);
                             }
                             _ => {}
@@ -346,6 +367,11 @@ mod window {
                         if ui.button(format!("✎ edit body ({edit})")).clicked() {
                             self.surface.begin_edit_body(&self.shell);
                         }
+                        if ui.button("＋ property").clicked()
+                            && let Some(a) = self.surface.launcher_mut()
+                        {
+                            a.begin_add_property(&self.shell);
+                        }
                     });
                 }
             });
@@ -358,6 +384,8 @@ mod window {
                     self.list_pane(&mut cols[0]);
                     if self.surface.editing_body() {
                         self.editor_pane(&mut cols[1]);
+                    } else if self.surface.editing_property() {
+                        self.property_pane(&mut cols[1]);
                     } else {
                         self.right_pane(&mut cols[1]);
                     }
@@ -411,7 +439,39 @@ mod window {
             });
         }
 
-        fn right_pane(&self, ui: &mut egui::Ui) {
+        /// Property editor form: key + value fields bound to the
+        /// shell-core buffers + Save/Cancel. Launcher-only.
+        fn property_pane(&mut self, ui: &mut egui::Ui) {
+            ui.label("property (:KEY: value):");
+            // Scope the launcher borrow to the field widgets so the
+            // Save/Cancel buttons can re-borrow the surface.
+            {
+                let Some(app) = self.surface.launcher_mut() else {
+                    return;
+                };
+                ui.horizontal(|ui| {
+                    ui.label("key");
+                    ui.add(egui::TextEdit::singleline(app.prop_key_mut()).desired_width(120.0));
+                });
+                ui.horizontal(|ui| {
+                    ui.label("value");
+                    ui.add(
+                        egui::TextEdit::singleline(app.prop_value_mut())
+                            .desired_width(f32::INFINITY),
+                    );
+                });
+            }
+            ui.horizontal(|ui| {
+                if ui.button("💾 save").clicked() {
+                    self.surface.commit_property(&mut self.shell);
+                }
+                if ui.button("✕ cancel (Esc)").clicked() {
+                    self.surface.on_named(&mut self.shell, "escape", false, false);
+                }
+            });
+        }
+
+        fn right_pane(&mut self, ui: &mut egui::Ui) {
             if self.surface.palette_open() {
                 let (cursor, results) = self.surface.palette_rows();
                 for (i, (name, keyhint)) in results.into_iter().enumerate() {
@@ -427,8 +487,19 @@ mod window {
             if let Some(t) = &d.todo {
                 ui.label(format!("TODO: {t}"));
             }
+            // Per-property edit affordance (launcher only): click to edit
+            // that property's value. Modal modes show them read-only.
+            let launcher = self.surface.is_launcher();
             for (k, v) in &d.properties {
-                ui.label(format!(":{k}: {v}"));
+                ui.horizontal(|ui| {
+                    ui.label(format!(":{k}: {v}"));
+                    if launcher && ui.small_button("✎").clicked() {
+                        let key = k.clone();
+                        if let Some(a) = self.surface.launcher_mut() {
+                            a.begin_edit_property(&self.shell, &key);
+                        }
+                    }
+                });
             }
             ui.separator();
             ui.label(&d.body);
