@@ -11,7 +11,7 @@ check:
 # the CLI binary — `closure-cli/tests/cli.rs` spawns the real binary so
 # main.rs is now genuinely covered (no exclusions). Fails under it.
 coverage:
-    cargo llvm-cov --workspace --fail-under-lines 80
+    cargo llvm-cov --workspace --fail-under-lines 82
 
 # Parser fuzz/replay + property gate (I1/I5/I6) on stable.
 fuzz:

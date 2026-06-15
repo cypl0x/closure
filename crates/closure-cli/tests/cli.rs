@@ -224,3 +224,40 @@ fn unknown_subcommand_fails() {
     let out = run(&["definitely-not-a-command"]);
     assert!(!out.status.success());
 }
+
+#[test]
+fn file_inspection_commands_run() {
+    let v = vault();
+    let f = v.path().join("notes.org");
+    let fp = f.to_str().unwrap();
+    for cmd in ["outline", "tree", "wc", "drawers", "tables", "leaves", "roots", "stats-file"] {
+        let _ = ok(&[cmd, fp]);
+    }
+    let _ = ok(&["head", fp, "--limit", "1"]);
+}
+
+#[test]
+fn vault_query_commands_run() {
+    let v = vault();
+    let vp = v.path().to_str().unwrap();
+    for cmd in ["todo-list", "archived", "comment-list", "scheduled", "deadlines"] {
+        let _ = ok(&[cmd, vp]);
+    }
+    let g = ok(&["grep", vp, "parser"]);
+    assert!(g.contains("notes.org"), "grep prints matching paths: {g}");
+    let _ = ok(&["recent", vp, "--limit", "2"]);
+}
+
+#[test]
+fn outline_shows_headlines() {
+    let v = vault();
+    let out = ok(&["outline", v.path().join("notes.org").to_str().unwrap()]);
+    assert!(out.contains("Ship parser") && out.contains("Personal wiki"));
+}
+
+#[test]
+fn scheduled_lists_the_scheduled_headline() {
+    let v = vault();
+    let out = ok(&["scheduled", v.path().to_str().unwrap()]);
+    assert!(out.contains("Ship parser"), "scheduled: {out}");
+}
