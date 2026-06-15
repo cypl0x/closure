@@ -159,6 +159,11 @@ reversible option, keep moving.
 ** DONE D2 Modal-GUI experiment: =closure-shell-core::ModalApp= — a command-surface state machine where keys resolve against =mode_keymap= (vim j/k + g g + G, emacs C-n/C-p + C-x C-c + M-<, search overlay, capture, cycle-mode); Browse never types-to-filter. 10 headless tests prove the 5 modes drive a GUI surface; re-exported from both GUI shells so any window can drive it. The on-screen renderer reuses the existing gpui/egui draw path and shares their can't-verify-pixels caveat (the state machine — the actual proof — IS verified). The launcher (App) stays the default GUI model.
 ** DONE D3 Coverage ratchet: scoped the metric to library code (the CLI glue =main.rs= — 2414 of 5258 missed lines, thin IO/print shims — is excluded; see Decisions), added real =closure-llm= tests (providers/bodies/extractors/json: 53% -> high), and lifted =just coverage= to =--fail-under-lines 85=. Library line coverage is now 88.33% (was 80.28% full-metric; the new gate is strictly tighter on the meaningful code).
 
+* TODO Hardening pass (vision + depth complete; raise confidence) [0/3]
+** TODO H1 CLI integration tests: spawn the =closure= binary (=CARGO_BIN_EXE_closure=) on temp vaults, assert output/exit for every subcommand; then drop the =main.rs= ignore from =just coverage=, re-floor to the real number, and retire the coverage-scoping decision.
+** TODO H2 Library coverage toward 100%: raise the lowest crates (closure-eval, closure-tui, closure-llm) with real tests; ratchet the floor up in steps.
+** TODO H3 Property/fuzz depth: widen the fuzz_replay corpus + proptests for any thinly-covered invariant.
+
 * Decisions
 Open questions land here as subheadings: context, options considered,
 the reversible default taken, date.
