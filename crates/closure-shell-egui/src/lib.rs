@@ -146,6 +146,29 @@ mod window {
             }
         }
 
+        /// Notion mouse affordances. Only the launcher surface reacts;
+        /// the keyboard modal modes are driven by keys, so these no-op
+        /// there (the ＋ button + double-click are Notion-flavor, G3).
+        fn begin_add_sibling(&mut self, shell: &Shell) {
+            if let Self::Launcher(a) = self {
+                a.begin_add_sibling(shell);
+            }
+        }
+        fn begin_capture(&mut self) {
+            if let Self::Launcher(a) = self {
+                a.begin_capture();
+            }
+        }
+        fn begin_rename(&mut self, shell: &Shell) {
+            if let Self::Launcher(a) = self {
+                a.begin_rename(shell);
+            }
+        }
+        /// Whether the mouse affordances apply (launcher surface only).
+        const fn is_launcher(&self) -> bool {
+            matches!(self, Self::Launcher(_))
+        }
+
         /// A printable character (no ctrl). Routes to the matching app.
         fn on_text(&mut self, shell: &mut Shell, c: char) {
             let token = c.to_string();
@@ -241,6 +264,19 @@ mod window {
             egui::TopBottomPanel::top("header").show(ctx, |ui| {
                 ui.heading("closure · egui");
                 ui.label(self.surface.header());
+                // Notion-flavor mouse affordances (G3): clickable ＋ to
+                // capture / add a sibling. Keyboard-mode surfaces hide
+                // them (driven by keys instead).
+                if self.surface.is_launcher() {
+                    ui.horizontal(|ui| {
+                        if ui.button("＋ capture (C-c)").clicked() {
+                            self.surface.begin_capture();
+                        }
+                        if ui.button("＋ add sibling (C-a)").clicked() {
+                            self.surface.begin_add_sibling(&self.shell);
+                        }
+                    });
+                }
             });
             egui::TopBottomPanel::bottom("footer").show(ctx, |ui| {
                 ui.label(self.surface.status());
@@ -266,8 +302,14 @@ mod window {
                     let indent = "  ".repeat(usize::from(row.level).saturating_sub(1));
                     let todo = row.todo.map_or_else(String::new, |t| format!("{t} "));
                     let label = format!("{indent}{todo}{}", row.title);
-                    if ui.selectable_label(i == selected, label).clicked() {
+                    let resp = ui.selectable_label(i == selected, label);
+                    if resp.clicked() {
                         self.surface.select(i, &self.shell);
+                    }
+                    // Double-click to edit the title (Notion-flavor, G3).
+                    if resp.double_clicked() {
+                        self.surface.select(i, &self.shell);
+                        self.surface.begin_rename(&self.shell);
                     }
                 }
             });

@@ -605,3 +605,55 @@ fn palette_runs_quit() {
     app.on_key(&mut sh, "enter", false, None);
     assert!(app.should_quit());
 }
+
+// === G3 mouse-first entry points: clickable affordances (＋ add,
+// double-click rename, capture) need public methods so the egui window
+// can trigger the same mode transitions the keys do — without
+// synthesising fake key events. Pure state, tested headless. ===
+
+#[test]
+fn begin_capture_enters_capture_mode() {
+    let (_d, mut sh) = shell();
+    let mut app = App::new();
+    app.begin_capture();
+    assert_eq!(app.mode(), Mode::Capture);
+    assert_eq!(app.capture_buffer(), "");
+    // Commit a title -> back to Browse, entry captured.
+    typ(&mut app, &mut sh, "Mouse note");
+    app.on_key(&mut sh, "enter", false, None);
+    assert_eq!(app.mode(), Mode::Browse);
+    assert!(sh.vault.find_by_title("Mouse note").is_some());
+}
+
+#[test]
+fn begin_add_sibling_targets_selection() {
+    let (_d, mut sh) = shell();
+    let mut app = App::new();
+    app.begin_add_sibling(&sh); // selection is row 0 (Ship parser)
+    assert_eq!(app.mode(), Mode::AddSibling);
+    typ(&mut app, &mut sh, "Sibling block");
+    app.on_key(&mut sh, "enter", false, None);
+    assert_eq!(app.mode(), Mode::Browse);
+    assert!(sh.vault.find_by_title("Sibling block").is_some());
+}
+
+#[test]
+fn begin_rename_prefills_selected_title() {
+    let (_d, mut sh) = shell();
+    let mut app = App::new();
+    app.begin_rename(&sh); // row 0 = "Ship parser"
+    assert_eq!(app.mode(), Mode::Rename);
+    assert_eq!(app.capture_buffer(), "Ship parser");
+    app.on_key(&mut sh, "enter", false, None); // commit unchanged
+    assert_eq!(app.mode(), Mode::Browse);
+}
+
+#[test]
+fn begin_add_sibling_on_empty_vault_is_noop() {
+    let dir = tempfile::tempdir().expect("tmp");
+    let v = Vault::open(dir.path()).expect("open");
+    let sh = Shell::new(v);
+    let mut app = App::new();
+    app.begin_add_sibling(&sh); // no rows -> stays in Browse
+    assert_eq!(app.mode(), Mode::Browse);
+}

@@ -322,6 +322,37 @@ impl App {
         self.selected = i.min(last);
     }
 
+    /// Begin a capture (Notion "＋" affordance / `C-c`): switch to the
+    /// capture surface with an empty title buffer.
+    pub fn begin_capture(&mut self) {
+        self.mode = Mode::Capture;
+        self.capture_buf.clear();
+        self.set_status("capture: type a title");
+    }
+
+    /// Begin adding a sibling after the selected row (Notion "＋" / `C-a`).
+    /// No-op when there is no selection. Mouse + keyboard share this.
+    pub fn begin_add_sibling(&mut self, shell: &Shell) {
+        if let Some(row) = self.rows(shell).get(self.selected) {
+            self.add_target = Some(row.id.clone());
+            self.capture_buf.clear();
+            self.mode = Mode::AddSibling;
+            self.set_status("add sibling: type a title");
+        }
+    }
+
+    /// Begin renaming the selected row (double-click / `C-r`), prefilling
+    /// the buffer with its current title. No-op without a selection.
+    pub fn begin_rename(&mut self, shell: &Shell) {
+        if let Some(row) = self.rows(shell).get(self.selected) {
+            self.rename_target = Some(row.id.clone());
+            self.capture_buf.clear();
+            self.capture_buf.push_str(&row.title);
+            self.mode = Mode::Rename;
+            self.set_status("rename: edit the title");
+        }
+    }
+
     /// Live filter query.
     #[must_use]
     pub fn query(&self) -> &str {
@@ -510,26 +541,9 @@ impl App {
                 self.selected = (self.selected + 1).min(last);
             }
             "prev-file" => self.selected = self.selected.saturating_sub(1),
-            "capture" => {
-                self.mode = Mode::Capture;
-                self.capture_buf.clear();
-                self.set_status("capture: type a title");
-            }
-            "add-sibling" => {
-                if let Some(row) = rows.get(self.selected) {
-                    self.add_target = Some(row.id.clone());
-                    self.capture_buf.clear();
-                    self.mode = Mode::AddSibling;
-                }
-            }
-            "rename" => {
-                if let Some(row) = rows.get(self.selected) {
-                    self.rename_target = Some(row.id.clone());
-                    self.capture_buf.clear();
-                    self.capture_buf.push_str(&row.title);
-                    self.mode = Mode::Rename;
-                }
-            }
+            "capture" => self.begin_capture(),
+            "add-sibling" => self.begin_add_sibling(shell),
+            "rename" => self.begin_rename(shell),
             "delete" => {
                 if let Some(row) = rows.get(self.selected) {
                     let bid = closure_core::BlockId::from_existing(&row.id);
@@ -649,11 +663,7 @@ impl App {
         let rows = self.rows(shell);
         let last = rows.len().saturating_sub(1);
         match key {
-            "c" if ctrl => {
-                self.mode = Mode::Capture;
-                self.capture_buf.clear();
-                self.set_status("capture: type a title");
-            }
+            "c" if ctrl => self.begin_capture(),
             // Notion-style slash command: `/` on an empty filter opens
             // the command palette; mid-query it's a literal filter char.
             "/" if !ctrl && self.query.is_empty() => {
@@ -663,23 +673,8 @@ impl App {
                 self.set_status("command palette — type to filter, Enter to run");
             }
             "t" if ctrl => self.cycle_mode(),
-            "a" if ctrl => {
-                if let Some(row) = rows.get(self.selected) {
-                    self.add_target = Some(row.id.clone());
-                    self.capture_buf.clear();
-                    self.mode = Mode::AddSibling;
-                    self.set_status("add sibling: type a title");
-                }
-            }
-            "r" if ctrl => {
-                if let Some(row) = rows.get(self.selected) {
-                    self.rename_target = Some(row.id.clone());
-                    self.capture_buf.clear();
-                    self.capture_buf.push_str(&row.title);
-                    self.mode = Mode::Rename;
-                    self.set_status("rename: edit the title");
-                }
-            }
+            "a" if ctrl => self.begin_add_sibling(shell),
+            "r" if ctrl => self.begin_rename(shell),
             "d" if ctrl => {
                 if let Some(row) = rows.get(self.selected) {
                     let bid = closure_core::BlockId::from_existing(&row.id);
