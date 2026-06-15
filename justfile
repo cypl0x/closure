@@ -21,5 +21,16 @@ fuzz:
 wasm:
     cargo check --target wasm32-wasip1 -p closure-org -p closure-core
 
+# egui desktop shell build gate (opt-in; pulls eframe + system GL/X11/
+# wayland/xkb libs from the flake). The window needs a display so it is
+# NOT exercised here — this gate guarantees the feature still compiles.
+# Launch it with:  just run-egui VAULT  (or the cargo run line below).
+gui-egui:
+    cargo build -p closure-cli --features egui
+
+# Launch the egui desktop shell against a vault (needs a display).
+run-egui vault:
+    cargo run -p closure-cli --features egui -- egui {{vault}}
+
 # Full local CI: everything above.
 ci: check fuzz wasm coverage

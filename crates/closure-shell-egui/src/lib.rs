@@ -7,6 +7,13 @@
 //! fully unit-tested without a window; this crate re-exports it and
 //! adds the eframe window behind the opt-in `egui` cargo feature so the
 //! default workspace stays hermetic (I10).
+//!
+//! Build gate: `nix develop -c just gui-egui`.
+//! Launch:     `nix develop -c just run-egui /path/to/vault`
+//!         (=  `cargo run -p closure-cli --features egui -- egui <vault>`).
+//! G1 verified: builds clean + launches (eframe event loop runs, window
+//! opens) on the dev host. The window is display-bound, so it is not part
+//! of the hermetic gate — `just gui-egui` only guarantees it compiles.
 
 #![forbid(unsafe_code)]
 
