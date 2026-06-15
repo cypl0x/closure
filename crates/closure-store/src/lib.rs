@@ -12,7 +12,7 @@ use std::sync::mpsc::{Receiver, Sender, channel};
 
 use closure_core::{
     AddSibling, BlockId, Command, Demote, Document, MoveSubtree, Promote, RemoveSubtree,
-    RenameHeadline, SetBody, SetProperty,
+    RenameHeadline, SetBody, SetPriority, SetProperty, SetTags, SetTodo,
 };
 use notify::{EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use thiserror::Error;
@@ -468,6 +468,40 @@ impl Vault {
     /// Same contract as [`Self::rename_headline`].
     pub fn set_property(&mut self, id: &BlockId, key: &str, value: &str) -> Result<(), VaultError> {
         let cmd = SetProperty::new(id.clone(), key.to_owned(), value.to_owned());
+        self.apply_to_block(id, &cmd)
+    }
+
+    /// Set (or, with `None`, clear) the TODO keyword through the kernel
+    /// [`SetTodo`] command (undoable, I3) and persist to disk.
+    ///
+    /// # Errors
+    ///
+    /// Same contract as [`Self::rename_headline`].
+    pub fn set_todo(&mut self, id: &BlockId, keyword: Option<&str>) -> Result<(), VaultError> {
+        let cmd = SetTodo::new(id.clone(), keyword.map(ToOwned::to_owned));
+        self.apply_to_block(id, &cmd)
+    }
+
+    /// Set (or, with `None`, clear) the priority cookie through the
+    /// kernel [`SetPriority`] command (undoable, I3) and persist to disk.
+    ///
+    /// # Errors
+    ///
+    /// Same contract as [`Self::rename_headline`].
+    pub fn set_priority(&mut self, id: &BlockId, priority: Option<char>) -> Result<(), VaultError> {
+        let cmd = SetPriority::new(id.clone(), priority);
+        self.apply_to_block(id, &cmd)
+    }
+
+    /// Replace the headline's tag list through the kernel [`SetTags`]
+    /// command (undoable, I3) and persist to disk. An empty slice clears
+    /// all tags.
+    ///
+    /// # Errors
+    ///
+    /// Same contract as [`Self::rename_headline`].
+    pub fn set_tags(&mut self, id: &BlockId, tags: &[String]) -> Result<(), VaultError> {
+        let cmd = SetTags::new(id.clone(), tags.to_vec());
         self.apply_to_block(id, &cmd)
     }
 

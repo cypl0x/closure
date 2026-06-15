@@ -256,3 +256,48 @@ fn move_after_unknown_id_errors() {
     let bogus = BlockId::from_existing("01HXZZZZZZZZZZZZZZZZZZZZZZ");
     assert!(v.move_after(&bogus, &a).is_err());
 }
+
+// === E3 field setters: TODO keyword / priority / tags, each through a
+// kernel command (undoable, I3), kept in sync on disk + index. ===
+
+#[test]
+fn set_todo_sets_and_clears_keyword() {
+    let td = write_vault(&[("a.org", "* Plain heading\n")]);
+    let mut v = Vault::open(td.path()).expect("open");
+    let id = id_of(&v, "Plain heading");
+    v.set_todo(&id, Some("TODO")).expect("set todo");
+    assert_eq!(
+        v.find_by_title("Plain heading").expect("h").0.todo(),
+        Some("TODO")
+    );
+    let disk = fs::read_to_string(td.path().join("a.org")).expect("read");
+    assert!(disk.contains("* TODO Plain heading"), "disk: {disk:?}");
+    v.set_todo(&id, None).expect("clear todo");
+    assert_eq!(v.find_by_title("Plain heading").expect("h").0.todo(), None);
+}
+
+#[test]
+fn set_priority_sets_and_clears() {
+    let td = write_vault(&[("a.org", "* TODO Task\n")]);
+    let mut v = Vault::open(td.path()).expect("open");
+    let id = id_of(&v, "Task");
+    v.set_priority(&id, Some('A')).expect("set prio");
+    assert_eq!(v.find_by_title("Task").expect("h").0.priority(), Some('A'));
+    v.set_priority(&id, None).expect("clear prio");
+    assert_eq!(v.find_by_title("Task").expect("h").0.priority(), None);
+}
+
+#[test]
+fn set_tags_replaces_tag_list() {
+    let td = write_vault(&[("a.org", "* Note\n")]);
+    let mut v = Vault::open(td.path()).expect("open");
+    let id = id_of(&v, "Note");
+    v.set_tags(&id, &["work".to_owned(), "urgent".to_owned()])
+        .expect("set tags");
+    assert_eq!(
+        v.find_by_title("Note").expect("h").0.tags(),
+        &["work".to_owned(), "urgent".to_owned()]
+    );
+    v.set_tags(&id, &[]).expect("clear tags");
+    assert!(v.find_by_title("Note").expect("h").0.tags().is_empty());
+}
