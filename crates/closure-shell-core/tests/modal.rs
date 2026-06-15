@@ -191,3 +191,38 @@ fn view_window_pages_and_keeps_selection_visible() {
     assert_eq!(off, 2);
     assert_eq!(rows[0].title, "Write spec");
 }
+
+// === E1 body editor on the modal surface (org-edit-special). ===
+
+#[test]
+fn vim_i_enters_body_editor_and_commits() {
+    let (_d, mut sh) = shell();
+    let mut app = ModalApp::new(InputMode::Vim);
+    app.on_key(&mut sh, "i", false, false, Some('i')); // edit-body
+    assert_eq!(app.surface(), ModalSurface::EditBody);
+    for c in "note".chars() {
+        app.on_key(&mut sh, &c.to_string(), false, false, Some(c));
+    }
+    app.on_key(&mut sh, "enter", true, false, None); // C-Enter commit
+    assert_eq!(app.surface(), ModalSurface::Browse);
+    let d = app.detail(&sh).expect("detail");
+    assert_eq!(d.body.trim_end(), "note");
+}
+
+#[test]
+fn body_editor_escape_cancels() {
+    let (_d, mut sh) = shell();
+    let mut app = ModalApp::new(InputMode::Vim);
+    app.on_key(&mut sh, "i", false, false, Some('i'));
+    app.body_buffer_mut().push_str("scratch");
+    app.on_key(&mut sh, "escape", false, false, None);
+    assert_eq!(app.surface(), ModalSurface::Browse);
+    assert_eq!(app.detail(&sh).expect("d").body.trim(), "");
+}
+
+#[test]
+fn emacs_binds_edit_body_to_c_c_e() {
+    use closure_input::chord_for_command;
+    assert_eq!(chord_for_command(InputMode::Emacs, "edit-body"), Some("C-c e"));
+    assert_eq!(chord_for_command(InputMode::Vim, "edit-body"), Some("i"));
+}

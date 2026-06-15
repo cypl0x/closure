@@ -47,6 +47,7 @@ const DOOM_KEYMAP: &[(&str, &str)] = &[
     ("a", "add-sibling"),
     ("r", "rename"),
     ("d", "delete"),
+    ("i", "edit-body"),
 ];
 
 /// Emacs bindings: Ctrl/Meta chords, `C-x C-c` quits.
@@ -75,6 +76,7 @@ const EMACS_KEYMAP: &[(&str, &str)] = &[
     ("C-c a", "add-sibling"),
     ("C-c r", "rename"),
     ("C-c d", "delete"),
+    ("C-c e", "edit-body"),
 ];
 
 /// Vim bindings: modal navigation keys.
@@ -104,6 +106,7 @@ const VIM_KEYMAP: &[(&str, &str)] = &[
     ("a", "add-sibling"),
     ("r", "rename"),
     ("d", "delete"),
+    ("i", "edit-body"),
 ];
 
 /// Helix bindings: vim-like with `U` redo and `g e` for end.
@@ -133,6 +136,7 @@ const HELIX_KEYMAP: &[(&str, &str)] = &[
     ("a", "add-sibling"),
     ("r", "rename"),
     ("d", "delete"),
+    ("i", "edit-body"),
 ];
 
 /// Notion bindings: mouse + arrows + slash command, minimal chords.
@@ -161,6 +165,7 @@ const NOTION_KEYMAP: &[(&str, &str)] = &[
     ("a", "add-sibling"),
     ("r", "rename"),
     ("d", "delete"),
+    ("i", "edit-body"),
 ];
 
 /// The canonical `(chord, command)` keymap for an input mode — the

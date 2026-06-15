@@ -123,6 +123,20 @@ impl Shell {
     ) -> Result<(), closure_store::VaultError> {
         self.vault.add_sibling(after_id, title)
     }
+
+    /// Replace a headline's body text through the kernel command (I8).
+    /// This is the GUI's org-edit-special commit path.
+    ///
+    /// # Errors
+    ///
+    /// Propagates [`closure_store::VaultError`].
+    pub fn set_body(
+        &mut self,
+        id: &closure_core::BlockId,
+        body: &str,
+    ) -> Result<(), closure_store::VaultError> {
+        self.vault.set_body(id, body)
+    }
 }
 
 /// Adapter for gpui embedder (parity with egui).
@@ -202,6 +216,9 @@ pub enum Mode {
     AddSibling,
     /// Slash command palette: fuzzy-pick a command (which-key list).
     Palette,
+    /// Editing the selected headline's body in a multiline buffer
+    /// (org-edit-special). Commit via [`App::commit_edit_body`].
+    EditBody,
 }
 
 /// Commands offered by the slash palette as `(display, canonical)`:
@@ -235,6 +252,10 @@ pub struct App {
     capture_buf: String,
     rename_target: Option<String>,
     add_target: Option<String>,
+    /// Block id whose body the `EditBody` surface is editing.
+    edit_target: Option<String>,
+    /// Multiline body buffer for the `EditBody` surface.
+    body_buf: String,
     input_mode: closure_config::InputMode,
     palette_cursor: usize,
     status: String,
@@ -258,6 +279,8 @@ impl App {
             capture_buf: String::new(),
             rename_target: None,
             add_target: None,
+            edit_target: None,
+            body_buf: String::new(),
             input_mode: closure_config::InputMode::Notion,
             palette_cursor: 0,
             status: "browse — type to filter".to_owned(),
@@ -356,6 +379,64 @@ impl App {
         }
     }
 
+    /// Begin editing the selected headline's body (org-edit-special),
+    /// prefilling the buffer with the current body. No-op without a
+    /// selection. Commit with [`Self::commit_edit_body`] or cancel with
+    /// Esc.
+    pub fn begin_edit_body(&mut self, shell: &Shell) {
+        let Some(row) = self.rows(shell).get(self.selected).cloned() else {
+            return;
+        };
+        let body = self
+            .detail(shell)
+            .map(|d| d.body)
+            .unwrap_or_default();
+        self.edit_target = Some(row.id);
+        self.body_buf = body;
+        self.mode = Mode::EditBody;
+        self.set_status("edit body — save to commit, Esc to cancel");
+    }
+
+    /// The body editor buffer (read).
+    #[must_use]
+    pub fn body_buffer(&self) -> &str {
+        &self.body_buf
+    }
+
+    /// Mutable body buffer, for the egui multiline `TextEdit` to bind to
+    /// (the widget mutates the buffer in place; commit reads it back).
+    pub const fn body_buffer_mut(&mut self) -> &mut String {
+        &mut self.body_buf
+    }
+
+    /// Commit the body editor buffer to the target headline through the
+    /// kernel command (I8), then return to Browse. No-op if not editing.
+    pub fn commit_edit_body(&mut self, shell: &mut Shell) {
+        if let Some(id) = self.edit_target.take() {
+            let bid = closure_core::BlockId::from_existing(&id);
+            // Org bodies are newline-terminated; without a trailing
+            // newline a following sibling headline would be absorbed.
+            let mut body = self.body_buf.clone();
+            if !body.is_empty() && !body.ends_with('\n') {
+                body.push('\n');
+            }
+            match shell.set_body(&bid, &body) {
+                Ok(()) => self.set_status("body saved"),
+                Err(e) => self.status = format!("save failed: {e}"),
+            }
+        }
+        self.body_buf.clear();
+        self.mode = Mode::Browse;
+    }
+
+    /// Cancel body editing without writing.
+    fn cancel_edit_body(&mut self) {
+        self.edit_target = None;
+        self.body_buf.clear();
+        self.mode = Mode::Browse;
+        self.set_status("edit cancelled");
+    }
+
     /// Live filter query.
     #[must_use]
     pub fn query(&self) -> &str {
@@ -408,6 +489,7 @@ impl App {
             Mode::Rename => "rename — Enter: save   Esc: cancel",
             Mode::AddSibling => "add sibling — Enter: save   Esc: cancel",
             Mode::Palette => "command palette — type to filter   Enter: run   Esc: cancel",
+            Mode::EditBody => "edit body — C-Enter: save   Enter: newline   Esc: cancel",
         };
         format!("[{:?}] {body}", self.input_mode)
     }
@@ -515,7 +597,28 @@ impl App {
             Mode::Rename => self.on_rename_key(shell, key, text),
             Mode::AddSibling => self.on_add_key(shell, key, text),
             Mode::Palette => self.on_palette_key(shell, key, text),
+            Mode::EditBody => self.on_editbody_key(shell, key, ctrl, text),
             Mode::Browse => self.on_browse_key(shell, key, ctrl, text),
+        }
+    }
+
+    /// Body editor keys: Esc cancels, `C-<enter>` commits, plain Enter
+    /// inserts a newline, Backspace deletes, printable chars append.
+    /// (egui also binds a multiline `TextEdit` to `body_buffer_mut` + a
+    /// Save button; this path makes it keyboard-drivable + testable.)
+    fn on_editbody_key(&mut self, shell: &mut Shell, key: &str, ctrl: bool, text: Option<char>) {
+        match key {
+            "escape" => self.cancel_edit_body(),
+            "enter" if ctrl => self.commit_edit_body(shell),
+            "enter" => self.body_buf.push('\n'),
+            "backspace" => {
+                self.body_buf.pop();
+            }
+            _ => {
+                if let Some(c) = text.filter(|_| !ctrl) {
+                    self.body_buf.push(c);
+                }
+            }
         }
     }
 
@@ -749,6 +852,8 @@ pub enum ModalSurface {
     Search,
     /// Typing the title of a new capture entry.
     Capture,
+    /// Editing the selected headline's body (org-edit-special).
+    EditBody,
 }
 
 /// Modal command-surface launcher (the "modal GUI" experiment).
@@ -766,6 +871,8 @@ pub struct ModalApp {
     selected: usize,
     query: String,
     capture_buf: String,
+    body_buf: String,
+    edit_target: Option<String>,
     pending: Vec<String>,
     status: String,
     quit: bool,
@@ -781,6 +888,8 @@ impl ModalApp {
             selected: 0,
             query: String::new(),
             capture_buf: String::new(),
+            body_buf: String::new(),
+            edit_target: None,
             pending: Vec::new(),
             status: String::new(),
             quit: false,
@@ -927,8 +1036,62 @@ impl ModalApp {
         match self.surface {
             ModalSurface::Search => self.on_search_key(shell, key, text),
             ModalSurface::Capture => self.on_capture_key(shell, key, text),
+            ModalSurface::EditBody => self.on_editbody_key(shell, key, ctrl, text),
             ModalSurface::Browse => self.on_browse_key(shell, key, ctrl, alt, text),
         }
+    }
+
+    /// Body editor keys (org-edit-special): Esc cancels, `C-<enter>`
+    /// commits through the Vault (I8), Enter inserts a newline,
+    /// Backspace deletes, printable chars append. Mirrors
+    /// [`App::on_editbody_key`].
+    fn on_editbody_key(&mut self, shell: &mut Shell, key: &str, ctrl: bool, text: Option<char>) {
+        match key {
+            "escape" => {
+                self.edit_target = None;
+                self.body_buf.clear();
+                self.surface = ModalSurface::Browse;
+            }
+            "enter" if ctrl => self.commit_edit_body(shell),
+            "enter" => self.body_buf.push('\n'),
+            "backspace" => {
+                self.body_buf.pop();
+            }
+            _ => {
+                if let Some(c) = text.filter(|_| !ctrl) {
+                    self.body_buf.push(c);
+                }
+            }
+        }
+    }
+
+    /// The body editor buffer (read).
+    #[must_use]
+    pub fn body_buffer(&self) -> &str {
+        &self.body_buf
+    }
+
+    /// Mutable body buffer for the egui multiline `TextEdit`.
+    pub const fn body_buffer_mut(&mut self) -> &mut String {
+        &mut self.body_buf
+    }
+
+    /// Commit the body buffer to the target headline through the kernel
+    /// command (I8), then return to Browse. No-op if not editing.
+    pub fn commit_edit_body(&mut self, shell: &mut Shell) {
+        if let Some(id) = self.edit_target.take() {
+            let bid = closure_core::BlockId::from_existing(&id);
+            let mut body = self.body_buf.clone();
+            if !body.is_empty() && !body.ends_with('\n') {
+                body.push('\n');
+            }
+            match shell.set_body(&bid, &body) {
+                Ok(()) => "body saved".clone_into(&mut self.status),
+                Err(e) => self.status = format!("save failed: {e}"),
+            }
+        }
+        self.body_buf.clear();
+        self.surface = ModalSurface::Browse;
     }
 
     fn on_search_key(&mut self, shell: &Shell, key: &str, text: Option<char>) {
@@ -1034,6 +1197,14 @@ impl ModalApp {
             "open-file" => {
                 if let Some(row) = self.rows(shell).get(self.selected) {
                     self.status = format!("{} — {}", row.path, row.title);
+                }
+            }
+            "edit-body" => {
+                if let Some(row) = self.rows(shell).get(self.selected).cloned() {
+                    self.edit_target = Some(row.id);
+                    self.body_buf = self.detail(shell).map(|d| d.body).unwrap_or_default();
+                    self.surface = ModalSurface::EditBody;
+                    "edit body — C-Enter save, Esc cancel".clone_into(&mut self.status);
                 }
             }
             "cycle-mode" => {

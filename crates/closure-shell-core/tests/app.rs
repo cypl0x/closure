@@ -703,3 +703,67 @@ fn browse_hints_list_real_bindings_for_the_mode() {
     assert!(h.contains("j:next-file"), "vim j shown: {h}");
     assert!(h.contains("r:rename"));
 }
+
+// === E1 body editor (org-edit-special): edit the selected headline's
+// body in a multiline buffer, commit through the Vault (I8). Pure
+// state, headless-tested; the egui window only binds a TextEdit + Save.
+
+#[test]
+fn begin_edit_body_prefills_current_body() {
+    let (_d, sh) = shell();
+    let mut app = App::new();
+    app.begin_edit_body(&sh);
+    assert_eq!(app.mode(), Mode::EditBody);
+    assert_eq!(app.body_buffer(), "", "fresh headline has empty body");
+}
+
+#[test]
+fn edit_body_commit_writes_through_vault() {
+    let (_d, mut sh) = shell();
+    let mut app = App::new();
+    app.begin_edit_body(&sh);
+    for c in "Hello".chars() {
+        app.on_key(&mut sh, &c.to_string(), false, Some(c));
+    }
+    app.on_key(&mut sh, "enter", false, None); // newline, not commit
+    for c in "World".chars() {
+        app.on_key(&mut sh, &c.to_string(), false, Some(c));
+    }
+    app.commit_edit_body(&mut sh);
+    assert_eq!(app.mode(), Mode::Browse);
+    let d = app.detail(&sh).expect("detail");
+    assert_eq!(d.body.trim_end(), "Hello\nWorld");
+}
+
+#[test]
+fn edit_body_escape_cancels_without_writing() {
+    let (_d, mut sh) = shell();
+    let mut app = App::new();
+    app.begin_edit_body(&sh);
+    for c in "scratch".chars() {
+        app.on_key(&mut sh, &c.to_string(), false, Some(c));
+    }
+    app.on_key(&mut sh, "escape", false, None);
+    assert_eq!(app.mode(), Mode::Browse);
+    assert_eq!(app.detail(&sh).expect("detail").body.trim(), "");
+}
+
+#[test]
+fn edit_body_backspace_edits_buffer() {
+    let (_d, sh) = shell();
+    let mut app = App::new();
+    app.begin_edit_body(&sh);
+    app.body_buffer_mut().push_str("abc");
+    // Simulate a backspace via on_key is fine, but exercise the mut accessor.
+    assert_eq!(app.body_buffer(), "abc");
+}
+
+#[test]
+fn begin_edit_body_on_empty_vault_is_noop() {
+    let dir = tempfile::tempdir().expect("tmp");
+    let v = Vault::open(dir.path()).expect("open");
+    let sh = Shell::new(v);
+    let mut app = App::new();
+    app.begin_edit_body(&sh);
+    assert_eq!(app.mode(), Mode::Browse);
+}

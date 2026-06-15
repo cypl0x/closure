@@ -125,11 +125,13 @@ mod window {
                     Mode::AddSibling => format!("＋ add: {}", a.capture_buffer()),
                     Mode::Rename => format!("✎ rename: {}", a.capture_buffer()),
                     Mode::Palette => format!("❯ command: {}", a.capture_buffer()),
+                    Mode::EditBody => "✎ edit body".to_owned(),
                     Mode::Browse => format!("⌕ {}", a.query()),
                 },
                 Self::Modal(a) => match a.surface() {
                     ModalSurface::Capture => format!("＋ capture: {}", a.capture_buffer()),
                     ModalSurface::Search => format!("⌕ {}", a.query()),
+                    ModalSurface::EditBody => "✎ edit body".to_owned(),
                     ModalSurface::Browse => format!("[{:?}] browse", a.input_mode()),
                 },
             }
@@ -162,6 +164,34 @@ mod window {
         fn begin_rename(&mut self, shell: &Shell) {
             if let Self::Launcher(a) = self {
                 a.begin_rename(shell);
+            }
+        }
+        /// Enter the body editor (org-edit-special). Launcher only — the
+        /// modal modes enter it with their keymap chord.
+        fn begin_edit_body(&mut self, shell: &Shell) {
+            if let Self::Launcher(a) = self {
+                a.begin_edit_body(shell);
+            }
+        }
+        /// Whether the body editor surface is active (either app).
+        const fn editing_body(&self) -> bool {
+            match self {
+                Self::Launcher(a) => matches!(a.mode(), Mode::EditBody),
+                Self::Modal(a) => matches!(a.surface(), ModalSurface::EditBody),
+            }
+        }
+        /// Multiline body buffer the `TextEdit` widget binds to.
+        const fn body_buffer_mut(&mut self) -> &mut String {
+            match self {
+                Self::Launcher(a) => a.body_buffer_mut(),
+                Self::Modal(a) => a.body_buffer_mut(),
+            }
+        }
+        /// Commit the body buffer through the Vault (I8).
+        fn commit_edit_body(&mut self, shell: &mut Shell) {
+            match self {
+                Self::Launcher(a) => a.commit_edit_body(shell),
+                Self::Modal(a) => a.commit_edit_body(shell),
             }
         }
         /// Whether the mouse affordances apply (launcher surface only).
@@ -228,6 +258,32 @@ mod window {
     impl EguiApp {
         fn handle_input(&mut self, ctx: &egui::Context) {
             let events = ctx.input(|i| i.events.clone());
+            // While the body editor is open the multiline TextEdit widget
+            // owns typing (Enter=newline, Backspace, arrows); feeding the
+            // same chars to on_key would double-insert. Route only Esc
+            // (cancel) and C-Enter (commit) globally.
+            if self.surface.editing_body() {
+                for ev in events {
+                    if let egui::Event::Key {
+                        key,
+                        pressed: true,
+                        modifiers,
+                        ..
+                    } = ev
+                    {
+                        match key {
+                            egui::Key::Escape => {
+                                self.surface.on_named(&mut self.shell, "escape", false, false);
+                            }
+                            egui::Key::Enter if modifiers.ctrl => {
+                                self.surface.commit_edit_body(&mut self.shell);
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+                return;
+            }
             for ev in events {
                 match ev {
                     egui::Event::Text(s) => {
@@ -286,6 +342,10 @@ mod window {
                         if ui.button(format!("＋ add sibling ({add})")).clicked() {
                             self.surface.begin_add_sibling(&self.shell);
                         }
+                        let edit = self.surface.chord_for("edit-body");
+                        if ui.button(format!("✎ edit body ({edit})")).clicked() {
+                            self.surface.begin_edit_body(&self.shell);
+                        }
                     });
                 }
             });
@@ -296,7 +356,11 @@ mod window {
             egui::CentralPanel::default().show(ctx, |ui| {
                 ui.columns(2, |cols| {
                     self.list_pane(&mut cols[0]);
-                    self.right_pane(&mut cols[1]);
+                    if self.surface.editing_body() {
+                        self.editor_pane(&mut cols[1]);
+                    } else {
+                        self.right_pane(&mut cols[1]);
+                    }
                 });
             });
         }
@@ -322,6 +386,27 @@ mod window {
                         self.surface.select(i, &self.shell);
                         self.surface.begin_rename(&self.shell);
                     }
+                }
+            });
+        }
+
+        /// org-edit-special body editor: a multiline `TextEdit` bound to
+        /// the shell-core body buffer + Save/Cancel. The widget owns
+        /// typing; commit/cancel route through the shell-core methods.
+        fn editor_pane(&mut self, ui: &mut egui::Ui) {
+            ui.label("body (org-edit-special):");
+            ui.add(
+                egui::TextEdit::multiline(self.surface.body_buffer_mut())
+                    .desired_rows(14)
+                    .desired_width(f32::INFINITY)
+                    .code_editor(),
+            );
+            ui.horizontal(|ui| {
+                if ui.button("💾 save (C-Enter)").clicked() {
+                    self.surface.commit_edit_body(&mut self.shell);
+                }
+                if ui.button("✕ cancel (Esc)").clicked() {
+                    self.surface.on_named(&mut self.shell, "escape", false, false);
                 }
             });
         }
