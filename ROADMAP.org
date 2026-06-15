@@ -160,26 +160,19 @@ reversible option, keep moving.
 ** DONE D3 Coverage ratchet: scoped the metric to library code (the CLI glue =main.rs= — 2414 of 5258 missed lines, thin IO/print shims — is excluded; see Decisions), added real =closure-llm= tests (providers/bodies/extractors/json: 53% -> high), and lifted =just coverage= to =--fail-under-lines 85=. Library line coverage is now 88.33% (was 80.28% full-metric; the new gate is strictly tighter on the meaningful code).
 
 * TODO Hardening pass (vision + depth complete; raise confidence) [0/3]
-** TODO H1 CLI integration tests: spawn the =closure= binary (=CARGO_BIN_EXE_closure=) on temp vaults, assert output/exit for every subcommand; then drop the =main.rs= ignore from =just coverage=, re-floor to the real number, and retire the coverage-scoping decision.
+** DONE H1 CLI integration tests: =closure-cli/tests/cli.rs= spawns the real binary on temp vaults and asserts output/exit for 18 commands (parse/stats/shells/spec/default-config/capture/view/search/agenda/graph/dead-links/tag-cloud/todos/tags/paths/mcp/ask --vault echo/tangle/plugin + unknown-cmd). main.rs coverage 0.9% -> 15.1%; the =main.rs= ignore is dropped from =just coverage= (now full-workspace, floor 80, actual 81.65%) and the scoping decision is retired. Found+fixed two real wiring gaps along the way (keyless LLM providers no longer require =llm_key_env=; =closure mcp <vault>= now runs the JSON-RPC server, not the old line protocol).
 ** TODO H2 Library coverage toward 100%: raise the lowest crates (closure-eval, closure-tui, closure-llm) with real tests; ratchet the floor up in steps.
 ** TODO H3 Property/fuzz depth: widen the fuzz_replay corpus + proptests for any thinly-covered invariant.
 
 * Decisions
 Open questions land here as subheadings: context, options considered,
 the reversible default taken, date.
-** Coverage metric scopes to library code, not CLI glue (2026-06-14)
-=just coverage= measures library/test code and excludes
-=closure-cli/src/main.rs= via =--ignore-filename-regex=. That file is
-~2400 lines of =cmd_*= wrappers: open a vault, call a library method,
-print — thin glue with no branching logic worth unit-testing, and it
-dominated the denominator (2414 of 5258 missed lines, dragging the
-full metric to 80% while the libraries sit at 88%). Scoping to the
-libraries makes the gate meaningful and the ratchet honest (floor 85,
-actual 88.33%). The CLI is exercised end-to-end by the commands
-(verified manually for capture/view/plugin/ask). Reversible: add
-=assert_cmd= integration tests that spawn the binary and fold main.rs
-back into the metric. Never lowered: the prior floor was 78 on the
-diluted full metric; 85 on library code is strictly tighter.
+** RETIRED (2026-06-15) Coverage metric scoping to library code
+Superseded by H1: =closure-cli/tests/cli.rs= now spawns the real
+binary, so =main.rs= is genuinely covered (0.9% -> 15.1%) and folded
+back into the metric. =just coverage= is full-workspace again,
+=--fail-under-lines 80= (actual 81.65%). No file is excluded; the
+"thin glue" reversible path was taken.
 ** Network sniffer real backend is DROP (out-of-tree plugin) (2026-06-14)
 The vision wants an included sniffer (Little Snitch/wireshark/mitmproxy
 class). A real capture backend needs libpcap or shelling to

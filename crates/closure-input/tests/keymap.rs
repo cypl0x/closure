@@ -28,7 +28,11 @@ fn every_mode_binds_the_same_command_set() {
     assert!(reference.contains("capture-start"));
     assert!(reference.contains("search-start"));
     for mode in MODES {
-        assert_eq!(commands(mode), reference, "{mode:?} diverges from the command set");
+        assert_eq!(
+            commands(mode),
+            reference,
+            "{mode:?} diverges from the command set"
+        );
     }
 }
 
@@ -45,12 +49,21 @@ fn no_chord_is_bound_twice_within_a_mode() {
 #[test]
 fn modes_have_distinct_chords_for_navigation() {
     // Vim/Doom use j/k; Emacs uses C-n/C-p; Notion uses arrows only.
-    let doom: BTreeSet<&str> = mode_keymap(InputMode::Doom).iter().map(|(c, _)| *c).collect();
+    let doom: BTreeSet<&str> = mode_keymap(InputMode::Doom)
+        .iter()
+        .map(|(c, _)| *c)
+        .collect();
     assert!(doom.contains("j"));
-    let emacs: BTreeSet<&str> = mode_keymap(InputMode::Emacs).iter().map(|(c, _)| *c).collect();
+    let emacs: BTreeSet<&str> = mode_keymap(InputMode::Emacs)
+        .iter()
+        .map(|(c, _)| *c)
+        .collect();
     assert!(emacs.contains("C-n"));
     assert!(!emacs.contains("j"), "emacs must not bind bare j to nav");
-    let notion: BTreeSet<&str> = mode_keymap(InputMode::Notion).iter().map(|(c, _)| *c).collect();
+    let notion: BTreeSet<&str> = mode_keymap(InputMode::Notion)
+        .iter()
+        .map(|(c, _)| *c)
+        .collect();
     assert!(notion.contains("<down>"));
 }
 

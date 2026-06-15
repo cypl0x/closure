@@ -103,7 +103,10 @@ fn view_state_returns_a_real_vault_snapshot() {
     // Real numbers from the vault, not a fixed string.
     assert!(out.contains("files: 1"), "got: {out}");
     assert!(out.contains("headlines: 2"), "got: {out}");
-    assert!(out.to_lowercase().contains("todo"), "lists TODO keywords: {out}");
+    assert!(
+        out.to_lowercase().contains("todo"),
+        "lists TODO keywords: {out}"
+    );
 }
 
 #[test]
@@ -113,5 +116,8 @@ fn view_state_reflects_mutations() {
     assert!(before.contains("headlines: 2"));
     v.run_tool("capture Another");
     let after = v.run_tool("view-state");
-    assert!(after.contains("headlines: 3"), "snapshot updates after capture: {after}");
+    assert!(
+        after.contains("headlines: 3"),
+        "snapshot updates after capture: {after}"
+    );
 }

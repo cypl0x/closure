@@ -49,3 +49,6 @@ closure-cron = { path = "../closure-cron" }
 closure-sniffer = { path = "../closure-sniffer" }
 clap.workspace = true
 thiserror.workspace = true
+
+[dev-dependencies]
+tempfile = "3"

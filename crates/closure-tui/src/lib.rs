@@ -44,7 +44,8 @@ pub enum TuiError {
 /// Doom/default browse bindings, from the shared canonical keymap
 /// ([`closure_input::mode_keymap`]) so the TUI and every other shell
 /// stay identical per mode (I4).
-const DEFAULT_BINDINGS: &[(&str, &str)] = closure_input::mode_keymap(closure_config::InputMode::Doom);
+const DEFAULT_BINDINGS: &[(&str, &str)] =
+    closure_input::mode_keymap(closure_config::InputMode::Doom);
 
 /// The `(chord, command)` table for an input mode — delegates to the
 /// canonical [`closure_input::mode_keymap`], the single source of

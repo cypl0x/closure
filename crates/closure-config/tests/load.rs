@@ -196,6 +196,19 @@ fn llm_provider_without_key_env_is_rejected_at_load() {
     }
 }
 
+#[test]
+fn keyless_providers_need_no_key_env() {
+    // echo (tests) and ollama (localhost) need no API key, so the
+    // cross-key rule must not require llm_key_env for them.
+    for provider in ["echo", "ollama"] {
+        let src = format!("#+BEGIN_SRC closure-config\nllm_provider = {provider}\n#+END_SRC\n");
+        let cfg = Config::from_org_source(&src)
+            .unwrap_or_else(|e| panic!("{provider} should load without key_env: {e}"));
+        assert_eq!(cfg.llm_provider.as_deref(), Some(provider));
+        assert_eq!(cfg.llm_key_env, None);
+    }
+}
+
 // --- CUE-inspired validation (line/col at load) tests written first per TDD ---
 // These will fail until ConfigError carries structured location and from_kv_block
 // (and from_org_source) attach line + column for BadValue/UnknownKey.

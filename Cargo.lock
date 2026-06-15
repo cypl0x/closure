@@ -1114,6 +1114,7 @@ dependencies = [
  "closure-tui",
  "closure-undo",
  "closure-whichkey",
+ "tempfile",
  "thiserror 2.0.18",
 ]
 

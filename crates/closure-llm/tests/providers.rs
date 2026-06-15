@@ -33,7 +33,11 @@ fn openai_builder_sets_bearer_and_body() {
 fn ollama_builder_uses_host_and_no_auth() {
     let p = ollama("http://localhost:11434", "llama3");
     assert_eq!(p.url, "http://localhost:11434/api/generate");
-    assert!(!p.headers.iter().any(|h| h.to_lowercase().contains("authorization")));
+    assert!(
+        !p.headers
+            .iter()
+            .any(|h| h.to_lowercase().contains("authorization"))
+    );
     let body = (p.body)("q");
     assert!(body.contains("\"stream\":false"));
 }
@@ -41,7 +45,10 @@ fn ollama_builder_uses_host_and_no_auth() {
 #[test]
 fn extract_anthropic_reads_text_field() {
     let body = r#"{"content":[{"type":"text","text":"Hello there"}]}"#;
-    assert_eq!(extract_anthropic_content(body).as_deref(), Some("Hello there"));
+    assert_eq!(
+        extract_anthropic_content(body).as_deref(),
+        Some("Hello there")
+    );
 }
 
 #[test]
@@ -53,7 +60,10 @@ fn extract_openai_reads_message_content() {
 #[test]
 fn extract_ollama_reads_response_field() {
     let body = r#"{"model":"llama3","response":"local reply","done":true}"#;
-    assert_eq!(extract_ollama_response(body).as_deref(), Some("local reply"));
+    assert_eq!(
+        extract_ollama_response(body).as_deref(),
+        Some("local reply")
+    );
 }
 
 #[test]

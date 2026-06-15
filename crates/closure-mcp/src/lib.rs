@@ -235,3 +235,48 @@ fn json_escape(s: &str) -> String {
     }
     out
 }
+
+/// Run the JSON-RPC MCP server over a reader/writer.
+///
+/// One request per line; one response line per request that carries an
+/// `id` (notifications get none). Mutations route through
+/// [`closure_store::Vault::run_tool`] (I8).
+///
+/// # Errors
+///
+/// [`McpError::Transport`] on IO failure.
+pub fn serve_jsonrpc<R: BufRead, W: std::io::Write>(
+    vault: &mut closure_store::Vault,
+    mut input: R,
+    output: &mut W,
+) -> Result<(), McpError> {
+    let mut line = String::new();
+    loop {
+        line.clear();
+        let n = input
+            .read_line(&mut line)
+            .map_err(|e| McpError::Transport(e.to_string()))?;
+        if n == 0 {
+            break;
+        }
+        if line.trim().is_empty() {
+            continue;
+        }
+        if let Some(resp) = handle_message(vault, &line) {
+            writeln!(output, "{resp}").map_err(|e| McpError::Transport(e.to_string()))?;
+        }
+    }
+    Ok(())
+}
+
+/// Run the JSON-RPC MCP server on stdio against `vault`.
+///
+/// # Errors
+///
+/// [`McpError::Transport`] on IO failure.
+pub fn serve_jsonrpc_stdio(vault: &mut closure_store::Vault) -> Result<(), McpError> {
+    let stdin = std::io::stdin();
+    let mut stdout = std::io::stdout();
+    let reader = BufReader::new(stdin.lock());
+    serve_jsonrpc(vault, reader, &mut stdout)
+}

@@ -257,8 +257,10 @@ impl Config {
 
         // Typed cross-key constraints (yesod/CUE principle from spec I9 and
         // ROADMAP: error at *load* time, not at first use of the feature).
-        // Example: llm_provider set ⇒ llm_key_env must be present (BYOK).
-        if cfg.llm_provider.is_some() && cfg.llm_key_env.is_none() {
+        // A remote BYOK provider needs llm_key_env; keyless providers
+        // (echo for tests, ollama on localhost) do not.
+        let keyless = matches!(cfg.llm_provider.as_deref(), Some("echo" | "ollama"));
+        if cfg.llm_provider.is_some() && !keyless && cfg.llm_key_env.is_none() {
             return Err(ConfigError::BadValue {
                 key: "llm_key_env".into(),
                 reason: "llm_provider is set but llm_key_env is required for BYOK".into(),

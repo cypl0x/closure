@@ -798,9 +798,12 @@ enum Cmd {
         /// Path to a `*.org` file.
         file: PathBuf,
     },
-    /// Run the MCP stdio dispatcher (one command name per line; `LIST`
-    /// to enumerate). Quits on EOF.
-    Mcp,
+    /// Run the MCP JSON-RPC server on stdio against a vault
+    /// (initialize / tools/list / tools/call). Quits on EOF.
+    Mcp {
+        /// Path to the vault directory exposed as MCP tools.
+        vault: PathBuf,
+    },
     /// Run the ACP stdio dispatcher (agent card + registry commands over
     /// text protocol; JSON card served via `handle_message` for agent
     /// discovery/handshake per ROADMAP).
@@ -1271,7 +1274,7 @@ fn run(cmd: &Cmd) -> Result<(), String> {
         Cmd::HubIds { file } => cmd_hub_ids(file),
         Cmd::SourceOnlyIds { file } => cmd_source_only_ids(file),
         Cmd::SinkOnlyIds { file } => cmd_sink_only_ids(file),
-        Cmd::Mcp => cmd_mcp(),
+        Cmd::Mcp { vault } => cmd_mcp(vault),
         Cmd::Acp => cmd_acp(),
         Cmd::A2a => cmd_a2a(),
         Cmd::Orphans { vault } => cmd_orphans(vault),
@@ -1702,9 +1705,9 @@ fn cmd_paths(vault: &Path) -> Result<(), String> {
     Ok(())
 }
 
-fn cmd_mcp() -> Result<(), String> {
-    let registry = closure_core::default_registry();
-    closure_mcp::run_stdio(&registry).map_err(|e| format!("{e}"))
+fn cmd_mcp(vault: &Path) -> Result<(), String> {
+    let mut v = Vault::open(vault).map_err(|e| format!("{e}"))?;
+    closure_mcp::serve_jsonrpc_stdio(&mut v).map_err(|e| format!("{e}"))
 }
 
 fn cmd_acp() -> Result<(), String> {
