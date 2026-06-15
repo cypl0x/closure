@@ -50,6 +50,17 @@ mod window {
 
     use super::Shell;
 
+    /// Render `text` as a label that senses clicks when `enabled`;
+    /// otherwise a plain read-only label. Returns the response so the
+    /// caller can act on `.clicked()`. Backs the E4 click-to-edit fields.
+    fn clickable(ui: &mut egui::Ui, text: egui::RichText, enabled: bool) -> egui::Response {
+        if enabled {
+            ui.add(egui::Label::new(text).sense(egui::Sense::click()))
+        } else {
+            ui.label(text)
+        }
+    }
+
     /// The active GUI surface. Notion-style launcher (type-to-filter,
     /// the default) or the keymap-driven modal surface backing the four
     /// keyboard editing modes (vim/emacs/doom/helix). Both surfaces
@@ -547,21 +558,44 @@ mod window {
                 ui.label("no selection");
                 return;
             };
-            ui.heading(&d.title);
+            // E4 inline edit: on the launcher surface every detail field
+            // is a click-to-edit affordance, reusing the tested
+            // begin_*/cycle/commit methods (no logic in the window).
+            let launcher = self.surface.is_launcher();
+            // Title -> rename.
+            let title = clickable(ui, egui::RichText::new(&d.title).heading(), launcher);
+            if title.clicked()
+                && let Some(a) = self.surface.launcher_mut()
+            {
+                a.begin_rename(&self.shell);
+            }
             ui.horizontal(|ui| {
-                if let Some(t) = &d.todo {
-                    ui.label(format!("TODO: {t}"));
+                // TODO keyword -> cycle.
+                let todo_txt = d
+                    .todo
+                    .as_deref()
+                    .map_or_else(|| "·".to_owned(), |t| format!("TODO: {t}"));
+                if clickable(ui, egui::RichText::new(todo_txt), launcher).clicked()
+                    && let Some(a) = self.surface.launcher_mut()
+                {
+                    a.cycle_todo(&mut self.shell);
                 }
                 if let Some(p) = d.priority {
                     ui.label(format!("[#{p}]"));
                 }
-                if !d.tags.is_empty() {
-                    ui.label(format!(":{}:", d.tags.join(":")));
+                // Tags -> edit.
+                let tags_txt = if d.tags.is_empty() {
+                    "🏷".to_owned()
+                } else {
+                    format!(":{}:", d.tags.join(":"))
+                };
+                if clickable(ui, egui::RichText::new(tags_txt), launcher).clicked()
+                    && let Some(a) = self.surface.launcher_mut()
+                {
+                    a.begin_edit_tags(&self.shell);
                 }
             });
-            // Per-property edit affordance (launcher only): click to edit
-            // that property's value. Modal modes show them read-only.
-            let launcher = self.surface.is_launcher();
+            // Per-property edit affordance (launcher only): click "✎".
             for (k, v) in &d.properties {
                 ui.horizontal(|ui| {
                     ui.label(format!(":{k}: {v}"));
@@ -574,7 +608,12 @@ mod window {
                 });
             }
             ui.separator();
-            ui.label(&d.body);
+            // Body -> edit.
+            if clickable(ui, egui::RichText::new(&d.body), launcher).clicked()
+                && let Some(a) = self.surface.launcher_mut()
+            {
+                a.begin_edit_body(&self.shell);
+            }
         }
     }
 }

@@ -893,3 +893,30 @@ fn cycle_todo_on_empty_vault_is_noop() {
     app.cycle_todo(&mut sh); // no selection -> nothing happens
     assert_eq!(app.mode(), Mode::Browse);
 }
+
+// === E4 inline edit: clicking a detail field re-enters its editor. The
+// window wiring reuses the tested begin_*/commit methods; this locks
+// the round-trip the click-to-edit-again flow depends on. ===
+
+#[test]
+fn body_reedit_prefills_previously_saved_multiline() {
+    let (_d, mut sh) = shell();
+    let mut app = App::new();
+    app.begin_edit_body(&sh);
+    app.body_buffer_mut().push_str("line one\nline two");
+    app.commit_edit_body(&mut sh);
+    // Click the body again -> buffer prefilled with the saved content.
+    app.begin_edit_body(&sh);
+    assert_eq!(app.body_buffer().trim_end(), "line one\nline two");
+}
+
+#[test]
+fn tags_reedit_prefills_saved_tags() {
+    let (_d, mut sh) = shell();
+    let mut app = App::new();
+    app.begin_edit_tags(&sh);
+    app.tags_buffer_mut().push_str("a b c");
+    app.commit_tags(&mut sh);
+    app.begin_edit_tags(&sh);
+    assert_eq!(app.tags_buffer(), "a b c");
+}
