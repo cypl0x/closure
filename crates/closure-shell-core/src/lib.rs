@@ -152,6 +152,45 @@ impl Shell {
     ) -> Result<(), closure_store::VaultError> {
         self.vault.set_property(id, key, value)
     }
+
+    /// Set or clear the TODO keyword through the kernel command (I8).
+    ///
+    /// # Errors
+    ///
+    /// Propagates [`closure_store::VaultError`].
+    pub fn set_todo(
+        &mut self,
+        id: &closure_core::BlockId,
+        keyword: Option<&str>,
+    ) -> Result<(), closure_store::VaultError> {
+        self.vault.set_todo(id, keyword)
+    }
+
+    /// Set or clear the priority cookie through the kernel command (I8).
+    ///
+    /// # Errors
+    ///
+    /// Propagates [`closure_store::VaultError`].
+    pub fn set_priority(
+        &mut self,
+        id: &closure_core::BlockId,
+        priority: Option<char>,
+    ) -> Result<(), closure_store::VaultError> {
+        self.vault.set_priority(id, priority)
+    }
+
+    /// Replace the tag list through the kernel command (I8).
+    ///
+    /// # Errors
+    ///
+    /// Propagates [`closure_store::VaultError`].
+    pub fn set_tags(
+        &mut self,
+        id: &closure_core::BlockId,
+        tags: &[String],
+    ) -> Result<(), closure_store::VaultError> {
+        self.vault.set_tags(id, tags)
+    }
 }
 
 /// Adapter for gpui embedder (parity with egui).
@@ -237,6 +276,9 @@ pub enum Mode {
     /// Editing a `(key, value)` property on the selected headline.
     /// Commit via [`App::commit_property`].
     PropertyEdit,
+    /// Editing the selected headline's tag list (space-separated).
+    /// Commit via [`App::commit_tags`].
+    TagsEdit,
 }
 
 /// Commands offered by the slash palette as `(display, canonical)`:
@@ -279,6 +321,9 @@ pub struct App {
     /// Property key + value buffers for the `PropertyEdit` surface.
     prop_key: String,
     prop_value: String,
+    /// Block id + space-separated buffer for the `TagsEdit` surface.
+    tags_target: Option<String>,
+    tags_buf: String,
     input_mode: closure_config::InputMode,
     palette_cursor: usize,
     status: String,
@@ -307,6 +352,8 @@ impl App {
             prop_target: None,
             prop_key: String::new(),
             prop_value: String::new(),
+            tags_target: None,
+            tags_buf: String::new(),
             input_mode: closure_config::InputMode::Notion,
             palette_cursor: 0,
             status: "browse — type to filter".to_owned(),
@@ -546,6 +593,91 @@ impl App {
         self.set_status("property edit cancelled");
     }
 
+    /// Cycle the selected headline's TODO keyword None -> TODO -> DONE
+    /// -> None through the kernel command (I8). No-op without a
+    /// selection.
+    pub fn cycle_todo(&mut self, shell: &mut Shell) {
+        let Some(row) = self.rows(shell).get(self.selected).cloned() else {
+            return;
+        };
+        let next = match self.detail(shell).and_then(|d| d.todo) {
+            None => Some("TODO"),
+            Some(k) if k == "TODO" => Some("DONE"),
+            Some(_) => None,
+        };
+        let bid = closure_core::BlockId::from_existing(&row.id);
+        match shell.set_todo(&bid, next) {
+            Ok(()) => self.set_status(next.map_or("todo cleared", |k| {
+                if k == "TODO" { "todo: TODO" } else { "todo: DONE" }
+            })),
+            Err(e) => self.status = format!("todo failed: {e}"),
+        }
+    }
+
+    /// Set (or clear) the selected headline's priority through the
+    /// kernel command (I8). No-op without a selection.
+    pub fn set_priority_cmd(&mut self, shell: &mut Shell, priority: Option<char>) {
+        let Some(row) = self.rows(shell).get(self.selected).cloned() else {
+            return;
+        };
+        let bid = closure_core::BlockId::from_existing(&row.id);
+        match shell.set_priority(&bid, priority) {
+            Ok(()) => self.set_status("priority updated"),
+            Err(e) => self.status = format!("priority failed: {e}"),
+        }
+    }
+
+    /// Begin editing the selected headline's tags (space-separated
+    /// buffer prefilled with the current tags). No-op without a
+    /// selection.
+    pub fn begin_edit_tags(&mut self, shell: &Shell) {
+        let Some(row) = self.rows(shell).get(self.selected).cloned() else {
+            return;
+        };
+        let tags = self.detail(shell).map(|d| d.tags).unwrap_or_default();
+        self.tags_target = Some(row.id);
+        self.tags_buf = tags.join(" ");
+        self.mode = Mode::TagsEdit;
+        self.set_status("tags — space-separated, save to commit");
+    }
+
+    /// Tags buffer (read) + its mutable form for the egui text field.
+    #[must_use]
+    pub fn tags_buffer(&self) -> &str {
+        &self.tags_buf
+    }
+    /// Mutable tags buffer for the egui text field.
+    pub const fn tags_buffer_mut(&mut self) -> &mut String {
+        &mut self.tags_buf
+    }
+
+    /// Commit the tags buffer (split on whitespace) to the target
+    /// headline through the kernel command (I8), then return to Browse.
+    pub fn commit_tags(&mut self, shell: &mut Shell) {
+        if let Some(id) = self.tags_target.take() {
+            let tags: Vec<String> = self
+                .tags_buf
+                .split_whitespace()
+                .map(ToOwned::to_owned)
+                .collect();
+            let bid = closure_core::BlockId::from_existing(&id);
+            match shell.set_tags(&bid, &tags) {
+                Ok(()) => self.set_status("tags saved"),
+                Err(e) => self.status = format!("tags save failed: {e}"),
+            }
+        }
+        self.tags_buf.clear();
+        self.mode = Mode::Browse;
+    }
+
+    /// Cancel tag editing without writing.
+    fn cancel_tags(&mut self) {
+        self.tags_target = None;
+        self.tags_buf.clear();
+        self.mode = Mode::Browse;
+        self.set_status("tags edit cancelled");
+    }
+
     /// Live filter query.
     #[must_use]
     pub fn query(&self) -> &str {
@@ -600,6 +732,7 @@ impl App {
             Mode::Palette => "command palette — type to filter   Enter: run   Esc: cancel",
             Mode::EditBody => "edit body — C-Enter: save   Enter: newline   Esc: cancel",
             Mode::PropertyEdit => "property — fill key + value   Save: commit   Esc: cancel",
+            Mode::TagsEdit => "tags — space-separated   Save: commit   Esc: cancel",
         };
         format!("[{:?}] {body}", self.input_mode)
     }
@@ -709,7 +842,16 @@ impl App {
             Mode::Palette => self.on_palette_key(shell, key, text),
             Mode::EditBody => self.on_editbody_key(shell, key, ctrl, text),
             Mode::PropertyEdit => self.on_property_key(key),
+            Mode::TagsEdit => self.on_tags_key(key),
             Mode::Browse => self.on_browse_key(shell, key, ctrl, text),
+        }
+    }
+
+    /// Tags editor keys for keyboard fallback: Esc cancels. The text
+    /// field owns typing; commit is the Save affordance / `commit_tags`.
+    fn on_tags_key(&mut self, key: &str) {
+        if key == "escape" {
+            self.cancel_tags();
         }
     }
 

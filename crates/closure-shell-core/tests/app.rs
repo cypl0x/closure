@@ -838,3 +838,58 @@ fn begin_add_property_on_empty_vault_is_noop() {
     app.begin_add_property(&sh);
     assert_eq!(app.mode(), Mode::Browse);
 }
+
+// === E3b TODO / priority / tags editing on the selected headline,
+// committed through the Vault (I8). ===
+
+#[test]
+fn cycle_todo_rotates_none_todo_done() {
+    let (_d, mut sh) = shell();
+    let mut app = App::new(); // row 0 = "* TODO Ship parser"
+    assert_eq!(app.detail(&sh).unwrap().todo.as_deref(), Some("TODO"));
+    app.cycle_todo(&mut sh);
+    assert_eq!(app.detail(&sh).unwrap().todo.as_deref(), Some("DONE"));
+    app.cycle_todo(&mut sh);
+    assert_eq!(app.detail(&sh).unwrap().todo, None);
+    app.cycle_todo(&mut sh);
+    assert_eq!(app.detail(&sh).unwrap().todo.as_deref(), Some("TODO"));
+}
+
+#[test]
+fn set_priority_sets_and_clears_on_selection() {
+    let (_d, mut sh) = shell();
+    let mut app = App::new();
+    app.set_priority_cmd(&mut sh, Some('A'));
+    assert_eq!(app.detail(&sh).unwrap().priority, Some('A'));
+    app.set_priority_cmd(&mut sh, None);
+    assert_eq!(app.detail(&sh).unwrap().priority, None);
+}
+
+#[test]
+fn edit_tags_prefills_and_commits_split() {
+    let (_d, mut sh) = shell();
+    let mut app = App::new();
+    app.begin_edit_tags(&sh);
+    assert_eq!(app.mode(), Mode::TagsEdit);
+    assert_eq!(app.tags_buffer(), "", "no tags yet");
+    app.tags_buffer_mut().push_str("work urgent");
+    app.commit_tags(&mut sh);
+    assert_eq!(app.mode(), Mode::Browse);
+    assert_eq!(
+        app.detail(&sh).unwrap().tags,
+        vec!["work".to_owned(), "urgent".to_owned()]
+    );
+    // Re-editing prefills space-joined.
+    app.begin_edit_tags(&sh);
+    assert_eq!(app.tags_buffer(), "work urgent");
+}
+
+#[test]
+fn cycle_todo_on_empty_vault_is_noop() {
+    let dir = tempfile::tempdir().expect("tmp");
+    let v = Vault::open(dir.path()).expect("open");
+    let mut sh = Shell::new(v);
+    let mut app = App::new();
+    app.cycle_todo(&mut sh); // no selection -> nothing happens
+    assert_eq!(app.mode(), Mode::Browse);
+}

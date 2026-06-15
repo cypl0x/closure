@@ -127,6 +127,7 @@ mod window {
                     Mode::Palette => format!("❯ command: {}", a.capture_buffer()),
                     Mode::EditBody => "✎ edit body".to_owned(),
                     Mode::PropertyEdit => "＋ property".to_owned(),
+                    Mode::TagsEdit => "🏷 tags".to_owned(),
                     Mode::Browse => format!("⌕ {}", a.query()),
                 },
                 Self::Modal(a) => match a.surface() {
@@ -214,6 +215,16 @@ mod window {
                 a.commit_property(shell);
             }
         }
+        /// Whether the tags editor is active (launcher surface only).
+        const fn editing_tags(&self) -> bool {
+            matches!(self, Self::Launcher(a) if matches!(a.mode(), Mode::TagsEdit))
+        }
+        /// Commit the tags form (launcher only).
+        fn commit_tags(&mut self, shell: &mut Shell) {
+            if let Self::Launcher(a) = self {
+                a.commit_tags(shell);
+            }
+        }
         /// Whether the mouse affordances apply (launcher surface only).
         const fn is_launcher(&self) -> bool {
             matches!(self, Self::Launcher(_))
@@ -282,7 +293,10 @@ mod window {
             // typing; feeding the same chars to on_key would
             // double-insert. Route only Esc (cancel) and, for the body
             // editor, C-Enter (commit) globally.
-            if self.surface.editing_body() || self.surface.editing_property() {
+            if self.surface.editing_body()
+                || self.surface.editing_property()
+                || self.surface.editing_tags()
+            {
                 let body = self.surface.editing_body();
                 for ev in events {
                     if let egui::Event::Key {
@@ -373,6 +387,31 @@ mod window {
                             a.begin_add_property(&self.shell);
                         }
                     });
+                    // Field edits on the selection (TODO / priority / tags).
+                    ui.horizontal(|ui| {
+                        if ui.button("⟳ todo").clicked()
+                            && let Some(a) = self.surface.launcher_mut()
+                        {
+                            a.cycle_todo(&mut self.shell);
+                        }
+                        for p in ['A', 'B', 'C'] {
+                            if ui.button(format!("[#{p}]")).clicked()
+                                && let Some(a) = self.surface.launcher_mut()
+                            {
+                                a.set_priority_cmd(&mut self.shell, Some(p));
+                            }
+                        }
+                        if ui.button("[# ]").clicked()
+                            && let Some(a) = self.surface.launcher_mut()
+                        {
+                            a.set_priority_cmd(&mut self.shell, None);
+                        }
+                        if ui.button("🏷 tags").clicked()
+                            && let Some(a) = self.surface.launcher_mut()
+                        {
+                            a.begin_edit_tags(&self.shell);
+                        }
+                    });
                 }
             });
             egui::TopBottomPanel::bottom("footer").show(ctx, |ui| {
@@ -386,6 +425,8 @@ mod window {
                         self.editor_pane(&mut cols[1]);
                     } else if self.surface.editing_property() {
                         self.property_pane(&mut cols[1]);
+                    } else if self.surface.editing_tags() {
+                        self.tags_pane(&mut cols[1]);
                     } else {
                         self.right_pane(&mut cols[1]);
                     }
@@ -471,6 +512,29 @@ mod window {
             });
         }
 
+        /// Tags editor: a space-separated text field + Save/Cancel.
+        /// Launcher-only.
+        fn tags_pane(&mut self, ui: &mut egui::Ui) {
+            ui.label("tags (space-separated):");
+            {
+                let Some(app) = self.surface.launcher_mut() else {
+                    return;
+                };
+                ui.add(
+                    egui::TextEdit::singleline(app.tags_buffer_mut())
+                        .desired_width(f32::INFINITY),
+                );
+            }
+            ui.horizontal(|ui| {
+                if ui.button("💾 save").clicked() {
+                    self.surface.commit_tags(&mut self.shell);
+                }
+                if ui.button("✕ cancel (Esc)").clicked() {
+                    self.surface.on_named(&mut self.shell, "escape", false, false);
+                }
+            });
+        }
+
         fn right_pane(&mut self, ui: &mut egui::Ui) {
             if self.surface.palette_open() {
                 let (cursor, results) = self.surface.palette_rows();
@@ -484,9 +548,17 @@ mod window {
                 return;
             };
             ui.heading(&d.title);
-            if let Some(t) = &d.todo {
-                ui.label(format!("TODO: {t}"));
-            }
+            ui.horizontal(|ui| {
+                if let Some(t) = &d.todo {
+                    ui.label(format!("TODO: {t}"));
+                }
+                if let Some(p) = d.priority {
+                    ui.label(format!("[#{p}]"));
+                }
+                if !d.tags.is_empty() {
+                    ui.label(format!(":{}:", d.tags.join(":")));
+                }
+            });
             // Per-property edit affordance (launcher only): click to edit
             // that property's value. Modal modes show them read-only.
             let launcher = self.surface.is_launcher();
