@@ -1259,6 +1259,7 @@ dependencies = [
 name = "closure-shell-egui"
 version = "0.0.0"
 dependencies = [
+ "closure-config",
  "closure-core",
  "closure-query",
  "closure-shell-core",

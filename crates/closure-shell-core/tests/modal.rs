@@ -142,3 +142,52 @@ fn key_hints_list_real_bindings_for_the_mode() {
     assert!(hints.contains("C-n"), "emacs hints show C-n: {hints}");
     assert!(hints.contains("quit"));
 }
+
+// === draw-parity accessors (G2): the egui/gpui window draws ModalApp
+// the same way it draws App — detail pane, mouse-click select, and a
+// paged viewport. Pure + headless, so they are tested here, not in the
+// window. ===
+
+#[test]
+fn detail_resolves_selected_headline() {
+    let (_d, sh) = shell();
+    let app = ModalApp::new(InputMode::Vim);
+    let d = app.detail(&sh).expect("first row has a detail");
+    assert_eq!(d.title, "Ship parser");
+    assert_eq!(d.todo.as_deref(), Some("TODO"));
+}
+
+#[test]
+fn detail_follows_selection() {
+    let (_d, mut sh) = shell();
+    let mut app = ModalApp::new(InputMode::Vim);
+    app.on_key(&mut sh, "j", false, false, Some('j')); // -> row 1
+    let d = app.detail(&sh).expect("detail");
+    assert_eq!(d.title, "Personal wiki");
+}
+
+#[test]
+fn select_clamps_to_last_row() {
+    let (_d, sh) = shell();
+    let mut app = ModalApp::new(InputMode::Vim);
+    app.select(99, &sh); // 3 rows -> clamp to index 2
+    assert_eq!(app.selected(), 2);
+    let d = app.detail(&sh).expect("detail");
+    assert_eq!(d.title, "Write spec");
+}
+
+#[test]
+fn view_window_pages_and_keeps_selection_visible() {
+    let (_d, sh) = shell();
+    let mut app = ModalApp::new(InputMode::Vim);
+    // page larger than row count -> offset 0, all rows.
+    let (off, rows) = app.view_window(&sh, 10);
+    assert_eq!(off, 0);
+    assert_eq!(rows.len(), 3);
+    // page of 1, selection on last row -> offset tracks selection.
+    app.select(2, &sh);
+    let (off, rows) = app.view_window(&sh, 1);
+    assert_eq!(rows.len(), 1);
+    assert_eq!(off, 2);
+    assert_eq!(rows[0].title, "Write spec");
+}

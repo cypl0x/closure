@@ -43,22 +43,142 @@ pub fn run(_vault_path: &std::path::Path) -> Result<(), String> {
 // shell (I7/I8). The window itself needs a display to exercise.
 #[cfg(feature = "egui")]
 mod window {
-    use closure_shell_core::{App, Mode};
+    use closure_config::{Config, InputMode};
+    use closure_shell_core::{App, Detail, ModalApp, ModalSurface, Mode, Row};
     use closure_store::Vault;
     use eframe::egui;
 
     use super::Shell;
 
-    /// Launch the egui desktop window against the vault at `path`.
+    /// The active GUI surface. Notion-style launcher (type-to-filter,
+    /// the default) or the keymap-driven modal surface backing the four
+    /// keyboard editing modes (vim/emacs/doom/helix). Both surfaces
+    /// expose `select`/`view_window`/`detail`/`status`/`key_hints`/
+    /// `should_quit`/`selected`, so list + detail draw code is shared;
+    /// only the header, the right pane, and key translation branch.
+    enum Surface {
+        /// Notion default: typing filters, slash opens the palette.
+        Launcher(App),
+        /// Keyboard modes: keys resolve against the active mode's keymap.
+        Modal(ModalApp),
+    }
+
+    impl Surface {
+        /// Pick the surface from the configured input mode: Notion ->
+        /// launcher, every other mode -> the keymap-driven modal surface.
+        fn for_mode(mode: InputMode) -> Self {
+            match mode {
+                InputMode::Notion => Self::Launcher(App::new()),
+                other => Self::Modal(ModalApp::new(other)),
+            }
+        }
+
+        const fn should_quit(&self) -> bool {
+            match self {
+                Self::Launcher(a) => a.should_quit(),
+                Self::Modal(a) => a.should_quit(),
+            }
+        }
+        const fn selected(&self) -> usize {
+            match self {
+                Self::Launcher(a) => a.selected(),
+                Self::Modal(a) => a.selected(),
+            }
+        }
+        fn select(&mut self, i: usize, shell: &Shell) {
+            match self {
+                Self::Launcher(a) => a.select(i, shell),
+                Self::Modal(a) => a.select(i, shell),
+            }
+        }
+        fn view_window(&self, shell: &Shell, page: usize) -> (usize, Vec<Row>) {
+            match self {
+                Self::Launcher(a) => a.view_window(shell, page),
+                Self::Modal(a) => a.view_window(shell, page),
+            }
+        }
+        fn detail(&self, shell: &Shell) -> Option<Detail> {
+            match self {
+                Self::Launcher(a) => a.detail(shell),
+                Self::Modal(a) => a.detail(shell),
+            }
+        }
+        fn status(&self) -> String {
+            match self {
+                Self::Launcher(a) => a.status().to_owned(),
+                Self::Modal(a) => a.status().to_owned(),
+            }
+        }
+        fn key_hints(&self) -> String {
+            match self {
+                Self::Launcher(a) => a.key_hints(),
+                Self::Modal(a) => a.key_hints(),
+            }
+        }
+
+        /// Header line, surface-specific (shows the active sub-mode and
+        /// any in-progress buffer).
+        fn header(&self) -> String {
+            match self {
+                Self::Launcher(a) => match a.mode() {
+                    Mode::Capture => format!("＋ capture: {}", a.capture_buffer()),
+                    Mode::AddSibling => format!("＋ add: {}", a.capture_buffer()),
+                    Mode::Rename => format!("✎ rename: {}", a.capture_buffer()),
+                    Mode::Palette => format!("❯ command: {}", a.capture_buffer()),
+                    Mode::Browse => format!("⌕ {}", a.query()),
+                },
+                Self::Modal(a) => match a.surface() {
+                    ModalSurface::Capture => format!("＋ capture: {}", a.capture_buffer()),
+                    ModalSurface::Search => format!("⌕ {}", a.query()),
+                    ModalSurface::Browse => format!("[{:?}] browse", a.input_mode()),
+                },
+            }
+        }
+
+        /// True when the launcher palette pane should render.
+        fn palette_open(&self) -> bool {
+            matches!(self, Self::Launcher(a) if a.mode() == Mode::Palette)
+        }
+        fn palette_rows(&self) -> (usize, Vec<(String, String)>) {
+            match self {
+                Self::Launcher(a) => (a.palette_cursor(), a.palette_results()),
+                Self::Modal(_) => (0, Vec::new()),
+            }
+        }
+
+        /// A printable character (no ctrl). Routes to the matching app.
+        fn on_text(&mut self, shell: &mut Shell, c: char) {
+            let token = c.to_string();
+            match self {
+                Self::Launcher(a) => a.on_key(shell, &token, false, Some(c)),
+                Self::Modal(a) => a.on_key(shell, &token, false, false, Some(c)),
+            }
+        }
+        /// A named/modified key (arrows, enter, esc, backspace, ctrl/alt
+        /// chords).
+        fn on_named(&mut self, shell: &mut Shell, token: &str, ctrl: bool, alt: bool) {
+            match self {
+                Self::Launcher(a) => a.on_key(shell, token, ctrl, None),
+                Self::Modal(a) => a.on_key(shell, token, ctrl, alt, None),
+            }
+        }
+    }
+
+    /// Launch the egui desktop window against the vault at `path`. The
+    /// surface follows the vault's configured `input_mode` (Notion by
+    /// default, or the configured keyboard mode).
     ///
     /// # Errors
     ///
     /// Vault open or eframe runtime failures as a string.
     pub fn run(path: &std::path::Path) -> Result<(), String> {
         let vault = Vault::open(path).map_err(|e| format!("{e}"))?;
+        // Notion default; honour `<vault>/config.org` input_mode if set.
+        let mode = Config::from_path(&path.join("config.org"))
+            .map_or(InputMode::Notion, |c| c.input_mode);
         let app = EguiApp {
             shell: Shell::new(vault),
-            app: App::new(),
+            surface: Surface::for_mode(mode),
         };
         eframe::run_native(
             "closure · egui",
@@ -70,7 +190,7 @@ mod window {
 
     struct EguiApp {
         shell: Shell,
-        app: App,
+        surface: Surface,
     }
 
     impl EguiApp {
@@ -80,8 +200,7 @@ mod window {
                 match ev {
                     egui::Event::Text(s) => {
                         for c in s.chars() {
-                            self.app
-                                .on_key(&mut self.shell, &c.to_string(), false, Some(c));
+                            self.surface.on_text(&mut self.shell, c);
                         }
                     }
                     egui::Event::Key {
@@ -92,7 +211,8 @@ mod window {
                     } => {
                         if modifiers.ctrl {
                             let token = key.name().to_ascii_lowercase();
-                            self.app.on_key(&mut self.shell, &token, true, None);
+                            self.surface
+                                .on_named(&mut self.shell, &token, true, modifiers.alt);
                         } else {
                             let token = match key {
                                 egui::Key::Enter => "enter",
@@ -102,21 +222,12 @@ mod window {
                                 egui::Key::ArrowUp => "up",
                                 _ => continue,
                             };
-                            self.app.on_key(&mut self.shell, token, false, None);
+                            self.surface
+                                .on_named(&mut self.shell, token, false, modifiers.alt);
                         }
                     }
                     _ => {}
                 }
-            }
-        }
-
-        fn header(&self) -> String {
-            match self.app.mode() {
-                Mode::Capture => format!("＋ capture: {}", self.app.capture_buffer()),
-                Mode::AddSibling => format!("＋ add: {}", self.app.capture_buffer()),
-                Mode::Rename => format!("✎ rename: {}", self.app.capture_buffer()),
-                Mode::Palette => format!("❯ command: {}", self.app.capture_buffer()),
-                Mode::Browse => format!("⌕ {}", self.app.query()),
             }
         }
     }
@@ -124,16 +235,16 @@ mod window {
     impl eframe::App for EguiApp {
         fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
             self.handle_input(ctx);
-            if self.app.should_quit() {
+            if self.surface.should_quit() {
                 ctx.send_viewport_cmd(egui::ViewportCommand::Close);
             }
             egui::TopBottomPanel::top("header").show(ctx, |ui| {
                 ui.heading("closure · egui");
-                ui.label(self.header());
+                ui.label(self.surface.header());
             });
             egui::TopBottomPanel::bottom("footer").show(ctx, |ui| {
-                ui.label(self.app.status().to_owned());
-                ui.small(self.app.key_hints());
+                ui.label(self.surface.status());
+                ui.small(self.surface.key_hints());
             });
             egui::CentralPanel::default().show(ctx, |ui| {
                 ui.columns(2, |cols| {
@@ -147,8 +258,8 @@ mod window {
     impl EguiApp {
         fn list_pane(&mut self, ui: &mut egui::Ui) {
             const PAGE: usize = 40;
-            let (offset, rows) = self.app.view_window(&self.shell, PAGE);
-            let selected = self.app.selected();
+            let (offset, rows) = self.surface.view_window(&self.shell, PAGE);
+            let selected = self.surface.selected();
             egui::ScrollArea::vertical().show(ui, |ui| {
                 for (vis, row) in rows.into_iter().enumerate() {
                     let i = offset + vis;
@@ -156,21 +267,21 @@ mod window {
                     let todo = row.todo.map_or_else(String::new, |t| format!("{t} "));
                     let label = format!("{indent}{todo}{}", row.title);
                     if ui.selectable_label(i == selected, label).clicked() {
-                        self.app.select(i, &self.shell);
+                        self.surface.select(i, &self.shell);
                     }
                 }
             });
         }
 
         fn right_pane(&self, ui: &mut egui::Ui) {
-            if self.app.mode() == Mode::Palette {
-                let cursor = self.app.palette_cursor();
-                for (i, (name, keyhint)) in self.app.palette_results().into_iter().enumerate() {
+            if self.surface.palette_open() {
+                let (cursor, results) = self.surface.palette_rows();
+                for (i, (name, keyhint)) in results.into_iter().enumerate() {
                     let _ = ui.selectable_label(i == cursor, format!("{name:24} {keyhint}"));
                 }
                 return;
             }
-            let Some(d) = self.app.detail(&self.shell) else {
+            let Some(d) = self.surface.detail(&self.shell) else {
                 ui.label("no selection");
                 return;
             };

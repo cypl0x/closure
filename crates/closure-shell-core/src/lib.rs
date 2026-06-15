@@ -851,6 +851,51 @@ impl ModalApp {
         scored.into_iter().map(|(_, r)| r).collect()
     }
 
+    /// Move the selection to row `i`, clamped to the current result
+    /// set. Used by mouse clicks on a row (draw parity with [`App`]).
+    pub fn select(&mut self, i: usize, shell: &Shell) {
+        let last = self.rows(shell).len().saturating_sub(1);
+        self.selected = i.min(last);
+    }
+
+    /// The visible slice of rows for a viewport of `page` rows, plus its
+    /// start offset, chosen so the selection stays on screen. Stateless
+    /// (offset derived from the selection each call); mirrors
+    /// [`App::view_window`].
+    #[must_use]
+    pub fn view_window(&self, shell: &Shell, page: usize) -> (usize, Vec<Row>) {
+        let rows = self.rows(shell);
+        if page == 0 || rows.len() <= page {
+            return (0, rows);
+        }
+        let max_offset = rows.len() - page;
+        let offset = self.selected.saturating_sub(page - 1).min(max_offset);
+        let slice = rows[offset..offset + page].to_vec();
+        (offset, slice)
+    }
+
+    /// Full preview of the currently-selected headline (resolved by its
+    /// stable id through the vault index), for the detail pane. Mirrors
+    /// [`App::detail`].
+    #[must_use]
+    pub fn detail(&self, shell: &Shell) -> Option<Detail> {
+        let rows = self.rows(shell);
+        let row = rows.get(self.selected)?;
+        let bid = closure_core::BlockId::from_existing(&row.id);
+        let (h, path) = shell.vault.find_by_id(&bid)?;
+        Some(Detail {
+            title: h.title().to_owned(),
+            todo: h.todo().map(ToOwned::to_owned),
+            priority: h.priority(),
+            tags: h.tags().to_vec(),
+            scheduled: h.scheduled().map(ToOwned::to_owned),
+            deadline: h.deadline().map(ToOwned::to_owned),
+            properties: h.properties().to_vec(),
+            body: h.body_text().to_owned(),
+            path: path.display().to_string(),
+        })
+    }
+
     /// Feed one key. `key` is the gpui/egui-style name; `ctrl`/`alt`
     /// are modifiers; `text` is the printable char when any.
     pub fn on_key(
