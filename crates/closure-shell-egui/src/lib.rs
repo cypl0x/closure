@@ -168,6 +168,15 @@ mod window {
         const fn is_launcher(&self) -> bool {
             matches!(self, Self::Launcher(_))
         }
+        /// The real chord bound to `command` in the active mode, for
+        /// labelling a button (G4: never a hardcoded chord). `""` when
+        /// unbound or on the modal surface.
+        fn chord_for(&self, command: &str) -> &'static str {
+            match self {
+                Self::Launcher(a) => a.chord_for(command).unwrap_or(""),
+                Self::Modal(_) => "",
+            }
+        }
 
         /// A printable character (no ctrl). Routes to the matching app.
         fn on_text(&mut self, shell: &mut Shell, c: char) {
@@ -268,11 +277,13 @@ mod window {
                 // capture / add a sibling. Keyboard-mode surfaces hide
                 // them (driven by keys instead).
                 if self.surface.is_launcher() {
+                    let cap = self.surface.chord_for("capture-start");
+                    let add = self.surface.chord_for("add-sibling");
                     ui.horizontal(|ui| {
-                        if ui.button("＋ capture (C-c)").clicked() {
+                        if ui.button(format!("＋ capture ({cap})")).clicked() {
                             self.surface.begin_capture();
                         }
-                        if ui.button("＋ add sibling (C-a)").clicked() {
+                        if ui.button(format!("＋ add sibling ({add})")).clicked() {
                             self.surface.begin_add_sibling(&self.shell);
                         }
                     });

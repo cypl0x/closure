@@ -80,3 +80,35 @@ fn command_for_resolves_a_full_chord() {
     );
     assert_eq!(closure_input::command_for(InputMode::Doom, "no-such"), None);
 }
+
+#[test]
+fn launcher_edit_commands_bound_in_every_mode() {
+    // G4: the launcher's edit actions are part of the canonical command
+    // set (I4) so every shell can show their real chord, not a hardcoded
+    // string. All five modes must bind them (chords differ).
+    for mode in MODES {
+        let set = commands(mode);
+        for cmd in ["add-sibling", "rename", "delete"] {
+            assert!(set.contains(cmd), "{mode:?} missing {cmd}");
+        }
+    }
+}
+
+#[test]
+fn chord_for_command_is_the_reverse_of_command_for() {
+    use closure_input::{chord_for_command, command_for};
+    for mode in MODES {
+        for (_chord, cmd) in mode_keymap(mode) {
+            // The first chord bound to a command round-trips.
+            let got = chord_for_command(mode, cmd).expect("command has a chord");
+            assert_eq!(
+                command_for(mode, got),
+                Some(*cmd),
+                "{mode:?}: {cmd} -> {got} -> command"
+            );
+        }
+        assert_eq!(chord_for_command(mode, "no-such-command"), None);
+    }
+    // Spot-check a concrete pair.
+    assert_eq!(chord_for_command(InputMode::Vim, "next-file"), Some("j"));
+}

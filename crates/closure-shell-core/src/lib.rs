@@ -204,19 +204,20 @@ pub enum Mode {
     Palette,
 }
 
-/// Commands offered by the slash palette, with their gpui key hint.
-/// The launcher's which-key surface: every command is reachable and
-/// labelled here.
+/// Commands offered by the slash palette as `(display, canonical)`:
+/// the launcher's which-key surface. The key hint shown beside each is
+/// derived from the active mode's keymap (the single source of truth,
+/// I4) via the canonical command name — never hardcoded here.
 const PALETTE_COMMANDS: &[(&str, &str)] = &[
-    ("next-file", "down / C-n"),
-    ("prev-file", "up / C-p"),
-    ("capture", "C-c"),
-    ("add-sibling", "C-a"),
-    ("rename", "C-r"),
-    ("delete", "C-d"),
-    ("open", "Enter"),
-    ("cycle-mode", "C-t"),
-    ("quit", "C-q / Esc"),
+    ("next-file", "next-file"),
+    ("prev-file", "prev-file"),
+    ("capture", "capture-start"),
+    ("add-sibling", "add-sibling"),
+    ("rename", "rename"),
+    ("delete", "delete"),
+    ("open", "open-file"),
+    ("cycle-mode", "cycle-mode"),
+    ("quit", "quit"),
 ];
 
 /// Pure, GPU-free state core for the gpui shell.
@@ -272,13 +273,15 @@ impl App {
         let q = &self.capture_buf;
         let mut scored: Vec<(u32, (String, String))> = PALETTE_COMMANDS
             .iter()
-            .filter_map(|(name, key)| {
+            .filter_map(|(name, canonical)| {
                 let sc = if q.is_empty() {
                     Some(0)
                 } else {
                     closure_query::fuzzy_score(q, name)
                 };
-                sc.map(|s| (s, ((*name).to_owned(), (*key).to_owned())))
+                // Key hint from the active mode's keymap, not hardcoded.
+                let key = self.chord_for(canonical).unwrap_or("—");
+                sc.map(|s| (s, ((*name).to_owned(), key.to_owned())))
             })
             .collect();
         scored.sort_by_key(|(s, _)| std::cmp::Reverse(*s));
@@ -394,10 +397,12 @@ impl App {
     #[must_use]
     pub fn key_hints(&self) -> String {
         let body = match self.mode {
+            // Browse hints come from the keymap source of truth (I4), so
+            // every shown chord is the real binding for the active mode,
+            // never a hardcoded string (vision: every UI element shows
+            // its keybinding).
             Mode::Browse => {
-                "type: filter   up/down or C-n/C-p: move   Enter: open   \
-                 C-c: capture   C-a: add   C-r: rename   C-d: delete   \
-                 C-t: cycle-mode   Esc: clear   C-q: quit"
+                return format!("[{:?}] type: filter   {}", self.input_mode, self.command_hints());
             }
             Mode::Capture => "capture title — Enter: save   Esc: cancel",
             Mode::Rename => "rename — Enter: save   Esc: cancel",
@@ -405,6 +410,24 @@ impl App {
             Mode::Palette => "command palette — type to filter   Enter: run   Esc: cancel",
         };
         format!("[{:?}] {body}", self.input_mode)
+    }
+
+    /// Which-key line for the active mode, built from
+    /// [`closure_input::mode_keymap`] — the single keymap source of
+    /// truth (I4). Shared shape with [`ModalApp::key_hints`].
+    fn command_hints(&self) -> String {
+        closure_input::mode_keymap(self.input_mode)
+            .iter()
+            .map(|(chord, cmd)| format!("{chord}:{cmd}"))
+            .collect::<Vec<_>>()
+            .join("  ")
+    }
+
+    /// The chord bound to `command` in the active mode, for labelling
+    /// actionable widgets (the egui "＋" buttons) with their real key.
+    #[must_use]
+    pub fn chord_for(&self, command: &str) -> Option<&'static str> {
+        closure_input::chord_for_command(self.input_mode, command)
     }
 
     /// Rows for the current query, each carrying its block id, level,

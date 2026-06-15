@@ -657,3 +657,49 @@ fn begin_add_sibling_on_empty_vault_is_noop() {
     app.begin_add_sibling(&sh); // no rows -> stays in Browse
     assert_eq!(app.mode(), Mode::Browse);
 }
+
+// === G4: keybindings shown in the UI come from the keymap source of
+// truth (I4), not hardcoded strings. ===
+
+#[test]
+fn palette_key_hint_is_the_real_chord_for_the_mode() {
+    use closure_config::InputMode;
+    let (_d, sh) = shell();
+    let mut app = App::new(); // Notion default
+    app.on_key(&mut { sh }, "/", false, Some('/')); // open palette
+    let cap = app
+        .palette_results()
+        .into_iter()
+        .find(|(n, _)| n == "capture")
+        .expect("capture in palette");
+    // Notion binds capture-start to "c".
+    assert_eq!(cap.1, "c", "hint is the Notion chord, not a hardcoded one");
+    // Switch to Emacs: the same command now shows its Emacs chord.
+    app.set_mode(InputMode::Emacs);
+    let cap = app
+        .palette_results()
+        .into_iter()
+        .find(|(n, _)| n == "capture")
+        .expect("capture in palette");
+    assert_eq!(cap.1, "C-c c", "hint follows the active mode");
+}
+
+#[test]
+fn chord_for_reads_the_active_mode_keymap() {
+    use closure_config::InputMode;
+    let mut app = App::new();
+    assert_eq!(app.chord_for("add-sibling"), Some("a")); // Notion
+    app.set_mode(InputMode::Emacs);
+    assert_eq!(app.chord_for("add-sibling"), Some("C-c a"));
+    assert_eq!(app.chord_for("no-such"), None);
+}
+
+#[test]
+fn browse_hints_list_real_bindings_for_the_mode() {
+    use closure_config::InputMode;
+    let mut app = App::new();
+    app.set_mode(InputMode::Vim);
+    let h = app.key_hints();
+    assert!(h.contains("j:next-file"), "vim j shown: {h}");
+    assert!(h.contains("r:rename"));
+}

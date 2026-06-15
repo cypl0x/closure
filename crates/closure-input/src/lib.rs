@@ -44,6 +44,9 @@ const DOOM_KEYMAP: &[(&str, &str)] = &[
     ("e", "block-list"),
     ("g a", "agenda"),
     ("S", "body-search"),
+    ("a", "add-sibling"),
+    ("r", "rename"),
+    ("d", "delete"),
 ];
 
 /// Emacs bindings: Ctrl/Meta chords, `C-x C-c` quits.
@@ -69,6 +72,9 @@ const EMACS_KEYMAP: &[(&str, &str)] = &[
     ("e", "block-list"),
     ("g a", "agenda"),
     ("S", "body-search"),
+    ("C-c a", "add-sibling"),
+    ("C-c r", "rename"),
+    ("C-c d", "delete"),
 ];
 
 /// Vim bindings: modal navigation keys.
@@ -95,6 +101,9 @@ const VIM_KEYMAP: &[(&str, &str)] = &[
     ("e", "block-list"),
     ("g a", "agenda"),
     ("S", "body-search"),
+    ("a", "add-sibling"),
+    ("r", "rename"),
+    ("d", "delete"),
 ];
 
 /// Helix bindings: vim-like with `U` redo and `g e` for end.
@@ -121,6 +130,9 @@ const HELIX_KEYMAP: &[(&str, &str)] = &[
     ("e", "block-list"),
     ("g a", "agenda"),
     ("S", "body-search"),
+    ("a", "add-sibling"),
+    ("r", "rename"),
+    ("d", "delete"),
 ];
 
 /// Notion bindings: mouse + arrows + slash command, minimal chords.
@@ -146,6 +158,9 @@ const NOTION_KEYMAP: &[(&str, &str)] = &[
     ("e", "block-list"),
     ("g a", "agenda"),
     ("S", "body-search"),
+    ("a", "add-sibling"),
+    ("r", "rename"),
+    ("d", "delete"),
 ];
 
 /// The canonical `(chord, command)` keymap for an input mode — the
@@ -170,6 +185,19 @@ pub fn command_for(mode: InputMode, chord: &str) -> Option<&'static str> {
         .iter()
         .find(|(c, _)| *c == chord)
         .map(|(_, cmd)| *cmd)
+}
+
+/// Reverse of [`command_for`]: the first chord bound to `command`.
+///
+/// Returns `None` if the command is unbound in `mode`. Lets a shell
+/// render the real keybinding next to a command (vision: every UI
+/// element shows its chord) from the keymap source of truth (I4).
+#[must_use]
+pub fn chord_for_command(mode: InputMode, command: &str) -> Option<&'static str> {
+    mode_keymap(mode)
+        .iter()
+        .find(|(_, cmd)| *cmd == command)
+        .map(|(chord, _)| *chord)
 }
 
 /// Active modal state.
