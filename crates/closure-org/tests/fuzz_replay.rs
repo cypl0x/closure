@@ -125,6 +125,20 @@ fn adversarial_inputs_roundtrip() {
         "* TODO [#A] title :a:b:c:\n",
         "\n\n\n\n",
         "   \t  \t\n",
+        "\r",                                       // lone CR
+        "* a\r\rb\r",                               // bare CRs, no LF
+        "* h\n:PROPERTIES:\n:A: 1\n:END:\n:LOGBOOK:\n:END:\n", // two drawers
+        "#+BEGIN_SRC\n#+BEGIN_SRC\nnested?\n#+END_SRC\n",      // nested fences
+        "| a | b |\n|---+---|\n| 1 | 2 |\n",        // table
+        "* h\nText with [fn:1] footnote.\n[fn:1] def\n",
+        "[[https://x][a]] [[file:./y.org]] [[*heading]]",      // link variety
+        "* café ☕ naïve \u{0301}combining\n",      // unicode + combining
+        "*** \n** \n* \n",                          // descending levels
+        "#+TITLE: x\n#+AUTHOR: y\n#+OPTIONS: toc:nil\n",       // keywords
+        "- [ ] todo\n- [X] done\n- [-] partial\n",  // checkbox list
+        "* h\nSCHEDULED: <2026-06-15 Mon> DEADLINE: <2026-06-16>\n",
+        "\u{feff}\u{feff}* double BOM\n",
+        ": literal block line\n:another\n",          // colon-prefixed lines
     ];
     let deep_stars = "*".repeat(1000);
     let owned: Vec<String> = vec![deep_stars, format!("{}\n", "*".repeat(500))];

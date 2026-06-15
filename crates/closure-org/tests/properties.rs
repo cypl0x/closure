@@ -65,4 +65,17 @@ proptest! {
     fn parse_never_panics(src in org_ish_string()) {
         let _ = closure_org::parse(&src);
     }
+
+    /// AST-level idempotence: re-parsing the printer's output yields the
+    /// same tree. Byte-exact roundtrip (I1) guarantees `print(parse(x)) ==
+    /// x`; this is the complementary direction — `parse(print(d)) == d` —
+    /// which catches a printer that emits text the parser reads back into a
+    /// different structure.
+    #[test]
+    fn reparse_of_printed_output_is_stable(src in org_ish_string()) {
+        let doc = closure_org::parse(&src).expect("parse is infallible");
+        let printed = closure_org::print(&doc);
+        let reparsed = closure_org::parse(&printed).expect("reparse is infallible");
+        prop_assert_eq!(doc, reparsed);
+    }
 }
