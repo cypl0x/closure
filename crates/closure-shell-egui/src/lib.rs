@@ -236,6 +236,8 @@ mod window {
                     ModalSurface::Backlinks => "↩ backlinks".to_owned(),
                     ModalSurface::Agenda => "🗓 agenda".to_owned(),
                     ModalSurface::Blocks => "❮❯ code blocks".to_owned(),
+                    ModalSurface::TagsEdit => format!("🏷 tags: {}", a.field_buffer()),
+                    ModalSurface::PropertyEdit => format!("＋ property (key value): {}", a.field_buffer()),
                     ModalSurface::Browse => format!("[{:?}] browse", a.input_mode()),
                 },
             }

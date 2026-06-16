@@ -1218,6 +1218,10 @@ pub enum ModalSurface {
     Agenda,
     /// Read-only list of every `#+BEGIN_SRC` block across the vault.
     Blocks,
+    /// Editing the selected headline's tags (space-separated buffer).
+    TagsEdit,
+    /// Editing a property on the selected headline (`key value` buffer).
+    PropertyEdit,
 }
 
 /// Which read-only list a generic list surface is showing (drives the
@@ -1226,6 +1230,13 @@ pub enum ModalSurface {
 enum ListKind {
     Agenda,
     Blocks,
+}
+
+/// Which field a single-line modal field-edit surface is editing.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum FieldKind {
+    Tags,
+    Property,
 }
 
 /// Modal command-surface launcher (the "modal GUI" experiment).
@@ -1247,6 +1258,10 @@ pub struct ModalApp {
     edit_target: Option<String>,
     /// Headline id whose backlinks the Backlinks surface is showing.
     link_target: Option<String>,
+    /// Target id + single-line buffer for the TagsEdit/PropertyEdit
+    /// surfaces (tags: space-separated; property: `key value`).
+    field_target: Option<String>,
+    field_buf: String,
     pending: Vec<String>,
     status: String,
     quit: bool,
@@ -1265,6 +1280,8 @@ impl ModalApp {
             body_buf: String::new(),
             edit_target: None,
             link_target: None,
+            field_target: None,
+            field_buf: String::new(),
             pending: Vec::new(),
             status: String::new(),
             quit: false,
@@ -1445,8 +1462,59 @@ impl ModalApp {
             ModalSurface::Backlinks => self.on_backlinks_key(shell, key),
             ModalSurface::Agenda => self.on_list_key(shell, key, ListKind::Agenda),
             ModalSurface::Blocks => self.on_list_key(shell, key, ListKind::Blocks),
+            ModalSurface::TagsEdit => self.on_field_key(shell, key, text, FieldKind::Tags),
+            ModalSurface::PropertyEdit => self.on_field_key(shell, key, text, FieldKind::Property),
             ModalSurface::Browse => self.on_browse_key(shell, key, ctrl, alt, text),
         }
+    }
+
+    /// Single-line field editor (tags / property): Enter commits through
+    /// the Shell setter (I8), Esc cancels, Backspace deletes, printable
+    /// chars append. Tags split on whitespace; property splits on the
+    /// first space into `key value`.
+    fn on_field_key(&mut self, shell: &mut Shell, key: &str, text: Option<char>, kind: FieldKind) {
+        match key {
+            "escape" => {
+                self.field_target = None;
+                self.field_buf.clear();
+                self.surface = ModalSurface::Browse;
+            }
+            "enter" => {
+                if let Some(id) = self.field_target.take() {
+                    let bid = closure_core::BlockId::from_existing(&id);
+                    match kind {
+                        FieldKind::Tags => {
+                            let tags: Vec<String> =
+                                self.field_buf.split_whitespace().map(ToOwned::to_owned).collect();
+                            let _ = shell.set_tags(&bid, &tags);
+                        }
+                        FieldKind::Property => {
+                            if let Some((k, v)) = self.field_buf.split_once(' ') {
+                                let _ = shell.set_property(&bid, k.trim(), v.trim());
+                            } else if !self.field_buf.trim().is_empty() {
+                                let _ = shell.set_property(&bid, self.field_buf.trim(), "");
+                            }
+                        }
+                    }
+                }
+                self.field_buf.clear();
+                self.surface = ModalSurface::Browse;
+            }
+            "backspace" => {
+                self.field_buf.pop();
+            }
+            _ => {
+                if let Some(c) = text {
+                    self.field_buf.push(c);
+                }
+            }
+        }
+    }
+
+    /// The single-line field-edit buffer (tags/property).
+    #[must_use]
+    pub fn field_buffer(&self) -> &str {
+        &self.field_buf
     }
 
     /// Generic up/down/Esc navigation for the read-only list surfaces
@@ -1770,6 +1838,21 @@ impl ModalApp {
                     };
                     let bid = closure_core::BlockId::from_existing(&row.id);
                     let _ = shell.set_priority(&bid, next);
+                }
+            }
+            "edit-tags" => {
+                if let Some(row) = self.rows(shell).get(self.selected).cloned() {
+                    let tags = self.detail(shell).map(|d| d.tags).unwrap_or_default();
+                    self.field_target = Some(row.id);
+                    self.field_buf = tags.join(" ");
+                    self.surface = ModalSurface::TagsEdit;
+                }
+            }
+            "edit-property" => {
+                if let Some(row) = self.rows(shell).get(self.selected).cloned() {
+                    self.field_target = Some(row.id);
+                    self.field_buf.clear();
+                    self.surface = ModalSurface::PropertyEdit;
                 }
             }
             "edit-body" => {

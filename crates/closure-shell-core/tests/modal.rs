@@ -516,3 +516,48 @@ fn emacs_c_c_t_cycles_todo() {
     app.on_key(&mut sh, "t", false, false, Some('t')); // C-c t -> toggle-todo
     assert_eq!(app.detail(&sh).unwrap().todo.as_deref(), Some("DONE"));
 }
+
+// === R2b modal-mode tag + property editing (single-line buffers fed
+// via on_key, committed through the Vault, I8). ===
+
+#[test]
+fn modal_edit_tags_commits_split_on_whitespace() {
+    let (_d, mut sh) = shell();
+    let mut app = ModalApp::new(InputMode::Vim);
+    app.on_key(&mut sh, "y", false, false, Some('y')); // edit-tags
+    assert_eq!(app.surface(), ModalSurface::TagsEdit);
+    for c in "work urgent".chars() {
+        app.on_key(&mut sh, &c.to_string(), false, false, Some(c));
+    }
+    app.on_key(&mut sh, "enter", false, false, None);
+    assert_eq!(app.surface(), ModalSurface::Browse);
+    assert_eq!(
+        app.detail(&sh).unwrap().tags,
+        vec!["work".to_owned(), "urgent".to_owned()]
+    );
+}
+
+#[test]
+fn modal_edit_property_commits_key_value() {
+    let (_d, mut sh) = shell();
+    let mut app = ModalApp::new(InputMode::Vim);
+    app.on_key(&mut sh, "o", false, false, Some('o')); // edit-property
+    assert_eq!(app.surface(), ModalSurface::PropertyEdit);
+    for c in "Status active".chars() {
+        app.on_key(&mut sh, &c.to_string(), false, false, Some(c));
+    }
+    app.on_key(&mut sh, "enter", false, false, None);
+    let props = app.detail(&sh).unwrap().properties;
+    assert!(props.iter().any(|(k, v)| k == "Status" && v == "active"), "{props:?}");
+}
+
+#[test]
+fn modal_edit_tags_escape_cancels() {
+    let (_d, mut sh) = shell();
+    let mut app = ModalApp::new(InputMode::Vim);
+    app.on_key(&mut sh, "y", false, false, Some('y'));
+    app.on_key(&mut sh, "x", false, false, Some('x'));
+    app.on_key(&mut sh, "escape", false, false, None);
+    assert_eq!(app.surface(), ModalSurface::Browse);
+    assert!(app.detail(&sh).unwrap().tags.is_empty());
+}
