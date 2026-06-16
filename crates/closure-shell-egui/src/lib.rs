@@ -45,7 +45,8 @@ pub fn run(_vault_path: &std::path::Path) -> Result<(), String> {
 mod window {
     use closure_config::{Config, InputMode};
     use closure_shell_core::{
-        App, Detail, HighlightKind, ModalApp, ModalSurface, Mode, Row, highlight_spans,
+        App, BodySegment, Detail, HighlightKind, ModalApp, ModalSurface, Mode, Row, highlight_spans,
+        segment_body,
     };
     use closure_store::Vault;
     use eframe::egui;
@@ -667,17 +668,36 @@ mod window {
                 });
             }
             ui.separator();
-            // Body header -> edit; body itself is org/keyword-highlighted
-            // (P2). Prose is rendered as the "plain" language so it reads
-            // normally; P3 will feed code blocks their real language.
+            // Body header -> edit.
             if clickable(ui, egui::RichText::new("body:").strong(), launcher).clicked()
                 && let Some(a) = self.surface.launcher_mut()
             {
                 a.begin_edit_body(&self.shell);
             }
-            for line in d.body.lines() {
-                highlighted_line(ui, line, "plain");
-            }
+            // Body: prose plain, #+BEGIN_SRC blocks framed + monospace
+            // with the language shown and keyword-highlighted (P2/P3).
+            // Long bodies scroll.
+            egui::ScrollArea::vertical()
+                .id_salt("detail-body")
+                .show(ui, |ui| {
+                    for seg in segment_body(&d.body) {
+                        match seg {
+                            BodySegment::Prose(text) => {
+                                for line in text.lines() {
+                                    highlighted_line(ui, line, "plain");
+                                }
+                            }
+                            BodySegment::Code { lang, text } => {
+                                egui::Frame::group(ui.style()).show(ui, |ui| {
+                                    ui.small(format!("⟪ {lang} ⟫"));
+                                    for line in text.lines() {
+                                        highlighted_line(ui, line, &lang);
+                                    }
+                                });
+                            }
+                        }
+                    }
+                });
         }
     }
 }

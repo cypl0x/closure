@@ -37,6 +37,80 @@ pub fn highlight_spans(source: &str, lang: &str) -> Vec<(String, HighlightKind)>
         .collect()
 }
 
+/// One segment of a headline body: free-form prose or a fenced code
+/// block (carrying its normalised language). Lets a GUI render code
+/// blocks distinct from prose without re-parsing the fences.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum BodySegment {
+    /// Prose lines (everything outside a `#+BEGIN_SRC … #+END_SRC`).
+    Prose(String),
+    /// A code block: `lang` is the normalised fence language (`"plain"`
+    /// when none), `text` the block's inner content.
+    Code {
+        /// Normalised fence language (matches [`highlight_spans`]).
+        lang: String,
+        /// Inner content of the block (between the fences).
+        text: String,
+    },
+}
+
+/// Normalise a fence language token to the names [`highlight_spans`]
+/// understands (`sh`/`bash`/`zsh` → `shell`, `py` → `python`, `rs` →
+/// `rust`, empty → `plain`).
+fn normalise_lang(token: &str) -> String {
+    match token.to_ascii_lowercase().as_str() {
+        "" => "plain".to_owned(),
+        "sh" | "bash" | "zsh" => "shell".to_owned(),
+        "py" => "python".to_owned(),
+        "rs" => "rust".to_owned(),
+        other => other.to_owned(),
+    }
+}
+
+/// Split a headline body into prose / code-block [`BodySegment`]s.
+///
+/// Consecutive prose lines coalesce into one [`BodySegment::Prose`];
+/// each `#+BEGIN_SRC [lang] … #+END_SRC` becomes a
+/// [`BodySegment::Code`] (fence match is case-insensitive). An
+/// unterminated block captures to the end. Empty input yields no
+/// segments.
+#[must_use]
+pub fn segment_body(body: &str) -> Vec<BodySegment> {
+    let mut out: Vec<BodySegment> = Vec::new();
+    let mut prose: Vec<&str> = Vec::new();
+    let mut lines = body.lines();
+
+    let flush_prose = |prose: &mut Vec<&str>, out: &mut Vec<BodySegment>| {
+        if !prose.is_empty() {
+            out.push(BodySegment::Prose(prose.join("\n")));
+            prose.clear();
+        }
+    };
+
+    while let Some(line) = lines.next() {
+        let trimmed = line.trim_start();
+        if trimmed.to_ascii_uppercase().starts_with("#+BEGIN_SRC") {
+            flush_prose(&mut prose, &mut out);
+            let lang = normalise_lang(trimmed.split_whitespace().nth(1).unwrap_or(""));
+            let mut code: Vec<&str> = Vec::new();
+            for cl in lines.by_ref() {
+                if cl.trim_start().to_ascii_uppercase().starts_with("#+END_SRC") {
+                    break;
+                }
+                code.push(cl);
+            }
+            out.push(BodySegment::Code {
+                lang,
+                text: code.join("\n"),
+            });
+        } else {
+            prose.push(line);
+        }
+    }
+    flush_prose(&mut prose, &mut out);
+    out
+}
+
 /// Selection state (parity with egui Shell for consistent multi-UI model).
 #[derive(Debug, Clone, Default)]
 pub struct Selection {
