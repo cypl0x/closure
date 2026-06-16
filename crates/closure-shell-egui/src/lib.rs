@@ -185,6 +185,13 @@ mod window {
                         .map(|(date, title, path)| format!("{date}  {title}    ({path})"))
                         .collect(),
                 )),
+                ModalSurface::Blocks => Some((
+                    "code blocks (Esc to return)".to_owned(),
+                    a.block_rows(shell)
+                        .into_iter()
+                        .map(|(path, lang, first)| format!("⟪{lang}⟫ {first}    ({path})"))
+                        .collect(),
+                )),
                 _ => None,
             }
         }
@@ -220,6 +227,7 @@ mod window {
                     ModalSurface::EditBody => "✎ edit body".to_owned(),
                     ModalSurface::Backlinks => "↩ backlinks".to_owned(),
                     ModalSurface::Agenda => "🗓 agenda".to_owned(),
+                    ModalSurface::Blocks => "❮❯ code blocks".to_owned(),
                     ModalSurface::Browse => format!("[{:?}] browse", a.input_mode()),
                 },
             }

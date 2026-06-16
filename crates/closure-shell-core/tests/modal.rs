@@ -394,3 +394,46 @@ fn agenda_escape_returns_to_browse() {
     app.on_key(&mut sh, "escape", false, false, None);
     assert_eq!(app.surface(), ModalSurface::Browse);
 }
+
+// === Q4 block-list: a read-only pane of every #+BEGIN_SRC block. ===
+
+fn blocks_shell() -> (TempDir, Shell) {
+    let dir = tempfile::tempdir().expect("tmp");
+    fs::write(
+        dir.path().join("notes.org"),
+        "* A\n#+BEGIN_SRC rust\nfn main() {}\n#+END_SRC\n\
+         * B\n#+BEGIN_SRC python\nprint(1)\n#+END_SRC\n",
+    )
+    .expect("write");
+    let v = Vault::open(dir.path()).expect("open");
+    (dir, Shell::new(v))
+}
+
+#[test]
+fn block_list_enumerates_code_blocks_with_language() {
+    let (_d, mut sh) = blocks_shell();
+    let mut app = ModalApp::new(InputMode::Vim); // "e" -> block-list
+    app.on_key(&mut sh, "e", false, false, Some('e'));
+    assert_eq!(app.surface(), ModalSurface::Blocks);
+    let rows = app.block_rows(&sh);
+    assert_eq!(rows.len(), 2, "{rows:?}");
+    assert!(rows.iter().any(|(_, lang, first)| lang == "rust" && first.contains("fn main")));
+    assert!(rows.iter().any(|(_, lang, first)| lang == "python" && first.contains("print(1)")));
+}
+
+#[test]
+fn block_list_empty_when_no_blocks() {
+    let (_d, mut sh) = shell(); // no src blocks
+    let mut app = ModalApp::new(InputMode::Vim);
+    app.on_key(&mut sh, "e", false, false, Some('e'));
+    assert!(app.block_rows(&sh).is_empty());
+}
+
+#[test]
+fn block_list_escape_returns_to_browse() {
+    let (_d, mut sh) = blocks_shell();
+    let mut app = ModalApp::new(InputMode::Vim);
+    app.on_key(&mut sh, "e", false, false, Some('e'));
+    app.on_key(&mut sh, "escape", false, false, None);
+    assert_eq!(app.surface(), ModalSurface::Browse);
+}

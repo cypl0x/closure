@@ -1216,6 +1216,8 @@ pub enum ModalSurface {
     Backlinks,
     /// Read-only agenda: scheduled/deadline entries across the vault.
     Agenda,
+    /// Read-only list of every `#+BEGIN_SRC` block across the vault.
+    Blocks,
 }
 
 /// Which read-only list a generic list surface is showing (drives the
@@ -1223,6 +1225,7 @@ pub enum ModalSurface {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ListKind {
     Agenda,
+    Blocks,
 }
 
 /// Modal command-surface launcher (the "modal GUI" experiment).
@@ -1441,6 +1444,7 @@ impl ModalApp {
             ModalSurface::EditBody => self.on_editbody_key(shell, key, ctrl, text),
             ModalSurface::Backlinks => self.on_backlinks_key(shell, key),
             ModalSurface::Agenda => self.on_list_key(shell, key, ListKind::Agenda),
+            ModalSurface::Blocks => self.on_list_key(shell, key, ListKind::Blocks),
             ModalSurface::Browse => self.on_browse_key(shell, key, ctrl, alt, text),
         }
     }
@@ -1450,6 +1454,7 @@ impl ModalApp {
     fn on_list_key(&mut self, shell: &Shell, key: &str, kind: ListKind) {
         let len = match kind {
             ListKind::Agenda => self.agenda_rows(shell).len(),
+            ListKind::Blocks => self.block_rows(shell).len(),
         };
         match key {
             "escape" => {
@@ -1472,6 +1477,24 @@ impl ModalApp {
             .into_iter()
             .map(|e| (e.date, e.title, e.path.display().to_string()))
             .collect()
+    }
+
+    /// Every `#+BEGIN_SRC` block across the vault as `(path, lang,
+    /// first-line)` rows, in per-file document order.
+    #[must_use]
+    pub fn block_rows(&self, shell: &Shell) -> Vec<(String, String, String)> {
+        let mut out = Vec::new();
+        for (path, doc) in shell.vault.iter() {
+            // Reuse the tested prose/code segmenter over the whole file
+            // source (catches preamble + headline blocks uniformly).
+            for seg in segment_body(&doc.source()) {
+                if let BodySegment::Code { lang, text } = seg {
+                    let first = text.lines().next().unwrap_or("").trim().to_owned();
+                    out.push((path.display().to_string(), lang, first));
+                }
+            }
+        }
+        out
     }
 
     /// Backlinks list keys: up/down move, Enter jumps to the selected
@@ -1691,6 +1714,10 @@ impl ModalApp {
             "agenda" => {
                 self.selected = 0;
                 self.surface = ModalSurface::Agenda;
+            }
+            "block-list" => {
+                self.selected = 0;
+                self.surface = ModalSurface::Blocks;
             }
             "edit-body" => {
                 if let Some(row) = self.rows(shell).get(self.selected).cloned() {
