@@ -163,6 +163,25 @@ mod window {
             }
         }
 
+        /// A read-only list overlay for the modal "list" surfaces
+        /// (backlinks/agenda/blocks): `(title, rows)`. `None` when not on
+        /// such a surface. The launcher never has these.
+        fn list_overlay(&self, shell: &Shell) -> Option<(String, Vec<String>)> {
+            let Self::Modal(a) = self else {
+                return None;
+            };
+            match a.surface() {
+                ModalSurface::Backlinks => Some((
+                    "backlinks (Esc to return)".to_owned(),
+                    a.backlink_rows(shell)
+                        .into_iter()
+                        .map(|(path, title)| format!("{title}    ({path})"))
+                        .collect(),
+                )),
+                _ => None,
+            }
+        }
+
         /// Which-key state: the pending chord prefix + its completions
         /// (`(remaining, command)`). Empty prefix => no popup. Only the
         /// modal surface has multi-stroke chords; the launcher returns
@@ -192,6 +211,7 @@ mod window {
                     ModalSurface::Capture => format!("＋ capture: {}", a.capture_buffer()),
                     ModalSurface::Search => format!("⌕ {}", a.query()),
                     ModalSurface::EditBody => "✎ edit body".to_owned(),
+                    ModalSurface::Backlinks => "↩ backlinks".to_owned(),
                     ModalSurface::Browse => format!("[{:?}] browse", a.input_mode()),
                 },
             }
@@ -490,6 +510,21 @@ mod window {
                 });
             }
             egui::CentralPanel::default().show(ctx, |ui| {
+                // Read-only list surfaces (backlinks/agenda/blocks) take
+                // the whole pane; otherwise the browse list + right pane.
+                if let Some((title, rows)) = self.surface.list_overlay(&self.shell) {
+                    ui.heading(title);
+                    let selected = self.surface.selected();
+                    egui::ScrollArea::vertical().id_salt("list-overlay").show(ui, |ui| {
+                        if rows.is_empty() {
+                            ui.label("(none)");
+                        }
+                        for (i, row) in rows.into_iter().enumerate() {
+                            let _ = ui.selectable_label(i == selected, row);
+                        }
+                    });
+                    return;
+                }
                 ui.columns(2, |cols| {
                     self.list_pane(&mut cols[0]);
                     if self.surface.editing_body() {

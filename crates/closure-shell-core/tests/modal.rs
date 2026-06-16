@@ -303,3 +303,47 @@ fn s_search_with_no_hits_lists_nothing() {
     }
     assert!(app.rows(&sh).is_empty(), "no headline matches zzzzz");
 }
+
+// === Q2 backlinks: a read-only pane listing headlines that link to the
+// selected one (Vault backlink index). ===
+
+fn linked_shell() -> (TempDir, Shell) {
+    let dir = tempfile::tempdir().expect("tmp");
+    fs::write(
+        dir.path().join("notes.org"),
+        "* Target\n:PROPERTIES:\n:ID: 01TARGET0000000000000000\n:END:\n\
+         * Source\n:PROPERTIES:\n:ID: 01SOURCE0000000000000000\n:END:\n\
+         See [[id:01TARGET0000000000000000]].\n",
+    )
+    .expect("write");
+    let v = Vault::open(dir.path()).expect("open");
+    (dir, Shell::new(v))
+}
+
+#[test]
+fn backlinks_lists_linking_headline() {
+    let (_d, mut sh) = linked_shell();
+    let mut app = ModalApp::new(InputMode::Vim); // selection 0 = Target
+    app.on_key(&mut sh, "b", false, false, Some('b')); // backlinks
+    assert_eq!(app.surface(), ModalSurface::Backlinks);
+    let rows = app.backlink_rows(&sh);
+    assert!(rows.iter().any(|(_, title)| title == "Source"), "{rows:?}");
+}
+
+#[test]
+fn backlinks_of_unlinked_headline_is_empty() {
+    let (_d, mut sh) = linked_shell();
+    let mut app = ModalApp::new(InputMode::Vim);
+    app.on_key(&mut sh, "j", false, false, Some('j')); // select Source (no incoming links)
+    app.on_key(&mut sh, "b", false, false, Some('b'));
+    assert!(app.backlink_rows(&sh).is_empty());
+}
+
+#[test]
+fn backlinks_escape_returns_to_browse() {
+    let (_d, mut sh) = linked_shell();
+    let mut app = ModalApp::new(InputMode::Vim);
+    app.on_key(&mut sh, "b", false, false, Some('b'));
+    app.on_key(&mut sh, "escape", false, false, None);
+    assert_eq!(app.surface(), ModalSurface::Browse);
+}

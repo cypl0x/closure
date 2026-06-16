@@ -1212,6 +1212,8 @@ pub enum ModalSurface {
     Capture,
     /// Editing the selected headline's body (org-edit-special).
     EditBody,
+    /// Read-only list of headlines linking to the selected one.
+    Backlinks,
 }
 
 /// Modal command-surface launcher (the "modal GUI" experiment).
@@ -1231,6 +1233,8 @@ pub struct ModalApp {
     capture_buf: String,
     body_buf: String,
     edit_target: Option<String>,
+    /// Headline id whose backlinks the Backlinks surface is showing.
+    link_target: Option<String>,
     pending: Vec<String>,
     status: String,
     quit: bool,
@@ -1248,6 +1252,7 @@ impl ModalApp {
             capture_buf: String::new(),
             body_buf: String::new(),
             edit_target: None,
+            link_target: None,
             pending: Vec::new(),
             status: String::new(),
             quit: false,
@@ -1425,8 +1430,58 @@ impl ModalApp {
             ModalSurface::Search => self.on_search_key(shell, key, text),
             ModalSurface::Capture => self.on_capture_key(shell, key, text),
             ModalSurface::EditBody => self.on_editbody_key(shell, key, ctrl, text),
+            ModalSurface::Backlinks => self.on_backlinks_key(shell, key),
             ModalSurface::Browse => self.on_browse_key(shell, key, ctrl, alt, text),
         }
+    }
+
+    /// Backlinks list keys: up/down move, Enter jumps to the selected
+    /// backlink (navigates Browse to it), Esc returns to Browse.
+    fn on_backlinks_key(&mut self, shell: &Shell, key: &str) {
+        match key {
+            "escape" => {
+                self.link_target = None;
+                self.selected = 0;
+                self.surface = ModalSurface::Browse;
+            }
+            "down" | "j" => {
+                let last = self.backlink_rows(shell).len().saturating_sub(1);
+                self.selected = (self.selected + 1).min(last);
+            }
+            "up" | "k" => self.selected = self.selected.saturating_sub(1),
+            "enter" => {
+                // Jump: make the chosen backlink the Browse selection.
+                if let Some((_, title)) = self.backlink_rows(shell).get(self.selected).cloned() {
+                    self.link_target = None;
+                    self.surface = ModalSurface::Browse;
+                    if let Some(idx) = self.rows(shell).iter().position(|r| r.title == title) {
+                        self.selected = idx;
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    /// Headlines that link to the headline the Backlinks surface was
+    /// opened on: `(path, title)` rows from the vault backlink index.
+    #[must_use]
+    pub fn backlink_rows(&self, shell: &Shell) -> Vec<(String, String)> {
+        let Some(target) = &self.link_target else {
+            return Vec::new();
+        };
+        shell
+            .vault
+            .backlinks_of(target)
+            .iter()
+            .map(|(path, src_id)| {
+                let title = shell
+                    .vault
+                    .find_by_id(src_id)
+                    .map_or_else(|| src_id.to_string(), |(h, _)| h.title().to_owned());
+                (path.display().to_string(), title)
+            })
+            .collect()
     }
 
     /// Body editor keys (org-edit-special): Esc cancels, `C-<enter>`
@@ -1585,6 +1640,13 @@ impl ModalApp {
             "open-file" => {
                 if let Some(row) = self.rows(shell).get(self.selected) {
                     self.status = format!("{} — {}", row.path, row.title);
+                }
+            }
+            "backlinks" => {
+                if let Some(row) = self.rows(shell).get(self.selected).cloned() {
+                    self.link_target = Some(row.id);
+                    self.selected = 0;
+                    self.surface = ModalSurface::Backlinks;
                 }
             }
             "edit-body" => {
