@@ -44,7 +44,9 @@ pub fn run(_vault_path: &std::path::Path) -> Result<(), String> {
 #[cfg(feature = "egui")]
 mod window {
     use closure_config::{Config, InputMode};
-    use closure_shell_core::{App, Detail, ModalApp, ModalSurface, Mode, Row};
+    use closure_shell_core::{
+        App, Detail, HighlightKind, ModalApp, ModalSurface, Mode, Row, highlight_spans,
+    };
     use closure_store::Vault;
     use eframe::egui;
 
@@ -59,6 +61,39 @@ mod window {
         } else {
             ui.label(text)
         }
+    }
+
+    /// Map a coarse [`HighlightKind`] to a colour. `Identifier`/`Plain`/
+    /// `Punctuation` inherit the default text colour so plain prose
+    /// (which the keyword highlighter tags as `Identifier`) reads
+    /// normally; only keywords/literals/comments get colour.
+    const fn kind_colour(kind: HighlightKind) -> Option<egui::Color32> {
+        match kind {
+            HighlightKind::Keyword => Some(egui::Color32::from_rgb(0xE5, 0xC0, 0x7B)),
+            HighlightKind::Literal => Some(egui::Color32::from_rgb(0x98, 0xC3, 0x79)),
+            HighlightKind::Comment => Some(egui::Color32::from_rgb(0x7F, 0x84, 0x8E)),
+            HighlightKind::Identifier | HighlightKind::Punctuation | HighlightKind::Plain => None,
+        }
+    }
+
+    /// Render one line of `source` (in language `lang`) as coloured
+    /// inline segments via the tested [`highlight_spans`] helper.
+    /// Keyword-coloured tokens stand out; everything else is default.
+    fn highlighted_line(ui: &mut egui::Ui, source: &str, lang: &str) {
+        ui.horizontal_wrapped(|ui| {
+            ui.spacing_mut().item_spacing.x = 0.0;
+            if source.is_empty() {
+                ui.label(" ");
+                return;
+            }
+            for (text, kind) in highlight_spans(source, lang) {
+                let mut rt = egui::RichText::new(text).monospace();
+                if let Some(c) = kind_colour(kind) {
+                    rt = rt.color(c);
+                }
+                ui.label(rt);
+            }
+        });
     }
 
     /// The active GUI surface. Notion-style launcher (type-to-filter,
@@ -632,11 +667,16 @@ mod window {
                 });
             }
             ui.separator();
-            // Body -> edit.
-            if clickable(ui, egui::RichText::new(&d.body), launcher).clicked()
+            // Body header -> edit; body itself is org/keyword-highlighted
+            // (P2). Prose is rendered as the "plain" language so it reads
+            // normally; P3 will feed code blocks their real language.
+            if clickable(ui, egui::RichText::new("body:").strong(), launcher).clicked()
                 && let Some(a) = self.surface.launcher_mut()
             {
                 a.begin_edit_body(&self.shell);
+            }
+            for line in d.body.lines() {
+                highlighted_line(ui, line, "plain");
             }
         }
     }

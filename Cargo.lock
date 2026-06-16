@@ -1252,6 +1252,7 @@ dependencies = [
  "closure-input",
  "closure-query",
  "closure-store",
+ "closure-tree-sitter",
  "tempfile",
 ]
 

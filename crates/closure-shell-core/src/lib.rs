@@ -14,6 +14,28 @@ use std::path::PathBuf;
 
 use closure_config::InputMode;
 use closure_store::Vault;
+pub use closure_tree_sitter::HighlightKind;
+
+/// Fold the keyword highlighter's byte ranges into owned segments.
+///
+/// Produces `(text, kind)` segments a GUI can colour without
+/// re-scanning, via the dependency-free
+/// [`closure_tree_sitter::KeywordHighlighter`] (hermetic — no
+/// tree-sitter C grammar). Empty source yields no spans; otherwise the
+/// segments concatenate back to `source` exactly.
+#[must_use]
+pub fn highlight_spans(source: &str, lang: &str) -> Vec<(String, HighlightKind)> {
+    use closure_tree_sitter::{Highlighter as _, KeywordHighlighter};
+    if source.is_empty() {
+        return Vec::new();
+    }
+    KeywordHighlighter::for_language(lang)
+        .highlight(source)
+        .into_iter()
+        .filter(|h| h.start < h.end)
+        .map(|h| (source[h.start..h.end].to_owned(), h.kind))
+        .collect()
+}
 
 /// Selection state (parity with egui Shell for consistent multi-UI model).
 #[derive(Debug, Clone, Default)]
