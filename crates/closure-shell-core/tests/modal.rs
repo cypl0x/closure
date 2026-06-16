@@ -347,3 +347,50 @@ fn backlinks_escape_returns_to_browse() {
     app.on_key(&mut sh, "escape", false, false, None);
     assert_eq!(app.surface(), ModalSurface::Browse);
 }
+
+// === Q3 agenda: a read-only pane of scheduled/deadline entries. ===
+
+fn agenda_shell() -> (TempDir, Shell) {
+    let dir = tempfile::tempdir().expect("tmp");
+    fs::write(
+        dir.path().join("notes.org"),
+        "* TODO Ship it\nSCHEDULED: <2026-06-20 Sat>\n* Plain\n* Pay rent\nDEADLINE: <2026-06-25 Thu>\n",
+    )
+    .expect("write");
+    let v = Vault::open(dir.path()).expect("open");
+    (dir, Shell::new(v))
+}
+
+#[test]
+fn agenda_lists_scheduled_and_deadline_sorted_by_date() {
+    let (_d, mut sh) = agenda_shell();
+    let mut app = ModalApp::new(InputMode::Vim); // "g a" -> agenda
+    app.on_key(&mut sh, "g", false, false, Some('g'));
+    app.on_key(&mut sh, "a", false, false, Some('a'));
+    assert_eq!(app.surface(), ModalSurface::Agenda);
+    let rows = app.agenda_rows(&sh);
+    let titles: Vec<&str> = rows.iter().map(|(_, t, _)| t.as_str()).collect();
+    assert_eq!(titles, vec!["Ship it", "Pay rent"], "sorted by date: {rows:?}");
+    assert!(rows[0].0.contains("2026-06-20"), "date carried: {rows:?}");
+}
+
+#[test]
+fn agenda_on_empty_vault_is_empty() {
+    let dir = tempfile::tempdir().expect("tmp");
+    let v = Vault::open(dir.path()).expect("open");
+    let mut sh = Shell::new(v);
+    let mut app = ModalApp::new(InputMode::Vim);
+    app.on_key(&mut sh, "g", false, false, Some('g'));
+    app.on_key(&mut sh, "a", false, false, Some('a'));
+    assert!(app.agenda_rows(&sh).is_empty());
+}
+
+#[test]
+fn agenda_escape_returns_to_browse() {
+    let (_d, mut sh) = agenda_shell();
+    let mut app = ModalApp::new(InputMode::Vim);
+    app.on_key(&mut sh, "g", false, false, Some('g'));
+    app.on_key(&mut sh, "a", false, false, Some('a'));
+    app.on_key(&mut sh, "escape", false, false, None);
+    assert_eq!(app.surface(), ModalSurface::Browse);
+}

@@ -1214,6 +1214,15 @@ pub enum ModalSurface {
     EditBody,
     /// Read-only list of headlines linking to the selected one.
     Backlinks,
+    /// Read-only agenda: scheduled/deadline entries across the vault.
+    Agenda,
+}
+
+/// Which read-only list a generic list surface is showing (drives the
+/// shared navigation handler).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ListKind {
+    Agenda,
 }
 
 /// Modal command-surface launcher (the "modal GUI" experiment).
@@ -1431,8 +1440,38 @@ impl ModalApp {
             ModalSurface::Capture => self.on_capture_key(shell, key, text),
             ModalSurface::EditBody => self.on_editbody_key(shell, key, ctrl, text),
             ModalSurface::Backlinks => self.on_backlinks_key(shell, key),
+            ModalSurface::Agenda => self.on_list_key(shell, key, ListKind::Agenda),
             ModalSurface::Browse => self.on_browse_key(shell, key, ctrl, alt, text),
         }
+    }
+
+    /// Generic up/down/Esc navigation for the read-only list surfaces
+    /// (agenda, blocks) whose rows don't drive a jump.
+    fn on_list_key(&mut self, shell: &Shell, key: &str, kind: ListKind) {
+        let len = match kind {
+            ListKind::Agenda => self.agenda_rows(shell).len(),
+        };
+        match key {
+            "escape" => {
+                self.selected = 0;
+                self.surface = ModalSurface::Browse;
+            }
+            "down" | "j" => self.selected = (self.selected + 1).min(len.saturating_sub(1)),
+            "up" | "k" => self.selected = self.selected.saturating_sub(1),
+            _ => {}
+        }
+    }
+
+    /// Agenda rows `(date, title, path)` across the vault, sorted by
+    /// date then title (as [`closure_store::Vault::agenda`] returns).
+    #[must_use]
+    pub fn agenda_rows(&self, shell: &Shell) -> Vec<(String, String, String)> {
+        shell
+            .vault
+            .agenda()
+            .into_iter()
+            .map(|e| (e.date, e.title, e.path.display().to_string()))
+            .collect()
     }
 
     /// Backlinks list keys: up/down move, Enter jumps to the selected
@@ -1648,6 +1687,10 @@ impl ModalApp {
                     self.selected = 0;
                     self.surface = ModalSurface::Backlinks;
                 }
+            }
+            "agenda" => {
+                self.selected = 0;
+                self.surface = ModalSurface::Agenda;
             }
             "edit-body" => {
                 if let Some(row) = self.rows(shell).get(self.selected).cloned() {
