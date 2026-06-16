@@ -272,3 +272,34 @@ fn completions_clear_after_chord_resolves() {
     assert_eq!(app.pending_chord(), "");
     assert!(app.completions().is_empty());
 }
+
+// === Q1 search-headlines: the `s` binding (search-headline-start)
+// opens the same headline-filter Search surface as `/`, not a no-op. ===
+
+#[test]
+fn s_opens_headline_search_and_filters() {
+    let (_d, mut sh) = shell();
+    let mut app = ModalApp::new(InputMode::Vim); // vim binds "s" -> search-headline-start
+    app.on_key(&mut sh, "s", false, false, Some('s'));
+    assert_eq!(app.surface(), ModalSurface::Search);
+    for c in "spec".chars() {
+        app.on_key(&mut sh, &c.to_string(), false, false, Some(c));
+    }
+    let rows = app.rows(&sh);
+    assert!(rows.iter().any(|r| r.title == "Write spec"), "{rows:?}");
+    assert!(!rows.iter().any(|r| r.title == "Ship parser"));
+    app.on_key(&mut sh, "escape", false, false, None);
+    assert_eq!(app.surface(), ModalSurface::Browse);
+    assert_eq!(app.query(), "");
+}
+
+#[test]
+fn s_search_with_no_hits_lists_nothing() {
+    let (_d, mut sh) = shell();
+    let mut app = ModalApp::new(InputMode::Vim);
+    app.on_key(&mut sh, "s", false, false, Some('s'));
+    for c in "zzzzz".chars() {
+        app.on_key(&mut sh, &c.to_string(), false, false, Some(c));
+    }
+    assert!(app.rows(&sh).is_empty(), "no headline matches zzzzz");
+}
