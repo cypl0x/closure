@@ -127,6 +127,17 @@ mod window {
             }
         }
 
+        /// Which-key state: the pending chord prefix + its completions
+        /// (`(remaining, command)`). Empty prefix => no popup. Only the
+        /// modal surface has multi-stroke chords; the launcher returns
+        /// nothing (its slash palette is its which-key surface).
+        fn whichkey(&self) -> (String, Vec<(String, String)>) {
+            match self {
+                Self::Modal(a) => (a.pending_chord(), a.completions()),
+                Self::Launcher(_) => (String::new(), Vec::new()),
+            }
+        }
+
         /// Header line, surface-specific (shows the active sub-mode and
         /// any in-progress buffer).
         fn header(&self) -> String {
@@ -429,6 +440,19 @@ mod window {
                 ui.label(self.surface.status());
                 ui.small(self.surface.key_hints());
             });
+            // which-key popup (vision: emacs which-key): only while a
+            // multi-stroke chord prefix is pending on the modal surface.
+            let (prefix, completions) = self.surface.whichkey();
+            if !prefix.is_empty() && !completions.is_empty() {
+                egui::TopBottomPanel::bottom("whichkey").show(ctx, |ui| {
+                    ui.strong(format!("{prefix} →"));
+                    egui::ScrollArea::vertical().max_height(160.0).show(ui, |ui| {
+                        for (rest, cmd) in &completions {
+                            ui.label(format!("{prefix} {rest:8}  {cmd}"));
+                        }
+                    });
+                });
+            }
             egui::CentralPanel::default().show(ctx, |ui| {
                 ui.columns(2, |cols| {
                     self.list_pane(&mut cols[0]);

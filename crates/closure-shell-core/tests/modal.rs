@@ -226,3 +226,49 @@ fn emacs_binds_edit_body_to_c_c_e() {
     assert_eq!(chord_for_command(InputMode::Emacs, "edit-body"), Some("C-c e"));
     assert_eq!(chord_for_command(InputMode::Vim, "edit-body"), Some("i"));
 }
+
+// === P1 which-key popup: while a multi-stroke chord is pending, expose
+// the prefix + completions (remaining chord -> command) from the keymap.
+
+#[test]
+fn no_pending_chord_means_no_completions() {
+    let app = ModalApp::new(InputMode::Vim);
+    assert_eq!(app.pending_chord(), "");
+    assert!(app.completions().is_empty());
+}
+
+#[test]
+fn vim_g_prefix_lists_completions() {
+    let (_d, mut sh) = shell();
+    let mut app = ModalApp::new(InputMode::Vim);
+    app.on_key(&mut sh, "g", false, false, Some('g')); // pending "g"
+    assert_eq!(app.pending_chord(), "g");
+    let comp = app.completions();
+    // vim binds "g g" -> first-file and "g a" -> agenda.
+    assert!(comp.iter().any(|(rest, cmd)| rest == "g" && cmd == "first-file"), "{comp:?}");
+    assert!(comp.iter().any(|(rest, cmd)| rest == "a" && cmd == "agenda"), "{comp:?}");
+    // single-stroke bindings like "j" are NOT completions of "g".
+    assert!(!comp.iter().any(|(_, cmd)| cmd == "next-file"));
+}
+
+#[test]
+fn emacs_ctrl_x_prefix_lists_completions() {
+    let (_d, mut sh) = shell();
+    let mut app = ModalApp::new(InputMode::Emacs);
+    app.on_key(&mut sh, "x", true, false, None); // C-x pending
+    assert_eq!(app.pending_chord(), "C-x");
+    let comp = app.completions();
+    assert!(comp.iter().any(|(rest, cmd)| rest == "C-c" && cmd == "quit"), "{comp:?}");
+    assert!(comp.iter().any(|(rest, cmd)| rest == "u" && cmd == "undo"), "{comp:?}");
+    assert!(comp.iter().any(|(rest, cmd)| rest == "r" && cmd == "redo"), "{comp:?}");
+}
+
+#[test]
+fn completions_clear_after_chord_resolves() {
+    let (_d, mut sh) = shell();
+    let mut app = ModalApp::new(InputMode::Vim);
+    app.on_key(&mut sh, "g", false, false, Some('g'));
+    app.on_key(&mut sh, "g", false, false, Some('g')); // "g g" resolves -> first-file
+    assert_eq!(app.pending_chord(), "");
+    assert!(app.completions().is_empty());
+}

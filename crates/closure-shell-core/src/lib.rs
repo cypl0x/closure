@@ -1204,6 +1204,36 @@ impl ModalApp {
             .join("  ")
     }
 
+    /// The chord strokes entered so far but not yet resolved, joined
+    /// (e.g. `"g"` after pressing `g`, `"C-x"` mid emacs chord). Empty
+    /// when nothing is pending. Backs the which-key popup.
+    #[must_use]
+    pub fn pending_chord(&self) -> String {
+        self.pending.join(" ")
+    }
+
+    /// While a multi-stroke chord is pending, the `(remaining, command)`
+    /// completions from the active mode's keymap — every binding whose
+    /// chord extends the pending prefix, with the prefix stripped.
+    /// Empty when nothing is pending. Sorted by remaining chord.
+    #[must_use]
+    pub fn completions(&self) -> Vec<(String, String)> {
+        if self.pending.is_empty() {
+            return Vec::new();
+        }
+        let prefix = format!("{} ", self.pending.join(" "));
+        let mut out: Vec<(String, String)> = closure_input::mode_keymap(self.mode)
+            .iter()
+            .filter_map(|(chord, cmd)| {
+                chord
+                    .strip_prefix(&prefix)
+                    .map(|rest| (rest.to_owned(), (*cmd).to_owned()))
+            })
+            .collect();
+        out.sort();
+        out
+    }
+
     /// Rows: all headlines on Browse, fuzzy-filtered while searching.
     #[must_use]
     pub fn rows(&self, shell: &Shell) -> Vec<Row> {
