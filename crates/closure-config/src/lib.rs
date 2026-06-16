@@ -75,6 +75,16 @@ impl Default for Config {
     }
 }
 
+/// Coarse visual theme a shell applies. The free-form [`Config::theme`]
+/// string maps to one of these (default [`ThemeKind::Dark`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ThemeKind {
+    /// Dark visuals (default).
+    Dark,
+    /// Light visuals.
+    Light,
+}
+
 /// Selected input binding scheme.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum InputMode {
@@ -125,6 +135,18 @@ fn parse_bool(key: &str, value: &str) -> Result<bool, ConfigError> {
 }
 
 impl Config {
+    /// The visual theme to apply, mapped from the free-form [`Self::theme`]
+    /// string: `light` (case-insensitive) → [`ThemeKind::Light`], anything
+    /// else (including the default) → [`ThemeKind::Dark`].
+    #[must_use]
+    pub fn theme_kind(&self) -> ThemeKind {
+        if self.theme.eq_ignore_ascii_case("light") {
+            ThemeKind::Light
+        } else {
+            ThemeKind::Dark
+        }
+    }
+
     /// Load a config from a `*.org` file on disk.
     #[allow(clippy::missing_errors_doc)]
     pub fn from_path(path: &std::path::Path) -> Result<Self, ConfigError> {

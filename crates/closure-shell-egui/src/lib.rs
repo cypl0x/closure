@@ -370,9 +370,10 @@ mod window {
     /// Vault open or eframe runtime failures as a string.
     pub fn run(path: &std::path::Path) -> Result<(), String> {
         let vault = Vault::open(path).map_err(|e| format!("{e}"))?;
-        // Notion default; honour `<vault>/config.org` input_mode if set.
-        let mode = Config::from_path(&path.join("config.org"))
-            .map_or(InputMode::Notion, |c| c.input_mode);
+        // Notion default; honour `<vault>/config.org` input_mode + theme.
+        let cfg = Config::from_path(&path.join("config.org")).ok();
+        let mode = cfg.as_ref().map_or(InputMode::Notion, |c| c.input_mode);
+        let theme = cfg.map_or(closure_config::ThemeKind::Dark, |c| c.theme_kind());
         let app = EguiApp {
             shell: Shell::new(vault),
             surface: Surface::for_mode(mode),
@@ -380,7 +381,14 @@ mod window {
         eframe::run_native(
             "closure · egui",
             eframe::NativeOptions::default(),
-            Box::new(|_cc| Ok(Box::new(app))),
+            Box::new(move |cc| {
+                // R3: apply the configured theme (default dark).
+                cc.egui_ctx.set_visuals(match theme {
+                    closure_config::ThemeKind::Light => egui::Visuals::light(),
+                    closure_config::ThemeKind::Dark => egui::Visuals::dark(),
+                });
+                Ok(Box::new(app))
+            }),
         )
         .map_err(|e| format!("{e}"))
     }

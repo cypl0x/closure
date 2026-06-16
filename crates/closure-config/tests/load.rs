@@ -241,3 +241,24 @@ fn unknown_key_reports_at_load_with_context() {
     let err = Config::from_org_source(src).unwrap_err();
     assert!(matches!(err, ConfigError::UnknownKey(k) if k == "nope"));
 }
+
+#[test]
+fn theme_kind_maps_string_to_dark_or_light_defaulting_dark() {
+    use closure_config::ThemeKind;
+    // Default theme ("default") -> Dark.
+    assert_eq!(Config::default().theme_kind(), ThemeKind::Dark);
+    // Explicit light (case-insensitive) -> Light.
+    let c = Config::from_kv_block("theme = light\n").expect("parse");
+    assert_eq!(c.theme_kind(), ThemeKind::Light);
+    let c = Config::from_kv_block("theme = LIGHT\n").expect("parse");
+    assert_eq!(c.theme_kind(), ThemeKind::Light);
+    // Explicit dark + any other value -> Dark.
+    assert_eq!(
+        Config::from_kv_block("theme = dark\n").expect("p").theme_kind(),
+        ThemeKind::Dark
+    );
+    assert_eq!(
+        Config::from_kv_block("theme = solarized\n").expect("p").theme_kind(),
+        ThemeKind::Dark
+    );
+}
