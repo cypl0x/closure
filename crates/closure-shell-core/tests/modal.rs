@@ -481,3 +481,38 @@ fn list_jump_out_of_range_is_safe() {
     app.jump_list_row(&sh, 999); // no panic, returns to Browse
     assert_eq!(app.surface(), ModalSurface::Browse);
 }
+
+// === R2a modal-mode field editing: TODO-cycle + priority-cycle on the
+// command surface, committed through the Vault (I8). ===
+
+#[test]
+fn vim_t_cycles_todo_on_selection() {
+    let (_d, mut sh) = shell(); // row 0 = "* TODO Ship parser"
+    let mut app = ModalApp::new(InputMode::Vim);
+    app.on_key(&mut sh, "t", false, false, Some('t')); // toggle-todo
+    assert_eq!(app.detail(&sh).unwrap().todo.as_deref(), Some("DONE"));
+    app.on_key(&mut sh, "t", false, false, Some('t'));
+    assert_eq!(app.detail(&sh).unwrap().todo, None);
+}
+
+#[test]
+fn vim_p_cycles_priority_on_selection() {
+    let (_d, mut sh) = shell();
+    let mut app = ModalApp::new(InputMode::Vim);
+    app.on_key(&mut sh, "p", false, false, Some('p')); // cycle-priority None->A
+    assert_eq!(app.detail(&sh).unwrap().priority, Some('A'));
+    app.on_key(&mut sh, "p", false, false, Some('p'));
+    assert_eq!(app.detail(&sh).unwrap().priority, Some('B'));
+}
+
+#[test]
+fn emacs_c_c_t_cycles_todo() {
+    use closure_input::chord_for_command;
+    assert_eq!(chord_for_command(InputMode::Emacs, "toggle-todo"), Some("C-c t"));
+    assert_eq!(chord_for_command(InputMode::Vim, "cycle-priority"), Some("p"));
+    let (_d, mut sh) = shell();
+    let mut app = ModalApp::new(InputMode::Emacs);
+    app.on_key(&mut sh, "c", true, false, None); // C-c
+    app.on_key(&mut sh, "t", false, false, Some('t')); // C-c t -> toggle-todo
+    assert_eq!(app.detail(&sh).unwrap().todo.as_deref(), Some("DONE"));
+}

@@ -1687,7 +1687,7 @@ impl ModalApp {
 
     fn on_browse_key(
         &mut self,
-        shell: &Shell,
+        shell: &mut Shell,
         key: &str,
         ctrl: bool,
         alt: bool,
@@ -1712,7 +1712,7 @@ impl ModalApp {
         }
     }
 
-    fn run_command(&mut self, shell: &Shell, cmd: &str) {
+    fn run_command(&mut self, shell: &mut Shell, cmd: &str) {
         let last = self.rows(shell).len().saturating_sub(1);
         match cmd {
             "next-file" => self.selected = (self.selected + 1).min(last),
@@ -1748,6 +1748,29 @@ impl ModalApp {
             "block-list" => {
                 self.selected = 0;
                 self.surface = ModalSurface::Blocks;
+            }
+            "toggle-todo" => {
+                if let Some(row) = self.rows(shell).get(self.selected).cloned() {
+                    let next = match self.detail(shell).and_then(|d| d.todo) {
+                        None => Some("TODO"),
+                        Some(k) if k == "TODO" => Some("DONE"),
+                        Some(_) => None,
+                    };
+                    let bid = closure_core::BlockId::from_existing(&row.id);
+                    let _ = shell.set_todo(&bid, next);
+                }
+            }
+            "cycle-priority" => {
+                if let Some(row) = self.rows(shell).get(self.selected).cloned() {
+                    let next = match self.detail(shell).and_then(|d| d.priority) {
+                        None => Some('A'),
+                        Some('A') => Some('B'),
+                        Some('B') => Some('C'),
+                        Some(_) => None,
+                    };
+                    let bid = closure_core::BlockId::from_existing(&row.id);
+                    let _ = shell.set_priority(&bid, next);
+                }
             }
             "edit-body" => {
                 if let Some(row) = self.rows(shell).get(self.selected).cloned() {
