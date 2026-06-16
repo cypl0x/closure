@@ -196,6 +196,14 @@ mod window {
             }
         }
 
+        /// Activate row `i` on a modal list surface (jump to its
+        /// headline/file). No-op on the launcher.
+        fn jump_list_row(&mut self, shell: &Shell, i: usize) {
+            if let Self::Modal(a) = self {
+                a.jump_list_row(shell, i);
+            }
+        }
+
         /// Which-key state: the pending chord prefix + its completions
         /// (`(remaining, command)`). Empty prefix => no popup. Only the
         /// modal surface has multi-stroke chords; the launcher returns
@@ -528,17 +536,7 @@ mod window {
             egui::CentralPanel::default().show(ctx, |ui| {
                 // Read-only list surfaces (backlinks/agenda/blocks) take
                 // the whole pane; otherwise the browse list + right pane.
-                if let Some((title, rows)) = self.surface.list_overlay(&self.shell) {
-                    ui.heading(title);
-                    let selected = self.surface.selected();
-                    egui::ScrollArea::vertical().id_salt("list-overlay").show(ui, |ui| {
-                        if rows.is_empty() {
-                            ui.label("(none)");
-                        }
-                        for (i, row) in rows.into_iter().enumerate() {
-                            let _ = ui.selectable_label(i == selected, row);
-                        }
-                    });
+                if self.render_list_overlay(ui) {
                     return;
                 }
                 ui.columns(2, |cols| {
@@ -558,6 +556,32 @@ mod window {
     }
 
     impl EguiApp {
+        /// Render a read-only list surface (backlinks/agenda/blocks) as a
+        /// full-pane clickable list; returns true when it handled the
+        /// pane. Click a row -> jump to its headline/file (R1).
+        fn render_list_overlay(&mut self, ui: &mut egui::Ui) -> bool {
+            let Some((title, rows)) = self.surface.list_overlay(&self.shell) else {
+                return false;
+            };
+            ui.heading(title);
+            let selected = self.surface.selected();
+            let mut clicked: Option<usize> = None;
+            egui::ScrollArea::vertical().id_salt("list-overlay").show(ui, |ui| {
+                if rows.is_empty() {
+                    ui.label("(none)");
+                }
+                for (i, row) in rows.into_iter().enumerate() {
+                    if ui.selectable_label(i == selected, row).clicked() {
+                        clicked = Some(i);
+                    }
+                }
+            });
+            if let Some(i) = clicked {
+                self.surface.jump_list_row(&self.shell, i);
+            }
+            true
+        }
+
         fn list_pane(&mut self, ui: &mut egui::Ui) {
             const PAGE: usize = 40;
             let (offset, rows) = self.surface.view_window(&self.shell, PAGE);

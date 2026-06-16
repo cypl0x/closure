@@ -1463,7 +1463,37 @@ impl ModalApp {
             }
             "down" | "j" => self.selected = (self.selected + 1).min(len.saturating_sub(1)),
             "up" | "k" => self.selected = self.selected.saturating_sub(1),
+            "enter" => self.jump_list_row(shell, self.selected),
             _ => {}
+        }
+    }
+
+    /// Activate row `i` on the active list surface: navigate Browse to
+    /// the target headline (agenda: by id; blocks: first headline of the
+    /// block's file) and return to Browse. Out-of-range just returns to
+    /// Browse. No-op shape on non-list surfaces.
+    pub fn jump_list_row(&mut self, shell: &Shell, i: usize) {
+        let target_path = match self.surface {
+            ModalSurface::Agenda => {
+                let id = shell.vault.agenda().into_iter().nth(i).map(|e| e.id);
+                self.surface = ModalSurface::Browse;
+                self.selected = 0;
+                if let Some(id) = id
+                    && let Some(idx) = self.rows(shell).iter().position(|r| r.id == id)
+                {
+                    self.selected = idx;
+                }
+                return;
+            }
+            ModalSurface::Blocks => self.block_rows(shell).into_iter().nth(i).map(|(p, _, _)| p),
+            _ => None,
+        };
+        self.surface = ModalSurface::Browse;
+        self.selected = 0;
+        if let Some(path) = target_path
+            && let Some(idx) = self.rows(shell).iter().position(|r| r.path == path)
+        {
+            self.selected = idx;
         }
     }
 

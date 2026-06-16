@@ -437,3 +437,47 @@ fn block_list_escape_returns_to_browse() {
     app.on_key(&mut sh, "escape", false, false, None);
     assert_eq!(app.surface(), ModalSurface::Browse);
 }
+
+// === R1 click-to-jump: activating an agenda/block row returns to
+// Browse with the target headline/file selected. ===
+
+#[test]
+fn agenda_enter_jumps_to_the_headline() {
+    let (_d, mut sh) = agenda_shell();
+    let mut app = ModalApp::new(InputMode::Vim);
+    app.on_key(&mut sh, "g", false, false, Some('g'));
+    app.on_key(&mut sh, "a", false, false, Some('a')); // agenda; row 0 = "Ship it"
+    app.on_key(&mut sh, "enter", false, false, None);
+    assert_eq!(app.surface(), ModalSurface::Browse);
+    let rows = app.rows(&sh);
+    assert_eq!(rows[app.selected()].title, "Ship it");
+}
+
+#[test]
+fn blocks_enter_jumps_to_the_file() {
+    let dir = tempfile::tempdir().expect("tmp");
+    fs::write(dir.path().join("a.org"), "* Aye\nprose\n").expect("w");
+    fs::write(
+        dir.path().join("b.org"),
+        "* Bee\n#+BEGIN_SRC rust\nfn x() {}\n#+END_SRC\n",
+    )
+    .expect("w");
+    let v = Vault::open(dir.path()).expect("open");
+    let mut sh = Shell::new(v);
+    let mut app = ModalApp::new(InputMode::Vim);
+    app.on_key(&mut sh, "e", false, false, Some('e')); // block-list (one block, in b.org)
+    app.on_key(&mut sh, "enter", false, false, None);
+    assert_eq!(app.surface(), ModalSurface::Browse);
+    let rows = app.rows(&sh);
+    assert!(rows[app.selected()].path.ends_with("b.org"), "jumped to block's file");
+}
+
+#[test]
+fn list_jump_out_of_range_is_safe() {
+    let (_d, mut sh) = agenda_shell();
+    let mut app = ModalApp::new(InputMode::Vim);
+    app.on_key(&mut sh, "g", false, false, Some('g'));
+    app.on_key(&mut sh, "a", false, false, Some('a'));
+    app.jump_list_row(&sh, 999); // no panic, returns to Browse
+    assert_eq!(app.surface(), ModalSurface::Browse);
+}
