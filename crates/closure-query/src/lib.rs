@@ -451,6 +451,8 @@ pub struct ViewSpec {
     pub sort: Vec<SortKey>,
     /// Row filters, AND-combined. Empty = no filtering.
     pub filter: Vec<Filter>,
+    /// Optional view name (`:name`), for picking among saved views.
+    pub name: Option<String>,
 }
 
 impl ViewSpec {
@@ -466,6 +468,7 @@ impl ViewSpec {
         let mut columns = vec![Column::Title, Column::Todo];
         let mut sort: Vec<SortKey> = Vec::new();
         let mut filter: Vec<Filter> = Vec::new();
+        let mut name: Option<String> = None;
         let mut tokens = params.split_whitespace();
         while let Some(tok) = tokens.next() {
             let value = tokens.next().unwrap_or("");
@@ -498,6 +501,7 @@ impl ViewSpec {
                         .collect();
                 }
                 ":filter" => filter.push(Filter::parse(value)?),
+                ":name" => name = Some(value.to_owned()),
                 other => return Err(ViewError::UnknownDirective(other.to_owned())),
             }
         }
@@ -506,6 +510,7 @@ impl ViewSpec {
             columns,
             sort,
             filter,
+            name,
         })
     }
 
@@ -560,6 +565,39 @@ impl ViewSpec {
             .map(|m| self.columns.iter().map(|c| c.extract(m.headline)).collect())
             .collect()
     }
+}
+
+/// Enumerate the vault's saved database views.
+///
+/// Every `#+BEGIN: closure-view <params>` dynamic block becomes a
+/// `(name, ViewSpec)`, in document + line order. The name comes from the
+/// block's `:name` param, falling back to `view-N` (its 0-based
+/// position). A malformed block fails the whole batch.
+///
+/// # Errors
+///
+/// Propagates the first [`ViewError`] from any block's params.
+pub fn views(vault: &Vault) -> Result<Vec<(String, ViewSpec)>, ViewError> {
+    let mut out: Vec<(String, ViewSpec)> = Vec::new();
+    for (_path, doc) in vault.iter() {
+        for line in doc.source().lines() {
+            let trimmed = line.trim_start();
+            // Case-insensitive `#+BEGIN: closure-view` prefix.
+            let lower = trimmed.to_ascii_lowercase();
+            let Some(rest) = lower.strip_prefix("#+begin: closure-view") else {
+                continue;
+            };
+            // Params are the original-case remainder after the keyword.
+            let params = trimmed[trimmed.len() - rest.len()..].trim();
+            let spec = ViewSpec::parse(params)?;
+            let name = spec
+                .name
+                .clone()
+                .unwrap_or_else(|| format!("view-{}", out.len()));
+            out.push((name, spec));
+        }
+    }
+    Ok(out)
 }
 
 /// Render header + rows as an aligned org-mode table.

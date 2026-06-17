@@ -296,3 +296,50 @@ fn single_key_sort_still_works() {
     let titles: Vec<String> = spec.cells(&v).into_iter().map(|r| r[0].clone()).collect();
     assert_eq!(titles, vec!["Apple".to_owned(), "Mango".to_owned(), "Zebra".to_owned()]);
 }
+
+// === D4 multiple named views enumerated from the vault. ===
+
+fn views_vault() -> (TempDir, Vault) {
+    let dir = tempfile::tempdir().expect("tempdir");
+    fs::write(
+        dir.path().join("db.org"),
+        "* Notes\n\
+         #+BEGIN: closure-view :name Work :from tag:work :columns title\n#+END:\n\
+         #+BEGIN: closure-view :from all :columns title,todo\n#+END:\n\
+         * TODO Ship parser :work:\n",
+    )
+    .expect("write");
+    let v = Vault::open(dir.path()).expect("open");
+    (dir, v)
+}
+
+#[test]
+fn enumerates_views_in_order_with_names() {
+    let (_d, v) = views_vault();
+    let views = closure_query::views(&v).expect("enumerate");
+    assert_eq!(views.len(), 2, "two closure-view blocks");
+    assert_eq!(views[0].0, "Work", "name from :name param");
+    assert!(!views[1].0.is_empty(), "second gets a default name");
+    // The named spec carries its parsed source.
+    assert!(matches!(views[0].1.from, closure_query::Source::Tag(ref t) if t == "work"));
+}
+
+#[test]
+fn no_view_blocks_yields_empty() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    fs::write(dir.path().join("a.org"), "* Just a heading\n").expect("write");
+    let v = Vault::open(dir.path()).expect("open");
+    assert!(closure_query::views(&v).expect("ok").is_empty());
+}
+
+#[test]
+fn malformed_view_block_fails_the_batch() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    fs::write(
+        dir.path().join("a.org"),
+        "#+BEGIN: closure-view :bogus x\n#+END:\n",
+    )
+    .expect("write");
+    let v = Vault::open(dir.path()).expect("open");
+    assert!(closure_query::views(&v).is_err(), "malformed block errors the batch");
+}

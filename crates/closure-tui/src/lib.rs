@@ -1413,6 +1413,7 @@ fn sync_app(app: &mut App, vault: &Vault) {
             columns: Vec::new(),
             sort: Vec::new(),
             filter: Vec::new(),
+            name: None,
         });
     let rows: Vec<(String, Vec<String>)> = spec
         .rows(vault)
