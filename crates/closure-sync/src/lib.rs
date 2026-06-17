@@ -38,11 +38,15 @@ impl SyncSession {
         }
     }
 
-    /// Fold a local snapshot of `doc` into this session: bumps the
-    /// clock and snapshots at the new logical time so local edits
-    /// outrank older registers, then merges into the accumulated state.
+    /// Fold a local snapshot of `doc` into this session. Bumps the
+    /// clock and snapshots `doc` *against* the accumulated replica at
+    /// the new logical time: only fields that actually changed advance
+    /// their timestamp, so an untouched field never outranks a
+    /// concurrent edit on another peer (the key to convergence).
     pub fn record_local(&mut self, doc: &Document) {
-        let snap = Replica::snapshot_with_clock(doc, &mut self.clock, &self.name);
+        self.clock.bump(&self.name);
+        let ts = self.clock.logical_time();
+        let snap = Replica::snapshot_against(&self.replica, doc, ts);
         self.replica.merge(&snap);
     }
 
@@ -82,6 +86,55 @@ impl SyncSession {
     /// [`CrdtError`] when a kernel command refuses an edit.
     pub fn apply_to(&self, doc: &mut Document) -> Result<usize, CrdtError> {
         self.replica.apply_to(doc)
+    }
+}
+
+/// In-memory loopback link between two [`SyncSession`] peers.
+///
+/// A shared pair of one-shot mailboxes carrying a [`Replica`] each way
+/// — the hermetic stand-in for a network link, which the iroh transport
+/// mirrors over the wire instead of in process.
+#[derive(Debug, Default)]
+pub struct LoopbackPair {
+    a_to_b: Option<Replica>,
+    b_to_a: Option<Replica>,
+}
+
+impl LoopbackPair {
+    /// New empty link.
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Peer A publishes its replica toward B.
+    pub fn push_a(&mut self, a: &SyncSession) {
+        self.a_to_b = Some(a.outgoing().clone());
+    }
+    /// Peer B publishes its replica toward A.
+    pub fn push_b(&mut self, b: &SyncSession) {
+        self.b_to_a = Some(b.outgoing().clone());
+    }
+    /// Peer A consumes + merges whatever B published (no-op if empty).
+    pub fn pull_a(&mut self, a: &mut SyncSession) {
+        if let Some(r) = self.b_to_a.take() {
+            a.receive(&r);
+        }
+    }
+    /// Peer B consumes + merges whatever A published (no-op if empty).
+    pub fn pull_b(&mut self, b: &mut SyncSession) {
+        if let Some(r) = self.a_to_b.take() {
+            b.receive(&r);
+        }
+    }
+
+    /// One full sync round: both peers publish, then both consume +
+    /// merge. After this, the two sessions have converged.
+    pub fn sync_round(&mut self, a: &mut SyncSession, b: &mut SyncSession) {
+        self.push_a(a);
+        self.push_b(b);
+        self.pull_a(a);
+        self.pull_b(b);
     }
 }
 
