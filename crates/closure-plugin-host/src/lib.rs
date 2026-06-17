@@ -188,6 +188,72 @@ impl WasmRuntime {
         func.call(&mut store, ())
             .map_err(|e| PluginError::UndefinedImport(format!("{export} trapped: {e}")))
     }
+
+    /// Run a plugin module's `entry` export, capturing the command names
+    /// it requests through the one host import it is given —
+    /// `closure.run_command(ptr, len)`, which reads a UTF-8 command name
+    /// from the guest's own exported `memory`. This is the I8 boundary:
+    /// the guest has no `Document` import and no shared host state, so it
+    /// can only *request* registered commands by name — never mutate the
+    /// document directly. Each requested name is gated against
+    /// `registry`; an unknown name is rejected.
+    ///
+    /// Returns the requested (and registry-valid) command names in order.
+    ///
+    /// # Errors
+    ///
+    /// [`PluginError::Load`] on a malformed module / instantiation / trap;
+    /// [`PluginError::UndefinedImport`] when the guest requests a command
+    /// the `registry` does not know.
+    pub fn run_with_commands(
+        &self,
+        bytes: &[u8],
+        entry: &str,
+        registry: &closure_core::Registry,
+    ) -> Result<Vec<String>, PluginError> {
+        let module = wasmtime::Module::new(&self.engine, bytes)
+            .map_err(|e| PluginError::Load(e.to_string()))?;
+        let mut store = wasmtime::Store::new(&self.engine, Vec::<String>::new());
+        let mut linker = wasmtime::Linker::new(&self.engine);
+        linker
+            .func_wrap(
+                "closure",
+                "run_command",
+                |mut caller: wasmtime::Caller<'_, Vec<String>>, ptr: i32, len: i32| {
+                    let Some(wasmtime::Extern::Memory(mem)) = caller.get_export("memory") else {
+                        return;
+                    };
+                    let data = mem.data(&caller);
+                    let start = usize::try_from(ptr).unwrap_or(usize::MAX);
+                    let end = start.saturating_add(usize::try_from(len).unwrap_or(0));
+                    let name = data
+                        .get(start..end)
+                        .and_then(|b| std::str::from_utf8(b).ok())
+                        .map(ToOwned::to_owned);
+                    if let Some(name) = name {
+                        caller.data_mut().push(name);
+                    }
+                },
+            )
+            .map_err(|e| PluginError::Load(e.to_string()))?;
+        let instance = linker
+            .instantiate(&mut store, &module)
+            .map_err(|e| PluginError::Load(e.to_string()))?;
+        let func = instance
+            .get_typed_func::<(), ()>(&mut store, entry)
+            .map_err(|e| PluginError::UndefinedImport(format!("{entry}: {e}")))?;
+        func.call(&mut store, ())
+            .map_err(|e| PluginError::Load(format!("{entry} trapped: {e}")))?;
+        let requested = store.into_data();
+        for name in &requested {
+            if registry.get(name).is_none() {
+                return Err(PluginError::UndefinedImport(format!(
+                    "plugin requested unknown command `{name}`"
+                )));
+            }
+        }
+        Ok(requested)
+    }
 }
 
 /// The argv used to run a plugin executable: `.wasm` files run under
