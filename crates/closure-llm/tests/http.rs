@@ -59,3 +59,22 @@ fn connection_refused_errors_without_panic() {
     let provider = HttpProvider::new("http://127.0.0.1:1/api".to_owned());
     assert!(provider.complete("x").is_err(), "refused -> error, no panic");
 }
+
+// === L2: Ollama over the real HTTP client, against the mock server. ===
+
+#[test]
+fn ollama_http_sends_model_and_prompt_and_extracts_response() {
+    use closure_llm::ollama_http;
+    let listener = TcpListener::bind("127.0.0.1:0").expect("bind");
+    let addr = listener.local_addr().expect("addr");
+    let handle = serve_once(listener, "200 OK", r#"{"response":"hi there"}"#);
+
+    let provider = ollama_http(&format!("http://{addr}"), "llama3");
+    let out = provider.complete("summarize my notes").expect("complete");
+    assert_eq!(out, "hi there", "extracts the Ollama response field");
+
+    let body = handle.join().expect("join");
+    assert!(body.contains("llama3"), "request carries the model: {body}");
+    assert!(body.contains("summarize my notes"), "request carries the prompt: {body}");
+    assert!(body.contains("\"stream\":false"), "non-streaming request");
+}

@@ -248,6 +248,24 @@ pub fn ollama(host: &str, _model: &str) -> CurlProvider {
     }
 }
 
+/// Self-contained [`HttpProvider`] for a local Ollama server.
+///
+/// Plain HTTP, no auth, no TLS — the hermetic, dependency-free path.
+/// Uses the same `ollama_body` (model `llama3`, non-streaming) +
+/// `extract_ollama_response` as [`ollama`]. `host` is e.g.
+/// `http://127.0.0.1:11434`.
+#[must_use]
+pub fn ollama_http(host: &str, _model: &str) -> HttpProvider {
+    HttpProvider {
+        url: format!("{host}/api/generate"),
+        headers: vec!["content-type: application/json".into()],
+        body: ollama_body,
+        extract: |s| {
+            extract_ollama_response(s).ok_or_else(|| LlmError::Provider("no response".into()))
+        },
+    }
+}
+
 fn anthropic_body(p: &str) -> String {
     format!(
         "{{\"model\":\"claude-sonnet-4-6\",\"max_tokens\":1024,\"messages\":[{{\"role\":\"user\",\"content\":{prompt}}}]}}",
