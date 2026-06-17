@@ -86,7 +86,7 @@ struct BlockState {
 /// CRDT-side view of a document: per-block field registers that can
 /// be merged with another replica and reconciled back into a
 /// [`Document`] through kernel commands.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Replica {
     blocks: HashMap<BlockId, BlockState>,
 }
@@ -216,6 +216,86 @@ impl Replica {
         }
         Ok(changed)
     }
+
+    /// Encode this replica to a self-describing little-endian byte
+    /// buffer so a transport can ship it: a `u32` block count, then per
+    /// block the id, title `(ts, value)` and body `(ts, value)`, each
+    /// scalar length-prefixed. Pairs with [`Self::decode`].
+    #[must_use]
+    pub fn encode(&self) -> Vec<u8> {
+        fn put_str(out: &mut Vec<u8>, s: &str) {
+            out.extend_from_slice(&u32::try_from(s.len()).unwrap_or(u32::MAX).to_le_bytes());
+            out.extend_from_slice(s.as_bytes());
+        }
+        let mut out = Vec::new();
+        out.extend_from_slice(&u32::try_from(self.blocks.len()).unwrap_or(u32::MAX).to_le_bytes());
+        for (id, st) in &self.blocks {
+            put_str(&mut out, id.as_str());
+            out.extend_from_slice(&st.title.ts.to_le_bytes());
+            put_str(&mut out, &st.title.value);
+            out.extend_from_slice(&st.body.ts.to_le_bytes());
+            put_str(&mut out, &st.body.value);
+        }
+        out
+    }
+
+    /// Decode a buffer produced by [`Self::encode`].
+    ///
+    /// # Errors
+    ///
+    /// [`CrdtError::Decode`] on a truncated or malformed buffer (never
+    /// panics).
+    pub fn decode(bytes: &[u8]) -> Result<Self, CrdtError> {
+        let mut cur = Cursor { buf: bytes, pos: 0 };
+        let n = cur.u32()?;
+        let mut blocks = HashMap::new();
+        for _ in 0..n {
+            let id = cur.string()?;
+            let title = Register {
+                ts: cur.u64()?,
+                value: cur.string()?,
+            };
+            let body = Register {
+                ts: cur.u64()?,
+                value: cur.string()?,
+            };
+            blocks.insert(BlockId::from_existing(&id), BlockState { title, body });
+        }
+        Ok(Self { blocks })
+    }
+}
+
+/// Bounds-checked little-endian reader for [`Replica::decode`].
+struct Cursor<'a> {
+    buf: &'a [u8],
+    pos: usize,
+}
+
+impl Cursor<'_> {
+    fn take(&mut self, n: usize) -> Result<&[u8], CrdtError> {
+        let end = self.pos.checked_add(n).ok_or_else(|| CrdtError::Decode("overflow".into()))?;
+        let slice = self
+            .buf
+            .get(self.pos..end)
+            .ok_or_else(|| CrdtError::Decode("unexpected end of buffer".into()))?;
+        self.pos = end;
+        Ok(slice)
+    }
+    fn u32(&mut self) -> Result<u32, CrdtError> {
+        let b: [u8; 4] = self.take(4)?.try_into().map_err(|_| CrdtError::Decode("u32".into()))?;
+        Ok(u32::from_le_bytes(b))
+    }
+    fn u64(&mut self) -> Result<u64, CrdtError> {
+        let b: [u8; 8] = self.take(8)?.try_into().map_err(|_| CrdtError::Decode("u64".into()))?;
+        Ok(u64::from_le_bytes(b))
+    }
+    fn string(&mut self) -> Result<String, CrdtError> {
+        let len = self.u32()? as usize;
+        let bytes = self.take(len)?;
+        std::str::from_utf8(bytes)
+            .map(ToOwned::to_owned)
+            .map_err(|_| CrdtError::Decode("invalid utf-8".into()))
+    }
 }
 
 /// Merge errors.
@@ -227,4 +307,7 @@ pub enum CrdtError {
     /// A kernel command refused a reconciliation edit.
     #[error("apply: {0}")]
     Apply(String),
+    /// A wire buffer could not be decoded into a [`Replica`].
+    #[error("decode: {0}")]
+    Decode(String),
 }
