@@ -130,7 +130,8 @@ const TOOLS: &[(&str, &str)] = &[
 /// `-32601` error. Mutations go through [`Vault::run_tool`] (I8).
 #[must_use]
 pub fn handle_message(vault: &mut closure_store::Vault, json: &str) -> Option<String> {
-    let id = raw_field(json, "id")?;
+    use closure_jsonrpc::{json_escape, string_field};
+    let id = closure_jsonrpc::raw_field(json, "id")?;
     let method = string_field(json, "method").unwrap_or_default();
     let result = match method.as_str() {
         "initialize" => "{\"protocolVersion\":\"2024-11-05\",\"capabilities\":{\"tools\":{}},\
@@ -163,77 +164,9 @@ pub fn handle_message(vault: &mut closure_store::Vault, json: &str) -> Option<St
                 json_escape(&text)
             )
         }
-        _ => {
-            return Some(format!(
-                "{{\"jsonrpc\":\"2.0\",\"id\":{id},\"error\":\
-                 {{\"code\":-32601,\"message\":\"method not found\"}}}}"
-            ));
-        }
+        _ => return Some(closure_jsonrpc::method_not_found(&id)),
     };
-    Some(format!(
-        "{{\"jsonrpc\":\"2.0\",\"id\":{id},\"result\":{result}}}"
-    ))
-}
-
-/// Raw token after `"key":` — number, string (with quotes), etc.
-fn raw_field(json: &str, key: &str) -> Option<String> {
-    let needle = format!("\"{key}\"");
-    let at = json.find(&needle)?;
-    let rest = json[at + needle.len()..].trim_start();
-    let rest = rest.strip_prefix(':')?.trim_start();
-    if rest.starts_with('"') {
-        return string_value(rest).map(|s| format!("\"{}\"", json_escape(&s)));
-    }
-    let end = rest.find([',', '}', ']']).unwrap_or(rest.len());
-    let tok = rest[..end].trim();
-    if tok.is_empty() {
-        None
-    } else {
-        Some(tok.to_owned())
-    }
-}
-
-/// Unescaped string value after `"key":`.
-fn string_field(json: &str, key: &str) -> Option<String> {
-    let needle = format!("\"{key}\"");
-    let at = json.find(&needle)?;
-    let rest = json[at + needle.len()..].trim_start();
-    string_value(rest.strip_prefix(':')?.trim_start())
-}
-
-/// Parse a JSON string literal at the start of `s`, unescaping.
-fn string_value(s: &str) -> Option<String> {
-    let mut chars = s.strip_prefix('"')?.chars();
-    let mut out = String::new();
-    while let Some(c) = chars.next() {
-        match c {
-            '"' => return Some(out),
-            '\\' => match chars.next()? {
-                'n' => out.push('\n'),
-                't' => out.push('\t'),
-                'r' => out.push('\r'),
-                other => out.push(other),
-            },
-            other => out.push(other),
-        }
-    }
-    None
-}
-
-/// Escape a string for embedding in a JSON literal.
-fn json_escape(s: &str) -> String {
-    let mut out = String::with_capacity(s.len());
-    for c in s.chars() {
-        match c {
-            '"' => out.push_str("\\\""),
-            '\\' => out.push_str("\\\\"),
-            '\n' => out.push_str("\\n"),
-            '\t' => out.push_str("\\t"),
-            '\r' => out.push_str("\\r"),
-            other => out.push(other),
-        }
-    }
-    out
+    Some(closure_jsonrpc::response(&id, &result))
 }
 
 /// Run the JSON-RPC MCP server over a reader/writer.

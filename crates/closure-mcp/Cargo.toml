@@ -15,6 +15,7 @@ workspace = true
 closure-core = { path = "../closure-core" }
 thiserror.workspace = true
 closure-store = { path = "../closure-store" }
+closure-jsonrpc = { path = "../closure-jsonrpc" }
 
 [dev-dependencies]
 tempfile = "3"

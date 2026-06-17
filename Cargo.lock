@@ -1082,6 +1082,7 @@ name = "closure-a2a"
 version = "0.0.0"
 dependencies = [
  "closure-core",
+ "closure-jsonrpc",
  "closure-store",
  "proptest",
  "tempfile",
@@ -1093,6 +1094,7 @@ name = "closure-acp"
 version = "0.0.0"
 dependencies = [
  "closure-core",
+ "closure-jsonrpc",
  "closure-store",
  "tempfile",
  "thiserror 2.0.18",
@@ -1184,6 +1186,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "closure-jsonrpc"
+version = "0.0.0"
+
+[[package]]
 name = "closure-llm"
 version = "0.0.0"
 dependencies = [
@@ -1198,6 +1204,7 @@ name = "closure-lsp"
 version = "0.0.0"
 dependencies = [
  "closure-core",
+ "closure-jsonrpc",
  "closure-store",
  "tempfile",
  "thiserror 2.0.18",
@@ -1215,6 +1222,7 @@ name = "closure-mcp"
 version = "0.0.0"
 dependencies = [
  "closure-core",
+ "closure-jsonrpc",
  "closure-store",
  "tempfile",
  "thiserror 2.0.18",

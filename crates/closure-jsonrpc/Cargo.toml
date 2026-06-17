@@ -1,0 +1,12 @@
+[package]
+name = "closure-jsonrpc"
+description = "Lean, serde-free JSON field extraction + JSON-RPC envelope helpers shared by the MCP/ACP/A2A/LSP bridges (Layer 6)."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[lints]
+workspace = true

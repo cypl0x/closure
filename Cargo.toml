@@ -17,6 +17,7 @@ members = [
   "crates/closure-crdt",
   "crates/closure-sync",
   "crates/closure-llm",
+  "crates/closure-jsonrpc",
   "crates/closure-mcp",
   "crates/closure-lsp",
   "crates/closure-acp",
