@@ -167,6 +167,27 @@ impl WasmRuntime {
             .map_err(|e| PluginError::Load(e.to_string()))?;
         Ok(())
     }
+
+    /// Instantiate `bytes` and call the exported, no-argument function
+    /// `export` returning an `i32`.
+    ///
+    /// # Errors
+    ///
+    /// [`PluginError::Load`] on a malformed module or instantiation
+    /// failure; [`PluginError::UndefinedImport`] when `export` is
+    /// missing or not an `() -> i32` function, or it traps.
+    pub fn call_i32(&self, bytes: &[u8], export: &str) -> Result<i32, PluginError> {
+        let module = wasmtime::Module::new(&self.engine, bytes)
+            .map_err(|e| PluginError::Load(e.to_string()))?;
+        let mut store = wasmtime::Store::new(&self.engine, ());
+        let instance = wasmtime::Instance::new(&mut store, &module, &[])
+            .map_err(|e| PluginError::Load(e.to_string()))?;
+        let func = instance
+            .get_typed_func::<(), i32>(&mut store, export)
+            .map_err(|e| PluginError::UndefinedImport(format!("{export}: {e}")))?;
+        func.call(&mut store, ())
+            .map_err(|e| PluginError::UndefinedImport(format!("{export} trapped: {e}")))
+    }
 }
 
 /// The argv used to run a plugin executable: `.wasm` files run under

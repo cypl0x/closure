@@ -27,3 +27,19 @@ fn accepts_wat_with_a_function() {
     rt.instantiate(b"(module (func (export \"noop\")))")
         .expect("module with a func instantiates");
 }
+
+#[test]
+fn calls_an_exported_i32_function() {
+    let rt = WasmRuntime::new();
+    let wat = b"(module (func (export \"answer\") (result i32) i32.const 42))";
+    let got = rt.call_i32(wat, "answer").expect("call answer");
+    assert_eq!(got, 42);
+}
+
+#[test]
+fn missing_export_errors_cleanly() {
+    let rt = WasmRuntime::new();
+    let wat = b"(module (func (export \"answer\") (result i32) i32.const 1))";
+    let err = rt.call_i32(wat, "nope");
+    assert!(err.is_err(), "missing export must error, not panic");
+}
