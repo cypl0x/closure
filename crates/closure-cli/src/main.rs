@@ -2879,22 +2879,21 @@ fn build_llm_provider(
         .llm_model
         .clone()
         .unwrap_or_else(|| default_model.to_owned());
-    let key = || std::env::var(&key_env).map_err(|_| format!("{key_env} not set"));
-    let provider: Box<dyn closure_llm::Provider> = match cfg.llm_provider.as_deref() {
-        Some("echo") => Box::new(closure_llm::EchoProvider),
-        Some("openai") => Box::new(closure_llm::openai(&key()?, &model)),
-        Some("ollama") => {
-            // Ollama's OpenAI-compatible endpoint (default localhost:11434), no auth key.
-            let mut p = closure_llm::CurlProvider::new(
-                "http://localhost:11434/v1/chat/completions".to_owned(),
-            );
-            p.headers = vec![];
-            p.extract = |s| Ok(s.to_owned());
-            Box::new(p)
+    let kind = closure_llm::provider_kind(cfg.llm_provider.as_deref());
+    // Ollama/Echo need no key; OpenAI/Anthropic read it from the env var.
+    let key = match kind {
+        closure_llm::ProviderKind::OpenAi | closure_llm::ProviderKind::Anthropic => {
+            closure_llm::resolve_key(&key_env).ok_or_else(|| format!("{key_env} not set"))?
         }
-        _ => Box::new(closure_llm::anthropic(&key()?, &model)),
+        _ => String::new(),
     };
-    Ok(provider)
+    // Local Ollama uses the self-contained HTTP client (no TLS, no key).
+    Ok(closure_llm::build_provider(
+        kind,
+        &model,
+        "http://localhost:11434",
+        &key,
+    ))
 }
 
 /// Execute one tool line for the LLM loop: enforce the optional

@@ -26,6 +26,61 @@ pub trait Provider {
     fn complete(&self, prompt: &str) -> Result<String, LlmError>;
 }
 
+/// Which provider a configured `llm_provider` name selects.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ProviderKind {
+    /// Echo (no network, no key) — also the default when unset.
+    Echo,
+    /// Local Ollama over the self-contained HTTP client (no key).
+    Ollama,
+    /// OpenAI-compatible HTTPS (curl path, BYOK).
+    OpenAi,
+    /// Anthropic HTTPS (curl path, BYOK).
+    Anthropic,
+}
+
+/// Map an `llm_provider` config name to a [`ProviderKind`]. Unset and
+/// `echo` select [`ProviderKind::Echo`] (no key required); an unknown
+/// name falls back to [`ProviderKind::Anthropic`] (BYOK).
+#[must_use]
+pub fn provider_kind(name: Option<&str>) -> ProviderKind {
+    match name {
+        None | Some("echo") => ProviderKind::Echo,
+        Some("ollama") => ProviderKind::Ollama,
+        Some("openai") => ProviderKind::OpenAi,
+        _ => ProviderKind::Anthropic,
+    }
+}
+
+/// Read an API key from the named environment variable. The key lives
+/// only in the environment — never in the config / org file. Returns
+/// `None` when the variable is unset.
+#[must_use]
+pub fn resolve_key(env_var: &str) -> Option<String> {
+    std::env::var(env_var).ok()
+}
+
+/// Build a boxed [`Provider`] for `kind`.
+///
+/// Ollama uses the self-contained [`HttpProvider`] at `ollama_host`;
+/// OpenAI/Anthropic use the [`CurlProvider`] HTTPS path with `key` (read
+/// from the environment by the caller via [`resolve_key`]); Echo needs
+/// neither.
+#[must_use]
+pub fn build_provider(
+    kind: ProviderKind,
+    model: &str,
+    ollama_host: &str,
+    key: &str,
+) -> Box<dyn Provider> {
+    match kind {
+        ProviderKind::Echo => Box::new(EchoProvider),
+        ProviderKind::Ollama => Box::new(ollama_http(ollama_host, model)),
+        ProviderKind::OpenAi => Box::new(openai(key, model)),
+        ProviderKind::Anthropic => Box::new(anthropic(key, model)),
+    }
+}
+
 /// LLM adapter error.
 #[derive(Debug, Error)]
 pub enum LlmError {
