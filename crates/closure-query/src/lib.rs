@@ -313,6 +313,53 @@ impl Column {
             Self::Property(k) => h.property(k).unwrap_or("").to_owned(),
         }
     }
+
+    /// Typed sort key for `h`: numeric for [`Self::Level`], lexical for
+    /// every other column. Lets a view sort 2 < 10 instead of "10" <
+    /// "2".
+    #[must_use]
+    pub fn sort_val(&self, h: &DocHeadline) -> SortVal {
+        match self {
+            Self::Level => SortVal::Num(i64::from(h.level())),
+            _ => SortVal::Text(self.extract(h)),
+        }
+    }
+}
+
+/// A typed, comparable cell value for sorting. Within a single column
+/// every row produces the same variant, so cross-variant ordering is
+/// never observed.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub enum SortVal {
+    /// Numeric key (e.g. outline level).
+    Num(i64),
+    /// Lexical key.
+    Text(String),
+}
+
+/// One sort key: a column and a direction.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SortKey {
+    /// Column to order by.
+    pub column: Column,
+    /// Descending when true (`:sort -col`), ascending otherwise.
+    pub descending: bool,
+}
+
+impl SortKey {
+    /// Parse a single sort token: a leading `-` means descending.
+    fn parse(token: &str) -> Self {
+        token.strip_prefix('-').map_or_else(
+            || Self {
+                column: Column::parse(token),
+                descending: false,
+            },
+            |rest| Self {
+                column: Column::parse(rest),
+                descending: true,
+            },
+        )
+    }
 }
 
 /// An org-defined database view: parsed from the params of a
@@ -324,8 +371,8 @@ pub struct ViewSpec {
     pub from: Source,
     /// Columns, left to right.
     pub columns: Vec<Column>,
-    /// Optional sort column (string ascending).
-    pub sort: Option<Column>,
+    /// Sort keys, applied in order (typed + directional). Empty = none.
+    pub sort: Vec<SortKey>,
     /// Optional `column = value` row filter.
     pub filter: Option<(Column, String)>,
 }
@@ -341,7 +388,7 @@ impl ViewSpec {
     pub fn parse(params: &str) -> Result<Self, ViewError> {
         let mut from = Source::All;
         let mut columns = vec![Column::Title, Column::Todo];
-        let mut sort = None;
+        let mut sort: Vec<SortKey> = Vec::new();
         let mut filter = None;
         let mut tokens = params.split_whitespace();
         while let Some(tok) = tokens.next() {
@@ -367,7 +414,7 @@ impl ViewSpec {
                         .map(Column::parse)
                         .collect();
                 }
-                ":sort" => sort = Some(Column::parse(value)),
+                ":sort" => sort = vec![SortKey::parse(value)],
                 ":filter" => {
                     let (col, want) = value
                         .split_once('=')
@@ -412,21 +459,30 @@ impl ViewSpec {
         }
     }
 
-    /// Materialised cells: one `Vec<String>` per row, sorted by the
-    /// `:sort` column when present.
+    /// Materialised cells: one `Vec<String>` per row, ordered by the
+    /// `:sort` keys (typed + directional, applied in order as a stable
+    /// lexicographic ordering) when present.
     #[must_use]
     pub fn cells(&self, vault: &Vault) -> Vec<Vec<String>> {
-        let mut out: Vec<Vec<String>> = self
-            .rows(vault)
-            .iter()
-            .map(|m| self.columns.iter().map(|c| c.extract(m.headline)).collect())
-            .collect();
-        if let Some(sort) = &self.sort
-            && let Some(idx) = self.columns.iter().position(|c| c == sort)
-        {
-            out.sort_by(|a, b| a[idx].cmp(&b[idx]));
+        let mut rows = self.rows(vault);
+        if !self.sort.is_empty() {
+            rows.sort_by(|a, b| {
+                for key in &self.sort {
+                    let ord = key
+                        .column
+                        .sort_val(a.headline)
+                        .cmp(&key.column.sort_val(b.headline));
+                    let ord = if key.descending { ord.reverse() } else { ord };
+                    if ord != std::cmp::Ordering::Equal {
+                        return ord;
+                    }
+                }
+                std::cmp::Ordering::Equal
+            });
         }
-        out
+        rows.iter()
+            .map(|m| self.columns.iter().map(|c| c.extract(m.headline)).collect())
+            .collect()
     }
 }
 

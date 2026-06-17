@@ -1411,7 +1411,7 @@ fn sync_app(app: &mut App, vault: &Vault) {
         .unwrap_or_else(|_| closure_query::ViewSpec {
             from: closure_query::Source::All,
             columns: Vec::new(),
-            sort: None,
+            sort: Vec::new(),
             filter: None,
         });
     let rows: Vec<(String, Vec<String>)> = spec

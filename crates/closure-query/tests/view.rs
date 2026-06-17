@@ -154,3 +154,54 @@ fn render_empty_rows_is_header_only() {
     let lines: Vec<&str> = out.lines().collect();
     assert_eq!(lines, vec!["| a |", "|---|"]);
 }
+
+// === D1 typed + directional sort. ===
+
+fn level_vault() -> (TempDir, Vault) {
+    // Levels 1, 2, 10 (deep) so lexical vs numeric ordering differ.
+    let dir = tempfile::tempdir().expect("tempdir");
+    fs::write(
+        dir.path().join("n.org"),
+        "* L1\n** L2\n*** L3\n**** L4\n***** L5\n****** L6\n******* L7\n\
+         ******** L8\n********* L9\n********** L10\n",
+    )
+    .expect("write");
+    let v = Vault::open(dir.path()).expect("open");
+    (dir, v)
+}
+
+#[test]
+fn level_sort_is_numeric_not_lexical() {
+    let (_d, v) = level_vault();
+    let spec = ViewSpec::parse(":columns level,title :sort level").expect("parse");
+    let cells = spec.cells(&v);
+    let levels: Vec<&str> = cells.iter().map(|r| r[0].as_str()).collect();
+    // Numeric: 1,2,...,10. Lexical would put "10" right after "1".
+    assert_eq!(levels.first().copied(), Some("1"));
+    assert_eq!(levels.last().copied(), Some("10"));
+    let pos1 = levels.iter().position(|x| *x == "1").unwrap();
+    let pos2 = levels.iter().position(|x| *x == "2").unwrap();
+    let pos10 = levels.iter().position(|x| *x == "10").unwrap();
+    assert!(pos1 < pos2 && pos2 < pos10, "numeric order: {levels:?}");
+}
+
+#[test]
+fn descending_sort_reverses() {
+    let (_d, v) = vault();
+    let asc = ViewSpec::parse(":columns title :sort title").expect("parse");
+    let desc = ViewSpec::parse(":columns title :sort -title").expect("parse");
+    let mut a: Vec<String> = asc.cells(&v).into_iter().map(|r| r[0].clone()).collect();
+    let d: Vec<String> = desc.cells(&v).into_iter().map(|r| r[0].clone()).collect();
+    a.reverse();
+    assert_eq!(a, d, ":sort -title is the reverse of :sort title");
+}
+
+#[test]
+fn default_sort_is_ascending() {
+    let (_d, v) = vault();
+    let spec = ViewSpec::parse(":columns title :sort title").expect("parse");
+    let titles: Vec<String> = spec.cells(&v).into_iter().map(|r| r[0].clone()).collect();
+    let mut sorted = titles.clone();
+    sorted.sort();
+    assert_eq!(titles, sorted, "ascending by default");
+}
