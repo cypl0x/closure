@@ -9,7 +9,81 @@
 use std::path::PathBuf;
 use std::process::Command;
 
+use closure_core::{BlockId, Document};
+use closure_crdt::{CrdtError, Replica, VectorClock};
 use thiserror::Error;
+
+/// A peer's CRDT sync state: an accumulated [`Replica`] + [`VectorClock`].
+///
+/// Local edits are folded in via [`Self::record_local`]; a peer's
+/// replica is merged in via [`Self::receive`]. Merges are commutative +
+/// idempotent (LWW per block field), so any exchange order converges.
+/// Transport-agnostic — the loopback and iroh transports both just move
+/// the [`Replica`].
+#[derive(Debug, Clone, Default)]
+pub struct SyncSession {
+    replica: Replica,
+    clock: VectorClock,
+    name: String,
+}
+
+impl SyncSession {
+    /// New session for replica `name` (the clock's replica id).
+    #[must_use]
+    pub fn new(name: &str) -> Self {
+        Self {
+            replica: Replica::default(),
+            clock: VectorClock::new(name),
+            name: name.to_owned(),
+        }
+    }
+
+    /// Fold a local snapshot of `doc` into this session: bumps the
+    /// clock and snapshots at the new logical time so local edits
+    /// outrank older registers, then merges into the accumulated state.
+    pub fn record_local(&mut self, doc: &Document) {
+        let snap = Replica::snapshot_with_clock(doc, &mut self.clock, &self.name);
+        self.replica.merge(&snap);
+    }
+
+    /// The replica to ship to a peer.
+    #[must_use]
+    pub const fn outgoing(&self) -> &Replica {
+        &self.replica
+    }
+
+    /// Merge a peer's replica into this session (LWW per block field).
+    pub fn receive(&mut self, other: &Replica) {
+        self.replica.merge(other);
+    }
+
+    /// Block ids known to this session.
+    pub fn block_ids(&self) -> impl Iterator<Item = &BlockId> {
+        self.replica.block_ids()
+    }
+
+    /// Winning title for `id`.
+    #[must_use]
+    pub fn title_of(&self, id: &BlockId) -> Option<&str> {
+        self.replica.title_of(id)
+    }
+
+    /// Winning body for `id`.
+    #[must_use]
+    pub fn body_of(&self, id: &BlockId) -> Option<&str> {
+        self.replica.body_of(id)
+    }
+
+    /// Reconcile `doc` to this session's winning registers through
+    /// kernel commands (I8). Returns the number of edits applied.
+    ///
+    /// # Errors
+    ///
+    /// [`CrdtError`] when a kernel command refuses an edit.
+    pub fn apply_to(&self, doc: &mut Document) -> Result<usize, CrdtError> {
+        self.replica.apply_to(doc)
+    }
+}
 
 /// Sync transport trait.
 pub trait Transport {
