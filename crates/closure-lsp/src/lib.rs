@@ -11,7 +11,184 @@
 use std::io::{BufRead, BufReader};
 
 use closure_core::Registry;
+use closure_store::Vault;
 use thiserror::Error;
+
+/// Read one `Content-Length: N\r\n\r\n<body>` LSP frame from `input`,
+/// returning the JSON body. `None` at clean EOF.
+fn read_frame<R: BufRead>(input: &mut R) -> Result<Option<String>, LspError> {
+    let mut content_len: Option<usize> = None;
+    let mut header = String::new();
+    loop {
+        header.clear();
+        let n = input
+            .read_line(&mut header)
+            .map_err(|e| LspError::Transport(e.to_string()))?;
+        if n == 0 {
+            return Ok(None); // EOF before any header
+        }
+        let line = header.trim_end_matches(['\r', '\n']);
+        if line.is_empty() {
+            break; // end of headers
+        }
+        if let Some(v) = line.strip_prefix("Content-Length:") {
+            content_len = v.trim().parse().ok();
+        }
+    }
+    let len = content_len.ok_or_else(|| LspError::Transport("missing Content-Length".into()))?;
+    let mut buf = vec![0u8; len];
+    std::io::Read::read_exact(input, &mut buf).map_err(|e| LspError::Transport(e.to_string()))?;
+    String::from_utf8(buf)
+        .map(Some)
+        .map_err(|e| LspError::Transport(e.to_string()))
+}
+
+/// Write a JSON `body` as one LSP `Content-Length` frame.
+fn write_frame<W: std::io::Write>(out: &mut W, body: &str) -> Result<(), LspError> {
+    write!(out, "Content-Length: {}\r\n\r\n{body}", body.len())
+        .map_err(|e| LspError::Transport(e.to_string()))
+}
+
+/// Serve LSP over Content-Length-framed JSON-RPC on `input`/`output`.
+///
+/// Handles `initialize`, `textDocument/documentSymbol` (over
+/// [`document_symbols`], reading the doc through `vault`), and
+/// `shutdown`; everything else is a `-32601` error. Read-only — no
+/// mutation. Requests carrying an `id` get a framed response.
+///
+/// # Errors
+///
+/// [`LspError::Transport`] on IO / framing failure.
+pub fn serve<R: BufRead, W: std::io::Write>(
+    vault: &Vault,
+    mut input: R,
+    output: &mut W,
+) -> Result<(), LspError> {
+    while let Some(msg) = read_frame(&mut input)? {
+        if let Some(resp) = handle_message(vault, &msg) {
+            write_frame(output, &resp)?;
+        }
+    }
+    Ok(())
+}
+
+/// Handle one LSP JSON-RPC message; `None` for notifications (no `id`).
+#[must_use]
+pub fn handle_message(vault: &Vault, json: &str) -> Option<String> {
+    let id = raw_field(json, "id")?;
+    let method = string_field(json, "method").unwrap_or_default();
+    let result = match method.as_str() {
+        "initialize" => "{\"capabilities\":{\"documentSymbolProvider\":true},\
+             \"serverInfo\":{\"name\":\"closure\",\"version\":\"0.0.0\"}}"
+            .to_owned(),
+        "shutdown" => "null".to_owned(),
+        "textDocument/documentSymbol" => {
+            let uri = string_field(json, "uri").unwrap_or_default();
+            let rel = uri.strip_prefix("file://").unwrap_or(&uri);
+            let src = vault
+                .document_relative(std::path::Path::new(rel))
+                .map(closure_core::Document::source)
+                .unwrap_or_default();
+            let items: Vec<String> = document_symbols(&src)
+                .iter()
+                .map(|s| {
+                    let line = s.line;
+                    format!(
+                        "{{\"name\":\"{}\",\"kind\":6,\"range\":{{\"start\":\
+                         {{\"line\":{line},\"character\":0}},\"end\":\
+                         {{\"line\":{line},\"character\":0}}}},\"selectionRange\":\
+                         {{\"start\":{{\"line\":{line},\"character\":0}},\"end\":\
+                         {{\"line\":{line},\"character\":0}}}}}}",
+                        json_escape(&s.name),
+                    )
+                })
+                .collect();
+            format!("[{}]", items.join(","))
+        }
+        _ => {
+            return Some(format!(
+                "{{\"jsonrpc\":\"2.0\",\"id\":{id},\"error\":\
+                 {{\"code\":-32601,\"message\":\"method not found\"}}}}"
+            ));
+        }
+    };
+    Some(format!(
+        "{{\"jsonrpc\":\"2.0\",\"id\":{id},\"result\":{result}}}"
+    ))
+}
+
+/// Run the LSP server on stdio against `vault`.
+///
+/// # Errors
+///
+/// [`LspError::Transport`] on IO failure.
+pub fn serve_stdio(vault: &Vault) -> Result<(), LspError> {
+    let stdin = std::io::stdin();
+    let mut stdout = std::io::stdout();
+    let reader = BufReader::new(stdin.lock());
+    serve(vault, reader, &mut stdout)
+}
+
+/// Raw token after `"key":` (serde-free JSON helper; see ACP note).
+fn raw_field(json: &str, key: &str) -> Option<String> {
+    let needle = format!("\"{key}\"");
+    let at = json.find(&needle)?;
+    let rest = json[at + needle.len()..].trim_start();
+    let rest = rest.strip_prefix(':')?.trim_start();
+    if rest.starts_with('"') {
+        return string_value(rest).map(|s| format!("\"{}\"", json_escape(&s)));
+    }
+    let end = rest.find([',', '}', ']']).unwrap_or(rest.len());
+    let tok = rest[..end].trim();
+    if tok.is_empty() {
+        None
+    } else {
+        Some(tok.to_owned())
+    }
+}
+
+/// Unescaped string value after `"key":`.
+fn string_field(json: &str, key: &str) -> Option<String> {
+    let needle = format!("\"{key}\"");
+    let at = json.find(&needle)?;
+    let rest = json[at + needle.len()..].trim_start();
+    string_value(rest.strip_prefix(':')?.trim_start())
+}
+
+/// Parse a JSON string literal at the start of `s`, unescaping.
+fn string_value(s: &str) -> Option<String> {
+    let mut chars = s.strip_prefix('"')?.chars();
+    let mut out = String::new();
+    while let Some(c) = chars.next() {
+        match c {
+            '"' => return Some(out),
+            '\\' => match chars.next()? {
+                'n' => out.push('\n'),
+                't' => out.push('\t'),
+                'r' => out.push('\r'),
+                other => out.push(other),
+            },
+            other => out.push(other),
+        }
+    }
+    None
+}
+
+/// Escape a string for embedding in a JSON literal.
+fn json_escape(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for c in s.chars() {
+        match c {
+            '"' => out.push_str("\\\""),
+            '\\' => out.push_str("\\\\"),
+            '\n' => out.push_str("\\n"),
+            '\t' => out.push_str("\\t"),
+            '\r' => out.push_str("\\r"),
+            other => out.push(other),
+        }
+    }
+    out
+}
 
 /// LSP bridge error.
 #[derive(Debug, Error)]
