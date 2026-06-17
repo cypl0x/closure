@@ -217,6 +217,78 @@ impl LoopbackPair {
     }
 }
 
+/// A real network sync transport over std TCP.
+///
+/// Ships length-framed [`SyncMessage`] bytes between two peers and
+/// merges them into their [`SyncSession`]s, converging them. Uses only
+/// `std::net` (no async runtime, no heavy deps) so it is tested
+/// hermetically over `127.0.0.1` loopback. A QUIC/iroh transport is a
+/// future drop-in behind the same `SyncMessage` protocol (see ROADMAP
+/// Decisions).
+#[derive(Debug, Clone, Copy)]
+pub struct TcpSyncTransport;
+
+impl TcpSyncTransport {
+    fn write_frame(stream: &mut std::net::TcpStream, msg: &SyncMessage) -> Result<(), SyncError> {
+        use std::io::Write as _;
+        let bytes = msg.to_bytes();
+        let len = u32::try_from(bytes.len())
+            .map_err(|_| SyncError::Transport("message too large".into()))?;
+        stream
+            .write_all(&len.to_le_bytes())
+            .and_then(|()| stream.write_all(&bytes))
+            .map_err(|e| SyncError::Io(e.to_string()))
+    }
+
+    fn read_frame(stream: &mut std::net::TcpStream) -> Result<SyncMessage, SyncError> {
+        use std::io::Read as _;
+        let mut len_buf = [0u8; 4];
+        stream
+            .read_exact(&mut len_buf)
+            .map_err(|e| SyncError::Io(e.to_string()))?;
+        let len = u32::from_le_bytes(len_buf) as usize;
+        let mut buf = vec![0u8; len];
+        stream
+            .read_exact(&mut buf)
+            .map_err(|e| SyncError::Io(e.to_string()))?;
+        SyncMessage::from_bytes(&buf)
+    }
+
+    /// Connect to a serving peer at `addr`, send our session's message,
+    /// receive theirs, and merge it (a one-shot sync round, client side).
+    ///
+    /// # Errors
+    ///
+    /// [`SyncError`] on connect / IO / decode failure.
+    pub fn connect_and_sync(
+        addr: std::net::SocketAddr,
+        session: &mut SyncSession,
+    ) -> Result<(), SyncError> {
+        let mut stream = std::net::TcpStream::connect(addr).map_err(|e| SyncError::Io(e.to_string()))?;
+        Self::write_frame(&mut stream, &SyncMessage::from_session(session))?;
+        let theirs = Self::read_frame(&mut stream)?;
+        session.apply_message(&theirs);
+        Ok(())
+    }
+
+    /// Accept one peer on `listener`, receive their message, merge it,
+    /// and send ours back (a one-shot sync round, server side).
+    ///
+    /// # Errors
+    ///
+    /// [`SyncError`] on accept / IO / decode failure.
+    pub fn serve_once(
+        listener: &std::net::TcpListener,
+        session: &mut SyncSession,
+    ) -> Result<(), SyncError> {
+        let (mut stream, _) = listener.accept().map_err(|e| SyncError::Io(e.to_string()))?;
+        let theirs = Self::read_frame(&mut stream)?;
+        session.apply_message(&theirs);
+        Self::write_frame(&mut stream, &SyncMessage::from_session(session))?;
+        Ok(())
+    }
+}
+
 /// Sync transport trait.
 pub trait Transport {
     /// Send the vault state to the remote.
