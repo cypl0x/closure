@@ -804,13 +804,24 @@ enum Cmd {
         /// Path to the vault directory exposed as MCP tools.
         vault: PathBuf,
     },
-    /// Run the ACP stdio dispatcher (agent card + registry commands over
-    /// text protocol; JSON card served via `handle_message` for agent
-    /// discovery/handshake per ROADMAP).
-    Acp,
-    /// Run the A2A stdio dispatcher (task delegation surface for agent
-    /// swarms; `delegate_task` for roundtrip execution on peer vault).
-    A2a,
+    /// Run the ACP JSON-RPC server on stdio against a vault
+    /// (initialize / agent/card / tools/call). Quits on EOF.
+    Acp {
+        /// Path to the vault the agent acts on.
+        vault: PathBuf,
+    },
+    /// Run the A2A JSON-RPC server on stdio against a vault
+    /// (initialize / agent/card / task/delegate). Quits on EOF.
+    A2a {
+        /// Path to the vault tasks are delegated against.
+        vault: PathBuf,
+    },
+    /// Run the LSP server on stdio against a vault (Content-Length
+    /// framed: initialize / textDocument/documentSymbol / shutdown).
+    Lsp {
+        /// Path to the vault served to the editor.
+        vault: PathBuf,
+    },
     /// Print headlines that have no incoming `id:` links.
     Orphans {
         /// Path to the vault directory.
@@ -1275,8 +1286,9 @@ fn run(cmd: &Cmd) -> Result<(), String> {
         Cmd::SourceOnlyIds { file } => cmd_source_only_ids(file),
         Cmd::SinkOnlyIds { file } => cmd_sink_only_ids(file),
         Cmd::Mcp { vault } => cmd_mcp(vault),
-        Cmd::Acp => cmd_acp(),
-        Cmd::A2a => cmd_a2a(),
+        Cmd::Acp { vault } => cmd_acp(vault),
+        Cmd::A2a { vault } => cmd_a2a(vault),
+        Cmd::Lsp { vault } => cmd_lsp(vault),
         Cmd::Orphans { vault } => cmd_orphans(vault),
         Cmd::DeadLinks { vault } => cmd_dead_links(vault),
         Cmd::Hubs { vault, limit } => cmd_hubs(vault, *limit),
@@ -1710,14 +1722,19 @@ fn cmd_mcp(vault: &Path) -> Result<(), String> {
     closure_mcp::serve_jsonrpc_stdio(&mut v).map_err(|e| format!("{e}"))
 }
 
-fn cmd_acp() -> Result<(), String> {
-    let registry = closure_core::default_registry();
-    closure_acp::run_stdio(&registry).map_err(|e| format!("{e}"))
+fn cmd_acp(vault: &Path) -> Result<(), String> {
+    let mut v = Vault::open(vault).map_err(|e| format!("{e}"))?;
+    closure_acp::serve_jsonrpc_stdio(&mut v).map_err(|e| format!("{e}"))
 }
 
-fn cmd_a2a() -> Result<(), String> {
-    let registry = closure_core::default_registry();
-    closure_a2a::run_stdio(&registry).map_err(|e| format!("{e}"))
+fn cmd_a2a(vault: &Path) -> Result<(), String> {
+    let mut v = Vault::open(vault).map_err(|e| format!("{e}"))?;
+    closure_a2a::serve_jsonrpc_stdio(&mut v).map_err(|e| format!("{e}"))
+}
+
+fn cmd_lsp(vault: &Path) -> Result<(), String> {
+    let v = Vault::open(vault).map_err(|e| format!("{e}"))?;
+    closure_lsp::serve_stdio(&v).map_err(|e| format!("{e}"))
 }
 
 fn cmd_dead_links(vault: &Path) -> Result<(), String> {

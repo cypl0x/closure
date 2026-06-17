@@ -165,6 +165,66 @@ fn mcp_initialize_over_stdin() {
 }
 
 #[test]
+fn acp_initialize_over_stdin() {
+    let v = vault();
+    let mut child = Command::new(BIN)
+        .args(["acp", v.path().to_str().unwrap()])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .expect("spawn acp");
+    child
+        .stdin
+        .take()
+        .unwrap()
+        .write_all(b"{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"agent/card\"}\n")
+        .unwrap();
+    let out = child.wait_with_output().expect("acp output");
+    let s = String::from_utf8_lossy(&out.stdout);
+    assert!(s.contains("\"id\":1") && s.contains("tools"), "acp card reply: {s}");
+}
+
+#[test]
+fn a2a_initialize_over_stdin() {
+    let v = vault();
+    let mut child = Command::new(BIN)
+        .args(["a2a", v.path().to_str().unwrap()])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .expect("spawn a2a");
+    child
+        .stdin
+        .take()
+        .unwrap()
+        .write_all(b"{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\"}\n")
+        .unwrap();
+    let out = child.wait_with_output().expect("a2a output");
+    let s = String::from_utf8_lossy(&out.stdout);
+    assert!(s.contains("closure"), "a2a initialize reply: {s}");
+}
+
+#[test]
+fn lsp_initialize_framed_over_stdin() {
+    let v = vault();
+    let mut child = Command::new(BIN)
+        .args(["lsp", v.path().to_str().unwrap()])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .expect("spawn lsp");
+    let body = "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\"}";
+    let frame = format!("Content-Length: {}\r\n\r\n{body}", body.len());
+    child.stdin.take().unwrap().write_all(frame.as_bytes()).unwrap();
+    let out = child.wait_with_output().expect("lsp output");
+    let s = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        s.contains("Content-Length:") && s.contains("documentSymbolProvider"),
+        "lsp framed initialize reply: {s}"
+    );
+}
+
+#[test]
 fn ask_with_echo_provider_runs_the_tool_loop() {
     let v = vault();
     fs::write(

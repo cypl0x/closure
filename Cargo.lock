@@ -1111,6 +1111,7 @@ dependencies = [
  "closure-eval",
  "closure-input",
  "closure-llm",
+ "closure-lsp",
  "closure-markdown",
  "closure-mcp",
  "closure-org",
