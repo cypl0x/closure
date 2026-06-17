@@ -61,6 +61,20 @@ impl SyncSession {
         self.replica.merge(other);
     }
 
+    /// Merge a received [`SyncMessage`] into this session.
+    pub fn apply_message(&mut self, msg: &SyncMessage) {
+        self.replica.merge(msg.replica());
+    }
+
+    /// Winning title for the block whose id is `id` (string form), for
+    /// callers that hold the id as text rather than a [`BlockId`].
+    #[must_use]
+    pub fn title_of_str(&self, id: &str) -> Option<String> {
+        self.replica
+            .title_of(&BlockId::from_existing(id))
+            .map(ToOwned::to_owned)
+    }
+
     /// Block ids known to this session.
     pub fn block_ids(&self) -> impl Iterator<Item = &BlockId> {
         self.replica.block_ids()
@@ -86,6 +100,71 @@ impl SyncSession {
     /// [`CrdtError`] when a kernel command refuses an edit.
     pub fn apply_to(&self, doc: &mut Document) -> Result<usize, CrdtError> {
         self.replica.apply_to(doc)
+    }
+}
+
+/// Wire magic for a [`SyncMessage`] frame.
+const SYNC_MAGIC: &[u8; 4] = b"CLSY";
+/// Current sync wire-protocol version.
+const SYNC_VERSION: u8 = 1;
+
+/// A framed sync message a transport ships.
+///
+/// A 4-byte magic + 1-byte version header wrapping an encoded
+/// [`Replica`] (see [`Replica::encode`]). Transport-agnostic — the
+/// loopback and iroh transports both move these bytes.
+#[derive(Debug, Clone)]
+pub struct SyncMessage {
+    replica: Replica,
+}
+
+impl SyncMessage {
+    /// Build a message carrying `session`'s current replica.
+    #[must_use]
+    pub fn from_session(session: &SyncSession) -> Self {
+        Self {
+            replica: session.outgoing().clone(),
+        }
+    }
+
+    /// Serialise to the framed wire bytes (`magic | version | replica`).
+    #[must_use]
+    pub fn to_bytes(&self) -> Vec<u8> {
+        let mut out = Vec::with_capacity(5);
+        out.extend_from_slice(SYNC_MAGIC);
+        out.push(SYNC_VERSION);
+        out.extend_from_slice(&self.replica.encode());
+        out
+    }
+
+    /// Parse framed wire bytes back into a message.
+    ///
+    /// # Errors
+    ///
+    /// [`SyncError::Transport`] on a short buffer, a bad magic, an
+    /// unsupported version, or a malformed replica payload.
+    pub fn from_bytes(bytes: &[u8]) -> Result<Self, SyncError> {
+        let header = bytes
+            .get(..5)
+            .ok_or_else(|| SyncError::Transport("sync message too short".into()))?;
+        if &header[..4] != SYNC_MAGIC {
+            return Err(SyncError::Transport("bad sync magic".into()));
+        }
+        if header[4] != SYNC_VERSION {
+            return Err(SyncError::Transport(format!(
+                "unsupported sync version {}",
+                header[4]
+            )));
+        }
+        let replica =
+            Replica::decode(&bytes[5..]).map_err(|e| SyncError::Transport(e.to_string()))?;
+        Ok(Self { replica })
+    }
+
+    /// The carried replica.
+    #[must_use]
+    pub const fn replica(&self) -> &Replica {
+        &self.replica
     }
 }
 
