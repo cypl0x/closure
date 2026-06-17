@@ -1412,7 +1412,7 @@ fn sync_app(app: &mut App, vault: &Vault) {
             from: closure_query::Source::All,
             columns: Vec::new(),
             sort: Vec::new(),
-            filter: None,
+            filter: Vec::new(),
         });
     let rows: Vec<(String, Vec<String>)> = spec
         .rows(vault)

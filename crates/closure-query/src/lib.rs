@@ -246,6 +246,9 @@ pub enum ViewError {
     /// The `:from` value is not `all`, `tag:X`, `todo:X`, or `file:X`.
     #[error("bad source: {0}")]
     BadSource(String),
+    /// A `:filter` clause has no recognised operator (`= != ~ > <`).
+    #[error("bad filter: {0}")]
+    BadFilter(String),
 }
 
 /// Row source of a view.
@@ -337,6 +340,79 @@ pub enum SortVal {
     Text(String),
 }
 
+/// Comparison operator for a view [`Filter`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FilterOp {
+    /// `=` exact equality.
+    Eq,
+    /// `!=` inequality.
+    Ne,
+    /// `~` case-insensitive substring.
+    Contains,
+    /// `>` numeric greater-than (on a typed column).
+    Gt,
+    /// `<` numeric less-than (on a typed column).
+    Lt,
+}
+
+/// One row filter: `column <op> value`. Several are AND-combined.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Filter {
+    /// Column tested.
+    pub column: Column,
+    /// Comparison operator.
+    pub op: FilterOp,
+    /// Right-hand value.
+    pub value: String,
+}
+
+impl Filter {
+    /// Parse `col<op>value` (longest operators first). The column name
+    /// is everything before the operator; the value everything after.
+    fn parse(token: &str) -> Result<Self, ViewError> {
+        // Order matters: `!=` before `=`.
+        for (sym, op) in [
+            ("!=", FilterOp::Ne),
+            ("~", FilterOp::Contains),
+            (">", FilterOp::Gt),
+            ("<", FilterOp::Lt),
+            ("=", FilterOp::Eq),
+        ] {
+            if let Some((col, val)) = token.split_once(sym) {
+                return Ok(Self {
+                    column: Column::parse(col),
+                    op,
+                    value: val.to_owned(),
+                });
+            }
+        }
+        Err(ViewError::BadFilter(token.to_owned()))
+    }
+
+    /// Whether headline `h` passes this filter.
+    fn matches(&self, h: &DocHeadline) -> bool {
+        let cell = self.column.extract(h);
+        match self.op {
+            FilterOp::Eq => cell == self.value,
+            FilterOp::Ne => cell != self.value,
+            FilterOp::Contains => cell.to_lowercase().contains(&self.value.to_lowercase()),
+            FilterOp::Gt | FilterOp::Lt => {
+                match (cell.parse::<i64>(), self.value.parse::<i64>()) {
+                    (Ok(c), Ok(want)) => {
+                        if self.op == FilterOp::Gt {
+                            c > want
+                        } else {
+                            c < want
+                        }
+                    }
+                    // Non-numeric operands never satisfy a numeric compare.
+                    _ => false,
+                }
+            }
+        }
+    }
+}
+
 /// One sort key: a column and a direction.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SortKey {
@@ -373,8 +449,8 @@ pub struct ViewSpec {
     pub columns: Vec<Column>,
     /// Sort keys, applied in order (typed + directional). Empty = none.
     pub sort: Vec<SortKey>,
-    /// Optional `column = value` row filter.
-    pub filter: Option<(Column, String)>,
+    /// Row filters, AND-combined. Empty = no filtering.
+    pub filter: Vec<Filter>,
 }
 
 impl ViewSpec {
@@ -389,7 +465,7 @@ impl ViewSpec {
         let mut from = Source::All;
         let mut columns = vec![Column::Title, Column::Todo];
         let mut sort: Vec<SortKey> = Vec::new();
-        let mut filter = None;
+        let mut filter: Vec<Filter> = Vec::new();
         let mut tokens = params.split_whitespace();
         while let Some(tok) = tokens.next() {
             let value = tokens.next().unwrap_or("");
@@ -415,12 +491,7 @@ impl ViewSpec {
                         .collect();
                 }
                 ":sort" => sort = vec![SortKey::parse(value)],
-                ":filter" => {
-                    let (col, want) = value
-                        .split_once('=')
-                        .ok_or_else(|| ViewError::BadSource(value.to_owned()))?;
-                    filter = Some((Column::parse(col), want.to_owned()));
-                }
+                ":filter" => filter.push(Filter::parse(value)?),
                 other => return Err(ViewError::UnknownDirective(other.to_owned())),
             }
         }
@@ -450,13 +521,12 @@ impl ViewSpec {
                 .filter(|m| m.path.ends_with(f))
                 .collect(),
         };
-        match &self.filter {
-            None => base,
-            Some((col, want)) => base
-                .into_iter()
-                .filter(|m| col.extract(m.headline) == *want)
-                .collect(),
+        if self.filter.is_empty() {
+            return base;
         }
+        base.into_iter()
+            .filter(|m| self.filter.iter().all(|f| f.matches(m.headline)))
+            .collect()
     }
 
     /// Materialised cells: one `Vec<String>` per row, ordered by the
