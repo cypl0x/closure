@@ -95,6 +95,146 @@ pub fn delegate_task(vault: &mut Vault, task: &str) -> String {
     vault.run_tool(task)
 }
 
+/// Handle one A2A JSON-RPC message against a vault.
+///
+/// Returns the response line, or `None` for notifications (no `id`).
+/// Supported: `initialize`, `agent/card`, and `task/delegate` (its
+/// `task` string routed through [`delegate_task`] → `Vault::run_tool`,
+/// I8); everything else is a `-32601` error. Uses the same lean,
+/// serde-free JSON helpers as `closure_mcp`/`closure_acp` (triplicated
+/// for now — a shared extraction is a later cleanup).
+#[must_use]
+pub fn handle_message(vault: &mut Vault, json: &str) -> Option<String> {
+    let id = raw_field(json, "id")?;
+    let method = string_field(json, "method").unwrap_or_default();
+    let result = match method.as_str() {
+        "initialize" => "{\"protocolVersion\":\"2024-11-05\",\"capabilities\":{\"tasks\":{}},\
+             \"serverInfo\":{\"name\":\"closure\",\"version\":\"0.0.0\"}}"
+            .to_owned(),
+        "agent/card" => {
+            "{\"name\":\"closure\",\"version\":\"0.0.0\",\"skills\":[\"task/delegate\"]}".to_owned()
+        }
+        "task/delegate" => {
+            let task = string_field(json, "task").unwrap_or_default();
+            let text = delegate_task(vault, &task);
+            format!("{{\"text\":\"{}\"}}", json_escape(&text))
+        }
+        _ => {
+            return Some(format!(
+                "{{\"jsonrpc\":\"2.0\",\"id\":{id},\"error\":\
+                 {{\"code\":-32601,\"message\":\"method not found\"}}}}"
+            ));
+        }
+    };
+    Some(format!(
+        "{{\"jsonrpc\":\"2.0\",\"id\":{id},\"result\":{result}}}"
+    ))
+}
+
+/// Run the A2A JSON-RPC server over a reader/writer (one request per
+/// line; one response per request with an `id`). Mirrors
+/// [`closure_mcp`]'s serve loop.
+///
+/// # Errors
+///
+/// [`A2aError::Transport`] on IO failure.
+pub fn serve_jsonrpc<R: BufRead, W: std::io::Write>(
+    vault: &mut Vault,
+    mut input: R,
+    output: &mut W,
+) -> Result<(), A2aError> {
+    let mut line = String::new();
+    loop {
+        line.clear();
+        let n = input
+            .read_line(&mut line)
+            .map_err(|e| A2aError::Transport(e.to_string()))?;
+        if n == 0 {
+            break;
+        }
+        if line.trim().is_empty() {
+            continue;
+        }
+        if let Some(resp) = handle_message(vault, &line) {
+            writeln!(output, "{resp}").map_err(|e| A2aError::Transport(e.to_string()))?;
+        }
+    }
+    Ok(())
+}
+
+/// Run the A2A JSON-RPC server on stdio against `vault`.
+///
+/// # Errors
+///
+/// [`A2aError::Transport`] on IO failure.
+pub fn serve_jsonrpc_stdio(vault: &mut Vault) -> Result<(), A2aError> {
+    let stdin = std::io::stdin();
+    let mut stdout = std::io::stdout();
+    let reader = BufReader::new(stdin.lock());
+    serve_jsonrpc(vault, reader, &mut stdout)
+}
+
+/// Raw token after `"key":` (serde-free JSON helper; see module note).
+fn raw_field(json: &str, key: &str) -> Option<String> {
+    let needle = format!("\"{key}\"");
+    let at = json.find(&needle)?;
+    let rest = json[at + needle.len()..].trim_start();
+    let rest = rest.strip_prefix(':')?.trim_start();
+    if rest.starts_with('"') {
+        return string_value(rest).map(|s| format!("\"{}\"", json_escape(&s)));
+    }
+    let end = rest.find([',', '}', ']']).unwrap_or(rest.len());
+    let tok = rest[..end].trim();
+    if tok.is_empty() {
+        None
+    } else {
+        Some(tok.to_owned())
+    }
+}
+
+/// Unescaped string value after `"key":`.
+fn string_field(json: &str, key: &str) -> Option<String> {
+    let needle = format!("\"{key}\"");
+    let at = json.find(&needle)?;
+    let rest = json[at + needle.len()..].trim_start();
+    string_value(rest.strip_prefix(':')?.trim_start())
+}
+
+/// Parse a JSON string literal at the start of `s`, unescaping.
+fn string_value(s: &str) -> Option<String> {
+    let mut chars = s.strip_prefix('"')?.chars();
+    let mut out = String::new();
+    while let Some(c) = chars.next() {
+        match c {
+            '"' => return Some(out),
+            '\\' => match chars.next()? {
+                'n' => out.push('\n'),
+                't' => out.push('\t'),
+                'r' => out.push('\r'),
+                other => out.push(other),
+            },
+            other => out.push(other),
+        }
+    }
+    None
+}
+
+/// Escape a string for embedding in a JSON literal.
+fn json_escape(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for c in s.chars() {
+        match c {
+            '"' => out.push_str("\\\""),
+            '\\' => out.push_str("\\\\"),
+            '\n' => out.push_str("\\n"),
+            '\t' => out.push_str("\\t"),
+            '\r' => out.push_str("\\r"),
+            other => out.push(other),
+        }
+    }
+    out
+}
+
 /// Run a simulated swarm of N workers that drain a task queue (represented
 /// by stable `task_ids` of TODO headlines in the vault's org files).
 ///
