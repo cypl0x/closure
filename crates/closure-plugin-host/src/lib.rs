@@ -71,6 +71,66 @@ impl Host {
     pub fn manifests(&self) -> &[Manifest] {
         &self.plugins
     }
+
+    /// Load + run a wasm plugin described by `manifest` (its module
+    /// `bytes`, binary or WAT), gated by the manifest's `api_version`
+    /// against [`SUPPORTED_API_VERSION`]: an incompatible plugin is
+    /// rejected *before* it runs. On success the manifest is registered
+    /// and the command names the guest requested (through the I8 host
+    /// import, see [`WasmRuntime::run_with_commands`]) are returned.
+    ///
+    /// # Errors
+    ///
+    /// [`PluginError::Load`] when the manifest's `api_version` is
+    /// incompatible; otherwise the errors of
+    /// [`WasmRuntime::run_with_commands`].
+    #[cfg(feature = "wasmtime")]
+    pub fn run_wasm_manifest(
+        &mut self,
+        manifest: &Manifest,
+        bytes: &[u8],
+        entry: &str,
+        registry: &closure_core::Registry,
+    ) -> Result<Vec<String>, PluginError> {
+        if !api_compatible(SUPPORTED_API_VERSION, &manifest.api_version) {
+            return Err(PluginError::Load(format!(
+                "plugin `{}` targets API {} incompatible with host {SUPPORTED_API_VERSION}",
+                manifest.id, manifest.api_version
+            )));
+        }
+        let cmds = WasmRuntime::new().run_with_commands(bytes, entry, registry)?;
+        self.plugins.push(manifest.clone());
+        Ok(cmds)
+    }
+}
+
+/// The closure-core plugin API version this host supports. Plugins
+/// declare the `api_version` they target in their manifest; the host
+/// loads them only when [`api_compatible`] holds.
+pub const SUPPORTED_API_VERSION: &str = "0.1.0";
+
+/// Parse a dotted `MAJOR.MINOR.PATCH` into its three numbers.
+fn parse_semver(v: &str) -> Option<(u64, u64, u64)> {
+    let mut it = v.split('.');
+    let major = it.next()?.parse().ok()?;
+    let minor = it.next()?.parse().ok()?;
+    let patch = it.next()?.parse().ok()?;
+    if it.next().is_some() {
+        return None;
+    }
+    Some((major, minor, patch))
+}
+
+/// Whether a `plugin` API version is compatible with the `host`.
+///
+/// Same major version, and the plugin's minor is not newer than the
+/// host's (patch ignored). Unparseable versions are incompatible.
+#[must_use]
+pub fn api_compatible(host: &str, plugin: &str) -> bool {
+    match (parse_semver(host), parse_semver(plugin)) {
+        (Some((hmaj, hmin, _)), Some((pmaj, pmin, _))) => hmaj == pmaj && pmin <= hmin,
+        _ => false,
+    }
 }
 
 /// Parse a manifest from a `key = value` block.

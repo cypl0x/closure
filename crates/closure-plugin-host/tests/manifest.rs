@@ -32,3 +32,24 @@ fn host_collects_manifests() {
     });
     assert_eq!(h.manifests().len(), 1);
 }
+
+// === W4 API version gate: a plugin's manifest api_version must be
+// compatible with the host's supported API (same major; plugin minor
+// not newer than the host). Pure + hermetic (no wasmtime feature). ===
+
+#[test]
+fn supported_api_version_is_exposed() {
+    // The host advertises a concrete semver it accepts plugins against.
+    let v = closure_plugin_host::SUPPORTED_API_VERSION;
+    assert!(v.split('.').count() == 3, "semver MAJOR.MINOR.PATCH: {v}");
+}
+
+#[test]
+fn api_compatible_same_major_and_not_newer_minor() {
+    use closure_plugin_host::api_compatible;
+    assert!(api_compatible("0.3.0", "0.1.0"), "older plugin minor ok");
+    assert!(api_compatible("0.3.0", "0.3.2"), "same minor, any patch ok");
+    assert!(!api_compatible("0.3.0", "0.4.0"), "newer minor than host: no");
+    assert!(!api_compatible("1.0.0", "0.9.0"), "different major: no");
+    assert!(!api_compatible("0.3.0", "not-semver"), "garbage: no");
+}

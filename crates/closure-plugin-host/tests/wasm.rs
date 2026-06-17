@@ -86,3 +86,44 @@ fn guest_without_the_import_cannot_emit_any_command() {
     let cmds = rt.run_with_commands(wat, "main", &registry).expect("run");
     assert!(cmds.is_empty(), "no host import => no commands possible");
 }
+
+// === W4: load + run a wasm plugin from its Manifest, gated by the API
+// version (incompatible plugins are rejected before they run). ===
+
+#[test]
+fn run_wasm_manifest_runs_a_compatible_plugin() {
+    use closure_plugin_host::{Host, Manifest};
+    let registry = closure_core::default_registry();
+    let mut host = Host::new();
+    let manifest = Manifest {
+        id: "p".into(),
+        name: "P".into(),
+        api_version: closure_plugin_host::SUPPORTED_API_VERSION.to_owned(),
+        meta: std::collections::HashMap::new(),
+    };
+    let wat = br#"(module
+      (import "closure" "run_command" (func $run (param i32 i32)))
+      (memory (export "memory") 1)
+      (data (i32.const 0) "rename-headline")
+      (func (export "main") (call $run (i32.const 0) (i32.const 15))))"#;
+    let cmds = host
+        .run_wasm_manifest(&manifest, wat, "main", &registry)
+        .expect("compatible plugin runs");
+    assert_eq!(cmds, vec!["rename-headline".to_owned()]);
+}
+
+#[test]
+fn run_wasm_manifest_rejects_incompatible_api() {
+    use closure_plugin_host::{Host, Manifest};
+    let registry = closure_core::default_registry();
+    let mut host = Host::new();
+    let manifest = Manifest {
+        id: "p".into(),
+        name: "P".into(),
+        api_version: "999.0.0".into(), // wrong major
+        meta: std::collections::HashMap::new(),
+    };
+    let wat = br#"(module (func (export "main")))"#;
+    let err = host.run_wasm_manifest(&manifest, wat, "main", &registry);
+    assert!(err.is_err(), "incompatible api_version rejected before run");
+}
