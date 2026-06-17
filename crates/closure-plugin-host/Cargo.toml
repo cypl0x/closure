@@ -11,9 +11,21 @@ authors.workspace = true
 [lints]
 workspace = true
 
+[features]
+default = []
+# Embedded wasm runtime (opt-in; pulls wasmtime + cranelift). The
+# default workspace stays hermetic without it; the build gate lives in
+# the justfile (`just plugin-wasm`).
+wasmtime = ["dep:wasmtime"]
+
 [dependencies]
 closure-core = { path = "../closure-core" }
 thiserror.workspace = true
+wasmtime = { version = "45", optional = true, default-features = false, features = [
+  "cranelift",
+  "runtime",
+  "wat",
+] }
 
 [dev-dependencies]
 tempfile = "3"

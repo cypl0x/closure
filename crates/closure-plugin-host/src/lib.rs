@@ -122,6 +122,53 @@ pub enum PluginError {
     UndefinedImport(String),
 }
 
+/// Embedded wasm runtime over [`wasmtime`] (opt-in `wasmtime` feature).
+///
+/// Loads + runs sandboxed modules in-process. Accepts both binary wasm
+/// and WAT text (wasmtime auto-detects), so tests run hand-written WAT
+/// fixtures with no external toolchain. The default workspace build
+/// stays hermetic without this feature; the [process path](runner_for)
+/// is the feature-off fallback.
+#[cfg(feature = "wasmtime")]
+#[derive(Debug)]
+pub struct WasmRuntime {
+    engine: wasmtime::Engine,
+}
+
+#[cfg(feature = "wasmtime")]
+impl Default for WasmRuntime {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[cfg(feature = "wasmtime")]
+impl WasmRuntime {
+    /// Fresh runtime with a default [`wasmtime::Engine`].
+    #[must_use]
+    pub fn new() -> Self {
+        Self {
+            engine: wasmtime::Engine::default(),
+        }
+    }
+
+    /// Load and instantiate `bytes` (binary wasm or WAT text) with no
+    /// imports, proving the module is well-formed and self-contained.
+    ///
+    /// # Errors
+    ///
+    /// [`PluginError::Load`] on a malformed module or a failed
+    /// instantiation (e.g. unsatisfied imports).
+    pub fn instantiate(&self, bytes: &[u8]) -> Result<(), PluginError> {
+        let module = wasmtime::Module::new(&self.engine, bytes)
+            .map_err(|e| PluginError::Load(e.to_string()))?;
+        let mut store = wasmtime::Store::new(&self.engine, ());
+        wasmtime::Instance::new(&mut store, &module, &[])
+            .map_err(|e| PluginError::Load(e.to_string()))?;
+        Ok(())
+    }
+}
+
 /// The argv used to run a plugin executable: `.wasm` files run under
 /// an external `wasmtime` (sandboxed, no embedded runtime dep);
 /// anything else executes directly.

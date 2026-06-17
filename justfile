@@ -32,5 +32,13 @@ gui-egui:
 run-egui vault:
     cargo run -p closure-cli --features egui -- egui {{vault}}
 
+# Embedded wasm plugin runtime build + test gate (opt-in; pulls
+# wasmtime + cranelift). Hermetic (WAT fixtures run in-process); kept
+# out of the default `check` so that build stays light. Registry
+# reachable here (justfile), unlike the network-less flake sandbox.
+plugin-wasm:
+    cargo build -p closure-plugin-host --features wasmtime
+    cargo test -p closure-plugin-host --features wasmtime
+
 # Full local CI: everything above.
 ci: check fuzz wasm coverage
