@@ -103,6 +103,98 @@ impl Provider for CurlProvider {
     }
 }
 
+/// Self-contained HTTP/1.1 provider over `std::net` (no TLS, no deps).
+///
+/// POSTs the built body to a plain-HTTP endpoint and returns the
+/// extracted response. Suited to localhost services like Ollama; HTTPS
+/// APIs (Anthropic/OpenAI) use [`CurlProvider`] instead. Same
+/// url/headers/body/extract shape as [`CurlProvider`] so the per-API
+/// constructors can target either transport.
+pub struct HttpProvider {
+    /// Endpoint URL (`http://host[:port]/path`).
+    pub url: String,
+    /// Extra request headers (`Name: value`).
+    pub headers: Vec<String>,
+    /// Builds the request body from a prompt.
+    pub body: fn(&str) -> String,
+    /// Extracts the completion from the response body.
+    pub extract: fn(&str) -> Result<String, LlmError>,
+}
+
+impl HttpProvider {
+    /// New provider with a JSON-prompt body + passthrough extractor.
+    #[must_use]
+    pub fn new(url: String) -> Self {
+        Self {
+            url,
+            headers: vec!["content-type: application/json".into()],
+            body: |p| format!("{{\"prompt\": {}}}", json_string(p)),
+            extract: |s| Ok(s.to_owned()),
+        }
+    }
+}
+
+impl Provider for HttpProvider {
+    fn complete(&self, prompt: &str) -> Result<String, LlmError> {
+        let body = (self.body)(prompt);
+        let resp = http_post(&self.url, &self.headers, &body)?;
+        (self.extract)(&resp)
+    }
+}
+
+/// Parse `http://host[:port]/path` into `(host, port, path)`.
+fn parse_http_url(url: &str) -> Result<(String, u16, String), LlmError> {
+    let rest = url
+        .strip_prefix("http://")
+        .ok_or_else(|| LlmError::Provider(format!("not an http:// url: {url}")))?;
+    let (authority, path) = rest.split_once('/').map_or((rest, ""), |(a, p)| (a, p));
+    let (host, port) = authority.split_once(':').map_or_else(
+        || (authority.to_owned(), 80u16),
+        |(h, p)| (h.to_owned(), p.parse().unwrap_or(80)),
+    );
+    Ok((host, port, format!("/{path}")))
+}
+
+/// POST `body` to a plain-HTTP `url` with `headers`; return the response
+/// body on a 2xx status, else [`LlmError::Provider`]. No TLS.
+fn http_post(url: &str, headers: &[String], body: &str) -> Result<String, LlmError> {
+    use std::io::{Read as _, Write as _};
+    let (host, port, path) = parse_http_url(url)?;
+    let mut stream = std::net::TcpStream::connect((host.as_str(), port))
+        .map_err(|e| LlmError::Provider(e.to_string()))?;
+    let mut req = format!(
+        "POST {path} HTTP/1.1\r\nHost: {host}\r\nContent-Length: {}\r\nConnection: close\r\n",
+        body.len()
+    );
+    for h in headers {
+        req.push_str(h);
+        req.push_str("\r\n");
+    }
+    req.push_str("\r\n");
+    req.push_str(body);
+    stream
+        .write_all(req.as_bytes())
+        .map_err(|e| LlmError::Provider(e.to_string()))?;
+    let mut raw = String::new();
+    stream
+        .read_to_string(&mut raw)
+        .map_err(|e| LlmError::Provider(e.to_string()))?;
+    let status_ok = raw
+        .lines()
+        .next()
+        .and_then(|l| l.split_whitespace().nth(1))
+        .is_some_and(|code| code.starts_with('2'));
+    let resp_body = raw.split_once("\r\n\r\n").map_or("", |(_, b)| b).to_owned();
+    if status_ok {
+        Ok(resp_body)
+    } else {
+        Err(LlmError::Provider(format!(
+            "http status: {}",
+            raw.lines().next().unwrap_or("(no status line)")
+        )))
+    }
+}
+
 /// Configure a [`CurlProvider`] for an Anthropic `messages` endpoint.
 ///
 /// `api_key` becomes the `x-api-key` header. The default body uses
