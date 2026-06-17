@@ -246,3 +246,53 @@ fn multiple_filters_are_anded() {
 fn filter_without_operator_errors() {
     assert!(ViewSpec::parse(":filter titlevalue").is_err(), "no operator -> error");
 }
+
+// === D3 multi-key sort. ===
+
+fn todo_title_vault() -> (TempDir, Vault) {
+    let dir = tempfile::tempdir().expect("tempdir");
+    fs::write(
+        dir.path().join("t.org"),
+        "* TODO Zebra\n* TODO Apple\n* DONE Mango\n",
+    )
+    .expect("write");
+    let v = Vault::open(dir.path()).expect("open");
+    (dir, v)
+}
+
+#[test]
+fn multi_key_sort_ties_break_on_second_key() {
+    let (_d, v) = todo_title_vault();
+    // todo asc (DONE < TODO), then title asc within each group.
+    let spec = ViewSpec::parse(":columns todo,title :sort todo,title").expect("parse");
+    let rows: Vec<(String, String)> = spec
+        .cells(&v)
+        .into_iter()
+        .map(|r| (r[0].clone(), r[1].clone()))
+        .collect();
+    assert_eq!(
+        rows,
+        vec![
+            ("DONE".to_owned(), "Mango".to_owned()),
+            ("TODO".to_owned(), "Apple".to_owned()),
+            ("TODO".to_owned(), "Zebra".to_owned()),
+        ]
+    );
+}
+
+#[test]
+fn multi_key_sort_mixed_directions() {
+    let (_d, v) = todo_title_vault();
+    // todo asc, then title DESC within the TODO group.
+    let spec = ViewSpec::parse(":columns todo,title :sort todo,-title").expect("parse");
+    let titles: Vec<String> = spec.cells(&v).into_iter().map(|r| r[1].clone()).collect();
+    assert_eq!(titles, vec!["Mango".to_owned(), "Zebra".to_owned(), "Apple".to_owned()]);
+}
+
+#[test]
+fn single_key_sort_still_works() {
+    let (_d, v) = todo_title_vault();
+    let spec = ViewSpec::parse(":columns title :sort title").expect("parse");
+    let titles: Vec<String> = spec.cells(&v).into_iter().map(|r| r[0].clone()).collect();
+    assert_eq!(titles, vec!["Apple".to_owned(), "Mango".to_owned(), "Zebra".to_owned()]);
+}

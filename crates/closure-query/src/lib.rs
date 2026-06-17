@@ -490,7 +490,13 @@ impl ViewSpec {
                         .map(Column::parse)
                         .collect();
                 }
-                ":sort" => sort = vec![SortKey::parse(value)],
+                ":sort" => {
+                    sort = value
+                        .split(',')
+                        .filter(|t| !t.is_empty())
+                        .map(SortKey::parse)
+                        .collect();
+                }
                 ":filter" => filter.push(Filter::parse(value)?),
                 other => return Err(ViewError::UnknownDirective(other.to_owned())),
             }
