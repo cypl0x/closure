@@ -6,7 +6,7 @@
 
 use std::cell::RefCell;
 
-use closure_llm::{tool_loop, LlmError, Provider};
+use closure_llm::{LlmError, Provider, tool_loop};
 use closure_store::Vault;
 use tempfile::TempDir;
 
@@ -47,7 +47,10 @@ fn model_mutates_vault_only_through_the_registry() {
     // routes the command line through Vault::run_tool (the registry, I8).
     let answer = tool_loop(&provider, |cmd| v.run_tool(cmd), "capture a todo", 5).expect("loop");
 
-    assert_eq!(answer, "captured it", "loop returns the model's DONE answer");
+    assert_eq!(
+        answer, "captured it",
+        "loop returns the model's DONE answer"
+    );
     assert!(
         v.find_by_title("Buy milk").is_some(),
         "the CALL ran through the registry and changed the vault (I8)"

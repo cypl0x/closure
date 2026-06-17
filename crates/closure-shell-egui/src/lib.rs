@@ -45,8 +45,8 @@ pub fn run(_vault_path: &std::path::Path) -> Result<(), String> {
 mod window {
     use closure_config::{Config, InputMode};
     use closure_shell_core::{
-        App, BodySegment, Detail, HighlightKind, ModalApp, ModalSurface, Mode, Row, highlight_spans,
-        segment_body,
+        App, BodySegment, Detail, HighlightKind, ModalApp, ModalSurface, Mode, Row,
+        highlight_spans, segment_body,
     };
     use closure_store::Vault;
     use eframe::egui;
@@ -237,7 +237,9 @@ mod window {
                     ModalSurface::Agenda => "🗓 agenda".to_owned(),
                     ModalSurface::Blocks => "❮❯ code blocks".to_owned(),
                     ModalSurface::TagsEdit => format!("🏷 tags: {}", a.field_buffer()),
-                    ModalSurface::PropertyEdit => format!("＋ property (key value): {}", a.field_buffer()),
+                    ModalSurface::PropertyEdit => {
+                        format!("＋ property (key value): {}", a.field_buffer())
+                    }
                     ModalSurface::Browse => format!("[{:?}] browse", a.input_mode()),
                 },
             }
@@ -420,7 +422,8 @@ mod window {
                     {
                         match key {
                             egui::Key::Escape => {
-                                self.surface.on_named(&mut self.shell, "escape", false, false);
+                                self.surface
+                                    .on_named(&mut self.shell, "escape", false, false);
                             }
                             egui::Key::Enter if modifiers.ctrl && body => {
                                 self.surface.commit_edit_body(&mut self.shell);
@@ -536,11 +539,13 @@ mod window {
             if !prefix.is_empty() && !completions.is_empty() {
                 egui::TopBottomPanel::bottom("whichkey").show(ctx, |ui| {
                     ui.strong(format!("{prefix} →"));
-                    egui::ScrollArea::vertical().max_height(160.0).show(ui, |ui| {
-                        for (rest, cmd) in &completions {
-                            ui.label(format!("{prefix} {rest:8}  {cmd}"));
-                        }
-                    });
+                    egui::ScrollArea::vertical()
+                        .max_height(160.0)
+                        .show(ui, |ui| {
+                            for (rest, cmd) in &completions {
+                                ui.label(format!("{prefix} {rest:8}  {cmd}"));
+                            }
+                        });
                 });
             }
             egui::CentralPanel::default().show(ctx, |ui| {
@@ -576,16 +581,18 @@ mod window {
             ui.heading(title);
             let selected = self.surface.selected();
             let mut clicked: Option<usize> = None;
-            egui::ScrollArea::vertical().id_salt("list-overlay").show(ui, |ui| {
-                if rows.is_empty() {
-                    ui.label("(none)");
-                }
-                for (i, row) in rows.into_iter().enumerate() {
-                    if ui.selectable_label(i == selected, row).clicked() {
-                        clicked = Some(i);
+            egui::ScrollArea::vertical()
+                .id_salt("list-overlay")
+                .show(ui, |ui| {
+                    if rows.is_empty() {
+                        ui.label("(none)");
                     }
-                }
-            });
+                    for (i, row) in rows.into_iter().enumerate() {
+                        if ui.selectable_label(i == selected, row).clicked() {
+                            clicked = Some(i);
+                        }
+                    }
+                });
             if let Some(i) = clicked {
                 self.surface.jump_list_row(&self.shell, i);
             }
@@ -631,7 +638,8 @@ mod window {
                     self.surface.commit_edit_body(&mut self.shell);
                 }
                 if ui.button("✕ cancel (Esc)").clicked() {
-                    self.surface.on_named(&mut self.shell, "escape", false, false);
+                    self.surface
+                        .on_named(&mut self.shell, "escape", false, false);
                 }
             });
         }
@@ -663,7 +671,8 @@ mod window {
                     self.surface.commit_property(&mut self.shell);
                 }
                 if ui.button("✕ cancel (Esc)").clicked() {
-                    self.surface.on_named(&mut self.shell, "escape", false, false);
+                    self.surface
+                        .on_named(&mut self.shell, "escape", false, false);
                 }
             });
         }
@@ -677,8 +686,7 @@ mod window {
                     return;
                 };
                 ui.add(
-                    egui::TextEdit::singleline(app.tags_buffer_mut())
-                        .desired_width(f32::INFINITY),
+                    egui::TextEdit::singleline(app.tags_buffer_mut()).desired_width(f32::INFINITY),
                 );
             }
             ui.horizontal(|ui| {
@@ -686,7 +694,8 @@ mod window {
                     self.surface.commit_tags(&mut self.shell);
                 }
                 if ui.button("✕ cancel (Esc)").clicked() {
-                    self.surface.on_named(&mut self.shell, "escape", false, false);
+                    self.surface
+                        .on_named(&mut self.shell, "escape", false, false);
                 }
             });
         }

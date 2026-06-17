@@ -223,7 +223,10 @@ fn body_editor_escape_cancels() {
 #[test]
 fn emacs_binds_edit_body_to_c_c_e() {
     use closure_input::chord_for_command;
-    assert_eq!(chord_for_command(InputMode::Emacs, "edit-body"), Some("C-c e"));
+    assert_eq!(
+        chord_for_command(InputMode::Emacs, "edit-body"),
+        Some("C-c e")
+    );
     assert_eq!(chord_for_command(InputMode::Vim, "edit-body"), Some("i"));
 }
 
@@ -245,8 +248,16 @@ fn vim_g_prefix_lists_completions() {
     assert_eq!(app.pending_chord(), "g");
     let comp = app.completions();
     // vim binds "g g" -> first-file and "g a" -> agenda.
-    assert!(comp.iter().any(|(rest, cmd)| rest == "g" && cmd == "first-file"), "{comp:?}");
-    assert!(comp.iter().any(|(rest, cmd)| rest == "a" && cmd == "agenda"), "{comp:?}");
+    assert!(
+        comp.iter()
+            .any(|(rest, cmd)| rest == "g" && cmd == "first-file"),
+        "{comp:?}"
+    );
+    assert!(
+        comp.iter()
+            .any(|(rest, cmd)| rest == "a" && cmd == "agenda"),
+        "{comp:?}"
+    );
     // single-stroke bindings like "j" are NOT completions of "g".
     assert!(!comp.iter().any(|(_, cmd)| cmd == "next-file"));
 }
@@ -258,9 +269,19 @@ fn emacs_ctrl_x_prefix_lists_completions() {
     app.on_key(&mut sh, "x", true, false, None); // C-x pending
     assert_eq!(app.pending_chord(), "C-x");
     let comp = app.completions();
-    assert!(comp.iter().any(|(rest, cmd)| rest == "C-c" && cmd == "quit"), "{comp:?}");
-    assert!(comp.iter().any(|(rest, cmd)| rest == "u" && cmd == "undo"), "{comp:?}");
-    assert!(comp.iter().any(|(rest, cmd)| rest == "r" && cmd == "redo"), "{comp:?}");
+    assert!(
+        comp.iter()
+            .any(|(rest, cmd)| rest == "C-c" && cmd == "quit"),
+        "{comp:?}"
+    );
+    assert!(
+        comp.iter().any(|(rest, cmd)| rest == "u" && cmd == "undo"),
+        "{comp:?}"
+    );
+    assert!(
+        comp.iter().any(|(rest, cmd)| rest == "r" && cmd == "redo"),
+        "{comp:?}"
+    );
 }
 
 #[test]
@@ -370,7 +391,11 @@ fn agenda_lists_scheduled_and_deadline_sorted_by_date() {
     assert_eq!(app.surface(), ModalSurface::Agenda);
     let rows = app.agenda_rows(&sh);
     let titles: Vec<&str> = rows.iter().map(|(_, t, _)| t.as_str()).collect();
-    assert_eq!(titles, vec!["Ship it", "Pay rent"], "sorted by date: {rows:?}");
+    assert_eq!(
+        titles,
+        vec!["Ship it", "Pay rent"],
+        "sorted by date: {rows:?}"
+    );
     assert!(rows[0].0.contains("2026-06-20"), "date carried: {rows:?}");
 }
 
@@ -417,8 +442,14 @@ fn block_list_enumerates_code_blocks_with_language() {
     assert_eq!(app.surface(), ModalSurface::Blocks);
     let rows = app.block_rows(&sh);
     assert_eq!(rows.len(), 2, "{rows:?}");
-    assert!(rows.iter().any(|(_, lang, first)| lang == "rust" && first.contains("fn main")));
-    assert!(rows.iter().any(|(_, lang, first)| lang == "python" && first.contains("print(1)")));
+    assert!(
+        rows.iter()
+            .any(|(_, lang, first)| lang == "rust" && first.contains("fn main"))
+    );
+    assert!(
+        rows.iter()
+            .any(|(_, lang, first)| lang == "python" && first.contains("print(1)"))
+    );
 }
 
 #[test]
@@ -469,7 +500,10 @@ fn blocks_enter_jumps_to_the_file() {
     app.on_key(&mut sh, "enter", false, false, None);
     assert_eq!(app.surface(), ModalSurface::Browse);
     let rows = app.rows(&sh);
-    assert!(rows[app.selected()].path.ends_with("b.org"), "jumped to block's file");
+    assert!(
+        rows[app.selected()].path.ends_with("b.org"),
+        "jumped to block's file"
+    );
 }
 
 #[test]
@@ -508,8 +542,14 @@ fn vim_p_cycles_priority_on_selection() {
 #[test]
 fn emacs_c_c_t_cycles_todo() {
     use closure_input::chord_for_command;
-    assert_eq!(chord_for_command(InputMode::Emacs, "toggle-todo"), Some("C-c t"));
-    assert_eq!(chord_for_command(InputMode::Vim, "cycle-priority"), Some("p"));
+    assert_eq!(
+        chord_for_command(InputMode::Emacs, "toggle-todo"),
+        Some("C-c t")
+    );
+    assert_eq!(
+        chord_for_command(InputMode::Vim, "cycle-priority"),
+        Some("p")
+    );
     let (_d, mut sh) = shell();
     let mut app = ModalApp::new(InputMode::Emacs);
     app.on_key(&mut sh, "c", true, false, None); // C-c
@@ -548,7 +588,10 @@ fn modal_edit_property_commits_key_value() {
     }
     app.on_key(&mut sh, "enter", false, false, None);
     let props = app.detail(&sh).unwrap().properties;
-    assert!(props.iter().any(|(k, v)| k == "Status" && v == "active"), "{props:?}");
+    assert!(
+        props.iter().any(|(k, v)| k == "Status" && v == "active"),
+        "{props:?}"
+    );
 }
 
 #[test]

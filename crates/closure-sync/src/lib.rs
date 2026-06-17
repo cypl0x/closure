@@ -264,7 +264,8 @@ impl TcpSyncTransport {
         addr: std::net::SocketAddr,
         session: &mut SyncSession,
     ) -> Result<(), SyncError> {
-        let mut stream = std::net::TcpStream::connect(addr).map_err(|e| SyncError::Io(e.to_string()))?;
+        let mut stream =
+            std::net::TcpStream::connect(addr).map_err(|e| SyncError::Io(e.to_string()))?;
         Self::write_frame(&mut stream, &SyncMessage::from_session(session))?;
         let theirs = Self::read_frame(&mut stream)?;
         session.apply_message(&theirs);
@@ -281,7 +282,9 @@ impl TcpSyncTransport {
         listener: &std::net::TcpListener,
         session: &mut SyncSession,
     ) -> Result<(), SyncError> {
-        let (mut stream, _) = listener.accept().map_err(|e| SyncError::Io(e.to_string()))?;
+        let (mut stream, _) = listener
+            .accept()
+            .map_err(|e| SyncError::Io(e.to_string()))?;
         let theirs = Self::read_frame(&mut stream)?;
         session.apply_message(&theirs);
         Self::write_frame(&mut stream, &SyncMessage::from_session(session))?;

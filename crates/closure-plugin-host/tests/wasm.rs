@@ -11,7 +11,8 @@ use closure_plugin_host::WasmRuntime;
 fn loads_and_instantiates_a_trivial_module() {
     let rt = WasmRuntime::new();
     // Empty module — loads + instantiates with no imports.
-    rt.instantiate(b"(module)").expect("trivial module instantiates");
+    rt.instantiate(b"(module)")
+        .expect("trivial module instantiates");
 }
 
 #[test]

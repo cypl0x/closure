@@ -27,7 +27,10 @@ fn message_round_trip_drives_convergence_over_bytes() {
     a.apply_message(&SyncMessage::from_bytes(&wire_b).expect("parse"));
     assert_eq!(a.block_ids().count(), 2);
     assert_eq!(b.block_ids().count(), 2);
-    assert_eq!(b.title_of_str("01AAAAAAAAAAAAAAAAAAAAAAAA"), Some("Alpha".to_owned()));
+    assert_eq!(
+        b.title_of_str("01AAAAAAAAAAAAAAAAAAAAAAAA"),
+        Some("Alpha".to_owned())
+    );
 }
 
 #[test]

@@ -83,7 +83,9 @@ fn merge_is_idempotent() {
 fn apply_to_reconciles_a_document() {
     // A edits Alpha's title; sync to a peer holding the old Alpha doc.
     let mut pa = SyncSession::new("a");
-    pa.record_local(&doc("* Alpha v2\n:PROPERTIES:\n:ID: 01AAAAAAAAAAAAAAAAAAAAAAAA\n:END:\n"));
+    pa.record_local(&doc(
+        "* Alpha v2\n:PROPERTIES:\n:ID: 01AAAAAAAAAAAAAAAAAAAAAAAA\n:END:\n",
+    ));
     let mut target = doc(A); // old title "Alpha"
     let n = pa.apply_to(&mut target).expect("apply");
     assert!(n >= 1, "at least one edit applied");

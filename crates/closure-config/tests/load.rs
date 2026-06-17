@@ -254,11 +254,15 @@ fn theme_kind_maps_string_to_dark_or_light_defaulting_dark() {
     assert_eq!(c.theme_kind(), ThemeKind::Light);
     // Explicit dark + any other value -> Dark.
     assert_eq!(
-        Config::from_kv_block("theme = dark\n").expect("p").theme_kind(),
+        Config::from_kv_block("theme = dark\n")
+            .expect("p")
+            .theme_kind(),
         ThemeKind::Dark
     );
     assert_eq!(
-        Config::from_kv_block("theme = solarized\n").expect("p").theme_kind(),
+        Config::from_kv_block("theme = solarized\n")
+            .expect("p")
+            .theme_kind(),
         ThemeKind::Dark
     );
 }

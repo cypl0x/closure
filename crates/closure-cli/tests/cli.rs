@@ -181,7 +181,10 @@ fn acp_initialize_over_stdin() {
         .unwrap();
     let out = child.wait_with_output().expect("acp output");
     let s = String::from_utf8_lossy(&out.stdout);
-    assert!(s.contains("\"id\":1") && s.contains("tools"), "acp card reply: {s}");
+    assert!(
+        s.contains("\"id\":1") && s.contains("tools"),
+        "acp card reply: {s}"
+    );
 }
 
 #[test]
@@ -215,7 +218,12 @@ fn lsp_initialize_framed_over_stdin() {
         .expect("spawn lsp");
     let body = "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\"}";
     let frame = format!("Content-Length: {}\r\n\r\n{body}", body.len());
-    child.stdin.take().unwrap().write_all(frame.as_bytes()).unwrap();
+    child
+        .stdin
+        .take()
+        .unwrap()
+        .write_all(frame.as_bytes())
+        .unwrap();
     let out = child.wait_with_output().expect("lsp output");
     let s = String::from_utf8_lossy(&out.stdout);
     assert!(
@@ -290,7 +298,16 @@ fn file_inspection_commands_run() {
     let v = vault();
     let f = v.path().join("notes.org");
     let fp = f.to_str().unwrap();
-    for cmd in ["outline", "tree", "wc", "drawers", "tables", "leaves", "roots", "stats-file"] {
+    for cmd in [
+        "outline",
+        "tree",
+        "wc",
+        "drawers",
+        "tables",
+        "leaves",
+        "roots",
+        "stats-file",
+    ] {
         let _ = ok(&[cmd, fp]);
     }
     let _ = ok(&["head", fp, "--limit", "1"]);
@@ -300,7 +317,13 @@ fn file_inspection_commands_run() {
 fn vault_query_commands_run() {
     let v = vault();
     let vp = v.path().to_str().unwrap();
-    for cmd in ["todo-list", "archived", "comment-list", "scheduled", "deadlines"] {
+    for cmd in [
+        "todo-list",
+        "archived",
+        "comment-list",
+        "scheduled",
+        "deadlines",
+    ] {
         let _ = ok(&[cmd, vp]);
     }
     let g = ok(&["grep", vp, "parser"]);

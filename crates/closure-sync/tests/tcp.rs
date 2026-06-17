@@ -39,6 +39,12 @@ fn two_peers_converge_over_tcp_loopback() {
     // Both learned both blocks.
     assert_eq!(a.block_ids().count(), 2, "A converged");
     assert_eq!(b.block_ids().count(), 2, "B converged");
-    assert_eq!(a.title_of_str("01BBBBBBBBBBBBBBBBBBBBBBBB"), Some("Beta".to_owned()));
-    assert_eq!(b.title_of_str("01AAAAAAAAAAAAAAAAAAAAAAAA"), Some("Alpha".to_owned()));
+    assert_eq!(
+        a.title_of_str("01BBBBBBBBBBBBBBBBBBBBBBBB"),
+        Some("Beta".to_owned())
+    );
+    assert_eq!(
+        b.title_of_str("01AAAAAAAAAAAAAAAAAAAAAAAA"),
+        Some("Alpha".to_owned())
+    );
 }

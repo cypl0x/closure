@@ -33,7 +33,10 @@ fn initialize_card_and_delegate_over_buffers() {
     assert!(lines[1].contains("\"id\":2"));
     assert!(lines[2].contains("\"id\":3"));
     // I8: the delegated task ran through run_tool.
-    assert!(v.find_by_title("Delegated todo").is_some(), "delegate changed the vault");
+    assert!(
+        v.find_by_title("Delegated todo").is_some(),
+        "delegate changed the vault"
+    );
 }
 
 #[test]
@@ -43,14 +46,21 @@ fn unknown_method_returns_error() {
     let mut out: Vec<u8> = Vec::new();
     serve_jsonrpc(&mut v, input.as_bytes(), &mut out).expect("serve");
     let text = String::from_utf8(out).unwrap();
-    assert!(text.contains("-32601") && text.contains("\"id\":7"), "{text}");
+    assert!(
+        text.contains("-32601") && text.contains("\"id\":7"),
+        "{text}"
+    );
 }
 
 #[test]
 fn notification_without_id_silent() {
     let (_d, mut v) = vault();
     let mut out: Vec<u8> = Vec::new();
-    serve_jsonrpc(&mut v, b"{\"jsonrpc\":\"2.0\",\"method\":\"initialize\"}\n".as_slice(), &mut out)
-        .expect("serve");
+    serve_jsonrpc(
+        &mut v,
+        b"{\"jsonrpc\":\"2.0\",\"method\":\"initialize\"}\n".as_slice(),
+        &mut out,
+    )
+    .expect("serve");
     assert!(out.is_empty());
 }

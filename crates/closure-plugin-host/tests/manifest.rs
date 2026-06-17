@@ -49,7 +49,10 @@ fn api_compatible_same_major_and_not_newer_minor() {
     use closure_plugin_host::api_compatible;
     assert!(api_compatible("0.3.0", "0.1.0"), "older plugin minor ok");
     assert!(api_compatible("0.3.0", "0.3.2"), "same minor, any patch ok");
-    assert!(!api_compatible("0.3.0", "0.4.0"), "newer minor than host: no");
+    assert!(
+        !api_compatible("0.3.0", "0.4.0"),
+        "newer minor than host: no"
+    );
     assert!(!api_compatible("1.0.0", "0.9.0"), "different major: no");
     assert!(!api_compatible("0.3.0", "not-semver"), "garbage: no");
 }

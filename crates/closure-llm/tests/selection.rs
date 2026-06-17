@@ -3,12 +3,16 @@
 //! from config/org. No network.
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
-use closure_llm::{provider_kind, resolve_key, ProviderKind};
+use closure_llm::{ProviderKind, provider_kind, resolve_key};
 
 #[test]
 fn name_selects_provider_kind() {
     assert_eq!(provider_kind(Some("echo")), ProviderKind::Echo);
-    assert_eq!(provider_kind(None), ProviderKind::Echo, "unset -> echo (no key)");
+    assert_eq!(
+        provider_kind(None),
+        ProviderKind::Echo,
+        "unset -> echo (no key)"
+    );
     assert_eq!(provider_kind(Some("ollama")), ProviderKind::Ollama);
     assert_eq!(provider_kind(Some("openai")), ProviderKind::OpenAi);
     assert_eq!(provider_kind(Some("anthropic")), ProviderKind::Anthropic);

@@ -29,10 +29,17 @@ fn serves_initialize_card_and_tool_call_over_buffers() {
     let lines: Vec<&str> = text.lines().collect();
     assert_eq!(lines.len(), 3, "one response per request: {text}");
     assert!(lines[0].contains("\"id\":1") && lines[0].contains("closure"));
-    assert!(lines[1].contains("\"id\":2") && lines[1].contains("\"tools\""), "card: {}", lines[1]);
+    assert!(
+        lines[1].contains("\"id\":2") && lines[1].contains("\"tools\""),
+        "card: {}",
+        lines[1]
+    );
     assert!(lines[2].contains("\"id\":3"));
     // I8: the tools/call actually ran through the registry.
-    assert!(v.find_by_title("Buy milk").is_some(), "capture changed the vault");
+    assert!(
+        v.find_by_title("Buy milk").is_some(),
+        "capture changed the vault"
+    );
 }
 
 #[test]
@@ -51,5 +58,8 @@ fn unknown_method_returns_error() {
     let mut out: Vec<u8> = Vec::new();
     serve_jsonrpc(&mut v, input.as_bytes(), &mut out).expect("serve");
     let text = String::from_utf8(out).unwrap();
-    assert!(text.contains("-32601") && text.contains("\"id\":9"), "method-not-found: {text}");
+    assert!(
+        text.contains("-32601") && text.contains("\"id\":9"),
+        "method-not-found: {text}"
+    );
 }

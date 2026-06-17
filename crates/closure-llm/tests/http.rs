@@ -41,7 +41,10 @@ fn posts_body_and_returns_response_body() {
     assert_eq!(got, "pong", "provider returns the response body");
 
     let seen = handle.join().expect("join");
-    assert!(seen.contains("ping"), "server saw the posted body: {seen:?}");
+    assert!(
+        seen.contains("ping"),
+        "server saw the posted body: {seen:?}"
+    );
 }
 
 #[test]
@@ -57,7 +60,10 @@ fn non_200_status_errors_without_panic() {
 fn connection_refused_errors_without_panic() {
     // Port 1 is not listening; connect must fail cleanly.
     let provider = HttpProvider::new("http://127.0.0.1:1/api".to_owned());
-    assert!(provider.complete("x").is_err(), "refused -> error, no panic");
+    assert!(
+        provider.complete("x").is_err(),
+        "refused -> error, no panic"
+    );
 }
 
 // === L2: Ollama over the real HTTP client, against the mock server. ===
@@ -75,6 +81,9 @@ fn ollama_http_sends_model_and_prompt_and_extracts_response() {
 
     let body = handle.join().expect("join");
     assert!(body.contains("llama3"), "request carries the model: {body}");
-    assert!(body.contains("summarize my notes"), "request carries the prompt: {body}");
+    assert!(
+        body.contains("summarize my notes"),
+        "request carries the prompt: {body}"
+    );
     assert!(body.contains("\"stream\":false"), "non-streaming request");
 }

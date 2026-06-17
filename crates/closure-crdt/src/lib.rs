@@ -228,7 +228,11 @@ impl Replica {
             out.extend_from_slice(s.as_bytes());
         }
         let mut out = Vec::new();
-        out.extend_from_slice(&u32::try_from(self.blocks.len()).unwrap_or(u32::MAX).to_le_bytes());
+        out.extend_from_slice(
+            &u32::try_from(self.blocks.len())
+                .unwrap_or(u32::MAX)
+                .to_le_bytes(),
+        );
         for (id, st) in &self.blocks {
             put_str(&mut out, id.as_str());
             out.extend_from_slice(&st.title.ts.to_le_bytes());
@@ -273,7 +277,10 @@ struct Cursor<'a> {
 
 impl Cursor<'_> {
     fn take(&mut self, n: usize) -> Result<&[u8], CrdtError> {
-        let end = self.pos.checked_add(n).ok_or_else(|| CrdtError::Decode("overflow".into()))?;
+        let end = self
+            .pos
+            .checked_add(n)
+            .ok_or_else(|| CrdtError::Decode("overflow".into()))?;
         let slice = self
             .buf
             .get(self.pos..end)
@@ -282,11 +289,17 @@ impl Cursor<'_> {
         Ok(slice)
     }
     fn u32(&mut self) -> Result<u32, CrdtError> {
-        let b: [u8; 4] = self.take(4)?.try_into().map_err(|_| CrdtError::Decode("u32".into()))?;
+        let b: [u8; 4] = self
+            .take(4)?
+            .try_into()
+            .map_err(|_| CrdtError::Decode("u32".into()))?;
         Ok(u32::from_le_bytes(b))
     }
     fn u64(&mut self) -> Result<u64, CrdtError> {
-        let b: [u8; 8] = self.take(8)?.try_into().map_err(|_| CrdtError::Decode("u64".into()))?;
+        let b: [u8; 8] = self
+            .take(8)?
+            .try_into()
+            .map_err(|_| CrdtError::Decode("u64".into()))?;
         Ok(u64::from_le_bytes(b))
     }
     fn string(&mut self) -> Result<String, CrdtError> {

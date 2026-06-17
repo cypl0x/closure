@@ -213,7 +213,11 @@ fn contains_filter_matches_substring_case_insensitive() {
     let (_d, v) = vault();
     let spec = ViewSpec::parse(":columns title :filter title~SPEC").expect("parse");
     let titles: Vec<String> = spec.cells(&v).into_iter().map(|r| r[0].clone()).collect();
-    assert_eq!(titles, vec!["Write spec".to_owned()], "~ is case-insensitive substring");
+    assert_eq!(
+        titles,
+        vec!["Write spec".to_owned()],
+        "~ is case-insensitive substring"
+    );
 }
 
 #[test]
@@ -221,7 +225,10 @@ fn not_equal_filter_excludes() {
     let (_d, v) = vault();
     let spec = ViewSpec::parse(":columns title,todo :filter todo!=DONE").expect("parse");
     let todos: Vec<String> = spec.cells(&v).into_iter().map(|r| r[1].clone()).collect();
-    assert!(!todos.iter().any(|t| t == "DONE"), "DONE excluded: {todos:?}");
+    assert!(
+        !todos.iter().any(|t| t == "DONE"),
+        "DONE excluded: {todos:?}"
+    );
     assert!(todos.iter().any(|t| t == "TODO"), "TODO kept");
 }
 
@@ -229,7 +236,11 @@ fn not_equal_filter_excludes() {
 fn numeric_greater_than_on_level() {
     let (_d, v) = level_vault();
     let spec = ViewSpec::parse(":columns level :filter level>5 :sort level").expect("parse");
-    let levels: Vec<i64> = spec.cells(&v).into_iter().map(|r| r[0].parse().unwrap()).collect();
+    let levels: Vec<i64> = spec
+        .cells(&v)
+        .into_iter()
+        .map(|r| r[0].parse().unwrap())
+        .collect();
     assert_eq!(levels, vec![6, 7, 8, 9, 10], "only levels > 5: {levels:?}");
 }
 
@@ -237,14 +248,18 @@ fn numeric_greater_than_on_level() {
 fn multiple_filters_are_anded() {
     let (_d, v) = vault();
     // todo=TODO AND title contains "parser" -> only "Ship parser".
-    let spec = ViewSpec::parse(":columns title :filter todo=TODO :filter title~parser").expect("parse");
+    let spec =
+        ViewSpec::parse(":columns title :filter todo=TODO :filter title~parser").expect("parse");
     let titles: Vec<String> = spec.cells(&v).into_iter().map(|r| r[0].clone()).collect();
     assert_eq!(titles, vec!["Ship parser".to_owned()]);
 }
 
 #[test]
 fn filter_without_operator_errors() {
-    assert!(ViewSpec::parse(":filter titlevalue").is_err(), "no operator -> error");
+    assert!(
+        ViewSpec::parse(":filter titlevalue").is_err(),
+        "no operator -> error"
+    );
 }
 
 // === D3 multi-key sort. ===
@@ -286,7 +301,10 @@ fn multi_key_sort_mixed_directions() {
     // todo asc, then title DESC within the TODO group.
     let spec = ViewSpec::parse(":columns todo,title :sort todo,-title").expect("parse");
     let titles: Vec<String> = spec.cells(&v).into_iter().map(|r| r[1].clone()).collect();
-    assert_eq!(titles, vec!["Mango".to_owned(), "Zebra".to_owned(), "Apple".to_owned()]);
+    assert_eq!(
+        titles,
+        vec!["Mango".to_owned(), "Zebra".to_owned(), "Apple".to_owned()]
+    );
 }
 
 #[test]
@@ -294,7 +312,10 @@ fn single_key_sort_still_works() {
     let (_d, v) = todo_title_vault();
     let spec = ViewSpec::parse(":columns title :sort title").expect("parse");
     let titles: Vec<String> = spec.cells(&v).into_iter().map(|r| r[0].clone()).collect();
-    assert_eq!(titles, vec!["Apple".to_owned(), "Mango".to_owned(), "Zebra".to_owned()]);
+    assert_eq!(
+        titles,
+        vec!["Apple".to_owned(), "Mango".to_owned(), "Zebra".to_owned()]
+    );
 }
 
 // === D4 multiple named views enumerated from the vault. ===
@@ -341,5 +362,8 @@ fn malformed_view_block_fails_the_batch() {
     )
     .expect("write");
     let v = Vault::open(dir.path()).expect("open");
-    assert!(closure_query::views(&v).is_err(), "malformed block errors the batch");
+    assert!(
+        closure_query::views(&v).is_err(),
+        "malformed block errors the batch"
+    );
 }

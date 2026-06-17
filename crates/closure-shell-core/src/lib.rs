@@ -94,7 +94,11 @@ pub fn segment_body(body: &str) -> Vec<BodySegment> {
             let lang = normalise_lang(trimmed.split_whitespace().nth(1).unwrap_or(""));
             let mut code: Vec<&str> = Vec::new();
             for cl in lines.by_ref() {
-                if cl.trim_start().to_ascii_uppercase().starts_with("#+END_SRC") {
+                if cl
+                    .trim_start()
+                    .to_ascii_uppercase()
+                    .starts_with("#+END_SRC")
+                {
                     break;
                 }
                 code.push(cl);
@@ -556,10 +560,7 @@ impl App {
         let Some(row) = self.rows(shell).get(self.selected).cloned() else {
             return;
         };
-        let body = self
-            .detail(shell)
-            .map(|d| d.body)
-            .unwrap_or_default();
+        let body = self.detail(shell).map(|d| d.body).unwrap_or_default();
         self.edit_target = Some(row.id);
         self.body_buf = body;
         self.mode = Mode::EditBody;
@@ -704,7 +705,11 @@ impl App {
         let bid = closure_core::BlockId::from_existing(&row.id);
         match shell.set_todo(&bid, next) {
             Ok(()) => self.set_status(next.map_or("todo cleared", |k| {
-                if k == "TODO" { "todo: TODO" } else { "todo: DONE" }
+                if k == "TODO" {
+                    "todo: TODO"
+                } else {
+                    "todo: DONE"
+                }
             })),
             Err(e) => self.status = format!("todo failed: {e}"),
         }
@@ -820,7 +825,11 @@ impl App {
             // never a hardcoded string (vision: every UI element shows
             // its keybinding).
             Mode::Browse => {
-                return format!("[{:?}] type: filter   {}", self.input_mode, self.command_hints());
+                return format!(
+                    "[{:?}] type: filter   {}",
+                    self.input_mode,
+                    self.command_hints()
+                );
             }
             Mode::Capture => "capture title — Enter: save   Esc: cancel",
             Mode::Rename => "rename — Enter: save   Esc: cancel",
@@ -1484,8 +1493,11 @@ impl ModalApp {
                     let bid = closure_core::BlockId::from_existing(&id);
                     match kind {
                         FieldKind::Tags => {
-                            let tags: Vec<String> =
-                                self.field_buf.split_whitespace().map(ToOwned::to_owned).collect();
+                            let tags: Vec<String> = self
+                                .field_buf
+                                .split_whitespace()
+                                .map(ToOwned::to_owned)
+                                .collect();
                             let _ = shell.set_tags(&bid, &tags);
                         }
                         FieldKind::Property => {
