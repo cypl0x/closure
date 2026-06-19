@@ -9,6 +9,9 @@
 
 #![forbid(unsafe_code)]
 
+mod body;
+pub use body::{BodyCrdt, ElemId};
+
 use std::collections::HashMap;
 
 use closure_core::{BlockId, Command, Document, RenameHeadline, SetBody};

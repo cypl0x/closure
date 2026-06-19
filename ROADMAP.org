@@ -82,13 +82,30 @@ vector clocks, that concurrent same-field edits merge LWW (known
 limitation), and that char-level text CRDT is the C2b upgrade behind the
 same =Edit=/=BlockId= surface. Added the 2026-06-19 Decision below. No
 code change — removes the spec/code divergence.
-*** TODO C2b Char-level body CRDT: evaluate Automerge vs Yrs vs a
-hand-rolled RGA/causal-tree against I10 (transitive-dep + hermetic-build
-cost — the reason they were skipped). If a dep fails I10, ship a
-minimal RGA for body text behind the existing =Edit=/=BlockId= surface
-(no closure-core API change, per spec.md:218). Hermetic test: two
-replicas insert at the same position concurrently → both survive,
-order is deterministic, convergent, idempotent.
+*** WIP C2b Char-level body CRDT: hand-rolled RGA (Automerge/Yrs drag
+large/async dep trees vs I10 — see the char-CRDT Decision). Behind the
+existing =Edit=/=BlockId= surface (no closure-core API change,
+spec.md:218).
+Progress [1/2]:
+**** DONE C2b-engine =closure_crdt::BodyCrdt= — an RGA over body chars:
+=ElemId(counter,replica)= identities, causal =after= predecessors,
+tombstone deletes, deterministic linear order (siblings desc by id),
+=merge= = element union (tombstone wins), =edit_to= reconciles toward a
+new string via LCS (shared chars keep ids, inserts get fresh ids,
+removals tombstone). Acceptance tests (RED->green, hermetic): concurrent
+same-position inserts both survive + converge order-independently +
+=AYXC= deterministic; idempotent; concurrent edits at *different*
+positions both apply (=hello world= -> =HELLO WORLD=, which LWW would
+clobber); plain-text round-trip; deletion tombstones. =just check= 3296.
+**** TODO C2b-wire Replace =BlockState.body= LWW =Register= with
+=BodyCrdt=: thread a replica id into =snapshot=/=snapshot_against=
+(authoring body element ids), =merge= the body RGA, materialise in
+=body_of= (-> owned =String=), reconcile in =apply_to=, and add
+=BodyCrdt= encode/decode to the replica wire. Migrate the LWW-model
+=merge.rs= tests (independent-snapshot merge) to the base-relative
+=snapshot_against= model the RGA (and the real =SyncSession= path)
+requires. Then two peers editing the same paragraph both keep their
+edits end-to-end; flip C2b DONE + revise spec.md:176.
 ** DONE C3 Sync authentication + encryption [2/2]
 =closure-sync= ships =SyncMessage= over plaintext TCP with no identity,
 auth, or encryption (grep: no tls/crypto/auth in the crate). P2P collab
