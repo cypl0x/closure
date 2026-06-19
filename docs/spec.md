@@ -157,8 +157,17 @@ Preserved as opaque text (no semantics yet):
 - `closure-eval` — sandboxed evaluator for code blocks. Formulas
   (Coda-style), Babel-style execution, cron job bodies all live here.
   Language backends (shell, python, rust-script, wasm) are plugin crates.
-- `closure-crdt` — wraps `Document` with Automerge or Yrs. `Edit` becomes
-  a CRDT op. No API changes to `closure-core`.
+- `closure-crdt` — wraps `Document` as a set of CRDT replicas keyed by
+  `BlockId`. `Edit` becomes a CRDT op. No API changes to `closure-core`.
+  Shipped model: block-level per-field last-writer-wins registers
+  (title, body) carrying vector clocks for causality — hand-rolled, no
+  external CRDT dep (keeps I10 hermetic). Known limitation: concurrent
+  edits to the *same* field merge LWW (one side wins), so character-level
+  collaborative text is not yet convergent. Char-level body CRDT
+  (Automerge / Yrs / a minimal RGA) is the planned upgrade (ROADMAP C2b);
+  it slots behind the same `Edit` / `BlockId` surface without a
+  `closure-core` API change. See the CRDT-readiness note below and the
+  2026-06-19 Decision.
 - `closure-sync` — file / git sync first; IPFS or iroh P2P later. Pluggable
   transport.
 

@@ -13,6 +13,92 @@ file is the fine-grained, capability-level queue between them. Blocked
 on a design decision? Record it under [[*Decisions][Decisions]], pick the most
 reversible option, keep moving.
 
+* TODO Edges: make the mocked surfaces real [0/4]
+The kernel (org/core/store/query/undo/input) is deep + tested; the
+real-world *edges* are trait+mock+deferred. These four are the highest
+TODO because each is a spec promise the code does not yet keep, or a
+security hole. Each carries a spec-revision note (I7/I8 rule: the spec
+is revised in the SAME commit that closes the gap — no silent drift).
+** TODO C1 Eval sandbox — close the RCE hole [0/3]
+Today =closure-eval/src/lib.rs:74,97= pipes code blocks to =/bin/sh=
+and =python3= with no isolation. A Babel block in a synced/P2P'd org
+file is remote code execution on pull. spec.md:156 already claims
+"sandboxed evaluator" — the code does not honour it. This is the most
+urgent gap (security > features).
+After this the user can: pull/sync an untrusted vault without a
+malicious =#+BEGIN_SRC= block executing arbitrary local commands.
+*** TODO C1a Default-deny eval: code blocks do NOT execute unless the
+vault's =config.org= opts in (=eval_trust= per-language allowlist,
+typed in closure-config, validated at load I9). Hermetic test: a vault
+with a shell block + no opt-in returns a blocked-decision, runs
+nothing. Spec note: revise spec.md "I8 / Layer 3" to state eval is
+default-deny and gated by typed config.
+*** TODO C1b Resource bounds on the shell/python path: wall-clock
+timeout (already partially present) + a process-group kill + stdout
+size cap, so a runaway/forkbomb block cannot hang or flood the host.
+Hermetic test: an infinite-loop block is killed at the bound; a
+multi-GB stdout is truncated.
+*** TODO C1c wasm-only sandboxed backend (reuses the =wasmtime= feature
++ the I8 host-import boundary already built in W1-W4): a code block can
+run under wasmtime with NO host imports except the command registry,
+giving a genuinely sandboxed default for portable languages. Spec note:
+record wasm-eval as the hermetic sandbox tier in Decisions; shell/python
+stay the opt-in "trusted" tier.
+** TODO C2 Real text CRDT — spec says Automerge/Yrs, code is LWW [1/2]
+=closure-crdt/src/lib.rs:5= is hand-rolled per-field last-writer-wins.
+spec.md:160 promised "wraps Document with Automerge or Yrs." Concurrent
+edits to the SAME headline body silently drop one side — not collab-
+grade. Decide + align in the same commit.
+After this the user can: two people edit the same paragraph offline and
+both edits survive the merge (no silent loss).
+*** DONE C2a Spec-truth commit (cheap, unblocks honesty): revised
+spec.md:160 to state the shipped model is block-level per-field LWW +
+vector clocks, that concurrent same-field edits merge LWW (known
+limitation), and that char-level text CRDT is the C2b upgrade behind the
+same =Edit=/=BlockId= surface. Added the 2026-06-19 Decision below. No
+code change — removes the spec/code divergence.
+*** TODO C2b Char-level body CRDT: evaluate Automerge vs Yrs vs a
+hand-rolled RGA/causal-tree against I10 (transitive-dep + hermetic-build
+cost — the reason they were skipped). If a dep fails I10, ship a
+minimal RGA for body text behind the existing =Edit=/=BlockId= surface
+(no closure-core API change, per spec.md:218). Hermetic test: two
+replicas insert at the same position concurrently → both survive,
+order is deterministic, convergent, idempotent.
+** TODO C3 Sync authentication + encryption [0/2]
+=closure-sync= ships =SyncMessage= over plaintext TCP with no identity,
+auth, or encryption (grep: no tls/crypto/auth in the crate). P2P collab
+on an untrusted network = anyone reads/injects replica deltas. The
+vision's P2P pillar has no security model.
+After this the user can: sync over a hostile network without a peer
+forging or eavesdropping on edits.
+*** TODO C3a Peer identity + frame authentication: each peer has a
+keypair; =SyncMessage= frames are signed; an unsigned/forged frame is
+rejected before =apply_message=. Hermetic test (in-process, like the
+TCP loopback): a tampered frame fails verification, a valid one
+converges. Spec note: add the auth requirement to the Layer-3
+=closure-sync= description.
+*** TODO C3b Transport encryption: wrap the TCP path in an encrypted
+channel (Noise handshake preferred — small, no async runtime, fits the
+std-TCP choice in the 2026-06-17 P2P Decision; rustls drags tokio per
+=Cargo.lock=). Keep behind the same =SyncMessage= framing so iroh/QUIC
+remains a drop-in. Hermetic loopback test: bytes on the wire are not
+the plaintext replica.
+** TODO C4 Scale: prove the kernel on a real-world vault [0/2]
+Perf guards run on a 1-2k-headline synthetic vault (=closure-tui=
+=input_lag.rs=). Real PKM vaults are 10k-100k notes. No proof the
+indices, fuzzy search, or incremental reload hold up.
+After this the user can: open + search + edit a 50k-headline vault with
+no perceptible lag.
+*** TODO C4a Large-vault fixture + budget tests: generate a 50k-headline
+vault in a test; assert load, fuzzy-filter, backlink-resolve, and
+=reload_incremental= stay under explicit budgets (extend the existing
+=Instant=-based guards, no criterion — per the 2026-06-13 Decision).
+Surface whatever blows the budget.
+*** TODO C4b Fix the worst offender found in C4a (likely: full-vault
+rescan paths, O(n) backlink resolution, or non-windowed list builds).
+Lazy/virtualized where the data proves it's needed; keep the kernel
+API unchanged (I7).
+
 * DONE Foundation recap (already shipped)
 - closure-org span-preserving parser/printer, golden corpus, fuzz (M1)
 - closure-core Document/Command/Registry/Edit + undo-tree (M2)
@@ -265,6 +351,26 @@ only (I8). Crates keep =#![forbid(unsafe_code)]=.
 * Decisions
 Open questions land here as subheadings: context, options considered,
 the reversible default taken, date.
+** DECISION (2026-06-19) CRDT ships block-level LWW; char-level CRDT deferred
+Context: spec.md:160 promised "wraps Document with Automerge or Yrs,"
+but =closure-crdt= ships hand-rolled per-block per-field (title, body)
+last-writer-wins registers + vector clocks. The spec and code diverged
+(the C2 gap). Options: (a) adopt Automerge/Yrs now; (b) keep LWW, fix
+the spec to tell the truth, queue the real text CRDT as C2b.
+Taken (b): Automerge 0.5 / Yrs each drag a large transitive-dep tree
+(and Yrs leans on async stacks), which fights I10's hermetic dep-minimal
+build — the same reason iroh was passed over in the 2026-06-17 P2P
+Decision. The shipped LWW model is genuinely convergent, commutative,
+and idempotent at the block/field grain (tested: merge.rs, conflicts.rs,
+session.rs), which covers concurrent edits to *different* blocks/fields
+— the common case. The honest limitation: two peers editing the SAME
+field concurrently merge LWW, so one side's characters are dropped (no
+char-level interleave). spec.md:160 now states this outright.
+Reversible: C2b adds a char-level body CRDT (Automerge / Yrs / a minimal
+hand-rolled RGA evaluated against I10) behind the SAME =Edit=/=BlockId=
+surface, so closure-core, shells, and parsers do not change
+(spec.md:218 readiness note). Recorded with no code change — this entry
++ the spec edit are the whole of C2a.
 ** DECISION (2026-06-17) P2P transport: std TCP now, iroh/QUIC later
 Context: S4 called for an iroh transport behind =--features iroh=, with
 the live network transfer as a manually-checkable (untestable) part.
