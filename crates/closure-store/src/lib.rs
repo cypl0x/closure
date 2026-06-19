@@ -668,9 +668,10 @@ impl Vault {
             closure_eval::var_prelude(lang, &header.vars),
             cb.content
         );
+        let bounds = closure_eval::Bounds::default();
         let out = match lang {
-            "shell" | "sh" | "bash" => closure_eval::ShellBackend.eval(&program),
-            "python" => closure_eval::PythonBackend.eval(&program),
+            "shell" | "sh" | "bash" => closure_eval::ShellBackend.eval_bounded(&program, bounds),
+            "python" => closure_eval::PythonBackend.eval_bounded(&program, bounds),
             other => {
                 return Err(VaultError::Command(format!("no backend for `{other}`")));
             }

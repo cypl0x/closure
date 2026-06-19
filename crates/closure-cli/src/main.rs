@@ -3475,7 +3475,9 @@ fn cmd_eval(path: &Path, write: bool, selector: Option<&str>) -> Result<(), Stri
         let header = closure_eval::HeaderArgs::parse(cb.args.unwrap_or(""));
         let prelude = closure_eval::var_prelude(cb.language.unwrap_or("shell"), &header.vars);
         let program = format!("{prelude}{}", cb.content);
-        let out = backend.eval(&program).map_err(|e| format!("{e}"))?;
+        let out = backend
+            .eval_bounded(&program, closure_eval::Bounds::default())
+            .map_err(|e| format!("{e}"))?;
         println!(
             "---- block #{i} {lang} exit={} ----",
             out.exit,

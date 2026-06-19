@@ -58,6 +58,32 @@ pub trait Backend {
     ) -> Result<Output, EvalError> {
         self.eval(src)
     }
+    /// Execute `src` under resource [`Bounds`] (wall-clock deadline +
+    /// output cap). The default falls back to [`Self::eval`] (no
+    /// bounds); interpreter backends override to enforce them (C1b).
+    fn eval_bounded(&self, src: &str, _bounds: Bounds) -> Result<Output, EvalError> {
+        self.eval(src)
+    }
+}
+
+/// Resource limits applied to a bounded evaluation (C1b).
+#[derive(Debug, Clone, Copy)]
+pub struct Bounds {
+    /// Wall-clock deadline; the child is killed and [`EvalError::Timeout`]
+    /// returned if it has not exited by then.
+    pub timeout: std::time::Duration,
+    /// Maximum bytes retained from stdout (and, independently, stderr).
+    /// Beyond this the child is killed and the captured output truncated.
+    pub max_output: usize,
+}
+
+impl Default for Bounds {
+    fn default() -> Self {
+        Self {
+            timeout: std::time::Duration::from_secs(10),
+            max_output: 10 * 1024 * 1024,
+        }
+    }
 }
 
 /// Shell backend: pipes the source into `/bin/sh` on stdin.
@@ -80,6 +106,10 @@ impl Backend for ShellBackend {
         timeout: std::time::Duration,
     ) -> Result<Output, EvalError> {
         run_via_stdin("/bin/sh", &[], src, Some(timeout))
+    }
+
+    fn eval_bounded(&self, src: &str, bounds: Bounds) -> Result<Output, EvalError> {
+        run_bounded("/bin/sh", &[], src, bounds)
     }
 }
 
@@ -104,6 +134,10 @@ impl Backend for PythonBackend {
     ) -> Result<Output, EvalError> {
         run_via_stdin("python3", &[], src, Some(timeout))
     }
+
+    fn eval_bounded(&self, src: &str, bounds: Bounds) -> Result<Output, EvalError> {
+        run_bounded("python3", &[], src, bounds)
+    }
 }
 
 /// Node.js backend: runs the source through `node` via stdin.
@@ -127,6 +161,10 @@ impl Backend for NodeBackend {
     ) -> Result<Output, EvalError> {
         run_via_stdin("node", &[], src, Some(timeout))
     }
+
+    fn eval_bounded(&self, src: &str, bounds: Bounds) -> Result<Output, EvalError> {
+        run_bounded("node", &[], src, bounds)
+    }
 }
 
 /// Ruby backend: runs the source through `ruby` via stdin.
@@ -149,6 +187,10 @@ impl Backend for RubyBackend {
         timeout: std::time::Duration,
     ) -> Result<Output, EvalError> {
         run_via_stdin("ruby", &[], src, Some(timeout))
+    }
+
+    fn eval_bounded(&self, src: &str, bounds: Bounds) -> Result<Output, EvalError> {
+        run_bounded("ruby", &[], src, bounds)
     }
 }
 
@@ -296,6 +338,121 @@ fn run_via_stdin(
         stdout: String::from_utf8_lossy(&out.stdout).into_owned(),
         stderr: String::from_utf8_lossy(&out.stderr).into_owned(),
         exit: out.status.code().unwrap_or(-1),
+    })
+}
+
+/// Read `r` to EOF, retaining at most `cap` bytes; signal once on `tx`
+/// when the cap is first exceeded. Reading continues past the cap (the
+/// bytes are discarded) so the child's pipe never fills and blocks —
+/// the caller kills the child on the signal.
+fn drain_capped<R>(mut r: R, cap: usize, tx: std::sync::mpsc::Sender<()>) -> std::thread::JoinHandle<Vec<u8>>
+where
+    R: std::io::Read + Send + 'static,
+{
+    std::thread::spawn(move || {
+        let mut buf = Vec::new();
+        let mut chunk = [0u8; 8192];
+        let mut signalled = false;
+        loop {
+            match r.read(&mut chunk) {
+                Ok(0) | Err(_) => break,
+                Ok(n) => {
+                    if buf.len() < cap {
+                        let take = (cap - buf.len()).min(n);
+                        buf.extend_from_slice(&chunk[..take]);
+                    }
+                    if buf.len() >= cap && !signalled {
+                        signalled = true;
+                        let _ = tx.send(());
+                    }
+                }
+            }
+        }
+        buf
+    })
+}
+
+/// Run `prog` with `src` on stdin under resource [`Bounds`] (C1b).
+///
+/// The child runs in its own process group (unix) and stdout/stderr are
+/// drained on threads with a byte cap, so neither a runaway loop (killed
+/// at the deadline → [`EvalError::Timeout`]) nor a flood of output
+/// (killed at the cap → truncated `Output`) can hang or OOM the host.
+fn run_bounded(
+    prog: &str,
+    args: &[&str],
+    src: &str,
+    bounds: Bounds,
+) -> Result<Output, EvalError> {
+    let mut cmd = Command::new(prog);
+    cmd.args(args)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt as _;
+        // Own process group: isolates the child (and lets a future
+        // group-kill reach its descendants — see C1c for true forkbomb
+        // containment, which needs a sandboxed runtime).
+        cmd.process_group(0);
+    }
+    let mut child = cmd.spawn().map_err(|e| EvalError::Spawn(e.to_string()))?;
+    if let Some(mut stdin) = child.stdin.take() {
+        use std::io::Write as _;
+        stdin
+            .write_all(src.as_bytes())
+            .map_err(|e| EvalError::Io(e.to_string()))?;
+        // dropped here → EOF for the child's stdin.
+    }
+    let stdout = child
+        .stdout
+        .take()
+        .ok_or_else(|| EvalError::Io("no stdout pipe".into()))?;
+    let stderr = child
+        .stderr
+        .take()
+        .ok_or_else(|| EvalError::Io("no stderr pipe".into()))?;
+    let (tx, rx) = std::sync::mpsc::channel();
+    let out_h = drain_capped(stdout, bounds.max_output, tx.clone());
+    let err_h = drain_capped(stderr, bounds.max_output, tx);
+
+    let deadline = std::time::Instant::now() + bounds.timeout;
+    let mut code: Option<i32> = None;
+    let mut timed_out = false;
+    loop {
+        match child.try_wait() {
+            Ok(Some(status)) => {
+                code = status.code();
+                break;
+            }
+            Ok(None) => {
+                if rx.try_recv().is_ok() {
+                    // output cap exceeded: kill and keep the truncated buffer.
+                    let _ = child.kill();
+                    code = child.wait().ok().and_then(|s| s.code());
+                    break;
+                }
+                if std::time::Instant::now() >= deadline {
+                    timed_out = true;
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    break;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(5));
+            }
+            Err(e) => return Err(EvalError::Io(e.to_string())),
+        }
+    }
+    let stdout = out_h.join().unwrap_or_default();
+    let stderr = err_h.join().unwrap_or_default();
+    if timed_out {
+        return Err(EvalError::Timeout(bounds.timeout));
+    }
+    Ok(Output {
+        stdout: String::from_utf8_lossy(&stdout).into_owned(),
+        stderr: String::from_utf8_lossy(&stderr).into_owned(),
+        exit: code.unwrap_or(-1),
     })
 }
 

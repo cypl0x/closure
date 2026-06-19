@@ -40,11 +40,21 @@ defaults empty — 2); closure-store babel (default-deny runs nothing +
 untrusted-language blocked, trusting tests opt in via config.org — 14);
 closure-cli (eval default-deny vs trusted — 2). Spec revised
 (spec.md Layer 3) + Decision below, same commit.
-*** TODO C1b Resource bounds on the shell/python path: wall-clock
-timeout (already partially present) + a process-group kill + stdout
-size cap, so a runaway/forkbomb block cannot hang or flood the host.
-Hermetic test: an infinite-loop block is killed at the bound; a
-multi-GB stdout is truncated.
+*** DONE C1b Resource bounds on the interpreter backends: new
+=closure_eval::Bounds= (wall-clock deadline 10s + per-stream output cap
+10 MiB) + =run_bounded= — child spawned in its own process group
+(unix), stdout/stderr drained on threads with a byte cap; a runaway is
+killed at the deadline (=EvalError::Timeout=), a flood is killed at the
+cap with the output truncated (never buffered whole). =Backend=
+exposes =eval_bounded= (overridden by all four interpreter backends);
+=Vault::eval_block= and =closure eval= run under =Bounds::default()=.
+Hermetic tests (RED->green, =/bin/sh=): infinite loop killed <5s;
+=head -c 50MB /dev/zero= truncated to a 4 KiB cap without hanging;
+normal small output unchanged. Spec revised (spec.md Layer 3) same
+commit. Note: true forkbomb containment (group-kill of descendants)
+needs a negative-pid signal — =#![forbid(unsafe_code)]= rules out the
+libc call; the process-group isolation is in place and C1c's wasm
+sandbox is the real containment tier. Recorded, not faked.
 *** TODO C1c wasm-only sandboxed backend (reuses the =wasmtime= feature
 + the I8 host-import boundary already built in W1-W4): a code block can
 run under wasmtime with NO host imports except the command registry,

@@ -162,9 +162,13 @@ Preserved as opaque text (no semantics yet):
   validated at load — I9). An empty or unreadable policy runs nothing.
   This holds on every execution path (`Vault::eval_block`, `closure
   eval`); a pulled/synced vault cannot run code without explicit local
-  trust. Resource bounds (C1b) and a wasm-only sandbox tier (C1c) harden
-  the *trusted* path further; the shell/python backends remain the
-  opt-in "trusted" tier.
+  trust. **Resource bounds (C1b):** every trusted execution runs under
+  `Bounds` — a wall-clock deadline (default 10s; runaway → killed,
+  `Timeout`) and a per-stream output cap (default 10 MiB; flood → child
+  killed, output truncated), with the child in its own process group.
+  A wasm-only sandbox tier (C1c, true forkbomb containment) is the
+  next hardening; the shell/python backends remain the opt-in "trusted"
+  tier.
 - `closure-crdt` — wraps `Document` as a set of CRDT replicas keyed by
   `BlockId`. `Edit` becomes a CRDT op. No API changes to `closure-core`.
   Shipped model: block-level per-field last-writer-wins registers
