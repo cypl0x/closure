@@ -16,6 +16,9 @@ closure-core = { path = "../closure-core" }
 closure-store = { path = "../closure-store" }
 closure-crdt = { path = "../closure-crdt" }
 thiserror.workspace = true
+# Pure-Rust ed25519 (no C, no build-time network) for signing sync
+# frames (C3a). Hermetic — keeps I10. `rand_core` for keygen.
+ed25519-dalek = "2"
 
 [dev-dependencies]
 tempfile = "3"

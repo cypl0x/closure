@@ -96,12 +96,18 @@ on an untrusted network = anyone reads/injects replica deltas. The
 vision's P2P pillar has no security model.
 After this the user can: sync over a hostile network without a peer
 forging or eavesdropping on edits.
-*** TODO C3a Peer identity + frame authentication: each peer has a
-keypair; =SyncMessage= frames are signed; an unsigned/forged frame is
-rejected before =apply_message=. Hermetic test (in-process, like the
-TCP loopback): a tampered frame fails verification, a valid one
-converges. Spec note: add the auth requirement to the Layer-3
-=closure-sync= description.
+*** DONE C3a Peer identity + frame authentication: each peer holds an
+ed25519 keypair (=SigningKey=/=VerifyingKey=, pure-Rust =ed25519-dalek=,
+hermetic — I10 intact). =SyncMessage::to_signed_bytes= signs the version
+byte + encoded replica (=magic | 2 | pubkey | sig | payload=);
+=from_signed_bytes(bytes, trusted)= verifies the signature against the
+embedded key (catches tampering, incl. version downgrade) and, when
+=trusted= is non-empty, requires the signer be a pinned peer (rejects a
+forged/unknown signer) — all BEFORE the message reaches =apply_message=.
+Tests (RED->green, hermetic): signed frame verifies + converges into a
+peer; a tampered payload byte fails verification; a valid signature from
+an untrusted key is rejected; empty trust = integrity-only. Spec revised
+(spec.md Layer 3 closure-sync) + Decision below, same commit.
 *** TODO C3b Transport encryption: wrap the TCP path in an encrypted
 channel (Noise handshake preferred — small, no async runtime, fits the
 std-TCP choice in the 2026-06-17 P2P Decision; rustls drags tokio per
@@ -437,6 +443,21 @@ only (I8). Crates keep =#![forbid(unsafe_code)]=.
 * Decisions
 Open questions land here as subheadings: context, options considered,
 the reversible default taken, date.
+** DECISION (2026-06-19) Sync auth uses ed25519-dalek (first crypto dep)
+Context: C3a needs frame signing; the workspace had no crypto dep. The
+P2P Decision (2026-06-17) keeps sync on std TCP to avoid tokio/rustls
+(~200 transitive crates) and stay hermetic (I10). Options for signing:
+(a) hand-roll — never, crypto must not be DIY; (b) ring — pulls a C/asm
+build, fights hermetic/cross-platform; (c) RustCrypto =ed25519-dalek=
+v2 — pure Rust, no C, no build-time network, no async runtime. Taken
+(c): it is the smallest dependency that satisfies I10 (a vendored
+pure-Rust crate builds offline + reproducibly) and is the de-facto
+standard. Auth is on the message type (=to_signed_bytes=/
+=from_signed_bytes=), not feature-gated — security is not opt-in. The
+TCP transport still ships unsigned =to_bytes= frames for back-compat;
+wiring it to require signatures (and a key-management/trust-pinning
+story) rides with C3b's encrypted channel. Reversible: the same signed
+frame works under any transport, including a future iroh/QUIC drop-in.
 ** DECISION (2026-06-19) Eval is default-deny via typed eval_trust (C1a)
 Context: =closure-eval= spawned =/bin/sh=/=python3= for any code block
 with no gate; spec.md claimed "sandboxed evaluator" but nothing

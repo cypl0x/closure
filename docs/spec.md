@@ -185,7 +185,12 @@ Preserved as opaque text (no semantics yet):
   `closure-core` API change. See the CRDT-readiness note below and the
   2026-06-19 Decision.
 - `closure-sync` — file / git sync first; IPFS or iroh P2P later. Pluggable
-  transport.
+  transport. **Authenticated frames (C3a):** each peer holds an ed25519
+  keypair; `SyncMessage::to_signed_bytes` signs the version + replica
+  payload and `from_signed_bytes` verifies it against the embedded key
+  (rejecting tampering) and an optional trusted-peer set (rejecting a
+  forged/unknown signer) *before* the message reaches `apply_message`.
+  Transport encryption is the C3b upgrade.
 
 ### Layer 4 — Adapters (I8)
 

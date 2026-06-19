@@ -13,6 +13,8 @@ use closure_core::{BlockId, Document};
 use closure_crdt::{CrdtError, Replica, VectorClock};
 use thiserror::Error;
 
+pub use ed25519_dalek::{SigningKey, VerifyingKey};
+
 /// A peer's CRDT sync state: an accumulated [`Replica`] + [`VectorClock`].
 ///
 /// Local edits are folded in via [`Self::record_local`]; a peer's
@@ -105,8 +107,14 @@ impl SyncSession {
 
 /// Wire magic for a [`SyncMessage`] frame.
 const SYNC_MAGIC: &[u8; 4] = b"CLSY";
-/// Current sync wire-protocol version.
+/// Current (unsigned) sync wire-protocol version.
 const SYNC_VERSION: u8 = 1;
+/// Authenticated frame version: `magic | 2 | pubkey(32) | sig(64) | replica`.
+const SYNC_VERSION_SIGNED: u8 = 2;
+/// ed25519 public-key length.
+const PUBKEY_LEN: usize = 32;
+/// ed25519 signature length.
+const SIG_LEN: usize = 64;
 
 /// A framed sync message a transport ships.
 ///
@@ -165,6 +173,79 @@ impl SyncMessage {
     #[must_use]
     pub const fn replica(&self) -> &Replica {
         &self.replica
+    }
+
+    /// Serialise to an authenticated frame signed by `key` (C3a):
+    /// `magic | 2 | pubkey | signature | replica`. The signature covers
+    /// the version byte and the encoded replica, so neither the payload
+    /// nor a version downgrade can be tampered with undetected.
+    #[must_use]
+    pub fn to_signed_bytes(&self, key: &SigningKey) -> Vec<u8> {
+        use ed25519_dalek::Signer as _;
+        let payload = self.replica.encode();
+        let mut signed = Vec::with_capacity(1 + payload.len());
+        signed.push(SYNC_VERSION_SIGNED);
+        signed.extend_from_slice(&payload);
+        let sig = key.sign(&signed);
+
+        let mut out = Vec::with_capacity(4 + 1 + PUBKEY_LEN + SIG_LEN + payload.len());
+        out.extend_from_slice(SYNC_MAGIC);
+        out.push(SYNC_VERSION_SIGNED);
+        out.extend_from_slice(key.verifying_key().as_bytes());
+        out.extend_from_slice(&sig.to_bytes());
+        out.extend_from_slice(&payload);
+        out
+    }
+
+    /// Parse + verify an authenticated frame (C3a). The embedded
+    /// signature is checked against the embedded public key (rejecting
+    /// any tampering); when `trusted` is non-empty the signer must be
+    /// one of those keys (rejecting an unknown/forged peer). An empty
+    /// `trusted` is integrity-only mode (any self-consistent signature).
+    ///
+    /// # Errors
+    ///
+    /// [`SyncError::Transport`] on a short/garbled frame, a wrong magic
+    /// or version, a bad signature, an untrusted signer, or a malformed
+    /// replica payload.
+    pub fn from_signed_bytes(bytes: &[u8], trusted: &[VerifyingKey]) -> Result<Self, SyncError> {
+        use ed25519_dalek::Verifier as _;
+        const HEAD: usize = 4 + 1 + PUBKEY_LEN + SIG_LEN;
+        let head = bytes
+            .get(..HEAD)
+            .ok_or_else(|| SyncError::Transport("signed frame too short".into()))?;
+        if &head[..4] != SYNC_MAGIC {
+            return Err(SyncError::Transport("bad sync magic".into()));
+        }
+        if head[4] != SYNC_VERSION_SIGNED {
+            return Err(SyncError::Transport(format!(
+                "not a signed frame (version {})",
+                head[4]
+            )));
+        }
+        // Fixed-length copies from the validated HEAD slice (no panic
+        // path: lengths are guaranteed by the `get(..HEAD)` check above).
+        let mut pk = [0u8; PUBKEY_LEN];
+        pk.copy_from_slice(&head[5..5 + PUBKEY_LEN]);
+        let mut sig = [0u8; SIG_LEN];
+        sig.copy_from_slice(&head[5 + PUBKEY_LEN..HEAD]);
+        let vk = VerifyingKey::from_bytes(&pk)
+            .map_err(|e| SyncError::Transport(format!("bad public key: {e}")))?;
+        let signature = ed25519_dalek::Signature::from_bytes(&sig);
+        let payload = &bytes[HEAD..];
+
+        // Signature covers `version | payload` (see `to_signed_bytes`).
+        let mut signed = Vec::with_capacity(1 + payload.len());
+        signed.push(SYNC_VERSION_SIGNED);
+        signed.extend_from_slice(payload);
+        vk.verify(&signed, &signature)
+            .map_err(|_| SyncError::Transport("signature verification failed".into()))?;
+
+        if !trusted.is_empty() && !trusted.contains(&vk) {
+            return Err(SyncError::Transport("untrusted signing key".into()));
+        }
+        let replica = Replica::decode(payload).map_err(|e| SyncError::Transport(e.to_string()))?;
+        Ok(Self { replica })
     }
 }
 
