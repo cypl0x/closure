@@ -166,9 +166,13 @@ Preserved as opaque text (no semantics yet):
   `Bounds` — a wall-clock deadline (default 10s; runaway → killed,
   `Timeout`) and a per-stream output cap (default 10 MiB; flood → child
   killed, output truncated), with the child in its own process group.
-  A wasm-only sandbox tier (C1c, true forkbomb containment) is the
-  next hardening; the shell/python backends remain the opt-in "trusted"
-  tier.
+  **Wasm sandbox tier (C1c):** the `wasm` backend (opt-in `wasmtime`
+  feature) runs a module under wasmtime with **no host imports** and a
+  finite fuel budget — a module that needs any import fails to
+  instantiate, and a runaway loop traps on out-of-fuel. This is the
+  genuinely sandboxed tier (no host surface, no process spawn, true
+  containment); the shell/python backends remain the opt-in "trusted"
+  tier still subject to the C1b process bounds.
 - `closure-crdt` — wraps `Document` as a set of CRDT replicas keyed by
   `BlockId`. `Edit` becomes a CRDT op. No API changes to `closure-core`.
   Shipped model: block-level per-field last-writer-wins registers

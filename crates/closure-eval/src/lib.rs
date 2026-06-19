@@ -40,6 +40,10 @@ pub enum EvalError {
     /// Backend exceeded the per-call timeout and was killed.
     #[error("timeout after {0:?}")]
     Timeout(std::time::Duration),
+    /// Wasm sandbox failure: malformed module, denied import, missing
+    /// `run` export, fuel exhaustion, or a trap (C1c).
+    #[error("wasm: {0}")]
+    Wasm(String),
 }
 
 /// A language backend.
@@ -194,6 +198,56 @@ impl Backend for RubyBackend {
     }
 }
 
+/// Wasm sandbox backend (C1c): runs a `wasm` block — WAT text or binary
+/// — under wasmtime with **no host imports**, the genuinely sandboxed
+/// exec tier. The block must export `run: () -> i32`; that integer is
+/// the result. Execution is fuel-bounded so an infinite loop traps
+/// rather than hanging. Available only under the `wasmtime` feature.
+#[cfg(feature = "wasmtime")]
+#[derive(Debug, Default, Clone, Copy)]
+pub struct WasmBackend;
+
+#[cfg(feature = "wasmtime")]
+impl WasmBackend {
+    /// Instruction budget for a single sandboxed call. Generous for
+    /// real compute, finite so a runaway loop traps (out-of-fuel).
+    const FUEL: u64 = 1_000_000_000;
+}
+
+#[cfg(feature = "wasmtime")]
+impl Backend for WasmBackend {
+    #[allow(clippy::unnecessary_literal_bound)]
+    fn language(&self) -> &str {
+        "wasm"
+    }
+
+    fn eval(&self, src: &str) -> Result<Output, EvalError> {
+        use wasmtime::{Config, Engine, Instance, Module, Store};
+
+        let wasm_err = |e: wasmtime::Error| EvalError::Wasm(e.to_string());
+        let mut config = Config::new();
+        config.consume_fuel(true);
+        let engine = Engine::new(&config).map_err(wasm_err)?;
+        // `Module::new` auto-detects WAT text vs binary (the `wat`
+        // feature). A parse failure is a clean Err, never a panic.
+        let module = Module::new(&engine, src.as_bytes()).map_err(wasm_err)?;
+        let mut store = Store::new(&engine, ());
+        store.set_fuel(Self::FUEL).map_err(wasm_err)?;
+        // Empty import list: a module that needs any import fails to
+        // instantiate — the host surface is exactly nothing.
+        let instance = Instance::new(&mut store, &module, &[]).map_err(wasm_err)?;
+        let run = instance
+            .get_typed_func::<(), i32>(&mut store, "run")
+            .map_err(|_| EvalError::Wasm("module has no `run: () -> i32` export".into()))?;
+        let value = run.call(&mut store, ()).map_err(wasm_err)?;
+        Ok(Output {
+            stdout: value.to_string(),
+            stderr: String::new(),
+            exit: 0,
+        })
+    }
+}
+
 /// Pick a backend for a language identifier (case-insensitive). Returns
 /// `None` if no backend is registered for the language.
 #[must_use]
@@ -203,6 +257,8 @@ pub fn backend_for(lang: &str) -> Option<Box<dyn Backend>> {
         "python" | "py" => Some(Box::new(PythonBackend)),
         "javascript" | "js" | "node" => Some(Box::new(NodeBackend)),
         "ruby" | "rb" => Some(Box::new(RubyBackend)),
+        #[cfg(feature = "wasmtime")]
+        "wasm" => Some(Box::new(WasmBackend)),
         _ => None,
     }
 }

@@ -672,6 +672,11 @@ impl Vault {
         let out = match lang {
             "shell" | "sh" | "bash" => closure_eval::ShellBackend.eval_bounded(&program, bounds),
             "python" => closure_eval::PythonBackend.eval_bounded(&program, bounds),
+            #[cfg(feature = "wasmtime")]
+            "wasm" => {
+                use closure_eval::Backend as _;
+                closure_eval::WasmBackend.eval(&program)
+            }
             other => {
                 return Err(VaultError::Command(format!("no backend for `{other}`")));
             }

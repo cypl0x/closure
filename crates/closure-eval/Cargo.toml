@@ -11,5 +11,18 @@ authors.workspace = true
 [lints]
 workspace = true
 
+[features]
+default = []
+# Embedded wasm sandbox backend (opt-in; pulls wasmtime + cranelift).
+# The default build stays hermetic/dep-light without it; the gate lives
+# in the justfile (`just eval-wasm`). C1c: a genuinely sandboxed exec
+# tier — wasm modules run with NO host imports.
+wasmtime = ["dep:wasmtime"]
+
 [dependencies]
 thiserror.workspace = true
+wasmtime = { version = "45", optional = true, default-features = false, features = [
+  "cranelift",
+  "runtime",
+  "wat",
+] }

@@ -13,13 +13,13 @@ file is the fine-grained, capability-level queue between them. Blocked
 on a design decision? Record it under [[*Decisions][Decisions]], pick the most
 reversible option, keep moving.
 
-* TODO Edges: make the mocked surfaces real [0/4]
+* TODO Edges: make the mocked surfaces real [1/4]
 The kernel (org/core/store/query/undo/input) is deep + tested; the
 real-world *edges* are trait+mock+deferred. These four are the highest
 TODO because each is a spec promise the code does not yet keep, or a
 security hole. Each carries a spec-revision note (I7/I8 rule: the spec
 is revised in the SAME commit that closes the gap — no silent drift).
-** TODO C1 Eval sandbox — close the RCE hole [0/3]
+** DONE C1 Eval sandbox — close the RCE hole [3/3]
 Today =closure-eval/src/lib.rs:74,97= pipes code blocks to =/bin/sh=
 and =python3= with no isolation. A Babel block in a synced/P2P'd org
 file is remote code execution on pull. spec.md:156 already claims
@@ -55,12 +55,20 @@ commit. Note: true forkbomb containment (group-kill of descendants)
 needs a negative-pid signal — =#![forbid(unsafe_code)]= rules out the
 libc call; the process-group isolation is in place and C1c's wasm
 sandbox is the real containment tier. Recorded, not faked.
-*** TODO C1c wasm-only sandboxed backend (reuses the =wasmtime= feature
-+ the I8 host-import boundary already built in W1-W4): a code block can
-run under wasmtime with NO host imports except the command registry,
-giving a genuinely sandboxed default for portable languages. Spec note:
-record wasm-eval as the hermetic sandbox tier in Decisions; shell/python
-stay the opt-in "trusted" tier.
+*** DONE C1c wasm sandbox exec tier: =closure_eval::WasmBackend= (opt-in
+=wasmtime= feature) runs a =wasm= block (WAT text or binary) under
+wasmtime with NO host imports and a finite fuel budget — a module
+needing any import fails to instantiate (zero host surface), a runaway
+loop traps on out-of-fuel, and the exported =run: () -> i32= is the
+result. =backend_for("wasm")= resolves it; =Vault::eval_block= runs a
+trusted =#+BEGIN_SRC wasm= block sandboxed (closure-store
+=wasmtime= feature forwards to closure-eval). Default build stays
+hermetic (feature OFF); gate =just eval-wasm=. Tests (RED->green,
+feature on): =run=->42; import-bearing module rejected; missing =run=
+errors; malformed WAT errors without panic; =backend_for= resolves;
+store end-to-end trusted-wasm = "42". Spec revised (spec.md Layer 3) +
+Decision below; =just check= green with the feature OFF. Improves on
+the original plan: fuel-bounding means even the sandbox tier can't hang.
 ** TODO C2 Real text CRDT — spec says Automerge/Yrs, code is LWW [1/2]
 =closure-crdt/src/lib.rs:5= is hand-rolled per-field last-writer-wins.
 spec.md:160 promised "wraps Document with Automerge or Yrs." Concurrent
@@ -443,6 +451,23 @@ a trusted shell/python block still runs unsandboxed until C1b/C1c land;
 that is now an explicit, opted-in risk rather than the silent default.
 Reversible: C1c adds a wasm-only sandboxed tier as the safe default for
 portable languages; the allowlist stays the policy surface either way.
+** DECISION (2026-06-19) Wasm is the sandboxed exec tier (C1c)
+Context: C1a made eval default-deny and C1b bounded the process-spawn
+backends, but a trusted shell/python block still runs with full host
+access (filesystem, network, exec). C1c needed a tier with no host
+surface at all. Options: (a) seccomp/landlock-jail the spawned
+interpreters (linux-only, fiddly, needs unsafe/privileged syscalls vs
+=#![forbid(unsafe_code)]=); (b) run wasm modules under wasmtime with an
+empty import set. Taken (b): reuses the W1-W4 wasmtime integration
+pattern (safe API only, feature-gated), gives true containment (no
+imports => no host calls; fuel budget => no infinite loop), and is
+cross-platform + hermetic-testable. Layering: closure-eval (Layer 3)
+must not depend on closure-plugin-host (Layer 4), so it carries its own
+small =WasmBackend= rather than reusing =WasmRuntime= — minor
+duplication, recorded. Trade-off: only languages that compile to wasm
+get the sandbox; shell/python remain the opt-in "trusted" tier under
+C1b bounds. Reversible: an OS-jail backend can be added later as
+another tier behind the same =eval_trust= allowlist.
 ** DECISION (2026-06-19) CRDT ships block-level LWW; char-level CRDT deferred
 Context: spec.md:160 promised "wraps Document with Automerge or Yrs,"
 but =closure-crdt= ships hand-rolled per-block per-field (title, body)

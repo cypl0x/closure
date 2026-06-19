@@ -11,6 +11,12 @@ authors.workspace = true
 [lints]
 workspace = true
 
+[features]
+default = []
+# Forward the wasm sandbox exec tier (C1c) to closure-eval. Opt-in;
+# default build stays hermetic. Gate: `just eval-wasm`.
+wasmtime = ["closure-eval/wasmtime"]
+
 [dependencies]
 closure-core = { path = "../closure-core" }
 closure-config = { path = "../closure-config" }

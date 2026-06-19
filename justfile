@@ -40,5 +40,10 @@ plugin-wasm:
     cargo build -p closure-plugin-host --features wasmtime
     cargo test -p closure-plugin-host --features wasmtime
 
+# C1c wasm sandbox exec tier (opt-in; default build stays hermetic).
+eval-wasm:
+    cargo test -p closure-eval --features wasmtime --test wasm
+    cargo test -p closure-store --features wasmtime --test babel
+
 # Full local CI: everything above.
 ci: check fuzz wasm coverage

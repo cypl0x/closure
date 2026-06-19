@@ -111,6 +111,28 @@ fn eval_block_untrusted_language_is_blocked() {
     ));
 }
 
+// C1c: a trusted `wasm` block runs sandboxed (no host imports) and its
+// `run` export's i32 becomes the result. Feature-gated.
+#[cfg(feature = "wasmtime")]
+#[test]
+fn eval_block_runs_trusted_wasm_sandboxed() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    fs::write(
+        dir.path().join("config.org"),
+        "#+BEGIN_SRC closure-config\neval_trust = wasm\n#+END_SRC\n",
+    )
+    .expect("config");
+    let f = dir.path().join("a.org");
+    fs::write(
+        &f,
+        "#+BEGIN_SRC wasm\n(module (func (export \"run\") (result i32) i32.const 42))\n#+END_SRC\n",
+    )
+    .expect("write");
+    let mut v = Vault::open(dir.path()).expect("open");
+    let out = v.eval_block(&f, 0).expect("eval");
+    assert_eq!(out.trim(), "42");
+}
+
 #[test]
 fn eval_block_out_of_range_errors() {
     let td = write_vault(&[("a.org", "* no blocks\n")]);
