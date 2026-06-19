@@ -190,7 +190,13 @@ Preserved as opaque text (no semantics yet):
   payload and `from_signed_bytes` verifies it against the embedded key
   (rejecting tampering) and an optional trusted-peer set (rejecting a
   forged/unknown signer) *before* the message reaches `apply_message`.
-  Transport encryption is the C3b upgrade.
+  **Transport encryption (C3b):** a Noise NN channel (`NoiseChannel`,
+  pure-Rust `snow`: x25519 + ChaCha20-Poly1305 + BLAKE2s) encrypts the
+  wire so the replica never travels in plaintext; `connect_and_sync_secure`
+  / `serve_once_secure` handshake the socket then exchange the C3a-signed
+  frames over the encrypted channel (confidentiality from Noise,
+  authenticity from the inner signatures). The same `SyncMessage` framing
+  keeps a future iroh/QUIC transport a drop-in.
 
 ### Layer 4 — Adapters (I8)
 

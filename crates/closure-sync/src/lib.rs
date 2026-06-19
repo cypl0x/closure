@@ -249,6 +249,163 @@ impl SyncMessage {
     }
 }
 
+/// Noise protocol name for the transport channel (C3b): ephemeral-only
+/// (NN) key agreement — confidentiality on the wire; peer *authenticity*
+/// is provided independently by the C3a frame signatures carried inside.
+const NOISE_PARAMS: &str = "Noise_NN_25519_ChaChaPoly_BLAKE2s";
+/// Max plaintext per Noise transport message (64 KiB frame − 16-byte tag).
+const NOISE_MAX_PLAINTEXT: usize = 65535 - 16;
+
+/// An established encrypted transport channel (C3b).
+///
+/// After a Noise NN handshake the two endpoints hold paired
+/// [`NoiseChannel`]s; [`Self::encrypt`] / [`Self::decrypt`] move
+/// AEAD-protected frames so a [`SyncMessage`]'s replica never crosses
+/// the wire in plaintext. Transport-agnostic — wraps any byte stream.
+pub struct NoiseChannel {
+    transport: snow::TransportState,
+}
+
+impl NoiseChannel {
+    /// Perform an in-process NN handshake and return the
+    /// `(initiator, responder)` channel pair. The hermetic stand-in for
+    /// a handshake driven over a real socket (which exchanges the same
+    /// two messages); also the building block a TCP transport reuses.
+    ///
+    /// # Errors
+    ///
+    /// [`SyncError::Transport`] on any handshake failure.
+    pub fn pair() -> Result<(Self, Self), SyncError> {
+        let params: snow::params::NoiseParams = NOISE_PARAMS.parse().map_err(noise_err)?;
+        let mut ini = snow::Builder::new(params.clone())
+            .build_initiator()
+            .map_err(noise_err)?;
+        let mut resp = snow::Builder::new(params)
+            .build_responder()
+            .map_err(noise_err)?;
+        let mut buf = vec![0u8; 65535];
+        let mut scratch = vec![0u8; 65535];
+        // -> e
+        let n = ini.write_message(&[], &mut buf).map_err(noise_err)?;
+        resp.read_message(&buf[..n], &mut scratch).map_err(noise_err)?;
+        // <- e, ee
+        let n = resp.write_message(&[], &mut buf).map_err(noise_err)?;
+        ini.read_message(&buf[..n], &mut scratch).map_err(noise_err)?;
+        let ini_t = ini.into_transport_mode().map_err(noise_err)?;
+        let resp_t = resp.into_transport_mode().map_err(noise_err)?;
+        Ok((Self { transport: ini_t }, Self { transport: resp_t }))
+    }
+
+    /// Encrypt `plaintext` into one AEAD frame.
+    ///
+    /// # Errors
+    ///
+    /// [`SyncError::Transport`] if the plaintext exceeds a single Noise
+    /// frame or the cipher fails.
+    pub fn encrypt(&mut self, plaintext: &[u8]) -> Result<Vec<u8>, SyncError> {
+        if plaintext.len() > NOISE_MAX_PLAINTEXT {
+            return Err(SyncError::Transport(
+                "payload too large for a single noise frame".into(),
+            ));
+        }
+        let mut buf = vec![0u8; plaintext.len() + 16];
+        let n = self
+            .transport
+            .write_message(plaintext, &mut buf)
+            .map_err(noise_err)?;
+        buf.truncate(n);
+        Ok(buf)
+    }
+
+    /// Decrypt one AEAD frame, rejecting any tampering (bad tag).
+    ///
+    /// # Errors
+    ///
+    /// [`SyncError::Transport`] if authentication or decryption fails.
+    pub fn decrypt(&mut self, ciphertext: &[u8]) -> Result<Vec<u8>, SyncError> {
+        let mut buf = vec![0u8; ciphertext.len()];
+        let n = self
+            .transport
+            .read_message(ciphertext, &mut buf)
+            .map_err(noise_err)?;
+        buf.truncate(n);
+        Ok(buf)
+    }
+
+    /// Drive the NN handshake as the initiator over a byte stream
+    /// (length-framed handshake messages), returning the established
+    /// channel. The socket-driven counterpart to [`Self::pair`].
+    ///
+    /// # Errors
+    ///
+    /// [`SyncError`] on IO or handshake failure.
+    pub fn handshake_initiator<S: std::io::Read + std::io::Write>(
+        stream: &mut S,
+    ) -> Result<Self, SyncError> {
+        let params: snow::params::NoiseParams = NOISE_PARAMS.parse().map_err(noise_err)?;
+        let mut hs = snow::Builder::new(params)
+            .build_initiator()
+            .map_err(noise_err)?;
+        let mut buf = vec![0u8; 65535];
+        let mut scratch = vec![0u8; 65535];
+        let n = hs.write_message(&[], &mut buf).map_err(noise_err)?;
+        write_framed(stream, &buf[..n])?;
+        let reply = read_framed(stream)?;
+        hs.read_message(&reply, &mut scratch).map_err(noise_err)?;
+        Ok(Self {
+            transport: hs.into_transport_mode().map_err(noise_err)?,
+        })
+    }
+
+    /// Drive the NN handshake as the responder over a byte stream.
+    ///
+    /// # Errors
+    ///
+    /// [`SyncError`] on IO or handshake failure.
+    pub fn handshake_responder<S: std::io::Read + std::io::Write>(
+        stream: &mut S,
+    ) -> Result<Self, SyncError> {
+        let params: snow::params::NoiseParams = NOISE_PARAMS.parse().map_err(noise_err)?;
+        let mut hs = snow::Builder::new(params)
+            .build_responder()
+            .map_err(noise_err)?;
+        let mut buf = vec![0u8; 65535];
+        let mut scratch = vec![0u8; 65535];
+        let msg1 = read_framed(stream)?;
+        hs.read_message(&msg1, &mut scratch).map_err(noise_err)?;
+        let n = hs.write_message(&[], &mut buf).map_err(noise_err)?;
+        write_framed(stream, &buf[..n])?;
+        Ok(Self {
+            transport: hs.into_transport_mode().map_err(noise_err)?,
+        })
+    }
+}
+
+fn noise_err<E: std::fmt::Display>(e: E) -> SyncError {
+    SyncError::Transport(format!("noise: {e}"))
+}
+
+/// Write a `u32`-length-prefixed frame to any writer.
+fn write_framed<W: std::io::Write>(w: &mut W, bytes: &[u8]) -> Result<(), SyncError> {
+    let len =
+        u32::try_from(bytes.len()).map_err(|_| SyncError::Transport("frame too large".into()))?;
+    w.write_all(&len.to_le_bytes())
+        .and_then(|()| w.write_all(bytes))
+        .map_err(|e| SyncError::Io(e.to_string()))
+}
+
+/// Read a `u32`-length-prefixed frame from any reader.
+fn read_framed<R: std::io::Read>(r: &mut R) -> Result<Vec<u8>, SyncError> {
+    let mut len_buf = [0u8; 4];
+    r.read_exact(&mut len_buf)
+        .map_err(|e| SyncError::Io(e.to_string()))?;
+    let len = u32::from_le_bytes(len_buf) as usize;
+    let mut buf = vec![0u8; len];
+    r.read_exact(&mut buf)
+        .map_err(|e| SyncError::Io(e.to_string()))?;
+    Ok(buf)
+}
+
 /// In-memory loopback link between two [`SyncSession`] peers.
 ///
 /// A shared pair of one-shot mailboxes carrying a [`Replica`] each way
@@ -369,6 +526,55 @@ impl TcpSyncTransport {
         let theirs = Self::read_frame(&mut stream)?;
         session.apply_message(&theirs);
         Self::write_frame(&mut stream, &SyncMessage::from_session(session))?;
+        Ok(())
+    }
+
+    /// Secure client round (C3a+C3b): Noise-handshake the socket, then
+    /// exchange ed25519-**signed** frames over the **encrypted** channel.
+    /// The peer's frame is verified against `trusted` before it is
+    /// merged. This is the hardened replacement for [`Self::connect_and_sync`].
+    ///
+    /// # Errors
+    ///
+    /// [`SyncError`] on connect / handshake / verify / IO failure.
+    pub fn connect_and_sync_secure(
+        addr: std::net::SocketAddr,
+        session: &mut SyncSession,
+        signing_key: &SigningKey,
+        trusted: &[VerifyingKey],
+    ) -> Result<(), SyncError> {
+        let mut stream =
+            std::net::TcpStream::connect(addr).map_err(|e| SyncError::Io(e.to_string()))?;
+        let mut chan = NoiseChannel::handshake_initiator(&mut stream)?;
+        let frame = SyncMessage::from_session(session).to_signed_bytes(signing_key);
+        write_framed(&mut stream, &chan.encrypt(&frame)?)?;
+        let ct = read_framed(&mut stream)?;
+        let theirs = SyncMessage::from_signed_bytes(&chan.decrypt(&ct)?, trusted)?;
+        session.apply_message(&theirs);
+        Ok(())
+    }
+
+    /// Secure server round (C3a+C3b): the responder counterpart to
+    /// [`Self::connect_and_sync_secure`].
+    ///
+    /// # Errors
+    ///
+    /// [`SyncError`] on accept / handshake / verify / IO failure.
+    pub fn serve_once_secure(
+        listener: &std::net::TcpListener,
+        session: &mut SyncSession,
+        signing_key: &SigningKey,
+        trusted: &[VerifyingKey],
+    ) -> Result<(), SyncError> {
+        let (mut stream, _) = listener
+            .accept()
+            .map_err(|e| SyncError::Io(e.to_string()))?;
+        let mut chan = NoiseChannel::handshake_responder(&mut stream)?;
+        let ct = read_framed(&mut stream)?;
+        let theirs = SyncMessage::from_signed_bytes(&chan.decrypt(&ct)?, trusted)?;
+        session.apply_message(&theirs);
+        let frame = SyncMessage::from_session(session).to_signed_bytes(signing_key);
+        write_framed(&mut stream, &chan.encrypt(&frame)?)?;
         Ok(())
     }
 }

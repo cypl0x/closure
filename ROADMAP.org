@@ -13,7 +13,7 @@ file is the fine-grained, capability-level queue between them. Blocked
 on a design decision? Record it under [[*Decisions][Decisions]], pick the most
 reversible option, keep moving.
 
-* TODO Edges: make the mocked surfaces real [1/4]
+* TODO Edges: make the mocked surfaces real [2/4]
 The kernel (org/core/store/query/undo/input) is deep + tested; the
 real-world *edges* are trait+mock+deferred. These four are the highest
 TODO because each is a spec promise the code does not yet keep, or a
@@ -89,7 +89,7 @@ minimal RGA for body text behind the existing =Edit=/=BlockId= surface
 (no closure-core API change, per spec.md:218). Hermetic test: two
 replicas insert at the same position concurrently → both survive,
 order is deterministic, convergent, idempotent.
-** TODO C3 Sync authentication + encryption [0/2]
+** DONE C3 Sync authentication + encryption [2/2]
 =closure-sync= ships =SyncMessage= over plaintext TCP with no identity,
 auth, or encryption (grep: no tls/crypto/auth in the crate). P2P collab
 on an untrusted network = anyone reads/injects replica deltas. The
@@ -108,12 +108,20 @@ Tests (RED->green, hermetic): signed frame verifies + converges into a
 peer; a tampered payload byte fails verification; a valid signature from
 an untrusted key is rejected; empty trust = integrity-only. Spec revised
 (spec.md Layer 3 closure-sync) + Decision below, same commit.
-*** TODO C3b Transport encryption: wrap the TCP path in an encrypted
-channel (Noise handshake preferred — small, no async runtime, fits the
-std-TCP choice in the 2026-06-17 P2P Decision; rustls drags tokio per
-=Cargo.lock=). Keep behind the same =SyncMessage= framing so iroh/QUIC
-remains a drop-in. Hermetic loopback test: bytes on the wire are not
-the plaintext replica.
+*** DONE C3b Transport encryption: =NoiseChannel= — a Noise NN channel
+(pure-Rust =snow=: x25519 + ChaCha20-Poly1305 + BLAKE2s, no async
+runtime, hermetic) with =encrypt=/=decrypt= + socket handshake
+(=handshake_initiator=/=handshake_responder=). =TcpSyncTransport=
+gained =connect_and_sync_secure=/=serve_once_secure=: Noise-handshake
+the socket, then exchange the C3a-**signed** frames over the
+**encrypted** channel (confidentiality from Noise + authenticity from
+the inner signatures), verified against the trusted set before
+=apply_message=. Same =SyncMessage= framing => iroh/QUIC stays a
+drop-in. Tests (RED->green, hermetic): wire bytes != plaintext (no
+=CLSY= magic, no title leak); encrypted round-trip decrypts +
+converges; tampered ciphertext rejected by the AEAD tag; full secure
+TCP round-trip over =127.0.0.1= converges (2 blocks both ends). Spec
+revised (spec.md Layer 3 closure-sync) + Decision below, same commit.
 ** TODO C4 Scale: prove the kernel on a real-world vault [0/2]
 Perf guards run on a 1-2k-headline synthetic vault (=closure-tui=
 =input_lag.rs=). Real PKM vaults are 10k-100k notes. No proof the
@@ -443,6 +451,22 @@ only (I8). Crates keep =#![forbid(unsafe_code)]=.
 * Decisions
 Open questions land here as subheadings: context, options considered,
 the reversible default taken, date.
+** DECISION (2026-06-19) Transport encryption: Noise NN via snow (C3b)
+Context: C3b needs an encrypted channel over the std-TCP transport
+(2026-06-17 P2P Decision keeps TCP, no tokio/rustls). Options: (a)
+rustls/TLS — pulls tokio + a big async tree, fights I10; (b) =snow=
+(Noise) — pure-Rust, default-resolver (x25519/ChaCha20-Poly1305/
+BLAKE2s), no async runtime, no C. Taken (b). Handshake pattern: NN
+(ephemeral-only, no static keys) — confidentiality only, because peer
+*authenticity* is already provided by the C3a ed25519 frame signatures
+carried inside the channel; layering the two keeps each concern simple
+and avoids a static-key-distribution story for the handshake. Trade-off:
+NN alone is MITM-able, but the signed inner frames make a MITM unable
+to forge a trusted peer's edits (it can drop/replay, not forge). One
+Noise transport message caps at 64 KiB, so a very large replica would
+need chunking — noted; current frames are far smaller. Reversible: swap
+NN for XX (mutual static auth) or move to iroh/QUIC behind the same
+=SyncMessage= framing.
 ** DECISION (2026-06-19) Sync auth uses ed25519-dalek (first crypto dep)
 Context: C3a needs frame signing; the workspace had no crypto dep. The
 P2P Decision (2026-06-17) keeps sync on std TCP to avoid tokio/rustls

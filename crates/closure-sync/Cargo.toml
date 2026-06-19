@@ -19,6 +19,9 @@ thiserror.workspace = true
 # Pure-Rust ed25519 (no C, no build-time network) for signing sync
 # frames (C3a). Hermetic — keeps I10. `rand_core` for keygen.
 ed25519-dalek = "2"
+# Pure-Rust Noise protocol (default-resolver: chacha20poly1305 + x25519
+# + blake2, no C, no async runtime) for encrypting the transport (C3b).
+snow = "0.9"
 
 [dev-dependencies]
 tempfile = "3"
