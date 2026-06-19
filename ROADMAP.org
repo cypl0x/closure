@@ -99,6 +99,67 @@ rescan paths, O(n) backlink resolution, or non-windowed list builds).
 Lazy/virtualized where the data proves it's needed; keep the kernel
 API unchanged (I7).
 
+* TODO Reopened drops: vision features pulled back into scope [0/3]
+Re-opening the three vision features previously DROP'd (GUI shells
+ROADMAP:200, wasm-client-parse ROADMAP:228, real sniffer ROADMAP:394).
+The DROP rationale was real: each needs a non-hermetic toolchain or
+privileged/platform dep that fights I10 (hermetic reproducible build).
+Binding rule for all three: the non-hermetic part lives behind a cargo
+feature (default OFF) and/or an external packaging project; =just check=
+stays green with the feature OFF; the kernel API does not change (I7).
+If an item genuinely cannot satisfy I10 even feature-gated, the loop
+records WHY under Decisions and revises spec.md in the same commit —
+it does not silently weaken I10.
+** TODO X1 Native shells: Tauri, GTK4, Qt6, Flutter [0/4]
+Each consumes the shared =closure-shell-core= state machine (I7); only
+input-translate + draw is shell-specific. Logic stays headless-tested
+in shell-core; the window is a thin adapter (same pattern as egui/gpui).
+After this the user can: open + edit the same vault in each native app.
+*** TODO X1a Tauri shell: =closure-shell-tauri= behind a =tauri= feature;
+reuses the web shell's HTML/JS as the webview content over =closure
+serve='s routes. Builds + smoke-launches; default workspace stays
+hermetic (node/tauri-cli only pulled under the feature / external
+packaging dir). Capability-matrix row flips from comparison to real.
+*** TODO X1b GTK4 shell behind a =gtk= feature (gtk4-rs); thin draw over
+shell-core; flake devShell provides GTK libs under the feature only.
+*** TODO X1c Qt6 shell behind a =qt= feature (cxx-qt or qmetaobject); same
+contract.
+*** TODO X1d Flutter shell: external packaging project (Flutter SDK is not
+nix-hermetic) that talks to =closure serve= / a flutter_rust_bridge FFI
+to shell-core. Lives outside the workspace; documented build.
+Note: X1a-d each carry the explicit I10 tension — expect some to resolve
+as "feature-gated, build-verified, display-bound smoke-launch" (egui/gpui
+class), NOT hermetic-gate-tested. Record the per-shell outcome.
+** TODO X2 Client-side wasm parse/edit in the HTML export [0/2]
+Supersedes the ROADMAP:228 DROP. closure-org/closure-core already build
+to =wasm32-wasip1=; this adds in-browser parse + edit so the
+self-contained HTML export is a real editor, not a read-only snapshot.
+After this the user can: edit org in the exported single HTML file and
+have it re-parse/re-render live, offline, no server.
+*** TODO X2a =closure-wasm= feature crate: =wasm32-unknown-unknown= +
+wasm-bindgen surface exposing parse/print/query over the kernel; built
+behind a feature so the default hermetic build is untouched (wasm-bindgen
++ JS-glue toolchain stays opt-in). Hermetic-testable part: the Rust
+surface compiles + its pure functions unit-test; the bindgen artifact
+build is a feature gate (=just wasm-web=).
+*** TODO X2b =export_html= inlines the wasm artifact + JS glue when built
+with the feature; the exported file re-parses edits client-side. The
+HTML shape is unchanged for plain readers. Verification is display-bound
+(browser) — smoke-tested, recorded.
+** TODO X3 Real network sniffer backend [0/2]
+Supersedes the ROADMAP:394 DROP. The hermetic crate already ships the
+=CaptureBackend= trait + =MockBackend= + blocklist + org-native log; this
+adds a real capture path.
+After this the user can: capture + block live connections (Little-Snitch
+class) from closure, not just the mock.
+*** TODO X3a =pcap= backend behind a =pcap= feature (libpcap / pnet):
+implements =CaptureBackend= over real packets; default build stays
+dep-free + hermetic. The privileged part (CAP_NET_RAW / root) is a
+runtime concern, documented; the code is feature-gated + compile-tested.
+*** TODO X3b Wire it into =closure sniff= when the feature is on (mock
+stays the hermetic default); live capture verified manually on a host
+with privileges, recorded (non-hermetic, same class as live HTTPS).
+
 * DONE Foundation recap (already shipped)
 - closure-org span-preserving parser/printer, golden corpus, fuzz (M1)
 - closure-core Document/Command/Registry/Edit + undo-tree (M2)
@@ -197,7 +258,7 @@ API unchanged (I7).
 ** DONE egui editing: rename/add/delete/undo wired to =Shell= methods, exercised by tests.
 ** DONE Self-contained single HTML file: =closure export html= — one file with the vault embedded + client-side JS search, no server.
 ** DONE Native gpui shell (opt-in =gpui= feature): polished two-pane Zed/gpui window over the dep-free, 36-test =GpuiApp= state core. Left: level-indented headline list with TODO colours, live fuzzy filter, header count, viewport windowing (selection stays visible, render nodes capped for big vaults). Right: detail/preview pane (todo/priority/tags/planning/properties/body). Keyboard nav (arrows + C-n/C-p) and mouse click-to-select; editing parity with the TUI — capture (C-c), add-sibling (C-a), rename (C-r), delete (C-d) — all via Shell/Vault commands (I8); search via closure-query (I7); which-key footer + status line. =run()= launches an =Application= window; the CLI links with =--features gpui= (flake devShell provides the GPU/X11/xkbcommon/fontconfig/freetype libs). Default build stays hermetic (gpui off). See Decisions.
-** DROP Tauri / Flutter / GTK4 / Qt6 embedders: suggestion-tier per the vision and out of scope for the hermetic Rust workspace (heavy non-hermetic SDKs vs I10). The capability matrix keeps them as comparison entries; the web shell (=closure serve= / =export html=) is the cross-platform substrate any webview wrapper can host. See Decisions.
+** DROP Tauri / Flutter / GTK4 / Qt6 embedders: suggestion-tier per the vision and out of scope for the hermetic Rust workspace (heavy non-hermetic SDKs vs I10). The capability matrix keeps them as comparison entries; the web shell (=closure serve= / =export html=) is the cross-platform substrate any webview wrapper can host. See Decisions. [REOPENED 2026-06-19 as TODO X1 — feature-gated per the binding rule there.]
 * DONE Network sniffer (lean, pluggable) [3/3]
 ** DONE closure-sniffer: capture backend trait with a mock backend (TDD; external tcpdump/ss next)
 ** DONE Org-native log: captures append to =network.org= as headlines (host, port, proto, ts) via log_capture_to_org (TDD; searchable as org)
@@ -225,7 +286,7 @@ API unchanged (I7).
 
 * DONE Wasm/WASI core [1/1 shipped; client-parse embed deferred — see Decisions]
 ** DONE closure-org + closure-core compile to =wasm32-wasip1= (pure crates, no fs/process; target pinned in rust-toolchain.toml; flake target check). =cargo check --target= passes.
-** DROP Embed a wasm kernel in the HTML export for client-side parsing: the export already delivers read-only browse+search without a runtime; client-side *editing/reparse* needs wasm-bindgen + generated JS glue, a toolchain that conflicts with the dep-minimal hermetic build. Deferred to a future =closure-wasm= feature crate — see Decisions.
+** DROP Embed a wasm kernel in the HTML export for client-side parsing: the export already delivers read-only browse+search without a runtime; client-side *editing/reparse* needs wasm-bindgen + generated JS glue, a toolchain that conflicts with the dep-minimal hermetic build. Deferred to a future =closure-wasm= feature crate — see Decisions. [REOPENED 2026-06-19 as TODO X2 — that =closure-wasm= feature crate is now scheduled.]
 * DONE Quality gates to 100% [4/4]
 ** DONE Coverage gate enforced: =just coverage= = =cargo llvm-cov --fail-under-lines 78= (current 80.28%; ratchet toward 100%). Cargo gates live in the justfile because the flake sandbox has no network.
 ** DONE Real parser fuzz/replay gate (=closure-org= =fuzz_replay= test): corpus replay + 40k deterministic full-byte-range inputs + adversarial cases, all byte-exact + panic-free on stable; run via =just fuzz=. The =fuzz/= libFuzzer target stays for opt-in nightly =cargo fuzz=.
@@ -391,7 +452,7 @@ binary, so =main.rs= is genuinely covered (0.9% -> 15.1%) and folded
 back into the metric. =just coverage= is full-workspace again,
 =--fail-under-lines 80= (actual 81.65%). No file is excluded; the
 "thin glue" reversible path was taken.
-** Network sniffer real backend is DROP (out-of-tree plugin) (2026-06-14)
+** Network sniffer real backend is DROP (out-of-tree plugin) (2026-06-14) [REOPENED 2026-06-19 as TODO X3 — in-tree =pcap= feature, default OFF]
 The vision wants an included sniffer (Little Snitch/wireshark/mitmproxy
 class). A real capture backend needs libpcap or shelling to
 tcpdump/ss with root/CAP_NET_RAW — non-hermetic, privileged, and
