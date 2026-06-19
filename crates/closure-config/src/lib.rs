@@ -52,6 +52,10 @@ pub struct Config {
     /// Blocklist globs for the network sniffer (comma patterns; * wildcards).
     /// Used by =closure sniff= and block events.
     pub sniffer_blocklist: Option<Vec<String>>,
+    /// Languages allowed to execute via the evaluator (comma list, e.g.
+    /// `shell, python`). Empty = default-deny (the security default,
+    /// C1a): no code block runs unless its language is listed here.
+    pub eval_trust: Vec<String>,
 }
 
 impl Default for Config {
@@ -71,6 +75,7 @@ impl Default for Config {
             search_backend: None,
             llm_tools: None,
             sniffer_blocklist: None,
+            eval_trust: Vec::new(),
         }
     }
 }
@@ -269,6 +274,13 @@ impl Config {
                             .filter(|s| !s.is_empty())
                             .collect(),
                     );
+                }
+                "eval_trust" => {
+                    cfg.eval_trust = value
+                        .split(',')
+                        .map(|s| s.trim().to_owned())
+                        .filter(|s| !s.is_empty())
+                        .collect();
                 }
                 "llm_provider" => cfg.llm_provider = Some(value.into()),
                 "llm_model" => cfg.llm_model = Some(value.into()),

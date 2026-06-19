@@ -11,6 +11,14 @@ use tempfile::TempDir;
 
 fn write_vault(files: &[(&str, &str)]) -> TempDir {
     let dir = tempfile::tempdir().expect("tempdir");
+    // C1a: eval is default-deny. These tests exercise execution, so the
+    // vault opts in to the languages they use via config.org (the user
+    // trusting their own vault). The deny path is covered separately.
+    fs::write(
+        dir.path().join("config.org"),
+        "#+BEGIN_SRC closure-config\neval_trust = shell, python\n#+END_SRC\n",
+    )
+    .expect("write config");
     for (name, body) in files {
         fs::write(dir.path().join(name), body).expect("write");
     }
@@ -63,6 +71,44 @@ fn eval_block_silent_skips_results() {
         before,
         "silent leaves the file untouched"
     );
+}
+
+#[test]
+fn eval_block_default_deny_runs_nothing() {
+    // No config.org => nothing trusted => a shell block must NOT execute.
+    let dir = tempfile::tempdir().expect("tempdir");
+    let f = dir.path().join("a.org");
+    fs::write(&f, "* H\n#+BEGIN_SRC shell\necho ran\n#+END_SRC\ntail\n").expect("write");
+    let before = fs::read_to_string(&f).expect("read");
+    let mut v = Vault::open(dir.path()).expect("open");
+    let err = v.eval_block(&f, 0).expect_err("must be blocked");
+    assert!(
+        matches!(err, closure_store::VaultError::EvalBlocked { .. }),
+        "blocked decision, got {err:?}"
+    );
+    assert_eq!(
+        fs::read_to_string(&f).expect("read"),
+        before,
+        "blocked block runs nothing and writes no #+RESULTS:"
+    );
+}
+
+#[test]
+fn eval_block_untrusted_language_is_blocked() {
+    // config trusts only shell; a python block is denied.
+    let dir = tempfile::tempdir().expect("tempdir");
+    fs::write(
+        dir.path().join("config.org"),
+        "#+BEGIN_SRC closure-config\neval_trust = shell\n#+END_SRC\n",
+    )
+    .expect("config");
+    let f = dir.path().join("a.org");
+    fs::write(&f, "#+BEGIN_SRC python\nprint(1)\n#+END_SRC\n").expect("write");
+    let mut v = Vault::open(dir.path()).expect("open");
+    assert!(matches!(
+        v.eval_block(&f, 0),
+        Err(closure_store::VaultError::EvalBlocked { .. })
+    ));
 }
 
 #[test]

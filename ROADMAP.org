@@ -27,12 +27,19 @@ file is remote code execution on pull. spec.md:156 already claims
 urgent gap (security > features).
 After this the user can: pull/sync an untrusted vault without a
 malicious =#+BEGIN_SRC= block executing arbitrary local commands.
-*** TODO C1a Default-deny eval: code blocks do NOT execute unless the
-vault's =config.org= opts in (=eval_trust= per-language allowlist,
-typed in closure-config, validated at load I9). Hermetic test: a vault
-with a shell block + no opt-in returns a blocked-decision, runs
-nothing. Spec note: revise spec.md "I8 / Layer 3" to state eval is
-default-deny and gated by typed config.
+*** DONE C1a Default-deny eval: code blocks do NOT execute unless the
+vault's =config.org= opts in via a typed =eval_trust= allowlist
+(closure-config, validated at load I9; empty/unreadable => deny). Pure
+gate =closure_eval::eval_allowed= (canonicalises lang+alias) +
+=canonical_language=; =Vault::eval_block= and =closure eval= both check
+it before spawning, returning =VaultError::EvalBlocked= / a "blocked"
+notice — a pulled/synced vault runs no code without explicit local
+trust. Tests (RED->green): closure-eval policy (empty denies, alias
+both sides, case-insensitive — 5); closure-config (=eval_trust= parses,
+defaults empty — 2); closure-store babel (default-deny runs nothing +
+untrusted-language blocked, trusting tests opt in via config.org — 14);
+closure-cli (eval default-deny vs trusted — 2). Spec revised
+(spec.md Layer 3) + Decision below, same commit.
 *** TODO C1b Resource bounds on the shell/python path: wall-clock
 timeout (already partially present) + a process-group kill + stdout
 size cap, so a runaway/forkbomb block cannot hang or flood the host.
@@ -412,6 +419,20 @@ only (I8). Crates keep =#![forbid(unsafe_code)]=.
 * Decisions
 Open questions land here as subheadings: context, options considered,
 the reversible default taken, date.
+** DECISION (2026-06-19) Eval is default-deny via typed eval_trust (C1a)
+Context: =closure-eval= spawned =/bin/sh=/=python3= for any code block
+with no gate; spec.md claimed "sandboxed evaluator" but nothing
+enforced it. A Babel block in a pulled/synced vault was local RCE.
+Options: (a) sandbox first (seccomp/wasm) before allowing any exec;
+(b) a typed trust allowlist that defaults to deny, with sandbox tiers
+(C1b/C1c) hardening the trusted path afterwards. Taken (b): smallest
+change that closes the hole now and is composable — =eval_trust= is a
+typed config key (I9), the gate is a pure function reused by both the
+Vault and CLI exec paths, and empty/unreadable config denies. Trade-off:
+a trusted shell/python block still runs unsandboxed until C1b/C1c land;
+that is now an explicit, opted-in risk rather than the silent default.
+Reversible: C1c adds a wasm-only sandboxed tier as the safe default for
+portable languages; the allowlist stays the policy surface either way.
 ** DECISION (2026-06-19) CRDT ships block-level LWW; char-level CRDT deferred
 Context: spec.md:160 promised "wraps Document with Automerge or Yrs,"
 but =closure-crdt= ships hand-rolled per-block per-field (title, body)

@@ -344,3 +344,41 @@ fn scheduled_lists_the_scheduled_headline() {
     let out = ok(&["scheduled", v.path().to_str().unwrap()]);
     assert!(out.contains("Ship parser"), "scheduled: {out}");
 }
+
+// C1a: `closure eval` is default-deny too. With no config.org alongside
+// the file, a shell block must NOT run; the output never carries its
+// stdout. Adding `eval_trust = shell` to config.org unblocks it.
+#[test]
+fn eval_is_default_deny_without_config() {
+    let d = tempfile::tempdir().expect("tempdir");
+    let f = d.path().join("a.org");
+    fs::write(&f, "#+BEGIN_SRC shell\necho ran-c1a\n#+END_SRC\n").expect("write");
+    let out = run(&["eval", f.to_str().unwrap()]);
+    let combined = format!(
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(
+        !combined.contains("ran-c1a"),
+        "untrusted block must not execute: {combined}"
+    );
+    assert!(
+        combined.contains("blocked"),
+        "tells the user why: {combined}"
+    );
+}
+
+#[test]
+fn eval_runs_when_trusted_in_config() {
+    let d = tempfile::tempdir().expect("tempdir");
+    fs::write(
+        d.path().join("config.org"),
+        "#+BEGIN_SRC closure-config\neval_trust = shell\n#+END_SRC\n",
+    )
+    .expect("config");
+    let f = d.path().join("a.org");
+    fs::write(&f, "#+BEGIN_SRC shell\necho ran-c1a\n#+END_SRC\n").expect("write");
+    let out = ok(&["eval", f.to_str().unwrap()]);
+    assert!(out.contains("ran-c1a"), "trusted block runs: {out}");
+}

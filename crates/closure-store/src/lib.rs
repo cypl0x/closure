@@ -110,6 +110,14 @@ pub enum VaultError {
     /// A kernel command refused the edit.
     #[error("command: {0}")]
     Command(String),
+
+    /// Code-block evaluation refused: the block's language is not in the
+    /// vault's `eval_trust` allowlist (C1a default-deny security gate).
+    #[error("eval blocked: `{lang}` not in eval_trust (add it to config.org to allow)")]
+    EvalBlocked {
+        /// The block's language as written.
+        lang: String,
+    },
 }
 
 /// FNV-1a hash of a string, matching `closure_org::OrgDoc::source_hash`
@@ -203,6 +211,21 @@ impl Vault {
         // from_path performs the full load-time validation (unknown keys,
         // bad values, and now our threaded line info).
         closure_config::Config::from_path(&cfg_path).map(|_| ())
+    }
+
+    /// The vault's `eval_trust` allowlist (languages permitted to
+    /// execute), from `config.org`. Absent or invalid config yields an
+    /// empty list — default-deny, the C1a security default: an
+    /// unreadable policy never silently permits execution.
+    #[must_use]
+    fn eval_trust(&self) -> Vec<String> {
+        let cfg_path = self.root.join("config.org");
+        if !cfg_path.exists() {
+            return Vec::new();
+        }
+        closure_config::Config::from_path(&cfg_path)
+            .map(|c| c.eval_trust)
+            .unwrap_or_default()
     }
 
     /// Rebuild the id and backlink indices from the current documents.
@@ -620,6 +643,7 @@ impl Vault {
     /// failures.
     pub fn eval_block(&mut self, path: &Path, index: usize) -> Result<String, VaultError> {
         use closure_eval::Backend as _;
+        let trust = self.eval_trust();
         let doc = self
             .documents
             .get(path)
@@ -633,6 +657,11 @@ impl Vault {
             .as_code_block()
             .ok_or_else(|| VaultError::Command("not a code block".into()))?;
         let lang = cb.language.unwrap_or("shell");
+        if !closure_eval::eval_allowed(&trust, lang) {
+            return Err(VaultError::EvalBlocked {
+                lang: lang.to_owned(),
+            });
+        }
         let header = closure_eval::HeaderArgs::parse(cb.args.unwrap_or(""));
         let program = format!(
             "{}{}",

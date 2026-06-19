@@ -3407,9 +3407,28 @@ fn cmd_whichkey(prefix: Option<&str>) -> Result<(), String> {
     Ok(())
 }
 
+/// Languages trusted to execute for a standalone file: read `eval_trust`
+/// from a `config.org` in the file's directory. Absent/invalid =>
+/// default-deny (empty), matching `Vault::eval_trust` (C1a).
+fn eval_trust_for(file: &Path) -> Vec<String> {
+    let Some(dir) = file.parent() else {
+        return Vec::new();
+    };
+    let cfg = dir.join("config.org");
+    if !cfg.exists() {
+        return Vec::new();
+    }
+    closure_config::Config::from_path(&cfg)
+        .map(|c| c.eval_trust)
+        .unwrap_or_default()
+}
+
 fn cmd_eval(path: &Path, write: bool, selector: Option<&str>) -> Result<(), String> {
     let src = fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))?;
     let doc = parse(&src).map_err(|e| format!("{e}"))?;
+    // C1a default-deny: only languages listed in `eval_trust` (config.org
+    // beside the file) may execute. Absent/invalid config = trust nothing.
+    let trust = eval_trust_for(path);
     let blocks = doc.code_blocks();
     let only_block: Option<usize> = match selector {
         None => None,
@@ -3435,6 +3454,14 @@ fn cmd_eval(path: &Path, write: bool, selector: Option<&str>) -> Result<(), Stri
         let Some(cb) = n.as_code_block() else {
             continue;
         };
+        let lang = cb.language.unwrap_or("shell");
+        if !closure_eval::eval_allowed(&trust, lang) {
+            eprintln!(
+                "---- block #{i} blocked: `{lang}` not in eval_trust \
+                 (add it to config.org to allow) ----"
+            );
+            continue;
+        }
         let backend: Box<dyn Backend> = if let Some(lang) = cb.language {
             if let Some(b) = backend_for(lang) {
                 b

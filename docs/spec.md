@@ -157,6 +157,14 @@ Preserved as opaque text (no semantics yet):
 - `closure-eval` — sandboxed evaluator for code blocks. Formulas
   (Coda-style), Babel-style execution, cron job bodies all live here.
   Language backends (shell, python, rust-script, wasm) are plugin crates.
+  **Default-deny (C1a):** no code block executes unless its language is
+  listed in the vault's typed `eval_trust` allowlist (`config.org`,
+  validated at load — I9). An empty or unreadable policy runs nothing.
+  This holds on every execution path (`Vault::eval_block`, `closure
+  eval`); a pulled/synced vault cannot run code without explicit local
+  trust. Resource bounds (C1b) and a wasm-only sandbox tier (C1c) harden
+  the *trusted* path further; the shell/python backends remain the
+  opt-in "trusted" tier.
 - `closure-crdt` — wraps `Document` as a set of CRDT replicas keyed by
   `BlockId`. `Edit` becomes a CRDT op. No API changes to `closure-core`.
   Shipped model: block-level per-field last-writer-wins registers

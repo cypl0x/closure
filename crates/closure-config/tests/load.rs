@@ -171,6 +171,23 @@ fn sniffer_blocklist_parses() {
     );
 }
 
+// C1a: eval_trust is a comma list of languages allowed to execute.
+// Absent => empty => default-deny (the security default).
+#[test]
+fn eval_trust_parses_list() {
+    let cfg = Config::from_kv_block("eval_trust = shell, python\n").expect("parse");
+    assert_eq!(
+        cfg.eval_trust,
+        vec!["shell".to_owned(), "python".to_owned()]
+    );
+}
+
+#[test]
+fn eval_trust_defaults_empty() {
+    let cfg = Config::default();
+    assert!(cfg.eval_trust.is_empty(), "default-deny: nothing trusted");
+}
+
 // TDD for the final Config validation sub-item (typed cross-key constraints,
 // yesod principle: error at load time, not first use).
 // Example from ROADMAP: llm_provider set ⇒ llm_key_env must also be set.

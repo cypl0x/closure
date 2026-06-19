@@ -165,6 +165,34 @@ pub fn backend_for(lang: &str) -> Option<Box<dyn Backend>> {
     }
 }
 
+/// Canonical language name for a (case-insensitive) identifier or alias.
+///
+/// `sh`/`bash` → `shell`, `py` → `python`, `js`/`node` → `javascript`,
+/// `rb` → `ruby`. Unknown languages map to their own lowercased form.
+/// Used by the eval-trust policy so an allowlist entry and a block's
+/// language compare on the same canonical key.
+#[must_use]
+pub fn canonical_language(lang: &str) -> String {
+    match lang.to_ascii_lowercase().as_str() {
+        "shell" | "sh" | "bash" => "shell".to_owned(),
+        "python" | "py" => "python".to_owned(),
+        "javascript" | "js" | "node" => "javascript".to_owned(),
+        "ruby" | "rb" => "ruby".to_owned(),
+        other => other.to_owned(),
+    }
+}
+
+/// C1a security gate: whether `lang` may execute given the allowlist.
+///
+/// Default-deny — an empty `trust` runs nothing. Both sides are
+/// canonicalised, so `py` in the allowlist trusts a `python` block and
+/// vice versa.
+#[must_use]
+pub fn eval_allowed(trust: &[String], lang: &str) -> bool {
+    let want = canonical_language(lang);
+    trust.iter().any(|t| canonical_language(t) == want)
+}
+
 /// All recognised language identifiers in canonical form. Used by
 /// the CLI / shells to enumerate which backends are wired in.
 #[must_use]
