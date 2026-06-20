@@ -144,13 +144,16 @@ no network — deferred to a feature). 4 plugin-host + 1 cli test. After
 this the user declares deps in a manifest, locks them, and sees each
 package's commands. See Decision (2026-06-20).
 
-** TODO V5 P2P depth: content-addressed sync [0/2]
+** WIP V5 P2P depth: content-addressed sync [1/2]
 CRDT is real; transport is iroh-via-external-binary + in-process collab.
 The vision names IPFS/content addressing + pluggable P2P.
-*** TODO V5a Content-addressed block store (CID-like, dep-free)
-Hash → content store: every block/snapshot addressable by a stable
-content id; dedup; verify-on-read. Pure + hermetic. Foundation for
-IPFS-style sync without a network dep.
+*** DONE V5a Content-addressed block store (CID-like, dep-free)
+=Cid::of(bytes)= — stable dep-free content id (FNV-1a, =b1= prefix,
+opaque string so a feature-gated sha256 CID drops in later). =BlockStore=
+keys blobs by =Cid=: =put= dedups (idempotent), =get=/=has=, =verify=
+re-hashes on read to catch tampering, =insert_raw= receives a peer's
+blob. Pure + in-memory. 6 tests (cid stability/dedup/roundtrip/missing/
+tamper). See Decision (2026-06-20).
 *** TODO V5b Pluggable provider trait + content-address sync round-trip
 A =BlockProvider= trait (get/has/put by CID) with a hermetic in-memory
 + filesystem impl; sync exchanges CIDs then missing content, converging
@@ -849,6 +852,18 @@ only (I8). Crates keep =#![forbid(unsafe_code)]=.
 * Decisions
 Open questions land here as subheadings: context, options considered,
 the reversible default taken, date.
+** DECISION (2026-06-20) Content addressing is a dep-free FNV-1a CID, sha256 deferred (V5a)
+Context: V5a needs content addressing for IPFS-style sync. Real IPFS
+CIDs use sha256/multihash — a crypto dep, and the workspace rule keeps
+heavy/non-default deps out of the hermetic core. Options: (a) pull a
+sha2 dep now; (b) a dep-free FNV-1a digest behind an opaque =Cid=
+string. Took (b): =Cid::of= is FNV-1a, prefixed =b1=, and the value is
+an opaque string, so dedup + verify-on-read work hermetically today and
+a =sha256:= CID drops in behind a feature later with no API change. Note
+the honest limit: FNV is for addressing/dedup, not adversarial integrity
+— good enough for local content addressing; a cryptographic CID is the
+upgrade path for untrusted-peer integrity. =BlockStore= is in-memory +
+pure; V5b adds the provider trait + a filesystem impl + sync.
 ** DECISION (2026-06-20) Package registry is a local directory of org files; network is a future feature (V4c)
 Context: V4c installs/locks packages. The vision wants a straight/nix-
 style ecosystem, but a network package source is non-hermetic (breaks

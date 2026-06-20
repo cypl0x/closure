@@ -15,6 +15,101 @@ use thiserror::Error;
 
 pub use ed25519_dalek::{SigningKey, VerifyingKey};
 
+/// A content identifier (V5a): a stable, dep-free address for a blob,
+/// derived from its bytes. Identical content always yields an equal
+/// `Cid` (dedup + verify-on-read); textual form is deterministic (I6).
+///
+/// Not cryptographic — an FNV-1a digest, prefixed `b1`. A future
+/// `sha256`-backed CID can be added behind a feature without changing the
+/// API (the value is an opaque string).
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct Cid(String);
+
+impl Cid {
+    /// The content id of `bytes`.
+    #[must_use]
+    pub fn of(bytes: &[u8]) -> Self {
+        let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+        for &b in bytes {
+            h ^= u64::from(b);
+            h = h.wrapping_mul(0x0000_0100_0000_01b3);
+        }
+        Self(format!("b1{h:016x}"))
+    }
+
+    /// The textual content id (stable; usable as a key / on the wire).
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+/// A content-addressed block store (V5a): blobs keyed by their [`Cid`].
+///
+/// `put` is idempotent (identical content dedups to one entry); `get`
+/// returns the stored bytes; `verify` re-hashes a stored blob to confirm
+/// it still matches its key (corruption / tamper detection). In-memory +
+/// pure; the foundation for content-addressed sync (V5b).
+#[derive(Debug, Clone, Default)]
+pub struct BlockStore {
+    blobs: std::collections::HashMap<Cid, Vec<u8>>,
+}
+
+impl BlockStore {
+    /// An empty store.
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Store `content`, returning its [`Cid`]. Idempotent.
+    pub fn put(&mut self, content: &[u8]) -> Cid {
+        let cid = Cid::of(content);
+        self.blobs
+            .entry(cid.clone())
+            .or_insert_with(|| content.to_vec());
+        cid
+    }
+
+    /// The bytes stored under `cid`, if any.
+    #[must_use]
+    pub fn get(&self, cid: &Cid) -> Option<&[u8]> {
+        self.blobs.get(cid).map(Vec::as_slice)
+    }
+
+    /// Whether `cid` is present.
+    #[must_use]
+    pub fn has(&self, cid: &Cid) -> bool {
+        self.blobs.contains_key(cid)
+    }
+
+    /// Number of stored blobs.
+    #[must_use]
+    pub fn len(&self) -> usize {
+        self.blobs.len()
+    }
+
+    /// Whether the store is empty.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.blobs.is_empty()
+    }
+
+    /// Insert `content` under an explicit `cid` without re-hashing — used
+    /// to receive a blob from a peer (verified separately) or, in tests,
+    /// to inject a mismatched blob.
+    pub fn insert_raw(&mut self, cid: Cid, content: Vec<u8>) {
+        self.blobs.insert(cid, content);
+    }
+
+    /// Re-hash the blob under `cid` and confirm it matches the key.
+    /// `false` for a missing or tampered blob.
+    #[must_use]
+    pub fn verify(&self, cid: &Cid) -> bool {
+        self.blobs.get(cid).is_some_and(|b| &Cid::of(b) == cid)
+    }
+}
+
 /// A peer's CRDT sync state: an accumulated [`Replica`] + [`VectorClock`].
 ///
 /// Local edits are folded in via [`Self::record_local`]; a peer's

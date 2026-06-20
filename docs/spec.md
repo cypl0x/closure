@@ -213,7 +213,12 @@ eval`); a pulled/synced vault cannot run code without explicit local
   / `serve_once_secure` handshake the socket then exchange the C3a-signed
   frames over the encrypted channel (confidentiality from Noise,
   authenticity from the inner signatures). The same `SyncMessage` framing
-  keeps a future iroh/QUIC transport a drop-in.
+  keeps a future iroh/QUIC transport a drop-in. **Content addressing
+  (V5a):** `Cid::of(bytes)` is a stable, dep-free content id (FNV-1a,
+  prefixed `b1`; a `sha256` CID can be added behind a feature without an
+  API change); `BlockStore` keys blobs by `Cid` — `put` dedups, `verify`
+  re-hashes on read to detect tampering. This is the IPFS-style substrate
+  the content-address sync (V5b) exchanges over.
 
 ### Layer 4 — Adapters (I8)
 
