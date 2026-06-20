@@ -18,7 +18,7 @@ fn state(s: &SyncSession) -> Vec<(String, String, String)> {
             (
                 id.as_str().to_owned(),
                 s.title_of(id).unwrap_or("").to_owned(),
-                s.body_of(id).unwrap_or("").to_owned(),
+                s.body_of(id).unwrap_or_default(),
             )
         })
         .collect();
@@ -42,6 +42,41 @@ fn cross_merge_converges_to_the_same_state() {
     assert_eq!(state(&pa), state(&pb), "peers converge");
     // Both know both blocks.
     assert_eq!(state(&pa).len(), 2);
+}
+
+// C2b end-to-end: two peers sharing a base paragraph each edit it at a
+// *different* position; after sync both edits survive (the LWW body
+// register would have kept only one whole body).
+#[test]
+fn concurrent_paragraph_edits_at_different_spots_both_survive() {
+    use closure_core::BlockId;
+    const ID: &str = "01CCCCCCCCCCCCCCCCCCCCCCCC";
+    let base = "* Note\n:PROPERTIES:\n:ID: 01CCCCCCCCCCCCCCCCCCCCCCCC\n:END:\nhello world\n";
+    let edit_a = "* Note\n:PROPERTIES:\n:ID: 01CCCCCCCCCCCCCCCCCCCCCCCC\n:END:\nHELLO world\n";
+    let edit_b = "* Note\n:PROPERTIES:\n:ID: 01CCCCCCCCCCCCCCCCCCCCCCCC\n:END:\nhello WORLD\n";
+
+    let mut pa = SyncSession::new("a");
+    pa.record_local(&doc(base));
+    // Peer B starts from the SAME base RGA (shared element ids).
+    let mut pb = SyncSession::new("b");
+    pb.receive(&pa.outgoing().clone());
+
+    // Concurrent edits to the same paragraph at different positions.
+    pa.record_local(&doc(edit_a)); // start: hello -> HELLO
+    pb.record_local(&doc(edit_b)); // end:   world -> WORLD
+
+    // Exchange + merge.
+    let (oa, ob) = (pa.outgoing().clone(), pb.outgoing().clone());
+    pa.receive(&ob);
+    pb.receive(&oa);
+
+    assert_eq!(state(&pa), state(&pb), "peers converge");
+    let id = BlockId::from_existing(ID);
+    assert_eq!(
+        pa.body_of(&id).as_deref(),
+        Some("HELLO WORLD\n"),
+        "both edits survive char-level (LWW would keep only one)"
+    );
 }
 
 #[test]

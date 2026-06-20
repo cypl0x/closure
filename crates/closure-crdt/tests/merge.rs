@@ -10,7 +10,7 @@ use closure_crdt::Replica;
 #[test]
 fn snapshot_captures_every_headline() {
     let doc = Document::load_str("* A\n** B\n* C\n").expect("load");
-    let r = Replica::snapshot(&doc, 1);
+    let r = Replica::snapshot(&doc, 1, "r");
     let ids = doc.all_block_ids();
     for id in ids {
         assert!(r.title_of(&id).is_some());
@@ -21,11 +21,11 @@ fn snapshot_captures_every_headline() {
 fn merge_picks_higher_timestamp() {
     let doc_a = Document::load_str("* Old\n:PROPERTIES:\n:ID: 01HXAAAAAAAAAAAAAAAAAAAAAA\n:END:\n")
         .expect("load");
-    let mut r_a = Replica::snapshot(&doc_a, 1);
+    let mut r_a = Replica::snapshot(&doc_a, 1, "a");
 
     let doc_b = Document::load_str("* New\n:PROPERTIES:\n:ID: 01HXAAAAAAAAAAAAAAAAAAAAAA\n:END:\n")
         .expect("load");
-    let r_b = Replica::snapshot(&doc_b, 2);
+    let r_b = Replica::snapshot(&doc_b, 2, "b");
 
     r_a.merge(&r_b);
     let id = BlockId::from_existing("01HXAAAAAAAAAAAAAAAAAAAAAA");
@@ -37,12 +37,12 @@ fn merge_keeps_local_when_other_older() {
     let doc_a =
         Document::load_str("* Local\n:PROPERTIES:\n:ID: 01HXAAAAAAAAAAAAAAAAAAAAAA\n:END:\n")
             .expect("load");
-    let mut r_a = Replica::snapshot(&doc_a, 10);
+    let mut r_a = Replica::snapshot(&doc_a, 10, "a");
 
     let doc_b =
         Document::load_str("* Remote\n:PROPERTIES:\n:ID: 01HXAAAAAAAAAAAAAAAAAAAAAA\n:END:\n")
             .expect("load");
-    let r_b = Replica::snapshot(&doc_b, 5);
+    let r_b = Replica::snapshot(&doc_b, 5, "b");
 
     r_a.merge(&r_b);
     let id = BlockId::from_existing("01HXAAAAAAAAAAAAAAAAAAAAAA");
@@ -53,11 +53,11 @@ fn merge_keeps_local_when_other_older() {
 fn merge_adds_new_blocks_from_other() {
     let doc_a = Document::load_str("* A\n:PROPERTIES:\n:ID: 01HXAAAAAAAAAAAAAAAAAAAAAA\n:END:\n")
         .expect("load");
-    let mut r_a = Replica::snapshot(&doc_a, 1);
+    let mut r_a = Replica::snapshot(&doc_a, 1, "a");
 
     let doc_b = Document::load_str("* B\n:PROPERTIES:\n:ID: 01HXBBBBBBBBBBBBBBBBBBBBBB\n:END:\n")
         .expect("load");
-    let r_b = Replica::snapshot(&doc_b, 2);
+    let r_b = Replica::snapshot(&doc_b, 2, "b");
 
     r_a.merge(&r_b);
     let id_b = BlockId::from_existing("01HXBBBBBBBBBBBBBBBBBBBBBB");
@@ -111,7 +111,7 @@ fn doc(src: &str) -> Document {
 #[test]
 fn snapshot_captures_body() {
     let d = doc("* T\n:PROPERTIES:\n:ID: 01HXAAAAAAAAAAAAAAAAAAAAAA\n:END:\nbody line\n");
-    let r = Replica::snapshot(&d, 1);
+    let r = Replica::snapshot(&d, 1, "r");
     let id = BlockId::from_existing(ID_A);
     assert!(r.body_of(&id).is_some_and(|b| b.contains("body line")));
 }
@@ -123,11 +123,11 @@ fn concurrent_title_and_body_edits_both_survive() {
     let a = doc("* Old\n:PROPERTIES:\n:ID: 01HXAAAAAAAAAAAAAAAAAAAAAA\n:END:\nnew body\n");
     // Replica B edits only the title.
     let b = doc("* New\n:PROPERTIES:\n:ID: 01HXAAAAAAAAAAAAAAAAAAAAAA\n:END:\nold body\n");
-    let r_base = Replica::snapshot(&doc(base), 1);
+    let r_base = Replica::snapshot(&doc(base), 1, "base");
     // snapshot_against only advances the timestamp of fields that
     // actually changed relative to the common base.
-    let r_a = Replica::snapshot_against(&r_base, &a, 2);
-    let r_b = Replica::snapshot_against(&r_base, &b, 3);
+    let r_a = Replica::snapshot_against(&r_base, &a, 2, "a");
+    let r_b = Replica::snapshot_against(&r_base, &b, 3, "b");
     let mut merged = r_base;
     merged.merge(&r_a);
     merged.merge(&r_b);
@@ -144,9 +144,9 @@ fn merge_is_commutative_for_distinct_fields() {
     let base = doc("* Old\n:PROPERTIES:\n:ID: 01HXAAAAAAAAAAAAAAAAAAAAAA\n:END:\nold body\n");
     let a = doc("* Old\n:PROPERTIES:\n:ID: 01HXAAAAAAAAAAAAAAAAAAAAAA\n:END:\nnew body\n");
     let b = doc("* New\n:PROPERTIES:\n:ID: 01HXAAAAAAAAAAAAAAAAAAAAAA\n:END:\nold body\n");
-    let r_base = Replica::snapshot(&base, 1);
-    let r_a = Replica::snapshot_against(&r_base, &a, 2);
-    let r_b = Replica::snapshot_against(&r_base, &b, 3);
+    let r_base = Replica::snapshot(&base, 1, "base");
+    let r_a = Replica::snapshot_against(&r_base, &a, 2, "a");
+    let r_b = Replica::snapshot_against(&r_base, &b, 3, "b");
     let mut ab = r_a.clone();
     ab.merge(&r_b);
     let mut ba = r_b.clone();
@@ -160,8 +160,8 @@ fn merge_is_commutative_for_distinct_fields() {
 fn merge_never_invents_ids() {
     let a = doc("* A\n");
     let b = doc("* B\n");
-    let mut r = Replica::snapshot(&a, 1);
-    let r_b = Replica::snapshot(&b, 2);
+    let mut r = Replica::snapshot(&a, 1, "a");
+    let r_b = Replica::snapshot(&b, 2, "b");
     let union: std::collections::BTreeSet<String> = a
         .all_block_ids()
         .into_iter()
@@ -178,8 +178,12 @@ fn merge_never_invents_ids() {
 fn apply_to_reconciles_document_via_commands() {
     let mut target = doc("* Old\n:PROPERTIES:\n:ID: 01HXAAAAAAAAAAAAAAAAAAAAAA\n:END:\nold body\n");
     let newer = doc("* New\n:PROPERTIES:\n:ID: 01HXAAAAAAAAAAAAAAAAAAAAAA\n:END:\nnew body\n");
-    let mut r = Replica::snapshot(&target, 1);
-    r.merge(&Replica::snapshot(&newer, 2));
+    // Base-relative: the newer state is an edit *against* the shared base
+    // (the RGA model — and how SyncSession actually authors edits), so the
+    // body change replaces rather than concatenating two disjoint RGAs.
+    let base = Replica::snapshot(&target, 1, "base");
+    let mut r = base.clone();
+    r.merge(&Replica::snapshot_against(&base, &newer, 2, "peer"));
     let changed = r.apply_to(&mut target).expect("apply");
     assert_eq!(changed, 2, "title + body both reconciled");
     let id = BlockId::from_existing(ID_A);
@@ -192,8 +196,9 @@ fn apply_to_reconciles_document_via_commands() {
 fn apply_to_is_undoable() {
     let mut target = doc("* Old\n:PROPERTIES:\n:ID: 01HXAAAAAAAAAAAAAAAAAAAAAA\n:END:\n");
     let newer = doc("* New\n:PROPERTIES:\n:ID: 01HXAAAAAAAAAAAAAAAAAAAAAA\n:END:\n");
-    let mut r = Replica::snapshot(&target, 1);
-    r.merge(&Replica::snapshot(&newer, 2));
+    let base = Replica::snapshot(&target, 1, "base");
+    let mut r = base.clone();
+    r.merge(&Replica::snapshot_against(&base, &newer, 2, "peer"));
     let changed = r.apply_to(&mut target).expect("apply");
     assert_eq!(changed, 1);
     target.undo().expect("undo");
@@ -208,7 +213,7 @@ fn apply_to_is_undoable() {
 #[test]
 fn apply_to_noop_when_already_converged() {
     let mut target = doc("* Same\n:PROPERTIES:\n:ID: 01HXAAAAAAAAAAAAAAAAAAAAAA\n:END:\n");
-    let r = Replica::snapshot(&target, 5);
+    let r = Replica::snapshot(&target, 5, "r");
     let changed = r.apply_to(&mut target).expect("apply");
     assert_eq!(changed, 0);
 }

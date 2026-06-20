@@ -39,9 +39,9 @@ fn every_conflict_case_merges_to_golden_output() {
         let ours = Document::load_str(&ours_src).expect("ours parses");
         let theirs = Document::load_str(&theirs_src).expect("theirs parses");
 
-        let r_base = Replica::snapshot(&base, 1);
-        let r_ours = Replica::snapshot_against(&r_base, &ours, 2);
-        let r_theirs = Replica::snapshot_against(&r_base, &theirs, 3);
+        let r_base = Replica::snapshot(&base, 1, "base");
+        let r_ours = Replica::snapshot_against(&r_base, &ours, 2, "ours");
+        let r_theirs = Replica::snapshot_against(&r_base, &theirs, 3, "theirs");
         let mut merged = r_base;
         merged.merge(&r_ours);
         merged.merge(&r_theirs);
@@ -66,9 +66,9 @@ fn merge_order_does_not_change_golden_output() {
         let mut base = Document::load_str(&read("base.org")).expect("parse");
         let ours = Document::load_str(&read("ours.org")).expect("parse");
         let theirs = Document::load_str(&read("theirs.org")).expect("parse");
-        let r_base = Replica::snapshot(&base, 1);
-        let r_ours = Replica::snapshot_against(&r_base, &ours, 2);
-        let r_theirs = Replica::snapshot_against(&r_base, &theirs, 3);
+        let r_base = Replica::snapshot(&base, 1, "base");
+        let r_ours = Replica::snapshot_against(&r_base, &ours, 2, "ours");
+        let r_theirs = Replica::snapshot_against(&r_base, &theirs, 3, "theirs");
         let mut other_order = r_base;
         other_order.merge(&r_theirs);
         other_order.merge(&r_ours);

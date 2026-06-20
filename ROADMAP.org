@@ -69,7 +69,7 @@ errors; malformed WAT errors without panic; =backend_for= resolves;
 store end-to-end trusted-wasm = "42". Spec revised (spec.md Layer 3) +
 Decision below; =just check= green with the feature OFF. Improves on
 the original plan: fuel-bounding means even the sandbox tier can't hang.
-** TODO C2 Real text CRDT — spec says Automerge/Yrs, code is LWW [1/2]
+** DONE C2 Real text CRDT — char-level body RGA shipped [2/2]
 =closure-crdt/src/lib.rs:5= is hand-rolled per-field last-writer-wins.
 spec.md:160 promised "wraps Document with Automerge or Yrs." Concurrent
 edits to the SAME headline body silently drop one side — not collab-
@@ -82,11 +82,10 @@ vector clocks, that concurrent same-field edits merge LWW (known
 limitation), and that char-level text CRDT is the C2b upgrade behind the
 same =Edit=/=BlockId= surface. Added the 2026-06-19 Decision below. No
 code change — removes the spec/code divergence.
-*** WIP C2b Char-level body CRDT: hand-rolled RGA (Automerge/Yrs drag
+*** DONE C2b Char-level body CRDT: hand-rolled RGA (Automerge/Yrs drag
 large/async dep trees vs I10 — see the char-CRDT Decision). Behind the
 existing =Edit=/=BlockId= surface (no closure-core API change,
-spec.md:218).
-Progress [1/2]:
+spec.md:218). Engine + Replica/SyncSession wiring both shipped [2/2]:
 **** DONE C2b-engine =closure_crdt::BodyCrdt= — an RGA over body chars:
 =ElemId(counter,replica)= identities, causal =after= predecessors,
 tombstone deletes, deterministic linear order (siblings desc by id),
@@ -97,15 +96,21 @@ same-position inserts both survive + converge order-independently +
 =AYXC= deterministic; idempotent; concurrent edits at *different*
 positions both apply (=hello world= -> =HELLO WORLD=, which LWW would
 clobber); plain-text round-trip; deletion tombstones. =just check= 3296.
-**** TODO C2b-wire Replace =BlockState.body= LWW =Register= with
-=BodyCrdt=: thread a replica id into =snapshot=/=snapshot_against=
-(authoring body element ids), =merge= the body RGA, materialise in
-=body_of= (-> owned =String=), reconcile in =apply_to=, and add
-=BodyCrdt= encode/decode to the replica wire. Migrate the LWW-model
-=merge.rs= tests (independent-snapshot merge) to the base-relative
-=snapshot_against= model the RGA (and the real =SyncSession= path)
-requires. Then two peers editing the same paragraph both keep their
-edits end-to-end; flip C2b DONE + revise spec.md:176.
+**** DONE C2b-wire Replaced =BlockState.body= LWW =Register= with
+=BodyCrdt=: threaded a replica id into =snapshot=/=snapshot_against=
+(authoring body element ids, seeded above the base's max counter so
+inserts always sort as "newer" regardless of clock skew), =merge= unions
+the body RGA, =body_of= materialises (-> owned =String=), =apply_to=
+reconciles the materialised body via =SetBody= (I3), and the replica
+wire encodes/decodes the RGA (shared =Cursor=). Migrated the LWW-model
+=merge.rs= apply-back tests to the base-relative =snapshot_against=
+model the RGA (and the real =SyncSession= path) uses; the conflict
+corpus, codec round-trip, transport, and session tests all pass
+unchanged on the RGA body. End-to-end proof (=session.rs=): two peers
+sharing a base paragraph edit it at *different* spots (=hello world= ->
+=HELLO world= and =hello WORLD=); after exchange both converge to
+=HELLO WORLD= — the LWW register would have kept only one. =just check=
+3297. Spec revised (spec.md closure-crdt) same commit; C2b DONE.
 ** DONE C3 Sync authentication + encryption [2/2]
 =closure-sync= ships =SyncMessage= over plaintext TCP with no identity,
 auth, or encryption (grep: no tls/crypto/auth in the crate). P2P collab

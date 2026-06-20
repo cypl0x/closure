@@ -144,8 +144,8 @@ fn live_collab_over_localhost_tcp_stub() {
     let doc_a = Document::load_str(&(base.clone() + &ours)).expect("load A (base+ours)");
     let doc_b = Document::load_str(&(base + &theirs)).expect("load B (base+theirs)");
 
-    let mut replica_a = closure_crdt::Replica::snapshot(&doc_a, 10);
-    let mut replica_b = closure_crdt::Replica::snapshot(&doc_b, 20);
+    let mut replica_a = closure_crdt::Replica::snapshot(&doc_a, 10, "a");
+    let mut replica_b = closure_crdt::Replica::snapshot(&doc_b, 20, "b");
 
     // 'Exchange replica deltas over TCP' (the channels as localhost TCP stub; send the snapshot).
     tx_a.send(replica_a.clone())

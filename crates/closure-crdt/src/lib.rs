@@ -79,11 +79,20 @@ impl Register {
     }
 }
 
-/// Per-block state: independent LWW registers for title and body.
+/// Per-block state: a LWW register for the title and a character-level
+/// RGA ([`BodyCrdt`]) for the body, so concurrent edits to the same
+/// body converge char-level instead of one side winning (C2b).
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct BlockState {
     title: Register,
-    body: Register,
+    body: BodyCrdt,
+}
+
+/// Seed a per-replica element-id counter from a logical time, leaving
+/// headroom for up to ~1M characters authored at that time. Monotone in
+/// `ts`, so a later snapshot's inserts always outrank earlier ids.
+const fn body_counter_seed(ts: u64) -> u64 {
+    ts.saturating_mul(1_000_000)
 }
 
 /// CRDT-side view of a document: per-block field registers that can
@@ -95,10 +104,13 @@ pub struct Replica {
 }
 
 impl Replica {
-    /// Snapshot the title and body of every headline at logical time
-    /// `ts`.
+    /// Snapshot the title (LWW) and body (fresh RGA) of every headline
+    /// at logical time `ts`, authored by `replica`. Body element ids are
+    /// minted for `replica` from a `ts`-seeded counter, so the same
+    /// `(doc, ts, replica)` always yields identical ids (I6).
     #[must_use]
-    pub fn snapshot(doc: &Document, ts: u64) -> Self {
+    pub fn snapshot(doc: &Document, ts: u64, replica: &str) -> Self {
+        let mut counter = body_counter_seed(ts);
         let blocks = doc
             .all_headlines()
             .map(|h| {
@@ -109,10 +121,7 @@ impl Replica {
                             ts,
                             value: h.title().to_owned(),
                         },
-                        body: Register {
-                            ts,
-                            value: h.body_text().to_owned(),
-                        },
+                        body: BodyCrdt::from_text(h.body_text(), replica, &mut counter),
                     },
                 )
             })
@@ -120,33 +129,54 @@ impl Replica {
         Self { blocks }
     }
 
-    /// Snapshot `doc` relative to a common `base`: a field's
-    /// timestamp only advances to `ts` when its value actually
-    /// changed against the base register, so an untouched field never
-    /// outranks a concurrent edit on the other replica.
+    /// Snapshot `doc` relative to a common `base`, authored by `replica`.
+    /// The title register's timestamp only advances when the title
+    /// actually changed (so an untouched title never outranks a
+    /// concurrent edit). The body is the base block's RGA *edited toward*
+    /// the new text: shared characters keep their element ids, so a
+    /// peer's concurrent edits to other positions survive the merge.
     #[must_use]
-    pub fn snapshot_against(base: &Self, doc: &Document, ts: u64) -> Self {
-        let mut snap = Self::snapshot(doc, ts);
-        for (id, state) in &mut snap.blocks {
-            if let Some(b) = base.blocks.get(id) {
-                if state.title.value == b.title.value {
-                    state.title.ts = b.title.ts;
-                }
-                if state.body.value == b.body.value {
-                    state.body.ts = b.body.ts;
-                }
-            }
-        }
-        snap
+    pub fn snapshot_against(base: &Self, doc: &Document, ts: u64, replica: &str) -> Self {
+        let blocks = doc
+            .all_headlines()
+            .map(|h| {
+                let id = h.id().clone();
+                let base_block = base.blocks.get(&id);
+                let title_value = h.title().to_owned();
+                let title_ts = match base_block {
+                    Some(b) if b.title.value == title_value => b.title.ts,
+                    _ => ts,
+                };
+                let mut body = base_block.map_or_else(BodyCrdt::new, |b| b.body.clone());
+                // Seed new element ids above every existing one so this
+                // edit's inserts sort as "newer" than the base (and any
+                // already-merged peer) regardless of clock skew — the
+                // key to correct char-level placement across replicas.
+                let mut counter = body_counter_seed(ts).max(body.max_counter() + 1);
+                body.edit_to(h.body_text(), replica, &mut counter);
+                (
+                    id,
+                    BlockState {
+                        title: Register {
+                            ts: title_ts,
+                            value: title_value,
+                        },
+                        body,
+                    },
+                )
+            })
+            .collect();
+        Self { blocks }
     }
 
     /// Snapshot using a `VectorClock` (for P2P causality per ROADMAP).
-    /// Bumps the replica's counter, uses the logical time for the register ts.
+    /// Bumps the replica's counter, uses the logical time for the
+    /// register ts and the body element-id seed.
     #[must_use]
     pub fn snapshot_with_clock(doc: &Document, clock: &mut VectorClock, replica: &str) -> Self {
         clock.bump(replica);
         let ts = clock.logical_time();
-        Self::snapshot(doc, ts)
+        Self::snapshot(doc, ts, replica)
     }
 
     /// Merge another replica in: per block and per field, the
@@ -156,7 +186,7 @@ impl Replica {
         for (id, state) in &other.blocks {
             if let Some(mine) = self.blocks.get_mut(id) {
                 mine.title.merge(&state.title);
-                mine.body.merge(&state.body);
+                mine.body.merge(&state.body); // RGA union (C2b)
             } else {
                 self.blocks.insert(id.clone(), state.clone());
             }
@@ -174,10 +204,11 @@ impl Replica {
         self.blocks.get(id).map(|b| b.title.value.as_str())
     }
 
-    /// The currently-winning body for a block.
+    /// The currently-converged body text for a block (materialised from
+    /// the RGA). Returns an owned `String` since the text is computed.
     #[must_use]
-    pub fn body_of(&self, id: &BlockId) -> Option<&str> {
-        self.blocks.get(id).map(|b| b.body.value.as_str())
+    pub fn body_of(&self, id: &BlockId) -> Option<String> {
+        self.blocks.get(id).map(|b| b.body.materialize())
     }
 
     /// Reconcile `doc` to this replica's winning registers through
@@ -210,8 +241,9 @@ impl Replica {
                     .map_err(|e| CrdtError::Apply(e.to_string()))?;
                 changed += 1;
             }
-            if state.body.value != body {
-                let cmd = SetBody::new(id.clone(), state.body.value.clone());
+            let merged_body = state.body.materialize();
+            if merged_body != body {
+                let cmd = SetBody::new(id.clone(), merged_body);
                 cmd.apply(doc)
                     .map_err(|e| CrdtError::Apply(e.to_string()))?;
                 changed += 1;
@@ -240,8 +272,7 @@ impl Replica {
             put_str(&mut out, id.as_str());
             out.extend_from_slice(&st.title.ts.to_le_bytes());
             put_str(&mut out, &st.title.value);
-            out.extend_from_slice(&st.body.ts.to_le_bytes());
-            put_str(&mut out, &st.body.value);
+            st.body.encode(&mut out);
         }
         out
     }
@@ -262,24 +293,22 @@ impl Replica {
                 ts: cur.u64()?,
                 value: cur.string()?,
             };
-            let body = Register {
-                ts: cur.u64()?,
-                value: cur.string()?,
-            };
+            let body = BodyCrdt::decode(&mut cur)?;
             blocks.insert(BlockId::from_existing(&id), BlockState { title, body });
         }
         Ok(Self { blocks })
     }
 }
 
-/// Bounds-checked little-endian reader for [`Replica::decode`].
-struct Cursor<'a> {
+/// Bounds-checked little-endian reader for [`Replica::decode`] (shared
+/// with the body-RGA decoder in the `body` module).
+pub(crate) struct Cursor<'a> {
     buf: &'a [u8],
     pos: usize,
 }
 
 impl Cursor<'_> {
-    fn take(&mut self, n: usize) -> Result<&[u8], CrdtError> {
+    pub(crate) fn take(&mut self, n: usize) -> Result<&[u8], CrdtError> {
         let end = self
             .pos
             .checked_add(n)
@@ -291,21 +320,24 @@ impl Cursor<'_> {
         self.pos = end;
         Ok(slice)
     }
-    fn u32(&mut self) -> Result<u32, CrdtError> {
+    pub(crate) fn u8(&mut self) -> Result<u8, CrdtError> {
+        Ok(self.take(1)?[0])
+    }
+    pub(crate) fn u32(&mut self) -> Result<u32, CrdtError> {
         let b: [u8; 4] = self
             .take(4)?
             .try_into()
             .map_err(|_| CrdtError::Decode("u32".into()))?;
         Ok(u32::from_le_bytes(b))
     }
-    fn u64(&mut self) -> Result<u64, CrdtError> {
+    pub(crate) fn u64(&mut self) -> Result<u64, CrdtError> {
         let b: [u8; 8] = self
             .take(8)?
             .try_into()
             .map_err(|_| CrdtError::Decode("u64".into()))?;
         Ok(u64::from_le_bytes(b))
     }
-    fn string(&mut self) -> Result<String, CrdtError> {
+    pub(crate) fn string(&mut self) -> Result<String, CrdtError> {
         let len = self.u32()? as usize;
         let bytes = self.take(len)?;
         std::str::from_utf8(bytes)

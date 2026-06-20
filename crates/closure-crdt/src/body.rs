@@ -200,6 +200,14 @@ impl BodyCrdt {
         }
     }
 
+    /// The highest element-id counter present (0 if empty). New inserts
+    /// must be seeded above this so they sort as "newer" than every
+    /// existing element (the RGA convergence + correct-placement rule).
+    #[must_use]
+    pub fn max_counter(&self) -> u64 {
+        self.elems.keys().map(|id| id.counter).max().unwrap_or(0)
+    }
+
     /// Build an RGA from scratch representing `text`, authored by
     /// `replica` from `counter`.
     #[must_use]
@@ -231,6 +239,32 @@ impl BodyCrdt {
             put_str(out, e.ch.encode_utf8(&mut chbuf));
             out.push(u8::from(e.deleted));
         }
+    }
+
+    /// Decode an RGA written by [`Self::encode`] from the shared cursor.
+    ///
+    /// # Errors
+    ///
+    /// [`crate::CrdtError::Decode`] on a truncated or malformed buffer.
+    pub(crate) fn decode(cur: &mut crate::Cursor) -> Result<Self, crate::CrdtError> {
+        let n = cur.u32()?;
+        let mut elems = HashMap::with_capacity(n as usize);
+        for _ in 0..n {
+            let id = ElemId::new(cur.u64()?, &cur.string()?);
+            let after = if cur.u8()? == 1 {
+                Some(ElemId::new(cur.u64()?, &cur.string()?))
+            } else {
+                None
+            };
+            let ch_s = cur.string()?;
+            let ch = ch_s
+                .chars()
+                .next()
+                .ok_or_else(|| crate::CrdtError::Decode("empty rga char".into()))?;
+            let deleted = cur.u8()? != 0;
+            elems.insert(id, Elem { after, ch, deleted });
+        }
+        Ok(Self { elems })
     }
 }
 

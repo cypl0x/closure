@@ -48,7 +48,7 @@ impl SyncSession {
     pub fn record_local(&mut self, doc: &Document) {
         self.clock.bump(&self.name);
         let ts = self.clock.logical_time();
-        let snap = Replica::snapshot_against(&self.replica, doc, ts);
+        let snap = Replica::snapshot_against(&self.replica, doc, ts, &self.name);
         self.replica.merge(&snap);
     }
 
@@ -88,9 +88,9 @@ impl SyncSession {
         self.replica.title_of(id)
     }
 
-    /// Winning body for `id`.
+    /// Converged body text for `id` (materialised from the body RGA).
     #[must_use]
-    pub fn body_of(&self, id: &BlockId) -> Option<&str> {
+    pub fn body_of(&self, id: &BlockId) -> Option<String> {
         self.replica.body_of(id)
     }
 

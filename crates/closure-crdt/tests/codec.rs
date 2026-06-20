@@ -14,7 +14,7 @@ const SRC: &str = "* Alpha\n:PROPERTIES:\n:ID: 01AAAAAAAAAAAAAAAAAAAAAAAA\n:END:
 
 #[test]
 fn encode_decode_roundtrips_exactly() {
-    let r = Replica::snapshot(&doc(SRC), 7);
+    let r = Replica::snapshot(&doc(SRC), 7, "r");
     let bytes = r.encode();
     let back = Replica::decode(&bytes).expect("decode");
     assert_eq!(r, back, "roundtrip preserves the replica exactly");
@@ -29,7 +29,7 @@ fn empty_replica_roundtrips() {
 
 #[test]
 fn truncated_buffer_errors_without_panic() {
-    let r = Replica::snapshot(&doc(SRC), 1);
+    let r = Replica::snapshot(&doc(SRC), 1, "r");
     let mut bytes = r.encode();
     bytes.truncate(bytes.len() / 2);
     assert!(Replica::decode(&bytes).is_err(), "truncated -> error");
