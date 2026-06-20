@@ -116,13 +116,16 @@ same-command-set + no-dup invariants. =run_vault_tool= takes
 =&LlmPermissions=. 4 llm + 1 input + 2 cli tests. See Decision
 (2026-06-20).
 
-** TODO V4 Package / plugin ecosystem (straight/nix-style) [0/3]
+** WIP V4 Package / plugin ecosystem (straight/nix-style) [1/3]
 =closure-plugin-host= today invokes one manifest-declared exe/wasm. The
 vision wants a real, deterministic, lockfile-backed package system.
-*** TODO V4a Package manifest + lockfile (plain-text/org)
-A package = name + version + deps + provided commands, declared in
-org/plain-text (no JSON/YAML). A lockfile pins resolved versions +
-content hashes. Parser + golden fixtures; round-trips byte-exact.
+*** DONE V4a Package manifest + lockfile (plain-text/org)
+=Package= (name, version, repeatable =dep ==/=command =keys) parsed from
+a =closure-package= block + =render_package= (byte-exact inverse).
+=LockEntry= + =parse_lockfile= / =render_lockfile= (=name version hash=
+lines, rendered sorted by name/version for determinism I6, byte-exact).
+=PluginError::Package= for malformed input. 6 tests
+(fields/roundtrip/missing/sorted/empty). See Decision (2026-06-20).
 *** TODO V4b Deterministic dependency resolver + lockfile writer
 Resolve a dependency graph (semver-ish), deterministic order, cycle
 detection → typed error; write/verify the lockfile (hermetic, no
@@ -839,6 +842,18 @@ only (I8). Crates keep =#![forbid(unsafe_code)]=.
 * Decisions
 Open questions land here as subheadings: context, options considered,
 the reversible default taken, date.
+** DECISION (2026-06-20) Package manifest is repeatable key=value; lockfile is line-oriented (V4a)
+Context: V4a needs a plain-text (no JSON/YAML, per the vision) package
+manifest + lockfile that round-trip byte-exact. Options for deps/commands:
+(a) comma-separated lists on one line (=deps = a >=1, b >=2=); (b)
+repeatable keys (one =dep ==/=command =per line). Took (b): repeatable
+keys round-trip byte-exact trivially (no list re-spacing ambiguity),
+match the existing =closure-plugin= / =closure-config= block style, and
+diff cleanly in git (one dep per line). The lockfile is three
+whitespace-separated fields per line (=name version hash=), rendered
+sorted by =(name, version)= for determinism (I6). Both live in
+closure-plugin-host beside =Manifest=. Reversible: a resolver (V4b) and
+=closure pkg= (V4c) build on these types without changing the formats.
 ** DECISION (2026-06-20) Render access is a separate opt-in bit + a keymap toggle, not just an allowlist entry (V3b)
 Context: V3b makes render access "opt-in + live-configurable". Options:
 (a) treat =view-render= like any other =llm_tools= allowlist entry

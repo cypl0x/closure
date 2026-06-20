@@ -260,7 +260,11 @@ eval`); a pulled/synced vault cannot run code without explicit local
     vault, tested without an editor process.
 - `closure-cron` — cron scheduler triggering commands.
 - `closure-plugin-host` — wasm plugin ABI, semver-pinned core API,
-  sandboxed.
+  sandboxed. Hosts the package ecosystem (V4): a `Package` (name, version,
+  `dep`s with version requirements, provided `command`s) is declared in a
+  `closure-package` `key = value` block — plain text, no JSON/YAML — and a
+  lockfile (`name version hash` lines) pins resolved versions + content
+  hashes. Both round-trip byte-exact; the lockfile renders sorted (I6).
 - `closure-sniffer` — mitmproxy-like, own binary. Shares `closure-config`
   and the command registry. Not linked into other shells. The packet
   decoder (`parse_candidate`, Ethernet→IPv4→TCP/UDP) is dependency-free

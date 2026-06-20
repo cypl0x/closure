@@ -180,6 +180,134 @@ pub enum PluginError {
     /// The plugin tried to call an undefined import.
     #[error("undefined import: {0}")]
     UndefinedImport(String),
+    /// A package manifest / lockfile was malformed.
+    #[error("package: {0}")]
+    Package(String),
+}
+
+/// A package: name + version + dependencies + provided commands (V4a).
+///
+/// On-disk format is a `#+BEGIN_SRC closure-package` block of `key =
+/// value` lines (plain text, no JSON/YAML), with repeatable `dep` and
+/// `command` keys. Round-trips byte-exact via [`render_package`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Package {
+    /// Package name (kebab-case).
+    pub name: String,
+    /// Semver version.
+    pub version: String,
+    /// Dependencies as `(name, version requirement)`, in declared order.
+    pub deps: Vec<(String, String)>,
+    /// Commands this package provides, in declared order.
+    pub commands: Vec<String>,
+}
+
+/// Parse a [`Package`] from a `closure-package` `key = value` block.
+///
+/// # Errors
+///
+/// [`PluginError::Package`] when `name` or `version` is missing, or a
+/// `dep` line lacks a version requirement.
+pub fn parse_package(content: &str) -> Result<Package, PluginError> {
+    let mut name = None;
+    let mut version = None;
+    let mut deps = Vec::new();
+    let mut commands = Vec::new();
+    for raw in content.lines() {
+        let line = raw.trim();
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        let (key, value) = line
+            .split_once('=')
+            .ok_or_else(|| PluginError::Package(format!("expected `key = value`: {line}")))?;
+        let (key, value) = (key.trim(), value.trim());
+        match key {
+            "name" => name = Some(value.to_owned()),
+            "version" => version = Some(value.to_owned()),
+            "dep" => {
+                let (dep, req) = value
+                    .split_once(char::is_whitespace)
+                    .ok_or_else(|| PluginError::Package(format!("dep needs a version: {value}")))?;
+                deps.push((dep.trim().to_owned(), req.trim().to_owned()));
+            }
+            "command" => commands.push(value.to_owned()),
+            other => return Err(PluginError::Package(format!("unknown key: {other}"))),
+        }
+    }
+    Ok(Package {
+        name: name.ok_or_else(|| PluginError::Package("missing name".into()))?,
+        version: version.ok_or_else(|| PluginError::Package("missing version".into()))?,
+        deps,
+        commands,
+    })
+}
+
+/// Render a [`Package`] to its canonical block content (byte-exact
+/// inverse of [`parse_package`] for canonical input).
+#[must_use]
+pub fn render_package(pkg: &Package) -> String {
+    use std::fmt::Write as _;
+    let mut out = format!("name = {}\nversion = {}\n", pkg.name, pkg.version);
+    for (dep, req) in &pkg.deps {
+        let _ = writeln!(out, "dep = {dep} {req}");
+    }
+    for cmd in &pkg.commands {
+        let _ = writeln!(out, "command = {cmd}");
+    }
+    out
+}
+
+/// A resolved lockfile entry: a package pinned to an exact version + a
+/// content hash (V4a).
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub struct LockEntry {
+    /// Package name.
+    pub name: String,
+    /// Exact resolved version.
+    pub version: String,
+    /// Content hash (e.g. `sha256:...`).
+    pub hash: String,
+}
+
+/// Parse a lockfile: one `name version hash` per line (blank/`#` lines
+/// skipped).
+///
+/// # Errors
+///
+/// [`PluginError::Package`] for a line without three fields.
+pub fn parse_lockfile(content: &str) -> Result<Vec<LockEntry>, PluginError> {
+    let mut out = Vec::new();
+    for raw in content.lines() {
+        let line = raw.trim();
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        let mut it = line.split_whitespace();
+        match (it.next(), it.next(), it.next()) {
+            (Some(name), Some(version), Some(hash)) => out.push(LockEntry {
+                name: name.to_owned(),
+                version: version.to_owned(),
+                hash: hash.to_owned(),
+            }),
+            _ => return Err(PluginError::Package(format!("bad lock line: {line}"))),
+        }
+    }
+    Ok(out)
+}
+
+/// Render a lockfile, sorted by `(name, version)` for a deterministic,
+/// byte-exact result (I6).
+#[must_use]
+pub fn render_lockfile(entries: &[LockEntry]) -> String {
+    use std::fmt::Write as _;
+    let mut sorted = entries.to_vec();
+    sorted.sort();
+    let mut out = String::new();
+    for e in &sorted {
+        let _ = writeln!(out, "{} {} {}", e.name, e.version, e.hash);
+    }
+    out
 }
 
 /// Embedded wasm runtime over [`wasmtime`] (opt-in `wasmtime` feature).
