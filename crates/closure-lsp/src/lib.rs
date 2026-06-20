@@ -2,9 +2,13 @@
 //!
 //! Surfaces the command registry as an LSP server so editors (neovim,
 //! `VSCode`, helix, emacs-lsp) can drive closure through the same code
-//! path as the TUI. The current skeleton uses the same line-oriented
-//! protocol as [`closure_mcp`]; full Language Server Protocol framing
-//! arrives once a JSON dependency is picked.
+//! path as the TUI. [`serve`] speaks real Content-Length-framed JSON-RPC
+//! over any reader/writer (stdio via [`serve_stdio`], the `closure lsp`
+//! CLI): `initialize` advertises the capabilities, then hover,
+//! completion, diagnostics, document symbols, references (read-only) and
+//! rename (server-authoritative, I8) are dispatched per request. Pure +
+//! hermetic — every method is a function over `&Vault` / `&mut Vault`,
+//! tested without an editor process.
 
 #![forbid(unsafe_code)]
 
@@ -51,23 +55,27 @@ fn write_frame<W: std::io::Write>(out: &mut W, body: &str) -> Result<(), LspErro
 
 /// Serve LSP over Content-Length-framed JSON-RPC on `input`/`output`.
 ///
-/// Handles `initialize`, `textDocument/documentSymbol` (over
-/// [`document_symbols`]), `textDocument/hover` (over [`hover`]), and
-/// `shutdown`; everything else is a `-32601` error. All read the doc
-/// through `vault` and are read-only — no mutation. Requests carrying an
-/// `id` get a framed response.
+/// Dispatches every method via [`handle_message_mut`]: `initialize`,
+/// `textDocument/{documentSymbol,hover,completion,diagnostic,references}`
+/// (read-only) and `textDocument/rename` (server-authoritative, I8), plus
+/// `shutdown`; unknown methods get a `-32601` error. The `initialized`
+/// notification is a no-op; an `exit` notification stops the loop (as
+/// does clean EOF). Requests carrying an `id` get a framed response.
 ///
 /// # Errors
 ///
 /// [`LspError::Transport`] on IO / framing failure.
 pub fn serve<R: BufRead, W: std::io::Write>(
-    vault: &Vault,
+    vault: &mut Vault,
     mut input: R,
     output: &mut W,
 ) -> Result<(), LspError> {
     while let Some(msg) = read_frame(&mut input)? {
-        if let Some(resp) = handle_message(vault, &msg) {
+        if let Some(resp) = handle_message_mut(vault, &msg) {
             write_frame(output, &resp)?;
+        }
+        if closure_jsonrpc::string_field(&msg, "method").as_deref() == Some("exit") {
+            break;
         }
     }
     Ok(())
@@ -252,7 +260,7 @@ pub fn handle_message_mut(vault: &mut Vault, json: &str) -> Option<String> {
 /// # Errors
 ///
 /// [`LspError::Transport`] on IO failure.
-pub fn serve_stdio(vault: &Vault) -> Result<(), LspError> {
+pub fn serve_stdio(vault: &mut Vault) -> Result<(), LspError> {
     let stdin = std::io::stdin();
     let mut stdout = std::io::stdout();
     let reader = BufReader::new(stdin.lock());

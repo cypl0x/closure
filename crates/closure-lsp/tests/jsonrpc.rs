@@ -42,14 +42,14 @@ fn unframe(out: &[u8]) -> Vec<String> {
 
 #[test]
 fn initialize_then_document_symbol_framed() {
-    let (_d, v) = vault();
+    let (_d, mut v) = vault();
     let mut input = String::new();
     input.push_str(&frame(r#"{"jsonrpc":"2.0","id":1,"method":"initialize"}"#));
     input.push_str(&frame(
         r#"{"jsonrpc":"2.0","id":2,"method":"textDocument/documentSymbol","uri":"notes.org"}"#,
     ));
     let mut out: Vec<u8> = Vec::new();
-    serve(&v, input.as_bytes(), &mut out).expect("serve");
+    serve(&mut v, input.as_bytes(), &mut out).expect("serve");
     let bodies = unframe(&out);
     assert_eq!(bodies.len(), 2, "two framed responses: {bodies:?}");
     assert!(bodies[0].contains("\"id\":1") && bodies[0].contains("documentSymbolProvider"));
@@ -62,10 +62,10 @@ fn initialize_then_document_symbol_framed() {
 
 #[test]
 fn unknown_method_is_method_not_found() {
-    let (_d, v) = vault();
+    let (_d, mut v) = vault();
     let input = frame(r#"{"jsonrpc":"2.0","id":5,"method":"frobnicate"}"#);
     let mut out: Vec<u8> = Vec::new();
-    serve(&v, input.as_bytes(), &mut out).expect("serve");
+    serve(&mut v, input.as_bytes(), &mut out).expect("serve");
     let bodies = unframe(&out);
     assert!(bodies[0].contains("-32601") && bodies[0].contains("\"id\":5"));
 }

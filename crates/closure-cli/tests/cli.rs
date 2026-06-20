@@ -233,6 +233,56 @@ fn lsp_initialize_framed_over_stdin() {
 }
 
 #[test]
+fn lsp_framed_rename_persists_then_exits() {
+    // Drives the full stdio loop: initialize, a server-authoritative
+    // rename, shutdown, exit — and checks the rename hit disk.
+    let d = tempfile::tempdir().expect("tempdir");
+    let id = "01HXAAAAAAAAAAAAAAAAAAAAAA";
+    fs::write(
+        d.path().join("a.org"),
+        format!("* Old title\n:PROPERTIES:\n:ID: {id}\n:END:\n"),
+    )
+    .expect("write");
+
+    let frame = |j: &str| format!("Content-Length: {}\r\n\r\n{j}", j.len());
+    let mut input = String::new();
+    input.push_str(&frame(
+        "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\"}",
+    ));
+    input.push_str(&frame(
+        "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"textDocument/rename\",\
+         \"params\":{\"textDocument\":{\"uri\":\"file://a.org\"},\
+         \"position\":{\"line\":0,\"character\":2},\"newName\":\"New title\"}}",
+    ));
+    input.push_str(&frame(
+        "{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"shutdown\"}",
+    ));
+    input.push_str(&frame("{\"jsonrpc\":\"2.0\",\"method\":\"exit\"}"));
+
+    let mut child = Command::new(BIN)
+        .args(["lsp", d.path().to_str().unwrap()])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .expect("spawn lsp");
+    child
+        .stdin
+        .take()
+        .unwrap()
+        .write_all(input.as_bytes())
+        .unwrap();
+    let out = child.wait_with_output().expect("lsp output");
+    let s = String::from_utf8_lossy(&out.stdout);
+    assert!(s.contains("renameProvider"), "advertises rename: {s}");
+    assert!(s.contains("\"id\":2"), "framed rename response: {s}");
+
+    // The rename was applied server-side and persisted to disk.
+    let txt = fs::read_to_string(d.path().join("a.org")).expect("reread");
+    assert!(txt.contains("New title"), "rename persisted: {txt}");
+    assert!(!txt.contains("Old title"), "old title gone: {txt}");
+}
+
+#[test]
 fn ask_with_echo_provider_runs_the_tool_loop() {
     let v = vault();
     fs::write(

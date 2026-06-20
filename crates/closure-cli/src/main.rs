@@ -1742,8 +1742,8 @@ fn cmd_a2a(vault: &Path) -> Result<(), String> {
 }
 
 fn cmd_lsp(vault: &Path) -> Result<(), String> {
-    let v = Vault::open(vault).map_err(|e| format!("{e}"))?;
-    closure_lsp::serve_stdio(&v).map_err(|e| format!("{e}"))
+    let mut v = Vault::open(vault).map_err(|e| format!("{e}"))?;
+    closure_lsp::serve_stdio(&mut v).map_err(|e| format!("{e}"))
 }
 
 fn cmd_dead_links(vault: &Path) -> Result<(), String> {

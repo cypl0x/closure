@@ -13,7 +13,7 @@ file is the fine-grained, capability-level queue between them. Blocked
 on a design decision? Record it under [[*Decisions][Decisions]], pick the most
 reversible option, keep moving.
 
-* WIP Depth II — LSP server to real [4/5]
+* DONE Depth II — LSP server to real [5/5]
 closure-lsp today is two methods (=document_symbols=, =definition_of=)
 plus a Content-Length frame loop wired to =initialize=/=shutdown=. The
 vision promises a usable language server. Grow it into hover /
@@ -60,13 +60,16 @@ cursor (link or headline). Wired =textDocument/references= (read, in
 new =handle_message_mut=); =initialize= advertises
 =referencesProvider= + =renameProvider=. 7 lsp tests green. See
 Decision (2026-06-20).
-** TODO L5 Real stdio LSP loop + =closure lsp= CLI
-=initialize= advertises the new capabilities (hover/completion/
-references/rename/diagnostics); =initialized=/=shutdown=/=exit=
-handled; the above methods served over the Content-Length frame loop.
-Add =closure lsp <vault>= spawning =serve_stdio=, with a CLI
-integration test that drives a real =initialize= + one feature request
-through the framed protocol and asserts the framed response.
+** DONE L5 Real stdio LSP loop + =closure lsp= CLI
+=serve= / =serve_stdio= now take =&mut Vault= and dispatch every frame
+through =handle_message_mut= (read methods + server-authoritative
+rename). Lifecycle: =initialized= no-op, =shutdown= → =null=, =exit=
+breaks the loop (EOF also ends it); =initialize= advertises all L1–L4
+capabilities. =closure lsp <vault>= spawns it over stdio. CLI
+integration test pipes framed =initialize= + =rename= + =shutdown= +
+=exit= into the real binary and asserts the rename persisted to disk;
+the in-process =serve= tests migrated to =&mut=. See Decision
+(2026-06-20).
 
 * DONE Edges: make the mocked surfaces real [4/4]
 The kernel (org/core/store/query/undo/input) is deep + tested; the
@@ -600,6 +603,21 @@ only (I8). Crates keep =#![forbid(unsafe_code)]=.
 * Decisions
 Open questions land here as subheadings: context, options considered,
 the reversible default taken, date.
+** DECISION (2026-06-20) LSP stdio loop dispatches through handle_message_mut, exit ends it (L5)
+Context: L5 makes =closure lsp= a real server. The frame loop must now
+serve the mutating =textDocument/rename= (L4) as well as the read-only
+methods. Options for the loop's vault borrow: (a) keep =serve(&Vault)=
+and refuse rename in the loop (the capability would be a lie); (b)
+=serve(&mut Vault)= dispatching every method through
+=handle_message_mut=. Took (b): =serve= / =serve_stdio= now take =&mut
+Vault=; the existing in-process tests + =closure lsp= updated. Lifecycle:
+=initialized= is a no-op notification (no =id= → no reply), =shutdown=
+returns =null=, and an =exit= notification breaks the loop (clean EOF
+also ends it). Verified end-to-end by a CLI integration test that pipes
+framed =initialize= + =rename= + =shutdown= + =exit= into the spawned
+binary and asserts the rename hit disk. Reversible: a read-only embedding
+can still call =handle_message= directly; only the stdio server took the
+=&mut= upgrade.
 ** DECISION (2026-06-20) LSP rename is server-authoritative, not a client WorkspaceEdit (L4)
 Context: L4 adds =textDocument/references= + =textDocument/rename=.
 Standard LSP rename returns a =WorkspaceEdit= the *client* applies to

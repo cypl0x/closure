@@ -226,8 +226,12 @@ eval`); a pulled/synced vault cannot run code without explicit local
     via `handle_message_mut` and routes through the command registry
     (undoable, I3/I8). Links are id-based, so references survive a rename.
     closure is server-authoritative — `rename` applies + persists on the
-    server and returns `null` rather than a client `WorkspaceEdit`. Pure +
-    hermetic — no editor process needed to test it.
+    server and returns `null` rather than a client `WorkspaceEdit`. The
+    bridge speaks real Content-Length-framed JSON-RPC: `serve` loops over
+    frames dispatching through `handle_message_mut` (`initialized` is a
+    no-op, `exit` stops the loop), exposed as `closure lsp <vault>` over
+    stdio (L5). Pure + hermetic — every method is a function over the
+    vault, tested without an editor process.
 - `closure-cron` — cron scheduler triggering commands.
 - `closure-plugin-host` — wasm plugin ABI, semver-pinned core API,
   sandboxed.
