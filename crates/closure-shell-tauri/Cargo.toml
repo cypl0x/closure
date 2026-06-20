@@ -1,0 +1,28 @@
+[package]
+name = "closure-shell-tauri"
+description = "Native webview desktop shell (Tauri/wry) hosting the closure web UI (Layer 5, X1a)."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[lints]
+workspace = true
+
+[features]
+default = []
+# The native window. Opt-in (pulls wry + webkit2gtk); the default build
+# stays hermetic and `just check` never touches the webview stack (I10).
+# Build/run under `nix develop .#webview` (provides gtk3 + webkitgtk).
+tauri = ["dep:wry", "dep:tao"]
+
+[dependencies]
+closure-store = { path = "../closure-store" }
+closure-shell-web = { path = "../closure-shell-web" }
+wry = { version = "0.45", optional = true }
+tao = { version = "0.30", optional = true }
+
+[dev-dependencies]
+tempfile = "3"

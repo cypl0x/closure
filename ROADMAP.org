@@ -176,16 +176,25 @@ stays green with the feature OFF; the kernel API does not change (I7).
 If an item genuinely cannot satisfy I10 even feature-gated, the loop
 records WHY under Decisions and revises spec.md in the same commit —
 it does not silently weaken I10.
-** TODO X1 Native shells: Tauri, GTK4, Qt6, Flutter [0/4]
-Each consumes the shared =closure-shell-core= state machine (I7); only
-input-translate + draw is shell-specific. Logic stays headless-tested
-in shell-core; the window is a thin adapter (same pattern as egui/gpui).
-After this the user can: open + edit the same vault in each native app.
-*** TODO X1a Tauri shell: =closure-shell-tauri= behind a =tauri= feature;
-reuses the web shell's HTML/JS as the webview content over =closure
-serve='s routes. Builds + smoke-launches; default workspace stays
-hermetic (node/tauri-cli only pulled under the feature / external
-packaging dir). Capability-matrix row flips from comparison to real.
+** TODO X1 Native shells: Tauri, GTK4, Qt6, Flutter [1/4]
+Each consumes a shared closure crate (I7); only the window is
+shell-specific. The window is a thin adapter (same pattern as
+egui/gpui). After this the user can: open the same vault in each native
+app.
+*** DONE X1a Tauri shell: =closure-shell-tauri= behind a =tauri= feature
+hosts the web shell's self-contained =export_html= page in a =wry=/=tao=
+native window (Tauri's own webview foundation — delivers the
+native-webview capability without the node/tauri-cli bundling ceremony;
+see Decision). =page(vault)= is the hermetic core (reuses the tested
+=closure_shell_web::export_html=); =run(vault)= opens the window. Default
+build stays hermetic (feature OFF; =just check= green); the webview
+stack (wry + webkitgtk) lives in a dedicated =nix develop .#webview=
+shell so it never touches the default build (I10). Tests (hermetic,
+default build): =page= renders the vault's headlines as an HTML doc;
+empty vault -> valid HTML. Build-verified =cargo build --features tauri=
+clean under =.#webview= (wry 0.45 / tao 0.30 / webkitgtk 4.1); window is
+display-bound -> launch via =just run-tauri VAULT= (manual, recorded).
+Spec revised (spec.md Layer 5) + Decision below, same commit.
 *** TODO X1b GTK4 shell behind a =gtk= feature (gtk4-rs); thin draw over
 shell-core; flake devShell provides GTK libs under the feature only.
 *** TODO X1c Qt6 shell behind a =qt= feature (cxx-qt or qmetaobject); same
@@ -478,6 +487,23 @@ only (I8). Crates keep =#![forbid(unsafe_code)]=.
 * Decisions
 Open questions land here as subheadings: context, options considered,
 the reversible default taken, date.
+** DECISION (2026-06-20) Tauri shell = wry/tao webview, not full Tauri (X1a)
+Context: X1a asked for a Tauri shell hosting the web UI. Full Tauri v2
+needs tauri-cli, a bundled JS frontend project, and config/build
+ceremony — none of which fits a single hermetic Rust workspace crate
+(node/tauri-cli are not in the dev shell). Options: (a) vendor a full
+Tauri app (node frontend + cli bundling, non-hermetic packaging);
+(b) use =wry= + =tao= directly — the exact webview + windowing libraries
+Tauri itself is built on — and load the closure web shell's already
+self-contained =export_html= page. Taken (b): it delivers the native-
+webview capability (a desktop window showing the vault UI) as a thin
+Rust crate over the tested =export_html=, with no JS toolchain. The
+heavy native libs (wry pulls webkitgtk + gtk3) sit in a dedicated
+=devShells.webview= so the default build + =just check= stay light and
+hermetic (I10); the feature is default-OFF. Window launch is display-
+bound (verified by build + manual run, like egui/gpui). Reversible: a
+full Tauri-cli packaging project can wrap the same web shell later
+without touching the workspace.
 ** DECISION (2026-06-19) Transport encryption: Noise NN via snow (C3b)
 Context: C3b needs an encrypted channel over the std-TCP transport
 (2026-06-17 P2P Decision keeps TCP, no tokio/rustls). Options: (a)

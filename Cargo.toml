@@ -30,6 +30,7 @@ members = [
   "crates/closure-shell-web",
   "crates/closure-shell-core",
   "crates/closure-shell-gpui",
+  "crates/closure-shell-tauri",
 ]
 
 [workspace.package]

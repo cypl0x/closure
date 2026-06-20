@@ -45,5 +45,14 @@ eval-wasm:
     cargo test -p closure-eval --features wasmtime --test wasm
     cargo test -p closure-store --features wasmtime --test babel
 
+# X1a native webview shell (opt-in; pulls wry + webkitgtk). Build under
+# the webview devshell; the default `check` never touches the stack.
+gui-tauri:
+    nix develop .#webview -c cargo build -p closure-shell-tauri --features tauri
+
+# Launch the native webview shell against a vault (needs a display).
+run-tauri vault:
+    nix develop .#webview -c cargo run -p closure-shell-tauri --features tauri -- {{vault}}
+
 # Full local CI: everything above.
 ci: check fuzz wasm coverage

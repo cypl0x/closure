@@ -222,8 +222,14 @@ Preserved as opaque text (no semantics yet):
   evaluated alongside egui.
 - `closure-shell-web` — self-contained single HTML bundle and
   localhost web-app (`closure serve`).
-- `closure-shell-tauri`, `-flutter`, `-gtk`, `-qt`, `-slint` — stubs
-  defined for API-contract testing; bodied on demand.
+- `closure-shell-tauri` — native webview desktop shell (X1a): hosts the
+  web shell's `export_html` page in a `wry`/`tao` window (Tauri's webview
+  foundation). Opt-in `tauri` feature; the default build never pulls the
+  webview stack (I10). The HTML payload (`page`) is hermetically tested;
+  the window is display-bound (build-verified under `nix develop
+  .#webview`, launch is manual).
+- `-flutter`, `-gtk`, `-qt`, `-slint` — stubs defined for API-contract
+  testing; bodied on demand.
 
 ### Layer 6 — Input modes
 

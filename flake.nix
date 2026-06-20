@@ -61,7 +61,31 @@
           freetype
           libGL
         ];
+        # Native webview stack for the Tauri/wry shell (X1a). Kept out of
+        # the default shell so `just check` stays light + hermetic (I10);
+        # only `nix develop .#webview` pulls webkitgtk.
+        webviewLibs = with pkgs; [
+          gtk3
+          glib
+          cairo
+          pango
+          gdk-pixbuf
+          atkmm
+          webkitgtk_4_1
+          libsoup_3
+        ];
       in {
+        webview = pkgs.mkShell {
+          packages = [
+            rustToolchain.${system}
+            pkgs.cargo-nextest
+            pkgs.just
+            pkgs.pkg-config
+          ];
+          buildInputs = gpuiLibs ++ webviewLibs;
+          LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath (gpuiLibs ++ webviewLibs);
+        };
+
         default = pkgs.mkShell {
           packages = [
             rustToolchain.${system}
