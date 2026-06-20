@@ -62,16 +62,20 @@ over =Node= has no wildcard, so a new kind forces every shell to handle
 it. 4 shell-core tests (coverage, TUI/WEB render all, minimal-floor
 superset, table) + a CLI integration test. See Decision (2026-06-20).
 
-** TODO V2 Composable block→widget DSL [0/3]
+** WIP V2 Composable block→widget DSL [1/3]
 The core composability promise (compose existing blocks into NEW
 blocks/widgets, Notion-style) is only half-met (org-native nesting +
 built-in dynamic blocks). Add user-defined composite widgets.
-*** TODO V2a =#+BEGIN: closure-widget= user-defined composite blocks
-A dynamic-block kind whose body declares a composition of existing
-blocks/queries (e.g. a =:view= database + a code block + a backlinks
-list) by reference. =Vault::expand_widget= materialises it span-exact
-(I1), recursively (a widget may reference another widget). Cycle
-detection → typed error. Tested with golden fixtures.
+*** DONE V2a =#+BEGIN: closure-widget= user-defined composite blocks
+=closure_query::expand_widgets(src) -> Result<String, WidgetError>=:
+each =#+BEGIN: closure-widget :name X= block's body is a template that
+references other widgets via =`{{name}}`=; expansion rewrites every
+block body in place, resolving refs recursively with a =stack= for
+cycle detection, leaving =BEGIN=/=END= + all other bytes verbatim (I1).
+Pure source→source transform (mirrors =closure-view=, no AST change).
+=WidgetError::Cycle= / =Unknown= typed errors. 7 tests
+(idempotence/expand/recurse/cycle/unknown/span-exact/determinism). See
+Decision (2026-06-20).
 *** TODO V2b Widget registry + definitions in the vault
 Named widget definitions (=#+NAME:= or a =widgets.org=) resolved by
 reference; a widget composes other widgets/blocks. =closure widgets=
@@ -818,6 +822,23 @@ only (I8). Crates keep =#![forbid(unsafe_code)]=.
 * Decisions
 Open questions land here as subheadings: context, options considered,
 the reversible default taken, date.
+** DECISION (2026-06-20) Widgets are a dynamic-block source transform, not an AST node (V2a)
+Context: V2a adds user-defined composite blocks. closure's dynamic
+blocks (=closure-view= databases) are NOT parsed into the AST — they are
+line-scanned over =doc.source()= and their bodies regenerated in place,
+exactly like Emacs =org-dblock=. Options: (a) add a first-class
+=Widget= AST node to closure-org (touches the byte-exact parser + I1
+span bookkeeping for a feature that is fundamentally "regenerate this
+region"); (b) a pure source→source transform mirroring =closure-view=.
+Took (b): =expand_widgets(src) -> Result<String, WidgetError>= in
+closure-query collects =:name= definitions, then rewrites each block's
+body to its fully-expanded content (=`{{ref}}`= resolved recursively, a
+=stack= detects cycles), leaving the =BEGIN=/=END= lines and all other
+bytes verbatim (I1 for untouched spans, dynamic-block semantics for the
+body). Pure + hermetic, no parser change. =`{{ref}}`= substitution
+strips a trailing newline so inline refs compose cleanly; unknown ref →
+typed =Unknown=. Reversible: a richer widget grammar (params, queries)
+layers on top in V2b without changing the rewrite contract.
 ** DECISION (2026-06-20) UI node-kind matrix lives beside Node; exhaustive match is the type guarantee (V1c)
 Context: V1c wants "a shell that cannot render a node kind is a
 compile-time fact". Options for *where* the guarantee lives: (a) a

@@ -600,6 +600,129 @@ pub fn views(vault: &Vault) -> Result<Vec<(String, ViewSpec)>, ViewError> {
     Ok(out)
 }
 
+/// An error expanding `#+BEGIN: closure-widget` composite blocks (V2a).
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum WidgetError {
+    /// A widget references itself transitively.
+    #[error("widget cycle through `{0}`")]
+    Cycle(String),
+    /// A `{{ref}}` names a widget that is not defined.
+    #[error("unknown widget `{0}`")]
+    Unknown(String),
+}
+
+/// The `:name` of a `#+BEGIN: closure-widget` line, if this is one.
+fn widget_begin_name(line: &str) -> Option<String> {
+    let trimmed = line.trim_start();
+    let lower = trimmed.to_ascii_lowercase();
+    let rest = lower.strip_prefix("#+begin: closure-widget")?;
+    // Params are the original-case remainder after the keyword.
+    let params = trimmed[trimmed.len() - rest.len()..].trim();
+    let after = params.split_once(":name")?.1.trim_start();
+    let name = after.split_whitespace().next()?;
+    Some(name.to_owned())
+}
+
+/// True for the dynamic-block terminator `#+END:`.
+fn is_widget_end(line: &str) -> bool {
+    line.trim_start().to_ascii_lowercase().starts_with("#+end:")
+}
+
+/// `name -> template body` for every widget definition in `src`.
+fn collect_widget_defs(src: &str) -> std::collections::HashMap<String, String> {
+    let mut defs = std::collections::HashMap::new();
+    let mut lines = src.split_inclusive('\n');
+    while let Some(line) = lines.next() {
+        if let Some(name) = widget_begin_name(line) {
+            let mut body = String::new();
+            for l in lines.by_ref() {
+                if is_widget_end(l) {
+                    break;
+                }
+                body.push_str(l);
+            }
+            defs.insert(name, body);
+        }
+    }
+    defs
+}
+
+/// Fully expand widget `name`'s body, substituting `{{ref}}` references
+/// recursively; `stack` carries the active expansion chain for cycle
+/// detection.
+fn expand_widget_name(
+    name: &str,
+    defs: &std::collections::HashMap<String, String>,
+    stack: &mut Vec<String>,
+) -> Result<String, WidgetError> {
+    if stack.iter().any(|s| s == name) {
+        return Err(WidgetError::Cycle(name.to_owned()));
+    }
+    let body = defs
+        .get(name)
+        .ok_or_else(|| WidgetError::Unknown(name.to_owned()))?;
+    stack.push(name.to_owned());
+    let mut out = String::new();
+    let mut rest = body.as_str();
+    while let Some(start) = rest.find("{{") {
+        out.push_str(&rest[..start]);
+        let after = &rest[start + 2..];
+        if let Some(end) = after.find("}}") {
+            let reference = after[..end].trim();
+            let value = expand_widget_name(reference, defs, stack)?;
+            out.push_str(value.trim_end_matches('\n'));
+            rest = &after[end + 2..];
+        } else {
+            out.push_str("{{");
+            rest = after;
+        }
+    }
+    out.push_str(rest);
+    stack.pop();
+    Ok(out)
+}
+
+/// Expand every `#+BEGIN: closure-widget :name X` block in `src` in place
+/// (V2a).
+///
+/// Each block's body is replaced by its fully-expanded content (`{{ref}}`
+/// references resolved recursively, cycle-detected), while every byte
+/// outside the block bodies — including the `BEGIN`/`END` lines
+/// themselves — is preserved verbatim (I1).
+///
+/// # Errors
+///
+/// [`WidgetError::Cycle`] on a reference cycle, [`WidgetError::Unknown`]
+/// for a `{{ref}}` with no matching definition.
+pub fn expand_widgets(src: &str) -> Result<String, WidgetError> {
+    let defs = collect_widget_defs(src);
+    let mut out = String::new();
+    let mut lines = src.split_inclusive('\n');
+    while let Some(line) = lines.next() {
+        out.push_str(line);
+        let Some(name) = widget_begin_name(line) else {
+            continue;
+        };
+        // Drop the existing body lines, capturing the END terminator.
+        let mut end = None;
+        for l in lines.by_ref() {
+            if is_widget_end(l) {
+                end = Some(l);
+                break;
+            }
+        }
+        let expanded = expand_widget_name(&name, &defs, &mut Vec::new())?;
+        out.push_str(&expanded);
+        if !expanded.ends_with('\n') {
+            out.push('\n');
+        }
+        if let Some(e) = end {
+            out.push_str(e);
+        }
+    }
+    Ok(out)
+}
+
 /// Render header + rows as an aligned org-mode table.
 #[must_use]
 pub fn render_table(header: &[String], rows: &[Vec<String>]) -> String {

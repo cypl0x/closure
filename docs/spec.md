@@ -149,7 +149,13 @@ Preserved as opaque text (no semantics yet):
   mutation outside `commands::`.
 - `closure-store` — vault loader, file watcher, atomic writes, indices.
 - `closure-query` — tree / tag / full-text / backlink queries, Notion-style
-  database views.
+  database views, and **composable widgets** (V2): `expand_widgets` expands
+  every `#+BEGIN: closure-widget :name X` dynamic block in place — its body
+  is a template that may reference other widgets via `{{name}}`, resolved
+  recursively with cycle detection (`WidgetError::Cycle`/`Unknown`). Like
+  the `closure-view` database block, only the body between `BEGIN`/`END` is
+  regenerated; every other byte is preserved verbatim (I1). This is the
+  vision's "compose existing blocks into new blocks/widgets".
 - `closure-undo` — branching undo-tree persisted per vault.
 
 ### Layer 3 — Evaluation
