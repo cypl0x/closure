@@ -95,7 +95,7 @@ compile time until handled (V1c guarantee demonstrated).
 into its expanded content for a shell. 2 query + 1 tui + 1 web test +
 the updated matrix test. See Decision (2026-06-20).
 
-** WIP V3 LLM access to rendered / view state [1/2]
+** DONE V3 LLM access to rendered / view state [2/2]
 Vision differentiator over Notion AI: the LLM should *see the rendered
 result*, not only the data. Today =view-state= is a data snapshot.
 *** DONE V3a =view-render= tool: the LLM reads the =ViewTree=
@@ -106,10 +106,15 @@ The cli =run_vault_tool= executor dispatches =view-render= (read-only),
 so the agent sees *what is on screen*, not just data. 4 shell-core + 2
 cli tests; gated by the =view= allowlist base. See Decision
 (2026-06-20).
-*** TODO V3b Live, configurable render-access permission
-=view-render= is permission-gated like other tools (=llm_tools= config
-+ live toggle command/keybinding/GUI control). Render access is opt-in
-and revocable at runtime, per the vision's "configure live" note.
+*** DONE V3b Live, configurable render-access permission
+=closure_llm::LlmPermissions=: =base= allowlist (=None= = other tools
+unrestricted) + a =render_granted= bit defaulting OFF (opt-in). Granted
+via config (=llm_tools= naming =view-render=/=view=) or live via
+=grant_render=/=revoke_render=/=toggle_render=. =toggle-llm-render= bound
+in all 5 keymaps (=g r= / =C-c g=) → shows in which-key (I4), keeps
+same-command-set + no-dup invariants. =run_vault_tool= takes
+=&LlmPermissions=. 4 llm + 1 input + 2 cli tests. See Decision
+(2026-06-20).
 
 ** TODO V4 Package / plugin ecosystem (straight/nix-style) [0/3]
 =closure-plugin-host= today invokes one manifest-declared exe/wasm. The
@@ -834,6 +839,24 @@ only (I8). Crates keep =#![forbid(unsafe_code)]=.
 * Decisions
 Open questions land here as subheadings: context, options considered,
 the reversible default taken, date.
+** DECISION (2026-06-20) Render access is a separate opt-in bit + a keymap toggle, not just an allowlist entry (V3b)
+Context: V3b makes render access "opt-in + live-configurable". Options:
+(a) treat =view-render= like any other =llm_tools= allowlist entry
+(then an empty allowlist = unrestricted would silently grant render,
+not opt-in); (b) model render as a dedicated bit in =LlmPermissions=,
+independent of the base allowlist. Took (b): =LlmPermissions= holds the
+=base= allowlist (=None= = other tools unrestricted) PLUS a
+=render_granted= bit defaulting OFF — so render is never granted by an
+empty/missing allowlist; it must be named in config (=view-render=/=view=)
+or toggled live. =grant_render=/=revoke_render=/=toggle_render= flip it
+at runtime; =toggle-llm-render= is bound in all five keymaps (free
+chords =g r= / =C-c g=) so it shows in which-key and satisfies the
+same-command-set + no-dup invariants (I4). =run_vault_tool= now takes
+=&LlmPermissions=. (Minor: empty =llm_tools= now means "other tools
+unrestricted, render off" rather than the old Some(empty)="nothing"; the
+old code only ever passed =None=, so no behaviour regressed.) Reversible:
+an interactive shell wires a key to =toggle_render= over a shared
+=LlmPermissions=; the mechanism is already here.
 ** DECISION (2026-06-20) view-render snapshots a borrowed-vault browse ViewTree, in the cli executor (V3a)
 Context: V3a lets the LLM read the rendered screen. Two blockers: (1)
 =Vault::run_tool= lives in closure-store, which cannot depend on

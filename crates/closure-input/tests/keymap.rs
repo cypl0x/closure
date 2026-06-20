@@ -22,6 +22,18 @@ fn commands(mode: InputMode) -> BTreeSet<&'static str> {
 }
 
 #[test]
+fn every_mode_binds_toggle_llm_render() {
+    // V3b: the live render-permission toggle is reachable (with a chord)
+    // in every mode's which-key.
+    for mode in MODES {
+        assert!(
+            closure_input::chord_for_command(mode, "toggle-llm-render").is_some(),
+            "{mode:?} binds toggle-llm-render"
+        );
+    }
+}
+
+#[test]
 fn every_mode_binds_the_same_command_set() {
     let reference = commands(InputMode::Doom);
     assert!(reference.contains("quit"));

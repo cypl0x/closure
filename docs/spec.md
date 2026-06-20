@@ -224,7 +224,12 @@ eval`); a pulled/synced vault cannot run code without explicit local
   **ViewTree** (`closure_shell_core::serialize_view` over `browse_view`) —
   so the agent can see _what is on screen_ (panes, selection, visible
   rows, fields), the differentiator over assistants that only touch data.
-  Read-only and gated by the `llm_tools` allowlist (`view` base).
+  Read-only. Render access is governed by `LlmPermissions` (V3b): it is
+  **off by default** (opt-in), can be granted in `llm_tools` config, and is
+  revocable/grantable at runtime via `toggle_render` — the
+  `toggle-llm-render` command, bound in every input mode's keymap so it
+  shows in which-key (I4). The user controls render exposure live, per the
+  vision's "configure that (live) too".
 - `closure-mcp`, `closure-lsp`, `closure-acp`, `closure-a2a` — protocol
   bridges; each translates messages to registry commands.
   - `closure-lsp` serves Content-Length-framed JSON-RPC over stdio. Beyond

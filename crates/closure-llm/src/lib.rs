@@ -20,6 +20,77 @@ use thiserror::Error;
 /// + ROADMAP deep access).
 pub const VIEW_STATE_COMMAND: &str = "view-state";
 
+/// The render-access tool: returns the rendered `ViewTree` (V3a). Gated
+/// by [`LlmPermissions`] (V3b) — opt-in and revocable at runtime.
+pub const RENDER_TOOL: &str = "view-render";
+
+/// The command that toggles render access live (bound in every input
+/// mode's keymap so it appears in which-key, I4).
+pub const TOGGLE_RENDER_COMMAND: &str = "toggle-llm-render";
+
+/// Live, configurable permission gate for LLM tools (V3b).
+///
+/// `base` is the `llm_tools` allowlist (`None` = every non-render tool
+/// allowed). Render access is a separate opt-in bit: it is **off by
+/// default** (the LLM cannot see the rendered screen unless explicitly
+/// granted) and can be flipped at runtime via [`Self::toggle_render`] —
+/// the live toggle bound to [`TOGGLE_RENDER_COMMAND`].
+#[derive(Debug, Clone, Default)]
+pub struct LlmPermissions {
+    base: Option<std::collections::HashSet<String>>,
+    render_granted: bool,
+}
+
+impl LlmPermissions {
+    /// Build from the `llm_tools` config list. An empty list leaves
+    /// non-render tools unrestricted; render is granted only when the
+    /// list explicitly names `view-render` or `view`.
+    #[must_use]
+    pub fn from_config(list: Vec<String>) -> Self {
+        let render_granted = list.iter().any(|t| t == RENDER_TOOL || t == "view");
+        let base = if list.is_empty() {
+            None
+        } else {
+            Some(list.into_iter().collect())
+        };
+        Self {
+            base,
+            render_granted,
+        }
+    }
+
+    /// Whether `tool` may run. Render obeys the live opt-in bit; every
+    /// other tool obeys the `base` allowlist (matching by exact name,
+    /// `-`-prefix base, or prefix).
+    #[must_use]
+    pub fn allows(&self, tool: &str) -> bool {
+        if tool == RENDER_TOOL {
+            return self.render_granted;
+        }
+        self.base.as_ref().is_none_or(|set| {
+            let cmd_base = tool.split('-').next().unwrap_or(tool);
+            set.iter()
+                .any(|a| a == tool || a == cmd_base || tool.starts_with(a.as_str()))
+        })
+    }
+
+    /// Grant render access (live).
+    pub const fn grant_render(&mut self) {
+        self.render_granted = true;
+    }
+
+    /// Revoke render access (live).
+    pub const fn revoke_render(&mut self) {
+        self.render_granted = false;
+    }
+
+    /// Flip render access live; returns the new granted state.
+    pub const fn toggle_render(&mut self) -> bool {
+        self.render_granted = !self.render_granted;
+        self.render_granted
+    }
+}
+
 /// LLM provider trait.
 pub trait Provider {
     /// Send a prompt and receive a (possibly streamed) completion.

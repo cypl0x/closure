@@ -2944,24 +2944,15 @@ fn build_llm_provider(
 /// `llm_tools` allowlist, then route to the vault tool surface (which
 /// handles `view-state` as a real snapshot). Mutations stay behind
 /// kernel commands (I8).
-fn run_vault_tool(v: &mut Vault, allowed: Option<&[String]>, line: &str) -> String {
-    if let Some(allowed) = allowed {
-        let cmd = line.split_whitespace().next().unwrap_or("");
-        let cmd_base = cmd.split('-').next().unwrap_or(cmd);
-        if !allowed
-            .iter()
-            .any(|a| a == cmd || a == cmd_base || cmd.starts_with(a.as_str()))
-        {
-            return format!(
-                "error: tool '{cmd}' not allowed by llm_tools config (allowed: {allowed:?})"
-            );
-        }
+fn run_vault_tool(v: &mut Vault, perms: &closure_llm::LlmPermissions, line: &str) -> String {
+    let cmd = line.split_whitespace().next().unwrap_or("");
+    if !perms.allows(cmd) {
+        return format!("error: tool '{cmd}' not allowed (llm_tools config / live permission)");
     }
     // view-render (V3a): the LLM reads the rendered screen (the ViewTree),
     // not just the data — a serialised snapshot of the default browse
-    // surface. Read-only; gated by the same `view` allowlist base as
-    // view-state.
-    if line.trim() == "view-render" {
+    // surface. Read-only; render access is opt-in + live-revocable (V3b).
+    if line.trim() == closure_llm::RENDER_TOOL {
         return closure_shell_core::serialize_view(&closure_shell_core::browse_view(v));
     }
     v.run_tool(line)
@@ -2984,11 +2975,11 @@ fn cmd_ask(prompt: &str, model: &str, vault: Option<&Path>) -> Result<(), String
     let mut v = Vault::open(vault_dir).map_err(|e| format!("{e}"))?;
     let cfg = closure_config::Config::from_path(&vault_dir.join("config.org")).unwrap_or_default();
     let provider = build_llm_provider(&cfg, model)?;
-    let allowed = cfg.llm_tools.clone();
+    let perms = closure_llm::LlmPermissions::from_config(cfg.llm_tools.clone().unwrap_or_default());
     let task = format!("{prompt}\n\n{ASK_TOOLS_HELP}");
     let answer = closure_llm::tool_loop(
         provider.as_ref(),
-        |line| run_vault_tool(&mut v, allowed.as_deref(), line),
+        |line| run_vault_tool(&mut v, &perms, line),
         &task,
         16,
     )
@@ -3038,13 +3029,13 @@ fn cmd_chat(model: &str, vault: Option<&Path>) -> Result<(), String> {
     let mut v = Vault::open(vault_dir).map_err(|e| format!("{e}"))?;
     let cfg = closure_config::Config::from_path(&vault_dir.join("config.org")).unwrap_or_default();
     let provider = build_llm_provider(&cfg, model)?;
-    let allowed = cfg.llm_tools.clone();
+    let perms = closure_llm::LlmPermissions::from_config(cfg.llm_tools.clone().unwrap_or_default());
     let mut line = String::new();
     while read_chat_line(&mut line) {
         let task = format!("{}\n\n{ASK_TOOLS_HELP}", line.trim());
         let answer = closure_llm::tool_loop(
             provider.as_ref(),
-            |l| run_vault_tool(&mut v, allowed.as_deref(), l),
+            |l| run_vault_tool(&mut v, &perms, l),
             &task,
             8,
         )
@@ -3166,11 +3157,13 @@ fn doc_for(name: &str) -> String {
 // rendered screen (the ViewTree), not just data. Read-only.
 #[test]
 #[allow(clippy::expect_used)]
-fn view_render_tool_returns_rendered_screen() {
+fn view_render_tool_returns_rendered_screen_when_granted() {
     let dir = tempfile::tempdir().expect("tmp");
     std::fs::write(dir.path().join("n.org"), "* TODO Ship it\n* Wiki\n").expect("write");
     let mut v = Vault::open(dir.path()).expect("open");
-    let out = run_vault_tool(&mut v, None, "view-render");
+    // Render is opt-in; grant it via config.
+    let perms = closure_llm::LlmPermissions::from_config(vec!["view-render".to_owned()]);
+    let out = run_vault_tool(&mut v, &perms, "view-render");
     assert!(
         out.contains("ROWS") && out.contains("selected="),
         "screen: {out}"
@@ -3183,14 +3176,21 @@ fn view_render_tool_returns_rendered_screen() {
 
 #[test]
 #[allow(clippy::expect_used)]
-fn view_render_tool_is_gated_by_llm_tools_allowlist() {
+fn view_render_is_opt_in_and_live_revocable() {
     let dir = tempfile::tempdir().expect("tmp");
     std::fs::write(dir.path().join("n.org"), "* A\n").expect("write");
     let mut v = Vault::open(dir.path()).expect("open");
-    // Allowlist without `view` blocks it.
-    let allowed = vec!["read".to_owned()];
-    let out = run_vault_tool(&mut v, Some(&allowed), "view-render");
-    assert!(out.contains("not allowed"), "gated: {out}");
+    // Off by default (opt-in).
+    let mut perms = closure_llm::LlmPermissions::from_config(vec![]);
+    assert!(
+        run_vault_tool(&mut v, &perms, "view-render").contains("not allowed"),
+        "render off by default"
+    );
+    // Live grant, then revoke.
+    perms.grant_render();
+    assert!(run_vault_tool(&mut v, &perms, "view-render").contains("ROWS"));
+    perms.revoke_render();
+    assert!(run_vault_tool(&mut v, &perms, "view-render").contains("not allowed"));
 }
 
 // TDD for self-documentation (Emacs-style describe-function, ROADMAP self-doc sub).
