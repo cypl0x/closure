@@ -27,7 +27,10 @@ fn rows_list_headlines_with_indent_and_todo() {
 fn qml_document_embeds_rows_as_a_listview_model() {
     let doc = qml_document(&["Alpha".into(), "Beta".into()]);
     assert!(doc.contains("ListView"), "renders a list");
-    assert!(doc.contains("model: [\"Alpha\",\"Beta\"]"), "embeds rows: {doc}");
+    assert!(
+        doc.contains("model: [\"Alpha\",\"Beta\"]"),
+        "embeds rows: {doc}"
+    );
     assert!(doc.contains("import QtQuick"), "is a QML document");
 }
 

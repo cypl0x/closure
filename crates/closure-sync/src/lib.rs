@@ -287,10 +287,12 @@ impl NoiseChannel {
         let mut scratch = vec![0u8; 65535];
         // -> e
         let n = ini.write_message(&[], &mut buf).map_err(noise_err)?;
-        resp.read_message(&buf[..n], &mut scratch).map_err(noise_err)?;
+        resp.read_message(&buf[..n], &mut scratch)
+            .map_err(noise_err)?;
         // <- e, ee
         let n = resp.write_message(&[], &mut buf).map_err(noise_err)?;
-        ini.read_message(&buf[..n], &mut scratch).map_err(noise_err)?;
+        ini.read_message(&buf[..n], &mut scratch)
+            .map_err(noise_err)?;
         let ini_t = ini.into_transport_mode().map_err(noise_err)?;
         let resp_t = resp.into_transport_mode().map_err(noise_err)?;
         Ok((Self { transport: ini_t }, Self { transport: resp_t }))

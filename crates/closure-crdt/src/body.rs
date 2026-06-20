@@ -105,7 +105,10 @@ impl BodyCrdt {
         // children[after] = sibling ids sharing that predecessor.
         let mut children: HashMap<Option<ElemId>, Vec<ElemId>> = HashMap::new();
         for (id, e) in &self.elems {
-            children.entry(e.after.clone()).or_default().push(id.clone());
+            children
+                .entry(e.after.clone())
+                .or_default()
+                .push(id.clone());
         }
         // Descending id: a newer concurrent insert appears first (RGA).
         for v in children.values_mut() {

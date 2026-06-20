@@ -24,7 +24,10 @@ fn frame(proto: u8, dst: [u8; 4], dst_port: u16) -> Vec<u8> {
 #[test]
 fn decodes_tcp_to_dst_host_port_proto() {
     let f = frame(6, [93, 184, 216, 34], 443);
-    assert_eq!(parse_candidate(&f).as_deref(), Some("93.184.216.34:443 tcp"));
+    assert_eq!(
+        parse_candidate(&f).as_deref(),
+        Some("93.184.216.34:443 tcp")
+    );
 }
 
 #[test]

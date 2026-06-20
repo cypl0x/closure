@@ -4,7 +4,7 @@ The Flutter shell is **not** a workspace crate. The Flutter SDK (Dart
 toolchain + `flutter` CLI) is not packaged hermetically in nixpkgs the
 way the pure-Rust + pkg-config GUI stacks are, so vendoring it would
 break I10 (hermetic, reproducible `nix flake check`). It therefore lives
-as a separate project that *consumes* closure, in one of two ways:
+as a separate project that _consumes_ closure, in one of two ways:
 
 ## Option A — thin webview over `closure serve` (recommended, lowest cost)
 

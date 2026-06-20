@@ -46,7 +46,10 @@ fn inline_wasm_editor_embeds_glue_wasm_and_harness() {
     let html = inline_wasm_editor("<html><body>BASE</body></html>", "/*GLUE*/", b"WASM");
     assert!(html.contains("BASE"), "keeps the read-only page");
     assert!(html.contains("/*GLUE*/"), "inlines the wasm-bindgen glue");
-    assert!(html.contains(&base64(b"WASM")), "inlines the wasm as base64");
+    assert!(
+        html.contains(&base64(b"WASM")),
+        "inlines the wasm as base64"
+    );
     assert!(html.contains("reformat("), "wires the client-side re-parse");
     assert!(html.contains("<textarea"), "offers an editor");
 }

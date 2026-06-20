@@ -32,7 +32,10 @@ fn concurrent_inserts_at_same_position_both_survive_and_converge() {
     // Convergent + deterministic: both merge orders give the same text.
     assert_eq!(m1.materialize(), m2.materialize());
     let s = m1.materialize();
-    assert!(s.contains('X') && s.contains('Y'), "both edits survive: {s}");
+    assert!(
+        s.contains('X') && s.contains('Y'),
+        "both edits survive: {s}"
+    );
     assert_eq!(s.chars().filter(|&c| c == 'A' || c == 'C').count(), 2);
     // Deterministic tiebreak: equal counter ⇒ higher replica first (desc).
     assert_eq!(s, "AYXC");

@@ -53,7 +53,7 @@ fn encrypted_round_trip_decrypts_and_converges() {
 #[test]
 fn secure_tcp_round_trip_converges_over_127_0_0_1() {
     use closure_sync::{SigningKey, TcpSyncTransport, VerifyingKey};
-    use std::net::{TcpListener, SocketAddr};
+    use std::net::{SocketAddr, TcpListener};
 
     let server_key = SigningKey::from_bytes(&[7; 32]);
     let client_key = SigningKey::from_bytes(&[8; 32]);

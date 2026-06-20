@@ -161,7 +161,7 @@ Preserved as opaque text (no semantics yet):
   listed in the vault's typed `eval_trust` allowlist (`config.org`,
   validated at load — I9). An empty or unreadable policy runs nothing.
   This holds on every execution path (`Vault::eval_block`, `closure
-  eval`); a pulled/synced vault cannot run code without explicit local
+eval`); a pulled/synced vault cannot run code without explicit local
   trust. **Resource bounds (C1b):** every trusted execution runs under
   `Bounds` — a wall-clock deadline (default 10s; runaway → killed,
   `Timeout`) and a per-stream output cap (default 10 MiB; flood → child
@@ -177,13 +177,13 @@ Preserved as opaque text (no semantics yet):
   `BlockId`. `Edit` becomes a CRDT op. No API changes to `closure-core`.
   Shipped model: the title is a per-block last-writer-wins register
   (carrying vector-clock logical time); the **body is a character-level
-  RGA** (`BodyCrdt`, C2b) so two replicas editing the *same* body
+  RGA** (`BodyCrdt`, C2b) so two replicas editing the _same_ body
   concurrently both keep their edits and converge to the same text
   regardless of merge order. Hand-rolled, no external CRDT dep — Automerge
   / Yrs drag large/partly-async dependency trees that fight I10's
   hermetic, dep-minimal build (2026-06-19 char-CRDT Decision). Both sit
   behind the same `Edit` / `BlockId` surface with no `closure-core` API
-  change. Residual LWW point: a *title* edited concurrently on two
+  change. Residual LWW point: a _title_ edited concurrently on two
   replicas still resolves last-writer-wins (titles are short labels, not
   collaborative prose). See the CRDT-readiness note below.
 - `closure-sync` — file / git sync first; IPFS or iroh P2P later. Pluggable
@@ -191,7 +191,7 @@ Preserved as opaque text (no semantics yet):
   keypair; `SyncMessage::to_signed_bytes` signs the version + replica
   payload and `from_signed_bytes` verifies it against the embedded key
   (rejecting tampering) and an optional trusted-peer set (rejecting a
-  forged/unknown signer) *before* the message reaches `apply_message`.
+  forged/unknown signer) _before_ the message reaches `apply_message`.
   **Transport encryption (C3b):** a Noise NN channel (`NoiseChannel`,
   pure-Rust `snow`: x25519 + ChaCha20-Poly1305 + BLAKE2s) encrypts the
   wire so the replica never travels in plaintext; `connect_and_sync_secure`
@@ -237,7 +237,7 @@ Preserved as opaque text (no semantics yet):
   foundation). Opt-in `tauri` feature; the default build never pulls the
   webview stack (I10). The HTML payload (`page`) is hermetically tested;
   the window is display-bound (build-verified under `nix develop
-  .#webview`, launch is manual).
+.#webview`, launch is manual).
 - `closure-shell-gtk` — native GTK4 desktop shell (X1b): the vault's
   headlines as a scrollable `gtk4-rs` list. Opt-in `gtk` feature; the
   default build never pulls GTK (I10). The list content (`rows`) is

@@ -401,7 +401,11 @@ fn run_via_stdin(
 /// when the cap is first exceeded. Reading continues past the cap (the
 /// bytes are discarded) so the child's pipe never fills and blocks —
 /// the caller kills the child on the signal.
-fn drain_capped<R>(mut r: R, cap: usize, tx: std::sync::mpsc::Sender<()>) -> std::thread::JoinHandle<Vec<u8>>
+fn drain_capped<R>(
+    mut r: R,
+    cap: usize,
+    tx: std::sync::mpsc::Sender<()>,
+) -> std::thread::JoinHandle<Vec<u8>>
 where
     R: std::io::Read + Send + 'static,
 {
@@ -434,12 +438,7 @@ where
 /// drained on threads with a byte cap, so neither a runaway loop (killed
 /// at the deadline → [`EvalError::Timeout`]) nor a flood of output
 /// (killed at the cap → truncated `Output`) can hang or OOM the host.
-fn run_bounded(
-    prog: &str,
-    args: &[&str],
-    src: &str,
-    bounds: Bounds,
-) -> Result<Output, EvalError> {
+fn run_bounded(prog: &str, args: &[&str], src: &str, bounds: Bounds) -> Result<Output, EvalError> {
     let mut cmd = Command::new(prog);
     cmd.args(args)
         .stdin(Stdio::piped())

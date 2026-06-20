@@ -88,9 +88,10 @@ fn fifty_k_headlines_load_search_backlink_reload_within_budget() {
     assert!(load.as_secs() < 20, "load 50k: {load:?}");
     assert!(fuzzy.as_millis() < 2000, "fuzzy over 50k titles: {fuzzy:?}");
     assert!(backlink.as_millis() < 50, "backlink resolve: {backlink:?}");
-    assert!(reload.as_secs() < 10, "incremental reload (unchanged): {reload:?}");
-
-    println!(
-        "scale 50k: load={load:?} fuzzy={fuzzy:?} backlink={backlink:?} reload={reload:?}"
+    assert!(
+        reload.as_secs() < 10,
+        "incremental reload (unchanged): {reload:?}"
     );
+
+    println!("scale 50k: load={load:?} fuzzy={fuzzy:?} backlink={backlink:?} reload={reload:?}");
 }
