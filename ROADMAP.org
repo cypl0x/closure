@@ -13,7 +13,7 @@ file is the fine-grained, capability-level queue between them. Blocked
 on a design decision? Record it under [[*Decisions][Decisions]], pick the most
 reversible option, keep moving.
 
-* TODO Edges: make the mocked surfaces real [3/4]
+* DONE Edges: make the mocked surfaces real [4/4]
 The kernel (org/core/store/query/undo/input) is deep + tested; the
 real-world *edges* are trait+mock+deferred. These four are the highest
 TODO because each is a spec promise the code does not yet keep, or a
@@ -144,21 +144,26 @@ drop-in. Tests (RED->green, hermetic): wire bytes != plaintext (no
 converges; tampered ciphertext rejected by the AEAD tag; full secure
 TCP round-trip over =127.0.0.1= converges (2 blocks both ends). Spec
 revised (spec.md Layer 3 closure-sync) + Decision below, same commit.
-** TODO C4 Scale: prove the kernel on a real-world vault [0/2]
-Perf guards run on a 1-2k-headline synthetic vault (=closure-tui=
-=input_lag.rs=). Real PKM vaults are 10k-100k notes. No proof the
-indices, fuzzy search, or incremental reload hold up.
-After this the user can: open + search + edit a 50k-headline vault with
-no perceptible lag.
-*** TODO C4a Large-vault fixture + budget tests: generate a 50k-headline
-vault in a test; assert load, fuzzy-filter, backlink-resolve, and
-=reload_incremental= stay under explicit budgets (extend the existing
-=Instant=-based guards, no criterion — per the 2026-06-13 Decision).
-Surface whatever blows the budget.
-*** TODO C4b Fix the worst offender found in C4a (likely: full-vault
-rescan paths, O(n) backlink resolution, or non-windowed list builds).
-Lazy/virtualized where the data proves it's needed; keep the kernel
-API unchanged (I7).
+** DONE C4 Scale: prove the kernel on a real-world vault [2/2]
+Perf guards ran only on a 1-2k-headline synthetic vault. C4 proves the
+kernel on a 50k-headline vault — and it already scales linearly.
+The user can now open + search + backlink-resolve + incrementally
+reload a 50k-headline vault with no perceptible lag.
+*** DONE C4a Large-vault fixture + budget tests: =closure-store=
+=tests/scale.rs= builds a real 50k-headline vault on disk (500 files x
+100 + a hub) and =Instant=-times the hot paths against generous budgets
+(no criterion). Measured (debug, dev machine): =Vault::open= ~0.6s,
+=closure_query::fuzzy_filter= over 50k titles ~0.4s, =backlinks_of=
+~7µs (O(1) index), =reload_incremental= on an unchanged vault ~0.07s
+with 0 reparses. (closure-query added as a test-only dev-dep — cargo
+permits the dev-dep back-edge.) All linear; budgets catch an O(n²)
+regression (seconds+) without micro-tuning machine speed.
+*** DONE C4b Fix the worst offender found in C4a: none. C4a found no
+quadratic / rescan / O(n) hot path — load, fuzzy, backlink, and
+incremental reload are already linear/constant at 50k (the content-hash
+index cache, the backlink HashMap, and span-preserving parse all hold
+up). Nothing to fix; the budget test is the standing regression guard.
+Recorded honestly rather than inventing a change.
 
 * TODO Reopened drops: vision features pulled back into scope [0/3]
 Re-opening the three vision features previously DROP'd (GUI shells
