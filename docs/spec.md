@@ -218,7 +218,13 @@ eval`); a pulled/synced vault cannot run code without explicit local
   prefixed `b1`; a `sha256` CID can be added behind a feature without an
   API change); `BlockStore` keys blobs by `Cid` — `put` dedups, `verify`
   re-hashes on read to detect tampering. This is the IPFS-style substrate
-  the content-address sync (V5b) exchanges over.
+  the content-address sync (V5b) exchanges over. The `BlockProvider` trait
+  (has/get/put/cids) abstracts the store — in-memory (`BlockStore`) and
+  filesystem (`FsBlockStore`) impls ship; an IPFS/iroh network provider is
+  a future impl behind the same trait (external/feature-gated, hermetic
+  core). `sync_providers(a, b)` copies each blob one side lacks so both
+  converge to the union; content addressing makes it order-independent and
+  transfer-verifiable.
 
 ### Layer 4 — Adapters (I8)
 

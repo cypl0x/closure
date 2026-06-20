@@ -144,7 +144,7 @@ no network — deferred to a feature). 4 plugin-host + 1 cli test. After
 this the user declares deps in a manifest, locks them, and sees each
 package's commands. See Decision (2026-06-20).
 
-** WIP V5 P2P depth: content-addressed sync [1/2]
+** DONE V5 P2P depth: content-addressed sync [2/2]
 CRDT is real; transport is iroh-via-external-binary + in-process collab.
 The vision names IPFS/content addressing + pluggable P2P.
 *** DONE V5a Content-addressed block store (CID-like, dep-free)
@@ -154,12 +154,15 @@ keys blobs by =Cid=: =put= dedups (idempotent), =get=/=has=, =verify=
 re-hashes on read to catch tampering, =insert_raw= receives a peer's
 blob. Pure + in-memory. 6 tests (cid stability/dedup/roundtrip/missing/
 tamper). See Decision (2026-06-20).
-*** TODO V5b Pluggable provider trait + content-address sync round-trip
-A =BlockProvider= trait (get/has/put by CID) with a hermetic in-memory
-+ filesystem impl; sync exchanges CIDs then missing content, converging
-two replicas. IPFS/iroh become provider impls behind the trait (the
-real network one stays external/feature-gated, documented). Reuses the
-conflict corpus.
+*** DONE V5b Pluggable provider trait + content-address sync round-trip
+=BlockProvider= (has/get/put/cids) with in-memory (=BlockStore=) +
+filesystem (=FsBlockStore=) impls; =sync_providers(a, b)= copies each
+blob the other side lacks → both converge to the CID union (order-
+independent, transfers re-hashed so corruption is detectable). IPFS/iroh
+are future impls of the same trait (external/feature-gated, hermetic
+core). 4 tests (memory convergence, fs round-trip, heterogeneous sync,
+no-op). The blob layer composes with =SyncSession='s field-level CRDT
+merge — see Decision (2026-06-20).
 
 ** TODO V6 Real tree-sitter grammars (feature-gated) [0/2]
 =closure-tree-sitter= is a dep-free =KeywordHighlighter= + trait — TS in
@@ -852,6 +855,21 @@ only (I8). Crates keep =#![forbid(unsafe_code)]=.
 * Decisions
 Open questions land here as subheadings: context, options considered,
 the reversible default taken, date.
+** DECISION (2026-06-20) Content-address sync is a provider-trait blob exchange; CRDT field-merge stays in SyncSession (V5b)
+Context: V5b adds the pluggable provider + sync. The leaf mentioned
+"reuses the conflict corpus", but content addressing operates at the
+*blob* level (whole-content CIDs), while the conflict corpus exercises
+*field-level* CRDT merges (title vs body, LWW). Conflating them would be
+wrong. Took: =BlockProvider= (has/get/put/cids) with in-memory + fs
+impls, and =sync_providers= converges two stores to the union of CIDs
+(order-independent, transfer re-hashed so corruption is detectable).
+This is the IPFS-style transport substrate; the existing =SyncSession= /
+=Replica= keep the field-level CRDT convergence (and its conflict
+corpus) unchanged — the two layers compose (CIDs move opaque replica
+bytes; the replica merge resolves fields). A real IPFS/iroh provider is
+a future impl of the same trait, external/feature-gated so the core
+stays hermetic. Honestly scoped: I did blob-set convergence, not a
+re-run of the field-merge corpus over CIDs (which would test nothing new).
 ** DECISION (2026-06-20) Content addressing is a dep-free FNV-1a CID, sha256 deferred (V5a)
 Context: V5a needs content addressing for IPFS-style sync. Real IPFS
 CIDs use sha256/multihash — a crypto dep, and the workspace rule keeps

@@ -42,6 +42,114 @@ impl Cid {
     pub fn as_str(&self) -> &str {
         &self.0
     }
+
+    /// Reconstruct a [`Cid`] from its textual form (e.g. a filename or a
+    /// value received from a peer). The content is verified separately.
+    #[must_use]
+    pub const fn from_raw(s: String) -> Self {
+        Self(s)
+    }
+}
+
+/// A pluggable content-addressed store (V5b): blobs addressed by [`Cid`].
+///
+/// In-memory ([`BlockStore`]) and filesystem ([`FsBlockStore`]) impls
+/// ship today; an IPFS/iroh network provider is a future impl behind the
+/// same trait (kept external/feature-gated so the core stays hermetic).
+pub trait BlockProvider {
+    /// Whether `cid` is present.
+    fn has(&self, cid: &Cid) -> bool;
+    /// The bytes for `cid`, if present.
+    fn get(&self, cid: &Cid) -> Option<Vec<u8>>;
+    /// Store `content`, returning its [`Cid`] (idempotent).
+    fn put(&mut self, content: &[u8]) -> Cid;
+    /// Every stored [`Cid`].
+    fn cids(&self) -> Vec<Cid>;
+}
+
+impl BlockProvider for BlockStore {
+    fn has(&self, cid: &Cid) -> bool {
+        self.has(cid)
+    }
+    fn get(&self, cid: &Cid) -> Option<Vec<u8>> {
+        self.get(cid).map(<[u8]>::to_vec)
+    }
+    fn put(&mut self, content: &[u8]) -> Cid {
+        self.put(content)
+    }
+    fn cids(&self) -> Vec<Cid> {
+        self.blobs.keys().cloned().collect()
+    }
+}
+
+/// A filesystem-backed content-addressed store (V5b): each blob is a file
+/// named by its [`Cid`] under a directory. Persistent across processes.
+#[derive(Debug, Clone)]
+pub struct FsBlockStore {
+    dir: PathBuf,
+}
+
+impl FsBlockStore {
+    /// Open (or use) the store rooted at `dir`.
+    #[must_use]
+    pub fn new(dir: impl Into<PathBuf>) -> Self {
+        Self { dir: dir.into() }
+    }
+}
+
+impl BlockProvider for FsBlockStore {
+    fn has(&self, cid: &Cid) -> bool {
+        self.dir.join(cid.as_str()).is_file()
+    }
+    fn get(&self, cid: &Cid) -> Option<Vec<u8>> {
+        std::fs::read(self.dir.join(cid.as_str())).ok()
+    }
+    fn put(&mut self, content: &[u8]) -> Cid {
+        let cid = Cid::of(content);
+        let path = self.dir.join(cid.as_str());
+        if !path.exists() {
+            let _ = std::fs::create_dir_all(&self.dir);
+            let _ = std::fs::write(&path, content);
+        }
+        cid
+    }
+    fn cids(&self) -> Vec<Cid> {
+        std::fs::read_dir(&self.dir)
+            .into_iter()
+            .flatten()
+            .flatten()
+            .filter_map(|e| e.file_name().into_string().ok())
+            .map(Cid::from_raw)
+            .collect()
+    }
+}
+
+/// Exchange blobs between two providers so both converge to the union of
+/// their content (V5b): every blob one side has and the other lacks is
+/// copied across. Returns the number of blobs transferred.
+///
+/// Content addressing makes this safe + order-independent — a received
+/// blob is re-`put` (re-hashed), so a corrupt transfer lands under a
+/// different `Cid` and is detectable.
+pub fn sync_providers<A: BlockProvider, B: BlockProvider>(a: &mut A, b: &mut B) -> usize {
+    let mut moved = 0;
+    for cid in a.cids() {
+        if !b.has(&cid)
+            && let Some(content) = a.get(&cid)
+        {
+            b.put(&content);
+            moved += 1;
+        }
+    }
+    for cid in b.cids() {
+        if !a.has(&cid)
+            && let Some(content) = b.get(&cid)
+        {
+            a.put(&content);
+            moved += 1;
+        }
+    }
+    moved
 }
 
 /// A content-addressed block store (V5a): blobs keyed by their [`Cid`].
