@@ -73,91 +73,122 @@ pub fn serve<R: BufRead, W: std::io::Write>(
     Ok(())
 }
 
+/// The capabilities `initialize` advertises.
+const INITIALIZE_RESULT: &str = "{\"capabilities\":{\"documentSymbolProvider\":true,\
+     \"hoverProvider\":true,\
+     \"completionProvider\":{\"triggerCharacters\":[\":\"]},\
+     \"diagnosticProvider\":{\"interFileDependencies\":true,\
+     \"workspaceDiagnostics\":false}},\
+     \"serverInfo\":{\"name\":\"closure\",\"version\":\"0.0.0\"}}";
+
+/// The source text of the document the request's `uri` names (relative
+/// to the vault root); empty when absent.
+fn req_source(vault: &Vault, json: &str) -> String {
+    let uri = closure_jsonrpc::string_field(json, "uri").unwrap_or_default();
+    let rel = uri.strip_prefix("file://").unwrap_or(&uri);
+    vault
+        .document_relative(std::path::Path::new(rel))
+        .map(closure_core::Document::source)
+        .unwrap_or_default()
+}
+
+/// The request's zero-based `(line, character)` position (defaults `0`).
+fn req_position(json: &str) -> (u32, u32) {
+    let n = |key| {
+        closure_jsonrpc::raw_field(json, key)
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(0)
+    };
+    (n("line"), n("character"))
+}
+
+/// `textDocument/hover` result fragment.
+fn hover_result(vault: &Vault, json: &str) -> String {
+    let src = req_source(vault, json);
+    let (line, ch) = req_position(json);
+    hover(&src, vault, line, ch).map_or_else(
+        || "null".to_owned(),
+        |h| {
+            format!(
+                "{{\"contents\":{{\"kind\":\"plaintext\",\"value\":\"{}\"}}}}",
+                closure_jsonrpc::json_escape(&h)
+            )
+        },
+    )
+}
+
+/// `textDocument/completion` result fragment.
+fn completion_result(vault: &Vault, json: &str) -> String {
+    let src = req_source(vault, json);
+    let (line, ch) = req_position(json);
+    let items: Vec<String> = completion(&src, vault, line, ch)
+        .iter()
+        .map(|i| {
+            format!(
+                "{{\"label\":\"{}\",\"detail\":\"{}\",\"kind\":{}}}",
+                closure_jsonrpc::json_escape(&i.label),
+                closure_jsonrpc::json_escape(&i.detail),
+                i.kind.lsp_kind()
+            )
+        })
+        .collect();
+    format!("[{}]", items.join(","))
+}
+
+/// `textDocument/diagnostic` full-report result fragment.
+fn diagnostic_result(vault: &Vault, json: &str) -> String {
+    let src = req_source(vault, json);
+    let items: Vec<String> = diagnostics(&src, vault)
+        .iter()
+        .map(|d| {
+            format!(
+                "{{\"range\":{{\"start\":{{\"line\":{l},\"character\":{s}}},\
+                 \"end\":{{\"line\":{l},\"character\":{e}}}}},\
+                 \"severity\":{sev},\"code\":\"{code}\",\"message\":\"{msg}\"}}",
+                l = d.line,
+                s = d.start_char,
+                e = d.end_char,
+                sev = d.severity.lsp_severity(),
+                code = d.code.as_str(),
+                msg = closure_jsonrpc::json_escape(&d.message),
+            )
+        })
+        .collect();
+    format!("{{\"kind\":\"full\",\"items\":[{}]}}", items.join(","))
+}
+
+/// `textDocument/documentSymbol` result fragment.
+fn symbol_result(vault: &Vault, json: &str) -> String {
+    let src = req_source(vault, json);
+    let items: Vec<String> = document_symbols(&src)
+        .iter()
+        .map(|s| {
+            let line = s.line;
+            format!(
+                "{{\"name\":\"{}\",\"kind\":6,\"range\":{{\"start\":\
+                 {{\"line\":{line},\"character\":0}},\"end\":\
+                 {{\"line\":{line},\"character\":0}}}},\"selectionRange\":\
+                 {{\"start\":{{\"line\":{line},\"character\":0}},\"end\":\
+                 {{\"line\":{line},\"character\":0}}}}}}",
+                closure_jsonrpc::json_escape(&s.name),
+            )
+        })
+        .collect();
+    format!("[{}]", items.join(","))
+}
+
 /// Handle one LSP JSON-RPC message; `None` for notifications (no `id`).
 #[must_use]
 pub fn handle_message(vault: &Vault, json: &str) -> Option<String> {
-    use closure_jsonrpc::{json_escape, raw_field, string_field};
-    let id = raw_field(json, "id")?;
-    let method = string_field(json, "method").unwrap_or_default();
+    let id = closure_jsonrpc::raw_field(json, "id")?;
+    let method = closure_jsonrpc::string_field(json, "method").unwrap_or_default();
     let result = match method.as_str() {
-        "initialize" => "{\"capabilities\":{\"documentSymbolProvider\":true,\
-             \"hoverProvider\":true,\
-             \"completionProvider\":{\"triggerCharacters\":[\":\"]}},\
-             \"serverInfo\":{\"name\":\"closure\",\"version\":\"0.0.0\"}}"
-            .to_owned(),
+        "initialize" => INITIALIZE_RESULT.to_owned(),
         "shutdown" => "null".to_owned(),
-        "textDocument/hover" => {
-            let uri = string_field(json, "uri").unwrap_or_default();
-            let rel = uri.strip_prefix("file://").unwrap_or(&uri);
-            let src = vault
-                .document_relative(std::path::Path::new(rel))
-                .map(closure_core::Document::source)
-                .unwrap_or_default();
-            let line = raw_field(json, "line")
-                .and_then(|s| s.parse().ok())
-                .unwrap_or(0);
-            let ch = raw_field(json, "character")
-                .and_then(|s| s.parse().ok())
-                .unwrap_or(0);
-            hover(&src, vault, line, ch).map_or_else(
-                || "null".to_owned(),
-                |h| {
-                    format!(
-                        "{{\"contents\":{{\"kind\":\"plaintext\",\"value\":\"{}\"}}}}",
-                        json_escape(&h)
-                    )
-                },
-            )
-        }
-        "textDocument/completion" => {
-            let uri = string_field(json, "uri").unwrap_or_default();
-            let rel = uri.strip_prefix("file://").unwrap_or(&uri);
-            let src = vault
-                .document_relative(std::path::Path::new(rel))
-                .map(closure_core::Document::source)
-                .unwrap_or_default();
-            let line = raw_field(json, "line")
-                .and_then(|s| s.parse().ok())
-                .unwrap_or(0);
-            let ch = raw_field(json, "character")
-                .and_then(|s| s.parse().ok())
-                .unwrap_or(0);
-            let items: Vec<String> = completion(&src, vault, line, ch)
-                .iter()
-                .map(|i| {
-                    format!(
-                        "{{\"label\":\"{}\",\"detail\":\"{}\",\"kind\":{}}}",
-                        json_escape(&i.label),
-                        json_escape(&i.detail),
-                        i.kind.lsp_kind()
-                    )
-                })
-                .collect();
-            format!("[{}]", items.join(","))
-        }
-        "textDocument/documentSymbol" => {
-            let uri = string_field(json, "uri").unwrap_or_default();
-            let rel = uri.strip_prefix("file://").unwrap_or(&uri);
-            let src = vault
-                .document_relative(std::path::Path::new(rel))
-                .map(closure_core::Document::source)
-                .unwrap_or_default();
-            let items: Vec<String> = document_symbols(&src)
-                .iter()
-                .map(|s| {
-                    let line = s.line;
-                    format!(
-                        "{{\"name\":\"{}\",\"kind\":6,\"range\":{{\"start\":\
-                         {{\"line\":{line},\"character\":0}},\"end\":\
-                         {{\"line\":{line},\"character\":0}}}},\"selectionRange\":\
-                         {{\"start\":{{\"line\":{line},\"character\":0}},\"end\":\
-                         {{\"line\":{line},\"character\":0}}}}}}",
-                        json_escape(&s.name),
-                    )
-                })
-                .collect();
-            format!("[{}]", items.join(","))
-        }
+        "textDocument/hover" => hover_result(vault, json),
+        "textDocument/completion" => completion_result(vault, json),
+        "textDocument/diagnostic" => diagnostic_result(vault, json),
+        "textDocument/documentSymbol" => symbol_result(vault, json),
         _ => return Some(closure_jsonrpc::method_not_found(&id)),
     };
     Some(closure_jsonrpc::response(&id, &result))
@@ -535,6 +566,202 @@ fn headline_items(vault: &Vault, prefix: &str) -> Vec<CompletionItem> {
             })
         })
         .unwrap_or_default()
+}
+
+/// Diagnostic severity (maps to an LSP `DiagnosticSeverity` number).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Severity {
+    /// A problem that breaks something (LSP 1).
+    Error,
+    /// A non-fatal concern (LSP 2).
+    Warning,
+}
+
+impl Severity {
+    /// The LSP `DiagnosticSeverity` number.
+    #[must_use]
+    pub const fn lsp_severity(self) -> u8 {
+        match self {
+            Self::Error => 1,
+            Self::Warning => 2,
+        }
+    }
+}
+
+/// What kind of problem a diagnostic reports.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DiagnosticCode {
+    /// An `id:` link whose target is not in the vault.
+    DeadLink,
+    /// An `:ID:` value that occurs more than once across the vault.
+    DuplicateId,
+    /// A `closure-config` block validation error.
+    Config,
+}
+
+impl DiagnosticCode {
+    /// A stable machine-readable code string.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::DeadLink => "dead-link",
+            Self::DuplicateId => "duplicate-id",
+            Self::Config => "config",
+        }
+    }
+}
+
+/// One ranged problem on a single source line.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Diagnostic {
+    /// Zero-based line.
+    pub line: u32,
+    /// Zero-based start column (byte).
+    pub start_char: u32,
+    /// Zero-based end column (byte, exclusive).
+    pub end_char: u32,
+    /// Severity.
+    pub severity: Severity,
+    /// What kind of problem.
+    pub code: DiagnosticCode,
+    /// Human-readable message.
+    pub message: String,
+}
+
+/// Every `id:<value>` token on `line` as `(start, end_exclusive, value)`
+/// byte spans (value = the ASCII-alphanumeric run after `id:`).
+fn id_tokens(line: &str) -> Vec<(usize, usize, &str)> {
+    let mut out = Vec::new();
+    let mut from = 0;
+    while let Some(rel) = line[from..].find("id:") {
+        let kw = from + rel;
+        let val_start = kw + 3;
+        let val_len = line[val_start..]
+            .find(|c: char| !c.is_ascii_alphanumeric())
+            .unwrap_or(line.len() - val_start);
+        let val_end = val_start + val_len;
+        if val_end > val_start {
+            out.push((kw, val_end, &line[val_start..val_end]));
+        }
+        from = val_start;
+    }
+    out
+}
+
+/// Vault-wide count of each `:ID:` value (from headline `ID` properties).
+fn id_counts(vault: &Vault) -> std::collections::HashMap<String, usize> {
+    let mut counts = std::collections::HashMap::new();
+    for (_p, doc) in vault.iter() {
+        for h in doc.all_headlines() {
+            if let Some((_, id)) = h
+                .properties()
+                .iter()
+                .find(|(k, _)| k.eq_ignore_ascii_case("ID"))
+            {
+                *counts.entry(id.clone()).or_insert(0) += 1;
+            }
+        }
+    }
+    counts
+}
+
+/// Find the `closure-config` block in `src`, returning its content lines
+/// joined plus the zero-based document line of the first content line.
+fn config_block(src: &str) -> Option<(String, usize)> {
+    let mut lines = src.lines().enumerate();
+    let start = lines.by_ref().find_map(|(i, l)| {
+        let t = l.trim();
+        (t.to_ascii_uppercase().starts_with("#+BEGIN_SRC") && t.contains("closure-config"))
+            .then_some(i)
+    })?;
+    let mut content = String::new();
+    for (_, l) in lines {
+        if l.trim().eq_ignore_ascii_case("#+END_SRC") {
+            break;
+        }
+        content.push_str(l);
+        content.push('\n');
+    }
+    Some((content, start + 1))
+}
+
+/// The 1-based line number embedded as `line N` in a config error
+/// message, if any.
+fn embedded_line(message: &str) -> Option<usize> {
+    let at = message.find("line ")?;
+    let digits: String = message[at + 5..]
+        .chars()
+        .take_while(char::is_ascii_digit)
+        .collect();
+    digits.parse().ok()
+}
+
+/// Diagnostics for `src` against `vault`: dead `id:` links, duplicate
+/// `:ID:` values (vault-wide), and `closure-config` validation errors.
+///
+/// Positions are zero-based byte line/column over `src`. Pure +
+/// hermetic — no editor process needed.
+#[must_use]
+pub fn diagnostics(src: &str, vault: &Vault) -> Vec<Diagnostic> {
+    let mut out = Vec::new();
+    let counts = id_counts(vault);
+
+    for (i, line) in src.lines().enumerate() {
+        let lnum = u32::try_from(i).unwrap_or(u32::MAX);
+        // Dead id: links.
+        for (start, end, id) in id_tokens(line) {
+            if vault
+                .find_by_id(&closure_core::BlockId::from_existing(id))
+                .is_none()
+            {
+                out.push(Diagnostic {
+                    line: lnum,
+                    start_char: u32::try_from(start).unwrap_or(u32::MAX),
+                    end_char: u32::try_from(end).unwrap_or(u32::MAX),
+                    severity: Severity::Error,
+                    code: DiagnosticCode::DeadLink,
+                    message: format!("dead link: id:{id} has no target in the vault"),
+                });
+            }
+        }
+        // Duplicate :ID: declaration.
+        if let Some(value) = line.trim().strip_prefix(":ID:").map(str::trim)
+            && counts.get(value).copied().unwrap_or(0) > 1
+        {
+            out.push(Diagnostic {
+                line: lnum,
+                start_char: 0,
+                end_char: u32::try_from(line.len()).unwrap_or(u32::MAX),
+                severity: Severity::Error,
+                code: DiagnosticCode::DuplicateId,
+                message: format!(":ID: {value} is declared more than once in the vault"),
+            });
+        }
+    }
+
+    // closure-config block validation.
+    if let Some((content, content_start)) = config_block(src)
+        && let Err(e) = closure_config::Config::from_kv_block(&content)
+    {
+        let message = e.to_string();
+        let doc_line =
+            embedded_line(&message).map_or(content_start, |n| content_start + n.saturating_sub(1));
+        let line = u32::try_from(doc_line).unwrap_or(u32::MAX);
+        let end = src
+            .lines()
+            .nth(doc_line)
+            .map_or(0, |l| u32::try_from(l.len()).unwrap_or(u32::MAX));
+        out.push(Diagnostic {
+            line,
+            start_char: 0,
+            end_char: end,
+            severity: Severity::Error,
+            code: DiagnosticCode::Config,
+            message,
+        });
+    }
+
+    out
 }
 
 /// Resolve an `id:<ULID>` (or bare ULID) link target to its defining

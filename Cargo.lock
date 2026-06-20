@@ -1364,6 +1364,7 @@ dependencies = [
 name = "closure-lsp"
 version = "0.0.0"
 dependencies = [
+ "closure-config",
  "closure-core",
  "closure-jsonrpc",
  "closure-store",

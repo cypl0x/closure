@@ -215,10 +215,13 @@ eval`); a pulled/synced vault cannot run code without explicit local
     line up to the cursor: an unterminated `[[id:` completes to vault ids
     (owning title as `detail`), a headline's keyword slot completes the
     configured `todo_keywords`, and a trailing `:tag:` region completes
-    known vault tags (L2). All positions map over source text (zero-based
-    line/character); read-only methods take `&Vault`, mutating ones
-    (rename, L4) route through the command registry (I8). Pure + hermetic
-    — no editor process needed to test it.
+    known vault tags (L2). `textDocument/diagnostic` (pull model) reports
+    ranged problems: dead `id:` links, duplicate `:ID:` values across the
+    vault, and `closure-config` block validation errors mapped back to
+    their document line (L3). All positions map over source text
+    (zero-based line/character); read-only methods take `&Vault`, mutating
+    ones (rename, L4) route through the command registry (I8). Pure +
+    hermetic — no editor process needed to test it.
 - `closure-cron` — cron scheduler triggering commands.
 - `closure-plugin-host` — wasm plugin ABI, semver-pinned core API,
   sandboxed.

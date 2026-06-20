@@ -13,7 +13,7 @@ file is the fine-grained, capability-level queue between them. Blocked
 on a design decision? Record it under [[*Decisions][Decisions]], pick the most
 reversible option, keep moving.
 
-* WIP Depth II — LSP server to real [2/5]
+* WIP Depth II — LSP server to real [3/5]
 closure-lsp today is two methods (=document_symbols=, =definition_of=)
 plus a Content-Length frame loop wired to =initialize=/=shutdown=. The
 vision promises a usable language server. Grow it into hover /
@@ -40,11 +40,15 @@ accessor; =Keyword= kind); trailing =:tag:= region → =Vault::all_tags=
 =initialize= advertises =completionProvider= (=:= trigger). 7 lsp
 completion tests + 2 store =todo_keywords= tests green. See Decision
 (2026-06-20).
-** TODO L3 Diagnostics: =diagnostics(src, vault)= → ranged problems
-Dead =id:= links (target missing), duplicate =:ID:= within the vault,
-and config-validation errors surfaced as LSP diagnostics with line/char
-ranges + severity. Publish via =textDocument/publishDiagnostics= on a
-=diagnostics= request path (pull-model for the hermetic test).
+** DONE L3 Diagnostics: =diagnostics(src, vault)= → ranged problems
+Three sources, each a ranged =Diagnostic= (zero-based byte line/col +
+=Severity= + =DiagnosticCode=): dead =id:= links (=find_by_id= miss),
+duplicate =:ID:= counted across =Vault::iter=, and =closure-config=
+block validation errors mapped back to their document line
+(=config_block= + =embedded_line=). Served pull-model over
+=textDocument/diagnostic= (=kind:full= report); =initialize= advertises
+=diagnosticProvider=. 8 lsp diagnostics tests green. See Decision
+(2026-06-20).
 ** TODO L4 References + rename: vault-wide =:ID:= ops
 =references(vault, id)= → every (file, line) linking that id (def +
 all =id:= references). =rename_symbol(vault, id, new_title)= retitles
@@ -591,6 +595,23 @@ only (I8). Crates keep =#![forbid(unsafe_code)]=.
 * Decisions
 Open questions land here as subheadings: context, options considered,
 the reversible default taken, date.
+** DECISION (2026-06-20) LSP diagnostics use the pull model, config errors mapped by line (L3)
+Context: L3 adds diagnostics — dead =id:= links, duplicate =:ID:=
+(vault-wide), and =closure-config= validation errors. Two design picks:
+(1) push (=publishDiagnostics= notifications, needs server-driven state
++ open-doc tracking) vs pull (=textDocument/diagnostic= request). Took
+pull: it is stateless, hermetically testable as request→response, and
+matches the rest of the bridge (=handle_message= stays a pure function).
+(2) config-error line mapping: =ConfigError= reports a 1-based line
+*within the kv block*; the diagnostic needs a *document* line. Took a
+best-effort scan — =config_block= records the block's content-start line
+in the document, and =embedded_line= parses the =line N= the error
+embeds, so doc line = content_start + N − 1 (falls back to the block
+header when no number is embedded). Duplicate-id detection counts =:ID:=
+across =Vault::iter= (the loader keeps every doc even when =by_id= last-
+writer-wins, so the count is exact). Reversible: a push channel can be
+added later without changing =diagnostics(src, vault)=; richer config
+spans need the config parser to carry byte ranges (a separate change).
 ** DECISION (2026-06-20) LSP completion contexts are detected by line-prefix scan (L2)
 Context: L2 adds =textDocument/completion= with three slots — =[[id:=,
 the headline TODO-keyword slot, and a trailing =:tag:= region. Options:
