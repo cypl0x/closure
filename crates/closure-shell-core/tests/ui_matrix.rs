@@ -48,13 +48,17 @@ fn one_of_each() -> Vec<Node> {
         Node::Hints {
             line: String::new(),
         },
+        Node::Widget {
+            name: String::new(),
+            content: String::new(),
+        },
         Node::Text(String::new()),
     ]
 }
 
 #[test]
 fn all_node_kinds_covers_every_variant() {
-    assert_eq!(ALL_NODE_KINDS.len(), 7);
+    assert_eq!(ALL_NODE_KINDS.len(), 8);
     for n in one_of_each() {
         assert!(
             ALL_NODE_KINDS.contains(&n.kind()),

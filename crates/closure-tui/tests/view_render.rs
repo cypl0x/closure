@@ -53,3 +53,14 @@ fn render_is_deterministic() {
     let (_d, tree) = browse_tree();
     assert_eq!(render_view(&tree), render_view(&tree));
 }
+
+#[test]
+fn widget_node_renders_name_and_content() {
+    let node = closure_shell_core::widget_node("banner", "== closure ==");
+    let lines = render_view(&node);
+    assert!(lines.iter().any(|l| l.contains("banner")), "{lines:?}");
+    assert!(
+        lines.iter().any(|l| l.contains("== closure ==")),
+        "{lines:?}"
+    );
+}

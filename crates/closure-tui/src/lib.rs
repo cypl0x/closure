@@ -1367,6 +1367,12 @@ fn push_view_node(node: &closure_shell_core::Node, depth: usize, out: &mut Vec<S
             }
         }
         Node::Hints { line } => out.push(format!("{pad}{line}")),
+        Node::Widget { name, content } => {
+            out.push(format!("{pad}«{name}»"));
+            for l in content.lines() {
+                out.push(format!("{pad}  {l}"));
+            }
+        }
         Node::Text(t) => out.push(format!("{pad}{t}")),
     }
 }

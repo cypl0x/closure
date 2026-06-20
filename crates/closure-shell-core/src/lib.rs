@@ -474,8 +474,25 @@ pub enum Node {
         /// Rendered hint line.
         line: String,
     },
+    /// An expanded composite widget (V2c): its name + the already-expanded
+    /// content (a `closure-widget` block resolved via `closure-query`).
+    Widget {
+        /// Widget name.
+        name: String,
+        /// Expanded content.
+        content: String,
+    },
     /// Inert text.
     Text(String),
+}
+
+/// Build a [`Node::Widget`] from a name and its expanded content (V2c).
+#[must_use]
+pub fn widget_node(name: impl Into<String>, content: impl Into<String>) -> Node {
+    Node::Widget {
+        name: name.into(),
+        content: content.into(),
+    }
 }
 
 /// The kind of a [`Node`], for the type-level UI capability matrix (V1c).
@@ -493,6 +510,8 @@ pub enum NodeKind {
     Palette,
     /// [`Node::Hints`].
     Hints,
+    /// [`Node::Widget`].
+    Widget,
     /// [`Node::Text`].
     Text,
 }
@@ -508,6 +527,7 @@ impl Node {
             Self::Input { .. } => NodeKind::Input,
             Self::Palette { .. } => NodeKind::Palette,
             Self::Hints { .. } => NodeKind::Hints,
+            Self::Widget { .. } => NodeKind::Widget,
             Self::Text(_) => NodeKind::Text,
         }
     }
@@ -521,6 +541,7 @@ pub const ALL_NODE_KINDS: &[NodeKind] = &[
     NodeKind::Input,
     NodeKind::Palette,
     NodeKind::Hints,
+    NodeKind::Widget,
     NodeKind::Text,
 ];
 

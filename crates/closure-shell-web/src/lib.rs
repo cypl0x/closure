@@ -339,6 +339,11 @@ pub fn render_view(node: &closure_shell_core::Node) -> String {
             format!("<ul class=\"palette\">{lis}</ul>")
         }
         Node::Hints { line } => format!("<footer>{}</footer>", escape_html(line)),
+        Node::Widget { name, content } => format!(
+            "<section class=\"widget\" data-widget=\"{}\"><pre>{}</pre></section>",
+            escape_html(name),
+            escape_html(content)
+        ),
         Node::Text(t) => format!("<p>{}</p>", escape_html(t)),
     }
 }

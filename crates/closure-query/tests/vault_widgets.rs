@@ -6,7 +6,7 @@
 
 use std::fs;
 
-use closure_query::{WidgetError, expand_doc_widgets, vault_widget_names};
+use closure_query::{WidgetError, expand_doc_widgets, expand_named_widget, vault_widget_names};
 use closure_store::Vault;
 
 fn vault(files: &[(&str, &str)]) -> (tempfile::TempDir, Vault) {
@@ -59,6 +59,24 @@ fn widget_names_lists_every_definition_with_its_file() {
     );
     // Deterministic order (I6).
     assert_eq!(vault_widget_names(&v), vault_widget_names(&v));
+}
+
+#[test]
+fn expand_named_widget_resolves_a_single_widget() {
+    let (_d, v) = vault(&[(
+        "w.org",
+        "#+BEGIN: closure-widget :name banner\n== closure ==\n#+END:\n",
+    )]);
+    assert_eq!(expand_named_widget(&v, "banner").unwrap(), "== closure ==");
+}
+
+#[test]
+fn expand_named_widget_unknown_errors() {
+    let (_d, v) = vault(&[("w.org", "* x\n")]);
+    assert_eq!(
+        expand_named_widget(&v, "ghost"),
+        Err(WidgetError::Unknown("ghost".to_owned()))
+    );
 }
 
 #[test]

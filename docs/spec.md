@@ -160,7 +160,11 @@ Preserved as opaque text (no semantics yet):
   every `:name` across the vault, `expand_doc_widgets(vault, path)` resolves
   a file's `{{ref}}`s against all of them, `closure widgets` lists them, and
   cyclic/unknown references surface as `closure-lsp` diagnostics
-  (`DiagnosticCode::Widget`, reusing the L3 pull path).
+  (`DiagnosticCode::Widget`, reusing the L3 pull path). A widget renders in
+  any shell as a `Node::Widget { name, content }` ViewTree node (V2c):
+  `expand_named_widget(vault, name)` resolves one widget's content, which
+  every renderer (`closure-tui`, `closure-shell-web`) displays — so the
+  same composite block drops into any file, in any shell.
 - `closure-undo` — branching undo-tree persisted per vault.
 
 ### Layer 3 — Evaluation

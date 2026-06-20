@@ -786,6 +786,31 @@ pub fn vault_widget_names(vault: &Vault) -> Vec<(String, std::path::PathBuf)> {
     out
 }
 
+/// Expand a single widget `name` using definitions from the whole vault
+/// (V2c), returning its fully-resolved content (`{{ref}}`s expanded).
+///
+/// Lets a shell turn a widget name into rendered content for a
+/// `Node::Widget`.
+///
+/// # Errors
+///
+/// [`WidgetError::Unknown`] if no widget is named `name`;
+/// [`WidgetError::Cycle`] on a reference cycle.
+pub fn expand_named_widget(vault: &Vault, name: &str) -> Result<String, WidgetError> {
+    let defs = vault_widget_defs(vault);
+    // Wrap the name as a one-line reference and expand it against the defs.
+    expand_widgets_with(
+        &format!("#+BEGIN: closure-widget :name __q__\n{{{{{name}}}}}\n#+END:\n"),
+        &defs,
+    )
+    .map(|expanded| {
+        // Strip the synthetic wrapper's BEGIN/END lines, keeping the body.
+        let lines: Vec<&str> = expanded.lines().collect();
+        let end = lines.len().saturating_sub(1);
+        lines.get(1..end).unwrap_or_default().join("\n")
+    })
+}
+
 /// Expand the widget blocks in the vault file at `relative`, resolving
 /// `{{ref}}` against widget definitions from the whole vault (V2b).
 ///

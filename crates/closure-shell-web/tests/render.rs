@@ -48,3 +48,11 @@ fn escapes_html_in_text() {
     assert!(!html.contains("<script>"), "raw tag must not survive");
     assert!(html.contains("&lt;script&gt;"));
 }
+
+#[test]
+fn widget_node_renders_name_and_content() {
+    let node = closure_shell_core::widget_node("banner", "== closure ==");
+    let html = render_view(&node);
+    assert!(html.contains("data-widget=\"banner\""), "{html}");
+    assert!(html.contains("== closure =="), "{html}");
+}

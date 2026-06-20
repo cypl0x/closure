@@ -51,7 +51,11 @@ fn collect<'a>(node: &'a Node, out: &mut Vec<&'a Action>) {
                 out.push(&i.action);
             }
         }
-        Node::Rows { .. } | Node::Input { .. } | Node::Hints { .. } | Node::Text(_) => {}
+        Node::Rows { .. }
+        | Node::Input { .. }
+        | Node::Hints { .. }
+        | Node::Widget { .. }
+        | Node::Text(_) => {}
     }
 }
 

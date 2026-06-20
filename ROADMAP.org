@@ -62,7 +62,7 @@ over =Node= has no wildcard, so a new kind forces every shell to handle
 it. 4 shell-core tests (coverage, TUI/WEB render all, minimal-floor
 superset, table) + a CLI integration test. See Decision (2026-06-20).
 
-** WIP V2 Composable block→widget DSL [2/3]
+** DONE V2 Composable block→widget DSL [3/3]
 The core composability promise (compose existing blocks into NEW
 blocks/widgets, Notion-style) is only half-met (org-native nesting +
 built-in dynamic blocks). Add user-defined composite widgets.
@@ -85,10 +85,15 @@ the vault; =expand_doc_widgets(vault, path)= resolves a file's
 =DiagnosticCode::Widget= via the L3 pull path. 3 query + 1 cli + 1 lsp
 test. =expand_widgets_with= generalised over the map hasher. See
 Decision (2026-06-20).
-*** TODO V2c Render composite widgets in a shell + as a =ViewTree= node
-A =Node::Widget= in the V1 tree; TUI + web expand+render it. After this
-the user can define a reusable composite block once and drop it into any
-file, in any shell.
+*** DONE V2c Render composite widgets in a shell + as a =ViewTree= node
+=Node::Widget{name, content}= (NodeKind::Widget, =ALL_NODE_KINDS= 7→8)
++ =widget_node= constructor; both =closure_tui::render_view= (=«name»= +
+indented content) and =closure_shell_web::render_view=
+(=data-widget=/=<pre>=) render it — the new kind broke both matches at
+compile time until handled (V1c guarantee demonstrated).
+=closure_query::expand_named_widget(vault, name)= turns a widget name
+into its expanded content for a shell. 2 query + 1 tui + 1 web test +
+the updated matrix test. See Decision (2026-06-20).
 
 ** TODO V3 LLM access to rendered / view state [0/2]
 Vision differentiator over Notion AI: the LLM should *see the rendered
@@ -826,6 +831,19 @@ only (I8). Crates keep =#![forbid(unsafe_code)]=.
 * Decisions
 Open questions land here as subheadings: context, options considered,
 the reversible default taken, date.
+** DECISION (2026-06-20) Widget is a first-class ViewTree node; the new kind proved the V1c guarantee (V2c)
+Context: V2c renders composite widgets in the shells. Options: (a)
+pre-expand widgets into plain =Text= nodes (loses the widget identity —
+a shell could not style/fold them); (b) a first-class
+=Node::Widget{name, content}=. Took (b): the widget keeps its name in
+the tree (web emits =data-widget=, the TUI brackets =«name»=), and
+=expand_named_widget(vault, name)= (closure-query) turns a name into the
+content a shell wraps. Adding the variant was the V1c guarantee in
+action — it broke =closure_tui::render_view= and
+=closure_shell_web::render_view= at compile time (non-exhaustive
+=match=) until both handled it, and forced =ALL_NODE_KINDS= 7→8 + the
+matrix test. =widget_node= is the shell-core constructor. Reversible:
+collapsing to =Text= later is trivial; the richer node costs nothing.
 ** DECISION (2026-06-20) Vault-wide widget functions live in closure-query, not closure-store (V2b)
 Context: V2b makes widget definitions vault-wide (a widget defined in
 =widgets.org= referenced from =notes.org=). The natural home looked like
