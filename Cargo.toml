@@ -31,6 +31,7 @@ members = [
   "crates/closure-shell-core",
   "crates/closure-shell-gpui",
   "crates/closure-shell-tauri",
+  "crates/closure-shell-gtk",
 ]
 
 [workspace.package]

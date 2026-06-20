@@ -54,5 +54,14 @@ gui-tauri:
 run-tauri vault:
     nix develop .#webview -c cargo run -p closure-shell-tauri --features tauri -- {{vault}}
 
+# X1b native GTK4 shell (opt-in; pulls gtk4-rs + GTK4). Build under the
+# webview devshell; the default `check` never touches GTK.
+gui-gtk:
+    nix develop .#webview -c cargo build -p closure-shell-gtk --features gtk
+
+# Launch the GTK4 shell against a vault (needs a display).
+run-gtk vault:
+    nix develop .#webview -c cargo run -p closure-shell-gtk --features gtk -- {{vault}}
+
 # Full local CI: everything above.
 ci: check fuzz wasm coverage

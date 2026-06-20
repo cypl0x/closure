@@ -228,7 +228,12 @@ Preserved as opaque text (no semantics yet):
   webview stack (I10). The HTML payload (`page`) is hermetically tested;
   the window is display-bound (build-verified under `nix develop
   .#webview`, launch is manual).
-- `-flutter`, `-gtk`, `-qt`, `-slint` — stubs defined for API-contract
+- `closure-shell-gtk` — native GTK4 desktop shell (X1b): the vault's
+  headlines as a scrollable `gtk4-rs` list. Opt-in `gtk` feature; the
+  default build never pulls GTK (I10). The list content (`rows`) is
+  hermetically tested; the window is display-bound (build-verified under
+  `nix develop .#webview`, launch is manual).
+- `-flutter`, `-qt`, `-slint` — stubs defined for API-contract
   testing; bodied on demand.
 
 ### Layer 6 — Input modes

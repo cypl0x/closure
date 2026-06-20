@@ -61,11 +61,13 @@
           freetype
           libGL
         ];
-        # Native webview stack for the Tauri/wry shell (X1a). Kept out of
-        # the default shell so `just check` stays light + hermetic (I10);
-        # only `nix develop .#webview` pulls webkitgtk.
+        # Native GUI stack for the opt-in webview (Tauri/wry, X1a) and
+        # GTK4 (X1b) shells. Kept out of the default shell so `just check`
+        # stays light + hermetic (I10); only `nix develop .#webview`
+        # pulls webkitgtk + gtk.
         webviewLibs = with pkgs; [
           gtk3
+          gtk4
           glib
           cairo
           pango

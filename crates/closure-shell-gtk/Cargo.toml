@@ -1,0 +1,26 @@
+[package]
+name = "closure-shell-gtk"
+description = "Native GTK4 desktop shell over the closure vault (Layer 5, X1b)."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[lints]
+workspace = true
+
+[features]
+default = []
+# The native GTK4 window. Opt-in (pulls gtk4-rs + GTK4 system libs); the
+# default build stays hermetic and `just check` never touches GTK (I10).
+# Build/run under `nix develop .#webview` (provides gtk4).
+gtk = ["dep:gtk4"]
+
+[dependencies]
+closure-store = { path = "../closure-store" }
+gtk4 = { version = "0.9", optional = true }
+
+[dev-dependencies]
+tempfile = "3"
