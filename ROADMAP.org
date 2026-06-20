@@ -13,7 +13,7 @@ file is the fine-grained, capability-level queue between them. Blocked
 on a design decision? Record it under [[*Decisions][Decisions]], pick the most
 reversible option, keep moving.
 
-* TODO Edges: make the mocked surfaces real [2/4]
+* TODO Edges: make the mocked surfaces real [3/4]
 The kernel (org/core/store/query/undo/input) is deep + tested; the
 real-world *edges* are trait+mock+deferred. These four are the highest
 TODO because each is a spec promise the code does not yet keep, or a
