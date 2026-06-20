@@ -165,7 +165,7 @@ index cache, the backlink HashMap, and span-preserving parse all hold
 up). Nothing to fix; the budget test is the standing regression guard.
 Recorded honestly rather than inventing a change.
 
-* TODO Reopened drops: vision features pulled back into scope [0/3]
+* TODO Reopened drops: vision features pulled back into scope [1/3]
 Re-opening the three vision features previously DROP'd (GUI shells
 ROADMAP:200, wasm-client-parse ROADMAP:228, real sniffer ROADMAP:394).
 The DROP rationale was real: each needs a non-hermetic toolchain or
@@ -239,12 +239,21 @@ to =wasm32-wasip1=; this adds in-browser parse + edit so the
 self-contained HTML export is a real editor, not a read-only snapshot.
 After this the user can: edit org in the exported single HTML file and
 have it re-parse/re-render live, offline, no server.
-*** TODO X2a =closure-wasm= feature crate: =wasm32-unknown-unknown= +
-wasm-bindgen surface exposing parse/print/query over the kernel; built
-behind a feature so the default hermetic build is untouched (wasm-bindgen
-+ JS-glue toolchain stays opt-in). Hermetic-testable part: the Rust
-surface compiles + its pure functions unit-test; the bindgen artifact
-build is a feature gate (=just wasm-web=).
+*** DONE X2a =closure-wasm= crate: a wasm-bindgen surface over the kernel
+for in-browser parse/print/query. Pure core (=reformat= = parse->print
+round-trip, byte-exact I1; =headline_titles= / =headline_titles_joined=)
+unit-tested natively; =#[wasm_bindgen]= wrappers behind the opt-in =wasm=
+feature export them to JS. =crate-type = [cdylib, rlib]=. Default build
+stays hermetic (feature OFF; wasm-bindgen not pulled; =just check= 3309).
+Build-verified =just wasm-web= = =cargo build --target
+wasm32-unknown-unknown --features wasm= (added the target to
+rust-toolchain.toml; the browser target's ULID entropy uses getrandom's
+=wasm_js= backend via a target-gated dep + =--cfg
+getrandom_backend="wasm_js"=). Clippy clean =--features wasm=. Tests
+(hermetic): reformat byte-exact round-trip; titles in doc order +
+joined; empty for no headlines. Supersedes the 2026-06-13 "client-side
+wasm deferred" Decision (the =closure-wasm= crate it named now exists).
+X2b inlines the artifact into =export_html=.
 *** TODO X2b =export_html= inlines the wasm artifact + JS glue when built
 with the feature; the exported file re-parses edits client-side. The
 HTML shape is unchanged for plain readers. Verification is display-bound
@@ -724,7 +733,7 @@ display to exercise (can't run in a headless sandbox), so the on-screen
 result is verified by whoever runs it on a desktop. All behaviour that
 *can* be tested without a display is. Reversible: the feature can be
 dropped without touching the default build.
-** Client-side wasm parsing in the HTML export deferred (2026-06-13)
+** Client-side wasm parsing in the HTML export deferred (2026-06-13) [SUPERSEDED 2026-06-20 by X2a — the =closure-wasm= feature crate now exists + builds for wasm32-unknown-unknown]
 closure-org/closure-core build to =wasm32-wasip1= today (verified by
 the flake target check), so the kernel *can* run in wasm. But making
 the single-file HTML export re-parse edited org *in the browser* needs

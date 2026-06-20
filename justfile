@@ -21,6 +21,11 @@ fuzz:
 wasm:
     cargo check --target wasm32-wasip1 -p closure-org -p closure-core
 
+# X2a client-side kernel: build the wasm-bindgen surface for the browser
+# target. Opt-in; the default `check` only compiles the pure core.
+wasm-web:
+    RUSTFLAGS='--cfg getrandom_backend="wasm_js"' cargo build -p closure-wasm --target wasm32-unknown-unknown --features wasm
+
 # egui desktop shell build gate (opt-in; pulls eframe + system GL/X11/
 # wayland/xkb libs from the flake). The window needs a display so it is
 # NOT exercised here — this gate guarantees the feature still compiles.

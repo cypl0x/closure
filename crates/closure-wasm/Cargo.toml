@@ -1,0 +1,34 @@
+[package]
+name = "closure-wasm"
+description = "wasm-bindgen surface over the closure kernel for in-browser parse/print/query (X2)."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[lib]
+# `cdylib` for the wasm artifact; `rlib` so the pure core unit-tests
+# natively in the default workspace.
+crate-type = ["cdylib", "rlib"]
+
+[lints]
+workspace = true
+
+[features]
+default = []
+# The wasm-bindgen JS exports. Opt-in (pulls wasm-bindgen); the default
+# build stays light + hermetic and only compiles the pure core. Build the
+# artifact with `just wasm-web` (target wasm32-unknown-unknown).
+wasm = ["dep:wasm-bindgen"]
+
+[dependencies]
+closure-core = { path = "../closure-core" }
+wasm-bindgen = { version = "0.2", optional = true }
+
+# On the browser wasm target there is no default entropy source, so the
+# ULID generator's `getrandom` needs the JS backend (paired with
+# `--cfg getrandom_backend="wasm_js"`, set in the `just wasm-web` gate).
+[target.'cfg(all(target_arch = "wasm32", target_os = "unknown"))'.dependencies]
+getrandom = { version = "0.3", features = ["wasm_js"] }
