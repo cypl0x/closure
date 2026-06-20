@@ -239,8 +239,11 @@ Preserved as opaque text (no semantics yet):
   document (`qml_document`) are hermetically tested; the window is
   display-bound (build-verified under `nix develop .#webview`, launch is
   manual).
-- `-flutter`, `-slint` — stubs defined for API-contract testing; bodied
-  on demand.
+- Flutter (X1d) — external packaging project, not a workspace crate
+  (the Dart/Flutter SDK is not hermetically nix-packaged; I10). It
+  consumes closure over `closure serve` HTTP or a `flutter_rust_bridge`
+  FFI to `closure-shell-core`. See `docs/flutter-shell.md`.
+- `-slint` — stub defined for API-contract testing; bodied on demand.
 
 ### Layer 6 — Input modes
 

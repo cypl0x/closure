@@ -176,7 +176,7 @@ stays green with the feature OFF; the kernel API does not change (I7).
 If an item genuinely cannot satisfy I10 even feature-gated, the loop
 records WHY under Decisions and revises spec.md in the same commit —
 it does not silently weaken I10.
-** TODO X1 Native shells: Tauri, GTK4, Qt6, Flutter [3/4]
+** DONE X1 Native shells: Tauri, GTK4, Qt6, Flutter [4/4]
 Each consumes a shared closure crate (I7); only the window is
 shell-specific. The window is a thin adapter (same pattern as
 egui/gpui). After this the user can: open the same vault in each native
@@ -220,9 +220,16 @@ model + escapes quotes/backslashes. Build + clippy clean =--features qt=
 under =.#webview= (qmetaobject 0.2 / Qt 6.10); window display-bound ->
 =just run-qt VAULT= (manual, recorded). Spec revised (spec.md Layer 5)
 same commit.
-*** TODO X1d Flutter shell: external packaging project (Flutter SDK is not
-nix-hermetic) that talks to =closure serve= / a flutter_rust_bridge FFI
-to shell-core. Lives outside the workspace; documented build.
+*** DONE X1d Flutter shell: documented as an external packaging project
+(=docs/flutter-shell.md=) — the Flutter/Dart SDK is not hermetically
+nix-packaged, so an in-workspace crate would break I10. Two consume
+paths recorded: (A) a Flutter =WebView= over =closure serve= / the
+=export html= bundle (no FFI, mutations via the registry, I8); (B)
+=flutter_rust_bridge= Dart bindings over a =cdylib= wrapper of the
+headless-tested =closure-shell-core= (I7). The capability matrix keeps
+Flutter as a comparison entry; this doc is its "documented build"
+deliverable. Decision below + spec.md Layer 5 note, same commit. No
+workspace code -> =just check= unaffected.
 Note: X1a-d each carry the explicit I10 tension — expect some to resolve
 as "feature-gated, build-verified, display-bound smoke-launch" (egui/gpui
 class), NOT hermetic-gate-tested. Record the per-shell outcome.
@@ -508,6 +515,22 @@ only (I8). Crates keep =#![forbid(unsafe_code)]=.
 * Decisions
 Open questions land here as subheadings: context, options considered,
 the reversible default taken, date.
+** DECISION (2026-06-20) Flutter shell stays external (X1d)
+Context: X1d reopened a Flutter shell. The Flutter SDK (Dart toolchain +
+=flutter= CLI) is not hermetically nix-packaged like the pure-Rust +
+pkg-config GUI stacks (gtk4/webkit/Qt all provisioned cleanly for
+X1a-c); vendoring it would break I10's reproducible build. Options: (a)
+force a Dart toolchain into the flake (non-reproducible, fragile); (b)
+keep Flutter as an external project that consumes closure over a stable
+surface. Taken (b), documented in =docs/flutter-shell.md=: either a
+=WebView= over =closure serve= / =export html= (Option A, no FFI) or
+=flutter_rust_bridge= over a =cdylib= wrapper of =closure-shell-core=
+(Option B). Both keep the Rust side hermetic + route mutations through
+the registry (I8) / consume a stable surface (I7); only the Dart build
+is external. Reversible: a feature-gated crate can replace this if a
+hermetic Flutter/Dart nix story matures. Unlike X1a-c (real building
+feature-gated crates), Flutter genuinely cannot satisfy I10 in-tree —
+recorded per the binding rule rather than faked.
 ** DECISION (2026-06-20) Tauri shell = wry/tao webview, not full Tauri (X1a)
 Context: X1a asked for a Tauri shell hosting the web UI. Full Tauri v2
 needs tauri-cli, a bundled JS frontend project, and config/build
