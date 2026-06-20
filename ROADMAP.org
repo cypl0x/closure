@@ -13,7 +13,7 @@ file is the fine-grained, capability-level queue between them. Blocked
 on a design decision? Record it under [[*Decisions][Decisions]], pick the most
 reversible option, keep moving.
 
-* TODO Depth III — close the remaining vision gaps [0/13]
+* WIP Depth III — close the remaining vision gaps [0/13]
 A full re-read of the original vision against the repo (33 crates, all
 prior ROADMAP DONE) surfaced gaps in *breadth* (named wants with no
 code) and *depth* (present but thin / honest-caveat). This section
@@ -25,20 +25,23 @@ check= green (I10), or — when it genuinely cannot hold in-tree —
 recorded as a DROP/external Decision per the binding rule rather than
 faked. Every leaf must pass "after this the user can ___".
 
-** TODO V1 Declarative / type-level UI layer [0/3]
+** WIP V1 Declarative / type-level UI layer [1/3]
 The marquee gap: the vision names Slint + "type-level UI" + Yesod
 (runtime→compile-time). Today every shell draws imperatively. Introduce
 one declarative, compile-time-checked view description that all shells
 render — the "engine emits a typed UI tree, embedders render it" model.
-*** TODO V1a =closure-shell-core::view= — a typed, composable =ViewTree=
-A pure data enum (=Node= = =Pane{split,children}= / =List{rows,sel}= /
-=Detail{fields}= / =Field{label,value,chord}= / =Palette= / =Text= …)
-that fully describes a screen. =App=/=ModalApp= gain =fn view(&self) ->
-ViewTree= deriving the tree from state (no draw calls). Invariants:
-every actionable node carries its command + the =chord_for= it (the
-"show keybinding everywhere" rule becomes type-enforced — a node with a
-command but no chord must not compile/construct). Headless tests assert
-the tree shape for browse/detail/palette/edit surfaces.
+*** DONE V1a =closure-shell-core::view= — a typed, composable =ViewTree=
+=Node= enum (=Pane{title,children}= / =Rows{rows,selected}= /
+=Detail{fields}= / =Input{label,buffer}= / =Palette{items,cursor}= /
+=Hints{line}= / =Text=) fully describes a screen; =App::view(&Shell) ->
+Node= derives it from state (no draw calls). The keybinding invariant is
+type-enforced: =Action::new(mode, command)= is the only constructor and
+returns =None= when no chord is bound, so an actionable node cannot
+exist without its chord. =view= is a pure function (I6). 7 headless
+tests cover browse/palette/capture/edit surfaces + the
+"every-actionable-node-has-a-chord" invariant + determinism. (ModalApp's
+=view= follows in a later pass if needed; App is the default surface.)
+See Decision (2026-06-20).
 *** TODO V1b One =ViewTree=, N renderers: tui + web first
 =closure-tui= and =closure-shell-web= render =ViewTree= instead of
 bespoke draw code (ratatui widgets / HTML from the same tree). Proves
@@ -807,6 +810,24 @@ only (I8). Crates keep =#![forbid(unsafe_code)]=.
 * Decisions
 Open questions land here as subheadings: context, options considered,
 the reversible default taken, date.
+** DECISION (2026-06-20) Declarative ViewTree lives in shell-core; keybinding is type-enforced (V1a)
+Context: the vision names Slint + "type-level UI" + Yesod
+(runtime→compile-time). Every shell drew imperatively. Options for the
+declarative layer: (a) adopt Slint (its own DSL/toolchain + macro build
+step — a heavy, non-hermetic dependency, and a second source of UI
+truth); (b) a small in-tree =Node= enum in =closure-shell-core= that
+=App::view= derives from existing state, rendered by each embedder.
+Took (b): keeps the kernel dep-free + hermetic (I10), reuses the
+already-tested =rows=/=detail=/=key_hints= state, and makes the tree a
+pure function (I6, testable without a display — which V10a will golden).
+The "show keybinding everywhere" rule is encoded in the type system: an
+=Action= can only be built via =Action::new(mode, command)=, which
+returns =None= when no chord is bound, so an actionable node literally
+cannot exist without its chord (the Yesod rule applied to one concrete
+class of bug). Reversible: a Slint (or other) backend can render the
+same =Node= tree later without changing =view= or the state core; Slint
+stays a candidate *renderer*, not the source of truth. =-slint= stub
+already exists for API-contract testing.
 ** DECISION (2026-06-20) LSP stdio loop dispatches through handle_message_mut, exit ends it (L5)
 Context: L5 makes =closure lsp= a real server. The frame loop must now
 serve the mutating =textDocument/rename= (L4) as well as the read-only

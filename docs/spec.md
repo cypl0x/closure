@@ -245,6 +245,17 @@ eval`); a pulled/synced vault cannot run code without explicit local
 
 ### Layer 5 — Shells (I7)
 
+- `closure-shell-core` — the dep-free engine the shells share. Holds the
+  pure `App`/`ModalApp` state machines **and the declarative `ViewTree`**
+  (V1): `App::view(&Shell) -> Node` derives a pure description of the
+  screen (panes, headline rows, detail fields, palette, input buffers,
+  which-key hints) that every embedder renders — the Flutter
+  engine/embedder split, one description and many renderers. Every
+  _actionable_ node carries an `Action`, and `Action` has no constructor
+  that omits the chord (`Action::new` returns `None` when the active mode
+  binds none), so the "every UI element shows its keybinding" rule is
+  type-enforced rather than convention. `view` is a pure function of
+  state → deterministic (I6) and testable without a display.
 - `closure-tui` — ratatui + crossterm. Primary first shell.
 - `closure-cli` — the `closure` binary (`tui`, `check`, `fmt`, `parse`,
   `query`, `serve`).

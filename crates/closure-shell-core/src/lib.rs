@@ -357,6 +357,127 @@ pub struct Detail {
     pub path: String,
 }
 
+/// A keybinding-bearing action attached to an actionable view node.
+///
+/// Constructing one *requires* a chord, so an actionable node can never
+/// lack its keybinding — the vision's "every UI element shows its
+/// keybinding" rule made type-level (V1). The only constructor,
+/// [`Action::new`], returns `None` when the active mode binds no chord to
+/// the command, so a command-without-chord cannot be represented.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Action {
+    command: String,
+    chord: String,
+}
+
+impl Action {
+    /// An action for `command` in `mode`. `None` when no chord is bound
+    /// (the source of truth is [`closure_input::chord_for_command`], I4).
+    #[must_use]
+    pub fn new(mode: closure_config::InputMode, command: impl Into<String>) -> Option<Self> {
+        let command = command.into();
+        closure_input::chord_for_command(mode, &command).map(|chord| Self {
+            command,
+            chord: chord.to_owned(),
+        })
+    }
+
+    /// The canonical command name.
+    #[must_use]
+    pub fn command(&self) -> &str {
+        &self.command
+    }
+
+    /// The chord bound to it (non-empty by construction).
+    #[must_use]
+    pub fn chord(&self) -> &str {
+        &self.chord
+    }
+}
+
+/// A headline row in a [`Node::Rows`] list.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RowView {
+    /// Stable block id (I2).
+    pub id: String,
+    /// Headline title.
+    pub title: String,
+    /// Outline level (1-based).
+    pub level: u8,
+    /// TODO keyword, if any.
+    pub todo: Option<String>,
+}
+
+/// A labelled field in a [`Node::Detail`] pane; `action` present iff the
+/// field is actionable (and then it carries its chord, V1 invariant).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FieldView {
+    /// Field label (`title`, `todo`, `tags`, a property key, …).
+    pub label: String,
+    /// Field value, rendered as text.
+    pub value: String,
+    /// The action triggered by activating the field, if any.
+    pub action: Option<Action>,
+}
+
+/// A command row in a [`Node::Palette`]; always actionable.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PaletteItemView {
+    /// Display label.
+    pub label: String,
+    /// The command + its chord.
+    pub action: Action,
+}
+
+/// A node of the declarative view tree (V1).
+///
+/// A pure description of a screen that any embedder renders: the engine
+/// emits the tree, the shell draws it (the Flutter engine/embedder
+/// split). Deterministic (I6) — `view` is a pure function of state.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Node {
+    /// A labelled region containing child nodes.
+    Pane {
+        /// Region label.
+        title: String,
+        /// Child nodes, in render order.
+        children: Vec<Self>,
+    },
+    /// The headline list with the selected index.
+    Rows {
+        /// Visible rows.
+        rows: Vec<RowView>,
+        /// Index of the selected row.
+        selected: usize,
+    },
+    /// The detail pane: a list of (maybe-actionable) fields.
+    Detail {
+        /// Fields, in display order.
+        fields: Vec<FieldView>,
+    },
+    /// A text-entry surface (capture / rename / body / tags / property).
+    Input {
+        /// What is being edited.
+        label: String,
+        /// Current buffer contents.
+        buffer: String,
+    },
+    /// The command palette (which-key list).
+    Palette {
+        /// Offered commands.
+        items: Vec<PaletteItemView>,
+        /// Index of the highlighted item.
+        cursor: usize,
+    },
+    /// The always-on which-key hint line.
+    Hints {
+        /// Rendered hint line.
+        line: String,
+    },
+    /// Inert text.
+    Text(String),
+}
+
 /// Which input surface the gpui shell is on.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Mode {
@@ -929,6 +1050,141 @@ impl App {
             body: h.body_text().to_owned(),
             path: path.display().to_string(),
         })
+    }
+
+    /// The declarative [`Node`] tree describing the current screen (V1).
+    ///
+    /// Pure function of state — any embedder (TUI, web, egui, gpui)
+    /// renders the same tree. Every actionable node carries its chord by
+    /// construction ([`Action`]), so the "show keybinding everywhere"
+    /// rule cannot be violated.
+    #[must_use]
+    pub fn view(&self, shell: &Shell) -> Node {
+        let hints = Node::Hints {
+            line: self.key_hints(),
+        };
+        let m = self.input_mode;
+        let input_pane = |label: &str, buffer: &str| Node::Pane {
+            title: label.to_owned(),
+            children: vec![
+                Node::Input {
+                    label: label.to_owned(),
+                    buffer: buffer.to_owned(),
+                },
+                hints.clone(),
+            ],
+        };
+        match self.mode {
+            Mode::Browse => {
+                let rows = self
+                    .rows(shell)
+                    .into_iter()
+                    .map(|r| RowView {
+                        id: r.id,
+                        title: r.title,
+                        level: r.level,
+                        todo: r.todo,
+                    })
+                    .collect();
+                let mut children = vec![Node::Rows {
+                    rows,
+                    selected: self.selected,
+                }];
+                if let Some(d) = self.detail(shell) {
+                    children.push(Self::detail_node(m, &d));
+                }
+                children.push(hints);
+                Node::Pane {
+                    title: "closure".to_owned(),
+                    children,
+                }
+            }
+            Mode::Palette => {
+                let items = PALETTE_COMMANDS
+                    .iter()
+                    .filter_map(|(label, canonical)| {
+                        let matches = self.capture_buf.is_empty()
+                            || closure_query::fuzzy_score(&self.capture_buf, label).is_some();
+                        if !matches {
+                            return None;
+                        }
+                        Action::new(m, *canonical).map(|action| PaletteItemView {
+                            label: (*label).to_owned(),
+                            action,
+                        })
+                    })
+                    .collect();
+                Node::Pane {
+                    title: "palette".to_owned(),
+                    children: vec![
+                        Node::Palette {
+                            items,
+                            cursor: self.palette_cursor,
+                        },
+                        hints,
+                    ],
+                }
+            }
+            Mode::Capture => input_pane("capture", &self.capture_buf),
+            Mode::Rename => input_pane("rename", &self.capture_buf),
+            Mode::AddSibling => input_pane("add sibling", &self.capture_buf),
+            Mode::EditBody => input_pane("edit body", &self.body_buf),
+            Mode::TagsEdit => input_pane("tags", &self.tags_buf),
+            Mode::PropertyEdit => Node::Pane {
+                title: "property".to_owned(),
+                children: vec![
+                    Node::Input {
+                        label: "key".to_owned(),
+                        buffer: self.prop_key.clone(),
+                    },
+                    Node::Input {
+                        label: "value".to_owned(),
+                        buffer: self.prop_value.clone(),
+                    },
+                    hints,
+                ],
+            },
+        }
+    }
+
+    /// Build the detail pane node, attaching the click-to-edit action
+    /// (with its chord, V1 invariant) to each editable field.
+    fn detail_node(mode: closure_config::InputMode, d: &Detail) -> Node {
+        let mut fields = vec![FieldView {
+            label: "title".to_owned(),
+            value: d.title.clone(),
+            action: Action::new(mode, "rename"),
+        }];
+        fields.push(FieldView {
+            label: "todo".to_owned(),
+            value: d.todo.clone().unwrap_or_default(),
+            action: Action::new(mode, "toggle-todo"),
+        });
+        if let Some(p) = d.priority {
+            fields.push(FieldView {
+                label: "priority".to_owned(),
+                value: p.to_string(),
+                action: Action::new(mode, "cycle-priority"),
+            });
+        }
+        fields.push(FieldView {
+            label: "tags".to_owned(),
+            value: d.tags.join(" "),
+            action: Action::new(mode, "edit-tags"),
+        });
+        for (k, v) in &d.properties {
+            fields.push(FieldView {
+                label: k.clone(),
+                value: v.clone(),
+                action: Action::new(mode, "edit-property"),
+            });
+        }
+        fields.push(FieldView {
+            label: "body".to_owned(),
+            value: d.body.clone(),
+            action: Action::new(mode, "edit-body"),
+        });
+        Node::Detail { fields }
     }
 
     /// Feed one key. `key` is the gpui key name (`"a"`, `"enter"`,
