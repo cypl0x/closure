@@ -15,6 +15,7 @@ workspace = true
 closure-core = { path = "../closure-core" }
 closure-query = { path = "../closure-query" }
 closure-store = { path = "../closure-store" }
+closure-shell-core = { path = "../closure-shell-core" }
 thiserror.workspace = true
 
 [dev-dependencies]

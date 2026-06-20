@@ -1506,6 +1506,7 @@ version = "0.0.0"
 dependencies = [
  "closure-core",
  "closure-query",
+ "closure-shell-core",
  "closure-store",
  "tempfile",
  "thiserror 2.0.18",
@@ -1566,12 +1567,14 @@ dependencies = [
  "closure-org",
  "closure-query",
  "closure-record",
+ "closure-shell-core",
  "closure-store",
  "closure-tree-sitter",
  "closure-undo",
  "crossterm",
  "insta",
  "ratatui",
+ "tempfile",
  "thiserror 2.0.18",
 ]
 

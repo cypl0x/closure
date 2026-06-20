@@ -25,7 +25,7 @@ check= green (I10), or — when it genuinely cannot hold in-tree —
 recorded as a DROP/external Decision per the binding rule rather than
 faked. Every leaf must pass "after this the user can ___".
 
-** WIP V1 Declarative / type-level UI layer [1/3]
+** WIP V1 Declarative / type-level UI layer [2/3]
 The marquee gap: the vision names Slint + "type-level UI" + Yesod
 (runtime→compile-time). Today every shell draws imperatively. Introduce
 one declarative, compile-time-checked view description that all shells
@@ -42,12 +42,16 @@ tests cover browse/palette/capture/edit surfaces + the
 "every-actionable-node-has-a-chord" invariant + determinism. (ModalApp's
 =view= follows in a later pass if needed; App is the default surface.)
 See Decision (2026-06-20).
-*** TODO V1b One =ViewTree=, N renderers: tui + web first
-=closure-tui= and =closure-shell-web= render =ViewTree= instead of
-bespoke draw code (ratatui widgets / HTML from the same tree). Proves
-the decoupling (one declarative description, many embedders, Flutter
-concept). egui/gpui adapters follow the same =render(tree)= entry. =just
-check= green; behaviour parity locked by the existing shell tests.
+*** DONE V1b One =ViewTree=, N renderers: tui + web first
+=closure_tui::render_view(&Node) -> Vec<String>= (text lines) and
+=closure_shell_web::render_view(&Node) -> String= (HTML) render the SAME
+=Node= tree — one declarative description, two embedders (the Flutter
+concept). Actionable nodes carry their chord into the output (=[..]= /
+=<kbd>=); web escapes HTML. Both hermetic + golden-testable (no display)
+— 3 web + 3 tui tests, incl. determinism. =closure-shell-core= added as
+a dep of both (no cycle). Additive renderers (not a rewrite of the
+legacy loops); egui/gpui adapters + full draw replacement follow, V10a
+golden-snapshots the path. See Decision (2026-06-20).
 *** TODO V1c Type-level UI capability diff
 Extend the =Capability= matrix: which =ViewTree= node kinds each shell
 renders, as per-shell consts + a =closure ui-matrix= venn/diff table +
@@ -810,6 +814,23 @@ only (I8). Crates keep =#![forbid(unsafe_code)]=.
 * Decisions
 Open questions land here as subheadings: context, options considered,
 the reversible default taken, date.
+** DECISION (2026-06-20) ViewTree renderers are additive, hermetic functions per shell (V1b)
+Context: V1b renders the V1a =Node= tree in two shells. The TUI and web
+shells each predate shell-core and own their state machines + draw
+loops; rewriting them wholesale to be driven only by =view= would be a
+large, risky change for one leaf. Options: (a) rip out each shell's
+existing draw path and route everything through =view=; (b) add a pure
+=render_view(&Node)= per shell (text lines for the TUI, HTML for web),
+golden-testable without a display, and grow it toward the primary path
+incrementally. Took (b): both =closure_tui::render_view -> Vec<String>=
+and =closure_shell_web::render_view -> String= consume the SAME tree —
+the decoupling is proven (one description, two embedders) and hermetic,
+without destabilising the shipped loops. =closure-shell-core= is now a
+dep of both (no cycle — it depends on neither). Actionable nodes carry
+their chord into the output. Honest scope: these are additive renderers
+proven by golden tests; the egui/gpui adapters + full replacement of the
+legacy draw code follow (V10a golden-snapshots the render path). Not
+overstated as "the shells were rewritten".
 ** DECISION (2026-06-20) Declarative ViewTree lives in shell-core; keybinding is type-enforced (V1a)
 Context: the vision names Slint + "type-level UI" + Yesod
 (runtime→compile-time). Every shell drew imperatively. Options for the

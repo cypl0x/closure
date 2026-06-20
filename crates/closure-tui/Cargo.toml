@@ -21,9 +21,11 @@ closure-query = { path = "../closure-query" }
 closure-store = { path = "../closure-store" }
 closure-undo = { path = "../closure-undo" }
 closure-tree-sitter = { path = "../closure-tree-sitter" }
+closure-shell-core = { path = "../closure-shell-core" }
 crossterm.workspace = true
 ratatui.workspace = true
 thiserror.workspace = true
 
 [dev-dependencies]
 insta.workspace = true
+tempfile = "3"

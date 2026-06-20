@@ -255,7 +255,13 @@ eval`); a pulled/synced vault cannot run code without explicit local
   that omits the chord (`Action::new` returns `None` when the active mode
   binds none), so the "every UI element shows its keybinding" rule is
   type-enforced rather than convention. `view` is a pure function of
-  state → deterministic (I6) and testable without a display.
+  state → deterministic (I6) and testable without a display. Both
+  `closure-tui` (`render_view -> Vec<String>` text lines) and
+  `closure-shell-web` (`render_view -> String` HTML) render the same
+  `Node` tree (V1b) — the proof that the description is decoupled from
+  the embedder; egui/gpui adapters follow the same `render(tree)` entry.
+  Actionable nodes carry their chord into the rendered output (`[..]` /
+  `<kbd>`), and the renderers are hermetic (golden-testable, no display).
 - `closure-tui` — ratatui + crossterm. Primary first shell.
 - `closure-cli` — the `closure` binary (`tui`, `check`, `fmt`, `parse`,
   `query`, `serve`).

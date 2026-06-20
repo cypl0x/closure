@@ -1316,6 +1316,61 @@ pub fn stroke_of(ev: &crossterm::event::KeyEvent) -> Option<String> {
     Some(base)
 }
 
+/// Render a shared [`closure_shell_core::Node`] view tree to text lines
+/// (V1b).
+///
+/// The TUI is one embedder of the declarative tree the engine emits —
+/// the same `Node` the web shell renders. Hermetic (no terminal): the
+/// ratatui draw path paints these lines. Actionable nodes show their
+/// chord in `[..]` (the "keybinding everywhere" rule).
+#[must_use]
+pub fn render_view(node: &closure_shell_core::Node) -> Vec<String> {
+    let mut out = Vec::new();
+    push_view_node(node, 0, &mut out);
+    out
+}
+
+fn push_view_node(node: &closure_shell_core::Node, depth: usize, out: &mut Vec<String>) {
+    use closure_shell_core::Node;
+    let pad = "  ".repeat(depth);
+    match node {
+        Node::Pane { title, children } => {
+            out.push(format!("{pad}# {title}"));
+            for c in children {
+                push_view_node(c, depth + 1, out);
+            }
+        }
+        Node::Rows { rows, selected } => {
+            for (i, r) in rows.iter().enumerate() {
+                let mark = if i == *selected { '>' } else { ' ' };
+                let todo = r
+                    .todo
+                    .as_deref()
+                    .map_or_else(String::new, |t| format!("{t} "));
+                out.push(format!("{pad}{mark} {todo}{}", r.title));
+            }
+        }
+        Node::Detail { fields } => {
+            for f in fields {
+                let kbd = f
+                    .action
+                    .as_ref()
+                    .map_or_else(String::new, |a| format!("  [{}]", a.chord()));
+                out.push(format!("{pad}{}: {}{kbd}", f.label, f.value));
+            }
+        }
+        Node::Input { label, buffer } => out.push(format!("{pad}{label}> {buffer}")),
+        Node::Palette { items, cursor } => {
+            for (i, it) in items.iter().enumerate() {
+                let mark = if i == *cursor { '>' } else { ' ' };
+                out.push(format!("{pad}{mark} [{}] {}", it.action.chord(), it.label));
+            }
+        }
+        Node::Hints { line } => out.push(format!("{pad}{line}")),
+        Node::Text(t) => out.push(format!("{pad}{t}")),
+    }
+}
+
 /// Render the headline tree of `doc` as indented text lines:
 /// `indent * TODO [#P] title :tags:    [id]`.
 #[must_use]

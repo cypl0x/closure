@@ -270,6 +270,79 @@ fn escape_html(s: &str) -> String {
         .replace('>', "&gt;")
 }
 
+/// Render a shared [`closure_shell_core::Node`] view tree to HTML (V1b).
+///
+/// The web shell is one embedder of the declarative tree the engine
+/// emits — the same `Node` the TUI renders. Actionable nodes surface
+/// their chord in a `<kbd>` (the "keybinding everywhere" rule); all text
+/// is HTML-escaped.
+#[must_use]
+pub fn render_view(node: &closure_shell_core::Node) -> String {
+    use closure_shell_core::Node;
+    use std::fmt::Write as _;
+    match node {
+        Node::Pane { title, children } => {
+            let inner = children.iter().fold(String::new(), |mut s, c| {
+                s.push_str(&render_view(c));
+                s
+            });
+            format!("<section><h2>{}</h2>{inner}</section>", escape_html(title))
+        }
+        Node::Rows { rows, selected } => {
+            let items = rows
+                .iter()
+                .enumerate()
+                .fold(String::new(), |mut s, (i, r)| {
+                    let sel = if i == *selected { " class=\"sel\"" } else { "" };
+                    let todo = r.todo.as_deref().map_or_else(String::new, |t| {
+                        format!("<span class=\"todo\">{}</span> ", escape_html(t))
+                    });
+                    let _ = write!(s, "<li{sel}>{todo}{}</li>", escape_html(&r.title));
+                    s
+                });
+            format!("<ul class=\"rows\">{items}</ul>")
+        }
+        Node::Detail { fields } => {
+            let items = fields.iter().fold(String::new(), |mut s, f| {
+                let kbd = f.action.as_ref().map_or_else(String::new, |a| {
+                    format!(" <kbd>{}</kbd>", escape_html(a.chord()))
+                });
+                let _ = write!(
+                    s,
+                    "<dt>{}</dt><dd>{}{kbd}</dd>",
+                    escape_html(&f.label),
+                    escape_html(&f.value)
+                );
+                s
+            });
+            format!("<dl class=\"detail\">{items}</dl>")
+        }
+        Node::Input { label, buffer } => format!(
+            "<label>{} <input value=\"{}\"></label>",
+            escape_html(label),
+            escape_html(buffer)
+        ),
+        Node::Palette { items, cursor } => {
+            let lis = items
+                .iter()
+                .enumerate()
+                .fold(String::new(), |mut s, (i, it)| {
+                    let sel = if i == *cursor { " class=\"sel\"" } else { "" };
+                    let _ = write!(
+                        s,
+                        "<li{sel}><kbd>{}</kbd> {}</li>",
+                        escape_html(it.action.chord()),
+                        escape_html(&it.label)
+                    );
+                    s
+                });
+            format!("<ul class=\"palette\">{lis}</ul>")
+        }
+        Node::Hints { line } => format!("<footer>{}</footer>", escape_html(line)),
+        Node::Text(t) => format!("<p>{}</p>", escape_html(t)),
+    }
+}
+
 /// Export the vault as a self-contained single HTML file (no server, no external deps).
 ///
 /// Includes the vault tree (browse) + client-side JS for fuzzy search (as per vision/ROADMAP).
