@@ -13,6 +13,210 @@ file is the fine-grained, capability-level queue between them. Blocked
 on a design decision? Record it under [[*Decisions][Decisions]], pick the most
 reversible option, keep moving.
 
+* TODO Depth III — close the remaining vision gaps [0/13]
+A full re-read of the original vision against the repo (33 crates, all
+prior ROADMAP DONE) surfaced gaps in *breadth* (named wants with no
+code) and *depth* (present but thin / honest-caveat). This section
+queues every one. Binding rules for the whole section: strict 7-step
+TDD, one leaf per pass; never weaken a test or lower a gate; each
+shipped leaf revises =docs/spec.md= + adds a dated Decision in the SAME
+commit; anything non-hermetic is feature-gated OFF by default with =just
+check= green (I10), or — when it genuinely cannot hold in-tree —
+recorded as a DROP/external Decision per the binding rule rather than
+faked. Every leaf must pass "after this the user can ___".
+
+** TODO V1 Declarative / type-level UI layer [0/3]
+The marquee gap: the vision names Slint + "type-level UI" + Yesod
+(runtime→compile-time). Today every shell draws imperatively. Introduce
+one declarative, compile-time-checked view description that all shells
+render — the "engine emits a typed UI tree, embedders render it" model.
+*** TODO V1a =closure-shell-core::view= — a typed, composable =ViewTree=
+A pure data enum (=Node= = =Pane{split,children}= / =List{rows,sel}= /
+=Detail{fields}= / =Field{label,value,chord}= / =Palette= / =Text= …)
+that fully describes a screen. =App=/=ModalApp= gain =fn view(&self) ->
+ViewTree= deriving the tree from state (no draw calls). Invariants:
+every actionable node carries its command + the =chord_for= it (the
+"show keybinding everywhere" rule becomes type-enforced — a node with a
+command but no chord must not compile/construct). Headless tests assert
+the tree shape for browse/detail/palette/edit surfaces.
+*** TODO V1b One =ViewTree=, N renderers: tui + web first
+=closure-tui= and =closure-shell-web= render =ViewTree= instead of
+bespoke draw code (ratatui widgets / HTML from the same tree). Proves
+the decoupling (one declarative description, many embedders, Flutter
+concept). egui/gpui adapters follow the same =render(tree)= entry. =just
+check= green; behaviour parity locked by the existing shell tests.
+*** TODO V1c Type-level UI capability diff
+Extend the =Capability= matrix: which =ViewTree= node kinds each shell
+renders, as per-shell consts + a =closure ui-matrix= venn/diff table +
+superset tests. A shell that cannot render a node kind is a compile-time
+/ test-time fact, not a runtime surprise (Yesod rule).
+
+** TODO V2 Composable block→widget DSL [0/3]
+The core composability promise (compose existing blocks into NEW
+blocks/widgets, Notion-style) is only half-met (org-native nesting +
+built-in dynamic blocks). Add user-defined composite widgets.
+*** TODO V2a =#+BEGIN: closure-widget= user-defined composite blocks
+A dynamic-block kind whose body declares a composition of existing
+blocks/queries (e.g. a =:view= database + a code block + a backlinks
+list) by reference. =Vault::expand_widget= materialises it span-exact
+(I1), recursively (a widget may reference another widget). Cycle
+detection → typed error. Tested with golden fixtures.
+*** TODO V2b Widget registry + definitions in the vault
+Named widget definitions (=#+NAME:= or a =widgets.org=) resolved by
+reference; a widget composes other widgets/blocks. =closure widgets=
+lists them; expansion is deterministic (I6). Undefined / cyclic refs are
+typed errors surfaced as diagnostics (reuse L3 path).
+*** TODO V2c Render composite widgets in a shell + as a =ViewTree= node
+A =Node::Widget= in the V1 tree; TUI + web expand+render it. After this
+the user can define a reusable composite block once and drop it into any
+file, in any shell.
+
+** TODO V3 LLM access to rendered / view state [0/2]
+Vision differentiator over Notion AI: the LLM should *see the rendered
+result*, not only the data. Today =view-state= is a data snapshot.
+*** TODO V3a =view-render= tool: the LLM reads the =ViewTree=
+A new LLM tool returning a serialised snapshot of the current
+=ViewTree= (what is on screen: panes, selection, visible rows, focused
+field) for a given shell/surface. The agent can now answer "what is
+highlighted?" / "what does the detail pane show?". Routed read-only.
+*** TODO V3b Live, configurable render-access permission
+=view-render= is permission-gated like other tools (=llm_tools= config
++ live toggle command/keybinding/GUI control). Render access is opt-in
+and revocable at runtime, per the vision's "configure live" note.
+
+** TODO V4 Package / plugin ecosystem (straight/nix-style) [0/3]
+=closure-plugin-host= today invokes one manifest-declared exe/wasm. The
+vision wants a real, deterministic, lockfile-backed package system.
+*** TODO V4a Package manifest + lockfile (plain-text/org)
+A package = name + version + deps + provided commands, declared in
+org/plain-text (no JSON/YAML). A lockfile pins resolved versions +
+content hashes. Parser + golden fixtures; round-trips byte-exact.
+*** TODO V4b Deterministic dependency resolver + lockfile writer
+Resolve a dependency graph (semver-ish), deterministic order, cycle
+detection → typed error; write/verify the lockfile (hermetic, no
+network — resolves over a local package set). Property test: resolution
+is order-independent and reproducible (I6).
+*** TODO V4c =closure pkg add/list/lock= over a local source
+Install packages from a local/path registry into a plugins dir
+(hermetic; network sources are a feature-gated/documented extension),
+register their commands via the existing plugin host. After this the
+user can declare deps, lock them, and have their commands appear.
+
+** TODO V5 P2P depth: content-addressed sync [0/2]
+CRDT is real; transport is iroh-via-external-binary + in-process collab.
+The vision names IPFS/content addressing + pluggable P2P.
+*** TODO V5a Content-addressed block store (CID-like, dep-free)
+Hash → content store: every block/snapshot addressable by a stable
+content id; dedup; verify-on-read. Pure + hermetic. Foundation for
+IPFS-style sync without a network dep.
+*** TODO V5b Pluggable provider trait + content-address sync round-trip
+A =BlockProvider= trait (get/has/put by CID) with a hermetic in-memory
++ filesystem impl; sync exchanges CIDs then missing content, converging
+two replicas. IPFS/iroh become provider impls behind the trait (the
+real network one stays external/feature-gated, documented). Reuses the
+conflict corpus.
+
+** TODO V6 Real tree-sitter grammars (feature-gated) [0/2]
+=closure-tree-sitter= is a dep-free =KeywordHighlighter= + trait — TS in
+name only. Add real grammar parsing, gated OFF to keep I10.
+*** TODO V6a =tree-sitter= feature: real highlighter over a grammar
+Behind a default-OFF =tree-sitter= feature (C grammar = non-hermetic,
+same pattern as the GUI features), a =TsHighlighter= parses a code
+block with a real grammar (e.g. bash/rust) and emits highlight spans
+implementing the existing trait. =just check= green with the feature
+OFF; =just tree-sitter= builds it. Decision records the I10 gating.
+*** TODO V6b TUI uses real TS spans when the feature is on
+The file view's code-block highlight consumes =TsHighlighter= spans
+under the feature, falling back to =KeywordHighlighter= otherwise. After
+this the user gets real syntax highlighting for fenced code.
+
+** TODO V7 Interactive network-sniffer UI [0/2]
+Sniffer is =parse_candidate= + pcap backend + a one-shot CLI print +
+org log. The vision wants a nice, interactive UI (Little Snitch /
+wireshark class), still usable from TUI/CLI, composable + blockable.
+*** TODO V7a Headless sniffer surface in =closure-shell-core=
+A =SnifferApp= state machine (live event list, cursor, filter, per-flow
+allow/block toggle writing the blocklist config, detail pane) over the
+existing capture trait + mock backend — same headless-tested pattern as
+the launcher. Decisions/blocks route through config + registry.
+*** TODO V7b Wire the sniffer surface into the TUI (+ =ViewTree=)
+=closure sniff --tui= drives =SnifferApp= as a =ViewTree=; live events
+stream in, the user filters and toggles block/allow with keybindings
+shown per the V1 rule. Hermetic over the mock backend; live capture
+stays =pcap=-gated.
+
+** TODO V8 Protocol depth: MCP resources/prompts + ACP/A2A [0/2]
+MCP/ACP/A2A are ~200 LOC each — minimal handshake + tools. Deepen to the
+parts editors/agents actually use.
+*** TODO V8a MCP resources + prompts
+=resources/list= + =resources/read= (vault files/headlines as MCP
+resources) and =prompts/list= + =prompts/get= (capture/ask templates as
+MCP prompts), over the existing dep-free JSON subset. Framed-protocol
+tests like the LSP suite.
+*** TODO V8b ACP/A2A capability negotiation + task status
+ACP agent-card capability negotiation; A2A task lifecycle states
+(submitted/working/done/failed) on the delegated-task round-trip, so a
+caller can poll progress. Round-trip tests assert the state machine.
+
+** TODO V9 Conflict-resolution UX [0/2]
+CRDT auto-merges; there is no user-facing surface to inspect/choose when
+fields diverge.
+*** TODO V9a =ConflictSet=: detect + expose divergent field choices
+When a base-relative merge has competing field values
+(title/body/property), expose =base/ours/theirs= per conflicting field
+instead of silently picking LWW. Pure, in =closure-crdt=; property test
+over the conflict corpus.
+*** TODO V9b Interactive resolve in the TUI
+A conflict surface (=ViewTree=) listing conflicts; the user picks
+ours/theirs/edit per field; the choice applies through the command
+registry (I3/I8, undoable) and persists. After this the user resolves a
+real divergence by hand instead of accepting the automatic merge.
+
+** TODO V10 Coverage → 100% via a render-verification harness [0/2]
+Floor is 82% (actual ~83.6%); the gap is draw/run loops + GUI windows,
+all "display-bound, pixel-unverified". The V1 =ViewTree= makes draw
+output testable without a display — close both gaps together.
+*** TODO V10a Headless render-snapshot harness
+Render a =ViewTree= to a deterministic ASCII/text snapshot; golden-test
+the rendered output for the TUI (and egui/gpui adapters via the same
+tree) with NO display. Turns the "can't verify pixels" caveat into real
+golden coverage of the render path.
+*** TODO V10b Ratchet coverage floor toward 100%
+With render code now hermetically reachable, add the missing-branch
+tests for the lowest crates (=closure-tui= 69%, =closure-llm= 74%,
+=closure-mcp=, =closure-shell-web=) and lift =just coverage= floor in
+steps (82 → 90 → as high as the now-reachable code allows). Document any
+residual genuinely-unreachable lines (e.g. =std::process= entry) as a
+recorded exclusion, not a lowered bar.
+
+** TODO V11 Typestate: shells can't call unsupported capabilities [0/1]
+Apply the Yesod rule structurally: today the =Capability= matrix is
+runtime data. Make "this shell does not support capability X" a
+compile-time / type error where a shell tries to invoke an unsupported
+capability, via a typestate / sealed-trait encoding. After this a whole
+class of shell/capability mismatch bugs cannot be written.
+
+** TODO V12 Accessibility + mobile [0/2]
+Untouched. Both are real vision concerns (cross-platform, top-notch UX).
+*** TODO V12a Semantic / a11y metadata on the =ViewTree=
+Each node carries an optional semantic role + label; the web shell emits
+ARIA roles/labels from it; document the a11y model. After this a
+screen-reader can navigate the web shell.
+*** TODO V12b Mobile story (responsive web + Flutter doc)
+A responsive layout for the web shell (usable on a phone viewport) and
+an updated =docs/flutter-shell.md= showing the mobile shell consuming
+the =ViewTree=/=closure serve=. If a hermetic in-tree mobile build is
+impossible, record it as an external Decision (like X1d) rather than
+faking it.
+
+** TODO V13 Self-contained, declarative HTML export of the =ViewTree= [0/1]
+The single-file HTML export currently embeds data + client JS. Make it
+render the declarative =ViewTree= client-side (one file, no server, no
+toolchain) so the exported artifact is the same declarative UI as every
+other shell — closing the "self-contained artifact" + "declarative"
+loop. Reuses =closure-wasm= where helpful; default export stays
+dependency-free.
+
 * DONE Depth II — LSP server to real [5/5]
 closure-lsp today is two methods (=document_symbols=, =definition_of=)
 plus a Content-Length frame loop wired to =initialize=/=shutdown=. The
