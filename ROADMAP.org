@@ -13,6 +13,48 @@ file is the fine-grained, capability-level queue between them. Blocked
 on a design decision? Record it under [[*Decisions][Decisions]], pick the most
 reversible option, keep moving.
 
+* WIP Depth II — LSP server to real [1/5]
+closure-lsp today is two methods (=document_symbols=, =definition_of=)
+plus a Content-Length frame loop wired to =initialize=/=shutdown=. The
+vision promises a usable language server. Grow it into hover /
+completion / diagnostics / references+rename / a real stdio loop, one
+leaf per pass. Pure + hermetic (positions map over source text, like
+the existing two methods); every mutation still routes through the
+registry (I8); spec.md =closure-lsp= section + a dated Decision revised
+in the SAME commit as each leaf.
+** DONE L1 Hover: =hover(src, vault, line, character)= → target preview
+Over an =id:= link: returns the target title + a =file › ancestors ›
+title= breadcrumb (ancestors resolved via =DocHeadline::path()= prefix
+match through the vault). Over a headline: =level N · id:… · TODO kw ·
+:tags:=. =None= when nothing resolvable sits under the cursor or the
+position is out of range. =textDocument/hover= wired in =handle_message=
+(plaintext =contents=), =initialize= advertises =hoverProvider=. 12
+closure-lsp tests green (5 unit hover + 2 protocol + the 5 prior). Pure,
+hermetic, positions map over source text — see Decision (2026-06-20).
+** TODO L2 Completion: =completion(src, vault, line, character)= → items
+Inside an unterminated =[[id:= prefix, complete to vault ids with their
+titles as detail; after =* = / a TODO position, complete the configured
+TODO keywords; inside a =:tag:= context, complete known vault tags.
+Wire =textDocument/completion=.
+** TODO L3 Diagnostics: =diagnostics(src, vault)= → ranged problems
+Dead =id:= links (target missing), duplicate =:ID:= within the vault,
+and config-validation errors surfaced as LSP diagnostics with line/char
+ranges + severity. Publish via =textDocument/publishDiagnostics= on a
+=diagnostics= request path (pull-model for the hermetic test).
+** TODO L4 References + rename: vault-wide =:ID:= ops
+=references(vault, id)= → every (file, line) linking that id (def +
+all =id:= references). =rename_symbol(vault, id, new_title)= retitles
+the owning headline (undoable, I3) — link text stays id-based so no
+link rewrite needed; assert references survive. Wire
+=textDocument/references= + =textDocument/rename=.
+** TODO L5 Real stdio LSP loop + =closure lsp= CLI
+=initialize= advertises the new capabilities (hover/completion/
+references/rename/diagnostics); =initialized=/=shutdown=/=exit=
+handled; the above methods served over the Content-Length frame loop.
+Add =closure lsp <vault>= spawning =serve_stdio=, with a CLI
+integration test that drives a real =initialize= + one feature request
+through the framed protocol and asserts the framed response.
+
 * DONE Edges: make the mocked surfaces real [4/4]
 The kernel (org/core/store/query/undo/input) is deep + tested; the
 real-world *edges* are trait+mock+deferred. These four are the highest
@@ -545,6 +587,21 @@ only (I8). Crates keep =#![forbid(unsafe_code)]=.
 * Decisions
 Open questions land here as subheadings: context, options considered,
 the reversible default taken, date.
+** DECISION (2026-06-20) LSP hover maps over source text, not the AST (L1)
+Context: L1 adds =textDocument/hover=. LSP positions are zero-based
+line/character; closure's =DocHeadline= carries a structural =path()=
+but no source line. Options: (a) thread byte/line spans through the
+parser into every headline (invasive, touches I1's span bookkeeping);
+(b) resolve positions over the source string at the bridge, the way the
+existing =document_symbols= / =definition_of= already do. Taken (b):
+=hover(src, vault, line, character)= reads the line text, detects an
+=id:= token under the cursor (or a headline line), and resolves cross-
+file previews through =Vault::find_by_id= + =Document::all_headlines=
+(ancestors via =path()= prefix match). Keeps the parser untouched (I1),
+stays pure + hermetic (no editor process), and matches the two
+pre-existing LSP methods. Reversible: if completion/diagnostics need
+richer spans later, a span-bearing query API can replace the line-scan
+without changing the bridge's signatures.
 ** DECISION (2026-06-20) Flutter shell stays external (X1d)
 Context: X1d reopened a Flutter shell. The Flutter SDK (Dart toolchain +
 =flutter= CLI) is not hermetically nix-packaged like the pure-Rust +

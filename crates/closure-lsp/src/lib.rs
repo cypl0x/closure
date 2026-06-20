@@ -52,9 +52,10 @@ fn write_frame<W: std::io::Write>(out: &mut W, body: &str) -> Result<(), LspErro
 /// Serve LSP over Content-Length-framed JSON-RPC on `input`/`output`.
 ///
 /// Handles `initialize`, `textDocument/documentSymbol` (over
-/// [`document_symbols`], reading the doc through `vault`), and
-/// `shutdown`; everything else is a `-32601` error. Read-only — no
-/// mutation. Requests carrying an `id` get a framed response.
+/// [`document_symbols`]), `textDocument/hover` (over [`hover`]), and
+/// `shutdown`; everything else is a `-32601` error. All read the doc
+/// through `vault` and are read-only — no mutation. Requests carrying an
+/// `id` get a framed response.
 ///
 /// # Errors
 ///
@@ -75,14 +76,36 @@ pub fn serve<R: BufRead, W: std::io::Write>(
 /// Handle one LSP JSON-RPC message; `None` for notifications (no `id`).
 #[must_use]
 pub fn handle_message(vault: &Vault, json: &str) -> Option<String> {
-    use closure_jsonrpc::{json_escape, string_field};
-    let id = closure_jsonrpc::raw_field(json, "id")?;
+    use closure_jsonrpc::{json_escape, raw_field, string_field};
+    let id = raw_field(json, "id")?;
     let method = string_field(json, "method").unwrap_or_default();
     let result = match method.as_str() {
-        "initialize" => "{\"capabilities\":{\"documentSymbolProvider\":true},\
+        "initialize" => "{\"capabilities\":{\"documentSymbolProvider\":true,\
+             \"hoverProvider\":true},\
              \"serverInfo\":{\"name\":\"closure\",\"version\":\"0.0.0\"}}"
             .to_owned(),
         "shutdown" => "null".to_owned(),
+        "textDocument/hover" => {
+            let uri = string_field(json, "uri").unwrap_or_default();
+            let rel = uri.strip_prefix("file://").unwrap_or(&uri);
+            let src = vault
+                .document_relative(std::path::Path::new(rel))
+                .map(closure_core::Document::source)
+                .unwrap_or_default();
+            let line = raw_field(json, "line").and_then(|s| s.parse().ok()).unwrap_or(0);
+            let ch = raw_field(json, "character")
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(0);
+            hover(&src, vault, line, ch).map_or_else(
+                || "null".to_owned(),
+                |h| {
+                    format!(
+                        "{{\"contents\":{{\"kind\":\"plaintext\",\"value\":\"{}\"}}}}",
+                        json_escape(&h)
+                    )
+                },
+            )
+        }
         "textDocument/documentSymbol" => {
             let uri = string_field(json, "uri").unwrap_or_default();
             let rel = uri.strip_prefix("file://").unwrap_or(&uri);
@@ -241,6 +264,91 @@ pub fn document_symbols(src: &str) -> Vec<Symbol> {
         });
     }
     out
+}
+
+/// True when `line` is an org headline (one-or-more leading `*` then a
+/// space).
+fn is_headline_line(line: &str) -> bool {
+    let stars = line.bytes().take_while(|&b| b == b'*').count();
+    stars > 0 && line[stars..].starts_with(' ')
+}
+
+/// The `id:` link value whose `id:<value>` span covers byte column
+/// `character` on `line`, if any. Value = the run of ASCII alphanumerics
+/// after `id:` (a ULID).
+fn id_at(line: &str, character: usize) -> Option<&str> {
+    let mut from = 0;
+    while let Some(rel) = line[from..].find("id:") {
+        let kw = from + rel;
+        let val_start = kw + 3;
+        let val_len = line[val_start..]
+            .find(|c: char| !c.is_ascii_alphanumeric())
+            .unwrap_or(line.len() - val_start);
+        let val_end = val_start + val_len;
+        if val_end > val_start && character >= kw && character <= val_end {
+            return Some(&line[val_start..val_end]);
+        }
+        from = val_start;
+    }
+    None
+}
+
+/// Hover info for the symbol under a zero-based `line`/`character`.
+///
+/// Over an `id:` link, previews the linked headline: its title plus a
+/// `file › ancestor › … › title` breadcrumb. Over a headline, describes
+/// it (`level N · id:… · TODO kw · :tags:`). `None` when nothing
+/// resolvable sits under the cursor or the position is out of range.
+#[must_use]
+pub fn hover(src: &str, vault: &Vault, line: u32, character: u32) -> Option<String> {
+    let text = src.lines().nth(line as usize)?;
+    if let Some(id) = id_at(text, character as usize) {
+        return hover_id(vault, id);
+    }
+    if is_headline_line(text) {
+        return hover_headline(src, line as usize);
+    }
+    None
+}
+
+/// Preview a link target: title + `file › ancestors › title` breadcrumb.
+fn hover_id(vault: &Vault, id: &str) -> Option<String> {
+    let (target, path) = vault.find_by_id(&closure_core::BlockId::from_existing(id))?;
+    let doc = vault.document(path)?;
+    let tpath = target.path();
+    let mut crumbs: Vec<&str> = doc
+        .all_headlines()
+        .filter(|h| h.path().len() < tpath.len() && tpath.starts_with(h.path()))
+        .map(closure_core::DocHeadline::title)
+        .collect();
+    crumbs.push(target.title());
+    let file = path.file_name().and_then(|s| s.to_str()).unwrap_or("");
+    Some(format!("{}\n{file} › {}", target.title(), crumbs.join(" › ")))
+}
+
+/// Describe the headline whose stars sit on zero-based `line` of `src`.
+fn hover_headline(src: &str, line: usize) -> Option<String> {
+    // The headline's index in document order = how many headline lines
+    // precede (and include) this one.
+    let idx = src
+        .lines()
+        .take(line + 1)
+        .filter(|l| is_headline_line(l))
+        .count()
+        .checked_sub(1)?;
+    let doc = closure_core::Document::load_str(src).ok()?;
+    let h = doc.all_headlines().nth(idx)?;
+    let mut out = format!("level {} · id:{}", h.level(), h.id());
+    if let Some(kw) = h.todo() {
+        out.push_str(" · ");
+        out.push_str(kw);
+    }
+    if !h.tags().is_empty() {
+        out.push_str(" · :");
+        out.push_str(&h.tags().join(":"));
+        out.push(':');
+    }
+    Some(out)
 }
 
 /// Resolve an `id:<ULID>` (or bare ULID) link target to its defining

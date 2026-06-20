@@ -206,6 +206,15 @@ eval`); a pulled/synced vault cannot run code without explicit local
   registry commands; it gets query access but no `&mut Document`.
 - `closure-mcp`, `closure-lsp`, `closure-acp`, `closure-a2a` — protocol
   bridges; each translates messages to registry commands.
+  - `closure-lsp` serves Content-Length-framed JSON-RPC over stdio. Beyond
+    `documentSymbol` + go-to-definition it answers `textDocument/hover`:
+    over an `id:` link it previews the target headline (title + a
+    `file › ancestors › title` breadcrumb resolved through the vault),
+    over a headline it reports `level · id · TODO · :tags:` (L1). All
+    positions map over source text (zero-based line/character); read-only
+    methods take `&Vault`, mutating ones (rename, L4) route through the
+    command registry (I8). Pure + hermetic — no editor process needed to
+    test it.
 - `closure-cron` — cron scheduler triggering commands.
 - `closure-plugin-host` — wasm plugin ABI, semver-pinned core API,
   sandboxed.
