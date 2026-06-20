@@ -221,7 +221,12 @@ Preserved as opaque text (no semantics yet):
 - `closure-shell-gpui` — native desktop (Zed's gpui). Alternative,
   evaluated alongside egui.
 - `closure-shell-web` — self-contained single HTML bundle and
-  localhost web-app (`closure serve`).
+  localhost web-app (`closure serve`). `closure-wasm` (X2) is the
+  client-side upgrade: a wasm-bindgen surface over the kernel
+  (`reformat`/`headline_titles`) that `inline_wasm_editor` embeds into
+  the export so the single HTML file re-parses edits in the browser,
+  offline. Opt-in `wasm` feature; `just wasm-web-bundle` builds it; the
+  default build never pulls wasm-bindgen (I10).
 - `closure-shell-tauri` — native webview desktop shell (X1a): hosts the
   web shell's `export_html` page in a `wry`/`tao` window (Tauri's webview
   foundation). Opt-in `tauri` feature; the default build never pulls the

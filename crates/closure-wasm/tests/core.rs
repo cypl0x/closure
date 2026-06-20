@@ -4,7 +4,7 @@
 
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
-use closure_wasm::{headline_titles, headline_titles_joined, reformat};
+use closure_wasm::{base64, headline_titles, headline_titles_joined, inline_wasm_editor, reformat};
 
 #[test]
 fn reformat_round_trips_valid_org_byte_exact() {
@@ -29,4 +29,24 @@ fn headline_titles_lists_in_document_order() {
 #[test]
 fn headline_titles_empty_for_no_headlines() {
     assert!(headline_titles("plain paragraph\n").is_empty());
+}
+
+#[test]
+fn base64_matches_known_vectors() {
+    assert_eq!(base64(b""), "");
+    assert_eq!(base64(b"f"), "Zg==");
+    assert_eq!(base64(b"fo"), "Zm8=");
+    assert_eq!(base64(b"foo"), "Zm9v");
+    assert_eq!(base64(b"foob"), "Zm9vYg==");
+    assert_eq!(base64(b"hello"), "aGVsbG8=");
+}
+
+#[test]
+fn inline_wasm_editor_embeds_glue_wasm_and_harness() {
+    let html = inline_wasm_editor("<html><body>BASE</body></html>", "/*GLUE*/", b"WASM");
+    assert!(html.contains("BASE"), "keeps the read-only page");
+    assert!(html.contains("/*GLUE*/"), "inlines the wasm-bindgen glue");
+    assert!(html.contains(&base64(b"WASM")), "inlines the wasm as base64");
+    assert!(html.contains("reformat("), "wires the client-side re-parse");
+    assert!(html.contains("<textarea"), "offers an editor");
 }

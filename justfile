@@ -26,6 +26,14 @@ wasm:
 wasm-web:
     RUSTFLAGS='--cfg getrandom_backend="wasm_js"' cargo build -p closure-wasm --target wasm32-unknown-unknown --features wasm
 
+# X2b full browser bundle: build the wasm, generate the wasm-bindgen
+# `--target web` glue (CLI version pinned to the crate), and assemble a
+# single self-contained client-side editor into target/wasm-web/editor.html.
+wasm-web-bundle: wasm-web
+    nix shell nixpkgs#wasm-bindgen-cli -c wasm-bindgen --target web --no-typescript --out-dir target/wasm-web target/wasm32-unknown-unknown/debug/closure_wasm.wasm
+    cargo run -q -p closure-wasm --example build_editor -- target/wasm-web/closure_wasm.js target/wasm-web/closure_wasm_bg.wasm > target/wasm-web/editor.html
+    @echo "wrote target/wasm-web/editor.html ($(wc -c < target/wasm-web/editor.html) bytes)"
+
 # egui desktop shell build gate (opt-in; pulls eframe + system GL/X11/
 # wayland/xkb libs from the flake). The window needs a display so it is
 # NOT exercised here — this gate guarantees the feature still compiles.

@@ -43,6 +43,69 @@ pub fn headline_titles_joined(org: &str) -> String {
     headline_titles(org).join("\n")
 }
 
+/// Standard base64 alphabet.
+const B64: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+/// Base64-encode bytes (no line breaks) — for inlining the wasm module
+/// into a single HTML file. Hand-rolled to avoid a dependency.
+#[must_use]
+pub fn base64(bytes: &[u8]) -> String {
+    let mut out = String::with_capacity(bytes.len().div_ceil(3) * 4);
+    for chunk in bytes.chunks(3) {
+        let b = [
+            chunk[0],
+            *chunk.get(1).unwrap_or(&0),
+            *chunk.get(2).unwrap_or(&0),
+        ];
+        let n = (u32::from(b[0]) << 16) | (u32::from(b[1]) << 8) | u32::from(b[2]);
+        out.push(B64[(n >> 18 & 63) as usize] as char);
+        out.push(B64[(n >> 12 & 63) as usize] as char);
+        out.push(if chunk.len() > 1 {
+            B64[(n >> 6 & 63) as usize] as char
+        } else {
+            '='
+        });
+        out.push(if chunk.len() > 2 {
+            B64[(n & 63) as usize] as char
+        } else {
+            '='
+        });
+    }
+    out
+}
+
+/// Assemble a single self-contained HTML editor (X2b).
+///
+/// Combines the read-only export `base_page`, the wasm-bindgen `glue_js`,
+/// the base64-inlined `wasm` module, and a harness that re-parses edits
+/// in the browser via the exported [`reformat`] / [`headline_titles`].
+/// No server, no network.
+///
+/// Pure string assembly — the produced page is verifiable without a
+/// browser; the actual in-browser execution is display-bound.
+#[must_use]
+pub fn inline_wasm_editor(base_page: &str, glue_js: &str, wasm: &[u8]) -> String {
+    let wasm_b64 = base64(wasm);
+    format!(
+        "{base_page}\n\
+         <hr><h2>edit (client-side, offline)</h2>\n\
+         <textarea id=\"org\" rows=\"12\" cols=\"80\"></textarea>\n\
+         <pre id=\"titles\"></pre>\n\
+         <script type=\"module\">\n\
+         {glue_js}\n\
+         const wasmB64 = \"{wasm_b64}\";\n\
+         const bytes = Uint8Array.from(atob(wasmB64), c => c.charCodeAt(0));\n\
+         await init(bytes);\n\
+         const ta = document.getElementById('org');\n\
+         const out = document.getElementById('titles');\n\
+         ta.addEventListener('input', () => {{\n\
+         \x20 try {{ ta.value = reformat(ta.value); out.textContent = headline_titles(ta.value); }}\n\
+         \x20 catch (e) {{ out.textContent = String(e); }}\n\
+         }});\n\
+         </script>\n"
+    )
+}
+
 /// wasm-bindgen JS exports (X2b inlines these into the HTML export).
 #[cfg(feature = "wasm")]
 mod js {

@@ -233,7 +233,7 @@ workspace code -> =just check= unaffected.
 Note: X1a-d each carry the explicit I10 tension — expect some to resolve
 as "feature-gated, build-verified, display-bound smoke-launch" (egui/gpui
 class), NOT hermetic-gate-tested. Record the per-shell outcome.
-** TODO X2 Client-side wasm parse/edit in the HTML export [0/2]
+** DONE X2 Client-side wasm parse/edit in the HTML export [2/2]
 Supersedes the ROADMAP:228 DROP. closure-org/closure-core already build
 to =wasm32-wasip1=; this adds in-browser parse + edit so the
 self-contained HTML export is a real editor, not a read-only snapshot.
@@ -254,10 +254,21 @@ getrandom_backend="wasm_js"=). Clippy clean =--features wasm=. Tests
 joined; empty for no headlines. Supersedes the 2026-06-13 "client-side
 wasm deferred" Decision (the =closure-wasm= crate it named now exists).
 X2b inlines the artifact into =export_html=.
-*** TODO X2b =export_html= inlines the wasm artifact + JS glue when built
-with the feature; the exported file re-parses edits client-side. The
-HTML shape is unchanged for plain readers. Verification is display-bound
-(browser) — smoke-tested, recorded.
+*** DONE X2b Self-contained client-side editor: =closure_wasm::
+inline_wasm_editor(base_page, glue_js, wasm)= assembles ONE HTML file =
+the read-only export page + the wasm-bindgen =--target web= glue + the
+base64-inlined wasm module (hand-rolled =base64=, no dep) + a harness
+that re-parses edits in the browser via the exported =reformat= /
+=headline_titles= (no server, no network). =just wasm-web-bundle= runs
+the full pipeline (build wasm -> wasm-bindgen glue -> assemble) and
+emits =target/wasm-web/editor.html= — verified end-to-end here (605 KB,
+harness present). The wasm-bindgen CLI is pinned to the crate version
+(=0.2.108=, the nixpkgs CLI) so schemas match. Tests (hermetic, default
+build): =base64= against RFC vectors; =inline_wasm_editor= embeds the
+glue + base64 wasm + the =reformat= harness + a =textarea=. In-browser
+execution is display-bound -> open =editor.html= manually (recorded).
+=just check= 3311 green (feature OFF; default build never pulls
+wasm-bindgen).
 ** TODO X3 Real network sniffer backend [0/2]
 Supersedes the ROADMAP:394 DROP. The hermetic crate already ships the
 =CaptureBackend= trait + =MockBackend= + blocklist + org-native log; this

@@ -25,7 +25,9 @@ wasm = ["dep:wasm-bindgen"]
 
 [dependencies]
 closure-core = { path = "../closure-core" }
-wasm-bindgen = { version = "0.2", optional = true }
+# Pinned to the nixpkgs wasm-bindgen-cli version: the CLI that generates
+# the JS glue (X2b) must exactly match the crate's schema version.
+wasm-bindgen = { version = "=0.2.108", optional = true }
 
 # On the browser wasm target there is no default entropy source, so the
 # ULID generator's `getrandom` needs the JS backend (paired with
