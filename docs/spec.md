@@ -210,7 +210,12 @@ Preserved as opaque text (no semantics yet):
 - `closure-plugin-host` — wasm plugin ABI, semver-pinned core API,
   sandboxed.
 - `closure-sniffer` — mitmproxy-like, own binary. Shares `closure-config`
-  and the command registry. Not linked into other shells.
+  and the command registry. Not linked into other shells. The packet
+  decoder (`parse_candidate`, Ethernet→IPv4→TCP/UDP) is dependency-free
+  and hermetically tested; live capture (`PcapBackend`, `pnet` raw
+  sockets) is opt-in behind the `pcap` feature and needs `CAP_NET_RAW`
+  at runtime (X3). `closure sniff --live <iface>` drives it; the mock
+  stays the hermetic default.
 
 ### Layer 5 — Shells (I7)
 

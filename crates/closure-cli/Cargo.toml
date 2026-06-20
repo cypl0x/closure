@@ -22,6 +22,9 @@ workspace = true
 default = []
 gpui = ["closure-shell-gpui/gpui"]
 egui = ["closure-shell-egui/egui"]
+# `closure sniff --live <iface>` does real packet capture only with this
+# feature (pulls pnet). Default stays dep-light + hermetic (I10).
+pcap = ["closure-sniffer/pcap"]
 
 [dependencies]
 closure-core = { path = "../closure-core" }

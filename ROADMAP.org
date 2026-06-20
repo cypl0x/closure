@@ -165,7 +165,7 @@ index cache, the backlink HashMap, and span-preserving parse all hold
 up). Nothing to fix; the budget test is the standing regression guard.
 Recorded honestly rather than inventing a change.
 
-* TODO Reopened drops: vision features pulled back into scope [1/3]
+* DONE Reopened drops: vision features pulled back into scope [3/3]
 Re-opening the three vision features previously DROP'd (GUI shells
 ROADMAP:200, wasm-client-parse ROADMAP:228, real sniffer ROADMAP:394).
 The DROP rationale was real: each needs a non-hermetic toolchain or
@@ -269,19 +269,29 @@ glue + base64 wasm + the =reformat= harness + a =textarea=. In-browser
 execution is display-bound -> open =editor.html= manually (recorded).
 =just check= 3311 green (feature OFF; default build never pulls
 wasm-bindgen).
-** TODO X3 Real network sniffer backend [0/2]
-Supersedes the ROADMAP:394 DROP. The hermetic crate already ships the
-=CaptureBackend= trait + =MockBackend= + blocklist + org-native log; this
-adds a real capture path.
-After this the user can: capture + block live connections (Little-Snitch
-class) from closure, not just the mock.
-*** TODO X3a =pcap= backend behind a =pcap= feature (libpcap / pnet):
-implements =CaptureBackend= over real packets; default build stays
-dep-free + hermetic. The privileged part (CAP_NET_RAW / root) is a
-runtime concern, documented; the code is feature-gated + compile-tested.
-*** TODO X3b Wire it into =closure sniff= when the feature is on (mock
-stays the hermetic default); live capture verified manually on a host
-with privileges, recorded (non-hermetic, same class as live HTTPS).
+** DONE X3 Real network sniffer backend [2/2]
+Supersedes the ROADMAP:394 DROP. The mock crate already shipped the
+=CaptureBackend= trait + blocklist + org-native log; X3 adds the real
+capture path. The user can now capture + match live connections
+(Little-Snitch class) from closure, not just the mock.
+*** DONE X3a Live capture: the real packet-analysis logic is a
+dependency-free =parse_candidate(frame) -> Option<"dst:port proto">=
+(manual Ethernet -> IPv4 -> TCP/UDP header decode) in the DEFAULT build,
+hermetically tested with synthetic frames (TCP/UDP decode; ARP / ICMP /
+truncated ignored). =PcapBackend= (behind the =pcap= feature, =pnet=
+pure-Rust raw sockets — no libpcap C dep) opens a live datalink channel,
+runs each frame through =parse_candidate=, and matches the blocklist
+(=CaptureBackend=). Default build stays dep-light + hermetic (I10);
+=pnet= compile + clippy clean =--features pcap=. Capture needs
+=CAP_NET_RAW= at runtime (privileged, recorded — not headless-testable).
+*** DONE X3b =closure sniff --live <iface>= (CLI =pcap= feature ->
+=closure-sniffer/pcap=) builds =Block= rules from =sniffer_blocklist= and
+matches one captured packet via =PcapBackend::capture_once=; the
+mock/string-match path stays the hermetic default, and without the
+feature the flag returns an instructive error (gpui-style). =just
+sniff-pcap= gate (CLI builds =--features pcap= + sniffer feature tests).
+Default =just check= 3314 green. Live capture verified manually on a
+privileged host (recorded, same class as live HTTPS).
 
 * DONE Foundation recap (already shipped)
 - closure-org span-preserving parser/printer, golden corpus, fuzz (M1)
@@ -670,7 +680,7 @@ binary, so =main.rs= is genuinely covered (0.9% -> 15.1%) and folded
 back into the metric. =just coverage= is full-workspace again,
 =--fail-under-lines 80= (actual 81.65%). No file is excluded; the
 "thin glue" reversible path was taken.
-** Network sniffer real backend is DROP (out-of-tree plugin) (2026-06-14) [REOPENED 2026-06-19 as TODO X3 — in-tree =pcap= feature, default OFF]
+** Network sniffer real backend is DROP (out-of-tree plugin) (2026-06-14) [SUPERSEDED 2026-06-20 by X3 — in-tree =pcap= feature (pnet) shipped, default OFF; dep-free packet decoder tested hermetically]
 The vision wants an included sniffer (Little Snitch/wireshark/mitmproxy
 class). A real capture backend needs libpcap or shelling to
 tcpdump/ss with root/CAP_NET_RAW — non-hermetic, privileged, and

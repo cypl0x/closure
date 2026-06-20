@@ -11,9 +11,18 @@ authors.workspace = true
 [lints]
 workspace = true
 
+[features]
+default = []
+# Live packet capture via pnet (pure-Rust raw sockets — no libpcap C
+# dep). Opt-in: the default crate stays dependency-light + hermetic
+# (I10). Capture needs CAP_NET_RAW/root at runtime; build/test is
+# hermetic (the packet decoder is dep-free). Gate: `just sniff-pcap`.
+pcap = ["dep:pnet"]
+
 [dependencies]
 closure-config = { path = "../closure-config" }
 thiserror.workspace = true
+pnet = { version = "0.35", optional = true }
 
 [dev-dependencies]
 tempfile = "3"

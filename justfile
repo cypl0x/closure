@@ -58,6 +58,12 @@ eval-wasm:
     cargo test -p closure-eval --features wasmtime --test wasm
     cargo test -p closure-store --features wasmtime --test babel
 
+# X3 live packet sniffer (opt-in; pulls pnet). Default stays dep-light;
+# live capture needs CAP_NET_RAW at runtime (`closure sniff --live eth0`).
+sniff-pcap:
+    cargo build -p closure-cli --features pcap
+    cargo test -p closure-sniffer --features pcap
+
 # X1a native webview shell (opt-in; pulls wry + webkitgtk). Build under
 # the webview devshell; the default `check` never touches the stack.
 gui-tauri:

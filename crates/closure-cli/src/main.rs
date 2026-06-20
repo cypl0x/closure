@@ -873,10 +873,15 @@ enum Cmd {
     /// Prints the matched action (Block/Allow) and rule. Blocklist config + =closure sniff= view.
     Sniff {
         /// Candidate (e.g. "host:port" or "url" or any string matched by the globs).
-        candidate: String,
+        /// Optional when `--live` is given.
+        candidate: Option<String>,
         /// Config `.org` with `#+BEGIN_SRC closure-config` `sniffer_blocklist=...` (or vault dir).
         #[arg(long)]
         config: Option<PathBuf>,
+        /// Capture one live packet off this interface and match it
+        /// (needs the `pcap` feature + `CAP_NET_RAW`).
+        #[arg(long)]
+        live: Option<String>,
     },
     /// Print build info: name, version, target triple.
     Build,
@@ -1304,7 +1309,11 @@ fn run(cmd: &Cmd) -> Result<(), String> {
             dow,
         } => cmd_cron_tick(file, *minute, *hour, *dom, *month, *dow),
         Cmd::Version => cmd_version(),
-        Cmd::Sniff { candidate, config } => cmd_sniff(candidate, config.as_deref()),
+        Cmd::Sniff {
+            candidate,
+            config,
+            live,
+        } => cmd_sniff(candidate.as_deref(), config.as_deref(), live.as_deref()),
         Cmd::Build => cmd_build(),
         Cmd::Gpui { vault } => cmd_gpui(vault),
         Cmd::Egui { vault } => cmd_egui(vault),
@@ -3025,13 +3034,25 @@ fn cmd_chat(model: &str, vault: Option<&Path>) -> Result<(), String> {
 /// config: builds `Block` rules, runs `match_first`, prints the
 /// decision. The `closure sniff` view + blocklist config support.
 #[allow(clippy::unnecessary_wraps)]
-fn cmd_sniff(candidate: &str, config: Option<&Path>) -> Result<(), String> {
+fn cmd_sniff(
+    candidate: Option<&str>,
+    config: Option<&Path>,
+    live: Option<&str>,
+) -> Result<(), String> {
     use closure_sniffer::{Action, Rule, match_first};
 
     let globs: Vec<String> = config
         .and_then(|p| closure_config::Config::from_path(p).ok())
         .and_then(|cfg| cfg.sniffer_blocklist)
         .unwrap_or_default();
+
+    // X3b: live capture (mock/string match stays the hermetic default).
+    if let Some(iface) = live {
+        return sniff_live(iface, &globs);
+    }
+    let Some(candidate) = candidate else {
+        return Err("provide a candidate, or --live <iface>".into());
+    };
     if globs.is_empty() {
         println!("no blocklist (or no config); default Allow for {candidate}");
         return Ok(());
@@ -3051,6 +3072,39 @@ fn cmd_sniff(candidate: &str, config: Option<&Path>) -> Result<(), String> {
         println!("{candidate} -> Allow (no blocklist match)");
     }
     Ok(())
+}
+
+/// X3b live capture: build `Block` rules from the blocklist globs and
+/// match one captured packet. Real capture only with the `pcap` feature.
+#[cfg(feature = "pcap")]
+fn sniff_live(iface: &str, globs: &[String]) -> Result<(), String> {
+    use closure_sniffer::{Action, PcapBackend, Rule};
+    let rules: Vec<Rule> = globs
+        .iter()
+        .map(|g| Rule {
+            id: format!("block-{g}"),
+            pattern: g.clone(),
+            action: Action::Block,
+        })
+        .collect();
+    let (candidate, action) = PcapBackend::new(rules)
+        .capture_once(iface)
+        .map_err(|e| e.to_string())?;
+    match action {
+        Some(a) => println!("{candidate} -> {a:?}"),
+        None => println!("{candidate} -> Allow (no blocklist match)"),
+    }
+    Ok(())
+}
+
+/// Without the `pcap` feature, live capture is unavailable; the mock /
+/// string-match path stays the hermetic default.
+#[cfg(not(feature = "pcap"))]
+#[allow(clippy::unnecessary_wraps)]
+fn sniff_live(_iface: &str, _globs: &[String]) -> Result<(), String> {
+    Err("live capture needs the `pcap` feature: \
+         build with --features pcap (and run with CAP_NET_RAW)"
+        .into())
 }
 
 /// Emacs-style self-documentation for a command (name + its keys from
