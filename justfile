@@ -63,5 +63,13 @@ gui-gtk:
 run-gtk vault:
     nix develop .#webview -c cargo run -p closure-shell-gtk --features gtk -- {{vault}}
 
+# X1c native Qt6/QML shell (opt-in; needs a Qt6 SDK / qmake6 on PATH).
+gui-qt:
+    cargo build -p closure-shell-qt --features qt
+
+# Launch the Qt6 shell against a vault (needs a display).
+run-qt vault:
+    cargo run -p closure-shell-qt --features qt -- {{vault}}
+
 # Full local CI: everything above.
 ci: check fuzz wasm coverage

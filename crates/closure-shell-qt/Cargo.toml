@@ -1,0 +1,26 @@
+[package]
+name = "closure-shell-qt"
+description = "Native Qt6/QML desktop shell over the closure vault (Layer 5, X1c)."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[lints]
+workspace = true
+
+[features]
+default = []
+# The native Qt6/QML window. Opt-in (pulls qmetaobject + a Qt6 SDK via
+# qmake at build time); the default build stays hermetic and `just check`
+# never touches Qt (I10).
+qt = ["dep:qmetaobject"]
+
+[dependencies]
+closure-store = { path = "../closure-store" }
+qmetaobject = { version = "0.2", optional = true }
+
+[dev-dependencies]
+tempfile = "3"

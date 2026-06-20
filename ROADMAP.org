@@ -176,7 +176,7 @@ stays green with the feature OFF; the kernel API does not change (I7).
 If an item genuinely cannot satisfy I10 even feature-gated, the loop
 records WHY under Decisions and revises spec.md in the same commit —
 it does not silently weaken I10.
-** TODO X1 Native shells: Tauri, GTK4, Qt6, Flutter [2/4]
+** TODO X1 Native shells: Tauri, GTK4, Qt6, Flutter [3/4]
 Each consumes a shared closure crate (I7); only the window is
 shell-specific. The window is a thin adapter (same pattern as
 egui/gpui). After this the user can: open the same vault in each native
@@ -207,8 +207,19 @@ webview stack) so the default build never touches GTK (I10). Tests
 clean =--features gtk= under =.#webview= (gtk4-rs 0.9 / GTK 4.20);
 window display-bound -> =just run-gtk VAULT= (manual, recorded). Spec
 revised (spec.md Layer 5) same commit.
-*** TODO X1c Qt6 shell behind a =qt= feature (cxx-qt or qmetaobject); same
-contract.
+*** DONE X1c Qt6 shell: =closure-shell-qt= behind a =qt= feature shows
+the vault's headlines in a QtQuick =ListView= via =qmetaobject=.
+=rows(vault)= + =qml_document(rows)= are the hermetic core (vault ->
+lines -> a QML document, with QML/JS string escaping); =run(vault)=
+loads the document in a =QmlEngine= window. Default build stays hermetic
+(feature OFF; =just check= green); Qt6 (qtbase + qtdeclarative) lives in
+the =.#webview= devshell (the qtbase setup hook exposes the QtQuick
+headers so qmetaobject's C++ glue compiles). Tests (hermetic, default
+build): rows indent + TODO; =qml_document= embeds rows as a =ListView=
+model + escapes quotes/backslashes. Build + clippy clean =--features qt=
+under =.#webview= (qmetaobject 0.2 / Qt 6.10); window display-bound ->
+=just run-qt VAULT= (manual, recorded). Spec revised (spec.md Layer 5)
+same commit.
 *** TODO X1d Flutter shell: external packaging project (Flutter SDK is not
 nix-hermetic) that talks to =closure serve= / a flutter_rust_bridge FFI
 to shell-core. Lives outside the workspace; documented build.

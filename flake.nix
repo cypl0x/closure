@@ -61,10 +61,10 @@
           freetype
           libGL
         ];
-        # Native GUI stack for the opt-in webview (Tauri/wry, X1a) and
-        # GTK4 (X1b) shells. Kept out of the default shell so `just check`
-        # stays light + hermetic (I10); only `nix develop .#webview`
-        # pulls webkitgtk + gtk.
+        # Native GUI stack for the opt-in webview (Tauri/wry, X1a), GTK4
+        # (X1b), and Qt6/QML (X1c) shells. Kept out of the default shell
+        # so `just check` stays light + hermetic (I10); only
+        # `nix develop .#webview` pulls webkitgtk + gtk + Qt.
         webviewLibs = with pkgs; [
           gtk3
           gtk4
@@ -75,6 +75,11 @@
           atkmm
           webkitgtk_4_1
           libsoup_3
+          # Qt6: qtbase (qmake + QtCore/Gui/Widgets) + qtdeclarative
+          # (QtQuick/QML). The qtbase setup hook aggregates the module
+          # include paths so qmetaobject's C++ glue finds QtQuick.
+          qt6.qtbase
+          qt6.qtdeclarative
         ];
       in {
         webview = pkgs.mkShell {
@@ -83,6 +88,7 @@
             pkgs.cargo-nextest
             pkgs.just
             pkgs.pkg-config
+            pkgs.qt6.qtbase # qmake on PATH for qmetaobject's build script
           ];
           buildInputs = gpuiLibs ++ webviewLibs;
           LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath (gpuiLibs ++ webviewLibs);

@@ -233,8 +233,14 @@ Preserved as opaque text (no semantics yet):
   default build never pulls GTK (I10). The list content (`rows`) is
   hermetically tested; the window is display-bound (build-verified under
   `nix develop .#webview`, launch is manual).
-- `-flutter`, `-qt`, `-slint` — stubs defined for API-contract
-  testing; bodied on demand.
+- `closure-shell-qt` — native Qt6/QML desktop shell (X1c): the vault's
+  headlines in a QtQuick `ListView` via `qmetaobject`. Opt-in `qt`
+  feature; the default build never pulls Qt (I10). `rows` + the QML
+  document (`qml_document`) are hermetically tested; the window is
+  display-bound (build-verified under `nix develop .#webview`, launch is
+  manual).
+- `-flutter`, `-slint` — stubs defined for API-contract testing; bodied
+  on demand.
 
 ### Layer 6 — Input modes
 
