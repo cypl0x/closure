@@ -126,6 +126,24 @@ struct Cli {
     cmd: Cmd,
 }
 
+/// `closure pkg` subcommands (V4c).
+#[derive(Subcommand, Debug)]
+enum PkgCmd {
+    /// List every package in a local registry directory.
+    List {
+        /// Registry directory of `*.org` package files.
+        registry: PathBuf,
+    },
+    /// Resolve a manifest's dependencies against a registry and write
+    /// `closure.lock` (also printed).
+    Lock {
+        /// Manifest `*.org` file with a `closure-package` block.
+        manifest: PathBuf,
+        /// Registry directory to resolve against.
+        registry: PathBuf,
+    },
+}
+
 #[derive(Subcommand, Debug)]
 enum Cmd {
     /// Launch the TUI shell against a vault.
@@ -240,6 +258,13 @@ enum Cmd {
         /// Arguments handed to the plugin.
         #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
         args: Vec<String>,
+    },
+    /// Package ecosystem (V4c): list packages in a local registry, or
+    /// lock a manifest's dependencies against it.
+    Pkg {
+        /// Package subcommand.
+        #[command(subcommand)]
+        cmd: PkgCmd,
     },
     /// Parse a single org file and print a summary.
     Parse {
@@ -1226,6 +1251,7 @@ fn run(cmd: &Cmd) -> Result<(), String> {
             cmd_shells();
             Ok(())
         }
+        Cmd::Pkg { cmd } => cmd_pkg(cmd),
         Cmd::Widgets { vault } => cmd_widgets(vault),
         Cmd::UiMatrix => {
             print!("{}", closure_shell_core::ui_matrix_table());
@@ -3728,6 +3754,41 @@ fn cmd_export_html(vault: &Path, out: &Path) -> Result<(), String> {
 /// GTK, Qt, single-HTML, etc.). The consts above are the single source
 /// of truth. Future shells just add their const list.
 #[allow(clippy::unnecessary_wraps)]
+fn cmd_pkg(cmd: &PkgCmd) -> Result<(), String> {
+    match cmd {
+        PkgCmd::List { registry } => {
+            let pkgs = closure_plugin_host::load_packages(registry).map_err(|e| format!("{e}"))?;
+            for (name, p) in &pkgs {
+                let cmds = if p.commands.is_empty() {
+                    String::new()
+                } else {
+                    format!("\tcommands: {}", p.commands.join(", "))
+                };
+                println!("{name}\t{}{cmds}", p.version);
+            }
+            Ok(())
+        }
+        PkgCmd::Lock { manifest, registry } => {
+            let src = fs::read_to_string(manifest)
+                .map_err(|e| format!("read {}: {e}", manifest.display()))?;
+            let content = closure_plugin_host::extract_package_block(&src)
+                .ok_or_else(|| "no closure-package block in manifest".to_owned())?;
+            let root = closure_plugin_host::parse_package(content).map_err(|e| format!("{e}"))?;
+            let avail = closure_plugin_host::load_packages(registry).map_err(|e| format!("{e}"))?;
+            let lock = closure_plugin_host::resolve(&root, &avail).map_err(|e| format!("{e}"))?;
+            let rendered = closure_plugin_host::render_lockfile(&lock);
+            let lock_path = manifest
+                .parent()
+                .unwrap_or_else(|| Path::new("."))
+                .join("closure.lock");
+            fs::write(&lock_path, &rendered)
+                .map_err(|e| format!("write {}: {e}", lock_path.display()))?;
+            print!("{rendered}");
+            Ok(())
+        }
+    }
+}
+
 fn cmd_widgets(vault: &Path) -> Result<(), String> {
     let v = Vault::open(vault).map_err(|e| format!("{e}"))?;
     for (name, path) in closure_query::vault_widget_names(&v) {

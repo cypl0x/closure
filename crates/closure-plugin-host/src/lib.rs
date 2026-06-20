@@ -202,6 +202,59 @@ pub struct Package {
     pub commands: Vec<String>,
 }
 
+/// Extract the content of a `#+BEGIN_SRC closure-package` block from
+/// `src` (the `key = value` lines between `BEGIN`/`END`), if present.
+#[must_use]
+pub fn extract_package_block(src: &str) -> Option<&str> {
+    let begin = src.lines().scan(0usize, |off, l| {
+        let start = *off;
+        *off += l.len() + 1;
+        Some((start, l))
+    });
+    let mut content_start = None;
+    for (off, line) in begin {
+        let t = line.trim_start().to_ascii_lowercase();
+        if content_start.is_none() && t.starts_with("#+begin_src closure-package") {
+            content_start = Some(off + line.len() + 1);
+        } else if let Some(cs) = content_start
+            && t.starts_with("#+end_src")
+        {
+            return src.get(cs..off);
+        }
+    }
+    None
+}
+
+/// Load every package defined in a local registry directory (V4c): each
+/// `*.org` file containing a `closure-package` block contributes one
+/// package, keyed by name. Files without a block are skipped.
+///
+/// # Errors
+///
+/// [`PluginError::Package`] if the directory cannot be read or a package
+/// block is malformed.
+pub fn load_packages(
+    dir: &std::path::Path,
+) -> Result<std::collections::BTreeMap<String, Package>, PluginError> {
+    let mut out = std::collections::BTreeMap::new();
+    let entries =
+        std::fs::read_dir(dir).map_err(|e| PluginError::Package(format!("read dir: {e}")))?;
+    let mut paths: Vec<std::path::PathBuf> = entries
+        .filter_map(|e| e.ok().map(|e| e.path()))
+        .filter(|p| p.extension().is_some_and(|x| x == "org"))
+        .collect();
+    paths.sort();
+    for path in paths {
+        let src = std::fs::read_to_string(&path)
+            .map_err(|e| PluginError::Package(format!("read {}: {e}", path.display())))?;
+        if let Some(content) = extract_package_block(&src) {
+            let pkg = parse_package(content)?;
+            out.insert(pkg.name.clone(), pkg);
+        }
+    }
+    Ok(out)
+}
+
 /// Parse a [`Package`] from a `closure-package` `key = value` block.
 ///
 /// # Errors

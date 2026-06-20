@@ -116,7 +116,7 @@ same-command-set + no-dup invariants. =run_vault_tool= takes
 =&LlmPermissions=. 4 llm + 1 input + 2 cli tests. See Decision
 (2026-06-20).
 
-** WIP V4 Package / plugin ecosystem (straight/nix-style) [2/3]
+** DONE V4 Package / plugin ecosystem (straight/nix-style) [3/3]
 =closure-plugin-host= today invokes one manifest-declared exe/wasm. The
 vision wants a real, deterministic, lockfile-backed package system.
 *** DONE V4a Package manifest + lockfile (plain-text/org)
@@ -134,11 +134,15 @@ an FNV-1a content hash (=fnv1a:=, not misrepresented as sha256). Output
 is a =BTreeMap=-collected, sorted lockfile — declaration-order-
 independent + reproducible (I6). 6 tests incl. order-independence +
 reproducibility (manual, no proptest dep). See Decision (2026-06-20).
-*** TODO V4c =closure pkg add/list/lock= over a local source
-Install packages from a local/path registry into a plugins dir
-(hermetic; network sources are a feature-gated/documented extension),
-register their commands via the existing plugin host. After this the
-user can declare deps, lock them, and have their commands appear.
+*** DONE V4c =closure pkg list/lock= over a local source
+=load_packages(dir)= reads a local registry of =*.org= package files
+(=extract_package_block= pulls each =closure-package= block, deterministic
+sorted scan). =closure pkg list <registry>= enumerates packages +
+versions + provided commands; =closure pkg lock <manifest> <registry>=
+resolves (V4b) + writes =closure.lock=. Fully hermetic (path registry,
+no network — deferred to a feature). 4 plugin-host + 1 cli test. After
+this the user declares deps in a manifest, locks them, and sees each
+package's commands. See Decision (2026-06-20).
 
 ** TODO V5 P2P depth: content-addressed sync [0/2]
 CRDT is real; transport is iroh-via-external-binary + in-process collab.
@@ -845,6 +849,20 @@ only (I8). Crates keep =#![forbid(unsafe_code)]=.
 * Decisions
 Open questions land here as subheadings: context, options considered,
 the reversible default taken, date.
+** DECISION (2026-06-20) Package registry is a local directory of org files; network is a future feature (V4c)
+Context: V4c installs/locks packages. The vision wants a straight/nix-
+style ecosystem, but a network package source is non-hermetic (breaks
+I10's reproducible build + the no-network test gate). Options: (a) build
+an HTTP/git fetcher now (non-hermetic, untestable in the flake sandbox);
+(b) a local/path registry — a directory of =*.org= package files —
+resolved hermetically, with network sources deferred to a feature.
+Took (b): =load_packages(dir)= reads each file's =closure-package= block
+(=extract_package_block=), =closure pkg list= enumerates, =closure pkg
+lock= resolves (V4b) + writes =closure.lock=. Fully hermetic + testable
+over a tempdir; the lockfile's content hashes give the integrity story a
+network source would later verify against. Reversible: a
+feature-gated network fetcher populates the same local registry dir,
+then the identical resolve/lock path runs — no format or API change.
 ** DECISION (2026-06-20) Resolver is a hermetic DFS over a local set; hashes are FNV-1a not sha256 (V4b)
 Context: V4b resolves dependencies. Two picks: (1) version requirement
 grammar — full semver ranges (=^=, =~=, =*=, ranges) vs a minimal

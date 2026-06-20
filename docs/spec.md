@@ -268,7 +268,13 @@ eval`); a pulled/synced vault cannot run code without explicit local
   `resolve(root, available)` walks the transitive dependency graph over a
   local package set (no network), checks `>=X.Y.Z` / exact version
   requirements, detects cycles, and emits a deterministic, declaration-
-  order-independent lockfile with FNV-1a content hashes (V4b).
+  order-independent lockfile with FNV-1a content hashes (V4b). A local
+  registry directory of `*.org` package files is loaded by `load_packages`
+  (`extract_package_block` pulls each file's `closure-package` block);
+  `closure pkg list <registry>` enumerates them and `closure pkg lock
+<manifest> <registry>` resolves + writes `closure.lock` (V4c). All
+  hermetic — a path registry, no network (a network source is a future
+  feature-gated extension).
 - `closure-sniffer` — mitmproxy-like, own binary. Shares `closure-config`
   and the command registry. Not linked into other shells. The packet
   decoder (`parse_candidate`, Ethernet→IPv4→TCP/UDP) is dependency-free

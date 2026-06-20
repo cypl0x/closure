@@ -67,6 +67,43 @@ fn shells_prints_matrix() {
 }
 
 #[test]
+fn pkg_list_and_lock_over_local_registry() {
+    let reg = tempfile::tempdir().expect("tmp");
+    fs::write(
+        reg.path().join("strings.org"),
+        "#+BEGIN_SRC closure-package\nname = strings\nversion = 1.0.7\n#+END_SRC\n",
+    )
+    .expect("w");
+    fs::write(
+        reg.path().join("greeter.org"),
+        "#+BEGIN_SRC closure-package\nname = greeter\nversion = 2.0.0\ndep = strings >=1.0.0\ncommand = greet\n#+END_SRC\n",
+    )
+    .expect("w");
+
+    let list = ok(&["pkg", "list", reg.path().to_str().unwrap()]);
+    assert!(
+        list.contains("greeter") && list.contains("strings"),
+        "list: {list}"
+    );
+    assert!(list.contains("greet"), "shows provided commands: {list}");
+
+    let manifest = reg.path().join("greeter.org");
+    let lock = ok(&[
+        "pkg",
+        "lock",
+        manifest.to_str().unwrap(),
+        reg.path().to_str().unwrap(),
+    ]);
+    assert!(
+        lock.contains("strings 1.0.7"),
+        "locked transitive dep: {lock}"
+    );
+    // closure.lock written next to the manifest.
+    let written = fs::read_to_string(reg.path().join("closure.lock")).expect("lock written");
+    assert!(written.contains("strings 1.0.7"));
+}
+
+#[test]
 fn widgets_lists_vault_definitions() {
     let v = vault();
     fs::write(
