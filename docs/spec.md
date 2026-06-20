@@ -210,11 +210,15 @@ eval`); a pulled/synced vault cannot run code without explicit local
     `documentSymbol` + go-to-definition it answers `textDocument/hover`:
     over an `id:` link it previews the target headline (title + a
     `file › ancestors › title` breadcrumb resolved through the vault),
-    over a headline it reports `level · id · TODO · :tags:` (L1). All
-    positions map over source text (zero-based line/character); read-only
-    methods take `&Vault`, mutating ones (rename, L4) route through the
-    command registry (I8). Pure + hermetic — no editor process needed to
-    test it.
+    over a headline it reports `level · id · TODO · :tags:` (L1). It also
+    answers `textDocument/completion`, context-sensitive over the source
+    line up to the cursor: an unterminated `[[id:` completes to vault ids
+    (owning title as `detail`), a headline's keyword slot completes the
+    configured `todo_keywords`, and a trailing `:tag:` region completes
+    known vault tags (L2). All positions map over source text (zero-based
+    line/character); read-only methods take `&Vault`, mutating ones
+    (rename, L4) route through the command registry (I8). Pure + hermetic
+    — no editor process needed to test it.
 - `closure-cron` — cron scheduler triggering commands.
 - `closure-plugin-host` — wasm plugin ABI, semver-pinned core API,
   sandboxed.

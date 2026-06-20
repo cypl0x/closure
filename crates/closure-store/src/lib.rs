@@ -228,6 +228,24 @@ impl Vault {
             .unwrap_or_default()
     }
 
+    /// The configured TODO keywords, in order.
+    ///
+    /// Reads `config.org`'s `todo_keywords`; falls back to the
+    /// `closure-config` default (`TODO`, `DONE`) when there is no config
+    /// file or it fails to load. Used by editor-facing surfaces (LSP
+    /// completion) that offer the vault's keyword vocabulary.
+    #[must_use]
+    pub fn todo_keywords(&self) -> Vec<String> {
+        let cfg_path = self.root.join("config.org");
+        if !cfg_path.exists() {
+            return closure_config::Config::default().todo_keywords;
+        }
+        closure_config::Config::from_path(&cfg_path).map_or_else(
+            |_| closure_config::Config::default().todo_keywords,
+            |c| c.todo_keywords,
+        )
+    }
+
     /// Rebuild the id and backlink indices from the current documents.
     fn rebuild_indices(&mut self) {
         self.by_id.clear();

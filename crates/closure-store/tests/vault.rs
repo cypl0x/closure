@@ -10712,3 +10712,23 @@ fn vault_line_count_of_match() {
     assert_eq!(v.line_count_of(&p), Some(3));
     assert_eq!(v.line_count_of(std::path::Path::new("missing.org")), None);
 }
+
+#[test]
+fn vault_todo_keywords_default_when_no_config() {
+    let td = write_vault(&[("a.org", "* A\n")]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.todo_keywords(), vec!["TODO", "DONE"]);
+}
+
+#[test]
+fn vault_todo_keywords_read_from_config() {
+    let td = write_vault(&[
+        ("a.org", "* A\n"),
+        (
+            "config.org",
+            "#+BEGIN_SRC closure-config\ntodo_keywords = TODO, NEXT, WAITING, DONE\n#+END_SRC\n",
+        ),
+    ]);
+    let v = Vault::open(td.path()).expect("open");
+    assert_eq!(v.todo_keywords(), vec!["TODO", "NEXT", "WAITING", "DONE"]);
+}

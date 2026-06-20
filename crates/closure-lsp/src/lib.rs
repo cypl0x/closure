@@ -81,7 +81,8 @@ pub fn handle_message(vault: &Vault, json: &str) -> Option<String> {
     let method = string_field(json, "method").unwrap_or_default();
     let result = match method.as_str() {
         "initialize" => "{\"capabilities\":{\"documentSymbolProvider\":true,\
-             \"hoverProvider\":true},\
+             \"hoverProvider\":true,\
+             \"completionProvider\":{\"triggerCharacters\":[\":\"]}},\
              \"serverInfo\":{\"name\":\"closure\",\"version\":\"0.0.0\"}}"
             .to_owned(),
         "shutdown" => "null".to_owned(),
@@ -92,7 +93,9 @@ pub fn handle_message(vault: &Vault, json: &str) -> Option<String> {
                 .document_relative(std::path::Path::new(rel))
                 .map(closure_core::Document::source)
                 .unwrap_or_default();
-            let line = raw_field(json, "line").and_then(|s| s.parse().ok()).unwrap_or(0);
+            let line = raw_field(json, "line")
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(0);
             let ch = raw_field(json, "character")
                 .and_then(|s| s.parse().ok())
                 .unwrap_or(0);
@@ -105,6 +108,32 @@ pub fn handle_message(vault: &Vault, json: &str) -> Option<String> {
                     )
                 },
             )
+        }
+        "textDocument/completion" => {
+            let uri = string_field(json, "uri").unwrap_or_default();
+            let rel = uri.strip_prefix("file://").unwrap_or(&uri);
+            let src = vault
+                .document_relative(std::path::Path::new(rel))
+                .map(closure_core::Document::source)
+                .unwrap_or_default();
+            let line = raw_field(json, "line")
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(0);
+            let ch = raw_field(json, "character")
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(0);
+            let items: Vec<String> = completion(&src, vault, line, ch)
+                .iter()
+                .map(|i| {
+                    format!(
+                        "{{\"label\":\"{}\",\"detail\":\"{}\",\"kind\":{}}}",
+                        json_escape(&i.label),
+                        json_escape(&i.detail),
+                        i.kind.lsp_kind()
+                    )
+                })
+                .collect();
+            format!("[{}]", items.join(","))
         }
         "textDocument/documentSymbol" => {
             let uri = string_field(json, "uri").unwrap_or_default();
@@ -323,7 +352,11 @@ fn hover_id(vault: &Vault, id: &str) -> Option<String> {
         .collect();
     crumbs.push(target.title());
     let file = path.file_name().and_then(|s| s.to_str()).unwrap_or("");
-    Some(format!("{}\n{file} › {}", target.title(), crumbs.join(" › ")))
+    Some(format!(
+        "{}\n{file} › {}",
+        target.title(),
+        crumbs.join(" › ")
+    ))
 }
 
 /// Describe the headline whose stars sit on zero-based `line` of `src`.
@@ -349,6 +382,159 @@ fn hover_headline(src: &str, line: usize) -> Option<String> {
         out.push(':');
     }
     Some(out)
+}
+
+/// What a completion item refers to (maps to an LSP `CompletionItemKind`
+/// in the protocol layer).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CompletionKind {
+    /// An `id:` link target.
+    Reference,
+    /// A TODO keyword.
+    Keyword,
+    /// A headline tag.
+    Tag,
+}
+
+impl CompletionKind {
+    /// The LSP `CompletionItemKind` number.
+    #[must_use]
+    pub const fn lsp_kind(self) -> u8 {
+        match self {
+            Self::Reference => 18, // Reference
+            Self::Keyword => 14,   // Keyword
+            Self::Tag => 20,       // EnumMember
+        }
+    }
+}
+
+/// One completion candidate.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CompletionItem {
+    /// Text inserted / shown.
+    pub label: String,
+    /// Secondary text (e.g. a link target's title).
+    pub detail: String,
+    /// What the label refers to.
+    pub kind: CompletionKind,
+}
+
+/// The `id:` value-prefix being typed at end of `prefix` (text up to the
+/// cursor): everything after the last `id:`, when it is all ULID chars.
+fn id_partial(prefix: &str) -> Option<&str> {
+    let at = prefix.rfind("id:")?;
+    let partial = &prefix[at + 3..];
+    partial
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric())
+        .then_some(partial)
+}
+
+/// The TODO-keyword being typed in a headline's keyword slot: the word
+/// right after the leading stars + one space, when nothing else follows.
+fn keyword_partial(prefix: &str) -> Option<&str> {
+    let stars = prefix.bytes().take_while(|&b| b == b'*').count();
+    if stars == 0 {
+        return None;
+    }
+    let after = prefix.get(stars + 1..)?;
+    if prefix.as_bytes().get(stars) != Some(&b' ') {
+        return None;
+    }
+    (!after.contains([' ', ':'])).then_some(after)
+}
+
+/// The tag being typed in a trailing `:tag:` region: text after the last
+/// `:` of a ` :…` block whose chars are all tag-legal.
+fn tag_partial(prefix: &str) -> Option<&str> {
+    let region = &prefix[prefix.rfind(" :")? + 2..];
+    let tag_char = |c: char| c.is_ascii_alphanumeric() || matches!(c, '_' | '@' | '#' | '%' | ':');
+    if !region.chars().all(tag_char) {
+        return None;
+    }
+    Some(region.rsplit(':').next().unwrap_or(region))
+}
+
+/// Context-sensitive completion at a zero-based `line`/`character`.
+///
+/// Returns sorted candidates for the slot under the cursor: vault ids
+/// inside an unterminated `[[id:` (title as `detail`), the configured
+/// TODO keywords in a headline's keyword slot, or known vault tags in a
+/// trailing `:tag:` region. Empty when no completable context applies.
+#[must_use]
+pub fn completion(src: &str, vault: &Vault, line: u32, character: u32) -> Vec<CompletionItem> {
+    let Some(text) = src.lines().nth(line as usize) else {
+        return Vec::new();
+    };
+    let cut = (character as usize).min(text.len());
+    let prefix = &text[..cut];
+
+    let mut items = id_partial(prefix)
+        .map(|partial| id_items(vault, partial))
+        .or_else(|| is_headline_line(text).then(|| headline_items(vault, prefix)))
+        .unwrap_or_default();
+
+    items.sort_by(|a, b| a.label.cmp(&b.label));
+    items.dedup();
+    items
+}
+
+/// Vault ids whose value starts with `partial` (case-insensitive), with
+/// the owning headline's title as `detail`.
+fn id_items(vault: &Vault, partial: &str) -> Vec<CompletionItem> {
+    let want = partial.to_ascii_uppercase();
+    let mut out = Vec::new();
+    for (_p, doc) in vault.iter() {
+        for h in doc.all_headlines() {
+            if let Some((_, id)) = h
+                .properties()
+                .iter()
+                .find(|(k, _)| k.eq_ignore_ascii_case("ID"))
+                && id.to_ascii_uppercase().starts_with(&want)
+            {
+                out.push(CompletionItem {
+                    label: id.clone(),
+                    detail: h.title().to_owned(),
+                    kind: CompletionKind::Reference,
+                });
+            }
+        }
+    }
+    out
+}
+
+/// Tag completions (trailing `:tag:` region) else TODO-keyword
+/// completions (headline keyword slot); empty when neither applies.
+fn headline_items(vault: &Vault, prefix: &str) -> Vec<CompletionItem> {
+    tag_partial(prefix)
+        .map(|partial| {
+            let want = partial.to_ascii_lowercase();
+            vault
+                .all_tags()
+                .into_iter()
+                .filter(|t| t.to_ascii_lowercase().starts_with(&want))
+                .map(|t| CompletionItem {
+                    label: t,
+                    detail: String::new(),
+                    kind: CompletionKind::Tag,
+                })
+                .collect()
+        })
+        .or_else(|| {
+            keyword_partial(prefix).map(|partial| {
+                vault
+                    .todo_keywords()
+                    .into_iter()
+                    .filter(|k| k.starts_with(partial))
+                    .map(|k| CompletionItem {
+                        label: k,
+                        detail: String::new(),
+                        kind: CompletionKind::Keyword,
+                    })
+                    .collect()
+            })
+        })
+        .unwrap_or_default()
 }
 
 /// Resolve an `id:<ULID>` (or bare ULID) link target to its defining

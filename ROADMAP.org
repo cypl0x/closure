@@ -13,7 +13,7 @@ file is the fine-grained, capability-level queue between them. Blocked
 on a design decision? Record it under [[*Decisions][Decisions]], pick the most
 reversible option, keep moving.
 
-* WIP Depth II — LSP server to real [1/5]
+* WIP Depth II — LSP server to real [2/5]
 closure-lsp today is two methods (=document_symbols=, =definition_of=)
 plus a Content-Length frame loop wired to =initialize=/=shutdown=. The
 vision promises a usable language server. Grow it into hover /
@@ -31,11 +31,15 @@ position is out of range. =textDocument/hover= wired in =handle_message=
 (plaintext =contents=), =initialize= advertises =hoverProvider=. 12
 closure-lsp tests green (5 unit hover + 2 protocol + the 5 prior). Pure,
 hermetic, positions map over source text — see Decision (2026-06-20).
-** TODO L2 Completion: =completion(src, vault, line, character)= → items
-Inside an unterminated =[[id:= prefix, complete to vault ids with their
-titles as detail; after =* = / a TODO position, complete the configured
-TODO keywords; inside a =:tag:= context, complete known vault tags.
-Wire =textDocument/completion=.
+** DONE L2 Completion: =completion(src, vault, line, character)= → items
+Three context slots detected by line-prefix scan: unterminated =[[id:=
+→ vault ids (owning title as =detail=, =Reference= kind); headline
+keyword slot → configured =todo_keywords= (new =Vault::todo_keywords=
+accessor; =Keyword= kind); trailing =:tag:= region → =Vault::all_tags=
+(=Tag= kind). Sorted + deduped (I6). =textDocument/completion= wired,
+=initialize= advertises =completionProvider= (=:= trigger). 7 lsp
+completion tests + 2 store =todo_keywords= tests green. See Decision
+(2026-06-20).
 ** TODO L3 Diagnostics: =diagnostics(src, vault)= → ranged problems
 Dead =id:= links (target missing), duplicate =:ID:= within the vault,
 and config-validation errors surfaced as LSP diagnostics with line/char
@@ -587,6 +591,20 @@ only (I8). Crates keep =#![forbid(unsafe_code)]=.
 * Decisions
 Open questions land here as subheadings: context, options considered,
 the reversible default taken, date.
+** DECISION (2026-06-20) LSP completion contexts are detected by line-prefix scan (L2)
+Context: L2 adds =textDocument/completion= with three slots — =[[id:=,
+the headline TODO-keyword slot, and a trailing =:tag:= region. Options:
+(a) a real grammar/tokeniser for the cursor context; (b) small
+prefix-scan predicates over the source line up to the cursor. Taken (b):
+=id_partial= / =keyword_partial= / =tag_partial= each inspect the line
+prefix; the vault supplies the vocabulary (=Vault::todo_keywords= — a
+new accessor mirroring the private =eval_trust= reader, default
+=TODO/DONE=; =Vault::all_tags=; on-disk =:ID:= properties for ids, not
+synthesised ids). Results sorted+deduped for determinism (I6). Same
+line-scan philosophy as L1 hover — pure, hermetic, parser untouched
+(I1). Reversible: a tokeniser can replace the predicates behind the
+stable =completion(src, vault, line, character)= signature if richer
+context is needed.
 ** DECISION (2026-06-20) LSP hover maps over source text, not the AST (L1)
 Context: L1 adds =textDocument/hover=. LSP positions are zero-based
 line/character; closure's =DocHeadline= carries a structural =path()=
