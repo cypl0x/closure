@@ -88,6 +88,19 @@ fn bad_config_value_is_a_diagnostic() {
 }
 
 #[test]
+fn unknown_widget_reference_is_a_diagnostic() {
+    let src = "#+BEGIN: closure-widget :name p\n{{ghost}}\n#+END:\n";
+    let (_d, v) = vault_with(&[("a.org", src)]);
+    let diags = diagnostics(src, &v);
+    let d = diags
+        .iter()
+        .find(|d| d.code == DiagnosticCode::Widget)
+        .expect("widget error flagged");
+    assert_eq!(d.severity, Severity::Error);
+    assert!(d.message.contains("ghost"), "{}", d.message);
+}
+
+#[test]
 fn clean_document_has_no_diagnostics() {
     let (_d, v) = vault_with(&[("a.org", "* A\n")]);
     assert!(diagnostics("* just a headline\nbody\n", &v).is_empty());

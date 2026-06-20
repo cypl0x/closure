@@ -661,6 +661,8 @@ pub enum DiagnosticCode {
     DuplicateId,
     /// A `closure-config` block validation error.
     Config,
+    /// A `closure-widget` expansion error (unknown / cyclic reference).
+    Widget,
 }
 
 impl DiagnosticCode {
@@ -671,6 +673,7 @@ impl DiagnosticCode {
             Self::DeadLink => "dead-link",
             Self::DuplicateId => "duplicate-id",
             Self::Config => "config",
+            Self::Widget => "widget",
         }
     }
 }
@@ -822,6 +825,33 @@ pub fn diagnostics(src: &str, vault: &Vault) -> Vec<Diagnostic> {
             severity: Severity::Error,
             code: DiagnosticCode::Config,
             message,
+        });
+    }
+
+    // closure-widget expansion errors (unknown / cyclic refs), resolved
+    // against widget definitions across the whole vault (V2b).
+    if let Err(e) =
+        closure_query::expand_widgets_with(src, &closure_query::vault_widget_defs(vault))
+    {
+        let line = src
+            .lines()
+            .position(|l| {
+                l.trim_start()
+                    .to_ascii_lowercase()
+                    .starts_with("#+begin: closure-widget")
+            })
+            .unwrap_or(0);
+        let end = src
+            .lines()
+            .nth(line)
+            .map_or(0, |l| u32::try_from(l.len()).unwrap_or(u32::MAX));
+        out.push(Diagnostic {
+            line: u32::try_from(line).unwrap_or(u32::MAX),
+            start_char: 0,
+            end_char: end,
+            severity: Severity::Error,
+            code: DiagnosticCode::Widget,
+            message: e.to_string(),
         });
     }
 

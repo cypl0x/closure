@@ -15,6 +15,7 @@ workspace = true
 closure-core = { path = "../closure-core" }
 closure-store = { path = "../closure-store" }
 closure-config = { path = "../closure-config" }
+closure-query = { path = "../closure-query" }
 closure-jsonrpc = { path = "../closure-jsonrpc" }
 thiserror.workspace = true
 

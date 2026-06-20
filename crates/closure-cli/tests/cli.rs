@@ -67,6 +67,21 @@ fn shells_prints_matrix() {
 }
 
 #[test]
+fn widgets_lists_vault_definitions() {
+    let v = vault();
+    fs::write(
+        v.path().join("w.org"),
+        "#+BEGIN: closure-widget :name banner\nhi\n#+END:\n",
+    )
+    .expect("write widget");
+    let out = ok(&["widgets", v.path().to_str().unwrap()]);
+    assert!(
+        out.contains("banner") && out.contains("w.org"),
+        "got: {out}"
+    );
+}
+
+#[test]
 fn ui_matrix_prints_node_kinds() {
     let out = ok(&["ui-matrix"]);
     assert!(out.contains("Pane") && out.contains("Palette"));

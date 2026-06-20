@@ -695,7 +695,42 @@ fn expand_widget_name(
 /// [`WidgetError::Cycle`] on a reference cycle, [`WidgetError::Unknown`]
 /// for a `{{ref}}` with no matching definition.
 pub fn expand_widgets(src: &str) -> Result<String, WidgetError> {
-    let defs = collect_widget_defs(src);
+    expand_widgets_with(src, &std::collections::HashMap::new())
+}
+
+/// The names of every widget defined in `src`, in document order (V2b).
+#[must_use]
+pub fn widget_def_names(src: &str) -> Vec<String> {
+    let mut names = Vec::new();
+    for line in src.split_inclusive('\n') {
+        if let Some(n) = widget_begin_name(line) {
+            names.push(n);
+        }
+    }
+    names
+}
+
+/// Like [`expand_widgets`], but resolving against `extra` definitions too
+/// (V2b).
+///
+/// `extra` holds widgets defined in other vault files; a definition local
+/// to `src` shadows `extra`.
+///
+/// # Errors
+///
+/// [`WidgetError::Cycle`] / [`WidgetError::Unknown`] as [`expand_widgets`].
+pub fn expand_widgets_with<S: std::hash::BuildHasher>(
+    src: &str,
+    extra: &std::collections::HashMap<String, String, S>,
+) -> Result<String, WidgetError> {
+    let mut defs: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+    for (k, v) in extra {
+        defs.insert(k.clone(), v.clone());
+    }
+    // Local definitions win over external ones.
+    for (k, v) in collect_widget_defs(src) {
+        defs.insert(k, v);
+    }
     let mut out = String::new();
     let mut lines = src.split_inclusive('\n');
     while let Some(line) = lines.next() {
@@ -721,6 +756,51 @@ pub fn expand_widgets(src: &str) -> Result<String, WidgetError> {
         }
     }
     Ok(out)
+}
+
+/// Every widget definition across the vault, `name -> template body`
+/// (V2b). A name defined in more than one file resolves to the
+/// document-order-last definition (deterministic over `Vault::iter`).
+#[must_use]
+pub fn vault_widget_defs(vault: &Vault) -> std::collections::HashMap<String, String> {
+    let mut defs = std::collections::HashMap::new();
+    for (_path, doc) in vault.iter() {
+        for (name, body) in collect_widget_defs(&doc.source()) {
+            defs.insert(name, body);
+        }
+    }
+    defs
+}
+
+/// Every widget definition's `(name, file)` across the vault, sorted by
+/// `(name, file)` for a deterministic listing (V2b; `closure widgets`).
+#[must_use]
+pub fn vault_widget_names(vault: &Vault) -> Vec<(String, std::path::PathBuf)> {
+    let mut out: Vec<(String, std::path::PathBuf)> = Vec::new();
+    for (path, doc) in vault.iter() {
+        for name in widget_def_names(&doc.source()) {
+            out.push((name, path.to_path_buf()));
+        }
+    }
+    out.sort();
+    out
+}
+
+/// Expand the widget blocks in the vault file at `relative`, resolving
+/// `{{ref}}` against widget definitions from the whole vault (V2b).
+///
+/// # Errors
+///
+/// [`WidgetError::Cycle`] / [`WidgetError::Unknown`]; returns
+/// [`WidgetError::Unknown`] with the path if the file is not in the vault.
+pub fn expand_doc_widgets(
+    vault: &Vault,
+    relative: &std::path::Path,
+) -> Result<String, WidgetError> {
+    let doc = vault
+        .document_relative(relative)
+        .ok_or_else(|| WidgetError::Unknown(relative.display().to_string()))?;
+    expand_widgets_with(&doc.source(), &vault_widget_defs(vault))
 }
 
 /// Render header + rows as an aligned org-mode table.

@@ -451,6 +451,12 @@ enum Cmd {
     /// similarities and differences across TUI/CLI/web/egui/future shells).
     /// Code (the consts above) is the single source of truth.
     Shells,
+    /// List every composable widget defined in the vault and its file
+    /// (V2b).
+    Widgets {
+        /// Vault directory.
+        vault: PathBuf,
+    },
     /// Print the UI node-kind matrix: which `ViewTree` nodes each shell
     /// renders (V1c). Code (`closure-shell-core` consts) is the source
     /// of truth.
@@ -1216,7 +1222,11 @@ fn run(cmd: &Cmd) -> Result<(), String> {
         Cmd::Search { vault, needle } => cmd_search(vault, needle),
         Cmd::Config { path } => cmd_config(path),
         Cmd::CheckConfig { path } => cmd_check_config(path),
-        Cmd::Shells => cmd_shells(),
+        Cmd::Shells => {
+            cmd_shells();
+            Ok(())
+        }
+        Cmd::Widgets { vault } => cmd_widgets(vault),
         Cmd::UiMatrix => {
             print!("{}", closure_shell_core::ui_matrix_table());
             Ok(())
@@ -3680,7 +3690,15 @@ fn cmd_export_html(vault: &Path, out: &Path) -> Result<(), String> {
 /// GTK, Qt, single-HTML, etc.). The consts above are the single source
 /// of truth. Future shells just add their const list.
 #[allow(clippy::unnecessary_wraps)]
-fn cmd_shells() -> Result<(), String> {
+fn cmd_widgets(vault: &Path) -> Result<(), String> {
+    let v = Vault::open(vault).map_err(|e| format!("{e}"))?;
+    for (name, path) in closure_query::vault_widget_names(&v) {
+        println!("{name}\t{}", path.display());
+    }
+    Ok(())
+}
+
+fn cmd_shells() {
     println!("Shell capability matrix (code = single source of truth)");
     println!("Every shell should be a superset of CORE (I7).");
     println!();
@@ -3732,7 +3750,6 @@ fn cmd_shells() -> Result<(), String> {
     println!("Legend: X = has capability. TUI is currently the superset.");
     println!("To extend: add to the enum + relevant *_CAPABILITIES const,");
     println!("then the table updates automatically. Run `closure shells`.");
-    Ok(())
 }
 
 // TDD for completing the Shell capability matrix (ROADMAP item).

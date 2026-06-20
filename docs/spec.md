@@ -155,7 +155,12 @@ Preserved as opaque text (no semantics yet):
   recursively with cycle detection (`WidgetError::Cycle`/`Unknown`). Like
   the `closure-view` database block, only the body between `BEGIN`/`END` is
   regenerated; every other byte is preserved verbatim (I1). This is the
-  vision's "compose existing blocks into new blocks/widgets".
+  vision's "compose existing blocks into new blocks/widgets". Definitions
+  are vault-wide (V2b): `vault_widget_defs` / `vault_widget_names` collect
+  every `:name` across the vault, `expand_doc_widgets(vault, path)` resolves
+  a file's `{{ref}}`s against all of them, `closure widgets` lists them, and
+  cyclic/unknown references surface as `closure-lsp` diagnostics
+  (`DiagnosticCode::Widget`, reusing the L3 pull path).
 - `closure-undo` — branching undo-tree persisted per vault.
 
 ### Layer 3 — Evaluation

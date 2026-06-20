@@ -62,7 +62,7 @@ over =Node= has no wildcard, so a new kind forces every shell to handle
 it. 4 shell-core tests (coverage, TUI/WEB render all, minimal-floor
 superset, table) + a CLI integration test. See Decision (2026-06-20).
 
-** WIP V2 Composable block→widget DSL [1/3]
+** WIP V2 Composable block→widget DSL [2/3]
 The core composability promise (compose existing blocks into NEW
 blocks/widgets, Notion-style) is only half-met (org-native nesting +
 built-in dynamic blocks). Add user-defined composite widgets.
@@ -76,11 +76,15 @@ Pure source→source transform (mirrors =closure-view=, no AST change).
 =WidgetError::Cycle= / =Unknown= typed errors. 7 tests
 (idempotence/expand/recurse/cycle/unknown/span-exact/determinism). See
 Decision (2026-06-20).
-*** TODO V2b Widget registry + definitions in the vault
-Named widget definitions (=#+NAME:= or a =widgets.org=) resolved by
-reference; a widget composes other widgets/blocks. =closure widgets=
-lists them; expansion is deterministic (I6). Undefined / cyclic refs are
-typed errors surfaced as diagnostics (reuse L3 path).
+*** DONE V2b Widget registry + definitions in the vault
+Vault-wide resolution in closure-query (beside =views=, no store cycle):
+=vault_widget_defs= / =vault_widget_names= collect every =:name= across
+the vault; =expand_doc_widgets(vault, path)= resolves a file's
+=`{{ref}}`= against all of them (cross-file). =closure widgets= lists
+=name<TAB>file= (sorted, I6). Cyclic/unknown refs surface as closure-lsp
+=DiagnosticCode::Widget= via the L3 pull path. 3 query + 1 cli + 1 lsp
+test. =expand_widgets_with= generalised over the map hasher. See
+Decision (2026-06-20).
 *** TODO V2c Render composite widgets in a shell + as a =ViewTree= node
 A =Node::Widget= in the V1 tree; TUI + web expand+render it. After this
 the user can define a reusable composite block once and drop it into any
@@ -822,6 +826,23 @@ only (I8). Crates keep =#![forbid(unsafe_code)]=.
 * Decisions
 Open questions land here as subheadings: context, options considered,
 the reversible default taken, date.
+** DECISION (2026-06-20) Vault-wide widget functions live in closure-query, not closure-store (V2b)
+Context: V2b makes widget definitions vault-wide (a widget defined in
+=widgets.org= referenced from =notes.org=). The natural home looked like
+=Vault::expand_widgets= in closure-store, but closure-query already
+depends on closure-store (=views(vault)=), so a normal closure-query dep
+in closure-store would be a build cycle (it is only a dev-dep today,
+explicitly for that reason). Took: the vault-aware functions
+(=vault_widget_defs=, =vault_widget_names=, =expand_doc_widgets=) live in
+closure-query beside =views=, exactly mirroring the existing pattern —
+no cycle, no new store dep. =closure widgets= (CLI) lists them;
+closure-lsp gained a closure-query dep so =diagnostics= reports
+cyclic/unknown refs (=DiagnosticCode::Widget=) via the L3 pull path.
+=expand_widgets_with= is generic over the map hasher to stay ergonomic.
+Reversible: if a future refactor breaks the query→store dep, these can
+move to store unchanged. (Also: surfaced + fixed a latent
+=unnecessary_wraps= on =cmd_shells= that clippy's incremental cache had
+hidden — now returns =()=, wrapped at the dispatch site.)
 ** DECISION (2026-06-20) Widgets are a dynamic-block source transform, not an AST node (V2a)
 Context: V2a adds user-defined composite blocks. closure's dynamic
 blocks (=closure-view= databases) are NOT parsed into the AST — they are
