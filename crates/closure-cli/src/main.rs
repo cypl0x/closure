@@ -2957,12 +2957,19 @@ fn run_vault_tool(v: &mut Vault, allowed: Option<&[String]>, line: &str) -> Stri
             );
         }
     }
+    // view-render (V3a): the LLM reads the rendered screen (the ViewTree),
+    // not just the data — a serialised snapshot of the default browse
+    // surface. Read-only; gated by the same `view` allowlist base as
+    // view-state.
+    if line.trim() == "view-render" {
+        return closure_shell_core::serialize_view(&closure_shell_core::browse_view(v));
+    }
     v.run_tool(line)
 }
 
 const ASK_TOOLS_HELP: &str = "Vault tools (use via CALL): list-files | read <file> | \
      search <text> | capture <title> | rename <id> <title> | \
-     set-property <id> <key> <value> | view-state";
+     set-property <id> <key> <value> | view-state | view-render";
 
 fn cmd_ask(prompt: &str, model: &str, vault: Option<&Path>) -> Result<(), String> {
     use closure_llm::Provider;
@@ -3153,6 +3160,37 @@ fn doc_for(name: &str) -> String {
             "{name}: (unknown or see `closure commands` / which-key for available; keys in active mode)"
         )
     }
+}
+
+// V3a: the LLM `view-render` tool returns a serialised snapshot of the
+// rendered screen (the ViewTree), not just data. Read-only.
+#[test]
+#[allow(clippy::expect_used)]
+fn view_render_tool_returns_rendered_screen() {
+    let dir = tempfile::tempdir().expect("tmp");
+    std::fs::write(dir.path().join("n.org"), "* TODO Ship it\n* Wiki\n").expect("write");
+    let mut v = Vault::open(dir.path()).expect("open");
+    let out = run_vault_tool(&mut v, None, "view-render");
+    assert!(
+        out.contains("ROWS") && out.contains("selected="),
+        "screen: {out}"
+    );
+    assert!(
+        out.contains("Ship it") && out.contains("Wiki"),
+        "rows: {out}"
+    );
+}
+
+#[test]
+#[allow(clippy::expect_used)]
+fn view_render_tool_is_gated_by_llm_tools_allowlist() {
+    let dir = tempfile::tempdir().expect("tmp");
+    std::fs::write(dir.path().join("n.org"), "* A\n").expect("write");
+    let mut v = Vault::open(dir.path()).expect("open");
+    // Allowlist without `view` blocks it.
+    let allowed = vec!["read".to_owned()];
+    let out = run_vault_tool(&mut v, Some(&allowed), "view-render");
+    assert!(out.contains("not allowed"), "gated: {out}");
 }
 
 // TDD for self-documentation (Emacs-style describe-function, ROADMAP self-doc sub).

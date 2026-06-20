@@ -218,7 +218,13 @@ eval`); a pulled/synced vault cannot run code without explicit local
 ### Layer 4 — Adapters (I8)
 
 - `closure-llm` — BYOK, local, Claude / OpenAI / compatible. LLM invokes
-  registry commands; it gets query access but no `&mut Document`.
+  registry commands; it gets query access but no `&mut Document`. Beyond
+  the data tools (`list-files`/`read`/`search`/`view-state`), the
+  `view-render` tool (V3a) returns a serialised snapshot of the rendered
+  **ViewTree** (`closure_shell_core::serialize_view` over `browse_view`) —
+  so the agent can see _what is on screen_ (panes, selection, visible
+  rows, fields), the differentiator over assistants that only touch data.
+  Read-only and gated by the `llm_tools` allowlist (`view` base).
 - `closure-mcp`, `closure-lsp`, `closure-acp`, `closure-a2a` — protocol
   bridges; each translates messages to registry commands.
   - `closure-lsp` serves Content-Length-framed JSON-RPC over stdio. Beyond

@@ -495,6 +495,99 @@ pub fn widget_node(name: impl Into<String>, content: impl Into<String>) -> Node 
     }
 }
 
+/// Build the default browse [`ViewTree`](Node) from a borrowed vault
+/// (V3a).
+///
+/// Every headline becomes a row (vault iteration order), selection 0,
+/// plus a hint line. Borrow-friendly (no [`Shell`] ownership) so callers
+/// like the LLM `view-render` tool can snapshot the screen.
+#[must_use]
+pub fn browse_view(vault: &closure_store::Vault) -> Node {
+    let rows: Vec<RowView> = vault
+        .iter()
+        .flat_map(|(_p, doc)| {
+            doc.all_headlines().map(|h| RowView {
+                id: h.id().to_string(),
+                title: h.title().to_owned(),
+                level: h.level(),
+                todo: h.todo().map(ToOwned::to_owned),
+            })
+        })
+        .collect();
+    let line = format!("[Notion] {} headlines — type: filter", rows.len());
+    Node::Pane {
+        title: "closure".to_owned(),
+        children: vec![Node::Rows { rows, selected: 0 }, Node::Hints { line }],
+    }
+}
+
+/// Serialise a [`ViewTree`](Node) to a compact, LLM-readable snapshot
+/// (V3a).
+///
+/// Captures what is on screen — panes, the selected row, visible rows,
+/// detail fields, the focused input, palette, and widgets. Deterministic.
+#[must_use]
+pub fn serialize_view(node: &Node) -> String {
+    let mut out = String::new();
+    serialize_node(node, 0, &mut out);
+    out
+}
+
+fn serialize_node(node: &Node, depth: usize, out: &mut String) {
+    use std::fmt::Write as _;
+    let pad = "  ".repeat(depth);
+    match node {
+        Node::Pane { title, children } => {
+            let _ = writeln!(out, "{pad}PANE {title}");
+            for c in children {
+                serialize_node(c, depth + 1, out);
+            }
+        }
+        Node::Rows { rows, selected } => {
+            let _ = writeln!(out, "{pad}ROWS selected={selected} count={}", rows.len());
+            for (i, r) in rows.iter().enumerate() {
+                let mark = if i == *selected { '>' } else { ' ' };
+                let todo = r
+                    .todo
+                    .as_deref()
+                    .map_or_else(String::new, |t| format!("{t} "));
+                let _ = writeln!(out, "{pad}  {mark} {todo}{}", r.title);
+            }
+        }
+        Node::Detail { fields } => {
+            let _ = writeln!(out, "{pad}DETAIL");
+            for f in fields {
+                let act = f
+                    .action
+                    .as_ref()
+                    .map_or_else(String::new, |a| format!(" [{}]", a.chord()));
+                let _ = writeln!(out, "{pad}  {}: {}{act}", f.label, f.value);
+            }
+        }
+        Node::Input { label, buffer } => {
+            let _ = writeln!(out, "{pad}INPUT {label}=\"{buffer}\"");
+        }
+        Node::Palette { items, cursor } => {
+            let _ = writeln!(out, "{pad}PALETTE cursor={cursor} count={}", items.len());
+            for it in items {
+                let _ = writeln!(out, "{pad}  [{}] {}", it.action.chord(), it.label);
+            }
+        }
+        Node::Hints { line } => {
+            let _ = writeln!(out, "{pad}HINTS {line}");
+        }
+        Node::Widget { name, content } => {
+            let _ = writeln!(out, "{pad}WIDGET {name}");
+            for l in content.lines() {
+                let _ = writeln!(out, "{pad}  {l}");
+            }
+        }
+        Node::Text(t) => {
+            let _ = writeln!(out, "{pad}TEXT {t}");
+        }
+    }
+}
+
 /// The kind of a [`Node`], for the type-level UI capability matrix (V1c).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum NodeKind {

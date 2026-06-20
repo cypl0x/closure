@@ -95,14 +95,17 @@ compile time until handled (V1c guarantee demonstrated).
 into its expanded content for a shell. 2 query + 1 tui + 1 web test +
 the updated matrix test. See Decision (2026-06-20).
 
-** TODO V3 LLM access to rendered / view state [0/2]
+** WIP V3 LLM access to rendered / view state [1/2]
 Vision differentiator over Notion AI: the LLM should *see the rendered
 result*, not only the data. Today =view-state= is a data snapshot.
-*** TODO V3a =view-render= tool: the LLM reads the =ViewTree=
-A new LLM tool returning a serialised snapshot of the current
-=ViewTree= (what is on screen: panes, selection, visible rows, focused
-field) for a given shell/surface. The agent can now answer "what is
-highlighted?" / "what does the detail pane show?". Routed read-only.
+*** DONE V3a =view-render= tool: the LLM reads the =ViewTree=
+=closure_shell_core::serialize_view= turns a =ViewTree= into a compact
+LLM-readable snapshot (PANE/ROWS selected=/DETAIL/INPUT/PALETTE/WIDGET);
+=browse_view(&Vault)= builds the default surface from a borrowed vault.
+The cli =run_vault_tool= executor dispatches =view-render= (read-only),
+so the agent sees *what is on screen*, not just data. 4 shell-core + 2
+cli tests; gated by the =view= allowlist base. See Decision
+(2026-06-20).
 *** TODO V3b Live, configurable render-access permission
 =view-render= is permission-gated like other tools (=llm_tools= config
 + live toggle command/keybinding/GUI control). Render access is opt-in
@@ -831,6 +834,22 @@ only (I8). Crates keep =#![forbid(unsafe_code)]=.
 * Decisions
 Open questions land here as subheadings: context, options considered,
 the reversible default taken, date.
+** DECISION (2026-06-20) view-render snapshots a borrowed-vault browse ViewTree, in the cli executor (V3a)
+Context: V3a lets the LLM read the rendered screen. Two blockers: (1)
+=Vault::run_tool= lives in closure-store, which cannot depend on
+shell-core (shell-core depends on store); (2) the LLM loop holds a
+=&mut Vault=, not a live =App= (which owns its =Shell=/=Vault=). Options:
+(a) thread a live =App= through the LLM loop (heavy, and there is no
+interactive App during =closure ask=); (b) a borrow-friendly
+=closure_shell_core::browse_view(&Vault)= that builds the default browse
+=ViewTree= without owning the vault, serialised by =serialize_view=, and
+dispatch =view-render= in the cli's =run_vault_tool= executor (cli can
+depend on shell-core). Took (b): the snapshot is the default browse
+surface (honestly not a specific live shell's scroll state — there is no
+live shell during =ask=); read-only; gated by the same =view= allowlist
+base as =view-state= (V3b makes the toggle explicit). Reversible: when a
+shell hosts a live LLM pane, it can pass its own =App::view= to
+=serialize_view= instead of =browse_view=.
 ** DECISION (2026-06-20) Widget is a first-class ViewTree node; the new kind proved the V1c guarantee (V2c)
 Context: V2c renders composite widgets in the shells. Options: (a)
 pre-expand widgets into plain =Text= nodes (loses the widget identity —
