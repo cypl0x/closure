@@ -265,6 +265,10 @@ eval`); a pulled/synced vault cannot run code without explicit local
   `closure-package` `key = value` block — plain text, no JSON/YAML — and a
   lockfile (`name version hash` lines) pins resolved versions + content
   hashes. Both round-trip byte-exact; the lockfile renders sorted (I6).
+  `resolve(root, available)` walks the transitive dependency graph over a
+  local package set (no network), checks `>=X.Y.Z` / exact version
+  requirements, detects cycles, and emits a deterministic, declaration-
+  order-independent lockfile with FNV-1a content hashes (V4b).
 - `closure-sniffer` — mitmproxy-like, own binary. Shares `closure-config`
   and the command registry. Not linked into other shells. The packet
   decoder (`parse_candidate`, Ethernet→IPv4→TCP/UDP) is dependency-free

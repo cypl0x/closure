@@ -296,6 +296,105 @@ pub fn parse_lockfile(content: &str) -> Result<Vec<LockEntry>, PluginError> {
     Ok(out)
 }
 
+/// Parse `major.minor.patch`; `None` if not three numeric fields.
+fn semver(v: &str) -> Option<(u64, u64, u64)> {
+    let mut it = v.split('.');
+    let parts = (it.next()?, it.next()?, it.next()?);
+    if it.next().is_some() {
+        return None;
+    }
+    Some((
+        parts.0.parse().ok()?,
+        parts.1.parse().ok()?,
+        parts.2.parse().ok()?,
+    ))
+}
+
+/// Whether `version` satisfies `req`: `>=X.Y.Z` (at least) or an exact
+/// `X.Y.Z`. Unparseable versions never satisfy.
+fn version_satisfies(req: &str, version: &str) -> bool {
+    let Some(have) = semver(version) else {
+        return false;
+    };
+    req.strip_prefix(">=").map_or_else(
+        || semver(req) == Some(have),
+        |min| semver(min.trim()).is_some_and(|min| have >= min),
+    )
+}
+
+/// FNV-1a content hash (dep-free, hermetic), matching the vault's index
+/// hashing style.
+fn content_hash(s: &str) -> String {
+    let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+    for b in s.bytes() {
+        h ^= u64::from(b);
+        h = h.wrapping_mul(0x0000_0100_0000_01b3);
+    }
+    format!("fnv1a:{h:016x}")
+}
+
+/// Resolve `root`'s transitive dependencies over a local package set
+/// `available` (no network, V4b), producing a lockfile that pins each
+/// dependency to its exact version + a content hash.
+///
+/// Deterministic (I6): the result is sorted and independent of dependency
+/// declaration order. Cycle- and version-checked.
+///
+/// # Errors
+///
+/// [`PluginError::Package`] when a dependency is missing, its version
+/// does not satisfy the requirement, or a dependency cycle exists.
+pub fn resolve(
+    root: &Package,
+    available: &std::collections::BTreeMap<String, Package>,
+) -> Result<Vec<LockEntry>, PluginError> {
+    let mut resolved: std::collections::BTreeMap<String, LockEntry> =
+        std::collections::BTreeMap::new();
+    let mut stack: Vec<String> = Vec::new();
+    visit(root, available, &mut resolved, &mut stack)?;
+    Ok(resolved.into_values().collect())
+}
+
+/// DFS one package's deps, recording lock entries; `stack` carries the
+/// active chain for cycle detection.
+fn visit(
+    pkg: &Package,
+    available: &std::collections::BTreeMap<String, Package>,
+    resolved: &mut std::collections::BTreeMap<String, LockEntry>,
+    stack: &mut Vec<String>,
+) -> Result<(), PluginError> {
+    stack.push(pkg.name.clone());
+    for (dep, req) in &pkg.deps {
+        let dep_pkg = available
+            .get(dep)
+            .ok_or_else(|| PluginError::Package(format!("unknown dependency `{dep}`")))?;
+        if !version_satisfies(req, &dep_pkg.version) {
+            return Err(PluginError::Package(format!(
+                "`{dep}` {} does not satisfy `{req}`",
+                dep_pkg.version
+            )));
+        }
+        if stack.iter().any(|n| n == dep) {
+            return Err(PluginError::Package(format!(
+                "dependency cycle through `{dep}`"
+            )));
+        }
+        if !resolved.contains_key(dep) {
+            resolved.insert(
+                dep.clone(),
+                LockEntry {
+                    name: dep.clone(),
+                    version: dep_pkg.version.clone(),
+                    hash: content_hash(&render_package(dep_pkg)),
+                },
+            );
+            visit(dep_pkg, available, resolved, stack)?;
+        }
+    }
+    stack.pop();
+    Ok(())
+}
+
 /// Render a lockfile, sorted by `(name, version)` for a deterministic,
 /// byte-exact result (I6).
 #[must_use]

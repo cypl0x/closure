@@ -116,7 +116,7 @@ same-command-set + no-dup invariants. =run_vault_tool= takes
 =&LlmPermissions=. 4 llm + 1 input + 2 cli tests. See Decision
 (2026-06-20).
 
-** WIP V4 Package / plugin ecosystem (straight/nix-style) [1/3]
+** WIP V4 Package / plugin ecosystem (straight/nix-style) [2/3]
 =closure-plugin-host= today invokes one manifest-declared exe/wasm. The
 vision wants a real, deterministic, lockfile-backed package system.
 *** DONE V4a Package manifest + lockfile (plain-text/org)
@@ -126,11 +126,14 @@ a =closure-package= block + =render_package= (byte-exact inverse).
 lines, rendered sorted by name/version for determinism I6, byte-exact).
 =PluginError::Package= for malformed input. 6 tests
 (fields/roundtrip/missing/sorted/empty). See Decision (2026-06-20).
-*** TODO V4b Deterministic dependency resolver + lockfile writer
-Resolve a dependency graph (semver-ish), deterministic order, cycle
-detection → typed error; write/verify the lockfile (hermetic, no
-network — resolves over a local package set). Property test: resolution
-is order-independent and reproducible (I6).
+*** DONE V4b Deterministic dependency resolver + lockfile writer
+=resolve(root, available)= DFS over a local package set (no network):
+checks =>=X.Y.Z= / exact version reqs (=version_satisfies=), detects
+cycles via a =stack= → typed =PluginError::Package=, pins each dep with
+an FNV-1a content hash (=fnv1a:=, not misrepresented as sha256). Output
+is a =BTreeMap=-collected, sorted lockfile — declaration-order-
+independent + reproducible (I6). 6 tests incl. order-independence +
+reproducibility (manual, no proptest dep). See Decision (2026-06-20).
 *** TODO V4c =closure pkg add/list/lock= over a local source
 Install packages from a local/path registry into a plugins dir
 (hermetic; network sources are a feature-gated/documented extension),
@@ -842,6 +845,20 @@ only (I8). Crates keep =#![forbid(unsafe_code)]=.
 * Decisions
 Open questions land here as subheadings: context, options considered,
 the reversible default taken, date.
+** DECISION (2026-06-20) Resolver is a hermetic DFS over a local set; hashes are FNV-1a not sha256 (V4b)
+Context: V4b resolves dependencies. Two picks: (1) version requirement
+grammar — full semver ranges (=^=, =~=, =*=, ranges) vs a minimal
+=>=X.Y.Z= / exact. Took minimal: it covers the common "at least"
+constraint, is dep-free, and the grammar can widen later without
+changing =resolve='s signature. (2) content hash — real sha256 needs a
+crypto dep (non-hermetic by the workspace's no-heavy-default rule). Took
+a dep-free FNV-1a hash, prefixed =fnv1a:= so it is not misrepresented as
+sha256; the lockfile format stores an opaque hash string, so a future
+=sha256:= (behind a feature) drops in without a format change.
+Resolution is a DFS with a =stack= for cycle detection + a =BTreeMap= of
+results for deterministic, declaration-order-independent output (I6),
+entirely over a caller-supplied local package set (no network). A
+fetcher (V4c) supplies that set. Reversible on both axes.
 ** DECISION (2026-06-20) Package manifest is repeatable key=value; lockfile is line-oriented (V4a)
 Context: V4a needs a plain-text (no JSON/YAML, per the vision) package
 manifest + lockfile that round-trip byte-exact. Options for deps/commands:
