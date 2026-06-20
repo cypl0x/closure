@@ -1280,6 +1280,7 @@ dependencies = [
  "closure-plugin-host",
  "closure-query",
  "closure-record",
+ "closure-shell-core",
  "closure-shell-egui",
  "closure-shell-gpui",
  "closure-shell-web",

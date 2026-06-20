@@ -262,6 +262,13 @@ eval`); a pulled/synced vault cannot run code without explicit local
   the embedder; egui/gpui adapters follow the same `render(tree)` entry.
   Actionable nodes carry their chord into the rendered output (`[..]` /
   `<kbd>`), and the renderers are hermetic (golden-testable, no display).
+  Which `Node` kinds a shell renders is itself data — `NodeKind`,
+  `ALL_NODE_KINDS`, the per-shell `*_NODE_KINDS` consts, and
+  `ui_matrix_table` (printed by `closure ui-matrix`) give the type-level
+  UI venn/diff (V1c), the sibling of the `closure shells` capability
+  matrix. A renderer's `match` over `Node` is exhaustive, so adding a
+  kind without handling it is a compile error — a shell that does not
+  render a kind is a compile-/test-time fact, not a runtime surprise.
 - `closure-tui` — ratatui + crossterm. Primary first shell.
 - `closure-cli` — the `closure` binary (`tui`, `check`, `fmt`, `parse`,
   `query`, `serve`).

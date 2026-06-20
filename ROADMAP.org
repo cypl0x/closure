@@ -25,7 +25,7 @@ check= green (I10), or — when it genuinely cannot hold in-tree —
 recorded as a DROP/external Decision per the binding rule rather than
 faked. Every leaf must pass "after this the user can ___".
 
-** WIP V1 Declarative / type-level UI layer [2/3]
+** DONE V1 Declarative / type-level UI layer [3/3]
 The marquee gap: the vision names Slint + "type-level UI" + Yesod
 (runtime→compile-time). Today every shell draws imperatively. Introduce
 one declarative, compile-time-checked view description that all shells
@@ -52,11 +52,15 @@ concept). Actionable nodes carry their chord into the output (=[..]= /
 a dep of both (no cycle). Additive renderers (not a rewrite of the
 legacy loops); egui/gpui adapters + full draw replacement follow, V10a
 golden-snapshots the path. See Decision (2026-06-20).
-*** TODO V1c Type-level UI capability diff
-Extend the =Capability= matrix: which =ViewTree= node kinds each shell
-renders, as per-shell consts + a =closure ui-matrix= venn/diff table +
-superset tests. A shell that cannot render a node kind is a compile-time
-/ test-time fact, not a runtime surprise (Yesod rule).
+*** DONE V1c Type-level UI capability diff
+=NodeKind= + =Node::kind()= + =ALL_NODE_KINDS= / =MINIMAL_NODE_KINDS= /
+per-shell =TUI_NODE_KINDS= / =WEB_NODE_KINDS= consts +
+=missing_node_kinds= + =ui_matrix_table= (printed by =closure
+ui-matrix=) give the UI venn/diff, sibling of =closure shells=. The
+compile-time guarantee is Rust exhaustiveness: each renderer's =match=
+over =Node= has no wildcard, so a new kind forces every shell to handle
+it. 4 shell-core tests (coverage, TUI/WEB render all, minimal-floor
+superset, table) + a CLI integration test. See Decision (2026-06-20).
 
 ** TODO V2 Composable block→widget DSL [0/3]
 The core composability promise (compose existing blocks into NEW
@@ -814,6 +818,22 @@ only (I8). Crates keep =#![forbid(unsafe_code)]=.
 * Decisions
 Open questions land here as subheadings: context, options considered,
 the reversible default taken, date.
+** DECISION (2026-06-20) UI node-kind matrix lives beside Node; exhaustive match is the type guarantee (V1c)
+Context: V1c wants "a shell that cannot render a node kind is a
+compile-time fact". Options for *where* the guarantee lives: (a) a
+trait-per-node-kind sealed hierarchy each shell implements (heavy,
+ceremony for 7 variants); (b) keep =Node= a plain enum + rely on Rust's
+exhaustiveness checking of each renderer's =match=, with a data matrix
+(=NodeKind=, =*_NODE_KINDS=, =ui_matrix_table=) for the venn/diff +
+superset tests. Took (b): the real compile-time guarantee is already
+free — a non-exhaustive =match= (a renderer that forgot a kind) does not
+compile, so adding a =NodeKind= forces every renderer to handle it. The
+matrix data + =closure ui-matrix= mirror the existing =closure shells=
+capability table (code = single source of truth) and the superset test
+pins the =MINIMAL_NODE_KINDS= floor. The matrix lives in
+=closure-shell-core= next to =Node=; the CLI gained a =closure-shell-core=
+dep to print it. Reversible: a sealed-trait encoding can replace the
+enum later without changing the consts or =ui_matrix_table=.
 ** DECISION (2026-06-20) ViewTree renderers are additive, hermetic functions per shell (V1b)
 Context: V1b renders the V1a =Node= tree in two shells. The TUI and web
 shells each predate shell-core and own their state machines + draw

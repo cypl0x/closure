@@ -478,6 +478,110 @@ pub enum Node {
     Text(String),
 }
 
+/// The kind of a [`Node`], for the type-level UI capability matrix (V1c).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum NodeKind {
+    /// [`Node::Pane`].
+    Pane,
+    /// [`Node::Rows`].
+    Rows,
+    /// [`Node::Detail`].
+    Detail,
+    /// [`Node::Input`].
+    Input,
+    /// [`Node::Palette`].
+    Palette,
+    /// [`Node::Hints`].
+    Hints,
+    /// [`Node::Text`].
+    Text,
+}
+
+impl Node {
+    /// This node's [`NodeKind`].
+    #[must_use]
+    pub const fn kind(&self) -> NodeKind {
+        match self {
+            Self::Pane { .. } => NodeKind::Pane,
+            Self::Rows { .. } => NodeKind::Rows,
+            Self::Detail { .. } => NodeKind::Detail,
+            Self::Input { .. } => NodeKind::Input,
+            Self::Palette { .. } => NodeKind::Palette,
+            Self::Hints { .. } => NodeKind::Hints,
+            Self::Text(_) => NodeKind::Text,
+        }
+    }
+}
+
+/// Every node kind, in definition order (single source of truth).
+pub const ALL_NODE_KINDS: &[NodeKind] = &[
+    NodeKind::Pane,
+    NodeKind::Rows,
+    NodeKind::Detail,
+    NodeKind::Input,
+    NodeKind::Palette,
+    NodeKind::Hints,
+    NodeKind::Text,
+];
+
+/// The floor every shell must render to host the launcher (I7 for UI):
+/// a labelled region, a list, the which-key line, inert text.
+pub const MINIMAL_NODE_KINDS: &[NodeKind] = &[
+    NodeKind::Pane,
+    NodeKind::Rows,
+    NodeKind::Hints,
+    NodeKind::Text,
+];
+
+/// Kinds the TUI renderer (`closure_tui::render_view`) handles — all of
+/// them (its match is exhaustive, so this cannot silently drift: adding
+/// a `NodeKind` without a render arm is a compile error).
+pub const TUI_NODE_KINDS: &[NodeKind] = ALL_NODE_KINDS;
+
+/// Kinds the web renderer (`closure_shell_web::render_view`) handles —
+/// all of them, exhaustively.
+pub const WEB_NODE_KINDS: &[NodeKind] = ALL_NODE_KINDS;
+
+/// The node kinds a shell does *not* render (`ALL_NODE_KINDS` minus
+/// `kinds`). Empty for a complete renderer.
+#[must_use]
+pub fn missing_node_kinds(kinds: &[NodeKind]) -> Vec<NodeKind> {
+    ALL_NODE_KINDS
+        .iter()
+        .copied()
+        .filter(|k| !kinds.contains(k))
+        .collect()
+}
+
+/// Render the shell × node-kind venn/diff table (code = single source of
+/// truth; mirrors `closure shells`). `closure ui-matrix` prints it.
+#[must_use]
+pub fn ui_matrix_table() -> String {
+    use std::fmt::Write as _;
+    let shells: &[(&str, &[NodeKind])] = &[
+        ("MIN", MINIMAL_NODE_KINDS),
+        ("TUI", TUI_NODE_KINDS),
+        ("WEB", WEB_NODE_KINDS),
+    ];
+    let mut out =
+        String::from("UI node-kind matrix (which shells render which ViewTree nodes)\n\n");
+    let _ = write!(out, "{:<9}", "NodeKind");
+    for (name, _) in shells {
+        let _ = write!(out, " | {name}");
+    }
+    out.push('\n');
+    for kind in ALL_NODE_KINDS {
+        let _ = write!(out, "{:<9}", format!("{kind:?}"));
+        for (_, set) in shells {
+            let mark = if set.contains(kind) { " X " } else { "   " };
+            let _ = write!(out, " | {mark}");
+        }
+        out.push('\n');
+    }
+    out.push_str("\nLegend: X = renders this node kind. MIN = the floor (I7).\n");
+    out
+}
+
 /// Which input surface the gpui shell is on.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Mode {

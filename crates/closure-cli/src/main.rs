@@ -451,6 +451,10 @@ enum Cmd {
     /// similarities and differences across TUI/CLI/web/egui/future shells).
     /// Code (the consts above) is the single source of truth.
     Shells,
+    /// Print the UI node-kind matrix: which `ViewTree` nodes each shell
+    /// renders (V1c). Code (`closure-shell-core` consts) is the source
+    /// of truth.
+    UiMatrix,
     /// Print the 10 spec invariants closure enforces.
     Spec,
     /// Print a sample `#+BEGIN_SRC closure-config` block.
@@ -1213,6 +1217,10 @@ fn run(cmd: &Cmd) -> Result<(), String> {
         Cmd::Config { path } => cmd_config(path),
         Cmd::CheckConfig { path } => cmd_check_config(path),
         Cmd::Shells => cmd_shells(),
+        Cmd::UiMatrix => {
+            print!("{}", closure_shell_core::ui_matrix_table());
+            Ok(())
+        }
         Cmd::Spec => cmd_spec(),
         Cmd::DefaultConfig => cmd_default_config(),
         Cmd::New { vault, path, title } => cmd_new(vault, path, title),

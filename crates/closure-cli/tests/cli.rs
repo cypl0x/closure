@@ -67,6 +67,13 @@ fn shells_prints_matrix() {
 }
 
 #[test]
+fn ui_matrix_prints_node_kinds() {
+    let out = ok(&["ui-matrix"]);
+    assert!(out.contains("Pane") && out.contains("Palette"));
+    assert!(out.contains("TUI") && out.contains("WEB"));
+}
+
+#[test]
 fn spec_prints_primitives() {
     let out = ok(&["spec"]);
     assert!(out.to_lowercase().contains("parse") || !out.is_empty());
