@@ -13,7 +13,7 @@ file is the fine-grained, capability-level queue between them. Blocked
 on a design decision? Record it under [[*Decisions][Decisions]], pick the most
 reversible option, keep moving.
 
-* WIP Depth II — LSP server to real [3/5]
+* WIP Depth II — LSP server to real [4/5]
 closure-lsp today is two methods (=document_symbols=, =definition_of=)
 plus a Content-Length frame loop wired to =initialize=/=shutdown=. The
 vision promises a usable language server. Grow it into hover /
@@ -49,12 +49,17 @@ block validation errors mapped back to their document line
 =textDocument/diagnostic= (=kind:full= report); =initialize= advertises
 =diagnosticProvider=. 8 lsp diagnostics tests green. See Decision
 (2026-06-20).
-** TODO L4 References + rename: vault-wide =:ID:= ops
-=references(vault, id)= → every (file, line) linking that id (def +
-all =id:= references). =rename_symbol(vault, id, new_title)= retitles
-the owning headline (undoable, I3) — link text stays id-based so no
-link rewrite needed; assert references survive. Wire
-=textDocument/references= + =textDocument/rename=.
+** DONE L4 References + rename: vault-wide =:ID:= ops
+=references(vault, id)= → the defining headline + every =id:= link
+across the vault as sorted =(file, line)= pairs. =rename_symbol(&mut
+Vault, id, new_title)= retitles the owning headline via
+=Vault::rename_headline= (undoable I3, persisted); id-based links mean
+references survive unchanged. =id_at_position= resolves the id under a
+cursor (link or headline). Wired =textDocument/references= (read, in
+=handle_message=) + =textDocument/rename= (server-authoritative, in the
+new =handle_message_mut=); =initialize= advertises
+=referencesProvider= + =renameProvider=. 7 lsp tests green. See
+Decision (2026-06-20).
 ** TODO L5 Real stdio LSP loop + =closure lsp= CLI
 =initialize= advertises the new capabilities (hover/completion/
 references/rename/diagnostics); =initialized=/=shutdown=/=exit=
@@ -595,6 +600,26 @@ only (I8). Crates keep =#![forbid(unsafe_code)]=.
 * Decisions
 Open questions land here as subheadings: context, options considered,
 the reversible default taken, date.
+** DECISION (2026-06-20) LSP rename is server-authoritative, not a client WorkspaceEdit (L4)
+Context: L4 adds =textDocument/references= + =textDocument/rename=.
+Standard LSP rename returns a =WorkspaceEdit= the *client* applies to
+its buffers. But closure's I8 rule is that the command registry is the
+only mutation surface and edits persist to disk through it
+(=Vault::rename_headline=, undoable I3). Options: (a) compute a
+=WorkspaceEdit= and not mutate server-side (breaks I8 — a second writer
+of truth); (b) apply server-side through the registry and return =null=.
+Took (b): =rename_symbol(&mut Vault, id, new_title)= mutates via the
+registry; the protocol handler lives in a new =handle_message_mut=
+(read-only methods still take =&Vault= via =handle_message=, so existing
+callers/tests are unaffected). Because links are id-based, only the
+headline title text changes and every =references= entry survives — the
+rename needs no link rewrite. Trade-off: an editor must reload the file
+to see the new title (closure is the source of truth, not the editor
+buffer). Reversible: a =WorkspaceEdit=-returning variant can be added
+for editors that prefer client-applied edits, without changing
+=rename_symbol=. =references= includes the definition site
+(=definition_of=) plus every =id:= link (=id_tokens= over each doc),
+sorted + deduped (I6).
 ** DECISION (2026-06-20) LSP diagnostics use the pull model, config errors mapped by line (L3)
 Context: L3 adds diagnostics — dead =id:= links, duplicate =:ID:=
 (vault-wide), and =closure-config= validation errors. Two design picks:

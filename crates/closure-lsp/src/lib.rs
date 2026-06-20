@@ -78,7 +78,8 @@ const INITIALIZE_RESULT: &str = "{\"capabilities\":{\"documentSymbolProvider\":t
      \"hoverProvider\":true,\
      \"completionProvider\":{\"triggerCharacters\":[\":\"]},\
      \"diagnosticProvider\":{\"interFileDependencies\":true,\
-     \"workspaceDiagnostics\":false}},\
+     \"workspaceDiagnostics\":false},\
+     \"referencesProvider\":true,\"renameProvider\":true},\
      \"serverInfo\":{\"name\":\"closure\",\"version\":\"0.0.0\"}}";
 
 /// The source text of the document the request's `uri` names (relative
@@ -157,6 +158,41 @@ fn diagnostic_result(vault: &Vault, json: &str) -> String {
     format!("{{\"kind\":\"full\",\"items\":[{}]}}", items.join(","))
 }
 
+/// `textDocument/references` result fragment: an array of `Location`s
+/// for the id under the cursor.
+fn references_result(vault: &Vault, json: &str) -> String {
+    let src = req_source(vault, json);
+    let (line, ch) = req_position(json);
+    let Some(id) = id_at_position(&src, line, ch) else {
+        return "[]".to_owned();
+    };
+    let items: Vec<String> = references(vault, &id)
+        .iter()
+        .map(|(path, l)| {
+            format!(
+                "{{\"uri\":\"file://{}\",\"range\":{{\"start\":{{\"line\":{l},\"character\":0}},\
+                 \"end\":{{\"line\":{l},\"character\":0}}}}}}",
+                closure_jsonrpc::json_escape(&path.display().to_string()),
+            )
+        })
+        .collect();
+    format!("[{}]", items.join(","))
+}
+
+/// `textDocument/rename` result fragment. closure is server-authoritative
+/// (mutations route through the registry + persist, I8), so the rename is
+/// applied here and the response is `null` rather than a client-applied
+/// `WorkspaceEdit` — see Decision (2026-06-20).
+fn rename_result(vault: &mut Vault, json: &str) -> String {
+    let src = req_source(vault, json);
+    let (line, ch) = req_position(json);
+    let new_name = closure_jsonrpc::string_field(json, "newName").unwrap_or_default();
+    if let Some(id) = id_at_position(&src, line, ch) {
+        let _ = rename_symbol(vault, &id, &new_name);
+    }
+    "null".to_owned()
+}
+
 /// `textDocument/documentSymbol` result fragment.
 fn symbol_result(vault: &Vault, json: &str) -> String {
     let src = req_source(vault, json);
@@ -189,9 +225,26 @@ pub fn handle_message(vault: &Vault, json: &str) -> Option<String> {
         "textDocument/completion" => completion_result(vault, json),
         "textDocument/diagnostic" => diagnostic_result(vault, json),
         "textDocument/documentSymbol" => symbol_result(vault, json),
+        "textDocument/references" => references_result(vault, json),
         _ => return Some(closure_jsonrpc::method_not_found(&id)),
     };
     Some(closure_jsonrpc::response(&id, &result))
+}
+
+/// Handle one message that may mutate the vault.
+///
+/// Dispatches `textDocument/rename` (server-authoritative, I8) and
+/// delegates every read-only method to [`handle_message`]. This is the
+/// entry point the stdio loop uses; `None` for notifications.
+#[must_use]
+pub fn handle_message_mut(vault: &mut Vault, json: &str) -> Option<String> {
+    let method = closure_jsonrpc::string_field(json, "method").unwrap_or_default();
+    if method == "textDocument/rename" {
+        let id = closure_jsonrpc::raw_field(json, "id")?;
+        let result = rename_result(vault, json);
+        return Some(closure_jsonrpc::response(&id, &result));
+    }
+    handle_message(vault, json)
 }
 
 /// Run the LSP server on stdio against `vault`.
@@ -212,6 +265,9 @@ pub enum LspError {
     /// Transport error.
     #[error("transport: {0}")]
     Transport(String),
+    /// A vault mutation (e.g. rename) failed.
+    #[error("vault: {0}")]
+    Vault(String),
 }
 
 /// Per-line resolution outcome.
@@ -762,6 +818,68 @@ pub fn diagnostics(src: &str, vault: &Vault) -> Vec<Diagnostic> {
     }
 
     out
+}
+
+/// The id referred to at a zero-based `line`/`character` in `src`: the
+/// `id:` link under the cursor, else the `:ID:` of the headline on that
+/// line.
+#[must_use]
+pub fn id_at_position(src: &str, line: u32, character: u32) -> Option<String> {
+    let text = src.lines().nth(line as usize)?;
+    if let Some(id) = id_at(text, character as usize) {
+        return Some(id.to_owned());
+    }
+    if is_headline_line(text) {
+        let idx = src
+            .lines()
+            .take(line as usize + 1)
+            .filter(|l| is_headline_line(l))
+            .count()
+            .checked_sub(1)?;
+        let doc = closure_core::Document::load_str(src).ok()?;
+        let h = doc.all_headlines().nth(idx)?;
+        return h
+            .properties()
+            .iter()
+            .find(|(k, _)| k.eq_ignore_ascii_case("ID"))
+            .map(|(_, v)| v.clone());
+    }
+    None
+}
+
+/// Every reference to `id` across the vault: the defining headline plus
+/// each `id:` link, as `(file, zero-based line)` pairs, sorted.
+///
+/// Link text is id-based, so these survive a [`rename_symbol`].
+#[must_use]
+pub fn references(vault: &Vault, id: &str) -> Vec<(std::path::PathBuf, u32)> {
+    let mut out: Vec<(std::path::PathBuf, u32)> = Vec::new();
+    if let Some(def) = definition_of(vault, id) {
+        out.push(def);
+    }
+    for (path, doc) in vault.iter() {
+        for (i, line) in doc.source().lines().enumerate() {
+            if id_tokens(line).iter().any(|(_, _, tok)| *tok == id) {
+                out.push((path.to_path_buf(), u32::try_from(i).unwrap_or(u32::MAX)));
+            }
+        }
+    }
+    out.sort();
+    out.dedup();
+    out
+}
+
+/// Retitle the headline owning `id` to `new_title`, through the command
+/// registry (undoable, I3; persisted). Links are id-based, so every
+/// [`references`] entry survives unchanged.
+///
+/// # Errors
+///
+/// [`LspError::Vault`] when no headline owns `id` or the write fails.
+pub fn rename_symbol(vault: &mut Vault, id: &str, new_title: &str) -> Result<(), LspError> {
+    vault
+        .rename_headline(&closure_core::BlockId::from_existing(id), new_title)
+        .map_err(|e| LspError::Vault(e.to_string()))
 }
 
 /// Resolve an `id:<ULID>` (or bare ULID) link target to its defining

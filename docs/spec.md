@@ -218,9 +218,15 @@ eval`); a pulled/synced vault cannot run code without explicit local
     known vault tags (L2). `textDocument/diagnostic` (pull model) reports
     ranged problems: dead `id:` links, duplicate `:ID:` values across the
     vault, and `closure-config` block validation errors mapped back to
-    their document line (L3). All positions map over source text
-    (zero-based line/character); read-only methods take `&Vault`, mutating
-    ones (rename, L4) route through the command registry (I8). Pure +
+    their document line (L3). `textDocument/references` lists the
+    definition + every `id:` link to a headline across the vault, and
+    `textDocument/rename` retitles the owning headline (L4). All positions
+    map over source text (zero-based line/character); read-only methods
+    take `&Vault` via `handle_message`, while `rename` takes `&mut Vault`
+    via `handle_message_mut` and routes through the command registry
+    (undoable, I3/I8). Links are id-based, so references survive a rename.
+    closure is server-authoritative — `rename` applies + persists on the
+    server and returns `null` rather than a client `WorkspaceEdit`. Pure +
     hermetic — no editor process needed to test it.
 - `closure-cron` — cron scheduler triggering commands.
 - `closure-plugin-host` — wasm plugin ABI, semver-pinned core API,
