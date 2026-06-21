@@ -13,3 +13,11 @@ workspace = true
 
 [dependencies]
 thiserror.workspace = true
+tree-sitter = { version = "0.26.9", optional = true }
+tree-sitter-bash = { version = "0.25.1", optional = true }
+
+[features]
+# Real tree-sitter highlighting (V6). Default OFF — pulls a C grammar
+# (non-hermetic); the dep-free KeywordHighlighter stays the default.
+# Build/test gate: `just tree-sitter`.
+tree-sitter = ["dep:tree-sitter", "dep:tree-sitter-bash"]

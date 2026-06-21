@@ -110,7 +110,13 @@ layer. Every vision item is assigned to exactly one layer.
   architecture. Later phase.
 - `closure-tree-sitter` — optional, for syntax-highlighting and code-block
   grammars inside `#+BEGIN_SRC` regions. Not used for primary parsing
-  (I1 / I5 cost too high).
+  (I1 / I5 cost too high). The dep-free `KeywordHighlighter` is the
+  hermetic default; a real grammar (`TsHighlighter`, V6) is opt-in behind
+  the `tree-sitter` feature — it pulls a C grammar (non-hermetic, like the
+  GUI/pcap features), parses with a genuine tree-sitter grammar (bash), and
+  fills inter-token gaps with `Plain` so the `Highlighter` gap-free
+  coverage contract still holds. `just tree-sitter` builds/tests it; the
+  default `just check` never compiles it (I10).
 
 ### Layer 1 — closure-org parser scope (v0.1 subset)
 

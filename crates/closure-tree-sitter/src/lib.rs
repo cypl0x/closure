@@ -398,3 +398,140 @@ impl Highlighter for KeywordHighlighter {
         out
     }
 }
+
+/// Real tree-sitter highlighter over a C grammar (V6, opt-in
+/// `tree-sitter` feature).
+///
+/// Parses `source` with a genuine grammar and maps leaf/keyword/string/
+/// comment nodes to [`HighlightKind`], filling inter-token gaps with
+/// `Plain` so the [`Highlighter`] coverage contract holds. Default builds
+/// never compile this (non-hermetic C grammar); the dep-free
+/// [`KeywordHighlighter`] stays the hermetic default.
+#[cfg(feature = "tree-sitter")]
+#[derive(Clone)]
+pub struct TsHighlighter {
+    language: String,
+    ts_language: tree_sitter::Language,
+}
+
+#[cfg(feature = "tree-sitter")]
+impl TsHighlighter {
+    /// A highlighter for `name`, or `None` if no grammar is bundled for
+    /// it. Currently `bash`/`sh`/`shell`.
+    #[must_use]
+    pub fn for_language(name: &str) -> Option<Self> {
+        let ts_language: tree_sitter::Language = match name {
+            "bash" | "sh" | "shell" => tree_sitter_bash::LANGUAGE.into(),
+            _ => return None,
+        };
+        Some(Self {
+            language: name.to_owned(),
+            ts_language,
+        })
+    }
+}
+
+/// The whole-node highlight class for `kind` (comment / string / number),
+/// or `None` to descend into children.
+#[cfg(feature = "tree-sitter")]
+fn ts_unit_kind(kind: &str) -> Option<HighlightKind> {
+    if kind == "comment" {
+        Some(HighlightKind::Comment)
+    } else if kind.contains("string") || kind == "number" {
+        Some(HighlightKind::Literal)
+    } else {
+        None
+    }
+}
+
+/// The class for a leaf token of `kind` (named or anonymous).
+#[cfg(feature = "tree-sitter")]
+fn ts_leaf_kind(kind: &str, is_named: bool) -> HighlightKind {
+    if is_named {
+        match kind {
+            "variable_name" | "command_name" | "word" => HighlightKind::Identifier,
+            _ => HighlightKind::Plain,
+        }
+    } else if !kind.is_empty() && kind.chars().all(char::is_alphabetic) {
+        // Anonymous tokens are the literal text: alphabetic → keyword,
+        // otherwise an operator/punctuation token.
+        HighlightKind::Keyword
+    } else {
+        HighlightKind::Punctuation
+    }
+}
+
+#[cfg(feature = "tree-sitter")]
+fn ts_collect(node: tree_sitter::Node, out: &mut Vec<(usize, usize, HighlightKind)>) {
+    if let Some(kind) = ts_unit_kind(node.kind()) {
+        out.push((node.start_byte(), node.end_byte(), kind));
+        return;
+    }
+    if node.child_count() == 0 {
+        out.push((
+            node.start_byte(),
+            node.end_byte(),
+            ts_leaf_kind(node.kind(), node.is_named()),
+        ));
+        return;
+    }
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        ts_collect(child, out);
+    }
+}
+
+#[cfg(feature = "tree-sitter")]
+impl Highlighter for TsHighlighter {
+    fn language(&self) -> &str {
+        &self.language
+    }
+
+    fn highlight(&self, source: &str) -> Vec<Highlight> {
+        let plain = || {
+            vec![Highlight {
+                start: 0,
+                end: source.len(),
+                kind: HighlightKind::Plain,
+            }]
+        };
+        let mut parser = tree_sitter::Parser::new();
+        if parser.set_language(&self.ts_language).is_err() {
+            return plain();
+        }
+        let Some(tree) = parser.parse(source, None) else {
+            return plain();
+        };
+        let mut leaves: Vec<(usize, usize, HighlightKind)> = Vec::new();
+        ts_collect(tree.root_node(), &mut leaves);
+        leaves.sort_by_key(|(s, _, _)| *s);
+
+        let mut spans = Vec::new();
+        let mut pos = 0;
+        for (start, end, kind) in leaves {
+            if start < pos {
+                continue; // defensive: ignore any overlap
+            }
+            if start > pos {
+                spans.push(Highlight {
+                    start: pos,
+                    end: start,
+                    kind: HighlightKind::Plain,
+                });
+            }
+            spans.push(Highlight { start, end, kind });
+            pos = end;
+        }
+        if pos < source.len() {
+            spans.push(Highlight {
+                start: pos,
+                end: source.len(),
+                kind: HighlightKind::Plain,
+            });
+        }
+        if spans.is_empty() {
+            return plain();
+        }
+        spans
+    }
+}

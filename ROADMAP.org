@@ -164,15 +164,19 @@ core). 4 tests (memory convergence, fs round-trip, heterogeneous sync,
 no-op). The blob layer composes with =SyncSession='s field-level CRDT
 merge — see Decision (2026-06-20).
 
-** TODO V6 Real tree-sitter grammars (feature-gated) [0/2]
+** WIP V6 Real tree-sitter grammars (feature-gated) [1/2]
 =closure-tree-sitter= is a dep-free =KeywordHighlighter= + trait — TS in
 name only. Add real grammar parsing, gated OFF to keep I10.
-*** TODO V6a =tree-sitter= feature: real highlighter over a grammar
-Behind a default-OFF =tree-sitter= feature (C grammar = non-hermetic,
-same pattern as the GUI features), a =TsHighlighter= parses a code
-block with a real grammar (e.g. bash/rust) and emits highlight spans
-implementing the existing trait. =just check= green with the feature
-OFF; =just tree-sitter= builds it. Decision records the I10 gating.
+*** DONE V6a =tree-sitter= feature: real highlighter over a grammar
+=TsHighlighter= (opt-in =tree-sitter= feature; =tree-sitter= 0.26 +
+=tree-sitter-bash= 0.25) parses a code block with the real bash grammar
+and implements =Highlighter=: comment/string/number nodes become whole
+Comment/Literal units, anonymous tokens → Keyword/Punctuation, named
+leaves → Identifier/Plain, inter-token gaps filled with =Plain= so the
+gap-free coverage contract holds. =just check= compiles neither
+tree-sitter crate (feature OFF, hermetic); =just tree-sitter= is the
+gate. 4 feature-gated tests (comment/string classify + coverage,
+language, unsupported, empty). See Decision (2026-06-21).
 *** TODO V6b TUI uses real TS spans when the feature is on
 The file view's code-block highlight consumes =TsHighlighter= spans
 under the feature, falling back to =KeywordHighlighter= otherwise. After
@@ -855,6 +859,21 @@ only (I8). Crates keep =#![forbid(unsafe_code)]=.
 * Decisions
 Open questions land here as subheadings: context, options considered,
 the reversible default taken, date.
+** DECISION (2026-06-21) Real tree-sitter is feature-gated; default keeps KeywordHighlighter (V6a)
+Context: V6a adds a real grammar. A tree-sitter grammar is C code (cc
+build, generated parser.c) — non-hermetic by the workspace's no-heavy-
+default rule, exactly like gpui/pcap/wasmtime. Options: (a) make it the
+default highlighter (breaks I10's hermetic build); (b) gate it behind a
+=tree-sitter= feature defaulted OFF. Took (b): =TsHighlighter= (opt-in)
+uses =tree-sitter= 0.26 + =tree-sitter-bash= 0.25 (API verified from the
+fetched crate: =tree_sitter_bash::LANGUAGE: LanguageFn=,
+=parser.set_language(&LANGUAGE.into())=); the dep-free
+=KeywordHighlighter= stays the hermetic default so =just check= compiles
+neither tree-sitter crate. The =Highlighter= gap-free coverage contract
+is preserved by treating comment/string/number nodes as whole units and
+filling inter-token gaps with =Plain=. =just tree-sitter= is the build/
+test gate. Reversible: more grammars are added to =for_language= behind
+the same feature; nothing in the default path changes.
 ** DECISION (2026-06-20) Content-address sync is a provider-trait blob exchange; CRDT field-merge stays in SyncSession (V5b)
 Context: V5b adds the pluggable provider + sync. The leaf mentioned
 "reuses the conflict corpus", but content addressing operates at the

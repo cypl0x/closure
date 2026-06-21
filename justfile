@@ -58,6 +58,12 @@ eval-wasm:
     cargo test -p closure-eval --features wasmtime --test wasm
     cargo test -p closure-store --features wasmtime --test babel
 
+# V6 real tree-sitter highlighting (opt-in; pulls a C grammar). Default
+# `check` keeps the dep-free KeywordHighlighter; this gate builds + tests
+# the real grammar path.
+tree-sitter:
+    cargo test -p closure-tree-sitter --features tree-sitter
+
 # X3 live packet sniffer (opt-in; pulls pnet). Default stays dep-light;
 # live capture needs CAP_NET_RAW at runtime (`closure sniff --live eth0`).
 sniff-pcap:
