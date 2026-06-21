@@ -116,7 +116,11 @@ layer. Every vision item is assigned to exactly one layer.
   GUI/pcap features), parses with a genuine tree-sitter grammar (bash), and
   fills inter-token gaps with `Plain` so the `Highlighter` gap-free
   coverage contract still holds. `just tree-sitter` builds/tests it; the
-  default `just check` never compiles it (I10).
+  default `just check` never compiles it (I10). `closure-tui` forwards the
+  feature (`closure-tui/tree-sitter`): its file-view `pick_highlighter`
+  prefers `TsHighlighter` for a bundled grammar when the feature is on,
+  else `KeywordHighlighter` (V6b) — so code blocks get real, string-aware
+  highlighting under the gate without changing the hermetic default.
 
 ### Layer 1 — closure-org parser scope (v0.1 subset)
 

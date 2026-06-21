@@ -63,6 +63,7 @@ eval-wasm:
 # the real grammar path.
 tree-sitter:
     cargo test -p closure-tree-sitter --features tree-sitter
+    cargo test -p closure-tui --features tree-sitter --test ts_highlight
 
 # X3 live packet sniffer (opt-in; pulls pnet). Default stays dep-light;
 # live capture needs CAP_NET_RAW at runtime (`closure sniff --live eth0`).

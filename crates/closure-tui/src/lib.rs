@@ -1754,6 +1754,20 @@ fn draw(f: &mut ratatui::Frame<'_>, app: &App, vault: &Vault) {
     }
 }
 
+/// Choose the highlighter for `lang` (V6b).
+///
+/// With the `tree-sitter` feature on, a real grammar (`TsHighlighter`) is
+/// preferred when one is bundled for `lang`; otherwise (and always in the
+/// hermetic default build) the dep-free `KeywordHighlighter` is used.
+#[must_use]
+pub fn pick_highlighter(lang: &str) -> Box<dyn Highlighter> {
+    #[cfg(feature = "tree-sitter")]
+    if let Some(ts) = closure_tree_sitter::TsHighlighter::for_language(lang) {
+        return Box::new(ts);
+    }
+    Box::new(closure_tree_sitter::KeywordHighlighter::for_language(lang))
+}
+
 /// Render helper: turn an org source into ratatui `Line`s with styled spans
 /// for code block contents (using the pluggable tree-sitter highlighter).
 ///
@@ -1781,7 +1795,7 @@ pub fn highlight_org_source(src: &str) -> Vec<Line<'static>> {
                 .nth(1)
                 .unwrap_or("plain")
                 .to_ascii_lowercase();
-            let highlighter = closure_tree_sitter::KeywordHighlighter::for_language(&lang);
+            let highlighter = pick_highlighter(&lang);
 
             // accumulate + highlight block content until #+END_SRC
             let mut block_content = String::new();

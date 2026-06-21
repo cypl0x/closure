@@ -26,6 +26,12 @@ crossterm.workspace = true
 ratatui.workspace = true
 thiserror.workspace = true
 
+[features]
+# V6b: real tree-sitter highlighting in the file view. Default OFF — the
+# dep-free KeywordHighlighter stays the hermetic default; forwards the
+# grammar feature to closure-tree-sitter. Gate: `just tree-sitter`.
+tree-sitter = ["closure-tree-sitter/tree-sitter"]
+
 [dev-dependencies]
 insta.workspace = true
 tempfile = "3"

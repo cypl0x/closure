@@ -164,7 +164,7 @@ core). 4 tests (memory convergence, fs round-trip, heterogeneous sync,
 no-op). The blob layer composes with =SyncSession='s field-level CRDT
 merge — see Decision (2026-06-20).
 
-** WIP V6 Real tree-sitter grammars (feature-gated) [1/2]
+** DONE V6 Real tree-sitter grammars (feature-gated) [2/2]
 =closure-tree-sitter= is a dep-free =KeywordHighlighter= + trait — TS in
 name only. Add real grammar parsing, gated OFF to keep I10.
 *** DONE V6a =tree-sitter= feature: real highlighter over a grammar
@@ -177,10 +177,15 @@ gap-free coverage contract holds. =just check= compiles neither
 tree-sitter crate (feature OFF, hermetic); =just tree-sitter= is the
 gate. 4 feature-gated tests (comment/string classify + coverage,
 language, unsupported, empty). See Decision (2026-06-21).
-*** TODO V6b TUI uses real TS spans when the feature is on
-The file view's code-block highlight consumes =TsHighlighter= spans
-under the feature, falling back to =KeywordHighlighter= otherwise. After
-this the user gets real syntax highlighting for fenced code.
+*** DONE V6b TUI uses real TS spans when the feature is on
+=closure_tui::pick_highlighter(lang) -> Box<dyn Highlighter>= returns
+=TsHighlighter= for a bundled grammar under the =tree-sitter= feature,
+else =KeywordHighlighter=; the file-view code-block highlight dispatches
+through it (one draw path). =closure-tui/tree-sitter= forwards the
+grammar feature; default build links neither tree-sitter crate. Proof
+test uses string context (=x="if then fi"=): no Keyword span inside the
+quotes — real parsing, not word-matching. 1 fallback + 1 feature-gated
+test; =just tree-sitter= covers the tui. See Decision (2026-06-21).
 
 ** TODO V7 Interactive network-sniffer UI [0/2]
 Sniffer is =parse_candidate= + pcap backend + a one-shot CLI print +
@@ -859,6 +864,21 @@ only (I8). Crates keep =#![forbid(unsafe_code)]=.
 * Decisions
 Open questions land here as subheadings: context, options considered,
 the reversible default taken, date.
+** DECISION (2026-06-21) TUI selects the highlighter at runtime via a boxed trait object (V6b)
+Context: V6b wires the real grammar into the TUI file view. The two
+highlighters are different concrete types (=TsHighlighter= vs
+=KeywordHighlighter=) sharing the =Highlighter= trait. Options: (a)
+duplicate the draw path per feature; (b) a single =pick_highlighter(lang)
+-> Box<dyn Highlighter>= that returns the TS impl when the feature is on
++ a grammar exists, else the keyword impl. Took (b): one draw path,
+=highlight= dispatched through the trait object; =closure-tui/tree-sitter=
+forwards to =closure-tree-sitter/tree-sitter= so the default build links
+neither tree-sitter crate. Verification picks a string-context case —
+=x="if then fi"= — where the difference is real: tree-sitter knows the
+keywords are string content (no Keyword span inside the quotes), while
+the word-based =KeywordHighlighter= would mis-mark them. That asserts the
+real grammar is actually wired, not just "a highlighter runs". Reversible:
+=pick_highlighter= is the one selection point for any future grammar/shell.
 ** DECISION (2026-06-21) Real tree-sitter is feature-gated; default keeps KeywordHighlighter (V6a)
 Context: V6a adds a real grammar. A tree-sitter grammar is C code (cc
 build, generated parser.c) — non-hermetic by the workspace's no-heavy-
