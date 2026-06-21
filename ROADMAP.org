@@ -187,15 +187,19 @@ test uses string context (=x="if then fi"=): no Keyword span inside the
 quotes — real parsing, not word-matching. 1 fallback + 1 feature-gated
 test; =just tree-sitter= covers the tui. See Decision (2026-06-21).
 
-** TODO V7 Interactive network-sniffer UI [0/2]
+** WIP V7 Interactive network-sniffer UI [1/2]
 Sniffer is =parse_candidate= + pcap backend + a one-shot CLI print +
 org log. The vision wants a nice, interactive UI (Little Snitch /
 wireshark class), still usable from TUI/CLI, composable + blockable.
-*** TODO V7a Headless sniffer surface in =closure-shell-core=
-A =SnifferApp= state machine (live event list, cursor, filter, per-flow
-allow/block toggle writing the blocklist config, detail pane) over the
-existing capture trait + mock backend — same headless-tested pattern as
-the launcher. Decisions/blocks route through config + registry.
+*** DONE V7a Headless sniffer surface in =closure-shell-core=
+=SnifferApp= — pure state over =closure_sniffer::CaptureBackend=: =record=
+captures a flow + decides its action, =filtered=/=set_filter= substring-
+filter, =select= cursor, =block_selected=/=allow_selected= push user
+=Rule=s (precedence over the backend, re-deciding matching events),
+=rules()= exposes them for persistence to =sniffer_blocklist=, =detail=
+describes the selected flow. Terminal-free, launcher pattern. 6 tests
+(record/filter/block/allow/detail/empty). V7b renders it as a =ViewTree=.
+See Decision (2026-06-21).
 *** TODO V7b Wire the sniffer surface into the TUI (+ =ViewTree=)
 =closure sniff --tui= drives =SnifferApp= as a =ViewTree=; live events
 stream in, the user filters and toggles block/allow with keybindings
@@ -864,6 +868,19 @@ only (I8). Crates keep =#![forbid(unsafe_code)]=.
 * Decisions
 Open questions land here as subheadings: context, options considered,
 the reversible default taken, date.
+** DECISION (2026-06-21) Sniffer surface is a headless SnifferApp in shell-core, user rules in-app (V7a)
+Context: V7a adds the interactive sniffer state. Two picks: (1) where it
+lives — closure-sniffer (capture/decode) vs closure-shell-core (the home
+of headless UI state machines like =App=/=ModalApp=). Took shell-core
+(added a closure-sniffer dep): it keeps the launcher pattern (pure,
+terminal-free, =ViewTree=-renderable in V7b) and the sniffer crate stays
+focused on capture/decoding. (2) where block/allow decisions live — the
+toggles push =Rule=s into an in-app =rules= vec (user rules take
+precedence over the backend, re-deciding matching events), rather than
+writing config to disk inside the state machine. This keeps =SnifferApp=
+pure + testable; persisting =rules()= to the =sniffer_blocklist= config
+is the caller's step (a CLI/shell concern). Reversible: V7b renders the
+surface + wires persistence; the state machine is unchanged.
 ** DECISION (2026-06-21) TUI selects the highlighter at runtime via a boxed trait object (V6b)
 Context: V6b wires the real grammar into the TUI file view. The two
 highlighters are different concrete types (=TsHighlighter= vs

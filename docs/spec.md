@@ -302,7 +302,12 @@ eval`); a pulled/synced vault cannot run code without explicit local
   and hermetically tested; live capture (`PcapBackend`, `pnet` raw
   sockets) is opt-in behind the `pcap` feature and needs `CAP_NET_RAW`
   at runtime (X3). `closure sniff --live <iface>` drives it; the mock
-  stays the hermetic default.
+  stays the hermetic default. The interactive surface is a headless
+  `closure_shell_core::SnifferApp` (V7): a pure state machine over the
+  capture trait — live event list, cursor, substring filter, and per-flow
+  allow/block toggles that mutate the blocklist rules — unit-tested without
+  a terminal, the same pattern as the launcher `App`, and rendered as a
+  `ViewTree` by a shell (V7b).
 
 ### Layer 5 — Shells (I7)
 

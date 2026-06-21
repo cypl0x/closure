@@ -588,6 +588,140 @@ fn serialize_node(node: &Node, depth: usize, out: &mut String) {
     }
 }
 
+/// One captured network flow + the action decided for it (V7a).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SniffEvent {
+    /// Candidate string (`"<host>:<port> <proto>"`).
+    pub candidate: String,
+    /// The action a rule decided, if any.
+    pub action: Option<closure_sniffer::Action>,
+}
+
+/// Headless state for the interactive sniffer surface (V7a).
+///
+/// A pure state machine over [`closure_sniffer::CaptureBackend`]: a live
+/// event list, a cursor, a substring filter, and per-flow allow/block
+/// toggles that mutate the blocklist rules. Unit-testable without a
+/// terminal — the same pattern as the launcher [`App`]; a shell (V7b)
+/// renders it as a [`ViewTree`](Node).
+#[derive(Debug, Clone, Default)]
+pub struct SnifferApp {
+    events: Vec<SniffEvent>,
+    selected: usize,
+    filter: String,
+    rules: Vec<closure_sniffer::Rule>,
+}
+
+impl SnifferApp {
+    /// A fresh sniffer surface.
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Capture `candidate`, deciding its action via `backend` (and any
+    /// user rules already added). Appended to the event list.
+    pub fn record(&mut self, candidate: &str, backend: &impl closure_sniffer::CaptureBackend) {
+        let action = self
+            .user_action(candidate)
+            .or_else(|| backend.match_action(candidate));
+        self.events.push(SniffEvent {
+            candidate: candidate.to_owned(),
+            action,
+        });
+    }
+
+    /// The action a user rule decides for `candidate`, if any (user rules
+    /// take precedence over the backend).
+    fn user_action(&self, candidate: &str) -> Option<closure_sniffer::Action> {
+        closure_sniffer::match_first(candidate, &self.rules).map(|r| r.action)
+    }
+
+    /// Every captured event, in capture order.
+    #[must_use]
+    pub fn events(&self) -> &[SniffEvent] {
+        &self.events
+    }
+
+    /// The blocklist rules the toggles have added (for persistence to the
+    /// `sniffer_blocklist` config).
+    #[must_use]
+    pub fn rules(&self) -> &[closure_sniffer::Rule] {
+        &self.rules
+    }
+
+    /// Set the substring filter applied to [`Self::filtered`].
+    pub fn set_filter(&mut self, filter: &str) {
+        self.filter.clear();
+        self.filter.push_str(filter);
+        self.selected = 0;
+    }
+
+    /// Events whose candidate contains the filter (all when empty).
+    #[must_use]
+    pub fn filtered(&self) -> Vec<&SniffEvent> {
+        self.events
+            .iter()
+            .filter(|e| self.filter.is_empty() || e.candidate.contains(&self.filter))
+            .collect()
+    }
+
+    /// Move the cursor to filtered-row `i` (clamped).
+    pub fn select(&mut self, i: usize) {
+        let last = self.filtered().len().saturating_sub(1);
+        self.selected = i.min(last);
+    }
+
+    /// The cursor index into [`Self::filtered`].
+    #[must_use]
+    pub const fn selected(&self) -> usize {
+        self.selected
+    }
+
+    /// Add a rule for the selected flow and re-decide every event.
+    fn rule_for_selected(&mut self, action: closure_sniffer::Action) {
+        let Some(candidate) = self
+            .filtered()
+            .get(self.selected)
+            .map(|e| e.candidate.clone())
+        else {
+            return;
+        };
+        self.rules.push(closure_sniffer::Rule {
+            id: format!("user-{}", self.rules.len()),
+            pattern: candidate.clone(),
+            action,
+        });
+        // Re-decide the matching events under the new user rule.
+        for e in &mut self.events {
+            if e.candidate == candidate {
+                e.action = Some(action);
+            }
+        }
+    }
+
+    /// Block the selected flow (adds a `Block` rule).
+    pub fn block_selected(&mut self) {
+        self.rule_for_selected(closure_sniffer::Action::Block);
+    }
+
+    /// Allow the selected flow (adds an `Allow` rule, overriding any
+    /// backend block).
+    pub fn allow_selected(&mut self) {
+        self.rule_for_selected(closure_sniffer::Action::Allow);
+    }
+
+    /// A description of the selected flow (candidate + action), or `None`.
+    #[must_use]
+    pub fn detail(&self) -> Option<String> {
+        let e = self.filtered().get(self.selected).copied()?;
+        let action = e
+            .action
+            .map_or_else(|| "(no rule)".to_owned(), |a| format!("{a:?}"));
+        Some(format!("{}\naction: {action}", e.candidate))
+    }
+}
+
 /// The kind of a [`Node`], for the type-level UI capability matrix (V1c).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum NodeKind {
