@@ -121,6 +121,11 @@ layer. Every vision item is assigned to exactly one layer.
   prefers `TsHighlighter` for a bundled grammar when the feature is on,
   else `KeywordHighlighter` (V6b) — so code blocks get real, string-aware
   highlighting under the gate without changing the hermetic default.
+  `closure_tui::render_snapshot(&Node)` (V10a) joins the `render_view`
+  lines into one deterministic text snapshot — the headless render harness
+  that golden-tests the shared renderer with no terminal, turning the
+  "display-bound, pixel-unverified" caveat into real coverage of the
+  render path.
 
 ### Layer 1 — closure-org parser scope (v0.1 subset)
 

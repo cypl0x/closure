@@ -248,15 +248,17 @@ closure-crdt added as a shell-core dep. 4 tests (lists, resolve-ours
 persists, resolve-theirs, view actions carry chords) + keymap
 invariants. See Decision (2026-06-22).
 
-** TODO V10 Coverage → 100% via a render-verification harness [0/2]
+** WIP V10 Coverage → 100% via a render-verification harness [1/2]
 Floor is 82% (actual ~83.6%); the gap is draw/run loops + GUI windows,
 all "display-bound, pixel-unverified". The V1 =ViewTree= makes draw
 output testable without a display — close both gaps together.
-*** TODO V10a Headless render-snapshot harness
-Render a =ViewTree= to a deterministic ASCII/text snapshot; golden-test
-the rendered output for the TUI (and egui/gpui adapters via the same
-tree) with NO display. Turns the "can't verify pixels" caveat into real
-golden coverage of the render path.
+*** DONE V10a Headless render-snapshot harness
+=closure_tui::render_snapshot(&Node)= joins the =render_view= lines into
+one deterministic text snapshot; a golden test pins the exact output for
+a tree exercising every node kind (Pane/Rows/Detail/Palette/Input/
+Widget/Text/Hints), with NO terminal. Verifies the engine→render mapping
+(egui/gpui draw the same tree); the pixel raster stays ratatui's job.
+2 tests (golden + determinism). See Decision (2026-06-22).
 *** TODO V10b Ratchet coverage floor toward 100%
 With render code now hermetically reachable, add the missing-branch
 tests for the lowest crates (=closure-tui= 69%, =closure-llm= 74%,
@@ -883,6 +885,20 @@ only (I8). Crates keep =#![forbid(unsafe_code)]=.
 * Decisions
 Open questions land here as subheadings: context, options considered,
 the reversible default taken, date.
+** DECISION (2026-06-22) Render harness golden-tests the text snapshot, not pixels (V10a)
+Context: the recurring "GUI is display-bound, pixel-unverified" caveat.
+V1's =ViewTree= already made the shells render a shared =Node= tree
+through =render_view=; V10a closes the verification gap by snapshotting
+that render. Options: (a) a real headless GUI framebuffer compare
+(heavy, per-backend, flaky); (b) golden-test the deterministic *text*
+render of the =Node= tree. Took (b): =render_snapshot= joins the
+=render_view= lines, and a golden test pins the exact output for a tree
+exercising every node kind. This is honest — it verifies the
+engine→render mapping (the part that was untested), not the terminal's
+pixel raster (which is ratatui's job, not ours). The egui/gpui adapters
+draw the same tree, so the snapshot covers their logic too. Reversible:
+a pixel harness can be added later; the text golden stays the fast,
+deterministic gate.
 ** DECISION (2026-06-22) Conflict resolution applies through the vault command path, removing resolved entries (V9b)
 Context: V9b makes the V9a conflicts resolvable. The choice must persist
 + be undoable (I3/I8), so =ConflictApp= applies ours/theirs through

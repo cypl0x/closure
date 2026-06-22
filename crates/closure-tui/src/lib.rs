@@ -1330,6 +1330,14 @@ pub fn render_view(node: &closure_shell_core::Node) -> Vec<String> {
     out
 }
 
+/// Render a [`closure_shell_core::Node`] to a single deterministic text
+/// snapshot (V10a): [`render_view`] lines joined by `\n`. The headless
+/// render harness — golden-testable with no terminal.
+#[must_use]
+pub fn render_snapshot(node: &closure_shell_core::Node) -> String {
+    render_view(node).join("\n")
+}
+
 fn push_view_node(node: &closure_shell_core::Node, depth: usize, out: &mut Vec<String>) {
     use closure_shell_core::Node;
     let pad = "  ".repeat(depth);
