@@ -346,6 +346,81 @@ impl Cursor<'_> {
     }
 }
 
+/// Which field of a block a [`FieldConflict`] is about (V9a).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum ConflictField {
+    /// The headline title (LWW register).
+    Title,
+    /// The headline body (materialised RGA text).
+    Body,
+}
+
+/// A 3-way divergence on one field of one block (V9a): both `ours` and
+/// `theirs` changed it, differently, relative to `base`. LWW would
+/// silently pick one; this surfaces all three for a resolution choice.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FieldConflict {
+    /// The conflicting block.
+    pub block: BlockId,
+    /// Which field.
+    pub field: ConflictField,
+    /// The common-ancestor value (`None` if the block is new on a side).
+    pub base: Option<String>,
+    /// Our value.
+    pub ours: String,
+    /// Their value.
+    pub theirs: String,
+}
+
+/// Detect 3-way field conflicts between two replicas derived from a
+/// common `base` (V9a).
+///
+/// A field conflicts when `ours` and `theirs` hold different values and
+/// both differ from `base` (an add/add with differing values also
+/// conflicts). One-sided changes and identical edits do not. Output is
+/// sorted by `(block, field)` for determinism (I6).
+#[must_use]
+pub fn conflicts(base: &Replica, ours: &Replica, theirs: &Replica) -> Vec<FieldConflict> {
+    let mut out = Vec::new();
+    // Union of block ids present in ours or theirs, ordered + deduped by
+    // their string form (BlockId is not Ord) for determinism (I6).
+    let ids: std::collections::BTreeMap<String, &BlockId> = ours
+        .block_ids()
+        .chain(theirs.block_ids())
+        .map(|id| (id.to_string(), id))
+        .collect();
+
+    for id in ids.into_values() {
+        let detect = |field, b: Option<String>, o: Option<String>, t: Option<String>| {
+            let (o, t) = (o?, t?);
+            (o != t && Some(&o) != b.as_ref() && Some(&t) != b.as_ref()).then(|| FieldConflict {
+                block: id.clone(),
+                field,
+                base: b,
+                ours: o,
+                theirs: t,
+            })
+        };
+        if let Some(c) = detect(
+            ConflictField::Title,
+            base.title_of(id).map(ToOwned::to_owned),
+            ours.title_of(id).map(ToOwned::to_owned),
+            theirs.title_of(id).map(ToOwned::to_owned),
+        ) {
+            out.push(c);
+        }
+        if let Some(c) = detect(
+            ConflictField::Body,
+            base.body_of(id),
+            ours.body_of(id),
+            theirs.body_of(id),
+        ) {
+            out.push(c);
+        }
+    }
+    out
+}
+
 /// Merge errors.
 #[derive(Debug, Error)]
 pub enum CrdtError {

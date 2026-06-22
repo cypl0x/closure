@@ -198,6 +198,12 @@ eval`); a pulled/synced vault cannot run code without explicit local
   genuinely sandboxed tier (no host surface, no process spawn, true
   containment); the shell/python backends remain the opt-in "trusted"
   tier still subject to the C1b process bounds.
+- `closure-crdt` — also exposes 3-way conflict detection (V9): `conflicts(
+base, ours, theirs)` returns the `FieldConflict`s (title/body) both sides
+  changed divergently relative to a common base — instead of letting LWW
+  silently pick a winner — so a shell can offer a real resolution choice.
+  Pure + deterministic; the auto-merge stays the default, this is the
+  user-facing inspection layer.
 - `closure-crdt` — wraps `Document` as a set of CRDT replicas keyed by
   `BlockId`. `Edit` becomes a CRDT op. No API changes to `closure-core`.
   Shipped model: the title is a per-block last-writer-wins register

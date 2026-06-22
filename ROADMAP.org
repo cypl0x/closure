@@ -227,14 +227,17 @@ supported set. A2A: =Task= state machine (=submit=→Submitted,
 returns the resulting =state= so a caller can poll. 4 a2a + 2 acp tests.
 See Decision (2026-06-22).
 
-** TODO V9 Conflict-resolution UX [0/2]
+** WIP V9 Conflict-resolution UX [1/2]
 CRDT auto-merges; there is no user-facing surface to inspect/choose when
 fields diverge.
-*** TODO V9a =ConflictSet=: detect + expose divergent field choices
-When a base-relative merge has competing field values
-(title/body/property), expose =base/ours/theirs= per conflicting field
-instead of silently picking LWW. Pure, in =closure-crdt=; property test
-over the conflict corpus.
+*** DONE V9a =ConflictSet=: detect + expose divergent field choices
+=closure_crdt::conflicts(base, ours, theirs) -> Vec<FieldConflict>=:
+classifies a =Title=/=Body= field as conflicting when both sides changed
+it to different values vs base (3-way rule), exposing =base/ours/theirs=
+instead of LWW silently picking. Pure + additive (reads =title_of=/
+=body_of=; merge + wire untouched), deterministic (BTreeMap-ordered). 6
+tests (divergent titles/bodies, title-vs-body no-conflict, identical,
+one-sided, determinism). See Decision (2026-06-22).
 *** TODO V9b Interactive resolve in the TUI
 A conflict surface (=ViewTree=) listing conflicts; the user picks
 ours/theirs/edit per field; the choice applies through the command
@@ -876,6 +879,18 @@ only (I8). Crates keep =#![forbid(unsafe_code)]=.
 * Decisions
 Open questions land here as subheadings: context, options considered,
 the reversible default taken, date.
+** DECISION (2026-06-22) ConflictSet is a 3-way detector beside the auto-merge, not a replacement (V9a)
+Context: V9a surfaces conflicts the CRDT currently auto-resolves. The
+char-level body RGA + LWW title *do* converge automatically (and should
+stay the default — no regressions, no new merge mode). The gap is purely
+UX: a user may want to see + choose when both sides diverged. Took: a
+pure, additive =conflicts(base, ours, theirs)= that classifies a field
+as conflicting only when both sides changed it to different values vs
+base (the classic 3-way rule); it reads the public =title_of=/=body_of=
+accessors, so it touches neither merge nor the wire format. Output sorted
+by =(block, field)= via a =BTreeMap<String, &BlockId>= (BlockId is not
+Ord). Reversible: V9b renders/resolves these; the auto-merge is
+untouched, so turning the UX off is just not calling =conflicts=.
 ** DECISION (2026-06-22) A2A task state is derived synchronously; ACP negotiation is set intersection (V8b)
 Context: V8b adds ACP capability negotiation + A2A task lifecycle. (1)
 A2A: closure executes a delegated task synchronously (=Vault::run_tool=),
