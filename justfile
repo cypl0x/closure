@@ -1,6 +1,9 @@
-# closure dev gates. Run inside the nix dev shell: `nix develop -c just <recipe>`.
-# The nix flake check sandbox has no network, so these cargo-based gates
-# live here (registry reachable) rather than in flake `checks`.
+# closure dev gates. Every recipe is bare cargo — always wrap the call in
+# a dev shell:  `nix develop -c just <recipe>`. The native-webview GUIs
+# (gui-tauri / gui-gtk / gui-qt + their run-*) need the heavier shell:
+# `nix develop .#webview -c just <recipe>`. (egui/gpui use the default
+# shell.) The nix flake check sandbox has no network, so these cargo-based
+# gates live here (registry reachable) rather than in flake `checks`.
 
 # One-command gate: lint + tests (mirrors CI).
 check:
@@ -88,29 +91,33 @@ sniff-pcap:
     cargo build -p closure-cli --features pcap
     cargo test -p closure-sniffer --features pcap
 
-# X1a native webview shell (opt-in; pulls wry + webkitgtk). Build under
-# the webview devshell; the default `check` never touches the stack.
+# X1a native webview shell (opt-in; pulls wry + webkitgtk). Run under the
+# webview devshell:  nix develop .#webview -c just gui-tauri
 gui-tauri:
-    nix develop .#webview -c cargo build -p closure-shell-tauri --features tauri
+    cargo build -p closure-shell-tauri --features tauri
 
 # Launch the native webview shell against a vault (needs a display).
+#   nix develop .#webview -c just run-tauri VAULT
 run-tauri vault:
-    nix develop .#webview -c cargo run -p closure-shell-tauri --features tauri -- {{vault}}
+    cargo run -p closure-shell-tauri --features tauri -- {{vault}}
 
-# X1b native GTK4 shell (opt-in; pulls gtk4-rs + GTK4). Build under the
-# webview devshell; the default `check` never touches GTK.
+# X1b native GTK4 shell (opt-in; pulls gtk4-rs + GTK4). Run under the
+# webview devshell:  nix develop .#webview -c just gui-gtk
 gui-gtk:
-    nix develop .#webview -c cargo build -p closure-shell-gtk --features gtk
+    cargo build -p closure-shell-gtk --features gtk
 
 # Launch the GTK4 shell against a vault (needs a display).
+#   nix develop .#webview -c just run-gtk VAULT
 run-gtk vault:
-    nix develop .#webview -c cargo run -p closure-shell-gtk --features gtk -- {{vault}}
+    cargo run -p closure-shell-gtk --features gtk -- {{vault}}
 
-# X1c native Qt6/QML shell (opt-in; needs a Qt6 SDK / qmake6 on PATH).
+# X1c native Qt6/QML shell (opt-in; needs Qt6 / qmake6). Run under the
+# webview devshell:  nix develop .#webview -c just gui-qt
 gui-qt:
     cargo build -p closure-shell-qt --features qt
 
 # Launch the Qt6 shell against a vault (needs a display).
+#   nix develop .#webview -c just run-qt VAULT
 run-qt vault:
     cargo run -p closure-shell-qt --features qt -- {{vault}}
 
