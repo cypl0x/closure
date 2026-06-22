@@ -286,7 +286,13 @@ pub fn render_view(node: &closure_shell_core::Node) -> String {
                 s.push_str(&render_view(c));
                 s
             });
-            format!("<section><h2>{}</h2>{inner}</section>", escape_html(title))
+            // V12a: emit the node's semantic role + accessible label.
+            format!(
+                "<section role=\"{}\" aria-label=\"{}\"><h2>{}</h2>{inner}</section>",
+                node.aria_role(),
+                escape_html(title),
+                escape_html(title)
+            )
         }
         Node::Rows { rows, selected } => {
             let items = rows
@@ -318,7 +324,8 @@ pub fn render_view(node: &closure_shell_core::Node) -> String {
             format!("<dl class=\"detail\">{items}</dl>")
         }
         Node::Input { label, buffer } => format!(
-            "<label>{} <input value=\"{}\"></label>",
+            "<label>{} <input aria-label=\"{}\" value=\"{}\"></label>",
+            escape_html(label),
             escape_html(label),
             escape_html(buffer)
         ),

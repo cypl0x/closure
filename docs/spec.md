@@ -371,7 +371,11 @@ base, ours, theirs)` returns the `FieldConflict`s (title/body) both sides
   `capability_gate::<S, C>()` compiles iff shell `S` declares `C`, so a
   shell invoking an unsupported capability is a compile error (a
   `compile_fail` doctest proves the negative) — the Yesod rule applied to
-  the shell/capability matrix.
+  the shell/capability matrix. For accessibility (V12a), every `Node`
+  derives a semantic `aria_role` (region/list/group/textbox/listbox/
+  status/note) and, where natural, an `aria_label` (pane title, input
+  label, widget name); the web shell emits `role`/`aria-label` attributes
+  from them so a screen-reader can navigate the rendered tree.
 - `closure-tui` — ratatui + crossterm. Primary first shell.
 - `closure-cli` — the `closure` binary (`tui`, `check`, `fmt`, `parse`,
   `query`, `serve`).

@@ -1017,6 +1017,34 @@ pub enum NodeKind {
 }
 
 impl Node {
+    /// The semantic ARIA role for this node (V12a), so an embedder can
+    /// emit screen-reader-navigable output. Derived per kind, like
+    /// [`Self::kind`].
+    #[must_use]
+    pub const fn aria_role(&self) -> &'static str {
+        match self {
+            Self::Pane { .. } | Self::Widget { .. } => "region",
+            Self::Rows { .. } => "list",
+            Self::Detail { .. } => "group",
+            Self::Input { .. } => "textbox",
+            Self::Palette { .. } => "listbox",
+            Self::Hints { .. } => "status",
+            Self::Text(_) => "note",
+        }
+    }
+
+    /// The accessible label for this node, where it has a natural one
+    /// (pane title, input label, widget name); `None` otherwise (V12a).
+    #[must_use]
+    pub fn aria_label(&self) -> Option<&str> {
+        match self {
+            Self::Pane { title, .. } => Some(title),
+            Self::Input { label, .. } => Some(label),
+            Self::Widget { name, .. } => Some(name),
+            _ => None,
+        }
+    }
+
     /// This node's [`NodeKind`].
     #[must_use]
     pub const fn kind(&self) -> NodeKind {

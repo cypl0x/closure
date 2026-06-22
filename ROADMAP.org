@@ -278,12 +278,15 @@ a =compile_fail= doctest (no trybuild dep). Complements the runtime
 matrices. 2 positive unit tests + 1 compile_fail + 1 compile-pass
 doctest. See Decision (2026-06-22).
 
-** TODO V12 Accessibility + mobile [0/2]
+** WIP V12 Accessibility + mobile [1/2]
 Untouched. Both are real vision concerns (cross-platform, top-notch UX).
-*** TODO V12a Semantic / a11y metadata on the =ViewTree=
-Each node carries an optional semantic role + label; the web shell emits
-ARIA roles/labels from it; document the a11y model. After this a
-screen-reader can navigate the web shell.
+*** DONE V12a Semantic / a11y metadata on the =ViewTree=
+=Node::aria_role= derives a semantic role per kind (region/list/group/
+textbox/listbox/status/note, exhaustive match like =kind()=) +
+=aria_label= for naturally-labelled variants (pane title, input label,
+widget name). The web shell emits =role=/=aria-label= attributes from
+them, so a screen-reader can navigate the rendered tree. 2 shell-core +
+2 web tests. See Decision (2026-06-22).
 *** TODO V12b Mobile story (responsive web + Flutter doc)
 A responsive layout for the web shell (usable on a phone viewport) and
 an updated =docs/flutter-shell.md= showing the mobile shell consuming
@@ -889,6 +892,18 @@ only (I8). Crates keep =#![forbid(unsafe_code)]=.
 * Decisions
 Open questions land here as subheadings: context, options considered,
 the reversible default taken, date.
+** DECISION (2026-06-22) a11y roles are derived per node kind, not stored fields (V12a)
+Context: V12a wants semantic role + label on the =ViewTree=. Options:
+(a) add =role=/=label= fields to every =Node= variant (invasive — touches
+the matrix, renderers, every constructor); (b) derive them per kind via
+=Node::aria_role= (exhaustive match, like =kind()=) + =aria_label= for
+the variants with a natural label. Took (b): non-invasive, consistent
+with the type-level UI philosophy (roles are a structural property of the
+kind), and a new kind is forced to declare its role by the exhaustive
+match. The web shell emits =role=/=aria-label= from these (panes labelled
+by title, inputs by their label — the real screen-reader win). Reversible:
+an explicit per-node label override can be added later for cases where the
+derived label is insufficient, without changing the accessor signatures.
 ** DECISION (2026-06-22) Capability typestate is a sealed Supports<C> trait; the negative is a compile_fail doctest (V11)
 Context: V11 wants "a shell invoking an unsupported capability is a
 compile error". Options: (a) a type-level set of capabilities threaded

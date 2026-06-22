@@ -56,3 +56,27 @@ fn widget_node_renders_name_and_content() {
     assert!(html.contains("data-widget=\"banner\""), "{html}");
     assert!(html.contains("== closure =="), "{html}");
 }
+
+#[test]
+fn pane_emits_aria_role_and_label() {
+    let (_d, tree) = browse_tree();
+    let html = render_view(&tree);
+    assert!(html.contains("role=\"region\""), "pane role: {html}");
+    assert!(
+        html.contains("aria-label=\"closure\""),
+        "pane label: {html}"
+    );
+}
+
+#[test]
+fn input_emits_aria_label() {
+    let node = Node::Input {
+        label: "capture".to_owned(),
+        buffer: String::new(),
+    };
+    let html = render_view(&node);
+    assert!(
+        html.contains("aria-label=\"capture\""),
+        "input label: {html}"
+    );
+}
