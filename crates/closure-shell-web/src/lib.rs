@@ -215,13 +215,16 @@ fn handle(mut stream: TcpStream, vault: &mut Vault) -> std::io::Result<()> {
 fn render(vault: &Vault) -> String {
     let mut html = String::new();
     html.push_str("<!doctype html><html><head><meta charset=\"utf-8\">");
+    // V12b: responsive — usable on a phone viewport.
+    html.push_str("<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">");
     html.push_str("<title>closure vault</title>");
     html.push_str(
         "<style>body{font-family:sans-serif;max-width:48em;margin:2em auto;padding:0 1em}\
          details{margin-left:1em}\
          .id{color:#888;font-size:0.8em;font-family:monospace}\
          .todo{color:#c00;font-weight:bold;margin-right:0.5em}\
-         .tag{background:#eef;padding:0 0.3em;border-radius:0.2em;margin-left:0.3em}</style>",
+         .tag{background:#eef;padding:0 0.3em;border-radius:0.2em;margin-left:0.3em}\
+         @media(max-width:40em){body{margin:1em auto;padding:0 0.6em;font-size:1.05em}}</style>",
     );
     html.push_str("</head><body>");
     let _ = writeln!(html, "<h1>closure vault — {} file(s)</h1>", vault.len());

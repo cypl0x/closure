@@ -375,7 +375,11 @@ base, ours, theirs)` returns the `FieldConflict`s (title/body) both sides
   derives a semantic `aria_role` (region/list/group/textbox/listbox/
   status/note) and, where natural, an `aria_label` (pane title, input
   label, widget name); the web shell emits `role`/`aria-label` attributes
-  from them so a screen-reader can navigate the rendered tree.
+  from them so a screen-reader can navigate the rendered tree. For mobile
+  (V12b) the web page is responsive (a `width=device-width` viewport +
+  `@media` layout), usable on a phone browser with no native build; a
+  native mobile app stays an external Flutter project (Dart/Xcode/NDK are
+  non-hermetic, like X1d) — see `docs/flutter-shell.md`.
 - `closure-tui` — ratatui + crossterm. Primary first shell.
 - `closure-cli` — the `closure` binary (`tui`, `check`, `fmt`, `parse`,
   `query`, `serve`).

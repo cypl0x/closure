@@ -41,3 +41,28 @@ build is external.
 
 The capability matrix (`closure shells`) keeps Flutter as a comparison
 entry; this document is its "build" deliverable.
+
+## Mobile (V12b)
+
+closure has two mobile-capable surfaces, both reusing the existing kernel
+without a new in-tree build:
+
+1. **Responsive web (in-tree, hermetic).** `closure serve` and the
+   single-file `closure export html` now emit a `width=device-width`
+   viewport meta and a `@media (max-width: 40em)` layout, so the web shell
+   is usable on a phone browser today — no app-store build, no native
+   toolchain. This is the default mobile story and is covered by the web
+   shell tests.
+
+2. **Native mobile app (external, like X1d).** A Flutter app (iOS/Android)
+   consumes the same surface — either a `WebView` over `closure serve` or
+   `flutter_rust_bridge` over the `shell-core` ABI rendering the
+   `ViewTree` (`Node`) natively. The Dart/Flutter SDK + the Xcode/Android
+   NDK toolchains are **not hermetically nix-packaged**, so a native
+   mobile build cannot live in the workspace under I10 — it is an external
+   packaging project, exactly as the desktop Flutter shell (X1d). The
+   `ViewTree` + `closure serve` are the stable contract it builds on; the
+   Rust side stays hermetic and unchanged.
+
+The responsive web path means "usable on a phone" needs no external build
+at all; the native app is the optional, external polish tier.

@@ -80,3 +80,22 @@ fn input_emits_aria_label() {
         "input label: {html}"
     );
 }
+
+#[test]
+fn vault_page_is_responsive_for_mobile() {
+    let dir = tempfile::tempdir().expect("tmp");
+    fs::write(dir.path().join("notes.org"), "* TODO Ship\n").expect("write");
+    let mut v = Vault::open(dir.path()).expect("open");
+    let resp = closure_shell_web::respond(&mut v, "GET", "/", "");
+    assert_eq!(resp.status, 200);
+    assert!(
+        resp.body.contains("name=\"viewport\""),
+        "viewport meta for mobile: {}",
+        resp.body
+    );
+    assert!(
+        resp.body.contains("@media"),
+        "responsive media query: {}",
+        resp.body
+    );
+}
