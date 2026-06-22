@@ -51,6 +51,17 @@ gui-egui:
 run-egui vault:
     cargo run -p closure-cli --features egui -- egui {{vault}}
 
+# gpui desktop shell build gate (opt-in; pulls Zed's gpui + the same
+# GL/X11/wayland/xkb libs as egui, from the default devshell). The window
+# needs a display so it is NOT exercised here — this gate guarantees the
+# feature still compiles. Launch it with:  just run-gpui VAULT.
+gui-gpui:
+    cargo build -p closure-cli --features gpui
+
+# Launch the gpui desktop shell against a vault (needs a display).
+run-gpui vault:
+    cargo run -p closure-cli --features gpui -- gpui {{vault}}
+
 # Embedded wasm plugin runtime build + test gate (opt-in; pulls
 # wasmtime + cranelift). Hermetic (WAT fixtures run in-process); kept
 # out of the default `check` so that build stays light. Registry
