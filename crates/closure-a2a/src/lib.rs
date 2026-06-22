@@ -95,6 +95,72 @@ pub fn delegate_task(vault: &mut Vault, task: &str) -> String {
     vault.run_tool(task)
 }
 
+/// Lifecycle state of a delegated A2A task (V8b).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TaskState {
+    /// Posted, not yet executing.
+    Submitted,
+    /// Executing.
+    Working,
+    /// Finished successfully.
+    Done,
+    /// Finished with an error.
+    Failed,
+}
+
+impl TaskState {
+    /// The lowercase wire token (`submitted`/`working`/`done`/`failed`).
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Submitted => "submitted",
+            Self::Working => "working",
+            Self::Done => "done",
+            Self::Failed => "failed",
+        }
+    }
+}
+
+/// A delegated task + its lifecycle state, so a caller can poll progress
+/// (V8b).
+///
+/// Created [`Submitted`](TaskState::Submitted); [`run`](Self::run) drives
+/// it through `Working` to `Done`/`Failed` (a tool result starting
+/// `ERROR` is a failure).
+#[derive(Debug, Clone)]
+pub struct Task {
+    /// The task line (a `Vault::run_tool` command).
+    pub command: String,
+    /// Current lifecycle state.
+    pub state: TaskState,
+    /// Result text once run.
+    pub result: String,
+}
+
+impl Task {
+    /// Post a task in the `Submitted` state.
+    #[must_use]
+    pub fn submit(command: &str) -> Self {
+        Self {
+            command: command.to_owned(),
+            state: TaskState::Submitted,
+            result: String::new(),
+        }
+    }
+
+    /// Execute the task against `vault` (I8), transitioning `Working` →
+    /// `Done`/`Failed`. Idempotent re-runs re-execute the command.
+    pub fn run(&mut self, vault: &mut Vault) {
+        self.state = TaskState::Working;
+        self.result = delegate_task(vault, &self.command);
+        self.state = if self.result.starts_with("ERROR") || self.result.starts_with("error") {
+            TaskState::Failed
+        } else {
+            TaskState::Done
+        };
+    }
+}
+
 /// Handle one A2A JSON-RPC message against a vault.
 ///
 /// Returns the response line, or `None` for notifications (no `id`).
@@ -116,9 +182,14 @@ pub fn handle_message(vault: &mut Vault, json: &str) -> Option<String> {
             "{\"name\":\"closure\",\"version\":\"0.0.0\",\"skills\":[\"task/delegate\"]}".to_owned()
         }
         "task/delegate" => {
-            let task = string_field(json, "task").unwrap_or_default();
-            let text = delegate_task(vault, &task);
-            format!("{{\"text\":\"{}\"}}", json_escape(&text))
+            let task_line = string_field(json, "task").unwrap_or_default();
+            let mut task = Task::submit(&task_line);
+            task.run(vault);
+            format!(
+                "{{\"state\":\"{}\",\"text\":\"{}\"}}",
+                task.state.as_str(),
+                json_escape(&task.result)
+            )
         }
         _ => return Some(closure_jsonrpc::method_not_found(&id)),
     };

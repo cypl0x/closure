@@ -142,3 +142,28 @@ fn agent_card_notification_gets_no_response() {
     );
     assert!(r.is_none());
 }
+
+#[test]
+fn agent_card_advertises_capabilities() {
+    let (_d, mut v) = vault();
+    let r = handle_message(&mut v, r#"{"jsonrpc":"2.0","id":9,"method":"agent/card"}"#)
+        .expect("response");
+    assert!(
+        r.contains("\"capabilities\""),
+        "card lists capabilities: {r}"
+    );
+    assert!(r.contains("capability-negotiation"), "{r}");
+}
+
+#[test]
+fn negotiate_returns_the_supported_intersection() {
+    let (_d, mut v) = vault();
+    let req = r#"{"jsonrpc":"2.0","id":10,"method":"agent/negotiate","params":{"capabilities":"tools, telepathy, resources"}}"#;
+    let r = handle_message(&mut v, req).expect("response");
+    assert!(r.contains("\"agreed\""), "agreed set: {r}");
+    assert!(
+        r.contains("tools") && r.contains("resources"),
+        "supported caps agreed: {r}"
+    );
+    assert!(!r.contains("telepathy"), "unsupported cap rejected: {r}");
+}

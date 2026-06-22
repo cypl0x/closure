@@ -258,6 +258,13 @@ eval`); a pulled/synced vault cannot run code without explicit local
     resources, `file://` uris) and `prompts/list` + `prompts/get`
     (capture/ask templates as MCP prompts), over the dep-free JSON subset;
     `initialize` advertises the `resources`/`prompts` capabilities.
+  - `closure-acp` `agent/card` lists the agent's `capabilities`, and
+    `agent/negotiate` returns the intersection of a client's proposed
+    capabilities with the supported set (V8b). `closure-a2a` delegated
+    tasks carry a lifecycle `TaskState` (submitted → working →
+    done/failed; a tool result starting `ERROR` fails) via the `Task`
+    state machine, and `task/delegate` returns the resulting `state` so a
+    caller can track progress.
   - `closure-lsp` serves Content-Length-framed JSON-RPC over stdio. Beyond
     `documentSymbol` + go-to-definition it answers `textDocument/hover`:
     over an `id:` link it previews the target headline (title + a

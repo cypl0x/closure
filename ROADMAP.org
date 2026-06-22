@@ -209,7 +209,7 @@ and renders via =closure_tui::render_view= — hermetic. Live stream stays
 =pcap=-gated + display-bound. 1 shell-core view test + 1 cli test + the
 keymap invariants. See Decision (2026-06-22).
 
-** WIP V8 Protocol depth: MCP resources/prompts + ACP/A2A [1/2]
+** DONE V8 Protocol depth: MCP resources/prompts + ACP/A2A [2/2]
 MCP/ACP/A2A are ~200 LOC each — minimal handshake + tools. Deepen to the
 parts editors/agents actually use.
 *** DONE V8a MCP resources + prompts
@@ -219,10 +219,13 @@ resources (=file://= uris, =text/x-org=, read via =document_relative=);
 prompts. Dep-free JSON subset; =initialize= advertises
 =resources=/=prompts=. 4 new framed tests (11 total in the mcp suite).
 See Decision (2026-06-22).
-*** TODO V8b ACP/A2A capability negotiation + task status
-ACP agent-card capability negotiation; A2A task lifecycle states
-(submitted/working/done/failed) on the delegated-task round-trip, so a
-caller can poll progress. Round-trip tests assert the state machine.
+*** DONE V8b ACP/A2A capability negotiation + task status
+ACP: =agent/card= advertises a =capabilities= list; =agent/negotiate=
+returns the intersection of the client's proposed caps with the
+supported set. A2A: =Task= state machine (=submit=→Submitted,
+=run=→Working→Done/Failed; =ERROR= result → Failed) + =task/delegate=
+returns the resulting =state= so a caller can poll. 4 a2a + 2 acp tests.
+See Decision (2026-06-22).
 
 ** TODO V9 Conflict-resolution UX [0/2]
 CRDT auto-merges; there is no user-facing surface to inspect/choose when
@@ -873,6 +876,19 @@ only (I8). Crates keep =#![forbid(unsafe_code)]=.
 * Decisions
 Open questions land here as subheadings: context, options considered,
 the reversible default taken, date.
+** DECISION (2026-06-22) A2A task state is derived synchronously; ACP negotiation is set intersection (V8b)
+Context: V8b adds ACP capability negotiation + A2A task lifecycle. (1)
+A2A: closure executes a delegated task synchronously (=Vault::run_tool=),
+so the "lifecycle" is modelled as a =Task= state machine — =submit= →
+=Submitted=, =run= → =Working= then =Done=/=Failed= (a result starting
+=ERROR= is the failure signal, matching =run_tool='s convention). The
+state is real + pollable; the transient =Working= is the in-flight value
+during =run=. No async runtime pulled in (I10). (2) ACP: =agent/card=
+advertises a =capabilities= list and =agent/negotiate= returns the
+intersection of the client's proposed set with =CAPABILITIES= — a
+stateless, dep-free handshake. Reversible: a genuinely async task queue
+(the swarm already drains one) can back =Task= with persistence later;
+the state enum + protocol shape stay.
 ** DECISION (2026-06-22) MCP resources are vault files; prompts are the capture/ask templates (V8a)
 Context: V8a deepens MCP to resources + prompts. What to expose: (1)
 resources = the vault's =*.org= files (=file://= uris, =text/x-org=),

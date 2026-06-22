@@ -88,6 +88,10 @@ pub fn run_stdio(registry: &Registry) -> Result<(), AcpError> {
 /// Agent tools exposed for the card (mirrors the MCP tool surface so ACP
 /// serves the same capabilities for agent discovery). Schemas are minimal
 /// object for now (args string); matches the JSON subset used by MCP.
+/// Capabilities this agent advertises for negotiation (V8b). A client
+/// proposes a set; `agent/negotiate` returns the intersection.
+const CAPABILITIES: &[&str] = &["tools", "tools-call", "resources", "capability-negotiation"];
+
 const AGENT_TOOLS: &[(&str, &str)] = &[
     ("list-files", "List every org file in the vault"),
     ("read", "Read one file's org source: read <file>"),
@@ -181,10 +185,24 @@ pub fn handle_message(vault: &mut Vault, json: &str) -> Option<String> {
                     )
                 })
                 .collect();
+            let caps: Vec<String> = CAPABILITIES.iter().map(|c| format!("\"{c}\"")).collect();
             format!(
-                "{{\"name\":\"closure\",\"version\":\"0.0.0\",\"tools\":[{}]}}",
+                "{{\"name\":\"closure\",\"version\":\"0.0.0\",\"capabilities\":[{}],\"tools\":[{}]}}",
+                caps.join(","),
                 tools.join(",")
             )
+        }
+        "agent/negotiate" => {
+            // The client proposes capabilities (whitespace/comma list);
+            // return the intersection this agent actually supports (V8b).
+            let requested = string_field(json, "capabilities").unwrap_or_default();
+            let agreed: Vec<String> = requested
+                .split([',', ' '])
+                .map(str::trim)
+                .filter(|c| !c.is_empty() && CAPABILITIES.contains(c))
+                .map(|c| format!("\"{c}\""))
+                .collect();
+            format!("{{\"agreed\":[{}]}}", agreed.join(","))
         }
         "tools/list" => {
             let tools: Vec<String> = AGENT_TOOLS
