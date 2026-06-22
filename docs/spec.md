@@ -203,7 +203,11 @@ base, ours, theirs)` returns the `FieldConflict`s (title/body) both sides
   changed divergently relative to a common base — instead of letting LWW
   silently pick a winner — so a shell can offer a real resolution choice.
   Pure + deterministic; the auto-merge stays the default, this is the
-  user-facing inspection layer.
+  user-facing inspection layer. `closure_shell_core::ConflictApp` (V9b)
+  renders the conflicts as a `ViewTree` and applies the user's
+  ours/theirs choice through the vault command path (rename/set-body —
+  undoable, I3/I8), removing each resolved conflict; the `resolve-ours`/
+  `resolve-theirs` chords come from the keymap (V1 rule).
 - `closure-crdt` — wraps `Document` as a set of CRDT replicas keyed by
   `BlockId`. `Edit` becomes a CRDT op. No API changes to `closure-core`.
   Shipped model: the title is a per-block last-writer-wins register

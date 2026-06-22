@@ -1437,6 +1437,7 @@ version = "0.0.0"
 dependencies = [
  "closure-config",
  "closure-core",
+ "closure-crdt",
  "closure-input",
  "closure-query",
  "closure-sniffer",

@@ -227,7 +227,7 @@ supported set. A2A: =Task= state machine (=submit=→Submitted,
 returns the resulting =state= so a caller can poll. 4 a2a + 2 acp tests.
 See Decision (2026-06-22).
 
-** WIP V9 Conflict-resolution UX [1/2]
+** DONE V9 Conflict-resolution UX [2/2]
 CRDT auto-merges; there is no user-facing surface to inspect/choose when
 fields diverge.
 *** DONE V9a =ConflictSet=: detect + expose divergent field choices
@@ -238,11 +238,15 @@ instead of LWW silently picking. Pure + additive (reads =title_of=/
 =body_of=; merge + wire untouched), deterministic (BTreeMap-ordered). 6
 tests (divergent titles/bodies, title-vs-body no-conflict, identical,
 one-sided, determinism). See Decision (2026-06-22).
-*** TODO V9b Interactive resolve in the TUI
-A conflict surface (=ViewTree=) listing conflicts; the user picks
-ours/theirs/edit per field; the choice applies through the command
-registry (I3/I8, undoable) and persists. After this the user resolves a
-real divergence by hand instead of accepting the automatic merge.
+*** DONE V9b Interactive resolve in the TUI
+=closure_shell_core::ConflictApp= lists the V9a conflicts + applies the
+user's ours/theirs choice through =Shell::rename_headline= / =set_body=
+(undoable I3/I8, persisted), dropping each resolved entry. =view()=
+renders the conflict list + a base/ours/theirs detail pane with
+=resolve-ours=/=resolve-theirs= actions (chords from the keymap, V1).
+closure-crdt added as a shell-core dep. 4 tests (lists, resolve-ours
+persists, resolve-theirs, view actions carry chords) + keymap
+invariants. See Decision (2026-06-22).
 
 ** TODO V10 Coverage → 100% via a render-verification harness [0/2]
 Floor is 82% (actual ~83.6%); the gap is draw/run loops + GUI windows,
@@ -879,6 +883,20 @@ only (I8). Crates keep =#![forbid(unsafe_code)]=.
 * Decisions
 Open questions land here as subheadings: context, options considered,
 the reversible default taken, date.
+** DECISION (2026-06-22) Conflict resolution applies through the vault command path, removing resolved entries (V9b)
+Context: V9b makes the V9a conflicts resolvable. The choice must persist
++ be undoable (I3/I8), so =ConflictApp= applies ours/theirs through
+=Shell::rename_headline= / =set_body= (the same registry-backed command
+path every edit uses) rather than poking the replica or the file
+directly. Each resolved conflict is dropped from the list (cursor
+clamped) so the surface shrinks to empty as the user works through them.
+=resolve-ours=/=resolve-theirs= are universal keymap commands (=g o=/=g
+t=, EMACS =C-c O=/=C-c T=) so =Action::new= resolves their chords (V1
+rule), like the sniffer/llm-toggle precedents. =closure-crdt= added as a
+shell-core dep (no cycle). Honest scope: the headless =ConflictApp= +
+=view= are golden-tested; an on-screen interactive loop reuses them like
+every other surface. Reversible: a 3-way *body* merge editor can replace
+the whole-value body choice without changing the apply path.
 ** DECISION (2026-06-22) ConflictSet is a 3-way detector beside the auto-merge, not a replacement (V9a)
 Context: V9a surfaces conflicts the CRDT currently auto-resolves. The
 char-level body RGA + LWW title *do* converge automatically (and should

@@ -19,6 +19,7 @@ closure-config = { path = "../closure-config" }
 closure-input = { path = "../closure-input" }
 closure-tree-sitter = { path = "../closure-tree-sitter" }
 closure-sniffer = { path = "../closure-sniffer" }
+closure-crdt = { path = "../closure-crdt" }
 
 [dev-dependencies]
 tempfile = "3"

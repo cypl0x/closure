@@ -775,6 +775,148 @@ impl SnifferApp {
     }
 }
 
+/// Interactive 3-way conflict resolution surface (V9b).
+///
+/// Lists the [`FieldConflict`](closure_crdt::FieldConflict)s detected by
+/// [`closure_crdt::conflicts`] and applies the user's ours/theirs choice
+/// through the vault command path (undoable, I3/I8). Rendered as a
+/// [`ViewTree`](Node) with the `resolve-ours`/`resolve-theirs` chords.
+#[derive(Debug, Clone)]
+pub struct ConflictApp {
+    conflicts: Vec<closure_crdt::FieldConflict>,
+    selected: usize,
+    input_mode: closure_config::InputMode,
+}
+
+impl ConflictApp {
+    /// Build a resolver over `conflicts` for input `mode`.
+    #[must_use]
+    pub const fn new(
+        conflicts: Vec<closure_crdt::FieldConflict>,
+        mode: closure_config::InputMode,
+    ) -> Self {
+        Self {
+            conflicts,
+            selected: 0,
+            input_mode: mode,
+        }
+    }
+
+    /// The outstanding conflicts.
+    #[must_use]
+    pub fn conflicts(&self) -> &[closure_crdt::FieldConflict] {
+        &self.conflicts
+    }
+
+    /// The cursor index.
+    #[must_use]
+    pub const fn selected(&self) -> usize {
+        self.selected
+    }
+
+    /// Move the cursor (clamped).
+    pub fn select(&mut self, i: usize) {
+        let last = self.conflicts.len().saturating_sub(1);
+        self.selected = i.min(last);
+    }
+
+    /// Resolve the selected conflict to our value.
+    ///
+    /// # Errors
+    ///
+    /// Propagates the vault command error.
+    pub fn resolve_ours(&mut self, shell: &mut Shell) -> Result<(), closure_store::VaultError> {
+        let Some(c) = self.conflicts.get(self.selected) else {
+            return Ok(());
+        };
+        let (block, field, value) = (c.block.clone(), c.field, c.ours.clone());
+        self.apply(shell, &block, field, &value)
+    }
+
+    /// Resolve the selected conflict to their value.
+    ///
+    /// # Errors
+    ///
+    /// Propagates the vault command error.
+    pub fn resolve_theirs(&mut self, shell: &mut Shell) -> Result<(), closure_store::VaultError> {
+        let Some(c) = self.conflicts.get(self.selected) else {
+            return Ok(());
+        };
+        let (block, field, value) = (c.block.clone(), c.field, c.theirs.clone());
+        self.apply(shell, &block, field, &value)
+    }
+
+    /// Apply `value` to the conflicting field via the command path, then
+    /// drop the now-resolved conflict.
+    fn apply(
+        &mut self,
+        shell: &mut Shell,
+        block: &closure_core::BlockId,
+        field: closure_crdt::ConflictField,
+        value: &str,
+    ) -> Result<(), closure_store::VaultError> {
+        match field {
+            closure_crdt::ConflictField::Title => shell.rename_headline(block, value)?,
+            closure_crdt::ConflictField::Body => shell.set_body(block, value)?,
+        }
+        self.conflicts.remove(self.selected);
+        if self.selected >= self.conflicts.len() {
+            self.selected = self.conflicts.len().saturating_sub(1);
+        }
+        Ok(())
+    }
+
+    /// The declarative [`Node`] tree: the conflict list + a detail pane
+    /// showing base/ours/theirs with the resolve actions (chords carried
+    /// per the V1 invariant).
+    #[must_use]
+    pub fn view(&self) -> Node {
+        let m = self.input_mode;
+        let rows: Vec<RowView> = self
+            .conflicts
+            .iter()
+            .map(|c| RowView {
+                id: c.block.to_string(),
+                title: format!("{:?}: {}", c.field, c.block),
+                level: 1,
+                todo: None,
+            })
+            .collect();
+        let mut children = vec![Node::Rows {
+            rows,
+            selected: self.selected,
+        }];
+        if let Some(c) = self.conflicts.get(self.selected) {
+            children.push(Node::Detail {
+                fields: vec![
+                    FieldView {
+                        label: "base".to_owned(),
+                        value: c.base.clone().unwrap_or_default(),
+                        action: None,
+                    },
+                    FieldView {
+                        label: "ours".to_owned(),
+                        value: c.ours.clone(),
+                        action: Action::new(m, "resolve-ours"),
+                    },
+                    FieldView {
+                        label: "theirs".to_owned(),
+                        value: c.theirs.clone(),
+                        action: Action::new(m, "resolve-theirs"),
+                    },
+                ],
+            });
+        }
+        children.push(Node::Hints {
+            line: format!("[{m:?}] {} conflicts", self.conflicts.len()),
+        });
+        Node::Pane {
+            title: "conflicts".to_owned(),
+            children,
+        }
+    }
+}
+
 /// The kind of a [`Node`], for the type-level UI capability matrix (V1c).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum NodeKind {
