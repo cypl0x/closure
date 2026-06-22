@@ -588,6 +588,84 @@ fn serialize_node(node: &Node, depth: usize, out: &mut String) {
     }
 }
 
+/// Type-level shell capabilities (V11).
+///
+/// Applies the Yesod "turn runtime bugs into compile-time errors" rule to
+/// the shell/capability matrix: a shell may only invoke a capability it
+/// *statically* declares via [`Supports`]. The sibling
+/// [`NodeKind`]/`ui_matrix` data describes what each shell renders at
+/// run-time; this makes a *wrong* invocation a compile error.
+pub mod caps {
+    mod sealed {
+        pub trait Sealed {}
+    }
+
+    /// A capability marker (sealed — only the markers below implement it).
+    pub trait Capability: sealed::Sealed {}
+
+    macro_rules! capability {
+        ($(#[$m:meta])* $name:ident) => {
+            $(#[$m])*
+            #[derive(Debug, Clone, Copy)]
+            pub struct $name;
+            impl sealed::Sealed for $name {}
+            impl Capability for $name {}
+        };
+    }
+
+    capability!(/// Read/browse the vault.
+        Browse);
+    capability!(/// Mutating edits (rename/add/delete/set).
+        Edit);
+    capability!(/// org-capture creation.
+        Capture);
+    capability!(/// Fuzzy / full-text search.
+        Search);
+    capability!(/// Babel / eval / tangle.
+        Eval);
+    capability!(/// Notion-style database views.
+        Database);
+
+    /// `S: Supports<C>` iff shell `S` provides capability `C`. A shell
+    /// type implements it once per capability it offers.
+    pub trait Supports<C: Capability> {}
+
+    /// Compile-time proof that shell `S` supports capability `C`.
+    ///
+    /// A no-op at run-time; its only purpose is the bound `S: Supports<C>`,
+    /// so a shell that does not declare a capability cannot call into it.
+    ///
+    /// Supported combinations compile:
+    /// ```
+    /// use closure_shell_core::caps::{capability_gate, TuiShell, Edit};
+    /// capability_gate::<TuiShell, Edit>();
+    /// ```
+    ///
+    /// An unsupported one does **not** — a whole class of shell/capability
+    /// mismatch bugs cannot be written:
+    /// ```compile_fail
+    /// use closure_shell_core::caps::{capability_gate, ReadOnlyWebShell, Edit};
+    /// capability_gate::<ReadOnlyWebShell, Edit>();
+    /// ```
+    pub const fn capability_gate<S: Supports<C>, C: Capability>() {}
+
+    /// The full-featured TUI shell.
+    #[derive(Debug, Clone, Copy)]
+    pub struct TuiShell;
+    impl Supports<Browse> for TuiShell {}
+    impl Supports<Edit> for TuiShell {}
+    impl Supports<Capture> for TuiShell {}
+    impl Supports<Search> for TuiShell {}
+    impl Supports<Eval> for TuiShell {}
+    impl Supports<Database> for TuiShell {}
+
+    /// The read-only web shell (browse + search; no editing).
+    #[derive(Debug, Clone, Copy)]
+    pub struct ReadOnlyWebShell;
+    impl Supports<Browse> for ReadOnlyWebShell {}
+    impl Supports<Search> for ReadOnlyWebShell {}
+}
+
 /// One captured network flow + the action decided for it (V7a).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SniffEvent {

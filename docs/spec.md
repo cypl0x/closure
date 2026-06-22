@@ -365,7 +365,13 @@ base, ours, theirs)` returns the `FieldConflict`s (title/body) both sides
   UI venn/diff (V1c), the sibling of the `closure shells` capability
   matrix. A renderer's `match` over `Node` is exhaustive, so adding a
   kind without handling it is a compile error — a shell that does not
-  render a kind is a compile-/test-time fact, not a runtime surprise.
+  render a kind is a compile-/test-time fact, not a runtime surprise. The
+  `caps` module (V11) extends this to _capabilities_: a sealed
+  `Capability` marker per capability + per-shell `Supports<C>` impls mean
+  `capability_gate::<S, C>()` compiles iff shell `S` declares `C`, so a
+  shell invoking an unsupported capability is a compile error (a
+  `compile_fail` doctest proves the negative) — the Yesod rule applied to
+  the shell/capability matrix.
 - `closure-tui` — ratatui + crossterm. Primary first shell.
 - `closure-cli` — the `closure` binary (`tui`, `check`, `fmt`, `parse`,
   `query`, `serve`).

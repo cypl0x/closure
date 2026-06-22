@@ -268,12 +268,15 @@ GUI window + web socket loops (all DROP'd under H2b, all needing a live
 TTY/network/display). The floor tracks genuinely-reachable code; the
 metric is not gamed. See Decision (2026-06-22).
 
-** TODO V11 Typestate: shells can't call unsupported capabilities [0/1]
-Apply the Yesod rule structurally: today the =Capability= matrix is
-runtime data. Make "this shell does not support capability X" a
-compile-time / type error where a shell tries to invoke an unsupported
-capability, via a typestate / sealed-trait encoding. After this a whole
-class of shell/capability mismatch bugs cannot be written.
+** DONE V11 Typestate: shells can't call unsupported capabilities [1/1]
+=closure_shell_core::caps=: a sealed =Capability= marker per capability
+(Browse/Edit/Capture/Search/Eval/Database) + per-shell =Supports<C>=
+impls; =capability_gate::<S, C>()= compiles iff =S: Supports<C>=. A
+shell invoking an unsupported capability is a compile error — proven by
+a =compile_fail= doctest (no trybuild dep). Complements the runtime
+=Capability= (=closure shells=) + =NodeKind= (=closure ui-matrix=)
+matrices. 2 positive unit tests + 1 compile_fail + 1 compile-pass
+doctest. See Decision (2026-06-22).
 
 ** TODO V12 Accessibility + mobile [0/2]
 Untouched. Both are real vision concerns (cross-platform, top-notch UX).
@@ -886,6 +889,21 @@ only (I8). Crates keep =#![forbid(unsafe_code)]=.
 * Decisions
 Open questions land here as subheadings: context, options considered,
 the reversible default taken, date.
+** DECISION (2026-06-22) Capability typestate is a sealed Supports<C> trait; the negative is a compile_fail doctest (V11)
+Context: V11 wants "a shell invoking an unsupported capability is a
+compile error". Options: (a) a type-level set of capabilities threaded
+through a =Shell<Caps>= (heavy const-generics / HList machinery); (b) a
+sealed =Capability= marker per capability + a =Supports<C>= trait each
+shell type implements once per capability it offers, gated by
+=capability_gate::<S, C>()= (bound =S: Supports<C>=). Took (b): minimal,
+readable, and exactly expresses "S provides C". The compile-time
+guarantee's *negative* — the whole point — is proven hermetically by a
+=compile_fail= doctest on =capability_gate= (no trybuild dep needed);
+positive combos are ordinary unit tests. The sealed trait stops external
+crates inventing bogus capabilities. This complements (does not replace)
+the runtime =Capability= matrix (=closure shells=) + the =NodeKind=
+matrix (=closure ui-matrix=). Reversible: a =Shell<Caps>= typestate can
+wrap these markers later without changing them.
 ** DECISION (2026-06-22) Coverage floor ratcheted 82→84; the residual is non-hermetic by design (V10b)
 Context: V10b raises the coverage gate "toward 100%, as high as the
 now-reachable code allows". Measured full-workspace line coverage is
