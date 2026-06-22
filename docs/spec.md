@@ -253,6 +253,11 @@ eval`); a pulled/synced vault cannot run code without explicit local
   vision's "configure that (live) too".
 - `closure-mcp`, `closure-lsp`, `closure-acp`, `closure-a2a` — protocol
   bridges; each translates messages to registry commands.
+  - `closure-mcp` serves `initialize` + `tools/list` + `tools/call`, and
+    (V8a) `resources/list` + `resources/read` (vault files as MCP
+    resources, `file://` uris) and `prompts/list` + `prompts/get`
+    (capture/ask templates as MCP prompts), over the dep-free JSON subset;
+    `initialize` advertises the `resources`/`prompts` capabilities.
   - `closure-lsp` serves Content-Length-framed JSON-RPC over stdio. Beyond
     `documentSymbol` + go-to-definition it answers `textDocument/hover`:
     over an `id:` link it previews the target headline (title + a

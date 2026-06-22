@@ -101,3 +101,56 @@ fn response_text_is_json_escaped() {
     .expect("response");
     assert!(r.contains("\\\"hi\\\""), "quotes escaped in payload: {r}");
 }
+
+#[test]
+fn resources_list_exposes_vault_files() {
+    let (_td, mut v) = vault();
+    let r = handle_message(
+        &mut v,
+        r#"{"jsonrpc":"2.0","id":3,"method":"resources/list"}"#,
+    )
+    .expect("response");
+    assert!(r.contains("\"resources\""), "resources array: {r}");
+    assert!(r.contains("notes.org"), "lists the vault file: {r}");
+}
+
+#[test]
+fn resources_read_returns_file_contents() {
+    let (_td, mut v) = vault();
+    let req =
+        r#"{"jsonrpc":"2.0","id":4,"method":"resources/read","params":{"uri":"file://notes.org"}}"#;
+    let r = handle_message(&mut v, req).expect("response");
+    assert!(r.contains("\"contents\""), "contents array: {r}");
+    assert!(r.contains("Ship parser"), "carries the file text: {r}");
+}
+
+#[test]
+fn prompts_list_and_get() {
+    let (_td, mut v) = vault();
+    let list = handle_message(
+        &mut v,
+        r#"{"jsonrpc":"2.0","id":5,"method":"prompts/list"}"#,
+    )
+    .expect("response");
+    assert!(
+        list.contains("\"prompts\"") && list.contains("capture"),
+        "prompts: {list}"
+    );
+    let get = handle_message(
+        &mut v,
+        r#"{"jsonrpc":"2.0","id":6,"method":"prompts/get","params":{"name":"capture"}}"#,
+    )
+    .expect("response");
+    assert!(get.contains("\"messages\""), "prompt messages: {get}");
+}
+
+#[test]
+fn initialize_advertises_resources_and_prompts() {
+    let (_td, mut v) = vault();
+    let r = handle_message(&mut v, r#"{"jsonrpc":"2.0","id":1,"method":"initialize"}"#)
+        .expect("response");
+    assert!(
+        r.contains("resources") && r.contains("prompts"),
+        "caps: {r}"
+    );
+}

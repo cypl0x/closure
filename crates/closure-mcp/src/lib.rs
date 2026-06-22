@@ -123,6 +123,19 @@ const TOOLS: &[(&str, &str)] = &[
     ),
 ];
 
+/// MCP prompts exposed by `prompts/list` / `prompts/get` (V8a): closure's
+/// capture + ask templates as reusable prompt entries.
+const PROMPTS: &[(&str, &str)] = &[
+    (
+        "capture",
+        "Capture a new TODO into the inbox. Provide a concise title.",
+    ),
+    (
+        "ask",
+        "Ask about the vault. The agent may use the list/read/search tools.",
+    ),
+];
+
 /// Handle one MCP JSON-RPC message against a vault.
 ///
 /// Returns the response line, or `None` for notifications. Supported:
@@ -134,9 +147,62 @@ pub fn handle_message(vault: &mut closure_store::Vault, json: &str) -> Option<St
     let id = closure_jsonrpc::raw_field(json, "id")?;
     let method = string_field(json, "method").unwrap_or_default();
     let result = match method.as_str() {
-        "initialize" => "{\"protocolVersion\":\"2024-11-05\",\"capabilities\":{\"tools\":{}},\
+        "initialize" => "{\"protocolVersion\":\"2024-11-05\",\
+             \"capabilities\":{\"tools\":{},\"resources\":{},\"prompts\":{}},\
              \"serverInfo\":{\"name\":\"closure\",\"version\":\"0.0.0\"}}"
             .to_owned(),
+        "resources/list" => {
+            let items: Vec<String> = vault
+                .paths()
+                .iter()
+                .map(|p| {
+                    let disp = p.display().to_string();
+                    let name = p
+                        .file_name()
+                        .and_then(|s| s.to_str())
+                        .unwrap_or(&disp)
+                        .to_owned();
+                    format!(
+                        "{{\"uri\":\"file://{}\",\"name\":\"{}\",\"mimeType\":\"text/x-org\"}}",
+                        json_escape(&disp),
+                        json_escape(&name)
+                    )
+                })
+                .collect();
+            format!("{{\"resources\":[{}]}}", items.join(","))
+        }
+        "resources/read" => {
+            let uri = string_field(json, "uri").unwrap_or_default();
+            let rel = uri.strip_prefix("file://").unwrap_or(&uri);
+            let text = vault
+                .document_relative(std::path::Path::new(rel))
+                .map(closure_core::Document::source)
+                .unwrap_or_default();
+            format!(
+                "{{\"contents\":[{{\"uri\":\"{}\",\"mimeType\":\"text/x-org\",\"text\":\"{}\"}}]}}",
+                json_escape(&uri),
+                json_escape(&text)
+            )
+        }
+        "prompts/list" => {
+            let prompts: Vec<String> = PROMPTS
+                .iter()
+                .map(|(name, desc)| format!("{{\"name\":\"{name}\",\"description\":\"{desc}\"}}"))
+                .collect();
+            format!("{{\"prompts\":[{}]}}", prompts.join(","))
+        }
+        "prompts/get" => {
+            let name = string_field(json, "name").unwrap_or_default();
+            let text = PROMPTS
+                .iter()
+                .find(|(n, _)| *n == name)
+                .map_or("unknown prompt", |(_, desc)| desc);
+            format!(
+                "{{\"messages\":[{{\"role\":\"user\",\"content\":\
+                 {{\"type\":\"text\",\"text\":\"{}\"}}}}]}}",
+                json_escape(text)
+            )
+        }
         "tools/list" => {
             let tools: Vec<String> = TOOLS
                 .iter()

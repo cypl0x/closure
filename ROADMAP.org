@@ -209,14 +209,16 @@ and renders via =closure_tui::render_view= — hermetic. Live stream stays
 =pcap=-gated + display-bound. 1 shell-core view test + 1 cli test + the
 keymap invariants. See Decision (2026-06-22).
 
-** TODO V8 Protocol depth: MCP resources/prompts + ACP/A2A [0/2]
+** WIP V8 Protocol depth: MCP resources/prompts + ACP/A2A [1/2]
 MCP/ACP/A2A are ~200 LOC each — minimal handshake + tools. Deepen to the
 parts editors/agents actually use.
-*** TODO V8a MCP resources + prompts
-=resources/list= + =resources/read= (vault files/headlines as MCP
-resources) and =prompts/list= + =prompts/get= (capture/ask templates as
-MCP prompts), over the existing dep-free JSON subset. Framed-protocol
-tests like the LSP suite.
+*** DONE V8a MCP resources + prompts
+=resources/list= + =resources/read= expose vault =*.org= files as MCP
+resources (=file://= uris, =text/x-org=, read via =document_relative=);
+=prompts/list= + =prompts/get= expose the capture/ask templates as named
+prompts. Dep-free JSON subset; =initialize= advertises
+=resources=/=prompts=. 4 new framed tests (11 total in the mcp suite).
+See Decision (2026-06-22).
 *** TODO V8b ACP/A2A capability negotiation + task status
 ACP agent-card capability negotiation; A2A task lifecycle states
 (submitted/working/done/failed) on the delegated-task round-trip, so a
@@ -871,6 +873,18 @@ only (I8). Crates keep =#![forbid(unsafe_code)]=.
 * Decisions
 Open questions land here as subheadings: context, options considered,
 the reversible default taken, date.
+** DECISION (2026-06-22) MCP resources are vault files; prompts are the capture/ask templates (V8a)
+Context: V8a deepens MCP to resources + prompts. What to expose: (1)
+resources = the vault's =*.org= files (=file://= uris, =text/x-org=),
+read via =document_relative= — the natural read surface an MCP client
+browses; headline-level resources could come later but file granularity
+is the honest first step. (2) prompts = closure's existing =capture= and
+=ask= templates as named MCP prompts (=prompts/get= returns a single
+user message), reusing the same vocabulary the CLI exposes. Built on the
+dep-free JSON subset (no serde, I10), framed-protocol-tested like the
+LSP suite. =initialize= now advertises =resources=/=prompts=. Reversible:
+headline/heading resources + parameterised prompts extend the same
+methods without a transport change.
 ** DECISION (2026-06-22) Sniffer block/allow are universal keymap commands; --tui renders the ViewTree (V7b)
 Context: V7b renders the sniffer surface + needs chords for block/allow
 (the V1 "keybinding from the source of truth" rule). The chord source is
