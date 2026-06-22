@@ -917,6 +917,11 @@ enum Cmd {
         /// (needs the `pcap` feature + `CAP_NET_RAW`).
         #[arg(long)]
         live: Option<String>,
+        /// Render the candidate(s) as the interactive sniffer surface's
+        /// `ViewTree` (V7b): the flow list + a block/allow detail pane with
+        /// keybindings. Hermetic (no live capture).
+        #[arg(long)]
+        tui: bool,
     },
     /// Print build info: name, version, target triple.
     Build,
@@ -1357,7 +1362,13 @@ fn run(cmd: &Cmd) -> Result<(), String> {
             candidate,
             config,
             live,
-        } => cmd_sniff(candidate.as_deref(), config.as_deref(), live.as_deref()),
+            tui,
+        } => cmd_sniff(
+            candidate.as_deref(),
+            config.as_deref(),
+            live.as_deref(),
+            *tui,
+        ),
         Cmd::Build => cmd_build(),
         Cmd::Gpui { vault } => cmd_gpui(vault),
         Cmd::Egui { vault } => cmd_egui(vault),
@@ -3080,6 +3091,7 @@ fn cmd_sniff(
     candidate: Option<&str>,
     config: Option<&Path>,
     live: Option<&str>,
+    tui: bool,
 ) -> Result<(), String> {
     use closure_sniffer::{Action, Rule, match_first};
 
@@ -3095,6 +3107,26 @@ fn cmd_sniff(
     let Some(candidate) = candidate else {
         return Err("provide a candidate, or --live <iface>".into());
     };
+
+    // V7b: render the sniffer surface's ViewTree for the candidate.
+    if tui {
+        let rules: Vec<Rule> = globs
+            .iter()
+            .map(|g| Rule {
+                id: format!("block-{g}"),
+                pattern: g.clone(),
+                action: Action::Block,
+            })
+            .collect();
+        let backend = closure_sniffer::MockBackend::new(rules);
+        let mut app = closure_shell_core::SnifferApp::new();
+        app.record(candidate, &backend);
+        app.select(0);
+        for line in closure_tui::render_view(&app.view(closure_config::InputMode::Notion)) {
+            println!("{line}");
+        }
+        return Ok(());
+    }
     if globs.is_empty() {
         println!("no blocklist (or no config); default Allow for {candidate}");
         return Ok(());

@@ -5,7 +5,8 @@
 
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
-use closure_shell_core::SnifferApp;
+use closure_config::InputMode;
+use closure_shell_core::{Node, SnifferApp};
 use closure_sniffer::{Action, MockBackend, Rule};
 
 fn backend() -> MockBackend {
@@ -85,4 +86,40 @@ fn detail_describes_the_selected_flow() {
 fn empty_app_has_no_detail() {
     let app = SnifferApp::new();
     assert!(app.detail().is_none());
+}
+
+#[test]
+fn view_renders_events_and_actionable_block_allow_with_chords() {
+    let mut app = SnifferApp::new();
+    let b = backend();
+    app.record("ads.example:443 TCP", &b);
+    app.select(0);
+    let Node::Pane { children, .. } = app.view(InputMode::Notion) else {
+        panic!("root pane")
+    };
+    // The event list is present.
+    assert!(children.iter().any(|n| matches!(n, Node::Rows { .. })));
+    assert!(children.iter().any(|n| matches!(n, Node::Hints { .. })));
+    // The detail pane offers block + allow, each carrying a real chord.
+    let detail = children
+        .iter()
+        .find_map(|n| match n {
+            Node::Detail { fields } => Some(fields),
+            _ => None,
+        })
+        .expect("detail");
+    let block = detail
+        .iter()
+        .find(|f| {
+            f.action
+                .as_ref()
+                .is_some_and(|a| a.command() == "block-flow")
+        })
+        .expect("block action");
+    assert!(!block.action.as_ref().unwrap().chord().is_empty());
+    assert!(detail.iter().any(|f| {
+        f.action
+            .as_ref()
+            .is_some_and(|a| a.command() == "allow-flow")
+    }));
 }

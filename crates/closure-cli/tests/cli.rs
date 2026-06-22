@@ -67,6 +67,30 @@ fn shells_prints_matrix() {
 }
 
 #[test]
+fn sniff_tui_renders_flow_and_block_allow_chords() {
+    let v = vault();
+    fs::write(
+        v.path().join("config.org"),
+        "#+BEGIN_SRC closure-config\nsniffer_blocklist = ads.*\n#+END_SRC\n",
+    )
+    .expect("config");
+    let out = ok(&[
+        "sniff",
+        "--tui",
+        "--config",
+        v.path().join("config.org").to_str().unwrap(),
+        "ads.example:443 TCP",
+    ]);
+    assert!(out.contains("ads.example"), "flow listed: {out}");
+    assert!(
+        out.contains("block") && out.contains("allow"),
+        "block/allow offered: {out}"
+    );
+    // The block/allow detail rows carry their keybinding in brackets.
+    assert!(out.contains('['), "chords shown: {out}");
+}
+
+#[test]
 fn pkg_list_and_lock_over_local_registry() {
     let reg = tempfile::tempdir().expect("tmp");
     fs::write(

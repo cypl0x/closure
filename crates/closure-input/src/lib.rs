@@ -53,6 +53,8 @@ const DOOM_KEYMAP: &[(&str, &str)] = &[
     ("y", "edit-tags"),
     ("o", "edit-property"),
     ("g r", "toggle-llm-render"),
+    ("g b", "block-flow"),
+    ("g w", "allow-flow"),
 ];
 
 /// Emacs bindings: Ctrl/Meta chords, `C-x C-c` quits.
@@ -87,6 +89,8 @@ const EMACS_KEYMAP: &[(&str, &str)] = &[
     ("C-c y", "edit-tags"),
     ("C-c o", "edit-property"),
     ("C-c g", "toggle-llm-render"),
+    ("C-c B", "block-flow"),
+    ("C-c W", "allow-flow"),
 ];
 
 /// Vim bindings: modal navigation keys.
@@ -122,6 +126,8 @@ const VIM_KEYMAP: &[(&str, &str)] = &[
     ("y", "edit-tags"),
     ("o", "edit-property"),
     ("g r", "toggle-llm-render"),
+    ("g b", "block-flow"),
+    ("g w", "allow-flow"),
 ];
 
 /// Helix bindings: vim-like with `U` redo and `g e` for end.
@@ -157,6 +163,8 @@ const HELIX_KEYMAP: &[(&str, &str)] = &[
     ("y", "edit-tags"),
     ("o", "edit-property"),
     ("g r", "toggle-llm-render"),
+    ("g b", "block-flow"),
+    ("g w", "allow-flow"),
 ];
 
 /// Notion bindings: mouse + arrows + slash command, minimal chords.
@@ -191,6 +199,8 @@ const NOTION_KEYMAP: &[(&str, &str)] = &[
     ("y", "edit-tags"),
     ("o", "edit-property"),
     ("g r", "toggle-llm-render"),
+    ("g b", "block-flow"),
+    ("g w", "allow-flow"),
 ];
 
 /// The canonical `(chord, command)` keymap for an input mode — the

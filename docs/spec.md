@@ -307,7 +307,11 @@ eval`); a pulled/synced vault cannot run code without explicit local
   capture trait — live event list, cursor, substring filter, and per-flow
   allow/block toggles that mutate the blocklist rules — unit-tested without
   a terminal, the same pattern as the launcher `App`, and rendered as a
-  `ViewTree` by a shell (V7b).
+  `ViewTree` by a shell (V7b): `SnifferApp::view(mode)` builds the flow
+  list + a block/allow detail pane whose actions carry their chords
+  (`block-flow`/`allow-flow`, bound in every keymap), and `closure sniff
+--tui <candidate>` renders it via `closure_tui::render_view` (hermetic;
+  live capture stays `pcap`-gated).
 
 ### Layer 5 — Shells (I7)
 

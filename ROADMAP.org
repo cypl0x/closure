@@ -187,7 +187,7 @@ test uses string context (=x="if then fi"=): no Keyword span inside the
 quotes — real parsing, not word-matching. 1 fallback + 1 feature-gated
 test; =just tree-sitter= covers the tui. See Decision (2026-06-21).
 
-** WIP V7 Interactive network-sniffer UI [1/2]
+** DONE V7 Interactive network-sniffer UI [2/2]
 Sniffer is =parse_candidate= + pcap backend + a one-shot CLI print +
 org log. The vision wants a nice, interactive UI (Little Snitch /
 wireshark class), still usable from TUI/CLI, composable + blockable.
@@ -200,11 +200,14 @@ filter, =select= cursor, =block_selected=/=allow_selected= push user
 describes the selected flow. Terminal-free, launcher pattern. 6 tests
 (record/filter/block/allow/detail/empty). V7b renders it as a =ViewTree=.
 See Decision (2026-06-21).
-*** TODO V7b Wire the sniffer surface into the TUI (+ =ViewTree=)
-=closure sniff --tui= drives =SnifferApp= as a =ViewTree=; live events
-stream in, the user filters and toggles block/allow with keybindings
-shown per the V1 rule. Hermetic over the mock backend; live capture
-stays =pcap=-gated.
+*** DONE V7b Wire the sniffer surface into the TUI (+ =ViewTree=)
+=SnifferApp::view(mode)= builds the flow list + a block/allow detail
+pane whose actions carry their chords (=block-flow=/=allow-flow= added
+to all 5 keymaps, V1 rule). =closure sniff --tui <candidate>= builds a
+=MockBackend= from the =sniffer_blocklist= globs, records the candidate,
+and renders via =closure_tui::render_view= — hermetic. Live stream stays
+=pcap=-gated + display-bound. 1 shell-core view test + 1 cli test + the
+keymap invariants. See Decision (2026-06-22).
 
 ** TODO V8 Protocol depth: MCP resources/prompts + ACP/A2A [0/2]
 MCP/ACP/A2A are ~200 LOC each — minimal handshake + tools. Deepen to the
@@ -868,6 +871,20 @@ only (I8). Crates keep =#![forbid(unsafe_code)]=.
 * Decisions
 Open questions land here as subheadings: context, options considered,
 the reversible default taken, date.
+** DECISION (2026-06-22) Sniffer block/allow are universal keymap commands; --tui renders the ViewTree (V7b)
+Context: V7b renders the sniffer surface + needs chords for block/allow
+(the V1 "keybinding from the source of truth" rule). The chord source is
+=mode_keymap=, so =block-flow=/=allow-flow= were added to all 5 keymaps
+(free chords =g b=/=g w=, EMACS =C-c B=/=C-c W=) — same precedent as
+=toggle-llm-render= (V3b): commands that a specific surface uses still
+live in the universal command vocabulary so =Action::new= resolves their
+chord and which-key shows them. =SnifferApp::view(mode)= reuses the
+=Node= tree (rows + a block/allow detail pane). =closure sniff --tui
+<candidate>= builds a =MockBackend= from the =sniffer_blocklist= globs,
+records the candidate, and renders via =closure_tui::render_view= —
+hermetic; the interactive live stream stays =pcap=-gated + display-bound.
+Reversible: an interactive TUI loop drives the same =SnifferApp= +
+=view=; the render path is shared with every other shell.
 ** DECISION (2026-06-21) Sniffer surface is a headless SnifferApp in shell-core, user rules in-app (V7a)
 Context: V7a adds the interactive sniffer state. Two picks: (1) where it
 lives — closure-sniffer (capture/decode) vs closure-shell-core (the home

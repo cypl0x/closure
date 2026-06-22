@@ -720,6 +720,59 @@ impl SnifferApp {
             .map_or_else(|| "(no rule)".to_owned(), |a| format!("{a:?}"));
         Some(format!("{}\naction: {action}", e.candidate))
     }
+
+    /// The declarative [`Node`] tree for the sniffer surface (V7b): the
+    /// filtered flow list, a detail pane offering block/allow (each
+    /// carrying its chord, the V1 invariant), and the which-key hints.
+    #[must_use]
+    pub fn view(&self, mode: closure_config::InputMode) -> Node {
+        let rows: Vec<RowView> = self
+            .filtered()
+            .iter()
+            .map(|e| RowView {
+                id: e.candidate.clone(),
+                title: e.candidate.clone(),
+                level: 1,
+                todo: e.action.map(|a| format!("{a:?}")),
+            })
+            .collect();
+        let mut children = vec![Node::Rows {
+            rows,
+            selected: self.selected,
+        }];
+        if let Some(e) = self.filtered().get(self.selected).copied() {
+            let mut fields = vec![FieldView {
+                label: "flow".to_owned(),
+                value: e.candidate.clone(),
+                action: None,
+            }];
+            fields.push(FieldView {
+                label: "action".to_owned(),
+                value: e
+                    .action
+                    .map_or_else(|| "(no rule)".to_owned(), |a| format!("{a:?}")),
+                action: None,
+            });
+            fields.push(FieldView {
+                label: "block".to_owned(),
+                value: String::new(),
+                action: Action::new(mode, "block-flow"),
+            });
+            fields.push(FieldView {
+                label: "allow".to_owned(),
+                value: String::new(),
+                action: Action::new(mode, "allow-flow"),
+            });
+            children.push(Node::Detail { fields });
+        }
+        children.push(Node::Hints {
+            line: format!("[{mode:?}] sniffer — {} flows", self.events.len()),
+        });
+        Node::Pane {
+            title: "sniffer".to_owned(),
+            children,
+        }
+    }
 }
 
 /// The kind of a [`Node`], for the type-level UI capability matrix (V1c).
