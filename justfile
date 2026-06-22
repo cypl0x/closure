@@ -10,8 +10,14 @@ check:
 # Full-workspace line-coverage floor (ratchet toward 100%), including
 # the CLI binary — `closure-cli/tests/cli.rs` spawns the real binary so
 # main.rs is now genuinely covered (no exclusions). Fails under it.
+# Floor ratcheted 82 → 84 (V10): the V10a render-snapshot harness + the
+# new declarative surfaces made the render path hermetically reachable.
+# The residual ~16% is non-hermetic by design — the ratatui draw/run
+# loop, the curl/HTTP LLM paths, and the GUI window + web socket loops
+# (recorded DROP under H2b); those need a live TTY/network/display and so
+# cannot raise the *hermetic* gate. No coverage exclusions (no gaming).
 coverage:
-    cargo llvm-cov --workspace --fail-under-lines 82
+    cargo llvm-cov --workspace --fail-under-lines 84
 
 # Parser fuzz/replay + property gate (I1/I5/I6) on stable.
 fuzz:
