@@ -273,6 +273,58 @@ fn escape_html(s: &str) -> String {
         .replace('>', "&gt;")
 }
 
+/// Inline vanilla-JS renderer (V13): rebuilds the `DOM` from the embedded
+/// `VIEW` `ViewTree` `JSON`, setting each node's `ARIA` role. No
+/// framework, no build step — just a function shipped inside the HTML.
+const VIEW_RENDERER_JS: &str = "function render(n){\
+const d=document.createElement('div');\
+if(n.role)d.setAttribute('role',n.role);\
+if(n.k==='pane'){const h=document.createElement('h2');h.textContent=n.title;d.appendChild(h);\
+(n.children||[]).forEach(c=>d.appendChild(render(c)));}\
+else if(n.k==='rows'){const ul=document.createElement('ul');\
+(n.rows||[]).forEach((r,i)=>{const li=document.createElement('li');\
+li.textContent=(r.todo?r.todo+' ':'')+r.title;if(i===n.selected)li.className='sel';\
+ul.appendChild(li);});d.appendChild(ul);}\
+else if(n.k==='detail'){(n.fields||[]).forEach(f=>{const p=document.createElement('div');\
+p.textContent=f.label+': '+f.value+(f.chord?' ['+f.chord+']':'');d.appendChild(p);});}\
+else if(n.k==='input'){const i=document.createElement('input');i.value=n.buffer;\
+i.setAttribute('aria-label',n.label);d.appendChild(i);}\
+else if(n.k==='palette'){const ul=document.createElement('ul');\
+(n.items||[]).forEach(it=>{const li=document.createElement('li');\
+li.textContent='['+it.chord+'] '+it.label;ul.appendChild(li);});d.appendChild(ul);}\
+else if(n.k==='hints'){d.textContent=n.line;}\
+else if(n.k==='widget'){const pre=document.createElement('pre');pre.textContent=n.content;\
+d.appendChild(pre);}\
+else if(n.k==='text'){d.textContent=n.text;}\
+return d;}\
+document.getElementById('app').appendChild(render(VIEW));";
+
+/// Export the vault's browse [`ViewTree`](closure_shell_core::Node) as a
+/// self-contained, declarative single HTML file (V13).
+///
+/// The `Node` tree is embedded as JSON and rebuilt client-side by an
+/// inline vanilla-JS renderer — the same declarative description every
+/// other shell renders, with no server and no toolchain. Closes the
+/// "self-contained artifact" + "declarative UI" loop.
+#[must_use]
+pub fn export_view_html(vault: &Vault) -> String {
+    let json = closure_shell_core::view_to_json(&closure_shell_core::browse_view(vault));
+    let mut h = String::new();
+    h.push_str("<!doctype html><html><head><meta charset=\"utf-8\">");
+    h.push_str("<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">");
+    h.push_str(
+        "<title>closure</title><style>body{font-family:sans-serif;max-width:48em;\
+         margin:2em auto;padding:0 1em}li.sel{font-weight:bold}\
+         @media(max-width:40em){body{margin:1em auto;padding:0 0.6em}}</style>",
+    );
+    h.push_str("</head><body><div id=\"app\"></div><script>\nconst VIEW=");
+    h.push_str(&json);
+    h.push_str(";\n");
+    h.push_str(VIEW_RENDERER_JS);
+    h.push_str("\n</script></body></html>");
+    h
+}
+
 /// Render a shared [`closure_shell_core::Node`] view tree to HTML (V1b).
 ///
 /// The web shell is one embedder of the declarative tree the engine

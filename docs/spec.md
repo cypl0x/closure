@@ -392,7 +392,12 @@ base, ours, theirs)` returns the `FieldConflict`s (title/body) both sides
   (`reformat`/`headline_titles`) that `inline_wasm_editor` embeds into
   the export so the single HTML file re-parses edits in the browser,
   offline. Opt-in `wasm` feature; `just wasm-web-bundle` builds it; the
-  default build never pulls wasm-bindgen (I10).
+  default build never pulls wasm-bindgen (I10). `export_view_html` (V13)
+  is the declarative export: the vault's browse `ViewTree` is embedded as
+  JSON (`view_to_json`) and rebuilt client-side by an inline vanilla-JS
+  renderer that sets each node's ARIA role — the same declarative `Node`
+  description every other shell renders, in one self-contained file with
+  no server and no toolchain.
 - `closure-shell-tauri` — native webview desktop shell (X1a): hosts the
   web shell's `export_html` page in a `wry`/`tao` window (Tauri's webview
   foundation). Opt-in `tauri` feature; the default build never pulls the

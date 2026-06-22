@@ -521,6 +521,120 @@ pub fn browse_view(vault: &closure_store::Vault) -> Node {
     }
 }
 
+/// Escape a string for a JSON double-quoted literal (dep-free).
+fn json_str(s: &str) -> String {
+    let mut out = String::with_capacity(s.len() + 2);
+    out.push('"');
+    for c in s.chars() {
+        match c {
+            '"' => out.push_str("\\\""),
+            '\\' => out.push_str("\\\\"),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            other => out.push(other),
+        }
+    }
+    out.push('"');
+    out
+}
+
+/// Serialise a [`ViewTree`](Node) to compact JSON (V13), dep-free (no
+/// `serde`).
+///
+/// Each node object carries its kind tag (`k`), its
+/// [`aria_role`](Node::aria_role), and its data — enough for a tiny
+/// client-side renderer to rebuild the `DOM`, so a self-contained HTML
+/// export can render the declarative tree with no server and no toolchain.
+#[must_use]
+pub fn view_to_json(node: &Node) -> String {
+    use std::fmt::Write as _;
+    let role = json_str(node.aria_role());
+    match node {
+        Node::Pane { title, children } => {
+            let kids: Vec<String> = children.iter().map(view_to_json).collect();
+            format!(
+                "{{\"k\":\"pane\",\"role\":{role},\"title\":{},\"children\":[{}]}}",
+                json_str(title),
+                kids.join(",")
+            )
+        }
+        Node::Rows { rows, selected } => {
+            let items = rows.iter().fold(String::new(), |mut s, r| {
+                if !s.is_empty() {
+                    s.push(',');
+                }
+                let todo = r
+                    .todo
+                    .as_deref()
+                    .map_or_else(|| "null".to_owned(), json_str);
+                let _ = write!(
+                    s,
+                    "{{\"title\":{},\"todo\":{todo},\"level\":{}}}",
+                    json_str(&r.title),
+                    r.level
+                );
+                s
+            });
+            format!("{{\"k\":\"rows\",\"role\":{role},\"selected\":{selected},\"rows\":[{items}]}}")
+        }
+        Node::Detail { fields } => {
+            let items = fields.iter().fold(String::new(), |mut s, f| {
+                if !s.is_empty() {
+                    s.push(',');
+                }
+                let chord = f
+                    .action
+                    .as_ref()
+                    .map_or_else(|| "null".to_owned(), |a| json_str(a.chord()));
+                let _ = write!(
+                    s,
+                    "{{\"label\":{},\"value\":{},\"chord\":{chord}}}",
+                    json_str(&f.label),
+                    json_str(&f.value)
+                );
+                s
+            });
+            format!("{{\"k\":\"detail\",\"role\":{role},\"fields\":[{items}]}}")
+        }
+        Node::Input { label, buffer } => format!(
+            "{{\"k\":\"input\",\"role\":{role},\"label\":{},\"buffer\":{}}}",
+            json_str(label),
+            json_str(buffer)
+        ),
+        Node::Palette { items, cursor } => {
+            let its = items.iter().fold(String::new(), |mut s, it| {
+                if !s.is_empty() {
+                    s.push(',');
+                }
+                let _ = write!(
+                    s,
+                    "{{\"label\":{},\"chord\":{}}}",
+                    json_str(&it.label),
+                    json_str(it.action.chord())
+                );
+                s
+            });
+            format!("{{\"k\":\"palette\",\"role\":{role},\"cursor\":{cursor},\"items\":[{its}]}}")
+        }
+        Node::Hints { line } => {
+            format!(
+                "{{\"k\":\"hints\",\"role\":{role},\"line\":{}}}",
+                json_str(line)
+            )
+        }
+        Node::Widget { name, content } => format!(
+            "{{\"k\":\"widget\",\"role\":{role},\"name\":{},\"content\":{}}}",
+            json_str(name),
+            json_str(content)
+        ),
+        Node::Text(t) => format!(
+            "{{\"k\":\"text\",\"role\":{role},\"text\":{}}}",
+            json_str(t)
+        ),
+    }
+}
+
 /// Serialise a [`ViewTree`](Node) to a compact, LLM-readable snapshot
 /// (V3a).
 ///

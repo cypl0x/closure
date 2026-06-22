@@ -99,3 +99,35 @@ fn vault_page_is_responsive_for_mobile() {
         resp.body
     );
 }
+
+#[test]
+fn export_view_html_is_self_contained_and_declarative() {
+    let dir = tempfile::tempdir().expect("tmp");
+    fs::write(dir.path().join("notes.org"), "* TODO Ship\n* Wiki\n").expect("write");
+    let v = Vault::open(dir.path()).expect("open");
+    let html = closure_shell_web::export_view_html(&v);
+    // Self-contained single file.
+    assert!(html.starts_with("<!doctype html>"));
+    assert!(
+        !html.contains("http://") && !html.contains("https://"),
+        "no external refs"
+    );
+    assert!(html.contains("name=\"viewport\""), "responsive");
+    // The declarative ViewTree is embedded as JSON + rendered client-side.
+    assert!(
+        html.contains("\"k\":\"pane\""),
+        "embedded ViewTree json: {html}"
+    );
+    assert!(
+        html.contains("Ship") && html.contains("Wiki"),
+        "vault data present"
+    );
+    assert!(
+        html.contains("function render"),
+        "inline vanilla-js renderer"
+    );
+    assert!(
+        html.contains("setAttribute('role'"),
+        "emits ARIA roles client-side"
+    );
+}

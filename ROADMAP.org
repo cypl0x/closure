@@ -13,7 +13,7 @@ file is the fine-grained, capability-level queue between them. Blocked
 on a design decision? Record it under [[*Decisions][Decisions]], pick the most
 reversible option, keep moving.
 
-* WIP Depth III — close the remaining vision gaps [0/13]
+* DONE Depth III — close the remaining vision gaps [13/13]
 A full re-read of the original vision against the repo (33 crates, all
 prior ROADMAP DONE) surfaced gaps in *breadth* (named wants with no
 code) and *depth* (present but thin / honest-caveat). This section
@@ -295,13 +295,14 @@ recorded as external in =docs/flutter-shell.md= (Dart/Xcode/NDK are
 non-hermetic, like X1d), building on the =ViewTree= / =closure serve=
 contract. 1 web responsive test. See Decision (2026-06-22).
 
-** TODO V13 Self-contained, declarative HTML export of the =ViewTree= [0/1]
-The single-file HTML export currently embeds data + client JS. Make it
-render the declarative =ViewTree= client-side (one file, no server, no
-toolchain) so the exported artifact is the same declarative UI as every
-other shell — closing the "self-contained artifact" + "declarative"
-loop. Reuses =closure-wasm= where helpful; default export stays
-dependency-free.
+** DONE V13 Self-contained, declarative HTML export of the =ViewTree= [1/1]
+=closure_shell_core::view_to_json= encodes the browse =ViewTree= to
+dep-free JSON; =closure_shell_web::export_view_html= embeds it in one
+self-contained file with an inline vanilla-JS =render(node)= that
+rebuilds the DOM + sets ARIA roles — the same declarative =Node=
+description every shell renders, no server, no toolchain. Pure JSON +
+JS (no wasm needed; the wasm editor export stays the opt-in upgrade). 3
+shell-core json tests + 1 web export test. See Decision (2026-06-22).
 
 * DONE Depth II — LSP server to real [5/5]
 closure-lsp today is two methods (=document_symbols=, =definition_of=)
@@ -893,6 +894,23 @@ only (I8). Crates keep =#![forbid(unsafe_code)]=.
 * Decisions
 Open questions land here as subheadings: context, options considered,
 the reversible default taken, date.
+** DECISION (2026-06-22) Declarative HTML export ships ViewTree JSON + an inline JS renderer (V13)
+Context: V13 wants the single-file HTML export to render the declarative
+=ViewTree= client-side, no server/toolchain. Options: (a) server-render
+the =Node= tree to static HTML (loses the "declarative, client-rendered"
+property — it'd just be V1b output frozen); (b) embed the =Node= tree as
+JSON (=view_to_json=, dep-free, no serde) + a tiny inline vanilla-JS
+=render(node)= that rebuilds the DOM and sets ARIA roles. Took (b): the
+artifact carries the declarative description itself, rebuilt in the
+browser by ~25 lines of framework-free JS — genuinely "the same
+declarative UI as every other shell", in one file with no build. Honest
+scope: the JSON encoding + the renderer being present/self-contained are
+string-tested; the actual DOM render is browser-side (same caveat as the
+pre-existing client-JS search). =closure-wasm= was not needed (pure JSON
++ vanilla JS stays lighter than a wasm-bindgen bundle); the wasm editor
+export remains the opt-in upgrade. Reversible: a wasm renderer can
+replace the JS one behind the existing =wasm= feature without changing
+=view_to_json=.
 ** DECISION (2026-06-22) Mobile = responsive web in-tree; native app stays external (V12b)
 Context: V12b's mobile story. A native iOS/Android build needs Flutter/
 Dart + Xcode/Android-NDK toolchains that are not hermetically nix-
