@@ -13,7 +13,7 @@ file is the fine-grained, capability-level queue between them. Blocked
 on a design decision? Record it under [[*Decisions][Decisions]], pick the most
 reversible option, keep moving.
 
-* WIP Depth IV — make the shallow-deep components genuinely deep [7/9]
+* WIP Depth IV — make the shallow-deep components genuinely deep [8/9]
 Depth III closed *breadth* (every vision noun has a crate). Depth IV
 closes *depth* on the components that are still demo / subset /
 external-only. Same binding rules as Depth III: strict 7-step TDD, one
@@ -161,6 +161,27 @@ they refine classification but cannot affect the roundtrip, so they are a
 clean later increment, not a correctness gap. No =Format= trait was
 introduced — shells consume =closure-core=, not parsers (I7), so a
 cross-parser trait would be ceremony with no consumer.
+
+** DONE D9 Org depth: queryable tables in bodies, not just preamble [1/1]
+Org links + timestamps were already extracted; tables were the thin spot —
+=tables()= existed but scanned only the *preamble*, so a table under a
+headline (the common case) was invisible. D9 makes tables queryable
+*anywhere*: =OrgDoc::tables()= now unifies preamble + every headline body's
+=TableRow= nodes, groups adjacent rows, and a new =TableView::data_rows()=
+yields the trimmed cells (separators classified out). Recognition only —
+=tests/tables.rs= asserts the byte-exact roundtrip (I1) is untouched and a
+proptest proves =tables()=/=data_rows()= never panic on random input (I5).
+After this the Notion-style database views have a real tabular substrate to
+read, wherever the table lives in the file.
+*** Decision (2026-06-26) Highest-value tier = tables in bodies.
+Of the candidate org constructs (timestamps/links/tables/agenda), links and
+timestamps already had accessors and agenda is a query over timestamps;
+*tables* were the only structured element with a half-built accessor
+(preamble-only). Finishing it (body scan + =data_rows=) unblocks the
+database/Coda-formula vision directly. Inline markup + setext-style depth
+remain later increments; they refine classification but never threaten I1,
+so they are not correctness gaps. Spec parser-scope already listed tables
+in-scope; D9 upgrades "roundtrips verbatim" to "queryable".
 
 * DONE Depth III — close the remaining vision gaps [13/13]
 A full re-read of the original vision against the repo (33 crates, all

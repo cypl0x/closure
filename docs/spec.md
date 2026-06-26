@@ -105,7 +105,12 @@ layer. Every vision item is assigned to exactly one layer.
 - `closure-org` — Emacs org-mode, byte-exact roundtrip (core subset first,
   see "Layer 1 — closure-org parser scope" below). Span-preserving
   hand-written recursive descent over line cursors. No external parser
-  backend dep.
+  backend dep. **D9 — tables are queryable:** `OrgDoc::tables()` returns
+  `TableView`s for every table in the document — preamble *and* headline
+  bodies — with `data_rows()` yielding the trimmed cells (separators
+  classified, not data). Recognition over the existing `TableRow` nodes, so
+  I1 is untouched; this is the structured substrate the Notion-style
+  database views read. Fuzz-guarded against panics (I5) in `tables.rs`.
 - `closure-markdown` — CommonMark + GFM, byte-exact roundtrip (I1), same
   source-preserving span architecture as `closure-org`. Block classifier
   (per line, so I1 holds by construction): ATX headings, paragraphs, blank

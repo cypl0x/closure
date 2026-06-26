@@ -8192,40 +8192,62 @@ impl OrgDoc {
         out
     }
 
-    /// Group consecutive table rows in the preamble into [`TableView`]s.
-    /// A blank line, headline, or any non-table node breaks the group.
+    /// Every Org table in the document — preamble *and* headline bodies
+    /// (D9) — as queryable [`TableView`]s. Consecutive `TableRow` nodes
+    /// form one table; any non-table node or a gap between rows breaks the
+    /// group. Recognition only: the source is untouched, so I1 holds.
     #[must_use]
     pub fn tables(&self) -> Vec<TableView<'_>> {
+        // All table-row nodes in document order, preamble then bodies.
+        let mut rows: Vec<&Node> = self
+            .preamble
+            .iter()
+            .filter(|n| n.kind == NodeKind::TableRow)
+            .collect();
+        for h in self.iter_headlines() {
+            rows.extend(h.body().iter().filter(|n| n.kind == NodeKind::TableRow));
+        }
+        rows.sort_by_key(|n| n.span.start);
+
         let mut out: Vec<TableView<'_>> = Vec::new();
         let mut current: Vec<TableRowView<'_>> = Vec::new();
-        for n in &self.preamble {
-            if n.kind == NodeKind::TableRow {
-                let line = &self.source[n.span.start..n.span.end];
-                let trimmed = line.strip_suffix('\n').unwrap_or(line);
-                let is_separator = trimmed.starts_with("|-") || trimmed.starts_with("| -");
-                let cells: Vec<&str> = if is_separator {
-                    Vec::new()
-                } else {
-                    let inner = trimmed
-                        .strip_prefix('|')
-                        .and_then(|s| s.strip_suffix('|'))
-                        .unwrap_or(trimmed);
-                    inner.split('|').map(str::trim).collect()
-                };
-                current.push(TableRowView {
-                    is_separator,
-                    cells,
-                });
-            } else if !current.is_empty() {
+        let mut prev_end: Option<usize> = None;
+        for n in rows {
+            // A gap between rows (intervening blank/headline/other) closes
+            // the current table.
+            if prev_end.is_some_and(|e| e != n.span.start) && !current.is_empty() {
                 out.push(TableView {
                     rows: std::mem::take(&mut current),
                 });
             }
+            current.push(self.table_row_view(n));
+            prev_end = Some(n.span.end);
         }
         if !current.is_empty() {
             out.push(TableView { rows: current });
         }
         out
+    }
+
+    /// Parse one `TableRow` node into a [`TableRowView`] (cells trimmed,
+    /// `|---+---|` recognised as a separator).
+    fn table_row_view(&self, n: &Node) -> TableRowView<'_> {
+        let line = &self.source[n.span.start..n.span.end];
+        let trimmed = line.strip_suffix('\n').unwrap_or(line);
+        let is_separator = trimmed.starts_with("|-") || trimmed.starts_with("| -");
+        let cells: Vec<&str> = if is_separator {
+            Vec::new()
+        } else {
+            let inner = trimmed
+                .strip_prefix('|')
+                .and_then(|s| s.strip_suffix('|'))
+                .unwrap_or(trimmed);
+            inner.split('|').map(str::trim).collect()
+        };
+        TableRowView {
+            is_separator,
+            cells,
+        }
     }
 
     /// All `#+KEY: value` keyword lines in the preamble in source order.
@@ -9341,6 +9363,17 @@ pub struct ListGroup<'a> {
 pub struct TableView<'a> {
     /// Rows in source order, including separator rows.
     pub rows: Vec<TableRowView<'a>>,
+}
+
+impl<'a> TableView<'a> {
+    /// The cell rows (header + data), skipping `|---+---|` separators —
+    /// the queryable view of the table's contents (D9).
+    pub fn data_rows(&self) -> impl Iterator<Item = &[&'a str]> {
+        self.rows
+            .iter()
+            .filter(|r| !r.is_separator)
+            .map(|r| r.cells.as_slice())
+    }
 }
 
 /// One row in a [`TableView`].
