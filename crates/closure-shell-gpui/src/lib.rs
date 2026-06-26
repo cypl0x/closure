@@ -241,6 +241,13 @@ impl Render for GpuiView {
             GpuiMode::AddSibling => format!("＋ add: {}▏", self.app.capture_buffer()),
             GpuiMode::Rename => format!("✎ rename: {}▏", self.app.capture_buffer()),
             GpuiMode::Palette => format!("❯ command: {}▏", self.app.capture_buffer()),
+            GpuiMode::EditBody => format!("✎ body: {}▏", self.app.body_buffer()),
+            GpuiMode::TagsEdit => format!("✎ tags: {}▏", self.app.tags_buffer()),
+            GpuiMode::PropertyEdit => format!(
+                "✎ prop: {}={}▏",
+                self.app.property_key(),
+                self.app.property_value()
+            ),
             GpuiMode::Browse => format!("⌕ {}▏   {count}", self.app.query()),
         };
 

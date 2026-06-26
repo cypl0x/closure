@@ -1640,6 +1640,18 @@ impl App {
         &mut self.tags_buf
     }
 
+    /// Property key buffer (read) for the `PropertyEdit` surface.
+    #[must_use]
+    pub fn property_key(&self) -> &str {
+        &self.prop_key
+    }
+
+    /// Property value buffer (read) for the `PropertyEdit` surface.
+    #[must_use]
+    pub fn property_value(&self) -> &str {
+        &self.prop_value
+    }
+
     /// Commit the tags buffer (split on whitespace) to the target
     /// headline through the kernel command (I8), then return to Browse.
     pub fn commit_tags(&mut self, shell: &mut Shell) {
