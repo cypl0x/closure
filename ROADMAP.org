@@ -13,7 +13,7 @@ file is the fine-grained, capability-level queue between them. Blocked
 on a design decision? Record it under [[*Decisions][Decisions]], pick the most
 reversible option, keep moving.
 
-* WIP Depth IV — make the shallow-deep components genuinely deep [6/9]
+* WIP Depth IV — make the shallow-deep components genuinely deep [7/9]
 Depth III closed *breadth* (every vision noun has a crate). Depth IV
 closes *depth* on the components that are still demo / subset /
 external-only. Same binding rules as Depth III: strict 7-step TDD, one
@@ -141,6 +141,26 @@ hiding behind a gate. =just sync-net= remains the place the *external*
 skipped when =iroh= is absent. Fixing the authenticity test surfaced that
 empty =trusted= is intentional integrity-only mode (documented), so the
 test trusts a specific non-client key to prove forged-peer rejection.
+
+** DONE D1 closure-markdown: GFM block depth + fuzz [1/1]
+=closure-markdown= was real but thin (headings/paragraphs/lists/fences). D1
+adds the CommonMark/GFM blocks that matter — =Blockquote=, GFM =Table=,
+=ThematicBreak= — classified *per line* so the byte-exact roundtrip (I1)
+stays true by construction (=tests/gfm.rs=). The depth proof is a proptest
+fuzz (=tests/properties.rs=): on random markdown-ish input, =print(parse(s))
+== s= (I1), parse never panics (I5), and is deterministic (I6) — now part
+of =just fuzz= alongside org. A =fixtures/md/gfm.md= golden exercises every
+new block. After this markdown is a first-class, fuzz-guarded format, not a
+"later phase" stub.
+*** Decision (2026-06-26) Per-line classification, no inline AST.
+Roundtrip (I1) only needs every byte owned by one span; classifying each
+line independently (a =>= line is a Blockquote, a =|…|= line a Table) keeps
+the printer a verbatim span concat and makes I1 hold for *arbitrary* input
+— confirmed by the fuzz. Inline markup + setext headings are deferred:
+they refine classification but cannot affect the roundtrip, so they are a
+clean later increment, not a correctness gap. No =Format= trait was
+introduced — shells consume =closure-core=, not parsers (I7), so a
+cross-parser trait would be ceremony with no consumer.
 
 * DONE Depth III — close the remaining vision gaps [13/13]
 A full re-read of the original vision against the repo (33 crates, all

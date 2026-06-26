@@ -106,8 +106,16 @@ layer. Every vision item is assigned to exactly one layer.
   see "Layer 1 — closure-org parser scope" below). Span-preserving
   hand-written recursive descent over line cursors. No external parser
   backend dep.
-- `closure-markdown` — CommonMark + GFM, byte-exact roundtrip, same
-  architecture. Later phase.
+- `closure-markdown` — CommonMark + GFM, byte-exact roundtrip (I1), same
+  source-preserving span architecture as `closure-org`. Block classifier
+  (per line, so I1 holds by construction): ATX headings, paragraphs, blank
+  lines, list items, fenced code, and (D1) blockquotes, GFM tables, and
+  thematic breaks. Proven by a proptest fuzz (`properties.rs`: I1 roundtrip
+  + I5 no-panic + I6 determinism on random input, in `just fuzz`) and a
+  golden corpus under `fixtures/md/`. `from_org`/`to_org` bridge the
+  line-level subset. Inline markup (emphasis/links/code spans) and setext
+  headings are a later increment — they do not affect the roundtrip, only
+  finer classification.
 - `closure-tree-sitter` — optional, for syntax-highlighting and code-block
   grammars inside `#+BEGIN_SRC` regions. Not used for primary parsing
   (I1 / I5 cost too high). The dep-free `KeywordHighlighter` is the

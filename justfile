@@ -22,9 +22,11 @@ check:
 coverage:
     cargo llvm-cov --workspace --fail-under-lines 84
 
-# Parser fuzz/replay + property gate (I1/I5/I6) on stable.
+# Parser fuzz/replay + property gate (I1/I5/I6) on stable, for every
+# first-class format (org + markdown).
 fuzz:
     cargo test -p closure-org --test fuzz_replay --test properties
+    cargo test -p closure-markdown --test properties
 
 # Wasm/WASI target check: org + core are pure and build for wasm32.
 wasm:

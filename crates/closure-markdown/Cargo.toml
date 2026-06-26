@@ -13,3 +13,8 @@ workspace = true
 
 [dependencies]
 thiserror.workspace = true
+
+[dev-dependencies]
+# Property/fuzz tests: I1 byte-exact roundtrip + I5 no-panic + I6
+# determinism on random markdown-ish input (D1). Gate: `just fuzz`.
+proptest.workspace = true

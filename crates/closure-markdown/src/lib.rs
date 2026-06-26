@@ -81,6 +81,14 @@ pub enum BlockKind {
     /// A fenced code block (```` ``` ```` … ```` ``` ````), inclusive
     /// of both fence lines.
     CodeFence,
+    /// A blockquote line (`>` prefix).
+    Blockquote,
+    /// A GFM table line (pipe-delimited, e.g. `| a | b |` or the
+    /// `|---|---|` delimiter row).
+    Table,
+    /// A thematic break: a line of three or more `-`, `*`, or `_`
+    /// (optionally space-separated), e.g. `---`, `***`, `- - -`.
+    ThematicBreak,
 }
 
 /// Parse failure.
@@ -90,7 +98,11 @@ pub enum ParseError {}
 /// Parse markdown into an [`MdDoc`]. The parser is total; every byte
 /// of the input ends up inside exactly one block's span (I1 by
 /// construction).
-#[allow(clippy::must_use_candidate, clippy::missing_errors_doc)]
+#[allow(
+    clippy::must_use_candidate,
+    clippy::missing_errors_doc,
+    clippy::too_many_lines
+)]
 pub fn parse(src: &str) -> Result<MdDoc, ParseError> {
     let source: Arc<str> = Arc::from(src);
     let mut blocks: Vec<Block> = Vec::new();
@@ -133,6 +145,19 @@ pub fn parse(src: &str) -> Result<MdDoc, ParseError> {
         if let Some(marker) = fence_marker(body) {
             flush_para(&mut paragraph, &mut blocks);
             fence = Some((start, marker));
+            continue;
+        }
+        // GFM / CommonMark line blocks (D1): thematic break first so a
+        // `- - -` rule is not mistaken for a list item.
+        if let Some(kind) = classify_line_block(body) {
+            flush_para(&mut paragraph, &mut blocks);
+            blocks.push(Block {
+                source: Arc::clone(&source),
+                kind,
+                start,
+                end,
+                heading_level: None,
+            });
             continue;
         }
         if is_list_item(body) {
@@ -204,6 +229,41 @@ fn fence_marker(body: &str) -> Option<String> {
         }
     }
     None
+}
+
+/// Classify a single line as a GFM/CommonMark line block (thematic break,
+/// blockquote, or table), or `None` to fall through to list/paragraph.
+/// Per-line so the byte-exact roundtrip (I1) is preserved by construction.
+fn classify_line_block(body: &str) -> Option<BlockKind> {
+    if is_thematic_break(body) {
+        return Some(BlockKind::ThematicBreak);
+    }
+    let t = body.trim_start();
+    if t.starts_with('>') {
+        return Some(BlockKind::Blockquote);
+    }
+    if t.starts_with('|') {
+        return Some(BlockKind::Table);
+    }
+    None
+}
+
+/// A thematic break: ignoring spaces, three or more of a single `-`, `*`,
+/// or `_` and nothing else.
+fn is_thematic_break(body: &str) -> bool {
+    let mut marker: Option<char> = None;
+    let mut count = 0usize;
+    for c in body.chars() {
+        match c {
+            ' ' | '\t' => {}
+            '-' | '*' | '_' if marker.is_none_or(|m| m == c) => {
+                marker = Some(c);
+                count += 1;
+            }
+            _ => return false,
+        }
+    }
+    count >= 3
 }
 
 /// Whether `body` is a markdown list item (`-`, `*`, `+`, or `N.`).
