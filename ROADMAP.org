@@ -13,7 +13,7 @@ file is the fine-grained, capability-level queue between them. Blocked
 on a design decision? Record it under [[*Decisions][Decisions]], pick the most
 reversible option, keep moving.
 
-* WIP Depth IV — make the shallow-deep components genuinely deep [8/9]
+* DONE Depth IV — make the shallow-deep components genuinely deep [9/9]
 Depth III closed *breadth* (every vision noun has a crate). Depth IV
 closes *depth* on the components that are still demo / subset /
 external-only. Same binding rules as Depth III: strict 7-step TDD, one
@@ -182,6 +182,40 @@ database/Coda-formula vision directly. Inline markup + setext-style depth
 remain later increments; they refine classification but never threaten I1,
 so they are not correctness gaps. Spec parser-scope already listed tables
 in-scope; D9 upgrades "roundtrips verbatim" to "queryable".
+
+** DONE D8 Coverage ratchet + honest report [1/1]
+Measured after D1–D9: workspace **Lines 84.33%** (Regions 80.46%,
+Functions 81.74%). The floor stays at =--fail-under-lines 84= — already at
+ceiling-minus-margin. Depth IV added ~2k lines of NEW product code
+(markdown GFM blocks, the clipboard module, the OpenAI-wire provider, org
+table access, the gpui edit-mode arms) alongside their tests, so the
+*hermetic* ceiling moved only 84.0 → 84.33; there is no integer headroom
+left to claim honestly. Raising it would require either coverage
+exclusions / =#[coverage(off)]= (forbidden — gaming) or testing the
+display/network loops that cannot run hermetically. The justfile comment
+records the measurement + the residual breakdown.
+*** Honest report — what is genuinely deep now vs external-by-design
+Genuinely deep (hermetic, tested, this milestone):
+- Content id is real cryptographic BLAKE3, not FNV (D2).
+- tree-sitter highlights bash/rust/python/json, gap-free (D5).
+- The LLM see-screen→command→screen loop runs hermetically over a
+  dep-free OpenAI wire mock, mutating only via the registry (D4).
+- Chord identity across tui/web/gpui is a guarded invariant (D6).
+- Kill-ring ⇄ OS clipboard bridge, in-memory default + gated system impl
+  (D7).
+- Two peers converge a divergent vault over a real authenticated +
+  encrypted TCP socket, ids preserved (I2) (D3).
+- Markdown is a fuzz-guarded GFM block parser (D1); org tables are
+  queryable in bodies, not just the preamble (D9).
+External / opt-in by design (unchanged, honestly bounded):
+- Native GUIs (gpui/egui/tauri/gtk/qt) compile-gated, window-bound; never
+  in =just check=.
+- Live LLM HTTP (=CurlProvider=/=HttpProvider=) + system clipboard +
+  external =IrohTransport= need a real network/tool/display at runtime;
+  gated behind their recipes, hermetic cores tested.
+- The residual ~16% line gap is the ratatui draw/run loop (closure-tui
+  63%), curl/HTTP, and the GUI window + web socket loops — structurally
+  non-hermetic, DROP'd, no exclusions.
 
 * DONE Depth III — close the remaining vision gaps [13/13]
 A full re-read of the original vision against the repo (33 crates, all

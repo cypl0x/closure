@@ -15,10 +15,18 @@ check:
 # main.rs is now genuinely covered (no exclusions). Fails under it.
 # Floor ratcheted 82 → 84 (V10): the V10a render-snapshot harness + the
 # new declarative surfaces made the render path hermetically reachable.
-# The residual ~16% is non-hermetic by design — the ratatui draw/run
-# loop, the curl/HTTP LLM paths, and the GUI window + web socket loops
+# D8 measurement after Depth IV: Lines 84.33% (Regions 80.46, Functions
+# 81.74). The floor stays at 84 — already at ceiling-minus-margin. Depth
+# IV added ~2k lines of NEW product code (markdown GFM blocks, the
+# clipboard module, the OpenAI-wire provider, org table access, gpui
+# arms) alongside their tests, so the hermetic ceiling moved only
+# 84.0 → 84.33; there is no integer headroom left to claim. The residual
+# ~16% is non-hermetic by design — the ratatui draw/run loop (closure-tui
+# 63%), the curl/HTTP LLM paths, and the GUI window + web socket loops
 # (recorded DROP under H2b); those need a live TTY/network/display and so
-# cannot raise the *hermetic* gate. No coverage exclusions (no gaming).
+# cannot raise the *hermetic* gate. No coverage exclusions, no
+# #[coverage(off)] (no gaming) — raising the integer would require exactly
+# that, or testing the display/network loops that cannot run hermetically.
 coverage:
     cargo llvm-cov --workspace --fail-under-lines 84
 
