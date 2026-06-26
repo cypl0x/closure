@@ -1369,7 +1369,9 @@ version = "0.0.0"
 name = "closure-llm"
 version = "0.0.0"
 dependencies = [
+ "closure-config",
  "closure-core",
+ "closure-shell-core",
  "closure-store",
  "tempfile",
  "thiserror 2.0.18",

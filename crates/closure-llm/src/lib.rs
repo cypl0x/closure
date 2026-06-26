@@ -173,6 +173,73 @@ impl Provider for EchoProvider {
     }
 }
 
+/// A hermetic mock of the OpenAI chat-completions **wire** (D4).
+///
+/// It implements the *protocol*, not a network call.
+///
+/// Each turn it encodes the prompt into a genuine OpenAI request body
+/// ([`openai_body`] shape), then answers with the next scripted assistant
+/// message wrapped in a canonical OpenAI response envelope and parsed back
+/// out with [`extract_openai_content`] — exactly the decode path the real
+/// [`CurlProvider`] uses. So the full dep-free JSON round trip (request
+/// encode + response decode) is exercised with no curl and no socket, and
+/// the [`tool_loop`] behaves identically to talking to a live OpenAI
+/// endpoint, deterministically (I6). Drives the D4 rendered-state loop
+/// test without leaving the hermetic build.
+pub struct OpenAiWireProvider {
+    turns: std::cell::RefCell<std::collections::VecDeque<String>>,
+    last_request: std::cell::RefCell<String>,
+}
+
+impl OpenAiWireProvider {
+    /// A provider that replays `messages` as successive assistant turns.
+    #[must_use]
+    pub fn scripted(messages: &[&str]) -> Self {
+        Self {
+            turns: std::cell::RefCell::new(messages.iter().map(|s| (*s).to_owned()).collect()),
+            last_request: std::cell::RefCell::new(String::new()),
+        }
+    }
+
+    /// The OpenAI request body produced on the most recent `complete`
+    /// (for assertions: proves the request was encoded on the wire).
+    #[must_use]
+    pub fn last_request(&self) -> String {
+        self.last_request.borrow().clone()
+    }
+}
+
+impl Provider for OpenAiWireProvider {
+    fn complete(&self, prompt: &str) -> Result<String, LlmError> {
+        // 1. Encode the prompt as a real OpenAI chat-completions request.
+        *self.last_request.borrow_mut() = openai_body(prompt);
+        // 2. Take the next scripted assistant turn and wrap it in a
+        //    canonical OpenAI response envelope.
+        let content = self
+            .turns
+            .borrow_mut()
+            .pop_front()
+            .ok_or_else(|| LlmError::Provider("openai wire: script exhausted".to_owned()))?;
+        let response = openai_response_json(&content);
+        // 3. Decode it back exactly as the live CurlProvider would.
+        extract_openai_content(&response)
+            .ok_or_else(|| LlmError::Provider("openai wire: no content".to_owned()))
+    }
+}
+
+/// Build a canonical OpenAI `chat/completions` response envelope around
+/// `content` — the inverse of [`extract_openai_content`].
+///
+/// Dep-free JSON (escaping via [`json_string`]); used by
+/// [`OpenAiWireProvider`] and as a fixture builder in tests.
+#[must_use]
+pub fn openai_response_json(content: &str) -> String {
+    format!(
+        "{{\"choices\":[{{\"index\":0,\"message\":{{\"role\":\"assistant\",\"content\":{}}}}}]}}",
+        json_string(content),
+    )
+}
+
 /// HTTP provider that shells out to `curl` to POST a JSON body.
 ///
 /// Generic enough to talk to OpenAI-, Anthropic-, or Ollama-compatible

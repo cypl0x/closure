@@ -272,7 +272,17 @@ base, ours, theirs)` returns the `FieldConflict`s (title/body) both sides
   revocable/grantable at runtime via `toggle_render` — the
   `toggle-llm-render` command, bound in every input mode's keymap so it
   shows in which-key (I4). The user controls render exposure live, per the
-  vision's "configure that (live) too".
+  vision's "configure that (live) too". **D4 — the full loop, hermetic:**
+  `OpenAiWireProvider` is a dep-free mock of the OpenAI chat-completions
+  *wire* — it encodes each prompt into a real OpenAI request body and
+  decodes the scripted reply out of a canonical OpenAI response envelope
+  (`openai_response_json` ↔ `extract_openai_content`), so the dep-free JSON
+  round trip is exercised with no curl/socket. `tests/view_loop.rs` drives
+  the end-to-end story: the model reads the `ViewTree` via the
+  permission-gated render tool, then mutates the vault — the change flowing
+  **only** through `Shell::capture` (a registry command, I8) — and the
+  re-rendered view observably reflects it. Live BYOK/HTTP (`CurlProvider`/
+  `HttpProvider`) stays the opt-in, non-hermetic tier.
 - `closure-mcp`, `closure-lsp`, `closure-acp`, `closure-a2a` — protocol
   bridges; each translates messages to registry commands.
   - `closure-mcp` serves `initialize` + `tools/list` + `tools/call`, and

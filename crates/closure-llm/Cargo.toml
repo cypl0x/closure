@@ -17,4 +17,9 @@ thiserror.workspace = true
 
 [dev-dependencies]
 closure-store = { path = "../closure-store" }
+# D4 end-to-end view loop: the agent reads the ViewTree (shell-core) and
+# mutates the vault through registry commands. dev-only — no cycle, as
+# shell-core does not depend on closure-llm.
+closure-shell-core = { path = "../closure-shell-core" }
+closure-config = { path = "../closure-config" }
 tempfile = "3"

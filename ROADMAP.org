@@ -13,7 +13,7 @@ file is the fine-grained, capability-level queue between them. Blocked
 on a design decision? Record it under [[*Decisions][Decisions]], pick the most
 reversible option, keep moving.
 
-* WIP Depth IV — make the shallow-deep components genuinely deep [2/9]
+* WIP Depth IV — make the shallow-deep components genuinely deep [3/9]
 Depth III closed *breadth* (every vision noun has a crate). Depth IV
 closes *depth* on the components that are still demo / subset /
 external-only. Same binding rules as Depth III: strict 7-step TDD, one
@@ -58,6 +58,28 @@ languages, not just bash.
 into the existing =tree-sitter= feature rather than four sub-features —
 the registry should be whole when on; nobody wants "tree-sitter but only
 python". Adding the 5th+ grammar is now one match arm + one dep line.
+
+** DONE D4 LLM rendered-state loop — hermetic, end-to-end [1/1]
+V3 shipped the render *permission* + =view_to_json=, but no test ever wired
+a model through the loop reading the view then acting. D4 closes it.
+=OpenAiWireProvider= is a dep-free mock of the OpenAI chat-completions wire
+— encodes each prompt into a real OpenAI request body, decodes the reply
+from a canonical response envelope (=openai_response_json= ↔
+=extract_openai_content=) — so the whole dep-free JSON round trip runs with
+no curl/socket. =tests/view_loop.rs=: the model reads the =ViewTree= via
+the permission-gated render tool, then captures a headline — the mutation
+flowing ONLY through =Shell::capture= (registry, I8) — and the re-rendered
+view observably changes. =tests/openai_wire.rs= pins the wire round trip
+(request shape + response escaping). After this the user has a *provable*
+"the AI sees the rendered screen and changes my notes through the same
+commands I use", hermetically, not just an adapter stub.
+*** Decision (2026-06-26) Mock the wire, don't gate a live call.
+The honesty gap was never "can we POST to OpenAI" (=CurlProvider= does)
+but "is the see-screen→command→screen loop real + tested". A dep-free wire
+mock proves the protocol encode/decode AND the loop hermetically (I10/I6);
+the live HTTP tier stays opt-in. shell-core is a *dev*-dependency of
+closure-llm (no cycle — shell-core never depends on llm), keeping the
+runtime adapter thin (I8).
 
 * DONE Depth III — close the remaining vision gaps [13/13]
 A full re-read of the original vision against the repo (33 crates, all
