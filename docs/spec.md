@@ -240,8 +240,9 @@ base, ours, theirs)` returns the `FieldConflict`s (title/body) both sides
   change. Residual LWW point: a _title_ edited concurrently on two
   replicas still resolves last-writer-wins (titles are short labels, not
   collaborative prose). See the CRDT-readiness note below.
-- `closure-sync` — file / git sync first; IPFS or iroh P2P later. Pluggable
-  transport. **Authenticated frames (C3a):** each peer holds an ed25519
+- `closure-sync` — file / git sync, **a real network transport over std
+  TCP**, and an external iroh drop-in. Pluggable transport.
+  **Authenticated frames (C3a):** each peer holds an ed25519
   keypair; `SyncMessage::to_signed_bytes` signs the version + replica
   payload and `from_signed_bytes` verifies it against the embedded key
   (rejecting tampering) and an optional trusted-peer set (rejecting a
@@ -251,8 +252,18 @@ base, ours, theirs)` returns the `FieldConflict`s (title/body) both sides
   wire so the replica never travels in plaintext; `connect_and_sync_secure`
   / `serve_once_secure` handshake the socket then exchange the C3a-signed
   frames over the encrypted channel (confidentiality from Noise,
-  authenticity from the inner signatures). The same `SyncMessage` framing
-  keeps a future iroh/QUIC transport a drop-in. **Content addressing
+  authenticity from the inner signatures). **Real wire transport (D3):**
+  `TcpSyncTransport` runs the protocol over an actual socket —
+  `serve_once`/`connect_and_sync` (plain) and `serve_once_secure`/
+  `connect_and_sync_secure` (authenticated + encrypted). Tested over
+  `127.0.0.1` loopback (`tcp.rs`, `encrypt.rs`, `p2p_i2.rs`): two peers with
+  divergent vaults converge, every block id is preserved verbatim across
+  the network merge (I2, no regeneration), and an untrusted signer is
+  rejected on the wire. Loopback is hermetic so it runs in the default
+  suite; `just sync-net` is the explicit network gate and also exercises
+  the external `IrohTransport` (gracefully skipped when the `iroh` binary
+  is absent). The same `SyncMessage` framing keeps iroh/QUIC a drop-in.
+  **Content addressing
   (V5a / D2):** `Cid::of(bytes)` is a stable, cryptographic content id —
   a 256-bit BLAKE3 digest, prefixed `b3` (pure-Rust `blake3`, hermetic;
   the value is opaque so the algorithm can change again without an API

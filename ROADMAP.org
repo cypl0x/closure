@@ -13,7 +13,7 @@ file is the fine-grained, capability-level queue between them. Blocked
 on a design decision? Record it under [[*Decisions][Decisions]], pick the most
 reversible option, keep moving.
 
-* WIP Depth IV — make the shallow-deep components genuinely deep [5/9]
+* WIP Depth IV — make the shallow-deep components genuinely deep [6/9]
 Depth III closed *breadth* (every vision noun has a crate). Depth IV
 closes *depth* on the components that are still demo / subset /
 external-only. Same binding rules as Depth III: strict 7-step TDD, one
@@ -121,6 +121,26 @@ to the platform tool (like =CurlProvider= shells to curl) keeps the build
 dep-free + hermetic (I10); only the runtime needs the tool. The argv is
 caller-supplied (=SystemClipboard::new=) so it works on Wayland/X11/macOS
 without a compile-time platform branch.
+
+** DONE D3 Real P2P transport over a loopback socket [1/1]
+The pieces were mostly in place (=TcpSyncTransport= with plain + secure
+=serve_once=/=connect_and_sync= over =127.0.0.1=, =IrohTransport= gated on
+an external binary), but the convergence tests asserted only block *counts*
+— never the two properties D3 cares about. =tests/p2p_i2.rs= closes that:
+two peers with *divergent* vaults converge over the real authenticated +
+Noise-encrypted socket, and every block id survives the network merge
+*verbatim* (I2 — explicit assertion, not implied), and an untrusted signer
+is rejected on the wire (authenticity enforced end to end). =just sync-net=
+is the explicit network gate. After this, "P2P sync + CRDT collaboration"
+is a tested socket reality, not a channel stub.
+*** Decision (2026-06-26) std-TCP loopback stays in the default suite.
+The real transport uses only =std::net= over =127.0.0.1= — hermetic (no
+external network, no heavy dep), so it runs in =just check= rather than
+hiding behind a gate. =just sync-net= remains the place the *external*
+=IrohTransport= (real binary, non-hermetic) is exercised, gracefully
+skipped when =iroh= is absent. Fixing the authenticity test surfaced that
+empty =trusted= is intentional integrity-only mode (documented), so the
+test trusts a specific non-client key to prove forged-peer rejection.
 
 * DONE Depth III — close the remaining vision gaps [13/13]
 A full re-read of the original vision against the repo (33 crates, all

@@ -127,5 +127,14 @@ run-qt vault:
 clipboard:
     cargo test -p closure-store --features clipboard --test clipboard --test clipboard_system
 
+# D3 real network sync transport. The std-TCP loopback path is hermetic
+# (127.0.0.1, no external network) so it also runs in the default suite;
+# this recipe is the explicit network gate, and it additionally exercises
+# the external IrohTransport (gracefully skipped when the `iroh` binary is
+# absent). Two peers converge a divergent vault over a real socket with
+# authenticated + Noise-encrypted frames, ids preserved (I2).
+sync-net:
+    cargo test -p closure-sync --test tcp --test encrypt --test p2p_i2 --test transport
+
 # Full local CI: everything above.
 ci: check fuzz wasm coverage
