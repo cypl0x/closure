@@ -417,11 +417,15 @@ pub struct TsHighlighter {
 #[cfg(feature = "tree-sitter")]
 impl TsHighlighter {
     /// A highlighter for `name`, or `None` if no grammar is bundled for
-    /// it. Currently `bash`/`sh`/`shell`.
+    /// it. Bundled grammars (D5): `bash`/`sh`/`shell`, `rust`/`rs`,
+    /// `python`/`py`, `json`.
     #[must_use]
     pub fn for_language(name: &str) -> Option<Self> {
         let ts_language: tree_sitter::Language = match name {
             "bash" | "sh" | "shell" => tree_sitter_bash::LANGUAGE.into(),
+            "rust" | "rs" => tree_sitter_rust::LANGUAGE.into(),
+            "python" | "py" => tree_sitter_python::LANGUAGE.into(),
+            "json" => tree_sitter_json::LANGUAGE.into(),
             _ => return None,
         };
         Some(Self {
@@ -435,9 +439,14 @@ impl TsHighlighter {
 /// or `None` to descend into children.
 #[cfg(feature = "tree-sitter")]
 fn ts_unit_kind(kind: &str) -> Option<HighlightKind> {
-    if kind == "comment" {
+    // Node-kind names vary per grammar: bash uses `comment`, Rust uses
+    // `line_comment`/`block_comment`; strings are `string`/`string_literal`;
+    // numbers are `number` (json) or `integer_literal`/`float_literal`
+    // (rust). Match by substring / suffix so one mapping spans all bundled
+    // grammars. Whole-node units stop descent (the span is the literal).
+    if kind.contains("comment") {
         Some(HighlightKind::Comment)
-    } else if kind.contains("string") || kind == "number" {
+    } else if kind.contains("string") || kind == "number" || kind.ends_with("_literal") {
         Some(HighlightKind::Literal)
     } else {
         None

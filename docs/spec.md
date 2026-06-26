@@ -112,10 +112,15 @@ layer. Every vision item is assigned to exactly one layer.
   grammars inside `#+BEGIN_SRC` regions. Not used for primary parsing
   (I1 / I5 cost too high). The dep-free `KeywordHighlighter` is the
   hermetic default; a real grammar (`TsHighlighter`, V6) is opt-in behind
-  the `tree-sitter` feature — it pulls a C grammar (non-hermetic, like the
-  GUI/pcap features), parses with a genuine tree-sitter grammar (bash), and
-  fills inter-token gaps with `Plain` so the `Highlighter` gap-free
-  coverage contract still holds. `just tree-sitter` builds/tests it; the
+  the `tree-sitter` feature — it pulls C grammars (non-hermetic, like the
+  GUI/pcap features), parses with genuine tree-sitter grammars and fills
+  inter-token gaps with `Plain` so the `Highlighter` gap-free coverage
+  contract still holds. `TsHighlighter::for_language` is the grammar
+  registry, keyed by language name — bundled grammars (D5):
+  `bash`/`sh`/`shell`, `rust`/`rs`, `python`/`py`, `json`. Node-kind
+  mapping is by substring/suffix (`*comment*` → Comment;
+  `*string*`/`number`/`*_literal` → Literal) so one classifier spans every
+  grammar's differing node names. `just tree-sitter` builds/tests it; the
   default `just check` never compiles it (I10). `closure-tui` forwards the
   feature (`closure-tui/tree-sitter`): its file-view `pick_highlighter`
   prefers `TsHighlighter` for a bundled grammar when the feature is on,

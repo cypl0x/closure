@@ -15,9 +15,20 @@ workspace = true
 thiserror.workspace = true
 tree-sitter = { version = "0.26.9", optional = true }
 tree-sitter-bash = { version = "0.25.1", optional = true }
+tree-sitter-json = { version = "0.24.8", optional = true }
+tree-sitter-python = { version = "0.25.0", optional = true }
+tree-sitter-rust = { version = "0.24.2", optional = true }
 
 [features]
-# Real tree-sitter highlighting (V6). Default OFF — pulls a C grammar
-# (non-hermetic); the dep-free KeywordHighlighter stays the default.
-# Build/test gate: `just tree-sitter`.
-tree-sitter = ["dep:tree-sitter", "dep:tree-sitter-bash"]
+# Real tree-sitter highlighting (V6 + D5). Default OFF — pulls C grammars
+# (non-hermetic); the dep-free KeywordHighlighter stays the default. One
+# feature bundles every bundled grammar (bash/rust/python/json) so the
+# `TsHighlighter` registry is whole when on. Build/test gate:
+# `just tree-sitter`.
+tree-sitter = [
+    "dep:tree-sitter",
+    "dep:tree-sitter-bash",
+    "dep:tree-sitter-rust",
+    "dep:tree-sitter-python",
+    "dep:tree-sitter-json",
+]

@@ -48,6 +48,54 @@ fn unsupported_language_is_none() {
     assert!(TsHighlighter::for_language("brainfuck").is_none());
 }
 
+/// Helper: the highlight kind covering the first byte of `needle`.
+fn kind_at(spans: &[Highlight], src: &str, needle: &str) -> Option<HighlightKind> {
+    let at = src.find(needle).unwrap();
+    spans
+        .iter()
+        .find(|s| s.start <= at && at < s.end)
+        .map(|s| s.kind)
+}
+
+#[test]
+fn rust_grammar_classifies_comment_and_string() {
+    // D5: a real Rust grammar — `line_comment` → Comment, `string_literal`
+    // → Literal — and still gap-free.
+    let h = TsHighlighter::for_language("rust").expect("rust grammar available");
+    assert_eq!(h.language(), "rust");
+    let src = "// note\nlet s = \"hi\";\n";
+    let spans = h.highlight(src);
+    assert_full_coverage(&spans, src.len());
+    assert_eq!(
+        kind_at(&spans, src, "// note"),
+        Some(HighlightKind::Comment)
+    );
+    assert_eq!(kind_at(&spans, src, "\"hi\""), Some(HighlightKind::Literal));
+}
+
+#[test]
+fn python_grammar_classifies_comment_and_string() {
+    let h = TsHighlighter::for_language("python").expect("python grammar available");
+    assert_eq!(h.language(), "python");
+    let src = "# note\nx = \"hi\"\n";
+    let spans = h.highlight(src);
+    assert_full_coverage(&spans, src.len());
+    assert_eq!(kind_at(&spans, src, "# note"), Some(HighlightKind::Comment));
+    assert_eq!(kind_at(&spans, src, "\"hi\""), Some(HighlightKind::Literal));
+}
+
+#[test]
+fn json_grammar_classifies_string_and_number() {
+    // JSON has no comments; assert string + number literals instead.
+    let h = TsHighlighter::for_language("json").expect("json grammar available");
+    assert_eq!(h.language(), "json");
+    let src = "{\"k\": 42}\n";
+    let spans = h.highlight(src);
+    assert_full_coverage(&spans, src.len());
+    assert_eq!(kind_at(&spans, src, "\"k\""), Some(HighlightKind::Literal));
+    assert_eq!(kind_at(&spans, src, "42"), Some(HighlightKind::Literal));
+}
+
 #[test]
 fn empty_source_is_one_plain_span_or_empty() {
     let h = TsHighlighter::for_language("bash").expect("bash");

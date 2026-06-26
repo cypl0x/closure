@@ -13,7 +13,7 @@ file is the fine-grained, capability-level queue between them. Blocked
 on a design decision? Record it under [[*Decisions][Decisions]], pick the most
 reversible option, keep moving.
 
-* WIP Depth IV — make the shallow-deep components genuinely deep [1/9]
+* WIP Depth IV — make the shallow-deep components genuinely deep [2/9]
 Depth III closed *breadth* (every vision noun has a crate). Depth IV
 closes *depth* on the components that are still demo / subset /
 external-only. Same binding rules as Depth III: strict 7-step TDD, one
@@ -38,6 +38,26 @@ already pulls blake2 but not as a general hash API; a dedicated =blake3=
 dep is cleaner than reusing the Noise primitive. =Cid= value stays an
 opaque string so a later swap needs no API change. Old =b1= ids simply
 never match new =b3= ids — acceptable, content re-hashes on read.
+
+** DONE D5 tree-sitter breadth: rust / python / json grammars [1/1]
+V6 shipped one real grammar (bash). =TsHighlighter::for_language= is now a
+registry over four bundled grammars — bash, rust, python, json — each
+gap-free + string/comment-aware, each tested in =tree_sitter_real.rs= like
+bash. =ts_unit_kind= generalised from exact node names (=comment=,
+=string=) to substring/suffix matching (=*comment*=, =*string*=, =number=,
+=*_literal=) so one classifier spans grammars whose node-kind names differ
+(Rust =line_comment=/=string_literal=, json =number=). All four grammars
+feature-gated under the single =tree-sitter= feature; default =just check=
+never compiles them (I10 holds). After this the user gets real,
+string-context-aware highlighting for the four most common =#+BEGIN_SRC=
+languages, not just bash.
+*** Decision (2026-06-26) One =tree-sitter= feature, not per-grammar.
+=cargo add= resolved tree-sitter-rust 0.24.2 / -python 0.25.0 / -json
+0.24.8, all ABI-compatible with tree-sitter 0.26 via tree-sitter-language
+0.1 (confirmed: they compile + parse under =just tree-sitter=). Folded all
+into the existing =tree-sitter= feature rather than four sub-features —
+the registry should be whole when on; nobody wants "tree-sitter but only
+python". Adding the 5th+ grammar is now one match arm + one dep line.
 
 * DONE Depth III — close the remaining vision gaps [13/13]
 A full re-read of the original vision against the repo (33 crates, all
