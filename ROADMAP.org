@@ -13,6 +13,32 @@ file is the fine-grained, capability-level queue between them. Blocked
 on a design decision? Record it under [[*Decisions][Decisions]], pick the most
 reversible option, keep moving.
 
+* WIP Depth IV — make the shallow-deep components genuinely deep [1/9]
+Depth III closed *breadth* (every vision noun has a crate). Depth IV
+closes *depth* on the components that are still demo / subset /
+external-only. Same binding rules as Depth III: strict 7-step TDD, one
+leaf per pass, never weaken a test or lower a gate, each leaf revises
+=docs/spec.md= + adds a dated Decision in the SAME commit, non-hermetic
+deps feature-gated OFF with =just check= green (I10).
+
+** DONE D2 Content hash: FNV-1a → cryptographic BLAKE3 [1/1]
+=closure_sync::Cid::of= was a non-cryptographic FNV-1a digest (prefixed
+=b1=) — fine for dedup, useless as an integrity guarantee. Now a 256-bit
+BLAKE3 digest (prefixed =b3=, pure-Rust =blake3=, hermetic). Pinned in
+=cas.rs::cid_is_blake3_256bit= two ways: against the lib's own digest
+(algorithm is exactly BLAKE3) and against the published empty-input test
+vector (it is *canonical* BLAKE3). =BlockStore::verify= now rests on real
+collision resistance: a tampered blob provably cannot reuse its =Cid=.
+After this the user can trust content-addressed dedup + verify-on-read as
+a security property, not just a checksum.
+*** Decision (2026-06-26) BLAKE3 over SHA-256/blake2.
+BLAKE3 is pure-Rust, builds offline (I10 holds — confirmed: =just check=
+needs no network for it), fast, and 256-bit collision-resistant. =snow=
+already pulls blake2 but not as a general hash API; a dedicated =blake3=
+dep is cleaner than reusing the Noise primitive. =Cid= value stays an
+opaque string so a later swap needs no API change. Old =b1= ids simply
+never match new =b3= ids — acceptable, content re-hashes on read.
+
 * DONE Depth III — close the remaining vision gaps [13/13]
 A full re-read of the original vision against the repo (33 crates, all
 prior ROADMAP DONE) surfaced gaps in *breadth* (named wants with no

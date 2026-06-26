@@ -19,22 +19,19 @@ pub use ed25519_dalek::{SigningKey, VerifyingKey};
 /// derived from its bytes. Identical content always yields an equal
 /// `Cid` (dedup + verify-on-read); textual form is deterministic (I6).
 ///
-/// Not cryptographic — an FNV-1a digest, prefixed `b1`. A future
-/// `sha256`-backed CID can be added behind a feature without changing the
-/// API (the value is an opaque string).
+/// Cryptographic (D2): a 256-bit BLAKE3 digest, prefixed `b3`. Collision
+/// resistance lets the `Cid` double as an integrity check — a tampered or
+/// truncated blob hashes to a different `Cid` and is rejected on read. The
+/// value is an opaque string, so swapping the algorithm again later needs
+/// no API change.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct Cid(String);
 
 impl Cid {
-    /// The content id of `bytes`.
+    /// The content id of `bytes`: `b3` + the 64-hex BLAKE3 digest.
     #[must_use]
     pub fn of(bytes: &[u8]) -> Self {
-        let mut h: u64 = 0xcbf2_9ce4_8422_2325;
-        for &b in bytes {
-            h ^= u64::from(b);
-            h = h.wrapping_mul(0x0000_0100_0000_01b3);
-        }
-        Self(format!("b1{h:016x}"))
+        Self(format!("b3{}", blake3::hash(bytes).to_hex()))
     }
 
     /// The textual content id (stable; usable as a key / on the wire).

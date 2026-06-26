@@ -22,6 +22,10 @@ ed25519-dalek = "2"
 # Pure-Rust Noise protocol (default-resolver: chacha20poly1305 + x25519
 # + blake2, no C, no async runtime) for encrypting the transport (C3b).
 snow = "0.9"
+# Pure-Rust cryptographic content hash (D2). 256-bit BLAKE3 backs the
+# `Cid`: collision-resistant, deterministic (I6), hermetic (no C, builds
+# offline). Replaces the former non-cryptographic FNV-1a digest.
+blake3 = "1"
 
 [dev-dependencies]
 tempfile = "3"
