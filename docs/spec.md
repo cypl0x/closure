@@ -443,7 +443,15 @@ base, ours, theirs)` returns the `FieldConflict`s (title/body) both sides
 - `closure-input` — Emacs / vim / Doom / helix / Notion-mouse-block modes.
   Each mode is a keybinding trie + mode state machine over the single
   command registry. Chord syntax supports `<SPC> f f`, literal `SPC`,
-  `<C-c> <C-x>` (tempo-style).
+  `<C-c> <C-x>` (tempo-style). **D6 conformance:** all five modes bind the
+  *same* command set (only chords differ), proven by a matrix that every
+  command yields an `Action` (hence a non-empty chord, by construction) in
+  every mode; and the chord *shown* for a given (mode, command) is
+  identical across three independent shell render paths — TUI
+  (`render_snapshot`), web (`render_view`), and the gpui which-key
+  (`App::palette_results`) — all sourced from `chord_for_command`
+  (`closure-cli/tests/cross_shell_chords.rs`). A shell that hardcodes or
+  diverges fails the test.
 - `closure-whichkey` — auto-generated from the registry (I4).
 
 ## What forces a v1.0 break

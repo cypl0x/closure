@@ -13,7 +13,7 @@ file is the fine-grained, capability-level queue between them. Blocked
 on a design decision? Record it under [[*Decisions][Decisions]], pick the most
 reversible option, keep moving.
 
-* WIP Depth IV — make the shallow-deep components genuinely deep [3/9]
+* WIP Depth IV — make the shallow-deep components genuinely deep [4/9]
 Depth III closed *breadth* (every vision noun has a crate). Depth IV
 closes *depth* on the components that are still demo / subset /
 external-only. Same binding rules as Depth III: strict 7-step TDD, one
@@ -80,6 +80,27 @@ mock proves the protocol encode/decode AND the loop hermetically (I10/I6);
 the live HTTP tier stays opt-in. shell-core is a *dev*-dependency of
 closure-llm (no cycle — shell-core never depends on llm), keeping the
 runtime adapter thin (I8).
+
+** DONE D6 Input-mode conformance + cross-shell chord identity [1/1]
+Prior tests proved the five modes bind the same command *set* and that
+=chord_for_command= round-trips. D6 adds the missing depth: a matrix that
+every command yields an =Action= (so a non-empty chord, by construction) in
+all five modes, and — the genuinely new guard — that the chord *shown* is
+identical across three independent shell render paths: TUI
+(=render_snapshot=), web (=render_view=), and the gpui which-key
+(=App::palette_results=). All three source the chord from
+=chord_for_command=; a shell that hardcodes or diverges now fails
+=closure-cli/tests/cross_shell_chords.rs=. The keymaps were already
+complete (no sparse mode to fill). After this, "every command shows its
+keybinding in every UI element, consistently across modes" is a guarded
+invariant, not an aspiration.
+*** Decision (2026-06-26) Test gpui via its hermetic state core.
+The native shells (gpui/egui) expose only a feature-gated =run()= — no
+window-free render. But the gpui which-key paints =App::palette_results=
+(=(name, chord)=), which is pure shell-core state, callable with no
+display. So the native renderer's chord source is verified hermetically
+without the =gpui= feature, alongside tui/web. No live window needed; I10
+holds. egui shares the same =Action= source by construction (I7).
 
 * DONE Depth III — close the remaining vision gaps [13/13]
 A full re-read of the original vision against the repo (33 crates, all
