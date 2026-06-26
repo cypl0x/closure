@@ -121,5 +121,11 @@ gui-qt:
 run-qt vault:
     cargo run -p closure-shell-qt --features qt -- {{vault}}
 
+# D7 real OS-clipboard adapter (opt-in; no extra crate — shells out to the
+# platform tool at runtime). Default build keeps the in-memory clipboard;
+# this gate builds + tests the SystemClipboard process round trip.
+clipboard:
+    cargo test -p closure-store --features clipboard --test clipboard --test clipboard_system
+
 # Full local CI: everything above.
 ci: check fuzz wasm coverage

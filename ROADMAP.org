@@ -13,7 +13,7 @@ file is the fine-grained, capability-level queue between them. Blocked
 on a design decision? Record it under [[*Decisions][Decisions]], pick the most
 reversible option, keep moving.
 
-* WIP Depth IV — make the shallow-deep components genuinely deep [4/9]
+* WIP Depth IV — make the shallow-deep components genuinely deep [5/9]
 Depth III closed *breadth* (every vision noun has a crate). Depth IV
 closes *depth* on the components that are still demo / subset /
 external-only. Same binding rules as Depth III: strict 7-step TDD, one
@@ -101,6 +101,26 @@ window-free render. But the gpui which-key paints =App::palette_results=
 display. So the native renderer's chord source is verified hermetically
 without the =gpui= feature, alongside tui/web. No live window needed; I10
 holds. egui shares the same =Action= source by construction (I7).
+
+** DONE D7 OS-clipboard bridge [1/1]
+The vision wants clipboard/kill-ring recorded + the system clipboard
+reachable. The kill ring shipped (=Vault::cut=/=paste=); D7 bridges it to
+the OS clipboard without making the clipboard load-bearing. A =Clipboard=
+trait + hermetic =MemoryClipboard= default; =Vault::mirror_ring_top_to_clipboard=
+pushes the ring top out, =pull_clipboard_to_ring= brings external text in
+and pastes it through the same span-preserving path. =SystemClipboard=
+(behind the =clipboard= feature) shells out to wl-copy/xclip/pbcopy.
+=tests/clipboard.rs= proves the round trip AND that cut/paste still work
+with no clipboard at all; =tests/clipboard_system.rs= (gated) exercises the
+real process round trip via a temp-file =sh -c= backend. After this the
+user's cut subtree can land in any other app, and an external copy can be
+pasted into the vault — without the clipboard ever being a hard dependency.
+*** Decision (2026-06-26) Shell out, no clipboard crate.
+=arboard=/=copypasta= pull X11/Wayland C libs → non-hermetic build. Shelling
+to the platform tool (like =CurlProvider= shells to curl) keeps the build
+dep-free + hermetic (I10); only the runtime needs the tool. The argv is
+caller-supplied (=SystemClipboard::new=) so it works on Wayland/X11/macOS
+without a compile-time platform branch.
 
 * DONE Depth III — close the remaining vision gaps [13/13]
 A full re-read of the original vision against the repo (33 crates, all

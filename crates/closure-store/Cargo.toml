@@ -16,6 +16,10 @@ default = []
 # Forward the wasm sandbox exec tier (C1c) to closure-eval. Opt-in;
 # default build stays hermetic. Gate: `just eval-wasm`.
 wasmtime = ["closure-eval/wasmtime"]
+# Real OS clipboard adapter (D7). No extra crate — SystemClipboard shells
+# out to the platform tool, so the build stays hermetic; only the runtime
+# needs wl-copy/xclip/pbcopy. Default off. Gate: `just clipboard`.
+clipboard = []
 
 [dependencies]
 closure-core = { path = "../closure-core" }

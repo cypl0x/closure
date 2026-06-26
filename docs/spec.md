@@ -167,7 +167,16 @@ Preserved as opaque text (no semantics yet):
 - `closure-core` — `Document`, `BlockId`, command registry, event bus,
   keybinding trie, `Edit` log. Frontend-agnostic (I7). Forbids direct
   mutation outside `commands::`.
-- `closure-store` — vault loader, file watcher, atomic writes, indices.
+- `closure-store` — vault loader, file watcher, atomic writes, indices,
+  kill ring (cut/paste subtrees, a move so ids stay unique, I2). **D7 —
+  OS-clipboard bridge:** the kill ring is the hub; a `Clipboard` adapter
+  mirrors its top *out* (`mirror_ring_top_to_clipboard`) and pulls external
+  text *in* (`pull_clipboard_to_ring`, which then pastes through the same
+  span-preserving path). Additive — cut/paste never need a clipboard. The
+  hermetic default is `MemoryClipboard`; `SystemClipboard` (behind the
+  `clipboard` feature) shells out to the platform tool (wl-copy/xclip/
+  pbcopy) with no extra crate, so the build stays hermetic (I10) — only the
+  runtime needs the tool. Gate: `just clipboard`.
 - `closure-query` — tree / tag / full-text / backlink queries, Notion-style
   database views, and **composable widgets** (V2): `expand_widgets` expands
   every `#+BEGIN: closure-widget :name X` dynamic block in place — its body

@@ -3,6 +3,11 @@
 
 #![forbid(unsafe_code)]
 
+mod clipboard;
+#[cfg(feature = "clipboard")]
+pub use clipboard::SystemClipboard;
+pub use clipboard::{Clipboard, MemoryClipboard};
+
 use std::collections::HashMap;
 use std::fmt::Write as _;
 use std::fs;
@@ -454,6 +459,26 @@ impl Vault {
         self.documents.insert(path.to_path_buf(), new_doc);
         self.reindex_file(path);
         Ok(())
+    }
+
+    /// Mirror the kill-ring top *out* to an external clipboard (D7).
+    ///
+    /// A no-op when the ring is empty. Additive — the ring is unchanged,
+    /// so `paste` still works whether or not a clipboard is wired.
+    pub fn mirror_ring_top_to_clipboard(&self, clip: &mut dyn Clipboard) {
+        if let Some(top) = self.ring_top() {
+            clip.set(top);
+        }
+    }
+
+    /// Pull external clipboard text *in*, pushing it onto the kill ring
+    /// so the next `paste` inserts it (D7). A no-op when the clipboard is
+    /// empty. Lets content from another app enter the vault through the
+    /// same span-preserving paste path.
+    pub fn pull_clipboard_to_ring(&mut self, clip: &dyn Clipboard) {
+        if let Some(text) = clip.get() {
+            self.kill_ring.push(text);
+        }
     }
 
     /// Move headline `id`'s subtree to right after `after`'s subtree
