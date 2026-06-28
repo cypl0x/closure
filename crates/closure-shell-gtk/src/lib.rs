@@ -280,6 +280,9 @@ pub fn run(vault_path: &Path) -> Result<(), VaultError> {
         window.add_controller(keys);
         window.present();
     });
-    app.run();
+    // Run with an empty arg list: the vault path is already consumed above,
+    // so GTK must not re-parse argv (it would treat the vault path as a
+    // file to open and, lacking HANDLES_OPEN, abort with a GIO-CRITICAL).
+    app.run_with_args::<&str>(&[]);
     Ok(())
 }
