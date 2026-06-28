@@ -490,7 +490,13 @@ base, ours, theirs)` returns the `FieldConflict`s (title/body) both sides
   `ui_matrix_table`): after G3/G4 the native shells render the *full*
   `ViewTree`, so every column except `MIN` covers `ALL_NODE_KINDS`, each
   backed by an exhaustive `match` (a new kind is a compile error in every
-  renderer).
+  renderer). The runtime `Capability` matrix (`closure shells`) carries the
+  GUI surfaces too (P7): `Palette`/`Theme`/`Feedback` join the enum, an
+  `INTERACTIVE_EDITOR_CAPABILITIES` bar names the full interactive-editor
+  set, and `GTK`/`QT` columns are added. The native `ViewTree` editors
+  (`TUI`/`GTK`/`QT`) meet the bar (asserted); `WEB`/`TAURI` are the
+  capture-form web tier (no full `Edit`); `GPUI`/`EGUI` are interactive
+  editors whose themed/feedback *window* wiring is the remaining polish.
   GTK4 (G3) is no longer a read-only list: `closure_shell_gtk` consumes
   the shared `App`/`Shell` and renders the full `ViewTree` via
   `widget_tree` — a hermetic, golden-tested GTK4 widget-tree descriptor

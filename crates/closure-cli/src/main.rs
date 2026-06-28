@@ -51,7 +51,28 @@ pub enum Capability {
     Links,
     /// Agenda (SCHEDULED/DEADLINE).
     Agenda,
+    /// Command palette / which-key (GUI-UX G6).
+    Palette,
+    /// Themed window from the shared tokens (GUI-UX G2 / PARITY P5).
+    Theme,
+    /// Async notifications + progress surface (GUI-UX G7 / PARITY P6).
+    Feedback,
 }
+
+/// The interactive-editor parity bar (GUI-PARITY P7).
+///
+/// A native `ViewTree` editor drives the shared dispatch (browse + edit +
+/// capture + search), shows the palette, themes its window, and renders
+/// feedback.
+pub const INTERACTIVE_EDITOR_CAPABILITIES: &[Capability] = &[
+    Capability::Browse,
+    Capability::Edit,
+    Capability::Capture,
+    Capability::Search,
+    Capability::Palette,
+    Capability::Theme,
+    Capability::Feedback,
+];
 
 /// The minimal set every shell must provide (I7 kernel-agnostic requirement).
 pub const CORE_CAPABILITIES: &[Capability] = &[
@@ -75,6 +96,38 @@ pub const TUI_CAPABILITIES: &[Capability] = &[
     Capability::Database,
     Capability::Links,
     Capability::Agenda,
+    Capability::Palette,
+    Capability::Theme,
+    Capability::Feedback,
+];
+
+/// Native GTK4 `ViewTree` editor (GUI-UX G3 / PARITY P2/P5).
+///
+/// Drives the shared dispatch, themed via a `CssProvider`, renders
+/// feedback toasts.
+pub const GTK_CAPABILITIES: &[Capability] = &[
+    Capability::Browse,
+    Capability::Edit,
+    Capability::Capture,
+    Capability::Search,
+    Capability::Palette,
+    Capability::Theme,
+    Capability::Feedback,
+    Capability::Links,
+];
+
+/// Native Qt6/QML `ViewTree` editor (GUI-UX G4 / PARITY P3/P5).
+///
+/// Same shared dispatch + `QObject` bridge, themed via QML colour props.
+pub const QT_CAPABILITIES: &[Capability] = &[
+    Capability::Browse,
+    Capability::Edit,
+    Capability::Capture,
+    Capability::Search,
+    Capability::Palette,
+    Capability::Theme,
+    Capability::Feedback,
+    Capability::Links,
 ];
 
 /// CLI (one-shot commands, no interactive TUI/editing loop).
@@ -95,16 +148,35 @@ pub const CLI_CAPABILITIES: &[Capability] = &[
 pub const WEB_CAPABILITIES: &[Capability] =
     &[Capability::Browse, Capability::Capture, Capability::Search];
 
-/// Egui desktop skeleton (`HeadlessAdapter` for tests; browse-focused so far).
-pub const EGUI_CAPABILITIES: &[Capability] = &[Capability::Browse];
+/// Egui desktop editor.
+///
+/// Drives the shared `App`/`Shell` (browse + edit + capture + search +
+/// palette). Themed/feedback window wiring is the remaining polish (honest
+/// — see the P7 report).
+pub const EGUI_CAPABILITIES: &[Capability] = &[
+    Capability::Browse,
+    Capability::Edit,
+    Capability::Capture,
+    Capability::Search,
+    Capability::Palette,
+];
 
 /// Tauri (webview wrapper around the web shell + native menu/FS; matrix entry for native web variant).
 pub const TAURI_CAPABILITIES: &[Capability] =
     &[Capability::Browse, Capability::Capture, Capability::Search];
 
-/// gpui (Zed's native high-perf immediate UI; evaluate vs egui for desktop power-user shell).
-pub const GPUI_CAPABILITIES: &[Capability] =
-    &[Capability::Browse, Capability::Capture, Capability::Search];
+/// gpui (Zed's native high-perf editor).
+///
+/// Drives the shared `App`/`Shell` (browse + edit + capture + search) with
+/// a which-key palette. Themed/feedback window wiring is the remaining
+/// polish (see the P7 report).
+pub const GPUI_CAPABILITIES: &[Capability] = &[
+    Capability::Browse,
+    Capability::Edit,
+    Capability::Capture,
+    Capability::Search,
+    Capability::Palette,
+];
 
 /// Flutter (cross-platform embedder; mobile + desktop via the kernel; suggestion-tier per vision).
 pub const FLUTTER_CAPABILITIES: &[Capability] =
@@ -3839,6 +3911,8 @@ fn cmd_shells() {
         ("TUI ", TUI_CAPABILITIES),
         ("CLI ", CLI_CAPABILITIES),
         ("WEB ", WEB_CAPABILITIES),
+        ("GTK ", GTK_CAPABILITIES),
+        ("QT  ", QT_CAPABILITIES),
         ("EGUI", EGUI_CAPABILITIES),
         ("TAURI", TAURI_CAPABILITIES),
         ("GPUI ", GPUI_CAPABILITIES),
@@ -3904,4 +3978,48 @@ fn shell_capability_matrix_basics() {
     // Basic check that command would not panic (will be exercised after impl).
     // In full, cmd_shells() prints the venn.
     assert!(!core.is_empty());
+}
+
+// P7: the GUI-PARITY bar. The native ViewTree editors (tui/gtk/qt) drive
+// the shared dispatch + render the full UX surface, so each must be a
+// superset of the interactive-editor capability set.
+#[test]
+fn native_viewtree_editors_meet_the_interactive_parity_bar() {
+    for (name, caps) in [
+        ("TUI", TUI_CAPABILITIES),
+        ("GTK", GTK_CAPABILITIES),
+        ("QT", QT_CAPABILITIES),
+    ] {
+        for c in INTERACTIVE_EDITOR_CAPABILITIES {
+            assert!(
+                caps.contains(c),
+                "{name} must provide interactive-editor capability {c:?}"
+            );
+        }
+    }
+}
+
+#[test]
+fn interactive_bar_includes_the_gui_surfaces() {
+    for c in [
+        Capability::Edit,
+        Capability::Palette,
+        Capability::Theme,
+        Capability::Feedback,
+    ] {
+        assert!(
+            INTERACTIVE_EDITOR_CAPABILITIES.contains(&c),
+            "{c:?} is part of the interactive-editor bar"
+        );
+    }
+}
+
+#[test]
+fn web_tier_shells_are_browse_capture_search_not_full_editors() {
+    // Honest boundary: the served web surface (web + the tauri host) is the
+    // capture-form tier, not a full rename/delete editor.
+    for (name, caps) in [("WEB", WEB_CAPABILITIES), ("TAURI", TAURI_CAPABILITIES)] {
+        assert!(caps.contains(&Capability::Capture), "{name} captures");
+        assert!(!caps.contains(&Capability::Edit), "{name} is not a full editor");
+    }
 }

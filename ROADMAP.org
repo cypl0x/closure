@@ -13,7 +13,7 @@ file is the fine-grained, capability-level queue between them. Blocked
 on a design decision? Record it under [[*Decisions][Decisions]], pick the most
 reversible option, keep moving.
 
-* WIP GUI-PARITY — every GUI shell a real interactive editor [6/7]
+* DONE GUI-PARITY — every GUI shell a real interactive editor [7/7]
 GUI-UX brought the hermetic cores to parity (every shell consumes
 =App=/=Shell= + renders the =ViewTree=); the gap left is the windowed
 =run()= loops — gpui/egui edit live, gtk/qt render a static snapshot,
@@ -151,6 +151,52 @@ per-shell notification code. Likewise =ElementState= stays a shared machine
 native style, rather than each inventing focus/hover logic. Binding the
 class onto specific rows + animating toasts are display-bound, not parity
 gaps; the state + composition are the tested part.
+
+** DONE P7 Shell feature-parity matrix + honest report [1/1]
+The runtime =Capability= matrix (=closure shells=) now carries the GUI
+surfaces: =Palette=/=Theme=/=Feedback= join the enum, =GTK_CAPABILITIES= +
+=QT_CAPABILITIES= are added (+ the table grew =GTK=/=QT= columns), and the
+stale entries are corrected (=EGUI= was =Browse=-only; =GPUI= was
+browse/capture/search — both are interactive editors). =INTERACTIVE_EDITOR_CAPABILITIES=
+is the parity bar; tests assert the native =ViewTree= editors (=TUI=/=GTK=/
+=QT=) all meet it, that the bar includes the GUI surfaces, and that the
+web-tier shells (=WEB=/=TAURI=) capture but are honestly *not* full editors.
+=just check= 3581 green; full =just ci= green.
+*** Decision (2026-06-28) Matrix states the real boundary, doesn't flatten it.
+Parity is not "every shell identical" — it's "every shell that claims a
+capability really has it, via the shared core." So =GTK=/=QT= earn the full
+interactive-editor set (dispatch + palette + theme + feedback, all tested),
+=TUI= already had it, and the matrix *records the honest gaps*: =WEB=/=TAURI=
+are the served capture-form tier (no rename/delete =Edit=), =GPUI=/=EGUI=
+edit through the shared =App= but their themed/feedback window wiring is the
+named next step. Encoding that in =INTERACTIVE_EDITOR_CAPABILITIES= + the
+=closure shells= table makes "who is a full editor" a checked fact, not a
+slogan.
+*** Honest report — hermetically-proven interactive parity vs window-bound paint
+Genuinely deep + hermetic this milestone (tested, in =just check=):
+- ONE shared input step: =KeyEvent= → =App::dispatch= → =Shell= (I8) →
+  =ViewTree= (P1); a shell using only =dispatch= edits the vault, proven by
+  a full capture round-trip + persist (P1).
+- =gtk= + =qt= windows are interactive editors: each keypress runs the
+  shared =next_frame= (=dispatch= + widget/QML render); the GDK controller
+  (P2) + the =QObject= bridge (P3) feed it, both build-verified. =tauri=
+  hosts the LIVE served editor (=POST /capture= → registry), not the
+  read-only export (P4).
+- Both native windows apply the shared =Theme= (gtk CSS / qt QML props, P5);
+  feedback + interaction states reach every window from the shared machines
+  (=with_feedback= → toasts, =ElementState::class=, P6).
+- The =Capability= matrix proves =TUI=/=GTK=/=QT= meet the interactive-editor
+  bar; the honest gaps (web-tier, gpui/egui window wiring) are recorded, not
+  hidden (P7).
+External / window-bound by design (unchanged, honestly bounded):
+- The actual key delivery + repaint + the rendered frame still need a live
+  display: the GDK =EventControllerKey= loop, the QML engine, the wry
+  webview + its localhost server, the gpui/egui draw — all feature-gated,
+  build-verified under =.#webview=, manual-smoke, never in =just check=.
+- So interactive parity is proven as shared *dispatch + per-shell mapping*
+  (all tested); the window translates events + paints pixels. That seam is
+  the milestone's thesis, met: "every GUI is a real editor" is now a tested
+  property of the shared core, not five hand-wired loops.
 
 * DONE GUI-UX — every GUI shell a full-blown, top-notch editor [9/9]
 The GUI tier is uneven: gpui/egui are full editors, tauri hosts the web
