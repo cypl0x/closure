@@ -13,6 +13,47 @@ file is the fine-grained, capability-level queue between them. Blocked
 on a design decision? Record it under [[*Decisions][Decisions]], pick the most
 reversible option, keep moving.
 
+* TODO GUI-UX — every GUI shell a full-blown, top-notch editor [0/9]
+The GUI tier is uneven: gpui/egui are full editors, tauri hosts the web
+shell, but gtk/qt are read-only headline lists, and "great UX" exists
+nowhere as *tested* structure. Pixels can't be gated hermetically
+(window-bound), so depth lives in the shell-core state + the declarative
+=ViewTree=; the native window stays a thin display-bound adapter. Each
+leaf's PROOF is a headless ViewTree/state assertion + golden snapshot;
+the window is build-verified + manual smoke (gpui/egui class). Binding
+rules (same as Depth IV): strict 7-step TDD, one leaf per pass, never
+weaken a test or lower a gate (coverage floor stays >=84), each leaf
+revises =docs/spec.md= + adds a dated Decision in the SAME commit,
+non-hermetic window deps feature-gated OFF with =just check= green (I10).
+
+** WIP G1 Rich ViewTree vocabulary: splits / overlays / notifications [1/3]
+The =Node= enum described a single screen; a "full-blown editor" needs a
+richer, still-declarative layout vocabulary. G1 grows it one kind per
+sub-cycle, each exhaustively matched across every renderer (V1c), so a
+shell that omits one does not compile.
+*** DONE G1a =Node::Split= — multi-pane layout
+=Node::Split { direction: SplitDir, panes }= arranges child panes along a
+=Row=/=Column= axis — the foundation for sidebar + main + detail. Wired
+through =kind=/=aria_role= (group)/=view_to_json=/=serialize_view= in
+closure-shell-core and both =render_view= embedders (=closure-tui= text,
+=closure-shell-web= flex =div=); =ALL_NODE_KINDS= 8→9, =split_node=
+constructor. Hermetic proof: panes render in order, the axis is labelled
+(=split:row= / =class="split split-row"=), JSON nests panes — golden in
+=rich_view.rs= (shell-core/tui/web). En route, the D9 =tables= proptest
+surfaced a real I5 panic — list-item checkbox scan sliced =&after_ws[..1]=
+mid-codepoint on input =-\t<3-byte char>=; fixed to byte comparison
+(markers are ASCII) + a pinned regression test. =just check= 3501 green.
+*** Decision (2026-06-28) Add kinds, never a =_= wildcard in renderers.
+The rich vocabulary lands as new =Node= variants, not flags on existing
+ones, precisely so the exhaustive =match= in every renderer breaks at
+compile time until each shell handles the kind (the V1c guarantee is the
+whole point — it forces cross-shell parity). =Split= carries only
+structure (axis + ordered panes); how wide each pane draws is the
+embedder's pixel job, outside the hermetic gate. =SplitDir= is a tiny
+=Copy= enum with a stable =as_str= tag so JSON/CSS stay deterministic.
+*** TODO G1b =Node::Modal= — overlay layer (palette/dialog over a base)
+*** TODO G1c =Node::Toast= + row badges/icons-as-data + focus marker
+
 * DONE Depth IV — make the shallow-deep components genuinely deep [9/9]
 Depth III closed *breadth* (every vision noun has a crate). Depth IV
 closes *depth* on the components that are still demo / subset /

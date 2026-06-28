@@ -1,0 +1,23 @@
+//! G1a: the TUI renders the `Node::Split` multi-pane layout — panes in
+//! render order, the split axis labelled. Hermetic, no terminal.
+
+#![allow(clippy::unwrap_used, clippy::expect_used)]
+
+use closure_shell_core::{Node, SplitDir, split_node};
+use closure_tui::render_snapshot;
+
+#[test]
+fn split_renders_panes_in_order_under_a_labelled_axis() {
+    let tree = split_node(
+        SplitDir::Column,
+        vec![
+            Node::Text("top".into()),
+            Node::Text("bottom".into()),
+        ],
+    );
+    let snap = render_snapshot(&tree);
+    assert!(snap.contains("split:column"), "axis labelled: {snap}");
+    let top = snap.find("top").unwrap();
+    let bottom = snap.find("bottom").unwrap();
+    assert!(top < bottom, "panes in render order: {snap}");
+}

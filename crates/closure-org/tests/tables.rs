@@ -56,6 +56,16 @@ fn no_table_without_pipe_rows() {
     assert!(doc.tables().is_empty());
 }
 
+#[test]
+fn list_item_checkbox_scan_is_char_boundary_safe() {
+    // Regression (I5): a multibyte char in the checkbox marker slot of a
+    // list item (`-\t<3-byte char>`) used to slice mid-codepoint and
+    // panic. The parser is total; this must round-trip, not panic.
+    let s = "-\tࠀ";
+    let doc = parse(s).expect("parser is total");
+    assert_eq!(print(&doc), s, "I1 holds on the regression input");
+}
+
 proptest! {
     #[test]
     fn tables_never_panics_on_random_input(s in ".{0,200}") {

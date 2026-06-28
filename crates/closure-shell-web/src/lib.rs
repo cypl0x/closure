@@ -407,6 +407,17 @@ pub fn render_view(node: &closure_shell_core::Node) -> String {
             escape_html(content)
         ),
         Node::Text(t) => format!("<p>{}</p>", escape_html(t)),
+        Node::Split { direction, panes } => {
+            let inner = panes.iter().fold(String::new(), |mut s, p| {
+                s.push_str(&render_view(p));
+                s
+            });
+            format!(
+                "<div role=\"{}\" class=\"split split-{}\">{inner}</div>",
+                node.aria_role(),
+                direction.as_str()
+            )
+        }
     }
 }
 

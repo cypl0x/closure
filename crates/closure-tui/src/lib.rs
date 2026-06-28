@@ -1382,6 +1382,12 @@ fn push_view_node(node: &closure_shell_core::Node, depth: usize, out: &mut Vec<S
             }
         }
         Node::Text(t) => out.push(format!("{pad}{t}")),
+        Node::Split { direction, panes } => {
+            out.push(format!("{pad}== split:{} ==", direction.as_str()));
+            for p in panes {
+                push_view_node(p, depth + 1, out);
+            }
+        }
     }
 }
 

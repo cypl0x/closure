@@ -484,6 +484,42 @@ pub enum Node {
     },
     /// Inert text.
     Text(String),
+    /// A multi-pane split layout (G1a): child panes arranged along an
+    /// axis. The foundation for a real editor surface (sidebar + main +
+    /// detail). Renderers lay the panes out along [`SplitDir`]; the
+    /// hermetic guarantee is the pane *set + order + axis*, not pixels.
+    Split {
+        /// Axis the panes are arranged along.
+        direction: SplitDir,
+        /// Child panes, in render order.
+        panes: Vec<Self>,
+    },
+}
+
+/// The axis a [`Node::Split`] arranges its panes along (G1a).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum SplitDir {
+    /// Panes side by side, left to right.
+    Row,
+    /// Panes stacked, top to bottom.
+    Column,
+}
+
+impl SplitDir {
+    /// Stable lowercase tag for serialisation / CSS class suffixes.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Row => "row",
+            Self::Column => "column",
+        }
+    }
+}
+
+/// Build a [`Node::Split`] from an axis and its panes (G1a).
+#[must_use]
+pub const fn split_node(direction: SplitDir, panes: Vec<Node>) -> Node {
+    Node::Split { direction, panes }
 }
 
 /// Build a [`Node::Widget`] from a name and its expanded content (V2c).
@@ -632,6 +668,14 @@ pub fn view_to_json(node: &Node) -> String {
             "{{\"k\":\"text\",\"role\":{role},\"text\":{}}}",
             json_str(t)
         ),
+        Node::Split { direction, panes } => {
+            let kids: Vec<String> = panes.iter().map(view_to_json).collect();
+            format!(
+                "{{\"k\":\"split\",\"role\":{role},\"dir\":{},\"panes\":[{}]}}",
+                json_str(direction.as_str()),
+                kids.join(",")
+            )
+        }
     }
 }
 
@@ -698,6 +742,12 @@ fn serialize_node(node: &Node, depth: usize, out: &mut String) {
         }
         Node::Text(t) => {
             let _ = writeln!(out, "{pad}TEXT {t}");
+        }
+        Node::Split { direction, panes } => {
+            let _ = writeln!(out, "{pad}SPLIT {}", direction.as_str());
+            for p in panes {
+                serialize_node(p, depth + 1, out);
+            }
         }
     }
 }
@@ -1128,6 +1178,8 @@ pub enum NodeKind {
     Widget,
     /// [`Node::Text`].
     Text,
+    /// [`Node::Split`].
+    Split,
 }
 
 impl Node {
@@ -1139,7 +1191,7 @@ impl Node {
         match self {
             Self::Pane { .. } | Self::Widget { .. } => "region",
             Self::Rows { .. } => "list",
-            Self::Detail { .. } => "group",
+            Self::Detail { .. } | Self::Split { .. } => "group",
             Self::Input { .. } => "textbox",
             Self::Palette { .. } => "listbox",
             Self::Hints { .. } => "status",
@@ -1171,6 +1223,7 @@ impl Node {
             Self::Hints { .. } => NodeKind::Hints,
             Self::Widget { .. } => NodeKind::Widget,
             Self::Text(_) => NodeKind::Text,
+            Self::Split { .. } => NodeKind::Split,
         }
     }
 }
@@ -1185,6 +1238,7 @@ pub const ALL_NODE_KINDS: &[NodeKind] = &[
     NodeKind::Hints,
     NodeKind::Widget,
     NodeKind::Text,
+    NodeKind::Split,
 ];
 
 /// The floor every shell must render to host the launcher (I7 for UI):

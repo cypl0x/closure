@@ -39,6 +39,11 @@ fn collect<'a>(node: &'a Node, out: &mut Vec<&'a Action>) {
                 collect(c, out);
             }
         }
+        Node::Split { panes, .. } => {
+            for p in panes {
+                collect(p, out);
+            }
+        }
         Node::Detail { fields } => {
             for f in fields {
                 if let Some(a) = &f.action {

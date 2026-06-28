@@ -430,6 +430,14 @@ base, ours, theirs)` returns the `FieldConflict`s (title/body) both sides
   `@media` layout), usable on a phone browser with no native build; a
   native mobile app stays an external Flutter project (Dart/Xcode/NDK are
   non-hermetic, like X1d) — see `docs/flutter-shell.md`.
+  The vocabulary is grown for richer GUI surfaces (GUI-UX): `Node::Split
+  { direction: SplitDir, panes }` (G1a) is a multi-pane layout — the
+  foundation for a real editor surface (sidebar + main + detail). Like
+  every kind it is exhaustively matched by `kind`/`aria_role`/
+  `view_to_json`/`serialize_view` and both `render_view`s, so a renderer
+  that omits it does not compile; the hermetic guarantee is the pane
+  *set + order + axis* (golden-tested), not pixels — those stay the
+  embedder's display-bound job.
 - `closure-tui` — ratatui + crossterm. Primary first shell.
 - `closure-cli` — the `closure` binary (`tui`, `check`, `fmt`, `parse`,
   `query`, `serve`).

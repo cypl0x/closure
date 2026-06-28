@@ -11698,12 +11698,15 @@ fn classify_list_item(line: &str, span: Span) -> Option<NodeMeta> {
     let ws = after_marker.len() - after_marker.trim_start_matches([' ', '\t']).len();
     let after_ws = &after_marker[ws..];
 
-    // Optional checkbox.
-    let (checkbox, after_cb_len) = if after_ws.len() >= 3
-        && &after_ws[..1] == "["
-        && &after_ws[2..3] == "]"
+    // Optional checkbox. Compare bytes (the `[`, `]` markers are ASCII) so
+    // a multibyte char in the marker slot cannot land mid-codepoint and
+    // panic on a non-char-boundary slice (I5).
+    let cb_bytes = after_ws.as_bytes();
+    let (checkbox, after_cb_len) = if cb_bytes.len() >= 3
+        && cb_bytes[0] == b'['
+        && cb_bytes[2] == b']'
     {
-        let mark = after_ws.as_bytes()[1];
+        let mark = cb_bytes[1];
         let cb = match mark {
             b' ' => Some(Checkbox::Unchecked),
             b'X' | b'x' => Some(Checkbox::Checked),
