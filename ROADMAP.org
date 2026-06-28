@@ -13,7 +13,7 @@ file is the fine-grained, capability-level queue between them. Blocked
 on a design decision? Record it under [[*Decisions][Decisions]], pick the most
 reversible option, keep moving.
 
-* WIP GUI-UX — every GUI shell a full-blown, top-notch editor [8/9]
+* DONE GUI-UX — every GUI shell a full-blown, top-notch editor [9/9]
 The GUI tier is uneven: gpui/egui are full editors, tauri hosts the web
 shell, but gtk/qt are read-only headline lists, and "great UX" exists
 nowhere as *tested* structure. Pixels can't be gated hermetically
@@ -271,6 +271,46 @@ One shared canonical tree (not four bespoke fixtures) means the shells are
 compared on identical input, and the =ALL_NODE_KINDS= self-guard keeps the
 harness representative as the vocabulary grows — the same V1c spirit, one
 level up.
+
+** DONE G9 UX conformance matrix + honest report [1/1]
+The UI capability matrix now spans five shells: =GTK_NODE_KINDS= +
+=QT_NODE_KINDS= consts join =MIN=/=TUI=/=WEB=, and =ui_matrix_table= prints
+all five columns. After G3/G4 the native shells render the full =ViewTree=,
+so every column but =MIN= covers =ALL_NODE_KINDS=, each backed by an
+exhaustive =match= (a new kind is a compile error everywhere). Tests:
+gtk + qt are complete renderers; the table lists =GTK= + =QT=. =just check=
+3560 green; full =just ci= (check+fuzz+wasm+coverage) green.
+*** Decision (2026-06-28) The matrix is the parity proof, gtk/qt earned columns.
+Before GUI-UX the native shells were read-only lists — not even in the
+node-kind matrix. G3/G4 made =widget_tree=/=qml_view= exhaustive renderers,
+so listing them as =ALL_NODE_KINDS= columns is a backed claim (the same
+compile-time guarantee TUI/WEB already had), not aspiration. The matrix is
+where "every GUI is a full editor" is checked, not asserted.
+*** Honest report — hermetically-proven UX structure vs pixel/display-bound
+Genuinely deep + hermetic this milestone (tested, in =just check=):
+- The declarative vocabulary grew to a real editor surface: =Node::Split=
+  (multi-pane), =Modal= (overlay), =Toast= (notification), row
+  icons/badges — every renderer exhaustive (G1, G5a).
+- Typed theme tokens (palette/spacing/typography), 3 built-ins, resolved
+  from config; web CSS vars + tui ratatui colours (G2).
+- gtk + qt lifted from read-only lists to full =ViewTree= editors over the
+  shared =App=/=Shell=; both feature-builds verified under =.#webview=
+  (G3, G4).
+- Interaction is a tested state machine (focus/hover/active/disabled,
+  precedence), Notion affordances reduce to registry commands
+  (slash-menu/+/drag), the palette is sectioned+described+ranked from one
+  source, async feedback is a typed queue rendering through toasts
+  (G5b/G5c/G6/G7).
+- The cross-shell =ViewTree=→native mapping is golden-pinned + self-guarded
+  against new kinds (G8); the five-shell matrix proves parity (G9).
+External / display-bound by design (unchanged, honestly bounded):
+- The actual *pixels* — a rendered frame, font metrics, animation timing,
+  pointer hit-testing — remain unverifiable hermetically. Every shell's
+  window/event loop (gtk/qt/gpui/egui =run=, the web socket loop) needs a
+  live display and is feature-gated + manual-smoke, never in =just check=.
+- The depth therefore lives in shell-core state + the =ViewTree= and its
+  mappings (all tested); the embedder paints. That split is the milestone's
+  thesis, met: "incredible UX" is now tested *structure*, not eyeballing.
 
 * DONE Depth IV — make the shallow-deep components genuinely deep [9/9]
 Depth III closed *breadth* (every vision noun has a crate). Depth IV

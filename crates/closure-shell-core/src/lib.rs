@@ -1843,6 +1843,15 @@ pub const TUI_NODE_KINDS: &[NodeKind] = ALL_NODE_KINDS;
 /// all of them, exhaustively.
 pub const WEB_NODE_KINDS: &[NodeKind] = ALL_NODE_KINDS;
 
+/// Kinds the GTK4 renderer (`closure_shell_gtk::widget_tree`) handles —
+/// all of them, exhaustively (G3: its `match` over `Node` is total, so a
+/// new kind is a compile error there too).
+pub const GTK_NODE_KINDS: &[NodeKind] = ALL_NODE_KINDS;
+
+/// Kinds the Qt6/QML renderer (`closure_shell_qt::qml_view`) handles —
+/// all of them, exhaustively (G4).
+pub const QT_NODE_KINDS: &[NodeKind] = ALL_NODE_KINDS;
+
 /// The node kinds a shell does *not* render (`ALL_NODE_KINDS` minus
 /// `kinds`). Empty for a complete renderer.
 #[must_use]
@@ -1863,6 +1872,8 @@ pub fn ui_matrix_table() -> String {
         ("MIN", MINIMAL_NODE_KINDS),
         ("TUI", TUI_NODE_KINDS),
         ("WEB", WEB_NODE_KINDS),
+        ("GTK", GTK_NODE_KINDS),
+        ("QT", QT_NODE_KINDS),
     ];
     let mut out =
         String::from("UI node-kind matrix (which shells render which ViewTree nodes)\n\n");

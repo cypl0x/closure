@@ -485,7 +485,12 @@ base, ours, theirs)` returns the `FieldConflict`s (title/body) both sides
   tui text (exact golden), web HTML, gtk `widget_tree`, qt `qml_view` —
   pinning the structure each produces + determinism. Pixels stay
   unverifiable, but the `ViewTree`→native mapping is now regression-locked
-  as far as hermetically possible.
+  as far as hermetically possible. The UI capability matrix (G9) now spans
+  five columns — `MIN`/`TUI`/`WEB`/`GTK`/`QT` (`*_NODE_KINDS` consts +
+  `ui_matrix_table`): after G3/G4 the native shells render the *full*
+  `ViewTree`, so every column except `MIN` covers `ALL_NODE_KINDS`, each
+  backed by an exhaustive `match` (a new kind is a compile error in every
+  renderer).
   GTK4 (G3) is no longer a read-only list: `closure_shell_gtk` consumes
   the shared `App`/`Shell` and renders the full `ViewTree` via
   `widget_tree` — a hermetic, golden-tested GTK4 widget-tree descriptor
