@@ -461,6 +461,11 @@ base, ours, theirs)` returns the `FieldConflict`s (title/body) both sides
   compile time). Editing routes through the shared `Shell` (I8), proven by
   a headless capture-changes-the-tree test; the windowed `run` builds the
   same structure with real `gtk4` widgets (display-bound, feature-gated).
+  Qt6/QML (G4) is the same story: `closure_shell_qt::qml_view` renders the
+  shared `ViewTree` to a `QtQuick.Controls`/`Layouts` document (exhaustive
+  over every `Node` kind), edits route through the shared `Shell` (I8,
+  headless test), and `run` loads it in a real `qmetaobject` window. The
+  legacy `qml_document` list path is retained.
 - `closure-tui` — ratatui + crossterm. Primary first shell.
 - `closure-cli` — the `closure` binary (`tui`, `check`, `fmt`, `parse`,
   `query`, `serve`).

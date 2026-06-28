@@ -20,6 +20,7 @@ qt = ["dep:qmetaobject"]
 
 [dependencies]
 closure-store = { path = "../closure-store" }
+closure-shell-core = { path = "../closure-shell-core" }
 qmetaobject = { version = "0.2", optional = true }
 
 [dev-dependencies]

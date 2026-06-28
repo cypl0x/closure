@@ -13,7 +13,7 @@ file is the fine-grained, capability-level queue between them. Blocked
 on a design decision? Record it under [[*Decisions][Decisions]], pick the most
 reversible option, keep moving.
 
-* WIP GUI-UX — every GUI shell a full-blown, top-notch editor [3/9]
+* WIP GUI-UX — every GUI shell a full-blown, top-notch editor [4/9]
 The GUI tier is uneven: gpui/egui are full editors, tauri hosts the web
 shell, but gtk/qt are read-only headline lists, and "great UX" exists
 nowhere as *tested* structure. Pixels can't be gated hermetically
@@ -131,6 +131,28 @@ code is the =Node=→widget mapping. That mapping is a hermetic string
 (=widget_tree=, like qt's =qml_document=) so the structure is golden-tested
 without a display; the real =gtk4= build is the thin window. =rows()= is
 kept for the legacy path but is no longer the shell's ceiling.
+
+** DONE G4 Qt6/QML editor parity [1/1]
+The Qt shell mirrors G3: =closure-shell-qt= now depends on
+=closure-shell-core=, re-exports the shared =App=/=Shell=, and renders the
+full =ViewTree= via =qml_view(&Node) -> String= — a =QtQuick.Controls=/
+=Layouts= document (=GroupBox=/=ColumnLayout=/=RowLayout=/=TextField=/
+=Dialog=/=Label=…) exhaustive over every =Node= kind (V1c), with QML
+string-literal escaping. Editing goes through the shared =Shell= (I8):
+=tests/qml_view.rs= proves a =Shell::capture= appears in the QML and
+persists to disk, plus quote-escaping + the rich-kind coverage. =run()=
+loads =qml_view(App::view(Shell))= in a real =qmetaobject= engine
+(display-bound, =qt= feature). =qml_item='s flat 11-arm match took the
+=#[allow(too_many_lines)]= precedent. Legacy =qml_document= kept. Default
+=just check= 3530 green; =--features qt= build-verified under =.#webview=.
+*** Decision (2026-06-28) qml_view supersedes qml_document as the ceiling.
+=qml_document= rendered only a flat =ListView= of headline strings — the
+read-only past. =qml_view= renders the SAME =ViewTree= every other shell
+draws, so Qt editor behaviour is the tested shared =App=/=Shell= and the
+only Qt-specific code is the =Node=→QML mapping (a hermetic string, like
+gtk's =widget_tree=). Two shells (gtk + qt) now prove the pattern
+generalises: any embedder is "render the =ViewTree= + drive the =Shell=",
+the bulk hermetic, the window a thin display-bound adapter.
 
 * DONE Depth IV — make the shallow-deep components genuinely deep [9/9]
 Depth III closed *breadth* (every vision noun has a crate). Depth IV
