@@ -29,7 +29,29 @@ pub fn page(vault_path: &Path) -> Result<String, VaultError> {
     Ok(closure_shell_web::export_html(&vault))
 }
 
-/// Open a native window showing the vault's web UI. Blocks on the event
+/// The LIVE editor surface (P4): the web shell's served root page — the one
+/// with the capture form + fuzzy search, whose `POST /capture` writes back
+/// through the registry (I8).
+///
+/// This is what the interactive window hosts (via a local server), as
+/// opposed to the read-only [`page`] export. Pure + hermetic: built from
+/// the tested `closure_shell_web::respond`, so the interactive payload is
+/// verifiable without a window or socket.
+///
+/// # Errors
+///
+/// [`VaultError`] if the vault cannot be opened.
+pub fn interactive_page(vault_path: &Path) -> Result<String, VaultError> {
+    let mut vault = Vault::open(vault_path)?;
+    Ok(closure_shell_web::respond(&mut vault, "GET", "/", "").body)
+}
+
+/// The localhost address the interactive window serves the vault on (P4).
+pub const SERVE_ADDR: &str = "127.0.0.1:8787";
+
+/// Open a native window hosting the LIVE editor (P4): a local server
+/// serves the vault on [`SERVE_ADDR`] (so `POST /capture` round-trips to
+/// the registry, I8) and the webview loads its URL. Blocks on the event
 /// loop until the window is closed.
 ///
 /// # Errors
@@ -43,7 +65,17 @@ pub fn run(vault_path: &Path) -> Result<(), String> {
     use tao::window::WindowBuilder;
     use wry::WebViewBuilder;
 
-    let html = page(vault_path).map_err(|e| e.to_string())?;
+    // Open once up front so a bad vault fails before the window opens.
+    let _ = Vault::open(vault_path).map_err(|e| e.to_string())?;
+
+    // Serve the interactive surface on localhost in a background thread.
+    let serve_path = vault_path.to_path_buf();
+    std::thread::spawn(move || {
+        if let Ok(mut vault) = Vault::open(&serve_path) {
+            let _ = closure_shell_web::serve(&mut vault, SERVE_ADDR);
+        }
+    });
+    let url = format!("http://{SERVE_ADDR}/");
 
     let event_loop = EventLoop::new();
     let window = WindowBuilder::new()
@@ -51,7 +83,7 @@ pub fn run(vault_path: &Path) -> Result<(), String> {
         .build(&event_loop)
         .map_err(|e| e.to_string())?;
     let _webview = WebViewBuilder::new(&window)
-        .with_html(html)
+        .with_url(&url)
         .build()
         .map_err(|e| e.to_string())?;
 

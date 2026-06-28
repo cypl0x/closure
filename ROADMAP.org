@@ -13,7 +13,7 @@ file is the fine-grained, capability-level queue between them. Blocked
 on a design decision? Record it under [[*Decisions][Decisions]], pick the most
 reversible option, keep moving.
 
-* WIP GUI-PARITY — every GUI shell a real interactive editor [3/7]
+* WIP GUI-PARITY — every GUI shell a real interactive editor [4/7]
 GUI-UX brought the hermetic cores to parity (every shell consumes
 =App=/=Shell= + renders the =ViewTree=); the gap left is the windowed
 =run()= loops — gpui/egui edit live, gtk/qt render a static snapshot,
@@ -87,6 +87,29 @@ glob import + owned-=QString= method args + post-=Default= field assignment
 the default build (and =just check=) never sees them. Showing the
 regenerated document live (vs nesting it as re-instantiated QML) is the
 display-bound refinement, not a parity gap.
+
+** DONE P4 Tauri/web interactive parity [1/1]
+The Tauri window went from hosting the read-only =export_html= snapshot to
+hosting the LIVE editor. =interactive_page(vault) -> String= is the
+hermetic seam — the web shell's served root page (=respond(GET "/")=) with
+its =POST /capture= form + fuzzy search, the surface whose form round-trips
+to the registry (I8). Tested in =tests/interactive.rs=: the live page
+carries the =<form action="/capture">= and differs from the static export.
+The feature-gated =run= now spawns =closure_shell_web::serve= on
+=SERVE_ADDR= (=127.0.0.1:8787=) in a thread and loads =http://…/= via
+=wry= =with_url=, so the webview's captures persist through =Vault::capture=.
+Default =just check= 3570 green; =--features tauri= build-verified under
+=.#webview=.
+*** Decision (2026-06-28) Host the served page, don't re-bridge via IPC.
+The web shell already had a tested interactive surface (=respond= +
+=serve=, =POST /capture= → =Vault::capture=); the honest parity move is to
+*host* it, not invent a second wry-IPC mutation path. =run= serves on
+localhost and loads the URL, so the capture form already works end-to-end
+through the registry — the same I8 path the CLI/TUI use. =interactive_page=
+makes "tauri hosts the live editor (not the export)" a hermetic fact (form
+present, differs from export); the server+window are display/network-bound
+and build-verified. A fixed localhost port keeps it dependency-free; an
+ephemeral port + handshake is a later refinement, not a parity gap.
 
 * DONE GUI-UX — every GUI shell a full-blown, top-notch editor [9/9]
 The GUI tier is uneven: gpui/egui are full editors, tauri hosts the web

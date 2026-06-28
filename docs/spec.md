@@ -549,6 +549,12 @@ base, ours, theirs)` returns the `FieldConflict`s (title/body) both sides
   default build never pulls GTK (I10). The list content (`rows`) is
   hermetically tested; the window is display-bound (build-verified under
   `nix develop .#webview`, launch is manual).
+  The Tauri webview hosts the LIVE editor (P4): `run` serves the vault on
+  `127.0.0.1:8787` (the web shell's `respond` loop — `POST /capture`
+  round-trips to the registry, I8) and loads that URL, instead of the
+  read-only `export_html` snapshot. `interactive_page` is the hermetic
+  proof: the served root carries the capture form + search and differs from
+  the static export; the window is build-verified under `.#webview`.
 - `closure-shell-qt` — native Qt6/QML desktop shell (X1c): the vault's
   headlines in a QtQuick `ListView` via `qmetaobject`. Opt-in `qt`
   feature; the default build never pulls Qt (I10). `rows` + the QML
