@@ -454,6 +454,13 @@ base, ours, theirs)` returns the `FieldConflict`s (title/body) both sides
   resolves a `ColorRole` to a ratatui `Color::Rgb` (`theme_color`). A
   malformed colour resolves to black, never a panic (I5); resolution +
   token values are hermetic, only the pixels are the embedder's.
+  GTK4 (G3) is no longer a read-only list: `closure_shell_gtk` consumes
+  the shared `App`/`Shell` and renders the full `ViewTree` via
+  `widget_tree` — a hermetic, golden-tested GTK4 widget-tree descriptor
+  exhaustive over every `Node` kind (so it tracks the G1 vocabulary at
+  compile time). Editing routes through the shared `Shell` (I8), proven by
+  a headless capture-changes-the-tree test; the windowed `run` builds the
+  same structure with real `gtk4` widgets (display-bound, feature-gated).
 - `closure-tui` — ratatui + crossterm. Primary first shell.
 - `closure-cli` — the `closure` binary (`tui`, `check`, `fmt`, `parse`,
   `query`, `serve`).

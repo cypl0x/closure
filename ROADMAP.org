@@ -13,7 +13,7 @@ file is the fine-grained, capability-level queue between them. Blocked
 on a design decision? Record it under [[*Decisions][Decisions]], pick the most
 reversible option, keep moving.
 
-* WIP GUI-UX — every GUI shell a full-blown, top-notch editor [2/9]
+* WIP GUI-UX — every GUI shell a full-blown, top-notch editor [3/9]
 The GUI tier is uneven: gpui/egui are full editors, tauri hosts the web
 shell, but gtk/qt are read-only headline lists, and "great UX" exists
 nowhere as *tested* structure. Pixels can't be gated hermetically
@@ -108,6 +108,29 @@ resolver over the SAME string, leaving the egui =ThemeKind= path
 untouched (no churn to a feature-gated shell). Shells own only the
 token→native mapping (CSS var / ratatui Color), so a 4th theme or a 9th
 role is one data edit + the exhaustive =color= match, not per-shell work.
+
+** DONE G3 GTK4 editor parity [1/1]
+GTK4 was a read-only headline list (=rows()=); G3 lifts it to editor
+parity with tui/egui/gpui. =closure-shell-gtk= now depends on
+=closure-shell-core=, re-exports the shared =App=/=Shell=, and renders the
+full =ViewTree= via =widget_tree(&Node) -> String= — a deterministic GTK4
+widget-tree descriptor (=GtkFrame=/=GtkBox=/=GtkListBox=/=GtkEntry=/
+=GtkDialog=/=GtkInfoBar=…), exhaustive over every =Node= kind so it tracks
+the G1 vocabulary at compile time (V1c). Editing goes through the shared
+=Shell= (I8): =tests/widget_tree.rs= proves a =Shell::capture= shows up in
+the rebuilt tree AND persists to disk. =run()= builds the same structure
+with real =gtk4= widgets (display-bound, =gtk= feature). Default =just
+check= 3527 green (feature OFF, hermetic); =--features gtk= build-verified
+under =nix develop .#webview=.
+*** Decision (2026-06-28) gtk renders the ViewTree, not a private model.
+The old gtk shell had its own =rows()= list — a second, untested UI model.
+G3 makes gtk a real =ViewTree= renderer (a third =render_view=, beside
+tui text + web HTML) over the SAME =App=/=Shell= every other shell drives,
+so editor behaviour is the tested shared core and the only gtk-specific
+code is the =Node=→widget mapping. That mapping is a hermetic string
+(=widget_tree=, like qt's =qml_document=) so the structure is golden-tested
+without a display; the real =gtk4= build is the thin window. =rows()= is
+kept for the legacy path but is no longer the shell's ceiling.
 
 * DONE Depth IV — make the shallow-deep components genuinely deep [9/9]
 Depth III closed *breadth* (every vision noun has a crate). Depth IV

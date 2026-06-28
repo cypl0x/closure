@@ -1496,6 +1496,7 @@ dependencies = [
 name = "closure-shell-gtk"
 version = "0.0.0"
 dependencies = [
+ "closure-shell-core",
  "closure-store",
  "gtk4",
  "tempfile",

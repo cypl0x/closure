@@ -20,6 +20,7 @@ gtk = ["dep:gtk4"]
 
 [dependencies]
 closure-store = { path = "../closure-store" }
+closure-shell-core = { path = "../closure-shell-core" }
 gtk4 = { version = "0.9", optional = true }
 
 [dev-dependencies]
