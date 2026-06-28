@@ -57,3 +57,7 @@ thiserror.workspace = true
 
 [dev-dependencies]
 tempfile = "3"
+# G8 cross-shell visual golden harness: the hermetic ViewTree→native
+# mappings (gtk widget_tree / qt qml_view) need no GUI feature.
+closure-shell-gtk = { path = "../closure-shell-gtk" }
+closure-shell-qt = { path = "../closure-shell-qt" }

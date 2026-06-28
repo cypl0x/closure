@@ -13,7 +13,7 @@ file is the fine-grained, capability-level queue between them. Blocked
 on a design decision? Record it under [[*Decisions][Decisions]], pick the most
 reversible option, keep moving.
 
-* WIP GUI-UX — every GUI shell a full-blown, top-notch editor [7/9]
+* WIP GUI-UX — every GUI shell a full-blown, top-notch editor [8/9]
 The GUI tier is uneven: gpui/egui are full editors, tauri hosts the web
 shell, but gtk/qt are read-only headline lists, and "great UX" exists
 nowhere as *tested* structure. Pixels can't be gated hermetically
@@ -250,6 +250,27 @@ labelled entry updated in place, so a long op is one moving toast, not a
 flood; collapsing it to an =Info= toast keeps the a11y politeness right
 (=status=, not =alert=). The op itself still runs wherever it runs; this is
 only the report.
+
+** DONE G8 Visual golden harness [1/1]
+=closure-cli/tests/visual_golden.rs= renders ONE canonical "kitchen-sink"
+=ViewTree= — built to exercise *every* =NodeKind= — through all four
+shell mappings: tui =render_snapshot= (an exact text golden), web
+=render_view=, gtk =widget_tree=, qt =qml_view=, plus =view_to_json= /
+=serialize_view=. Each output's structure is pinned + asserted
+deterministic. The harness self-guards: =canonical_tree_covers_every_node_kind=
+asserts the tree's kind set equals =ALL_NODE_KINDS=, so a newly added kind
+forces the harness to include it (it can't silently fall out of the
+visual coverage). =just check= 3558 green; closure-shell-gtk/-qt added as
+=cli= dev-deps (their hermetic mappings need no GUI feature).
+*** Decision (2026-06-28) Pin the mapping, since pixels can't be gated.
+The honest gap the whole goal names is "pixels are display-bound". G8
+closes it as far as is hermetic: it can't verify a rendered frame, but it
+*can* pin the deterministic =ViewTree=→native string each shell emits, so a
+regression in any mapping (a dropped icon, a changed widget) fails a test.
+One shared canonical tree (not four bespoke fixtures) means the shells are
+compared on identical input, and the =ALL_NODE_KINDS= self-guard keeps the
+harness representative as the vocabulary grows — the same V1c spirit, one
+level up.
 
 * DONE Depth IV — make the shallow-deep components genuinely deep [9/9]
 Depth III closed *breadth* (every vision noun has a crate). Depth IV

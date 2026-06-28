@@ -479,7 +479,13 @@ base, ours, theirs)` returns the `FieldConflict`s (title/body) both sides
   (severity) + `progress` (labelled, updated in place) for long ops
   (sync/eval/llm), and `to_nodes()` renders each as a `Node::Toast` (G1c)
   — so every shell already shows notifications + progress with no
-  per-shell code.
+  per-shell code. The cross-shell mapping is golden-pinned (G8):
+  `closure-cli/tests/visual_golden.rs` renders ONE canonical `ViewTree`
+  (covering every `NodeKind`, self-guarded) through all four mappings —
+  tui text (exact golden), web HTML, gtk `widget_tree`, qt `qml_view` —
+  pinning the structure each produces + determinism. Pixels stay
+  unverifiable, but the `ViewTree`→native mapping is now regression-locked
+  as far as hermetically possible.
   GTK4 (G3) is no longer a read-only list: `closure_shell_gtk` consumes
   the shared `App`/`Shell` and renders the full `ViewTree` via
   `widget_tree` — a hermetic, golden-tested GTK4 widget-tree descriptor
