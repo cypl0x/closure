@@ -13,7 +13,7 @@ file is the fine-grained, capability-level queue between them. Blocked
 on a design decision? Record it under [[*Decisions][Decisions]], pick the most
 reversible option, keep moving.
 
-* TODO GUI-UX — every GUI shell a full-blown, top-notch editor [0/9]
+* WIP GUI-UX — every GUI shell a full-blown, top-notch editor [1/9]
 The GUI tier is uneven: gpui/egui are full editors, tauri hosts the web
 shell, but gtk/qt are read-only headline lists, and "great UX" exists
 nowhere as *tested* structure. Pixels can't be gated hermetically
@@ -26,7 +26,7 @@ weaken a test or lower a gate (coverage floor stays >=84), each leaf
 revises =docs/spec.md= + adds a dated Decision in the SAME commit,
 non-hermetic window deps feature-gated OFF with =just check= green (I10).
 
-** WIP G1 Rich ViewTree vocabulary: splits / overlays / notifications [2/3]
+** DONE G1 Rich ViewTree vocabulary: splits / overlays / notifications [3/3]
 The =Node= enum described a single screen; a "full-blown editor" needs a
 richer, still-declarative layout vocabulary. G1 grows it one kind per
 sub-cycle, each exhaustively matched across every renderer (V1c), so a
@@ -66,7 +66,24 @@ walks — so the palette/confirm/prompt all render through the SAME path
 (and the V1c exhaustive-match parity guard covers them for free). The
 body is a =Box<Node>= so any view (rows, palette, detail) can be the
 overlay content. Dim/animation are the embedder's pixels, not gated.
-*** TODO G1c =Node::Toast= + row badges/icons-as-data + focus marker
+*** DONE G1c =Node::Toast= — transient severity-classed notification
+=Node::Toast { level: ToastLevel, text }= is the notification a shell
+flashes for an async outcome. =ToastLevel= (Info/Success/Warning/Error)
+drives both the CSS class (=toast-error=) and the a11y live-region role
+(=alert= for warn/error, =status= for info/success). Wired through
+=kind=/=aria_role=/=view_to_json=/=serialize_view= + both renderers (=⚑
+[level]= tui, =<div role=… class="toast toast-…">= web); =ALL_NODE_KINDS=
+10→11, =toast_node= constructor. =view_to_json= crossed clippy's 100-line
+bar (11 exhaustive arms) → =#[allow(too_many_lines)]= with rationale, the
+established precedent for flat one-arm-per-kind matches. =just check= 3514.
+*** Decision (2026-06-28) Scope G1c to Toast; badges/icons/focus → G5.
+The G1 header is "splits / overlays / notifications"; Toast completes that
+trio. Row badges, icons-as-data, and a focus marker are *presentational
+attributes on existing nodes* (a wide =RowView= field change across 11
+construction sites) and belong with hover/active/disabled — so they move
+to G5 (interaction states), where the whole interaction-attribute surface
+lands in one coherent cycle rather than churning =RowView= twice. Honest
+re-scope, recorded; no capability dropped, just regrouped.
 
 * DONE Depth IV — make the shallow-deep components genuinely deep [9/9]
 Depth III closed *breadth* (every vision noun has a crate). Depth IV

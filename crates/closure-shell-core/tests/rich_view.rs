@@ -7,8 +7,8 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
 use closure_shell_core::{
-    ALL_NODE_KINDS, Node, NodeKind, RowView, SplitDir, modal_node, serialize_view, split_node,
-    view_to_json,
+    ALL_NODE_KINDS, Node, NodeKind, RowView, SplitDir, ToastLevel, modal_node, serialize_view,
+    split_node, toast_node, view_to_json,
 };
 
 fn sample_split() -> Node {
@@ -104,4 +104,43 @@ fn modal_serialises_for_the_llm_snapshot() {
     let snap = serialize_view(&sample_modal());
     assert!(snap.contains("MODAL Confirm delete"), "names the modal: {snap}");
     assert!(snap.contains("Delete this subtree?"), "body shown: {snap}");
+}
+
+#[test]
+fn toast_is_a_first_class_node_kind() {
+    assert!(ALL_NODE_KINDS.contains(&NodeKind::Toast));
+    let t = toast_node(ToastLevel::Success, "saved");
+    assert_eq!(t.kind(), NodeKind::Toast);
+}
+
+#[test]
+fn toast_level_drives_the_accessibility_severity() {
+    // Errors/warnings are assertive `alert`s; info/success are polite
+    // `status` updates.
+    assert_eq!(toast_node(ToastLevel::Error, "x").aria_role(), "alert");
+    assert_eq!(toast_node(ToastLevel::Warning, "x").aria_role(), "alert");
+    assert_eq!(toast_node(ToastLevel::Info, "x").aria_role(), "status");
+    assert_eq!(toast_node(ToastLevel::Success, "x").aria_role(), "status");
+}
+
+#[test]
+fn toast_level_has_a_stable_lowercase_tag() {
+    assert_eq!(ToastLevel::Info.as_str(), "info");
+    assert_eq!(ToastLevel::Success.as_str(), "success");
+    assert_eq!(ToastLevel::Warning.as_str(), "warning");
+    assert_eq!(ToastLevel::Error.as_str(), "error");
+}
+
+#[test]
+fn toast_serialises_to_json_with_level_and_text() {
+    let json = view_to_json(&toast_node(ToastLevel::Error, "sync failed"));
+    assert!(json.contains("\"k\":\"toast\""), "tagged toast: {json}");
+    assert!(json.contains("\"level\":\"error\""), "carries level: {json}");
+    assert!(json.contains("sync failed"), "text present: {json}");
+}
+
+#[test]
+fn toast_serialises_for_the_llm_snapshot() {
+    let snap = serialize_view(&toast_node(ToastLevel::Info, "3 jobs ran"));
+    assert!(snap.contains("TOAST info 3 jobs ran"), "names the toast: {snap}");
 }

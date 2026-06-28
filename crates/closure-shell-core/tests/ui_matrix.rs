@@ -7,7 +7,8 @@
 
 use closure_shell_core::{
     ALL_NODE_KINDS, Action, FieldView, MINIMAL_NODE_KINDS, Node, NodeKind, PaletteItemView,
-    RowView, SplitDir, TUI_NODE_KINDS, WEB_NODE_KINDS, missing_node_kinds, ui_matrix_table,
+    RowView, SplitDir, TUI_NODE_KINDS, ToastLevel, WEB_NODE_KINDS, missing_node_kinds,
+    ui_matrix_table,
 };
 
 /// One value of every `Node` variant, to check `kind()` + coverage.
@@ -61,12 +62,16 @@ fn one_of_each() -> Vec<Node> {
             title: String::new(),
             body: Box::new(Node::Text(String::new())),
         },
+        Node::Toast {
+            level: ToastLevel::Info,
+            text: String::new(),
+        },
     ]
 }
 
 #[test]
 fn all_node_kinds_covers_every_variant() {
-    assert_eq!(ALL_NODE_KINDS.len(), 10);
+    assert_eq!(ALL_NODE_KINDS.len(), 11);
     for n in one_of_each() {
         assert!(
             ALL_NODE_KINDS.contains(&n.kind()),

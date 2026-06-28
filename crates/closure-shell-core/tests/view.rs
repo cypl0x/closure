@@ -61,7 +61,8 @@ fn collect<'a>(node: &'a Node, out: &mut Vec<&'a Action>) {
         | Node::Input { .. }
         | Node::Hints { .. }
         | Node::Widget { .. }
-        | Node::Text(_) => {}
+        | Node::Text(_)
+        | Node::Toast { .. } => {}
     }
 }
 

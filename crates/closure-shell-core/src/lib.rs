@@ -504,6 +504,52 @@ pub enum Node {
         /// The content shown inside the overlay.
         body: Box<Self>,
     },
+    /// A transient notification (G1c): the severity-classed toast a shell
+    /// flashes for an async outcome (sync done, eval failed, …). The
+    /// embedder decides the placement/auto-dismiss; the hermetic guarantee
+    /// is the severity + message.
+    Toast {
+        /// Severity, driving styling + the a11y live-region politeness.
+        level: ToastLevel,
+        /// The message shown.
+        text: String,
+    },
+}
+
+/// Severity of a [`Node::Toast`] notification (G1c).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ToastLevel {
+    /// Neutral information.
+    Info,
+    /// A completed action.
+    Success,
+    /// A non-fatal caution.
+    Warning,
+    /// A failure.
+    Error,
+}
+
+impl ToastLevel {
+    /// Stable lowercase tag for serialisation / CSS class suffixes.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Info => "info",
+            Self::Success => "success",
+            Self::Warning => "warning",
+            Self::Error => "error",
+        }
+    }
+
+    /// The ARIA live-region role: assertive `alert` for warning/error,
+    /// polite `status` for info/success.
+    #[must_use]
+    pub const fn aria_role(self) -> &'static str {
+        match self {
+            Self::Warning | Self::Error => "alert",
+            Self::Info | Self::Success => "status",
+        }
+    }
 }
 
 /// The axis a [`Node::Split`] arranges its panes along (G1a).
@@ -538,6 +584,15 @@ pub fn modal_node(title: impl Into<String>, body: Node) -> Node {
     Node::Modal {
         title: title.into(),
         body: Box::new(body),
+    }
+}
+
+/// Build a [`Node::Toast`] notification from a severity and message (G1c).
+#[must_use]
+pub fn toast_node(level: ToastLevel, text: impl Into<String>) -> Node {
+    Node::Toast {
+        level,
+        text: text.into(),
     }
 }
 
@@ -602,6 +657,9 @@ fn json_str(s: &str) -> String {
 /// client-side renderer to rebuild the `DOM`, so a self-contained HTML
 /// export can render the declarative tree with no server and no toolchain.
 #[must_use]
+// One flat arm per `Node` kind — exhaustive by design (V1c); splitting
+// the match would only hide the one-to-one kind→JSON mapping.
+#[allow(clippy::too_many_lines)]
 pub fn view_to_json(node: &Node) -> String {
     use std::fmt::Write as _;
     let role = json_str(node.aria_role());
@@ -700,6 +758,11 @@ pub fn view_to_json(node: &Node) -> String {
             json_str(title),
             view_to_json(body)
         ),
+        Node::Toast { level, text } => format!(
+            "{{\"k\":\"toast\",\"role\":{role},\"level\":{},\"text\":{}}}",
+            json_str(level.as_str()),
+            json_str(text)
+        ),
     }
 }
 
@@ -776,6 +839,9 @@ fn serialize_node(node: &Node, depth: usize, out: &mut String) {
         Node::Modal { title, body } => {
             let _ = writeln!(out, "{pad}MODAL {title}");
             serialize_node(body, depth + 1, out);
+        }
+        Node::Toast { level, text } => {
+            let _ = writeln!(out, "{pad}TOAST {} {text}", level.as_str());
         }
     }
 }
@@ -1210,6 +1276,8 @@ pub enum NodeKind {
     Split,
     /// [`Node::Modal`].
     Modal,
+    /// [`Node::Toast`].
+    Toast,
 }
 
 impl Node {
@@ -1223,6 +1291,7 @@ impl Node {
             Self::Rows { .. } => "list",
             Self::Detail { .. } | Self::Split { .. } => "group",
             Self::Modal { .. } => "dialog",
+            Self::Toast { level, .. } => level.aria_role(),
             Self::Input { .. } => "textbox",
             Self::Palette { .. } => "listbox",
             Self::Hints { .. } => "status",
@@ -1256,6 +1325,7 @@ impl Node {
             Self::Text(_) => NodeKind::Text,
             Self::Split { .. } => NodeKind::Split,
             Self::Modal { .. } => NodeKind::Modal,
+            Self::Toast { .. } => NodeKind::Toast,
         }
     }
 }
@@ -1272,6 +1342,7 @@ pub const ALL_NODE_KINDS: &[NodeKind] = &[
     NodeKind::Text,
     NodeKind::Split,
     NodeKind::Modal,
+    NodeKind::Toast,
 ];
 
 /// The floor every shell must render to host the launcher (I7 for UI):

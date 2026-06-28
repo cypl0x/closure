@@ -440,7 +440,11 @@ base, ours, theirs)` returns the `FieldConflict`s (title/body) both sides
   embedder's display-bound job. `Node::Modal { title, body }` (G1b) is a
   titled overlay layer (command palette / confirm dialog / prompt) —
   `aria_role` `dialog`, the title as `aria_label`; the web shell emits
-  `role="dialog"` and the embedder paints the dim/float.
+  `role="dialog"` and the embedder paints the dim/float. `Node::Toast {
+  level: ToastLevel, text }` (G1c) is a transient, severity-classed
+  notification — `ToastLevel` (Info/Success/Warning/Error) drives both the
+  CSS class and the ARIA live-region politeness (`alert` for warn/error,
+  `status` for info/success), the substrate G7 fills with async outcomes.
 - `closure-tui` — ratatui + crossterm. Primary first shell.
 - `closure-cli` — the `closure` binary (`tui`, `check`, `fmt`, `parse`,
   `query`, `serve`).

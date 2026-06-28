@@ -425,6 +425,12 @@ pub fn render_view(node: &closure_shell_core::Node) -> String {
             escape_html(title),
             render_view(body)
         ),
+        Node::Toast { level, text } => format!(
+            "<div role=\"{}\" class=\"toast toast-{}\">{}</div>",
+            node.aria_role(),
+            level.as_str(),
+            escape_html(text)
+        ),
     }
 }
 

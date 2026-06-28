@@ -4,7 +4,7 @@
 
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
-use closure_shell_core::{Node, SplitDir, modal_node, split_node};
+use closure_shell_core::{Node, SplitDir, ToastLevel, modal_node, split_node, toast_node};
 use closure_shell_web::render_view;
 
 #[test]
@@ -29,4 +29,12 @@ fn modal_renders_as_an_accessible_dialog_overlay() {
     assert!(html.contains("class=\"modal\""), "modal class: {html}");
     assert!(html.contains("aria-label=\"Confirm\""), "labelled: {html}");
     assert!(html.contains("sure?"), "body present: {html}");
+}
+
+#[test]
+fn toast_renders_as_a_severity_classed_live_region() {
+    let html = render_view(&toast_node(ToastLevel::Error, "boom"));
+    assert!(html.contains("role=\"alert\""), "assertive role: {html}");
+    assert!(html.contains("class=\"toast toast-error\""), "severity class: {html}");
+    assert!(html.contains("boom"), "text: {html}");
 }

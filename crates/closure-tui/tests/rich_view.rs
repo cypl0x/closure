@@ -3,7 +3,7 @@
 
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
-use closure_shell_core::{Node, SplitDir, modal_node, split_node};
+use closure_shell_core::{Node, SplitDir, ToastLevel, modal_node, split_node, toast_node};
 use closure_tui::render_snapshot;
 
 #[test]
@@ -30,4 +30,11 @@ fn modal_renders_a_titled_overlay_above_its_body() {
     let title = snap.find("Palette").unwrap();
     let body = snap.find("pick a command").unwrap();
     assert!(title < body, "title above body: {snap}");
+}
+
+#[test]
+fn toast_renders_with_its_level_tag() {
+    let snap = render_snapshot(&toast_node(ToastLevel::Warning, "unsaved changes"));
+    assert!(snap.contains("[warning]"), "level tag: {snap}");
+    assert!(snap.contains("unsaved changes"), "text: {snap}");
 }
