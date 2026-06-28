@@ -154,7 +154,7 @@ gtk's =widget_tree=). Two shells (gtk + qt) now prove the pattern
 generalises: any embedder is "render the =ViewTree= + drive the =Shell=",
 the bulk hermetic, the window a thin display-bound adapter.
 
-** WIP G5 Interaction states + Notion affordances [1/3]
+** WIP G5 Interaction states + Notion affordances [2/3]
 Row presentation + interaction surfaces, hermetic state. Sub-cycles: G5a
 badges/icons-as-data (moved from G1c), G5b interaction states
 (hover/focus/active/disabled), G5c Notion affordances (slash-menu, block
@@ -177,6 +177,23 @@ fields to a struct with 11 construction sites stayed a mechanical,
 golden-safe change. The =App::view= browse path sets the icon (its =Row=
 has the TODO) but not badges (=Row= has no tags yet); =browse_view= is the
 full path. Enriching =Row= with tags is a later cycle, recorded not faked.
+*** DONE G5b Interaction states (hover/focus/active/disabled)
+=Interactions= is a hermetic state machine over element indices: =focus=/
+=blur=/=focus_next=/=focus_prev= (wrapping), =hover(Some|None)=, =press=/
+=release=, =set_disabled=. =state_of(i)= resolves a single =ElementState=
+under a fixed precedence =Disabled > Active > Focused > Hovered > Normal=
+(disabled is absorbing). Pure + deterministic — a shell paints the focus
+ring / hover / pressed / dimming from this one source, the pixels being
+the embedder's. 7 tests (each transition + precedence + wrap). =just
+check= 3539 green.
+*** Decision (2026-06-28) Interaction is shared state, not per-shell glue.
+Hover/focus/active/disabled usually live as ad-hoc booleans inside each
+GUI's event handler — untestable and divergent. Modelling them as a
+=Interactions= machine with one precedence rule means the *behaviour* (a
+disabled element ignores focus visually; press beats focus) is tested once
+and identical everywhere; each shell only maps =ElementState= → its native
+style. Indices (not node refs) keep it dep-free and =Copy=-cheap. The
+focus marker G1c deferred lands here as =Interactions::focused=.
 
 * DONE Depth IV — make the shallow-deep components genuinely deep [9/9]
 Depth III closed *breadth* (every vision noun has a crate). Depth IV

@@ -1522,6 +1522,116 @@ impl ConflictApp {
     }
 }
 
+/// The interaction state of an element, for focus-ring / hover / pressed /
+/// disabled styling (G5b). Derived by [`Interactions::state_of`] with a
+/// fixed precedence; the embedder maps it to native styling.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ElementState {
+    /// No interaction.
+    Normal,
+    /// Pointer is over the element.
+    Hovered,
+    /// Element holds keyboard focus.
+    Focused,
+    /// Element is being pressed / activated.
+    Active,
+    /// Element is non-interactive (absorbing — wins over every other
+    /// state).
+    Disabled,
+}
+
+/// The interaction-state machine for a list of elements (G5b).
+///
+/// Tracks which element index is focused, hovered, and pressed, plus a set
+/// of disabled indices. [`Self::state_of`] resolves these to a single
+/// [`ElementState`] with precedence `Disabled > Active > Focused >
+/// Hovered > Normal`. Pure + deterministic — every shell paints from this
+/// one tested source, the pixels are the embedder's.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Interactions {
+    focused: Option<usize>,
+    hovered: Option<usize>,
+    pressed: Option<usize>,
+    disabled: Vec<usize>,
+}
+
+impl Interactions {
+    /// Give keyboard focus to element `i`.
+    pub const fn focus(&mut self, i: usize) {
+        self.focused = Some(i);
+    }
+
+    /// Drop keyboard focus.
+    pub const fn blur(&mut self) {
+        self.focused = None;
+    }
+
+    /// The currently focused element index, if any.
+    #[must_use]
+    pub const fn focused(&self) -> Option<usize> {
+        self.focused
+    }
+
+    /// Set (or clear, with `None`) the hovered element.
+    pub const fn hover(&mut self, i: Option<usize>) {
+        self.hovered = i;
+    }
+
+    /// Begin pressing element `i` (becomes [`ElementState::Active`]).
+    pub const fn press(&mut self, i: usize) {
+        self.pressed = Some(i);
+    }
+
+    /// Release the press.
+    pub const fn release(&mut self) {
+        self.pressed = None;
+    }
+
+    /// Enable or disable element `i`.
+    pub fn set_disabled(&mut self, i: usize, disabled: bool) {
+        let present = self.disabled.iter().position(|&d| d == i);
+        match (disabled, present) {
+            (true, None) => self.disabled.push(i),
+            (false, Some(p)) => {
+                self.disabled.remove(p);
+            }
+            _ => {}
+        }
+    }
+
+    /// Move focus to the next element (wrapping within `count`).
+    pub fn focus_next(&mut self, count: usize) {
+        if count == 0 {
+            return;
+        }
+        self.focused = Some(self.focused.map_or(0, |f| (f + 1) % count));
+    }
+
+    /// Move focus to the previous element (wrapping within `count`).
+    pub fn focus_prev(&mut self, count: usize) {
+        if count == 0 {
+            return;
+        }
+        self.focused = Some(self.focused.map_or(count - 1, |f| (f + count - 1) % count));
+    }
+
+    /// Resolve element `i`'s [`ElementState`] under the fixed precedence.
+    #[must_use]
+    pub fn state_of(&self, i: usize) -> ElementState {
+        if self.disabled.contains(&i) {
+            ElementState::Disabled
+        } else if self.pressed == Some(i) {
+            ElementState::Active
+        } else if self.focused == Some(i) {
+            ElementState::Focused
+        } else if self.hovered == Some(i) {
+            ElementState::Hovered
+        } else {
+            ElementState::Normal
+        }
+    }
+}
+
 /// The kind of a [`Node`], for the type-level UI capability matrix (V1c).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum NodeKind {

@@ -458,7 +458,12 @@ base, ours, theirs)` returns the `FieldConflict`s (title/body) both sides
   (TODO-status glyph) + `badges` (tags / priority chips), populated by
   `browse_view` from the headline, and every renderer (tui/web/gtk/qt +
   JSON/snapshot) draws them — empty by default, so existing goldens are
-  unchanged.
+  unchanged. Interaction is state, not per-shell ad-hoc (G5b):
+  `Interactions` tracks focused / hovered / pressed / disabled element
+  indices and `state_of(i)` resolves an `ElementState` under a fixed
+  precedence (`Disabled > Active > Focused > Hovered > Normal`); a shell
+  paints the focus ring / hover / pressed / dimmed styling from this one
+  tested machine — the pixels are the embedder's.
   GTK4 (G3) is no longer a read-only list: `closure_shell_gtk` consumes
   the shared `App`/`Shell` and renders the full `ViewTree` via
   `widget_tree` — a hermetic, golden-tested GTK4 widget-tree descriptor
