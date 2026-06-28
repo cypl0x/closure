@@ -469,7 +469,12 @@ base, ours, theirs)` returns the `FieldConflict`s (title/body) both sides
   is the block "+" (the `add-sibling` command), and `DragReorder` +
   `reorder_indices` model drag-to-reorder as a pure gesture whose drop
   maps to a registry move (I8) — every affordance reduces to a kernel
-  command, none is shell-private.
+  command, none is shell-private. The command palette is polished + shared
+  (G6): `command_palette(query, mode)` groups every command into ordered
+  sections (Navigate/Edit/Mode/App), fuzzy-ranks within each, drops empty
+  ones, and gives each `PaletteEntry` a human description + its chord;
+  `serialize_palette` is the deterministic snapshot a shell renders — one
+  source, so the which-key/palette is identical across GUIs.
   GTK4 (G3) is no longer a read-only list: `closure_shell_gtk` consumes
   the shared `App`/`Shell` and renders the full `ViewTree` via
   `widget_tree` — a hermetic, golden-tested GTK4 widget-tree descriptor

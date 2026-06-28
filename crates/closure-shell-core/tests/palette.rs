@@ -1,0 +1,42 @@
+//! G6: palette + which-key polish. The command palette is fuzzy-ranked,
+//! grouped into sections, and every entry carries a human description +
+//! its chord — one hermetic source (`command_palette`) every GUI renders,
+//! with a deterministic serialization (`serialize_palette`).
+
+#![allow(clippy::unwrap_used, clippy::expect_used)]
+
+use closure_config::InputMode;
+use closure_shell_core::{command_palette, serialize_palette};
+
+#[test]
+fn palette_groups_commands_into_sections_with_descriptions_and_chords() {
+    let sections = command_palette("", InputMode::Notion);
+    let titles: Vec<&str> = sections.iter().map(|s| s.title.as_str()).collect();
+    assert!(titles.contains(&"Edit"), "has an Edit section: {titles:?}");
+    assert!(titles.contains(&"Navigate"), "has a Navigate section: {titles:?}");
+    for s in &sections {
+        assert!(!s.items.is_empty(), "no empty sections surface");
+        for e in &s.items {
+            assert!(!e.description.is_empty(), "{} has a description", e.label);
+            assert!(!e.action.chord().is_empty(), "{} shows its chord", e.label);
+        }
+    }
+}
+
+#[test]
+fn palette_fuzzy_filters_and_drops_empty_sections() {
+    let sections = command_palette("rename", InputMode::Notion);
+    assert_eq!(sections.len(), 1, "only the section with a match survives");
+    assert_eq!(sections[0].title, "Edit");
+    assert!(sections[0].items.iter().any(|e| e.label.contains("rename")));
+}
+
+#[test]
+fn palette_serialises_deterministically() {
+    let sections = command_palette("", InputMode::Notion);
+    let a = serialize_palette(&sections);
+    let b = serialize_palette(&sections);
+    assert_eq!(a, b, "deterministic (I6)");
+    assert!(a.contains("SECTION Edit"), "names sections: {a}");
+    assert!(a.contains("Rename the headline"), "shows descriptions: {a}");
+}

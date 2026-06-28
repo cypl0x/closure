@@ -13,7 +13,7 @@ file is the fine-grained, capability-level queue between them. Blocked
 on a design decision? Record it under [[*Decisions][Decisions]], pick the most
 reversible option, keep moving.
 
-* WIP GUI-UX — every GUI shell a full-blown, top-notch editor [5/9]
+* WIP GUI-UX — every GUI shell a full-blown, top-notch editor [6/9]
 The GUI tier is uneven: gpui/egui are full editors, tauri hosts the web
 shell, but gtk/qt are read-only headline lists, and "great UX" exists
 nowhere as *tested* structure. Pixels can't be gated hermetically
@@ -211,6 +211,26 @@ routes it to the existing registry command (I8), so no affordance is a
 shell-private mutation path. =DragReorder= holds indices + yields =(from,
 to)=; computing the new order (=reorder_indices=) is pure and the move is
 the kernel's — the gesture can't desync from the data.
+
+** DONE G6 Palette + which-key polish [1/1]
+=command_palette(query, mode)= upgrades the flat palette into a sectioned,
+fuzzy-ranked menu: =PALETTE_COMMANDS= now carries =(label, canonical,
+section, description)=, and the palette groups commands by =PALETTE_SECTIONS=
+(Navigate / Edit / Mode / App), fuzzy-ranks within each section, drops
+empty sections, and gives every =PaletteEntry= a human description + its
+chord (V1). =serialize_palette= is the deterministic snapshot (I6) a shell
+renders verbatim — one source, so the palette/which-key is identical across
+GUIs. The three existing palette consumers (slash_menu, palette_results,
+=App::view=) updated to the 4-tuple. 3 tests. =just check= 3548 green.
+*** Decision (2026-06-28) Description + section are data on the command row.
+The palette was =(label, chord)= pairs — no grouping, no help text. Rather
+than per-shell section logic, the section + description live on
+=PALETTE_COMMANDS= itself, so =command_palette= is a pure transform and
+every GUI renders the same grouped, described, ranked menu from one place.
+Sections render in a fixed order with empties dropped, so the layout is
+deterministic and a query narrows visibly. =serialize_palette= keeps the
+rendering golden-testable; the chord still comes from =chord_for_command=
+(I4), never hardcoded.
 
 * DONE Depth IV — make the shallow-deep components genuinely deep [9/9]
 Depth III closed *breadth* (every vision noun has a crate). Depth IV

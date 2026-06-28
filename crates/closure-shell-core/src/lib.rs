@@ -1810,17 +1810,102 @@ pub enum Mode {
 /// the launcher's which-key surface. The key hint shown beside each is
 /// derived from the active mode's keymap (the single source of truth,
 /// I4) via the canonical command name — never hardcoded here.
-const PALETTE_COMMANDS: &[(&str, &str)] = &[
-    ("next-file", "next-file"),
-    ("prev-file", "prev-file"),
-    ("capture", "capture-start"),
-    ("add-sibling", "add-sibling"),
-    ("rename", "rename"),
-    ("delete", "delete"),
-    ("open", "open-file"),
-    ("cycle-mode", "cycle-mode"),
-    ("quit", "quit"),
+/// Palette commands as `(display, canonical, section, description)` (G6).
+/// `section` groups them in the command palette; `description` is the
+/// human one-liner shown beside the chord.
+const PALETTE_COMMANDS: &[(&str, &str, &str, &str)] = &[
+    ("next-file", "next-file", "Navigate", "Go to the next file"),
+    ("prev-file", "prev-file", "Navigate", "Go to the previous file"),
+    ("open", "open-file", "Navigate", "Open the selected file"),
+    ("capture", "capture-start", "Edit", "Capture a new entry"),
+    ("add-sibling", "add-sibling", "Edit", "Add a sibling headline"),
+    ("rename", "rename", "Edit", "Rename the headline"),
+    ("delete", "delete", "Edit", "Delete the headline"),
+    ("cycle-mode", "cycle-mode", "Mode", "Switch the input mode"),
+    ("quit", "quit", "App", "Quit closure"),
 ];
+
+/// Section order for the command palette (G6); sections render in this
+/// order, empty ones dropped.
+const PALETTE_SECTIONS: &[&str] = &["Navigate", "Edit", "Mode", "App"];
+
+/// A command entry in the [`command_palette`] (G6): a label + human
+/// description + its actionable chord.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PaletteEntry {
+    /// Display label.
+    pub label: String,
+    /// Human one-line description.
+    pub description: String,
+    /// The command + its chord.
+    pub action: Action,
+}
+
+/// A titled group of palette entries (G6).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PaletteSection {
+    /// Section heading.
+    pub title: String,
+    /// Entries in fuzzy-ranked order.
+    pub items: Vec<PaletteEntry>,
+}
+
+/// The polished command palette (G6).
+///
+/// Every command grouped into sections, fuzzy-filtered + ranked by
+/// `query`, each entry carrying a description + its chord in `mode`. Empty
+/// sections are dropped. One hermetic source every GUI renders.
+#[must_use]
+pub fn command_palette(query: &str, mode: closure_config::InputMode) -> Vec<PaletteSection> {
+    PALETTE_SECTIONS
+        .iter()
+        .filter_map(|section| {
+            let mut scored: Vec<(u32, PaletteEntry)> = PALETTE_COMMANDS
+                .iter()
+                .filter(|(.., sec, _)| sec == section)
+                .filter_map(|(label, canonical, _, desc)| {
+                    let score = if query.is_empty() {
+                        Some(0)
+                    } else {
+                        closure_query::fuzzy_score(query, label)
+                    }?;
+                    let action = Action::new(mode, *canonical)?;
+                    Some((
+                        score,
+                        PaletteEntry {
+                            label: (*label).to_owned(),
+                            description: (*desc).to_owned(),
+                            action,
+                        },
+                    ))
+                })
+                .collect();
+            if scored.is_empty() {
+                return None;
+            }
+            scored.sort_by_key(|(s, _)| std::cmp::Reverse(*s));
+            Some(PaletteSection {
+                title: (*section).to_owned(),
+                items: scored.into_iter().map(|(_, e)| e).collect(),
+            })
+        })
+        .collect()
+}
+
+/// Serialise a [`command_palette`] to a deterministic text snapshot (G6) —
+/// golden-testable, and the form a shell can render verbatim.
+#[must_use]
+pub fn serialize_palette(sections: &[PaletteSection]) -> String {
+    use std::fmt::Write as _;
+    let mut out = String::new();
+    for s in sections {
+        let _ = writeln!(out, "SECTION {}", s.title);
+        for e in &s.items {
+            let _ = writeln!(out, "  [{}] {} — {}", e.action.chord(), e.label, e.description);
+        }
+    }
+    out
+}
 
 /// The Notion-style slash command menu (G5c).
 ///
@@ -1832,7 +1917,7 @@ const PALETTE_COMMANDS: &[(&str, &str)] = &[
 pub fn slash_menu(query: &str, mode: closure_config::InputMode) -> Vec<PaletteItemView> {
     let mut scored: Vec<(u32, PaletteItemView)> = PALETTE_COMMANDS
         .iter()
-        .filter_map(|(name, canonical)| {
+        .filter_map(|(name, canonical, _, _)| {
             let score = if query.is_empty() {
                 Some(0)
             } else {
@@ -1992,7 +2077,7 @@ impl App {
         let q = &self.capture_buf;
         let mut scored: Vec<(u32, (String, String))> = PALETTE_COMMANDS
             .iter()
-            .filter_map(|(name, canonical)| {
+            .filter_map(|(name, canonical, _, _)| {
                 let sc = if q.is_empty() {
                     Some(0)
                 } else {
@@ -2514,7 +2599,7 @@ impl App {
             Mode::Palette => {
                 let items = PALETTE_COMMANDS
                     .iter()
-                    .filter_map(|(label, canonical)| {
+                    .filter_map(|(label, canonical, _, _)| {
                         let matches = self.capture_buf.is_empty()
                             || closure_query::fuzzy_score(&self.capture_buf, label).is_some();
                         if !matches {
