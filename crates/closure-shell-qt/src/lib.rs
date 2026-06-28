@@ -22,6 +22,23 @@ use closure_store::{Vault, VaultError};
 // App/Shell as every other shell (editor parity, not a private model).
 pub use closure_shell_core::{App, Shell, browse_view};
 
+/// Map a shared theme to QML colour properties (P5).
+///
+/// `readonly property color` declarations (window bg, fg, accent) the
+/// interactive window injects into its host document. Hermetic.
+#[must_use]
+pub fn theme_qml(theme: &closure_shell_core::Theme) -> String {
+    use closure_shell_core::ColorRole::{Accent, Bg, Fg};
+    format!(
+        "readonly property color bgColor: \"{}\"\n  \
+         readonly property color fgColor: \"{}\"\n  \
+         readonly property color accentColor: \"{}\"",
+        theme.color(Bg).hex(),
+        theme.color(Fg).hex(),
+        theme.color(Accent).hex(),
+    )
+}
+
 /// Apply one key event and return the QML document to reload (P3).
 ///
 /// Dispatches through the shared core (P1), then maps the fresh `ViewTree`
@@ -261,13 +278,18 @@ mod qt_window {
         }
     }
 
-    const INTERACTIVE_QML: &str = "import QtQuick 2.15\n\
+    /// Build the host QML, injecting the shared theme colour props (P5).
+    fn host_qml(theme_props: &str) -> String {
+        format!(
+            "import QtQuick 2.15\n\
 import QtQuick.Controls 2.15\n\
-ApplicationWindow {\n\
+ApplicationWindow {{\n\
   visible: true; width: 700; height: 850; title: \"closure\"\n\
-  Flickable {\n\
+  {theme_props}\n\
+  color: bgColor\n\
+  Flickable {{\n\
     anchors.fill: parent; focus: true\n\
-    Keys.onPressed: (event) => {\n\
+    Keys.onPressed: (event) => {{\n\
       var ctrl = (event.modifiers & Qt.ControlModifier) != 0;\n\
       if (event.key === Qt.Key_Return) bridge.on_key(\"\", \"enter\", ctrl);\n\
       else if (event.key === Qt.Key_Escape) bridge.on_key(\"\", \"escape\", ctrl);\n\
@@ -275,10 +297,12 @@ ApplicationWindow {\n\
       else if (event.key === Qt.Key_Up) bridge.on_key(\"\", \"up\", ctrl);\n\
       else if (event.key === Qt.Key_Down) bridge.on_key(\"\", \"down\", ctrl);\n\
       else if (event.text.length > 0) bridge.on_key(event.text, \"\", ctrl);\n\
-    }\n\
-    Text { text: bridge.frame; font.family: \"monospace\" }\n\
-  }\n\
-}\n";
+    }}\n\
+    Text {{ text: bridge.frame; color: fgColor; font.family: \"monospace\" }}\n\
+  }}\n\
+}}\n"
+        )
+    }
 
     #[derive(QObject, Default)]
     struct Bridge {
@@ -318,7 +342,8 @@ ApplicationWindow {\n\
         let bridge_box = QObjectBox::new(bridge);
         let mut engine = QmlEngine::new();
         engine.set_object_property("bridge".into(), bridge_box.pinned());
-        engine.load_data(INTERACTIVE_QML.into());
+        let theme = super::theme_qml(&closure_shell_core::Theme::dark());
+        engine.load_data(host_qml(&theme).into());
         engine.exec();
         Ok(())
     }

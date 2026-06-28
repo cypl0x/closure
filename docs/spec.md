@@ -513,6 +513,12 @@ base, ours, theirs)` returns the `FieldConflict`s (title/body) both sides
   (`qml_view(App::dispatch(…))`) and republishes `frame`. `next_frame` is
   the hermetic seam (tested); the `QObject` bridge is build-verified under
   `.#webview`.
+  Both native windows apply the shared theme (P5):
+  `closure_shell_gtk::theme_css` maps the palette to a GTK4 CSS string the
+  window loads into a `CssProvider`, and `closure_shell_qt::theme_qml` maps
+  it to QML `property color` decls the host document binds (window `color`,
+  text colour). The mappings are hermetic; gpui/egui/web/tui already
+  consume the tokens (`Theme::color` rgb / CSS vars / ratatui colour, G2).
   Every shell's window drives ONE shared input step (GUI-PARITY P1):
   `App::dispatch(shell, &KeyEvent) -> Node` applies a typed `KeyEvent`
   (key + ctrl + typed char) via the mode-aware `on_key` (mutating through

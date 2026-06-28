@@ -21,6 +21,33 @@ use closure_store::{Vault, VaultError};
 // App/Shell as every other shell (editor parity, not a private model).
 pub use closure_shell_core::{App, Shell, browse_view};
 
+/// Map a shared theme to a GTK4 CSS string (P5).
+///
+/// Window/label colours from the palette, plus selection + severity
+/// classes (`.selected`, `.toast-error`, …). Hermetic; the windowed
+/// [`run`] feeds it to a `CssProvider`.
+#[must_use]
+pub fn theme_css(theme: &closure_shell_core::Theme) -> String {
+    use closure_shell_core::ColorRole::{Accent, Bg, Error, Fg, Selection, Success, Warning};
+    let c = |role| theme.color(role).hex();
+    format!(
+        "window {{ background-color: {bg}; color: {fg}; }}\n\
+         label {{ color: {fg}; }}\n\
+         .selected {{ background-color: {sel}; }}\n\
+         .accent {{ color: {accent}; }}\n\
+         .toast-error {{ color: {error}; }}\n\
+         .toast-warning {{ color: {warning}; }}\n\
+         .toast-success {{ color: {success}; }}\n",
+        bg = c(Bg),
+        fg = c(Fg),
+        sel = c(Selection),
+        accent = c(Accent),
+        error = c(Error),
+        warning = c(Warning),
+        success = c(Success),
+    )
+}
+
 /// Apply one key event and return the GTK widget descriptor to repaint (P2).
 ///
 /// Dispatches through the shared core (P1), then maps the fresh `ViewTree`
@@ -208,6 +235,16 @@ pub fn run(vault_path: &Path) -> Result<(), VaultError> {
         .application_id("net.closure.gtk")
         .build();
     app.connect_activate(move |app| {
+        // Apply the shared theme tokens to the display (P5).
+        if let Some(display) = gtk4::gdk::Display::default() {
+            let provider = gtk4::CssProvider::new();
+            provider.load_from_data(&theme_css(&closure_shell_core::Theme::dark()));
+            gtk4::style_context_add_provider_for_display(
+                &display,
+                &provider,
+                gtk4::STYLE_PROVIDER_PRIORITY_APPLICATION,
+            );
+        }
         let list = ListBox::new();
         // Initial paint of the browse ViewTree.
         {

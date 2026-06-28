@@ -13,7 +13,7 @@ file is the fine-grained, capability-level queue between them. Blocked
 on a design decision? Record it under [[*Decisions][Decisions]], pick the most
 reversible option, keep moving.
 
-* WIP GUI-PARITY — every GUI shell a real interactive editor [4/7]
+* WIP GUI-PARITY — every GUI shell a real interactive editor [5/7]
 GUI-UX brought the hermetic cores to parity (every shell consumes
 =App=/=Shell= + renders the =ViewTree=); the gap left is the windowed
 =run()= loops — gpui/egui edit live, gtk/qt render a static snapshot,
@@ -110,6 +110,27 @@ makes "tauri hosts the live editor (not the export)" a hermetic fact (form
 present, differs from export); the server+window are display/network-bound
 and build-verified. A fixed localhost port keeps it dependency-free; an
 ephemeral port + handshake is a later refinement, not a parity gap.
+
+** DONE P5 Theme applied in every window [1/1]
+The two newly-interactive native windows now apply the shared =Theme=
+tokens. =closure_shell_gtk::theme_css(&Theme)= maps the palette to a GTK4
+CSS string (=window=/=label= colours + =.selected=/=.toast-*= classes); the
+window loads it into a =CssProvider= via
+=style_context_add_provider_for_display=. =closure_shell_qt::theme_qml(
+&Theme)= maps it to QML =readonly property color= decls (bg/fg/accent); the
+host document binds the window =color= + text colour. Both mappings are
+hermetic (tested: palette hex present, themes differ, high-contrast is
+black/white). Default =just check= 3574 green; =--features gtk= /
+=--features qt= build-verified under =.#webview=.
+*** Decision (2026-06-28) Per-shell token→native mapping, one palette.
+Theme stays the single typed source (G2); each shell owns only the tiny
+map to its native styling vocabulary — CSS for GTK, =property color= for
+QML, =Color::Rgb= for tui (G2), CSS vars for web (G2), and
+=Theme::color().rgb()= for gpui/egui. So a colour change is one palette
+edit, not five. The mapping functions are pure + golden-tested; loading the
+=CssProvider= / binding the QML props is the display-bound apply. The window
+defaults to the dark theme; resolving =config.theme= per window (via
+=Theme::from_name=) is a thin wire-up, not a parity gap — recorded.
 
 * DONE GUI-UX — every GUI shell a full-blown, top-notch editor [9/9]
 The GUI tier is uneven: gpui/egui are full editors, tauri hosts the web
