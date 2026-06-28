@@ -44,6 +44,7 @@ fn collect<'a>(node: &'a Node, out: &mut Vec<&'a Action>) {
                 collect(p, out);
             }
         }
+        Node::Modal { body, .. } => collect(body, out),
         Node::Detail { fields } => {
             for f in fields {
                 if let Some(a) = &f.action {

@@ -1388,6 +1388,10 @@ fn push_view_node(node: &closure_shell_core::Node, depth: usize, out: &mut Vec<S
                 push_view_node(p, depth + 1, out);
             }
         }
+        Node::Modal { title, body } => {
+            out.push(format!("{pad}▌ modal: {title}"));
+            push_view_node(body, depth + 1, out);
+        }
     }
 }
 

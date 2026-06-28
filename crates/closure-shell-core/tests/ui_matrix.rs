@@ -57,12 +57,16 @@ fn one_of_each() -> Vec<Node> {
             direction: SplitDir::Row,
             panes: vec![],
         },
+        Node::Modal {
+            title: String::new(),
+            body: Box::new(Node::Text(String::new())),
+        },
     ]
 }
 
 #[test]
 fn all_node_kinds_covers_every_variant() {
-    assert_eq!(ALL_NODE_KINDS.len(), 9);
+    assert_eq!(ALL_NODE_KINDS.len(), 10);
     for n in one_of_each() {
         assert!(
             ALL_NODE_KINDS.contains(&n.kind()),

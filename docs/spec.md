@@ -437,7 +437,10 @@ base, ours, theirs)` returns the `FieldConflict`s (title/body) both sides
   `view_to_json`/`serialize_view` and both `render_view`s, so a renderer
   that omits it does not compile; the hermetic guarantee is the pane
   *set + order + axis* (golden-tested), not pixels — those stay the
-  embedder's display-bound job.
+  embedder's display-bound job. `Node::Modal { title, body }` (G1b) is a
+  titled overlay layer (command palette / confirm dialog / prompt) —
+  `aria_role` `dialog`, the title as `aria_label`; the web shell emits
+  `role="dialog"` and the embedder paints the dim/float.
 - `closure-tui` — ratatui + crossterm. Primary first shell.
 - `closure-cli` — the `closure` binary (`tui`, `check`, `fmt`, `parse`,
   `query`, `serve`).

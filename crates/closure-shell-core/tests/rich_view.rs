@@ -7,7 +7,8 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
 use closure_shell_core::{
-    ALL_NODE_KINDS, Node, NodeKind, RowView, SplitDir, serialize_view, split_node, view_to_json,
+    ALL_NODE_KINDS, Node, NodeKind, RowView, SplitDir, modal_node, serialize_view, split_node,
+    view_to_json,
 };
 
 fn sample_split() -> Node {
@@ -69,4 +70,38 @@ fn split_serialises_for_the_llm_snapshot() {
     let snap = serialize_view(&sample_split());
     assert!(snap.contains("SPLIT row"), "snapshot names the split: {snap}");
     assert!(snap.contains("Sidebar item") && snap.contains("main pane"));
+}
+
+fn sample_modal() -> Node {
+    modal_node(
+        "Confirm delete",
+        Node::Text("Delete this subtree?".into()),
+    )
+}
+
+#[test]
+fn modal_is_a_first_class_node_kind() {
+    assert!(ALL_NODE_KINDS.contains(&NodeKind::Modal));
+    assert_eq!(sample_modal().kind(), NodeKind::Modal);
+}
+
+#[test]
+fn modal_is_an_accessible_dialog_with_its_title_as_label() {
+    assert_eq!(sample_modal().aria_role(), "dialog");
+    assert_eq!(sample_modal().aria_label(), Some("Confirm delete"));
+}
+
+#[test]
+fn modal_serialises_to_json_with_title_and_nested_body() {
+    let json = view_to_json(&sample_modal());
+    assert!(json.contains("\"k\":\"modal\""), "tagged modal: {json}");
+    assert!(json.contains("Confirm delete"), "title present: {json}");
+    assert!(json.contains("Delete this subtree?"), "body nested: {json}");
+}
+
+#[test]
+fn modal_serialises_for_the_llm_snapshot() {
+    let snap = serialize_view(&sample_modal());
+    assert!(snap.contains("MODAL Confirm delete"), "names the modal: {snap}");
+    assert!(snap.contains("Delete this subtree?"), "body shown: {snap}");
 }

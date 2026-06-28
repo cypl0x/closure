@@ -418,6 +418,13 @@ pub fn render_view(node: &closure_shell_core::Node) -> String {
                 direction.as_str()
             )
         }
+        Node::Modal { title, body } => format!(
+            "<div role=\"{}\" aria-label=\"{}\" class=\"modal\"><h2>{}</h2>{}</div>",
+            node.aria_role(),
+            escape_html(title),
+            escape_html(title),
+            render_view(body)
+        ),
     }
 }
 

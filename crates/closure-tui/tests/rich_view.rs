@@ -3,7 +3,7 @@
 
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
-use closure_shell_core::{Node, SplitDir, split_node};
+use closure_shell_core::{Node, SplitDir, modal_node, split_node};
 use closure_tui::render_snapshot;
 
 #[test]
@@ -20,4 +20,14 @@ fn split_renders_panes_in_order_under_a_labelled_axis() {
     let top = snap.find("top").unwrap();
     let bottom = snap.find("bottom").unwrap();
     assert!(top < bottom, "panes in render order: {snap}");
+}
+
+#[test]
+fn modal_renders_a_titled_overlay_above_its_body() {
+    let tree = modal_node("Palette", Node::Text("pick a command".into()));
+    let snap = render_snapshot(&tree);
+    assert!(snap.contains("modal: Palette"), "titled overlay: {snap}");
+    let title = snap.find("Palette").unwrap();
+    let body = snap.find("pick a command").unwrap();
+    assert!(title < body, "title above body: {snap}");
 }

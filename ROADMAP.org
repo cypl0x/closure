@@ -26,7 +26,7 @@ weaken a test or lower a gate (coverage floor stays >=84), each leaf
 revises =docs/spec.md= + adds a dated Decision in the SAME commit,
 non-hermetic window deps feature-gated OFF with =just check= green (I10).
 
-** WIP G1 Rich ViewTree vocabulary: splits / overlays / notifications [1/3]
+** WIP G1 Rich ViewTree vocabulary: splits / overlays / notifications [2/3]
 The =Node= enum described a single screen; a "full-blown editor" needs a
 richer, still-declarative layout vocabulary. G1 grows it one kind per
 sub-cycle, each exhaustively matched across every renderer (V1c), so a
@@ -51,7 +51,21 @@ whole point — it forces cross-shell parity). =Split= carries only
 structure (axis + ordered panes); how wide each pane draws is the
 embedder's pixel job, outside the hermetic gate. =SplitDir= is a tiny
 =Copy= enum with a stable =as_str= tag so JSON/CSS stay deterministic.
-*** TODO G1b =Node::Modal= — overlay layer (palette/dialog over a base)
+*** DONE G1b =Node::Modal= — overlay layer (palette/dialog over a base)
+=Node::Modal { title, body: Box<Node> }= is a titled overlay floating
+above the base surface — the command palette, a confirm dialog, a prompt.
+=aria_role= is =dialog=, the title doubles as the =aria_label=; wired
+through =kind=/=view_to_json=/=serialize_view= + both renderers (=▌ modal:=
+in tui, =<div role="dialog" class="modal">= in web); =ALL_NODE_KINDS=
+9→10, =modal_node= constructor. Hermetic proof in =rich_view.rs=: title
+above body, dialog role + label, JSON nests the body. =just check= 3507.
+*** Decision (2026-06-28) Modal is a node, not a shell-side =bool=.
+A modal could be a flag the shell special-cases, but making it a =Node=
+keeps overlays inside the one declarative tree every renderer already
+walks — so the palette/confirm/prompt all render through the SAME path
+(and the V1c exhaustive-match parity guard covers them for free). The
+body is a =Box<Node>= so any view (rows, palette, detail) can be the
+overlay content. Dim/animation are the embedder's pixels, not gated.
 *** TODO G1c =Node::Toast= + row badges/icons-as-data + focus marker
 
 * DONE Depth IV — make the shallow-deep components genuinely deep [9/9]

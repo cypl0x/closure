@@ -494,6 +494,16 @@ pub enum Node {
         /// Child panes, in render order.
         panes: Vec<Self>,
     },
+    /// A modal overlay (G1b): a titled layer floating above the base
+    /// surface — the command palette, a confirm dialog, a prompt. The
+    /// embedder paints it as a focused dialog; the hermetic guarantee is
+    /// the title + body content, not the dimming/animation.
+    Modal {
+        /// Dialog heading (also the accessible label).
+        title: String,
+        /// The content shown inside the overlay.
+        body: Box<Self>,
+    },
 }
 
 /// The axis a [`Node::Split`] arranges its panes along (G1a).
@@ -520,6 +530,15 @@ impl SplitDir {
 #[must_use]
 pub const fn split_node(direction: SplitDir, panes: Vec<Node>) -> Node {
     Node::Split { direction, panes }
+}
+
+/// Build a [`Node::Modal`] overlay from a title and its body (G1b).
+#[must_use]
+pub fn modal_node(title: impl Into<String>, body: Node) -> Node {
+    Node::Modal {
+        title: title.into(),
+        body: Box::new(body),
+    }
 }
 
 /// Build a [`Node::Widget`] from a name and its expanded content (V2c).
@@ -676,6 +695,11 @@ pub fn view_to_json(node: &Node) -> String {
                 kids.join(",")
             )
         }
+        Node::Modal { title, body } => format!(
+            "{{\"k\":\"modal\",\"role\":{role},\"title\":{},\"body\":{}}}",
+            json_str(title),
+            view_to_json(body)
+        ),
     }
 }
 
@@ -748,6 +772,10 @@ fn serialize_node(node: &Node, depth: usize, out: &mut String) {
             for p in panes {
                 serialize_node(p, depth + 1, out);
             }
+        }
+        Node::Modal { title, body } => {
+            let _ = writeln!(out, "{pad}MODAL {title}");
+            serialize_node(body, depth + 1, out);
         }
     }
 }
@@ -1180,6 +1208,8 @@ pub enum NodeKind {
     Text,
     /// [`Node::Split`].
     Split,
+    /// [`Node::Modal`].
+    Modal,
 }
 
 impl Node {
@@ -1192,6 +1222,7 @@ impl Node {
             Self::Pane { .. } | Self::Widget { .. } => "region",
             Self::Rows { .. } => "list",
             Self::Detail { .. } | Self::Split { .. } => "group",
+            Self::Modal { .. } => "dialog",
             Self::Input { .. } => "textbox",
             Self::Palette { .. } => "listbox",
             Self::Hints { .. } => "status",
@@ -1204,7 +1235,7 @@ impl Node {
     #[must_use]
     pub fn aria_label(&self) -> Option<&str> {
         match self {
-            Self::Pane { title, .. } => Some(title),
+            Self::Pane { title, .. } | Self::Modal { title, .. } => Some(title),
             Self::Input { label, .. } => Some(label),
             Self::Widget { name, .. } => Some(name),
             _ => None,
@@ -1224,6 +1255,7 @@ impl Node {
             Self::Widget { .. } => NodeKind::Widget,
             Self::Text(_) => NodeKind::Text,
             Self::Split { .. } => NodeKind::Split,
+            Self::Modal { .. } => NodeKind::Modal,
         }
     }
 }
@@ -1239,6 +1271,7 @@ pub const ALL_NODE_KINDS: &[NodeKind] = &[
     NodeKind::Widget,
     NodeKind::Text,
     NodeKind::Split,
+    NodeKind::Modal,
 ];
 
 /// The floor every shell must render to host the launcher (I7 for UI):
