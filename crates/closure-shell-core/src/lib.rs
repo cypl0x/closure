@@ -1540,6 +1540,21 @@ pub enum ElementState {
     Disabled,
 }
 
+impl ElementState {
+    /// A stable lowercase style class (P6) each shell maps to its native
+    /// focus-ring / hover / pressed / disabled styling.
+    #[must_use]
+    pub const fn class(self) -> &'static str {
+        match self {
+            Self::Normal => "normal",
+            Self::Hovered => "hovered",
+            Self::Focused => "focused",
+            Self::Active => "active",
+            Self::Disabled => "disabled",
+        }
+    }
+}
+
 /// The interaction-state machine for a list of elements (G5b).
 ///
 /// Tracks which element index is focused, hovered, and pressed, plus a set
@@ -1730,6 +1745,36 @@ impl Feedback {
                 }
             })
             .collect()
+    }
+}
+
+/// Compose a [`Feedback`] queue onto a base [`ViewTree`](Node) as toast
+/// nodes (P6).
+///
+/// Every shell already renders [`Node::Toast`] (G1c), so this is how
+/// notifications + progress reach every window from the one shared queue. A
+/// `Pane` gets the toasts appended to its children; any other node is
+/// wrapped in a `Pane` with the toasts after it. Empty feedback returns the
+/// base unchanged.
+#[must_use]
+pub fn with_feedback(base: Node, feedback: &Feedback) -> Node {
+    let toasts = feedback.to_nodes();
+    if toasts.is_empty() {
+        return base;
+    }
+    match base {
+        Node::Pane { title, mut children } => {
+            children.extend(toasts);
+            Node::Pane { title, children }
+        }
+        other => {
+            let mut children = vec![other];
+            children.extend(toasts);
+            Node::Pane {
+                title: String::new(),
+                children,
+            }
+        }
     }
 }
 

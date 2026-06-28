@@ -13,7 +13,7 @@ file is the fine-grained, capability-level queue between them. Blocked
 on a design decision? Record it under [[*Decisions][Decisions]], pick the most
 reversible option, keep moving.
 
-* WIP GUI-PARITY — every GUI shell a real interactive editor [5/7]
+* WIP GUI-PARITY — every GUI shell a real interactive editor [6/7]
 GUI-UX brought the hermetic cores to parity (every shell consumes
 =App=/=Shell= + renders the =ViewTree=); the gap left is the windowed
 =run()= loops — gpui/egui edit live, gtk/qt render a static snapshot,
@@ -131,6 +131,26 @@ edit, not five. The mapping functions are pure + golden-tested; loading the
 =CssProvider= / binding the QML props is the display-bound apply. The window
 defaults to the dark theme; resolving =config.theme= per window (via
 =Theme::from_name=) is a thin wire-up, not a parity gap — recorded.
+
+** DONE P6 Feedback + interaction states in every window [1/1]
+=with_feedback(base, &Feedback) -> Node= composes the typed feedback queue
+onto a =ViewTree= as =Node::Toast= nodes — appended to a =Pane='s children,
+or wrapping any other node — so notifications + progress reach every window
+from the one shared queue (every shell already renders =Toast=, G1c/G8;
+empty feedback is a no-op). =ElementState::class= is the stable paint token
+(=normal=/=hovered=/=focused=/=active=/=disabled=) each shell maps to its
+native focus-ring / hover / dimming. Tests: toasts (notify + progress)
+appear in the composed tree's JSON + snapshot, original content survives,
+empty is unchanged, classes are distinct. =just check= 3578 green.
+*** Decision (2026-06-28) Reuse the Toast vocabulary, don't re-plumb per shell.
+Feedback already lowers to =Node::Toast= (G7), and every renderer already
+draws =Toast= (G1c, proven by the G8 harness) — so "feedback in every
+window" is just composing the queue onto the view (=with_feedback=), not new
+per-shell notification code. Likewise =ElementState= stays a shared machine
+(G5b); P6 only adds its =class= token so each shell maps one string to a
+native style, rather than each inventing focus/hover logic. Binding the
+class onto specific rows + animating toasts are display-bound, not parity
+gaps; the state + composition are the tested part.
 
 * DONE GUI-UX — every GUI shell a full-blown, top-notch editor [9/9]
 The GUI tier is uneven: gpui/egui are full editors, tauri hosts the web

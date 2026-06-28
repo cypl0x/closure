@@ -519,6 +519,12 @@ base, ours, theirs)` returns the `FieldConflict`s (title/body) both sides
   it to QML `property color` decls the host document binds (window `color`,
   text colour). The mappings are hermetic; gpui/egui/web/tui already
   consume the tokens (`Theme::color` rgb / CSS vars / ratatui colour, G2).
+  Feedback + interaction states reach every window from the shared machines
+  (P6): `with_feedback(base, &Feedback)` composes the typed queue onto a
+  `ViewTree` as `Node::Toast` nodes (which every shell already renders,
+  G1c/G8), and `ElementState::class` is the stable paint token
+  (`focused`/`hovered`/`active`/`disabled`) each shell maps to its native
+  focus-ring / hover / dimming.
   Every shell's window drives ONE shared input step (GUI-PARITY P1):
   `App::dispatch(shell, &KeyEvent) -> Node` applies a typed `KeyEvent`
   (key + ctrl + typed char) via the mode-aware `on_key` (mutating through
