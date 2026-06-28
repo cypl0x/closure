@@ -16,12 +16,7 @@ fn sample_split() -> Node {
         SplitDir::Row,
         vec![
             Node::Rows {
-                rows: vec![RowView {
-                    id: "a".into(),
-                    title: "Sidebar item".into(),
-                    level: 1,
-                    todo: None,
-                }],
+                rows: vec![RowView::new("a", "Sidebar item", 1, None)],
                 selected: 0,
             },
             Node::Text("main pane".into()),
@@ -143,4 +138,37 @@ fn toast_serialises_to_json_with_level_and_text() {
 fn toast_serialises_for_the_llm_snapshot() {
     let snap = serialize_view(&toast_node(ToastLevel::Info, "3 jobs ran"));
     assert!(snap.contains("TOAST info 3 jobs ran"), "names the toast: {snap}");
+}
+
+#[test]
+fn rows_carry_icons_and_badges_as_data() {
+    // G5a: a row carries a leading icon glyph + metadata chips, built with
+    // the constructor + builders (empty by default for back-compat).
+    let plain = RowView::new("id", "Plain", 1, None);
+    assert!(plain.icon.is_none() && plain.badges.is_empty(), "defaults empty");
+
+    let row = RowView::new("id", "Ship", 1, Some("TODO".into()))
+        .with_icon(Some("○".into()))
+        .with_badges(vec!["urgent".into(), "#A".into()]);
+    let json = view_to_json(&Node::Rows {
+        rows: vec![row],
+        selected: 0,
+    });
+    assert!(json.contains("\"icon\":\"○\""), "icon as data: {json}");
+    assert!(json.contains("urgent") && json.contains("#A"), "badges as data: {json}");
+}
+
+#[test]
+fn browse_view_maps_tags_to_badges_and_todo_to_an_icon() {
+    use closure_shell_core::browse_view;
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(
+        dir.path().join("n.org"),
+        "* TODO Ship parser :urgent:soon:\n",
+    )
+    .unwrap();
+    let v = closure_store::Vault::open(dir.path()).unwrap();
+    let json = view_to_json(&browse_view(&v));
+    assert!(json.contains("urgent") && json.contains("soon"), "tags → badges: {json}");
+    assert!(json.contains("\"icon\":"), "todo → an icon glyph: {json}");
 }

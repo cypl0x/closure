@@ -154,6 +154,30 @@ gtk's =widget_tree=). Two shells (gtk + qt) now prove the pattern
 generalises: any embedder is "render the =ViewTree= + drive the =Shell=",
 the bulk hermetic, the window a thin display-bound adapter.
 
+** WIP G5 Interaction states + Notion affordances [1/3]
+Row presentation + interaction surfaces, hermetic state. Sub-cycles: G5a
+badges/icons-as-data (moved from G1c), G5b interaction states
+(hover/focus/active/disabled), G5c Notion affordances (slash-menu, block
+"+", drag-reorder as commands).
+*** DONE G5a Row badges + icons-as-data
+=RowView= grew an =icon: Option<String>= (a TODO-status glyph: ● done / ○
+open / ◆ other) and =badges: Vec<String>= (tags, priority chips), with a
+=new()= constructor + =with_icon=/=with_badges= builders that default both
+empty (back-compat for all 11 construction sites). =browse_view= populates
+them from the headline (=todo_glyph(todo)= + =h.tags()=); every renderer —
+=view_to_json=, =serialize_view=, tui, web, gtk =widget_tree=, qt
+=qml_view= — draws them, empty-safe so existing goldens are untouched.
+Tests: row icon/badges as JSON data + =browse_view= maps =:tags:= → badges
+and TODO → an icon. =just check= 3532 green.
+*** Decision (2026-06-28) Presentation lives on RowView, populated centrally.
+Badges/icons are data on the row, not per-shell decoration, so all six
+renderers show the same chips from one source (and a shell can style them
+natively). They default empty via the builder, which is why adding two
+fields to a struct with 11 construction sites stayed a mechanical,
+golden-safe change. The =App::view= browse path sets the icon (its =Row=
+has the TODO) but not badges (=Row= has no tags yet); =browse_view= is the
+full path. Enriching =Row= with tags is a later cycle, recorded not faked.
+
 * DONE Depth IV — make the shallow-deep components genuinely deep [9/9]
 Depth III closed *breadth* (every vision noun has a crate). Depth IV
 closes *depth* on the components that are still demo / subset /

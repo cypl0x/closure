@@ -332,6 +332,9 @@ pub fn export_view_html(vault: &Vault) -> String {
 /// their chord in a `<kbd>` (the "keybinding everywhere" rule); all text
 /// is HTML-escaped.
 #[must_use]
+// One flat arm per `Node` kind — exhaustive by design (V1c); splitting the
+// match would only hide the one-to-one kind→HTML mapping.
+#[allow(clippy::too_many_lines)]
 pub fn render_view(node: &closure_shell_core::Node) -> String {
     use closure_shell_core::Node;
     use std::fmt::Write as _;
@@ -358,7 +361,14 @@ pub fn render_view(node: &closure_shell_core::Node) -> String {
                     let todo = r.todo.as_deref().map_or_else(String::new, |t| {
                         format!("<span class=\"todo\">{}</span> ", escape_html(t))
                     });
-                    let _ = write!(s, "<li{sel}>{todo}{}</li>", escape_html(&r.title));
+                    let icon = r.icon.as_deref().map_or_else(String::new, |g| {
+                        format!("<span class=\"icon\">{}</span> ", escape_html(g))
+                    });
+                    let badges = r.badges.iter().fold(String::new(), |mut b, badge| {
+                        let _ = write!(b, " <span class=\"badge\">{}</span>", escape_html(badge));
+                        b
+                    });
+                    let _ = write!(s, "<li{sel}>{icon}{todo}{}{badges}</li>", escape_html(&r.title));
                     s
                 });
             format!("<ul class=\"rows\">{items}</ul>")

@@ -454,6 +454,11 @@ base, ours, theirs)` returns the `FieldConflict`s (title/body) both sides
   resolves a `ColorRole` to a ratatui `Color::Rgb` (`theme_color`). A
   malformed colour resolves to black, never a panic (I5); resolution +
   token values are hermetic, only the pixels are the embedder's.
+  Rows carry presentation as data (G5a): `RowView` has an `icon`
+  (TODO-status glyph) + `badges` (tags / priority chips), populated by
+  `browse_view` from the headline, and every renderer (tui/web/gtk/qt +
+  JSON/snapshot) draws them — empty by default, so existing goldens are
+  unchanged.
   GTK4 (G3) is no longer a read-only list: `closure_shell_gtk` consumes
   the shared `App`/`Shell` and renders the full `ViewTree` via
   `widget_tree` — a hermetic, golden-tested GTK4 widget-tree descriptor

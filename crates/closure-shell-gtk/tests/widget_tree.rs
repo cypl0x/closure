@@ -60,12 +60,7 @@ fn widget_tree_renders_every_rich_node_kind_without_panic() {
                 SplitDir::Row,
                 vec![
                     Node::Rows {
-                        rows: vec![RowView {
-                            id: "x".into(),
-                            title: "row".into(),
-                            level: 1,
-                            todo: Some("TODO".into()),
-                        }],
+                        rows: vec![RowView::new("x", "row", 1, Some("TODO".into()))],
                         selected: 0,
                     },
                     Node::Text("pane".into()),

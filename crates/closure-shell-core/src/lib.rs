@@ -406,6 +406,41 @@ pub struct RowView {
     pub level: u8,
     /// TODO keyword, if any.
     pub todo: Option<String>,
+    /// Leading status glyph (icon-as-data, G5a) — e.g. a todo-state
+    /// marker. The embedder maps it to a real icon.
+    pub icon: Option<String>,
+    /// Metadata chips (G5a) — tags, a priority letter, … shown after the
+    /// title as Notion-style badges.
+    pub badges: Vec<String>,
+}
+
+impl RowView {
+    /// A row with no icon and no badges (the common case).
+    #[must_use]
+    pub fn new(id: impl Into<String>, title: impl Into<String>, level: u8, todo: Option<String>) -> Self {
+        Self {
+            id: id.into(),
+            title: title.into(),
+            level,
+            todo,
+            icon: None,
+            badges: Vec::new(),
+        }
+    }
+
+    /// Set the leading icon glyph (G5a).
+    #[must_use]
+    pub fn with_icon(mut self, icon: Option<String>) -> Self {
+        self.icon = icon;
+        self
+    }
+
+    /// Set the metadata badge chips (G5a).
+    #[must_use]
+    pub fn with_badges(mut self, badges: Vec<String>) -> Self {
+        self.badges = badges;
+        self
+    }
 }
 
 /// A labelled field in a [`Node::Detail`] pane; `action` present iff the
@@ -810,22 +845,38 @@ pub fn widget_node(name: impl Into<String>, content: impl Into<String>) -> Node 
     }
 }
 
+/// Map a TODO keyword to a leading status glyph (G5a): `DONE`-like
+/// keywords get a filled marker, open ones a hollow marker, anything else
+/// a diamond.
+fn todo_glyph(keyword: &str) -> &'static str {
+    match keyword {
+        "DONE" | "CANCELLED" | "KILL" => "●",
+        "TODO" | "NEXT" | "WAIT" => "○",
+        _ => "◆",
+    }
+}
+
 /// Build the default browse [`ViewTree`](Node) from a borrowed vault
 /// (V3a).
 ///
 /// Every headline becomes a row (vault iteration order), selection 0,
 /// plus a hint line. Borrow-friendly (no [`Shell`] ownership) so callers
-/// like the LLM `view-render` tool can snapshot the screen.
+/// like the LLM `view-render` tool can snapshot the screen. Rows carry an
+/// icon (TODO glyph) + badges (tags) as data (G5a).
 #[must_use]
 pub fn browse_view(vault: &closure_store::Vault) -> Node {
     let rows: Vec<RowView> = vault
         .iter()
         .flat_map(|(_p, doc)| {
-            doc.all_headlines().map(|h| RowView {
-                id: h.id().to_string(),
-                title: h.title().to_owned(),
-                level: h.level(),
-                todo: h.todo().map(ToOwned::to_owned),
+            doc.all_headlines().map(|h| {
+                RowView::new(
+                    h.id().to_string(),
+                    h.title(),
+                    h.level(),
+                    h.todo().map(ToOwned::to_owned),
+                )
+                .with_icon(h.todo().map(|t| todo_glyph(t).to_owned()))
+                .with_badges(h.tags().iter().map(ToOwned::to_owned).collect())
             })
         })
         .collect();
@@ -886,9 +937,19 @@ pub fn view_to_json(node: &Node) -> String {
                     .todo
                     .as_deref()
                     .map_or_else(|| "null".to_owned(), json_str);
+                let icon = r
+                    .icon
+                    .as_deref()
+                    .map_or_else(|| "null".to_owned(), json_str);
+                let badges = r
+                    .badges
+                    .iter()
+                    .map(|b| json_str(b))
+                    .collect::<Vec<_>>()
+                    .join(",");
                 let _ = write!(
                     s,
-                    "{{\"title\":{},\"todo\":{todo},\"level\":{}}}",
+                    "{{\"title\":{},\"todo\":{todo},\"level\":{},\"icon\":{icon},\"badges\":[{badges}]}}",
                     json_str(&r.title),
                     r.level
                 );
@@ -1001,7 +1062,13 @@ fn serialize_node(node: &Node, depth: usize, out: &mut String) {
                     .todo
                     .as_deref()
                     .map_or_else(String::new, |t| format!("{t} "));
-                let _ = writeln!(out, "{pad}  {mark} {todo}{}", r.title);
+                let icon = r.icon.as_deref().map_or_else(String::new, |g| format!("{g} "));
+                let badges = if r.badges.is_empty() {
+                    String::new()
+                } else {
+                    format!("  :{}:", r.badges.join(":"))
+                };
+                let _ = writeln!(out, "{pad}  {mark} {icon}{todo}{}{badges}", r.title);
             }
         }
         Node::Detail { fields } => {
@@ -1270,11 +1337,13 @@ impl SnifferApp {
         let rows: Vec<RowView> = self
             .filtered()
             .iter()
-            .map(|e| RowView {
-                id: e.candidate.clone(),
-                title: e.candidate.clone(),
-                level: 1,
-                todo: e.action.map(|a| format!("{a:?}")),
+            .map(|e| {
+                RowView::new(
+                    e.candidate.clone(),
+                    e.candidate.clone(),
+                    1,
+                    e.action.map(|a| format!("{a:?}")),
+                )
             })
             .collect();
         let mut children = vec![Node::Rows {
@@ -1416,12 +1485,7 @@ impl ConflictApp {
         let rows: Vec<RowView> = self
             .conflicts
             .iter()
-            .map(|c| RowView {
-                id: c.block.to_string(),
-                title: format!("{:?}: {}", c.field, c.block),
-                level: 1,
-                todo: None,
-            })
+            .map(|c| RowView::new(c.block.to_string(), format!("{:?}: {}", c.field, c.block), 1, None))
             .collect();
         let mut children = vec![Node::Rows {
             rows,
@@ -2221,11 +2285,9 @@ impl App {
                 let rows = self
                     .rows(shell)
                     .into_iter()
-                    .map(|r| RowView {
-                        id: r.id,
-                        title: r.title,
-                        level: r.level,
-                        todo: r.todo,
+                    .map(|r| {
+                        let icon = r.todo.as_deref().map(|t| todo_glyph(t).to_owned());
+                        RowView::new(r.id, r.title, r.level, r.todo).with_icon(icon)
                     })
                     .collect();
                 let mut children = vec![Node::Rows {

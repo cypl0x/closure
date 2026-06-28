@@ -16,18 +16,8 @@ fn sample() -> Node {
         children: vec![
             Node::Rows {
                 rows: vec![
-                    RowView {
-                        id: "1".to_owned(),
-                        title: "Ship parser".to_owned(),
-                        level: 1,
-                        todo: Some("TODO".to_owned()),
-                    },
-                    RowView {
-                        id: "2".to_owned(),
-                        title: "Wiki".to_owned(),
-                        level: 1,
-                        todo: None,
-                    },
+                    RowView::new("1", "Ship parser", 1, Some("TODO".to_owned())),
+                    RowView::new("2", "Wiki", 1, None),
                 ],
                 selected: 0,
             },

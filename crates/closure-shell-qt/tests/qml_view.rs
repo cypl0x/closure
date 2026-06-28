@@ -45,12 +45,7 @@ fn qml_view_escapes_quotes_and_renders_every_rich_kind() {
                 SplitDir::Column,
                 vec![
                     Node::Rows {
-                        rows: vec![RowView {
-                            id: "x".into(),
-                            title: "row".into(),
-                            level: 1,
-                            todo: None,
-                        }],
+                        rows: vec![RowView::new("x", "row", 1, None)],
                         selected: 0,
                     },
                     Node::Text("pane".into()),

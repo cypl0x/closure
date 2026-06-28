@@ -20,12 +20,7 @@ fn one_of_each() -> Vec<Node> {
             children: vec![],
         },
         Node::Rows {
-            rows: vec![RowView {
-                id: String::new(),
-                title: String::new(),
-                level: 1,
-                todo: None,
-            }],
+            rows: vec![RowView::new(String::new(), String::new(), 1, None)],
             selected: 0,
         },
         Node::Detail {

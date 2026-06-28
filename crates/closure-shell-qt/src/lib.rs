@@ -116,10 +116,18 @@ fn qml_item(node: &Node, depth: usize) -> String {
                         .todo
                         .as_deref()
                         .map_or_else(String::new, |t| format!("{t} "));
+                    let icon = r.icon.as_deref().map_or_else(String::new, |g| format!("{g} "));
+                    let badges = if r.badges.is_empty() {
+                        String::new()
+                    } else {
+                        format!("  :{}:", r.badges.join(":"))
+                    };
                     format!(
-                        "{pad}  Text {{ text: \"{}{}\"{sel} }}",
+                        "{pad}  Text {{ text: \"{}{}{}{}\"{sel} }}",
+                        qml_escape(&icon),
                         qml_escape(&todo),
-                        qml_escape(&r.title)
+                        qml_escape(&r.title),
+                        qml_escape(&badges)
                     )
                 })
                 .collect::<Vec<_>>()

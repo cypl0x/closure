@@ -12,12 +12,7 @@ fn encodes_kind_role_and_data() {
         title: "closure".to_owned(),
         children: vec![
             Node::Rows {
-                rows: vec![RowView {
-                    id: "1".to_owned(),
-                    title: "Ship".to_owned(),
-                    level: 1,
-                    todo: Some("TODO".to_owned()),
-                }],
+                rows: vec![RowView::new("1", "Ship", 1, Some("TODO".to_owned()))],
                 selected: 0,
             },
             Node::Hints {

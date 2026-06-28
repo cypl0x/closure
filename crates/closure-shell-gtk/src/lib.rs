@@ -74,7 +74,16 @@ fn push_widget(node: &Node, depth: usize, out: &mut Vec<String>) {
                     .todo
                     .as_deref()
                     .map_or_else(String::new, |t| format!("{t} "));
-                out.push(format!("{pad}  GtkLabel xalign=0{sel} \"{todo}{}\"", r.title));
+                let icon = r.icon.as_deref().map_or_else(String::new, |g| format!("{g} "));
+                let badges = if r.badges.is_empty() {
+                    String::new()
+                } else {
+                    format!("  :{}:", r.badges.join(":"))
+                };
+                out.push(format!(
+                    "{pad}  GtkLabel xalign=0{sel} \"{icon}{todo}{}{badges}\"",
+                    r.title
+                ));
             }
         }
         Node::Detail { fields } => {
