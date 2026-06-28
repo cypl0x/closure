@@ -13,7 +13,7 @@ file is the fine-grained, capability-level queue between them. Blocked
 on a design decision? Record it under [[*Decisions][Decisions]], pick the most
 reversible option, keep moving.
 
-* WIP GUI-UX — every GUI shell a full-blown, top-notch editor [1/9]
+* WIP GUI-UX — every GUI shell a full-blown, top-notch editor [2/9]
 The GUI tier is uneven: gpui/egui are full editors, tauri hosts the web
 shell, but gtk/qt are read-only headline lists, and "great UX" exists
 nowhere as *tested* structure. Pixels can't be gated hermetically
@@ -84,6 +84,30 @@ construction sites) and belong with hover/active/disabled — so they move
 to G5 (interaction states), where the whole interaction-attribute surface
 lands in one coherent cycle rather than churning =RowView= twice. Honest
 re-scope, recorded; no capability dropped, just regrouped.
+
+** DONE G2 Declarative typed theme tokens [1/1]
+=closure_shell_core::Theme= = a =Palette= (8 =ColorRole= slots) + =Spacing=
++ =Typography= as data, with three =const= built-ins (dark / light /
+high-contrast). =Theme::from_name= resolves the free-form =config.theme=
+string (case-insensitive: =light=, =high-contrast=/=hc=, else =dark=) — no
+runtime stylesheet parsing, the whole theme is typed values. =Color= is an
+=#rrggbb= newtype whose =rgb()= parses to bytes and resolves malformed
+input to black (never a panic, I5). Each shell maps the tokens natively:
+=closure_shell_web::theme_css_variables= emits the =:root= CSS custom
+properties, =closure_tui::theme_color= turns a =ColorRole= into a ratatui
+=Color::Rgb=. 10 tests (resolve/contrast/hex-parse/roles/css/rgb across
+shell-core+web+tui), all hermetic. =just check= 3524 green.
+*** Decision (2026-06-28) Tokens as typed data, not a CSS/theme file.
+A "themeable" app usually ships a stylesheet the user edits; that puts an
+untyped parser on the hot path and makes a bad colour a runtime failure.
+Instead the palette is a typed Rust value (=ColorRole= → =Color=), so the
+three built-ins are =const=, resolution is total, and a malformed hex is
+black not a crash. The free-form =config.theme= string already existed
+(coarse =ThemeKind= for egui); =Theme::from_name= is the richer 3-way
+resolver over the SAME string, leaving the egui =ThemeKind= path
+untouched (no churn to a feature-gated shell). Shells own only the
+token→native mapping (CSS var / ratatui Color), so a 4th theme or a 9th
+role is one data edit + the exhaustive =color= match, not per-shell work.
 
 * DONE Depth IV — make the shallow-deep components genuinely deep [9/9]
 Depth III closed *breadth* (every vision noun has a crate). Depth IV

@@ -596,6 +596,211 @@ pub fn toast_node(level: ToastLevel, text: impl Into<String>) -> Node {
     }
 }
 
+/// An `#rrggbb` colour token (G2). Holds a static hex string; the shells
+/// map it to a native colour (CSS value, ratatui `Color::Rgb`, …).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Color(pub &'static str);
+
+impl Color {
+    /// The `#rrggbb` hex string.
+    #[must_use]
+    pub const fn hex(self) -> &'static str {
+        self.0
+    }
+
+    /// Parse the hex to an `(r, g, b)` byte triple. Malformed input
+    /// resolves to black — never a panic (I5), so a bad theme token can't
+    /// crash a render.
+    #[must_use]
+    pub fn rgb(self) -> (u8, u8, u8) {
+        let h = self.0.strip_prefix('#').unwrap_or(self.0);
+        if h.len() != 6 || !h.is_ascii() {
+            return (0, 0, 0);
+        }
+        let byte = |i: usize| u8::from_str_radix(&h[i..i + 2], 16).unwrap_or(0);
+        (byte(0), byte(2), byte(4))
+    }
+}
+
+/// A semantic colour slot in a [`Theme`] palette (G2).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ColorRole {
+    /// Foreground / primary text.
+    Fg,
+    /// Background / surface.
+    Bg,
+    /// Accent / interactive highlight.
+    Accent,
+    /// De-emphasised / secondary text.
+    Muted,
+    /// Selection / active-row highlight.
+    Selection,
+    /// Error severity.
+    Error,
+    /// Warning severity.
+    Warning,
+    /// Success severity.
+    Success,
+}
+
+/// The named colour slots of a theme (G2).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Palette {
+    /// Foreground / primary text.
+    pub fg: Color,
+    /// Background / surface.
+    pub bg: Color,
+    /// Accent / interactive highlight.
+    pub accent: Color,
+    /// De-emphasised / secondary text.
+    pub muted: Color,
+    /// Selection / active-row highlight.
+    pub selection: Color,
+    /// Error severity.
+    pub error: Color,
+    /// Warning severity.
+    pub warning: Color,
+    /// Success severity.
+    pub success: Color,
+}
+
+/// The spacing scale of a theme, in pixels (G2).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Spacing {
+    /// Base spacing unit.
+    pub unit_px: u16,
+    /// Inter-element gap.
+    pub gap_px: u16,
+}
+
+/// The typography of a theme (G2).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Typography {
+    /// Body font stack.
+    pub font_family: &'static str,
+    /// Monospace font stack (code blocks).
+    pub mono_family: &'static str,
+    /// Base font size, in pixels.
+    pub base_px: u16,
+}
+
+/// A declarative, typed theme: palette + spacing + typography as data
+/// (G2). Resolved from the free-form `config.theme` string via
+/// [`Theme::from_name`]; each shell maps the tokens to its native style.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Theme {
+    /// Stable lowercase theme name (`dark` / `light` / `high-contrast`).
+    pub name: &'static str,
+    /// Colour palette.
+    pub palette: Palette,
+    /// Spacing scale.
+    pub spacing: Spacing,
+    /// Typography.
+    pub typography: Typography,
+}
+
+impl Theme {
+    /// The default dark theme.
+    #[must_use]
+    pub const fn dark() -> Self {
+        Self {
+            name: "dark",
+            palette: Palette {
+                fg: Color("#cdd6f4"),
+                bg: Color("#1e1e2e"),
+                accent: Color("#89b4fa"),
+                muted: Color("#6c7086"),
+                selection: Color("#45475a"),
+                error: Color("#f38ba8"),
+                warning: Color("#f9e2af"),
+                success: Color("#a6e3a1"),
+            },
+            spacing: Spacing { unit_px: 8, gap_px: 4 },
+            typography: Typography {
+                font_family: "Inter, system-ui, sans-serif",
+                mono_family: "JetBrains Mono, ui-monospace, monospace",
+                base_px: 14,
+            },
+        }
+    }
+
+    /// The light theme.
+    #[must_use]
+    pub const fn light() -> Self {
+        Self {
+            name: "light",
+            palette: Palette {
+                fg: Color("#4c4f69"),
+                bg: Color("#eff1f5"),
+                accent: Color("#1e66f5"),
+                muted: Color("#9ca0b0"),
+                selection: Color("#ccd0da"),
+                error: Color("#d20f39"),
+                warning: Color("#df8e1d"),
+                success: Color("#40a02b"),
+            },
+            spacing: Spacing { unit_px: 8, gap_px: 4 },
+            typography: Typography {
+                font_family: "Inter, system-ui, sans-serif",
+                mono_family: "JetBrains Mono, ui-monospace, monospace",
+                base_px: 14,
+            },
+        }
+    }
+
+    /// The high-contrast theme: pure white on black, larger base size.
+    #[must_use]
+    pub const fn high_contrast() -> Self {
+        Self {
+            name: "high-contrast",
+            palette: Palette {
+                fg: Color("#ffffff"),
+                bg: Color("#000000"),
+                accent: Color("#ffff00"),
+                muted: Color("#c0c0c0"),
+                selection: Color("#0000ff"),
+                error: Color("#ff0000"),
+                warning: Color("#ffaa00"),
+                success: Color("#00ff00"),
+            },
+            spacing: Spacing { unit_px: 8, gap_px: 4 },
+            typography: Typography {
+                font_family: "Inter, system-ui, sans-serif",
+                mono_family: "JetBrains Mono, ui-monospace, monospace",
+                base_px: 16,
+            },
+        }
+    }
+
+    /// Resolve a theme from the free-form `config.theme` string
+    /// (case-insensitive): `light`, `high-contrast`/`hc`, else `dark`.
+    #[must_use]
+    pub const fn from_name(name: &str) -> Self {
+        if name.eq_ignore_ascii_case("light") {
+            Self::light()
+        } else if name.eq_ignore_ascii_case("high-contrast") || name.eq_ignore_ascii_case("hc") {
+            Self::high_contrast()
+        } else {
+            Self::dark()
+        }
+    }
+
+    /// The colour for a semantic [`ColorRole`].
+    #[must_use]
+    pub const fn color(&self, role: ColorRole) -> Color {
+        match role {
+            ColorRole::Fg => self.palette.fg,
+            ColorRole::Bg => self.palette.bg,
+            ColorRole::Accent => self.palette.accent,
+            ColorRole::Muted => self.palette.muted,
+            ColorRole::Selection => self.palette.selection,
+            ColorRole::Error => self.palette.error,
+            ColorRole::Warning => self.palette.warning,
+            ColorRole::Success => self.palette.success,
+        }
+    }
+}
+
 /// Build a [`Node::Widget`] from a name and its expanded content (V2c).
 #[must_use]
 pub fn widget_node(name: impl Into<String>, content: impl Into<String>) -> Node {

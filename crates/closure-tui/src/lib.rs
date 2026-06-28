@@ -1398,6 +1398,20 @@ fn push_view_node(node: &closure_shell_core::Node, depth: usize, out: &mut Vec<S
     }
 }
 
+/// Map a typed theme role to a ratatui colour (G2).
+///
+/// The same declarative tokens the web shell renders as CSS variables,
+/// here as terminal [`Color::Rgb`]. Hermetic — no terminal needed to
+/// resolve a colour.
+#[must_use]
+pub fn theme_color(
+    theme: &closure_shell_core::Theme,
+    role: closure_shell_core::ColorRole,
+) -> Color {
+    let (r, g, b) = theme.color(role).rgb();
+    Color::Rgb(r, g, b)
+}
+
 /// Render the headline tree of `doc` as indented text lines:
 /// `indent * TODO [#P] title :tags:    [id]`.
 #[must_use]

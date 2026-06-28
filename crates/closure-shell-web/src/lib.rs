@@ -510,3 +510,32 @@ console.log('self-contained closure export ready');
     );
     html
 }
+
+/// Map a typed theme to CSS custom properties (G2).
+///
+/// Returns the declarative `:root` variable block a styled page consumes
+/// — one source of tokens; the browser is the native styling layer.
+#[must_use]
+pub fn theme_css_variables(theme: &closure_shell_core::Theme) -> String {
+    use closure_shell_core::ColorRole::{
+        Accent, Bg, Error, Fg, Muted, Selection, Success, Warning,
+    };
+    let p = |role| theme.color(role).hex();
+    format!(
+        "--fg:{};--bg:{};--accent:{};--muted:{};--selection:{};--error:{};--warning:{};\
+         --success:{};--space:{}px;--gap:{}px;--font:{};--mono:{};--font-size:{}px;",
+        p(Fg),
+        p(Bg),
+        p(Accent),
+        p(Muted),
+        p(Selection),
+        p(Error),
+        p(Warning),
+        p(Success),
+        theme.spacing.unit_px,
+        theme.spacing.gap_px,
+        theme.typography.font_family,
+        theme.typography.mono_family,
+        theme.typography.base_px,
+    )
+}

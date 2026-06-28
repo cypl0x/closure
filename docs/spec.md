@@ -445,6 +445,15 @@ base, ours, theirs)` returns the `FieldConflict`s (title/body) both sides
   notification — `ToastLevel` (Info/Success/Warning/Error) drives both the
   CSS class and the ARIA live-region politeness (`alert` for warn/error,
   `status` for info/success), the substrate G7 fills with async outcomes.
+  Theming is declarative + typed (G2): `closure_shell_core::Theme` is a
+  palette (`ColorRole` slots) + spacing + typography as data, resolved
+  from the free-form `config.theme` string (`Theme::from_name`:
+  light/high-contrast/dark) — three built-ins, no runtime stylesheet
+  parsing. Each shell maps the tokens to its native layer: the web shell
+  emits `:root` CSS custom properties (`theme_css_variables`), the TUI
+  resolves a `ColorRole` to a ratatui `Color::Rgb` (`theme_color`). A
+  malformed colour resolves to black, never a panic (I5); resolution +
+  token values are hermetic, only the pixels are the embedder's.
 - `closure-tui` — ratatui + crossterm. Primary first shell.
 - `closure-cli` — the `closure` binary (`tui`, `check`, `fmt`, `parse`,
   `query`, `serve`).
