@@ -14,12 +14,23 @@
 
 use std::path::Path;
 
-use closure_shell_core::Node;
+use closure_shell_core::{KeyEvent, Node};
 use closure_store::{Vault, VaultError};
 
 // Re-export the shared state core so the gtk shell drives the SAME tested
 // App/Shell as every other shell (editor parity, not a private model).
 pub use closure_shell_core::{App, Shell, browse_view};
+
+/// Apply one key event and return the GTK widget descriptor to repaint (P2).
+///
+/// Dispatches through the shared core (P1), then maps the fresh `ViewTree`
+/// to [`widget_tree`]. The exact step the windowed [`run`] calls per
+/// keypress — so the interactive loop is hermetically tested without a
+/// display.
+#[must_use]
+pub fn next_frame(app: &mut App, shell: &mut Shell, event: &KeyEvent) -> String {
+    widget_tree(&app.dispatch(shell, event))
+}
 
 /// The legacy read-only display lines for a vault.
 ///
@@ -138,32 +149,89 @@ fn push_widget(node: &Node, depth: usize, out: &mut Vec<String>) {
     }
 }
 
-/// Open a native GTK4 window that renders the shared `ViewTree` and edits
-/// through the shared [`Shell`]. Blocks on the GTK main loop until closed.
+/// Repaint a `ListBox` from a widget descriptor: one label per line.
+#[cfg(feature = "gtk")]
+fn populate(list: &gtk4::ListBox, descriptor: &str) {
+    use gtk4::prelude::*;
+    while let Some(child) = list.first_child() {
+        list.remove(&child);
+    }
+    for line in descriptor.lines() {
+        list.append(&gtk4::Label::builder().label(line).xalign(0.0).build());
+    }
+}
+
+/// Translate a GDK key + Ctrl modifier into a shared [`KeyEvent`] (P2).
+/// Named keys map to their canonical names; printable keys carry the char.
+#[cfg(feature = "gtk")]
+fn gdk_key_to_event(keyval: gtk4::gdk::Key, ctrl: bool) -> Option<KeyEvent> {
+    use gtk4::gdk::Key;
+    match keyval {
+        Key::Return | Key::KP_Enter => Some(KeyEvent::new("enter", ctrl, None)),
+        Key::Escape => Some(KeyEvent::new("escape", ctrl, None)),
+        Key::BackSpace => Some(KeyEvent::new("backspace", ctrl, None)),
+        Key::Up => Some(KeyEvent::new("up", ctrl, None)),
+        Key::Down => Some(KeyEvent::new("down", ctrl, None)),
+        Key::Tab => Some(KeyEvent::new("tab", ctrl, None)),
+        other => {
+            let c = other.to_unicode()?;
+            if ctrl {
+                Some(KeyEvent::new(c.to_string(), true, None))
+            } else {
+                Some(KeyEvent::char(c))
+            }
+        }
+    }
+}
+
+/// Open a native GTK4 window: an interactive editor over the shared
+/// [`Shell`] (P2). Each keypress is translated to a [`KeyEvent`] and run
+/// through [`next_frame`] (P1 dispatch + [`widget_tree`]); the list
+/// repaints from the result. Blocks on the GTK main loop until closed.
 ///
 /// # Errors
 ///
 /// [`VaultError`] if the vault cannot be opened.
 #[cfg(feature = "gtk")]
 pub fn run(vault_path: &Path) -> Result<(), VaultError> {
+    use std::cell::RefCell;
+    use std::rc::Rc;
+
     use gtk4::prelude::*;
-    use gtk4::{Application, ApplicationWindow, Label, ScrolledWindow};
+    use gtk4::{
+        Application, ApplicationWindow, EventControllerKey, ListBox, ScrolledWindow, glib,
+    };
 
     let shell = Shell::new(Vault::open(vault_path)?);
-    let tree = App::new().view(&shell);
-    let descriptor = widget_tree(&tree);
+    let state = Rc::new(RefCell::new((App::new(), shell)));
     let app = Application::builder()
         .application_id("net.closure.gtk")
         .build();
     app.connect_activate(move |app| {
-        // The window renders the ViewTree the shared App produced. The
-        // descriptor lines map 1:1 to the widget hierarchy; a real build
-        // walks the Node tree directly (each label is one row).
-        let list = gtk4::ListBox::new();
-        for line in descriptor.lines() {
-            let label = Label::builder().label(line).xalign(0.0).build();
-            list.append(&label);
+        let list = ListBox::new();
+        // Initial paint of the browse ViewTree.
+        {
+            let st = state.borrow();
+            populate(&list, &widget_tree(&st.0.view(&st.1)));
         }
+        let keys = EventControllerKey::new();
+        let state_k = Rc::clone(&state);
+        let list_k = list.clone();
+        keys.connect_key_pressed(move |_, keyval, _code, modifier| {
+            let ctrl = modifier.contains(gtk4::gdk::ModifierType::CONTROL_MASK);
+            if let Some(ev) = gdk_key_to_event(keyval, ctrl) {
+                let mut st = state_k.borrow_mut();
+                let (app_state, shell_state) = &mut *st;
+                let frame = next_frame(app_state, shell_state, &ev);
+                let quit = app_state.should_quit();
+                drop(st);
+                populate(&list_k, &frame);
+                if quit {
+                    std::process::exit(0);
+                }
+            }
+            glib::Propagation::Proceed
+        });
         let scrolled = ScrolledWindow::builder().child(&list).build();
         let window = ApplicationWindow::builder()
             .application(app)
@@ -172,6 +240,7 @@ pub fn run(vault_path: &Path) -> Result<(), VaultError> {
             .default_height(850)
             .child(&scrolled)
             .build();
+        window.add_controller(keys);
         window.present();
     });
     app.run();

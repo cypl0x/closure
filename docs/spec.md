@@ -498,6 +498,11 @@ base, ours, theirs)` returns the `FieldConflict`s (title/body) both sides
   compile time). Editing routes through the shared `Shell` (I8), proven by
   a headless capture-changes-the-tree test; the windowed `run` builds the
   same structure with real `gtk4` widgets (display-bound, feature-gated).
+  The GTK window is now interactive (P2): an `EventControllerKey`
+  translates each GDK key to a `KeyEvent` and the list repaints from
+  `next_frame` (= `widget_tree(App::dispatch(…))`) — capture/rename/delete
+  edit the vault in the window. `next_frame` is the hermetic seam (tested),
+  the GDK translation + repaint are display-bound.
   Qt6/QML (G4) is the same story: `closure_shell_qt::qml_view` renders the
   shared `ViewTree` to a `QtQuick.Controls`/`Layouts` document (exhaustive
   over every `Node` kind), edits route through the shared `Shell` (I8,

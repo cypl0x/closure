@@ -13,7 +13,7 @@ file is the fine-grained, capability-level queue between them. Blocked
 on a design decision? Record it under [[*Decisions][Decisions]], pick the most
 reversible option, keep moving.
 
-* WIP GUI-PARITY — every GUI shell a real interactive editor [1/7]
+* WIP GUI-PARITY — every GUI shell a real interactive editor [2/7]
 GUI-UX brought the hermetic cores to parity (every shell consumes
 =App=/=Shell= + renders the =ViewTree=); the gap left is the windowed
 =run()= loops — gpui/egui edit live, gtk/qt render a static snapshot,
@@ -44,6 +44,26 @@ text)= in a typed =KeyEvent= gives every shell the same constructors and
 keeps the per-shell adapter to "native event → KeyEvent" + "paint Node".
 The behaviour stays in =on_key= (untouched, still tested), so P1 is the
 seam, not a rewrite; P2–P4 wire each window onto it.
+
+** DONE P2 GTK interactive editor loop [1/1]
+The GTK window went from a static snapshot to a live editor. =next_frame(
+&mut App, &mut Shell, &KeyEvent) -> String= is the hermetic seam — dispatch
+(P1) + =widget_tree= — the exact step the window runs per keypress; tested
+in =tests/interactive.rs= (a =C-c=/type/=enter= capture driven through
+=next_frame= edits the vault + rebuilds the widget tree + persists; nav
+changes the frame). The feature-gated =run= now holds =Rc<RefCell<(App,
+Shell)>>=, attaches an =EventControllerKey= that maps each GDK key (+Ctrl)
+to a =KeyEvent= via =gdk_key_to_event=, calls =next_frame=, and repaints the
+=ListBox=. Default =just check= 3566 green (feature OFF); =--features gtk=
+build-verified under =.#webview=.
+*** Decision (2026-06-28) The window shares next_frame, not a parallel loop.
+The interactive =run= and the hermetic test call the SAME =next_frame=, so
+"what the window paints each key" is exactly what the test asserts — the
+display-bound part shrinks to GDK→KeyEvent translation + =ListBox= repaint.
+The =ViewTree=→widget mapping is still a descriptor string (one =Label= per
+line) rather than a structural widget build; that keeps =next_frame= pure +
+golden-able. A richer structural build (real nested boxes) is a later
+refinement that can't change the tested seam, so it's not a parity gap.
 
 * DONE GUI-UX — every GUI shell a full-blown, top-notch editor [9/9]
 The GUI tier is uneven: gpui/egui are full editors, tauri hosts the web
