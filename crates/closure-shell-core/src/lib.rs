@@ -1822,6 +1822,104 @@ const PALETTE_COMMANDS: &[(&str, &str)] = &[
     ("quit", "quit"),
 ];
 
+/// The Notion-style slash command menu (G5c).
+///
+/// Every palette command whose name fuzzy-matches `query`, as actionable
+/// [`PaletteItemView`]s carrying their chord in `mode` (empty query ⇒
+/// all). Pure + deterministic — the "/" affordance as data, the same
+/// command set every shell drives.
+#[must_use]
+pub fn slash_menu(query: &str, mode: closure_config::InputMode) -> Vec<PaletteItemView> {
+    let mut scored: Vec<(u32, PaletteItemView)> = PALETTE_COMMANDS
+        .iter()
+        .filter_map(|(name, canonical)| {
+            let score = if query.is_empty() {
+                Some(0)
+            } else {
+                closure_query::fuzzy_score(query, name)
+            }?;
+            let action = Action::new(mode, *canonical)?;
+            Some((
+                score,
+                PaletteItemView {
+                    label: (*name).to_owned(),
+                    action,
+                },
+            ))
+        })
+        .collect();
+    scored.sort_by_key(|(s, _)| std::cmp::Reverse(*s));
+    scored.into_iter().map(|(_, it)| it).collect()
+}
+
+/// The action behind the Notion block "+" insert affordance (G5c).
+///
+/// The `add-sibling` command in `mode`, carrying its chord (so the "+"
+/// button shows its keybinding, V1). `None` if unbound.
+#[must_use]
+pub fn block_insert_action(mode: closure_config::InputMode) -> Option<Action> {
+    Action::new(mode, "add-sibling")
+}
+
+/// A drag-to-reorder gesture (G5c) — a pure state machine.
+///
+/// [`Self::begin`] records the dragged index, [`Self::over`] the hover
+/// target, and [`Self::drop`] yields `(from, to)` once (then resets). The
+/// actual move is a registry command at the call site (I8); this only
+/// tracks the gesture.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct DragReorder {
+    from: Option<usize>,
+    to: Option<usize>,
+}
+
+impl DragReorder {
+    /// Begin dragging the element at `i`.
+    pub const fn begin(&mut self, i: usize) {
+        self.from = Some(i);
+    }
+
+    /// Update the hover target to `i`.
+    pub const fn over(&mut self, i: usize) {
+        self.to = Some(i);
+    }
+
+    /// Abandon the gesture.
+    pub const fn cancel(&mut self) {
+        self.from = None;
+        self.to = None;
+    }
+
+    /// Complete the gesture: `(from, to)` if a drag was in progress (the
+    /// target defaults to the source when the pointer never moved), then
+    /// reset. `None` if no drag began.
+    pub const fn drop(&mut self) -> Option<(usize, usize)> {
+        let result = match self.from {
+            Some(from) => Some((from, if let Some(t) = self.to { t } else { from })),
+            None => None,
+        };
+        self.from = None;
+        self.to = None;
+        result
+    }
+}
+
+/// The index order after a drag-reorder move (G5c).
+///
+/// Moves the element at `from` to position `to` in a list of `len`
+/// (remove + re-insert). Out-of-range `from`/`to` yields the identity
+/// order — never a panic (I5).
+#[must_use]
+pub fn reorder_indices(len: usize, from: usize, to: usize) -> Vec<usize> {
+    let mut order: Vec<usize> = (0..len).collect();
+    if from >= len || to >= len {
+        return order;
+    }
+    let moved = order.remove(from);
+    order.insert(to, moved);
+    order
+}
+
 /// Pure, GPU-free state core for the gpui shell.
 ///
 /// All keyboard behaviour lives here so it is unit-testable without a

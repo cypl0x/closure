@@ -13,7 +13,7 @@ file is the fine-grained, capability-level queue between them. Blocked
 on a design decision? Record it under [[*Decisions][Decisions]], pick the most
 reversible option, keep moving.
 
-* WIP GUI-UX — every GUI shell a full-blown, top-notch editor [4/9]
+* WIP GUI-UX — every GUI shell a full-blown, top-notch editor [5/9]
 The GUI tier is uneven: gpui/egui are full editors, tauri hosts the web
 shell, but gtk/qt are read-only headline lists, and "great UX" exists
 nowhere as *tested* structure. Pixels can't be gated hermetically
@@ -154,7 +154,7 @@ gtk's =widget_tree=). Two shells (gtk + qt) now prove the pattern
 generalises: any embedder is "render the =ViewTree= + drive the =Shell=",
 the bulk hermetic, the window a thin display-bound adapter.
 
-** WIP G5 Interaction states + Notion affordances [2/3]
+** DONE G5 Interaction states + Notion affordances [3/3]
 Row presentation + interaction surfaces, hermetic state. Sub-cycles: G5a
 badges/icons-as-data (moved from G1c), G5b interaction states
 (hover/focus/active/disabled), G5c Notion affordances (slash-menu, block
@@ -194,6 +194,23 @@ disabled element ignores focus visually; press beats focus) is tested once
 and identical everywhere; each shell only maps =ElementState= → its native
 style. Indices (not node refs) keep it dep-free and =Copy=-cheap. The
 focus marker G1c deferred lands here as =Interactions::focused=.
+*** DONE G5c Notion affordances (slash-menu, block "+", drag-reorder)
+Three Notion affordances, each reduced to a kernel command / pure state:
+=slash_menu(query, mode)= is the "/" command menu (fuzzy-filtered
+=PaletteItemView=s carrying their chords, reusing =PALETTE_COMMANDS= +
+=fuzzy_score=); =block_insert_action(mode)= is the block "+" (the
+=add-sibling= command + chord, V1); =DragReorder= (=begin=/=over=/=drop=/
+=cancel=) + =reorder_indices(len, from, to)= model drag-to-reorder as a
+pure gesture + index computation (out-of-range = identity, I5), the drop
+mapping to a registry move (I8). 6 tests. =just check= 3545 green.
+*** Decision (2026-06-28) Affordances reduce to commands, not new verbs.
+Notion's slash menu / "+" / drag are *surfaces*, not new capabilities —
+each already had a command (=add-sibling=, =move=, the palette). G5c models
+the surface (a filtered menu, an action handle, a from/to gesture) and
+routes it to the existing registry command (I8), so no affordance is a
+shell-private mutation path. =DragReorder= holds indices + yields =(from,
+to)=; computing the new order (=reorder_indices=) is pure and the move is
+the kernel's — the gesture can't desync from the data.
 
 * DONE Depth IV — make the shallow-deep components genuinely deep [9/9]
 Depth III closed *breadth* (every vision noun has a crate). Depth IV

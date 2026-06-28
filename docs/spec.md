@@ -463,7 +463,13 @@ base, ours, theirs)` returns the `FieldConflict`s (title/body) both sides
   indices and `state_of(i)` resolves an `ElementState` under a fixed
   precedence (`Disabled > Active > Focused > Hovered > Normal`); a shell
   paints the focus ring / hover / pressed / dimmed styling from this one
-  tested machine — the pixels are the embedder's.
+  tested machine — the pixels are the embedder's. Notion affordances are
+  commands/state (G5c): `slash_menu(query, mode)` is the "/" command menu
+  (fuzzy-filtered `PaletteItemView`s with chords), `block_insert_action`
+  is the block "+" (the `add-sibling` command), and `DragReorder` +
+  `reorder_indices` model drag-to-reorder as a pure gesture whose drop
+  maps to a registry move (I8) — every affordance reduces to a kernel
+  command, none is shell-private.
   GTK4 (G3) is no longer a read-only list: `closure_shell_gtk` consumes
   the shared `App`/`Shell` and renders the full `ViewTree` via
   `widget_tree` — a hermetic, golden-tested GTK4 widget-tree descriptor
