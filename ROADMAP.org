@@ -13,7 +13,7 @@ file is the fine-grained, capability-level queue between them. Blocked
 on a design decision? Record it under [[*Decisions][Decisions]], pick the most
 reversible option, keep moving.
 
-* WIP GUI-PARITY — every GUI shell a real interactive editor [2/7]
+* WIP GUI-PARITY — every GUI shell a real interactive editor [3/7]
 GUI-UX brought the hermetic cores to parity (every shell consumes
 =App=/=Shell= + renders the =ViewTree=); the gap left is the windowed
 =run()= loops — gpui/egui edit live, gtk/qt render a static snapshot,
@@ -64,6 +64,29 @@ The =ViewTree=→widget mapping is still a descriptor string (one =Label= per
 line) rather than a structural widget build; that keeps =next_frame= pure +
 golden-able. A richer structural build (real nested boxes) is a later
 refinement that can't change the tested seam, so it's not a parity gap.
+
+** DONE P3 Qt6/QML interactive editor loop [1/1]
+The Qt window mirrors P2. =next_frame(&mut App, &mut Shell, &KeyEvent) ->
+String= (dispatch + =qml_view=) is the hermetic seam, tested in
+=tests/interactive.rs= (a =C-c=/type/=enter= capture driven through it
+edits the vault + rebuilds the QML + persists; nav changes the frame). The
+feature-gated =run= builds a =Bridge= =QObject= (=qmetaobject=) exposing an
+=on_key= invokable + a =frame= =qt_property=; the host QML routes
+=Keys.onPressed= (special keys by name, printable by =event.text=, Ctrl via
+modifiers) to =bridge.on_key=, which runs =next_frame= and republishes
+=frame= (NOTIFY-bound, so the view updates live). Default =just check= 3568
+green (feature OFF); =--features qt= build-verified under =.#webview=.
+*** Decision (2026-06-28) A QObject bridge, frame as a NOTIFY property.
+Qt has no =EventControllerKey= equivalent reachable from pure Rust, so the
+interactive seam is a =qmetaobject= =QObject=: QML owns the key routing and
+calls back into Rust =on_key=, which drives the SAME =next_frame= the test
+asserts. The fresh document rides a =qt_property!(QString; NOTIFY)= so QML
+re-renders on change with no engine reload. The qmetaobject derive forces a
+glob import + owned-=QString= method args + post-=Default= field assignment
+— scoped to a =#[cfg(feature="qt")]= module with a documented =allow=, so
+the default build (and =just check=) never sees them. Showing the
+regenerated document live (vs nesting it as re-instantiated QML) is the
+display-bound refinement, not a parity gap.
 
 * DONE GUI-UX — every GUI shell a full-blown, top-notch editor [9/9]
 The GUI tier is uneven: gpui/egui are full editors, tauri hosts the web

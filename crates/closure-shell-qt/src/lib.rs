@@ -15,12 +15,23 @@
 
 use std::path::Path;
 
-use closure_shell_core::Node;
+use closure_shell_core::{KeyEvent, Node};
 use closure_store::{Vault, VaultError};
 
 // Re-export the shared state core so the qt shell drives the SAME tested
 // App/Shell as every other shell (editor parity, not a private model).
 pub use closure_shell_core::{App, Shell, browse_view};
+
+/// Apply one key event and return the QML document to reload (P3).
+///
+/// Dispatches through the shared core (P1), then maps the fresh `ViewTree`
+/// to [`qml_view`]. The exact step the windowed [`run`] (via its `QObject`
+/// bridge) calls per keypress — so the interactive loop is hermetically
+/// tested without Qt.
+#[must_use]
+pub fn next_frame(app: &mut App, shell: &mut Shell, event: &KeyEvent) -> String {
+    qml_view(&app.dispatch(shell, event))
+}
 
 /// The display lines for a vault: every headline as `indent + TODO +
 /// title`, in document order. Pure + hermetic.
@@ -204,18 +215,111 @@ fn qml_item(node: &Node, depth: usize) -> String {
     }
 }
 
-/// Open a native Qt6 window that renders the shared `ViewTree` and edits
-/// through the shared [`Shell`]. Blocks on the Qt event loop until closed.
+/// Open a native Qt6 window: an interactive editor over the shared
+/// [`Shell`] (P3). QML key events route through a `Bridge` `QObject` to
+/// [`next_frame`] (P1 dispatch + [`qml_view`]); the displayed `frame`
+/// republishes on every key. Blocks on the Qt event loop until closed.
 ///
 /// # Errors
 ///
 /// [`VaultError`] if the vault cannot be opened.
 #[cfg(feature = "qt")]
 pub fn run(vault_path: &Path) -> Result<(), VaultError> {
-    let shell = Shell::new(Vault::open(vault_path)?);
-    let qml = qml_view(&App::new().view(&shell));
-    let mut engine = qmetaobject::QmlEngine::new();
-    engine.load_data(qml.as_str().into());
-    engine.exec();
-    Ok(())
+    qt_window::run(vault_path)
+}
+
+/// The interactive Qt window — isolated so `use qmetaobject::*` (needed by
+/// the QObject derive macros) stays out of the default build.
+#[cfg(feature = "qt")]
+mod qt_window {
+    // The qmetaobject QObject macros require the glob + an owned-`QString`
+    // method signature + post-Default field assignment — all forced by the
+    // crate's API, not style choices.
+    #![allow(
+        clippy::wildcard_imports,
+        clippy::field_reassign_with_default,
+        clippy::needless_pass_by_value
+    )]
+    use std::path::Path;
+
+    use qmetaobject::*;
+
+    use super::{App, KeyEvent, Shell, next_frame, qml_view};
+    use closure_store::{Vault, VaultError};
+
+    fn event_from_qml(text: &str, name: &str, ctrl: bool) -> KeyEvent {
+        if !name.is_empty() {
+            KeyEvent::new(name, ctrl, None)
+        } else if let Some(c) = text.chars().next() {
+            if ctrl {
+                KeyEvent::new(c.to_string(), true, None)
+            } else {
+                KeyEvent::char(c)
+            }
+        } else {
+            KeyEvent::new(String::new(), ctrl, None)
+        }
+    }
+
+    const INTERACTIVE_QML: &str = "import QtQuick 2.15\n\
+import QtQuick.Controls 2.15\n\
+ApplicationWindow {\n\
+  visible: true; width: 700; height: 850; title: \"closure\"\n\
+  Flickable {\n\
+    anchors.fill: parent; focus: true\n\
+    Keys.onPressed: (event) => {\n\
+      var ctrl = (event.modifiers & Qt.ControlModifier) != 0;\n\
+      if (event.key === Qt.Key_Return) bridge.on_key(\"\", \"enter\", ctrl);\n\
+      else if (event.key === Qt.Key_Escape) bridge.on_key(\"\", \"escape\", ctrl);\n\
+      else if (event.key === Qt.Key_Backspace) bridge.on_key(\"\", \"backspace\", ctrl);\n\
+      else if (event.key === Qt.Key_Up) bridge.on_key(\"\", \"up\", ctrl);\n\
+      else if (event.key === Qt.Key_Down) bridge.on_key(\"\", \"down\", ctrl);\n\
+      else if (event.text.length > 0) bridge.on_key(event.text, \"\", ctrl);\n\
+    }\n\
+    Text { text: bridge.frame; font.family: \"monospace\" }\n\
+  }\n\
+}\n";
+
+    #[derive(QObject, Default)]
+    struct Bridge {
+        base: qt_base_class!(trait QObject),
+        frame: qt_property!(QString; NOTIFY frame_changed),
+        frame_changed: qt_signal!(),
+        on_key: qt_method!(
+            fn on_key(&mut self, text: QString, name: QString, ctrl: bool) {
+                let ev = event_from_qml(&text.to_string(), &name.to_string(), ctrl);
+                let mut produced = None;
+                let mut quit = false;
+                if let Some(shell) = self.shell.as_mut() {
+                    produced = Some(next_frame(&mut self.app, shell, &ev));
+                    quit = self.app.should_quit();
+                }
+                if let Some(f) = produced {
+                    self.frame = QString::from(f.as_str());
+                    self.frame_changed();
+                    if quit {
+                        std::process::exit(0);
+                    }
+                }
+            }
+        ),
+        app: App,
+        shell: Option<Shell>,
+    }
+
+    pub fn run(vault_path: &Path) -> Result<(), VaultError> {
+        let shell = Shell::new(Vault::open(vault_path)?);
+        let app = App::new();
+        let initial = qml_view(&app.view(&shell));
+        let mut bridge = Bridge::default();
+        bridge.app = app;
+        bridge.shell = Some(shell);
+        bridge.frame = QString::from(initial.as_str());
+        let bridge_box = QObjectBox::new(bridge);
+        let mut engine = QmlEngine::new();
+        engine.set_object_property("bridge".into(), bridge_box.pinned());
+        engine.load_data(INTERACTIVE_QML.into());
+        engine.exec();
+        Ok(())
+    }
 }

@@ -507,7 +507,12 @@ base, ours, theirs)` returns the `FieldConflict`s (title/body) both sides
   shared `ViewTree` to a `QtQuick.Controls`/`Layouts` document (exhaustive
   over every `Node` kind), edits route through the shared `Shell` (I8,
   headless test), and `run` loads it in a real `qmetaobject` window. The
-  legacy `qml_document` list path is retained.
+  legacy `qml_document` list path is retained. The Qt window is now
+  interactive (P3): a `Bridge` `QObject` exposes `on_key` to QML
+  (`Keys.onPressed`) + a `frame` property; each key runs `next_frame`
+  (`qml_view(App::dispatch(…))`) and republishes `frame`. `next_frame` is
+  the hermetic seam (tested); the `QObject` bridge is build-verified under
+  `.#webview`.
   Every shell's window drives ONE shared input step (GUI-PARITY P1):
   `App::dispatch(shell, &KeyEvent) -> Node` applies a typed `KeyEvent`
   (key + ctrl + typed char) via the mode-aware `on_key` (mutating through
