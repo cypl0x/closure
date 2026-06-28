@@ -1632,6 +1632,107 @@ impl Interactions {
     }
 }
 
+/// The kind of a feedback item (G7): a severity, or a progress percentage
+/// for a running long op.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FeedbackKind {
+    /// Neutral information.
+    Info,
+    /// A completed action.
+    Success,
+    /// A non-fatal caution.
+    Warning,
+    /// A failure.
+    Error,
+    /// A long op in progress, `0..=100`%.
+    Progress(u8),
+}
+
+/// One entry in the [`Feedback`] queue (G7).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FeedbackItem {
+    /// Severity / progress.
+    pub kind: FeedbackKind,
+    /// Message (for progress, the operation label).
+    pub text: String,
+}
+
+/// The async feedback surface (G7): a queue of typed notifications +
+/// progress for long ops (sync / eval / llm).
+///
+/// Mutated as state — `notify` appends a severity message, `progress`
+/// updates a labelled progress entry in place (so a running op reports
+/// incrementally instead of stacking). [`Self::to_nodes`] renders every
+/// item as a [`Node::Toast`] (G1c), so *every* shell already displays the
+/// feedback with no per-shell notification code.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Feedback {
+    items: Vec<FeedbackItem>,
+}
+
+impl Feedback {
+    /// Append a severity notification.
+    pub fn notify(&mut self, level: ToastLevel, text: impl Into<String>) {
+        let kind = match level {
+            ToastLevel::Info => FeedbackKind::Info,
+            ToastLevel::Success => FeedbackKind::Success,
+            ToastLevel::Warning => FeedbackKind::Warning,
+            ToastLevel::Error => FeedbackKind::Error,
+        };
+        self.items.push(FeedbackItem {
+            kind,
+            text: text.into(),
+        });
+    }
+
+    /// Report progress for the op labelled `label` — updates the existing
+    /// progress entry in place, or starts one.
+    pub fn progress(&mut self, label: impl Into<String>, percent: u8) {
+        let label = label.into();
+        if let Some(item) = self
+            .items
+            .iter_mut()
+            .find(|i| i.text == label && matches!(i.kind, FeedbackKind::Progress(_)))
+        {
+            item.kind = FeedbackKind::Progress(percent);
+        } else {
+            self.items.push(FeedbackItem {
+                kind: FeedbackKind::Progress(percent),
+                text: label,
+            });
+        }
+    }
+
+    /// The current feedback items, oldest first.
+    #[must_use]
+    pub fn items(&self) -> &[FeedbackItem] {
+        &self.items
+    }
+
+    /// Drop every item (e.g. once a batch of ops has settled).
+    pub fn clear(&mut self) {
+        self.items.clear();
+    }
+
+    /// Render the queue as [`Node::Toast`] nodes (G7) — progress becomes a
+    /// polite `Info` toast with the label + percentage.
+    #[must_use]
+    pub fn to_nodes(&self) -> Vec<Node> {
+        self.items
+            .iter()
+            .map(|i| match i.kind {
+                FeedbackKind::Info => toast_node(ToastLevel::Info, i.text.clone()),
+                FeedbackKind::Success => toast_node(ToastLevel::Success, i.text.clone()),
+                FeedbackKind::Warning => toast_node(ToastLevel::Warning, i.text.clone()),
+                FeedbackKind::Error => toast_node(ToastLevel::Error, i.text.clone()),
+                FeedbackKind::Progress(p) => {
+                    toast_node(ToastLevel::Info, format!("{} {p}%", i.text))
+                }
+            })
+            .collect()
+    }
+}
+
 /// The kind of a [`Node`], for the type-level UI capability matrix (V1c).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum NodeKind {

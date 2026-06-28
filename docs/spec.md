@@ -474,7 +474,12 @@ base, ours, theirs)` returns the `FieldConflict`s (title/body) both sides
   sections (Navigate/Edit/Mode/App), fuzzy-ranks within each, drops empty
   ones, and gives each `PaletteEntry` a human description + its chord;
   `serialize_palette` is the deterministic snapshot a shell renders — one
-  source, so the which-key/palette is identical across GUIs.
+  source, so the which-key/palette is identical across GUIs. Async
+  feedback is a typed surface (G7): `Feedback` is a queue of `notify`
+  (severity) + `progress` (labelled, updated in place) for long ops
+  (sync/eval/llm), and `to_nodes()` renders each as a `Node::Toast` (G1c)
+  — so every shell already shows notifications + progress with no
+  per-shell code.
   GTK4 (G3) is no longer a read-only list: `closure_shell_gtk` consumes
   the shared `App`/`Shell` and renders the full `ViewTree` via
   `widget_tree` — a hermetic, golden-tested GTK4 widget-tree descriptor

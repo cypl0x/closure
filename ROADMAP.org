@@ -13,7 +13,7 @@ file is the fine-grained, capability-level queue between them. Blocked
 on a design decision? Record it under [[*Decisions][Decisions]], pick the most
 reversible option, keep moving.
 
-* WIP GUI-UX — every GUI shell a full-blown, top-notch editor [6/9]
+* WIP GUI-UX — every GUI shell a full-blown, top-notch editor [7/9]
 The GUI tier is uneven: gpui/egui are full editors, tauri hosts the web
 shell, but gtk/qt are read-only headline lists, and "great UX" exists
 nowhere as *tested* structure. Pixels can't be gated hermetically
@@ -231,6 +231,25 @@ Sections render in a fixed order with empties dropped, so the layout is
 deterministic and a query narrows visibly. =serialize_palette= keeps the
 rendering golden-testable; the chord still comes from =chord_for_command=
 (I4), never hardcoded.
+
+** DONE G7 Async feedback surface [1/1]
+=Feedback= is a typed queue for async outcomes: =notify(level, text)=
+appends a severity message, =progress(label, percent)= updates a labelled
+progress entry *in place* (a running sync/eval/llm op reports incrementally,
+not stacking), =clear()= settles a batch. =FeedbackKind= is
+Info/Success/Warning/Error/Progress(u8). =to_nodes()= renders every item as
+a =Node::Toast= (G1c) — progress as a polite =Info= toast with =label N%= —
+so every shell already displays notifications + progress with zero
+per-shell notification code. 4 tests. =just check= 3552 green.
+*** Decision (2026-06-28) Feedback renders through the Toast vocabulary.
+G1c added =Node::Toast=; G7 is the *state* that produces toasts. Making
+=Feedback::to_nodes()= emit =Node::Toast= means the async surface inherits
+every renderer (tui/web/gtk/qt) for free — the reason G1c shipped the
+vocabulary before G7 filled it. Progress is modelled as a percent on a
+labelled entry updated in place, so a long op is one moving toast, not a
+flood; collapsing it to an =Info= toast keeps the a11y politeness right
+(=status=, not =alert=). The op itself still runs wherever it runs; this is
+only the report.
 
 * DONE Depth IV — make the shallow-deep components genuinely deep [9/9]
 Depth III closed *breadth* (every vision noun has a crate). Depth IV
