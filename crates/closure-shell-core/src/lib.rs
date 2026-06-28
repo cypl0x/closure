@@ -2117,6 +2117,52 @@ pub fn reorder_indices(len: usize, from: usize, to: usize) -> Vec<usize> {
     order
 }
 
+/// A typed key event from a shell's window (P1).
+///
+/// The named key, whether Ctrl is held, and the typed character (if
+/// printable). Shells translate their native event into this and hand it
+/// to [`App::dispatch`].
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct KeyEvent {
+    /// The key name (`"enter"`, `"escape"`, `"down"`, or the char as a
+    /// string for a printable key).
+    pub key: String,
+    /// Whether Ctrl was held.
+    pub ctrl: bool,
+    /// The typed character, for printable keys.
+    pub text: Option<char>,
+}
+
+impl KeyEvent {
+    /// A key event from its parts.
+    #[must_use]
+    pub fn new(key: impl Into<String>, ctrl: bool, text: Option<char>) -> Self {
+        Self {
+            key: key.into(),
+            ctrl,
+            text,
+        }
+    }
+
+    /// A named non-printable key (`enter`, `escape`, `down`, …).
+    #[must_use]
+    pub fn key(name: impl Into<String>) -> Self {
+        Self::new(name, false, None)
+    }
+
+    /// A `Ctrl`-modified key (the chord leader the shells share).
+    #[must_use]
+    pub fn ctrl(name: impl Into<String>) -> Self {
+        Self::new(name, true, None)
+    }
+
+    /// A printable typed character (`key` = the char, `text` = the char).
+    #[must_use]
+    pub fn char(c: char) -> Self {
+        Self::new(c.to_string(), false, Some(c))
+    }
+}
+
 /// Pure, GPU-free state core for the gpui shell.
 ///
 /// All keyboard behaviour lives here so it is unit-testable without a
@@ -2800,6 +2846,19 @@ impl App {
     /// `"backspace"`, `"escape"`, `"down"`, `"up"`, …); `ctrl` is the
     /// control modifier; `text` is the typed character when the key
     /// produced printable, unmodified input.
+    /// The unified input→state→view step (P1): apply `event` via the
+    /// mode-aware [`Self::on_key`], then return the fresh
+    /// [`ViewTree`](Node). The ONE call every shell's window delegates to,
+    /// so editing behaviour is the tested core, not per-shell key logic.
+    pub fn dispatch(&mut self, shell: &mut Shell, event: &KeyEvent) -> Node {
+        self.on_key(shell, &event.key, event.ctrl, event.text);
+        self.view(shell)
+    }
+
+    /// Apply one key in the active mode (the low-level handler behind
+    /// [`Self::dispatch`]): routes to the per-mode key handler, mutating
+    /// through [`Shell`] (I8). Most shells call `dispatch` instead, which
+    /// also returns the refreshed view.
     pub fn on_key(&mut self, shell: &mut Shell, key: &str, ctrl: bool, text: Option<char>) {
         if ctrl && key == "q" {
             self.quit = true;

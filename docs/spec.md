@@ -503,6 +503,13 @@ base, ours, theirs)` returns the `FieldConflict`s (title/body) both sides
   over every `Node` kind), edits route through the shared `Shell` (I8,
   headless test), and `run` loads it in a real `qmetaobject` window. The
   legacy `qml_document` list path is retained.
+  Every shell's window drives ONE shared input step (GUI-PARITY P1):
+  `App::dispatch(shell, &KeyEvent) -> Node` applies a typed `KeyEvent`
+  (key + ctrl + typed char) via the mode-aware `on_key` (mutating through
+  the registry, I8) and returns the refreshed `ViewTree`. A shell using
+  only `dispatch` can edit the vault; key handling is the tested core, not
+  per-shell logic. Proven headlessly (a full capture round-trip + persist
+  through `dispatch` alone).
 - `closure-tui` — ratatui + crossterm. Primary first shell.
 - `closure-cli` — the `closure` binary (`tui`, `check`, `fmt`, `parse`,
   `query`, `serve`).

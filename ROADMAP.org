@@ -13,6 +13,38 @@ file is the fine-grained, capability-level queue between them. Blocked
 on a design decision? Record it under [[*Decisions][Decisions]], pick the most
 reversible option, keep moving.
 
+* WIP GUI-PARITY — every GUI shell a real interactive editor [1/7]
+GUI-UX brought the hermetic cores to parity (every shell consumes
+=App=/=Shell= + renders the =ViewTree=); the gap left is the windowed
+=run()= loops — gpui/egui edit live, gtk/qt render a static snapshot,
+tauri hosts the read-only export. Parity = ONE tested input→command→Shell→
+=ViewTree= dispatch every window delegates to; the only per-shell code is
+event translation + paint. Binding rules (same as GUI-UX): strict 7-step
+TDD, one leaf per pass, never weaken a test or lower a gate (coverage floor
+>=84), each leaf revises =docs/spec.md= + a dated Decision in the SAME
+commit, non-hermetic window deps feature-gated OFF with =just check= green
+(I10); the window is build-verified under the right devShell + manual smoke.
+
+** DONE P1 Unified input/event dispatch [1/1]
+=KeyEvent { key, ctrl, text }= (constructors =key=/=ctrl=/=char=) +
+=App::dispatch(&mut Shell, &KeyEvent) -> Node= are the single step every
+shell's window calls: apply the event via the mode-aware =on_key= (mutating
+through the registry, I8), return the refreshed =ViewTree=. =on_key= itself
+gained a doc as the low-level handler behind =dispatch=. Proven headlessly
+in =tests/dispatch.rs=: a full =C-c=, type, =enter= capture round-trip
+driven through =dispatch= alone shows the new headline in the returned
+=ViewTree= AND persists to disk; =C-q= quits via the same path; escaping
+every editing surface never panics (I5). =just check= 3564 green.
+*** Decision (2026-06-28) Event in, ViewTree out — one call, not three args.
+=on_key= already existed (the gpui core), but shells called it then
+separately re-read =view=. =dispatch= fuses the two into the parity
+primitive: a window translates its native event into =KeyEvent= and gets
+back the tree to paint — nothing else. Wrapping the loose =(key, ctrl,
+text)= in a typed =KeyEvent= gives every shell the same constructors and
+keeps the per-shell adapter to "native event → KeyEvent" + "paint Node".
+The behaviour stays in =on_key= (untouched, still tested), so P1 is the
+seam, not a rewrite; P2–P4 wire each window onto it.
+
 * DONE GUI-UX — every GUI shell a full-blown, top-notch editor [9/9]
 The GUI tier is uneven: gpui/egui are full editors, tauri hosts the web
 shell, but gtk/qt are read-only headline lists, and "great UX" exists
