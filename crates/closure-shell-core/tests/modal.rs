@@ -1029,3 +1029,27 @@ fn completion_prefix_is_case_insensitive_dabbrev_style() {
     app.on_key(&mut sh, "n", true, false, None); // C-n
     assert_eq!(app.body_buffer(), "Personal", "case-insensitive match, candidate case wins");
 }
+
+// === L1: Visual selection accessor for the renderer. ===
+
+#[test]
+fn body_selection_is_none_outside_visual() {
+    let (_d, mut sh) = shell();
+    let mut app = editor_with(&mut sh, "hello");
+    assert_eq!(app.body_selection(), None, "INSERT");
+    app.on_key(&mut sh, "escape", false, false, None);
+    assert_eq!(app.body_selection(), None, "NORMAL");
+}
+
+#[test]
+fn body_selection_reports_the_inclusive_byte_range() {
+    let (_d, mut sh) = shell();
+    let mut app = editor_with(&mut sh, "hello");
+    app.on_key(&mut sh, "escape", false, false, None); // Normal
+    app.on_key(&mut sh, "0", false, false, Some('0'));
+    app.on_key(&mut sh, "v", false, false, Some('v')); // Visual
+    app.on_key(&mut sh, "l", false, false, Some('l')); // cursor on 'e'
+    assert_eq!(app.body_selection(), Some((0, 2)));
+    app.on_key(&mut sh, "escape", false, false, None);
+    assert_eq!(app.body_selection(), None);
+}

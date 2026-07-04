@@ -594,9 +594,37 @@ impl GpuiView {
             .bg(rgb(co.panel))
             .rounded_md()
             .text_size(px(13.0));
+        let selection = self.app.body_selection();
+        let mut line_start = 0usize;
         for (ln, spans) in highlight_body(self.app.body_buffer()).into_iter().enumerate() {
+            let line_len: usize = spans.iter().map(|(_, s)| s.len()).sum();
             let mut row = div().flex().min_h(px(18.0));
-            if ln == cur_line {
+            if let Some((lo, hi)) = selection {
+                // VISUAL: paint the selected byte range exactly; the
+                // selection is the position indicator here, no caret.
+                // All split points are char boundaries (cursor, anchor
+                // and span edges always are).
+                let mut at = line_start;
+                for (kind, text) in spans {
+                    let end = at + text.len();
+                    let cut_lo = lo.clamp(at, end) - at;
+                    let cut_hi = hi.clamp(at, end) - at;
+                    for (piece, selected) in [
+                        (&text[..cut_lo], false),
+                        (&text[cut_lo..cut_hi], true),
+                        (&text[cut_hi..], false),
+                    ] {
+                        if piece.is_empty() {
+                            continue;
+                        }
+                        let d = div()
+                            .text_color(rgb(span_color(kind)))
+                            .child(piece.to_owned());
+                        row = row.child(if selected { d.bg(rgb(co.selection)) } else { d });
+                    }
+                    at = end;
+                }
+            } else if ln == cur_line {
                 // Split the spans at the caret column and paint a bar.
                 let mut remaining = cur_col;
                 let mut placed = false;
@@ -627,6 +655,7 @@ impl GpuiView {
                 }
             }
             body = body.child(row);
+            line_start += line_len + 1;
         }
         let mut pane = div().flex().flex_col().flex_grow().gap_2().child(header).child(body);
         let items = self.app.body_completion_items();

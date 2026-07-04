@@ -3699,6 +3699,14 @@ impl BodyEditor {
         self.pending
     }
 
+    /// The Visual selection as an exclusive byte range (inclusive of the
+    /// char under the cursor), or `None` outside Visual mode — the
+    /// renderer's source for painting the selection.
+    #[must_use]
+    pub fn visual_selection(&self) -> Option<(usize, usize)> {
+        (self.mode == EditorMode::Visual).then(|| self.selection())
+    }
+
     /// The inclusive Visual selection as an exclusive byte range.
     fn selection(&self) -> (usize, usize) {
         let (lo, hi) = if self.anchor <= self.cursor {
@@ -4559,6 +4567,12 @@ impl ModalApp {
     #[must_use]
     pub fn body_cursor(&self) -> (usize, usize) {
         self.body.cursor_line_col()
+    }
+
+    /// The body editor's Visual selection byte range for the renderer.
+    #[must_use]
+    pub fn body_selection(&self) -> Option<(usize, usize)> {
+        self.body.visual_selection()
     }
 
     /// Commit the body buffer to the target headline through the kernel

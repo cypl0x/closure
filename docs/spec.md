@@ -584,7 +584,9 @@ base, ours, theirs)` returns the `FieldConflict`s (title/body) both sides
   delete), `dd`/`yy` cut/copy the line, `p` pastes (linewise below the
   line, charwise after the cursor) — one register shared with the
   INSERT readline chords `C-a`/`C-e`/`C-b`/`C-f`/`C-d`/`C-k`/`C-u`/
-  `C-w`/`C-y`.
+  `C-w`/`C-y`. The renderer reads the selection through
+  `ModalApp::body_selection()` (exclusive byte range, `None` outside
+  Visual) and paints it exactly, span-split at the selection edges.
   The gpui pane renders `highlight_body` spans — `#+` meta, drawer
   lines, and src-block content classified through the shared
   `closure_tree_sitter::Highlighter` contract (keyword tier hermetic,

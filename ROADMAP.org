@@ -13,6 +13,30 @@ file is the fine-grained, capability-level queue between them. Blocked
 on a design decision? Record it under [[*Decisions][Decisions]], pick the most
 reversible option, keep moving.
 
+* WIP GPUI-POLISH — orchestrated polish loop (Fable specs/verifies, Grok implements) [1/6]
+Protocol: repo root =goal-orchestrator.md=; leaves from
+=goal-gpui-polish.md=. Every leaf: Fable SPEC → Grok RED tests → Fable
+confirms RED → Grok GREEN → Fable gates (capped =just check= + gpui
+feature build) → Fable reviews the diff → Fable commits with the spec
++ Decision. Grok never runs builds and never touches deps/parser/
+keymap invariants.
+** DONE L1 Visual selection painted in the editor pane [1/1]
+=BodyEditor::visual_selection()= + =ModalApp::body_selection()= (byte
+range, =None= outside Visual) — implemented by Grok from the RED tests
+(=body_selection_is_none_outside_visual=,
+=body_selection_reports_the_inclusive_byte_range=), reviewed. The gpui
+editor pane paints the range exactly (spans split at the selection
+edges — every split point is a char boundary), replacing the caret on
+Visual lines; caret rendering elsewhere unchanged. Paint written by
+Fable per the escalation clause (denser to specify than to write).
+** Decision (2026-07-04) Dispatch prompts ride files, not inline shell strings.
+First Grok GREEN dispatch lost the word =None= from a doc comment —
+backticks inside the inline =-p "…"= argument were command-substituted
+by the shell before Grok ever saw them. All later dispatches are
+written to a scratch file and passed via ="$(cat file)"= (command
+substitution output is not re-evaluated). Grok's code output itself
+was faithful both times; the mangling was the orchestrator's quoting.
+
 * DONE GPUI-EDIT — doom-vibrant + a real editor inside the reference GUI [5/5]
 User feedback round two (2026-07-04, screenshots + Claude-Design
 inspiration): doom-vibrant colours, vim-normal-mode inside the body
