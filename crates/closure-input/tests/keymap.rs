@@ -124,3 +124,15 @@ fn chord_for_command_is_the_reverse_of_command_for() {
     // Spot-check a concrete pair.
     assert_eq!(chord_for_command(InputMode::Vim, "next-file"), Some("j"));
 }
+
+#[test]
+fn every_mode_binds_toggle_fold() {
+    // Fold/unfold the selected subtree is reachable (with a chord) in
+    // every mode's which-key (I4).
+    for mode in MODES {
+        assert!(
+            closure_input::chord_for_command(mode, "toggle-fold").is_some(),
+            "{mode:?} binds toggle-fold"
+        );
+    }
+}

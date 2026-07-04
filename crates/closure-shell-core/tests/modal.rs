@@ -604,3 +604,22 @@ fn modal_edit_tags_escape_cancels() {
     assert_eq!(app.surface(), ModalSurface::Browse);
     assert!(app.detail(&sh).unwrap().tags.is_empty());
 }
+
+#[test]
+fn doom_z_toggles_the_fold_on_the_command_surface() {
+    let dir = tempfile::tempdir().expect("tmp");
+    fs::write(
+        dir.path().join("notes.org"),
+        "* Top\n** Child\n*** Grandchild\n* Other\n",
+    )
+    .expect("write");
+    let v = Vault::open(dir.path()).expect("open");
+    let mut sh = Shell::new(v);
+    let mut app = ModalApp::new(InputMode::Doom);
+    assert_eq!(app.rows(&sh).len(), 4);
+    app.on_key(&mut sh, "z", false, false, Some('z'));
+    let titles: Vec<String> = app.rows(&sh).iter().map(|r| r.title.clone()).collect();
+    assert_eq!(titles, vec!["Top", "Other"], "z folds the selected subtree");
+    app.on_key(&mut sh, "z", false, false, Some('z'));
+    assert_eq!(app.rows(&sh).len(), 4, "z again unfolds");
+}

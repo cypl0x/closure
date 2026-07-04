@@ -920,3 +920,97 @@ fn tags_reedit_prefills_saved_tags() {
     app.begin_edit_tags(&sh);
     assert_eq!(app.tags_buffer(), "a b c");
 }
+
+// === Fold toggle: a folded headline hides its descendants in the
+// outline. State is org-native — `:VISIBILITY: folded` on the headline
+// (the same property Emacs org-mode reads), written through the
+// registry (I8, undoable I3), so it persists between program runs and
+// survives a fresh Vault::open. ===
+
+fn nested_shell() -> (TempDir, Shell) {
+    let dir = tempfile::tempdir().expect("tmp");
+    fs::write(
+        dir.path().join("notes.org"),
+        "* Top\n** Child\n*** Grandchild\n* Other\n",
+    )
+    .expect("write");
+    let v = Vault::open(dir.path()).expect("open");
+    (dir, Shell::new(v))
+}
+
+#[test]
+fn toggle_fold_hides_the_whole_subtree() {
+    let (_d, mut sh) = nested_shell();
+    let mut app = App::new();
+    assert_eq!(app.rows(&sh).len(), 4);
+    app.toggle_fold(&mut sh); // fold "Top" (selected 0)
+    let titles: Vec<String> = app.rows(&sh).iter().map(|r| r.title.clone()).collect();
+    assert_eq!(titles, vec!["Top", "Other"], "descendants hidden, fold row stays");
+}
+
+#[test]
+fn toggle_fold_twice_restores_visibility() {
+    let (_d, mut sh) = nested_shell();
+    let mut app = App::new();
+    app.toggle_fold(&mut sh);
+    assert_eq!(app.rows(&sh).len(), 2);
+    app.toggle_fold(&mut sh);
+    assert_eq!(app.rows(&sh).len(), 4, "unfold reveals the subtree again");
+}
+
+#[test]
+fn fold_state_persists_across_program_runs() {
+    let (dir, mut sh) = nested_shell();
+    let mut app = App::new();
+    app.toggle_fold(&mut sh);
+    // "Program restart": a fresh Vault::open + fresh App see the fold.
+    let v = Vault::open(dir.path()).expect("reopen");
+    let sh2 = Shell::new(v);
+    let app2 = App::new();
+    assert_eq!(app2.rows(&sh2).len(), 2, "fold survives reopen from disk");
+    // The persisted form is the org-standard property, in plain text.
+    let src = fs::read_to_string(dir.path().join("notes.org")).expect("read");
+    assert!(src.contains(":VISIBILITY: folded"), "org-native persistence");
+}
+
+#[test]
+fn folding_a_leaf_keeps_it_visible() {
+    let (_d, mut sh) = nested_shell();
+    let mut app = App::new();
+    app.select(3, &sh); // "Other" has no children
+    app.toggle_fold(&mut sh);
+    let titles: Vec<String> = app.rows(&sh).iter().map(|r| r.title.clone()).collect();
+    assert!(titles.contains(&"Other".to_owned()), "a folded leaf still lists");
+    assert_eq!(titles.len(), 4, "nothing to hide under a leaf");
+}
+
+#[test]
+fn search_reaches_into_folded_subtrees() {
+    let (_d, mut sh) = nested_shell();
+    let mut app = App::new();
+    app.toggle_fold(&mut sh);
+    typ(&mut app, &mut sh, "Grand");
+    assert!(
+        app.rows(&sh).iter().any(|r| r.title == "Grandchild"),
+        "fuzzy search ignores folds (like org isearch opening folds)"
+    );
+}
+
+#[test]
+fn folded_row_carries_a_marker_badge_in_the_view() {
+    let (_d, mut sh) = nested_shell();
+    let mut app = App::new();
+    app.toggle_fold(&mut sh);
+    let json = closure_shell_core::view_to_json(&app.view(&sh));
+    assert!(json.contains("\u{25b8}"), "folded row shows the ▸ marker");
+}
+
+#[test]
+fn ctrl_f_dispatch_toggles_the_fold() {
+    let (_d, mut sh) = nested_shell();
+    let mut app = App::new();
+    let tree = app.dispatch(&mut sh, &closure_shell_core::KeyEvent::ctrl("f"));
+    let json = closure_shell_core::view_to_json(&tree);
+    assert!(!json.contains("Grandchild"), "C-f folds through dispatch");
+    assert!(json.contains("Other"), "siblings unaffected");
+}

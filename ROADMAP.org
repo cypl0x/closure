@@ -13,6 +13,39 @@ file is the fine-grained, capability-level queue between them. Blocked
 on a design decision? Record it under [[*Decisions][Decisions]], pick the most
 reversible option, keep moving.
 
+* DONE FOLD — persistent fold toggle on the outline [1/1]
+The outline hides a folded headline's descendants — in the launcher
+=App= (=toggle_fold=, =C-f=, palette =fold=) and the modal =ModalApp=
+(=toggle-fold= command, =z= / Emacs =C-c z= in every keymap, I4). Fold
+state is the org-standard =:VISIBILITY: folded= property on the headline
+itself, written through the registry (=SetProperty=, I8, undoable I3) —
+so it persists between program runs as plain text, diffs in git, and is
+honoured by Emacs org-mode. Unfold writes =:VISIBILITY: all=. A live
+query searches into folds (org isearch behaviour); folded rows carry a
+=▸= badge in the =ViewTree=. GPUI (the chosen reference GUI shell)
+inherits the whole surface through =App::dispatch= (P1) with zero
+window-side code. Proven in =tests/app.rs= (hide/unhide, persistence
+across a fresh =Vault::open=, leaf no-op, search-through,
+badge, =C-f= dispatch), =tests/modal.rs= (doom =z=), =tests/palette.rs=
+(chord from the keymap), =tests/keymap.rs= (bound in all five modes).
+** Decision (2026-07-04) Fold state is the org =:VISIBILITY:= property, not a sidecar file.
+Options: (a) a vault-level state file (=folds.org= / dotfile) keyed by
+block id; (b) the org-upstream =:VISIBILITY: folded= property on the
+headline. Took (b): it is the property Emacs org-mode itself reads, so
+closure and Emacs share fold state; persistence needs no new format
+(plain text, I1-safe via the existing =SetProperty= rewrite); the write
+path is the registry (I8) so folds are undoable (I3) and CRDT-merge like
+any field. Trade-off: view state lands in the document (git-visible),
+exactly like Emacs' persistent-visibility idiom — acceptable and
+org-native. Unfold writes =all= rather than removing the entry because
+the parser has no property-remove rewrite yet; a remove-property rewrite
+is a recorded follow-up that changes no API. Honest scope note: the
+borrow-friendly =browse_view= (the LLM =view-render= snapshot, V3a) still
+lists every headline — it is "the default browse surface", not a live
+shell's fold state; folding it too is a one-line follow-up if the LLM
+should see folds. Reversible: a sidecar could replace the property
+behind the same =toggle_fold= surface.
+
 * DONE GUI-PARITY — every GUI shell a real interactive editor [7/7]
 GUI-UX brought the hermetic cores to parity (every shell consumes
 =App=/=Shell= + renders the =ViewTree=); the gap left is the windowed

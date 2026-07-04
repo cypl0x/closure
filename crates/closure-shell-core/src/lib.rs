@@ -845,6 +845,42 @@ pub fn widget_node(name: impl Into<String>, content: impl Into<String>) -> Node 
     }
 }
 
+/// Marker shown on a folded row (`:VISIBILITY: folded`).
+const FOLD_MARKER: &str = "▸";
+
+/// Whether the headline is folded — the org-standard
+/// `:VISIBILITY: folded` property (the same one Emacs org-mode reads),
+/// so fold state lives in the document and persists between runs.
+fn headline_is_folded(h: &closure_core::DocHeadline) -> bool {
+    h.properties()
+        .iter()
+        .any(|(k, v)| k == "VISIBILITY" && v == "folded")
+}
+
+/// Whether the row with block id `id` is currently folded.
+fn row_is_folded(shell: &Shell, id: &str) -> bool {
+    let bid = closure_core::BlockId::from_existing(id);
+    shell
+        .vault
+        .find_by_id(&bid)
+        .is_some_and(|(h, _)| headline_is_folded(h))
+}
+
+/// Flip the `:VISIBILITY:` property on `id` between `folded` and `all`
+/// through the registry (I8, undoable I3). Returns the new folded state,
+/// or `None` when the write failed.
+fn toggle_visibility(shell: &mut Shell, id: &closure_core::BlockId) -> Option<bool> {
+    let folded = shell
+        .vault
+        .find_by_id(id)
+        .is_some_and(|(h, _)| headline_is_folded(h));
+    let next = if folded { "all" } else { "folded" };
+    shell
+        .set_property(id, "VISIBILITY", next)
+        .ok()
+        .map(|()| !folded)
+}
+
 /// Map a TODO keyword to a leading status glyph (G5a): `DONE`-like
 /// keywords get a filled marker, open ones a hollow marker, anything else
 /// a diamond.
@@ -1979,6 +2015,7 @@ const PALETTE_COMMANDS: &[(&str, &str, &str, &str)] = &[
     ("rename", "rename", "Edit", "Rename the headline"),
     ("delete", "delete", "Edit", "Delete the headline"),
     ("cycle-mode", "cycle-mode", "Mode", "Switch the input mode"),
+    ("fold", "toggle-fold", "Navigate", "Fold or unfold the selected subtree"),
     ("quit", "quit", "App", "Quit closure"),
 ];
 
@@ -2330,6 +2367,26 @@ impl App {
     pub fn select(&mut self, i: usize, shell: &Shell) {
         let last = self.rows(shell).len().saturating_sub(1);
         self.selected = i.min(last);
+    }
+
+    /// Fold or unfold the selected subtree (`C-f` / palette `fold`).
+    ///
+    /// Writes the org-standard `:VISIBILITY:` property through the
+    /// registry (I8, undoable I3), so the fold persists between program
+    /// runs and is honoured by Emacs org-mode too.
+    pub fn toggle_fold(&mut self, shell: &mut Shell) {
+        let rows = self.rows(shell);
+        let Some(row) = rows.get(self.selected) else {
+            return;
+        };
+        let title = row.title.clone();
+        let bid = closure_core::BlockId::from_existing(&row.id);
+        match toggle_visibility(shell, &bid) {
+            Some(true) => self.set_status(&format!("folded: {title}")),
+            Some(false) => self.set_status(&format!("unfolded: {title}")),
+            None => self.set_status(&format!("fold failed: {title}")),
+        }
+        self.selected = self.selected.min(self.rows(shell).len().saturating_sub(1));
     }
 
     /// Begin a capture (Notion "＋" affordance / `C-c`): switch to the
@@ -2691,7 +2748,22 @@ impl App {
     pub fn rows(&self, shell: &Shell) -> Vec<Row> {
         let mut scored: Vec<(u32, Row)> = Vec::new();
         for (p, doc) in shell.vault.iter() {
+            // Fold-aware outline walk: a `:VISIBILITY: folded` headline
+            // hides its descendants — but only in the outline listing; a
+            // live query searches into folds (like org isearch).
+            let mut hide_below: Option<u8> = None;
             for h in doc.all_headlines() {
+                if self.query.is_empty() {
+                    if let Some(limit) = hide_below {
+                        if h.level() > limit {
+                            continue;
+                        }
+                        hide_below = None;
+                    }
+                    if headline_is_folded(h) {
+                        hide_below = Some(h.level());
+                    }
+                }
                 let score = if self.query.is_empty() {
                     Some(0)
                 } else {
@@ -2783,7 +2855,14 @@ impl App {
                     .into_iter()
                     .map(|r| {
                         let icon = r.todo.as_deref().map(|t| todo_glyph(t).to_owned());
-                        RowView::new(r.id, r.title, r.level, r.todo).with_icon(icon)
+                        let badges = if row_is_folded(shell, &r.id) {
+                            vec![FOLD_MARKER.to_owned()]
+                        } else {
+                            Vec::new()
+                        };
+                        RowView::new(r.id, r.title, r.level, r.todo)
+                            .with_icon(icon)
+                            .with_badges(badges)
                     })
                     .collect();
                 let mut children = vec![Node::Rows {
@@ -3019,6 +3098,7 @@ impl App {
                 }
             }
             "cycle-mode" => self.cycle_mode(),
+            "fold" => self.toggle_fold(shell),
             "quit" => self.quit = true,
             _ => {}
         }
@@ -3135,6 +3215,7 @@ impl App {
                 self.set_status("command palette — type to filter, Enter to run");
             }
             "t" if ctrl => self.cycle_mode(),
+            "f" if ctrl => self.toggle_fold(shell),
             "a" if ctrl => self.begin_add_sibling(shell),
             "r" if ctrl => self.begin_rename(shell),
             "d" if ctrl => {
@@ -3352,7 +3433,21 @@ impl ModalApp {
         };
         let mut scored: Vec<(u32, Row)> = Vec::new();
         for (p, doc) in shell.vault.iter() {
+            // Fold-aware outline walk (same rule as the launcher App):
+            // folds hide descendants in the listing, search sees through.
+            let mut hide_below: Option<u8> = None;
             for h in doc.all_headlines() {
+                if filter.is_empty() {
+                    if let Some(limit) = hide_below {
+                        if h.level() > limit {
+                            continue;
+                        }
+                        hide_below = None;
+                    }
+                    if headline_is_folded(h) {
+                        hide_below = Some(h.level());
+                    }
+                }
                 let score = if filter.is_empty() {
                     Some(0)
                 } else {
@@ -3797,6 +3892,13 @@ impl ModalApp {
             "block-list" => {
                 self.selected = 0;
                 self.surface = ModalSurface::Blocks;
+            }
+            "toggle-fold" => {
+                if let Some(row) = self.rows(shell).get(self.selected).cloned() {
+                    let bid = closure_core::BlockId::from_existing(&row.id);
+                    let _ = toggle_visibility(shell, &bid);
+                    self.selected = self.selected.min(self.rows(shell).len().saturating_sub(1));
+                }
             }
             "toggle-todo" => {
                 if let Some(row) = self.rows(shell).get(self.selected).cloned() {

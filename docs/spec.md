@@ -469,7 +469,16 @@ base, ours, theirs)` returns the `FieldConflict`s (title/body) both sides
   is the block "+" (the `add-sibling` command), and `DragReorder` +
   `reorder_indices` model drag-to-reorder as a pure gesture whose drop
   maps to a registry move (I8) — every affordance reduces to a kernel
-  command, none is shell-private. The command palette is polished + shared
+  command, none is shell-private. **Fold toggle (F1):** the outline hides
+  a folded headline's descendants in both the launcher `App` and the modal
+  `ModalApp` row walks; fold state is the org-standard
+  `:VISIBILITY: folded` property on the headline itself — written through
+  the registry (`SetProperty`, I8, undoable I3), so it persists between
+  program runs in plain text and is honoured by Emacs org-mode. Unfold
+  writes `:VISIBILITY: all`. A live query searches *into* folds (org
+  isearch behaviour); a folded row carries a `▸` badge. `toggle-fold` is
+  bound in all five keymaps (I4: `z`, Emacs `C-c z`), in the palette
+  (`fold`), and on `C-f` in the launcher. The command palette is polished + shared
   (G6): `command_palette(query, mode)` groups every command into ordered
   sections (Navigate/Edit/Mode/App), fuzzy-ranks within each, drops empty
   ones, and gives each `PaletteEntry` a human description + its chord;

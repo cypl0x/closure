@@ -57,6 +57,7 @@ const DOOM_KEYMAP: &[(&str, &str)] = &[
     ("g w", "allow-flow"),
     ("g o", "resolve-ours"),
     ("g t", "resolve-theirs"),
+    ("z", "toggle-fold"),
 ];
 
 /// Emacs bindings: Ctrl/Meta chords, `C-x C-c` quits.
@@ -95,6 +96,7 @@ const EMACS_KEYMAP: &[(&str, &str)] = &[
     ("C-c W", "allow-flow"),
     ("C-c O", "resolve-ours"),
     ("C-c T", "resolve-theirs"),
+    ("C-c z", "toggle-fold"),
 ];
 
 /// Vim bindings: modal navigation keys.
@@ -134,6 +136,7 @@ const VIM_KEYMAP: &[(&str, &str)] = &[
     ("g w", "allow-flow"),
     ("g o", "resolve-ours"),
     ("g t", "resolve-theirs"),
+    ("z", "toggle-fold"),
 ];
 
 /// Helix bindings: vim-like with `U` redo and `g e` for end.
@@ -173,6 +176,7 @@ const HELIX_KEYMAP: &[(&str, &str)] = &[
     ("g w", "allow-flow"),
     ("g o", "resolve-ours"),
     ("g t", "resolve-theirs"),
+    ("z", "toggle-fold"),
 ];
 
 /// Notion bindings: mouse + arrows + slash command, minimal chords.
@@ -211,6 +215,7 @@ const NOTION_KEYMAP: &[(&str, &str)] = &[
     ("g w", "allow-flow"),
     ("g o", "resolve-ours"),
     ("g t", "resolve-theirs"),
+    ("z", "toggle-fold"),
 ];
 
 /// The canonical `(chord, command)` keymap for an input mode — the

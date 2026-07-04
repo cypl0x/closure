@@ -40,3 +40,28 @@ fn palette_serialises_deterministically() {
     assert!(a.contains("SECTION Edit"), "names sections: {a}");
     assert!(a.contains("Rename the headline"), "shows descriptions: {a}");
 }
+
+#[test]
+fn palette_offers_fold_with_its_chord() {
+    // The fold toggle is a palette command in every mode, carrying the
+    // keymap chord (I4 — never hardcoded).
+    for mode in [
+        InputMode::Notion,
+        InputMode::Emacs,
+        InputMode::Vim,
+        InputMode::Doom,
+        InputMode::Helix,
+    ] {
+        let sections = command_palette("fold", mode);
+        let entry = sections
+            .iter()
+            .flat_map(|s| &s.items)
+            .find(|e| e.label == "fold")
+            .unwrap_or_else(|| panic!("{mode:?} palette offers fold"));
+        assert_eq!(
+            entry.action.chord(),
+            closure_input::chord_for_command(mode, "toggle-fold").unwrap(),
+            "{mode:?} chord comes from the keymap"
+        );
+    }
+}
