@@ -13,7 +13,7 @@ file is the fine-grained, capability-level queue between them. Blocked
 on a design decision? Record it under [[*Decisions][Decisions]], pick the most
 reversible option, keep moving.
 
-* WIP GPUI-POLISH — orchestrated polish loop (Fable specs/verifies, Grok implements) [5/6]
+* DONE GPUI-POLISH — orchestrated polish loop (Fable specs/verifies, Grok implements) [6/6]
 Protocol: repo root =goal-orchestrator.md=; leaves from
 =goal-gpui-polish.md=. Every leaf: Fable SPEC → Grok RED tests → Fable
 confirms RED → Grok GREEN → Fable gates (capped =just check= + gpui
@@ -51,6 +51,11 @@ RED+GREEN, first-try green. gpui wheel handler now scrolls the view.
 Display-only (window layer): a 3-wide muted gutter per editor line,
 current line accented. No state change; covered by the feature build
 gate. Written by Fable (pure paint).
+** DONE L6 Live match count in the search overlay [1/1]
+=ModalApp::search_context(shell)= renders the Search context line
+(glyph, live query, caret, =N match/matches=) as core state (the
+behaviour-in-core rule); the gpui context bar consumes it. Grok
+RED+GREEN from spec, first-try green; 2 tests.
 ** Decision (2026-07-04) Parallel dispatches share one commit when their files interleave.
 L2/L3/L4 ran as two parallel Grok workers (file-disjoint edits) plus
 Fable's window wiring; the results interleave in the same two files,

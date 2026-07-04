@@ -593,7 +593,10 @@ base, ours, theirs)` returns the `FieldConflict`s (title/body) both sides
   (failures error, destructive successes warn, chatter silent). The
   wheel scrolls the viewport, not the cursor: `ModalApp::scroll_by`
   sets a clamped override that `view_window` prefers until any
-  selection movement clears it.
+  selection movement clears it. The Search overlay's context line is
+  core state (`search_context`: glyph, query, caret, pluralized live
+  match count); the editor pane draws a line-number gutter with the
+  current line accented.
   The gpui pane renders `highlight_body` spans — `#+` meta, drawer
   lines, and src-block content classified through the shared
   `closure_tree_sitter::Highlighter` contract (keyword tier hermetic,

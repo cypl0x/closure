@@ -4070,6 +4070,14 @@ impl ModalApp {
     pub fn query(&self) -> &str {
         &self.query
     }
+    /// The Search overlay context line: search glyph, live query, caret
+    /// bar, and the live match count, pluralized.
+    #[must_use]
+    pub fn search_context(&self, shell: &Shell) -> String {
+        let n = self.rows(shell).len();
+        let m = if n == 1 { "match" } else { "matches" };
+        format!("\u{2315} {}\u{258f} \u{b7} {} {}", self.query(), n, m)
+    }
     /// In-progress capture title.
     #[must_use]
     pub fn capture_buffer(&self) -> &str {

@@ -1115,3 +1115,29 @@ fn selection_movement_reclaims_the_viewport() {
     assert_eq!(off, 1, "keep-selection-visible rule back in charge");
     assert_eq!(rows[0].title, "Personal wiki");
 }
+
+// === L6: live match count in the search overlay. ===
+
+#[test]
+fn search_context_counts_matches() {
+    let (_d, mut sh) = shell();
+    let mut app = ModalApp::new(InputMode::Vim);
+    app.on_key(&mut sh, "/", false, false, Some('/'));
+    for c in "wiki".chars() {
+        app.on_key(&mut sh, &c.to_string(), false, false, Some(c));
+    }
+    assert_eq!(app.search_context(&sh), "\u{2315} wiki\u{258f} \u{b7} 1 match");
+    app.on_key(&mut sh, "escape", false, false, None);
+}
+
+#[test]
+fn search_context_pluralizes() {
+    let (_d, mut sh) = shell();
+    let mut app = ModalApp::new(InputMode::Vim);
+    app.on_key(&mut sh, "/", false, false, Some('/'));
+    assert_eq!(app.search_context(&sh), "\u{2315} \u{258f} \u{b7} 3 matches");
+    for c in "zzz-no-match".chars() {
+        app.on_key(&mut sh, &c.to_string(), false, false, Some(c));
+        assert!(app.search_context(&sh).ends_with("0 matches"));
+    }
+}

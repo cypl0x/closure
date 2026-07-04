@@ -386,7 +386,7 @@ impl GpuiView {
         let n = self.app.rows(&self.shell).len();
         match self.app.surface() {
             ModalSurface::Browse => format!("{n} headline(s)"),
-            ModalSurface::Search => format!("⌕ {}▏", self.app.query()),
+            ModalSurface::Search => self.app.search_context(&self.shell),
             ModalSurface::Capture => format!("＋ capture: {}▏", self.app.capture_buffer()),
             ModalSurface::Rename => format!("✎ rename: {}▏", self.app.field_buffer()),
             ModalSurface::AddSibling => format!("＋ add: {}▏", self.app.field_buffer()),
