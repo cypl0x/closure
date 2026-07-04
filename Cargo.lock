@@ -1490,6 +1490,7 @@ dependencies = [
  "closure-query",
  "closure-shell-core",
  "closure-store",
+ "closure-tree-sitter",
  "gpui",
  "tempfile",
 ]

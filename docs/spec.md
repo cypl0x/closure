@@ -570,6 +570,23 @@ base, ours, theirs)` returns the `FieldConflict`s (title/body) both sides
   `mix_u32` blend — no hardcoded palette. The pure helpers are
   hermetically tested (`tests/helpers.rs`); the window itself is
   display-bound (feature `gpui`, build-verified + manual smoke).
+  **Editor depth (2026-07-04):** the org-edit-special surface is a
+  vim-modal editor — `BodyEditor` in shell-core holds a real
+  unicode-safe cursor; INSERT types at the cursor (`Esc` → NORMAL),
+  NORMAL navigates (`h/j/k/l/0/$`), edits (`i/a/o/x`) and `Esc`
+  cancels; `C-Enter` commits from either mode (I8 `set_body`). TAB in
+  INSERT runs org-tempo (`<s`→`#+BEGIN_SRC …`, `<e/<q/<c/<C/<v`),
+  otherwise soft-indents. `C-n`/`C-p` cycle completion over org
+  keywords + dabbrev words mined from the vault (`body_completions`).
+  The gpui pane renders `highlight_body` spans — `#+` meta, drawer
+  lines, and src-block content classified through the shared
+  `closure_tree_sitter::Highlighter` contract (keyword tier hermetic,
+  real grammars behind the `tree-sitter` feature) — plus a caret bar,
+  INSERT/NORMAL chip, and the completion popup. Row TODO chips are
+  clickable (`toggle-todo`), and outline rows colour by level like
+  doom-vibrant's outline faces. The default theme is `doom-vibrant`
+  (the user's colorscheme; `Theme::doom_vibrant`, `ColorRole` grew
+  `Heading2`/`Heading3`/`Code`).
 - `closure-shell-web` — self-contained single HTML bundle and
   localhost web-app (`closure serve`). `closure-wasm` (X2) is the
   client-side upgrade: a wasm-bindgen surface over the kernel

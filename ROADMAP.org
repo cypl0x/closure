@@ -13,6 +13,51 @@ file is the fine-grained, capability-level queue between them. Blocked
 on a design decision? Record it under [[*Decisions][Decisions]], pick the most
 reversible option, keep moving.
 
+* DONE GPUI-EDIT — doom-vibrant + a real editor inside the reference GUI [5/5]
+User feedback round two (2026-07-04, screenshots + Claude-Design
+inspiration): doom-vibrant colours, vim-normal-mode inside the body
+editor, clickable TODO chips, completion, org-tempo, syntax highlight.
+** DONE E1 doom-vibrant theme [1/1]
+=Theme::doom_vibrant()= from the user's Doom Emacs faces (bg =#242730=,
+fg =#bbc2cf=, blue =#51afef=, magenta =#C57BDB=, violet =#a991f1=,
+orange =#e69055=, red =#ff665c=, yellow =#FCCE7B=, green =#7bc275=,
+region =#3d4451=, comment =#62686E=); =ColorRole= grew
+=Heading2=/=Heading3=/=Code= (all four built-ins fill them; web CSS
+vars emit them). gpui defaults to doom-vibrant (explicit =theme== in
+config.org wins); outline rows colour by level like outline-1/2/3.
+** DONE E2 vim-modal BodyEditor [1/1]
+Real cursor (byte offset on char boundaries, unicode-safe), INSERT
+types at the cursor / =Esc= → NORMAL; NORMAL: =h j k l 0 $= motions,
+=i a o x=, =Esc= cancels; =C-Enter= commits from both modes. Contract
+revision recorded in tests (=body_editor_escape_goes_normal_then_cancels=).
+=ModalApp::body_buffer_mut= dropped (only a test used it; the editor
+owns the buffer + cursor now).
+** DONE E3 org-tempo [1/1]
+TAB in INSERT expands =<s <e <q <c <C <v= to their =#+BEGIN_…= blocks
+(cursor after =#+BEGIN_SRC = for the language), else two-space indent.
+** DONE E4 completion [1/1]
+=C-n=/=C-p= cycle org keywords + dabbrev words (≥3 chars) mined from
+every vault document (=body_completions=, sorted+deduped I6); any other
+key ends the session; =body_completion_items/ix= feed the GUI popup.
+** DONE E5 highlight + mouse polish [1/1]
+=highlight_body= (gpui crate, hermetic): per-line spans — =#+= meta,
+drawer lines, src-block content through the shared
+=closure_tree_sitter::Highlighter= contract (keyword tier default,
+grammars behind =tree-sitter=), spans concatenate back verbatim. The
+window paints spans + caret bar + INSERT/NORMAL chip (spaceline
+green/blue) + completion popup; TODO chips click-toggle; fold arrows,
+level colours. Build-verified under =--features gpui=.
+** Decision (2026-07-04) Editor state lives in shell-core; highlight lives in the gpui crate.
+The cursor/mode/completion state is hermetic editor *behaviour* → it
+belongs beside ModalApp (tested in modal.rs). Highlighting is a
+*rendering* concern the window folds into paint → =highlight_body=
+lives in closure-shell-gpui (outside the feature gate, hermetically
+tested) on top of the tree-sitter crate's stable =Highlighter=
+contract, so enabling real grammars changes no gpui API. Honest gaps
+recorded: no visual-mode/yank in the body editor yet, completion popup
+lists raw candidates (no fuzzy ranking), =dd=/counts/registers absent —
+next depth cycle if wanted.
+
 * DONE GPUI-REF — the reference GUI: modal editor + mouse + honest which-key [3/3]
 User picked gpui as the single GUI focus (Decision 2026-07-04, memory)
 and reported the launcher pain live: the filter input swallowed every

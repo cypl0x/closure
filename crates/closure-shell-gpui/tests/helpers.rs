@@ -29,9 +29,11 @@ fn resolve_theme_reads_the_vault_config() {
         "#+BEGIN_SRC closure-config\ntheme = light\n#+END_SRC\n",
     )
     .expect("write");
-    assert_eq!(resolve_theme(dir.path()).name, "light");
+    assert_eq!(resolve_theme(dir.path()).name, "light", "explicit name wins");
     let empty = tempfile::tempdir().expect("tmp2");
-    assert_eq!(resolve_theme(empty.path()).name, "dark", "absent config -> dark");
+    // Contract revised 2026-07-04: the reference shell defaults to the
+    // user's doom-vibrant colorscheme, not generic dark.
+    assert_eq!(resolve_theme(empty.path()).name, "doom-vibrant");
 }
 
 #[test]
@@ -52,4 +54,48 @@ fn resolve_input_mode_reads_the_vault_config() {
         closure_config::InputMode::Doom,
         "absent config -> Doom"
     );
+}
+
+// === Body syntax highlighting (hermetic keyword tier; the tree-sitter
+// grammars ride the same Highlighter trait behind the feature). ===
+
+use closure_shell_gpui::{BodySpan, highlight_body};
+
+#[test]
+fn src_block_lines_get_keyword_highlights() {
+    let body = "intro\n#+BEGIN_SRC rust\nlet x = \"s\";\n#+END_SRC\n";
+    let lines = highlight_body(body);
+    assert_eq!(lines.len(), 5, "one entry per line incl. trailing empty");
+    assert_eq!(lines[0], vec![(BodySpan::Plain, "intro".to_owned())]);
+    assert_eq!(lines[1], vec![(BodySpan::Meta, "#+BEGIN_SRC rust".to_owned())]);
+    assert!(
+        lines[2].contains(&(BodySpan::Keyword, "let".to_owned())),
+        "rust `let` classified: {:?}",
+        lines[2]
+    );
+    assert!(
+        lines[2].contains(&(BodySpan::Literal, "\"s\"".to_owned())),
+        "string literal classified: {:?}",
+        lines[2]
+    );
+    assert_eq!(lines[3], vec![(BodySpan::Meta, "#+END_SRC".to_owned())]);
+}
+
+#[test]
+fn drawer_and_meta_lines_are_classified() {
+    let lines = highlight_body(":PROPERTIES:\n:ID: abc\n:END:\n#+TITLE: x");
+    assert_eq!(lines[0][0].0, BodySpan::Drawer);
+    assert_eq!(lines[1][0].0, BodySpan::Drawer);
+    assert_eq!(lines[2][0].0, BodySpan::Drawer);
+    assert_eq!(lines[3][0].0, BodySpan::Meta);
+}
+
+#[test]
+fn highlight_roundtrips_the_text() {
+    let body = "a\n#+BEGIN_SRC sh\necho \"hi\" # c\n#+END_SRC\ntail";
+    let joined: Vec<String> = highlight_body(body)
+        .iter()
+        .map(|l| l.iter().map(|(_, s)| s.as_str()).collect::<String>())
+        .collect();
+    assert_eq!(joined.join("\n"), body, "spans cover every byte (I1 spirit)");
 }

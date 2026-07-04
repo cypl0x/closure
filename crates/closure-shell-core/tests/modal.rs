@@ -209,15 +209,67 @@ fn vim_i_enters_body_editor_and_commits() {
     assert_eq!(d.body.trim_end(), "note");
 }
 
+// Contract revised 2026-07-04 (vim-modal editor): Esc in INSERT drops
+// to NORMAL for navigation; Esc in NORMAL cancels the edit.
 #[test]
-fn body_editor_escape_cancels() {
+fn body_editor_escape_goes_normal_then_cancels() {
     let (_d, mut sh) = shell();
     let mut app = ModalApp::new(InputMode::Vim);
     app.on_key(&mut sh, "i", false, false, Some('i'));
-    app.body_buffer_mut().push_str("scratch");
+    for c in "scratch".chars() {
+        app.on_key(&mut sh, &c.to_string(), false, false, Some(c));
+    }
     app.on_key(&mut sh, "escape", false, false, None);
-    assert_eq!(app.surface(), ModalSurface::Browse);
+    assert_eq!(app.surface(), ModalSurface::EditBody, "INSERT Esc -> NORMAL");
+    assert_eq!(app.body_mode(), closure_shell_core::EditorMode::Normal);
+    app.on_key(&mut sh, "escape", false, false, None);
+    assert_eq!(app.surface(), ModalSurface::Browse, "NORMAL Esc cancels");
     assert_eq!(app.detail(&sh).expect("d").body.trim(), "");
+}
+
+#[test]
+fn body_normal_mode_navigates_and_edits_vim_style() {
+    let (_d, mut sh) = shell();
+    let mut app = ModalApp::new(InputMode::Vim);
+    app.on_key(&mut sh, "i", false, false, Some('i'));
+    for c in "ab\ncd".chars() {
+        if c == '\n' {
+            app.on_key(&mut sh, "enter", false, false, None);
+        } else {
+            app.on_key(&mut sh, &c.to_string(), false, false, Some(c));
+        }
+    }
+    app.on_key(&mut sh, "escape", false, false, None); // NORMAL, cursor at end
+    assert_eq!(app.body_cursor(), (1, 2), "line 1 col 2 after 'cd'");
+    app.on_key(&mut sh, "k", false, false, Some('k')); // up
+    assert_eq!(app.body_cursor().0, 0);
+    app.on_key(&mut sh, "h", false, false, Some('h')); // left
+    app.on_key(&mut sh, "h", false, false, Some('h')); // clamp at col 0
+    assert_eq!(app.body_cursor(), (0, 0));
+    app.on_key(&mut sh, "x", false, false, Some('x')); // delete 'a'
+    assert_eq!(app.body_buffer(), "b\ncd");
+    app.on_key(&mut sh, "i", false, false, Some('i')); // back to INSERT
+    app.on_key(&mut sh, "z", false, false, Some('z')); // inserts AT cursor
+    assert_eq!(app.body_buffer(), "zb\ncd", "insert at cursor, not append");
+    app.on_key(&mut sh, "enter", true, false, None); // C-Enter commits
+    assert_eq!(app.detail(&sh).expect("d").body.trim_end(), "zb\ncd");
+}
+
+#[test]
+fn body_normal_o_opens_line_below_in_insert() {
+    let (_d, mut sh) = shell();
+    let mut app = ModalApp::new(InputMode::Vim);
+    app.on_key(&mut sh, "i", false, false, Some('i'));
+    for c in "top".chars() {
+        app.on_key(&mut sh, &c.to_string(), false, false, Some(c));
+    }
+    app.on_key(&mut sh, "escape", false, false, None);
+    app.on_key(&mut sh, "o", false, false, Some('o'));
+    assert_eq!(app.body_mode(), closure_shell_core::EditorMode::Insert);
+    for c in "below".chars() {
+        app.on_key(&mut sh, &c.to_string(), false, false, Some(c));
+    }
+    assert_eq!(app.body_buffer(), "top\nbelow");
 }
 
 #[test]
@@ -769,4 +821,109 @@ fn palette_click_runs_the_clicked_entry() {
     app.palette_click(&mut sh, fold_at);
     assert_eq!(app.surface(), ModalSurface::Browse, "palette closed");
     assert_eq!(app.rows(&sh).len(), 3, "clicked fold ran");
+}
+
+#[test]
+fn org_tempo_s_tab_expands_to_src_block() {
+    // Emacs org-tempo: `<s` + TAB becomes a source block, cursor after
+    // `#+BEGIN_SRC ` so the language can be typed immediately.
+    let (_d, mut sh) = shell();
+    let mut app = ModalApp::new(InputMode::Vim);
+    app.on_key(&mut sh, "i", false, false, Some('i'));
+    for c in "<s".chars() {
+        app.on_key(&mut sh, &c.to_string(), false, false, Some(c));
+    }
+    app.on_key(&mut sh, "tab", false, false, None);
+    assert_eq!(app.body_buffer(), "#+BEGIN_SRC \n\n#+END_SRC");
+    assert_eq!(app.body_cursor(), (0, 12), "cursor after BEGIN_SRC ");
+    for c in "rust".chars() {
+        app.on_key(&mut sh, &c.to_string(), false, false, Some(c));
+    }
+    assert_eq!(app.body_buffer(), "#+BEGIN_SRC rust\n\n#+END_SRC");
+}
+
+#[test]
+fn org_tempo_expands_the_other_block_templates() {
+    let cases = [
+        ("<e", "#+BEGIN_EXAMPLE\n\n#+END_EXAMPLE"),
+        ("<q", "#+BEGIN_QUOTE\n\n#+END_QUOTE"),
+        ("<c", "#+BEGIN_CENTER\n\n#+END_CENTER"),
+        ("<C", "#+BEGIN_COMMENT\n\n#+END_COMMENT"),
+        ("<v", "#+BEGIN_VERSE\n\n#+END_VERSE"),
+    ];
+    for (trigger, expanded) in cases {
+        let (_d, mut sh) = shell();
+        let mut app = ModalApp::new(InputMode::Vim);
+        app.on_key(&mut sh, "i", false, false, Some('i'));
+        for c in trigger.chars() {
+            app.on_key(&mut sh, &c.to_string(), false, false, Some(c));
+        }
+        app.on_key(&mut sh, "tab", false, false, None);
+        assert_eq!(app.body_buffer(), expanded, "{trigger}");
+    }
+}
+
+#[test]
+fn tab_without_template_indents() {
+    let (_d, mut sh) = shell();
+    let mut app = ModalApp::new(InputMode::Vim);
+    app.on_key(&mut sh, "i", false, false, Some('i'));
+    for c in "x".chars() {
+        app.on_key(&mut sh, &c.to_string(), false, false, Some(c));
+    }
+    app.on_key(&mut sh, "tab", false, false, None);
+    assert_eq!(app.body_buffer(), "x  ", "plain TAB = two-space indent");
+}
+
+// === Completion in the body editor: org keywords + dabbrev over the
+// vault's words, cycled with C-n / C-p (Emacs dabbrev feel). ===
+
+#[test]
+fn c_n_completes_org_keywords() {
+    let (_d, mut sh) = shell();
+    let mut app = ModalApp::new(InputMode::Vim);
+    app.on_key(&mut sh, "i", false, false, Some('i'));
+    for c in "TO".chars() {
+        app.on_key(&mut sh, &c.to_string(), false, false, Some(c));
+    }
+    app.on_key(&mut sh, "n", true, false, None); // C-n
+    assert_eq!(app.body_buffer(), "TODO");
+}
+
+#[test]
+fn c_n_completes_words_from_the_vault_dabbrev_style() {
+    let (_d, mut sh) = shell();
+    let mut app = ModalApp::new(InputMode::Vim);
+    app.on_key(&mut sh, "i", false, false, Some('i'));
+    for c in "Pers".chars() {
+        app.on_key(&mut sh, &c.to_string(), false, false, Some(c));
+    }
+    app.on_key(&mut sh, "n", true, false, None);
+    assert_eq!(app.body_buffer(), "Personal", "word mined from vault titles");
+}
+
+#[test]
+fn c_n_cycles_and_c_p_cycles_back() {
+    let dir = tempfile::tempdir().expect("tmp");
+    fs::write(
+        dir.path().join("notes.org"),
+        "* alpha one\n* alphabet two\n",
+    )
+    .expect("write");
+    let v = Vault::open(dir.path()).expect("open");
+    let mut sh = Shell::new(v);
+    let mut app = ModalApp::new(InputMode::Vim);
+    app.on_key(&mut sh, "i", false, false, Some('i'));
+    for c in "alph".chars() {
+        app.on_key(&mut sh, &c.to_string(), false, false, Some(c));
+    }
+    app.on_key(&mut sh, "n", true, false, None);
+    assert_eq!(app.body_buffer(), "alpha");
+    app.on_key(&mut sh, "n", true, false, None);
+    assert_eq!(app.body_buffer(), "alphabet");
+    app.on_key(&mut sh, "p", true, false, None); // C-p back
+    assert_eq!(app.body_buffer(), "alpha");
+    // Typing resumes normally and ends the completion session.
+    app.on_key(&mut sh, "!", false, false, Some('!'));
+    assert_eq!(app.body_buffer(), "alpha!");
 }

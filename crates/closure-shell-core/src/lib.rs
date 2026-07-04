@@ -676,6 +676,12 @@ pub enum ColorRole {
     Warning,
     /// Success severity.
     Success,
+    /// Second-level heading (doom-vibrant outline-2 magenta).
+    Heading2,
+    /// Third-level heading (doom-vibrant outline-3 violet).
+    Heading3,
+    /// Inline/source code (doom-vibrant org-code orange).
+    Code,
 }
 
 /// The named colour slots of a theme (G2).
@@ -697,6 +703,12 @@ pub struct Palette {
     pub warning: Color,
     /// Success severity.
     pub success: Color,
+    /// Second-level heading colour.
+    pub heading2: Color,
+    /// Third-level heading colour.
+    pub heading3: Color,
+    /// Inline/source code colour.
+    pub code: Color,
 }
 
 /// The spacing scale of a theme, in pixels (G2).
@@ -749,6 +761,9 @@ impl Theme {
                 error: Color("#f38ba8"),
                 warning: Color("#f9e2af"),
                 success: Color("#a6e3a1"),
+                heading2: Color("#cba6f7"),
+                heading3: Color("#b4befe"),
+                code: Color("#fab387"),
             },
             spacing: Spacing { unit_px: 8, gap_px: 4 },
             typography: Typography {
@@ -773,6 +788,9 @@ impl Theme {
                 error: Color("#d20f39"),
                 warning: Color("#df8e1d"),
                 success: Color("#40a02b"),
+                heading2: Color("#8839ef"),
+                heading3: Color("#7287fd"),
+                code: Color("#fe640b"),
             },
             spacing: Spacing { unit_px: 8, gap_px: 4 },
             typography: Typography {
@@ -797,6 +815,9 @@ impl Theme {
                 error: Color("#ff0000"),
                 warning: Color("#ffaa00"),
                 success: Color("#00ff00"),
+                heading2: Color("#ff00ff"),
+                heading3: Color("#00ffff"),
+                code: Color("#ffa500"),
             },
             spacing: Spacing { unit_px: 8, gap_px: 4 },
             typography: Typography {
@@ -807,14 +828,48 @@ impl Theme {
         }
     }
 
+    /// The Doom Emacs `doom-vibrant` palette (the user's colorscheme;
+    /// gui-color face values). Org face mapping: TODO green, DONE
+    /// muted, date yellow, code orange, outline-1 blue / outline-2
+    /// magenta / outline-3 violet.
+    #[must_use]
+    pub const fn doom_vibrant() -> Self {
+        Self {
+            name: "doom-vibrant",
+            palette: Palette {
+                fg: Color("#bbc2cf"),
+                bg: Color("#242730"),
+                accent: Color("#51afef"),
+                muted: Color("#62686e"),
+                selection: Color("#3d4451"),
+                error: Color("#ff665c"),
+                warning: Color("#fcce7b"),
+                success: Color("#7bc275"),
+                heading2: Color("#c57bdb"),
+                heading3: Color("#a991f1"),
+                code: Color("#e69055"),
+            },
+            spacing: Spacing { unit_px: 8, gap_px: 4 },
+            typography: Typography {
+                font_family: "Inter, system-ui, sans-serif",
+                mono_family: "JetBrains Mono, ui-monospace, monospace",
+                base_px: 14,
+            },
+        }
+    }
+
     /// Resolve a theme from the free-form `config.theme` string
-    /// (case-insensitive): `light`, `high-contrast`/`hc`, else `dark`.
+    /// (case-insensitive): `light`, `high-contrast`/`hc`,
+    /// `doom-vibrant`/`vibrant`, else `dark`.
     #[must_use]
     pub const fn from_name(name: &str) -> Self {
         if name.eq_ignore_ascii_case("light") {
             Self::light()
         } else if name.eq_ignore_ascii_case("high-contrast") || name.eq_ignore_ascii_case("hc") {
             Self::high_contrast()
+        } else if name.eq_ignore_ascii_case("doom-vibrant") || name.eq_ignore_ascii_case("vibrant")
+        {
+            Self::doom_vibrant()
         } else {
             Self::dark()
         }
@@ -832,6 +887,9 @@ impl Theme {
             ColorRole::Error => self.palette.error,
             ColorRole::Warning => self.palette.warning,
             ColorRole::Success => self.palette.success,
+            ColorRole::Heading2 => self.palette.heading2,
+            ColorRole::Heading3 => self.palette.heading3,
+            ColorRole::Code => self.palette.code,
         }
     }
 }
@@ -3314,6 +3372,327 @@ enum FieldKind {
     AddSibling,
 }
 
+/// The body editor's vim-style mode (org-edit-special surface).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EditorMode {
+    /// Typing inserts at the cursor; `Esc` drops to [`Self::Normal`].
+    Insert,
+    /// `h`/`j`/`k`/`l` navigate, `i`/`a`/`o` insert, `x` deletes,
+    /// `Esc` cancels the edit.
+    Normal,
+}
+
+/// A modal multi-line text editor with a real cursor — the state
+/// behind the org-edit-special surface.
+///
+/// Pure and unicode-safe (the cursor is a byte offset kept on a `char`
+/// boundary); a shell paints `text()` + `cursor_line_col()` and feeds
+/// keys through [`ModalApp`].
+#[derive(Debug, Clone)]
+pub struct BodyEditor {
+    buf: String,
+    cursor: usize,
+    mode: EditorMode,
+}
+
+impl Default for BodyEditor {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl BodyEditor {
+    /// Empty editor in Insert mode.
+    #[must_use]
+    pub const fn new() -> Self {
+        Self {
+            buf: String::new(),
+            cursor: 0,
+            mode: EditorMode::Insert,
+        }
+    }
+
+    /// Load `text`, cursor at the end, Insert mode (the edit-body flow).
+    pub fn load(&mut self, text: String) {
+        self.cursor = text.len();
+        self.buf = text;
+        self.mode = EditorMode::Insert;
+    }
+
+    /// The buffer contents.
+    #[must_use]
+    pub fn text(&self) -> &str {
+        &self.buf
+    }
+
+    /// The vim-style mode.
+    #[must_use]
+    pub const fn mode(&self) -> EditorMode {
+        self.mode
+    }
+
+    /// Cursor as `(line, column)` — both 0-based, column in chars.
+    #[must_use]
+    pub fn cursor_line_col(&self) -> (usize, usize) {
+        let before = &self.buf[..self.cursor];
+        let line = before.matches('\n').count();
+        let col = before
+            .rsplit_once('\n')
+            .map_or(before, |(_, tail)| tail)
+            .chars()
+            .count();
+        (line, col)
+    }
+
+    /// Clear buffer + cursor (cancelling an edit).
+    pub fn clear(&mut self) {
+        self.buf.clear();
+        self.cursor = 0;
+        self.mode = EditorMode::Insert;
+    }
+
+    /// Switch to Normal (from Insert `Esc`).
+    pub const fn to_normal(&mut self) {
+        self.mode = EditorMode::Normal;
+    }
+
+    /// Switch to Insert at the cursor (`i`).
+    pub const fn to_insert(&mut self) {
+        self.mode = EditorMode::Insert;
+    }
+
+    /// Insert `c` at the cursor.
+    pub fn insert_char(&mut self, c: char) {
+        self.buf.insert(self.cursor, c);
+        self.cursor += c.len_utf8();
+    }
+
+    /// Insert `s` at the cursor, cursor after it.
+    pub fn insert_str(&mut self, s: &str) {
+        self.buf.insert_str(self.cursor, s);
+        self.cursor += s.len();
+    }
+
+    /// Delete the char before the cursor (Insert Backspace).
+    pub fn backspace(&mut self) {
+        if let Some((i, _)) = self.buf[..self.cursor].char_indices().next_back() {
+            self.buf.remove(i);
+            self.cursor = i;
+        }
+    }
+
+    /// Delete the char under the cursor (Normal `x`).
+    pub fn delete_at(&mut self) {
+        if self.cursor < self.buf.len() {
+            self.buf.remove(self.cursor);
+        }
+    }
+
+    /// Move one char left (clamped to the line start).
+    pub fn left(&mut self) {
+        if let Some((i, c)) = self.buf[..self.cursor].char_indices().next_back()
+            && c != '\n'
+        {
+            self.cursor = i;
+        }
+    }
+
+    /// Move one char right (clamped to the line end).
+    pub fn right(&mut self) {
+        if let Some(c) = self.buf[self.cursor..].chars().next()
+            && c != '\n'
+        {
+            self.cursor += c.len_utf8();
+        }
+    }
+
+    /// Move to the start of the current line (`0`).
+    pub fn line_home(&mut self) {
+        self.cursor = self.line_start(self.cursor);
+    }
+
+    /// Move to the end of the current line (`$`).
+    pub fn line_end_motion(&mut self) {
+        self.cursor = self.line_end(self.cursor);
+    }
+
+    /// Move up one line, column clamped.
+    pub fn up(&mut self) {
+        let (line, col) = self.cursor_line_col();
+        if line > 0 {
+            self.goto_line_col(line - 1, col);
+        }
+    }
+
+    /// Move down one line, column clamped.
+    pub fn down(&mut self) {
+        let (line, col) = self.cursor_line_col();
+        self.goto_line_col(line + 1, col);
+    }
+
+    /// Open a new line below the current one and enter Insert (`o`).
+    pub fn open_below(&mut self) {
+        self.cursor = self.line_end(self.cursor);
+        self.buf.insert(self.cursor, '\n');
+        self.cursor += 1;
+        self.mode = EditorMode::Insert;
+    }
+
+    /// Byte offset of the start of the line containing `pos`.
+    fn line_start(&self, pos: usize) -> usize {
+        self.buf[..pos].rfind('\n').map_or(0, |i| i + 1)
+    }
+
+    /// Byte offset of the end (before `\n`) of the line containing `pos`.
+    fn line_end(&self, pos: usize) -> usize {
+        self.buf[pos..].find('\n').map_or(self.buf.len(), |i| pos + i)
+    }
+
+    /// Place the cursor at `line`/`col` (both clamped).
+    fn goto_line_col(&mut self, line: usize, col: usize) {
+        let Some(start) = self
+            .buf
+            .split_inclusive('\n')
+            .scan(0usize, |acc, l| {
+                let s = *acc;
+                *acc += l.len();
+                Some(s)
+            })
+            .nth(line)
+        else {
+            return;
+        };
+        let end = self.line_end(start);
+        let mut pos = start;
+        for c in self.buf[start..end].chars().take(col) {
+            pos += c.len_utf8();
+        }
+        self.cursor = pos;
+    }
+
+    /// The text of the line the cursor is on.
+    #[must_use]
+    pub fn current_line(&self) -> &str {
+        &self.buf[self.line_start(self.cursor)..self.line_end(self.cursor)]
+    }
+
+    /// Byte offset where the word containing the cursor starts (the
+    /// dabbrev prefix start; word chars are alphanumeric plus
+    /// `_`/`#`/`+`/`:` so org keywords like `#+BEGIN_SRC` complete).
+    #[must_use]
+    pub fn word_start(&self) -> usize {
+        let mut start = self.cursor;
+        for (i, c) in self.buf[..self.cursor].char_indices().rev() {
+            if c.is_alphanumeric() || matches!(c, '_' | '#' | '+' | ':') {
+                start = i;
+            } else {
+                break;
+            }
+        }
+        start
+    }
+
+    /// The word fragment between [`Self::word_start`] and the cursor —
+    /// the dabbrev completion prefix.
+    #[must_use]
+    pub fn word_prefix(&self) -> &str {
+        &self.buf[self.word_start()..self.cursor]
+    }
+
+    /// Replace `start..cursor` with `text`, cursor after it (the
+    /// completion-accept edit). `start` must be a char boundary at or
+    /// before the cursor.
+    pub fn replace_to_cursor(&mut self, start: usize, text: &str) {
+        if start <= self.cursor && self.buf.is_char_boundary(start) {
+            self.buf.replace_range(start..self.cursor, text);
+            self.cursor = start + text.len();
+        }
+    }
+
+    /// TAB in Insert mode: org-tempo expansion when the current line is
+    /// a template trigger (`<s` → `#+BEGIN_SRC …`, like Emacs
+    /// org-tempo), otherwise a two-space soft indent. After `<s` the
+    /// cursor sits at the end of the `#+BEGIN_SRC ` line so the
+    /// language can be typed immediately.
+    pub fn tempo_expand_or_indent(&mut self) {
+        let template: Option<(&str, &str)> = match self.current_line().trim() {
+            "<s" => Some(("#+BEGIN_SRC ", "#+END_SRC")),
+            "<e" => Some(("#+BEGIN_EXAMPLE", "#+END_EXAMPLE")),
+            "<q" => Some(("#+BEGIN_QUOTE", "#+END_QUOTE")),
+            "<c" => Some(("#+BEGIN_CENTER", "#+END_CENTER")),
+            "<C" => Some(("#+BEGIN_COMMENT", "#+END_COMMENT")),
+            "<v" => Some(("#+BEGIN_VERSE", "#+END_VERSE")),
+            _ => None,
+        };
+        if let Some((begin, end)) = template {
+            let start = self.line_start(self.cursor);
+            let stop = self.line_end(self.cursor);
+            self.buf.replace_range(start..stop, &format!("{begin}\n\n{end}"));
+            self.cursor = start + begin.len();
+        } else {
+            self.insert_str("  ");
+        }
+    }
+}
+
+/// Org keywords always offered by the body-editor completion, beside
+/// the dabbrev words mined from the vault.
+const ORG_COMPLETION_KEYWORDS: &[&str] = &[
+    "TODO",
+    "DONE",
+    "NEXT",
+    "WAIT",
+    "CANCELLED",
+    "SCHEDULED:",
+    "DEADLINE:",
+    ":PROPERTIES:",
+    ":END:",
+    "#+BEGIN_SRC",
+    "#+END_SRC",
+    "#+BEGIN_QUOTE",
+    "#+END_QUOTE",
+    "#+TITLE:",
+    "#+FILETAGS:",
+];
+
+/// Completion candidates for `prefix`: org keywords first, then
+/// dabbrev-style words (≥ 3 chars) mined from every document in the
+/// vault — sorted + deduped (I6), the exact prefix itself excluded.
+#[must_use]
+pub fn body_completions(prefix: &str, vault: &closure_store::Vault) -> Vec<String> {
+    if prefix.is_empty() {
+        return Vec::new();
+    }
+    let mut keywords: Vec<String> = ORG_COMPLETION_KEYWORDS
+        .iter()
+        .filter(|k| k.starts_with(prefix) && **k != prefix)
+        .map(|k| (*k).to_owned())
+        .collect();
+    let mut words: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+    for (_p, doc) in vault.iter() {
+        for word in doc
+            .source()
+            .split(|c: char| !(c.is_alphanumeric() || c == '_'))
+        {
+            if word.len() >= 3 && word.starts_with(prefix) && word != prefix {
+                words.insert(word.to_owned());
+            }
+        }
+    }
+    keywords.extend(words);
+    keywords.dedup();
+    keywords
+}
+
+/// A live completion cycle in the body editor: the prefix start, the
+/// candidate list, and the currently-applied index.
+#[derive(Debug, Clone)]
+struct CompletionSession {
+    start: usize,
+    items: Vec<String>,
+    ix: usize,
+}
+
 /// Modal command-surface launcher (the "modal GUI" experiment).
 ///
 /// Unlike [`App`] (a Notion-style type-to-filter launcher), `ModalApp`
@@ -3329,7 +3708,8 @@ pub struct ModalApp {
     selected: usize,
     query: String,
     capture_buf: String,
-    body_buf: String,
+    body: BodyEditor,
+    completion: Option<CompletionSession>,
     edit_target: Option<String>,
     /// Headline id whose backlinks the Backlinks surface is showing.
     link_target: Option<String>,
@@ -3354,7 +3734,8 @@ impl ModalApp {
             selected: 0,
             query: String::new(),
             capture_buf: String::new(),
-            body_buf: String::new(),
+            body: BodyEditor::new(),
+            completion: None,
             edit_target: None,
             link_target: None,
             field_target: None,
@@ -3842,39 +4223,124 @@ impl ModalApp {
             .collect()
     }
 
-    /// Body editor keys (org-edit-special): Esc cancels, `C-<enter>`
-    /// commits through the Vault (I8), Enter inserts a newline,
-    /// Backspace deletes, printable chars append. Mirrors
-    /// [`App::on_editbody_key`].
+    /// Body editor keys (org-edit-special), vim-modal (contract revised
+    /// 2026-07-04): `C-<enter>` commits from either mode. INSERT types
+    /// at the cursor, `Esc` drops to NORMAL. NORMAL navigates
+    /// (`h`/`j`/`k`/`l`/arrows/`0`/`$`), edits (`i`/`a`/`o`/`x`), and
+    /// `Esc` cancels the edit.
     fn on_editbody_key(&mut self, shell: &mut Shell, key: &str, ctrl: bool, text: Option<char>) {
-        match key {
-            "escape" => {
-                self.edit_target = None;
-                self.body_buf.clear();
-                self.surface = ModalSurface::Browse;
-            }
-            "enter" if ctrl => self.commit_edit_body(shell),
-            "enter" => self.body_buf.push('\n'),
-            "backspace" => {
-                self.body_buf.pop();
-            }
-            _ => {
-                if let Some(c) = text.filter(|_| !ctrl) {
-                    self.body_buf.push(c);
+        if key == "enter" && ctrl {
+            self.commit_edit_body(shell);
+            return;
+        }
+        match self.body.mode() {
+            EditorMode::Insert => match key {
+                "n" if ctrl => self.cycle_completion(shell, true),
+                "p" if ctrl => self.cycle_completion(shell, false),
+                "escape" => {
+                    self.completion = None;
+                    self.body.to_normal();
                 }
-            }
+                "enter" => {
+                    self.completion = None;
+                    self.body.insert_char('\n');
+                }
+                "backspace" => {
+                    self.completion = None;
+                    self.body.backspace();
+                }
+                "tab" => {
+                    self.completion = None;
+                    self.body.tempo_expand_or_indent();
+                }
+                _ => {
+                    if let Some(c) = text.filter(|_| !ctrl) {
+                        self.completion = None;
+                        self.body.insert_char(c);
+                    }
+                }
+            },
+            EditorMode::Normal => match key {
+                "escape" => {
+                    self.edit_target = None;
+                    self.body.clear();
+                    self.surface = ModalSurface::Browse;
+                }
+                "h" | "left" => self.body.left(),
+                "l" | "right" => self.body.right(),
+                "j" | "down" => self.body.down(),
+                "k" | "up" => self.body.up(),
+                "0" => self.body.line_home(),
+                "$" => self.body.line_end_motion(),
+                "i" => self.body.to_insert(),
+                "a" => {
+                    self.body.right();
+                    self.body.to_insert();
+                }
+                "x" => self.body.delete_at(),
+                "o" => self.body.open_below(),
+                _ => {}
+            },
         }
     }
 
     /// The body editor buffer (read).
     #[must_use]
     pub fn body_buffer(&self) -> &str {
-        &self.body_buf
+        self.body.text()
     }
 
-    /// Mutable body buffer for the egui multiline `TextEdit`.
-    pub const fn body_buffer_mut(&mut self) -> &mut String {
-        &mut self.body_buf
+    /// The body editor's vim mode (for the mode indicator).
+    #[must_use]
+    pub const fn body_mode(&self) -> EditorMode {
+        self.body.mode()
+    }
+
+    /// Candidates of the live completion cycle (empty when none) — the
+    /// popup a GUI renders beside the caret.
+    #[must_use]
+    pub fn body_completion_items(&self) -> &[String] {
+        self.completion.as_ref().map_or(&[], |s| &s.items)
+    }
+
+    /// Index of the currently-applied completion candidate.
+    #[must_use]
+    pub fn body_completion_ix(&self) -> Option<usize> {
+        self.completion.as_ref().map(|s| s.ix)
+    }
+
+    /// `C-n`/`C-p`: start or continue a completion cycle over the word
+    /// before the cursor — org keywords + vault dabbrev words
+    /// ([`body_completions`]). Each step replaces the prefix/previous
+    /// candidate in place; any other key ends the session.
+    fn cycle_completion(&mut self, shell: &Shell, forward: bool) {
+        if let Some(s) = &mut self.completion {
+            let n = s.items.len();
+            s.ix = if forward {
+                (s.ix + 1) % n
+            } else {
+                (s.ix + n - 1) % n
+            };
+            let (start, text) = (s.start, s.items[s.ix].clone());
+            self.body.replace_to_cursor(start, &text);
+            return;
+        }
+        let start = self.body.word_start();
+        let prefix = self.body.word_prefix().to_owned();
+        let items = body_completions(&prefix, &shell.vault);
+        if items.is_empty() {
+            "no completions".clone_into(&mut self.status);
+            return;
+        }
+        let text = items[0].clone();
+        self.body.replace_to_cursor(start, &text);
+        self.completion = Some(CompletionSession { start, items, ix: 0 });
+    }
+
+    /// The body editor cursor as `(line, column)` for the caret.
+    #[must_use]
+    pub fn body_cursor(&self) -> (usize, usize) {
+        self.body.cursor_line_col()
     }
 
     /// Commit the body buffer to the target headline through the kernel
@@ -3882,7 +4348,7 @@ impl ModalApp {
     pub fn commit_edit_body(&mut self, shell: &mut Shell) {
         if let Some(id) = self.edit_target.take() {
             let bid = closure_core::BlockId::from_existing(&id);
-            let mut body = self.body_buf.clone();
+            let mut body = self.body.text().to_owned();
             if !body.is_empty() && !body.ends_with('\n') {
                 body.push('\n');
             }
@@ -3891,7 +4357,7 @@ impl ModalApp {
                 Err(e) => self.status = format!("save failed: {e}"),
             }
         }
-        self.body_buf.clear();
+        self.body.clear();
         self.surface = ModalSurface::Browse;
     }
 
@@ -4066,7 +4532,8 @@ impl ModalApp {
             "edit-body" => {
                 if let Some(row) = self.rows(shell).get(self.selected).cloned() {
                     self.edit_target = Some(row.id);
-                    self.body_buf = self.detail(shell).map(|d| d.body).unwrap_or_default();
+                    self.body
+                        .load(self.detail(shell).map(|d| d.body).unwrap_or_default());
                     self.surface = ModalSurface::EditBody;
                     "edit body — C-Enter save, Esc cancel".clone_into(&mut self.status);
                 }

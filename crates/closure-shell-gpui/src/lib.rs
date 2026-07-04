@@ -55,13 +55,21 @@ pub fn mix_u32(a: u32, b: u32, t: u32) -> u32 {
 
 /// Resolve the shared [`Theme`] from the vault's `config.org`.
 ///
-/// Reads `theme = light|high-contrast|dark`; absent or invalid config
-/// falls back to dark — never an error (I9 validates at load; the
-/// window must still open on a themeless vault).
+/// Reads `theme = light|high-contrast|dark|doom-vibrant`. The reference
+/// shell's default — absent config or the config default `default` — is
+/// `doom-vibrant` (the user's colorscheme); an explicit name wins.
+/// Never an error (I9 validates at load; the window must still open on
+/// a themeless vault).
 #[must_use]
 pub fn resolve_theme(vault_path: &Path) -> Theme {
-    closure_config::Config::from_path(&vault_path.join("config.org"))
-        .map_or_else(|_| Theme::dark(), |cfg| Theme::from_name(&cfg.theme))
+    let name = closure_config::Config::from_path(&vault_path.join("config.org"))
+        .map_or_else(|_| "default".to_owned(), |cfg| cfg.theme);
+    match name.to_ascii_lowercase().as_str() {
+        "light" => Theme::light(),
+        "high-contrast" | "hc" => Theme::high_contrast(),
+        "dark" => Theme::dark(),
+        _ => Theme::doom_vibrant(),
+    }
 }
 
 /// Resolve the startup input mode from the vault's `config.org`
@@ -71,6 +79,77 @@ pub fn resolve_theme(vault_path: &Path) -> Theme {
 pub fn resolve_input_mode(vault_path: &Path) -> closure_config::InputMode {
     closure_config::Config::from_path(&vault_path.join("config.org"))
         .map_or(closure_config::InputMode::Doom, |cfg| cfg.input_mode)
+}
+
+/// Semantic classification of a body-editor span (per line).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BodySpan {
+    /// Ordinary prose.
+    Plain,
+    /// `#+…` keyword/meta lines (block delimiters, `#+TITLE:` …).
+    Meta,
+    /// `:PROPERTIES:` / `:KEY: value` / `:END:` drawer lines.
+    Drawer,
+    /// Language keyword inside a src block.
+    Keyword,
+    /// String/number literal inside a src block.
+    Literal,
+    /// Comment inside a src block.
+    Comment,
+}
+
+/// Syntax-highlight an org body for the editor pane: one entry per
+/// line, each a list of `(kind, text)` spans that concatenate back to
+/// the line verbatim.
+///
+/// `#+…` lines are Meta, drawer lines Drawer, and the content of
+/// `#+BEGIN_SRC lang` blocks is classified through the shared
+/// [`closure_tree_sitter::Highlighter`] contract — the dep-free
+/// keyword tier by default, real tree-sitter grammars behind the
+/// `tree-sitter` feature of that crate, no API change here.
+#[must_use]
+pub fn highlight_body(body: &str) -> Vec<Vec<(BodySpan, String)>> {
+    use closure_tree_sitter::{HighlightKind, Highlighter as _, KeywordHighlighter};
+    let mut out = Vec::new();
+    let mut in_src: Option<KeywordHighlighter> = None;
+    for line in body.split('\n') {
+        let trimmed = line.trim_start();
+        if trimmed.starts_with("#+") {
+            let lower = trimmed.to_ascii_lowercase();
+            if let Some(rest) = lower.strip_prefix("#+begin_src") {
+                in_src = Some(KeywordHighlighter::for_language(rest.trim()));
+            } else if lower.starts_with("#+end_src") {
+                in_src = None;
+            }
+            out.push(vec![(BodySpan::Meta, line.to_owned())]);
+        } else if let Some(hl) = &in_src {
+            let spans = hl
+                .highlight(line)
+                .into_iter()
+                .map(|h| {
+                    let kind = match h.kind {
+                        HighlightKind::Keyword => BodySpan::Keyword,
+                        HighlightKind::Literal => BodySpan::Literal,
+                        HighlightKind::Comment => BodySpan::Comment,
+                        _ => BodySpan::Plain,
+                    };
+                    (kind, line[h.start..h.end].to_owned())
+                })
+                .collect::<Vec<_>>();
+            out.push(if spans.is_empty() {
+                vec![(BodySpan::Plain, line.to_owned())]
+            } else {
+                spans
+            });
+        } else if trimmed.starts_with(':')
+            && (trimmed.ends_with(':') || trimmed.split_once(' ').is_some_and(|(k, _)| k.ends_with(':')))
+        {
+            out.push(vec![(BodySpan::Drawer, line.to_owned())]);
+        } else {
+            out.push(vec![(BodySpan::Plain, line.to_owned())]);
+        }
+    }
+    out
 }
 
 /// Launch fallback when the `gpui` feature is disabled (the default,
@@ -155,6 +234,9 @@ struct Colors {
     warning: u32,
     success: u32,
     border: u32,
+    heading2: u32,
+    heading3: u32,
+    code: u32,
 }
 
 #[cfg(feature = "gpui")]
@@ -177,6 +259,19 @@ impl Colors {
             warning: c(R::Warning),
             success: c(R::Success),
             border: mix_u32(bg, fg, 32),
+            heading2: c(R::Heading2),
+            heading3: c(R::Heading3),
+            code: c(R::Code),
+        }
+    }
+
+    /// doom-vibrant outline colour for a headline `level` (outline-1
+    /// blue, outline-2 magenta, outline-3 violet, cycling).
+    const fn outline(self, level: u8) -> u32 {
+        match (level.saturating_sub(1)) % 3 {
+            0 => self.accent,
+            1 => self.heading2,
+            _ => self.heading3,
         }
     }
 }
@@ -329,15 +424,33 @@ impl GpuiView {
                         .child(glyph.to_owned()),
                 );
                 if let Some(todo) = &row.todo {
+                    // Clickable TODO chip: click toggles the state, the
+                    // same registry command `t` runs (I8).
                     line = line.child(
                         div()
                             .mr_2()
+                            .px_1()
+                            .rounded_sm()
                             .text_color(rgb(todo_col))
                             .text_size(px(11.0))
+                            .cursor_pointer()
+                            .hover(move |s| s.bg(rgb(co.hover)))
+                            .on_mouse_down(
+                                MouseButton::Left,
+                                cx.listener(move |this, _ev, _w, cx| {
+                                    this.app.select(i, &this.shell);
+                                    this.app.run(&mut this.shell, "toggle-todo");
+                                    cx.notify();
+                                }),
+                            )
                             .child(todo.clone()),
                     );
                 }
-                line.child(div().text_color(rgb(co.fg)).child(row.title.clone()))
+                line.child(
+                    div()
+                        .text_color(rgb(co.outline(row.level)))
+                        .child(row.title.clone()),
+                )
                     .child(div().flex_grow())
                     .child(
                         div()
@@ -409,25 +522,121 @@ impl GpuiView {
                         )
                     }),
             ),
-            ModalSurface::EditBody => pane
-                .child(
-                    div()
-                        .text_color(rgb(co.accent))
-                        .text_size(px(12.0))
-                        .child("org-edit-special — C-Enter save, Esc cancel"),
-                )
-                .child(
-                    div()
-                        .flex_grow()
-                        .p_2()
-                        .bg(rgb(co.panel))
-                        .rounded_md()
-                        .text_color(rgb(co.fg))
-                        .text_size(px(13.0))
-                        .child(format!("{}▏", self.app.body_buffer())),
-                ),
+            ModalSurface::EditBody => pane.child(self.editor_pane(co, cx)),
             _ => self.detail_pane(pane, co, cx),
         }
+    }
+
+    /// The org-edit-special editor pane: syntax-highlighted lines
+    /// ([`highlight_body`]), a real caret at the editor cursor, the
+    /// vim mode chip (doom spaceline colours: INSERT green / NORMAL
+    /// blue), and the C-n completion popup.
+    fn editor_pane(&self, co: Colors, _cx: &mut Context<Self>) -> gpui::Div {
+        use closure_shell_core::EditorMode;
+        let (cur_line, cur_col) = self.app.body_cursor();
+        let insert = self.app.body_mode() == EditorMode::Insert;
+        let (mode_txt, mode_col) = if insert {
+            ("INSERT", co.success)
+        } else {
+            ("NORMAL", co.accent)
+        };
+        let span_color = |k: BodySpan| match k {
+            BodySpan::Plain => co.fg,
+            BodySpan::Meta => co.muted,
+            BodySpan::Drawer => co.error,
+            BodySpan::Keyword => co.accent,
+            BodySpan::Literal => co.success,
+            BodySpan::Comment => co.muted,
+        };
+        let header = div()
+            .flex()
+            .items_center()
+            .gap_2()
+            .child(
+                div()
+                    .px_2()
+                    .rounded_sm()
+                    .bg(rgb(mode_col))
+                    .text_color(rgb(co.bg))
+                    .text_size(px(11.0))
+                    .child(mode_txt),
+            )
+            .child(
+                div()
+                    .text_color(rgb(co.muted))
+                    .text_size(px(11.0))
+                    .child(if insert {
+                        "type · TAB tempo (<s…) · C-n complete · Esc → NORMAL · C-Enter save"
+                    } else {
+                        "h j k l 0 $ move · i a o insert · x delete · Esc cancel · C-Enter save"
+                    }),
+            );
+        let mut body = div()
+            .flex()
+            .flex_col()
+            .flex_grow()
+            .p_2()
+            .bg(rgb(co.panel))
+            .rounded_md()
+            .text_size(px(13.0));
+        for (ln, spans) in highlight_body(self.app.body_buffer()).into_iter().enumerate() {
+            let mut row = div().flex().min_h(px(18.0));
+            if ln == cur_line {
+                // Split the spans at the caret column and paint a bar.
+                let mut remaining = cur_col;
+                let mut placed = false;
+                for (kind, text) in spans {
+                    let chars = text.chars().count();
+                    if !placed && remaining <= chars {
+                        let pre: String = text.chars().take(remaining).collect();
+                        let post: String = text.chars().skip(remaining).collect();
+                        row = row
+                            .child(div().text_color(rgb(span_color(kind))).child(pre))
+                            .child(div().w(px(2.0)).bg(rgb(co.code)))
+                            .child(div().text_color(rgb(span_color(kind))).child(post));
+                        placed = true;
+                    } else {
+                        row = row.child(div().text_color(rgb(span_color(kind))).child(text));
+                        if !placed {
+                            remaining = remaining.saturating_sub(chars);
+                        }
+                    }
+                }
+                if !placed {
+                    row = row.child(div().w(px(2.0)).bg(rgb(co.code)));
+                }
+                row = row.bg(rgb(mix_u32(co.panel, co.selection, 96)));
+            } else {
+                for (kind, text) in spans {
+                    row = row.child(div().text_color(rgb(span_color(kind))).child(text));
+                }
+            }
+            body = body.child(row);
+        }
+        let mut pane = div().flex().flex_col().flex_grow().gap_2().child(header).child(body);
+        let items = self.app.body_completion_items();
+        if !items.is_empty() {
+            let ix = self.app.body_completion_ix().unwrap_or(0);
+            pane = pane.child(
+                div()
+                    .flex()
+                    .flex_col()
+                    .p_1()
+                    .rounded_md()
+                    .bg(rgb(co.bg))
+                    .border_1()
+                    .border_color(rgb(co.border))
+                    .children(items.iter().enumerate().map(|(i, item)| {
+                        div()
+                            .px_2()
+                            .text_size(px(12.0))
+                            .bg(if i == ix { rgb(co.selection) } else { rgb(co.bg) })
+                            .text_color(rgb(if i == ix { co.fg } else { co.muted }))
+                            .child(item.clone())
+                    })),
+            );
+        }
+        pane
     }
 
     /// Command palette entries with the cursor row highlighted; every

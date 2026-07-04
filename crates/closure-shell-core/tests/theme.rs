@@ -80,3 +80,36 @@ fn spacing_and_typography_are_positive() {
     assert!(!t.typography.font_family.is_empty());
     assert!(!t.typography.mono_family.is_empty());
 }
+
+#[test]
+fn doom_vibrant_matches_the_doom_emacs_palette() {
+    // The user's colorscheme: Doom Emacs doom-vibrant (gui values).
+    let t = Theme::from_name("doom-vibrant");
+    assert_eq!(t.name, "doom-vibrant");
+    assert_eq!(t.color(ColorRole::Bg).hex(), "#242730");
+    assert_eq!(t.color(ColorRole::Fg).hex(), "#bbc2cf");
+    assert_eq!(t.color(ColorRole::Accent).hex(), "#51afef");
+    assert_eq!(t.color(ColorRole::Muted).hex(), "#62686e");
+    assert_eq!(t.color(ColorRole::Selection).hex(), "#3d4451");
+    assert_eq!(t.color(ColorRole::Error).hex(), "#ff665c");
+    assert_eq!(t.color(ColorRole::Warning).hex(), "#fcce7b");
+    assert_eq!(t.color(ColorRole::Success).hex(), "#7bc275");
+    assert_eq!(t.color(ColorRole::Heading2).hex(), "#c57bdb");
+    assert_eq!(t.color(ColorRole::Heading3).hex(), "#a991f1");
+    assert_eq!(t.color(ColorRole::Code).hex(), "#e69055");
+    assert_eq!(Theme::from_name("vibrant").name, "doom-vibrant", "alias");
+}
+
+#[test]
+fn every_theme_fills_the_new_roles() {
+    for t in [
+        Theme::dark(),
+        Theme::light(),
+        Theme::high_contrast(),
+        Theme::doom_vibrant(),
+    ] {
+        for role in [ColorRole::Heading2, ColorRole::Heading3, ColorRole::Code] {
+            assert_eq!(t.color(role).hex().len(), 7, "{}/{role:?}", t.name);
+        }
+    }
+}

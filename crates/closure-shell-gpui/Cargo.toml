@@ -30,6 +30,7 @@ closure-core = { path = "../closure-core" }
 closure-store = { path = "../closure-store" }
 closure-query = { path = "../closure-query" }
 closure-shell-core = { path = "../closure-shell-core" }
+closure-tree-sitter = { path = "../closure-tree-sitter" }
 closure-config = { path = "../closure-config" }
 closure-input = { path = "../closure-input" }
 

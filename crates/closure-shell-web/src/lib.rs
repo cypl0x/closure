@@ -528,12 +528,13 @@ console.log('self-contained closure export ready');
 #[must_use]
 pub fn theme_css_variables(theme: &closure_shell_core::Theme) -> String {
     use closure_shell_core::ColorRole::{
-        Accent, Bg, Error, Fg, Muted, Selection, Success, Warning,
+        Accent, Bg, Code, Error, Fg, Heading2, Heading3, Muted, Selection, Success, Warning,
     };
     let p = |role| theme.color(role).hex();
     format!(
         "--fg:{};--bg:{};--accent:{};--muted:{};--selection:{};--error:{};--warning:{};\
-         --success:{};--space:{}px;--gap:{}px;--font:{};--mono:{};--font-size:{}px;",
+         --success:{};--heading2:{};--heading3:{};--code:{};--space:{}px;--gap:{}px;\
+         --font:{};--mono:{};--font-size:{}px;",
         p(Fg),
         p(Bg),
         p(Accent),
@@ -542,6 +543,9 @@ pub fn theme_css_variables(theme: &closure_shell_core::Theme) -> String {
         p(Error),
         p(Warning),
         p(Success),
+        p(Heading2),
+        p(Heading3),
+        p(Code),
         theme.spacing.unit_px,
         theme.spacing.gap_px,
         theme.typography.font_family,
