@@ -577,7 +577,14 @@ base, ours, theirs)` returns the `FieldConflict`s (title/body) both sides
   cancels; `C-Enter` commits from either mode (I8 `set_body`). TAB in
   INSERT runs org-tempo (`<s`→`#+BEGIN_SRC …`, `<e/<q/<c/<C/<v`),
   otherwise soft-indents. `C-n`/`C-p` cycle completion over org
-  keywords + dabbrev words mined from the vault (`body_completions`).
+  keywords + dabbrev words mined from the vault (`body_completions`;
+  the prefix matches case-insensitively, the candidate keeps its case).
+  NORMAL grew the vim vocabulary (2026-07-04b): `v` opens a charwise
+  VISUAL selection (inclusive; motions extend, `y` yanks, `d`/`x`
+  delete), `dd`/`yy` cut/copy the line, `p` pastes (linewise below the
+  line, charwise after the cursor) — one register shared with the
+  INSERT readline chords `C-a`/`C-e`/`C-b`/`C-f`/`C-d`/`C-k`/`C-u`/
+  `C-w`/`C-y`.
   The gpui pane renders `highlight_body` spans — `#+` meta, drawer
   lines, and src-block content classified through the shared
   `closure_tree_sitter::Highlighter` contract (keyword tier hermetic,

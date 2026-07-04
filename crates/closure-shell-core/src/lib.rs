@@ -3378,8 +3378,12 @@ pub enum EditorMode {
     /// Typing inserts at the cursor; `Esc` drops to [`Self::Normal`].
     Insert,
     /// `h`/`j`/`k`/`l` navigate, `i`/`a`/`o` insert, `x` deletes,
-    /// `Esc` cancels the edit.
+    /// `v` selects, `dd`/`yy`/`p` cut/copy/paste lines, `Esc` cancels
+    /// the edit.
     Normal,
+    /// Charwise selection from an anchor (`v`): motions extend, `y`
+    /// yanks, `d`/`x` delete, `Esc` returns to Normal.
+    Visual,
 }
 
 /// A modal multi-line text editor with a real cursor — the state
@@ -3393,6 +3397,16 @@ pub struct BodyEditor {
     buf: String,
     cursor: usize,
     mode: EditorMode,
+    /// Visual-mode selection anchor (byte offset).
+    anchor: usize,
+    /// The yank/kill register shared by vim (`y`/`d`/`p`) and the
+    /// readline chords (`C-k`/`C-u`/`C-w`/`C-y`).
+    register: String,
+    /// Whether the register holds whole lines (`dd`/`yy` → `p` pastes
+    /// below the current line).
+    linewise: bool,
+    /// First stroke of a two-stroke Normal command (`d` of `dd`).
+    pending: Option<char>,
 }
 
 impl Default for BodyEditor {
@@ -3409,6 +3423,10 @@ impl BodyEditor {
             buf: String::new(),
             cursor: 0,
             mode: EditorMode::Insert,
+            anchor: 0,
+            register: String::new(),
+            linewise: false,
+            pending: None,
         }
     }
 
@@ -3609,6 +3627,187 @@ impl BodyEditor {
         }
     }
 
+    /// One Normal/Visual-mode key (motions, `i`/`a`/`o`/`x`, `v`,
+    /// `dd`/`yy`/`p`, Visual `y`/`d`). `Esc` leaves Visual or clears a
+    /// pending stroke; the *caller* cancels the edit on `Esc` when
+    /// [`Self::pending_stroke`] is clear and the mode is Normal.
+    pub fn modal_key(&mut self, key: &str) {
+        // Two-stroke commands first (`dd` / `yy`).
+        if self.mode == EditorMode::Normal {
+            match (self.pending.take(), key) {
+                (Some('d'), "d") => {
+                    self.delete_line();
+                    return;
+                }
+                (Some('y'), "y") => {
+                    self.yank_line();
+                    return;
+                }
+                (None, "d") => {
+                    self.pending = Some('d');
+                    return;
+                }
+                (None, "y") => {
+                    self.pending = Some('y');
+                    return;
+                }
+                _ => {}
+            }
+        }
+        match key {
+            "h" | "left" => self.left(),
+            "l" | "right" => self.right(),
+            "j" | "down" => self.down(),
+            "k" | "up" => self.up(),
+            "0" => self.line_home(),
+            "$" => self.line_end_motion(),
+            "i" => self.mode = EditorMode::Insert,
+            "a" => {
+                self.right();
+                self.mode = EditorMode::Insert;
+            }
+            "o" => self.open_below(),
+            "v" => {
+                self.anchor = self.cursor;
+                self.mode = EditorMode::Visual;
+            }
+            "escape" if self.mode == EditorMode::Visual => self.mode = EditorMode::Normal,
+            "y" if self.mode == EditorMode::Visual => {
+                let (lo, hi) = self.selection();
+                self.register = self.buf[lo..hi].to_owned();
+                self.linewise = false;
+                self.cursor = lo;
+                self.mode = EditorMode::Normal;
+            }
+            "d" | "x" if self.mode == EditorMode::Visual => {
+                let (lo, hi) = self.selection();
+                self.register = self.buf[lo..hi].to_owned();
+                self.linewise = false;
+                self.buf.replace_range(lo..hi, "");
+                self.cursor = lo;
+                self.mode = EditorMode::Normal;
+            }
+            "x" => self.delete_at(),
+            "p" => self.paste(),
+            _ => {}
+        }
+    }
+
+    /// The pending first stroke of a two-stroke command, if any.
+    #[must_use]
+    pub const fn pending_stroke(&self) -> Option<char> {
+        self.pending
+    }
+
+    /// The inclusive Visual selection as an exclusive byte range.
+    fn selection(&self) -> (usize, usize) {
+        let (lo, hi) = if self.anchor <= self.cursor {
+            (self.anchor, self.cursor)
+        } else {
+            (self.cursor, self.anchor)
+        };
+        let end = self.buf[hi..]
+            .chars()
+            .next()
+            .filter(|c| *c != '\n')
+            .map_or(hi, |c| hi + c.len_utf8());
+        (lo, end)
+    }
+
+    /// `yy`: copy the current line (linewise register).
+    pub fn yank_line(&mut self) {
+        let start = self.line_start(self.cursor);
+        let end = self.line_end(self.cursor);
+        self.register = format!("{}\n", &self.buf[start..end]);
+        self.linewise = true;
+    }
+
+    /// `dd`: cut the current line (linewise register).
+    pub fn delete_line(&mut self) {
+        let start = self.line_start(self.cursor);
+        let end = self.line_end(self.cursor);
+        self.register = format!("{}\n", &self.buf[start..end]);
+        self.linewise = true;
+        if end < self.buf.len() {
+            self.buf.replace_range(start..=end, "");
+            self.cursor = start;
+        } else if start > 0 {
+            self.buf.replace_range(start - 1..end, "");
+            self.cursor = self.line_start(start - 1);
+        } else {
+            self.buf.clear();
+            self.cursor = 0;
+        }
+    }
+
+    /// `p`: paste the register — linewise below the current line,
+    /// charwise after the cursor.
+    pub fn paste(&mut self) {
+        if self.register.is_empty() {
+            return;
+        }
+        if self.linewise {
+            let end = self.line_end(self.cursor);
+            let text = format!("\n{}", self.register.trim_end_matches('\n'));
+            self.buf.insert_str(end, &text);
+            self.cursor = end + 1;
+        } else {
+            let pos = self.buf[self.cursor..]
+                .chars()
+                .next()
+                .filter(|c| *c != '\n')
+                .map_or(self.cursor, |c| self.cursor + c.len_utf8());
+            let text = self.register.clone();
+            self.buf.insert_str(pos, &text);
+            self.cursor = pos;
+        }
+    }
+
+    /// Readline `C-k`: kill from the cursor to the end of the line
+    /// into the register.
+    pub fn kill_rest_of_line(&mut self) {
+        let end = self.line_end(self.cursor);
+        if end > self.cursor {
+            self.register = self.buf[self.cursor..end].to_owned();
+            self.linewise = false;
+            self.buf.replace_range(self.cursor..end, "");
+        }
+    }
+
+    /// Readline `C-u`: kill from the line start to the cursor into the
+    /// register.
+    pub fn kill_to_line_start(&mut self) {
+        let start = self.line_start(self.cursor);
+        if start < self.cursor {
+            self.register = self.buf[start..self.cursor].to_owned();
+            self.linewise = false;
+            self.buf.replace_range(start..self.cursor, "");
+            self.cursor = start;
+        }
+    }
+
+    /// Readline `C-w`: delete the word (plus trailing spaces) before
+    /// the cursor into the register.
+    pub fn delete_word_back(&mut self) {
+        let line_start = self.line_start(self.cursor);
+        let s = &self.buf[line_start..self.cursor];
+        let trimmed = s.trim_end_matches(' ');
+        let word = trimmed.trim_end_matches(|c: char| c.is_alphanumeric() || c == '_');
+        let start = line_start + word.len();
+        if start < self.cursor {
+            self.register = self.buf[start..self.cursor].to_owned();
+            self.linewise = false;
+            self.buf.replace_range(start..self.cursor, "");
+            self.cursor = start;
+        }
+    }
+
+    /// Readline `C-y`: insert the register at the cursor.
+    pub fn yank_insert(&mut self) {
+        let text = self.register.clone();
+        self.insert_str(&text);
+    }
+
     /// TAB in Insert mode: org-tempo expansion when the current line is
     /// a template trigger (`<s` → `#+BEGIN_SRC …`, like Emacs
     /// org-tempo), otherwise a two-space soft indent. After `<s` the
@@ -3663,9 +3862,10 @@ pub fn body_completions(prefix: &str, vault: &closure_store::Vault) -> Vec<Strin
     if prefix.is_empty() {
         return Vec::new();
     }
+    let lower = prefix.to_lowercase();
     let mut keywords: Vec<String> = ORG_COMPLETION_KEYWORDS
         .iter()
-        .filter(|k| k.starts_with(prefix) && **k != prefix)
+        .filter(|k| k.to_lowercase().starts_with(&lower) && **k != prefix)
         .map(|k| (*k).to_owned())
         .collect();
     let mut words: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
@@ -3674,7 +3874,9 @@ pub fn body_completions(prefix: &str, vault: &closure_store::Vault) -> Vec<Strin
             .source()
             .split(|c: char| !(c.is_alphanumeric() || c == '_'))
         {
-            if word.len() >= 3 && word.starts_with(prefix) && word != prefix {
+            // Dabbrev-style: the prefix matches case-insensitively, the
+            // candidate keeps its own case.
+            if word.len() >= 3 && word.to_lowercase().starts_with(&lower) && word != prefix {
                 words.insert(word.to_owned());
             }
         }
@@ -4237,6 +4439,28 @@ impl ModalApp {
             EditorMode::Insert => match key {
                 "n" if ctrl => self.cycle_completion(shell, true),
                 "p" if ctrl => self.cycle_completion(shell, false),
+                // Readline chords (the "normal input field" set).
+                "a" if ctrl => self.body.line_home(),
+                "e" if ctrl => self.body.line_end_motion(),
+                "b" if ctrl => self.body.left(),
+                "f" if ctrl => self.body.right(),
+                "d" if ctrl => self.body.delete_at(),
+                "k" if ctrl => {
+                    self.completion = None;
+                    self.body.kill_rest_of_line();
+                }
+                "u" if ctrl => {
+                    self.completion = None;
+                    self.body.kill_to_line_start();
+                }
+                "w" if ctrl => {
+                    self.completion = None;
+                    self.body.delete_word_back();
+                }
+                "y" if ctrl => {
+                    self.completion = None;
+                    self.body.yank_insert();
+                }
                 "escape" => {
                     self.completion = None;
                     self.body.to_normal();
@@ -4260,27 +4484,21 @@ impl ModalApp {
                     }
                 }
             },
-            EditorMode::Normal => match key {
-                "escape" => {
+            EditorMode::Normal | EditorMode::Visual => {
+                // Esc on a quiet Normal surface cancels the edit; every
+                // other key (incl. Esc mid-chord / in Visual) is the
+                // editor's own modal vocabulary.
+                if key == "escape"
+                    && self.body.mode() == EditorMode::Normal
+                    && self.body.pending_stroke().is_none()
+                {
                     self.edit_target = None;
                     self.body.clear();
                     self.surface = ModalSurface::Browse;
+                } else {
+                    self.body.modal_key(key);
                 }
-                "h" | "left" => self.body.left(),
-                "l" | "right" => self.body.right(),
-                "j" | "down" => self.body.down(),
-                "k" | "up" => self.body.up(),
-                "0" => self.body.line_home(),
-                "$" => self.body.line_end_motion(),
-                "i" => self.body.to_insert(),
-                "a" => {
-                    self.body.right();
-                    self.body.to_insert();
-                }
-                "x" => self.body.delete_at(),
-                "o" => self.body.open_below(),
-                _ => {}
-            },
+            }
         }
     }
 

@@ -47,6 +47,18 @@ grammars behind =tree-sitter=), spans concatenate back verbatim. The
 window paints spans + caret bar + INSERT/NORMAL chip (spaceline
 green/blue) + completion popup; TODO chips click-toggle; fold arrows,
 level colours. Build-verified under =--features gpui=.
+** DONE E6 visual mode + registers + readline chords [1/1]
+User round three: =v= charwise VISUAL (inclusive selection; motions
+extend, =y= yank, =d=/=x= delete, =Esc= back), =dd=/=yy=/=p= with a
+linewise-aware register, INSERT readline set (=C-a C-e C-b C-f C-d C-k
+C-u C-w C-y=) sharing the same register (=C-k= kill → =C-y= yank).
+Two-stroke pending (=d‸=) lives in the editor; =Esc= clears it or
+leaves VISUAL, and only a quiet NORMAL =Esc= cancels the edit.
+Completion prefix is now case-insensitive (dabbrev keeps candidate
+case) — the earlier case-sensitive match read as "completion doesn't
+work". The status glyph (○/●) is a click target like the TODO chip.
+=BodyEditor::modal_key= owns the NORMAL/VISUAL vocabulary so the
+ModalApp arm stays a thin cancel-or-delegate. 6 new tests.
 ** Decision (2026-07-04) Editor state lives in shell-core; highlight lives in the gpui crate.
 The cursor/mode/completion state is hermetic editor *behaviour* → it
 belongs beside ModalApp (tested in modal.rs). Highlighting is a

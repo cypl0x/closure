@@ -927,3 +927,105 @@ fn c_n_cycles_and_c_p_cycles_back() {
     app.on_key(&mut sh, "!", false, false, Some('!'));
     assert_eq!(app.body_buffer(), "alpha!");
 }
+
+// === Visual mode, registers, and readline chords in the body editor. ===
+
+fn editor_with(sh: &mut Shell, text: &str) -> ModalApp {
+    let mut app = ModalApp::new(InputMode::Vim);
+    app.on_key(sh, "i", false, false, Some('i'));
+    for c in text.chars() {
+        if c == '\n' {
+            app.on_key(sh, "enter", false, false, None);
+        } else {
+            app.on_key(sh, &c.to_string(), false, false, Some(c));
+        }
+    }
+    app
+}
+
+#[test]
+fn visual_mode_selects_yanks_and_pastes() {
+    let (_d, mut sh) = shell();
+    let mut app = editor_with(&mut sh, "abc");
+    app.on_key(&mut sh, "escape", false, false, None); // NORMAL, cursor col 3 -> clamp
+    app.on_key(&mut sh, "0", false, false, Some('0'));
+    app.on_key(&mut sh, "v", false, false, Some('v')); // VISUAL, anchor at 'a'
+    assert_eq!(app.body_mode(), closure_shell_core::EditorMode::Visual);
+    app.on_key(&mut sh, "l", false, false, Some('l'));
+    app.on_key(&mut sh, "l", false, false, Some('l')); // cover "abc" (inclusive)
+    app.on_key(&mut sh, "y", false, false, Some('y')); // yank -> NORMAL
+    assert_eq!(app.body_mode(), closure_shell_core::EditorMode::Normal);
+    assert_eq!(app.body_buffer(), "abc", "yank leaves text");
+    app.on_key(&mut sh, "$", false, false, Some('$'));
+    app.on_key(&mut sh, "p", false, false, Some('p')); // paste after cursor
+    assert_eq!(app.body_buffer(), "abcabc");
+}
+
+#[test]
+fn visual_d_deletes_the_selection_into_the_register() {
+    let (_d, mut sh) = shell();
+    let mut app = editor_with(&mut sh, "hello");
+    app.on_key(&mut sh, "escape", false, false, None);
+    app.on_key(&mut sh, "0", false, false, Some('0'));
+    app.on_key(&mut sh, "v", false, false, Some('v'));
+    app.on_key(&mut sh, "l", false, false, Some('l')); // "he"
+    app.on_key(&mut sh, "d", false, false, Some('d'));
+    assert_eq!(app.body_buffer(), "llo");
+    app.on_key(&mut sh, "p", false, false, Some('p')); // paste "he" after 'l'
+    assert_eq!(app.body_buffer(), "lhelo");
+}
+
+#[test]
+fn dd_deletes_the_line_and_p_pastes_it_below() {
+    let (_d, mut sh) = shell();
+    let mut app = editor_with(&mut sh, "one\ntwo\nthree");
+    app.on_key(&mut sh, "escape", false, false, None);
+    app.on_key(&mut sh, "k", false, false, Some('k')); // line 1 ("two")
+    app.on_key(&mut sh, "d", false, false, Some('d'));
+    app.on_key(&mut sh, "d", false, false, Some('d')); // dd
+    assert_eq!(app.body_buffer(), "one\nthree");
+    app.on_key(&mut sh, "j", false, false, Some('j')); // line "three"
+    app.on_key(&mut sh, "p", false, false, Some('p')); // linewise paste below
+    assert_eq!(app.body_buffer(), "one\nthree\ntwo");
+}
+
+#[test]
+fn yy_yanks_the_line_without_deleting() {
+    let (_d, mut sh) = shell();
+    let mut app = editor_with(&mut sh, "solo");
+    app.on_key(&mut sh, "escape", false, false, None);
+    app.on_key(&mut sh, "y", false, false, Some('y'));
+    app.on_key(&mut sh, "y", false, false, Some('y')); // yy
+    assert_eq!(app.body_buffer(), "solo");
+    app.on_key(&mut sh, "p", false, false, Some('p'));
+    assert_eq!(app.body_buffer(), "solo\nsolo");
+}
+
+#[test]
+fn insert_readline_chords_move_and_kill() {
+    let (_d, mut sh) = shell();
+    let mut app = editor_with(&mut sh, "hello world");
+    app.on_key(&mut sh, "a", true, false, None); // C-a -> line start
+    assert_eq!(app.body_cursor(), (0, 0));
+    app.on_key(&mut sh, "f", true, false, None); // C-f -> right
+    assert_eq!(app.body_cursor(), (0, 1));
+    app.on_key(&mut sh, "e", true, false, None); // C-e -> line end
+    assert_eq!(app.body_cursor(), (0, 11));
+    app.on_key(&mut sh, "w", true, false, None); // C-w -> delete word back
+    assert_eq!(app.body_buffer(), "hello ");
+    app.on_key(&mut sh, "a", true, false, None);
+    app.on_key(&mut sh, "k", true, false, None); // C-k -> kill to line end
+    assert_eq!(app.body_buffer(), "");
+    app.on_key(&mut sh, "y", true, false, None); // C-y -> yank the kill back
+    assert_eq!(app.body_buffer(), "hello ");
+    app.on_key(&mut sh, "u", true, false, None); // C-u -> kill to line start
+    assert_eq!(app.body_buffer(), "");
+}
+
+#[test]
+fn completion_prefix_is_case_insensitive_dabbrev_style() {
+    let (_d, mut sh) = shell();
+    let mut app = editor_with(&mut sh, "pers");
+    app.on_key(&mut sh, "n", true, false, None); // C-n
+    assert_eq!(app.body_buffer(), "Personal", "case-insensitive match, candidate case wins");
+}

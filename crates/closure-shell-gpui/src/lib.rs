@@ -417,10 +417,20 @@ impl GpuiView {
                         )
                         .child(if folded { "▸" } else { "▾" }),
                 );
+                // Status glyph: same click target as the TODO chip.
                 line = line.child(
                     div()
                         .w(px(18.0))
                         .text_color(rgb(todo_col))
+                        .cursor_pointer()
+                        .on_mouse_down(
+                            MouseButton::Left,
+                            cx.listener(move |this, _ev, _w, cx| {
+                                this.app.select(i, &this.shell);
+                                this.app.run(&mut this.shell, "toggle-todo");
+                                cx.notify();
+                            }),
+                        )
                         .child(glyph.to_owned()),
                 );
                 if let Some(todo) = &row.todo {
@@ -534,11 +544,12 @@ impl GpuiView {
     fn editor_pane(&self, co: Colors, _cx: &mut Context<Self>) -> gpui::Div {
         use closure_shell_core::EditorMode;
         let (cur_line, cur_col) = self.app.body_cursor();
-        let insert = self.app.body_mode() == EditorMode::Insert;
-        let (mode_txt, mode_col) = if insert {
-            ("INSERT", co.success)
-        } else {
-            ("NORMAL", co.accent)
+        let mode = self.app.body_mode();
+        // doom spaceline colours: insert green, normal blue, visual grey-violet.
+        let (mode_txt, mode_col) = match mode {
+            EditorMode::Insert => ("INSERT", co.success),
+            EditorMode::Normal => ("NORMAL", co.accent),
+            EditorMode::Visual => ("VISUAL", co.heading3),
         };
         let span_color = |k: BodySpan| match k {
             BodySpan::Plain => co.fg,
@@ -565,10 +576,14 @@ impl GpuiView {
                 div()
                     .text_color(rgb(co.muted))
                     .text_size(px(11.0))
-                    .child(if insert {
-                        "type · TAB tempo (<s…) · C-n complete · Esc → NORMAL · C-Enter save"
-                    } else {
-                        "h j k l 0 $ move · i a o insert · x delete · Esc cancel · C-Enter save"
+                    .child(match mode {
+                        EditorMode::Insert => {
+                            "type · TAB tempo (<s…) · C-n complete · C-a/e/k/y readline · Esc → NORMAL"
+                        }
+                        EditorMode::Normal => {
+                            "h j k l 0 $ move · i a o insert · x dd yy p · v visual · Esc cancel"
+                        }
+                        EditorMode::Visual => "motions extend · y yank · d delete · Esc → NORMAL",
                     }),
             );
         let mut body = div()
