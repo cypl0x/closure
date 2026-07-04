@@ -551,8 +551,25 @@ base, ours, theirs)` returns the `FieldConflict`s (title/body) both sides
 - `closure-cli` — the `closure` binary (`tui`, `check`, `fmt`, `parse`,
   `query`, `serve`).
 - `closure-shell-egui` — native desktop (egui via eframe).
-- `closure-shell-gpui` — native desktop (Zed's gpui). Alternative,
-  evaluated alongside egui.
+- `closure-shell-gpui` — native desktop (Zed's gpui). **The reference
+  GUI shell (Decision 2026-07-04).** The window hosts the `ModalApp`
+  command surface (not the type-to-filter launcher): Browse keys are
+  commands resolved against the active mode's keymap with pending-chord
+  which-key completions, `/` opens the search overlay that owns
+  type-to-filter, and the footer chords are therefore *honest* — what
+  the bar shows is exactly what the key does. Every mouse affordance
+  dispatches a registry-backed command through the same `ModalApp::run`
+  entry the chords use (I8): row click selects, the fold arrow toggles
+  `toggle-fold`, which-key chips run their command, palette rows run the
+  clicked entry (`palette_click`), and the detail fields open their
+  editor (title → `rename`, meta → `toggle-todo`, tags → `edit-tags`,
+  properties → `edit-property`, body → `edit-body`). Colours come from
+  the shared `Theme` tokens resolved from `config.org`
+  (`resolve_theme`), the startup mode from `input_mode`
+  (`resolve_input_mode`); hover/panel shades are derived by a pure
+  `mix_u32` blend — no hardcoded palette. The pure helpers are
+  hermetically tested (`tests/helpers.rs`); the window itself is
+  display-bound (feature `gpui`, build-verified + manual smoke).
 - `closure-shell-web` — self-contained single HTML bundle and
   localhost web-app (`closure serve`). `closure-wasm` (X2) is the
   client-side upgrade: a wasm-bindgen surface over the kernel

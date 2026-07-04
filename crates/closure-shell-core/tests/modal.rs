@@ -623,3 +623,150 @@ fn doom_z_toggles_the_fold_on_the_command_surface() {
     app.on_key(&mut sh, "z", false, false, Some('z'));
     assert_eq!(app.rows(&sh).len(), 4, "z again unfolds");
 }
+
+// === GPUI-REF: the modal surface becomes the reference GUI's editor
+// core. Mouse clicks need a public command entry; a top-notch editor
+// needs undo/redo, rename, add-sibling, delete, and a palette on the
+// command surface; which-key needs structured, clickable items. ===
+
+fn nested() -> (TempDir, Shell) {
+    let dir = tempfile::tempdir().expect("tmp");
+    fs::write(
+        dir.path().join("notes.org"),
+        "* TODO Ship parser\n** Subtask\n* Personal wiki\n* DONE Write spec\n",
+    )
+    .expect("write");
+    let v = Vault::open(dir.path()).expect("open");
+    (dir, Shell::new(v))
+}
+
+#[test]
+fn public_run_drives_a_command_like_a_key() {
+    // The mouse path: clicking a which-key item runs the same command
+    // the chord would (I8 — one dispatch path, no shell-private verbs).
+    let (_d, mut sh) = nested();
+    let mut app = ModalApp::new(InputMode::Doom);
+    app.run(&mut sh, "toggle-todo");
+    let detail = app.detail(&sh).expect("detail");
+    assert_eq!(detail.todo.as_deref(), Some("DONE"), "TODO flipped by run()");
+}
+
+#[test]
+fn delete_removes_the_selected_subtree() {
+    let (_d, mut sh) = nested();
+    let mut app = ModalApp::new(InputMode::Doom);
+    assert_eq!(app.rows(&sh).len(), 4);
+    app.run(&mut sh, "delete");
+    let titles: Vec<String> = app.rows(&sh).iter().map(|r| r.title.clone()).collect();
+    assert!(!titles.contains(&"Ship parser".to_owned()));
+    assert!(!titles.contains(&"Subtask".to_owned()), "subtree went with it");
+}
+
+#[test]
+fn undo_and_redo_work_on_the_command_surface() {
+    let (_d, mut sh) = nested();
+    let mut app = ModalApp::new(InputMode::Doom);
+    app.run(&mut sh, "delete");
+    assert_eq!(app.rows(&sh).len(), 2);
+    app.run(&mut sh, "undo");
+    assert_eq!(app.rows(&sh).len(), 4, "undo restores the subtree");
+    app.run(&mut sh, "redo");
+    assert_eq!(app.rows(&sh).len(), 2, "redo re-applies the delete");
+}
+
+#[test]
+fn rename_surface_prefills_and_commits() {
+    let (_d, mut sh) = nested();
+    let mut app = ModalApp::new(InputMode::Doom);
+    app.on_key(&mut sh, "r", false, false, Some('r'));
+    assert_eq!(app.surface(), ModalSurface::Rename);
+    assert_eq!(app.field_buffer(), "Ship parser", "prefilled with the title");
+    for _ in 0.."Ship parser".len() {
+        app.on_key(&mut sh, "backspace", false, false, None);
+    }
+    for c in "Shipped".chars() {
+        app.on_key(&mut sh, &c.to_string(), false, false, Some(c));
+    }
+    app.on_key(&mut sh, "enter", false, false, None);
+    assert_eq!(app.surface(), ModalSurface::Browse);
+    assert!(app.rows(&sh).iter().any(|r| r.title == "Shipped"));
+}
+
+#[test]
+fn add_sibling_surface_inserts_after_selected() {
+    let (_d, mut sh) = nested();
+    let mut app = ModalApp::new(InputMode::Doom);
+    app.on_key(&mut sh, "a", false, false, Some('a'));
+    assert_eq!(app.surface(), ModalSurface::AddSibling);
+    for c in "Brand new".chars() {
+        app.on_key(&mut sh, &c.to_string(), false, false, Some(c));
+    }
+    app.on_key(&mut sh, "enter", false, false, None);
+    assert!(app.rows(&sh).iter().any(|r| r.title == "Brand new"));
+}
+
+#[test]
+fn palette_on_the_command_surface_filters_and_runs() {
+    let (_d, mut sh) = nested();
+    let mut app = ModalApp::new(InputMode::Doom);
+    app.on_key(&mut sh, ":", false, false, Some(':'));
+    assert_eq!(app.surface(), ModalSurface::Palette);
+    for c in "fold".chars() {
+        app.on_key(&mut sh, &c.to_string(), false, false, Some(c));
+    }
+    let entries = app.palette_entries();
+    assert!(
+        entries.iter().any(|e| e.label == "fold"),
+        "typed filter narrows the palette: {entries:?}"
+    );
+    app.on_key(&mut sh, "enter", false, false, None);
+    assert_eq!(app.surface(), ModalSurface::Browse);
+    assert_eq!(app.rows(&sh).len(), 3, "running fold hid Subtask");
+}
+
+#[test]
+fn palette_escape_cancels() {
+    let (_d, mut sh) = nested();
+    let mut app = ModalApp::new(InputMode::Doom);
+    app.on_key(&mut sh, ":", false, false, Some(':'));
+    app.on_key(&mut sh, "escape", false, false, None);
+    assert_eq!(app.surface(), ModalSurface::Browse);
+}
+
+#[test]
+fn hint_items_mirror_the_mode_keymap() {
+    // Structured which-key data a GUI renders as clickable chips: the
+    // exact keymap pairs, never a hand-maintained list (I4).
+    let app = ModalApp::new(InputMode::Doom);
+    let items = app.hint_items();
+    let km = closure_input::mode_keymap(InputMode::Doom);
+    assert_eq!(items.len(), km.len());
+    assert!(items.iter().any(|(c, cmd)| c == "z" && cmd == "toggle-fold"));
+}
+
+#[test]
+fn row_fold_state_is_queryable_for_the_renderer() {
+    let (_d, mut sh) = nested();
+    let mut app = ModalApp::new(InputMode::Doom);
+    let id = app.rows(&sh)[0].id.clone();
+    assert!(!closure_shell_core::is_row_folded(&sh, &id));
+    app.run(&mut sh, "toggle-fold");
+    assert!(closure_shell_core::is_row_folded(&sh, &id), "▸ marker source");
+}
+
+#[test]
+fn palette_click_runs_the_clicked_entry() {
+    // Mouse path for the palette: clicking row i runs that entry —
+    // same commit as Enter on a moved cursor.
+    let (_d, mut sh) = nested();
+    let mut app = ModalApp::new(InputMode::Doom);
+    app.on_key(&mut sh, ":", false, false, Some(':'));
+    let entries = app.palette_entries();
+    let fold_at = entries
+        .iter()
+        .position(|e| e.label == "fold")
+        .expect("fold entry");
+    app.palette_click(&mut sh, fold_at);
+    assert_eq!(app.surface(), ModalSurface::Browse, "palette closed");
+    assert_eq!(app.rows(&sh).len(), 3, "clicked fold ran");
+}

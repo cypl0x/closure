@@ -13,6 +13,57 @@ file is the fine-grained, capability-level queue between them. Blocked
 on a design decision? Record it under [[*Decisions][Decisions]], pick the most
 reversible option, keep moving.
 
+* DONE GPUI-REF — the reference GUI: modal editor + mouse + honest which-key [3/3]
+User picked gpui as the single GUI focus (Decision 2026-07-04, memory)
+and reported the launcher pain live: the filter input swallowed every
+bare key (=q= typed into the query while which-key promised =q:quit=),
+no mouse, no editor feel. The fix is the pivot the 2026-06-14 Decision
+deferred: the gpui window now hosts the =ModalApp= command surface.
+** DONE R1 ModalApp grows the missing editor verbs [1/1]
+=run(shell, cmd)= is the public mouse entry (chips/palette/fields
+dispatch the SAME command a chord would, I8); =undo=/=redo= (per-file
+via =Vault::undo_in/redo_in= on the selected row's file), =rename= /
+=add-sibling= (prefilled single-line field surfaces), =delete=, and a
+=Palette= surface (shared =command_palette= source, typed filter,
+cursor, =palette_click= for the mouse) all land on the command surface;
+=hint_items()= exposes the keymap as structured clickable pairs;
+=is_row_folded= backs the ▸ arrow. 11 new modal tests.
+** DONE R2 gpui window on ModalApp [1/1]
+The window drives =ModalApp::on_key= (ctrl+alt+text translated from the
+gpui keystroke) and paints per surface: outline rows (fold arrow ▸/▾,
+TODO glyph + keyword colours, level indent, hover + selection border,
+scroll wheel moves the cursor), detail pane with click-to-edit fields,
+palette pane with clickable described entries + chords, agenda/blocks/
+backlinks lists, body editor. Header: clickable mode chip
+(=cycle-mode=), =＋ capture=, =❯ palette=. Footer: full clickable
+binding bar from =hint_items= — or, mid-chord, the pending prefix + the
+=completions()= which-key popup. Colours are the shared =Theme= tokens
+(=resolve_theme= from config.org, =mix_u32= hover/panel shades,
+=color_u32= packing — all hermetically tested); startup mode from
+=input_mode= (=resolve_input_mode=, default Doom).
+** DONE R3 Honest which-key [1/1]
+The footer shows the ACTIVE mode's real chords and the modal surface
+executes exactly those chords — the launcher's "=q:quit= shown, =C-q=
+required, =q= filters" lie is structurally gone (the search overlay
+owns typing; Browse never types-to-filter). Mid-chord the bar switches
+to the org-style completions popup (=g ‸= + remaining strokes), so
+multi-stroke chords are discoverable in place.
+** Decision (2026-07-04) The reference GUI hosts ModalApp, superseding the 2026-06-14 launcher decision.
+That Decision kept GUIs as launchers because a modal command surface
+"can't be tried on screen" headlessly. The user is now smoke-testing
+the gpui window on a desktop (screenshots in session) and explicitly
+asked for the editor feel, so the blocker is gone. The launcher =App=
+stays for egui (untouched, still tested); gpui switches to the SAME
+=ModalApp= the modal tests already gate, so the window remains a thin
+translate+paint adapter (I7) and every affordance routes through
+=ModalApp::run= → registry commands (I8). Niche commands the modal
+surface does not implement (=db-view=, =headline-list=, =body-search=,
+llm/sniffer/conflict toggles) keep the honest "not available" status
+message — recorded, not hidden. Backlink rows are keyboard-jump only
+for now (click selects nothing); a click-to-jump seam is a small
+follow-up. Reversible: the window swaps state cores behind the same
+event translation if the launcher feel is ever wanted back.
+
 * DONE FOLD — persistent fold toggle on the outline [1/1]
 The outline hides a folded headline's descendants — in the launcher
 =App= (=toggle_fold=, =C-f=, palette =fold=) and the modal =ModalApp=

@@ -857,6 +857,13 @@ fn headline_is_folded(h: &closure_core::DocHeadline) -> bool {
         .any(|(k, v)| k == "VISIBILITY" && v == "folded")
 }
 
+/// Whether the row with block id `id` is currently folded — the
+/// renderer's source for the `▸` marker and the fold-arrow click.
+#[must_use]
+pub fn is_row_folded(shell: &Shell, id: &str) -> bool {
+    row_is_folded(shell, id)
+}
+
 /// Whether the row with block id `id` is currently folded.
 fn row_is_folded(shell: &Shell, id: &str) -> bool {
     let bid = closure_core::BlockId::from_existing(id);
@@ -3281,6 +3288,13 @@ pub enum ModalSurface {
     TagsEdit,
     /// Editing a property on the selected headline (`key value` buffer).
     PropertyEdit,
+    /// Renaming the selected headline (single-line title buffer,
+    /// prefilled with the current title).
+    Rename,
+    /// Typing the title of a new sibling inserted after the selected row.
+    AddSibling,
+    /// Fuzzy command palette over the shared [`command_palette`] source.
+    Palette,
 }
 
 /// Which read-only list a generic list surface is showing (drives the
@@ -3296,6 +3310,8 @@ enum ListKind {
 enum FieldKind {
     Tags,
     Property,
+    Rename,
+    AddSibling,
 }
 
 /// Modal command-surface launcher (the "modal GUI" experiment).
@@ -3321,6 +3337,8 @@ pub struct ModalApp {
     /// surfaces (tags: space-separated; property: `key value`).
     field_target: Option<String>,
     field_buf: String,
+    /// Cursor into [`Self::palette_entries`] while the Palette is open.
+    palette_cursor: usize,
     pending: Vec<String>,
     status: String,
     quit: bool,
@@ -3341,10 +3359,101 @@ impl ModalApp {
             link_target: None,
             field_target: None,
             field_buf: String::new(),
+            palette_cursor: 0,
             pending: Vec::new(),
             status: String::new(),
             quit: false,
         }
+    }
+
+    /// Run `command` directly — the mouse path: a clicked which-key
+    /// chip or palette row dispatches the SAME command a chord would
+    /// (I8; no shell-private verbs). Key handling resolves chords to
+    /// exactly this entry point.
+    pub fn run(&mut self, shell: &mut Shell, command: &str) {
+        self.run_command(shell, command);
+    }
+
+    /// Which-key items for the active mode, as structured
+    /// `(chord, command)` pairs a GUI renders as clickable chips —
+    /// sourced from [`closure_input::mode_keymap`] (I4), never a
+    /// hand-maintained list.
+    #[must_use]
+    pub fn hint_items(&self) -> Vec<(String, String)> {
+        closure_input::mode_keymap(self.mode)
+            .iter()
+            .map(|(c, cmd)| ((*c).to_owned(), (*cmd).to_owned()))
+            .collect()
+    }
+
+    /// Palette rows for the current filter: the shared
+    /// [`command_palette`] source flattened in section order, so the
+    /// modal palette shows the same grouped, described, chord-carrying
+    /// entries as every other shell (G6).
+    #[must_use]
+    pub fn palette_entries(&self) -> Vec<PaletteEntry> {
+        command_palette(&self.field_buf, self.mode)
+            .into_iter()
+            .flat_map(|s| s.items)
+            .collect()
+    }
+
+    /// Cursor into [`Self::palette_entries`].
+    #[must_use]
+    pub const fn palette_cursor(&self) -> usize {
+        self.palette_cursor
+    }
+
+    /// Palette keys: typing filters, Up/Down move, Enter runs the
+    /// highlighted command through [`Self::run`], Esc cancels.
+    fn on_palette_key(&mut self, shell: &mut Shell, key: &str, text: Option<char>) {
+        match key {
+            "escape" => {
+                self.field_buf.clear();
+                self.palette_cursor = 0;
+                self.surface = ModalSurface::Browse;
+            }
+            "down" => {
+                let last = self.palette_entries().len().saturating_sub(1);
+                self.palette_cursor = (self.palette_cursor + 1).min(last);
+            }
+            "up" => self.palette_cursor = self.palette_cursor.saturating_sub(1),
+            "backspace" => {
+                self.field_buf.pop();
+                self.palette_cursor = 0;
+            }
+            "enter" => self.commit_palette(shell),
+            _ => {
+                if let Some(c) = text {
+                    self.field_buf.push(c);
+                    self.palette_cursor = 0;
+                }
+            }
+        }
+    }
+
+    /// Run the palette entry under the cursor and close the palette.
+    fn commit_palette(&mut self, shell: &mut Shell) {
+        let pick = self
+            .palette_entries()
+            .get(self.palette_cursor)
+            .map(|e| e.action.command().to_owned());
+        self.field_buf.clear();
+        self.palette_cursor = 0;
+        self.surface = ModalSurface::Browse;
+        if let Some(cmd) = pick {
+            self.run_command(shell, &cmd);
+        }
+    }
+
+    /// Mouse path for the palette: clicking row `i` runs that entry —
+    /// the same commit Enter performs on a moved cursor.
+    pub fn palette_click(&mut self, shell: &mut Shell, i: usize) {
+        if self.surface != ModalSurface::Palette {
+            return;
+        }
+        self.palette_cursor = i.min(self.palette_entries().len().saturating_sub(1));
+        self.commit_palette(shell);
     }
 
     /// Active editing mode.
@@ -3537,6 +3646,9 @@ impl ModalApp {
             ModalSurface::Blocks => self.on_list_key(shell, key, ListKind::Blocks),
             ModalSurface::TagsEdit => self.on_field_key(shell, key, text, FieldKind::Tags),
             ModalSurface::PropertyEdit => self.on_field_key(shell, key, text, FieldKind::Property),
+            ModalSurface::Rename => self.on_field_key(shell, key, text, FieldKind::Rename),
+            ModalSurface::AddSibling => self.on_field_key(shell, key, text, FieldKind::AddSibling),
+            ModalSurface::Palette => self.on_palette_key(shell, key, text),
             ModalSurface::Browse => self.on_browse_key(shell, key, ctrl, alt, text),
         }
     }
@@ -3569,6 +3681,16 @@ impl ModalApp {
                                 let _ = shell.set_property(&bid, k.trim(), v.trim());
                             } else if !self.field_buf.trim().is_empty() {
                                 let _ = shell.set_property(&bid, self.field_buf.trim(), "");
+                            }
+                        }
+                        FieldKind::Rename => {
+                            if !self.field_buf.trim().is_empty() {
+                                let _ = shell.rename_headline(&bid, self.field_buf.trim());
+                            }
+                        }
+                        FieldKind::AddSibling => {
+                            if !self.field_buf.trim().is_empty() {
+                                let _ = shell.add_sibling(&bid, self.field_buf.trim());
                             }
                         }
                     }
@@ -3856,6 +3978,9 @@ impl ModalApp {
         }
     }
 
+    // A flat one-arm-per-command dispatch reads clearest as one match;
+    // the same precedent as `view_to_json` / `qml_item`.
+    #[allow(clippy::too_many_lines)]
     fn run_command(&mut self, shell: &mut Shell, cmd: &str) {
         let last = self.rows(shell).len().saturating_sub(1);
         match cmd {
@@ -3954,6 +4079,58 @@ impl ModalApp {
                     InputMode::Doom => InputMode::Helix,
                     InputMode::Helix => InputMode::Notion,
                 };
+            }
+            "rename" => {
+                if let Some(row) = self.rows(shell).get(self.selected).cloned() {
+                    self.field_target = Some(row.id);
+                    self.field_buf = row.title;
+                    self.surface = ModalSurface::Rename;
+                    "rename — Enter save, Esc cancel".clone_into(&mut self.status);
+                }
+            }
+            "add-sibling" => {
+                if let Some(row) = self.rows(shell).get(self.selected).cloned() {
+                    self.field_target = Some(row.id);
+                    self.field_buf.clear();
+                    self.surface = ModalSurface::AddSibling;
+                    "add sibling — Enter save, Esc cancel".clone_into(&mut self.status);
+                }
+            }
+            "delete" => {
+                if let Some(row) = self.rows(shell).get(self.selected).cloned() {
+                    let bid = closure_core::BlockId::from_existing(&row.id);
+                    match shell.remove_subtree(&bid) {
+                        Ok(()) => self.status = format!("deleted: {}", row.title),
+                        Err(e) => self.status = format!("delete failed: {e}"),
+                    }
+                    self.selected = self.selected.min(self.rows(shell).len().saturating_sub(1));
+                }
+            }
+            "undo" => {
+                if let Some(row) = self.rows(shell).get(self.selected).cloned() {
+                    let path = std::path::PathBuf::from(&row.path);
+                    match shell.vault.undo_in(&path) {
+                        Ok(()) => "undo".clone_into(&mut self.status),
+                        Err(e) => self.status = format!("undo failed: {e}"),
+                    }
+                    self.selected = self.selected.min(self.rows(shell).len().saturating_sub(1));
+                }
+            }
+            "redo" => {
+                if let Some(row) = self.rows(shell).get(self.selected).cloned() {
+                    let path = std::path::PathBuf::from(&row.path);
+                    match shell.vault.redo_in(&path) {
+                        Ok(()) => "redo".clone_into(&mut self.status),
+                        Err(e) => self.status = format!("redo failed: {e}"),
+                    }
+                    self.selected = self.selected.min(self.rows(shell).len().saturating_sub(1));
+                }
+            }
+            "palette" => {
+                self.field_buf.clear();
+                self.palette_cursor = 0;
+                self.surface = ModalSurface::Palette;
+                "palette — type to filter, Enter to run".clone_into(&mut self.status);
             }
             other => self.status = format!("{other}: not available in the modal GUI experiment"),
         }
