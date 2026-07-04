@@ -587,6 +587,13 @@ base, ours, theirs)` returns the `FieldConflict`s (title/body) both sides
   `C-w`/`C-y`. The renderer reads the selection through
   `ModalApp::body_selection()` (exclusive byte range, `None` outside
   Visual) and paints it exactly, span-split at the selection edges.
+  Backlink rows are click targets (`backlink_click`, the Enter jump's
+  mouse path). The window renders the shared `Feedback` queue (G7) as
+  a toast strip fed by `status_toast` over status-line changes
+  (failures error, destructive successes warn, chatter silent). The
+  wheel scrolls the viewport, not the cursor: `ModalApp::scroll_by`
+  sets a clamped override that `view_window` prefers until any
+  selection movement clears it.
   The gpui pane renders `highlight_body` spans — `#+` meta, drawer
   lines, and src-block content classified through the shared
   `closure_tree_sitter::Highlighter` contract (keyword tier hermetic,

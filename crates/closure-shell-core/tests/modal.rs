@@ -1053,3 +1053,65 @@ fn body_selection_reports_the_inclusive_byte_range() {
     app.on_key(&mut sh, "escape", false, false, None);
     assert_eq!(app.body_selection(), None);
 }
+
+// === L2: backlink rows are click targets. ===
+
+#[test]
+fn backlink_click_jumps_like_enter() {
+    let (_d, mut sh) = linked_shell();
+    let mut app = ModalApp::new(InputMode::Vim); // selection 0 = Target
+    app.on_key(&mut sh, "b", false, false, Some('b')); // open backlinks
+    assert_eq!(app.surface(), ModalSurface::Backlinks);
+    app.backlink_click(&sh, 0);
+    assert_eq!(app.surface(), ModalSurface::Browse);
+    assert_eq!(
+        app.detail(&sh).expect("detail").title,
+        "Source",
+        "the jump landed"
+    );
+    // out-of-range safety: press "b" again (now on Source, empty backlinks),
+    // click 99 must not panic (clamps or no-ops).
+    app.on_key(&mut sh, "b", false, false, Some('b'));
+    app.backlink_click(&sh, 99);
+    assert!(
+        matches!(app.surface(), ModalSurface::Browse | ModalSurface::Backlinks),
+        "surface after out-of-range backlink click"
+    );
+}
+
+// === L4: wheel scrolls the viewport, not the cursor. ===
+
+#[test]
+fn scroll_by_moves_the_viewport_not_the_selection() {
+    let (_d, sh) = shell();
+    let mut app = ModalApp::new(InputMode::Vim);
+    assert_eq!(app.selected(), 0);
+    app.scroll_by(2, &sh, 1); // page of 1, scroll down 2
+    let (off, rows) = app.view_window(&sh, 1);
+    assert_eq!(off, 2);
+    assert_eq!(rows[0].title, "Write spec");
+    assert_eq!(app.selected(), 0, "selection unchanged");
+}
+
+#[test]
+fn scroll_clamps_to_the_row_range() {
+    let (_d, sh) = shell();
+    let mut app = ModalApp::new(InputMode::Vim);
+    app.scroll_by(99, &sh, 1);
+    let (off, _rows) = app.view_window(&sh, 1);
+    assert_eq!(off, 2, "clamped to last");
+    app.scroll_by(-99, &sh, 1);
+    let (off, _rows) = app.view_window(&sh, 1);
+    assert_eq!(off, 0);
+}
+
+#[test]
+fn selection_movement_reclaims_the_viewport() {
+    let (_d, mut sh) = shell();
+    let mut app = ModalApp::new(InputMode::Vim);
+    app.scroll_by(2, &sh, 1);
+    app.on_key(&mut sh, "j", false, false, Some('j')); // selection -> 1
+    let (off, rows) = app.view_window(&sh, 1);
+    assert_eq!(off, 1, "keep-selection-visible rule back in charge");
+    assert_eq!(rows[0].title, "Personal wiki");
+}

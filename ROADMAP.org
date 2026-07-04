@@ -13,7 +13,7 @@ file is the fine-grained, capability-level queue between them. Blocked
 on a design decision? Record it under [[*Decisions][Decisions]], pick the most
 reversible option, keep moving.
 
-* WIP GPUI-POLISH — orchestrated polish loop (Fable specs/verifies, Grok implements) [1/6]
+* WIP GPUI-POLISH — orchestrated polish loop (Fable specs/verifies, Grok implements) [5/6]
 Protocol: repo root =goal-orchestrator.md=; leaves from
 =goal-gpui-polish.md=. Every leaf: Fable SPEC → Grok RED tests → Fable
 confirms RED → Grok GREEN → Fable gates (capped =just check= + gpui
@@ -29,6 +29,34 @@ editor pane paints the range exactly (spans split at the selection
 edges — every split point is a char boundary), replacing the caret on
 Visual lines; caret rendering elsewhere unchanged. Paint written by
 Fable per the escalation clause (denser to specify than to write).
+** DONE L2 Backlink rows are click targets [1/1]
+=jump_to_selected_backlink= extracted from the Enter arm (behaviour
+identical), =ModalApp::backlink_click(shell, i)= is the mouse path
+(inactive surface / out-of-range = safe no-op). Grok wrote test + impl
+from spec; Fable wired the gpui listener. Test:
+=backlink_click_jumps_like_enter=.
+** DONE L3 Toast strip from the shared Feedback queue [1/1]
+=closure_shell_gpui::status_toast= classifies the status line
+(failures → Error, =deleted:= → Warning, saved/fold/undo/redo →
+Success, chatter → =None=; 3 hermetic tests, Grok RED+GREEN). The
+window absorbs status changes into a =Feedback= queue (G7) and paints
+the newest three as severity-coloured chips under the context bar.
+** DONE L4 Wheel scrolls the viewport, not the cursor [1/1]
+=scroll_override: Option<usize>= + =ModalApp::scroll_by(delta, shell,
+page)= (clamped); =view_window= prefers the override; =select()= and
+the four nav arms clear it so keyboard movement reclaims the
+keep-selection-visible rule. 3 tests (move/clamp/reclaim), Grok
+RED+GREEN, first-try green. gpui wheel handler now scrolls the view.
+** DONE L5 Line-number gutter in the editor pane [1/1]
+Display-only (window layer): a 3-wide muted gutter per editor line,
+current line accented. No state change; covered by the feature build
+gate. Written by Fable (pure paint).
+** Decision (2026-07-04) Parallel dispatches share one commit when their files interleave.
+L2/L3/L4 ran as two parallel Grok workers (file-disjoint edits) plus
+Fable's window wiring; the results interleave in the same two files,
+so they land as one reviewed commit naming all three leaves — the
+one-leaf-one-commit rule bends only when parallelism actually
+interleaved the diffs, and the ROADMAP records each leaf separately.
 ** Decision (2026-07-04) Dispatch prompts ride files, not inline shell strings.
 First Grok GREEN dispatch lost the word =None= from a doc comment —
 backticks inside the inline =-p "…"= argument were command-substituted

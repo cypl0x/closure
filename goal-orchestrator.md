@@ -66,6 +66,10 @@ REVIEW   Claude reads the full diff. Checklist: I5 (no unwrap/expect),
          I7 (no logic in the window), I8 (mutations via Shell/run),
          I4 (new commands bound in all five keymaps), tests untouched
          except additions, no dependency changes, docs on new pub items.
+         Known artifact: dispatch prompts must avoid backticks (shell
+         quoting), so Grok docs arrive backtick-less — clippy
+         doc_markdown flags them; Claude adds the backticks in review
+         as a routine sub-10-line repair, not a Grok defect.
 COMMIT   Claude writes spec.md + ROADMAP Decision + conventional commit.
 LEDGER   One status line to the user.
 ```

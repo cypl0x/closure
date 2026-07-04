@@ -152,6 +152,30 @@ pub fn highlight_body(body: &str) -> Vec<Vec<(BodySpan, String)>> {
     out
 }
 
+/// Classify a [`ModalApp`] status line into a toast for the window's
+/// [`closure_shell_core::Feedback`] queue.
+///
+/// Failures are errors, destructive successes warn, positive outcomes
+/// succeed, and hint/chatter lines return `None`.
+#[must_use]
+pub fn status_toast(status: &str) -> Option<(closure_shell_core::ToastLevel, String)> {
+    if status.contains("failed") {
+        return Some((closure_shell_core::ToastLevel::Error, status.to_owned()));
+    }
+    if status.starts_with("deleted: ") {
+        return Some((closure_shell_core::ToastLevel::Warning, status.to_owned()));
+    }
+    if status == "body saved"
+        || status == "undo"
+        || status == "redo"
+        || status.starts_with("folded: ")
+        || status.starts_with("unfolded: ")
+    {
+        return Some((closure_shell_core::ToastLevel::Success, status.to_owned()));
+    }
+    None
+}
+
 /// Launch fallback when the `gpui` feature is disabled (the default,
 /// hermetic build). The kernel-side [`Shell`] is always available; the
 /// GPU window requires `--features gpui` and the system GPU/X11 libs.
@@ -204,6 +228,8 @@ pub fn run(vault_path: &Path) -> Result<(), String> {
                     app: ModalApp::new(input_mode),
                     theme,
                     focus_handle: cx.focus_handle(),
+                    feedback: closure_shell_core::Feedback::default(),
+                    last_status: String::new(),
                 })
             },
         );
@@ -284,6 +310,11 @@ struct GpuiView {
     app: ModalApp,
     theme: Theme,
     focus_handle: FocusHandle,
+    /// The shared async-feedback queue (G7) this window renders as a
+    /// toast strip; fed by [`status_toast`] over the status line.
+    feedback: closure_shell_core::Feedback,
+    /// Last absorbed status line (change detection for the toasts).
+    last_status: String,
 }
 
 #[cfg(feature = "gpui")]
@@ -305,16 +336,30 @@ impl GpuiView {
             .filter(|_| !m.control && !m.alt && !m.platform && !m.function);
         self.app
             .on_key(&mut self.shell, &ks.key, m.control, m.alt, text);
+        self.absorb_status();
         if self.app.should_quit() {
             cx.quit();
         }
         cx.notify();
     }
 
+    /// Feed a changed status line through [`status_toast`] into the
+    /// shared feedback queue (the toast strip's only source).
+    fn absorb_status(&mut self) {
+        let status = self.app.status().to_owned();
+        if status != self.last_status {
+            if let Some((level, text)) = status_toast(&status) {
+                self.feedback.notify(level, text);
+            }
+            self.last_status = status;
+        }
+    }
+
     /// Run a command from a mouse affordance (which-key chip, detail
     /// field, header button) — the same dispatch the chords use (I8).
     fn click(&mut self, command: &str, cx: &mut Context<Self>) {
         self.app.run(&mut self.shell, command);
+        self.absorb_status();
         if self.app.should_quit() {
             cx.quit();
         }
@@ -326,14 +371,12 @@ impl GpuiView {
             ScrollDelta::Lines(l) => l.y,
             ScrollDelta::Pixels(p) => f32::from(p.y) / 20.0,
         };
-        let steps = dy.abs().ceil() as usize;
-        let cur = self.app.selected();
-        let next = if dy < 0.0 {
-            cur.saturating_add(steps)
-        } else {
-            cur.saturating_sub(steps)
-        };
-        self.app.select(next, &self.shell);
+        // Wheel moves the viewport, not the cursor (L4); selection
+        // movement reclaims the view.
+        #[allow(clippy::cast_possible_truncation)]
+        let steps = dy.abs().ceil().min(1000.0) as i32;
+        let delta = if dy < 0.0 { steps } else { -steps };
+        self.app.scroll_by(delta, &self.shell, 40);
         cx.notify();
     }
 
@@ -528,7 +571,10 @@ impl GpuiView {
                             co,
                             i == self.app.selected(),
                             format!("⟵ {title}"),
-                            cx.listener(move |_this: &mut Self, _ev, _w, cx| cx.notify()),
+                            cx.listener(move |this: &mut Self, _ev, _w, cx| {
+                                this.app.backlink_click(&this.shell, i);
+                                cx.notify();
+                            }),
                         )
                     }),
             ),
@@ -598,7 +644,15 @@ impl GpuiView {
         let mut line_start = 0usize;
         for (ln, spans) in highlight_body(self.app.body_buffer()).into_iter().enumerate() {
             let line_len: usize = spans.iter().map(|(_, s)| s.len()).sum();
-            let mut row = div().flex().min_h(px(18.0));
+            // L5: line-number gutter, current line accented.
+            let mut row = div().flex().min_h(px(18.0)).child(
+                div()
+                    .w(px(34.0))
+                    .mr_2()
+                    .text_size(px(11.0))
+                    .text_color(rgb(if ln == cur_line { co.accent } else { co.muted }))
+                    .child(format!("{:>3}", ln + 1)),
+            );
             if let Some((lo, hi)) = selection {
                 // VISUAL: paint the selected byte range exactly; the
                 // selection is the position indicator here, no caret.
@@ -1036,6 +1090,34 @@ impl Render for GpuiView {
             .text_size(px(11.0))
             .child(self.app.status().to_owned());
 
+        // Toast strip: the newest three feedback items, severity-coloured.
+        let toasts = div().flex().gap_2().px_3().children(
+            self.feedback
+                .items()
+                .iter()
+                .rev()
+                .take(3)
+                .map(|item| {
+                    use closure_shell_core::FeedbackKind as K;
+                    let col = match item.kind {
+                        K::Error => co.error,
+                        K::Warning => co.warning,
+                        K::Success => co.success,
+                        K::Info | K::Progress(_) => co.accent,
+                    };
+                    div()
+                        .px_2()
+                        .rounded_md()
+                        .bg(rgb(mix_u32(co.bg, col, 48)))
+                        .border_1()
+                        .border_color(rgb(col))
+                        .text_color(rgb(col))
+                        .text_size(px(11.0))
+                        .child(format!("⚑ {}", item.text))
+                })
+                .collect::<Vec<_>>(),
+        );
+
         div()
             .key_context("ClosureGpui")
             .track_focus(&self.focus_handle(cx))
@@ -1048,6 +1130,7 @@ impl Render for GpuiView {
             .font_family(mono)
             .child(header)
             .child(context)
+            .child(toasts)
             .child(body)
             .child(status)
             .child(self.footer(co, cx))

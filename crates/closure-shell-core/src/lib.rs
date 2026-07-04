@@ -3932,6 +3932,8 @@ pub struct ModalApp {
     pending: Vec<String>,
     status: String,
     quit: bool,
+    /// Explicit wheel-scroll viewport offset; None = follow selection.
+    scroll_override: Option<usize>,
 }
 
 impl ModalApp {
@@ -3954,6 +3956,7 @@ impl ModalApp {
             pending: Vec::new(),
             status: String::new(),
             quit: false,
+            scroll_override: None,
         }
     }
 
@@ -4176,8 +4179,28 @@ impl ModalApp {
     /// Move the selection to row `i`, clamped to the current result
     /// set. Used by mouse clicks on a row (draw parity with [`App`]).
     pub fn select(&mut self, i: usize, shell: &Shell) {
+        self.scroll_override = None;
         let last = self.rows(shell).len().saturating_sub(1);
         self.selected = i.min(last);
+    }
+
+    /// Wheel scrolling: move the viewport by `delta` rows (negative =
+    /// up), clamped to the row range for a page-sized window. Does not
+    /// move the selection; any selection movement clears the override
+    /// and [`Self::view_window`] returns to its keep-selection-visible
+    /// rule.
+    pub fn scroll_by(&mut self, delta: i32, shell: &Shell, page: usize) {
+        let rows = self.rows(shell).len();
+        let page = page.max(1);
+        let max_off = rows.saturating_sub(page);
+        let base = self.scroll_override.unwrap_or_else(|| self.selected.saturating_sub(page - 1).min(max_off));
+        let step = usize::try_from(delta.unsigned_abs()).unwrap_or(usize::MAX);
+        let new = if delta < 0 {
+            base.saturating_sub(step)
+        } else {
+            base.saturating_add(step).min(max_off)
+        };
+        self.scroll_override = Some(new);
     }
 
     /// The visible slice of rows for a viewport of `page` rows, plus its
@@ -4186,6 +4209,15 @@ impl ModalApp {
     /// [`App::view_window`].
     #[must_use]
     pub fn view_window(&self, shell: &Shell, page: usize) -> (usize, Vec<Row>) {
+        if let Some(o) = self.scroll_override {
+            let rows = self.rows(shell);
+            let page = page.max(1);
+            if rows.len() > page {
+                let off = o.min(rows.len() - page);
+                return (off, rows[off..off + page].to_vec());
+            }
+            return (0, rows);
+        }
         let rows = self.rows(shell);
         if page == 0 || rows.len() <= page {
             return (0, rows);
@@ -4398,18 +4430,34 @@ impl ModalApp {
                 self.selected = (self.selected + 1).min(last);
             }
             "up" | "k" => self.selected = self.selected.saturating_sub(1),
-            "enter" => {
-                // Jump: make the chosen backlink the Browse selection.
-                if let Some((_, title)) = self.backlink_rows(shell).get(self.selected).cloned() {
-                    self.link_target = None;
-                    self.surface = ModalSurface::Browse;
-                    if let Some(idx) = self.rows(shell).iter().position(|r| r.title == title) {
-                        self.selected = idx;
-                    }
-                }
-            }
+            "enter" => self.jump_to_selected_backlink(shell),
             _ => {}
         }
+    }
+
+    fn jump_to_selected_backlink(&mut self, shell: &Shell) {
+        // Jump: make the chosen backlink the Browse selection.
+        if let Some((_, title)) = self.backlink_rows(shell).get(self.selected).cloned() {
+            self.link_target = None;
+            self.surface = ModalSurface::Browse;
+            if let Some(idx) = self.rows(shell).iter().position(|r| r.title == title) {
+                self.selected = idx;
+            }
+        }
+    }
+
+    /// Mouse path for the Backlinks surface: clicking row i jumps to
+    /// that linking headline - the same jump Enter performs. Out-of-range
+    /// clicks and an empty list are safe no-ops.
+    pub fn backlink_click(&mut self, shell: &Shell, i: usize) {
+        if self.surface != ModalSurface::Backlinks {
+            return;
+        }
+        if self.backlink_rows(shell).get(i).is_none() {
+            return;
+        }
+        self.selected = i;
+        self.jump_to_selected_backlink(shell);
     }
 
     /// Headlines that link to the headline the Backlinks surface was
@@ -4682,10 +4730,10 @@ impl ModalApp {
     fn run_command(&mut self, shell: &mut Shell, cmd: &str) {
         let last = self.rows(shell).len().saturating_sub(1);
         match cmd {
-            "next-file" => self.selected = (self.selected + 1).min(last),
-            "prev-file" => self.selected = self.selected.saturating_sub(1),
-            "first-file" => self.selected = 0,
-            "last-file" => self.selected = last,
+            "next-file" => { self.scroll_override = None; self.selected = (self.selected + 1).min(last) },
+            "prev-file" => { self.scroll_override = None; self.selected = self.selected.saturating_sub(1) },
+            "first-file" => { self.scroll_override = None; self.selected = 0 },
+            "last-file" => { self.scroll_override = None; self.selected = last },
             "quit" => self.quit = true,
             "capture-start" => {
                 self.surface = ModalSurface::Capture;

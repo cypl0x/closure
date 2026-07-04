@@ -99,3 +99,47 @@ fn highlight_roundtrips_the_text() {
         .collect();
     assert_eq!(joined.join("\n"), body, "spans cover every byte (I1 spirit)");
 }
+
+// === L3: status line -> toast classification. ===
+
+use closure_shell_core::ToastLevel;
+use closure_shell_gpui::status_toast;
+
+#[test]
+fn failures_toast_as_errors() {
+    assert_eq!(
+        status_toast("save failed: boom"),
+        Some((ToastLevel::Error, "save failed: boom".to_owned()))
+    );
+    assert_eq!(
+        status_toast("undo failed: x"),
+        Some((ToastLevel::Error, "undo failed: x".to_owned()))
+    );
+}
+
+#[test]
+fn destructive_and_positive_outcomes_toast() {
+    assert_eq!(
+        status_toast("deleted: Foo"),
+        Some((ToastLevel::Warning, "deleted: Foo".to_owned()))
+    );
+    assert_eq!(
+        status_toast("body saved"),
+        Some((ToastLevel::Success, "body saved".to_owned()))
+    );
+    assert_eq!(
+        status_toast("folded: Top"),
+        Some((ToastLevel::Success, "folded: Top".to_owned()))
+    );
+    assert_eq!(
+        status_toast("redo"),
+        Some((ToastLevel::Success, "redo".to_owned()))
+    );
+}
+
+#[test]
+fn chatter_stays_quiet() {
+    assert_eq!(status_toast(""), None);
+    assert_eq!(status_toast("browse - type to filter"), None);
+    assert_eq!(status_toast("rename - Enter save, Esc cancel"), None);
+}
