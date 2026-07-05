@@ -13,6 +13,21 @@ file is the fine-grained, capability-level queue between them. Blocked
 on a design decision? Record it under [[*Decisions][Decisions]], pick the most
 reversible option, keep moving.
 
+* DONE GPUI-MOUSE-D2 — mouse into the body editor (orchestrated) [1/1]
+Queue Q10-D2 of =goal-gpui-polish-3.md=.
+** DONE D2 click places the cursor; double-click selects the word [1/1]
+=ModalApp::body_click(line, col)= (clamped — =goto_line_col= now
+lands past-the-end lines on the last line, the mouse rule — keeps
+the mode, ends any completion session) and =body_double_click=
+(=select_word_at_cursor=: whitespace-delimited word → charwise
+VISUAL). The gpui editor pane renders non-caret lines as word-level
+click targets (each chunk carries its char column; stop-propagation
+keeps the row-level fallback — click on the empty tail → line end —
+from double-firing). Grok RED, Fable GREEN.
+Recorded gaps: precise column *within* a word (needs
+=InteractiveText='s char hit-testing — a text-pipeline rewrite),
+drag text selection, and D1 drag-and-drop row reordering.
+
 * DONE GPUI-UNDOTREE — undo-history surface (orchestrated) [1/1]
 Queue Q11 of =goal-gpui-polish-3.md= ("How to use undo(-tree)?").
 ** DONE U1 visualize the document undo-tree [1/1]

@@ -48,7 +48,7 @@ Standard text-field behaviour the user gets everywhere on KDE, inside INSERT mod
 - **W2** gpui: bottom popup panel after leader-key delay, multi-column like Doom's
   (screenshot reference), doom-vibrant chips.
 
-## Q10 — mouse & interaction depth
+## Q10 — mouse & interaction depth ⚙ D2 DONE 2026-07-05 (ROADMAP: GPUI-MOUSE-D2; D1 drag-and-drop + drag-select = recorded gaps)
 
 - **D1** drag-and-drop row reordering (drag heading row → drop between siblings →
   `move_subtree` command; I8).

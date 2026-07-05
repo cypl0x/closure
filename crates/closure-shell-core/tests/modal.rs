@@ -1937,3 +1937,61 @@ fn every_mode_binds_tab_to_toggle_fold() {
         );
     }
 }
+
+// === Q10-D2: mouse into the body editor. ===
+
+#[test]
+fn click_places_the_cursor() {
+    let (_d, mut sh) = shell();
+    let mut app = editor_with(&mut sh, "one two\nthree");
+    app.body_click(1, 2);
+    assert_eq!(app.body_cursor(), (1, 2));
+    app.body_click(0, 4);
+    assert_eq!(app.body_cursor(), (0, 4));
+    // still INSERT: type "X" inserts at the new cursor position
+    app.on_key(&mut sh, "X", false, false, Some('X'));
+    assert_eq!(app.body_buffer(), "one Xtwo\nthree");
+}
+
+#[test]
+fn click_clamps_to_line_and_buffer() {
+    let (_d, mut sh) = shell();
+    let mut app = editor_with(&mut sh, "ab");
+    // out of range must not panic; both line and col clamped
+    app.body_click(5, 9);
+    assert_eq!(app.body_cursor().0, 0);
+    assert_eq!(app.body_cursor().1, 2, "col clamped to line end");
+}
+
+#[test]
+fn double_click_selects_the_word() {
+    let (_d, mut sh) = shell();
+    let mut app = editor_with(&mut sh, "one two three");
+    app.on_key(&mut sh, "escape", false, false, None);
+    app.body_double_click(0, 5); // inside "two"
+    assert_eq!(app.body_mode(), closure_shell_core::EditorMode::Visual);
+    assert_eq!(
+        app.body_selection(),
+        Some((4, 7)),
+        "exactly the bytes of two: {:?}",
+        app.body_selection()
+    );
+}
+
+#[test]
+fn click_ends_a_completion_session() {
+    let dir = tempfile::tempdir().expect("tmp");
+    fs::write(dir.path().join("notes.org"), "* alpha one\n").expect("write");
+    let v = Vault::open(dir.path()).expect("open");
+    let mut sh = Shell::new(v);
+    let mut app = ModalApp::new(InputMode::Vim);
+    app.on_key(&mut sh, "i", false, false, Some('i'));
+    for c in "alp".chars() {
+        app.on_key(&mut sh, &c.to_string(), false, false, Some(c));
+    }
+    app.on_key(&mut sh, "n", true, false, None);
+    assert_eq!(app.body_buffer(), "alpha");
+    app.body_click(0, 0);
+    assert!(app.body_completion_items().is_empty());
+    assert_eq!(app.body_cursor(), (0, 0));
+}

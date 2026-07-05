@@ -647,7 +647,7 @@ impl GpuiView {
     /// ([`highlight_body`]), a real caret at the editor cursor, the
     /// vim mode chip (doom spaceline colours: INSERT green / NORMAL
     /// blue), and the C-n completion popup.
-    fn editor_pane(&self, co: Colors, _cx: &mut Context<Self>) -> gpui::Div {
+    fn editor_pane(&self, co: Colors, cx: &mut Context<Self>) -> gpui::Div {
         use closure_shell_core::EditorMode;
         let (cur_line, cur_col) = self.app.body_cursor();
         let mode = self.app.body_mode();
@@ -770,10 +770,65 @@ impl GpuiView {
                 }
                 row = row.bg(rgb(mix_u32(co.panel, co.selection, 96)));
             } else {
+                // D2: word-level click targets — each whitespace-delimited
+                // chunk carries its char column, so a click (or double
+                // click) lands the cursor exactly (the mouse path into
+                // BodyEditor).
+                let mut col = 0usize;
                 for (kind, text) in spans {
-                    row = row.child(div().text_color(rgb(span_color(kind))).child(text));
+                    let mut chunks: Vec<(String, usize)> = Vec::new();
+                    for c in text.chars() {
+                        let ws = c.is_whitespace();
+                        match chunks.last_mut() {
+                            Some((piece, _))
+                                if piece
+                                    .chars()
+                                    .next_back()
+                                    .is_some_and(|p| p.is_whitespace() == ws) =>
+                            {
+                                piece.push(c);
+                            }
+                            _ => chunks.push((c.to_string(), col)),
+                        }
+                        col += 1;
+                    }
+                    for (piece, chunk_col) in chunks {
+                        row = row.child(
+                            div()
+                                .text_color(rgb(span_color(kind)))
+                                .child(piece)
+                                .on_mouse_down(
+                                    MouseButton::Left,
+                                    cx.listener(
+                                        move |this: &mut Self,
+                                              ev: &gpui::MouseDownEvent,
+                                              _w,
+                                              cx| {
+                                            if ev.click_count >= 2 {
+                                                this.app.body_double_click(ln, chunk_col);
+                                            } else {
+                                                this.app.body_click(ln, chunk_col);
+                                            }
+                                            cx.stop_propagation();
+                                            cx.notify();
+                                        },
+                                    ),
+                                ),
+                        );
+                    }
                 }
             }
+            // Fallback: a click on the empty tail of any line parks the
+            // cursor at that line's end.
+            row = row.on_mouse_down(
+                MouseButton::Left,
+                cx.listener(move |this: &mut Self, ev: &gpui::MouseDownEvent, _w, cx| {
+                    if ev.click_count < 2 {
+                        this.app.body_click(ln, usize::MAX / 2);
+                        cx.notify();
+                    }
+                }),
+            );
             body = body.child(row);
             line_start += line_len + 1;
         }

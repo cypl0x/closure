@@ -3726,9 +3726,10 @@ impl BodyEditor {
             .map_or(self.buf.len(), |i| pos + i)
     }
 
-    /// Place the cursor at `line`/`col` (both clamped).
+    /// Place the cursor at `line`/`col` (both clamped — a line past the
+    /// end lands on the last line, the mouse-click rule).
     fn goto_line_col(&mut self, line: usize, col: usize) {
-        let Some(start) = self
+        let starts: Vec<usize> = self
             .buf
             .split_inclusive('\n')
             .scan(0usize, |acc, l| {
@@ -3736,8 +3737,8 @@ impl BodyEditor {
                 *acc += l.len();
                 Some(s)
             })
-            .nth(line)
-        else {
+            .collect();
+        let Some(&start) = starts.get(line.min(starts.len().saturating_sub(1))) else {
             return;
         };
         let end = self.line_end(start);
@@ -3746,6 +3747,29 @@ impl BodyEditor {
             pos += c.len_utf8();
         }
         self.cursor = pos;
+    }
+
+    /// Select the whitespace-delimited word containing the cursor
+    /// (double-click): anchor at the word start, Visual mode, cursor on
+    /// its last char. Whitespace under the cursor selects nothing.
+    pub fn select_word_at_cursor(&mut self) {
+        let positions: Vec<(usize, char)> = self.buf.char_indices().collect();
+        let Some(mut i) = positions.iter().position(|&(off, _)| off == self.cursor) else {
+            return;
+        };
+        if positions[i].1.is_whitespace() {
+            return;
+        }
+        while i > 0 && !positions[i - 1].1.is_whitespace() {
+            i -= 1;
+        }
+        let mut j = i;
+        while j + 1 < positions.len() && !positions[j + 1].1.is_whitespace() {
+            j += 1;
+        }
+        self.anchor = positions[i].0;
+        self.cursor = positions[j].0;
+        self.mode = EditorMode::Visual;
     }
 
     /// Move to the start of the next word (simple rule, not full vim).
@@ -4869,6 +4893,21 @@ impl ModalApp {
             .into_iter()
             .map(|e| (e.date, e.title, e.path.display().to_string()))
             .collect()
+    }
+
+    /// Mouse click into the body editor: place the cursor at
+    /// `line`/`col` (clamped), keep the mode, end any completion
+    /// session.
+    pub fn body_click(&mut self, line: usize, col: usize) {
+        self.completion = None;
+        self.body.goto_line_col(line, col);
+    }
+
+    /// Double-click into the body editor: select the word under the
+    /// position ([`BodyEditor::select_word_at_cursor`], Visual mode).
+    pub fn body_double_click(&mut self, line: usize, col: usize) {
+        self.body_click(line, col);
+        self.body.select_word_at_cursor();
     }
 
     /// The selected row's document undo-tree, flattened for the

@@ -569,7 +569,13 @@ base, ours, theirs)` returns the `FieldConflict`s (title/body) both sides
   (Q11): the selected document's real branching undo tree
   (`Document::history_view` over `closure_undo::UndoTree`) rendered
   depth-indented with the active node marked; `u`/`C-r` keep walking
-  it, node-jumping is a recorded gap. Every mouse affordance
+  it, node-jumping is a recorded gap. The mouse reaches the body
+  editor (Q10-D2): click places the cursor (`body_click`, clamped,
+  session-ending, mode-preserving), double click selects the word
+  (`body_double_click` → charwise VISUAL); the pane's non-caret lines
+  are word-level click targets with a line-end fallback on the empty
+  tail. In-word column precision, drag selection and drag-and-drop
+  row reordering are recorded gaps. Every mouse affordance
   dispatches a registry-backed command through the same `ModalApp::run`
   entry the chords use (I8): row click selects, the fold arrow toggles
   `toggle-fold`, which-key chips run their command, palette rows run the
