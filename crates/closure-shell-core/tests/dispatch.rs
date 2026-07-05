@@ -61,7 +61,10 @@ fn dispatch_returns_the_view_and_reflects_quit() {
     let mut app = App::new();
     let view = app.dispatch(&mut sh, &KeyEvent::ctrl("q"));
     assert!(app.should_quit(), "C-q quits via the same path");
-    assert!(!serialize_view(&view).is_empty(), "still returns a ViewTree");
+    assert!(
+        !serialize_view(&view).is_empty(),
+        "still returns a ViewTree"
+    );
 }
 
 #[test]

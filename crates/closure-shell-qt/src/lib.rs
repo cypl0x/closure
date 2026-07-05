@@ -139,12 +139,19 @@ fn qml_item(node: &Node, depth: usize) -> String {
                 .iter()
                 .enumerate()
                 .map(|(i, r)| {
-                    let sel = if i == *selected { "; font.bold: true" } else { "" };
+                    let sel = if i == *selected {
+                        "; font.bold: true"
+                    } else {
+                        ""
+                    };
                     let todo = r
                         .todo
                         .as_deref()
                         .map_or_else(String::new, |t| format!("{t} "));
-                    let icon = r.icon.as_deref().map_or_else(String::new, |g| format!("{g} "));
+                    let icon = r
+                        .icon
+                        .as_deref()
+                        .map_or_else(String::new, |g| format!("{g} "));
                     let badges = if r.badges.is_empty() {
                         String::new()
                     } else {
@@ -191,7 +198,11 @@ fn qml_item(node: &Node, depth: usize) -> String {
                 .iter()
                 .enumerate()
                 .map(|(i, it)| {
-                    let sel = if i == *cursor { "; font.bold: true" } else { "" };
+                    let sel = if i == *cursor {
+                        "; font.bold: true"
+                    } else {
+                        ""
+                    };
                     format!(
                         "{pad}  Text {{ text: \"[{}] {}\"{sel} }}",
                         qml_escape(it.action.chord()),

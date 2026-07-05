@@ -19,7 +19,10 @@ fn slash_menu_lists_commands_with_their_chords() {
 #[test]
 fn slash_menu_fuzzy_filters_by_query() {
     let hits = slash_menu("rename", InputMode::Notion);
-    assert!(hits.iter().any(|it| it.label.contains("rename")), "rename matched");
+    assert!(
+        hits.iter().any(|it| it.label.contains("rename")),
+        "rename matched"
+    );
     let none = slash_menu("zzzznope", InputMode::Notion);
     assert!(none.is_empty(), "no fuzzy match ⇒ empty menu");
 }
@@ -27,7 +30,10 @@ fn slash_menu_fuzzy_filters_by_query() {
 #[test]
 fn block_plus_affordance_maps_to_the_add_sibling_command() {
     let act = block_insert_action(InputMode::Notion).expect("add-sibling is bound");
-    assert!(!act.chord().is_empty(), "the + button shows its keybinding too");
+    assert!(
+        !act.chord().is_empty(),
+        "the + button shows its keybinding too"
+    );
 }
 
 #[test]

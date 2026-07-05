@@ -15,8 +15,14 @@ fn hosts_the_interactive_capture_surface() {
     let dir = tempfile::tempdir().unwrap();
     fs::write(dir.path().join("notes.org"), "* A\n").unwrap();
     let live = interactive_page(dir.path()).unwrap();
-    assert!(live.contains("/capture"), "live page exposes the capture form: {live}");
-    assert!(live.contains("<form"), "interactive, not a read-only snapshot");
+    assert!(
+        live.contains("/capture"),
+        "live page exposes the capture form: {live}"
+    );
+    assert!(
+        live.contains("<form"),
+        "interactive, not a read-only snapshot"
+    );
 }
 
 #[test]

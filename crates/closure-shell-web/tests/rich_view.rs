@@ -14,7 +14,10 @@ fn split_renders_as_a_grouping_flex_container() {
         vec![Node::Text("left".into()), Node::Text("right".into())],
     );
     let html = render_view(&tree);
-    assert!(html.contains("class=\"split split-row\""), "axis class: {html}");
+    assert!(
+        html.contains("class=\"split split-row\""),
+        "axis class: {html}"
+    );
     assert!(html.contains("role=\"group\""), "grouping role: {html}");
     let left = html.find("left").unwrap();
     let right = html.find("right").unwrap();
@@ -35,6 +38,9 @@ fn modal_renders_as_an_accessible_dialog_overlay() {
 fn toast_renders_as_a_severity_classed_live_region() {
     let html = render_view(&toast_node(ToastLevel::Error, "boom"));
     assert!(html.contains("role=\"alert\""), "assertive role: {html}");
-    assert!(html.contains("class=\"toast toast-error\""), "severity class: {html}");
+    assert!(
+        html.contains("class=\"toast toast-error\""),
+        "severity class: {html}"
+    );
     assert!(html.contains("boom"), "text: {html}");
 }

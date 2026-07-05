@@ -13,7 +13,10 @@ fn palette_groups_commands_into_sections_with_descriptions_and_chords() {
     let sections = command_palette("", InputMode::Notion);
     let titles: Vec<&str> = sections.iter().map(|s| s.title.as_str()).collect();
     assert!(titles.contains(&"Edit"), "has an Edit section: {titles:?}");
-    assert!(titles.contains(&"Navigate"), "has a Navigate section: {titles:?}");
+    assert!(
+        titles.contains(&"Navigate"),
+        "has a Navigate section: {titles:?}"
+    );
     for s in &sections {
         assert!(!s.items.is_empty(), "no empty sections surface");
         for e in &s.items {

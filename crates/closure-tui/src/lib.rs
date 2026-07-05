@@ -1355,7 +1355,10 @@ fn push_view_node(node: &closure_shell_core::Node, depth: usize, out: &mut Vec<S
                     .todo
                     .as_deref()
                     .map_or_else(String::new, |t| format!("{t} "));
-                let icon = r.icon.as_deref().map_or_else(String::new, |g| format!("{g} "));
+                let icon = r
+                    .icon
+                    .as_deref()
+                    .map_or_else(String::new, |g| format!("{g} "));
                 let badges = if r.badges.is_empty() {
                     String::new()
                 } else {

@@ -60,7 +60,9 @@ fn canonical_tree() -> Node {
             },
             modal_node("Confirm", Node::Text("sure?".into())),
             toast_node(ToastLevel::Warning, "unsaved"),
-            Node::Hints { line: "g r toggle".into() },
+            Node::Hints {
+                line: "g r toggle".into(),
+            },
             Node::Text("footer".into()),
         ],
     }
@@ -98,8 +100,7 @@ const fn node_kind_name(k: NodeKind) -> &'static str {
 fn canonical_tree_covers_every_node_kind() {
     let mut present = BTreeSet::new();
     kinds_in(&canonical_tree(), &mut present);
-    let all: BTreeSet<&'static str> =
-        ALL_NODE_KINDS.iter().map(|k| node_kind_name(*k)).collect();
+    let all: BTreeSet<&'static str> = ALL_NODE_KINDS.iter().map(|k| node_kind_name(*k)).collect();
     assert_eq!(present, all, "the harness must exercise every NodeKind");
 }
 
@@ -142,7 +143,13 @@ fn web_html_mapping_pins_its_structure() {
 #[test]
 fn gtk_widget_mapping_pins_its_structure() {
     let w = closure_shell_gtk::widget_tree(&canonical_tree());
-    for marker in ["GtkFrame", "GtkListBox", "GtkDialog", "GtkInfoBar.warning", "○ TODO Ship parser  :urgent:"] {
+    for marker in [
+        "GtkFrame",
+        "GtkListBox",
+        "GtkDialog",
+        "GtkInfoBar.warning",
+        "○ TODO Ship parser  :urgent:",
+    ] {
         assert!(w.contains(marker), "gtk missing {marker}: {w}");
     }
 }
@@ -150,7 +157,13 @@ fn gtk_widget_mapping_pins_its_structure() {
 #[test]
 fn qt_qml_mapping_pins_its_structure() {
     let qml = closure_shell_qt::qml_view(&canonical_tree());
-    for marker in ["ApplicationWindow", "RowLayout", "Dialog", "toast-warning", "Ship parser"] {
+    for marker in [
+        "ApplicationWindow",
+        "RowLayout",
+        "Dialog",
+        "toast-warning",
+        "Ship parser",
+    ] {
         assert!(qml.contains(marker), "qt missing {marker}: {qml}");
     }
 }
@@ -158,10 +171,22 @@ fn qt_qml_mapping_pins_its_structure() {
 #[test]
 fn every_mapping_is_deterministic() {
     let t = canonical_tree();
-    assert_eq!(closure_tui::render_snapshot(&t), closure_tui::render_snapshot(&t));
-    assert_eq!(closure_shell_web::render_view(&t), closure_shell_web::render_view(&t));
-    assert_eq!(closure_shell_gtk::widget_tree(&t), closure_shell_gtk::widget_tree(&t));
-    assert_eq!(closure_shell_qt::qml_view(&t), closure_shell_qt::qml_view(&t));
+    assert_eq!(
+        closure_tui::render_snapshot(&t),
+        closure_tui::render_snapshot(&t)
+    );
+    assert_eq!(
+        closure_shell_web::render_view(&t),
+        closure_shell_web::render_view(&t)
+    );
+    assert_eq!(
+        closure_shell_gtk::widget_tree(&t),
+        closure_shell_gtk::widget_tree(&t)
+    );
+    assert_eq!(
+        closure_shell_qt::qml_view(&t),
+        closure_shell_qt::qml_view(&t)
+    );
     assert_eq!(view_to_json(&t), view_to_json(&t));
     assert!(!serialize_view(&t).is_empty());
 }

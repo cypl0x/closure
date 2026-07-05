@@ -25,10 +25,19 @@ fn key_events_edit_the_vault_and_rebuild_the_qml() {
     }
     let frame = next_frame(&mut app, &mut sh, &KeyEvent::key("enter"));
 
-    assert!(frame.contains("ApplicationWindow"), "frame is a QML doc: {frame}");
-    assert!(frame.contains("From Qt"), "captured headline rendered: {frame}");
+    assert!(
+        frame.contains("ApplicationWindow"),
+        "frame is a QML doc: {frame}"
+    );
+    assert!(
+        frame.contains("From Qt"),
+        "captured headline rendered: {frame}"
+    );
     let on_disk = fs::read_to_string(dir.path().join("inbox.org")).unwrap();
-    assert!(on_disk.contains("From Qt"), "persisted through the registry (I8)");
+    assert!(
+        on_disk.contains("From Qt"),
+        "persisted through the registry (I8)"
+    );
 }
 
 #[test]

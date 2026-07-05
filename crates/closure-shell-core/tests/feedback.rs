@@ -33,11 +33,20 @@ fn feedback_renders_as_toast_nodes_every_shell_already_draws() {
     let nodes = fb.to_nodes();
     assert_eq!(nodes.len(), 2);
     // Notifications and progress both become toasts (G1c vocabulary).
-    assert!(matches!(nodes[0], Node::Toast { level: ToastLevel::Warning, .. }));
+    assert!(matches!(
+        nodes[0],
+        Node::Toast {
+            level: ToastLevel::Warning,
+            ..
+        }
+    ));
     match &nodes[1] {
         Node::Toast { level, text } => {
             assert_eq!(*level, ToastLevel::Info, "progress is a polite status");
-            assert!(text.contains("Indexing") && text.contains("42%"), "label + pct: {text}");
+            assert!(
+                text.contains("Indexing") && text.contains("42%"),
+                "label + pct: {text}"
+            );
         }
         other => panic!("progress should render as a toast, got {other:?}"),
     }

@@ -10,10 +10,7 @@ use closure_tui::render_snapshot;
 fn split_renders_panes_in_order_under_a_labelled_axis() {
     let tree = split_node(
         SplitDir::Column,
-        vec![
-            Node::Text("top".into()),
-            Node::Text("bottom".into()),
-        ],
+        vec![Node::Text("top".into()), Node::Text("bottom".into())],
     );
     let snap = render_snapshot(&tree);
     assert!(snap.contains("split:column"), "axis labelled: {snap}");

@@ -21,7 +21,10 @@ fn browse_view_maps_to_a_qml_document() {
     let sh = Shell::new(Vault::open(dir.path()).unwrap());
     let qml = qml_view(&App::new().view(&sh));
     assert!(qml.contains("import QtQuick"), "valid QML header: {qml}");
-    assert!(qml.contains("Ship parser") && qml.contains("Wiki"), "headlines: {qml}");
+    assert!(
+        qml.contains("Ship parser") && qml.contains("Wiki"),
+        "headlines: {qml}"
+    );
 }
 
 #[test]
@@ -31,9 +34,15 @@ fn editing_through_the_shared_shell_changes_the_qml() {
     let mut sh = Shell::new(Vault::open(dir.path()).unwrap());
     sh.capture("Captured via qt").expect("capture");
     let qml = qml_view(&App::new().view(&sh));
-    assert!(qml.contains("Captured via qt"), "captured headline rendered: {qml}");
+    assert!(
+        qml.contains("Captured via qt"),
+        "captured headline rendered: {qml}"
+    );
     let on_disk = fs::read_to_string(dir.path().join("inbox.org")).unwrap();
-    assert!(on_disk.contains("Captured via qt"), "persisted via registry (I8)");
+    assert!(
+        on_disk.contains("Captured via qt"),
+        "persisted via registry (I8)"
+    );
 }
 
 #[test]
@@ -56,8 +65,17 @@ fn qml_view_escapes_quotes_and_renders_every_rich_kind() {
         ],
     };
     let qml = qml_view(&rich);
-    assert!(qml.contains("ro\\\"ot"), "quote escaped in QML literal: {qml}");
-    assert!(qml.contains("ColumnLayout") || qml.contains("Column"), "split layout: {qml}");
-    assert!(qml.contains("Dialog") && qml.contains("dlg"), "modal: {qml}");
+    assert!(
+        qml.contains("ro\\\"ot"),
+        "quote escaped in QML literal: {qml}"
+    );
+    assert!(
+        qml.contains("ColumnLayout") || qml.contains("Column"),
+        "split layout: {qml}"
+    );
+    assert!(
+        qml.contains("Dialog") && qml.contains("dlg"),
+        "modal: {qml}"
+    );
     assert!(qml.contains("heads up"), "toast: {qml}");
 }

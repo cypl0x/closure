@@ -51,7 +51,10 @@ fn split_direction_is_preserved_distinctly() {
 fn split_serialises_to_json_with_direction_and_nested_panes() {
     let json = view_to_json(&sample_split());
     assert!(json.contains("\"k\":\"split\""), "tagged split: {json}");
-    assert!(json.contains("\"dir\":\"row\""), "carries direction: {json}");
+    assert!(
+        json.contains("\"dir\":\"row\""),
+        "carries direction: {json}"
+    );
     // Children are serialised in order, nested under the split.
     assert!(json.contains("Sidebar item"), "first pane present: {json}");
     assert!(json.contains("main pane"), "second pane present: {json}");
@@ -63,15 +66,15 @@ fn split_serialises_to_json_with_direction_and_nested_panes() {
 #[test]
 fn split_serialises_for_the_llm_snapshot() {
     let snap = serialize_view(&sample_split());
-    assert!(snap.contains("SPLIT row"), "snapshot names the split: {snap}");
+    assert!(
+        snap.contains("SPLIT row"),
+        "snapshot names the split: {snap}"
+    );
     assert!(snap.contains("Sidebar item") && snap.contains("main pane"));
 }
 
 fn sample_modal() -> Node {
-    modal_node(
-        "Confirm delete",
-        Node::Text("Delete this subtree?".into()),
-    )
+    modal_node("Confirm delete", Node::Text("Delete this subtree?".into()))
 }
 
 #[test]
@@ -97,7 +100,10 @@ fn modal_serialises_to_json_with_title_and_nested_body() {
 #[test]
 fn modal_serialises_for_the_llm_snapshot() {
     let snap = serialize_view(&sample_modal());
-    assert!(snap.contains("MODAL Confirm delete"), "names the modal: {snap}");
+    assert!(
+        snap.contains("MODAL Confirm delete"),
+        "names the modal: {snap}"
+    );
     assert!(snap.contains("Delete this subtree?"), "body shown: {snap}");
 }
 
@@ -130,14 +136,20 @@ fn toast_level_has_a_stable_lowercase_tag() {
 fn toast_serialises_to_json_with_level_and_text() {
     let json = view_to_json(&toast_node(ToastLevel::Error, "sync failed"));
     assert!(json.contains("\"k\":\"toast\""), "tagged toast: {json}");
-    assert!(json.contains("\"level\":\"error\""), "carries level: {json}");
+    assert!(
+        json.contains("\"level\":\"error\""),
+        "carries level: {json}"
+    );
     assert!(json.contains("sync failed"), "text present: {json}");
 }
 
 #[test]
 fn toast_serialises_for_the_llm_snapshot() {
     let snap = serialize_view(&toast_node(ToastLevel::Info, "3 jobs ran"));
-    assert!(snap.contains("TOAST info 3 jobs ran"), "names the toast: {snap}");
+    assert!(
+        snap.contains("TOAST info 3 jobs ran"),
+        "names the toast: {snap}"
+    );
 }
 
 #[test]
@@ -145,7 +157,10 @@ fn rows_carry_icons_and_badges_as_data() {
     // G5a: a row carries a leading icon glyph + metadata chips, built with
     // the constructor + builders (empty by default for back-compat).
     let plain = RowView::new("id", "Plain", 1, None);
-    assert!(plain.icon.is_none() && plain.badges.is_empty(), "defaults empty");
+    assert!(
+        plain.icon.is_none() && plain.badges.is_empty(),
+        "defaults empty"
+    );
 
     let row = RowView::new("id", "Ship", 1, Some("TODO".into()))
         .with_icon(Some("○".into()))
@@ -155,7 +170,10 @@ fn rows_carry_icons_and_badges_as_data() {
         selected: 0,
     });
     assert!(json.contains("\"icon\":\"○\""), "icon as data: {json}");
-    assert!(json.contains("urgent") && json.contains("#A"), "badges as data: {json}");
+    assert!(
+        json.contains("urgent") && json.contains("#A"),
+        "badges as data: {json}"
+    );
 }
 
 #[test]
@@ -169,6 +187,9 @@ fn browse_view_maps_tags_to_badges_and_todo_to_an_icon() {
     .unwrap();
     let v = closure_store::Vault::open(dir.path()).unwrap();
     let json = view_to_json(&browse_view(&v));
-    assert!(json.contains("urgent") && json.contains("soon"), "tags → badges: {json}");
+    assert!(
+        json.contains("urgent") && json.contains("soon"),
+        "tags → badges: {json}"
+    );
     assert!(json.contains("\"icon\":"), "todo → an icon glyph: {json}");
 }

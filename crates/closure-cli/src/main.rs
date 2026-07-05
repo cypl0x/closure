@@ -4020,6 +4020,9 @@ fn web_tier_shells_are_browse_capture_search_not_full_editors() {
     // capture-form tier, not a full rename/delete editor.
     for (name, caps) in [("WEB", WEB_CAPABILITIES), ("TAURI", TAURI_CAPABILITIES)] {
         assert!(caps.contains(&Capability::Capture), "{name} captures");
-        assert!(!caps.contains(&Capability::Edit), "{name} is not a full editor");
+        assert!(
+            !caps.contains(&Capability::Edit),
+            "{name} is not a full editor"
+        );
     }
 }

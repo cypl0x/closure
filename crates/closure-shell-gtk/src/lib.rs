@@ -112,7 +112,10 @@ fn push_widget(node: &Node, depth: usize, out: &mut Vec<String>) {
                     .todo
                     .as_deref()
                     .map_or_else(String::new, |t| format!("{t} "));
-                let icon = r.icon.as_deref().map_or_else(String::new, |g| format!("{g} "));
+                let icon = r
+                    .icon
+                    .as_deref()
+                    .map_or_else(String::new, |g| format!("{g} "));
                 let badges = if r.badges.is_empty() {
                     String::new()
                 } else {
@@ -135,7 +138,9 @@ fn push_widget(node: &Node, depth: usize, out: &mut Vec<String>) {
             }
         }
         Node::Input { label, buffer } => {
-            out.push(format!("{pad}GtkEntry placeholder=\"{label}\" text=\"{buffer}\""));
+            out.push(format!(
+                "{pad}GtkEntry placeholder=\"{label}\" text=\"{buffer}\""
+            ));
         }
         Node::Palette { items, cursor } => {
             out.push(format!("{pad}GtkListBox.palette"));
@@ -225,9 +230,7 @@ pub fn run(vault_path: &Path) -> Result<(), VaultError> {
     use std::rc::Rc;
 
     use gtk4::prelude::*;
-    use gtk4::{
-        Application, ApplicationWindow, EventControllerKey, ListBox, ScrolledWindow, glib,
-    };
+    use gtk4::{Application, ApplicationWindow, EventControllerKey, ListBox, ScrolledWindow, glib};
 
     let shell = Shell::new(Vault::open(vault_path)?);
     let state = Rc::new(RefCell::new((App::new(), shell)));

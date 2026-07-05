@@ -21,5 +21,8 @@ fn different_themes_yield_different_css() {
     assert_ne!(theme_css(&Theme::light()), theme_css(&Theme::dark()));
     // High-contrast pushes pure black/white.
     let hc = theme_css(&Theme::high_contrast());
-    assert!(hc.contains("#000000") && hc.contains("#ffffff"), "max contrast: {hc}");
+    assert!(
+        hc.contains("#000000") && hc.contains("#ffffff"),
+        "max contrast: {hc}"
+    );
 }

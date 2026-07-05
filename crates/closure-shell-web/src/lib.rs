@@ -368,7 +368,11 @@ pub fn render_view(node: &closure_shell_core::Node) -> String {
                         let _ = write!(b, " <span class=\"badge\">{}</span>", escape_html(badge));
                         b
                     });
-                    let _ = write!(s, "<li{sel}>{icon}{todo}{}{badges}</li>", escape_html(&r.title));
+                    let _ = write!(
+                        s,
+                        "<li{sel}>{icon}{todo}{}{badges}</li>",
+                        escape_html(&r.title)
+                    );
                     s
                 });
             format!("<ul class=\"rows\">{items}</ul>")

@@ -29,7 +29,10 @@ fn browse_view_maps_to_a_gtk_frame_list_and_hints() {
     assert!(w.contains("GtkFrame"), "pane is a frame: {w}");
     assert!(w.contains("GtkListBox"), "rows are a list box: {w}");
     assert!(w.contains("GtkLabel"), "rows are labels: {w}");
-    assert!(w.contains("Ship parser") && w.contains("Wiki"), "headlines: {w}");
+    assert!(
+        w.contains("Ship parser") && w.contains("Wiki"),
+        "headlines: {w}"
+    );
 }
 
 #[test]
@@ -71,7 +74,13 @@ fn widget_tree_renders_every_rich_node_kind_without_panic() {
         ],
     };
     let w = widget_tree(&rich);
-    assert!(w.contains("GtkBox") && w.contains("orientation=horizontal"), "split: {w}");
-    assert!(w.contains("GtkDialog") && w.contains("dialog"), "modal: {w}");
+    assert!(
+        w.contains("GtkBox") && w.contains("orientation=horizontal"),
+        "split: {w}"
+    );
+    assert!(
+        w.contains("GtkDialog") && w.contains("dialog"),
+        "modal: {w}"
+    );
     assert!(w.contains("InfoBar") && w.contains("failed"), "toast: {w}");
 }

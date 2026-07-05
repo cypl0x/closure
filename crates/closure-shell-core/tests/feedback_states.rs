@@ -24,7 +24,10 @@ fn with_feedback_appends_toasts_to_the_view() {
     fb.progress("Indexing", 40);
     let view = with_feedback(base(), &fb);
     let json = view_to_json(&view);
-    assert!(json.contains("\"k\":\"toast\""), "toasts present in the tree: {json}");
+    assert!(
+        json.contains("\"k\":\"toast\""),
+        "toasts present in the tree: {json}"
+    );
     assert!(json.contains("sync failed"), "the notification renders");
     assert!(json.contains("Indexing 40%"), "progress renders");
     // The original content survives.
@@ -34,7 +37,11 @@ fn with_feedback_appends_toasts_to_the_view() {
 #[test]
 fn with_feedback_is_a_noop_when_empty() {
     let fb = Feedback::default();
-    assert_eq!(with_feedback(base(), &fb), base(), "no feedback ⇒ unchanged tree");
+    assert_eq!(
+        with_feedback(base(), &fb),
+        base(),
+        "no feedback ⇒ unchanged tree"
+    );
 }
 
 #[test]

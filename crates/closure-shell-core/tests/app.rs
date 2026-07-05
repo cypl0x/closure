@@ -945,7 +945,11 @@ fn toggle_fold_hides_the_whole_subtree() {
     assert_eq!(app.rows(&sh).len(), 4);
     app.toggle_fold(&mut sh); // fold "Top" (selected 0)
     let titles: Vec<String> = app.rows(&sh).iter().map(|r| r.title.clone()).collect();
-    assert_eq!(titles, vec!["Top", "Other"], "descendants hidden, fold row stays");
+    assert_eq!(
+        titles,
+        vec!["Top", "Other"],
+        "descendants hidden, fold row stays"
+    );
 }
 
 #[test]
@@ -970,7 +974,10 @@ fn fold_state_persists_across_program_runs() {
     assert_eq!(app2.rows(&sh2).len(), 2, "fold survives reopen from disk");
     // The persisted form is the org-standard property, in plain text.
     let src = fs::read_to_string(dir.path().join("notes.org")).expect("read");
-    assert!(src.contains(":VISIBILITY: folded"), "org-native persistence");
+    assert!(
+        src.contains(":VISIBILITY: folded"),
+        "org-native persistence"
+    );
 }
 
 #[test]
@@ -980,7 +987,10 @@ fn folding_a_leaf_keeps_it_visible() {
     app.select(3, &sh); // "Other" has no children
     app.toggle_fold(&mut sh);
     let titles: Vec<String> = app.rows(&sh).iter().map(|r| r.title.clone()).collect();
-    assert!(titles.contains(&"Other".to_owned()), "a folded leaf still lists");
+    assert!(
+        titles.contains(&"Other".to_owned()),
+        "a folded leaf still lists"
+    );
     assert_eq!(titles.len(), 4, "nothing to hide under a leaf");
 }
 

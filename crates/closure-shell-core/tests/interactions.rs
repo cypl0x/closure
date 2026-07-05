@@ -49,9 +49,17 @@ fn disabled_wins_over_every_other_state() {
     it.focus(0);
     it.hover(Some(0));
     it.press(0);
-    assert_eq!(it.state_of(0), ElementState::Disabled, "disabled is absorbing");
+    assert_eq!(
+        it.state_of(0),
+        ElementState::Disabled,
+        "disabled is absorbing"
+    );
     it.set_disabled(0, false);
-    assert_eq!(it.state_of(0), ElementState::Active, "re-enabled, press still held");
+    assert_eq!(
+        it.state_of(0),
+        ElementState::Active,
+        "re-enabled, press still held"
+    );
 }
 
 #[test]
@@ -72,5 +80,9 @@ fn focus_next_and_prev_wrap_within_the_count() {
     assert_eq!(it.state_of(1), ElementState::Focused);
     it.focus_prev(3);
     it.focus_prev(3);
-    assert_eq!(it.state_of(2), ElementState::Focused, "wrapped past 0 to the end");
+    assert_eq!(
+        it.state_of(2),
+        ElementState::Focused,
+        "wrapped past 0 to the end"
+    );
 }

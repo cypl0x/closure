@@ -37,8 +37,10 @@ fn high_contrast_is_pure_black_on_white_or_inverse() {
     // Maximum luminance separation: one end is pure black, the other pure
     // white (either polarity).
     let pair = [fg, bg];
-    assert!(pair.contains(&(0, 0, 0)) && pair.contains(&(255, 255, 255)),
-        "fg={fg:?} bg={bg:?} are max-contrast");
+    assert!(
+        pair.contains(&(0, 0, 0)) && pair.contains(&(255, 255, 255)),
+        "fg={fg:?} bg={bg:?} are max-contrast"
+    );
 }
 
 #[test]

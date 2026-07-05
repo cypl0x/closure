@@ -98,14 +98,23 @@ fn gtk_and_qt_are_complete_renderers_too() {
     use closure_shell_core::{GTK_NODE_KINDS, QT_NODE_KINDS};
     // G9: after G3/G4 the native shells render the full ViewTree, not a
     // headline list — proven complete in the matrix.
-    assert!(missing_node_kinds(GTK_NODE_KINDS).is_empty(), "gtk renders all kinds");
-    assert!(missing_node_kinds(QT_NODE_KINDS).is_empty(), "qt renders all kinds");
+    assert!(
+        missing_node_kinds(GTK_NODE_KINDS).is_empty(),
+        "gtk renders all kinds"
+    );
+    assert!(
+        missing_node_kinds(QT_NODE_KINDS).is_empty(),
+        "qt renders all kinds"
+    );
 }
 
 #[test]
 fn matrix_table_includes_the_native_shells() {
     let t = ui_matrix_table();
-    assert!(t.contains("GTK") && t.contains("QT"), "matrix lists gtk + qt: {t}");
+    assert!(
+        t.contains("GTK") && t.contains("QT"),
+        "matrix lists gtk + qt: {t}"
+    );
 }
 
 #[test]

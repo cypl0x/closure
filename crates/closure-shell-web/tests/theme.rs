@@ -10,8 +10,19 @@ use closure_shell_web::theme_css_variables;
 fn css_variables_carry_every_palette_and_layout_token() {
     let css = theme_css_variables(&Theme::dark());
     for var in [
-        "--fg:", "--bg:", "--accent:", "--muted:", "--selection:", "--error:", "--warning:",
-        "--success:", "--space:", "--gap:", "--font:", "--mono:", "--font-size:",
+        "--fg:",
+        "--bg:",
+        "--accent:",
+        "--muted:",
+        "--selection:",
+        "--error:",
+        "--warning:",
+        "--success:",
+        "--space:",
+        "--gap:",
+        "--font:",
+        "--mono:",
+        "--font-size:",
     ] {
         assert!(css.contains(var), "missing {var} in: {css}");
     }
