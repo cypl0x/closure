@@ -4404,6 +4404,35 @@ impl ModalApp {
             .collect()
     }
 
+    /// Which-key data grouped for the Doom-style popup: every keymap
+    /// pair once, grouped by its palette section ("Command" when
+    /// uncurated), groups in section order, entries chord-sorted (I4).
+    #[must_use]
+    pub fn which_key_groups(&self) -> Vec<(String, Vec<(String, String)>)> {
+        let section_of = |cmd: &str| -> &str {
+            PALETTE_COMMANDS
+                .iter()
+                .find(|(_, canonical, ..)| *canonical == cmd)
+                .map_or("Command", |(.., sec, _)| sec)
+        };
+        let mut groups: Vec<(String, Vec<(String, String)>)> = PALETTE_SECTIONS
+            .iter()
+            .chain(std::iter::once(&"Command"))
+            .map(|s| ((*s).to_owned(), Vec::new()))
+            .collect();
+        for (chord, cmd) in closure_input::mode_keymap(self.mode) {
+            let sec = section_of(cmd);
+            if let Some((_, v)) = groups.iter_mut().find(|(t, _)| t == sec) {
+                v.push(((*chord).to_owned(), (*cmd).to_owned()));
+            }
+        }
+        groups.retain(|(_, v)| !v.is_empty());
+        for (_, v) in &mut groups {
+            v.sort();
+        }
+        groups
+    }
+
     /// Palette rows for the current filter: the shared
     /// [`command_palette`] source flattened in section order, so the
     /// modal palette shows the same grouped, described, chord-carrying

@@ -561,7 +561,10 @@ base, ours, theirs)` returns the `FieldConflict`s (title/body) both sides
   M-x (Q8, 2026-07-05): `M-x` (or `:`) opens it in every mode and it
   lists *every* keymap-bound command with its chord — curated
   sections keep their descriptions, the rest land in a "Command"
-  section by canonical name (I4). Every mouse affordance
+  section by canonical name (I4). The idle footer is a Doom-style
+  which-key panel (Q9): one column per section from
+  `which_key_groups` — group title, chord-sorted clickable rows —
+  while a pending chord still switches to the live completion view. Every mouse affordance
   dispatches a registry-backed command through the same `ModalApp::run`
   entry the chords use (I8): row click selects, the fold arrow toggles
   `toggle-fold`, which-key chips run their command, palette rows run the

@@ -41,7 +41,7 @@ Standard text-field behaviour the user gets everywhere on KDE, inside INSERT mod
 - **M2** gpui: `alt+x` / `M-x` opens centred popup, doom-vibrant styled, shows
   `command-name    key` rows, arrows/C-n/C-p navigate.
 
-## Q9 — which-key popup (Doom-style)
+## Q9 — which-key popup ✅ DONE 2026-07-05 (ROADMAP: GPUI-WHICHKEY)
 
 - **W1** core: `which_key_groups()` → grouped, column-ready entries (key, label, group)
   from the live keymap (I4), replacing flat bottom strip.

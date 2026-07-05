@@ -972,30 +972,53 @@ impl GpuiView {
             .bg(rgb(co.panel))
             .text_size(px(11.0));
         if pending.is_empty() {
-            bar.child(
-                div()
-                    .px_1()
-                    .text_color(rgb(co.accent))
-                    .child(format!("[{:?}]", self.app.input_mode())),
-            )
-            .children(self.app.hint_items().into_iter().map(|(chord, cmd)| {
-                let run = cmd.clone();
-                div()
-                    .flex()
-                    .px_1()
-                    .rounded_sm()
-                    .cursor_pointer()
-                    .hover(move |s| s.bg(rgb(co.hover)))
-                    .on_mouse_down(
-                        MouseButton::Left,
-                        cx.listener(move |this: &mut Self, _ev, _w, cx| {
-                            let cmd = run.clone();
-                            this.click(&cmd, cx);
+            // Doom-style which-key: one column per palette section,
+            // group title on top, chord-sorted entries beneath (I4 —
+            // the same which_key_groups data every shell reads).
+            bar.items_start()
+                .child(
+                    div()
+                        .px_1()
+                        .text_color(rgb(co.accent))
+                        .child(format!("[{:?}]", self.app.input_mode())),
+                )
+                .children(
+                    self.app
+                        .which_key_groups()
+                        .into_iter()
+                        .map(|(title, entries)| {
+                            let mut col = div()
+                                .flex()
+                                .flex_col()
+                                .px_2()
+                                .child(div().text_color(rgb(co.heading2)).child(title));
+                            for (chord, cmd) in entries {
+                                let run = cmd.clone();
+                                col = col.child(
+                                    div()
+                                        .flex()
+                                        .rounded_sm()
+                                        .cursor_pointer()
+                                        .hover(move |s| s.bg(rgb(co.hover)))
+                                        .on_mouse_down(
+                                            MouseButton::Left,
+                                            cx.listener(move |this: &mut Self, _ev, _w, cx| {
+                                                let cmd = run.clone();
+                                                this.click(&cmd, cx);
+                                            }),
+                                        )
+                                        .child(
+                                            div()
+                                                .w(px(56.0))
+                                                .text_color(rgb(co.accent))
+                                                .child(chord),
+                                        )
+                                        .child(div().text_color(rgb(co.muted)).child(cmd)),
+                                );
+                            }
+                            col
                         }),
-                    )
-                    .child(div().text_color(rgb(co.accent)).child(chord))
-                    .child(div().text_color(rgb(co.muted)).child(format!(":{cmd}")))
-            }))
+                )
         } else {
             bar.child(
                 div()

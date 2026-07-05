@@ -1747,3 +1747,58 @@ fn palette_query_still_fuzzy_filters() {
         "fold query still surfaces toggle-fold"
     );
 }
+
+// === Q9-W1: grouped which-key data for the popup. ===
+
+#[test]
+fn which_key_groups_cover_the_whole_keymap() {
+    let app = ModalApp::new(InputMode::Doom);
+    let total: usize = app.which_key_groups().iter().map(|(_, v)| v.len()).sum();
+    assert_eq!(total, closure_input::mode_keymap(InputMode::Doom).len());
+}
+
+#[test]
+fn which_key_groups_place_known_commands() {
+    let app = ModalApp::new(InputMode::Doom);
+    let groups = app.which_key_groups();
+    let find = |cmd: &str| -> Option<String> {
+        groups
+            .iter()
+            .find_map(|(t, v)| v.iter().any(|(_, c)| c == cmd).then(|| t.clone()))
+    };
+    assert_eq!(find("toggle-fold"), Some("Navigate".to_owned()));
+    assert_eq!(find("promote"), Some("Command".to_owned()));
+    assert_eq!(find("rename"), Some("Edit".to_owned()));
+}
+
+#[test]
+fn which_key_groups_are_ordered_and_nonempty() {
+    let app = ModalApp::new(InputMode::Doom);
+    let groups = app.which_key_groups();
+    for (_, v) in &groups {
+        assert!(!v.is_empty(), "no empty groups: {groups:?}");
+    }
+    let titles: Vec<&str> = groups.iter().map(|(t, _)| t.as_str()).collect();
+    let expected = ["Navigate", "Edit", "Mode", "App", "Command"];
+    let mut last_pos: Option<usize> = None;
+    for &want in &expected {
+        if let Some(pos) = titles.iter().position(|&t| t == want) {
+            if let Some(lp) = last_pos {
+                assert!(pos > lp, "titles in order, got {titles:?}");
+            }
+            last_pos = Some(pos);
+        }
+    }
+}
+
+#[test]
+fn which_key_group_entries_sort_by_chord() {
+    let app = ModalApp::new(InputMode::Doom);
+    let groups = app.which_key_groups();
+    for (_, v) in &groups {
+        assert!(
+            v.windows(2).all(|w| w[0].0 <= w[1].0),
+            "entries sorted by chord in {v:?}"
+        );
+    }
+}
