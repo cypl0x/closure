@@ -1802,3 +1802,54 @@ fn which_key_group_entries_sort_by_chord() {
         );
     }
 }
+
+// === Q7-C2: completion auto-popup contract. ===
+
+#[test]
+fn popup_predicate_needs_three_word_chars_and_insert() {
+    let (_d, mut sh) = shell();
+    let mut app = editor_with(&mut sh, "Pe");
+    assert!(!app.completion_should_popup(&sh));
+    app.on_key(&mut sh, "r", false, false, Some('r'));
+    app.on_key(&mut sh, "s", false, false, Some('s'));
+    assert_eq!(app.body_buffer(), "Pers");
+    assert!(app.completion_should_popup(&sh));
+    app.on_key(&mut sh, "escape", false, false, None);
+    assert!(!app.completion_should_popup(&sh));
+}
+
+#[test]
+fn open_popup_shows_without_applying() {
+    let (_d, mut sh) = shell();
+    let mut app = editor_with(&mut sh, "Pers");
+    app.open_completion_popup(&sh);
+    assert_eq!(app.body_buffer(), "Pers", "unchanged");
+    assert!(!app.body_completion_items().is_empty());
+    assert!(app.body_completion_ix().is_none());
+    assert!(
+        !app.completion_should_popup(&sh),
+        "session active -> no re-popup"
+    );
+}
+
+#[test]
+fn c_n_after_popup_applies_the_first_candidate() {
+    let (_d, mut sh) = shell();
+    let mut app = editor_with(&mut sh, "Pers");
+    app.open_completion_popup(&sh);
+    let first = app.body_completion_items()[0].clone();
+    app.on_key(&mut sh, "n", true, false, None);
+    assert_eq!(app.body_buffer(), first);
+    assert_eq!(app.body_completion_ix(), Some(0));
+}
+
+#[test]
+fn tab_after_popup_accepts_the_first_candidate() {
+    let (_d, mut sh) = shell();
+    let mut app = editor_with(&mut sh, "Pers");
+    app.open_completion_popup(&sh);
+    let first = app.body_completion_items()[0].clone();
+    app.on_key(&mut sh, "tab", false, false, None);
+    assert_eq!(app.body_buffer(), first);
+    assert!(app.body_completion_items().is_empty());
+}

@@ -253,6 +253,7 @@ pub fn run(vault_path: &Path) -> Result<(), String> {
                     focus_handle: cx.focus_handle(),
                     feedback: closure_shell_core::Feedback::default(),
                     last_status: String::new(),
+                    popup_gen: 0,
                 })
             },
         );
@@ -338,6 +339,9 @@ struct GpuiView {
     feedback: closure_shell_core::Feedback,
     /// Last absorbed status line (change detection for the toasts).
     last_status: String,
+    /// Typing-idle generation for the completion auto-popup: each key
+    /// bumps it, a delayed task only fires if it is still the newest.
+    popup_gen: u64,
 }
 
 #[cfg(feature = "gpui")]
@@ -362,6 +366,24 @@ impl GpuiView {
         self.absorb_status();
         if self.app.should_quit() {
             cx.quit();
+        }
+        // C2: dabbrev auto-popup after a typing-idle delay. Each key
+        // bumps the generation; the timer only fires for the newest.
+        self.popup_gen = self.popup_gen.wrapping_add(1);
+        if self.app.completion_should_popup(&self.shell) {
+            let generation = self.popup_gen;
+            cx.spawn(async move |this, cx| {
+                cx.background_executor()
+                    .timer(std::time::Duration::from_millis(350))
+                    .await;
+                let _ = this.update(cx, |this, cx| {
+                    if this.popup_gen == generation {
+                        this.app.open_completion_popup(&this.shell);
+                        cx.notify();
+                    }
+                });
+            })
+            .detach();
         }
         cx.notify();
     }
@@ -943,16 +965,38 @@ impl GpuiView {
         )
         .child(clickable(
             co,
-            div()
-                .mt_2()
-                .flex_grow()
-                .text_color(rgb(co.fg))
-                .text_size(px(13.0))
-                .child(if d.body.is_empty() {
-                    "+ body".to_owned()
+            {
+                // C3: the read-only body preview reuses the editor's
+                // highlight_body spans (same colours as edit mode).
+                let mut body_el = div()
+                    .mt_2()
+                    .flex_grow()
+                    .flex()
+                    .flex_col()
+                    .text_color(rgb(co.fg))
+                    .text_size(px(13.0));
+                if d.body.is_empty() {
+                    body_el = body_el.child("+ body".to_owned());
                 } else {
-                    d.body.clone()
-                }),
+                    // Same palette as the editor pane's span_color.
+                    let span_color = |k: BodySpan| match k {
+                        BodySpan::Plain => co.fg,
+                        BodySpan::Meta => co.muted,
+                        BodySpan::Drawer => co.error,
+                        BodySpan::Keyword => co.accent,
+                        BodySpan::Literal => co.success,
+                        BodySpan::Comment => co.muted,
+                    };
+                    for spans in highlight_body(&d.body) {
+                        let mut line = div().flex().min_h(px(17.0));
+                        for (kind, text) in spans {
+                            line = line.child(div().text_color(rgb(span_color(kind))).child(text));
+                        }
+                        body_el = body_el.child(line);
+                    }
+                }
+                body_el
+            },
             "edit-body",
             cx,
         ))

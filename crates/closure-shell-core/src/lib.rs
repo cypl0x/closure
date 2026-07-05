@@ -4324,7 +4324,9 @@ pub fn body_completions(prefix: &str, vault: &closure_store::Vault) -> Vec<Strin
 struct CompletionSession {
     start: usize,
     items: Vec<String>,
-    ix: usize,
+    /// Applied candidate index; `None` while the popup only shows
+    /// candidates (auto-popup) and nothing replaced the prefix yet.
+    ix: Option<usize>,
 }
 
 /// Modal command-surface launcher (the "modal GUI" experiment).
@@ -5060,9 +5062,16 @@ impl ModalApp {
                 }
                 "tab" => {
                     // An active completion session wins over org-tempo:
-                    // TAB keeps the applied candidate and just ends it.
-                    if self.completion.take().is_none() {
-                        self.body.tempo_expand_or_indent();
+                    // TAB accepts — the applied candidate stays; an
+                    // unapplied popup applies its first candidate.
+                    match self.completion.take() {
+                        Some(s) if s.ix.is_none() => {
+                            if let Some(first) = s.items.first() {
+                                self.body.replace_to_cursor(s.start, first);
+                            }
+                        }
+                        Some(_) => {}
+                        None => self.body.tempo_expand_or_indent(),
                     }
                 }
                 _ => {
@@ -5117,7 +5126,7 @@ impl ModalApp {
     /// Index of the currently-applied completion candidate.
     #[must_use]
     pub fn body_completion_ix(&self) -> Option<usize> {
-        self.completion.as_ref().map(|s| s.ix)
+        self.completion.as_ref().and_then(|s| s.ix)
     }
 
     /// `C-n`/`C-p`: start or continue a completion cycle over the word
@@ -5127,12 +5136,16 @@ impl ModalApp {
     fn cycle_completion(&mut self, shell: &Shell, forward: bool) {
         if let Some(s) = &mut self.completion {
             let n = s.items.len();
-            s.ix = if forward {
-                (s.ix + 1) % n
-            } else {
-                (s.ix + n - 1) % n
+            // From an unapplied popup the first step lands on the
+            // first (or last) candidate instead of skipping it.
+            let ix = match (s.ix, forward) {
+                (Some(i), true) => (i + 1) % n,
+                (Some(i), false) => (i + n - 1) % n,
+                (None, true) => 0,
+                (None, false) => n - 1,
             };
-            let (start, text) = (s.start, s.items[s.ix].clone());
+            s.ix = Some(ix);
+            let (start, text) = (s.start, s.items[ix].clone());
             self.body.replace_to_cursor(start, &text);
             return;
         }
@@ -5150,7 +5163,35 @@ impl ModalApp {
         self.completion = Some(CompletionSession {
             start,
             items,
-            ix: 0,
+            ix: Some(0),
+        });
+    }
+
+    /// Whether the GUI should auto-open the completion popup after its
+    /// typing-idle delay: INSERT in the body editor, no session yet, a
+    /// word prefix of at least 3 chars with candidates behind it.
+    #[must_use]
+    pub fn completion_should_popup(&self, shell: &Shell) -> bool {
+        self.surface == ModalSurface::EditBody
+            && self.body.mode() == EditorMode::Insert
+            && self.completion.is_none()
+            && self.body.word_prefix().chars().count() >= 3
+            && !body_completions(self.body.word_prefix(), &shell.vault).is_empty()
+    }
+
+    /// Open the completion popup without applying anything: candidates
+    /// show, the buffer stays untouched until `C-n`/`C-p`/TAB.
+    pub fn open_completion_popup(&mut self, shell: &Shell) {
+        if !self.completion_should_popup(shell) {
+            return;
+        }
+        let start = self.body.word_start();
+        let mut items = body_completions(self.body.word_prefix(), &shell.vault);
+        items.truncate(8);
+        self.completion = Some(CompletionSession {
+            start,
+            items,
+            ix: None,
         });
     }
 

@@ -597,7 +597,13 @@ base, ours, theirs)` returns the `FieldConflict`s (title/body) both sides
   (keywords beat vault words on ties, then alphabetical); a session
   holds the top 8 and TAB *accepts* the applied candidate (ends the
   session, beating org-tempo; without a session TAB stays
-  tempo/indent).
+  tempo/indent). The popup auto-opens after a 350 ms typing idle
+  (Q7-C2): `completion_should_popup` (INSERT, no session, ≥3-char
+  prefix, candidates exist) + `open_completion_popup` show candidates
+  *without* touching the buffer (`ix: None`); from that state `C-n`
+  applies the first candidate and TAB accepts it. The detail pane's
+  read-only body preview renders `highlight_body` spans with the
+  editor palette (Q7-C3).
   NORMAL grew the vim vocabulary (2026-07-04b): `v` opens a charwise
   VISUAL selection (inclusive; motions extend, `y` yanks, `d`/`x`
   delete), `dd`/`yy` cut/copy the line, `p` pastes (linewise below the

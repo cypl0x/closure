@@ -13,6 +13,25 @@ file is the fine-grained, capability-level queue between them. Blocked
 on a design decision? Record it under [[*Decisions][Decisions]], pick the most
 reversible option, keep moving.
 
+* DONE GPUI-COMPLETE — completion depth (orchestrated) [3/3]
+Queue Q7 of =goal-gpui-polish-3.md=.
+** DONE C1 whole-vault dabbrev [1/1]
+Already true since GPUI-DEPTH-Q2: =body_completions= mines every
+vault document (a superset of the requested whole-file scope).
+Recorded, not re-implemented.
+** DONE C2 auto-popup after a typing delay [1/1]
+=CompletionSession.ix= became =Option= (=None= = popup shown, nothing
+applied): =completion_should_popup= (INSERT + no session + ≥3-char
+prefix + candidates) and =open_completion_popup= (shows without
+touching the buffer) are the hermetic contract; from an unapplied
+popup =C-n= applies the *first* candidate and TAB accepts it. The
+gpui window drives a 350 ms typing-idle timer via a generation
+counter (each key invalidates older timers). Grok RED, Fable GREEN.
+** DONE C3 read-only body highlighting [1/1]
+The detail pane's body preview renders =highlight_body= spans with
+the editor pane's exact palette — org meta/drawer/src colours now
+show outside edit mode too. Fable (display-bound).
+
 * DONE GPUI-WHICHKEY — Doom-style grouped which-key popup (orchestrated) [2/2]
 Queue Q9 of =goal-gpui-polish-3.md= (Doom screenshot reference).
 ** DONE W1 =which_key_groups= core data [1/1]

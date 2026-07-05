@@ -24,7 +24,7 @@ Standard text-field behaviour the user gets everywhere on KDE, inside INSERT mod
 - **S4** Multiselect: VISUAL-LINE selection spanning heading rows + `alt+h/j/k/l` applies
   promote/demote/move to every selected heading (batch through command registry, I8).
 
-## Q7 — completion & highlighting depth
+## Q7 — completion & highlighting depth ✅ DONE 2026-07-05 (ROADMAP: GPUI-COMPLETE)
 
 - **C1** dabbrev scope → whole file (all rows' bodies + titles), not just current buffer.
   `C-n`/`C-p` cycle (vim-style) in INSERT.
