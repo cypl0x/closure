@@ -417,7 +417,12 @@ pub struct RowView {
 impl RowView {
     /// A row with no icon and no badges (the common case).
     #[must_use]
-    pub fn new(id: impl Into<String>, title: impl Into<String>, level: u8, todo: Option<String>) -> Self {
+    pub fn new(
+        id: impl Into<String>,
+        title: impl Into<String>,
+        level: u8,
+        todo: Option<String>,
+    ) -> Self {
         Self {
             id: id.into(),
             title: title.into(),
@@ -765,7 +770,10 @@ impl Theme {
                 heading3: Color("#b4befe"),
                 code: Color("#fab387"),
             },
-            spacing: Spacing { unit_px: 8, gap_px: 4 },
+            spacing: Spacing {
+                unit_px: 8,
+                gap_px: 4,
+            },
             typography: Typography {
                 font_family: "Inter, system-ui, sans-serif",
                 mono_family: "JetBrains Mono, ui-monospace, monospace",
@@ -792,7 +800,10 @@ impl Theme {
                 heading3: Color("#7287fd"),
                 code: Color("#fe640b"),
             },
-            spacing: Spacing { unit_px: 8, gap_px: 4 },
+            spacing: Spacing {
+                unit_px: 8,
+                gap_px: 4,
+            },
             typography: Typography {
                 font_family: "Inter, system-ui, sans-serif",
                 mono_family: "JetBrains Mono, ui-monospace, monospace",
@@ -819,7 +830,10 @@ impl Theme {
                 heading3: Color("#00ffff"),
                 code: Color("#ffa500"),
             },
-            spacing: Spacing { unit_px: 8, gap_px: 4 },
+            spacing: Spacing {
+                unit_px: 8,
+                gap_px: 4,
+            },
             typography: Typography {
                 font_family: "Inter, system-ui, sans-serif",
                 mono_family: "JetBrains Mono, ui-monospace, monospace",
@@ -849,7 +863,10 @@ impl Theme {
                 heading3: Color("#a991f1"),
                 code: Color("#e69055"),
             },
-            spacing: Spacing { unit_px: 8, gap_px: 4 },
+            spacing: Spacing {
+                unit_px: 8,
+                gap_px: 4,
+            },
             typography: Typography {
                 font_family: "Inter, system-ui, sans-serif",
                 mono_family: "JetBrains Mono, ui-monospace, monospace",
@@ -1163,7 +1180,10 @@ fn serialize_node(node: &Node, depth: usize, out: &mut String) {
                     .todo
                     .as_deref()
                     .map_or_else(String::new, |t| format!("{t} "));
-                let icon = r.icon.as_deref().map_or_else(String::new, |g| format!("{g} "));
+                let icon = r
+                    .icon
+                    .as_deref()
+                    .map_or_else(String::new, |g| format!("{g} "));
                 let badges = if r.badges.is_empty() {
                     String::new()
                 } else {
@@ -1586,7 +1606,14 @@ impl ConflictApp {
         let rows: Vec<RowView> = self
             .conflicts
             .iter()
-            .map(|c| RowView::new(c.block.to_string(), format!("{:?}: {}", c.field, c.block), 1, None))
+            .map(|c| {
+                RowView::new(
+                    c.block.to_string(),
+                    format!("{:?}: {}", c.field, c.block),
+                    1,
+                    None,
+                )
+            })
             .collect();
         let mut children = vec![Node::Rows {
             rows,
@@ -1864,7 +1891,10 @@ pub fn with_feedback(base: Node, feedback: &Feedback) -> Node {
         return base;
     }
     match base {
-        Node::Pane { title, mut children } => {
+        Node::Pane {
+            title,
+            mut children,
+        } => {
             children.extend(toasts);
             Node::Pane { title, children }
         }
@@ -2073,14 +2103,29 @@ pub enum Mode {
 /// human one-liner shown beside the chord.
 const PALETTE_COMMANDS: &[(&str, &str, &str, &str)] = &[
     ("next-file", "next-file", "Navigate", "Go to the next file"),
-    ("prev-file", "prev-file", "Navigate", "Go to the previous file"),
+    (
+        "prev-file",
+        "prev-file",
+        "Navigate",
+        "Go to the previous file",
+    ),
     ("open", "open-file", "Navigate", "Open the selected file"),
     ("capture", "capture-start", "Edit", "Capture a new entry"),
-    ("add-sibling", "add-sibling", "Edit", "Add a sibling headline"),
+    (
+        "add-sibling",
+        "add-sibling",
+        "Edit",
+        "Add a sibling headline",
+    ),
     ("rename", "rename", "Edit", "Rename the headline"),
     ("delete", "delete", "Edit", "Delete the headline"),
     ("cycle-mode", "cycle-mode", "Mode", "Switch the input mode"),
-    ("fold", "toggle-fold", "Navigate", "Fold or unfold the selected subtree"),
+    (
+        "fold",
+        "toggle-fold",
+        "Navigate",
+        "Fold or unfold the selected subtree",
+    ),
     ("quit", "quit", "App", "Quit closure"),
 ];
 
@@ -2160,7 +2205,13 @@ pub fn serialize_palette(sections: &[PaletteSection]) -> String {
     for s in sections {
         let _ = writeln!(out, "SECTION {}", s.title);
         for e in &s.items {
-            let _ = writeln!(out, "  [{}] {} — {}", e.action.chord(), e.label, e.description);
+            let _ = writeln!(
+                out,
+                "  [{}] {} — {}",
+                e.action.chord(),
+                e.label,
+                e.description
+            );
         }
     }
     out
@@ -3384,6 +3435,9 @@ pub enum EditorMode {
     /// Charwise selection from an anchor (`v`): motions extend, `y`
     /// yanks, `d`/`x` delete, `Esc` returns to Normal.
     Visual,
+    /// Linewise selection from an anchor line (V): motions extend by
+    /// whole lines, y yanks them, d/x delete them, Esc returns.
+    VisualLine,
 }
 
 /// A modal multi-line text editor with a real cursor — the state
@@ -3407,6 +3461,12 @@ pub struct BodyEditor {
     linewise: bool,
     /// First stroke of a two-stroke Normal command (`d` of `dd`).
     pending: Option<char>,
+    /// Pending vim count in Normal/Visual modes (0 = none).
+    count: usize,
+    /// Editor-local undo snapshots (buffer, cursor), newest last.
+    undo_stack: Vec<(String, usize)>,
+    /// Redo snapshots cleared by any fresh edit.
+    redo_stack: Vec<(String, usize)>,
 }
 
 impl Default for BodyEditor {
@@ -3427,6 +3487,9 @@ impl BodyEditor {
             register: String::new(),
             linewise: false,
             pending: None,
+            count: 0,
+            undo_stack: Vec::new(),
+            redo_stack: Vec::new(),
         }
     }
 
@@ -3435,6 +3498,8 @@ impl BodyEditor {
         self.cursor = text.len();
         self.buf = text;
         self.mode = EditorMode::Insert;
+        self.undo_stack.clear();
+        self.redo_stack.clear();
     }
 
     /// The buffer contents.
@@ -3467,11 +3532,16 @@ impl BodyEditor {
         self.buf.clear();
         self.cursor = 0;
         self.mode = EditorMode::Insert;
+        self.undo_stack.clear();
+        self.redo_stack.clear();
     }
 
     /// Switch to Normal (from Insert `Esc`).
-    pub const fn to_normal(&mut self) {
+    pub fn to_normal(&mut self) {
         self.mode = EditorMode::Normal;
+        // vim rule: leaving Insert steps the cursor back onto the last
+        // typed char (clamped at the line start by left()).
+        self.left();
     }
 
     /// Switch to Insert at the cursor (`i`).
@@ -3563,7 +3633,9 @@ impl BodyEditor {
 
     /// Byte offset of the end (before `\n`) of the line containing `pos`.
     fn line_end(&self, pos: usize) -> usize {
-        self.buf[pos..].find('\n').map_or(self.buf.len(), |i| pos + i)
+        self.buf[pos..]
+            .find('\n')
+            .map_or(self.buf.len(), |i| pos + i)
     }
 
     /// Place the cursor at `line`/`col` (both clamped).
@@ -3586,6 +3658,51 @@ impl BodyEditor {
             pos += c.len_utf8();
         }
         self.cursor = pos;
+    }
+
+    /// Move to the start of the next word (simple rule, not full vim).
+    fn word_forward(&mut self) {
+        let positions: Vec<(usize, char)> = self.buf.char_indices().collect();
+        let Some(mut i) = positions.iter().position(|&(off, _)| off == self.cursor) else {
+            return;
+        };
+        // Skip the current word (if the cursor sits on one), then the
+        // whitespace run (newlines included); clamp at the buffer end.
+        while i < positions.len() && !positions[i].1.is_whitespace() {
+            i += 1;
+        }
+        while i < positions.len() && positions[i].1.is_whitespace() {
+            i += 1;
+        }
+        if i < positions.len() {
+            self.cursor = positions[i].0;
+        }
+    }
+
+    /// Move to the start of the previous word (simple rule).
+    fn word_backward(&mut self) {
+        let positions: Vec<(usize, char)> = self.buf.char_indices().collect();
+        let mut pos = if self.cursor == self.buf.len() {
+            positions.len()
+        } else {
+            match positions.iter().position(|&(i, _)| i == self.cursor) {
+                Some(p) => p,
+                None => return,
+            }
+        };
+        // Skip whitespace immediately before the cursor, then walk back
+        // to the start of the word (char before is whitespace or start).
+        while pos > 0 && positions[pos - 1].1.is_whitespace() {
+            pos -= 1;
+        }
+        while pos > 0 && !positions[pos - 1].1.is_whitespace() {
+            pos -= 1;
+        }
+        self.cursor = if pos < positions.len() {
+            positions[pos].0
+        } else {
+            0
+        };
     }
 
     /// The text of the line the cursor is on.
@@ -3627,20 +3744,53 @@ impl BodyEditor {
         }
     }
 
+    /// Undo the last editor-local edit (Normal u).
+    pub fn undo_local(&mut self) {
+        if let Some((buf, cur)) = self.undo_stack.pop() {
+            self.redo_stack.push((self.buf.clone(), self.cursor));
+            self.buf = buf;
+            self.cursor = cur;
+        }
+    }
+
+    /// Redo the last editor-local undo (Normal C-r).
+    pub fn redo_local(&mut self) {
+        if let Some((buf, cur)) = self.redo_stack.pop() {
+            self.undo_stack.push((self.buf.clone(), self.cursor));
+            self.buf = buf;
+            self.cursor = cur;
+        }
+    }
+
     /// One Normal/Visual-mode key (motions, `i`/`a`/`o`/`x`, `v`,
     /// `dd`/`yy`/`p`, Visual `y`/`d`). `Esc` leaves Visual or clears a
     /// pending stroke; the *caller* cancels the edit on `Esc` when
     /// [`Self::pending_stroke`] is clear and the mode is Normal.
+    // One arm per vim key: splitting the vocabulary would hide the
+    // mode dispatch (same precedent as `run_command`).
+    #[allow(clippy::too_many_lines)]
     pub fn modal_key(&mut self, key: &str) {
+        if key.len() == 1
+            && let Some(d) = key.chars().next().and_then(|c| c.to_digit(10))
+        {
+            let d = usize::try_from(d).unwrap_or(9);
+            if !(d == 0 && self.count == 0) {
+                self.count = self.count * 10 + d;
+                return;
+            }
+        }
         // Two-stroke commands first (`dd` / `yy`).
         if self.mode == EditorMode::Normal {
             match (self.pending.take(), key) {
                 (Some('d'), "d") => {
-                    self.delete_line();
+                    self.checkpoint();
+                    let n = self.take_count();
+                    self.delete_line(n);
                     return;
                 }
                 (Some('y'), "y") => {
-                    self.yank_line();
+                    let n = self.take_count();
+                    self.yank_line(n);
                     return;
                 }
                 (None, "d") => {
@@ -3655,23 +3805,108 @@ impl BodyEditor {
             }
         }
         match key {
-            "h" | "left" => self.left(),
-            "l" | "right" => self.right(),
-            "j" | "down" => self.down(),
-            "k" | "up" => self.up(),
+            "h" | "left" => {
+                let n = self.take_count();
+                for _ in 0..n {
+                    self.left();
+                }
+            }
+            "l" | "right" => {
+                let n = self.take_count();
+                for _ in 0..n {
+                    self.right();
+                }
+            }
+            "j" | "down" => {
+                let n = self.take_count();
+                for _ in 0..n {
+                    self.down();
+                }
+            }
+            "k" | "up" => {
+                let n = self.take_count();
+                for _ in 0..n {
+                    self.up();
+                }
+            }
             "0" => self.line_home(),
             "$" => self.line_end_motion(),
-            "i" => self.mode = EditorMode::Insert,
+            "w" => {
+                let n = self.take_count();
+                for _ in 0..n {
+                    self.word_forward();
+                }
+            }
+            "b" => {
+                let n = self.take_count();
+                for _ in 0..n {
+                    self.word_backward();
+                }
+            }
+            "i" => {
+                self.count = 0;
+                self.mode = EditorMode::Insert;
+            }
             "a" => {
+                self.count = 0;
                 self.right();
                 self.mode = EditorMode::Insert;
             }
-            "o" => self.open_below(),
+            "o" => {
+                self.count = 0;
+                self.checkpoint();
+                self.open_below();
+            }
             "v" => {
+                self.count = 0;
                 self.anchor = self.cursor;
                 self.mode = EditorMode::Visual;
             }
-            "escape" if self.mode == EditorMode::Visual => self.mode = EditorMode::Normal,
+            "V" => {
+                self.count = 0;
+                self.anchor = self.cursor;
+                self.mode = EditorMode::VisualLine;
+            }
+            "escape" if self.mode == EditorMode::Normal && self.count > 0 => self.count = 0,
+            "escape" if matches!(self.mode, EditorMode::Visual | EditorMode::VisualLine) => {
+                self.mode = EditorMode::Normal;
+            }
+            "y" if self.mode == EditorMode::VisualLine => {
+                let lo = self.line_start(self.anchor.min(self.cursor));
+                let hi_line_end = self.line_end(self.anchor.max(self.cursor));
+                let hi = if hi_line_end < self.buf.len() {
+                    hi_line_end + 1
+                } else {
+                    hi_line_end
+                };
+                let mut text = self.buf[lo..hi].to_owned();
+                if !text.ends_with('\n') {
+                    text.push('\n');
+                }
+                self.register = text;
+                self.linewise = true;
+                self.cursor = lo;
+                self.mode = EditorMode::Normal;
+            }
+            "d" | "x" if self.mode == EditorMode::VisualLine => {
+                self.checkpoint();
+                let lo = self.line_start(self.anchor.min(self.cursor));
+                let hi_line_end = self.line_end(self.anchor.max(self.cursor));
+                let hi = if hi_line_end < self.buf.len() {
+                    hi_line_end + 1
+                } else {
+                    hi_line_end
+                };
+                let mut text = self.buf[lo..hi].to_owned();
+                if !text.ends_with('\n') {
+                    text.push('\n');
+                }
+                self.register = text;
+                self.linewise = true;
+                self.buf.replace_range(lo..hi, "");
+                self.cursor = if lo > 0 { self.line_start(lo - 1) } else { 0 };
+                self.mode = EditorMode::Normal;
+            }
             "y" if self.mode == EditorMode::Visual => {
                 let (lo, hi) = self.selection();
                 self.register = self.buf[lo..hi].to_owned();
@@ -3680,6 +3915,7 @@ impl BodyEditor {
                 self.mode = EditorMode::Normal;
             }
             "d" | "x" if self.mode == EditorMode::Visual => {
+                self.checkpoint();
                 let (lo, hi) = self.selection();
                 self.register = self.buf[lo..hi].to_owned();
                 self.linewise = false;
@@ -3687,8 +3923,37 @@ impl BodyEditor {
                 self.cursor = lo;
                 self.mode = EditorMode::Normal;
             }
-            "x" => self.delete_at(),
-            "p" => self.paste(),
+            "u" => self.undo_local(),
+            "x" => {
+                self.checkpoint();
+                let n = self.take_count();
+                if n == 1 {
+                    self.delete_at();
+                } else {
+                    let start = self.cursor;
+                    let line_end = self.line_end(start);
+                    let mut end = start;
+                    for (i, ch) in self.buf[start..].char_indices().take(n) {
+                        let pos = start + i + ch.len_utf8();
+                        if pos > line_end {
+                            break;
+                        }
+                        end = pos;
+                    }
+                    if end > start {
+                        self.register = self.buf[start..end].to_owned();
+                        self.linewise = false;
+                        self.buf.replace_range(start..end, "");
+                    }
+                }
+            }
+            "p" => {
+                self.checkpoint();
+                let n = self.take_count();
+                for _ in 0..n {
+                    self.paste();
+                }
+            }
             _ => {}
         }
     }
@@ -3699,12 +3964,42 @@ impl BodyEditor {
         self.pending
     }
 
-    /// The Visual selection as an exclusive byte range (inclusive of the
-    /// char under the cursor), or `None` outside Visual mode — the
-    /// renderer's source for painting the selection.
+    /// The pending vim count (0 = none) - the caller's cancel guard.
+    #[must_use]
+    pub const fn pending_count(&self) -> usize {
+        self.count
+    }
+
+    fn take_count(&mut self) -> usize {
+        let n = self.count.max(1);
+        self.count = 0;
+        n
+    }
+
+    /// Record the current state before a mutating edit (bounded at 50).
+    fn checkpoint(&mut self) {
+        if self.undo_stack.len() >= 50 {
+            self.undo_stack.remove(0);
+        }
+        self.undo_stack.push((self.buf.clone(), self.cursor));
+        self.redo_stack.clear();
+    }
+
+    /// Selection range for the renderer, or None outside visual modes.
+    ///
+    /// Returns the charwise selection range in Visual and the line range
+    /// from `line_start` of min to `line_end` of max in `VisualLine`.
     #[must_use]
     pub fn visual_selection(&self) -> Option<(usize, usize)> {
-        (self.mode == EditorMode::Visual).then(|| self.selection())
+        if self.mode == EditorMode::Visual {
+            Some(self.selection())
+        } else if self.mode == EditorMode::VisualLine {
+            let lo = self.line_start(self.anchor.min(self.cursor));
+            let hi = self.line_end(self.anchor.max(self.cursor));
+            Some((lo, hi))
+        } else {
+            None
+        }
     }
 
     /// The inclusive Visual selection as an exclusive byte range.
@@ -3723,29 +4018,60 @@ impl BodyEditor {
     }
 
     /// `yy`: copy the current line (linewise register).
-    pub fn yank_line(&mut self) {
-        let start = self.line_start(self.cursor);
-        let end = self.line_end(self.cursor);
-        self.register = format!("{}\n", &self.buf[start..end]);
+    pub fn yank_line(&mut self, n: usize) {
+        let n = n.max(1);
+        let lo = self.line_start(self.cursor);
+        let mut hi = lo;
+        for _ in 0..n {
+            let e = self.line_end(hi);
+            hi = e;
+            if hi < self.buf.len() {
+                hi += 1;
+            } else {
+                break;
+            }
+        }
+        let mut text = self.buf[lo..hi].to_owned();
+        if !text.ends_with('\n') {
+            text.push('\n');
+        }
+        self.register = text;
         self.linewise = true;
     }
 
     /// `dd`: cut the current line (linewise register).
-    pub fn delete_line(&mut self) {
-        let start = self.line_start(self.cursor);
-        let end = self.line_end(self.cursor);
-        self.register = format!("{}\n", &self.buf[start..end]);
-        self.linewise = true;
-        if end < self.buf.len() {
-            self.buf.replace_range(start..=end, "");
-            self.cursor = start;
-        } else if start > 0 {
-            self.buf.replace_range(start - 1..end, "");
-            self.cursor = self.line_start(start - 1);
-        } else {
-            self.buf.clear();
-            self.cursor = 0;
+    pub fn delete_line(&mut self, n: usize) {
+        let n = n.max(1);
+        let lo = self.line_start(self.cursor);
+        let mut hi = lo;
+        for _ in 0..n {
+            let e = self.line_end(hi);
+            hi = e;
+            if hi < self.buf.len() {
+                hi += 1;
+            } else {
+                break;
+            }
         }
+        let mut text = self.buf[lo..hi].to_owned();
+        if !text.ends_with('\n') {
+            text.push('\n');
+        }
+        self.register = text;
+        self.linewise = true;
+        // Deleting through the last (newline-less) line eats the
+        // preceding newline so no dangling terminator remains.
+        let lo_cut = if hi >= self.buf.len() && !self.buf[lo..hi].ends_with('\n') && lo > 0 {
+            lo - 1
+        } else {
+            lo
+        };
+        self.buf.replace_range(lo_cut..hi, "");
+        self.cursor = if lo_cut > 0 {
+            self.line_start(lo_cut - 1)
+        } else {
+            0
+        };
     }
 
     /// `p`: paste the register — linewise below the current line,
@@ -3834,7 +4160,8 @@ impl BodyEditor {
         if let Some((begin, end)) = template {
             let start = self.line_start(self.cursor);
             let stop = self.line_end(self.cursor);
-            self.buf.replace_range(start..stop, &format!("{begin}\n\n{end}"));
+            self.buf
+                .replace_range(start..stop, &format!("{begin}\n\n{end}"));
             self.cursor = start + begin.len();
         } else {
             self.insert_str("  ");
@@ -4201,7 +4528,9 @@ impl ModalApp {
         let rows = self.rows(shell).len();
         let page = page.max(1);
         let max_off = rows.saturating_sub(page);
-        let base = self.scroll_override.unwrap_or_else(|| self.selected.saturating_sub(page - 1).min(max_off));
+        let base = self
+            .scroll_override
+            .unwrap_or_else(|| self.selected.saturating_sub(page - 1).min(max_off));
         let step = usize::try_from(delta.unsigned_abs()).unwrap_or(usize::MAX);
         let new = if delta < 0 {
             base.saturating_sub(step)
@@ -4501,6 +4830,7 @@ impl ModalApp {
         }
         match self.body.mode() {
             EditorMode::Insert => match key {
+                // Insert bursts are not snapshotted yet - recorded gap.
                 "n" if ctrl => self.cycle_completion(shell, true),
                 "p" if ctrl => self.cycle_completion(shell, false),
                 // Readline chords (the "normal input field" set).
@@ -4548,13 +4878,18 @@ impl ModalApp {
                     }
                 }
             },
-            EditorMode::Normal | EditorMode::Visual => {
+            EditorMode::Normal | EditorMode::Visual | EditorMode::VisualLine => {
+                if ctrl && key == "r" {
+                    self.body.redo_local();
+                    return;
+                }
                 // Esc on a quiet Normal surface cancels the edit; every
                 // other key (incl. Esc mid-chord / in Visual) is the
                 // editor's own modal vocabulary.
                 if key == "escape"
                     && self.body.mode() == EditorMode::Normal
                     && self.body.pending_stroke().is_none()
+                    && self.body.pending_count() == 0
                 {
                     self.edit_target = None;
                     self.body.clear();
@@ -4616,7 +4951,11 @@ impl ModalApp {
         }
         let text = items[0].clone();
         self.body.replace_to_cursor(start, &text);
-        self.completion = Some(CompletionSession { start, items, ix: 0 });
+        self.completion = Some(CompletionSession {
+            start,
+            items,
+            ix: 0,
+        });
     }
 
     /// The body editor cursor as `(line, column)` for the caret.
@@ -4738,10 +5077,22 @@ impl ModalApp {
     fn run_command(&mut self, shell: &mut Shell, cmd: &str) {
         let last = self.rows(shell).len().saturating_sub(1);
         match cmd {
-            "next-file" => { self.scroll_override = None; self.selected = (self.selected + 1).min(last) },
-            "prev-file" => { self.scroll_override = None; self.selected = self.selected.saturating_sub(1) },
-            "first-file" => { self.scroll_override = None; self.selected = 0 },
-            "last-file" => { self.scroll_override = None; self.selected = last },
+            "next-file" => {
+                self.scroll_override = None;
+                self.selected = (self.selected + 1).min(last);
+            }
+            "prev-file" => {
+                self.scroll_override = None;
+                self.selected = self.selected.saturating_sub(1);
+            }
+            "first-file" => {
+                self.scroll_override = None;
+                self.selected = 0;
+            }
+            "last-file" => {
+                self.scroll_override = None;
+                self.selected = last;
+            }
             "quit" => self.quit = true,
             "capture-start" => {
                 self.surface = ModalSurface::Capture;

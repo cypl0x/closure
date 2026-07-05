@@ -587,6 +587,18 @@ base, ours, theirs)` returns the `FieldConflict`s (title/body) both sides
   `C-w`/`C-y`. The renderer reads the selection through
   `ModalApp::body_selection()` (exclusive byte range, `None` outside
   Visual) and paints it exactly, span-split at the selection edges.
+  Editor depth Q1 (2026-07-05): `V` opens linewise VISUAL
+  (`EditorMode::VisualLine`; whole-line selection, linewise `y`/`d`/`x`
+  with paste-below register semantics); digits accumulate vim counts
+  applied to motions and edits (`3w`, `2dd`, `5x`; `Esc` clears a
+  pending count first); `u`/`C-r` are editor-local undo/redo (snapshot
+  stacks bounded at 50, checkpointed before every mutating
+  Normal/Visual edit, independent of the vault-level undo; INSERT
+  bursts are a recorded gap); `w`/`b` word motions (simple
+  skip-word-skip-whitespace rule, count-aware, cross lines, clamp).
+  Leaving INSERT steps the cursor back onto the last typed char (vim
+  rule); after `dd` on the last line the cursor parks on the line
+  above (paste-back symmetry).
   Backlink rows are click targets (`backlink_click`, the Enter jump's
   mouse path). The window renders the shared `Feedback` queue (G7) as
   a toast strip fed by `status_toast` over status-line changes

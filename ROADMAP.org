@@ -13,6 +13,40 @@ file is the fine-grained, capability-level queue between them. Blocked
 on a design decision? Record it under [[*Decisions][Decisions]], pick the most
 reversible option, keep moving.
 
+* DONE GPUI-DEPTH-Q1 — editor depth in the body editor (orchestrated) [4/4]
+Queue Q1 of =goal-gpui-polish-2.md=, same protocol as GPUI-POLISH.
+** DONE E1 linewise VISUAL (=V=) [1/1]
+=V= opens =EditorMode::VisualLine=; the selection always spans whole
+lines (=line_start(min)..line_end(max)=); =y=/=d=/=x= act linewise
+(register gets the trailing newline, paste-below semantics), =Esc=
+back to Normal; =visual_selection()= reports the line range so the
+pane paints full lines. Grok RED+GREEN.
+** DONE E2 vim counts [1/1]
+Digits accumulate a pending count in Normal/Visual (=0= stays
+line-start when no count); count applies to =h j k l x dd yy p= and
+the word motions; =Esc= clears a pending count first (cancel guard
+=pending_count()=). Grok RED+GREEN.
+** DONE E3 editor-local undo/redo [1/1]
+=u= undoes, =C-r= redoes inside the editing session — snapshot stacks
+(buffer + cursor) bounded at 50, =checkpoint()= before every mutating
+Normal/Visual edit (=x=, =dd=, =p=, Visual =d/x=, =o=), independent of
+the vault-level undo. Two repairs by Fable (see Decisions). Grok
+RED+GREEN.
+** DONE E4 word motions [1/1]
+=w=/=b= jump to the next/previous word start (simple rule: skip word,
+skip whitespace — not full vim word classes), count-aware, cross
+lines, clamp at the buffer ends. Grok RED+GREEN, first-try green.
+** Decision (2026-07-05) Esc from INSERT steps the cursor back (vim-faithful).
+E3 exposed that =x= right after =Esc= no-op'd: the cursor sat past the
+last char. =to_normal()= now steps left onto the last typed char like
+vim; one existing test assert revised (=(1,2)= → =(1,1)=) with the
+reason recorded in the test.
+** Decision (2026-07-05) dd lands the cursor on the previous line; INSERT bursts are not snapshotted yet.
+Deleting the last line eats the preceding newline and parks the cursor
+on the line above (paste-back symmetry). Editor-local undo snapshots
+only Normal/Visual edits — one whole-INSERT-burst snapshot on leaving
+Insert is a recorded gap for a later leaf.
+
 * DONE GPUI-POLISH — orchestrated polish loop (Fable specs/verifies, Grok implements) [6/6]
 Protocol: repo root =goal-orchestrator.md=; leaves from
 =goal-gpui-polish.md=. Every leaf: Fable SPEC → Grok RED tests → Fable

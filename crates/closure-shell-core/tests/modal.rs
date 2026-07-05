@@ -220,7 +220,11 @@ fn body_editor_escape_goes_normal_then_cancels() {
         app.on_key(&mut sh, &c.to_string(), false, false, Some(c));
     }
     app.on_key(&mut sh, "escape", false, false, None);
-    assert_eq!(app.surface(), ModalSurface::EditBody, "INSERT Esc -> NORMAL");
+    assert_eq!(
+        app.surface(),
+        ModalSurface::EditBody,
+        "INSERT Esc -> NORMAL"
+    );
     assert_eq!(app.body_mode(), closure_shell_core::EditorMode::Normal);
     app.on_key(&mut sh, "escape", false, false, None);
     assert_eq!(app.surface(), ModalSurface::Browse, "NORMAL Esc cancels");
@@ -239,8 +243,10 @@ fn body_normal_mode_navigates_and_edits_vim_style() {
             app.on_key(&mut sh, &c.to_string(), false, false, Some(c));
         }
     }
-    app.on_key(&mut sh, "escape", false, false, None); // NORMAL, cursor at end
-    assert_eq!(app.body_cursor(), (1, 2), "line 1 col 2 after 'cd'");
+    // Contract revised 2026-07-04 (Q1-E3 repair): Esc applies the vim
+    // rule and steps back onto the last typed char.
+    app.on_key(&mut sh, "escape", false, false, None); // NORMAL, on 'd'
+    assert_eq!(app.body_cursor(), (1, 1), "line 1, on the 'd'");
     app.on_key(&mut sh, "k", false, false, Some('k')); // up
     assert_eq!(app.body_cursor().0, 0);
     app.on_key(&mut sh, "h", false, false, Some('h')); // left
@@ -700,7 +706,11 @@ fn public_run_drives_a_command_like_a_key() {
     let mut app = ModalApp::new(InputMode::Doom);
     app.run(&mut sh, "toggle-todo");
     let detail = app.detail(&sh).expect("detail");
-    assert_eq!(detail.todo.as_deref(), Some("DONE"), "TODO flipped by run()");
+    assert_eq!(
+        detail.todo.as_deref(),
+        Some("DONE"),
+        "TODO flipped by run()"
+    );
 }
 
 #[test]
@@ -711,7 +721,10 @@ fn delete_removes_the_selected_subtree() {
     app.run(&mut sh, "delete");
     let titles: Vec<String> = app.rows(&sh).iter().map(|r| r.title.clone()).collect();
     assert!(!titles.contains(&"Ship parser".to_owned()));
-    assert!(!titles.contains(&"Subtask".to_owned()), "subtree went with it");
+    assert!(
+        !titles.contains(&"Subtask".to_owned()),
+        "subtree went with it"
+    );
 }
 
 #[test]
@@ -732,7 +745,11 @@ fn rename_surface_prefills_and_commits() {
     let mut app = ModalApp::new(InputMode::Doom);
     app.on_key(&mut sh, "r", false, false, Some('r'));
     assert_eq!(app.surface(), ModalSurface::Rename);
-    assert_eq!(app.field_buffer(), "Ship parser", "prefilled with the title");
+    assert_eq!(
+        app.field_buffer(),
+        "Ship parser",
+        "prefilled with the title"
+    );
     for _ in 0.."Ship parser".len() {
         app.on_key(&mut sh, "backspace", false, false, None);
     }
@@ -793,7 +810,11 @@ fn hint_items_mirror_the_mode_keymap() {
     let items = app.hint_items();
     let km = closure_input::mode_keymap(InputMode::Doom);
     assert_eq!(items.len(), km.len());
-    assert!(items.iter().any(|(c, cmd)| c == "z" && cmd == "toggle-fold"));
+    assert!(
+        items
+            .iter()
+            .any(|(c, cmd)| c == "z" && cmd == "toggle-fold")
+    );
 }
 
 #[test]
@@ -803,7 +824,10 @@ fn row_fold_state_is_queryable_for_the_renderer() {
     let id = app.rows(&sh)[0].id.clone();
     assert!(!closure_shell_core::is_row_folded(&sh, &id));
     app.run(&mut sh, "toggle-fold");
-    assert!(closure_shell_core::is_row_folded(&sh, &id), "▸ marker source");
+    assert!(
+        closure_shell_core::is_row_folded(&sh, &id),
+        "▸ marker source"
+    );
 }
 
 #[test]
@@ -899,7 +923,11 @@ fn c_n_completes_words_from_the_vault_dabbrev_style() {
         app.on_key(&mut sh, &c.to_string(), false, false, Some(c));
     }
     app.on_key(&mut sh, "n", true, false, None);
-    assert_eq!(app.body_buffer(), "Personal", "word mined from vault titles");
+    assert_eq!(
+        app.body_buffer(),
+        "Personal",
+        "word mined from vault titles"
+    );
 }
 
 #[test]
@@ -1027,7 +1055,11 @@ fn completion_prefix_is_case_insensitive_dabbrev_style() {
     let (_d, mut sh) = shell();
     let mut app = editor_with(&mut sh, "pers");
     app.on_key(&mut sh, "n", true, false, None); // C-n
-    assert_eq!(app.body_buffer(), "Personal", "case-insensitive match, candidate case wins");
+    assert_eq!(
+        app.body_buffer(),
+        "Personal",
+        "case-insensitive match, candidate case wins"
+    );
 }
 
 // === L1: Visual selection accessor for the renderer. ===
@@ -1074,7 +1106,10 @@ fn backlink_click_jumps_like_enter() {
     app.on_key(&mut sh, "b", false, false, Some('b'));
     app.backlink_click(&sh, 99);
     assert!(
-        matches!(app.surface(), ModalSurface::Browse | ModalSurface::Backlinks),
+        matches!(
+            app.surface(),
+            ModalSurface::Browse | ModalSurface::Backlinks
+        ),
         "surface after out-of-range backlink click"
     );
 }
@@ -1126,7 +1161,10 @@ fn search_context_counts_matches() {
     for c in "wiki".chars() {
         app.on_key(&mut sh, &c.to_string(), false, false, Some(c));
     }
-    assert_eq!(app.search_context(&sh), "\u{2315} wiki\u{258f} \u{b7} 1 match");
+    assert_eq!(
+        app.search_context(&sh),
+        "\u{2315} wiki\u{258f} \u{b7} 1 match"
+    );
     app.on_key(&mut sh, "escape", false, false, None);
 }
 
@@ -1135,9 +1173,221 @@ fn search_context_pluralizes() {
     let (_d, mut sh) = shell();
     let mut app = ModalApp::new(InputMode::Vim);
     app.on_key(&mut sh, "/", false, false, Some('/'));
-    assert_eq!(app.search_context(&sh), "\u{2315} \u{258f} \u{b7} 3 matches");
+    assert_eq!(
+        app.search_context(&sh),
+        "\u{2315} \u{258f} \u{b7} 3 matches"
+    );
     for c in "zzz-no-match".chars() {
         app.on_key(&mut sh, &c.to_string(), false, false, Some(c));
         assert!(app.search_context(&sh).ends_with("0 matches"));
     }
+}
+
+// === Q1-E1: linewise VISUAL. ===
+
+#[test]
+fn visual_line_selects_whole_lines_and_yanks() {
+    let (_d, mut sh) = shell();
+    let mut app = editor_with(&mut sh, "one\ntwo\nthree");
+    app.on_key(&mut sh, "escape", false, false, None); // NORMAL, cursor on line 2
+    app.on_key(&mut sh, "k", false, false, Some('k')); // line 1, "two"
+    app.on_key(&mut sh, "V", false, false, Some('V'));
+    assert_eq!(app.body_mode(), closure_shell_core::EditorMode::VisualLine);
+    app.on_key(&mut sh, "y", false, false, Some('y'));
+    assert_eq!(app.body_mode(), closure_shell_core::EditorMode::Normal);
+    assert_eq!(app.body_buffer(), "one\ntwo\nthree");
+    app.on_key(&mut sh, "p", false, false, Some('p'));
+    assert_eq!(app.body_buffer(), "one\ntwo\ntwo\nthree");
+}
+
+#[test]
+fn visual_line_extends_and_deletes() {
+    let (_d, mut sh) = shell();
+    let mut app = editor_with(&mut sh, "a\nb\nc\nd");
+    app.on_key(&mut sh, "escape", false, false, None);
+    app.on_key(&mut sh, "k", false, false, Some('k'));
+    app.on_key(&mut sh, "k", false, false, Some('k')); // cursor line 1, "b"
+    app.on_key(&mut sh, "V", false, false, Some('V'));
+    app.on_key(&mut sh, "j", false, false, Some('j')); // extend to line 2, covers "b" and "c"
+    app.on_key(&mut sh, "d", false, false, Some('d'));
+    assert_eq!(app.body_buffer(), "a\nd");
+    assert_eq!(app.body_mode(), closure_shell_core::EditorMode::Normal);
+    app.on_key(&mut sh, "p", false, false, Some('p'));
+    assert_eq!(app.body_buffer(), "a\nb\nc\nd");
+}
+
+#[test]
+fn visual_line_escape_leaves_buffer_alone() {
+    let (_d, mut sh) = shell();
+    let mut app = editor_with(&mut sh, "x\ny");
+    app.on_key(&mut sh, "escape", false, false, None);
+    app.on_key(&mut sh, "V", false, false, Some('V'));
+    app.on_key(&mut sh, "escape", false, false, None);
+    assert_eq!(app.body_mode(), closure_shell_core::EditorMode::Normal);
+    assert_eq!(app.body_buffer(), "x\ny");
+}
+
+// === Q1-E2: counts in Normal mode. ===
+
+#[test]
+fn count_repeats_motions() {
+    let (_d, mut sh) = shell();
+    let mut app = editor_with(&mut sh, "abcdef");
+    app.on_key(&mut sh, "escape", false, false, None);
+    app.on_key(&mut sh, "0", false, false, Some('0'));
+    assert_eq!(app.body_cursor(), (0, 0));
+    app.on_key(&mut sh, "3", false, false, Some('3'));
+    app.on_key(&mut sh, "l", false, false, Some('l'));
+    assert_eq!(app.body_cursor(), (0, 3));
+}
+
+#[test]
+fn count_repeats_x_and_dd() {
+    let (_d, mut sh) = shell();
+    let mut app = editor_with(&mut sh, "abcdef");
+    app.on_key(&mut sh, "escape", false, false, None);
+    app.on_key(&mut sh, "0", false, false, Some('0'));
+    app.on_key(&mut sh, "3", false, false, Some('3'));
+    app.on_key(&mut sh, "x", false, false, Some('x'));
+    assert_eq!(app.body_buffer(), "def");
+
+    // fresh editor (new app + shell) for the 2dd case, as other tests do
+    let (_d2, mut sh2) = shell();
+    let mut app = editor_with(&mut sh2, "one\ntwo\nthree");
+    app.on_key(&mut sh2, "escape", false, false, None);
+    app.on_key(&mut sh2, "k", false, false, Some('k'));
+    app.on_key(&mut sh2, "k", false, false, Some('k'));
+    app.on_key(&mut sh2, "2", false, false, Some('2'));
+    app.on_key(&mut sh2, "d", false, false, Some('d'));
+    app.on_key(&mut sh2, "d", false, false, Some('d'));
+    assert_eq!(app.body_buffer(), "three");
+}
+
+#[test]
+fn zero_without_count_is_still_home() {
+    let (_d, mut sh) = shell();
+    let mut app = editor_with(&mut sh, "hello");
+    app.on_key(&mut sh, "escape", false, false, None);
+    app.on_key(&mut sh, "$", false, false, Some('$'));
+    app.on_key(&mut sh, "0", false, false, Some('0'));
+    assert_eq!(app.body_cursor(), (0, 0));
+}
+
+#[test]
+fn escape_clears_a_pending_count() {
+    let (_d, mut sh) = shell();
+    let mut app = editor_with(&mut sh, "abc");
+    app.on_key(&mut sh, "escape", false, false, None);
+    app.on_key(&mut sh, "0", false, false, Some('0'));
+    app.on_key(&mut sh, "9", false, false, Some('9'));
+    app.on_key(&mut sh, "escape", false, false, None);
+    assert_eq!(app.surface(), ModalSurface::EditBody);
+    assert_eq!(app.body_mode(), closure_shell_core::EditorMode::Normal);
+    app.on_key(&mut sh, "l", false, false, Some('l'));
+    assert_eq!(app.body_cursor(), (0, 1));
+    app.on_key(&mut sh, "escape", false, false, None);
+    assert_eq!(app.surface(), ModalSurface::Browse);
+}
+
+// === Q1-E3: editor-local undo/redo. ===
+
+#[test]
+fn u_undoes_x_and_ctrl_r_redoes() {
+    let (_d, mut sh) = shell();
+    let mut app = editor_with(&mut sh, "abc");
+    app.on_key(&mut sh, "escape", false, false, None);
+    app.on_key(&mut sh, "0", false, false, Some('0'));
+    app.on_key(&mut sh, "x", false, false, Some('x'));
+    assert_eq!(app.body_buffer(), "bc");
+    app.on_key(&mut sh, "u", false, false, Some('u'));
+    assert_eq!(app.body_buffer(), "abc");
+    assert_eq!(app.body_cursor(), (0, 0));
+    app.on_key(&mut sh, "r", true, false, None); // ctrl+r redo
+    assert_eq!(app.body_buffer(), "bc");
+}
+
+#[test]
+fn u_undoes_dd() {
+    let (_d, mut sh) = shell();
+    let mut app = editor_with(&mut sh, "one\ntwo");
+    app.on_key(&mut sh, "escape", false, false, None);
+    // cursor after editor_with+escape sits on LAST line, dd deletes it
+    app.on_key(&mut sh, "d", false, false, Some('d'));
+    app.on_key(&mut sh, "d", false, false, Some('d'));
+    assert_eq!(app.body_buffer(), "one");
+    app.on_key(&mut sh, "u", false, false, Some('u'));
+    assert_eq!(app.body_buffer(), "one\ntwo");
+}
+
+#[test]
+fn undo_stack_is_bounded_and_safe() {
+    let (_d, mut sh) = shell();
+    let mut app = editor_with(&mut sh, "a");
+    app.on_key(&mut sh, "escape", false, false, None);
+    // nothing to undo: must not panic, buffer unchanged
+    for _ in 0..5 {
+        app.on_key(&mut sh, "u", false, false, Some('u'));
+    }
+    assert_eq!(app.body_buffer(), "a");
+    app.on_key(&mut sh, "x", false, false, Some('x'));
+    assert_eq!(app.body_buffer(), "");
+    app.on_key(&mut sh, "u", false, false, Some('u'));
+    assert_eq!(app.body_buffer(), "a");
+    app.on_key(&mut sh, "u", false, false, Some('u'));
+    assert_eq!(app.body_buffer(), "a");
+}
+
+// === Q1-E4: word motions. ===
+
+#[test]
+fn w_jumps_to_next_word_start() {
+    let (_d, mut sh) = shell();
+    let mut app = editor_with(&mut sh, "one two three");
+    app.on_key(&mut sh, "escape", false, false, None); // cursor on the final 'e'
+    app.on_key(&mut sh, "0", false, false, Some('0')); // col 0
+    app.on_key(&mut sh, "w", false, false, Some('w'));
+    assert_eq!(app.body_cursor(), (0, 4), "start of \"two\"");
+    app.on_key(&mut sh, "w", false, false, Some('w'));
+    assert_eq!(app.body_cursor(), (0, 8), "start of \"three\"");
+}
+
+#[test]
+fn b_jumps_to_previous_word_start() {
+    let (_d, mut sh) = shell();
+    let mut app = editor_with(&mut sh, "one two three");
+    app.on_key(&mut sh, "escape", false, false, None); // cursor on last 'e' col 12
+    app.on_key(&mut sh, "b", false, false, Some('b'));
+    assert_eq!(app.body_cursor(), (0, 8));
+    app.on_key(&mut sh, "b", false, false, Some('b'));
+    assert_eq!(app.body_cursor(), (0, 4));
+    app.on_key(&mut sh, "b", false, false, Some('b'));
+    assert_eq!(app.body_cursor(), (0, 0));
+    app.on_key(&mut sh, "b", false, false, Some('b'));
+    assert_eq!(app.body_cursor(), (0, 0), "stays at start, no panic");
+}
+
+#[test]
+fn count_applies_to_word_motions() {
+    let (_d, mut sh) = shell();
+    let mut app = editor_with(&mut sh, "a bb ccc dddd");
+    app.on_key(&mut sh, "escape", false, false, None);
+    app.on_key(&mut sh, "0", false, false, Some('0'));
+    app.on_key(&mut sh, "3", false, false, Some('3'));
+    app.on_key(&mut sh, "w", false, false, Some('w'));
+    assert_eq!(app.body_cursor(), (0, 9), "start of \"dddd\"");
+}
+
+#[test]
+fn w_crosses_lines() {
+    let (_d, mut sh) = shell();
+    let mut app = editor_with(&mut sh, "end\nnew");
+    app.on_key(&mut sh, "escape", false, false, None);
+    app.on_key(&mut sh, "k", false, false, Some('k'));
+    app.on_key(&mut sh, "0", false, false, Some('0'));
+    app.on_key(&mut sh, "w", false, false, Some('w'));
+    assert_eq!(
+        app.body_cursor(),
+        (1, 0),
+        "start of \"new\" on the next line"
+    );
 }

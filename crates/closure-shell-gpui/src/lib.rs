@@ -142,7 +142,10 @@ pub fn highlight_body(body: &str) -> Vec<Vec<(BodySpan, String)>> {
                 spans
             });
         } else if trimmed.starts_with(':')
-            && (trimmed.ends_with(':') || trimmed.split_once(' ').is_some_and(|(k, _)| k.ends_with(':')))
+            && (trimmed.ends_with(':')
+                || trimmed
+                    .split_once(' ')
+                    .is_some_and(|(k, _)| k.ends_with(':')))
         {
             out.push(vec![(BodySpan::Drawer, line.to_owned())]);
         } else {
@@ -504,13 +507,13 @@ impl GpuiView {
                         .text_color(rgb(co.outline(row.level)))
                         .child(row.title.clone()),
                 )
-                    .child(div().flex_grow())
-                    .child(
-                        div()
-                            .text_color(rgb(co.muted))
-                            .text_size(px(10.0))
-                            .child(short_path(&row.path)),
-                    )
+                .child(div().flex_grow())
+                .child(
+                    div()
+                        .text_color(rgb(co.muted))
+                        .text_size(px(10.0))
+                        .child(short_path(&row.path)),
+                )
             }))
     }
 
@@ -596,6 +599,7 @@ impl GpuiView {
             EditorMode::Insert => ("INSERT", co.success),
             EditorMode::Normal => ("NORMAL", co.accent),
             EditorMode::Visual => ("VISUAL", co.heading3),
+            EditorMode::VisualLine => ("V·LINE", co.heading2),
         };
         let span_color = |k: BodySpan| match k {
             BodySpan::Plain => co.fg,
@@ -629,7 +633,9 @@ impl GpuiView {
                         EditorMode::Normal => {
                             "h j k l 0 $ move · i a o insert · x dd yy p · v visual · Esc cancel"
                         }
-                        EditorMode::Visual => "motions extend · y yank · d delete · Esc → NORMAL",
+                        EditorMode::Visual | EditorMode::VisualLine => {
+                            "motions extend · y yank · d delete · Esc → NORMAL"
+                        }
                     }),
             );
         let mut body = div()
@@ -642,7 +648,10 @@ impl GpuiView {
             .text_size(px(13.0));
         let selection = self.app.body_selection();
         let mut line_start = 0usize;
-        for (ln, spans) in highlight_body(self.app.body_buffer()).into_iter().enumerate() {
+        for (ln, spans) in highlight_body(self.app.body_buffer())
+            .into_iter()
+            .enumerate()
+        {
             let line_len: usize = spans.iter().map(|(_, s)| s.len()).sum();
             // L5: line-number gutter, current line accented.
             let mut row = div().flex().min_h(px(18.0)).child(
@@ -711,7 +720,13 @@ impl GpuiView {
             body = body.child(row);
             line_start += line_len + 1;
         }
-        let mut pane = div().flex().flex_col().flex_grow().gap_2().child(header).child(body);
+        let mut pane = div()
+            .flex()
+            .flex_col()
+            .flex_grow()
+            .gap_2()
+            .child(header)
+            .child(body);
         let items = self.app.body_completion_items();
         if !items.is_empty() {
             let ix = self.app.body_completion_ix().unwrap_or(0);
@@ -728,7 +743,11 @@ impl GpuiView {
                         div()
                             .px_2()
                             .text_size(px(12.0))
-                            .bg(if i == ix { rgb(co.selection) } else { rgb(co.bg) })
+                            .bg(if i == ix {
+                                rgb(co.selection)
+                            } else {
+                                rgb(co.bg)
+                            })
                             .text_color(rgb(if i == ix { co.fg } else { co.muted }))
                             .child(item.clone())
                     })),
@@ -788,12 +807,7 @@ impl GpuiView {
     /// Detail pane with click-to-edit fields: title → rename, meta →
     /// toggle-todo, tags → edit-tags, properties → edit-property,
     /// body → edit-body.
-    fn detail_pane(
-        &self,
-        pane: gpui::Div,
-        co: Colors,
-        cx: &mut Context<Self>,
-    ) -> gpui::Div {
+    fn detail_pane(&self, pane: gpui::Div, co: Colors, cx: &mut Context<Self>) -> gpui::Div {
         let Some(d) = self.app.detail(&self.shell) else {
             return pane.child(
                 div()
@@ -1010,12 +1024,7 @@ impl Render for GpuiView {
             .px_3()
             .py_1()
             .gap_2()
-            .child(
-                div()
-                    .text_color(rgb(co.accent))
-                    .text_lg()
-                    .child("closure"),
-            )
+            .child(div().text_color(rgb(co.accent)).text_lg().child("closure"))
             .child(
                 // Mode chip — click cycles the input mode.
                 div()
