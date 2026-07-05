@@ -13,6 +13,19 @@ file is the fine-grained, capability-level queue between them. Blocked
 on a design decision? Record it under [[*Decisions][Decisions]], pick the most
 reversible option, keep moving.
 
+* DONE GPUI-MX — the palette is a real M-x (orchestrated) [2/2]
+Queue Q8 of =goal-gpui-polish-3.md= (Vertico-inspired user ask).
+** DONE M1 palette covers the whole keymap [1/1]
+=command_palette= now appends a "Command" section: every command
+bound in the active mode's keymap that the curated sections don't
+list, labelled by its canonical name, fuzzy-filtered + ranked like
+the rest, chord attached (I4 — the palette can no longer silently
+miss a bound command). Grok RED, Fable GREEN.
+** DONE M2 =M-x= opens the palette [1/1]
+=("M-x", "palette")= in all five keymaps (one entry each; notion
+keeps =/= too). Pure keymap addition — the =palette= command and the
+Browse chord routing already existed.
+
 * DONE GPUI-STRUCT — structural editing from the outline (orchestrated) [3/3]
 Queue Q6 of =goal-gpui-polish-3.md=.
 ** DONE S1 promote/demote [1/1]

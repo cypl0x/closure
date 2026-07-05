@@ -1689,3 +1689,61 @@ fn doom_keymap_binds_structural_editing() {
         "M-RET -> add-heading"
     );
 }
+
+// === Q8-M1/M2: the palette covers the keymap; M-x opens it. ===
+
+#[test]
+fn palette_covers_every_keymap_command() {
+    let (_d, mut sh) = shell();
+    let mut app = ModalApp::new(InputMode::Doom);
+    app.on_key(&mut sh, ":", false, false, Some(':'));
+    let entries = app.palette_entries();
+    let cmds: std::collections::BTreeSet<&str> = closure_input::mode_keymap(InputMode::Doom)
+        .iter()
+        .map(|(_, cmd)| *cmd)
+        .collect();
+    for cmd in &cmds {
+        assert!(
+            entries.iter().any(|e| e.action.command() == *cmd),
+            "palette misses {cmd}"
+        );
+    }
+}
+
+#[test]
+fn palette_lists_structural_commands_with_chords() {
+    let (_d, mut sh) = shell();
+    let mut app = ModalApp::new(InputMode::Doom);
+    app.on_key(&mut sh, ":", false, false, Some(':'));
+    let entries = app.palette_entries();
+    assert!(
+        entries
+            .iter()
+            .any(|e| e.action.command() == "promote" && e.action.chord() == "M-h"),
+        "promote should be listed with its M-h chord"
+    );
+}
+
+#[test]
+fn alt_x_opens_the_palette() {
+    let (_d, mut sh) = shell();
+    let mut app = ModalApp::new(InputMode::Doom);
+    app.on_key(&mut sh, "x", false, true, Some('x'));
+    assert_eq!(app.surface(), ModalSurface::Palette);
+}
+
+#[test]
+fn palette_query_still_fuzzy_filters() {
+    let (_d, mut sh) = shell();
+    let mut app = ModalApp::new(InputMode::Doom);
+    app.on_key(&mut sh, ":", false, false, Some(':'));
+    for c in "fold".chars() {
+        app.on_key(&mut sh, &c.to_string(), false, false, Some(c));
+    }
+    let entries = app.palette_entries();
+    assert!(!entries.is_empty());
+    assert!(
+        entries.iter().any(|e| e.action.command() == "toggle-fold"),
+        "fold query still surfaces toggle-fold"
+    );
+}

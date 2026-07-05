@@ -557,7 +557,11 @@ base, ours, theirs)` returns the `FieldConflict`s (title/body) both sides
   commands resolved against the active mode's keymap with pending-chord
   which-key completions, `/` opens the search overlay that owns
   type-to-filter, and the footer chords are therefore *honest* — what
-  the bar shows is exactly what the key does. Every mouse affordance
+  the bar shows is exactly what the key does. The palette is a real
+  M-x (Q8, 2026-07-05): `M-x` (or `:`) opens it in every mode and it
+  lists *every* keymap-bound command with its chord — curated
+  sections keep their descriptions, the rest land in a "Command"
+  section by canonical name (I4). Every mouse affordance
   dispatches a registry-backed command through the same `ModalApp::run`
   entry the chords use (I8): row click selects, the fold arrow toggles
   `toggle-fold`, which-key chips run their command, palette rows run the

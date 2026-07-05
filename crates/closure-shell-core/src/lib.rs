@@ -2207,9 +2207,12 @@ pub struct PaletteSection {
 /// Every command grouped into sections, fuzzy-filtered + ranked by
 /// `query`, each entry carrying a description + its chord in `mode`. Empty
 /// sections are dropped. One hermetic source every GUI renders.
+/// M-x rule (I4): every command bound in the mode's keymap appears —
+/// curated entries keep their sections/descriptions, the rest land in
+/// a final "Command" section labelled by their canonical name.
 #[must_use]
 pub fn command_palette(query: &str, mode: closure_config::InputMode) -> Vec<PaletteSection> {
-    PALETTE_SECTIONS
+    let mut sections: Vec<PaletteSection> = PALETTE_SECTIONS
         .iter()
         .filter_map(|section| {
             let mut scored: Vec<(u32, PaletteEntry)> = PALETTE_COMMANDS
@@ -2241,7 +2244,42 @@ pub fn command_palette(query: &str, mode: closure_config::InputMode) -> Vec<Pale
                 items: scored.into_iter().map(|(_, e)| e).collect(),
             })
         })
-        .collect()
+        .collect();
+    let curated: std::collections::BTreeSet<&str> =
+        PALETTE_COMMANDS.iter().map(|(_, c, ..)| *c).collect();
+    let mut rest: std::collections::BTreeSet<&str> = closure_input::mode_keymap(mode)
+        .iter()
+        .map(|(_, cmd)| *cmd)
+        .filter(|cmd| !curated.contains(cmd))
+        .collect();
+    let mut scored: Vec<(u32, PaletteEntry)> = Vec::new();
+    for cmd in std::mem::take(&mut rest) {
+        let score = if query.is_empty() {
+            Some(0)
+        } else {
+            closure_query::fuzzy_score(query, cmd)
+        };
+        if let Some(score) = score
+            && let Some(action) = Action::new(mode, cmd)
+        {
+            scored.push((
+                score,
+                PaletteEntry {
+                    label: cmd.to_owned(),
+                    description: format!("Run {cmd}"),
+                    action,
+                },
+            ));
+        }
+    }
+    if !scored.is_empty() {
+        scored.sort_by_key(|(s, _)| std::cmp::Reverse(*s));
+        sections.push(PaletteSection {
+            title: "Command".to_owned(),
+            items: scored.into_iter().map(|(_, e)| e).collect(),
+        });
+    }
+    sections
 }
 
 /// Serialise a [`command_palette`] to a deterministic text snapshot (G6) —

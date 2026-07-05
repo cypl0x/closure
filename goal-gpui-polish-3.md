@@ -33,7 +33,7 @@ Standard text-field behaviour the user gets everywhere on KDE, inside INSERT mod
 - **C3** syntax highlighting for body text in the *read-only* rows pane (reuse
   `highlight_body` spans when rendering non-edited body preview).
 
-## Q8 — M-x command palette (Vertico-style)
+## Q8 — M-x command palette ✅ DONE 2026-07-05 (ROADMAP: GPUI-MX)
 
 - **M1** core: `palette_open()` listing every registry command with its mapped keybinding
   (from closure-input keymap — I4: single source of truth), fuzzy-filtered
