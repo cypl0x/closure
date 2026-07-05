@@ -1905,3 +1905,35 @@ fn doom_binds_undo_history() {
         "g u -> undo-history"
     );
 }
+
+// === Q5-N4: TAB cycles the fold on the selected heading (org TAB). ===
+
+#[test]
+fn tab_toggles_the_selected_fold_in_browse() {
+    let (_d, mut sh) = nested();
+    let mut app = ModalApp::new(InputMode::Doom);
+    let id = app.rows(&sh)[0].id.clone();
+    assert!(!closure_shell_core::is_row_folded(&sh, &id));
+    app.on_key(&mut sh, "tab", false, false, None);
+    assert!(closure_shell_core::is_row_folded(&sh, &id), "TAB folds");
+    app.on_key(&mut sh, "tab", false, false, None);
+    assert!(!closure_shell_core::is_row_folded(&sh, &id), "TAB unfolds");
+}
+
+#[test]
+fn every_mode_binds_tab_to_toggle_fold() {
+    for mode in [
+        InputMode::Doom,
+        InputMode::Vim,
+        InputMode::Emacs,
+        InputMode::Helix,
+        InputMode::Notion,
+    ] {
+        let km = closure_input::mode_keymap(mode);
+        assert!(
+            km.iter()
+                .any(|(c, cmd)| *c == "TAB" && *cmd == "toggle-fold"),
+            "{mode:?} binds TAB"
+        );
+    }
+}

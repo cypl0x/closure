@@ -65,6 +65,7 @@ const DOOM_KEYMAP: &[(&str, &str)] = &[
     ("M-j", "move-subtree-down"),
     ("M-RET", "add-heading"),
     ("g u", "undo-history"),
+    ("TAB", "toggle-fold"),
 ];
 
 /// Emacs bindings: Ctrl/Meta chords, `C-x C-c` quits.
@@ -111,6 +112,7 @@ const EMACS_KEYMAP: &[(&str, &str)] = &[
     ("M-<down>", "move-subtree-down"),
     ("M-RET", "add-heading"),
     ("C-c u", "undo-history"),
+    ("TAB", "toggle-fold"),
 ];
 
 /// Vim bindings: modal navigation keys.
@@ -158,6 +160,7 @@ const VIM_KEYMAP: &[(&str, &str)] = &[
     ("M-j", "move-subtree-down"),
     ("M-RET", "add-heading"),
     ("g u", "undo-history"),
+    ("TAB", "toggle-fold"),
 ];
 
 /// Helix bindings: vim-like with `U` redo and `g e` for end.
@@ -205,6 +208,7 @@ const HELIX_KEYMAP: &[(&str, &str)] = &[
     ("M-j", "move-subtree-down"),
     ("M-RET", "add-heading"),
     ("g u", "undo-history"),
+    ("TAB", "toggle-fold"),
 ];
 
 /// Notion bindings: mouse + arrows + slash command, minimal chords.
@@ -251,6 +255,7 @@ const NOTION_KEYMAP: &[(&str, &str)] = &[
     ("M-j", "move-subtree-down"),
     ("M-RET", "add-heading"),
     ("g u", "undo-history"),
+    ("TAB", "toggle-fold"),
 ];
 
 /// The canonical `(chord, command)` keymap for an input mode — the

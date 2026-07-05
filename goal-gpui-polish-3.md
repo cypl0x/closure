@@ -3,7 +3,7 @@
 Orchestrated per `goal-orchestrator.md` (Claude specs/verifies/commits, grok implements
 mechanical leaves). Source: user's org TODO dump (notes.org "closure" subtree).
 
-## Q5 — insert-mode ergonomics ✅ N1+N2 DONE 2026-07-05 (N3 pre-existing; N4 folded into Q6/TAB later)
+## Q5 — insert-mode ergonomics ✅ N1+N2+N4 DONE 2026-07-05 (N3 pre-existing)
 
 Standard text-field behaviour the user gets everywhere on KDE, inside INSERT mode:
 

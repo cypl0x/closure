@@ -103,6 +103,11 @@ Grok RED, Fable GREEN (escalation clause: routing arm only).
 previous/next word start (the E4 word-motion rule);
 =on_editbody_key= grew the =alt= flag (plumbed from =on_key=).
 Grok RED, Fable GREEN.
+** DONE N4 TAB cycles the fold (org TAB) [1/1]
+=("TAB", "toggle-fold")= in all five keymaps — TAB on the selected
+Browse heading folds/unfolds like org-mode. Fable RED+GREEN (two-line
+leaf; heading promote-on-TAB inside INSERT stays with the Q6 =M-h/l=
+chords).
 
 * DONE GPUI-DEPTH-Q2 — fuzzy completion in the body editor (orchestrated) [2/2]
 Queue Q2 of =goal-gpui-polish-2.md=.
