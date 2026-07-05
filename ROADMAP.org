@@ -13,6 +13,35 @@ file is the fine-grained, capability-level queue between them. Blocked
 on a design decision? Record it under [[*Decisions][Decisions]], pick the most
 reversible option, keep moving.
 
+* DONE GPUI-DEPTH-Q2 — fuzzy completion in the body editor (orchestrated) [2/2]
+Queue Q2 of =goal-gpui-polish-2.md=.
+** DONE F1 fuzzy-ranked candidates [1/1]
+=body_completions= filters by =closure_query::fuzzy_score= subsequence
+match (replacing the prefix filter) and ranks score-descending;
+keywords beat vault words on ties, then alphabetical; deduped after
+sorting. Grok RED+GREEN (two let-chain lint repairs by Fable).
+** DONE F2 TAB accepts the session; top-8 popup [1/1]
+TAB with an active completion session keeps the applied candidate and
+ends the session (beats org-tempo/soft-indent); a session holds at
+most the top 8 ranked candidates. Fable GREEN per the escalation
+clause (diff smaller than the dispatch prompt); Grok RED.
+
+* DONE GPUI-DEPTH-Q3 — agenda inside the reference GUI (orchestrated) [2/2]
+Queue Q3 of =goal-gpui-polish-2.md=.
+** DONE A1 =agenda_context= core rows [1/1]
+=ModalApp::agenda_context(shell, today)= maps =Vault::agenda()= into
+=AgendaRow= (=date=, =kind=, =title=, =is_today=, =is_overdue=) with
+the *injected* today keeping tests hermetic (lexicographic YYYY-MM-DD
+comparison). Grok RED+GREEN.
+** DONE A2 agenda pane paint [1/1]
+The gpui Agenda surface renders =agenda_context=: date group headers
+(today accented "· today", overdue red "· overdue", else heading2),
+SCHEDULED accent / DEADLINE error kind chips, overdue titles red, rows
+click-to-jump (=jump_list_row=). Real today from a pure
+=today_ymd(unix_secs)= (Hinnant civil-from-days, no chrono dep; 6
+hermetic date tests incl. leap day + century boundary). Fable
+(display-bound + correctness-critical date math).
+
 * DONE GPUI-DEPTH-Q1 — editor depth in the body editor (orchestrated) [4/4]
 Queue Q1 of =goal-gpui-polish-2.md=, same protocol as GPUI-POLISH.
 ** DONE E1 linewise VISUAL (=V=) [1/1]

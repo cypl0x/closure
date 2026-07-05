@@ -579,6 +579,12 @@ base, ours, theirs)` returns the `FieldConflict`s (title/body) both sides
   otherwise soft-indents. `C-n`/`C-p` cycle completion over org
   keywords + dabbrev words mined from the vault (`body_completions`;
   the prefix matches case-insensitively, the candidate keeps its case).
+  Completion is fuzzy (Q2, 2026-07-05): candidates match by
+  `closure_query::fuzzy_score` subsequence, ranked score-descending
+  (keywords beat vault words on ties, then alphabetical); a session
+  holds the top 8 and TAB *accepts* the applied candidate (ends the
+  session, beating org-tempo; without a session TAB stays
+  tempo/indent).
   NORMAL grew the vim vocabulary (2026-07-04b): `v` opens a charwise
   VISUAL selection (inclusive; motions extend, `y` yanks, `d`/`x`
   delete), `dd`/`yy` cut/copy the line, `p` pastes (linewise below the

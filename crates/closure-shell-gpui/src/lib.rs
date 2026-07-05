@@ -179,6 +179,26 @@ pub fn status_toast(status: &str) -> Option<(closure_shell_core::ToastLevel, Str
     None
 }
 
+/// UTC calendar date `YYYY-MM-DD` for a unix timestamp — the agenda
+/// pane's injected *today* (pure: Howard Hinnant's `civil_from_days`,
+/// no clock, no chrono dependency).
+#[must_use]
+pub fn today_ymd(unix_secs: u64) -> String {
+    let days = i64::try_from(unix_secs / 86_400).unwrap_or(0);
+    // Shift the epoch to the 0000-03-01 era so leap days land at the
+    // end of the year-cycle (146097 days per 400-year era).
+    let z = days + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z.rem_euclid(146_097);
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    let y = yoe + era * 400 + i64::from(m <= 2);
+    format!("{y:04}-{m:02}-{d:02}")
+}
+
 /// Launch fallback when the `gpui` feature is disabled (the default,
 /// hermetic build). The kernel-side [`Shell`] is always available; the
 /// GPU window requires `--features gpui` and the system GPU/X11 libs.
@@ -530,23 +550,7 @@ impl GpuiView {
             .bg(rgb(co.bg));
         match self.app.surface() {
             ModalSurface::Palette => pane.child(self.palette_pane(co, cx)),
-            ModalSurface::Agenda => pane.children(
-                self.app
-                    .agenda_rows(&self.shell)
-                    .into_iter()
-                    .enumerate()
-                    .map(|(i, (date, kind, title))| {
-                        list_row(
-                            co,
-                            i == self.app.selected(),
-                            format!("{date}  {kind:9}  {title}"),
-                            cx.listener(move |this: &mut Self, _ev, _w, cx| {
-                                this.app.jump_list_row(&this.shell, i);
-                                cx.notify();
-                            }),
-                        )
-                    }),
-            ),
+            ModalSurface::Agenda => pane.child(self.agenda_pane(co, cx)),
             ModalSurface::Blocks => pane.children(
                 self.app
                     .block_rows(&self.shell)
@@ -802,6 +806,75 @@ impl GpuiView {
                         )
                 }),
         )
+    }
+
+    /// Agenda pane: rows grouped under date headers, SCHEDULED accent /
+    /// DEADLINE error kind chips, the today group accented, overdue red.
+    /// Row click jumps like Enter (`jump_list_row`).
+    fn agenda_pane(&self, co: Colors, cx: &mut Context<Self>) -> impl IntoElement {
+        let today = today_ymd(
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_or(0, |d| d.as_secs()),
+        );
+        let rows = self.app.agenda_context(&self.shell, &today);
+        let selected = self.app.selected();
+        let mut out = div().flex().flex_col().gap_0();
+        let mut last_date = String::new();
+        for (i, row) in rows.into_iter().enumerate() {
+            if row.date != last_date {
+                last_date.clone_from(&row.date);
+                let (header_color, suffix) = if row.is_today {
+                    (co.accent, "  · today")
+                } else if row.is_overdue {
+                    (co.error, "  · overdue")
+                } else {
+                    (co.heading2, "")
+                };
+                out = out.child(
+                    div()
+                        .mt_2()
+                        .text_size(px(11.0))
+                        .text_color(rgb(header_color))
+                        .child(format!("{}{suffix}", row.date)),
+                );
+            }
+            let is_cur = i == selected;
+            let kind_color = if row.kind == "DEADLINE" {
+                co.error
+            } else {
+                co.accent
+            };
+            let title_color = if row.is_overdue { co.error } else { co.fg };
+            out = out.child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap_2()
+                    .px_2()
+                    .py_1()
+                    .rounded_sm()
+                    .cursor_pointer()
+                    .bg(rgb(if is_cur { co.selection } else { co.bg }))
+                    .hover(move |s| s.bg(rgb(if is_cur { co.selection } else { co.hover })))
+                    .on_mouse_down(
+                        MouseButton::Left,
+                        cx.listener(move |this, _ev, _w, cx| {
+                            this.app.jump_list_row(&this.shell, i);
+                            cx.notify();
+                        }),
+                    )
+                    .child(
+                        div()
+                            .w(px(80.0))
+                            .text_size(px(10.0))
+                            .text_color(rgb(kind_color))
+                            .child(row.kind),
+                    )
+                    .child(div().text_color(rgb(title_color)).child(row.title)),
+            );
+        }
+        out
     }
 
     /// Detail pane with click-to-edit fields: title → rename, meta →

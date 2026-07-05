@@ -334,6 +334,22 @@ pub struct Row {
     pub todo: Option<String>,
 }
 
+/// One agenda row for the GUI agenda pane, flags precomputed
+/// against an injected today so shells stay hermetic.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AgendaRow {
+    /// Date in YYYY-MM-DD form.
+    pub date: String,
+    /// SCHEDULED or DEADLINE.
+    pub kind: String,
+    /// Headline title.
+    pub title: String,
+    /// True when date equals the injected today.
+    pub is_today: bool,
+    /// True when date lies before the injected today.
+    pub is_overdue: bool,
+}
+
 /// Full preview of the selected headline for the detail pane.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Detail {
@@ -4189,36 +4205,47 @@ const ORG_COMPLETION_KEYWORDS: &[&str] = &[
     "#+FILETAGS:",
 ];
 
-/// Completion candidates for `prefix`: org keywords first, then
-/// dabbrev-style words (≥ 3 chars) mined from every document in the
-/// vault — sorted + deduped (I6), the exact prefix itself excluded.
+/// Fuzzy-ranked completion candidates for `prefix`.
+///
+/// Org keywords and vault words (≥ 3 chars) that fuzzy-match by
+/// subsequence ([`closure_query::fuzzy_score`]) and differ from the
+/// prefix; ranked score-descending, keywords first on ties, then by
+/// name — deduped after sorting.
 #[must_use]
 pub fn body_completions(prefix: &str, vault: &closure_store::Vault) -> Vec<String> {
     if prefix.is_empty() {
         return Vec::new();
     }
-    let lower = prefix.to_lowercase();
-    let mut keywords: Vec<String> = ORG_COMPLETION_KEYWORDS
-        .iter()
-        .filter(|k| k.to_lowercase().starts_with(&lower) && **k != prefix)
-        .map(|k| (*k).to_owned())
-        .collect();
-    let mut words: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+    let mut entries: Vec<(u32, bool, String)> = Vec::new();
+    for &k in ORG_COMPLETION_KEYWORDS {
+        if k != prefix
+            && let Some(score) = closure_query::fuzzy_score(prefix, k)
+        {
+            entries.push((score, false, k.to_owned()));
+        }
+    }
     for (_p, doc) in vault.iter() {
         for word in doc
             .source()
             .split(|c: char| !(c.is_alphanumeric() || c == '_'))
         {
-            // Dabbrev-style: the prefix matches case-insensitively, the
-            // candidate keeps its own case.
-            if word.len() >= 3 && word.to_lowercase().starts_with(&lower) && word != prefix {
-                words.insert(word.to_owned());
+            if word.len() >= 3
+                && word != prefix
+                && let Some(score) = closure_query::fuzzy_score(prefix, word)
+            {
+                entries.push((score, true, word.to_owned()));
             }
         }
     }
-    keywords.extend(words);
-    keywords.dedup();
-    keywords
+    entries.sort_by(|a, b| b.0.cmp(&a.0).then(a.1.cmp(&b.1)).then(a.2.cmp(&b.2)));
+    let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut result: Vec<String> = Vec::new();
+    for (_score, _is_word, name) in entries {
+        if seen.insert(name.clone()) {
+            result.push(name);
+        }
+    }
+    result
 }
 
 /// A live completion cycle in the body editor: the prefix start, the
@@ -4735,6 +4762,28 @@ impl ModalApp {
             .collect()
     }
 
+    /// Read-only agenda rows with today/overdue flags; today is injected
+    /// (`YYYY-MM-DD`) so tests stay hermetic. Order = [`Vault::agenda`]
+    /// (date ascending, title tie-break).
+    #[must_use]
+    pub fn agenda_context(&self, shell: &Shell, today: &str) -> Vec<AgendaRow> {
+        shell
+            .vault
+            .agenda()
+            .into_iter()
+            .map(|e| AgendaRow {
+                is_today: e.date == today,
+                is_overdue: e.date.as_str() < today,
+                kind: match e.kind {
+                    closure_store::AgendaKind::Scheduled => "SCHEDULED".to_owned(),
+                    closure_store::AgendaKind::Deadline => "DEADLINE".to_owned(),
+                },
+                date: e.date,
+                title: e.title,
+            })
+            .collect()
+    }
+
     /// Every `#+BEGIN_SRC` block across the vault as `(path, lang,
     /// first-line)` rows, in per-file document order.
     #[must_use]
@@ -4868,8 +4917,11 @@ impl ModalApp {
                     self.body.backspace();
                 }
                 "tab" => {
-                    self.completion = None;
-                    self.body.tempo_expand_or_indent();
+                    // An active completion session wins over org-tempo:
+                    // TAB keeps the applied candidate and just ends it.
+                    if self.completion.take().is_none() {
+                        self.body.tempo_expand_or_indent();
+                    }
                 }
                 _ => {
                     if let Some(c) = text.filter(|_| !ctrl) {
@@ -4944,7 +4996,9 @@ impl ModalApp {
         }
         let start = self.body.word_start();
         let prefix = self.body.word_prefix().to_owned();
-        let items = body_completions(&prefix, &shell.vault);
+        let mut items = body_completions(&prefix, &shell.vault);
+        // The popup (and the cycle) shows the top 8 ranked candidates.
+        items.truncate(8);
         if items.is_empty() {
             "no completions".clone_into(&mut self.status);
             return;

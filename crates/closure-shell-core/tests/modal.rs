@@ -1391,3 +1391,170 @@ fn w_crosses_lines() {
         "start of \"new\" on the next line"
     );
 }
+
+// === Q2-F1: fuzzy-ranked completions. ===
+
+#[test]
+fn fuzzy_subsequence_matches_are_included() {
+    let dir = tempfile::tempdir().expect("tmp");
+    fs::write(dir.path().join("notes.org"), "* weathervane spins\n").expect("write");
+    let v = Vault::open(dir.path()).expect("open");
+    let got = closure_shell_core::body_completions("wvn", &v);
+    assert!(
+        got.iter().any(|s| s == "weathervane"),
+        "wvn should fuzzy-match weathervane: {got:?}"
+    );
+}
+
+#[test]
+fn tighter_fuzzy_match_ranks_first() {
+    let dir = tempfile::tempdir().expect("tmp");
+    fs::write(dir.path().join("notes.org"), "* tempest test\n").expect("write");
+    let v = Vault::open(dir.path()).expect("open");
+    let got = closure_shell_core::body_completions("tst", &v);
+    assert_eq!(got[0], "test", "contiguous ranks higher: {got:?}");
+    assert!(
+        got.iter().any(|s| s == "tempest"),
+        "tempest also matches: {got:?}"
+    );
+}
+
+#[test]
+fn keywords_tie_break_before_words() {
+    let dir = tempfile::tempdir().expect("tmp");
+    fs::write(dir.path().join("notes.org"), "* TODdler note\n").expect("write");
+    let v = Vault::open(dir.path()).expect("open");
+    let got = closure_shell_core::body_completions("TOD", &v);
+    assert_eq!(got[0], "TODO", "keyword wins tie: {got:?}");
+    assert!(
+        got.iter().any(|s| s == "TODdler"),
+        "TODdler also present: {got:?}"
+    );
+}
+
+#[test]
+fn equal_scores_stay_alphabetical() {
+    let dir = tempfile::tempdir().expect("tmp");
+    fs::write(dir.path().join("notes.org"), "* alpha alphabet\n").expect("write");
+    let v = Vault::open(dir.path()).expect("open");
+    let got = closure_shell_core::body_completions("alph", &v);
+    let pos_alpha = got
+        .iter()
+        .position(|s| s == "alpha")
+        .expect("alpha present");
+    let pos_alphabet = got
+        .iter()
+        .position(|s| s == "alphabet")
+        .expect("alphabet present");
+    assert!(
+        pos_alpha < pos_alphabet,
+        "alpha before alphabet on equal score: {got:?}"
+    );
+}
+
+#[test]
+fn empty_prefix_still_yields_nothing() {
+    let dir = tempfile::tempdir().expect("tmp");
+    fs::write(dir.path().join("notes.org"), "* foo\n").expect("write");
+    let v = Vault::open(dir.path()).expect("open");
+    assert!(
+        closure_shell_core::body_completions("", &v).is_empty(),
+        "empty prefix must yield empty"
+    );
+}
+
+// === Q2-F2: TAB accepts the completion session; popup cap. ===
+
+#[test]
+fn tab_accepts_the_active_completion_session() {
+    let dir = tempfile::tempdir().expect("tmp");
+    fs::write(dir.path().join("notes.org"), "* alpha one\n").expect("write");
+    let v = Vault::open(dir.path()).expect("open");
+    let mut sh = Shell::new(v);
+    let mut app = ModalApp::new(InputMode::Vim);
+    app.on_key(&mut sh, "i", false, false, Some('i'));
+    for c in "alp".chars() {
+        app.on_key(&mut sh, &c.to_string(), false, false, Some(c));
+    }
+    app.on_key(&mut sh, "n", true, false, None);
+    assert_eq!(app.body_buffer(), "alpha");
+    app.on_key(&mut sh, "tab", false, false, None);
+    assert_eq!(
+        app.body_buffer(),
+        "alpha",
+        "TAB accepts, no trailing indent"
+    );
+    assert!(app.body_completion_items().is_empty(), "session over");
+}
+
+#[test]
+fn tab_without_a_session_still_indents() {
+    let (_d, mut sh) = shell();
+    let mut app = ModalApp::new(InputMode::Vim);
+    app.on_key(&mut sh, "i", false, false, Some('i'));
+    for c in "hi".chars() {
+        app.on_key(&mut sh, &c.to_string(), false, false, Some(c));
+    }
+    app.on_key(&mut sh, "tab", false, false, None);
+    assert_eq!(app.body_buffer(), "hi  ", "soft indent unchanged");
+}
+
+#[test]
+fn completion_session_caps_at_eight_candidates() {
+    let dir = tempfile::tempdir().expect("tmp");
+    fs::write(
+        dir.path().join("notes.org"),
+        "* zebra01 zebra02 zebra03 zebra04 zebra05 zebra06 zebra07 zebra08 zebra09 zebra10\n",
+    )
+    .expect("write");
+    let v = Vault::open(dir.path()).expect("open");
+    let mut sh = Shell::new(v);
+    let mut app = ModalApp::new(InputMode::Vim);
+    app.on_key(&mut sh, "i", false, false, Some('i'));
+    for c in "zebra".chars() {
+        app.on_key(&mut sh, &c.to_string(), false, false, Some(c));
+    }
+    app.on_key(&mut sh, "n", true, false, None);
+    assert_eq!(app.body_completion_items().len(), 8);
+}
+
+// === Q3-A1: agenda context rows. ===
+
+#[test]
+fn agenda_context_rows_are_date_sorted_with_flags() {
+    let dir = tempfile::tempdir().expect("tmp");
+    fs::write(
+        dir.path().join("notes.org"),
+        "* TODO past\nDEADLINE: <2026-01-02 Fri>\n* TODO now\nSCHEDULED: <2026-07-05 Sun>\n* TODO later\nSCHEDULED: <2026-12-24 Thu>\n",
+    )
+    .expect("write");
+    let v = Vault::open(dir.path()).expect("open");
+    let sh = Shell::new(v);
+    let app = ModalApp::new(InputMode::Vim);
+    let rows = app.agenda_context(&sh, "2026-07-05");
+    assert_eq!(rows.len(), 3);
+    assert_eq!(rows[0].date, "2026-01-02");
+    assert_eq!(rows[0].kind, "DEADLINE");
+    assert_eq!(rows[0].title, "past");
+    assert!(rows[0].is_overdue);
+    assert!(!rows[0].is_today);
+    assert_eq!(rows[1].date, "2026-07-05");
+    assert_eq!(rows[1].kind, "SCHEDULED");
+    assert_eq!(rows[1].title, "now");
+    assert!(rows[1].is_today);
+    assert!(!rows[1].is_overdue);
+    assert_eq!(rows[2].date, "2026-12-24");
+    assert_eq!(rows[2].title, "later");
+    assert!(!rows[2].is_today);
+    assert!(!rows[2].is_overdue);
+}
+
+#[test]
+fn agenda_context_is_empty_without_planning() {
+    let dir = tempfile::tempdir().expect("tmp");
+    fs::write(dir.path().join("notes.org"), "* plain\n").expect("write");
+    let v = Vault::open(dir.path()).expect("open");
+    let sh = Shell::new(v);
+    let app = ModalApp::new(InputMode::Vim);
+    assert!(app.agenda_context(&sh, "2026-07-05").is_empty());
+}

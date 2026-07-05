@@ -17,21 +17,20 @@ Order: Q1 editor depth → Q2 fuzzy completion → Q3 agenda → Q4 LSP smoke.
   vault undo (which stays bound to the outer `u` in Browse).
 - E4 word motions `w`/`b` in Normal (+ Visual/VisualLine extension).
 
-## Q2 — fuzzy completion
+## Q2 — fuzzy completion ✅ DONE 2026-07-05 (ROADMAP: GPUI-DEPTH-Q2)
 - F1 rank `body_completions` by `closure_query::fuzzy_score` against
   the prefix (desc), keywords tie-break first, then words; stable.
 - F2 TAB accepts the active completion session in INSERT (session
   active → accept beats org-tempo; no session → tempo/indent as today).
   Popup shows ≤8 ranked candidates.
 
-## Q3 — agenda in gpui
+## Q3 — agenda in gpui ✅ DONE 2026-07-05 (ROADMAP: GPUI-DEPTH-Q3)
 - A1 `agenda_context(shell, today: &str)` core state: rows grouped by
   date (sorted), each `(date, kind, title, is_today, is_overdue)`;
   hermetic tests with injected `today`.
 - A2 gpui paints date group headers, SCHEDULED accent / DEADLINE error,
   today chip accented, overdue red; rows stay click-to-jump.
 
-## Q4 — LSP smoke (user-driven finale)
-Fable prepares an eglot config snippet + checklist; the user runs
-`closure lsp` against Emacs/eglot on the desktop; failures come back
-as leaves.
+## Q4 — LSP smoke (user-driven finale) ✅ PREPARED 2026-07-05
+Checklist + Doom eglot config: `docs/eglot-smoke.md`. User runs it on
+the desktop; failures come back as leaves.

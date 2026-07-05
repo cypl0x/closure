@@ -29,7 +29,11 @@ fn resolve_theme_reads_the_vault_config() {
         "#+BEGIN_SRC closure-config\ntheme = light\n#+END_SRC\n",
     )
     .expect("write");
-    assert_eq!(resolve_theme(dir.path()).name, "light", "explicit name wins");
+    assert_eq!(
+        resolve_theme(dir.path()).name,
+        "light",
+        "explicit name wins"
+    );
     let empty = tempfile::tempdir().expect("tmp2");
     // Contract revised 2026-07-04: the reference shell defaults to the
     // user's doom-vibrant colorscheme, not generic dark.
@@ -67,7 +71,10 @@ fn src_block_lines_get_keyword_highlights() {
     let lines = highlight_body(body);
     assert_eq!(lines.len(), 5, "one entry per line incl. trailing empty");
     assert_eq!(lines[0], vec![(BodySpan::Plain, "intro".to_owned())]);
-    assert_eq!(lines[1], vec![(BodySpan::Meta, "#+BEGIN_SRC rust".to_owned())]);
+    assert_eq!(
+        lines[1],
+        vec![(BodySpan::Meta, "#+BEGIN_SRC rust".to_owned())]
+    );
     assert!(
         lines[2].contains(&(BodySpan::Keyword, "let".to_owned())),
         "rust `let` classified: {:?}",
@@ -97,7 +104,11 @@ fn highlight_roundtrips_the_text() {
         .iter()
         .map(|l| l.iter().map(|(_, s)| s.as_str()).collect::<String>())
         .collect();
-    assert_eq!(joined.join("\n"), body, "spans cover every byte (I1 spirit)");
+    assert_eq!(
+        joined.join("\n"),
+        body,
+        "spans cover every byte (I1 spirit)"
+    );
 }
 
 // === L3: status line -> toast classification. ===
@@ -142,4 +153,23 @@ fn chatter_stays_quiet() {
     assert_eq!(status_toast(""), None);
     assert_eq!(status_toast("browse - type to filter"), None);
     assert_eq!(status_toast("rename - Enter save, Esc cancel"), None);
+}
+
+// === Q3-A2: pure UTC calendar date for the agenda pane. ===
+
+#[test]
+fn epoch_start_is_the_first_of_january_1970() {
+    assert_eq!(closure_shell_gpui::today_ymd(0), "1970-01-01");
+    assert_eq!(closure_shell_gpui::today_ymd(86_399), "1970-01-01");
+    assert_eq!(closure_shell_gpui::today_ymd(86_400), "1970-01-02");
+}
+
+#[test]
+fn known_dates_round_trip() {
+    // date -u -d "2026-07-05 12:00:00" +%s
+    assert_eq!(closure_shell_gpui::today_ymd(1_783_252_800), "2026-07-05");
+    // Leap day: date -u -d "2024-02-29 00:00:00" +%s
+    assert_eq!(closure_shell_gpui::today_ymd(1_709_164_800), "2024-02-29");
+    // Century boundary second: date -u -d "2000-12-31 23:59:59" +%s
+    assert_eq!(closure_shell_gpui::today_ymd(978_307_199), "2000-12-31");
 }
