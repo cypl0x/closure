@@ -13,6 +13,19 @@ file is the fine-grained, capability-level queue between them. Blocked
 on a design decision? Record it under [[*Decisions][Decisions]], pick the most
 reversible option, keep moving.
 
+* DONE GPUI-ERGO-N — desktop-standard INSERT editing (orchestrated) [2/2]
+Queue Q5 of =goal-gpui-polish-3.md= (user backlog 2026-07-05); N3
+(readline chords) was already implemented — recorded, not re-done.
+** DONE N1 ctrl+backspace kills the word [1/1]
+=ctrl+backspace= in INSERT deletes the word before the cursor (the
+=C-w= path, =delete_word_back=); plain backspace pinned unchanged.
+Grok RED, Fable GREEN (escalation clause: routing arm only).
+** DONE N2 ctrl/alt+arrows jump words [1/1]
+=ctrl+left/right= and =alt+left/right= in INSERT jump to the
+previous/next word start (the E4 word-motion rule);
+=on_editbody_key= grew the =alt= flag (plumbed from =on_key=).
+Grok RED, Fable GREEN.
+
 * DONE GPUI-DEPTH-Q2 — fuzzy completion in the body editor (orchestrated) [2/2]
 Queue Q2 of =goal-gpui-polish-2.md=.
 ** DONE F1 fuzzy-ranked candidates [1/1]

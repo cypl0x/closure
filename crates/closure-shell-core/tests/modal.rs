@@ -1558,3 +1558,47 @@ fn agenda_context_is_empty_without_planning() {
     let app = ModalApp::new(InputMode::Vim);
     assert!(app.agenda_context(&sh, "2026-07-05").is_empty());
 }
+
+// === Q5-N1/N2: desktop-standard INSERT editing. ===
+
+#[test]
+fn ctrl_backspace_deletes_word_back() {
+    let (_d, mut sh) = shell();
+    let mut app = editor_with(&mut sh, "one two");
+    app.on_key(&mut sh, "backspace", true, false, None);
+    assert_eq!(app.body_buffer(), "one ");
+}
+
+#[test]
+fn plain_backspace_still_deletes_one_char() {
+    let (_d, mut sh) = shell();
+    let mut app = editor_with(&mut sh, "ab");
+    app.on_key(&mut sh, "backspace", false, false, None);
+    assert_eq!(app.body_buffer(), "a");
+}
+
+#[test]
+fn ctrl_arrows_jump_words_in_insert() {
+    let (_d, mut sh) = shell();
+    let mut app = editor_with(&mut sh, "one two three");
+    app.on_key(&mut sh, "left", true, false, None);
+    assert_eq!(app.body_cursor(), (0, 8));
+    app.on_key(&mut sh, "left", true, false, None);
+    assert_eq!(app.body_cursor(), (0, 4));
+    app.on_key(&mut sh, "right", true, false, None);
+    assert_eq!(app.body_cursor(), (0, 8));
+    app.on_key(&mut sh, "X", false, false, Some('X'));
+    assert_eq!(app.body_buffer(), "one two Xthree");
+}
+
+#[test]
+fn alt_arrows_jump_words_in_insert() {
+    let (_d, mut sh) = shell();
+    let mut app = editor_with(&mut sh, "aa bb cc");
+    app.on_key(&mut sh, "left", false, true, None);
+    assert_eq!(app.body_cursor(), (0, 6));
+    app.on_key(&mut sh, "left", false, true, None);
+    assert_eq!(app.body_cursor(), (0, 3));
+    app.on_key(&mut sh, "right", false, true, None);
+    assert_eq!(app.body_cursor(), (0, 6));
+}

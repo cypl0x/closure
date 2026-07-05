@@ -4627,7 +4627,7 @@ impl ModalApp {
         match self.surface {
             ModalSurface::Search => self.on_search_key(shell, key, text),
             ModalSurface::Capture => self.on_capture_key(shell, key, text),
-            ModalSurface::EditBody => self.on_editbody_key(shell, key, ctrl, text),
+            ModalSurface::EditBody => self.on_editbody_key(shell, key, ctrl, alt, text),
             ModalSurface::Backlinks => self.on_backlinks_key(shell, key),
             ModalSurface::Agenda => self.on_list_key(shell, key, ListKind::Agenda),
             ModalSurface::Blocks => self.on_list_key(shell, key, ListKind::Blocks),
@@ -4872,7 +4872,14 @@ impl ModalApp {
     /// at the cursor, `Esc` drops to NORMAL. NORMAL navigates
     /// (`h`/`j`/`k`/`l`/arrows/`0`/`$`), edits (`i`/`a`/`o`/`x`), and
     /// `Esc` cancels the edit.
-    fn on_editbody_key(&mut self, shell: &mut Shell, key: &str, ctrl: bool, text: Option<char>) {
+    fn on_editbody_key(
+        &mut self,
+        shell: &mut Shell,
+        key: &str,
+        ctrl: bool,
+        alt: bool,
+        text: Option<char>,
+    ) {
         if key == "enter" && ctrl {
             self.commit_edit_body(shell);
             return;
@@ -4888,6 +4895,10 @@ impl ModalApp {
                 "b" if ctrl => self.body.left(),
                 "f" if ctrl => self.body.right(),
                 "d" if ctrl => self.body.delete_at(),
+                // Desktop-standard word ops (Q5): ctrl/alt+arrows jump
+                // words, ctrl+backspace kills the word (same as C-w).
+                "left" if ctrl || alt => self.body.word_backward(),
+                "right" if ctrl || alt => self.body.word_forward(),
                 "k" if ctrl => {
                     self.completion = None;
                     self.body.kill_rest_of_line();
@@ -4896,7 +4907,8 @@ impl ModalApp {
                     self.completion = None;
                     self.body.kill_to_line_start();
                 }
-                "w" if ctrl => {
+                // C-w and the desktop ctrl+backspace share the kill.
+                "w" | "backspace" if ctrl => {
                     self.completion = None;
                     self.body.delete_word_back();
                 }

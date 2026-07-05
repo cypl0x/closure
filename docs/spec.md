@@ -590,7 +590,9 @@ base, ours, theirs)` returns the `FieldConflict`s (title/body) both sides
   delete), `dd`/`yy` cut/copy the line, `p` pastes (linewise below the
   line, charwise after the cursor) — one register shared with the
   INSERT readline chords `C-a`/`C-e`/`C-b`/`C-f`/`C-d`/`C-k`/`C-u`/
-  `C-w`/`C-y`. The renderer reads the selection through
+  `C-w`/`C-y`, plus the desktop-standard set (Q5, 2026-07-05):
+  `ctrl+backspace` kills the word back, `ctrl/alt+←/→` jump word
+  starts. The renderer reads the selection through
   `ModalApp::body_selection()` (exclusive byte range, `None` outside
   Visual) and paints it exactly, span-split at the selection edges.
   Editor depth Q1 (2026-07-05): `V` opens linewise VISUAL

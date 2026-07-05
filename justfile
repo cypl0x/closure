@@ -75,6 +75,17 @@ gui-gpui:
 run-gpui vault:
     cargo run -p closure-cli --features gpui -- gpui {{vault}}
 
+# Release build of the reference gpui shell. Heavy: on desktops with an
+# aggressive oomd wrap it in a memory scope, e.g.
+#   systemd-run --user --scope -p MemoryHigh=6G -p MemoryMax=8G -- \
+#     nix develop -c just gpui-release
+gpui-release:
+    cargo build --release -p closure-cli --features gpui -j 4
+
+# Launch the RELEASE gpui shell against a vault (needs a display).
+run-gpui-release vault: gpui-release
+    ./target/release/closure gpui {{vault}}
+
 # Embedded wasm plugin runtime build + test gate (opt-in; pulls
 # wasmtime + cranelift). Hermetic (WAT fixtures run in-process); kept
 # out of the default `check` so that build stays light. Registry
