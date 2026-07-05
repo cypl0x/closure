@@ -563,7 +563,13 @@ base, ours, theirs)` returns the `FieldConflict`s (title/body) both sides
   `toggle-fold`, which-key chips run their command, palette rows run the
   clicked entry (`palette_click`), and the detail fields open their
   editor (title → `rename`, meta → `toggle-todo`, tags → `edit-tags`,
-  properties → `edit-property`, body → `edit-body`). Colours come from
+  properties → `edit-property`, body → `edit-body`). Structural
+  editing (Q6, 2026-07-05): `promote`/`demote`/`move-subtree-up`/
+  `move-subtree-down`/`add-heading` act on the selected row through
+  Shell passthroughs of the kernel commands (I8); moves stop at file
+  and parent boundaries, the selection follows the moved heading, and
+  the chords are `M-h/l/k/j/RET` (org-authentic `M-<arrows>` in the
+  emacs map). Colours come from
   the shared `Theme` tokens resolved from `config.org`
   (`resolve_theme`), the startup mode from `input_mode`
   (`resolve_input_mode`); hover/panel shades are derived by a pure

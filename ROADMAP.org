@@ -13,6 +13,25 @@ file is the fine-grained, capability-level queue between them. Blocked
 on a design decision? Record it under [[*Decisions][Decisions]], pick the most
 reversible option, keep moving.
 
+* DONE GPUI-STRUCT — structural editing from the outline (orchestrated) [3/3]
+Queue Q6 of =goal-gpui-polish-3.md=.
+** DONE S1 promote/demote [1/1]
+Registry commands =promote=/=demote= on the selected row (kernel
+=Promote=/=Demote= through new Shell passthroughs, I8); level clamps
+at 1 in the kernel. Bound =M-h=/=M-l= (doom/vim/helix/notion),
+=M-<left>=/=M-<right>= (emacs, org-authentic).
+** DONE S2 move subtree among siblings [1/1]
+=move-subtree-up=/=move-subtree-down= via the kernel =MoveSubtree=:
+down = move after the next sibling, up = move the *previous sibling
+below us* (the only expressible direction of =move_after=); the
+sibling scan stops at file and parent boundaries (clamp = no-op).
+The selection follows the moved heading (org rule, =select_id=).
+=M-k=/=M-j= (=M-<up>=/=M-<down>= emacs).
+** DONE S3 add sibling heading [1/1]
+=add-heading= inserts an "untitled" sibling right below the selected
+row (kernel =AddSibling=); =M-RET= everywhere. Grok RED (5 deref
+fixes by Fable), Fable GREEN (keymap I4 surface + selection rule).
+
 * DONE GPUI-ERGO-N — desktop-standard INSERT editing (orchestrated) [2/2]
 Queue Q5 of =goal-gpui-polish-3.md= (user backlog 2026-07-05); N3
 (readline chords) was already implemented — recorded, not re-done.

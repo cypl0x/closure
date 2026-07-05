@@ -3,7 +3,7 @@
 Orchestrated per `goal-orchestrator.md` (Claude specs/verifies/commits, grok implements
 mechanical leaves). Source: user's org TODO dump (notes.org "closure" subtree).
 
-## Q5 — insert-mode ergonomics (desktop-standard editing)
+## Q5 — insert-mode ergonomics ✅ N1+N2 DONE 2026-07-05 (N3 pre-existing; N4 folded into Q6/TAB later)
 
 Standard text-field behaviour the user gets everywhere on KDE, inside INSERT mode:
 
@@ -15,7 +15,7 @@ Standard text-field behaviour the user gets everywhere on KDE, inside INSERT mod
 - **N4** `tab` in NORMAL mode on a heading row → cycle fold (org TAB); in INSERT at line
   start of a heading → demote, `shift+tab` promote (org M-arrows analogue).
 
-## Q6 — structural editing & movement
+## Q6 — structural editing & movement ✅ S1–S3 DONE 2026-07-05 (S4 multiselect deferred)
 
 - **S1** `alt+h/l` → promote/demote heading at cursor (level −/+ 1, clamped 1..N).
 - **S2** `alt+j/k` → move subtree down/up among siblings.

@@ -224,6 +224,38 @@ impl Shell {
         self.vault.add_sibling(after_id, title)
     }
 
+    /// Promote a headline one level through the kernel command (I8).
+    ///
+    /// # Errors
+    ///
+    /// Propagates [`closure_store::VaultError`].
+    pub fn promote(&mut self, id: &closure_core::BlockId) -> Result<(), closure_store::VaultError> {
+        self.vault.promote(id)
+    }
+
+    /// Demote a headline one level through the kernel command (I8).
+    ///
+    /// # Errors
+    ///
+    /// Propagates [`closure_store::VaultError`].
+    pub fn demote(&mut self, id: &closure_core::BlockId) -> Result<(), closure_store::VaultError> {
+        self.vault.demote(id)
+    }
+
+    /// Move `id`'s subtree right after `after`'s through the kernel
+    /// command (I8).
+    ///
+    /// # Errors
+    ///
+    /// Propagates [`closure_store::VaultError`].
+    pub fn move_after(
+        &mut self,
+        id: &closure_core::BlockId,
+        after: &closure_core::BlockId,
+    ) -> Result<(), closure_store::VaultError> {
+        self.vault.move_after(id, after)
+    }
+
     /// Replace a headline's body text through the kernel command (I8).
     /// This is the GUI's org-edit-special commit path.
     ///
@@ -4762,6 +4794,37 @@ impl ModalApp {
             .collect()
     }
 
+    /// Re-point the selection at the row with `id` (the selection
+    /// follows a moved subtree); no-op when the id is gone.
+    fn select_id(&mut self, shell: &Shell, id: &str) {
+        if let Some(i) = self.rows(shell).iter().position(|r| r.id == id) {
+            self.selected = i;
+        }
+    }
+
+    /// Index of the selected row's nearest sibling (same file, same
+    /// level, no lower-level row between), forward or backward. `None`
+    /// at the ends or when a parent boundary intervenes.
+    fn sibling_index(&self, shell: &Shell, forward: bool) -> Option<usize> {
+        let rows = self.rows(shell);
+        let cur = rows.get(self.selected)?;
+        let (path, level) = (cur.path.clone(), cur.level);
+        let scan: Box<dyn Iterator<Item = usize>> = if forward {
+            Box::new(self.selected + 1..rows.len())
+        } else {
+            Box::new((0..self.selected).rev())
+        };
+        for j in scan {
+            if rows[j].path != path || rows[j].level < level {
+                return None;
+            }
+            if rows[j].level == level {
+                return Some(j);
+            }
+        }
+        None
+    }
+
     /// Read-only agenda rows with today/overdue flags; today is injected
     /// (`YYYY-MM-DD`) so tests stay hermetic. Order = [`Vault::agenda`]
     /// (date ascending, title tie-break).
@@ -5219,6 +5282,48 @@ impl ModalApp {
                     let _ = shell.set_priority(&bid, next);
                 }
             }
+            "promote" => {
+                if let Some(row) = self.rows(shell).get(self.selected).cloned() {
+                    let bid = closure_core::BlockId::from_existing(&row.id);
+                    let _ = shell.promote(&bid);
+                }
+            }
+            "demote" => {
+                if let Some(row) = self.rows(shell).get(self.selected).cloned() {
+                    let bid = closure_core::BlockId::from_existing(&row.id);
+                    let _ = shell.demote(&bid);
+                }
+            }
+            "move-subtree-up" => {
+                // Moving up = moving the previous sibling below us; the
+                // selection follows the moved heading (org rule).
+                if let Some(prev) = self.sibling_index(shell, false) {
+                    let rows = self.rows(shell);
+                    let (p, s) = (rows[prev].id.clone(), rows[self.selected].id.clone());
+                    let _ = shell.move_after(
+                        &closure_core::BlockId::from_existing(&p),
+                        &closure_core::BlockId::from_existing(&s),
+                    );
+                    self.select_id(shell, &s);
+                }
+            }
+            "move-subtree-down" => {
+                if let Some(next) = self.sibling_index(shell, true) {
+                    let rows = self.rows(shell);
+                    let (s, n) = (rows[self.selected].id.clone(), rows[next].id.clone());
+                    let _ = shell.move_after(
+                        &closure_core::BlockId::from_existing(&s),
+                        &closure_core::BlockId::from_existing(&n),
+                    );
+                    self.select_id(shell, &s);
+                }
+            }
+            "add-heading" => {
+                if let Some(row) = self.rows(shell).get(self.selected).cloned() {
+                    let bid = closure_core::BlockId::from_existing(&row.id);
+                    let _ = shell.add_sibling(&bid, "untitled");
+                }
+            }
             "edit-tags" => {
                 if let Some(row) = self.rows(shell).get(self.selected).cloned() {
                     let tags = self.detail(shell).map(|d| d.tags).unwrap_or_default();
@@ -5321,6 +5426,8 @@ fn modal_stroke(key: &str, ctrl: bool, alt: bool, text: Option<char>) -> Option<
         "space" => "SPC".to_owned(),
         "down" => "<down>".to_owned(),
         "up" => "<up>".to_owned(),
+        "left" => "<left>".to_owned(),
+        "right" => "<right>".to_owned(),
         _ => {
             if let Some(c) = text {
                 c.to_string()

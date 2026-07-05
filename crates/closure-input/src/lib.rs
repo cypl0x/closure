@@ -58,6 +58,11 @@ const DOOM_KEYMAP: &[(&str, &str)] = &[
     ("g o", "resolve-ours"),
     ("g t", "resolve-theirs"),
     ("z", "toggle-fold"),
+    ("M-h", "promote"),
+    ("M-l", "demote"),
+    ("M-k", "move-subtree-up"),
+    ("M-j", "move-subtree-down"),
+    ("M-RET", "add-heading"),
 ];
 
 /// Emacs bindings: Ctrl/Meta chords, `C-x C-c` quits.
@@ -97,6 +102,11 @@ const EMACS_KEYMAP: &[(&str, &str)] = &[
     ("C-c O", "resolve-ours"),
     ("C-c T", "resolve-theirs"),
     ("C-c z", "toggle-fold"),
+    ("M-<left>", "promote"),
+    ("M-<right>", "demote"),
+    ("M-<up>", "move-subtree-up"),
+    ("M-<down>", "move-subtree-down"),
+    ("M-RET", "add-heading"),
 ];
 
 /// Vim bindings: modal navigation keys.
@@ -137,6 +147,11 @@ const VIM_KEYMAP: &[(&str, &str)] = &[
     ("g o", "resolve-ours"),
     ("g t", "resolve-theirs"),
     ("z", "toggle-fold"),
+    ("M-h", "promote"),
+    ("M-l", "demote"),
+    ("M-k", "move-subtree-up"),
+    ("M-j", "move-subtree-down"),
+    ("M-RET", "add-heading"),
 ];
 
 /// Helix bindings: vim-like with `U` redo and `g e` for end.
@@ -177,6 +192,11 @@ const HELIX_KEYMAP: &[(&str, &str)] = &[
     ("g o", "resolve-ours"),
     ("g t", "resolve-theirs"),
     ("z", "toggle-fold"),
+    ("M-h", "promote"),
+    ("M-l", "demote"),
+    ("M-k", "move-subtree-up"),
+    ("M-j", "move-subtree-down"),
+    ("M-RET", "add-heading"),
 ];
 
 /// Notion bindings: mouse + arrows + slash command, minimal chords.
@@ -216,6 +236,11 @@ const NOTION_KEYMAP: &[(&str, &str)] = &[
     ("g o", "resolve-ours"),
     ("g t", "resolve-theirs"),
     ("z", "toggle-fold"),
+    ("M-h", "promote"),
+    ("M-l", "demote"),
+    ("M-k", "move-subtree-up"),
+    ("M-j", "move-subtree-down"),
+    ("M-RET", "add-heading"),
 ];
 
 /// The canonical `(chord, command)` keymap for an input mode — the

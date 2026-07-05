@@ -1602,3 +1602,90 @@ fn alt_arrows_jump_words_in_insert() {
     app.on_key(&mut sh, "right", false, true, None);
     assert_eq!(app.body_cursor(), (0, 6));
 }
+
+// === Q6-S1/S2/S3: structural editing from the outline. ===
+
+#[test]
+fn demote_and_promote_change_the_selected_level() {
+    let (_d, mut sh) = nested();
+    let mut app = ModalApp::new(InputMode::Doom);
+    let rows = app.rows(&sh);
+    let old = rows[0].level;
+    app.run(&mut sh, "demote");
+    assert_eq!(app.rows(&sh)[0].level, old + 1);
+    app.run(&mut sh, "promote");
+    assert_eq!(app.rows(&sh)[0].level, old);
+    // Level 1 promote clamps
+    app.run(&mut sh, "promote");
+    assert!(app.rows(&sh)[0].level >= 1, "level stays >= 1, no panic");
+}
+
+#[test]
+fn move_subtree_down_swaps_siblings() {
+    let dir = tempfile::tempdir().expect("tmp");
+    fs::write(dir.path().join("notes.org"), "* first\n* second\n").expect("write");
+    let v = Vault::open(dir.path()).expect("open");
+    let mut sh = Shell::new(v);
+    let mut app = ModalApp::new(InputMode::Doom);
+    // select row 0 (default)
+    app.run(&mut sh, "move-subtree-down");
+    let rows = app.rows(&sh);
+    assert_eq!(rows[0].title, "second");
+    assert_eq!(rows[1].title, "first");
+    app.run(&mut sh, "move-subtree-up");
+    let rows = app.rows(&sh);
+    assert_eq!(rows[0].title, "first");
+    assert_eq!(rows[1].title, "second", "original order restored");
+    // last-sibling clamp: safe no-op
+    app.select(1, &sh);
+    app.run(&mut sh, "move-subtree-down");
+    let rows = app.rows(&sh);
+    assert_eq!(rows[0].title, "first");
+    assert_eq!(rows[1].title, "second", "order unchanged, no panic");
+}
+
+#[test]
+fn add_heading_inserts_a_sibling_below() {
+    let dir = tempfile::tempdir().expect("tmp");
+    fs::write(dir.path().join("notes.org"), "* first\n* second\n").expect("write");
+    let v = Vault::open(dir.path()).expect("open");
+    let mut sh = Shell::new(v);
+    let mut app = ModalApp::new(InputMode::Doom);
+    // select row 0
+    app.run(&mut sh, "add-heading");
+    let rows = app.rows(&sh);
+    assert_eq!(rows.len(), 3, "grew by 1");
+    assert_eq!(rows[1].level, rows[0].level, "same level");
+    assert!(
+        rows[1].title != "second",
+        "inserted sibling, not the old second"
+    );
+}
+
+#[test]
+fn doom_keymap_binds_structural_editing() {
+    let km = closure_input::mode_keymap(InputMode::Doom);
+    assert!(
+        km.iter().any(|(c, cmd)| *c == "M-h" && *cmd == "promote"),
+        "M-h -> promote"
+    );
+    assert!(
+        km.iter().any(|(c, cmd)| *c == "M-l" && *cmd == "demote"),
+        "M-l -> demote"
+    );
+    assert!(
+        km.iter()
+            .any(|(c, cmd)| *c == "M-k" && *cmd == "move-subtree-up"),
+        "M-k -> move-subtree-up"
+    );
+    assert!(
+        km.iter()
+            .any(|(c, cmd)| *c == "M-j" && *cmd == "move-subtree-down"),
+        "M-j -> move-subtree-down"
+    );
+    assert!(
+        km.iter()
+            .any(|(c, cmd)| *c == "M-RET" && *cmd == "add-heading"),
+        "M-RET -> add-heading"
+    );
+}
