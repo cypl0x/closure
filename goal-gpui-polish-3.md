@@ -55,7 +55,7 @@ Standard text-field behaviour the user gets everywhere on KDE, inside INSERT mod
 - **D2** better mouse: double-click word select, drag to select in body editor,
   click sets cursor (verify existing), wheel in body editor scrolls body.
 
-## Q11 — undo visualization
+## Q11 — undo visualization ✅ U1 DONE 2026-07-05 (ROADMAP: GPUI-UNDOTREE; node-jump = recorded gap)
 
 - **U1** editor-local undo already linear (`u`/`C-r`, Q1-E3). Add `undo_tree_context()`
   (list of snapshots w/ cursor + preview line) + M-x command `undo-history` rendering a

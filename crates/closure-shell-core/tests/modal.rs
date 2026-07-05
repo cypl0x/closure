@@ -1853,3 +1853,55 @@ fn tab_after_popup_accepts_the_first_candidate() {
     assert_eq!(app.body_buffer(), first);
     assert!(app.body_completion_items().is_empty());
 }
+
+// === Q11-U1: undo-history surface. ===
+
+#[test]
+fn undo_history_opens_and_closes() {
+    let (_d, mut sh) = nested();
+    let mut app = ModalApp::new(InputMode::Doom);
+    app.run(&mut sh, "undo-history");
+    assert_eq!(app.surface(), ModalSurface::UndoHistory);
+    app.on_key(&mut sh, "escape", false, false, None);
+    assert_eq!(app.surface(), ModalSurface::Browse);
+}
+
+#[test]
+fn undo_history_rows_show_edits() {
+    let (_d, mut sh) = nested();
+    let mut app = ModalApp::new(InputMode::Doom);
+    assert!(app.undo_history_rows(&sh).is_empty());
+    app.run(&mut sh, "toggle-todo");
+    let rows = app.undo_history_rows(&sh);
+    assert_eq!(rows.len(), 1);
+    assert!(rows[0].is_current);
+    assert!(
+        rows[0].label.to_lowercase().contains("todo"),
+        "label describes the edit: {rows:?}"
+    );
+}
+
+#[test]
+fn undo_history_marks_current_after_undo() {
+    let (_d, mut sh) = nested();
+    let mut app = ModalApp::new(InputMode::Doom);
+    app.run(&mut sh, "toggle-todo");
+    app.run(&mut sh, "toggle-todo");
+    app.run(&mut sh, "undo");
+    let rows = app.undo_history_rows(&sh);
+    assert_eq!(rows.len(), 2);
+    assert!(
+        rows[0].is_current && !rows[1].is_current,
+        "current steps back: {rows:?}"
+    );
+}
+
+#[test]
+fn doom_binds_undo_history() {
+    let km = closure_input::mode_keymap(InputMode::Doom);
+    assert!(
+        km.iter()
+            .any(|(c, cmd)| *c == "g u" && *cmd == "undo-history"),
+        "g u -> undo-history"
+    );
+}

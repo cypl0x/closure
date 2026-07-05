@@ -244,6 +244,23 @@ impl Document {
         self.history.len()
     }
 
+    /// The undo tree flattened for a shell's history pane: one row per
+    /// recorded edit in tree order, indented by tree depth, the active
+    /// node flagged (undo-tree visualization, I3).
+    #[must_use]
+    pub fn history_view(&self) -> Vec<HistoryRow> {
+        let current = self.history.current();
+        self.history
+            .nodes()
+            .iter()
+            .map(|n| HistoryRow {
+                depth: self.history.depth(n.id).unwrap_or(0),
+                label: edit_label(&n.payload),
+                is_current: Some(n.id) == current,
+            })
+            .collect()
+    }
+
     /// Undo the current edit. Reverses the active node's payload and
     /// moves the cursor to its parent. Returns `UndoError::Empty` when
     /// at the root.
@@ -456,6 +473,51 @@ pub enum ChordParseError {
     /// Empty string or only whitespace.
     #[error("empty chord")]
     Empty,
+}
+
+/// One row of the flattened undo tree ([`Document::history_view`]):
+/// depth-indented, human-labelled, the active node flagged.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HistoryRow {
+    /// Tree depth (root edits at 0).
+    pub depth: usize,
+    /// Short human description of the edit.
+    pub label: String,
+    /// Whether this node is the undo cursor.
+    pub is_current: bool,
+}
+
+/// Short human label for an [`Edit`] — the undo-history row text.
+fn edit_label(e: &Edit) -> String {
+    match e {
+        Edit::RenameHeadline {
+            old_title,
+            new_title,
+            ..
+        } => format!("rename: {old_title} → {new_title}"),
+        Edit::SetTodo { old, new, .. } => format!(
+            "todo: {} → {}",
+            old.as_deref().unwrap_or("∅"),
+            new.as_deref().unwrap_or("∅")
+        ),
+        Edit::SetPriority { old, new, .. } => format!(
+            "priority: {} → {}",
+            old.map_or("∅".to_owned(), |c| c.to_string()),
+            new.map_or("∅".to_owned(), |c| c.to_string())
+        ),
+        Edit::SetTags { new, .. } => format!("tags: {}", new.join(" ")),
+        Edit::Promote { .. } => "promote".to_owned(),
+        Edit::Demote { .. } => "demote".to_owned(),
+        Edit::AddSibling { .. } => "add heading".to_owned(),
+        Edit::RemoveSubtree { .. } => "remove subtree".to_owned(),
+        Edit::SetPlanning { .. } => "planning".to_owned(),
+        Edit::SetBody { .. } => "edit body".to_owned(),
+        Edit::MoveSubtree { .. } => "move subtree".to_owned(),
+        Edit::ToggleArchive { .. } => "archive".to_owned(),
+        Edit::ToggleComment { .. } => "comment".to_owned(),
+        Edit::SetProperty { key, .. } => format!("property: {key}"),
+        Edit::Noop => "no-op".to_owned(),
+    }
 }
 
 /// An edit record in the undo tree. Each command's `apply` produces an

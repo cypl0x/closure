@@ -564,7 +564,12 @@ base, ours, theirs)` returns the `FieldConflict`s (title/body) both sides
   section by canonical name (I4). The idle footer is a Doom-style
   which-key panel (Q9): one column per section from
   `which_key_groups` — group title, chord-sorted clickable rows —
-  while a pending chord still switches to the live completion view. Every mouse affordance
+  while a pending chord still switches to the live completion view.
+  `g u` (`C-c u` emacs) opens the read-only UndoHistory surface
+  (Q11): the selected document's real branching undo tree
+  (`Document::history_view` over `closure_undo::UndoTree`) rendered
+  depth-indented with the active node marked; `u`/`C-r` keep walking
+  it, node-jumping is a recorded gap. Every mouse affordance
   dispatches a registry-backed command through the same `ModalApp::run`
   entry the chords use (I8): row click selects, the fold arrow toggles
   `toggle-fold`, which-key chips run their command, palette rows run the

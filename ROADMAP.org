@@ -13,6 +13,21 @@ file is the fine-grained, capability-level queue between them. Blocked
 on a design decision? Record it under [[*Decisions][Decisions]], pick the most
 reversible option, keep moving.
 
+* DONE GPUI-UNDOTREE — undo-history surface (orchestrated) [1/1]
+Queue Q11 of =goal-gpui-polish-3.md= ("How to use undo(-tree)?").
+** DONE U1 visualize the document undo-tree [1/1]
+=Document::history_view()= flattens the real branching
+=closure_undo::UndoTree= (one =HistoryRow= per edit: tree depth,
+human label via =edit_label= — "todo: ∅ → TODO", "rename: a → b" —
+and the active-node flag). =ModalApp::undo_history_rows= reads the
+selected row's document; command =undo-history= opens the read-only
+=ModalSurface::UndoHistory= (Esc/q/RET back), bound =g u= (doom/vim/
+helix/notion) and =C-c u= (emacs), and listed in the M-x palette
+automatically (GPUI-MX rule). The gpui pane indents by depth and
+marks the cursor ●/○. Jumping to an arbitrary node is a recorded
+gap (needs path-walking undo/redo in the kernel).
+Grok RED, Fable GREEN (kernel + keymap surfaces).
+
 * DONE GPUI-COMPLETE — completion depth (orchestrated) [3/3]
 Queue Q7 of =goal-gpui-polish-3.md=.
 ** DONE C1 whole-vault dabbrev [1/1]

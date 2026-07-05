@@ -3490,6 +3490,8 @@ pub enum ModalSurface {
     AddSibling,
     /// Fuzzy command palette over the shared [`command_palette`] source.
     Palette,
+    /// Read-only undo-tree of the selected row's document (I3).
+    UndoHistory,
 }
 
 /// Which read-only list a generic list surface is showing (drives the
@@ -4737,6 +4739,12 @@ impl ModalApp {
             ModalSurface::Rename => self.on_field_key(shell, key, text, FieldKind::Rename),
             ModalSurface::AddSibling => self.on_field_key(shell, key, text, FieldKind::AddSibling),
             ModalSurface::Palette => self.on_palette_key(shell, key, text),
+            ModalSurface::UndoHistory => {
+                // Read-only pane: any dismiss key returns to Browse.
+                if matches!(key, "escape" | "q" | "enter") {
+                    self.surface = ModalSurface::Browse;
+                }
+            }
             ModalSurface::Browse => self.on_browse_key(shell, key, ctrl, alt, text),
         }
     }
@@ -4861,6 +4869,23 @@ impl ModalApp {
             .into_iter()
             .map(|e| (e.date, e.title, e.path.display().to_string()))
             .collect()
+    }
+
+    /// The selected row's document undo-tree, flattened for the
+    /// `UndoHistory` pane ([`Document::history_view`], I3). Empty when
+    /// nothing is selected or no edit is recorded yet.
+    #[must_use]
+    pub fn undo_history_rows(&self, shell: &Shell) -> Vec<closure_core::HistoryRow> {
+        self.rows(shell)
+            .get(self.selected)
+            .and_then(|row| {
+                let path = std::path::PathBuf::from(&row.path);
+                shell
+                    .vault
+                    .document(&path)
+                    .map(closure_core::Document::history_view)
+            })
+            .unwrap_or_default()
     }
 
     /// Re-point the selection at the row with `id` (the selection
@@ -5351,6 +5376,10 @@ impl ModalApp {
                     self.selected = 0;
                     self.surface = ModalSurface::Backlinks;
                 }
+            }
+            "undo-history" => {
+                self.surface = ModalSurface::UndoHistory;
+                "undo history — Esc back".clone_into(&mut self.status);
             }
             "agenda" => {
                 self.selected = 0;

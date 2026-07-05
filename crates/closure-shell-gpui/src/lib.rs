@@ -442,6 +442,7 @@ impl GpuiView {
             ModalSurface::Backlinks => "backlinks — Esc back".to_owned(),
             ModalSurface::Agenda => "agenda — RET jump, Esc back".to_owned(),
             ModalSurface::Blocks => "src blocks — RET jump, Esc back".to_owned(),
+            ModalSurface::UndoHistory => "undo history — Esc back".to_owned(),
         }
     }
 
@@ -573,6 +574,36 @@ impl GpuiView {
         match self.app.surface() {
             ModalSurface::Palette => pane.child(self.palette_pane(co, cx)),
             ModalSurface::Agenda => pane.child(self.agenda_pane(co, cx)),
+            ModalSurface::UndoHistory => pane.children(
+                self.app
+                    .undo_history_rows(&self.shell)
+                    .into_iter()
+                    .map(|r| {
+                        div()
+                            .flex()
+                            .px_2()
+                            .py_1()
+                            .child(
+                                div()
+                                    .w(px(f32::from(u16::try_from(r.depth).unwrap_or(u16::MAX))
+                                        * 14.0))
+                                    .child(""),
+                            )
+                            .child(
+                                div()
+                                    .text_color(rgb(if r.is_current {
+                                        co.accent
+                                    } else {
+                                        co.muted
+                                    }))
+                                    .child(format!(
+                                        "{} {}",
+                                        if r.is_current { "●" } else { "○" },
+                                        r.label
+                                    )),
+                            )
+                    }),
+            ),
             ModalSurface::Blocks => pane.children(
                 self.app
                     .block_rows(&self.shell)
