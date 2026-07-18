@@ -9095,6 +9095,92 @@ pub enum CookieView {
     Percent(u32),
 }
 
+/// One semantic `CLOCK:` interval (Q5-O3).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ClockEntry {
+    /// Start stamp body (without brackets), e.g. `2024-01-01 Mon 10:00`.
+    pub start: String,
+    /// End stamp body; `None` for a still-open clock.
+    pub end: Option<String>,
+    /// Interval length in minutes: the `=> H:MM` part when present,
+    /// else computed from the two stamps; `None` when open/unknown.
+    pub minutes: Option<u64>,
+}
+
+/// Minutes since midnight for an org stamp body's `HH:MM` tail.
+fn stamp_minutes(stamp: &str) -> Option<u64> {
+    let time = stamp.rsplit(' ').next()?;
+    let (h, m) = time.split_once(':')?;
+    Some(h.parse::<u64>().ok()? * 60 + m.parse::<u64>().ok()?)
+}
+
+/// Days since a fixed epoch for the stamp body's `YYYY-MM-DD` head —
+/// enough to difference two dates (proleptic, month-length exact).
+fn stamp_days(stamp: &str) -> Option<i64> {
+    let date = stamp.split(' ').next()?;
+    let mut it = date.split('-');
+    let y: i64 = it.next()?.parse().ok()?;
+    let m: i64 = it.next()?.parse().ok()?;
+    let d: i64 = it.next()?.parse().ok()?;
+    // Howard Hinnant's days-from-civil (public domain algorithm).
+    let y = if m <= 2 { y - 1 } else { y };
+    let era = if y >= 0 { y } else { y - 399 } / 400;
+    let yoe = y - era * 400;
+    let mp = (m + 9) % 12;
+    let doy = (153 * mp + 2) / 5 + d - 1;
+    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    Some(era * 146_097 + doe - 719_468)
+}
+
+/// Parse every `CLOCK:` line in a logbook/body text (Q5-O3).
+///
+/// Returns semantic [`ClockEntry`]s. The source stays verbatim (I1 —
+/// this only reads); malformed lines yield an entry with no
+/// stamps/duration, never a panic (I5).
+#[must_use]
+pub fn clock_entries(body: &str) -> Vec<ClockEntry> {
+    let mut out = Vec::new();
+    for line in body.lines() {
+        let Some(rest) = line.trim_start().strip_prefix("CLOCK:") else {
+            continue;
+        };
+        let mut stamps = Vec::new();
+        let mut cursor = rest;
+        while let Some(open) = cursor.find('[') {
+            let Some(close) = cursor[open + 1..].find(']') else {
+                break;
+            };
+            stamps.push(cursor[open + 1..open + 1 + close].to_owned());
+            cursor = &cursor[open + 1 + close + 1..];
+        }
+        let start = stamps.first().cloned().unwrap_or_default();
+        let end = stamps.get(1).cloned();
+        let arrow_minutes = rest.split("=>").nth(1).and_then(|d| {
+            let (h, m) = d.trim().split_once(':')?;
+            Some(h.parse::<u64>().ok()? * 60 + m.parse::<u64>().ok()?)
+        });
+        let computed = || -> Option<u64> {
+            let e = end.as_deref()?;
+            let day_delta = stamp_days(e)? - stamp_days(&start)?;
+            let mins =
+                day_delta * 24 * 60 + i64::try_from(stamp_minutes(e)?).ok()?
+                    - i64::try_from(stamp_minutes(&start)?).ok()?;
+            u64::try_from(mins).ok()
+        };
+        let minutes = if start.is_empty() {
+            None
+        } else {
+            arrow_minutes.or_else(computed)
+        };
+        out.push(ClockEntry {
+            start,
+            end,
+            minutes,
+        });
+    }
+    out
+}
+
 /// Kind of `:LOGBOOK:` entry.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LogbookKind {

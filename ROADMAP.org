@@ -13,6 +13,30 @@ file is the fine-grained, capability-level queue between them. Blocked
 on a design decision? Record it under [[*Decisions][Decisions]], pick the most
 reversible option, keep moving.
 
+* DONE DEPTH-Q5 — org semantic zones [4/4]
+Queue Q5 of =goal-depth-final.md= (Claude-only: parser + eval).
+** DONE O1 =#+RESULTS:= write-back — already deep (verified) [1/1]
+Attach/replace + =:results value|output|silent= + idempotent re-eval
+shipped pre-goal (closure-org rewrite + closure-store eval path);
+verified, no delta needed.
+** DONE O2 dead-footnote diagnostics [1/1]
+=DiagnosticCode::Footnote= (warning): any =[fn:name]= reference with
+no line-leading =[fn:name]= definition, ranged to the reference (L3
+pull path). Definitions and defined refs stay clean.
+** DONE O3 clocking becomes semantic [1/1]
+=closure_org::clock_entries=: =CLOCK:= lines → start/end/minutes
+(=>-duration preferred, else computed across day boundaries via
+days-from-civil); =Vault::clock_minutes= aggregates closed intervals
+per headline (open clocks excluded); =closure clock-report= prints
+the table (the per-file =closure clock= stamp lister predates this
+and stays). RESIDUAL: clock-in/out registry commands — substrate
+=rewrite_headline_append_logbook= exists, recorded.
+** DONE O4 export markup scope Decision [1/1]
+=#+LATEX:=/=#+HTML:= stay verbatim by Decision: export engines are
+out of kernel scope; =to_org=/HTML export cover the vision's export
+want. Spec's "opaque zones" list rewritten to distinguish
+semantic-by-accessor from opaque-by-Decision.
+
 * DONE DEPTH-Q4 — markdown to full depth [3/3]
 Queue Q4 of =goal-depth-final.md= (Claude-led: parser).
 ** DONE M1 inline markup classification [1/1]

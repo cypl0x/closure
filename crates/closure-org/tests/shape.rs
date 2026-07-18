@@ -8042,3 +8042,38 @@ fn doc_level_pct_match() {
     assert_eq!(doc.level_pct(1), 33);
     assert_eq!(doc.level_pct(2), 66);
 }
+
+// === Q5-O3: CLOCK entries become semantic (durations, open clocks). ===
+
+#[test]
+fn clock_entries_parse_closed_intervals_with_duration() {
+    let body = "CLOCK: [2024-01-01 Mon 10:00]--[2024-01-01 Mon 11:30] =>  1:30\n";
+    let entries = closure_org::clock_entries(body);
+    assert_eq!(entries.len(), 1);
+    assert_eq!(entries[0].start, "2024-01-01 Mon 10:00");
+    assert_eq!(entries[0].end.as_deref(), Some("2024-01-01 Mon 11:30"));
+    assert_eq!(entries[0].minutes, Some(90), "duration from the => part");
+}
+
+#[test]
+fn clock_entries_keep_open_clocks_open() {
+    let entries = closure_org::clock_entries("CLOCK: [2024-01-01 Mon 10:00]\n");
+    assert_eq!(entries.len(), 1);
+    assert!(entries[0].end.is_none());
+    assert!(entries[0].minutes.is_none(), "an open clock has no duration");
+}
+
+#[test]
+fn clock_entries_compute_duration_when_the_arrow_is_missing() {
+    let body = "CLOCK: [2024-01-01 Mon 09:15]--[2024-01-01 Mon 10:00]\n";
+    let entries = closure_org::clock_entries(body);
+    assert_eq!(entries[0].minutes, Some(45), "computed from the stamps");
+}
+
+#[test]
+fn clock_entries_skip_non_clock_lines_and_never_panic() {
+    let body = "- State \"DONE\" from \"TODO\" [2024-01-01]\nCLOCK: garbage\nnote\n";
+    let entries = closure_org::clock_entries(body);
+    assert_eq!(entries.len(), 1, "malformed CLOCK is still one entry");
+    assert!(entries[0].minutes.is_none());
+}

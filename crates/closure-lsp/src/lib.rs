@@ -663,6 +663,8 @@ pub enum DiagnosticCode {
     Config,
     /// A `closure-widget` expansion error (unknown / cyclic reference).
     Widget,
+    /// A `[fn:name]` reference with no `[fn:name]` definition (Q5-O2).
+    Footnote,
 }
 
 impl DiagnosticCode {
@@ -674,6 +676,7 @@ impl DiagnosticCode {
             Self::DuplicateId => "duplicate-id",
             Self::Config => "config",
             Self::Widget => "widget",
+            Self::Footnote => "footnote",
         }
     }
 }
@@ -766,6 +769,46 @@ fn embedded_line(message: &str) -> Option<usize> {
 /// Diagnostics for `src` against `vault`: dead `id:` links, duplicate
 /// `:ID:` values (vault-wide), and `closure-config` validation errors.
 ///
+/// The footnote name when `line` opens with a `[fn:name]` definition.
+fn footnote_name(line: &str) -> Option<&str> {
+    let rest = line.strip_prefix("[fn:")?;
+    let close = rest.find(']')?;
+    (close > 0).then(|| &rest[..close])
+}
+
+/// Q5-O2: dead footnote references. A definition is a line starting
+/// `[fn:name]`; any other `[fn:name]` occurrence is a reference and
+/// warns when no definition names it.
+fn footnote_diagnostics(src: &str, out: &mut Vec<Diagnostic>) {
+    let defined: std::collections::HashSet<&str> = src
+        .lines()
+        .filter_map(|l| footnote_name(l.trim_start()))
+        .collect();
+    for (i, line) in src.lines().enumerate() {
+        let lnum = u32::try_from(i).unwrap_or(u32::MAX);
+        let mut cursor = 0usize;
+        while let Some(rel) = line[cursor..].find("[fn:") {
+            let start = cursor + rel;
+            let Some(close) = line[start..].find(']') else {
+                break;
+            };
+            let name = &line[start + 4..start + close];
+            let is_definition = start == 0 || line[..start].trim().is_empty();
+            if !is_definition && !name.is_empty() && !defined.contains(name) {
+                out.push(Diagnostic {
+                    line: lnum,
+                    start_char: u32::try_from(start).unwrap_or(u32::MAX),
+                    end_char: u32::try_from(start + close + 1).unwrap_or(u32::MAX),
+                    severity: Severity::Warning,
+                    code: DiagnosticCode::Footnote,
+                    message: format!("footnote [fn:{name}] has no definition"),
+                });
+            }
+            cursor = start + close + 1;
+        }
+    }
+}
+
 /// Positions are zero-based byte line/column over `src`. Pure +
 /// hermetic — no editor process needed.
 #[must_use]
@@ -805,6 +848,8 @@ pub fn diagnostics(src: &str, vault: &Vault) -> Vec<Diagnostic> {
             });
         }
     }
+
+    footnote_diagnostics(src, &mut out);
 
     // closure-config block validation.
     if let Some((content, content_start)) = config_block(src)

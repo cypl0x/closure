@@ -179,12 +179,26 @@ In scope:
 - Keywords (`#+TITLE:`, `#+FILETAGS:`, …) verbatim.
 - Comments (`# ...`) verbatim.
 
-Preserved as opaque text (no semantics yet):
+Semantic accessors over verbatim text (the D9 tables pattern — the
+bytes stay untouched, I1; semantics are read-only views + commands):
 
-- Babel execution, `#+RESULTS:` handling semantics.
-- Export markup, `#+LATEX:` / `#+HTML:` specials.
-- Agenda, clocking (`CLOCK:` verbatim).
-- Footnotes semantics.
+- Babel `#+RESULTS:` — attach/replace after eval, `:results
+  value|output|silent` honoured, idempotent re-eval.
+- Clocking (Q5-O3) — `clock_entries` parses `CLOCK:` lines (start /
+  end / minutes, `=>` duration preferred, else computed across days);
+  `Vault::clock_minutes` aggregates per headline; `closure
+  clock-report` prints the table. Clock-in/out *commands* are the
+  recorded residual (`rewrite_headline_append_logbook` is the ready
+  substrate).
+- Footnotes (Q5-O2) — definition/reference recognition; a `[fn:name]`
+  reference with no definition is a `closure-lsp` warning
+  (`DiagnosticCode::Footnote`, the L3 pull path).
+
+Preserved as opaque text (no semantics — by Decision, not omission):
+
+- Export markup, `#+LATEX:` / `#+HTML:` specials (Q5-O4: export
+  engines are out of kernel scope; `to_org` / the HTML export cover
+  the vision's export want).
 
 ### Layer 2 — Kernel
 

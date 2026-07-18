@@ -132,3 +132,34 @@ fn protocol_initialize_advertises_diagnostics() {
         "advertises diagnostics: {resp}"
     );
 }
+
+// === Q5-O2: dead footnote references are diagnosed. ===
+
+#[test]
+fn dead_footnote_reference_is_reported() {
+    let dir = tempfile::tempdir().expect("tmp");
+    let src = "* Note\nBody with a ref[fn:alive] and a dead one[fn:ghost].\n\n[fn:alive] the definition\n";
+    std::fs::write(dir.path().join("n.org"), src).expect("write");
+    let vault = closure_store::Vault::open(dir.path()).expect("open");
+    let diags = closure_lsp::diagnostics(src, &vault);
+    let foot: Vec<_> = diags
+        .iter()
+        .filter(|d| d.code == closure_lsp::DiagnosticCode::Footnote)
+        .collect();
+    assert_eq!(foot.len(), 1, "exactly the ghost: {foot:?}");
+    assert!(foot[0].message.contains("ghost"), "{}", foot[0].message);
+    assert_eq!(foot[0].line, 1, "on the referencing line");
+}
+
+#[test]
+fn defined_footnotes_are_clean() {
+    let dir = tempfile::tempdir().expect("tmp");
+    let src = "* Note\nfine[fn:a]\n\n[fn:a] def\n";
+    std::fs::write(dir.path().join("n.org"), src).expect("write");
+    let vault = closure_store::Vault::open(dir.path()).expect("open");
+    assert!(
+        closure_lsp::diagnostics(src, &vault)
+            .iter()
+            .all(|d| d.code != closure_lsp::DiagnosticCode::Footnote)
+    );
+}

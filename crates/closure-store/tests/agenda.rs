@@ -51,3 +51,32 @@ fn agenda_empty_without_planning() {
     let v = Vault::open(td.path()).expect("open");
     assert!(v.agenda().is_empty());
 }
+
+// === Q5-O3: vault-wide clock report (clocked minutes per headline). ===
+
+#[test]
+fn clock_minutes_aggregates_per_headline() {
+    let dir = tempfile::tempdir().expect("tmp");
+    std::fs::write(
+        dir.path().join("t.org"),
+        "* Deep work\n:LOGBOOK:\nCLOCK: [2024-01-01 Mon 09:00]--[2024-01-01 Mon 10:30] =>  1:30\nCLOCK: [2024-01-02 Tue 09:00]--[2024-01-02 Tue 09:45] =>  0:45\n:END:\n* Idle\n",
+    )
+    .expect("write");
+    let v = closure_store::Vault::open(dir.path()).expect("open");
+    let report = v.clock_minutes();
+    assert_eq!(report.len(), 1, "only clocked headlines appear: {report:?}");
+    assert_eq!(report[0].0, "Deep work");
+    assert_eq!(report[0].1, 135, "1:30 + 0:45");
+}
+
+#[test]
+fn clock_minutes_ignores_open_clocks() {
+    let dir = tempfile::tempdir().expect("tmp");
+    std::fs::write(
+        dir.path().join("t.org"),
+        "* Running\n:LOGBOOK:\nCLOCK: [2024-01-01 Mon 09:00]\n:END:\n",
+    )
+    .expect("write");
+    let v = closure_store::Vault::open(dir.path()).expect("open");
+    assert!(v.clock_minutes().is_empty(), "open clock has no minutes yet");
+}

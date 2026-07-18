@@ -296,6 +296,12 @@ enum Cmd {
         #[arg(long)]
         until: Option<String>,
     },
+    /// Clocked time per headline across the vault (closed CLOCK
+    /// intervals summed, largest first).
+    ClockReport {
+        /// Path to the vault directory.
+        vault: PathBuf,
+    },
     /// Show the recorded command journal (journal.org).
     History {
         /// Path to the vault directory.
@@ -1284,6 +1290,7 @@ fn run(cmd: &Cmd) -> Result<(), String> {
         Cmd::ImportMd { file } => cmd_import_md(file),
         Cmd::ExportHtml { vault, out } => cmd_export_html(vault, out),
         Cmd::Agenda { vault, until } => cmd_agenda(vault, until.as_deref()),
+        Cmd::ClockReport { vault } => cmd_clock_report(vault),
         Cmd::Cron { vault, file, at } => cmd_cron(vault, file, at.as_deref()),
         Cmd::History { vault, grep } => cmd_history(vault, grep.as_deref()),
         Cmd::Tangle { vault, file } => cmd_tangle(vault, file),
@@ -1545,6 +1552,16 @@ fn cmd_agenda(vault: &Path, until: Option<&str>) -> Result<(), String> {
             closure_store::AgendaKind::Deadline => "DEADLINE",
         };
         println!("{}  {kind:9}  {}", e.date, e.title);
+    }
+    Ok(())
+}
+
+/// Q5-O3: the clock report — closed `CLOCK:` minutes per headline,
+/// largest first (`Vault::clock_minutes`).
+fn cmd_clock_report(vault: &Path) -> Result<(), String> {
+    let v = Vault::open(vault).map_err(|e| format!("{e}"))?;
+    for (title, minutes) in v.clock_minutes() {
+        println!("{:>3}:{:02}  {title}", minutes / 60, minutes % 60);
     }
     Ok(())
 }

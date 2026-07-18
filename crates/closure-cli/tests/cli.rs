@@ -515,3 +515,16 @@ fn eval_runs_when_trusted_in_config() {
     let out = ok(&["eval", f.to_str().unwrap()]);
     assert!(out.contains("ran-c1a"), "trusted block runs: {out}");
 }
+
+#[test]
+fn clock_reports_clocked_minutes() {
+    let v = vault();
+    std::fs::write(
+        v.path().join("clocked.org"),
+        "* Deep work\n:LOGBOOK:\nCLOCK: [2024-01-01 Mon 09:00]--[2024-01-01 Mon 10:30] =>  1:30\n:END:\n",
+    )
+    .unwrap();
+    let out = ok(&["clock-report", v.path().to_str().unwrap()]);
+    assert!(out.contains("1:30"), "duration column: {out}");
+    assert!(out.contains("Deep work"), "clocked headline: {out}");
+}

@@ -768,6 +768,29 @@ impl Vault {
         out
     }
 
+    /// Clocked minutes per headline across the vault (Q5-O3): every
+    /// headline whose body carries closed `CLOCK:` intervals
+    /// ([`closure_org::clock_entries`]), with the interval minutes
+    /// summed — open clocks contribute nothing. Sorted
+    /// minutes-descending then by title (I6). Read-only.
+    #[must_use]
+    pub fn clock_minutes(&self) -> Vec<(String, u64)> {
+        let mut out: Vec<(String, u64)> = Vec::new();
+        for (_, doc) in self.iter() {
+            for h in doc.all_headlines() {
+                let total: u64 = closure_org::clock_entries(h.body_text())
+                    .iter()
+                    .filter_map(|c| c.minutes)
+                    .sum();
+                if total > 0 {
+                    out.push((h.title().to_owned(), total));
+                }
+            }
+        }
+        out.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+        out
+    }
+
     /// Agenda entries on or before `date` (`YYYY-MM-DD`), sorted.
     #[must_use]
     pub fn agenda_until(&self, date: &str) -> Vec<AgendaEntry> {
