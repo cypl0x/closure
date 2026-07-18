@@ -1022,6 +1022,24 @@ fn todo_glyph(keyword: &str) -> &'static str {
     }
 }
 
+/// Overlay ephemeral peer presence onto rows (Q11-C3).
+///
+/// A `◉ <peer>` badge is appended to the row whose id a peer is
+/// focused on. Pure — presence never touches document state or the
+/// undo tree; every shell that renders badges (G5a) shows it with no
+/// new code.
+#[must_use]
+pub fn with_presence(mut rows: Vec<RowView>, presence: &[(String, String)]) -> Vec<RowView> {
+    for row in &mut rows {
+        for (peer, block) in presence {
+            if row.id == *block {
+                row.badges.push(format!("◉ {peer}"));
+            }
+        }
+    }
+    rows
+}
+
 /// Deterministic seeded vault generator (Q12-B1).
 ///
 /// `files` org files of `headlines_per_file` level-1 headlines with

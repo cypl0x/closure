@@ -193,3 +193,37 @@ fn browse_view_maps_tags_to_badges_and_todo_to_an_icon() {
     );
     assert!(json.contains("\"icon\":"), "todo → an icon glyph: {json}");
 }
+
+// === Q11-C3: remote-peer presence as a row badge (ephemeral, G5a). ===
+
+#[test]
+fn with_presence_badges_the_focused_row_only() {
+    let rows = vec![
+        closure_shell_core::RowView {
+            id: "01AAAAAAAAAAAAAAAAAAAAAAAA".into(),
+            title: "Alpha".into(),
+            level: 1,
+            todo: None,
+            icon: None,
+            badges: vec![],
+        },
+        closure_shell_core::RowView {
+            id: "01BBBBBBBBBBBBBBBBBBBBBBBB".into(),
+            title: "Beta".into(),
+            level: 1,
+            todo: None,
+            icon: None,
+            badges: vec!["tag".into()],
+        },
+    ];
+    let out = closure_shell_core::with_presence(
+        rows,
+        &[("wap".to_owned(), "01BBBBBBBBBBBBBBBBBBBBBBBB".to_owned())],
+    );
+    assert!(out[0].badges.is_empty(), "unfocused row untouched");
+    assert_eq!(
+        out[1].badges,
+        vec!["tag".to_owned(), "◉ wap".to_owned()],
+        "peer badge appended after existing badges"
+    );
+}

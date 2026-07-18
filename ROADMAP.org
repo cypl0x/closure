@@ -13,6 +13,37 @@ file is the fine-grained, capability-level queue between them. Blocked
 on a design decision? Record it under [[*Decisions][Decisions]], pick the most
 reversible option, keep moving.
 
+* DONE DEPTH-Q10 — P2P pairing tickets [1/1]
+Queue Q10 of =goal-depth-final.md=.
+** DONE N2 tickets over the REAL secure transport [1/1]
+=SyncTicket { addr, pubkey }= ⇄ =closure-sync:<addr>|<hex-ed25519>= —
+one plain-text line, storable in a vault org file. =join= trusts
+exactly the ticket's key, so pairing pins authenticity through the
+existing C3a/C3b path (signed frames over Noise); loopback test: two
+peers pair via ticket string and converge, ids preserved (I2).
+DECISION (2026-07-18): NAT traversal / relay stays the external-iroh
+tier (the stub transport + =just sync-net= gate) — a native iroh
+endpoint drags a large dependency tree against I10 and its API would
+have to be assumed rather than verified (TDD rule 1); revisit when a
+pinned iroh release is vendored into the devshell.
+
+* DONE DEPTH-Q11 — live collaboration substrate [3/3]
+Queue Q11 of =goal-depth-final.md=.
+** DONE C1 continuous session rounds [1/1]
+=stream_round_client/server=: repeated replica exchanges over ONE
+open socket — edits recorded between rounds flow on the next round
+(loopback test: interleaved edits converge live, three blocks both
+sides).
+** DONE C2 ephemeral presence frames [1/1]
+=Presence { peer, block, line }= with its own wire magic (=CLPR=) —
+=SyncMessage::from_bytes= rejects presence frames, so cursor chatter
+provably cannot enter replica state; never persisted, never in the
+undo tree.
+** DONE C3 presence renders everywhere [1/1]
+=closure_shell_core::with_presence(rows, peers)= appends a =◉ peer=
+badge to the focused row — badges are G5a data, so every shell that
+renders rows shows remote presence with no per-shell code.
+
 * DONE DEPTH-Q12 — performance is a number [4/4]
 Queue Q12 of =goal-depth-final.md=.
 ** DONE B1 seeded vault generator [1/1]

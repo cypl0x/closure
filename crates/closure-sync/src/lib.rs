@@ -739,6 +739,40 @@ impl TcpSyncTransport {
         Ok(())
     }
 
+    /// One live round on an already-open stream, client side (Q11-C1):
+    /// send our replica frame, merge the peer's. Called repeatedly on
+    /// ONE connection, this is the continuous-session loop — each
+    /// `record_local` between rounds flows to the peer on the next
+    /// round.
+    ///
+    /// # Errors
+    ///
+    /// [`SyncError`] on IO or a malformed frame.
+    pub fn stream_round_client(
+        stream: &mut std::net::TcpStream,
+        session: &mut SyncSession,
+    ) -> Result<(), SyncError> {
+        write_framed(stream, &SyncMessage::from_session(session).to_bytes())?;
+        let theirs = SyncMessage::from_bytes(&read_framed(stream)?)?;
+        session.apply_message(&theirs);
+        Ok(())
+    }
+
+    /// The responder counterpart to [`Self::stream_round_client`].
+    ///
+    /// # Errors
+    ///
+    /// [`SyncError`] on IO or a malformed frame.
+    pub fn stream_round_server(
+        stream: &mut std::net::TcpStream,
+        session: &mut SyncSession,
+    ) -> Result<(), SyncError> {
+        let theirs = SyncMessage::from_bytes(&read_framed(stream)?)?;
+        session.apply_message(&theirs);
+        write_framed(stream, &SyncMessage::from_session(session).to_bytes())?;
+        Ok(())
+    }
+
     /// Secure client round (C3a+C3b): Noise-handshake the socket, then
     /// exchange ed25519-**signed** frames over the **encrypted** channel.
     /// The peer's frame is verified against `trusted` before it is
@@ -875,6 +909,129 @@ impl Transport for GitTransport {
 
     fn pull(&mut self) -> Result<(), SyncError> {
         self.run(&["pull", "--rebase"])
+    }
+}
+
+/// Ephemeral presence (Q11-C2): which block a peer is on and where.
+///
+/// Presence is session chatter, not document state — it is NEVER
+/// persisted, never enters the undo tree, and carries its own wire
+/// magic (`CLPR`) so [`SyncMessage::from_bytes`] rejects it instead of
+/// merging cursor movement into a replica.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Presence {
+    /// Peer name.
+    pub peer: String,
+    /// Focused block id (string form).
+    pub block: String,
+    /// Cursor line inside the block body.
+    pub line: u32,
+}
+
+impl Presence {
+    /// Frame as `CLPR | 1 | len peer | peer | len block | block | line`.
+    #[must_use]
+    pub fn encode(&self) -> Vec<u8> {
+        let mut out = Vec::new();
+        out.extend_from_slice(b"CLPR");
+        out.push(1);
+        let put = |out: &mut Vec<u8>, s: &str| {
+            out.extend_from_slice(&u32::try_from(s.len()).unwrap_or(u32::MAX).to_le_bytes());
+            out.extend_from_slice(s.as_bytes());
+        };
+        put(&mut out, &self.peer);
+        put(&mut out, &self.block);
+        out.extend_from_slice(&self.line.to_le_bytes());
+        out
+    }
+
+    /// Parse a frame produced by [`Self::encode`].
+    ///
+    /// # Errors
+    ///
+    /// [`SyncError::Transport`] on a short buffer, wrong magic /
+    /// version, or malformed strings (never a panic, I5).
+    pub fn decode(bytes: &[u8]) -> Result<Self, SyncError> {
+        let bad = || SyncError::Transport("not a presence frame".into());
+        if bytes.len() < 5 || &bytes[..4] != b"CLPR" || bytes[4] != 1 {
+            return Err(bad());
+        }
+        let mut pos = 5usize;
+        let mut take_str = |bytes: &[u8]| -> Result<String, SyncError> {
+            let len_bytes: [u8; 4] = bytes.get(pos..pos + 4).ok_or_else(bad)?.try_into().map_err(|_| bad())?;
+            let len = u32::from_le_bytes(len_bytes) as usize;
+            pos += 4;
+            let s = bytes.get(pos..pos + len).ok_or_else(bad)?;
+            pos += len;
+            String::from_utf8(s.to_vec()).map_err(|_| bad())
+        };
+        let peer = take_str(bytes)?;
+        let block = take_str(bytes)?;
+        let line_bytes: [u8; 4] = bytes.get(pos..pos + 4).ok_or_else(bad)?.try_into().map_err(|_| bad())?;
+        Ok(Self {
+            peer,
+            block,
+            line: u32::from_le_bytes(line_bytes),
+        })
+    }
+}
+
+/// A plain-text pairing artifact (Q10).
+///
+/// Where to connect and WHO must sign —
+/// `closure-sync:<addr>|<hex ed25519 verifying key>`, one line,
+/// storable in a vault org file. `join` derives its C3a trusted set
+/// from the ticket, so authenticity is pinned at pairing time.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SyncTicket {
+    /// Socket address the peer listens on.
+    pub addr: std::net::SocketAddr,
+    /// The peer's ed25519 verifying key (its frames must sign with it).
+    pub pubkey: VerifyingKey,
+}
+
+impl SyncTicket {
+    /// Render as the single-line plain-text ticket.
+    #[must_use]
+    pub fn encode(&self) -> String {
+        use std::fmt::Write as _;
+        let mut hex = String::with_capacity(64);
+        for b in self.pubkey.to_bytes() {
+            let _ = write!(hex, "{b:02x}");
+        }
+        format!("closure-sync:{}|{hex}", self.addr)
+    }
+
+    /// Parse a ticket produced by [`Self::encode`].
+    ///
+    /// # Errors
+    ///
+    /// [`SyncError::Transport`] on a missing prefix, malformed
+    /// address, or an invalid key (never a panic, I5).
+    pub fn decode(s: &str) -> Result<Self, SyncError> {
+        let rest = s
+            .trim()
+            .strip_prefix("closure-sync:")
+            .ok_or_else(|| SyncError::Transport("not a closure-sync ticket".into()))?;
+        let (addr_s, hex) = rest
+            .rsplit_once('|')
+            .ok_or_else(|| SyncError::Transport("ticket missing key part".into()))?;
+        let addr: std::net::SocketAddr = addr_s
+            .parse()
+            .map_err(|_| SyncError::Transport(format!("bad ticket address: {addr_s}")))?;
+        if hex.len() != 64 || !hex.bytes().all(|b| b.is_ascii_hexdigit()) {
+            return Err(SyncError::Transport("bad ticket key".into()));
+        }
+        let mut bytes = [0u8; 32];
+        for (i, chunk) in hex.as_bytes().chunks(2).enumerate() {
+            let s = std::str::from_utf8(chunk)
+                .map_err(|_| SyncError::Transport("bad ticket key".into()))?;
+            bytes[i] = u8::from_str_radix(s, 16)
+                .map_err(|_| SyncError::Transport("bad ticket key".into()))?;
+        }
+        let pubkey = VerifyingKey::from_bytes(&bytes)
+            .map_err(|_| SyncError::Transport("invalid ed25519 key in ticket".into()))?;
+        Ok(Self { addr, pubkey })
     }
 }
 
