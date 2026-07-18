@@ -3772,6 +3772,23 @@ impl BodyEditor {
         self.mode = EditorMode::Visual;
     }
 
+    /// Mouse drag extends a charwise Visual selection: on the first drag
+    /// event that actually moves the cursor, the pre-drag cursor becomes
+    /// the anchor and the mode switches to Visual; every drag event then
+    /// moves the cursor to the clamped line and col, exactly like a
+    /// click does. A drag that stays on the clicked cell (a click's
+    /// micro-movement) leaves the mode untouched.
+    pub fn drag_to(&mut self, line: usize, col: usize) {
+        let from = self.cursor;
+        self.goto_line_col(line, col);
+        if !matches!(self.mode, EditorMode::Visual | EditorMode::VisualLine)
+            && self.cursor != from
+        {
+            self.anchor = from;
+            self.mode = EditorMode::Visual;
+        }
+    }
+
     /// Move to the start of the next word (simple rule, not full vim).
     fn word_forward(&mut self) {
         let positions: Vec<(usize, char)> = self.buf.char_indices().collect();
@@ -4908,6 +4925,15 @@ impl ModalApp {
     pub fn body_double_click(&mut self, line: usize, col: usize) {
         self.body_click(line, col);
         self.body.select_word_at_cursor();
+    }
+
+    /// Mouse drag into the body editor: extend a charwise Visual
+    /// selection from the click anchor to line/col
+    /// ([`BodyEditor::drag_to`]); ends any completion session like
+    /// [`Self::body_click`] does.
+    pub fn body_drag(&mut self, line: usize, col: usize) {
+        self.completion = None;
+        self.body.drag_to(line, col);
     }
 
     /// The selected row's document undo-tree, flattened for the

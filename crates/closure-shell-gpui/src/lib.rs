@@ -808,7 +808,21 @@ impl GpuiView {
                                             cx.notify();
                                         },
                                     ),
-                                ),
+                                )
+                                // G2: drag with the left button held
+                                // extends the charwise VISUAL selection
+                                // (BodyEditor::drag_to via body_drag).
+                                .on_mouse_move(cx.listener(
+                                    move |this: &mut Self,
+                                          ev: &gpui::MouseMoveEvent,
+                                          _w,
+                                          cx| {
+                                        if ev.pressed_button == Some(MouseButton::Left) {
+                                            this.app.body_drag(ln, chunk_col);
+                                            cx.notify();
+                                        }
+                                    },
+                                )),
                         );
                     }
                     col += n;

@@ -1995,3 +1995,72 @@ fn click_ends_a_completion_session() {
     assert!(app.body_completion_items().is_empty());
     assert_eq!(app.body_cursor(), (0, 0));
 }
+
+#[test]
+fn drag_extends_charwise_selection_from_click() {
+    let (_d, mut sh) = shell();
+    let mut app = editor_with(&mut sh, "one two three");
+    app.on_key(&mut sh, "escape", false, false, None);
+    app.body_click(0, 0);
+    app.body_drag(0, 6);
+    assert_eq!(app.body_mode(), closure_shell_core::EditorMode::Visual);
+    assert_eq!(app.body_selection(), Some((0, 7)));
+}
+
+#[test]
+fn drag_backwards_selects_to_the_anchor() {
+    let (_d, mut sh) = shell();
+    let mut app = editor_with(&mut sh, "one two three");
+    app.on_key(&mut sh, "escape", false, false, None);
+    app.body_click(0, 6);
+    app.body_drag(0, 2);
+    assert_eq!(app.body_selection(), Some((2, 7)));
+}
+
+#[test]
+fn drag_crosses_lines() {
+    let (_d, mut sh) = shell();
+    let mut app = editor_with(&mut sh, "one\ntwo");
+    app.on_key(&mut sh, "escape", false, false, None);
+    app.body_click(0, 1);
+    app.body_drag(1, 1);
+    assert_eq!(app.body_selection(), Some((1, 6)));
+}
+
+#[test]
+fn continued_drag_reextends_from_the_same_anchor() {
+    let (_d, mut sh) = shell();
+    let mut app = editor_with(&mut sh, "one two three");
+    app.on_key(&mut sh, "escape", false, false, None);
+    app.body_click(0, 0);
+    app.body_drag(0, 2);
+    app.body_drag(0, 4);
+    assert_eq!(app.body_mode(), closure_shell_core::EditorMode::Visual);
+    assert_eq!(app.body_selection(), Some((0, 5)));
+}
+
+#[test]
+fn drag_from_insert_enters_visual() {
+    let (_d, mut sh) = shell();
+    let mut app = editor_with(&mut sh, "one two three");
+    app.body_click(0, 0);
+    app.body_drag(0, 3);
+    assert_eq!(app.body_mode(), closure_shell_core::EditorMode::Visual);
+    assert_eq!(app.body_selection(), Some((0, 4)));
+}
+
+#[test]
+fn drag_to_the_click_position_keeps_the_mode() {
+    // A click's micro-movement fires a drag event on the same cell; it
+    // must not flip the editor into a one-char Visual selection.
+    let (_d, mut sh) = shell();
+    let mut app = editor_with(&mut sh, "one two three");
+    app.body_click(0, 1);
+    app.body_drag(0, 1);
+    assert_eq!(
+        app.body_mode(),
+        closure_shell_core::EditorMode::Insert,
+        "same-cell drag stays in the click's mode"
+    );
+    assert_eq!(app.body_selection(), None);
+}

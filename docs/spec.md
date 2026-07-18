@@ -575,8 +575,11 @@ base, ours, theirs)` returns the `FieldConflict`s (title/body) both sides
   (`body_double_click` → charwise VISUAL); the pane's non-caret lines
   are per-char click targets (`char_cells`, G1 — every char carries its
   char column, so a click lands on the exact glyph, in-word included)
-  with a line-end fallback on the empty tail. Drag selection and
-  drag-and-drop row reordering are recorded gaps. Every mouse affordance
+  with a line-end fallback on the empty tail. Dragging with the left
+  button held extends a charwise VISUAL selection (`BodyEditor::drag_to`
+  via `body_drag`, G2 — the pre-drag cursor becomes the anchor on the
+  first cell-crossing move; a click's micro-movement never flips the
+  mode). Drag-and-drop row reordering is a recorded gap. Every mouse affordance
   dispatches a registry-backed command through the same `ModalApp::run`
   entry the chords use (I8): row click selects, the fold arrow toggles
   `toggle-fold`, which-key chips run their command, palette rows run the

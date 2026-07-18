@@ -13,6 +13,21 @@ file is the fine-grained, capability-level queue between them. Blocked
 on a design decision? Record it under [[*Decisions][Decisions]], pick the most
 reversible option, keep moving.
 
+* DONE DEPTH-Q1-G2 — drag text selection in the body editor (orchestrated) [1/1]
+Queue Q1-G2 of =goal-depth-final.md=.
+** DONE G2 left-button drag extends a charwise VISUAL selection [1/1]
+=BodyEditor::drag_to(line, col)=: the first drag event that actually
+moves the cursor makes the pre-drag cursor the anchor and enters
+Visual; further drags just move the cursor (clamped, =goto_line_col=).
+Same-cell micro-movement (every real-world click) is guarded — cursor
+unchanged means mode unchanged, so plain clicks never degrade into a
+one-char selection (Fable guard, RED-first). =ModalApp::body_drag=
+ends the completion session like =body_click=; the gpui char cells
+(G1) carry an =on_mouse_move= listener gated on the held left button.
+Grok RED (5 tests) + Grok GREEN, Fable guard + gpui wiring. Closes the
+GPUI-MOUSE-D2 drag-selection recorded gap; D1 drag-and-drop reorder is
+Q1-G3.
+
 * DONE DEPTH-Q1-G1 — in-word click column via per-char cells (orchestrated) [1/1]
 Queue Q1-G1 of =goal-depth-final.md= (close-every-gap goal, 2026-07-18).
 ** DONE G1 clicks land on the exact glyph, in-word included [1/1]
