@@ -987,3 +987,33 @@ pub fn backend_for(name: &str) -> Box<dyn SearchBackend> {
         _ => Box::new(BuiltinSearch),
     }
 }
+
+/// Markdown backlinks (Q4-M3).
+///
+/// Every `.md` file under `root` (one level, non-recursive like the
+/// vault loader) whose link targets name `target` — matched on the
+/// raw target or its extension-less slug (md identity is path/slug;
+/// there is no `:ID:` in markdown, see the Q4 Decision). Read-only; a
+/// missing or unreadable dir is empty, never a panic (I5).
+#[must_use]
+pub fn md_backlinks(root: &std::path::Path, target: &str) -> Vec<std::path::PathBuf> {
+    let slug = target.strip_suffix(".md").unwrap_or(target);
+    let Ok(entries) = std::fs::read_dir(root) else {
+        return Vec::new();
+    };
+    let mut out: Vec<std::path::PathBuf> = entries
+        .filter_map(Result::ok)
+        .map(|e| e.path())
+        .filter(|p| p.extension().and_then(|e| e.to_str()) == Some("md"))
+        .filter(|p| {
+            std::fs::read_to_string(p).is_ok_and(|md| {
+                closure_markdown::link_targets(&md).iter().any(|t| {
+                    let t_slug = t.strip_suffix(".md").unwrap_or(t);
+                    t == target || t_slug == slug
+                })
+            })
+        })
+        .collect();
+    out.sort();
+    out
+}

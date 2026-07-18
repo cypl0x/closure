@@ -91,6 +91,121 @@ pub enum BlockKind {
     ThematicBreak,
 }
 
+/// Inline markup classification (Q4-M1).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum InlineKind {
+    /// Unmarked text.
+    Plain,
+    /// `*em*` / `_em_`.
+    Emphasis,
+    /// `**strong**` / `__strong__`.
+    Strong,
+    /// `` `code` `` span.
+    Code,
+    /// `[text](target)` inline link.
+    Link,
+}
+
+/// Classify inline markup inside one block's text (Q4-M1).
+///
+/// Flat, single-pass, span-preserving: each span keeps its markers
+/// verbatim and the concatenation of the span texts reproduces the
+/// input byte-exactly (the `Highlighter` gap-free rule — I1 is never
+/// touched because this only *reads*). Unbalanced markers fall back to
+/// `Plain`; nesting is not modelled (a later increment).
+#[must_use]
+pub fn inline_spans(text: &str) -> Vec<(InlineKind, &str)> {
+    fn flush_plain<'a>(
+        text: &'a str,
+        spans: &mut Vec<(InlineKind, &'a str)>,
+        from: usize,
+        to: usize,
+    ) {
+        if from < to {
+            spans.push((InlineKind::Plain, &text[from..to]));
+        }
+    }
+    /// A delimited span `<mark>…<mark>` at the head of `rest`: its
+    /// total length including both markers, `None` when unclosed/empty.
+    fn delimited(rest: &str, mark: &str) -> Option<usize> {
+        rest.strip_prefix(mark)?
+            .find(mark)
+            .filter(|&n| n > 0)
+            .map(|n| mark.len() + n + mark.len())
+    }
+    let mut spans: Vec<(InlineKind, &str)> = Vec::new();
+    let mut plain_start = 0usize;
+    let mut i = 0usize;
+    while i < text.len() {
+        let rest = &text[i..];
+        let matched: Option<(InlineKind, usize)> = if rest.starts_with("**") || rest.starts_with("__") {
+            delimited(rest, &rest[..2]).map(|n| (InlineKind::Strong, n))
+        } else if rest.starts_with('*') || rest.starts_with('_') {
+            delimited(rest, &rest[..1]).map(|n| (InlineKind::Emphasis, n))
+        } else if rest.starts_with('`') {
+            delimited(rest, "`").map(|n| (InlineKind::Code, n))
+        } else if rest.starts_with('[') {
+            rest.find("](").and_then(|mid| {
+                rest[mid + 2..]
+                    .find(')')
+                    .map(|close| (InlineKind::Link, mid + 2 + close + 1))
+            })
+        } else {
+            None
+        };
+        if let Some((kind, len)) = matched {
+            flush_plain(text, &mut spans, plain_start, i);
+            spans.push((kind, &text[i..i + len]));
+            i += len;
+            plain_start = i;
+        } else {
+            // Advance one char (not byte — stay on a boundary).
+            i += text[i..].chars().next().map_or(1, char::len_utf8);
+        }
+    }
+    flush_plain(text, &mut spans, plain_start, text.len());
+    spans
+}
+
+/// Every link target in `md`, document order (Q4-M3).
+///
+/// Inline `[text](target)` targets and wiki `[[target]]` names, taken
+/// from paragraph / heading / list / quote / table blocks — code
+/// fences are skipped (a link inside code is text, not a link). This
+/// is the md identity substrate: markdown has no `:ID:`, so identity
+/// is the path/slug the link names (Decision, Q4).
+#[must_use]
+pub fn link_targets(md: &str) -> Vec<String> {
+    let Ok(doc) = parse(md);
+    let mut out = Vec::new();
+    for block in doc.blocks() {
+        if block.kind() == BlockKind::CodeFence {
+            continue;
+        }
+        let text = block.source();
+        let mut i = 0usize;
+        while i < text.len() {
+            let rest = &text[i..];
+            if let Some(inner) = rest.strip_prefix("[[") {
+                if let Some(close) = inner.find("]]") {
+                    out.push(inner[..close].to_owned());
+                    i += 2 + close + 2;
+                    continue;
+                }
+            } else if rest.starts_with('[')
+                && let Some(mid) = rest.find("](")
+                && let Some(close) = rest[mid + 2..].find(')')
+            {
+                out.push(rest[mid + 2..mid + 2 + close].to_owned());
+                i += mid + 2 + close + 1;
+                continue;
+            }
+            i += rest.chars().next().map_or(1, char::len_utf8);
+        }
+    }
+    out
+}
+
 /// Parse failure.
 #[derive(Debug, Error)]
 pub enum ParseError {}
@@ -145,6 +260,23 @@ pub fn parse(src: &str) -> Result<MdDoc, ParseError> {
         if let Some(marker) = fence_marker(body) {
             flush_para(&mut paragraph, &mut blocks);
             fence = Some((start, marker));
+            continue;
+        }
+        // Q4-M2: a setext underline directly under a pending paragraph
+        // turns the WHOLE run into one heading (CommonMark rule; `---`
+        // only stays a thematic break with no paragraph attached).
+        if paragraph.is_some()
+            && let Some(level) = setext_level(body)
+        {
+            if let Some((ps, _)) = paragraph.take() {
+                blocks.push(Block {
+                    source: Arc::clone(&source),
+                    kind: BlockKind::Heading,
+                    start: ps,
+                    end,
+                    heading_level: Some(level),
+                });
+            }
             continue;
         }
         // GFM / CommonMark line blocks (D1): thematic break first so a
@@ -218,6 +350,19 @@ pub fn parse(src: &str) -> Result<MdDoc, ParseError> {
         });
     }
     Ok(MdDoc { source, blocks })
+}
+
+/// Setext underline level: a line of only `=` (level 1) or only `-`
+/// (level 2), at least one char, trailing whitespace allowed (Q4-M2).
+fn setext_level(body: &str) -> Option<u8> {
+    let t = body.trim_end();
+    if !t.is_empty() && t.bytes().all(|b| b == b'=') {
+        Some(1)
+    } else if !t.is_empty() && t.bytes().all(|b| b == b'-') {
+        Some(2)
+    } else {
+        None
+    }
 }
 
 /// The fence marker (```` ``` ```` or `~~~`) opening `body`, if any.

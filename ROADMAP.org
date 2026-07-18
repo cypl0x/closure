@@ -13,6 +13,27 @@ file is the fine-grained, capability-level queue between them. Blocked
 on a design decision? Record it under [[*Decisions][Decisions]], pick the most
 reversible option, keep moving.
 
+* DONE DEPTH-Q4 — markdown to full depth [3/3]
+Queue Q4 of =goal-depth-final.md= (Claude-led: parser).
+** DONE M1 inline markup classification [1/1]
+=inline_spans=: flat single-pass scanner over emphasis/strong/code/
+inline links, span-preserving with the gap-free concatenation
+property tested over adversarial inputs; unbalanced markers fall to
+Plain (I5), nesting recorded as a later increment.
+** DONE M2 setext headings [1/1]
+An all-'='/all-'-' underline directly under a pending paragraph
+converts the WHOLE run into one Heading block (CommonMark rule,
+level 1/2, both lines in the span so I1 holds by construction);
+bare/blank-separated dashes stay ThematicBreak (guard test). Fuzz
+(reparse stability + roundtrip) still green.
+** DONE M3 markdown backlinks [1/1]
+=closure_markdown::link_targets= (inline + wiki targets, document
+order, code fences skipped) + =closure_query::md_backlinks(root,
+target)= matching raw target or extension-less slug. DECISION
+(2026-07-18): md identity = path/slug — no =:ID:= is invented in
+markdown files; the org/md bridge maps ULID ↔ path-slug instead of
+polluting md syntax. Closes the "md backlinks deferred" drop.
+
 * DONE DEPTH-Q6 — the web tier is a full interactive editor [4/4]
 Queue Q6 of =goal-depth-final.md=.
 ** DONE W1 =POST /command= + =GET /view= [1/1]

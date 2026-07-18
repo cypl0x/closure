@@ -13,6 +13,7 @@ workspace = true
 
 [dependencies]
 closure-core = { path = "../closure-core" }
+closure-markdown = { path = "../closure-markdown" }
 closure-org = { path = "../closure-org" }
 closure-store = { path = "../closure-store" }
 thiserror.workspace = true

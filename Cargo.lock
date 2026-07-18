@@ -1436,6 +1436,7 @@ name = "closure-query"
 version = "0.0.0"
 dependencies = [
  "closure-core",
+ "closure-markdown",
  "closure-org",
  "closure-store",
  "tempfile",

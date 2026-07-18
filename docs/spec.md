@@ -118,9 +118,20 @@ layer. Every vision item is assigned to exactly one layer.
   thematic breaks. Proven by a proptest fuzz (`properties.rs`: I1 roundtrip
   + I5 no-panic + I6 determinism on random input, in `just fuzz`) and a
   golden corpus under `fixtures/md/`. `from_org`/`to_org` bridge the
-  line-level subset. Inline markup (emphasis/links/code spans) and setext
-  headings are a later increment — they do not affect the roundtrip, only
-  finer classification.
+  line-level subset. **Q4 depth:** `inline_spans` classifies inline
+  markup (emphasis/strong/code/links) flat and gap-free — span texts
+  concatenate back to the input byte-exactly, unbalanced markers fall
+  to Plain (the Highlighter coverage rule; I1 untouched, this only
+  reads). Setext headings are first-class: an underline of `=`/`-`
+  directly under a pending paragraph turns the whole run into one
+  `Heading` block (level 1/2, span covering underline included);
+  `---` with no paragraph attached stays a `ThematicBreak`.
+  `link_targets` extracts inline `[t](target)` + wiki `[[target]]`
+  targets in document order, skipping code fences, and
+  `closure_query::md_backlinks(root, target)` resolves them read-only
+  by raw target or extension-less slug — **md identity is path/slug**
+  (no `:ID:` is ever invented in markdown files; org identity stays
+  the ULID — the Q4 Decision).
 - `closure-tree-sitter` — optional, for syntax-highlighting and code-block
   grammars inside `#+BEGIN_SRC` regions. Not used for primary parsing
   (I1 / I5 cost too high). The dep-free `KeywordHighlighter` is the
