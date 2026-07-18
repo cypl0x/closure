@@ -53,6 +53,16 @@ pub fn mix_u32(a: u32, b: u32, t: u32) -> u32 {
     (ch(16) << 16) | (ch(8) << 8) | ch(0)
 }
 
+/// Per-char click cells for the body pane: each char paired with its
+/// char column. The seam that gives mouse clicks in-word precision.
+#[must_use]
+pub fn char_cells(text: &str, start_col: usize) -> Vec<(String, usize)> {
+    text.chars()
+        .enumerate()
+        .map(|(i, c)| (c.to_string(), start_col + i))
+        .collect()
+}
+
 /// Resolve the shared [`Theme`] from the vault's `config.org`.
 ///
 /// Reads `theme = light|high-contrast|dark|doom-vibrant`. The reference
@@ -770,29 +780,14 @@ impl GpuiView {
                 }
                 row = row.bg(rgb(mix_u32(co.panel, co.selection, 96)));
             } else {
-                // D2: word-level click targets — each whitespace-delimited
-                // chunk carries its char column, so a click (or double
-                // click) lands the cursor exactly (the mouse path into
-                // BodyEditor).
+                // G1: per-char click targets — every char is its own
+                // cell carrying its char column, so a click (or double
+                // click) lands the cursor on the exact glyph, in-word
+                // included (the mouse path into BodyEditor).
                 let mut col = 0usize;
                 for (kind, text) in spans {
-                    let mut chunks: Vec<(String, usize)> = Vec::new();
-                    for c in text.chars() {
-                        let ws = c.is_whitespace();
-                        match chunks.last_mut() {
-                            Some((piece, _))
-                                if piece
-                                    .chars()
-                                    .next_back()
-                                    .is_some_and(|p| p.is_whitespace() == ws) =>
-                            {
-                                piece.push(c);
-                            }
-                            _ => chunks.push((c.to_string(), col)),
-                        }
-                        col += 1;
-                    }
-                    for (piece, chunk_col) in chunks {
+                    let n = text.chars().count();
+                    for (piece, chunk_col) in char_cells(&text, col) {
                         row = row.child(
                             div()
                                 .text_color(rgb(span_color(kind)))
@@ -816,6 +811,7 @@ impl GpuiView {
                                 ),
                         );
                     }
+                    col += n;
                 }
             }
             // Fallback: a click on the empty tail of any line parks the

@@ -13,6 +13,23 @@ file is the fine-grained, capability-level queue between them. Blocked
 on a design decision? Record it under [[*Decisions][Decisions]], pick the most
 reversible option, keep moving.
 
+* DONE DEPTH-Q1-G1 — in-word click column via per-char cells (orchestrated) [1/1]
+Queue Q1-G1 of =goal-depth-final.md= (close-every-gap goal, 2026-07-18).
+** DONE G1 clicks land on the exact glyph, in-word included [1/1]
+=closure_shell_gpui::char_cells(text, start_col)= (pure, feature-off,
+hermetic — one cell per char, char columns not bytes) replaces the
+word-level chunking in the body pane render: every char is its own
+click target carrying its exact column, so =body_click= /
+=body_double_click= receive in-word precision with zero width math and
+no bounds plumbing. Grok RED (4 tests) + Grok GREEN (helper), Fable
+render swap (smaller than the dispatch). Decision: per-char cells over
+=InteractiveText= char hit-testing — the pane is a small detail body,
+so element count stays low and the change reuses the existing
+chunk-div pattern instead of a text-pipeline rewrite; revisit only if
+profiling (goal Q12-B3) flags the pane. Closes the GPUI-MOUSE-D2
+"precise column within a word" recorded gap; drag selection (Q1-G2)
+and drag-and-drop reorder (Q1-G3) remain.
+
 * DONE GPUI-MOUSE-D2 — mouse into the body editor (orchestrated) [1/1]
 Queue Q10-D2 of =goal-gpui-polish-3.md=.
 ** DONE D2 click places the cursor; double-click selects the word [1/1]
