@@ -13,6 +13,22 @@ file is the fine-grained, capability-level queue between them. Blocked
 on a design decision? Record it under [[*Decisions][Decisions]], pick the most
 reversible option, keep moving.
 
+* DONE DEPTH-Q1-G5 — wheel scroll inside the body editor pane [1/1]
+Queue Q1-G5 of =goal-depth-final.md= (Grok RED, Fable GREEN + wiring).
+Q1 of the close-every-gap goal is complete: G1 in-word click, G2 drag
+selection, G3 drag-and-drop reorder, G4 INSERT-burst undo, G5 body
+wheel viewport — the GPUI-MOUSE-D2 recorded-gap list is empty.
+** DONE G5 the pane owns its wheel viewport [1/1]
+=ModalApp::body_scroll_by(delta, viewport)= sets a clamped explicit
+start keyed to the cursor line; =body_scroll_start= prefers it while
+the cursor stays put and follows the cursor otherwise (0 when the
+buffer fits, cursor-on-last-visible-line rule) — the override
+self-clears on any cursor-line change, no mutation hooks. The gpui
+editor pane paints only the =BODY_VIEW= window (byte offsets still
+accumulate over skipped lines, so clicks/selection stay exact) and
+=on_body_scroll= stops propagation so the outline no longer steals
+the wheel over the body.
+
 * DONE DEPTH-Q1-G3 — drag-and-drop row reorder in the gpui window [1/1]
 Queue Q1-G3 of =goal-depth-final.md= (Grok RED, Fable GREEN + wiring).
 ** DONE G3 drop completes as stepped registry moves [1/1]

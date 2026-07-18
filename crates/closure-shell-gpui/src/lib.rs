@@ -337,6 +337,10 @@ impl Colors {
     }
 }
 
+/// Lines the body-editor pane paints per frame (G5 wheel viewport).
+#[cfg(feature = "gpui")]
+const BODY_VIEW: usize = 40;
+
 /// gpui view: owns the kernel-side [`Shell`] and the pure [`ModalApp`]
 /// editor state, plus a focus handle so the root receives key events.
 #[cfg(feature = "gpui")]
@@ -436,6 +440,27 @@ impl GpuiView {
         let steps = dy.abs().ceil().min(1000.0) as i32;
         let delta = if dy < 0.0 { steps } else { -steps };
         self.app.scroll_by(delta, &self.shell, 40);
+        cx.notify();
+    }
+
+    /// G5: wheel over the body-editor pane scrolls its own viewport
+    /// (`body_scroll_by`), not the outline; same delta convention as
+    /// [`Self::on_scroll`].
+    fn on_body_scroll(
+        &mut self,
+        ev: &ScrollWheelEvent,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let dy = match ev.delta {
+            ScrollDelta::Lines(l) => l.y,
+            ScrollDelta::Pixels(p) => f32::from(p.y) / 20.0,
+        };
+        #[allow(clippy::cast_possible_truncation)]
+        let steps = dy.abs().ceil().min(1000.0) as i32;
+        let delta = if dy < 0.0 { steps } else { -steps };
+        self.app.body_scroll_by(delta, BODY_VIEW);
+        cx.stop_propagation();
         cx.notify();
     }
 
@@ -686,6 +711,7 @@ impl GpuiView {
     /// blue), and the C-n completion popup.
     fn editor_pane(&self, co: Colors, cx: &mut Context<Self>) -> gpui::Div {
         use closure_shell_core::EditorMode;
+        let scroll_start = self.app.body_scroll_start(BODY_VIEW);
         let (cur_line, cur_col) = self.app.body_cursor();
         let mode = self.app.body_mode();
         // doom spaceline colours: insert green, normal blue, visual grey-violet.
@@ -739,7 +765,8 @@ impl GpuiView {
             .p_2()
             .bg(rgb(co.panel))
             .rounded_md()
-            .text_size(px(13.0));
+            .text_size(px(13.0))
+            .on_scroll_wheel(cx.listener(Self::on_body_scroll));
         let selection = self.app.body_selection();
         let mut line_start = 0usize;
         for (ln, spans) in highlight_body(self.app.body_buffer())
@@ -747,6 +774,12 @@ impl GpuiView {
             .enumerate()
         {
             let line_len: usize = spans.iter().map(|(_, s)| s.len()).sum();
+            // G5: only the wheel-scrolled window of lines is painted;
+            // byte offsets still accumulate for the skipped lines.
+            if !(scroll_start..scroll_start + BODY_VIEW).contains(&ln) {
+                line_start += line_len + 1;
+                continue;
+            }
             // L5: line-number gutter, current line accented.
             let mut row = div().flex().min_h(px(18.0)).child(
                 div()

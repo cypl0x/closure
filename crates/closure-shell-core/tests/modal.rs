@@ -2188,3 +2188,61 @@ fn drag_drop_preserves_block_ids() {
     after.sort();
     assert_eq!(after, before);
 }
+
+// === Body editor wheel-scroll viewport (sibling of outline scroll_by). ===
+
+#[test]
+fn body_wheel_scrolls_the_viewport() {
+    let (_d, mut sh) = shell();
+    let text = (0..30).map(|i| format!("l{i}")).collect::<Vec<_>>().join("\n");
+    let mut app = editor_with(&mut sh, &text);
+    assert_eq!(
+        app.body_scroll_start(10),
+        20,
+        "default follows the cursor on line 29"
+    );
+    app.body_scroll_by(-5, 10);
+    assert_eq!(app.body_scroll_start(10), 15);
+    app.body_scroll_by(-5, 10);
+    assert_eq!(app.body_scroll_start(10), 10);
+}
+
+#[test]
+fn body_scroll_clamps_to_the_buffer() {
+    let (_d, mut sh) = shell();
+    let text = (0..30).map(|i| format!("l{i}")).collect::<Vec<_>>().join("\n");
+    let mut app = editor_with(&mut sh, &text);
+    app.body_scroll_by(-100, 10);
+    assert_eq!(app.body_scroll_start(10), 0);
+    app.body_scroll_by(100, 10);
+    assert_eq!(
+        app.body_scroll_start(10),
+        20,
+        "max start is lines minus viewport"
+    );
+}
+
+#[test]
+fn cursor_movement_clears_the_body_scroll() {
+    let (_d, mut sh) = shell();
+    let text = (0..30).map(|i| format!("l{i}")).collect::<Vec<_>>().join("\n");
+    let mut app = editor_with(&mut sh, &text);
+    app.on_key(&mut sh, "escape", false, false, None); // NORMAL
+    app.body_scroll_by(-100, 10);
+    assert_eq!(app.body_scroll_start(10), 0);
+    app.on_key(&mut sh, "k", false, false, Some('k')); // cursor line -> 28
+    assert_eq!(
+        app.body_scroll_start(10),
+        19,
+        "override dropped, viewport follows the cursor"
+    );
+}
+
+#[test]
+fn small_body_never_scrolls() {
+    let (_d, mut sh) = shell();
+    let mut app = editor_with(&mut sh, "a\nb\nc");
+    assert_eq!(app.body_scroll_start(10), 0);
+    app.body_scroll_by(5, 10);
+    assert_eq!(app.body_scroll_start(10), 0);
+}

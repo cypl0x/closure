@@ -4433,6 +4433,9 @@ pub struct ModalApp {
     quit: bool,
     /// Explicit wheel-scroll viewport offset; None = follow selection.
     scroll_override: Option<usize>,
+    /// Body-editor wheel viewport `(start, cursor_line_when_set)`; the
+    /// override self-clears when the cursor line changes (G5).
+    body_scroll: Option<(usize, usize)>,
 }
 
 impl ModalApp {
@@ -4456,6 +4459,7 @@ impl ModalApp {
             status: String::new(),
             quit: false,
             scroll_override: None,
+            body_scroll: None,
         }
     }
 
@@ -4964,6 +4968,36 @@ impl ModalApp {
     pub fn body_drag(&mut self, line: usize, col: usize) {
         self.completion = None;
         self.body.drag_to(line, col);
+    }
+
+    /// First visible line of the body-editor pane (G5): an explicit
+    /// wheel override while the cursor stays put, else follow the
+    /// cursor (0 when it fits, otherwise the cursor on the last
+    /// visible line) — the outline `view_window` rule for the body.
+    #[must_use]
+    pub fn body_scroll_start(&self, viewport: usize) -> usize {
+        let (cl, _) = self.body.cursor_line_col();
+        if let Some((start, at)) = self.body_scroll
+            && at == cl
+        {
+            return start;
+        }
+        if cl < viewport { 0 } else { cl + 1 - viewport }
+    }
+
+    /// Wheel-scroll the body-editor viewport by `delta` lines (G5),
+    /// clamped to `0..=lines - viewport`; any cursor-line change
+    /// silently drops the override (the sibling of the outline's
+    /// `scroll_by`).
+    pub fn body_scroll_by(&mut self, delta: i32, viewport: usize) {
+        let lines = self.body.text().split('\n').count();
+        let max = lines.saturating_sub(viewport);
+        let cur = self.body_scroll_start(viewport);
+        let new = cur
+            .saturating_add_signed(isize::try_from(delta).unwrap_or(0))
+            .min(max);
+        let (cl, _) = self.body.cursor_line_col();
+        self.body_scroll = Some((new, cl));
     }
 
     /// Complete a drag-and-drop row reorder (G3): move the row at

@@ -654,7 +654,11 @@ base, ours, theirs)` returns the `FieldConflict`s (title/body) both sides
   (failures error, destructive successes warn, chatter silent). The
   wheel scrolls the viewport, not the cursor: `ModalApp::scroll_by`
   sets a clamped override that `view_window` prefers until any
-  selection movement clears it. The Search overlay's context line is
+  selection movement clears it; the body editor pane owns a sibling
+  viewport (G5 — `body_scroll_by` / `body_scroll_start`, clamped,
+  cursor-following, self-clearing on any cursor-line change), so the
+  wheel over the pane scrolls the body, not the outline, and only the
+  windowed lines are painted. The Search overlay's context line is
   core state (`search_context`: glyph, query, caret, pluralized live
   match count); the editor pane draws a line-number gutter with the
   current line accented.
