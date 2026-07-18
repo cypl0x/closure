@@ -263,6 +263,14 @@ impl SyncSession {
         self.replica.merge(other);
     }
 
+    /// Merge a peer's replica, surfacing every concurrent title
+    /// divergence the automatic LWW resolved (Q3 —
+    /// [`Replica::merge_with_conflicts`]); the report feeds a shell's
+    /// resolution surface (`ConflictApp`).
+    pub fn receive_with_conflicts(&mut self, other: &Replica) -> Vec<closure_crdt::FieldConflict> {
+        self.replica.merge_with_conflicts(other)
+    }
+
     /// Merge a received [`SyncMessage`] into this session.
     pub fn apply_message(&mut self, msg: &SyncMessage) {
         self.replica.merge(msg.replica());

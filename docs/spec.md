@@ -250,9 +250,16 @@ base, ours, theirs)` returns the `FieldConflict`s (title/body) both sides
   / Yrs drag large/partly-async dependency trees that fight I10's
   hermetic, dep-minimal build (2026-06-19 char-CRDT Decision). Both sit
   behind the same `Edit` / `BlockId` surface with no `closure-core` API
-  change. Residual LWW point: a _title_ edited concurrently on two
-  replicas still resolves last-writer-wins (titles are short labels, not
-  collaborative prose). See the CRDT-readiness note below.
+  change. Titles carry causal clocks (Q3): each title register holds a
+  `VectorClock`, so a merge distinguishes a *sequential* overwrite (one
+  clock dominates — clean LWW) from a *concurrent* divergence (neither
+  dominates). `Replica::merge_with_conflicts` /
+  `SyncSession::receive_with_conflicts` surface every concurrent title
+  divergence as a `FieldConflict` for the `ConflictApp` resolution
+  surface, while the automatic pick still converges deterministically
+  in both merge directions (equal-timestamp ties break on the value,
+  I6). No silent title loss remains — the loser is always reported.
+  See the CRDT-readiness note below.
 - `closure-sync` — file / git sync, **a real network transport over std
   TCP**, and an external iroh drop-in. Pluggable transport.
   **Authenticated frames (C3a):** each peer holds an ed25519

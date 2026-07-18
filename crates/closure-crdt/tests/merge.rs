@@ -217,3 +217,97 @@ fn apply_to_noop_when_already_converged() {
     let changed = r.apply_to(&mut target).expect("apply");
     assert_eq!(changed, 0);
 }
+
+// === Q3-T1: merge surfaces concurrent title divergence instead of a
+// silent LWW loss (clock-carrying title registers). ===
+
+const FIXED: &str = "01HXAAAAAAAAAAAAAAAAAAAAAA";
+
+fn doc_titled(title: &str) -> Document {
+    Document::load_str(&format!(
+        "* {title}\n:PROPERTIES:\n:ID: {FIXED}\n:END:\n"
+    ))
+    .expect("load")
+}
+
+#[test]
+fn concurrent_title_edits_surface_a_conflict() {
+    // Two replicas snapshot independently (single-entry clocks a:1 /
+    // b:2 — neither dominates), titles diverge → the merge reports it.
+    let mut r_a = Replica::snapshot(&doc_titled("Ours"), 1, "a");
+    let r_b = Replica::snapshot(&doc_titled("Theirs"), 2, "b");
+    let found = r_a.merge_with_conflicts(&r_b);
+    assert_eq!(found.len(), 1, "one title conflict: {found:?}");
+    assert_eq!(found[0].field, closure_crdt::ConflictField::Title);
+    assert_eq!(found[0].ours, "Ours");
+    assert_eq!(found[0].theirs, "Theirs");
+    // The automatic LWW pick still converges the register (ts 2 wins).
+    let id = BlockId::from_existing(FIXED);
+    assert_eq!(r_a.title_of(&id), Some("Theirs"));
+}
+
+#[test]
+fn sequential_title_edit_is_not_a_conflict() {
+    // b builds on a's register (its clock dominates) → clean LWW.
+    let r_a = Replica::snapshot(&doc_titled("First"), 1, "a");
+    let mut b_side = r_a.clone();
+    let b_snap = Replica::snapshot_against(&b_side, &doc_titled("Second"), 2, "b");
+    b_side.merge(&b_snap);
+    // Now merge b's accumulated state back into a fresh copy of a.
+    let mut a_side = r_a;
+    let found = a_side.merge_with_conflicts(&b_side);
+    assert!(found.is_empty(), "sequential edit, no conflict: {found:?}");
+    let id = BlockId::from_existing(FIXED);
+    assert_eq!(a_side.title_of(&id), Some("Second"));
+}
+
+#[test]
+fn identical_concurrent_titles_do_not_conflict() {
+    let mut r_a = Replica::snapshot(&doc_titled("Same"), 1, "a");
+    let r_b = Replica::snapshot(&doc_titled("Same"), 2, "b");
+    assert!(r_a.merge_with_conflicts(&r_b).is_empty());
+}
+
+#[test]
+fn conflict_report_is_symmetric_and_merge_converges() {
+    // I6: both sides see the same divergence and land on the same
+    // winner regardless of merge direction.
+    let a0 = Replica::snapshot(&doc_titled("Ours"), 1, "a");
+    let b0 = Replica::snapshot(&doc_titled("Theirs"), 2, "b");
+    let mut a_side = a0.clone();
+    let mut b_side = b0.clone();
+    let ca = a_side.merge_with_conflicts(&b0);
+    let cb = b_side.merge_with_conflicts(&a0);
+    assert_eq!(ca.len(), 1);
+    assert_eq!(cb.len(), 1);
+    assert_eq!(ca[0].ours, cb[0].theirs);
+    assert_eq!(ca[0].theirs, cb[0].ours);
+    let id = BlockId::from_existing(FIXED);
+    assert_eq!(a_side.title_of(&id), b_side.title_of(&id), "converged");
+}
+
+#[test]
+fn equal_timestamp_divergence_still_converges() {
+    // The pathological tie: same logical time, different values on two
+    // replicas. Must both conflict AND converge to one deterministic
+    // winner in both merge directions (I6).
+    let a0 = Replica::snapshot(&doc_titled("Alpha"), 7, "a");
+    let b0 = Replica::snapshot(&doc_titled("Beta"), 7, "b");
+    let mut a_side = a0.clone();
+    let mut b_side = b0.clone();
+    assert_eq!(a_side.merge_with_conflicts(&b0).len(), 1);
+    assert_eq!(b_side.merge_with_conflicts(&a0).len(), 1);
+    let id = BlockId::from_existing(FIXED);
+    assert_eq!(a_side.title_of(&id), b_side.title_of(&id), "tie broken deterministically");
+}
+
+#[test]
+fn clock_survives_the_wire_roundtrip() {
+    // encode/decode carries the register clocks, so conflict detection
+    // still works after a network hop.
+    let mut r_a = Replica::snapshot(&doc_titled("Ours"), 1, "a");
+    let r_b = Replica::snapshot(&doc_titled("Theirs"), 2, "b");
+    let wired = closure_crdt::Replica::decode(&r_b.encode()).expect("decode");
+    let found = r_a.merge_with_conflicts(&wired);
+    assert_eq!(found.len(), 1, "conflict detected through the wire");
+}

@@ -13,6 +13,29 @@ file is the fine-grained, capability-level queue between them. Blocked
 on a design decision? Record it under [[*Decisions][Decisions]], pick the most
 reversible option, keep moving.
 
+* DONE DEPTH-Q3 — title conflicts surfaced, silent LWW loss killed [2/2]
+Queue Q3 of =goal-depth-final.md= (Claude-only: CRDT).
+** DONE T1 clock-carrying title registers [1/1]
+=Register= grows a =VectorClock=; =VectorClock::dominates= gives the
+partial order, =Register::conflicts_with= = different values + clocks
+concurrent. =snapshot= mints ={replica: ts}=; =snapshot_against=
+preserves an unchanged title's register verbatim and advances a
+changed title's clock *from the base's* — so a pulled-then-edited
+title reads as sequential, two independent edits as concurrent.
+=merge_with_conflicts= reports each concurrent divergence as a
+=FieldConflict= (sorted, I6) while LWW still converges — equal-ts
+ties now break on the value so both merge directions agree (fixes a
+latent non-convergence). Clocks ride the wire (encode/decode, sorted
+entries); the replica payload format changed — pre-Q3 buffers fail
+decode cleanly (=CrdtError::Decode=), acceptable pre-1.0 (Decision).
+** DONE T2 the session surfaces the report [1/1]
+=SyncSession::receive_with_conflicts= returns the merge's conflict
+list; tested: divergent concurrent renames report exactly one title
+conflict on receive and still converge both ways, a clean sequential
+pull reports nothing. =ConflictApp= (V9b) already renders/resolves
+=FieldConflict= titles via rename (I8), so the surfacing loop is
+closed end-to-end.
+
 * DONE DEPTH-Q2 — kernel path-walking undo + node jump [3/3]
 Queue Q2 of =goal-depth-final.md= (Claude-only: I3 machinery).
 ** DONE U1 =UndoTree::path_between= [1/1]

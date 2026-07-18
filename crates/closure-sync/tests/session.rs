@@ -126,3 +126,43 @@ fn apply_to_reconciles_a_document() {
     assert!(n >= 1, "at least one edit applied");
     assert!(target.source().contains("Alpha v2"), "title reconciled");
 }
+
+// === Q3-T2: the session surfaces concurrent title conflicts on receive. ===
+
+#[test]
+fn receive_reports_concurrent_title_conflicts() {
+    let shared = "* Base\n:PROPERTIES:\n:ID: 01CCCCCCCCCCCCCCCCCCCCCCCC\n:END:\n";
+    let mut pa = SyncSession::new("a");
+    let mut pb = SyncSession::new("b");
+    pa.record_local(&doc(shared));
+    pb.receive(pa.outgoing()); // b now shares a's causal history
+    // Both sides now rename the SAME block divergently.
+    pa.record_local(&doc(
+        "* Ours\n:PROPERTIES:\n:ID: 01CCCCCCCCCCCCCCCCCCCCCCCC\n:END:\n",
+    ));
+    pb.record_local(&doc(
+        "* Theirs\n:PROPERTIES:\n:ID: 01CCCCCCCCCCCCCCCCCCCCCCCC\n:END:\n",
+    ));
+    let found = pb.receive_with_conflicts(pa.outgoing());
+    assert_eq!(found.len(), 1, "one title conflict: {found:?}");
+    assert_eq!(found[0].field, closure_crdt::ConflictField::Title);
+    // Both directions converge to the same winner regardless.
+    let mut pa2 = pa.clone();
+    pa2.receive(pb.outgoing());
+    assert_eq!(state(&pa2), state(&pb), "converged after exchange");
+}
+
+#[test]
+fn receive_after_clean_pull_reports_nothing() {
+    let shared = "* Base\n:PROPERTIES:\n:ID: 01DDDDDDDDDDDDDDDDDDDDDDDD\n:END:\n";
+    let mut pa = SyncSession::new("a");
+    let mut pb = SyncSession::new("b");
+    pa.record_local(&doc(shared));
+    pb.receive(pa.outgoing());
+    // Only a edits; b pulls — sequential, no conflict.
+    pa.record_local(&doc(
+        "* Renamed\n:PROPERTIES:\n:ID: 01DDDDDDDDDDDDDDDDDDDDDDDD\n:END:\n",
+    ));
+    let found = pb.receive_with_conflicts(pa.outgoing());
+    assert!(found.is_empty(), "sequential pull: {found:?}");
+}

@@ -41,6 +41,23 @@ impl VectorClock {
         *e += 1;
     }
 
+    /// Whether this clock dominates `other`: every counter in `other`
+    /// is ≤ ours. Two clocks where neither dominates are *concurrent*
+    /// — the causal signature of a real conflict (Q3).
+    #[must_use]
+    pub fn dominates(&self, other: &Self) -> bool {
+        other.counters.iter().all(|(r, &c)| self.get(r) >= c)
+    }
+
+    /// A single-entry clock `{replica: ts}` (a fresh snapshot's causal
+    /// position).
+    #[must_use]
+    pub fn at(replica: &str, ts: u64) -> Self {
+        let mut c = HashMap::new();
+        c.insert(replica.to_owned(), ts);
+        Self { counters: c }
+    }
+
     /// Merge: per replica, take the max.
     pub fn merge(&mut self, other: &Self) {
         for (r, &c) in &other.counters {
@@ -64,18 +81,35 @@ impl VectorClock {
     }
 }
 
-/// A last-writer-wins register.
+/// A last-writer-wins register carrying its causal clock (Q3): the
+/// clock distinguishes a *sequential* overwrite (one side dominates —
+/// clean LWW) from a *concurrent* divergence (neither dominates — a
+/// real conflict the merge surfaces instead of losing silently).
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct Register {
     ts: u64,
     value: String,
+    clock: VectorClock,
 }
 
 impl Register {
+    /// True when the two registers are a genuine concurrent divergence:
+    /// different values, neither clock dominating.
+    fn conflicts_with(&self, other: &Self) -> bool {
+        self.value != other.value
+            && !self.clock.dominates(&other.clock)
+            && !other.clock.dominates(&self.clock)
+    }
+
+    /// LWW by timestamp; equal timestamps tie-break on the value so
+    /// both merge directions land on the same winner (I6). The clock
+    /// always absorbs the other side's causal history.
     fn merge(&mut self, other: &Self) {
-        if other.ts > self.ts {
-            *self = other.clone();
+        if other.ts > self.ts || (other.ts == self.ts && other.value > self.value) {
+            self.ts = other.ts;
+            self.value.clone_from(&other.value);
         }
+        self.clock.merge(&other.clock);
     }
 }
 
@@ -120,6 +154,7 @@ impl Replica {
                         title: Register {
                             ts,
                             value: h.title().to_owned(),
+                            clock: VectorClock::at(replica, ts),
                         },
                         body: BodyCrdt::from_text(h.body_text(), replica, &mut counter),
                     },
@@ -143,9 +178,20 @@ impl Replica {
                 let id = h.id().clone();
                 let base_block = base.blocks.get(&id);
                 let title_value = h.title().to_owned();
-                let title_ts = match base_block {
-                    Some(b) if b.title.value == title_value => b.title.ts,
-                    _ => ts,
+                // Unchanged titles keep the base register verbatim (ts
+                // AND clock); a changed title advances the clock *from*
+                // the base's, so a later peer sees the edit as
+                // sequential, not concurrent (Q3).
+                let (title_ts, title_clock) = match base_block {
+                    Some(b) if b.title.value == title_value => {
+                        (b.title.ts, b.title.clock.clone())
+                    }
+                    Some(b) => {
+                        let mut c = b.title.clock.clone();
+                        c.merge(&VectorClock::at(replica, ts));
+                        (ts, c)
+                    }
+                    None => (ts, VectorClock::at(replica, ts)),
                 };
                 let mut body = base_block.map_or_else(BodyCrdt::new, |b| b.body.clone());
                 // Seed new element ids above every existing one so this
@@ -160,6 +206,7 @@ impl Replica {
                         title: Register {
                             ts: title_ts,
                             value: title_value,
+                            clock: title_clock,
                         },
                         body,
                     },
@@ -180,17 +227,44 @@ impl Replica {
     }
 
     /// Merge another replica in: per block and per field, the
-    /// register with the higher timestamp wins; ties keep the current
-    /// entry. No merge ever creates a fresh id (I2).
+    /// register with the higher timestamp wins (equal timestamps
+    /// tie-break on the value, so both directions converge, I6). No
+    /// merge ever creates a fresh id (I2). Discards the conflict
+    /// report — use [`Self::merge_with_conflicts`] to surface it.
     pub fn merge(&mut self, other: &Self) {
-        for (id, state) in &other.blocks {
+        let _ = self.merge_with_conflicts(other);
+    }
+
+    /// Merge, surfacing every *concurrent* title divergence (Q3): both
+    /// sides changed the title relative to their common causal history
+    /// (register clocks concurrent) with different values. The
+    /// automatic LWW pick still converges the register — the report is
+    /// the user-facing inspection layer, sorted by block id (I6).
+    /// `base` is `None`: at merge time the common ancestor value is no
+    /// longer known.
+    pub fn merge_with_conflicts(&mut self, other: &Self) -> Vec<FieldConflict> {
+        let mut found: Vec<FieldConflict> = Vec::new();
+        let mut ids: Vec<&BlockId> = other.blocks.keys().collect();
+        ids.sort_by_key(std::string::ToString::to_string);
+        for id in ids {
+            let state = &other.blocks[id];
             if let Some(mine) = self.blocks.get_mut(id) {
+                if mine.title.conflicts_with(&state.title) {
+                    found.push(FieldConflict {
+                        block: id.clone(),
+                        field: ConflictField::Title,
+                        base: None,
+                        ours: mine.title.value.clone(),
+                        theirs: state.title.value.clone(),
+                    });
+                }
                 mine.title.merge(&state.title);
                 mine.body.merge(&state.body); // RGA union (C2b)
             } else {
                 self.blocks.insert(id.clone(), state.clone());
             }
         }
+        found
     }
 
     /// The block ids known to this replica.
@@ -272,6 +346,17 @@ impl Replica {
             put_str(&mut out, id.as_str());
             out.extend_from_slice(&st.title.ts.to_le_bytes());
             put_str(&mut out, &st.title.value);
+            // Q3: the register's causal clock rides the wire (sorted
+            // entries for a deterministic buffer, I6).
+            let mut entries: Vec<(&String, &u64)> = st.title.clock.counters.iter().collect();
+            entries.sort();
+            out.extend_from_slice(
+                &u32::try_from(entries.len()).unwrap_or(u32::MAX).to_le_bytes(),
+            );
+            for (rep, &c) in entries {
+                put_str(&mut out, rep);
+                out.extend_from_slice(&c.to_le_bytes());
+            }
             st.body.encode(&mut out);
         }
         out
@@ -289,10 +374,16 @@ impl Replica {
         let mut blocks = HashMap::new();
         for _ in 0..n {
             let id = cur.string()?;
-            let title = Register {
-                ts: cur.u64()?,
-                value: cur.string()?,
-            };
+            let ts = cur.u64()?;
+            let value = cur.string()?;
+            let entries = cur.u32()?;
+            let mut clock = VectorClock::default();
+            for _ in 0..entries {
+                let rep = cur.string()?;
+                let c = cur.u64()?;
+                clock.counters.insert(rep, c);
+            }
+            let title = Register { ts, value, clock };
             let body = BodyCrdt::decode(&mut cur)?;
             blocks.insert(BlockId::from_existing(&id), BlockState { title, body });
         }
