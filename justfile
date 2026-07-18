@@ -159,3 +159,8 @@ sync-net:
 
 # Full local CI: everything above.
 ci: check fuzz wasm coverage
+
+# Opt-in LIVE LLM gate (Q7-L2): real end-to-end ask against a local
+# Ollama daemon; skips gracefully when absent. Never part of `check`.
+llm-live:
+    CLOSURE_LLM_LIVE=1 cargo test -p closure-llm --test live -- --nocapture

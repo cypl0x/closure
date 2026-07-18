@@ -87,3 +87,30 @@ fn ollama_http_sends_model_and_prompt_and_extracts_response() {
     );
     assert!(body.contains("\"stream\":false"), "non-streaming request");
 }
+
+// === Q7-L1: the model is a real parameter, not a constant. ===
+
+#[test]
+fn ollama_http_honours_the_model_parameter() {
+    let listener = TcpListener::bind("127.0.0.1:0").expect("bind");
+    let addr = listener.local_addr().expect("addr");
+    let handle = serve_once(listener, "200 OK", r#"{"response":"ok"}"#);
+    let provider = closure_llm::ollama_http(&format!("http://{addr}"), "mistral-nemo");
+    provider.complete("hello").expect("complete");
+    let body = handle.join().expect("join");
+    assert!(
+        body.contains("\"model\":\"mistral-nemo\""),
+        "per-model body: {body}"
+    );
+    assert!(!body.contains("llama3"), "no hardcoded default: {body}");
+}
+
+#[test]
+fn anthropic_and_openai_bodies_carry_the_model() {
+    let a = closure_llm::anthropic("test-key", "claude-fable-5");
+    let body = (a.body)("hi");
+    assert!(body.contains("\"model\":\"claude-fable-5\""), "{body}");
+    let o = closure_llm::openai("test-key", "gpt-5-mini");
+    let body = (o.body)("hi");
+    assert!(body.contains("\"model\":\"gpt-5-mini\""), "{body}");
+}

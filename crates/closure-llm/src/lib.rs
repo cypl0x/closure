@@ -212,7 +212,7 @@ impl OpenAiWireProvider {
 impl Provider for OpenAiWireProvider {
     fn complete(&self, prompt: &str) -> Result<String, LlmError> {
         // 1. Encode the prompt as a real OpenAI chat-completions request.
-        *self.last_request.borrow_mut() = openai_body(prompt);
+        *self.last_request.borrow_mut() = openai_body("gpt-4o", prompt);
         // 2. Take the next scripted assistant turn and wrap it in a
         //    canonical OpenAI response envelope.
         let content = self
@@ -252,8 +252,9 @@ pub struct CurlProvider {
     pub url: String,
     /// Extra headers (e.g. `Authorization: Bearer ...`).
     pub headers: Vec<String>,
-    /// Function that builds the JSON body from a prompt.
-    pub body: fn(&str) -> String,
+    /// Function that builds the JSON body from a prompt (boxed so a
+    /// constructor can capture the model, Q7-L1).
+    pub body: Box<dyn Fn(&str) -> String + Send + Sync>,
     /// Function that extracts the completion text from the response
     /// JSON. The default just returns the response verbatim.
     pub extract: fn(&str) -> Result<String, LlmError>,
@@ -267,7 +268,7 @@ impl CurlProvider {
         Self {
             url,
             headers: Vec::new(),
-            body: |p| format!("{{\"prompt\": {}}}", json_string(p)),
+            body: Box::new(|p| format!("{{\"prompt\": {}}}", json_string(p))),
             extract: |s| Ok(s.to_owned()),
         }
     }
@@ -308,8 +309,9 @@ pub struct HttpProvider {
     pub url: String,
     /// Extra request headers (`Name: value`).
     pub headers: Vec<String>,
-    /// Builds the request body from a prompt.
-    pub body: fn(&str) -> String,
+    /// Builds the request body from a prompt (boxed - captures the
+    /// model, Q7-L1).
+    pub body: Box<dyn Fn(&str) -> String + Send + Sync>,
     /// Extracts the completion from the response body.
     pub extract: fn(&str) -> Result<String, LlmError>,
 }
@@ -321,7 +323,7 @@ impl HttpProvider {
         Self {
             url,
             headers: vec!["content-type: application/json".into()],
-            body: |p| format!("{{\"prompt\": {}}}", json_string(p)),
+            body: Box::new(|p| format!("{{\"prompt\": {}}}", json_string(p))),
             extract: |s| Ok(s.to_owned()),
         }
     }
@@ -391,11 +393,11 @@ fn http_post(url: &str, headers: &[String], body: &str) -> Result<String, LlmErr
 /// Configure a [`CurlProvider`] for an Anthropic `messages` endpoint.
 ///
 /// `api_key` becomes the `x-api-key` header. The default body uses
-/// model `claude-sonnet-4-6` and a 1024-token max — callers needing a
-/// different model swap `provider.body` after construction. Extractor
-/// returns the response verbatim until a real JSON parser lands.
+/// the given model and a 1024-token max (Q7-L1: the model is a real
+/// parameter). Extractor returns `content[0].text`.
 #[must_use]
-pub fn anthropic(api_key: &str, _model: &str) -> CurlProvider {
+pub fn anthropic(api_key: &str, model: &str) -> CurlProvider {
+    let model = model.to_owned();
     CurlProvider {
         url: "https://api.anthropic.com/v1/messages".into(),
         headers: vec![
@@ -403,7 +405,7 @@ pub fn anthropic(api_key: &str, _model: &str) -> CurlProvider {
             "anthropic-version: 2023-06-01".into(),
             format!("x-api-key: {api_key}"),
         ],
-        body: anthropic_body,
+        body: Box::new(move |p| anthropic_body(&model, p)),
         extract: |s| {
             extract_anthropic_content(s).ok_or_else(|| LlmError::Provider("no content".into()))
         },
@@ -411,30 +413,32 @@ pub fn anthropic(api_key: &str, _model: &str) -> CurlProvider {
 }
 
 /// Configure a [`CurlProvider`] for an OpenAI-compatible
-/// `/v1/chat/completions` endpoint. Default model is `gpt-4o`.
+/// `/v1/chat/completions` endpoint for the given model (Q7-L1).
 #[must_use]
-pub fn openai(api_key: &str, _model: &str) -> CurlProvider {
+pub fn openai(api_key: &str, model: &str) -> CurlProvider {
+    let model = model.to_owned();
     CurlProvider {
         url: "https://api.openai.com/v1/chat/completions".into(),
         headers: vec![
             "content-type: application/json".into(),
             format!("authorization: Bearer {api_key}"),
         ],
-        body: openai_body,
+        body: Box::new(move |p| openai_body(&model, p)),
         extract: |s| {
             extract_openai_content(s).ok_or_else(|| LlmError::Provider("no content".into()))
         },
     }
 }
 
-/// Configure a [`CurlProvider`] for a local Ollama server (no auth).
-/// Default model is `llama3`.
+/// Configure a [`CurlProvider`] for a local Ollama server (no auth),
+/// with the given model (Q7-L1).
 #[must_use]
-pub fn ollama(host: &str, _model: &str) -> CurlProvider {
+pub fn ollama(host: &str, model: &str) -> CurlProvider {
+    let model = model.to_owned();
     CurlProvider {
         url: format!("{host}/api/generate"),
         headers: vec!["content-type: application/json".into()],
-        body: ollama_body,
+        body: Box::new(move |p| ollama_body(&model, p)),
         extract: |s| {
             extract_ollama_response(s).ok_or_else(|| LlmError::Provider("no response".into()))
         },
@@ -444,38 +448,42 @@ pub fn ollama(host: &str, _model: &str) -> CurlProvider {
 /// Self-contained [`HttpProvider`] for a local Ollama server.
 ///
 /// Plain HTTP, no auth, no TLS — the hermetic, dependency-free path.
-/// Uses the same `ollama_body` (model `llama3`, non-streaming) +
+/// Uses the same `ollama_body` (the given model, non-streaming) +
 /// `extract_ollama_response` as [`ollama`]. `host` is e.g.
 /// `http://127.0.0.1:11434`.
 #[must_use]
-pub fn ollama_http(host: &str, _model: &str) -> HttpProvider {
+pub fn ollama_http(host: &str, model: &str) -> HttpProvider {
+    let model = model.to_owned();
     HttpProvider {
         url: format!("{host}/api/generate"),
         headers: vec!["content-type: application/json".into()],
-        body: ollama_body,
+        body: Box::new(move |p| ollama_body(&model, p)),
         extract: |s| {
             extract_ollama_response(s).ok_or_else(|| LlmError::Provider("no response".into()))
         },
     }
 }
 
-fn anthropic_body(p: &str) -> String {
+fn anthropic_body(model: &str, p: &str) -> String {
     format!(
-        "{{\"model\":\"claude-sonnet-4-6\",\"max_tokens\":1024,\"messages\":[{{\"role\":\"user\",\"content\":{prompt}}}]}}",
+        "{{\"model\":{m},\"max_tokens\":1024,\"messages\":[{{\"role\":\"user\",\"content\":{prompt}}}]}}",
+        m = json_string(model),
         prompt = json_string(p),
     )
 }
 
-fn openai_body(p: &str) -> String {
+fn openai_body(model: &str, p: &str) -> String {
     format!(
-        "{{\"model\":\"gpt-4o\",\"messages\":[{{\"role\":\"user\",\"content\":{prompt}}}]}}",
+        "{{\"model\":{m},\"messages\":[{{\"role\":\"user\",\"content\":{prompt}}}]}}",
+        m = json_string(model),
         prompt = json_string(p),
     )
 }
 
-fn ollama_body(p: &str) -> String {
+fn ollama_body(model: &str, p: &str) -> String {
     format!(
-        "{{\"model\":\"llama3\",\"prompt\":{prompt},\"stream\":false}}",
+        "{{\"model\":{m},\"prompt\":{prompt},\"stream\":false}}",
+        m = json_string(model),
         prompt = json_string(p),
     )
 }

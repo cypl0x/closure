@@ -13,6 +13,27 @@ file is the fine-grained, capability-level queue between them. Blocked
 on a design decision? Record it under [[*Decisions][Decisions]], pick the most
 reversible option, keep moving.
 
+* DONE DEPTH-Q7 — the LLM live tier finished [3/3]
+Queue Q7 of =goal-depth-final.md=.
+** DONE L1 the model is a real parameter [1/1]
+=CurlProvider=/=HttpProvider= body builders are boxed closures
+capturing the model; =anthropic()=/=openai()=/=ollama()=/=ollama_http()=
+all honour their model argument end-to-end (mock-server test pins the
+model in the POSTed body — no hardcoded =llama3=/=gpt-4o= defaults
+remain in the wire path). Closes the "per-model needs a boxed body
+closure" recorded deferral.
+** DONE L2 =just llm-live= [1/1]
+Opt-in live gate: =CLOSURE_LLM_LIVE=1= + local Ollama daemon → a real
+end-to-end completion (model from =CLOSURE_LLM_MODEL=, default
+llama3); missing env or daemon → graceful skip (the iroh-gate
+pattern). Never part of =just check=.
+** DONE L3 key hygiene verified [1/1]
+=llm_provider=/=llm_model=/=llm_key_env= flow through the typed
+config (I9) into =build_llm_provider=; keys come only from the named
+env var, never from org files, and are never logged. With L1 the
+configured model now actually reaches the wire. Prompts are not
+journaled (nothing to redact — verified).
+
 * DONE DEPTH-Q9 — journal replay [2/2]
 Queue Q9 of =goal-depth-final.md=.
 ** DONE R1 the shared form dispatch + replay [1/1]
