@@ -685,7 +685,22 @@ base, ours, theirs)` returns the `FieldConflict`s (title/body) both sides
   (the user's colorscheme; `Theme::doom_vibrant`, `ColorRole` grew
   `Heading2`/`Heading3`/`Code`).
 - `closure-shell-web` — self-contained single HTML bundle and
-  localhost web-app (`closure serve`). `closure-wasm` (X2) is the
+  localhost web-app (`closure serve`). **Interactive editor tier
+  (Q6):** `POST /command` routes registry-backed edits over HTTP —
+  rename / set-todo / toggle-todo / set-tags / set-body / add-sibling /
+  remove-subtree (`delete` alias) / promote / demote / undo / redo,
+  every arm the Vault command path (I8, undoable I3) — and `GET /view`
+  serves the browse `ViewTree` as JSON. The served page carries a
+  `KEYMAP` script sourced from `closure_input::chord_for_command`
+  (vim map — I4/D6, never hardcoded) whose keys POST `/command` on the
+  selected block. `WEB`/`TAURI` therefore meet the
+  `INTERACTIVE_EDITOR_CAPABILITIES` bar (asserted; the old
+  capture-form-tier boundary test is revised in the same commit).
+  `closure-wasm` gains `dispatch_command(org, cmd, id, arg)` (W4): the
+  same command vocabulary applied to org *source* through kernel
+  `Command`s, so the single-HTML export edits offline — pure, in the
+  default test suite; only the `#[wasm_bindgen]` wrapper stays behind
+  the `wasm` feature (I10). `closure-wasm` (X2) is the
   client-side upgrade: a wasm-bindgen surface over the kernel
   (`reformat`/`headline_titles`) that `inline_wasm_editor` embeds into
   the export so the single HTML file re-parses edits in the browser,

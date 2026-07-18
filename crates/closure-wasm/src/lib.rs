@@ -43,6 +43,54 @@ pub fn headline_titles_joined(org: &str) -> String {
     headline_titles(org).join("\n")
 }
 
+/// Q6-W4: apply one registry command to org *source*.
+///
+/// Returns the rewritten source — offline editing for the single-HTML
+/// export. The same command vocabulary as the served `/command`
+/// endpoint, routed through kernel `Command`s (I8); ids survive
+/// verbatim (I2).
+///
+/// # Errors
+///
+/// A message string for an unknown command, unknown id, or unparsable
+/// source — never a panic (I5).
+pub fn dispatch_command(org: &str, cmd: &str, id: &str, arg: &str) -> Result<String, String> {
+    use closure_core::{
+        AddSibling, BlockId, Command as _, Demote, Promote, RemoveSubtree, RenameHeadline,
+        SetBody, SetTodo,
+    };
+    let mut doc = Document::load_str(org).map_err(|e| e.to_string())?;
+    let bid = BlockId::from_existing(id);
+    let result = match cmd {
+        "rename" => RenameHeadline::new(bid, arg.to_owned()).apply(&mut doc),
+        "set-todo" => SetTodo::new(
+            bid,
+            if arg.is_empty() {
+                None
+            } else {
+                Some(arg.to_owned())
+            },
+        )
+        .apply(&mut doc),
+        "set-body" => SetBody::new(bid, arg.to_owned()).apply(&mut doc),
+        "add-sibling" => AddSibling::new(
+            bid,
+            if arg.is_empty() {
+                "untitled".to_owned()
+            } else {
+                arg.to_owned()
+            },
+        )
+        .apply(&mut doc),
+        "remove-subtree" | "delete" => RemoveSubtree::new(bid).apply(&mut doc),
+        "promote" => Promote::new(bid).apply(&mut doc),
+        "demote" => Demote::new(bid).apply(&mut doc),
+        _ => return Err(format!("unknown command: {cmd}")),
+    };
+    result.map_err(|e| e.to_string())?;
+    Ok(doc.source())
+}
+
 /// Standard base64 alphabet.
 const B64: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 

@@ -53,3 +53,34 @@ fn inline_wasm_editor_embeds_glue_wasm_and_harness() {
     assert!(html.contains("reformat("), "wires the client-side re-parse");
     assert!(html.contains("<textarea"), "offers an editor");
 }
+
+// === Q6-W4: offline command dispatch over org source (single-HTML edit). ===
+
+#[test]
+fn dispatch_command_rename_rewrites_the_source() {
+    let org = "* Old\n:PROPERTIES:\n:ID: 01HXAAAAAAAAAAAAAAAAAAAAAA\n:END:\n";
+    let out = closure_wasm::dispatch_command(org, "rename", "01HXAAAAAAAAAAAAAAAAAAAAAA", "New")
+        .expect("dispatch");
+    assert!(out.contains("* New"), "{out}");
+    assert!(out.contains(":ID: 01HXAAAAAAAAAAAAAAAAAAAAAA"), "id kept (I2)");
+}
+
+#[test]
+fn dispatch_command_toggle_todo_and_demote() {
+    let org = "* Task\n:PROPERTIES:\n:ID: 01HXAAAAAAAAAAAAAAAAAAAAAA\n:END:\n";
+    let out = closure_wasm::dispatch_command(org, "set-todo", "01HXAAAAAAAAAAAAAAAAAAAAAA", "TODO")
+        .expect("todo");
+    assert!(out.contains("* TODO Task"), "{out}");
+    let out = closure_wasm::dispatch_command(&out, "demote", "01HXAAAAAAAAAAAAAAAAAAAAAA", "")
+        .expect("demote");
+    assert!(out.contains("** TODO Task"), "{out}");
+}
+
+#[test]
+fn dispatch_command_errors_never_panic() {
+    let org = "* A\n";
+    assert!(closure_wasm::dispatch_command(org, "frobnicate", "x", "").is_err());
+    assert!(
+        closure_wasm::dispatch_command(org, "rename", "01XXXXXXXXXXXXXXXXXXXXXXXX", "t").is_err()
+    );
+}

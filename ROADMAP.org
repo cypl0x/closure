@@ -13,6 +13,36 @@ file is the fine-grained, capability-level queue between them. Blocked
 on a design decision? Record it under [[*Decisions][Decisions]], pick the most
 reversible option, keep moving.
 
+* DONE DEPTH-Q6 — the web tier is a full interactive editor [4/4]
+Queue Q6 of =goal-depth-final.md=.
+** DONE W1 =POST /command= + =GET /view= [1/1]
+Registry-backed editing over HTTP: rename/set-todo/toggle-todo/
+set-tags/set-body/add-sibling/remove-subtree(=delete=)/promote/demote/
+undo/redo, every arm the Vault command path (I8, undoable — proven by
+an undo-over-HTTP test). =GET /view= = =view_to_json(browse_view)=,
+refreshed after each command (view-changes test). Unknown command 400,
+unknown id 500, never a panic (I5).
+** DONE W2 the page keymap is the registry's [1/1]
+=keymap_script()= emits a =KEYMAP= table from
+=closure_input::chord_for_command= (vim) — no hardcoded chords (D6);
+keydown POSTs =/command= on the block whose summary was clicked, page
+reloads on success. Hermetic test pins the registry chord appearing in
+the page. Decision: page keymap fixed to the vim map for v1;
+mode-from-config is a later thin wire-up.
+** DONE W3 capability matrix flipped [1/1]
+=WEB=/=TAURI= now list the full =INTERACTIVE_EDITOR_CAPABILITIES= bar
+(Edit real via W1; Palette/Theme/Feedback render support already
+proven by G9 =render_view= exhaustiveness + G2 =theme_css_variables=).
+Contract revision in the same commit: the
+web-tier-is-not-a-full-editor boundary test became
+=web_tier_shells_meet_the_interactive_parity_bar=.
+** DONE W4 offline dispatch for the single-HTML export [1/1]
+=closure_wasm::dispatch_command(org, cmd, id, arg)= applies the same
+command vocabulary to org source through kernel =Command=s (I8) and
+returns the rewritten source — ids verbatim (I2), errors never panic
+(I5), pure + tested in the default suite; the wasm-bindgen JS wrapper
+stays feature-gated (I10).
+
 * DONE DEPTH-Q3 — title conflicts surfaced, silent LWW loss killed [2/2]
 Queue Q3 of =goal-depth-final.md= (Claude-only: CRDT).
 ** DONE T1 clock-carrying title registers [1/1]

@@ -144,9 +144,18 @@ pub const CLI_CAPABILITIES: &[Capability] = &[
     Capability::Agenda,
 ];
 
-/// Web shell (read-only browse + capture form; currently limited).
-pub const WEB_CAPABILITIES: &[Capability] =
-    &[Capability::Browse, Capability::Capture, Capability::Search];
+/// Web shell (Q6: interactive editor tier — `POST /command` routes
+/// registry-backed edits, `GET /view` serves the `ViewTree` JSON; the
+/// web renderer covers every `Node` kind incl. Palette/Theme/Feedback).
+pub const WEB_CAPABILITIES: &[Capability] = &[
+    Capability::Browse,
+    Capability::Edit,
+    Capability::Capture,
+    Capability::Search,
+    Capability::Palette,
+    Capability::Theme,
+    Capability::Feedback,
+];
 
 /// Egui desktop editor.
 ///
@@ -161,9 +170,17 @@ pub const EGUI_CAPABILITIES: &[Capability] = &[
     Capability::Palette,
 ];
 
-/// Tauri (webview wrapper around the web shell + native menu/FS; matrix entry for native web variant).
-pub const TAURI_CAPABILITIES: &[Capability] =
-    &[Capability::Browse, Capability::Capture, Capability::Search];
+/// Tauri (webview host of the live-served web shell, so it inherits
+/// the Q6 interactive tier: `/command` edits + `/view` JSON).
+pub const TAURI_CAPABILITIES: &[Capability] = &[
+    Capability::Browse,
+    Capability::Edit,
+    Capability::Capture,
+    Capability::Search,
+    Capability::Palette,
+    Capability::Theme,
+    Capability::Feedback,
+];
 
 /// gpui (Zed's native high-perf editor).
 ///
@@ -4015,14 +4032,16 @@ fn interactive_bar_includes_the_gui_surfaces() {
 }
 
 #[test]
-fn web_tier_shells_are_browse_capture_search_not_full_editors() {
-    // Honest boundary: the served web surface (web + the tauri host) is the
-    // capture-form tier, not a full rename/delete editor.
+fn web_tier_shells_meet_the_interactive_parity_bar() {
+    // Contract revised by Q6: POST /command routes registry-backed
+    // edits and GET /view serves the ViewTree, so the served web
+    // surface (web + the tauri host) is a full interactive editor.
     for (name, caps) in [("WEB", WEB_CAPABILITIES), ("TAURI", TAURI_CAPABILITIES)] {
-        assert!(caps.contains(&Capability::Capture), "{name} captures");
-        assert!(
-            !caps.contains(&Capability::Edit),
-            "{name} is not a full editor"
-        );
+        for c in INTERACTIVE_EDITOR_CAPABILITIES {
+            assert!(
+                caps.contains(c),
+                "{name} must provide interactive-editor capability {c:?}"
+            );
+        }
     }
 }

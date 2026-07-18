@@ -51,11 +51,75 @@ impl Response {
 }
 
 /// Route a request to a response. Pure aside from vault writes on
-/// `POST /capture`, so every route is unit-testable without sockets.
+/// `POST /capture` and `POST /command`, so every route is
+/// unit-testable without sockets.
 pub fn respond(vault: &mut Vault, method: &str, target: &str, body: &str) -> Response {
     let (path, query) = target.split_once('?').unwrap_or((target, ""));
     match (method, path) {
         ("GET", "/") => Response::html(200, render(vault)),
+        // Q6-W1: the declarative ViewTree as JSON — the client-side
+        // renderer's data source, refreshed after each command.
+        ("GET", "/view") => Response {
+            status: 200,
+            content_type: "application/json; charset=utf-8".to_owned(),
+            body: closure_shell_core::view_to_json(&closure_shell_core::browse_view(vault)),
+        },
+        // Q6-W1: registry-backed editing over HTTP (I8) — the web tier
+        // graduates from capture-form to interactive editor. Every arm
+        // routes through the Vault command path (undoable, I3).
+        ("POST", "/command") => {
+            let param = |k: &str| {
+                body.split('&')
+                    .find_map(|kv| kv.strip_prefix(&format!("{k}=")))
+                    .map(url_decode)
+                    .unwrap_or_default()
+            };
+            let (cmd, id, arg) = (param("cmd"), param("id"), param("arg"));
+            let bid = closure_core::BlockId::from_existing(&id);
+            let result = match cmd.as_str() {
+                "rename" => vault.rename_headline(&bid, &arg),
+                "set-todo" => {
+                    vault.set_todo(&bid, if arg.is_empty() { None } else { Some(&arg) })
+                }
+                "set-tags" => {
+                    let tags: Vec<String> =
+                        arg.split_whitespace().map(ToOwned::to_owned).collect();
+                    vault.set_tags(&bid, &tags)
+                }
+                "set-body" => vault.set_body(&bid, &arg),
+                "add-sibling" => {
+                    vault.add_sibling(&bid, if arg.is_empty() { "untitled" } else { &arg })
+                }
+                // Registry-name aliases so the page keymap (W2) speaks
+                // the same command vocabulary as every other shell.
+                "remove-subtree" | "delete" => vault.remove_subtree(&bid),
+                "toggle-todo" => {
+                    let next = match vault.find_by_id(&bid).and_then(|(h, _)| h.todo()) {
+                        Some(_) => None,
+                        None => Some("TODO"),
+                    };
+                    vault.set_todo(&bid, next)
+                }
+                "promote" => vault.promote(&bid),
+                "demote" => vault.demote(&bid),
+                "undo" | "redo" => match vault.find_by_id(&bid).map(|(_, p)| p.to_path_buf()) {
+                    Some(p) if cmd == "undo" => vault.undo_in(&p),
+                    Some(p) => vault.redo_in(&p),
+                    None => Err(closure_store::VaultError::UnknownId(id)),
+                },
+                _ => {
+                    return Response::html(400, "<p>unknown command</p>".to_owned());
+                }
+            };
+            match result {
+                Ok(()) => Response {
+                    status: 200,
+                    content_type: "application/json; charset=utf-8".to_owned(),
+                    body: "{\"ok\":true}".to_owned(),
+                },
+                Err(e) => Response::html(500, format!("<p>{}</p>", escape_html(&e.to_string()))),
+            }
+        }
         ("GET", "/search") => {
             let q = query
                 .split('&')
@@ -263,8 +327,44 @@ fn render(vault: &Vault) -> String {
         }
         html.push_str("</details>");
     }
+    html.push_str(&keymap_script());
     html.push_str("</body></html>");
     html
+}
+
+/// Q6-W2: the page's key table, sourced from the registry keymap
+/// (`closure_input::chord_for_command`, I4/D6 — never hardcoded).
+/// Single-stroke vim chords fire `POST /command` on the block whose
+/// summary was last clicked; the page reloads on success.
+fn keymap_script() -> String {
+    let commands = [
+        "undo",
+        "redo",
+        "promote",
+        "demote",
+        "delete",
+        "add-sibling",
+        "toggle-todo",
+    ];
+    let mut table = String::new();
+    for cmd in commands {
+        if let Some(chord) = closure_input::chord_for_command(closure_config::InputMode::Vim, cmd) {
+            let _ = write!(table, "\"{}\":\"{}\",", escape_html(chord), cmd);
+        }
+    }
+    format!(
+        "<script>const KEYMAP={{{table}}};\
+         let SEL=null;\
+         document.querySelectorAll('.id').forEach(e=>e.parentElement.addEventListener('click',()=>{{SEL=e.textContent.trim();}}));\
+         document.addEventListener('keydown',ev=>{{\
+           if(ev.target.tagName==='INPUT')return;\
+           const cmd=KEYMAP[ev.key];\
+           if(!cmd||!SEL)return;\
+           fetch('/command',{{method:'POST',headers:{{'Content-Type':'application/x-www-form-urlencoded'}},\
+             body:'cmd='+encodeURIComponent(cmd)+'&id='+encodeURIComponent(SEL)}})\
+             .then(r=>{{if(r.ok)location.reload();}});\
+         }});</script>"
+    )
 }
 
 fn escape_html(s: &str) -> String {

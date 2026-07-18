@@ -1530,7 +1530,9 @@ dependencies = [
 name = "closure-shell-web"
 version = "0.0.0"
 dependencies = [
+ "closure-config",
  "closure-core",
+ "closure-input",
  "closure-query",
  "closure-shell-core",
  "closure-store",

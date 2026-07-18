@@ -107,3 +107,109 @@ fn root_page_links_to_search_and_capture() {
     assert!(r.body.contains("/search"));
     assert!(r.body.contains("/capture"));
 }
+
+// === Q6-W1: POST /command — the web tier becomes a real editor. ===
+
+fn first_id(v: &Vault) -> String {
+    let (h, _) = v.find_by_title("Ship parser").expect("headline");
+    h.id().to_string()
+}
+
+#[test]
+fn post_command_rename_mutates_the_vault() {
+    let (_td, mut v) = vault();
+    let id = first_id(&v);
+    let body = format!("cmd=rename&id={id}&arg=Shipped+it");
+    let r = respond(&mut v, "POST", "/command", &body);
+    assert_eq!(r.status, 200, "{}", r.body);
+    assert!(v.find_by_title("Shipped it").is_some(), "title changed");
+    assert!(v.find_by_title("Ship parser").is_none());
+}
+
+#[test]
+fn post_command_rename_is_undoable_via_command() {
+    // I3 through the web tier: the undo command reverses the rename.
+    let (_td, mut v) = vault();
+    let id = first_id(&v);
+    let body = format!("cmd=rename&id={id}&arg=Renamed");
+    assert_eq!(respond(&mut v, "POST", "/command", &body).status, 200);
+    let undo = format!("cmd=undo&id={id}");
+    assert_eq!(respond(&mut v, "POST", "/command", &undo).status, 200);
+    assert!(v.find_by_title("Ship parser").is_some(), "undo restored");
+}
+
+#[test]
+fn post_command_set_todo_and_add_sibling() {
+    let (_td, mut v) = vault();
+    let id = first_id(&v);
+    let r = respond(&mut v, "POST", "/command", &format!("cmd=set-todo&id={id}&arg=DONE"));
+    assert_eq!(r.status, 200, "{}", r.body);
+    let r = respond(
+        &mut v,
+        "POST",
+        "/command",
+        &format!("cmd=add-sibling&id={id}&arg=Fresh+heading"),
+    );
+    assert_eq!(r.status, 200, "{}", r.body);
+    assert!(v.find_by_title("Fresh heading").is_some());
+}
+
+#[test]
+fn post_command_unknown_or_bad_id_errors() {
+    let (_td, mut v) = vault();
+    let id = first_id(&v);
+    assert_eq!(
+        respond(&mut v, "POST", "/command", &format!("cmd=frobnicate&id={id}")).status,
+        400,
+        "unknown command"
+    );
+    assert_eq!(
+        respond(
+            &mut v,
+            "POST",
+            "/command",
+            "cmd=rename&id=01XXXXXXXXXXXXXXXXXXXXXXXX&arg=x"
+        )
+        .status,
+        500,
+        "unknown id surfaces as an error, never a panic"
+    );
+}
+
+#[test]
+fn get_view_returns_the_serialized_view_tree() {
+    let (_td, mut v) = vault();
+    let r = respond(&mut v, "GET", "/view", "");
+    assert_eq!(r.status, 200);
+    assert!(r.content_type.starts_with("application/json"), "{}", r.content_type);
+    assert!(r.body.contains("Ship parser"), "view carries the rows");
+}
+
+#[test]
+fn command_changes_the_view() {
+    let (_td, mut v) = vault();
+    let id = first_id(&v);
+    let before = respond(&mut v, "GET", "/view", "").body;
+    respond(&mut v, "POST", "/command", &format!("cmd=rename&id={id}&arg=Zap"));
+    let after = respond(&mut v, "GET", "/view", "").body;
+    assert_ne!(before, after);
+    assert!(after.contains("Zap"));
+}
+
+// === Q6-W2: the served page carries the registry keymap (I4 honest keys). ===
+
+#[test]
+fn root_page_carries_the_registry_keymap() {
+    let (_td, mut v) = vault();
+    let page = respond(&mut v, "GET", "/", "").body;
+    assert!(page.contains("KEYMAP"), "keymap table present");
+    assert!(page.contains("/command"), "keys post to the command endpoint");
+    // Sourced from the registry, never hardcoded: the vim chord for
+    // undo appears exactly as closure-input maps it (D6 rule).
+    let undo = closure_input::chord_for_command(closure_config::InputMode::Vim, "undo")
+        .expect("undo bound");
+    assert!(
+        page.contains(&format!("\"{undo}\"")),
+        "vim undo chord {undo:?} in the table"
+    );
+}
