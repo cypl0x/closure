@@ -1022,6 +1022,51 @@ fn todo_glyph(keyword: &str) -> &'static str {
     }
 }
 
+/// Deterministic seeded vault generator (Q12-B1).
+///
+/// `files` org files of `headlines_per_file` level-1 headlines with
+/// stable `:ID:`s, varied TODO/tags/bodies — the big-vault fixture
+/// without committing thousands of files. Same `(files, headlines,
+/// seed)` always yields identical bytes (I6); every file parses and
+/// roundtrips (I1, tested). Pure xorshift, no dependency.
+#[must_use]
+pub fn gen_vault(files: usize, headlines_per_file: usize, seed: u64) -> Vec<(String, String)> {
+    use std::fmt::Write as _;
+    let mut state = seed.wrapping_mul(0x9E37_79B9_7F4A_7C15).max(1);
+    let mut next = move || {
+        state ^= state << 13;
+        state ^= state >> 7;
+        state ^= state << 17;
+        state
+    };
+    let words = [
+        "parser", "vault", "agenda", "widget", "kernel", "backlink", "capture", "formula",
+    ];
+    let mut out = Vec::with_capacity(files);
+    for f in 0..files {
+        let mut src = String::new();
+        for h in 0..headlines_per_file {
+            let r = next();
+            let todo = match r % 3 {
+                0 => "TODO ",
+                1 => "DONE ",
+                _ => "",
+            };
+            let ri = usize::try_from(r % 1_000_003).unwrap_or(0);
+            let w1 = words[(ri / 3) % words.len()];
+            let w2 = words[(ri / 7) % words.len()];
+            let tag = if r % 5 == 0 { " :work:" } else { "" };
+            let _ = writeln!(src, "* {todo}{w1} {w2} {f}-{h}{tag}");
+            let _ = writeln!(src, ":PROPERTIES:");
+            let _ = writeln!(src, ":ID: 01H{:023X}", (u128::from(r) << 16) | ((f as u128) << 8) | h as u128);
+            let _ = writeln!(src, ":END:");
+            let _ = writeln!(src, "body {w2} line {}", r % 97);
+        }
+        out.push((format!("gen-{f:03}.org"), src));
+    }
+    out
+}
+
 /// Build the default browse [`ViewTree`](Node) from a borrowed vault
 /// (V3a).
 ///

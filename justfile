@@ -168,3 +168,7 @@ llm-live:
 # Q8-P2 gate: network-registry fetch tests (loopback server + curl).
 pkg-net:
     cargo test -p closure-plugin-host --test net_registry -- --nocapture
+
+# Q12-B2: release-mode latency numbers over the generated big vault.
+bench:
+    cargo test --release -p closure-shell-core --test perf -- --nocapture

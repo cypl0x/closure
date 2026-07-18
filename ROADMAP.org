@@ -13,6 +13,33 @@ file is the fine-grained, capability-level queue between them. Blocked
 on a design decision? Record it under [[*Decisions][Decisions]], pick the most
 reversible option, keep moving.
 
+* DONE DEPTH-Q12 — performance is a number [4/4]
+Queue Q12 of =goal-depth-final.md=.
+** DONE B1 seeded vault generator [1/1]
+=closure_shell_core::gen_vault(files, per_file, seed)= — pure
+xorshift, stable =:ID:=s, varied TODO/tags/bodies; deterministic
+(I6, tested), every generated file parses + roundtrips byte-exact
+(I1, tested). The big-vault fixture without committing files.
+DECISION: no criterion dep — hand-rolled =Instant= timing keeps the
+dev-dependency tree minimal (I10 spirit); =just bench= prints
+release numbers.
+** DONE B3 dispatch latency budget [1/1]
+1000 keystrokes through the ONE shared input seam
+(=ModalApp::on_key=) over 2000 generated headlines: p99 asserted
+under 50 ms (debug-safe budget) in the default suite. Measured
+2026-07-18: p99 ≈ 2.7 ms debug / 1.8 ms release.
+** DONE B2 =just bench= [1/1]
+Release-mode run of the same harness, numbers printed (baseline
+above; regressions are a human-reviewed diff — perf CI on shared
+hardware lies, Decision).
+** DONE B4 headroom recorded [1/1]
+The per-key cost is the row-list rebuild (=rows(shell)= allocates
+every headline row per keystroke). At 2k headlines this is inside
+every budget; at 20k it approaches key-repeat latency. Row-list
+memoization keyed on =source_hash= + fold state is the recorded
+next optimization — architecture-fenced per the goal (needs a spec
+revision when taken).
+
 * DONE DEPTH-Q8 — the package ecosystem made real [3/3]
 Queue Q8 of =goal-depth-final.md=.
 ** DONE P1 lockfile hashes upgrade to BLAKE3 [1/1]
