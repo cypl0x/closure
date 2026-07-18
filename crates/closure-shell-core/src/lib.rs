@@ -3555,6 +3555,10 @@ pub struct BodyEditor {
     undo_stack: Vec<(String, usize)>,
     /// Redo snapshots cleared by any fresh edit.
     redo_stack: Vec<(String, usize)>,
+    /// Armed on every INSERT entry: the first buffer-changing INSERT
+    /// edit takes one checkpoint, so the whole burst undoes as a unit
+    /// (vim rule, G4).
+    insert_armed: bool,
 }
 
 impl Default for BodyEditor {
@@ -3578,6 +3582,7 @@ impl BodyEditor {
             count: 0,
             undo_stack: Vec::new(),
             redo_stack: Vec::new(),
+            insert_armed: false,
         }
     }
 
@@ -3588,6 +3593,7 @@ impl BodyEditor {
         self.mode = EditorMode::Insert;
         self.undo_stack.clear();
         self.redo_stack.clear();
+        self.insert_armed = true;
     }
 
     /// The buffer contents.
@@ -3622,6 +3628,7 @@ impl BodyEditor {
         self.mode = EditorMode::Insert;
         self.undo_stack.clear();
         self.redo_stack.clear();
+        self.insert_armed = true;
     }
 
     /// Switch to Normal (from Insert `Esc`).
@@ -3632,19 +3639,33 @@ impl BodyEditor {
         self.left();
     }
 
-    /// Switch to Insert at the cursor (`i`).
+    /// Switch to Insert at the cursor (`i`), arming the burst
+    /// checkpoint (G4).
     pub const fn to_insert(&mut self) {
         self.mode = EditorMode::Insert;
+        self.insert_armed = true;
+    }
+
+    /// G4: the first buffer-changing edit of an INSERT burst records
+    /// one pre-edit snapshot, so `Esc` + `u` undoes the whole burst.
+    /// A no-op outside Insert mode or once the burst has checkpointed.
+    fn insert_guard(&mut self) {
+        if self.mode == EditorMode::Insert && self.insert_armed {
+            self.checkpoint();
+            self.insert_armed = false;
+        }
     }
 
     /// Insert `c` at the cursor.
     pub fn insert_char(&mut self, c: char) {
+        self.insert_guard();
         self.buf.insert(self.cursor, c);
         self.cursor += c.len_utf8();
     }
 
     /// Insert `s` at the cursor, cursor after it.
     pub fn insert_str(&mut self, s: &str) {
+        self.insert_guard();
         self.buf.insert_str(self.cursor, s);
         self.cursor += s.len();
     }
@@ -3652,6 +3673,7 @@ impl BodyEditor {
     /// Delete the char before the cursor (Insert Backspace).
     pub fn backspace(&mut self) {
         if let Some((i, _)) = self.buf[..self.cursor].char_indices().next_back() {
+            self.insert_guard();
             self.buf.remove(i);
             self.cursor = i;
         }
@@ -3660,6 +3682,7 @@ impl BodyEditor {
     /// Delete the char under the cursor (Normal `x`).
     pub fn delete_at(&mut self) {
         if self.cursor < self.buf.len() {
+            self.insert_guard();
             self.buf.remove(self.cursor);
         }
     }
@@ -3707,11 +3730,14 @@ impl BodyEditor {
     }
 
     /// Open a new line below the current one and enter Insert (`o`).
+    /// The caller (`o`) checkpoints before the open, so the burst
+    /// checkpoint stays disarmed — `o` plus typing undoes as one unit.
     pub fn open_below(&mut self) {
         self.cursor = self.line_end(self.cursor);
         self.buf.insert(self.cursor, '\n');
         self.cursor += 1;
         self.mode = EditorMode::Insert;
+        self.insert_armed = false;
     }
 
     /// Byte offset of the start of the line containing `pos`.
@@ -3868,6 +3894,7 @@ impl BodyEditor {
     /// before the cursor.
     pub fn replace_to_cursor(&mut self, start: usize, text: &str) {
         if start <= self.cursor && self.buf.is_char_boundary(start) {
+            self.insert_guard();
             self.buf.replace_range(start..self.cursor, text);
             self.cursor = start + text.len();
         }
@@ -3974,12 +4001,12 @@ impl BodyEditor {
             }
             "i" => {
                 self.count = 0;
-                self.mode = EditorMode::Insert;
+                self.to_insert();
             }
             "a" => {
                 self.count = 0;
                 self.right();
-                self.mode = EditorMode::Insert;
+                self.to_insert();
             }
             "o" => {
                 self.count = 0;
@@ -4231,6 +4258,7 @@ impl BodyEditor {
     pub fn kill_rest_of_line(&mut self) {
         let end = self.line_end(self.cursor);
         if end > self.cursor {
+            self.insert_guard();
             self.register = self.buf[self.cursor..end].to_owned();
             self.linewise = false;
             self.buf.replace_range(self.cursor..end, "");
@@ -4242,6 +4270,7 @@ impl BodyEditor {
     pub fn kill_to_line_start(&mut self) {
         let start = self.line_start(self.cursor);
         if start < self.cursor {
+            self.insert_guard();
             self.register = self.buf[start..self.cursor].to_owned();
             self.linewise = false;
             self.buf.replace_range(start..self.cursor, "");
@@ -4258,6 +4287,7 @@ impl BodyEditor {
         let word = trimmed.trim_end_matches(|c: char| c.is_alphanumeric() || c == '_');
         let start = line_start + word.len();
         if start < self.cursor {
+            self.insert_guard();
             self.register = self.buf[start..self.cursor].to_owned();
             self.linewise = false;
             self.buf.replace_range(start..self.cursor, "");
@@ -5108,7 +5138,8 @@ impl ModalApp {
         }
         match self.body.mode() {
             EditorMode::Insert => match key {
-                // Insert bursts are not snapshotted yet - recorded gap.
+                // G4: the first buffer-changing edit checkpoints the
+                // burst (BodyEditor::insert_guard), so Esc+u undoes it.
                 "n" if ctrl => self.cycle_completion(shell, true),
                 "p" if ctrl => self.cycle_completion(shell, false),
                 // Readline chords (the "normal input field" set).

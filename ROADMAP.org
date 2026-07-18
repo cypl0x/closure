@@ -13,6 +13,23 @@ file is the fine-grained, capability-level queue between them. Blocked
 on a design decision? Record it under [[*Decisions][Decisions]], pick the most
 reversible option, keep moving.
 
+* DONE DEPTH-Q1-G4 — INSERT-burst undo in the body editor [1/1]
+Queue Q1-G4 of =goal-depth-final.md= (Grok RED, Fable GREEN — flag
+discipline across every Insert entry point is invariant-adjacent).
+** DONE G4 one undo unit per INSERT session [1/1]
+=BodyEditor.insert_armed=: armed on every INSERT entry (=load=,
+=clear=, =to_insert= — the =i=/=a= arms now route through it; =o=
+disarms because its own checkpoint already covers the burst) and
+consumed by =insert_guard= at the first buffer-changing edit
+(=insert_char=/=insert_str=/=backspace=/=delete_at=/readline kills/
+=replace_to_cursor=), snapshotting the pre-burst state once. =Esc= +
+=u= undoes the whole burst, =C-r= re-applies (vim rule). Contract
+revision in the same commit: =undo_stack_is_bounded_and_safe= assumed
+seed typing left nothing to undo — under G4 the seed session is
+itself a burst; test revised, not weakened (its bounded/no-panic
+intent is kept and extended through redo). Closes the Q1-E3 "INSERT
+bursts" recorded gap.
+
 * DONE DEPTH-Q1-G2 — drag text selection in the body editor (orchestrated) [1/1]
 Queue Q1-G2 of =goal-depth-final.md=.
 ** DONE G2 left-button drag extends a charwise VISUAL selection [1/1]

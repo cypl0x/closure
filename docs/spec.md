@@ -635,8 +635,11 @@ base, ours, theirs)` returns the `FieldConflict`s (title/body) both sides
   applied to motions and edits (`3w`, `2dd`, `5x`; `Esc` clears a
   pending count first); `u`/`C-r` are editor-local undo/redo (snapshot
   stacks bounded at 50, checkpointed before every mutating
-  Normal/Visual edit, independent of the vault-level undo; INSERT
-  bursts are a recorded gap); `w`/`b` word motions (simple
+  Normal/Visual edit, independent of the vault-level undo; entering
+  INSERT arms one burst checkpoint taken by the first buffer-changing
+  edit — typed char, backspace, readline kill, completion accept — so
+  `Esc` + `u` undoes the whole burst and `C-r` re-applies it, the vim
+  rule, G4); `w`/`b` word motions (simple
   skip-word-skip-whitespace rule, count-aware, cross lines, clamp).
   Leaving INSERT steps the cursor back onto the last typed char (vim
   rule); after `dd` on the last line the cursor parks on the line

@@ -1324,17 +1324,22 @@ fn undo_stack_is_bounded_and_safe() {
     let (_d, mut sh) = shell();
     let mut app = editor_with(&mut sh, "a");
     app.on_key(&mut sh, "escape", false, false, None);
-    // nothing to undo: must not panic, buffer unchanged
+    // Contract revised by G4: the seed typing is itself an INSERT
+    // burst, so the first u undoes it; the rest are safe no-ops.
     for _ in 0..5 {
         app.on_key(&mut sh, "u", false, false, Some('u'));
     }
+    assert_eq!(app.body_buffer(), "");
+    app.on_key(&mut sh, "r", true, false, None); // redo the burst
     assert_eq!(app.body_buffer(), "a");
     app.on_key(&mut sh, "x", false, false, Some('x'));
     assert_eq!(app.body_buffer(), "");
     app.on_key(&mut sh, "u", false, false, Some('u'));
     assert_eq!(app.body_buffer(), "a");
     app.on_key(&mut sh, "u", false, false, Some('u'));
-    assert_eq!(app.body_buffer(), "a");
+    assert_eq!(app.body_buffer(), "", "second undo pops the seed burst");
+    app.on_key(&mut sh, "u", false, false, Some('u'));
+    assert_eq!(app.body_buffer(), "", "empty stack stays a safe no-op");
 }
 
 // === Q1-E4: word motions. ===
@@ -2063,4 +2068,63 @@ fn drag_to_the_click_position_keeps_the_mode() {
         "same-cell drag stays in the click's mode"
     );
     assert_eq!(app.body_selection(), None);
+}
+
+// === INSERT-burst undo: one checkpoint per INSERT entry; first buffer-
+// changing edit records pre-edit state so Esc+u undoes the whole burst. ===
+
+#[test]
+fn insert_burst_undoes_as_one_unit() {
+    let (_d, mut sh) = shell();
+    // editor_with TYPES the seed, so "one" is the first burst; leave
+    // INSERT and re-enter so XYZ forms its own burst.
+    let mut app = editor_with(&mut sh, "one");
+    app.on_key(&mut sh, "escape", false, false, None);
+    app.on_key(&mut sh, "a", false, false, Some('a'));
+    app.on_key(&mut sh, "X", false, false, Some('X'));
+    app.on_key(&mut sh, "Y", false, false, Some('Y'));
+    app.on_key(&mut sh, "Z", false, false, Some('Z'));
+    app.on_key(&mut sh, "escape", false, false, None);
+    app.on_key(&mut sh, "u", false, false, Some('u'));
+    assert_eq!(
+        app.body_buffer(),
+        "one",
+        "one undo removes the whole burst"
+    );
+    app.on_key(&mut sh, "r", true, false, None); // ctrl+r redo
+    assert_eq!(app.body_buffer(), "oneXYZ", "redo restores the burst");
+}
+
+#[test]
+fn two_insert_bursts_undo_separately() {
+    let (_d, mut sh) = shell();
+    // Seed typing is burst #1 (one checkpoint per INSERT entry); XYZ
+    // typed in the same session belongs to it. Re-entering INSERT via
+    // a starts burst #2.
+    let mut app = editor_with(&mut sh, "one");
+    app.on_key(&mut sh, "X", false, false, Some('X'));
+    app.on_key(&mut sh, "Y", false, false, Some('Y'));
+    app.on_key(&mut sh, "Z", false, false, Some('Z'));
+    app.on_key(&mut sh, "escape", false, false, None);
+    app.on_key(&mut sh, "a", false, false, Some('a')); // burst #2
+    app.on_key(&mut sh, "A", false, false, Some('A'));
+    app.on_key(&mut sh, "B", false, false, Some('B'));
+    app.on_key(&mut sh, "escape", false, false, None);
+    app.on_key(&mut sh, "u", false, false, Some('u'));
+    assert_eq!(app.body_buffer(), "oneXYZ", "second burst undone first");
+    app.on_key(&mut sh, "u", false, false, Some('u'));
+    assert_eq!(app.body_buffer(), "", "first burst (the whole session) next");
+}
+
+#[test]
+fn undo_with_no_burst_is_a_safe_noop() {
+    let (_d, mut sh) = shell();
+    let mut app = editor_with(&mut sh, "one");
+    app.on_key(&mut sh, "escape", false, false, None);
+    app.on_key(&mut sh, "u", false, false, Some('u')); // pops the seed burst
+    assert_eq!(app.body_buffer(), "");
+    // an empty undo stack is a safe no-op, mode untouched
+    app.on_key(&mut sh, "u", false, false, Some('u'));
+    assert_eq!(app.body_buffer(), "");
+    assert_eq!(app.body_mode(), closure_shell_core::EditorMode::Normal);
 }
