@@ -264,6 +264,7 @@ pub fn run(vault_path: &Path) -> Result<(), String> {
                     feedback: closure_shell_core::Feedback::default(),
                     last_status: String::new(),
                     popup_gen: 0,
+                    drag: closure_shell_core::DragReorder::default(),
                 })
             },
         );
@@ -352,6 +353,9 @@ struct GpuiView {
     /// Typing-idle generation for the completion auto-popup: each key
     /// bumps it, a delayed task only fires if it is still the newest.
     popup_gen: u64,
+    /// Outline row drag-and-drop gesture (G5c machine); the drop maps
+    /// to registry moves via `drag_drop_rows` (I8).
+    drag: closure_shell_core::DragReorder,
 }
 
 #[cfg(feature = "gpui")]
@@ -493,6 +497,29 @@ impl GpuiView {
                         MouseButton::Left,
                         cx.listener(move |this, _ev, _w, cx| {
                             this.app.select(i, &this.shell);
+                            // G3: a held press starts a potential row drag.
+                            this.drag.begin(i);
+                            cx.notify();
+                        }),
+                    )
+                    // G3: dragging across rows retargets the drop slot…
+                    .on_mouse_move(cx.listener(
+                        move |this, ev: &gpui::MouseMoveEvent, _w, cx| {
+                            if ev.pressed_button == Some(MouseButton::Left) {
+                                this.drag.over(i);
+                                cx.notify();
+                            }
+                        },
+                    ))
+                    // …and release completes it as registry moves (I8).
+                    .on_mouse_up(
+                        MouseButton::Left,
+                        cx.listener(move |this, _ev, _w, cx| {
+                            if let Some((f, t)) = this.drag.drop()
+                                && f != t
+                            {
+                                this.app.drag_drop_rows(&mut this.shell, f, t);
+                            }
                             cx.notify();
                         }),
                     );

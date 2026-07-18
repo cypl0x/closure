@@ -579,7 +579,11 @@ base, ours, theirs)` returns the `FieldConflict`s (title/body) both sides
   button held extends a charwise VISUAL selection (`BodyEditor::drag_to`
   via `body_drag`, G2 — the pre-drag cursor becomes the anchor on the
   first cell-crossing move; a click's micro-movement never flips the
-  mode). Drag-and-drop row reordering is a recorded gap. Every mouse affordance
+  mode). Outline rows drag-and-drop (G3): press begins the G5c
+  `DragReorder` gesture, crossing rows retargets it, release maps the
+  drop to stepped `move-subtree-up/down` registry commands
+  (`drag_drop_rows` — I8, each step undoable, boundary-clamped, ids
+  never regenerated). Every mouse affordance
   dispatches a registry-backed command through the same `ModalApp::run`
   entry the chords use (I8): row click selects, the fold arrow toggles
   `toggle-fold`, which-key chips run their command, palette rows run the

@@ -13,6 +13,20 @@ file is the fine-grained, capability-level queue between them. Blocked
 on a design decision? Record it under [[*Decisions][Decisions]], pick the most
 reversible option, keep moving.
 
+* DONE DEPTH-Q1-G3 — drag-and-drop row reorder in the gpui window [1/1]
+Queue Q1-G3 of =goal-depth-final.md= (Grok RED, Fable GREEN + wiring).
+** DONE G3 drop completes as stepped registry moves [1/1]
+=ModalApp::drag_drop_rows(shell, from, to)=: selects the dragged row,
+then steps =move-subtree-up=/=down= through =ModalApp::run= (I8) until
+the row's id sits at =to= — id-keyed walk, bounded, stops when a
+sibling/parent/file boundary refuses a move (oversized =to= clamps to
+the last slot), selection follows, ids never regenerated (I2, tested).
+gpui: the outline row press begins the existing G5c =DragReorder=
+gesture, mouse-move with the button held retargets =over(i)=, release
+=drop()=s into =drag_drop_rows=. Closes the GPUI-MOUSE-D2 D1
+drag-and-drop recorded gap. Visual drop-slot indicator during the drag
+is a display-bound refinement, recorded.
+
 * DONE DEPTH-Q1-G4 — INSERT-burst undo in the body editor [1/1]
 Queue Q1-G4 of =goal-depth-final.md= (Grok RED, Fable GREEN — flag
 discipline across every Insert entry point is invariant-adjacent).

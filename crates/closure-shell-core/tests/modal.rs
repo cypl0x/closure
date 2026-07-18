@@ -2128,3 +2128,63 @@ fn undo_with_no_burst_is_a_safe_noop() {
     assert_eq!(app.body_buffer(), "");
     assert_eq!(app.body_mode(), closure_shell_core::EditorMode::Normal);
 }
+
+// === Drag-drop outline row reorder (mouse DnD on the command surface). ===
+
+#[test]
+fn drag_drop_moves_a_row_down() {
+    let (_d, mut sh) = shell();
+    let mut app = ModalApp::new(InputMode::Vim);
+    app.drag_drop_rows(&mut sh, 0, 2);
+    let rows = app.rows(&sh);
+    let titles: Vec<&str> = rows.iter().map(|r| r.title.as_str()).collect();
+    assert_eq!(titles, vec!["Personal wiki", "Write spec", "Ship parser"]);
+    assert_eq!(app.selected(), 2, "selection follows the dragged row");
+}
+
+#[test]
+fn drag_drop_moves_a_row_up() {
+    let (_d, mut sh) = shell();
+    let mut app = ModalApp::new(InputMode::Vim);
+    app.drag_drop_rows(&mut sh, 2, 0);
+    let rows = app.rows(&sh);
+    let titles: Vec<&str> = rows.iter().map(|r| r.title.as_str()).collect();
+    assert_eq!(titles, vec!["Write spec", "Ship parser", "Personal wiki"]);
+    assert_eq!(app.selected(), 0);
+}
+
+#[test]
+fn drag_drop_to_the_same_index_is_a_noop() {
+    let (_d, mut sh) = shell();
+    let mut app = ModalApp::new(InputMode::Vim);
+    let before: Vec<String> = app.rows(&sh).iter().map(|r| r.title.clone()).collect();
+    app.drag_drop_rows(&mut sh, 1, 1);
+    let after: Vec<String> = app.rows(&sh).iter().map(|r| r.title.clone()).collect();
+    assert_eq!(after, before);
+}
+
+#[test]
+fn drag_drop_out_of_range_is_safe() {
+    let (_d, mut sh) = shell();
+    let mut app = ModalApp::new(InputMode::Vim);
+    app.drag_drop_rows(&mut sh, 9, 0);
+    let rows = app.rows(&sh);
+    let titles: Vec<&str> = rows.iter().map(|r| r.title.as_str()).collect();
+    assert_eq!(titles, vec!["Ship parser", "Personal wiki", "Write spec"]);
+    app.drag_drop_rows(&mut sh, 0, 9);
+    let rows = app.rows(&sh);
+    let titles: Vec<&str> = rows.iter().map(|r| r.title.as_str()).collect();
+    assert_eq!(titles, vec!["Personal wiki", "Write spec", "Ship parser"]);
+}
+
+#[test]
+fn drag_drop_preserves_block_ids() {
+    let (_d, mut sh) = shell();
+    let mut app = ModalApp::new(InputMode::Vim);
+    let mut before: Vec<_> = app.rows(&sh).iter().map(|r| r.id.clone()).collect();
+    before.sort();
+    app.drag_drop_rows(&mut sh, 0, 2);
+    let mut after: Vec<_> = app.rows(&sh).iter().map(|r| r.id.clone()).collect();
+    after.sort();
+    assert_eq!(after, before);
+}
