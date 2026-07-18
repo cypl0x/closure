@@ -309,6 +309,12 @@ enum Cmd {
         /// Only entries containing this text (case-insensitive).
         #[arg(long)]
         grep: Option<String>,
+        /// Re-apply the journal's capture/cmd entries to the vault.
+        #[arg(long)]
+        replay: bool,
+        /// With --replay: print what would run, change nothing.
+        #[arg(long)]
+        dry_run: bool,
     },
     /// Tangle a literate org file: write `:tangle <path>` blocks to
     /// their targets.
@@ -1292,7 +1298,12 @@ fn run(cmd: &Cmd) -> Result<(), String> {
         Cmd::Agenda { vault, until } => cmd_agenda(vault, until.as_deref()),
         Cmd::ClockReport { vault } => cmd_clock_report(vault),
         Cmd::Cron { vault, file, at } => cmd_cron(vault, file, at.as_deref()),
-        Cmd::History { vault, grep } => cmd_history(vault, grep.as_deref()),
+        Cmd::History {
+            vault,
+            grep,
+            replay,
+            dry_run,
+        } => cmd_history(vault, grep.as_deref(), *replay, *dry_run),
         Cmd::Tangle { vault, file } => cmd_tangle(vault, file),
         Cmd::EditBlock { vault, file, index } => cmd_edit_block(vault, file, *index),
         Cmd::View {
@@ -1618,15 +1629,54 @@ fn now_time_tuple() -> (u8, u8, u8, u8, u8) {
     (m, h, 1, 1, dw)
 }
 
-fn cmd_history(vault: &Path, grep: Option<&str>) -> Result<(), String> {
+fn cmd_history(vault: &Path, grep: Option<&str>, replay: bool, dry_run: bool) -> Result<(), String> {
     let journal = closure_record::Journal::new(vault, true);
     let entries = grep
         .map_or_else(|| journal.entries(), |needle| journal.filtered(needle))
         .map_err(|e| format!("{e}"))?;
+    if !replay {
+        for e in entries {
+            println!("{e}");
+        }
+        return Ok(());
+    }
+    // Q9: replay — capture: entries re-capture, cmd: entries route
+    // through the shared form dispatch (I8; same vocabulary as the web
+    // /command endpoint). Dry-run prints without applying.
+    let mut v = Vault::open(vault).map_err(|e| format!("{e}"))?;
     for e in entries {
-        println!("{e}");
+        let Some((kind, detail)) = journal_entry_parts(&e) else {
+            continue;
+        };
+        if dry_run {
+            println!("would replay {kind}: {detail}");
+            continue;
+        }
+        let result = match kind {
+            "capture" => {
+                let template = closure_store::CaptureTemplate {
+                    target: PathBuf::from("inbox.org"),
+                    headline_prefix: "TODO ".to_owned(),
+                    body: String::new(),
+                };
+                v.capture(&template, detail).map(|_| ())
+            }
+            "cmd" => v.apply_form_command(detail),
+            _ => continue,
+        };
+        match result {
+            Ok(()) => println!("replayed {kind}: {detail}"),
+            Err(err) => println!("skipped {kind}: {detail} ({err})"),
+        }
     }
     Ok(())
+}
+
+/// Split a journal headline `* [ts] kind: detail` into `(kind, detail)`.
+fn journal_entry_parts(entry: &str) -> Option<(&str, &str)> {
+    let after_ts = entry.split_once("] ")?.1;
+    let (kind, detail) = after_ts.split_once(": ")?;
+    Some((kind, detail.trim_end()))
 }
 
 fn cmd_tangle(vault: &Path, file: &Path) -> Result<(), String> {

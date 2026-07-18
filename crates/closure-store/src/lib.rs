@@ -910,6 +910,54 @@ impl Vault {
         Ok(())
     }
 
+    /// Apply one form-encoded command (Q9 / Q6-W1): the shared
+    /// dispatch behind the web `/command` endpoint AND journal replay
+    /// — `cmd=<name>&id=<block>&arg=<value>`, every arm the registry
+    /// command path (I8, undoable I3).
+    ///
+    /// # Errors
+    ///
+    /// [`VaultError::Undo`] with an `unknown command` message for an
+    /// unrecognised `cmd`; the underlying vault error otherwise.
+    pub fn apply_form_command(&mut self, form: &str) -> Result<(), VaultError> {
+        let param = |k: &str| {
+            form.split('&')
+                .find_map(|kv| kv.strip_prefix(&format!("{k}=")))
+                .map(form_decode)
+                .unwrap_or_default()
+        };
+        let (cmd, id, arg) = (param("cmd"), param("id"), param("arg"));
+        let bid = closure_core::BlockId::from_existing(&id);
+        match cmd.as_str() {
+            "rename" => self.rename_headline(&bid, &arg),
+            "set-todo" => self.set_todo(&bid, if arg.is_empty() { None } else { Some(&arg) }),
+            "set-tags" => {
+                let tags: Vec<String> = arg.split_whitespace().map(ToOwned::to_owned).collect();
+                self.set_tags(&bid, &tags)
+            }
+            "set-body" => self.set_body(&bid, &arg),
+            "add-sibling" => {
+                self.add_sibling(&bid, if arg.is_empty() { "untitled" } else { &arg })
+            }
+            "remove-subtree" | "delete" => self.remove_subtree(&bid),
+            "toggle-todo" => {
+                let next = match self.find_by_id(&bid).and_then(|(h, _)| h.todo()) {
+                    Some(_) => None,
+                    None => Some("TODO"),
+                };
+                self.set_todo(&bid, next)
+            }
+            "promote" => self.promote(&bid),
+            "demote" => self.demote(&bid),
+            "undo" | "redo" => match self.find_by_id(&bid).map(|(_, p)| p.to_path_buf()) {
+                Some(p) if cmd == "undo" => self.undo_in(&p),
+                Some(p) => self.redo_in(&p),
+                None => Err(VaultError::UnknownId(id)),
+            },
+            other => Err(VaultError::Undo(format!("unknown command: {other}"))),
+        }
+    }
+
     /// Jump `path`'s undo cursor to the history node at `index`
     /// ([`closure_core::Document::jump_in_history`], Q2 — insertion
     /// order, the `history_view` row order), persist, and reindex.
@@ -11692,4 +11740,35 @@ where
         }
     }
     Ok(())
+}
+
+/// Decode `+` and `%XX` form encoding (the web form / journal wire).
+fn form_decode(s: &str) -> String {
+    let bytes = s.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        match bytes[i] {
+            b'+' => {
+                out.push(b' ');
+                i += 1;
+            }
+            b'%' => {
+                if let Some(h) = s.get(i + 1..i + 3)
+                    && let Ok(v) = u8::from_str_radix(h, 16)
+                {
+                    out.push(v);
+                    i += 3;
+                } else {
+                    out.push(b'%');
+                    i += 1;
+                }
+            }
+            b => {
+                out.push(b);
+                i += 1;
+            }
+        }
+    }
+    String::from_utf8_lossy(&out).into_owned()
 }

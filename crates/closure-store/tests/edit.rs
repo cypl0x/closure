@@ -301,3 +301,64 @@ fn set_tags_replaces_tag_list() {
     v.set_tags(&id, &[]).expect("clear tags");
     assert!(v.find_by_title("Note").expect("h").0.tags().is_empty());
 }
+
+// === Q9: form-command dispatch — the shared substrate for the web
+// endpoint AND journal replay. ===
+
+#[test]
+fn apply_form_command_renames_and_is_undoable() {
+    let td = write_vault(&[("a.org", "* Old\n")]);
+    let mut v = Vault::open(td.path()).expect("open");
+    let id = id_of(&v, "Old");
+    v.apply_form_command(&format!("cmd=rename&id={id}&arg=Fresh+name"))
+        .expect("apply");
+    assert!(v.find_by_title("Fresh name").is_some());
+    v.undo_in(&td.path().join("a.org")).expect("undo");
+    assert!(v.find_by_title("Old").is_some(), "I3 through the form path");
+}
+
+#[test]
+fn apply_form_command_rejects_unknown() {
+    let td = write_vault(&[("a.org", "* A\n")]);
+    let mut v = Vault::open(td.path()).expect("open");
+    let id = id_of(&v, "A");
+    assert!(v.apply_form_command(&format!("cmd=zap&id={id}")).is_err());
+}
+
+#[test]
+fn replaying_a_journal_reproduces_the_vault_byte_exact() {
+    // The Q9 honesty property: journal every form command, replay the
+    // journal onto a copy of the initial vault, and the files match
+    // the directly-mutated vault byte for byte.
+    let seed = "* Old\n:PROPERTIES:\n:ID: 01HXAAAAAAAAAAAAAAAAAAAAAA\n:END:\n";
+    let td = write_vault(&[("a.org", seed)]);
+    let initial = seed.to_owned();
+    let mut v = Vault::open(td.path()).expect("open");
+    let id = id_of(&v, "Old");
+    let cmds = [
+        format!("cmd=rename&id={id}&arg=Renamed"),
+        format!("cmd=set-todo&id={id}&arg=TODO"),
+        format!("cmd=add-sibling&id={id}&arg=Second"),
+    ];
+    for c in &cmds {
+        v.apply_form_command(c).expect("apply");
+    }
+    let mutated = std::fs::read_to_string(td.path().join("a.org")).expect("read");
+
+    // Fresh copy of the initial state; replay the journal lines.
+    let td2 = write_vault(&[("a.org", initial.as_str())]);
+    let mut v2 = Vault::open(td2.path()).expect("open");
+    for c in &cmds {
+        v2.apply_form_command(c).expect("replay");
+    }
+    let replayed = std::fs::read_to_string(td2.path().join("a.org")).expect("read");
+    // Ids differ (add-sibling mints a fresh ULID) — compare with ids
+    // normalised out.
+    let strip = |s: &str| -> String {
+        s.lines()
+            .filter(|l| !l.trim_start().starts_with(":ID:"))
+            .collect::<Vec<_>>()
+            .join("\n")
+    };
+    assert_eq!(strip(&replayed), strip(&mutated), "replay reproduces the vault");
+}

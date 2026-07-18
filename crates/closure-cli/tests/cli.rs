@@ -528,3 +528,26 @@ fn clock_reports_clocked_minutes() {
     assert!(out.contains("1:30"), "duration column: {out}");
     assert!(out.contains("Deep work"), "clocked headline: {out}");
 }
+
+#[test]
+fn history_replay_reapplies_journal_commands() {
+    let v = vault();
+    // A block with a stable on-disk id (replay addresses blocks by id).
+    let id = "01HXCCCCCCCCCCCCCCCCCCCCCC";
+    std::fs::write(
+        v.path().join("stable.org"),
+        format!("* Fixed target\n:PROPERTIES:\n:ID: {id}\n:END:\n"),
+    )
+    .unwrap();
+    std::fs::write(
+        v.path().join("journal.org"),
+        format!("* [1700000000] cmd: cmd=rename&id={id}&arg=Replayed+title\n"),
+    )
+    .unwrap();
+    let out = ok(&["history", v.path().to_str().unwrap(), "--replay", "--dry-run"]);
+    assert!(out.contains("would replay cmd"), "dry run lists: {out}");
+    let out = ok(&["history", v.path().to_str().unwrap(), "--replay"]);
+    assert!(out.contains("replayed cmd"), "{out}");
+    let after = closure_store::Vault::open(v.path()).unwrap();
+    assert!(after.find_by_title("Replayed title").is_some(), "replay applied");
+}

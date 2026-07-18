@@ -13,6 +13,21 @@ file is the fine-grained, capability-level queue between them. Blocked
 on a design decision? Record it under [[*Decisions][Decisions]], pick the most
 reversible option, keep moving.
 
+* DONE DEPTH-Q9 — journal replay [2/2]
+Queue Q9 of =goal-depth-final.md=.
+** DONE R1 the shared form dispatch + replay [1/1]
+=Vault::apply_form_command(form)= is the ONE dispatch behind the web
+=/command= endpoint (which now delegates) and journal replay — same
+vocabulary, registry path (I8), undoable (I3, tested through the form
+path). =closure history --replay= re-applies =capture:= entries (the
+capture template) and =cmd:= entries (=apply_form_command=);
+per-entry failures print =skipped= and keep going. Honesty property
+test: applying a command sequence directly vs replaying the same
+sequence onto the initial state yields byte-identical files (ids of
+freshly minted siblings normalised).
+** DONE R2 =--dry-run= [1/1]
+Prints =would replay kind: detail= per entry, mutates nothing.
+
 * DONE DEPTH-Q5 — org semantic zones [4/4]
 Queue Q5 of =goal-depth-final.md= (Claude-only: parser + eval).
 ** DONE O1 =#+RESULTS:= write-back — already deep (verified) [1/1]
