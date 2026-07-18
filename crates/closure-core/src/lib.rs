@@ -278,6 +278,38 @@ impl Document {
         Ok(())
     }
 
+    /// Jump the undo cursor to the history node at `index` (insertion
+    /// order — the same order [`Self::history_view`] rows use), by
+    /// composing the two existing primitives: [`Self::undo`] up to the
+    /// deepest common ancestor, then branch-exact [`Self::redo`] down
+    /// to the target ([`closure_undo::UndoTree::path_between`], Q2).
+    /// Jumping is cursor navigation, not an edit — no node is added
+    /// (undo-tree / vim semantics).
+    ///
+    /// # Errors
+    ///
+    /// [`UndoError::Empty`] for an unknown index;
+    /// [`UndoError::ReverseFailed`] if a step fails mid-walk.
+    pub fn jump_in_history(&mut self, index: usize) -> Result<(), UndoError> {
+        let target = self
+            .history
+            .nodes()
+            .get(index)
+            .map(|n| n.id)
+            .ok_or(UndoError::Empty)?;
+        let steps = self
+            .history
+            .path_between(self.history.current(), target)
+            .map_err(|_| UndoError::Empty)?;
+        for step in steps {
+            match step {
+                closure_undo::Step::Undo(_) => self.undo()?,
+                closure_undo::Step::Redo(id) => self.redo(Some(id))?,
+            }
+        }
+        Ok(())
+    }
+
     /// Re-apply an undone edit. Without `branch`, picks the most
     /// recently created child of the current node.
     pub fn redo(&mut self, branch: Option<UndoNodeId>) -> Result<(), UndoError> {

@@ -13,6 +13,32 @@ file is the fine-grained, capability-level queue between them. Blocked
 on a design decision? Record it under [[*Decisions][Decisions]], pick the most
 reversible option, keep moving.
 
+* DONE DEPTH-Q2 — kernel path-walking undo + node jump [3/3]
+Queue Q2 of =goal-depth-final.md= (Claude-only: I3 machinery).
+** DONE U1 =UndoTree::path_between= [1/1]
+=Step::Undo(id)/Redo(id)= plan from any position to any node: undos to
+the deepest common ancestor, branch-exact redos down. Proven by an
+exhaustive every-pair walk test — applying the plan via the two
+existing primitives lands =current()= on the target, always.
+** DONE U2 =Document::jump_in_history(index)= + =Vault::jump_history_in= [1/1]
+Executes the plan purely by composing =undo()= / =redo(Some(branch))=
+— no new mutation machinery (LISP-7 rule). Byte-exact: jumping between
+every pair of recorded nodes reproduces each state's exact source
+(tested across a branch fork). Vault wrapper persists + reindexes.
+DECISION (2026-07-18): jumping is cursor *navigation*, not an edit —
+no node is appended (vim / undo-tree.el semantics). The goal text
+suggested appending the jump; that would pollute the tree with
+navigation noise and make history_view unreadable. Trivially
+reversible by jumping back.
+** DONE U3 the UndoHistory pane is navigable [1/1]
+Pane cursor opens on the active node; =j/k= walk (clamped), =RET=
+jumps (via the vault path, persisted) and returns to Browse, =Esc/q=
+dismiss unchanged. gpui rows are click targets (=undo_history_click=,
+the Enter path) with cursor-row highlight. Closes the GPUI-UNDOTREE
+node-jump recorded gap. No new registry command: in-pane navigation
+follows the Agenda list-pane precedent (the =undo-history= command
+that opens the pane stays the I4-bound surface).
+
 * DONE DEPTH-Q1-G5 — wheel scroll inside the body editor pane [1/1]
 Queue Q1-G5 of =goal-depth-final.md= (Grok RED, Fable GREEN + wiring).
 Q1 of the close-every-gap goal is complete: G1 in-word click, G2 drag

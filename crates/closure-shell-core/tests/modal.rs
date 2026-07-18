@@ -2246,3 +2246,88 @@ fn small_body_never_scrolls() {
     app.body_scroll_by(5, 10);
     assert_eq!(app.body_scroll_start(10), 0);
 }
+
+// === Q2-U3: the UndoHistory pane is navigable; Enter jumps the tree. ===
+
+#[test]
+fn undo_history_cursor_starts_on_the_active_node() {
+    let (_d, mut sh) = shell();
+    let mut app = ModalApp::new(InputMode::Vim);
+    let id = app.rows(&sh)[0].id.clone();
+    let bid = closure_core::BlockId::from_existing(&id);
+    sh.rename_headline(&bid, "R1").expect("r1");
+    sh.rename_headline(&bid, "R2").expect("r2");
+    app.run(&mut sh, "undo-history");
+    assert_eq!(app.undo_history_rows(&sh).len(), 2);
+    assert_eq!(
+        app.undo_history_cursor(),
+        1,
+        "cursor opens on the current node (R2)"
+    );
+}
+
+#[test]
+fn undo_history_navigates_and_enter_jumps() {
+    let (_d, mut sh) = shell();
+    let mut app = ModalApp::new(InputMode::Vim);
+    let id = app.rows(&sh)[0].id.clone();
+    let bid = closure_core::BlockId::from_existing(&id);
+    sh.rename_headline(&bid, "R1").expect("r1");
+    sh.rename_headline(&bid, "R2").expect("r2");
+    app.run(&mut sh, "undo-history");
+    app.on_key(&mut sh, "k", false, false, Some('k'));
+    assert_eq!(app.undo_history_cursor(), 0);
+    app.on_key(&mut sh, "k", false, false, Some('k'));
+    assert_eq!(app.undo_history_cursor(), 0, "clamped at the first row");
+    app.on_key(&mut sh, "enter", false, false, None);
+    assert!(
+        app.rows(&sh).iter().any(|r| r.title == "R1"),
+        "jump landed on the R1 state"
+    );
+    assert!(
+        matches!(app.surface(), closure_shell_core::ModalSurface::Browse),
+        "enter returns to Browse"
+    );
+}
+
+#[test]
+fn undo_history_j_moves_down_and_dismiss_keeps_state() {
+    let (_d, mut sh) = shell();
+    let mut app = ModalApp::new(InputMode::Vim);
+    let id = app.rows(&sh)[0].id.clone();
+    let bid = closure_core::BlockId::from_existing(&id);
+    sh.rename_headline(&bid, "R1").expect("r1");
+    sh.rename_headline(&bid, "R2").expect("r2");
+    app.run(&mut sh, "undo-history");
+    app.on_key(&mut sh, "k", false, false, Some('k'));
+    app.on_key(&mut sh, "j", false, false, Some('j'));
+    assert_eq!(app.undo_history_cursor(), 1);
+    app.on_key(&mut sh, "j", false, false, Some('j'));
+    assert_eq!(app.undo_history_cursor(), 1, "clamped at the last row");
+    app.on_key(&mut sh, "q", false, false, Some('q'));
+    assert!(matches!(
+        app.surface(),
+        closure_shell_core::ModalSurface::Browse
+    ));
+    assert!(
+        app.rows(&sh).iter().any(|r| r.title == "R2"),
+        "dismiss without jumping leaves the state alone"
+    );
+}
+
+#[test]
+fn undo_history_click_jumps_like_enter() {
+    let (_d, mut sh) = shell();
+    let mut app = ModalApp::new(InputMode::Vim);
+    let id = app.rows(&sh)[0].id.clone();
+    let bid = closure_core::BlockId::from_existing(&id);
+    sh.rename_headline(&bid, "R1").expect("r1");
+    sh.rename_headline(&bid, "R2").expect("r2");
+    app.run(&mut sh, "undo-history");
+    app.undo_history_click(&mut sh, 0);
+    assert!(app.rows(&sh).iter().any(|r| r.title == "R1"));
+    assert!(matches!(
+        app.surface(),
+        closure_shell_core::ModalSurface::Browse
+    ));
+}

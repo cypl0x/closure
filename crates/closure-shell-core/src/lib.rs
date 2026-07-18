@@ -4436,6 +4436,8 @@ pub struct ModalApp {
     /// Body-editor wheel viewport `(start, cursor_line_when_set)`; the
     /// override self-clears when the cursor line changes (G5).
     body_scroll: Option<(usize, usize)>,
+    /// Cursor row inside the `UndoHistory` pane (Q2-U3).
+    hist_cursor: usize,
 }
 
 impl ModalApp {
@@ -4460,6 +4462,7 @@ impl ModalApp {
             quit: false,
             scroll_override: None,
             body_scroll: None,
+            hist_cursor: 0,
         }
     }
 
@@ -4814,12 +4817,21 @@ impl ModalApp {
             ModalSurface::Rename => self.on_field_key(shell, key, text, FieldKind::Rename),
             ModalSurface::AddSibling => self.on_field_key(shell, key, text, FieldKind::AddSibling),
             ModalSurface::Palette => self.on_palette_key(shell, key, text),
-            ModalSurface::UndoHistory => {
-                // Read-only pane: any dismiss key returns to Browse.
-                if matches!(key, "escape" | "q" | "enter") {
-                    self.surface = ModalSurface::Browse;
+            ModalSurface::UndoHistory => match key {
+                // Navigable pane (Q2-U3): j/k walk, Enter jumps the
+                // undo tree to the cursor node, Esc/q dismiss.
+                "j" | "down" => {
+                    let last = self.undo_history_rows(shell).len().saturating_sub(1);
+                    self.hist_cursor = (self.hist_cursor + 1).min(last);
                 }
-            }
+                "k" | "up" => self.hist_cursor = self.hist_cursor.saturating_sub(1),
+                "enter" => {
+                    let target = self.hist_cursor;
+                    self.jump_undo_history(shell, target);
+                }
+                "escape" | "q" => self.surface = ModalSurface::Browse,
+                _ => {}
+            },
             ModalSurface::Browse => self.on_browse_key(shell, key, ctrl, alt, text),
         }
     }
@@ -5050,6 +5062,34 @@ impl ModalApp {
                     .map(closure_core::Document::history_view)
             })
             .unwrap_or_default()
+    }
+
+    /// Cursor row inside the `UndoHistory` pane (Q2-U3).
+    #[must_use]
+    pub const fn undo_history_cursor(&self) -> usize {
+        self.hist_cursor
+    }
+
+    /// Jump the selected row's document to history node `index`
+    /// ([`closure_store::Vault::jump_history_in`] — composed undo/redo
+    /// primitives, persisted) and return to Browse.
+    fn jump_undo_history(&mut self, shell: &mut Shell, index: usize) {
+        if let Some(row) = self.rows(shell).get(self.selected).cloned() {
+            let path = std::path::PathBuf::from(&row.path);
+            match shell.vault.jump_history_in(&path, index) {
+                Ok(()) => "jumped".clone_into(&mut self.status),
+                Err(e) => self.status = format!("jump failed: {e}"),
+            }
+            self.selected = self.selected.min(self.rows(shell).len().saturating_sub(1));
+        }
+        self.surface = ModalSurface::Browse;
+    }
+
+    /// Mouse path into the `UndoHistory` pane: clicking row `i` jumps
+    /// there, exactly like Enter (Q2-U3).
+    pub fn undo_history_click(&mut self, shell: &mut Shell, i: usize) {
+        self.hist_cursor = i;
+        self.jump_undo_history(shell, i);
     }
 
     /// Re-point the selection at the row with `id` (the selection
@@ -5544,7 +5584,13 @@ impl ModalApp {
             }
             "undo-history" => {
                 self.surface = ModalSurface::UndoHistory;
-                "undo history — Esc back".clone_into(&mut self.status);
+                // The cursor opens on the active node (Q2-U3).
+                self.hist_cursor = self
+                    .undo_history_rows(shell)
+                    .iter()
+                    .position(|r| r.is_current)
+                    .unwrap_or(0);
+                "undo history — j/k move · RET jump · Esc back".clone_into(&mut self.status);
             }
             "agenda" => {
                 self.selected = 0;

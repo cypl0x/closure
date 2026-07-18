@@ -565,11 +565,17 @@ base, ours, theirs)` returns the `FieldConflict`s (title/body) both sides
   which-key panel (Q9): one column per section from
   `which_key_groups` — group title, chord-sorted clickable rows —
   while a pending chord still switches to the live completion view.
-  `g u` (`C-c u` emacs) opens the read-only UndoHistory surface
-  (Q11): the selected document's real branching undo tree
+  `g u` (`C-c u` emacs) opens the UndoHistory surface (Q11 + Q2): the
+  selected document's real branching undo tree
   (`Document::history_view` over `closure_undo::UndoTree`) rendered
-  depth-indented with the active node marked; `u`/`C-r` keep walking
-  it, node-jumping is a recorded gap. The mouse reaches the body
+  depth-indented with the active node marked. The pane is navigable —
+  `j`/`k` move its cursor (opening on the active node), Enter or a row
+  click jumps the tree there: `UndoTree::path_between` plans undos up
+  to the deepest common ancestor then branch-exact redos down, and
+  `Document::jump_in_history` executes the plan purely by composing
+  the existing `undo`/`redo` primitives (LISP-7 rule), persisted via
+  `Vault::jump_history_in`. Jumping is cursor navigation, not an edit
+  — no node is added (vim / undo-tree.el semantics). The mouse reaches the body
   editor (Q10-D2): click places the cursor (`body_click`, clamped,
   session-ending, mode-preserving), double click selects the word
   (`body_double_click` → charwise VISUAL); the pane's non-caret lines

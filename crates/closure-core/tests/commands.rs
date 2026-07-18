@@ -332,3 +332,81 @@ fn move_subtree_undo_restores_position() {
     let titles_back: Vec<&str> = doc.roots().iter().map(|h| h.title()).collect();
     assert_eq!(titles_back, vec!["A", "B", "C"]);
 }
+
+// === U2: jump to any undo-tree node by composing undo/redo (Q2). ===
+
+#[test]
+fn jump_in_history_walks_across_branches() {
+    let mut doc = Document::load_str("* Old\n").expect("load");
+    let id = doc.roots()[0].id().clone();
+    closure_core::Command::apply(&RenameHeadline::new(id.clone(), "A".into()), &mut doc)
+        .expect("apply A");
+    closure_core::Command::apply(&RenameHeadline::new(id.clone(), "B".into()), &mut doc)
+        .expect("apply B");
+    let src_b = doc.source();
+    doc.undo().expect("undo B");
+    closure_core::Command::apply(&RenameHeadline::new(id.clone(), "C".into()), &mut doc)
+        .expect("apply C");
+    let src_c = doc.source();
+    // Insertion order of history nodes: 0 = A, 1 = B, 2 = C.
+    doc.jump_in_history(1).expect("jump to B");
+    assert_eq!(doc.source(), src_b, "byte-exact at B");
+    assert!(doc.history_view()[1].is_current, "cursor on B");
+    doc.jump_in_history(2).expect("jump back to C");
+    assert_eq!(doc.source(), src_c, "byte-exact at C");
+    doc.jump_in_history(0).expect("jump to A");
+    assert_eq!(
+        doc.headline_by_id(&id).expect("headline").title(),
+        "A",
+        "state rolled to the fork node"
+    );
+}
+
+#[test]
+fn jump_to_the_current_node_is_a_noop() {
+    let mut doc = Document::load_str("* Old\n").expect("load");
+    let id = doc.roots()[0].id().clone();
+    closure_core::Command::apply(&RenameHeadline::new(id, "A".into()), &mut doc)
+        .expect("apply");
+    let before = doc.source();
+    doc.jump_in_history(0).expect("noop jump");
+    assert_eq!(doc.source(), before);
+    assert!(doc.history_view()[0].is_current);
+}
+
+#[test]
+fn jump_to_an_unknown_index_errors_and_changes_nothing() {
+    let mut doc = Document::load_str("* Old\n").expect("load");
+    let id = doc.roots()[0].id().clone();
+    closure_core::Command::apply(&RenameHeadline::new(id, "A".into()), &mut doc)
+        .expect("apply");
+    let before = doc.source();
+    assert!(doc.jump_in_history(99).is_err());
+    assert_eq!(doc.source(), before, "failed jump leaves the doc intact");
+}
+
+#[test]
+fn jump_reproduces_every_recorded_state_byte_exact() {
+    let mut doc = Document::load_str("* Old\n").expect("load");
+    let id = doc.roots()[0].id().clone();
+    let mut sources: Vec<String> = Vec::new();
+    for title in ["A", "B", "D"] {
+        closure_core::Command::apply(&RenameHeadline::new(id.clone(), (*title).into()), &mut doc)
+            .expect("apply");
+        sources.push(doc.source());
+    }
+    doc.undo().expect("undo");
+    doc.undo().expect("undo");
+    closure_core::Command::apply(&RenameHeadline::new(id, "C".into()), &mut doc)
+        .expect("apply branch");
+    sources.push(doc.source());
+    // nodes in insertion order: A, B, D, C — jump every pair, compare.
+    for from in 0..4 {
+        for to in 0..4 {
+            doc.jump_in_history(from).expect("from");
+            assert_eq!(doc.source(), sources[from], "at {from}");
+            doc.jump_in_history(to).expect("to");
+            assert_eq!(doc.source(), sources[to], "at {to} from {from}");
+        }
+    }
+}

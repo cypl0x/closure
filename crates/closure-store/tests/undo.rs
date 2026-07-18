@@ -89,3 +89,36 @@ fn undo_keeps_vault_and_disk_in_sync() {
     let mem = v.document(&file(&td)).expect("doc").source();
     assert_eq!(mem, disk);
 }
+
+// === U2b: jump to any history node, persisted to disk (Q2). ===
+
+#[test]
+fn jump_history_walks_branches_and_persists() {
+    let td = write_vault(&[("a.org", "* Old\n")]);
+    let mut v = Vault::open(td.path()).expect("open");
+    let id = id_of(&v, "Old");
+    v.rename_headline(&id, "A").expect("A");
+    v.rename_headline(&id, "B").expect("B");
+    v.undo_in(&file(&td)).expect("undo B");
+    v.rename_headline(&id, "C").expect("C");
+    // history nodes: 0 = A, 1 = B, 2 = C (C branches from A).
+    v.jump_history_in(&file(&td), 1).expect("jump to B");
+    let on_disk = fs::read_to_string(file(&td)).expect("read");
+    assert!(on_disk.contains("* B"), "disk shows B: {on_disk}");
+    v.jump_history_in(&file(&td), 2).expect("jump to C");
+    let on_disk = fs::read_to_string(file(&td)).expect("read");
+    assert!(on_disk.contains("* C"), "disk shows C: {on_disk}");
+}
+
+#[test]
+fn jump_history_bad_args_error() {
+    let td = write_vault(&[("a.org", "* Old\n")]);
+    let mut v = Vault::open(td.path()).expect("open");
+    let id = id_of(&v, "Old");
+    v.rename_headline(&id, "A").expect("A");
+    assert!(v.jump_history_in(&file(&td), 9).is_err(), "bad index");
+    assert!(
+        v.jump_history_in(&PathBuf::from("/nope.org"), 0).is_err(),
+        "unknown path"
+    );
+}

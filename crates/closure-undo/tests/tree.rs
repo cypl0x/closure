@@ -119,3 +119,117 @@ fn path_to_walks_from_root() {
     let path = t.path_to(b);
     assert_eq!(path, vec![a, b]);
 }
+
+// === U1: path_between — the step plan for jumping to any node. ===
+
+use closure_undo::Step;
+
+#[test]
+fn path_between_same_position_is_empty() {
+    let mut t: UndoTree<i32> = UndoTree::new();
+    let a = t.apply(1);
+    assert_eq!(t.path_between(Some(a), a).expect("path"), vec![]);
+}
+
+#[test]
+fn path_between_ancestor_to_descendant_is_redos_only() {
+    let mut t: UndoTree<i32> = UndoTree::new();
+    let a = t.apply(1);
+    let b = t.apply(2);
+    let c = t.apply(3);
+    assert_eq!(
+        t.path_between(Some(a), c).expect("path"),
+        vec![Step::Redo(b), Step::Redo(c)]
+    );
+}
+
+#[test]
+fn path_between_descendant_to_ancestor_is_undos_only() {
+    let mut t: UndoTree<i32> = UndoTree::new();
+    let a = t.apply(1);
+    let b = t.apply(2);
+    let c = t.apply(3);
+    assert_eq!(
+        t.path_between(Some(c), a).expect("path"),
+        vec![Step::Undo(c), Step::Undo(b)]
+    );
+}
+
+#[test]
+fn path_between_branches_undoes_to_the_fork_then_redoes() {
+    let mut tree: UndoTree<&'static str> = UndoTree::new();
+    let _na = tree.apply("a");
+    let nb = tree.apply("b");
+    tree.undo().unwrap();
+    let nc = tree.apply("c");
+    let nd = tree.apply("d");
+    // From d (a → c → d) to b (a → b): undo d, undo c, redo b.
+    assert_eq!(
+        tree.path_between(Some(nd), nb).expect("path"),
+        vec![Step::Undo(nd), Step::Undo(nc), Step::Redo(nb)]
+    );
+}
+
+#[test]
+fn path_between_from_the_root_position_is_redos() {
+    let mut t: UndoTree<i32> = UndoTree::new();
+    let a = t.apply(1);
+    let b = t.apply(2);
+    assert_eq!(
+        t.path_between(None, b).expect("path"),
+        vec![Step::Redo(a), Step::Redo(b)]
+    );
+}
+
+#[test]
+fn path_between_unknown_target_errors() {
+    let mut t: UndoTree<i32> = UndoTree::new();
+    let a = t.apply(1);
+    let mut other: UndoTree<i32> = UndoTree::new();
+    let foreign = other.apply(9);
+    assert!(t.path_between(Some(a), foreign).is_err());
+}
+
+#[test]
+fn walking_the_steps_lands_the_cursor_on_the_target() {
+    // The composition contract: applying the plan via undo()/redo(branch)
+    // moves current() exactly to the target, on every node pair.
+    let mut tree: UndoTree<i32> = UndoTree::new();
+    let na = tree.apply(1);
+    let nb = tree.apply(2);
+    tree.undo().unwrap();
+    let nc = tree.apply(3);
+    tree.undo().unwrap();
+    tree.undo().unwrap();
+    let nd = tree.apply(4);
+    let all = [na, nb, nc, nd];
+    for &from in &all {
+        for &to in &all {
+            // position the cursor at `from` first (walk from wherever we are)
+            let pre = tree.path_between(tree.current(), from).expect("pre");
+            for step in pre {
+                match step {
+                    Step::Undo(_) => {
+                        tree.undo().expect("undo");
+                    }
+                    Step::Redo(id) => {
+                        tree.redo(Some(id)).expect("redo");
+                    }
+                }
+            }
+            assert_eq!(tree.current(), Some(from), "cursor parked at from");
+            let plan = tree.path_between(Some(from), to).expect("plan");
+            for step in plan {
+                match step {
+                    Step::Undo(_) => {
+                        tree.undo().expect("undo");
+                    }
+                    Step::Redo(id) => {
+                        tree.redo(Some(id)).expect("redo");
+                    }
+                }
+            }
+            assert_eq!(tree.current(), Some(to), "cursor landed on to");
+        }
+    }
+}

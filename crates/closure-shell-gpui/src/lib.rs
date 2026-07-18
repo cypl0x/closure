@@ -481,7 +481,9 @@ impl GpuiView {
             ModalSurface::Backlinks => "backlinks — Esc back".to_owned(),
             ModalSurface::Agenda => "agenda — RET jump, Esc back".to_owned(),
             ModalSurface::Blocks => "src blocks — RET jump, Esc back".to_owned(),
-            ModalSurface::UndoHistory => "undo history — Esc back".to_owned(),
+            ModalSurface::UndoHistory => {
+                "undo history — j/k move · RET/click jump · Esc back".to_owned()
+            }
         }
     }
 
@@ -636,15 +638,26 @@ impl GpuiView {
         match self.app.surface() {
             ModalSurface::Palette => pane.child(self.palette_pane(co, cx)),
             ModalSurface::Agenda => pane.child(self.agenda_pane(co, cx)),
-            ModalSurface::UndoHistory => pane.children(
-                self.app
-                    .undo_history_rows(&self.shell)
-                    .into_iter()
-                    .map(|r| {
+            ModalSurface::UndoHistory => {
+                // Q2-U3: rows are click targets (jump = the Enter path)
+                // and the pane cursor row is highlighted.
+                let cursor = self.app.undo_history_cursor();
+                pane.children(self.app.undo_history_rows(&self.shell).into_iter().enumerate().map(
+                    |(i, r)| {
                         div()
                             .flex()
                             .px_2()
                             .py_1()
+                            .cursor_pointer()
+                            .bg(rgb(if i == cursor { co.selection } else { co.bg }))
+                            .hover(move |s| s.bg(rgb(co.hover)))
+                            .on_mouse_down(
+                                MouseButton::Left,
+                                cx.listener(move |this, _ev, _w, cx| {
+                                    this.app.undo_history_click(&mut this.shell, i);
+                                    cx.notify();
+                                }),
+                            )
                             .child(
                                 div()
                                     .w(px(f32::from(u16::try_from(r.depth).unwrap_or(u16::MAX))
@@ -664,8 +677,9 @@ impl GpuiView {
                                         r.label
                                     )),
                             )
-                    }),
-            ),
+                    },
+                ))
+            }
             ModalSurface::Blocks => pane.children(
                 self.app
                     .block_rows(&self.shell)

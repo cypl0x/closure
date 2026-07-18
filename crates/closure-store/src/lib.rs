@@ -887,6 +887,25 @@ impl Vault {
         Ok(())
     }
 
+    /// Jump `path`'s undo cursor to the history node at `index`
+    /// ([`closure_core::Document::jump_in_history`], Q2 — insertion
+    /// order, the `history_view` row order), persist, and reindex.
+    ///
+    /// # Errors
+    ///
+    /// Same contract as [`Self::undo_in`].
+    pub fn jump_history_in(&mut self, path: &Path, index: usize) -> Result<(), VaultError> {
+        let doc = self
+            .documents
+            .get_mut(path)
+            .ok_or_else(|| VaultError::UnknownId(path.display().to_string()))?;
+        doc.jump_in_history(index)
+            .map_err(|e| VaultError::Undo(e.to_string()))?;
+        fs::write(path, doc.source())?;
+        self.reindex_file(path);
+        Ok(())
+    }
+
     /// Re-apply the most recently undone edit in `path`'s document,
     /// persist, and reindex.
     ///

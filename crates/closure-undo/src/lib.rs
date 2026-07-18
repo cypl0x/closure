@@ -31,6 +31,21 @@ pub struct UndoNode<T> {
     pub payload: T,
 }
 
+/// One move of a cursor walk produced by [`UndoTree::path_between`].
+///
+/// `Undo(id)` reverses node `id`'s payload and steps to its parent;
+/// `Redo(id)` replays node `id`'s payload and steps onto it. Applying
+/// the steps in order via [`UndoTree::undo`] / [`UndoTree::redo`]
+/// (with the carried id as the branch) lands the cursor on the target
+/// — jumping reduces to the two existing primitives (the LISP-7 rule).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Step {
+    /// Reverse this node's payload and move to its parent.
+    Undo(NodeId),
+    /// Replay this node's payload and move onto it.
+    Redo(NodeId),
+}
+
 /// Undo-tree errors.
 #[derive(Debug, Error)]
 pub enum UndoError {
@@ -193,6 +208,38 @@ impl<T> UndoTree<T> {
     pub fn clear(&mut self) {
         self.nodes.clear();
         self.current = None;
+    }
+
+    /// The step plan from position `from` (`None` = the pre-edit root
+    /// position) to node `to`: undos up to the deepest common
+    /// ancestor, then branch-exact redos down to the target (U1).
+    ///
+    /// # Errors
+    ///
+    /// [`UndoError::NotFound`] when `from` or `to` is not a node of
+    /// this tree.
+    pub fn path_between(&self, from: Option<NodeId>, to: NodeId) -> Result<Vec<Step>, UndoError> {
+        if self.node(to).is_none() {
+            return Err(UndoError::NotFound);
+        }
+        let up: Vec<NodeId> = match from {
+            None => Vec::new(),
+            Some(f) => {
+                if self.node(f).is_none() {
+                    return Err(UndoError::NotFound);
+                }
+                self.path_to(f)
+            }
+        };
+        let down = self.path_to(to);
+        let common = up
+            .iter()
+            .zip(down.iter())
+            .take_while(|(a, b)| a == b)
+            .count();
+        let mut steps: Vec<Step> = up[common..].iter().rev().map(|&id| Step::Undo(id)).collect();
+        steps.extend(down[common..].iter().map(|&id| Step::Redo(id)));
+        Ok(steps)
     }
 
     /// Path of [`NodeId`]s from the root to `id`.
