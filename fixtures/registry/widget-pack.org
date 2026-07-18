@@ -1,0 +1,9 @@
+* widget-pack
+A composable widget bundle: banner + agenda summary blocks.
+
+#+BEGIN_SRC closure-package
+name = widget-pack
+version = 1.0.0
+command = insert-banner
+command = insert-agenda-summary
+#+END_SRC

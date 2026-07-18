@@ -1,0 +1,11 @@
+* capture-pack
+Capture templates: inbox TODO, meeting note, daily journal.
+
+#+BEGIN_SRC closure-package
+name = capture-pack
+version = 0.9.2
+dep = widget-pack >=1.0.0
+dep = formula-pack >=1.1.0
+command = capture-meeting
+command = capture-daily
+#+END_SRC

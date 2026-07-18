@@ -19,6 +19,7 @@ default = []
 wasmtime = ["dep:wasmtime"]
 
 [dependencies]
+blake3 = "1"
 closure-core = { path = "../closure-core" }
 thiserror.workspace = true
 wasmtime = { version = "45", optional = true, default-features = false, features = [

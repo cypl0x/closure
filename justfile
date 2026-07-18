@@ -164,3 +164,7 @@ ci: check fuzz wasm coverage
 # Ollama daemon; skips gracefully when absent. Never part of `check`.
 llm-live:
     CLOSURE_LLM_LIVE=1 cargo test -p closure-llm --test live -- --nocapture
+
+# Q8-P2 gate: network-registry fetch tests (loopback server + curl).
+pkg-net:
+    cargo test -p closure-plugin-host --test net_registry -- --nocapture

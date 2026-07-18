@@ -13,6 +13,25 @@ file is the fine-grained, capability-level queue between them. Blocked
 on a design decision? Record it under [[*Decisions][Decisions]], pick the most
 reversible option, keep moving.
 
+* DONE DEPTH-Q8 — the package ecosystem made real [3/3]
+Queue Q8 of =goal-depth-final.md=.
+** DONE P1 lockfile hashes upgrade to BLAKE3 [1/1]
+=content_hash= = =b3:<hex256>= (pure-Rust =blake3=, hermetic — the
+=Cid= tier): a tampered package provably cannot reuse its pin.
+Lockfile format v2; old =fnv1a:= pins re-resolve (the hash column was
+always opaque to the parser, so no migration code).
+** DONE P2 network registry fetch [1/1]
+=fetch_package(url, dest)=: curl shell-out (the =SystemClipboard=
+pattern — hermetic build, runtime tool), validates the payload
+carries a =closure-package= block and removes rejected files.
+Loopback-server tested (skips gracefully without curl); =just
+pkg-net= is the explicit gate.
+** DONE P3 three real example packages [1/1]
+=fixtures/registry/=: widget-pack, formula-pack (dep on widget),
+capture-pack (deps on both) — loadable by =load_packages=, transitive
+=resolve= end-to-end with =b3:= pins; doubles as the resolver's
+golden corpus.
+
 * DONE DEPTH-Q7 — the LLM live tier finished [3/3]
 Queue Q7 of =goal-depth-final.md=.
 ** DONE L1 the model is a real parameter [1/1]

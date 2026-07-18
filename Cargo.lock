@@ -1425,6 +1425,7 @@ dependencies = [
 name = "closure-plugin-host"
 version = "0.0.0"
 dependencies = [
+ "blake3",
  "closure-core",
  "tempfile",
  "thiserror 2.0.18",

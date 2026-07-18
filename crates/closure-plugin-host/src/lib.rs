@@ -229,6 +229,36 @@ pub fn extract_package_block(src: &str) -> Option<&str> {
 /// `*.org` file containing a `closure-package` block contributes one
 /// package, keyed by name. Files without a block are skipped.
 ///
+/// Fetch one registry `*.org` package file from a URL into `dest`
+/// (Q8-P2). Shells out to the platform `curl` — the `SystemClipboard`
+/// pattern: the build stays hermetic and dependency-free (I10), only
+/// the runtime needs the tool. `just pkg-net` is the explicit gate.
+///
+/// # Errors
+///
+/// [`PluginError::Package`] when curl is missing, the fetch fails, or
+/// the fetched file carries no `closure-package` block (rejected and
+/// removed — a registry can only hand us package text).
+pub fn fetch_package(url: &str, dest: &std::path::Path) -> Result<(), PluginError> {
+    let status = std::process::Command::new("curl")
+        .args(["-fsSL", url, "-o"])
+        .arg(dest)
+        .status()
+        .map_err(|e| PluginError::Package(format!("curl: {e}")))?;
+    if !status.success() {
+        return Err(PluginError::Package(format!("fetch failed: {url}")));
+    }
+    let text = std::fs::read_to_string(dest)
+        .map_err(|e| PluginError::Package(format!("read {}: {e}", dest.display())))?;
+    if extract_package_block(&text).is_none() {
+        let _ = std::fs::remove_file(dest);
+        return Err(PluginError::Package(format!(
+            "{url} carries no closure-package block"
+        )));
+    }
+    Ok(())
+}
+
 /// # Errors
 ///
 /// [`PluginError::Package`] if the directory cannot be read or a package
@@ -375,15 +405,12 @@ fn version_satisfies(req: &str, version: &str) -> bool {
     )
 }
 
-/// FNV-1a content hash (dep-free, hermetic), matching the vault's index
-/// hashing style.
+/// BLAKE3 content hash (Q8-P1): cryptographic, so a tampered package
+/// provably cannot reuse its lockfile pin — the same tier as the
+/// content-address store's `Cid` (pure-Rust `blake3`, hermetic).
+/// Lockfile format v2; pre-Q8 `fnv1a:` pins simply re-resolve.
 fn content_hash(s: &str) -> String {
-    let mut h: u64 = 0xcbf2_9ce4_8422_2325;
-    for b in s.bytes() {
-        h ^= u64::from(b);
-        h = h.wrapping_mul(0x0000_0100_0000_01b3);
-    }
-    format!("fnv1a:{h:016x}")
+    format!("b3:{}", blake3::hash(s.as_bytes()).to_hex())
 }
 
 /// Resolve `root`'s transitive dependencies over a local package set

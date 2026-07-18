@@ -1,0 +1,10 @@
+* formula-pack
+Coda-style formula helpers for database views.
+
+#+BEGIN_SRC closure-package
+name = formula-pack
+version = 1.1.0
+dep = widget-pack >=1.0.0
+command = sum-column
+command = rollup
+#+END_SRC
