@@ -729,9 +729,17 @@ impl GpuiView {
                 "conflicts — {} pending · o ours · t theirs · Esc back",
                 self.app.conflicts().conflicts().len()
             ),
+            ModalSurface::Sync => format!(
+                "sync — {} peer(s) · Enter adds a pasted ticket · Esc back",
+                self.app.sync().map_or(0, |s| s.peers().len())
+            ),
             ModalSurface::Ex => format!(
                 ":{}▏  — :w :q :wq :x, or any command name",
                 self.app.ex_buffer()
+            ),
+            ModalSurface::EditBlock => format!(
+                "⌗ edit-special [{}] — C-Enter write back, Esc discard",
+                self.app.special_language()
             ),
         }
     }
@@ -968,6 +976,7 @@ impl GpuiView {
                     cx,
                 ),
             ),
+            ModalSurface::Sync => pane.child(self.sync_pane(co, cx)),
             ModalSurface::Sniffer => pane.child(self.sniffer_pane(co, cx)),
             ModalSurface::Conflicts => pane.child(self.conflicts_pane(co, cx)),
             ModalSurface::UndoHistory => pane.children(self.undo_history_pane(co, cx)),
@@ -989,7 +998,11 @@ impl GpuiView {
                         )
                     }),
             ),
-            ModalSurface::EditBody => pane.child(self.editor_pane(co, cx)),
+            // org-edit-special is the same editor with one block in it,
+            // so it paints the same way; the header says which.
+            ModalSurface::EditBody | ModalSurface::EditBlock => {
+                pane.child(self.editor_pane(co, cx))
+            }
             _ => self.detail_pane(pane, co, cx),
         }
     }
@@ -1469,6 +1482,199 @@ impl GpuiView {
             );
         }
         pane
+    }
+
+    /// Pairing and collaboration.
+    ///
+    /// Explains itself, because nothing else does: two people each
+    /// open this, one hands over the line under "your ticket", the
+    /// other pastes it and presses Enter, and either side can then run
+    /// a round. Divergent titles land in the Conflicts surface rather
+    /// than being resolved silently.
+    fn sync_pane(&self, co: Colors, cx: &Context<Self>) -> gpui::Div {
+        // The `sync` command initialises this before switching here,
+        // so the None arm only fires if someone paints the surface
+        // without opening it.
+        let Some(sync) = self.app.sync() else {
+            return div()
+                .text_color(rgb(co.muted))
+                .child("sync is not initialised — run the sync command".to_owned());
+        };
+        let ticket = sync.ticket();
+        let peers = sync.peers().to_vec();
+        let blocks = sync.block_count();
+        let typed = self.app.sync_buffer().to_owned();
+        div()
+            .flex()
+            .flex_col()
+            .gap_2()
+            .child(
+                div().text_size(px(11.0)).text_color(rgb(co.muted)).child(
+                    "Give the other person your ticket. Paste theirs below and press Enter. \
+                         Then ▲ push to send them your replica; conflicting titles appear under \
+                         Conflicts instead of one side winning silently."
+                        .to_owned(),
+                ),
+            )
+            .child(
+                div()
+                    .text_size(px(10.0))
+                    .text_color(rgb(co.heading2))
+                    .child("your ticket — hand this over"),
+            )
+            // Selectable-looking, and a click copies it to the kill ring.
+            .child(
+                div()
+                    .p_2()
+                    .rounded_md()
+                    .bg(rgb(co.panel))
+                    .border_1()
+                    .border_color(rgb(co.border))
+                    .text_size(px(11.0))
+                    .text_color(rgb(co.success))
+                    .cursor_pointer()
+                    .hover(move |s| s.bg(rgb(co.hover)))
+                    .on_mouse_down(
+                        MouseButton::Left,
+                        cx.listener(|this: &mut Self, _ev, _w, cx| {
+                            let ticket = this.app.sync_mut().ticket();
+                            this.shell.vault.push_kill_ring(ticket);
+                            this.app
+                                .set_status("ticket copied to the kill ring".to_owned());
+                            cx.notify();
+                        }),
+                    )
+                    .child(ticket),
+            )
+            .child(
+                div()
+                    .text_size(px(10.0))
+                    .text_color(rgb(co.heading2))
+                    .child("their ticket — type or paste, then Enter"),
+            )
+            .child(
+                div()
+                    .p_2()
+                    .rounded_md()
+                    .bg(rgb(co.bg))
+                    .border_1()
+                    .border_color(rgb(co.accent))
+                    .text_size(px(11.0))
+                    .text_color(rgb(co.fg))
+                    .child(format!("{typed}▏")),
+            )
+            .child(
+                div()
+                    .text_size(px(10.0))
+                    .text_color(rgb(co.muted))
+                    .child(format!("replica: {blocks} block(s) known")),
+            )
+            .children(peers.into_iter().map(|peer| Self::peer_row(co, &peer, cx)))
+    }
+
+    /// One peer: a push button, its address, and what the last round
+    /// with it did.
+    fn peer_row(co: Colors, peer: &closure_shell_core::Peer, cx: &Context<Self>) -> gpui::Div {
+        use closure_shell_core::PeerState as S;
+        let (colour, state) = match &peer.state {
+            S::Known => (co.muted, "known".to_owned()),
+            S::Synced { blocks } => (co.success, format!("synced · {blocks} blocks")),
+            S::Failed(e) => (co.error, format!("failed · {e}")),
+        };
+        let addr = peer.addr;
+        div()
+            .flex()
+            .items_center()
+            .gap_2()
+            .px_2()
+            .py_1()
+            .rounded_sm()
+            .bg(rgb(co.panel))
+            .child(
+                div()
+                    .px_2()
+                    .rounded_md()
+                    .text_size(px(11.0))
+                    .text_color(rgb(co.accent))
+                    .cursor_pointer()
+                    .hover(move |s| s.bg(rgb(co.hover)))
+                    .on_mouse_down(
+                        MouseButton::Left,
+                        cx.listener(move |this: &mut Self, _ev, _w, cx| {
+                            this.push_to_peer(addr, cx);
+                        }),
+                    )
+                    .child("▲ push"),
+            )
+            .child(
+                div()
+                    .w(px(160.0))
+                    .text_size(px(11.0))
+                    .text_color(rgb(co.fg))
+                    .child(addr.to_string()),
+            )
+            .child(
+                div()
+                    .text_size(px(11.0))
+                    .text_color(rgb(colour))
+                    .child(state),
+            )
+    }
+
+    /// Dial `addr` and exchange replicas.
+    ///
+    /// Blocking sockets on the UI thread would freeze the window, so
+    /// the round runs on the background executor and only its outcome
+    /// comes back — which is also why `SyncApp` keeps the networking
+    /// out of the core.
+    fn push_to_peer(&mut self, addr: std::net::SocketAddr, cx: &mut Context<Self>) {
+        self.app.sync_mut().snapshot(&self.shell);
+        let sync = self.app.sync_mut();
+        let mut session = sync.session().clone();
+        let signing = sync.signing_key().clone();
+        let trusted = sync.trusted_keys();
+        self.app.set_status(format!("connecting to {addr}…"));
+        cx.spawn(async move |this, cx| {
+            let outcome = cx
+                .background_executor()
+                .spawn(async move {
+                    closure_sync::TcpSyncTransport::connect_and_sync_secure(
+                        addr,
+                        &mut session,
+                        &signing,
+                        &trusted,
+                    )
+                    .map(|()| session)
+                    .map_err(|e| format!("{e}"))
+                })
+                .await;
+            let _ = this.update(cx, |this, cx| {
+                match outcome {
+                    Ok(session) => {
+                        let conflicts = this.app.sync_mut().merge_session(&session);
+                        let blocks = this.app.sync_mut().block_count();
+                        this.app.sync_mut().record_outcome(addr, Ok(blocks));
+                        if conflicts.is_empty() {
+                            this.app
+                                .set_status(format!("synced with {addr} — {blocks} block(s)"));
+                        } else {
+                            let n = conflicts.len();
+                            this.app.set_conflicts(conflicts);
+                            this.app.set_status(format!(
+                                "synced with {addr} — {n} conflict(s) to resolve (g m)"
+                            ));
+                        }
+                    }
+                    Err(e) => {
+                        this.app.sync_mut().record_outcome(addr, Err(e.clone()));
+                        this.app.set_status(format!("sync failed: {e}"));
+                    }
+                }
+                cx.notify();
+            });
+        })
+        .detach();
+        cx.notify();
     }
 
     /// Captured network flows with their verdict, and the allow/block
@@ -1996,6 +2202,72 @@ impl GpuiView {
             .child(scrollbar(co, &self.which_key_scroll.clone(), cx))
     }
 
+    /// The status line: the message on the left, the subsystem
+    /// indicators bottom-right, VS Code style.
+    ///
+    /// Each indicator reports live state, is a click target for the
+    /// surface it belongs to, and carries the chord that opens it —
+    /// which is also how you find out that a sniffer, an LLM gate and
+    /// a conflict resolver exist at all.
+    fn status_bar(&self, co: Colors, cx: &Context<Self>) -> gpui::Div {
+        use closure_shell_core::IndicatorLevel as L;
+        div()
+            .flex()
+            .items_center()
+            .gap_2()
+            .px_3()
+            .py_1()
+            .bg(rgb(co.panel))
+            .text_size(px(11.0))
+            .child(
+                div()
+                    .flex_grow()
+                    .overflow_hidden()
+                    .text_color(rgb(co.muted))
+                    .child(self.app.status().to_owned()),
+            )
+            .children(self.app.indicators(&self.shell).into_iter().map(|item| {
+                let colour = match item.level {
+                    L::Idle => co.muted,
+                    L::Active => co.accent,
+                    L::Warn => co.warning,
+                };
+                let mut chip = div()
+                    .px_2()
+                    .rounded_md()
+                    .text_color(rgb(colour))
+                    .child(item.label);
+                if let Some(command) = item.command {
+                    chip = chip
+                        .cursor_pointer()
+                        .hover(move |s| s.bg(rgb(co.hover)))
+                        .on_mouse_down(
+                            MouseButton::Left,
+                            cx.listener(move |this: &mut Self, _ev, _w, cx| {
+                                this.click(command, cx);
+                            }),
+                        )
+                        // Hovering explains what it is; the tooltip is
+                        // the only place there is room to say it.
+                        .on_mouse_move(cx.listener({
+                            let tooltip = item.tooltip.clone();
+                            let chord = item.chord;
+                            move |this: &mut Self, _ev: &gpui::MouseMoveEvent, _w, cx| {
+                                let hint = chord.map_or_else(
+                                    || tooltip.clone(),
+                                    |c| format!("{tooltip}  [{c}]"),
+                                );
+                                if this.app.status() != hint {
+                                    this.app.set_status(hint);
+                                    cx.notify();
+                                }
+                            }
+                        }));
+                }
+                chip
+            }))
+    }
+
     /// Toast strip: the newest three feedback items, severity-coloured.
     fn toast_strip(&self, co: Colors) -> gpui::Div {
         use closure_shell_core::FeedbackKind as K;
@@ -2404,13 +2676,7 @@ impl Render for GpuiView {
             .child(self.rows_pane(co, cx))
             .child(self.side_pane(co, cx));
 
-        let status = div()
-            .px_3()
-            .py_1()
-            .bg(rgb(co.panel))
-            .text_color(rgb(co.muted))
-            .text_size(px(11.0))
-            .child(self.app.status().to_owned());
+        let status = self.status_bar(co, cx);
 
         let toasts = self.toast_strip(co);
 

@@ -15,6 +15,16 @@ use thiserror::Error;
 
 pub use ed25519_dalek::{SigningKey, VerifyingKey};
 
+/// A fresh signing identity from OS entropy.
+///
+/// Key generation lives here rather than in a shell because this crate
+/// already owns the crypto: one place decides what a closure identity
+/// is made of, and shells never touch an RNG.
+#[must_use]
+pub fn generate_key() -> SigningKey {
+    SigningKey::generate(&mut rand_core::OsRng)
+}
+
 /// A content identifier (V5a): a stable, dep-free address for a blob,
 /// derived from its bytes. Identical content always yields an equal
 /// `Cid` (dedup + verify-on-read); textual form is deterministic (I6).
@@ -958,7 +968,11 @@ impl Presence {
         }
         let mut pos = 5usize;
         let mut take_str = |bytes: &[u8]| -> Result<String, SyncError> {
-            let len_bytes: [u8; 4] = bytes.get(pos..pos + 4).ok_or_else(bad)?.try_into().map_err(|_| bad())?;
+            let len_bytes: [u8; 4] = bytes
+                .get(pos..pos + 4)
+                .ok_or_else(bad)?
+                .try_into()
+                .map_err(|_| bad())?;
             let len = u32::from_le_bytes(len_bytes) as usize;
             pos += 4;
             let s = bytes.get(pos..pos + len).ok_or_else(bad)?;
@@ -967,7 +981,11 @@ impl Presence {
         };
         let peer = take_str(bytes)?;
         let block = take_str(bytes)?;
-        let line_bytes: [u8; 4] = bytes.get(pos..pos + 4).ok_or_else(bad)?.try_into().map_err(|_| bad())?;
+        let line_bytes: [u8; 4] = bytes
+            .get(pos..pos + 4)
+            .ok_or_else(bad)?
+            .try_into()
+            .map_err(|_| bad())?;
         Ok(Self {
             peer,
             block,

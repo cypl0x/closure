@@ -18,7 +18,11 @@ closure-crdt = { path = "../closure-crdt" }
 thiserror.workspace = true
 # Pure-Rust ed25519 (no C, no build-time network) for signing sync
 # frames (C3a). Hermetic — keeps I10. `rand_core` for keygen.
-ed25519-dalek = "2"
+ed25519-dalek = { version = "2", features = ["rand_core"] }
+# OS entropy for `generate_key`. Pure Rust + syscalls, no C, no network
+# — keeps the hermetic build (I10). Version pinned to the one
+# ed25519-dalek 2 speaks.
+rand_core = { version = "0.6", features = ["getrandom"] }
 # Pure-Rust Noise protocol (default-resolver: chacha20poly1305 + x25519
 # + blake2, no C, no async runtime) for encrypting the transport (C3b).
 snow = "0.9"

@@ -2378,6 +2378,38 @@ pub fn serialize_palette(sections: &[PaletteSection]) -> String {
     out
 }
 
+/// The byte range of the source-block *content* enclosing `at`, and
+/// the block's language — the org-edit-special lookup.
+///
+/// `at` may sit anywhere in the block including on either fence line,
+/// because point-on-`#+BEGIN_SRC` is how the command is usually
+/// reached. The returned range covers the lines between the fences and
+/// nothing else, so it can be replaced wholesale without disturbing
+/// them. An unterminated block is not a block: a half-typed fence must
+/// not swallow the rest of the buffer.
+#[must_use]
+pub fn enclosing_src_block(text: &str, at: usize) -> Option<(std::ops::Range<usize>, String)> {
+    if at > text.len() {
+        return None;
+    }
+    let mut open: Option<(usize, usize, String)> = None; // (fence start, content start, lang)
+    let mut offset = 0usize;
+    for line in text.split_inclusive('\n') {
+        let lower = line.trim_start().to_ascii_lowercase();
+        if let Some(rest) = lower.strip_prefix("#+begin_src") {
+            let lang = rest.split_whitespace().next().unwrap_or("").to_owned();
+            open = Some((offset, offset + line.len(), lang));
+        } else if lower.starts_with("#+end_src")
+            && let Some((fence_start, content_start, lang)) = open.take()
+            && (fence_start..offset + line.len()).contains(&at)
+        {
+            return Some((content_start..offset, lang));
+        }
+        offset += line.len();
+    }
+    None
+}
+
 /// One entry of the Notion-style "/" block menu.
 ///
 /// The insertion is *org text*, not a private block model: whatever is
@@ -2436,6 +2468,208 @@ pub fn block_templates(query: &str) -> Vec<BlockTemplate> {
         .collect();
     scored.sort_by_key(|(s, _)| std::cmp::Reverse(*s));
     scored.into_iter().map(|(_, t)| t).collect()
+}
+
+/// What we know about a peer we have been handed a ticket for.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PeerState {
+    /// Its ticket is on file; nothing has been sent yet.
+    Known,
+    /// A round completed; `blocks` is what we know about afterwards.
+    Synced {
+        /// Blocks in our replica after the merge.
+        blocks: usize,
+    },
+    /// The last attempt failed, with this reason. Shown, not swallowed.
+    Failed(String),
+}
+
+/// A peer in the sync surface's list.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Peer {
+    /// Where it listens.
+    pub addr: std::net::SocketAddr,
+    /// Its verifying key — frames it sends must be signed with this.
+    pub key: closure_sync::VerifyingKey,
+    /// What happened last.
+    pub state: PeerState,
+}
+
+/// Collaboration state: our identity, the ticket we hand out, the
+/// peers we have been given, and the replica that merges with them.
+///
+/// The socket work is deliberately *not* here — it blocks, and this
+/// has to stay callable from a render thread. A shell dials the peer,
+/// hands the outcome back through [`SyncApp::record_outcome`], and
+/// merges what it received with [`SyncApp::merge_session`]. Everything
+/// that decides *what* happens is here, and testable without a network.
+pub struct SyncApp {
+    name: String,
+    addr: std::net::SocketAddr,
+    signing: closure_sync::SigningKey,
+    session: closure_sync::SyncSession,
+    peers: Vec<Peer>,
+}
+
+impl std::fmt::Debug for SyncApp {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // Hand-written so the signing key never reaches a log line;
+        // `finish_non_exhaustive` says out loud that fields are held
+        // back rather than forgotten.
+        f.debug_struct("SyncApp")
+            .field("name", &self.name)
+            .field("addr", &self.addr)
+            .field("peers", &self.peers.len())
+            .finish_non_exhaustive()
+    }
+}
+
+impl SyncApp {
+    /// A fresh identity for replica `name`, listening on `addr`.
+    ///
+    /// The keypair is generated per session: pairing is an explicit act
+    /// in both directions, so there is nothing to persist until the
+    /// user decides there is.
+    #[must_use]
+    pub fn new(name: &str, addr: std::net::SocketAddr) -> Self {
+        Self {
+            name: name.to_owned(),
+            addr,
+            signing: closure_sync::generate_key(),
+            session: closure_sync::SyncSession::new(name),
+            peers: Vec::new(),
+        }
+    }
+
+    /// Our replica name.
+    #[must_use]
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    /// Our verifying key — what a peer checks our frames against.
+    #[must_use]
+    pub fn public_key(&self) -> closure_sync::VerifyingKey {
+        self.signing.verifying_key()
+    }
+
+    /// Our signing key, for a shell that is about to dial out.
+    #[must_use]
+    pub const fn signing_key(&self) -> &closure_sync::SigningKey {
+        &self.signing
+    }
+
+    /// The one line to hand to whoever you want to sync with.
+    #[must_use]
+    pub fn ticket(&self) -> String {
+        closure_sync::SyncTicket {
+            addr: self.addr,
+            pubkey: self.public_key(),
+        }
+        .encode()
+    }
+
+    /// Peers we have tickets for.
+    #[must_use]
+    pub fn peers(&self) -> &[Peer] {
+        &self.peers
+    }
+
+    /// Keys we trust to sign frames — what the transport is given.
+    #[must_use]
+    pub fn trusted_keys(&self) -> Vec<closure_sync::VerifyingKey> {
+        self.peers.iter().map(|p| p.key).collect()
+    }
+
+    /// Our replica, for reading and for shipping to a peer.
+    #[must_use]
+    pub const fn session(&self) -> &closure_sync::SyncSession {
+        &self.session
+    }
+
+    /// Add a peer from a pasted ticket.
+    ///
+    /// # Errors
+    ///
+    /// The decode failure as a message, or a refusal when the ticket is
+    /// our own — pointing a vault at itself would merge it with itself
+    /// forever. Pasting the same peer twice is a no-op, not an error.
+    pub fn add_peer(&mut self, ticket: &str) -> Result<(), String> {
+        let parsed = closure_sync::SyncTicket::decode(ticket).map_err(|e| format!("{e}"))?;
+        if parsed.pubkey == self.public_key() {
+            return Err("that is our own ticket — hand it to the other peer".to_owned());
+        }
+        if self.peers.iter().any(|p| p.key == parsed.pubkey) {
+            return Ok(());
+        }
+        self.peers.push(Peer {
+            addr: parsed.addr,
+            key: parsed.pubkey,
+            state: PeerState::Known,
+        });
+        Ok(())
+    }
+
+    /// Record how the last round with `addr` went.
+    pub fn record_outcome(&mut self, addr: std::net::SocketAddr, result: Result<usize, String>) {
+        if let Some(peer) = self.peers.iter_mut().find(|p| p.addr == addr) {
+            peer.state = match result {
+                Ok(blocks) => PeerState::Synced { blocks },
+                Err(e) => PeerState::Failed(e),
+            };
+        }
+    }
+
+    /// Fold the vault's current state into our replica.
+    pub fn snapshot(&mut self, shell: &Shell) {
+        for (_, doc) in shell.vault.iter() {
+            self.session.record_local(doc);
+        }
+    }
+
+    /// Merge a peer's replica into ours, returning every divergence
+    /// the automatic LWW would otherwise have resolved silently.
+    pub fn merge_session(
+        &mut self,
+        other: &closure_sync::SyncSession,
+    ) -> Vec<closure_crdt::FieldConflict> {
+        self.session.receive_with_conflicts(other.outgoing())
+    }
+
+    /// Blocks our replica knows about.
+    #[must_use]
+    pub fn block_count(&self) -> usize {
+        self.session.block_ids().count()
+    }
+}
+
+/// How loudly a status-bar indicator should read.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum IndicatorLevel {
+    /// Nothing happening; muted.
+    Idle,
+    /// Doing something, or a permission is granted; accented.
+    Active,
+    /// Something is waiting on the user; warning colour.
+    Warn,
+}
+
+/// One item in the bottom-right status bar.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Indicator {
+    /// Stable identifier (`"sniffer"`, `"llm"`, …) — what tests and
+    /// shells match on, never the label.
+    pub id: &'static str,
+    /// Short text shown in the bar, usually a glyph plus a count.
+    pub label: String,
+    /// Longer explanation for a tooltip or the status line.
+    pub tooltip: String,
+    /// How loudly it should read.
+    pub level: IndicatorLevel,
+    /// Command a click runs, when there is one.
+    pub command: Option<&'static str>,
+    /// Chord bound to that command in the active mode.
+    pub chord: Option<&'static str>,
 }
 
 /// What a right-click landed on, selecting which context menu to show.
@@ -3727,6 +3961,41 @@ pub enum ModalSurface {
     Conflicts,
     /// The vim-style `:` command line.
     Ex,
+    /// org-edit-special: one source block, on its own, in its own
+    /// language. `C-Enter` writes it back, `Esc` discards.
+    EditBlock,
+    /// Pairing and collaboration: our ticket, the peers we have, and
+    /// what the last round with each of them did.
+    Sync,
+}
+
+/// Where an org-edit-special session came from, and therefore how it
+/// writes back.
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum SpecialOrigin {
+    /// A block reached from the Blocks list: it belongs to a file, so
+    /// the writeback goes through the kernel's span-preserving
+    /// `set_block_content` and the rest of the file stays untouched
+    /// bytes (I1).
+    File {
+        /// File the block lives in.
+        path: std::path::PathBuf,
+        /// Index of the block within that file.
+        index: usize,
+    },
+    /// A block reached from the body editor: it lives inside the
+    /// buffer being edited, so it is spliced back into that buffer and
+    /// the ordinary body commit carries it to disk. Writing through
+    /// the file here would mean persisting the body twice, from two
+    /// different states.
+    Body {
+        /// Byte range of the block's content within the body buffer.
+        range: std::ops::Range<usize>,
+        /// The body buffer as it was when the session opened.
+        buffer: String,
+        /// Cursor to restore into that buffer afterwards.
+        cursor: usize,
+    },
 }
 
 /// Which read-only list a generic list surface is showing (drives the
@@ -4700,10 +4969,20 @@ pub struct ModalApp {
     ex_buf: String,
     /// Surface the `:` line was opened from, so Escape returns there.
     ex_return: Option<ModalSurface>,
+    /// The live org-edit-special session: where it came from and the
+    /// language it is editing.
+    special: Option<(SpecialOrigin, String)>,
+    /// Surface the edit-special session was opened from.
+    special_return: Option<ModalSurface>,
     /// Output of the last source block run from the Blocks surface.
     /// Cleared whenever the cursor moves or the pane closes, because
     /// output shown beside a block that did not produce it is a lie.
     block_out: Option<String>,
+    /// Collaboration state, created on first use so a shell that never
+    /// pairs never generates a keypair.
+    sync: Option<SyncApp>,
+    /// The ticket-entry field on the Sync surface.
+    sync_buf: String,
     /// The sniffer surface's captured flows and rules (X3).
     sniffer: SnifferApp,
     /// The conflict surface's pending CRDT decisions.
@@ -4777,7 +5056,11 @@ impl ModalApp {
             slash: None,
             ex_buf: String::new(),
             ex_return: None,
+            special: None,
+            special_return: None,
             block_out: None,
+            sync: None,
+            sync_buf: String::new(),
             sniffer: SnifferApp::new(),
             conflicts: ConflictApp::new(Vec::new(), mode),
             llm_render: false,
@@ -5348,6 +5631,8 @@ impl ModalApp {
             ModalSurface::Sniffer => self.on_sniffer_key(shell, key),
             ModalSurface::Conflicts => self.on_conflicts_key(shell, key),
             ModalSurface::Ex => self.on_ex_key(shell, key, text),
+            ModalSurface::Sync => self.on_sync_key(key, text),
+            ModalSurface::EditBlock => self.on_editblock_key(shell, key, ctrl, alt, text),
             ModalSurface::Browse => self.on_browse_key(shell, key, ctrl, alt, text),
         }
     }
@@ -5356,6 +5641,327 @@ impl ModalApp {
     #[must_use]
     pub fn ex_buffer(&self) -> &str {
         &self.ex_buf
+    }
+
+    /// Keys for the org-edit-special session.
+    ///
+    /// The editing vocabulary is the body editor's, verbatim — same
+    /// modes, same motions — because it *is* the body editor with a
+    /// different buffer in it. Only the two exits differ: `C-Enter`
+    /// writes the block back, and a quiet `Esc` in NORMAL discards the
+    /// session rather than cancelling a body edit.
+    fn on_editblock_key(
+        &mut self,
+        shell: &mut Shell,
+        key: &str,
+        ctrl: bool,
+        alt: bool,
+        text: Option<char>,
+    ) {
+        if key == "enter" && ctrl {
+            self.commit_edit_special(shell);
+            return;
+        }
+        if key == "escape"
+            && self.body.mode() == EditorMode::Normal
+            && self.body.pending_stroke().is_none()
+            && self.body.pending_count() == 0
+        {
+            self.cancel_edit_special();
+            return;
+        }
+        self.edit_body_key(shell, key, ctrl, alt, text);
+    }
+
+    /// Collaboration state, created on first use.
+    ///
+    /// Creating it generates a keypair, so a session that never pairs
+    /// never generates one. The listen address is the loopback default
+    /// (`127.0.0.1:7420`); a shell binding a real socket replaces it.
+    pub fn sync_mut(&mut self) -> &mut SyncApp {
+        self.sync.get_or_insert_with(|| {
+            SyncApp::new("local", std::net::SocketAddr::from(([127, 0, 0, 1], 7420)))
+        })
+    }
+
+    /// Collaboration state, or `None` until something has asked for it
+    /// — merely *reading* must not be what generates a keypair.
+    #[must_use]
+    pub const fn sync(&self) -> Option<&SyncApp> {
+        self.sync.as_ref()
+    }
+
+    /// The ticket-entry field on the Sync surface.
+    #[must_use]
+    pub fn sync_buffer(&self) -> &str {
+        &self.sync_buf
+    }
+
+    /// Keys for the Sync surface: typing edits the ticket field, Enter
+    /// adds the peer, Escape leaves.
+    fn on_sync_key(&mut self, key: &str, text: Option<char>) {
+        match key {
+            "escape" => {
+                self.sync_buf.clear();
+                self.surface = ModalSurface::Browse;
+            }
+            "backspace" => {
+                self.sync_buf.pop();
+            }
+            "enter" => {
+                let ticket = std::mem::take(&mut self.sync_buf);
+                match self.sync_mut().add_peer(ticket.trim()) {
+                    Ok(()) => {
+                        let n = self.sync_mut().peers().len();
+                        self.status = format!("peer added — {n} peer(s)");
+                    }
+                    Err(e) => {
+                        // Keep the text so it can be corrected rather
+                        // than retyped.
+                        self.sync_buf = ticket;
+                        self.status = format!("bad ticket: {e}");
+                    }
+                }
+            }
+            _ => {
+                if let Some(c) = text {
+                    self.sync_buf.push(c);
+                }
+            }
+        }
+    }
+
+    /// Replace the status line — for a shell reporting something the
+    /// core did not produce, such as what the pointer is hovering.
+    pub fn set_status(&mut self, text: impl Into<String>) {
+        self.status = text.into();
+    }
+
+    /// The bottom-right status bar: one item per subsystem, each
+    /// reporting its live state and carrying the chord that opens it.
+    ///
+    /// Derived here rather than assembled in a render function, so
+    /// every shell shows the same set — and so "is the LLM allowed to
+    /// read my screen?" has an answer you can see rather than one
+    /// buried in a config file.
+    #[must_use]
+    pub fn indicators(&self, shell: &Shell) -> Vec<Indicator> {
+        let item =
+            |id, label: String, tooltip: String, level, command: Option<&'static str>| Indicator {
+                id,
+                label,
+                tooltip,
+                level,
+                command,
+                chord: command.and_then(|c| self.chord_for(c)),
+            };
+        let headlines = self.rows_shared(shell).len();
+        let files = shell.vault.iter().count();
+        let flows = self.sniffer.events().len();
+        let blocked = self
+            .sniffer
+            .events()
+            .iter()
+            .filter(|e| e.action == Some(FlowAction::Block))
+            .count();
+        let conflicts = self.conflicts.conflicts().len();
+        let blocks = self.block_rows(shell).len();
+        vec![
+            item(
+                "vault",
+                format!("⌂ {headlines}"),
+                format!("{headlines} headline(s) across {files} file(s)"),
+                IndicatorLevel::Idle,
+                Some("headline-list"),
+            ),
+            item(
+                "blocks",
+                format!("⌗ {blocks}"),
+                format!("{blocks} source block(s) — run one with eval-block"),
+                IndicatorLevel::Idle,
+                Some("block-list"),
+            ),
+            item(
+                "sniffer",
+                format!("⇅ {flows}"),
+                if flows == 0 {
+                    "network sniffer: no flows captured".to_owned()
+                } else {
+                    format!("network sniffer: {flows} flow(s), {blocked} blocked")
+                },
+                if blocked > 0 {
+                    IndicatorLevel::Warn
+                } else if flows > 0 {
+                    IndicatorLevel::Active
+                } else {
+                    IndicatorLevel::Idle
+                },
+                Some("sniffer"),
+            ),
+            item(
+                "llm",
+                if self.llm_render {
+                    "◉ llm".to_owned()
+                } else {
+                    "○ llm".to_owned()
+                },
+                if self.llm_render {
+                    "LLM render access GRANTED — a model may read the rendered view".to_owned()
+                } else {
+                    "LLM render access revoked — a model cannot read the rendered view".to_owned()
+                },
+                if self.llm_render {
+                    IndicatorLevel::Active
+                } else {
+                    IndicatorLevel::Idle
+                },
+                Some("toggle-llm-render"),
+            ),
+            item(
+                "sync",
+                format!("⇄ {conflicts}"),
+                if conflicts == 0 {
+                    "sync: every field converged".to_owned()
+                } else {
+                    format!("sync: {conflicts} conflict(s) awaiting a decision")
+                },
+                if conflicts > 0 {
+                    IndicatorLevel::Warn
+                } else {
+                    IndicatorLevel::Idle
+                },
+                Some("conflicts"),
+            ),
+        ]
+    }
+
+    /// Language of the live org-edit-special session (empty when the
+    /// block declared none, or when no session is open).
+    #[must_use]
+    pub fn special_language(&self) -> &str {
+        self.special.as_ref().map_or("", |(_, lang)| lang.as_str())
+    }
+
+    /// Open the source block under the cursor on its own
+    /// (org-edit-special).
+    ///
+    /// From the body editor the block is the one containing the
+    /// cursor; from the Blocks list it is the row under it. Anywhere
+    /// else there is no block to edit, and saying so beats opening an
+    /// empty editor.
+    fn begin_edit_special(&mut self, shell: &Shell) {
+        match self.surface {
+            ModalSurface::EditBody => self.begin_special_from_body(),
+            ModalSurface::Blocks => self.begin_special_from_list(shell),
+            _ => "edit-special: open a source block first (g e lists them)"
+                .clone_into(&mut self.status),
+        }
+    }
+
+    /// org-edit-special from the body editor: the block is inside the
+    /// buffer, so the session remembers the buffer and the range to
+    /// splice back into.
+    fn begin_special_from_body(&mut self) {
+        let buffer = self.body.text().to_owned();
+        let cursor = self.body.cursor_byte();
+        let Some((range, lang)) = enclosing_src_block(&buffer, cursor) else {
+            "edit-special: the cursor is not inside a source block".clone_into(&mut self.status);
+            return;
+        };
+        let content = buffer[range.clone()].to_owned();
+        // Both entry points report the same language name: the Blocks
+        // list already shows the normalised one, and a session that
+        // called it `sh` from one door and `shell` from the other
+        // would be reporting the door, not the block.
+        self.special = Some((
+            SpecialOrigin::Body {
+                range,
+                buffer,
+                cursor,
+            },
+            normalise_lang(&lang),
+        ));
+        self.open_special(content);
+    }
+
+    /// org-edit-special from the Blocks list: the block belongs to a
+    /// file, so the session remembers which one.
+    fn begin_special_from_list(&mut self, shell: &Shell) {
+        let rows = self.block_rows(shell);
+        let Some((path, lang, _)) = rows.get(self.selected).cloned() else {
+            "edit-special: no source blocks in this vault".clone_into(&mut self.status);
+            return;
+        };
+        let index = rows[..self.selected]
+            .iter()
+            .filter(|(p, _, _)| *p == path)
+            .count();
+        let path = std::path::PathBuf::from(&path);
+        let Some(content) = shell
+            .vault
+            .document(&path)
+            .and_then(|doc| doc.org().code_blocks().get(index).copied())
+            .and_then(|n| n.as_code_block().map(|cb| cb.content.to_owned()))
+        else {
+            "edit-special: could not read that block".clone_into(&mut self.status);
+            return;
+        };
+        self.special = Some((SpecialOrigin::File { path, index }, lang));
+        self.open_special(content);
+    }
+
+    /// Load `content` into the editor as an edit-special session.
+    fn open_special(&mut self, content: String) {
+        self.special_return = Some(self.surface);
+        self.body.load(content);
+        self.surface = ModalSurface::EditBlock;
+        self.status = format!(
+            "edit-special [{}] — C-Enter write back, Esc discard",
+            self.special_language()
+        );
+    }
+
+    /// Write the edited block back the way its origin requires.
+    fn commit_edit_special(&mut self, shell: &mut Shell) {
+        let Some((origin, _)) = self.special.take() else {
+            return;
+        };
+        let edited = self.body.text().to_owned();
+        match origin {
+            SpecialOrigin::File { path, index } => {
+                match shell.vault.set_block_content(&path, index, &edited) {
+                    Ok(()) => "block written".clone_into(&mut self.status),
+                    Err(e) => self.status = format!("edit-special failed: {e}"),
+                }
+                self.body.clear();
+            }
+            SpecialOrigin::Body {
+                range,
+                mut buffer,
+                cursor,
+            } => {
+                // Splice into the body buffer; the ordinary body commit
+                // is what carries it to disk.
+                buffer.replace_range(range, &edited);
+                self.body.load(buffer);
+                self.body.set_cursor_byte(cursor);
+                "block spliced — C-Enter again to save the body".clone_into(&mut self.status);
+            }
+        }
+        self.surface = self.special_return.take().unwrap_or(ModalSurface::Browse);
+    }
+
+    /// Abandon the edit-special session, restoring what it replaced.
+    fn cancel_edit_special(&mut self) {
+        let origin = self.special.take().map(|(o, _)| o);
+        if let Some(SpecialOrigin::Body { buffer, cursor, .. }) = origin {
+            self.body.load(buffer);
+            self.body.set_cursor_byte(cursor);
+        } else {
+            self.body.clear();
+        }
+        "edit-special discarded".clone_into(&mut self.status);
+        self.surface = self.special_return.take().unwrap_or(ModalSurface::Browse);
     }
 
     /// Open the `:` command line.
@@ -6624,6 +7230,13 @@ impl ModalApp {
                 "palette — type to filter, Enter to run".clone_into(&mut self.status);
             }
             "ex-command" => self.begin_ex(),
+            "sync" => {
+                self.sync_buf.clear();
+                self.sync_mut();
+                self.surface = ModalSurface::Sync;
+                "sync — hand over your ticket, paste theirs, Esc back".clone_into(&mut self.status);
+            }
+            "edit-special" => self.begin_edit_special(shell),
             "eval-block" => self.eval_selected_block(shell),
             "headline-list" => {
                 self.selected = 0;

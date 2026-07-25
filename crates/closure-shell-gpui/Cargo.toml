@@ -33,6 +33,7 @@ closure-shell-core = { path = "../closure-shell-core" }
 closure-tree-sitter = { path = "../closure-tree-sitter" }
 closure-config = { path = "../closure-config" }
 closure-input = { path = "../closure-input" }
+closure-sync = { path = "../closure-sync" }
 
 [dev-dependencies]
 tempfile = "3"

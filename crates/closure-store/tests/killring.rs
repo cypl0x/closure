@@ -94,3 +94,18 @@ fn cut_paste_keeps_disk_and_memory_in_sync() {
     let mem = v.document(&td.path().join("a.org")).expect("doc").source();
     assert_eq!(mem, disk);
 }
+
+#[test]
+fn text_can_be_pushed_onto_the_ring_directly() {
+    // Not everything worth copying is a subtree. A shell offering
+    // "copy this" — a sync ticket, a block id — needs the same ring,
+    // or it needs a second clipboard that nothing else can read.
+    let dir = tempfile::tempdir().expect("tmp");
+    fs::write(dir.path().join("notes.org"), "* H\n").expect("write");
+    let mut v = Vault::open(dir.path()).expect("open");
+    assert_eq!(v.ring_top(), None);
+    v.push_kill_ring("closure-sync:127.0.0.1:7420|abc".to_owned());
+    assert_eq!(v.ring_top(), Some("closure-sync:127.0.0.1:7420|abc"));
+    v.push_kill_ring("second".to_owned());
+    assert_eq!(v.ring_top(), Some("second"), "most recent is on top");
+}

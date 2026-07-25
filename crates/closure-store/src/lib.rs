@@ -426,6 +426,16 @@ impl Vault {
         self.kill_ring.last().map(String::as_str)
     }
 
+    /// Push arbitrary text onto the kill ring.
+    ///
+    /// Not everything worth copying is a subtree — a sync ticket, a
+    /// block id, a rendered table. They belong on the same ring as
+    /// everything else, or a shell needs a second clipboard that
+    /// nothing else can read.
+    pub fn push_kill_ring(&mut self, text: String) {
+        self.kill_ring.push(text);
+    }
+
     /// Cut the subtree rooted at `id`: push its source onto the kill
     /// ring, then remove it (kernel [`RemoveSubtree`], undoable I3)
     /// and persist. Cut+paste is a move, so the id stays unique (I2).

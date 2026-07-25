@@ -1299,6 +1299,7 @@ dependencies = [
  "closure-shell-gpui",
  "closure-shell-gtk",
  "closure-shell-qt",
+ "closure-shell-slint",
  "closure-shell-web",
  "closure-sniffer",
  "closure-store",
@@ -1463,6 +1464,7 @@ dependencies = [
  "closure-query",
  "closure-sniffer",
  "closure-store",
+ "closure-sync",
  "closure-tree-sitter",
  "tempfile",
 ]
@@ -1492,6 +1494,7 @@ dependencies = [
  "closure-query",
  "closure-shell-core",
  "closure-store",
+ "closure-sync",
  "closure-tree-sitter",
  "gpui",
  "tempfile",
@@ -1514,6 +1517,16 @@ dependencies = [
  "closure-shell-core",
  "closure-store",
  "qmetaobject",
+ "tempfile",
+]
+
+[[package]]
+name = "closure-shell-slint"
+version = "0.0.0"
+dependencies = [
+ "closure-core",
+ "closure-shell-core",
+ "closure-store",
  "tempfile",
 ]
 
@@ -1576,6 +1589,7 @@ dependencies = [
  "closure-crdt",
  "closure-store",
  "ed25519-dalek",
+ "rand_core 0.6.4",
  "snow",
  "tempfile",
  "thiserror 2.0.18",
@@ -2748,6 +2762,7 @@ checksum = "70e796c081cee67dc755e1a36a0a172b897fab85fc3f6bc48307991f64e4eca9"
 dependencies = [
  "curve25519-dalek",
  "ed25519",
+ "rand_core 0.6.4",
  "serde",
  "sha2",
  "subtle",
