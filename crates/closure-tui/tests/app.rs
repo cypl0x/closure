@@ -1081,17 +1081,9 @@ fn cycle_mode_keeps_selection_and_browse() {
 // --- command palette --------------------------------------------------------
 
 #[test]
-fn colon_opens_palette() {
-    let mut app = App::new(paths());
-    app.handle_stroke(":");
-    assert_eq!(app.mode(), AppMode::Palette);
-    assert_eq!(app.query(), "");
-}
-
-#[test]
 fn palette_lists_every_command_with_chord() {
     let mut app = App::new(paths());
-    app.handle_stroke(":");
+    app.handle_stroke("M-x");
     let rows = app.palette_results();
     assert!(
         rows.iter()
@@ -1106,7 +1098,7 @@ fn palette_lists_every_command_with_chord() {
 #[test]
 fn palette_filters_fuzzy() {
     let mut app = App::new(paths());
-    app.handle_stroke(":");
+    app.handle_stroke("M-x");
     app.handle_stroke("c");
     app.handle_stroke("a");
     app.handle_stroke("p");
@@ -1118,7 +1110,7 @@ fn palette_filters_fuzzy() {
 #[test]
 fn palette_ret_executes_best_match() {
     let mut app = App::new(paths());
-    app.handle_stroke(":");
+    app.handle_stroke("M-x");
     app.handle_stroke("q");
     app.handle_stroke("u");
     app.handle_stroke("i");
@@ -1130,7 +1122,7 @@ fn palette_ret_executes_best_match() {
 #[test]
 fn palette_cursor_executes_picked_row() {
     let mut app = App::new(paths());
-    app.handle_stroke(":");
+    app.handle_stroke("M-x");
     let rows = app.palette_results();
     let second = rows.get(1).map(|(c, _)| c.clone()).unwrap_or_default();
     assert!(!second.is_empty(), "need at least two commands");
@@ -1146,7 +1138,7 @@ fn palette_cursor_executes_picked_row() {
 #[test]
 fn palette_esc_cancels() {
     let mut app = App::new(paths());
-    app.handle_stroke(":");
+    app.handle_stroke("M-x");
     app.handle_stroke("x");
     app.handle_stroke("ESC");
     assert_eq!(app.mode(), AppMode::Browse);
@@ -1656,4 +1648,94 @@ fn body_search_esc_cancels() {
     app.handle_stroke("x");
     app.handle_stroke("ESC");
     assert_eq!(app.mode(), AppMode::Browse);
+}
+
+// === The `:` ex line ===
+//
+// `:` is one binding in one shared keymap, so it has to mean the same
+// thing in every shell. It used to open the fuzzy palette here and in
+// the GUI; now it opens a vim-style command line in both, and the
+// palette keeps its own binding.
+
+#[test]
+fn colon_opens_the_ex_line() {
+    let mut app = App::new(paths());
+    app.handle_stroke(":");
+    assert_eq!(app.mode(), AppMode::Ex);
+    assert_eq!(app.query(), "", "an empty command line");
+}
+
+#[test]
+fn ex_escape_abandons_without_running() {
+    let mut app = App::new(paths());
+    app.handle_stroke(":");
+    app.handle_stroke("q");
+    app.handle_stroke("ESC");
+    assert_eq!(app.mode(), AppMode::Browse);
+    assert!(!app.should_quit(), "escaping must not run the command");
+}
+
+#[test]
+fn ex_q_quits() {
+    let mut app = App::new(paths());
+    app.handle_stroke(":");
+    app.handle_stroke("q");
+    app.handle_stroke("RET");
+    assert!(app.should_quit());
+}
+
+#[test]
+fn ex_w_says_the_vault_is_already_written() {
+    // Every edit goes through the kernel to disk, so there is nothing
+    // to save — and claiming otherwise would be a lie about a write.
+    let mut app = App::new(paths());
+    app.handle_stroke(":");
+    app.handle_stroke("w");
+    app.handle_stroke("RET");
+    assert!(!app.should_quit());
+    assert_eq!(app.mode(), AppMode::Browse);
+}
+
+#[test]
+fn ex_wq_quits_too() {
+    let mut app = App::new(paths());
+    app.handle_stroke(":");
+    for s in ["w", "q"] {
+        app.handle_stroke(s);
+    }
+    app.handle_stroke("RET");
+    assert!(app.should_quit());
+}
+
+#[test]
+fn ex_falls_through_to_a_command_name() {
+    let mut app = App::new(paths());
+    app.handle_stroke(":");
+    for s in ["a", "g", "e", "n", "d", "a"] {
+        app.handle_stroke(s);
+    }
+    app.handle_stroke("RET");
+    assert_eq!(app.mode(), AppMode::Agenda, "`:agenda` runs agenda");
+}
+
+#[test]
+fn ex_backspace_edits_then_closes() {
+    let mut app = App::new(paths());
+    app.handle_stroke(":");
+    app.handle_stroke("w");
+    app.handle_stroke("DEL");
+    assert_eq!(app.query(), "");
+    app.handle_stroke("DEL");
+    assert_eq!(
+        app.mode(),
+        AppMode::Browse,
+        "deleting the trigger closes it"
+    );
+}
+
+#[test]
+fn the_palette_keeps_its_own_binding() {
+    let mut app = App::new(paths());
+    app.handle_stroke("M-x");
+    assert_eq!(app.mode(), AppMode::Palette);
 }

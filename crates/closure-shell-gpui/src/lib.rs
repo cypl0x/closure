@@ -457,6 +457,8 @@ pub fn run(vault_path: &Path) -> Result<(), String> {
                     menu: None,
                     which_key_open: false,
                     which_key_scroll: gpui::ScrollHandle::new(),
+                    palette_scroll: gpui::UniformListScrollHandle::new(),
+                    highlight_cache: std::cell::RefCell::new(None),
                 })
             },
         );
@@ -570,6 +572,14 @@ struct GpuiView {
     /// Scroll state of the which-key panel — it lists every binding in
     /// the mode, which does not fit a window.
     which_key_scroll: gpui::ScrollHandle,
+    /// Scroll state of the virtualized command palette.
+    palette_scroll: gpui::UniformListScrollHandle,
+    /// Memoised body highlighting, keyed on the text it describes.
+    ///
+    /// The detail pane and the editor both re-highlight on every
+    /// frame, and scrolling repaints without changing a byte, so the
+    /// classification is kept until the text does change.
+    highlight_cache: std::cell::RefCell<Option<(String, HighlightedBody)>>,
 }
 
 #[cfg(feature = "gpui")]
@@ -614,6 +624,25 @@ impl GpuiView {
             .detach();
         }
         cx.notify();
+    }
+
+    /// [`highlight_body`] for `text`, memoised on the text itself.
+    ///
+    /// Both the editor and the read-only preview re-highlight every
+    /// frame, and scrolling repaints without changing a byte — so the
+    /// classification is kept until the text actually differs.
+    fn highlighted(&self, text: &str) -> HighlightedBody {
+        {
+            let cache = self.highlight_cache.borrow();
+            if let Some((cached, spans)) = cache.as_ref()
+                && cached == text
+            {
+                return std::rc::Rc::clone(spans);
+            }
+        }
+        let spans = std::rc::Rc::new(highlight_body(text));
+        *self.highlight_cache.borrow_mut() = Some((text.to_owned(), std::rc::Rc::clone(&spans)));
+        spans
     }
 
     /// Feed a changed status line through [`status_toast`] into the
@@ -699,6 +728,10 @@ impl GpuiView {
             ModalSurface::Conflicts => format!(
                 "conflicts — {} pending · o ours · t theirs · Esc back",
                 self.app.conflicts().conflicts().len()
+            ),
+            ModalSurface::Ex => format!(
+                ":{}▏  — :w :q :wq :x, or any command name",
+                self.app.ex_buffer()
             ),
         }
     }
@@ -801,21 +834,22 @@ impl GpuiView {
         if self.drag.target() == Some(i) && self.drag.source() != Some(i) {
             line = line.border_b_2().border_color(rgb(co.warning));
         }
-        self.outline_cells(line, co, i, &row, cx)
+        Self::outline_cells(line, co, i, &row, cx)
     }
 
     /// The cells of an outline row: indent, fold arrow, status glyph,
     /// TODO chip, title and file. Each is its own click target running
     /// the same registry command its chord does (I8).
     fn outline_cells(
-        &self,
         line: gpui::Div,
         co: Colors,
         i: usize,
         row: &Row,
         cx: &Context<Self>,
     ) -> gpui::Div {
-        let folded = closure_shell_core::is_row_folded(&self.shell, &row.id);
+        // The fold state rides on the row: asking the vault per row per
+        // frame is the same answer at wheel speed.
+        let folded = row.folded;
         let indent = f32::from(row.level.saturating_sub(1)) * 14.0;
         let (todo_col, glyph) = match row.todo.as_deref() {
             Some("DONE" | "CANCELLED" | "KILL") => (co.success, "●"),
@@ -1001,25 +1035,47 @@ impl GpuiView {
             },
             |sel| selection_in_line(line_start, line_len, sel),
         );
+        // A selection and a cursor are both a background range, but
+        // they must not look alike: the selection tint is the same
+        // colour the outline uses for its selected row, which left the
+        // block cursor all but invisible. The cursor inverts instead —
+        // background-coloured glyphs on foreground — the way every
+        // terminal draws one.
+        let emphasis = if self.app.body_selection().is_some() {
+            Emphasis::Selection
+        } else {
+            Emphasis::Cursor
+        };
         let runs = styled_runs(spans, highlight);
         let mut row = div().flex().flex_grow().cursor_text();
         if on_cursor_line && insert {
             let at = byte_for_col(&text, cur_col);
             let (head, tail) = split_runs(&runs, at);
             row = row
-                .child(editor_segment(co, ln, 0, text[..at].to_owned(), head, cx))
-                // The caret itself: a bar between the two halves.
-                .child(div().w(px(2.0)).bg(rgb(co.code)))
+                .child(editor_segment(
+                    co,
+                    ln,
+                    0,
+                    text[..at].to_owned(),
+                    head,
+                    emphasis,
+                    cx,
+                ))
+                // INSERT draws a bar between the glyphs, in the accent
+                // colour and at full line height so it reads at a
+                // glance rather than as a dim seam.
+                .child(div().w(px(2.0)).h(px(18.0)).bg(rgb(co.accent)))
                 .child(editor_segment(
                     co,
                     ln,
                     cur_col,
                     text[at..].to_owned(),
                     tail,
+                    emphasis,
                     cx,
                 ));
         } else {
-            row = row.child(editor_segment(co, ln, 0, text, runs, cx));
+            row = row.child(editor_segment(co, ln, 0, text, runs, emphasis, cx));
         }
         row
     }
@@ -1079,10 +1135,7 @@ impl GpuiView {
             .text_size(px(13.0))
             .on_scroll_wheel(cx.listener(Self::on_body_scroll));
         let mut line_start = 0usize;
-        for (ln, spans) in highlight_body(self.app.body_buffer())
-            .into_iter()
-            .enumerate()
-        {
+        for (ln, spans) in self.highlighted(self.app.body_buffer()).iter().enumerate() {
             let line_len: usize = spans.iter().map(|(_, s)| s.len()).sum();
             // G5: only the wheel-scrolled window of lines is painted;
             // byte offsets still accumulate for the skipped lines.
@@ -1099,7 +1152,7 @@ impl GpuiView {
                     .text_color(rgb(if ln == cur_line { co.accent } else { co.muted }))
                     .child(format!("{:>3}", ln + 1)),
             );
-            row = row.child(self.editor_line(co, ln, line_start, line_len, &spans, cx));
+            row = row.child(self.editor_line(co, ln, line_start, line_len, spans, cx));
             if ln == cur_line {
                 row = row.bg(rgb(mix_u32(co.panel, co.selection, 96)));
             }
@@ -1559,52 +1612,83 @@ impl GpuiView {
             }))
     }
 
-    /// Command palette entries with the cursor row highlighted; every
-    /// row clickable (runs the entry, I8).
-    fn palette_pane(&self, co: Colors, cx: &Context<Self>) -> impl IntoElement {
-        let cursor = self.app.palette_cursor();
-        div().flex().flex_col().gap_0().children(
-            self.app
-                .palette_entries()
-                .into_iter()
-                .enumerate()
-                .map(|(i, e)| {
-                    let is_cur = i == cursor;
-                    div()
-                        .flex()
-                        .items_center()
-                        .px_2()
-                        .py_1()
-                        .rounded_sm()
-                        .cursor_pointer()
-                        .bg(rgb(if is_cur { co.selection } else { co.bg }))
-                        .hover(move |s| s.bg(rgb(if is_cur { co.selection } else { co.hover })))
-                        .on_mouse_down(
-                            MouseButton::Left,
-                            cx.listener(move |this, _ev, _w, cx| {
-                                this.app.palette_click(&mut this.shell, i);
-                                if this.app.should_quit() {
-                                    cx.quit();
-                                }
-                                cx.notify();
-                            }),
-                        )
-                        .child(div().w(px(140.0)).text_color(rgb(co.fg)).child(e.label))
-                        .child(
-                            div()
-                                .flex_grow()
-                                .text_color(rgb(co.muted))
-                                .text_size(px(11.0))
-                                .child(e.description),
-                        )
-                        .child(
-                            div()
-                                .text_color(rgb(co.accent))
-                                .text_size(px(11.0))
-                                .child(e.action.chord().to_owned()),
-                        )
-                }),
-        )
+    /// Command palette entries, virtualized.
+    ///
+    /// It listed every command as a real element — the palette is the
+    /// longest list in the shell, so it was also the slowest thing to
+    /// scroll. A `uniform_list` builds only what the viewport shows,
+    /// and the entries themselves come from the memo rather than being
+    /// rescored per frame.
+    fn palette_pane(&self, co: Colors, cx: &Context<Self>) -> gpui::Div {
+        let count = self.app.palette_shared().len();
+        div()
+            .flex()
+            .flex_row()
+            .flex_grow()
+            .child(
+                gpui::uniform_list(
+                    "palette",
+                    count,
+                    cx.processor(|this, range: std::ops::Range<usize>, _w, cx| {
+                        let co = Colors::of(&this.theme);
+                        let entries = this.app.palette_shared();
+                        let cursor = this.app.palette_cursor();
+                        range
+                            .filter_map(|i| entries.get(i).map(|e| (i, e)))
+                            .map(|(i, e)| {
+                                let is_cur = i == cursor;
+                                div()
+                                    .flex()
+                                    .items_center()
+                                    .px_2()
+                                    .py_1()
+                                    .rounded_sm()
+                                    .cursor_pointer()
+                                    .bg(rgb(if is_cur { co.selection } else { co.bg }))
+                                    .hover(move |s| {
+                                        s.bg(rgb(if is_cur { co.selection } else { co.hover }))
+                                    })
+                                    .on_mouse_down(
+                                        MouseButton::Left,
+                                        cx.listener(move |this: &mut Self, _ev, _w, cx| {
+                                            this.app.palette_click(&mut this.shell, i);
+                                            if this.app.should_quit() {
+                                                cx.quit();
+                                            }
+                                            cx.notify();
+                                        }),
+                                    )
+                                    .child(
+                                        div()
+                                            .w(px(140.0))
+                                            .text_color(rgb(co.fg))
+                                            .child(e.label.clone()),
+                                    )
+                                    .child(
+                                        div()
+                                            .flex_grow()
+                                            .text_color(rgb(co.muted))
+                                            .text_size(px(11.0))
+                                            .child(e.description.clone()),
+                                    )
+                                    .child(
+                                        div()
+                                            .text_color(rgb(co.accent))
+                                            .text_size(px(11.0))
+                                            .child(e.action.chord().to_owned()),
+                                    )
+                            })
+                            .collect::<Vec<_>>()
+                    }),
+                )
+                .track_scroll(self.palette_scroll.clone())
+                .flex_grow(),
+            )
+            .child(scrollbar(
+                co,
+                &self.palette_scroll.0.borrow().base_handle.clone(),
+                cx,
+            ))
     }
 
     /// Agenda pane: rows grouped under date headers, SCHEDULED accent /
@@ -1758,11 +1842,11 @@ impl GpuiView {
                     // C3: the preview reads exactly like the editor —
                     // same spans, same palette — but as one StyledText
                     // per line rather than a div per span.
-                    for spans in highlight_body(&d.body) {
+                    for spans in self.highlighted(&d.body).iter() {
                         let text: String = spans.iter().map(|(_, s)| s.as_str()).collect();
                         body_el = body_el.child(div().min_h(px(17.0)).child(
                             gpui::StyledText::new(text).with_highlights(
-                                span_ranges(&spans).into_iter().map(|(range, kind)| {
+                                span_ranges(spans).into_iter().map(|(range, kind)| {
                                     (
                                         range,
                                         gpui::HighlightStyle {
@@ -2033,6 +2117,26 @@ impl GpuiView {
     }
 }
 
+/// A whole body classified line by line, shared so a repaint that
+/// changed no text costs a refcount bump.
+#[cfg(feature = "gpui")]
+type HighlightedBody = std::rc::Rc<Vec<Vec<(BodySpan, String)>>>;
+
+/// What a highlighted run in the body editor *means*.
+///
+/// Both are a background range, but they must not look alike — a
+/// cursor drawn in the selection tint disappears against a selected
+/// row, which is exactly what it used to do.
+#[cfg(feature = "gpui")]
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Emphasis {
+    /// The VISUAL selection: tinted background, glyphs keep their
+    /// syntax colour.
+    Selection,
+    /// The cursor: inverse video, so it is legible on any background.
+    Cursor,
+}
+
 /// One hit-testable run of body text. `col_offset` is the char column
 /// `text` starts at, so a segment painted after the INSERT caret still
 /// reports absolute columns back to the editor.
@@ -2043,15 +2147,25 @@ fn editor_segment(
     col_offset: usize,
     text: String,
     runs: Vec<StyledRun>,
+    emphasis: Emphasis,
     cx: &Context<GpuiView>,
 ) -> gpui::Div {
     let styled = gpui::StyledText::new(text.clone()).with_highlights(runs.into_iter().map(
         |(range, kind, hot)| {
+            let plain = rgb(span_color(co, kind)).into();
+            let (fg, bg) = match (hot, emphasis) {
+                (false, _) => (plain, None),
+                // Inverse video: the glyphs take the background colour
+                // and sit on the foreground one, so the cursor is
+                // legible whatever it happens to be sitting on.
+                (true, Emphasis::Cursor) => (rgb(co.bg).into(), Some(rgb(co.fg).into())),
+                (true, Emphasis::Selection) => (plain, Some(rgb(co.selection).into())),
+            };
             (
                 range,
                 gpui::HighlightStyle {
-                    color: Some(rgb(span_color(co, kind)).into()),
-                    background_color: hot.then(|| rgb(co.selection).into()),
+                    color: Some(fg),
+                    background_color: bg,
                     ..Default::default()
                 },
             )

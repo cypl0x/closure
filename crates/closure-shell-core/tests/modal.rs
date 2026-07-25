@@ -778,7 +778,8 @@ fn add_sibling_surface_inserts_after_selected() {
 fn palette_on_the_command_surface_filters_and_runs() {
     let (_d, mut sh) = nested();
     let mut app = ModalApp::new(InputMode::Doom);
-    app.on_key(&mut sh, ":", false, false, Some(':'));
+    // `:` is the ex line now; M-x opens the palette.
+    app.on_key(&mut sh, "x", false, true, Some('x'));
     assert_eq!(app.surface(), ModalSurface::Palette);
     for c in "fold".chars() {
         app.on_key(&mut sh, &c.to_string(), false, false, Some(c));
@@ -797,7 +798,8 @@ fn palette_on_the_command_surface_filters_and_runs() {
 fn palette_escape_cancels() {
     let (_d, mut sh) = nested();
     let mut app = ModalApp::new(InputMode::Doom);
-    app.on_key(&mut sh, ":", false, false, Some(':'));
+    // `:` is the ex line now; M-x opens the palette.
+    app.on_key(&mut sh, "x", false, true, Some('x'));
     app.on_key(&mut sh, "escape", false, false, None);
     assert_eq!(app.surface(), ModalSurface::Browse);
 }
@@ -836,7 +838,8 @@ fn palette_click_runs_the_clicked_entry() {
     // same commit as Enter on a moved cursor.
     let (_d, mut sh) = nested();
     let mut app = ModalApp::new(InputMode::Doom);
-    app.on_key(&mut sh, ":", false, false, Some(':'));
+    // `:` is the ex line now; M-x opens the palette.
+    app.on_key(&mut sh, "x", false, true, Some('x'));
     let entries = app.palette_entries();
     let fold_at = entries
         .iter()
@@ -1701,7 +1704,8 @@ fn doom_keymap_binds_structural_editing() {
 fn palette_covers_every_keymap_command() {
     let (_d, mut sh) = shell();
     let mut app = ModalApp::new(InputMode::Doom);
-    app.on_key(&mut sh, ":", false, false, Some(':'));
+    // `:` is the ex line now; M-x opens the palette.
+    app.on_key(&mut sh, "x", false, true, Some('x'));
     let entries = app.palette_entries();
     let cmds: std::collections::BTreeSet<&str> = closure_input::mode_keymap(InputMode::Doom)
         .iter()
@@ -1719,7 +1723,8 @@ fn palette_covers_every_keymap_command() {
 fn palette_lists_structural_commands_with_chords() {
     let (_d, mut sh) = shell();
     let mut app = ModalApp::new(InputMode::Doom);
-    app.on_key(&mut sh, ":", false, false, Some(':'));
+    // `:` is the ex line now; M-x opens the palette.
+    app.on_key(&mut sh, "x", false, true, Some('x'));
     let entries = app.palette_entries();
     assert!(
         entries
@@ -1741,7 +1746,8 @@ fn alt_x_opens_the_palette() {
 fn palette_query_still_fuzzy_filters() {
     let (_d, mut sh) = shell();
     let mut app = ModalApp::new(InputMode::Doom);
-    app.on_key(&mut sh, ":", false, false, Some(':'));
+    // `:` is the ex line now; M-x opens the palette.
+    app.on_key(&mut sh, "x", false, true, Some('x'));
     for c in "fold".chars() {
         app.on_key(&mut sh, &c.to_string(), false, false, Some(c));
     }
@@ -2086,11 +2092,7 @@ fn insert_burst_undoes_as_one_unit() {
     app.on_key(&mut sh, "Z", false, false, Some('Z'));
     app.on_key(&mut sh, "escape", false, false, None);
     app.on_key(&mut sh, "u", false, false, Some('u'));
-    assert_eq!(
-        app.body_buffer(),
-        "one",
-        "one undo removes the whole burst"
-    );
+    assert_eq!(app.body_buffer(), "one", "one undo removes the whole burst");
     app.on_key(&mut sh, "r", true, false, None); // ctrl+r redo
     assert_eq!(app.body_buffer(), "oneXYZ", "redo restores the burst");
 }
@@ -2113,7 +2115,11 @@ fn two_insert_bursts_undo_separately() {
     app.on_key(&mut sh, "u", false, false, Some('u'));
     assert_eq!(app.body_buffer(), "oneXYZ", "second burst undone first");
     app.on_key(&mut sh, "u", false, false, Some('u'));
-    assert_eq!(app.body_buffer(), "", "first burst (the whole session) next");
+    assert_eq!(
+        app.body_buffer(),
+        "",
+        "first burst (the whole session) next"
+    );
 }
 
 #[test]
@@ -2194,7 +2200,10 @@ fn drag_drop_preserves_block_ids() {
 #[test]
 fn body_wheel_scrolls_the_viewport() {
     let (_d, mut sh) = shell();
-    let text = (0..30).map(|i| format!("l{i}")).collect::<Vec<_>>().join("\n");
+    let text = (0..30)
+        .map(|i| format!("l{i}"))
+        .collect::<Vec<_>>()
+        .join("\n");
     let mut app = editor_with(&mut sh, &text);
     assert_eq!(
         app.body_scroll_start(10),
@@ -2210,7 +2219,10 @@ fn body_wheel_scrolls_the_viewport() {
 #[test]
 fn body_scroll_clamps_to_the_buffer() {
     let (_d, mut sh) = shell();
-    let text = (0..30).map(|i| format!("l{i}")).collect::<Vec<_>>().join("\n");
+    let text = (0..30)
+        .map(|i| format!("l{i}"))
+        .collect::<Vec<_>>()
+        .join("\n");
     let mut app = editor_with(&mut sh, &text);
     app.body_scroll_by(-100, 10);
     assert_eq!(app.body_scroll_start(10), 0);
@@ -2225,7 +2237,10 @@ fn body_scroll_clamps_to_the_buffer() {
 #[test]
 fn cursor_movement_clears_the_body_scroll() {
     let (_d, mut sh) = shell();
-    let text = (0..30).map(|i| format!("l{i}")).collect::<Vec<_>>().join("\n");
+    let text = (0..30)
+        .map(|i| format!("l{i}"))
+        .collect::<Vec<_>>()
+        .join("\n");
     let mut app = editor_with(&mut sh, &text);
     app.on_key(&mut sh, "escape", false, false, None); // NORMAL
     app.body_scroll_by(-100, 10);

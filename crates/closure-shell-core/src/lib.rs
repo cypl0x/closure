@@ -365,6 +365,13 @@ pub struct Row {
     pub level: u8,
     /// TODO keyword, if any.
     pub todo: Option<String>,
+    /// Whether this headline's subtree is folded (`:VISIBILITY: folded`).
+    ///
+    /// Carried on the row because the outline needs it for every
+    /// visible row on every frame, and the fold walk in `derive_rows`
+    /// has already computed it — asking the vault again per row per
+    /// frame is the same answer at wheel speed.
+    pub folded: bool,
 }
 
 /// One agenda row for the GUI agenda pane, flags precomputed
@@ -3168,6 +3175,7 @@ impl App {
             // live query searches into folds (like org isearch).
             let mut hide_below: Option<u8> = None;
             for h in doc.all_headlines() {
+                let folded = headline_is_folded(h);
                 if self.query.is_empty() {
                     if let Some(limit) = hide_below {
                         if h.level() > limit {
@@ -3175,7 +3183,7 @@ impl App {
                         }
                         hide_below = None;
                     }
-                    if headline_is_folded(h) {
+                    if folded {
                         hide_below = Some(h.level());
                     }
                 }
@@ -3193,6 +3201,7 @@ impl App {
                             title: h.title().to_owned(),
                             level: h.level(),
                             todo: h.todo().map(ToOwned::to_owned),
+                            folded,
                         },
                     ));
                 }
@@ -3716,6 +3725,8 @@ pub enum ModalSurface {
     Sniffer,
     /// CRDT field conflicts awaiting an ours/theirs decision.
     Conflicts,
+    /// The vim-style `:` command line.
+    Ex,
 }
 
 /// Which read-only list a generic list surface is showing (drives the
@@ -4685,6 +4696,10 @@ pub struct ModalApp {
     /// The Notion "/" block menu's query while it is open, and its
     /// cursor row. `None` when closed.
     slash: Option<(String, usize)>,
+    /// The `:` command line's buffer while it is open.
+    ex_buf: String,
+    /// Surface the `:` line was opened from, so Escape returns there.
+    ex_return: Option<ModalSurface>,
     /// Output of the last source block run from the Blocks surface.
     /// Cleared whenever the cursor moves or the pane closes, because
     /// output shown beside a block that did not produce it is a lie.
@@ -4709,6 +4724,37 @@ pub struct ModalApp {
     /// How many full vault walks the memo has paid for. Observability
     /// for the render budget (`rows_recomputes`), asserted in tests.
     row_recomputes: std::cell::Cell<u64>,
+    /// Memoised detail for the selected row — see [`ModalApp::detail`].
+    detail_memo: std::cell::RefCell<Option<DetailMemo>>,
+    /// Derivations paid for; the render budget's second number.
+    detail_recomputes: std::cell::Cell<u64>,
+    /// Memoised palette entries — see [`ModalApp::palette_entries`].
+    palette_memo: std::cell::RefCell<Option<PaletteMemo>>,
+    /// Derivations paid for; the render budget's third number.
+    palette_recomputes: std::cell::Cell<u64>,
+}
+
+/// A filled detail memo with the key it is valid under.
+#[derive(Debug, Clone)]
+struct DetailMemo {
+    /// Vault revision the detail was read at.
+    revision: u64,
+    /// Block id it describes (`None` when there is no selection).
+    id: Option<String>,
+    /// The derived detail, shared so a repaint costs a refcount bump
+    /// rather than cloning a whole headline body.
+    detail: Option<std::sync::Arc<Detail>>,
+}
+
+/// A filled palette memo with the key it is valid under.
+#[derive(Debug, Clone)]
+struct PaletteMemo {
+    /// The filter the entries were scored against.
+    query: String,
+    /// The mode whose chords they carry.
+    mode: InputMode,
+    /// The derived entries.
+    entries: std::sync::Arc<Vec<PaletteEntry>>,
 }
 
 /// A filled outline-row memo together with the key it is valid under.
@@ -4729,6 +4775,8 @@ impl ModalApp {
     pub fn new(mode: InputMode) -> Self {
         Self {
             slash: None,
+            ex_buf: String::new(),
+            ex_return: None,
             block_out: None,
             sniffer: SnifferApp::new(),
             conflicts: ConflictApp::new(Vec::new(), mode),
@@ -4753,6 +4801,10 @@ impl ModalApp {
             hist_cursor: 0,
             row_memo: std::cell::RefCell::new(None),
             row_recomputes: std::cell::Cell::new(0),
+            detail_memo: std::cell::RefCell::new(None),
+            detail_recomputes: std::cell::Cell::new(0),
+            palette_memo: std::cell::RefCell::new(None),
+            palette_recomputes: std::cell::Cell::new(0),
         }
     }
 
@@ -4811,10 +4863,56 @@ impl ModalApp {
     /// entries as every other shell (G6).
     #[must_use]
     pub fn palette_entries(&self) -> Vec<PaletteEntry> {
+        self.palette_shared().as_ref().clone()
+    }
+
+    /// The same entries, shared rather than cloned — the render path's
+    /// entry point.
+    ///
+    /// Building them scores every command against the query and walks
+    /// the keymap once per entry to find its chord, allocating a
+    /// handful of `String`s each time. The palette pane asked for that
+    /// on every frame *and* twice per keystroke, which is why it was
+    /// the slowest surface to scroll. Memoised against
+    /// `(query, mode)` — the mode matters because every entry carries
+    /// the chord for the *active* mode.
+    #[must_use]
+    pub fn palette_shared(&self) -> std::sync::Arc<Vec<PaletteEntry>> {
+        {
+            let memo = self.palette_memo.borrow();
+            if let Some(m) = memo.as_ref()
+                && m.query == self.field_buf
+                && m.mode == self.mode
+            {
+                return std::sync::Arc::clone(&m.entries);
+            }
+        }
+        let entries = std::sync::Arc::new(self.palette_entries_uncached());
+        self.palette_recomputes
+            .set(self.palette_recomputes.get() + 1);
+        *self.palette_memo.borrow_mut() = Some(PaletteMemo {
+            query: self.field_buf.clone(),
+            mode: self.mode,
+            entries: std::sync::Arc::clone(&entries),
+        });
+        entries
+    }
+
+    /// Ground truth: build the palette without consulting or filling
+    /// the memo. What [`Self::palette_shared`] must always agree with.
+    #[must_use]
+    pub fn palette_entries_uncached(&self) -> Vec<PaletteEntry> {
         command_palette(&self.field_buf, self.mode)
             .into_iter()
             .flat_map(|s| s.items)
             .collect()
+    }
+
+    /// How many times the palette has actually been rebuilt. The
+    /// render budget is one per query or mode change.
+    #[must_use]
+    pub const fn palette_recomputes(&self) -> u64 {
+        self.palette_recomputes.get()
     }
 
     /// Cursor into [`Self::palette_entries`].
@@ -5043,6 +5141,10 @@ impl ModalApp {
             // folds hide descendants in the listing, search sees through.
             let mut hide_below: Option<u8> = None;
             for h in doc.all_headlines() {
+                // The fold state is needed twice: to hide descendants
+                // here, and by the outline to draw the arrow. Compute
+                // it once and carry it on the row.
+                let folded = headline_is_folded(h);
                 if filter.is_empty() {
                     if let Some(limit) = hide_below {
                         if h.level() > limit {
@@ -5050,7 +5152,7 @@ impl ModalApp {
                         }
                         hide_below = None;
                     }
-                    if headline_is_folded(h) {
+                    if folded {
                         hide_below = Some(h.level());
                     }
                 }
@@ -5068,6 +5170,7 @@ impl ModalApp {
                             title: h.title().to_owned(),
                             level: h.level(),
                             todo: h.todo().map(ToOwned::to_owned),
+                            folded,
                         },
                     ));
                 }
@@ -5138,9 +5241,52 @@ impl ModalApp {
     /// [`App::detail`].
     #[must_use]
     pub fn detail(&self, shell: &Shell) -> Option<Detail> {
-        let rows = self.rows_shared(shell);
-        let row = rows.get(self.selected)?;
-        let bid = closure_core::BlockId::from_existing(&row.id);
+        self.detail_shared(shell).map(|d| d.as_ref().clone())
+    }
+
+    /// The same detail, shared rather than cloned — the render path's
+    /// entry point.
+    ///
+    /// Deriving it copies the whole headline: body text, tags,
+    /// properties. Scrolling the outline repaints the detail pane
+    /// without changing the selection, so it is memoised against
+    /// `(vault revision, selected id)` — the two things it reads.
+    #[must_use]
+    pub fn detail_shared(&self, shell: &Shell) -> Option<std::sync::Arc<Detail>> {
+        let revision = shell.vault.revision();
+        let id = self
+            .rows_shared(shell)
+            .get(self.selected)
+            .map(|r| r.id.clone());
+        {
+            let memo = self.detail_memo.borrow();
+            if let Some(m) = memo.as_ref()
+                && m.revision == revision
+                && m.id == id
+            {
+                return m.detail.clone();
+            }
+        }
+        let detail = Self::derive_detail(shell, id.as_deref()).map(std::sync::Arc::new);
+        self.detail_recomputes.set(self.detail_recomputes.get() + 1);
+        *self.detail_memo.borrow_mut() = Some(DetailMemo {
+            revision,
+            id,
+            detail: detail.clone(),
+        });
+        detail
+    }
+
+    /// How many times the detail has actually been read out of the
+    /// vault. The render budget is one per selection change.
+    #[must_use]
+    pub const fn detail_recomputes(&self) -> u64 {
+        self.detail_recomputes.get()
+    }
+
+    /// The uncached derivation behind [`Self::detail_shared`].
+    fn derive_detail(shell: &Shell, id: Option<&str>) -> Option<Detail> {
+        let bid = closure_core::BlockId::from_existing(id?);
         let (h, path) = shell.vault.find_by_id(&bid)?;
         Some(Detail {
             title: h.title().to_owned(),
@@ -5201,7 +5347,102 @@ impl ModalApp {
             ModalSurface::BodySearch => self.on_body_search_key(shell, key, text),
             ModalSurface::Sniffer => self.on_sniffer_key(shell, key),
             ModalSurface::Conflicts => self.on_conflicts_key(shell, key),
+            ModalSurface::Ex => self.on_ex_key(shell, key, text),
             ModalSurface::Browse => self.on_browse_key(shell, key, ctrl, alt, text),
+        }
+    }
+
+    /// The `:` command line's buffer while it is open.
+    #[must_use]
+    pub fn ex_buffer(&self) -> &str {
+        &self.ex_buf
+    }
+
+    /// Open the `:` command line.
+    fn begin_ex(&mut self) {
+        self.ex_buf.clear();
+        self.ex_return = Some(self.surface);
+        self.surface = ModalSurface::Ex;
+        ":".clone_into(&mut self.status);
+    }
+
+    /// Keys for the `:` line: typing edits it, Enter runs it, Escape
+    /// abandons it, and backspacing past the start closes it (the same
+    /// rule as the `/` menu — deleting the trigger dismisses it).
+    fn on_ex_key(&mut self, shell: &mut Shell, key: &str, text: Option<char>) {
+        match key {
+            "escape" => self.close_ex(),
+            "backspace" => {
+                if self.ex_buf.pop().is_none() {
+                    self.close_ex();
+                }
+            }
+            "enter" => {
+                let line = std::mem::take(&mut self.ex_buf);
+                self.run_ex(shell, line.trim());
+            }
+            _ => {
+                if let Some(c) = text {
+                    self.ex_buf.push(c);
+                }
+            }
+        }
+    }
+
+    /// Abandon the `:` line and return to where it was opened from.
+    fn close_ex(&mut self) {
+        self.ex_buf.clear();
+        self.surface = self.ex_return.take().unwrap_or(ModalSurface::Browse);
+    }
+
+    /// Execute an ex command.
+    ///
+    /// The vim set first, then a fall-through to the registry, so `:`
+    /// is a superset of the palette it replaced rather than a
+    /// replacement for it.
+    fn run_ex(&mut self, shell: &mut Shell, line: &str) {
+        let editing = self.ex_return == Some(ModalSurface::EditBody);
+        self.ex_buf.clear();
+        self.ex_return = None;
+        self.surface = ModalSurface::Browse;
+        match line {
+            "" => {}
+            "q" | "q!" | "quit" => self.quit = true,
+            "w" | "write" | "wq" | "x" | "wq!" | "x!" => {
+                if editing {
+                    // Here a write has something to do: the editor
+                    // buffer is not in the vault until it is committed.
+                    self.commit_edit_body(shell);
+                } else {
+                    // And here it does not, and saying "written" would
+                    // be a lie about a write that never happened —
+                    // every edit goes through the kernel to disk (I8).
+                    "the vault is written on every edit — nothing to save"
+                        .clone_into(&mut self.status);
+                }
+                if line.starts_with("wq") || line.starts_with('x') {
+                    self.quit = true;
+                }
+            }
+            other => {
+                // Anything else is a command name. Resolve it against
+                // the registry the palette and the chords share (I4).
+                let known = closure_input::mode_keymap(self.mode)
+                    .iter()
+                    .any(|(_, cmd)| *cmd == other)
+                    || command_palette("", self.mode)
+                        .iter()
+                        .flat_map(|s| &s.items)
+                        .any(|e| e.action.command() == other);
+                if known {
+                    if editing {
+                        self.commit_edit_body(shell);
+                    }
+                    self.run_command(shell, other);
+                } else {
+                    self.status = format!("not an editor command: {other}");
+                }
+            }
         }
     }
 
@@ -5724,6 +5965,12 @@ impl ModalApp {
     ) {
         if key == "enter" && ctrl {
             self.commit_edit_body(shell);
+            return;
+        }
+        // `:` outside INSERT is the ex line, the way vim's is. Inside
+        // INSERT it is text — `:PROPERTIES:` and `12:30` are prose.
+        if text == Some(':') && self.body.mode() != EditorMode::Insert {
+            self.begin_ex();
             return;
         }
         // While the "/" menu is open it owns navigation and accept;
@@ -6376,6 +6623,7 @@ impl ModalApp {
                 self.surface = ModalSurface::Palette;
                 "palette — type to filter, Enter to run".clone_into(&mut self.status);
             }
+            "ex-command" => self.begin_ex(),
             "eval-block" => self.eval_selected_block(shell),
             "headline-list" => {
                 self.selected = 0;

@@ -109,6 +109,11 @@ pub enum AppMode {
     Agenda,
     /// Typing a fuzzy query over body lines across the vault.
     BodySearch,
+    /// The vim-style `:` command line. Understands the small set of
+    /// commands muscle memory reaches for (`:w`, `:q`, `:wq`, `:x`)
+    /// and falls through to any command name, so it is a superset of
+    /// the palette rather than a replacement for it.
+    Ex,
 }
 
 /// Elm-style application state for the terminal shell. Strokes go in
@@ -131,6 +136,8 @@ pub struct App {
     /// Last error surfaced from re-validating config.org on save
     /// (validate-on-save). Contains the rich message with line info.
     last_config_error: Option<String>,
+    /// Last message from the `:` command line, for the status line.
+    status: String,
     backlinks: Vec<(PathBuf, PathBuf, String)>,
     capture_request: Option<String>,
     rename_target: Option<String>,
@@ -195,6 +202,7 @@ impl App {
             sources: Vec::new(),
             scroll: 0,
             last_config_error: None,
+            status: String::new(),
             backlinks: Vec::new(),
             capture_request: None,
             rename_target: None,
@@ -586,6 +594,12 @@ impl App {
         self.last_config_error = err;
     }
 
+    /// Last message from the `:` command line (status line).
+    #[must_use]
+    pub fn status(&self) -> &str {
+        &self.status
+    }
+
     /// Current config validation error to surface in the TUI (status line).
     #[must_use]
     pub fn config_error(&self) -> Option<&str> {
@@ -625,6 +639,10 @@ impl App {
         }
         if self.mode == AppMode::Palette {
             self.handle_palette_stroke(stroke);
+            return;
+        }
+        if self.mode == AppMode::Ex {
+            self.handle_ex_stroke(stroke);
             return;
         }
         if self.mode == AppMode::DbView {
@@ -971,6 +989,55 @@ impl App {
         }
     }
 
+    /// Keys for the `:` line. Typing edits it, `RET` runs it, `ESC`
+    /// abandons it, and deleting past the start closes it.
+    fn handle_ex_stroke(&mut self, stroke: &str) {
+        match stroke {
+            "ESC" => {
+                self.mode = AppMode::Browse;
+                self.query.clear();
+            }
+            "DEL" if self.query.pop().is_none() => self.mode = AppMode::Browse,
+            "DEL" => {}
+            "RET" => {
+                let line = std::mem::take(&mut self.query);
+                self.mode = AppMode::Browse;
+                self.run_ex(line.trim());
+            }
+            "SPC" => self.query.push(' '),
+            s if s.chars().count() == 1 => {
+                self.query.push_str(s);
+            }
+            _ => {}
+        }
+    }
+
+    /// Execute an ex command: the vim set first, then any command name.
+    fn run_ex(&mut self, line: &str) {
+        match line {
+            "" => {}
+            "q" | "q!" | "quit" => self.quit = true,
+            "w" | "write" | "wq" | "x" | "wq!" | "x!" => {
+                // Every edit is written through the kernel as it
+                // happens (I8), so there is genuinely nothing to flush
+                // — and reporting a write that never happened would be
+                // a lie.
+                "the vault is written on every edit — nothing to save".clone_into(&mut self.status);
+                if line.starts_with("wq") || line.starts_with('x') {
+                    self.quit = true;
+                }
+            }
+            other => {
+                let known = self.bindings.iter().any(|(_, cmd)| cmd == other);
+                if known {
+                    self.apply_command(other);
+                } else {
+                    self.status = format!("not an editor command: {other}");
+                }
+            }
+        }
+    }
+
     fn handle_palette_stroke(&mut self, stroke: &str) {
         match stroke {
             "ESC" => {
@@ -1239,6 +1306,11 @@ impl App {
                 self.mode = AppMode::Palette;
                 self.query.clear();
                 self.result_cursor = 0;
+            }
+            "ex-command" => {
+                self.mode = AppMode::Ex;
+                self.query.clear();
+                self.status.clear();
             }
             "db-view" => {
                 self.mode = AppMode::DbView;
@@ -1963,6 +2035,14 @@ fn overlay_content(app: &App) -> Option<(String, Vec<String>)> {
         AppMode::EditCell => Some((
             format!("set property KEY=VALUE: {}", app.query()),
             Vec::new(),
+        )),
+        AppMode::Ex => Some((
+            format!(":{}  — :w :q :wq :x, or any command name", app.query()),
+            if app.status().is_empty() {
+                Vec::new()
+            } else {
+                vec![app.status().to_owned()]
+            },
         )),
         AppMode::Palette => Some((
             format!("command: {}", app.query()),
