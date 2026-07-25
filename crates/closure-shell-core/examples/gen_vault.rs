@@ -13,9 +13,8 @@ fn main() -> std::io::Result<()> {
         eprintln!("usage: gen_vault DIR FILES HEADLINES [SEED]");
         std::process::exit(2);
     };
-    let parse = |a: Option<String>, default: usize| {
-        a.and_then(|v| v.parse().ok()).unwrap_or(default)
-    };
+    let parse =
+        |a: Option<String>, default: usize| a.and_then(|v| v.parse().ok()).unwrap_or(default);
     let files = parse(args.next(), 200);
     let heads = parse(args.next(), 60);
     let seed = parse(args.next(), 1) as u64;

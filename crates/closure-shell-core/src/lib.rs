@@ -13,6 +13,7 @@
 use std::path::PathBuf;
 
 use closure_config::InputMode;
+pub use closure_sniffer::Action as FlowAction;
 use closure_store::Vault;
 pub use closure_tree_sitter::HighlightKind;
 
@@ -2370,6 +2371,66 @@ pub fn serialize_palette(sections: &[PaletteSection]) -> String {
     out
 }
 
+/// One entry of the Notion-style "/" block menu.
+///
+/// The insertion is *org text*, not a private block model: whatever is
+/// picked is what lands in the file, so a block inserted in the GUI is
+/// a block Emacs reads (I1). `cursor` is where the caret goes
+/// afterwards, as a char offset into `text` — inside the code block,
+/// after the checkbox, between the link brackets.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct BlockTemplate {
+    /// Menu label.
+    pub label: &'static str,
+    /// The org text inserted at the cursor.
+    pub text: &'static str,
+    /// Caret position afterwards, in chars from the start of `text`.
+    pub cursor: usize,
+}
+
+/// The block templates whose labels fuzzy-match `query`, best first;
+/// an empty query lists all of them, and no match lists none.
+#[must_use]
+pub fn block_templates(query: &str) -> Vec<BlockTemplate> {
+    // `cursor` counts chars, so each entry is written with its caret
+    // target spelled out rather than a magic number.
+    const fn t(label: &'static str, text: &'static str, cursor: usize) -> BlockTemplate {
+        BlockTemplate {
+            label,
+            text,
+            cursor,
+        }
+    }
+    let all = [
+        t("Heading", "** ", 3),
+        t("To-do", "- [ ] ", 6),
+        t("Done", "- [X] ", 6),
+        t("Bullet", "- ", 2),
+        t("Numbered", "1. ", 3),
+        // Caret on the empty middle line of the block.
+        t("Code", "#+BEGIN_SRC sh\n\n#+END_SRC", 15),
+        t("Quote", "#+BEGIN_QUOTE\n\n#+END_QUOTE", 14),
+        t("Example", "#+BEGIN_EXAMPLE\n\n#+END_EXAMPLE", 16),
+        t("Table", "| ", 2),
+        t("Link", "[[][]]", 2),
+        t("Property", ":PROPERTIES:\n:KEY: value\n:END:", 14),
+        t("Divider", "-----", 5),
+    ];
+    let mut scored: Vec<(u32, BlockTemplate)> = all
+        .into_iter()
+        .filter_map(|tpl| {
+            let score = if query.is_empty() {
+                Some(0)
+            } else {
+                closure_query::fuzzy_score(query, tpl.label)
+            }?;
+            Some((score, tpl))
+        })
+        .collect();
+    scored.sort_by_key(|(s, _)| std::cmp::Reverse(*s));
+    scored.into_iter().map(|(_, t)| t).collect()
+}
+
 /// What a right-click landed on, selecting which context menu to show.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ContextTarget {
@@ -3644,6 +3705,17 @@ pub enum ModalSurface {
     Palette,
     /// Read-only undo-tree of the selected row's document (I3).
     UndoHistory,
+    /// Every headline in the selected row's file, flat.
+    Headlines,
+    /// Notion-style database table over the whole vault.
+    DbView,
+    /// Full-text search over headline *bodies* (the outline search
+    /// only sees titles).
+    BodySearch,
+    /// Captured network flows with their allow/block rules (X3).
+    Sniffer,
+    /// CRDT field conflicts awaiting an ours/theirs decision.
+    Conflicts,
 }
 
 /// Which read-only list a generic list surface is showing (drives the
@@ -3758,6 +3830,27 @@ impl BodyEditor {
     #[must_use]
     pub const fn mode(&self) -> EditorMode {
         self.mode
+    }
+
+    /// The cursor as a byte offset into the buffer — what
+    /// [`Self::replace_to_cursor`] addresses.
+    #[must_use]
+    pub const fn cursor_byte(&self) -> usize {
+        self.cursor
+    }
+
+    /// Park the cursor at byte offset `byte`, clamped to the buffer and
+    /// to a char boundary.
+    ///
+    /// Unlike the motions, this crosses lines: an inserted multi-line
+    /// template needs the caret placed *inside* it, which `left`/`up`
+    /// cannot express because they deliberately stop at newlines.
+    pub fn set_cursor_byte(&mut self, byte: usize) {
+        let mut at = byte.min(self.buf.len());
+        while at > 0 && !self.buf.is_char_boundary(at) {
+            at -= 1;
+        }
+        self.cursor = at;
     }
 
     /// Cursor as `(line, column)` — both 0-based, column in chars.
@@ -4589,6 +4682,21 @@ pub struct ModalApp {
     body_scroll: Option<(usize, usize)>,
     /// Cursor row inside the `UndoHistory` pane (Q2-U3).
     hist_cursor: usize,
+    /// The Notion "/" block menu's query while it is open, and its
+    /// cursor row. `None` when closed.
+    slash: Option<(String, usize)>,
+    /// The sniffer surface's captured flows and rules (X3).
+    sniffer: SnifferApp,
+    /// The conflict surface's pending CRDT decisions.
+    conflicts: ConflictApp,
+    /// Whether the LLM may read the *rendered* view (V3b).
+    ///
+    /// Off until explicitly granted, and revocable at any time —
+    /// `toggle-llm-render` is the live toggle, bound in every keymap so
+    /// it shows up in which-key. Mirrors
+    /// `closure_llm::LlmPermissions::toggle_render`; a session created
+    /// from this app takes its render grant from here.
+    llm_render: bool,
     /// Memoised outline rows — see [`ModalApp::rows`]. Interior
     /// mutability because `rows` is a `&self` query on the render
     /// path; the memo is exact, guarded by the vault revision and the
@@ -4614,8 +4722,12 @@ struct RowMemo {
 impl ModalApp {
     /// New modal app in the given editing mode, Browse surface.
     #[must_use]
-    pub const fn new(mode: InputMode) -> Self {
+    pub fn new(mode: InputMode) -> Self {
         Self {
+            slash: None,
+            sniffer: SnifferApp::new(),
+            conflicts: ConflictApp::new(Vec::new(), mode),
+            llm_render: false,
             mode,
             surface: ModalSurface::Browse,
             selected: 0,
@@ -5075,8 +5187,102 @@ impl ModalApp {
                 "escape" | "q" => self.surface = ModalSurface::Browse,
                 _ => {}
             },
+            ModalSurface::Headlines => {
+                self.on_pane_key(key, self.headline_rows(shell).len());
+            }
+            ModalSurface::DbView => {
+                self.on_pane_key(key, self.db_rows(shell).1.len());
+            }
+            ModalSurface::BodySearch => self.on_body_search_key(shell, key, text),
+            ModalSurface::Sniffer => self.on_sniffer_key(shell, key),
+            ModalSurface::Conflicts => self.on_conflicts_key(shell, key),
             ModalSurface::Browse => self.on_browse_key(shell, key, ctrl, alt, text),
         }
+    }
+
+    /// Shared navigation for the read-only panes: j/k walk, Escape
+    /// leaves. `len` is the pane's row count, so the cursor clamps to
+    /// what is actually painted.
+    fn on_pane_key(&mut self, key: &str, len: usize) {
+        match key {
+            "j" | "down" => self.selected = (self.selected + 1).min(len.saturating_sub(1)),
+            "k" | "up" => self.selected = self.selected.saturating_sub(1),
+            "escape" | "q" => {
+                self.selected = 0;
+                self.surface = ModalSurface::Browse;
+            }
+            _ => {}
+        }
+    }
+
+    /// The body-search overlay: typing narrows, Enter jumps to the hit,
+    /// Escape leaves and clears.
+    fn on_body_search_key(&mut self, shell: &Shell, key: &str, text: Option<char>) {
+        match key {
+            "escape" => {
+                self.query.clear();
+                self.selected = 0;
+                self.surface = ModalSurface::Browse;
+            }
+            "backspace" => {
+                self.query.pop();
+                self.selected = 0;
+            }
+            "down" | "up" => {
+                let last = self.body_search_rows(shell).len().saturating_sub(1);
+                if key == "down" {
+                    self.selected = (self.selected + 1).min(last);
+                } else {
+                    self.selected = self.selected.saturating_sub(1);
+                }
+            }
+            "enter" => {
+                if let Some((id, _)) = self.body_search_rows(shell).get(self.selected).cloned() {
+                    self.query.clear();
+                    self.surface = ModalSurface::Browse;
+                    self.select_id(shell, &id);
+                }
+            }
+            _ => {
+                if let Some(c) = text {
+                    self.query.push(c);
+                    self.selected = 0;
+                }
+            }
+        }
+    }
+
+    /// The flow list: a/b write an allow/block rule for the selected
+    /// flow through the same commands the chords run (I8).
+    fn on_sniffer_key(&mut self, shell: &mut Shell, key: &str) {
+        match key {
+            "j" | "down" => self.sniffer.select(self.sniffer_cursor() + 1),
+            "k" | "up" => self.sniffer.select(self.sniffer_cursor().saturating_sub(1)),
+            "a" => self.run_command(shell, "allow-flow"),
+            "b" => self.run_command(shell, "block-flow"),
+            "escape" | "q" => self.surface = ModalSurface::Browse,
+            _ => {}
+        }
+    }
+
+    /// The conflict list: o/t take ours/theirs for the selected field.
+    fn on_conflicts_key(&mut self, shell: &mut Shell, key: &str) {
+        match key {
+            "j" | "down" => self.conflicts.select(self.conflicts.selected() + 1),
+            "k" | "up" => self
+                .conflicts
+                .select(self.conflicts.selected().saturating_sub(1)),
+            "o" => self.run_command(shell, "resolve-ours"),
+            "t" => self.run_command(shell, "resolve-theirs"),
+            "escape" | "q" => self.surface = ModalSurface::Browse,
+            _ => {}
+        }
+    }
+
+    /// Cursor row in the sniffer pane.
+    #[must_use]
+    pub const fn sniffer_cursor(&self) -> usize {
+        self.sniffer.selected()
     }
 
     /// Single-line field editor (tags / property): Enter commits through
@@ -5340,9 +5546,22 @@ impl ModalApp {
     /// Re-point the selection at the row with `id` (the selection
     /// follows a moved subtree); no-op when the id is gone.
     fn select_id(&mut self, shell: &Shell, id: &str) {
+        self.select_by_id(shell, id);
+    }
+
+    /// Move the outline selection to the row carrying `id`, reporting
+    /// whether it was found.
+    ///
+    /// The list surfaces — headlines, body search, backlinks, the
+    /// database table — answer in block ids, so this is how a clicked
+    /// row (or a moved subtree) translates back into a selection. An
+    /// unknown id leaves the cursor alone rather than resetting it.
+    pub fn select_by_id(&mut self, shell: &Shell, id: &str) -> bool {
         if let Some(i) = self.rows_shared(shell).iter().position(|r| r.id == id) {
             self.selected = i;
+            return true;
         }
+        false
     }
 
     /// Index of the selected row's nearest sibling (same file, same
@@ -5494,6 +5713,136 @@ impl ModalApp {
             self.commit_edit_body(shell);
             return;
         }
+        // While the "/" menu is open it owns navigation and accept;
+        // everything else falls through, so typing keeps editing the
+        // buffer and the query follows along in `sync_slash`.
+        if self.slash.is_some() {
+            match key {
+                "escape" => {
+                    self.slash = None;
+                    return;
+                }
+                "enter" => {
+                    self.accept_slash();
+                    return;
+                }
+                "down" | "up" => {
+                    if let Some((query, cursor)) = self.slash.as_mut() {
+                        let last = block_templates(query).len().saturating_sub(1);
+                        *cursor = if key == "down" {
+                            (*cursor + 1).min(last)
+                        } else {
+                            cursor.saturating_sub(1)
+                        };
+                    }
+                    return;
+                }
+                _ => {}
+            }
+        }
+        self.edit_body_key(shell, key, ctrl, alt, text);
+        if self.body.mode() == EditorMode::Insert {
+            self.sync_slash();
+        } else {
+            self.slash = None;
+        }
+    }
+
+    /// The Notion "/" menu's query while it is open.
+    #[must_use]
+    pub fn slash_query(&self) -> Option<&str> {
+        self.slash.as_ref().map(|(q, _)| q.as_str())
+    }
+
+    /// The templates the open menu is offering, best match first.
+    #[must_use]
+    pub fn slash_items(&self) -> Vec<BlockTemplate> {
+        self.slash
+            .as_ref()
+            .map(|(q, _)| block_templates(q))
+            .unwrap_or_default()
+    }
+
+    /// Cursor row in the open menu.
+    #[must_use]
+    pub fn slash_cursor(&self) -> usize {
+        self.slash.as_ref().map_or(0, |(_, c)| *c)
+    }
+
+    /// Accept menu entry `i` from a click — the same accept Enter
+    /// performs (I8). An index past the end leaves the menu alone.
+    pub fn slash_click(&mut self, i: usize) {
+        if i >= self.slash_items().len() {
+            return;
+        }
+        if let Some((_, cursor)) = self.slash.as_mut() {
+            *cursor = i;
+        }
+        self.accept_slash();
+    }
+
+    /// Open the "/" menu, or close it, from what is actually in the
+    /// buffer — so backspacing past the slash closes it and no
+    /// separate bookkeeping can drift out of sync with the text.
+    ///
+    /// The trigger is a `/` that *starts a word*: at the beginning of a
+    /// line or after whitespace. `and/or`, a URL and a date are text,
+    /// not commands. A space after the slash ends it, the same way it
+    /// ends a Notion slash command.
+    fn sync_slash(&mut self) {
+        let (_, col) = self.body.cursor_line_col();
+        let before: String = self.body.current_line().chars().take(col).collect();
+        let Some(pos) = before.rfind('/') else {
+            self.slash = None;
+            return;
+        };
+        let starts_word = before[..pos]
+            .chars()
+            .next_back()
+            .is_none_or(char::is_whitespace);
+        let query = &before[pos + 1..];
+        if !starts_word || query.contains(char::is_whitespace) {
+            self.slash = None;
+            return;
+        }
+        let cursor = self.slash_cursor();
+        let last = block_templates(query).len().saturating_sub(1);
+        self.slash = Some((query.to_owned(), cursor.min(last)));
+    }
+
+    /// Replace the `/query` trigger with the selected template and put
+    /// the caret where that template asks for it.
+    fn accept_slash(&mut self) {
+        let Some((query, cursor)) = self.slash.take() else {
+            return;
+        };
+        let Some(tpl) = block_templates(&query).into_iter().nth(cursor) else {
+            return;
+        };
+        // The trigger is the slash plus the query, both immediately
+        // behind the cursor.
+        let start = self.body.cursor_byte().saturating_sub(1 + query.len());
+        self.body.replace_to_cursor(start, tpl.text);
+        // The caret goes where the template asks — often inside a
+        // multi-line block, which the newline-stopping motions cannot
+        // reach, so address it directly.
+        let offset = tpl
+            .text
+            .char_indices()
+            .nth(tpl.cursor)
+            .map_or(tpl.text.len(), |(b, _)| b);
+        self.body.set_cursor_byte(start + offset);
+    }
+
+    /// The body editor's own key handling, unaware of the "/" menu.
+    fn edit_body_key(
+        &mut self,
+        shell: &Shell,
+        key: &str,
+        ctrl: bool,
+        alt: bool,
+        text: Option<char>,
+    ) {
         match self.body.mode() {
             EditorMode::Insert => match key {
                 // G4: the first buffer-changing edit checkpoints the
@@ -6014,8 +6363,187 @@ impl ModalApp {
                 self.surface = ModalSurface::Palette;
                 "palette — type to filter, Enter to run".clone_into(&mut self.status);
             }
-            other => self.status = format!("{other}: not available in the modal GUI experiment"),
+            "headline-list" => {
+                self.selected = 0;
+                self.surface = ModalSurface::Headlines;
+                "headlines — RET jump, Esc back".clone_into(&mut self.status);
+            }
+            "db-view" => {
+                self.selected = 0;
+                self.surface = ModalSurface::DbView;
+                "database — RET jump, Esc back".clone_into(&mut self.status);
+            }
+            "body-search" => {
+                self.query.clear();
+                self.selected = 0;
+                self.surface = ModalSurface::BodySearch;
+                "body search — type to filter, RET jump, Esc back".clone_into(&mut self.status);
+            }
+            "toggle-llm-render" => {
+                self.llm_render = !self.llm_render;
+                self.status = format!(
+                    "LLM render access {}",
+                    if self.llm_render {
+                        "granted"
+                    } else {
+                        "revoked"
+                    }
+                );
+            }
+            "sniffer" => {
+                self.selected = 0;
+                self.surface = ModalSurface::Sniffer;
+                "flows — a allow, b block, Esc back".clone_into(&mut self.status);
+            }
+            "allow-flow" | "block-flow" => {
+                if self.sniffer.events().is_empty() {
+                    "no captured flows".clone_into(&mut self.status);
+                } else {
+                    if cmd == "allow-flow" {
+                        self.sniffer.allow_selected();
+                    } else {
+                        self.sniffer.block_selected();
+                    }
+                    self.surface = ModalSurface::Sniffer;
+                    self.status = self
+                        .sniffer
+                        .detail()
+                        .unwrap_or_else(|| "flow rule updated".to_owned());
+                }
+            }
+            "conflicts" => {
+                self.selected = 0;
+                self.surface = ModalSurface::Conflicts;
+                "conflicts — o ours, t theirs, Esc back".clone_into(&mut self.status);
+            }
+            "resolve-ours" | "resolve-theirs" => {
+                if self.conflicts.conflicts().is_empty() {
+                    "no conflicts to resolve".clone_into(&mut self.status);
+                } else {
+                    let ours = cmd == "resolve-ours";
+                    let result = if ours {
+                        self.conflicts.resolve_ours(shell)
+                    } else {
+                        self.conflicts.resolve_theirs(shell)
+                    };
+                    let side = if ours { "ours" } else { "theirs" };
+                    self.status = match result {
+                        Ok(()) => format!("resolved {side}"),
+                        Err(e) => format!("resolve failed: {e}"),
+                    };
+                    self.surface = ModalSurface::Conflicts;
+                }
+            }
+            other => self.status = format!("{other}: unknown command"),
         }
+    }
+
+    /// Every headline in the selected row's file, as `(title, id)` —
+    /// the flat per-file listing behind the Headlines surface.
+    #[must_use]
+    pub fn headline_rows(&self, shell: &Shell) -> Vec<(String, String)> {
+        let rows = self.rows_shared(shell);
+        let Some(row) = rows.get(self.selected.min(rows.len().saturating_sub(1))) else {
+            return Vec::new();
+        };
+        let path = std::path::PathBuf::from(&row.path);
+        shell
+            .vault
+            .iter()
+            .filter(|(p, _)| *p == path.as_path())
+            .flat_map(|(_, doc)| doc.all_headlines())
+            .map(|h| (h.title().to_owned(), h.id().to_string()))
+            .collect()
+    }
+
+    /// The Notion-style database table over the whole vault: a header
+    /// row plus one cell row per headline.
+    ///
+    /// Deliberately loose, the way Notion's databases are: every
+    /// headline is a row, a missing value is an empty cell rather than
+    /// an error, and the columns are the properties an org headline
+    /// always has.
+    #[must_use]
+    pub fn db_rows(&self, shell: &Shell) -> (Vec<String>, Vec<Vec<String>>) {
+        let header = ["title", "todo", "priority", "tags"]
+            .iter()
+            .map(|s| (*s).to_owned())
+            .collect();
+        let rows = shell
+            .vault
+            .iter()
+            .flat_map(|(_, doc)| doc.all_headlines())
+            .map(|h| {
+                vec![
+                    h.title().to_owned(),
+                    h.todo().unwrap_or_default().to_owned(),
+                    h.priority().map(String::from).unwrap_or_default(),
+                    h.tags().join(" "),
+                ]
+            })
+            .collect();
+        (header, rows)
+    }
+
+    /// Body-text hits for the current query, as `(id, "title — line")`.
+    ///
+    /// The outline search matches titles; this one matches the text
+    /// underneath them, which is the only way to find a note you
+    /// remember the contents but not the heading of. An empty query
+    /// matches nothing — dumping the vault is not a search result.
+    #[must_use]
+    pub fn body_search_rows(&self, shell: &Shell) -> Vec<(String, String)> {
+        if self.query.is_empty() {
+            return Vec::new();
+        }
+        let needle = self.query.to_lowercase();
+        let mut out = Vec::new();
+        for (_, doc) in shell.vault.iter() {
+            for h in doc.all_headlines() {
+                let body = h.body_text();
+                if let Some(line) = body
+                    .lines()
+                    .find(|l| l.to_lowercase().contains(needle.as_str()))
+                {
+                    out.push((
+                        h.id().to_string(),
+                        format!("{} — {}", h.title(), line.trim()),
+                    ));
+                }
+            }
+        }
+        out
+    }
+
+    /// Whether the LLM may read the rendered view (V3b). Off until
+    /// `toggle-llm-render` grants it.
+    #[must_use]
+    pub const fn llm_render_access(&self) -> bool {
+        self.llm_render
+    }
+
+    /// The sniffer surface's state, for painting and for feeding
+    /// captures in.
+    #[must_use]
+    pub const fn sniffer(&self) -> &SnifferApp {
+        &self.sniffer
+    }
+
+    /// Mutable sniffer state — a shell records live captures here.
+    pub const fn sniffer_mut(&mut self) -> &mut SnifferApp {
+        &mut self.sniffer
+    }
+
+    /// The pending CRDT conflicts, for painting.
+    #[must_use]
+    pub const fn conflicts(&self) -> &ConflictApp {
+        &self.conflicts
+    }
+
+    /// Load the conflicts a merge produced, so the Conflicts surface
+    /// has something to resolve.
+    pub fn set_conflicts(&mut self, conflicts: Vec<closure_crdt::FieldConflict>) {
+        self.conflicts = ConflictApp::new(conflicts, self.mode);
     }
 }
 

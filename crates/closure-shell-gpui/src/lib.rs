@@ -680,6 +680,26 @@ impl GpuiView {
             ModalSurface::UndoHistory => {
                 "undo history — j/k move · RET/click jump · Esc back".to_owned()
             }
+            ModalSurface::Headlines => {
+                format!("headlines — {n} in this file · Esc back")
+            }
+            ModalSurface::DbView => format!(
+                "database — {} row(s) · Esc back",
+                self.app.db_rows(&self.shell).1.len()
+            ),
+            ModalSurface::BodySearch => format!(
+                "⌕ body: {}▏ — {} hit(s)",
+                self.app.query(),
+                self.app.body_search_rows(&self.shell).len()
+            ),
+            ModalSurface::Sniffer => format!(
+                "flows — {} captured · a allow · b block · Esc back",
+                self.app.sniffer().events().len()
+            ),
+            ModalSurface::Conflicts => format!(
+                "conflicts — {} pending · o ours · t theirs · Esc back",
+                self.app.conflicts().conflicts().len()
+            ),
         }
     }
 
@@ -891,53 +911,32 @@ impl GpuiView {
         match self.app.surface() {
             ModalSurface::Palette => pane.child(self.palette_pane(co, cx)),
             ModalSurface::Agenda => pane.child(self.agenda_pane(co, cx)),
-            ModalSurface::UndoHistory => {
-                // Q2-U3: rows are click targets (jump = the Enter path)
-                // and the pane cursor row is highlighted.
-                let cursor = self.app.undo_history_cursor();
-                pane.children(
+            ModalSurface::Headlines => pane.children(
+                self.id_rows(
+                    co,
                     self.app
-                        .undo_history_rows(&self.shell)
+                        .headline_rows(&self.shell)
                         .into_iter()
-                        .enumerate()
-                        .map(|(i, r)| {
-                            div()
-                                .flex()
-                                .px_2()
-                                .py_1()
-                                .cursor_pointer()
-                                .bg(rgb(if i == cursor { co.selection } else { co.bg }))
-                                .hover(move |s| s.bg(rgb(co.hover)))
-                                .on_mouse_down(
-                                    MouseButton::Left,
-                                    cx.listener(move |this, _ev, _w, cx| {
-                                        this.app.undo_history_click(&mut this.shell, i);
-                                        cx.notify();
-                                    }),
-                                )
-                                .child(
-                                    div()
-                                        .w(px(f32::from(
-                                            u16::try_from(r.depth).unwrap_or(u16::MAX),
-                                        ) * 14.0))
-                                        .child(""),
-                                )
-                                .child(
-                                    div()
-                                        .text_color(rgb(if r.is_current {
-                                            co.accent
-                                        } else {
-                                            co.muted
-                                        }))
-                                        .child(format!(
-                                            "{} {}",
-                                            if r.is_current { "●" } else { "○" },
-                                            r.label
-                                        )),
-                                )
-                        }),
-                )
-            }
+                        .map(|(title, id)| (format!("{title}    [{id}]"), id))
+                        .collect(),
+                    cx,
+                ),
+            ),
+            ModalSurface::DbView => pane.child(self.db_table(co)),
+            ModalSurface::BodySearch => pane.children(
+                self.id_rows(
+                    co,
+                    self.app
+                        .body_search_rows(&self.shell)
+                        .into_iter()
+                        .map(|(id, text)| (text, id))
+                        .collect(),
+                    cx,
+                ),
+            ),
+            ModalSurface::Sniffer => pane.child(self.sniffer_pane(co, cx)),
+            ModalSurface::Conflicts => pane.child(self.conflicts_pane(co, cx)),
+            ModalSurface::UndoHistory => pane.children(self.undo_history_pane(co, cx)),
             ModalSurface::Blocks => pane.children(
                 self.app
                     .block_rows(&self.shell)
@@ -1130,10 +1129,77 @@ impl GpuiView {
             .gap_2()
             .child(header)
             .child(body);
+        if let Some(menu) = self.slash_menu(co, cx) {
+            pane = pane.child(menu);
+        }
         if let Some(popup) = self.completion_popup(co) {
             pane = pane.child(popup);
         }
         pane
+    }
+
+    /// The Notion "/" block menu, when open: each entry inserts real
+    /// org syntax at the cursor, and clicking one is the same accept
+    /// Enter performs.
+    fn slash_menu(&self, co: Colors, cx: &Context<Self>) -> Option<gpui::Div> {
+        let query = self.app.slash_query()?;
+        let items = self.app.slash_items();
+        if items.is_empty() {
+            return None;
+        }
+        let cursor = self.app.slash_cursor();
+        Some(
+            div()
+                .flex()
+                .flex_col()
+                .p_1()
+                .rounded_md()
+                .bg(rgb(co.bg))
+                .border_1()
+                .border_color(rgb(co.accent))
+                .child(
+                    div()
+                        .px_2()
+                        .text_size(px(10.0))
+                        .text_color(rgb(co.muted))
+                        .child(format!("insert block  /{query}")),
+                )
+                .children(items.into_iter().enumerate().map(|(i, tpl)| {
+                    let hot = i == cursor;
+                    // The first line of the template is the preview —
+                    // what you are about to put in the file.
+                    let preview = tpl.text.lines().next().unwrap_or_default().to_owned();
+                    div()
+                        .flex()
+                        .items_center()
+                        .gap_2()
+                        .px_2()
+                        .rounded_sm()
+                        .cursor_pointer()
+                        .bg(rgb(if hot { co.selection } else { co.bg }))
+                        .hover(move |s| s.bg(rgb(if hot { co.selection } else { co.hover })))
+                        .on_mouse_down(
+                            MouseButton::Left,
+                            cx.listener(move |this: &mut Self, _ev, _w, cx| {
+                                this.app.slash_click(i);
+                                cx.notify();
+                            }),
+                        )
+                        .child(
+                            div()
+                                .w(px(90.0))
+                                .text_size(px(12.0))
+                                .text_color(rgb(if hot { co.fg } else { co.muted }))
+                                .child(tpl.label),
+                        )
+                        .child(
+                            div()
+                                .text_size(px(11.0))
+                                .text_color(rgb(co.code))
+                                .child(preview),
+                        )
+                })),
+        )
     }
 
     /// The C-n / typing-idle completion popup, when one is open.
@@ -1161,6 +1227,271 @@ impl GpuiView {
                         .child(item.clone())
                 })),
         )
+    }
+
+    /// The undo tree (Q2-U3): rows indented by depth, the active node
+    /// marked, and every row a click target that jumps there — the
+    /// same move Enter makes.
+    fn undo_history_pane(&self, co: Colors, cx: &Context<Self>) -> Vec<gpui::Div> {
+        let cursor = self.app.undo_history_cursor();
+        self.app
+            .undo_history_rows(&self.shell)
+            .into_iter()
+            .enumerate()
+            .map(|(i, r)| {
+                let indent = f32::from(u16::try_from(r.depth).unwrap_or(u16::MAX)) * 14.0;
+                div()
+                    .flex()
+                    .px_2()
+                    .py_1()
+                    .cursor_pointer()
+                    .bg(rgb(if i == cursor { co.selection } else { co.bg }))
+                    .hover(move |s| s.bg(rgb(co.hover)))
+                    .on_mouse_down(
+                        MouseButton::Left,
+                        cx.listener(move |this: &mut Self, _ev, _w, cx| {
+                            this.app.undo_history_click(&mut this.shell, i);
+                            cx.notify();
+                        }),
+                    )
+                    .child(div().w(px(indent)))
+                    .child(
+                        div()
+                            .text_color(rgb(if r.is_current { co.accent } else { co.muted }))
+                            .child(format!(
+                                "{} {}",
+                                if r.is_current { "●" } else { "○" },
+                                r.label
+                            )),
+                    )
+            })
+            .collect()
+    }
+
+    /// Clickable `(label, block id)` rows: a click moves the outline
+    /// selection to that headline, which is the same jump Enter makes
+    /// (I8). Shared by the headline list and the body-search hits.
+    fn id_rows(
+        &self,
+        co: Colors,
+        rows: Vec<(String, String)>,
+        cx: &Context<Self>,
+    ) -> Vec<gpui::Div> {
+        let selected = self.app.selected();
+        rows.into_iter()
+            .enumerate()
+            .map(|(i, (label, id))| {
+                list_row(
+                    co,
+                    i == selected,
+                    label,
+                    cx.listener(move |this: &mut Self, _ev, _w, cx| {
+                        this.app.select_by_id(&this.shell, &id);
+                        cx.notify();
+                    }),
+                )
+            })
+            .collect()
+    }
+
+    /// The Notion-style database table: a header row and one aligned
+    /// row per headline, empty cells left empty.
+    fn db_table(&self, co: Colors) -> gpui::Div {
+        let (header, rows) = self.app.db_rows(&self.shell);
+        // Fixed column widths keep the table readable without a
+        // measurement pass; the title takes the slack.
+        let widths = [260.0_f32, 90.0, 70.0, 160.0];
+        let cell = |text: String, w: f32, colour: u32, size: f32| {
+            div()
+                .w(px(w))
+                .pr_2()
+                .overflow_hidden()
+                .text_color(rgb(colour))
+                .text_size(px(size))
+                .child(text)
+        };
+        let selected = self.app.selected();
+        div()
+            .flex()
+            .flex_col()
+            .child(
+                div()
+                    .flex()
+                    .pb_1()
+                    .border_b_1()
+                    .border_color(rgb(co.border))
+                    .children(
+                        header
+                            .into_iter()
+                            .zip(widths)
+                            .map(|(h, w)| cell(h.to_uppercase(), w, co.heading2, 10.0)),
+                    ),
+            )
+            .children(rows.into_iter().enumerate().map(|(i, cells)| {
+                let hot = i == selected;
+                div()
+                    .flex()
+                    .py_1()
+                    .bg(rgb(if hot { co.selection } else { co.bg }))
+                    .hover(move |s| s.bg(rgb(if hot { co.selection } else { co.hover })))
+                    .children(
+                        cells
+                            .into_iter()
+                            .zip(widths)
+                            .enumerate()
+                            .map(|(col, (text, w))| {
+                                // Title reads as content, the rest as metadata.
+                                let colour = match col {
+                                    0 => co.fg,
+                                    1 => co.error,
+                                    2 => co.warning,
+                                    _ => co.muted,
+                                };
+                                cell(text, w, colour, 12.0)
+                            }),
+                    )
+            }))
+    }
+
+    /// Captured network flows with their verdict, and the allow/block
+    /// buttons that write a rule for the selected one (X3).
+    fn sniffer_pane(&self, co: Colors, cx: &Context<Self>) -> gpui::Div {
+        let sniffer = self.app.sniffer();
+        let cursor = self.app.sniffer_cursor();
+        let events = sniffer.events();
+        if events.is_empty() {
+            return div().text_color(rgb(co.muted)).child(
+                "no captured flows — run `closure sniff` or feed the mock backend".to_owned(),
+            );
+        }
+        let button = |label: &'static str, colour: u32, command: &'static str| {
+            div()
+                .px_2()
+                .rounded_md()
+                .bg(rgb(co.panel))
+                .text_color(rgb(colour))
+                .text_size(px(11.0))
+                .cursor_pointer()
+                .hover(move |s| s.bg(rgb(co.hover)))
+                .on_mouse_down(
+                    MouseButton::Left,
+                    cx.listener(move |this: &mut Self, _ev, _w, cx| this.click(command, cx)),
+                )
+                .child(label)
+        };
+        div()
+            .flex()
+            .flex_col()
+            .gap_1()
+            .child(
+                div()
+                    .flex()
+                    .gap_2()
+                    .child(button("allow", co.success, "allow-flow"))
+                    .child(button("block", co.error, "block-flow"))
+                    .child(
+                        div()
+                            .text_color(rgb(co.muted))
+                            .text_size(px(11.0))
+                            .child(format!("{} rule(s)", sniffer.rules().len())),
+                    ),
+            )
+            .children(events.iter().enumerate().map(|(i, ev)| {
+                let hot = i == cursor;
+                let (verdict, colour) = match ev.action {
+                    Some(closure_shell_core::FlowAction::Block) => ("BLOCK", co.error),
+                    Some(closure_shell_core::FlowAction::Allow) => ("ALLOW", co.success),
+                    Some(closure_shell_core::FlowAction::Log) => ("LOG", co.warning),
+                    None => ("—", co.muted),
+                };
+                div()
+                    .flex()
+                    .gap_2()
+                    .px_2()
+                    .py_1()
+                    .rounded_sm()
+                    .cursor_pointer()
+                    .bg(rgb(if hot { co.selection } else { co.bg }))
+                    .hover(move |s| s.bg(rgb(if hot { co.selection } else { co.hover })))
+                    .on_mouse_down(
+                        MouseButton::Left,
+                        cx.listener(move |this: &mut Self, _ev, _w, cx| {
+                            this.app.sniffer_mut().select(i);
+                            cx.notify();
+                        }),
+                    )
+                    .child(
+                        div()
+                            .w(px(56.0))
+                            .text_size(px(10.0))
+                            .text_color(rgb(colour))
+                            .child(verdict),
+                    )
+                    .child(div().text_color(rgb(co.fg)).child(ev.candidate.clone()))
+            }))
+    }
+
+    /// Outstanding CRDT field conflicts and the ours/theirs decision
+    /// for the selected one.
+    fn conflicts_pane(&self, co: Colors, cx: &Context<Self>) -> gpui::Div {
+        let app = self.app.conflicts();
+        let conflicts = app.conflicts();
+        if conflicts.is_empty() {
+            return div()
+                .text_color(rgb(co.muted))
+                .child("no conflicts — every field converged".to_owned());
+        }
+        let button = |label: &'static str, command: &'static str| {
+            div()
+                .px_2()
+                .rounded_md()
+                .bg(rgb(co.panel))
+                .text_color(rgb(co.accent))
+                .text_size(px(11.0))
+                .cursor_pointer()
+                .hover(move |s| s.bg(rgb(co.hover)))
+                .on_mouse_down(
+                    MouseButton::Left,
+                    cx.listener(move |this: &mut Self, _ev, _w, cx| this.click(command, cx)),
+                )
+                .child(label)
+        };
+        let cursor = app.selected();
+        div()
+            .flex()
+            .flex_col()
+            .gap_1()
+            .child(
+                div()
+                    .flex()
+                    .gap_2()
+                    .child(button("keep ours", "resolve-ours"))
+                    .child(button("take theirs", "resolve-theirs")),
+            )
+            .children(conflicts.iter().enumerate().map(|(i, c)| {
+                let hot = i == cursor;
+                div()
+                    .flex()
+                    .flex_col()
+                    .px_2()
+                    .py_1()
+                    .rounded_sm()
+                    .bg(rgb(if hot { co.selection } else { co.bg }))
+                    .child(
+                        div()
+                            .text_size(px(10.0))
+                            .text_color(rgb(co.muted))
+                            .child(format!("{} · {:?}", c.block, c.field)),
+                    )
+                    .child(
+                        div()
+                            .flex()
+                            .gap_2()
+                            .child(div().text_color(rgb(co.success)).child(c.ours.clone()))
+                            .child(div().text_color(rgb(co.muted)).child("vs"))
+                            .child(div().text_color(rgb(co.warning)).child(c.theirs.clone())),
+                    )
+            }))
     }
 
     /// Command palette entries with the cursor row highlighted; every
