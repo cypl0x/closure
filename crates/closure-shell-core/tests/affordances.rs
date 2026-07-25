@@ -65,3 +65,55 @@ fn reorder_indices_moves_an_element_to_a_new_position() {
     // Out-of-range is the identity order (no panic, I5).
     assert_eq!(reorder_indices(3, 9, 0), vec![0, 1, 2]);
 }
+
+// === The live drag needs to be *visible*, not just recorded ===
+//
+// Reordering by drag is unusable without an insertion indicator, and a
+// shell can only paint one if it can ask the gesture where it is
+// pointing mid-drag — `drop()` only answers once, at the end.
+
+#[test]
+fn an_idle_gesture_points_nowhere() {
+    let drag = closure_shell_core::DragReorder::default();
+    assert_eq!(drag.source(), None);
+    assert_eq!(drag.target(), None);
+}
+
+#[test]
+fn a_started_drag_exposes_its_source_before_any_move() {
+    let mut drag = closure_shell_core::DragReorder::default();
+    drag.begin(3);
+    assert_eq!(drag.source(), Some(3));
+    assert_eq!(
+        drag.target(),
+        None,
+        "no drop line until the pointer actually moves"
+    );
+}
+
+#[test]
+fn dragging_over_a_row_exposes_it_as_the_target() {
+    let mut drag = closure_shell_core::DragReorder::default();
+    drag.begin(3);
+    drag.over(7);
+    assert_eq!(drag.source(), Some(3));
+    assert_eq!(drag.target(), Some(7));
+    drag.over(2);
+    assert_eq!(drag.target(), Some(2), "the target follows the pointer");
+}
+
+#[test]
+fn completing_or_cancelling_clears_both() {
+    let mut drag = closure_shell_core::DragReorder::default();
+    drag.begin(1);
+    drag.over(4);
+    assert_eq!(drag.drop(), Some((1, 4)));
+    assert_eq!(drag.source(), None, "the indicator must not linger");
+    assert_eq!(drag.target(), None);
+
+    drag.begin(1);
+    drag.over(4);
+    drag.cancel();
+    assert_eq!(drag.source(), None);
+    assert_eq!(drag.target(), None);
+}

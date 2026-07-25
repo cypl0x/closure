@@ -53,16 +53,6 @@ pub fn mix_u32(a: u32, b: u32, t: u32) -> u32 {
     (ch(16) << 16) | (ch(8) << 8) | ch(0)
 }
 
-/// Per-char click cells for the body pane: each char paired with its
-/// char column. The seam that gives mouse clicks in-word precision.
-#[must_use]
-pub fn char_cells(text: &str, start_col: usize) -> Vec<(String, usize)> {
-    text.chars()
-        .enumerate()
-        .map(|(i, c)| (c.to_string(), start_col + i))
-        .collect()
-}
-
 /// Resolve the shared [`Theme`] from the vault's `config.org`.
 ///
 /// Reads `theme = light|high-contrast|dark|doom-vibrant`. The reference
@@ -165,6 +155,202 @@ pub fn highlight_body(body: &str) -> Vec<Vec<(BodySpan, String)>> {
     out
 }
 
+/// Flatten one line's highlight spans into `(byte range, kind)` pairs
+/// over the reconstructed line text — the shape gpui's
+/// `StyledText::with_highlights` consumes.
+///
+/// Ranges are contiguous, byte-indexed and end exactly at the line
+/// length (gpui debug-asserts every bound is a char boundary). Empty
+/// spans are dropped: a zero-width run styles nothing.
+#[must_use]
+pub fn span_ranges(spans: &[(BodySpan, String)]) -> Vec<(std::ops::Range<usize>, BodySpan)> {
+    let mut out = Vec::with_capacity(spans.len());
+    let mut at = 0usize;
+    for (kind, text) in spans {
+        let end = at + text.len();
+        if at < end {
+            out.push((at..end, *kind));
+        }
+        at = end;
+    }
+    out
+}
+
+/// One painted run of a body line: the byte range it covers within
+/// the line, the span kind that colours it, and whether the
+/// cursor/selection background is drawn behind it.
+pub type StyledRun = (std::ops::Range<usize>, BodySpan, bool);
+
+/// Merge a line's syntax spans with one background `highlight` range
+/// into the single ordered run list gpui takes.
+///
+/// A line carries two independent stylings: the per-span syntax colour
+/// and a background for the VISUAL selection or the NORMAL-mode block
+/// caret. `StyledText::with_highlights` walks its input assuming
+/// ascending, non-overlapping, char-aligned ranges, so the spans are
+/// split at the highlight's edges rather than layered. Each run is
+/// `(byte range, span kind, is highlighted)`; the runs are contiguous
+/// and cover the line exactly.
+#[must_use]
+pub fn styled_runs(
+    spans: &[(BodySpan, String)],
+    highlight: Option<std::ops::Range<usize>>,
+) -> Vec<StyledRun> {
+    let hl = highlight.filter(|h| h.start < h.end);
+    let mut out = Vec::with_capacity(spans.len() + 2);
+    for (range, kind) in span_ranges(spans) {
+        let Some(h) = &hl else {
+            out.push((range, kind, false));
+            continue;
+        };
+        // Three possible pieces per span: before / inside / after the
+        // highlight. Any of them may be empty and is then skipped.
+        let mid_start = range.start.max(h.start);
+        let mid_end = range.end.min(h.end);
+        if mid_start >= mid_end {
+            out.push((range, kind, false));
+            continue;
+        }
+        if range.start < mid_start {
+            out.push((range.start..mid_start, kind, false));
+        }
+        out.push((mid_start..mid_end, kind, true));
+        if mid_end < range.end {
+            out.push((mid_end..range.end, kind, false));
+        }
+    }
+    out
+}
+
+/// Cut a run list at byte offset `at`, rebasing the tail to start at
+/// zero. A run straddling the cut is split, keeping its kind and
+/// highlight flag on both sides.
+///
+/// The INSERT caret is a thin bar *between* two glyphs rather than a
+/// background block, so the cursor line is painted as two
+/// `StyledText` halves with the bar between them — which needs the
+/// line's runs cut at the caret. `at` past the end of the runs is
+/// clamped: the whole line becomes the head and the tail is empty.
+#[must_use]
+pub fn split_runs(runs: &[StyledRun], at: usize) -> (Vec<StyledRun>, Vec<StyledRun>) {
+    let mut head = Vec::new();
+    let mut tail = Vec::new();
+    for (range, kind, hot) in runs {
+        if range.end <= at {
+            head.push((range.clone(), *kind, *hot));
+        } else if range.start >= at {
+            tail.push((range.start - at..range.end - at, *kind, *hot));
+        } else {
+            head.push((range.start..at, *kind, *hot));
+            tail.push((0..range.end - at, *kind, *hot));
+        }
+    }
+    (head, tail)
+}
+
+/// Char column for a byte offset into `line`.
+///
+/// The mouse seam: gpui hit-tests to a byte index, while
+/// [`closure_shell_core::BodyEditor`] addresses positions in char
+/// columns. Offsets past the end clamp to the line's char length (a
+/// click in a line's empty tail parks the cursor at its end), and an
+/// offset landing *inside* a multi-byte char rounds down to that
+/// char's column rather than splitting it.
+#[must_use]
+pub fn col_for_byte(line: &str, byte: usize) -> usize {
+    if byte >= line.len() {
+        return line.chars().count();
+    }
+    // gpui hit-tests can land mid-char; slicing there would panic, so
+    // snap down to the char that byte belongs to.
+    let mut boundary = byte;
+    while boundary > 0 && !line.is_char_boundary(boundary) {
+        boundary -= 1;
+    }
+    line[..boundary].chars().count()
+}
+
+/// Byte offset of char column `col` in `line` — the inverse of
+/// [`col_for_byte`]. Columns past the end clamp to the byte length, so
+/// the result is always a valid slice index and char boundary.
+#[must_use]
+pub fn byte_for_col(line: &str, col: usize) -> usize {
+    line.char_indices()
+        .nth(col)
+        .map_or_else(|| line.len(), |(b, _)| b)
+}
+
+/// Clip a buffer-global selection to one line and rebase it to a local
+/// byte range, or `None` when the line carries no selected bytes.
+///
+/// `line_start` is the line's byte offset in the buffer and `line_len`
+/// its byte length. Reversed input is normalised; an empty
+/// intersection paints nothing.
+#[must_use]
+pub fn selection_in_line(
+    line_start: usize,
+    line_len: usize,
+    selection: (usize, usize),
+) -> Option<std::ops::Range<usize>> {
+    let (lo, hi) = if selection.0 <= selection.1 {
+        selection
+    } else {
+        (selection.1, selection.0)
+    };
+    let line_end = line_start + line_len;
+    let start = lo.max(line_start);
+    let end = hi.min(line_end);
+    if start >= end {
+        return None;
+    }
+    Some(start - line_start..end - line_start)
+}
+
+/// A scrollbar thumb, as fractions of its track: `top` is where it
+/// starts, `height` how much of the track it covers. Both in `0.0..=1.0`
+/// with `top + height <= 1.0`.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Thumb {
+    /// Distance from the top of the track, as a fraction of it.
+    pub top: f32,
+    /// The thumb's own length, as a fraction of the track.
+    pub height: f32,
+}
+
+/// Thumb geometry for a pane showing `viewport` of `content` (both in
+/// the same unit — pixels or rows) scrolled down by `scroll`.
+///
+/// `None` when the content fits, so a pane that does not scroll paints
+/// no bar at all. `min_thumb` floors the thumb's length so a huge
+/// vault still leaves something grabbable; the floor is taken out of
+/// the free track rather than overhanging the end.
+#[must_use]
+pub fn thumb_geometry(viewport: f32, content: f32, scroll: f32, min_thumb: f32) -> Option<Thumb> {
+    if viewport <= 0.0 || content <= viewport {
+        return None;
+    }
+    let height = (viewport / content).max(min_thumb).min(1.0);
+    let range = content - viewport;
+    let progress = (scroll / range).clamp(0.0, 1.0);
+    Some(Thumb {
+        top: progress * (1.0 - height),
+        height,
+    })
+}
+
+/// Scroll offset for a thumb dragged to `fraction` of its track — the
+/// inverse of [`thumb_geometry`], used by the drag handler.
+///
+/// Clamped to the scrollable range, and zero when the content fits, so
+/// a drag can never scroll past the ends or divide by a zero range.
+#[must_use]
+pub fn scroll_for_track_fraction(viewport: f32, content: f32, fraction: f32) -> f32 {
+    if viewport <= 0.0 || content <= viewport {
+        return 0.0;
+    }
+    (content - viewport) * fraction.clamp(0.0, 1.0)
+}
+
 /// Classify a [`ModalApp`] status line into a toast for the window's
 /// [`closure_shell_core::Feedback`] queue.
 ///
@@ -265,6 +451,12 @@ pub fn run(vault_path: &Path) -> Result<(), String> {
                     last_status: String::new(),
                     popup_gen: 0,
                     drag: closure_shell_core::DragReorder::default(),
+                    outline_scroll: gpui::UniformListScrollHandle::new(),
+                    side_scroll: gpui::ScrollHandle::new(),
+                    revealed: usize::MAX,
+                    menu: None,
+                    which_key_open: false,
+                    which_key_scroll: gpui::ScrollHandle::new(),
                 })
             },
         );
@@ -360,6 +552,24 @@ struct GpuiView {
     /// Outline row drag-and-drop gesture (G5c machine); the drop maps
     /// to registry moves via `drag_drop_rows` (I8).
     drag: closure_shell_core::DragReorder,
+    /// Scroll state of the virtualized outline list. Owning it here is
+    /// what lets the pane paint a scrollbar and keep the keyboard
+    /// selection in view.
+    outline_scroll: gpui::UniformListScrollHandle,
+    /// Scroll state of the right-hand pane (detail, lists, editor).
+    side_scroll: gpui::ScrollHandle,
+    /// Last selection the outline was scrolled to, so a keyboard move
+    /// reveals its row exactly once instead of fighting the wheel.
+    revealed: usize,
+    /// Where an open context menu is anchored, if one is open.
+    menu: Option<(gpui::Point<gpui::Pixels>, closure_shell_core::ContextTarget)>,
+    /// Whether the full which-key panel is pinned open. A pending
+    /// chord shows it regardless; this is the explicit "show me
+    /// everything" toggle.
+    which_key_open: bool,
+    /// Scroll state of the which-key panel — it lists every binding in
+    /// the mode, which does not fit a window.
+    which_key_scroll: gpui::ScrollHandle,
 }
 
 #[cfg(feature = "gpui")]
@@ -429,23 +639,9 @@ impl GpuiView {
         cx.notify();
     }
 
-    fn on_scroll(&mut self, ev: &ScrollWheelEvent, _window: &mut Window, cx: &mut Context<Self>) {
-        let dy = match ev.delta {
-            ScrollDelta::Lines(l) => l.y,
-            ScrollDelta::Pixels(p) => f32::from(p.y) / 20.0,
-        };
-        // Wheel moves the viewport, not the cursor (L4); selection
-        // movement reclaims the view.
-        #[allow(clippy::cast_possible_truncation)]
-        let steps = dy.abs().ceil().min(1000.0) as i32;
-        let delta = if dy < 0.0 { steps } else { -steps };
-        self.app.scroll_by(delta, &self.shell, 40);
-        cx.notify();
-    }
-
     /// G5: wheel over the body-editor pane scrolls its own viewport
-    /// (`body_scroll_by`), not the outline; same delta convention as
-    /// [`Self::on_scroll`].
+    /// (`body_scroll_by`). The outline needs no equivalent — its
+    /// `uniform_list` owns its own scroll state.
     fn on_body_scroll(
         &mut self,
         ev: &ScrollWheelEvent,
@@ -489,144 +685,201 @@ impl GpuiView {
 
     /// The left outline list (Browse/Search and the typing surfaces
     /// that keep the tree visible).
-    fn rows_pane(&self, co: Colors, cx: &mut Context<Self>) -> impl IntoElement {
-        const PAGE: usize = 40;
-        let (offset, rows) = self.app.view_window(&self.shell, PAGE);
-        let selected = self.app.selected();
+    fn rows_pane(&self, co: Colors, cx: &Context<Self>) -> impl IntoElement {
+        let count = self.app.rows_shared(&self.shell).len();
+        let list = gpui::uniform_list(
+            "outline",
+            count,
+            cx.processor(|this, range: std::ops::Range<usize>, _w, cx| {
+                // The theme lives on the view, so the colours are
+                // re-derived here rather than captured — the closure
+                // outlives this frame.
+                let co = Colors::of(&this.theme);
+                range
+                    .map(|i| this.outline_row(co, i, cx))
+                    .collect::<Vec<_>>()
+            }),
+        )
+        .track_scroll(self.outline_scroll.clone())
+        .flex_grow();
         div()
             .flex()
-            .flex_col()
+            .flex_row()
             .w(px(420.0))
             .min_w(px(300.0))
             .border_r_1()
             .border_color(rgb(co.border))
-            .on_scroll_wheel(cx.listener(Self::on_scroll))
-            .children(rows.into_iter().enumerate().map(|(vis, row)| {
-                let i = offset + vis;
-                let folded = closure_shell_core::is_row_folded(&self.shell, &row.id);
-                let is_sel = i == selected;
-                let indent = f32::from(row.level.saturating_sub(1)) * 14.0;
-                let (todo_col, glyph) = match row.todo.as_deref() {
-                    Some("DONE" | "CANCELLED" | "KILL") => (co.success, "●"),
-                    Some(_) => (co.error, "○"),
-                    None => (co.muted, "·"),
-                };
-                let mut line = div()
-                    .flex()
-                    .items_center()
-                    .px_2()
-                    .py_1()
-                    .text_size(px(14.0))
-                    .cursor_pointer()
-                    .bg(rgb(if is_sel { co.selection } else { co.bg }))
-                    .hover(move |s| s.bg(rgb(if is_sel { co.selection } else { co.hover })))
-                    .on_mouse_down(
-                        MouseButton::Left,
-                        cx.listener(move |this, _ev, _w, cx| {
-                            this.app.select(i, &this.shell);
-                            // G3: a held press starts a potential row drag.
-                            this.drag.begin(i);
-                            cx.notify();
-                        }),
-                    )
-                    // G3: dragging across rows retargets the drop slot…
-                    .on_mouse_move(cx.listener(
-                        move |this, ev: &gpui::MouseMoveEvent, _w, cx| {
-                            if ev.pressed_button == Some(MouseButton::Left) {
-                                this.drag.over(i);
-                                cx.notify();
-                            }
-                        },
-                    ))
-                    // …and release completes it as registry moves (I8).
-                    .on_mouse_up(
-                        MouseButton::Left,
-                        cx.listener(move |this, _ev, _w, cx| {
-                            if let Some((f, t)) = this.drag.drop()
-                                && f != t
-                            {
-                                this.app.drag_drop_rows(&mut this.shell, f, t);
-                            }
-                            cx.notify();
-                        }),
-                    );
-                if is_sel {
-                    line = line.border_l_2().border_color(rgb(co.accent));
+            .child(list)
+            .child(scrollbar(
+                co,
+                &self.outline_scroll.0.borrow().base_handle.clone(),
+                cx,
+            ))
+    }
+
+    /// One outline row: the frame, the selection styling and the
+    /// mouse gestures (select, drag-to-reorder, right-click menu); the
+    /// cells inside come from [`Self::outline_cells`].
+    fn outline_row(&self, co: Colors, i: usize, cx: &Context<Self>) -> gpui::Div {
+        let rows = self.app.rows_shared(&self.shell);
+        let Some(row) = rows.get(i).cloned() else {
+            return div();
+        };
+        let is_sel = i == self.app.selected();
+        let mut line = div()
+            .flex()
+            .items_center()
+            .px_2()
+            .py_1()
+            .text_size(px(14.0))
+            .cursor_pointer()
+            .bg(rgb(if is_sel { co.selection } else { co.bg }))
+            .hover(move |s| s.bg(rgb(if is_sel { co.selection } else { co.hover })))
+            .on_mouse_down(
+                MouseButton::Left,
+                cx.listener(move |this, _ev, _w, cx| {
+                    this.app.select(i, &this.shell);
+                    // G3: a held press starts a potential row drag.
+                    this.drag.begin(i);
+                    this.menu = None;
+                    cx.notify();
+                }),
+            )
+            // Right-click selects the row and opens its context menu.
+            .on_mouse_down(
+                MouseButton::Right,
+                cx.listener(move |this, ev: &gpui::MouseDownEvent, _w, cx| {
+                    this.app.select(i, &this.shell);
+                    this.menu = Some((ev.position, closure_shell_core::ContextTarget::Row));
+                    cx.stop_propagation();
+                    cx.notify();
+                }),
+            )
+            // G3: dragging across rows retargets the drop slot…
+            .on_mouse_move(cx.listener(move |this, ev: &gpui::MouseMoveEvent, _w, cx| {
+                if ev.pressed_button == Some(MouseButton::Left) {
+                    this.drag.over(i);
+                    cx.notify();
                 }
-                line = line.child(div().w(px(indent)));
-                // Fold arrow: ▸ folded / ▾ unfolded; click toggles.
-                line = line.child(
-                    div()
-                        .w(px(18.0))
-                        .text_color(rgb(if folded { co.accent } else { co.muted }))
-                        .cursor_pointer()
-                        .on_mouse_down(
-                            MouseButton::Left,
-                            cx.listener(move |this, _ev, _w, cx| {
-                                this.app.select(i, &this.shell);
-                                this.app.run(&mut this.shell, "toggle-fold");
-                                cx.notify();
-                            }),
-                        )
-                        .child(if folded { "▸" } else { "▾" }),
-                );
-                // Status glyph: same click target as the TODO chip.
-                line = line.child(
-                    div()
-                        .w(px(18.0))
-                        .text_color(rgb(todo_col))
-                        .cursor_pointer()
-                        .on_mouse_down(
-                            MouseButton::Left,
-                            cx.listener(move |this, _ev, _w, cx| {
-                                this.app.select(i, &this.shell);
-                                this.app.run(&mut this.shell, "toggle-todo");
-                                cx.notify();
-                            }),
-                        )
-                        .child(glyph.to_owned()),
-                );
-                if let Some(todo) = &row.todo {
-                    // Clickable TODO chip: click toggles the state, the
-                    // same registry command `t` runs (I8).
-                    line = line.child(
-                        div()
-                            .mr_2()
-                            .px_1()
-                            .rounded_sm()
-                            .text_color(rgb(todo_col))
-                            .text_size(px(11.0))
-                            .cursor_pointer()
-                            .hover(move |s| s.bg(rgb(co.hover)))
-                            .on_mouse_down(
-                                MouseButton::Left,
-                                cx.listener(move |this, _ev, _w, cx| {
-                                    this.app.select(i, &this.shell);
-                                    this.app.run(&mut this.shell, "toggle-todo");
-                                    cx.notify();
-                                }),
-                            )
-                            .child(todo.clone()),
-                    );
-                }
-                line.child(
-                    div()
-                        .text_color(rgb(co.outline(row.level)))
-                        .child(row.title.clone()),
-                )
-                .child(div().flex_grow())
-                .child(
-                    div()
-                        .text_color(rgb(co.muted))
-                        .text_size(px(10.0))
-                        .child(short_path(&row.path)),
-                )
             }))
+            // …and release completes it as registry moves (I8).
+            .on_mouse_up(
+                MouseButton::Left,
+                cx.listener(move |this, _ev, _w, cx| {
+                    if let Some((f, t)) = this.drag.drop()
+                        && f != t
+                    {
+                        this.app.drag_drop_rows(&mut this.shell, f, t);
+                    }
+                    cx.notify();
+                }),
+            );
+        if is_sel {
+            line = line.border_l_2().border_color(rgb(co.accent));
+        }
+        // The drop target under a live drag reads as an insertion line.
+        if self.drag.target() == Some(i) && self.drag.source() != Some(i) {
+            line = line.border_b_2().border_color(rgb(co.warning));
+        }
+        self.outline_cells(line, co, i, &row, cx)
+    }
+
+    /// The cells of an outline row: indent, fold arrow, status glyph,
+    /// TODO chip, title and file. Each is its own click target running
+    /// the same registry command its chord does (I8).
+    fn outline_cells(
+        &self,
+        line: gpui::Div,
+        co: Colors,
+        i: usize,
+        row: &Row,
+        cx: &Context<Self>,
+    ) -> gpui::Div {
+        let folded = closure_shell_core::is_row_folded(&self.shell, &row.id);
+        let indent = f32::from(row.level.saturating_sub(1)) * 14.0;
+        let (todo_col, glyph) = match row.todo.as_deref() {
+            Some("DONE" | "CANCELLED" | "KILL") => (co.success, "●"),
+            Some(_) => (co.error, "○"),
+            None => (co.muted, "·"),
+        };
+        // Both the fold arrow and the status glyph select their row
+        // first, so a click acts on what it points at.
+        let act = |command: &'static str| {
+            cx.listener(move |this: &mut Self, _ev, _w, cx| {
+                this.app.select(i, &this.shell);
+                this.app.run(&mut this.shell, command);
+                cx.notify();
+            })
+        };
+        let mut line = line
+            .child(div().w(px(indent)))
+            .child(
+                div()
+                    .w(px(18.0))
+                    .text_color(rgb(if folded { co.accent } else { co.muted }))
+                    .cursor_pointer()
+                    .on_mouse_down(MouseButton::Left, act("toggle-fold"))
+                    .child(if folded { "▸" } else { "▾" }),
+            )
+            .child(
+                div()
+                    .w(px(18.0))
+                    .text_color(rgb(todo_col))
+                    .cursor_pointer()
+                    .on_mouse_down(MouseButton::Left, act("toggle-todo"))
+                    .child(glyph),
+            );
+        if let Some(todo) = &row.todo {
+            line = line.child(
+                div()
+                    .mr_2()
+                    .px_1()
+                    .rounded_sm()
+                    .text_color(rgb(todo_col))
+                    .text_size(px(11.0))
+                    .cursor_pointer()
+                    .hover(move |s| s.bg(rgb(co.hover)))
+                    .on_mouse_down(MouseButton::Left, act("toggle-todo"))
+                    .child(todo.clone()),
+            );
+        }
+        line.child(
+            div()
+                .text_color(rgb(co.outline(row.level)))
+                .child(row.title.clone()),
+        )
+        .child(div().flex_grow())
+        .child(
+            div()
+                .text_color(rgb(co.muted))
+                .text_size(px(10.0))
+                .child(short_path(&row.path)),
+        )
     }
 
     /// Right-hand pane: detail (clickable fields), palette, a list
     /// surface, or the body editor — driven by the active surface.
-    fn side_pane(&self, co: Colors, cx: &mut Context<Self>) -> impl IntoElement {
+    fn side_pane(&self, co: Colors, cx: &Context<Self>) -> impl IntoElement {
+        div()
+            .flex()
+            .flex_row()
+            .flex_grow()
+            .overflow_hidden()
+            .child(
+                div()
+                    .id("side")
+                    .flex()
+                    .flex_col()
+                    .flex_grow()
+                    .overflow_y_scroll()
+                    .track_scroll(&self.side_scroll)
+                    .child(self.side_content(co, cx)),
+            )
+            .child(scrollbar(co, &self.side_scroll.clone(), cx))
+    }
+
+    /// What the right-hand pane actually shows for the active surface.
+    fn side_content(&self, co: Colors, cx: &Context<Self>) -> gpui::Div {
         let pane = div()
             .flex()
             .flex_col()
@@ -642,43 +895,48 @@ impl GpuiView {
                 // Q2-U3: rows are click targets (jump = the Enter path)
                 // and the pane cursor row is highlighted.
                 let cursor = self.app.undo_history_cursor();
-                pane.children(self.app.undo_history_rows(&self.shell).into_iter().enumerate().map(
-                    |(i, r)| {
-                        div()
-                            .flex()
-                            .px_2()
-                            .py_1()
-                            .cursor_pointer()
-                            .bg(rgb(if i == cursor { co.selection } else { co.bg }))
-                            .hover(move |s| s.bg(rgb(co.hover)))
-                            .on_mouse_down(
-                                MouseButton::Left,
-                                cx.listener(move |this, _ev, _w, cx| {
-                                    this.app.undo_history_click(&mut this.shell, i);
-                                    cx.notify();
-                                }),
-                            )
-                            .child(
-                                div()
-                                    .w(px(f32::from(u16::try_from(r.depth).unwrap_or(u16::MAX))
-                                        * 14.0))
-                                    .child(""),
-                            )
-                            .child(
-                                div()
-                                    .text_color(rgb(if r.is_current {
-                                        co.accent
-                                    } else {
-                                        co.muted
-                                    }))
-                                    .child(format!(
-                                        "{} {}",
-                                        if r.is_current { "●" } else { "○" },
-                                        r.label
-                                    )),
-                            )
-                    },
-                ))
+                pane.children(
+                    self.app
+                        .undo_history_rows(&self.shell)
+                        .into_iter()
+                        .enumerate()
+                        .map(|(i, r)| {
+                            div()
+                                .flex()
+                                .px_2()
+                                .py_1()
+                                .cursor_pointer()
+                                .bg(rgb(if i == cursor { co.selection } else { co.bg }))
+                                .hover(move |s| s.bg(rgb(co.hover)))
+                                .on_mouse_down(
+                                    MouseButton::Left,
+                                    cx.listener(move |this, _ev, _w, cx| {
+                                        this.app.undo_history_click(&mut this.shell, i);
+                                        cx.notify();
+                                    }),
+                                )
+                                .child(
+                                    div()
+                                        .w(px(f32::from(
+                                            u16::try_from(r.depth).unwrap_or(u16::MAX),
+                                        ) * 14.0))
+                                        .child(""),
+                                )
+                                .child(
+                                    div()
+                                        .text_color(rgb(if r.is_current {
+                                            co.accent
+                                        } else {
+                                            co.muted
+                                        }))
+                                        .child(format!(
+                                            "{} {}",
+                                            if r.is_current { "●" } else { "○" },
+                                            r.label
+                                        )),
+                                )
+                        }),
+                )
             }
             ModalSurface::Blocks => pane.children(
                 self.app
@@ -719,14 +977,78 @@ impl GpuiView {
         }
     }
 
+    /// One painted body line: a single `StyledText` carrying both the
+    /// syntax colours and the cursor/selection background, wrapped in
+    /// a div whose mouse handlers hit-test through gpui's own text
+    /// layout.
+    ///
+    /// This replaced a per-character element grid (one `div` per
+    /// glyph, so a 40-line viewport of 80-column text cost ~3200
+    /// elements per frame; it costs at most 42 here). Click precision
+    /// is unchanged: `TextLayout::index_for_position` resolves a
+    /// window position to a byte offset *inside* the glyph run, and
+    /// [`col_for_byte`] maps that back to the char column
+    /// [`closure_shell_core::BodyEditor`] addresses.
+    ///
+    /// The cursor is a background block in NORMAL/VISUAL and a thin
+    /// bar in INSERT; the bar sits between glyphs, so the INSERT
+    /// cursor line is the one case painted as two halves around it
+    /// ([`split_runs`]), each hit-testing against its own layout.
+    fn editor_line(
+        &self,
+        co: Colors,
+        ln: usize,
+        line_start: usize,
+        line_len: usize,
+        spans: &[(BodySpan, String)],
+        cx: &Context<Self>,
+    ) -> gpui::Div {
+        use closure_shell_core::EditorMode;
+        let text: String = spans.iter().map(|(_, s)| s.as_str()).collect();
+        let (cur_line, cur_col) = self.app.body_cursor();
+        let insert = self.app.body_mode() == EditorMode::Insert;
+        let on_cursor_line = ln == cur_line;
+        // One background range per line: the VISUAL selection when one
+        // is live, otherwise the block cursor outside INSERT.
+        let highlight = self.app.body_selection().map_or_else(
+            || {
+                let start = byte_for_col(&text, cur_col);
+                let end = byte_for_col(&text, cur_col + 1);
+                (on_cursor_line && !insert && start < end).then_some(start..end)
+            },
+            |sel| selection_in_line(line_start, line_len, sel),
+        );
+        let runs = styled_runs(spans, highlight);
+        let mut row = div().flex().flex_grow().cursor_text();
+        if on_cursor_line && insert {
+            let at = byte_for_col(&text, cur_col);
+            let (head, tail) = split_runs(&runs, at);
+            row = row
+                .child(editor_segment(co, ln, 0, text[..at].to_owned(), head, cx))
+                // The caret itself: a bar between the two halves.
+                .child(div().w(px(2.0)).bg(rgb(co.code)))
+                .child(editor_segment(
+                    co,
+                    ln,
+                    cur_col,
+                    text[at..].to_owned(),
+                    tail,
+                    cx,
+                ));
+        } else {
+            row = row.child(editor_segment(co, ln, 0, text, runs, cx));
+        }
+        row
+    }
+
     /// The org-edit-special editor pane: syntax-highlighted lines
     /// ([`highlight_body`]), a real caret at the editor cursor, the
     /// vim mode chip (doom spaceline colours: INSERT green / NORMAL
     /// blue), and the C-n completion popup.
-    fn editor_pane(&self, co: Colors, cx: &mut Context<Self>) -> gpui::Div {
+    fn editor_pane(&self, co: Colors, cx: &Context<Self>) -> gpui::Div {
         use closure_shell_core::EditorMode;
         let scroll_start = self.app.body_scroll_start(BODY_VIEW);
-        let (cur_line, cur_col) = self.app.body_cursor();
+        let (cur_line, _) = self.app.body_cursor();
         let mode = self.app.body_mode();
         // doom spaceline colours: insert green, normal blue, visual grey-violet.
         let (mode_txt, mode_col) = match mode {
@@ -734,14 +1056,6 @@ impl GpuiView {
             EditorMode::Normal => ("NORMAL", co.accent),
             EditorMode::Visual => ("VISUAL", co.heading3),
             EditorMode::VisualLine => ("V·LINE", co.heading2),
-        };
-        let span_color = |k: BodySpan| match k {
-            BodySpan::Plain => co.fg,
-            BodySpan::Meta => co.muted,
-            BodySpan::Drawer => co.error,
-            BodySpan::Keyword => co.accent,
-            BodySpan::Literal => co.success,
-            BodySpan::Comment => co.muted,
         };
         let header = div()
             .flex()
@@ -781,7 +1095,6 @@ impl GpuiView {
             .rounded_md()
             .text_size(px(13.0))
             .on_scroll_wheel(cx.listener(Self::on_body_scroll));
-        let selection = self.app.body_selection();
         let mut line_start = 0usize;
         for (ln, spans) in highlight_body(self.app.body_buffer())
             .into_iter()
@@ -803,116 +1116,10 @@ impl GpuiView {
                     .text_color(rgb(if ln == cur_line { co.accent } else { co.muted }))
                     .child(format!("{:>3}", ln + 1)),
             );
-            if let Some((lo, hi)) = selection {
-                // VISUAL: paint the selected byte range exactly; the
-                // selection is the position indicator here, no caret.
-                // All split points are char boundaries (cursor, anchor
-                // and span edges always are).
-                let mut at = line_start;
-                for (kind, text) in spans {
-                    let end = at + text.len();
-                    let cut_lo = lo.clamp(at, end) - at;
-                    let cut_hi = hi.clamp(at, end) - at;
-                    for (piece, selected) in [
-                        (&text[..cut_lo], false),
-                        (&text[cut_lo..cut_hi], true),
-                        (&text[cut_hi..], false),
-                    ] {
-                        if piece.is_empty() {
-                            continue;
-                        }
-                        let d = div()
-                            .text_color(rgb(span_color(kind)))
-                            .child(piece.to_owned());
-                        row = row.child(if selected { d.bg(rgb(co.selection)) } else { d });
-                    }
-                    at = end;
-                }
-            } else if ln == cur_line {
-                // Split the spans at the caret column and paint a bar.
-                let mut remaining = cur_col;
-                let mut placed = false;
-                for (kind, text) in spans {
-                    let chars = text.chars().count();
-                    if !placed && remaining <= chars {
-                        let pre: String = text.chars().take(remaining).collect();
-                        let post: String = text.chars().skip(remaining).collect();
-                        row = row
-                            .child(div().text_color(rgb(span_color(kind))).child(pre))
-                            .child(div().w(px(2.0)).bg(rgb(co.code)))
-                            .child(div().text_color(rgb(span_color(kind))).child(post));
-                        placed = true;
-                    } else {
-                        row = row.child(div().text_color(rgb(span_color(kind))).child(text));
-                        if !placed {
-                            remaining = remaining.saturating_sub(chars);
-                        }
-                    }
-                }
-                if !placed {
-                    row = row.child(div().w(px(2.0)).bg(rgb(co.code)));
-                }
+            row = row.child(self.editor_line(co, ln, line_start, line_len, &spans, cx));
+            if ln == cur_line {
                 row = row.bg(rgb(mix_u32(co.panel, co.selection, 96)));
-            } else {
-                // G1: per-char click targets — every char is its own
-                // cell carrying its char column, so a click (or double
-                // click) lands the cursor on the exact glyph, in-word
-                // included (the mouse path into BodyEditor).
-                let mut col = 0usize;
-                for (kind, text) in spans {
-                    let n = text.chars().count();
-                    for (piece, chunk_col) in char_cells(&text, col) {
-                        row = row.child(
-                            div()
-                                .text_color(rgb(span_color(kind)))
-                                .child(piece)
-                                .on_mouse_down(
-                                    MouseButton::Left,
-                                    cx.listener(
-                                        move |this: &mut Self,
-                                              ev: &gpui::MouseDownEvent,
-                                              _w,
-                                              cx| {
-                                            if ev.click_count >= 2 {
-                                                this.app.body_double_click(ln, chunk_col);
-                                            } else {
-                                                this.app.body_click(ln, chunk_col);
-                                            }
-                                            cx.stop_propagation();
-                                            cx.notify();
-                                        },
-                                    ),
-                                )
-                                // G2: drag with the left button held
-                                // extends the charwise VISUAL selection
-                                // (BodyEditor::drag_to via body_drag).
-                                .on_mouse_move(cx.listener(
-                                    move |this: &mut Self,
-                                          ev: &gpui::MouseMoveEvent,
-                                          _w,
-                                          cx| {
-                                        if ev.pressed_button == Some(MouseButton::Left) {
-                                            this.app.body_drag(ln, chunk_col);
-                                            cx.notify();
-                                        }
-                                    },
-                                )),
-                        );
-                    }
-                    col += n;
-                }
             }
-            // Fallback: a click on the empty tail of any line parks the
-            // cursor at that line's end.
-            row = row.on_mouse_down(
-                MouseButton::Left,
-                cx.listener(move |this: &mut Self, ev: &gpui::MouseDownEvent, _w, cx| {
-                    if ev.click_count < 2 {
-                        this.app.body_click(ln, usize::MAX / 2);
-                        cx.notify();
-                    }
-                }),
-            );
             body = body.child(row);
             line_start += line_len + 1;
         }
@@ -923,38 +1130,42 @@ impl GpuiView {
             .gap_2()
             .child(header)
             .child(body);
-        let items = self.app.body_completion_items();
-        if !items.is_empty() {
-            let ix = self.app.body_completion_ix().unwrap_or(0);
-            pane = pane.child(
-                div()
-                    .flex()
-                    .flex_col()
-                    .p_1()
-                    .rounded_md()
-                    .bg(rgb(co.bg))
-                    .border_1()
-                    .border_color(rgb(co.border))
-                    .children(items.iter().enumerate().map(|(i, item)| {
-                        div()
-                            .px_2()
-                            .text_size(px(12.0))
-                            .bg(if i == ix {
-                                rgb(co.selection)
-                            } else {
-                                rgb(co.bg)
-                            })
-                            .text_color(rgb(if i == ix { co.fg } else { co.muted }))
-                            .child(item.clone())
-                    })),
-            );
+        if let Some(popup) = self.completion_popup(co) {
+            pane = pane.child(popup);
         }
         pane
     }
 
+    /// The C-n / typing-idle completion popup, when one is open.
+    fn completion_popup(&self, co: Colors) -> Option<gpui::Div> {
+        let items = self.app.body_completion_items();
+        if items.is_empty() {
+            return None;
+        }
+        let ix = self.app.body_completion_ix().unwrap_or(0);
+        Some(
+            div()
+                .flex()
+                .flex_col()
+                .p_1()
+                .rounded_md()
+                .bg(rgb(co.bg))
+                .border_1()
+                .border_color(rgb(co.border))
+                .children(items.iter().enumerate().map(|(i, item)| {
+                    div()
+                        .px_2()
+                        .text_size(px(12.0))
+                        .bg(rgb(if i == ix { co.selection } else { co.bg }))
+                        .text_color(rgb(if i == ix { co.fg } else { co.muted }))
+                        .child(item.clone())
+                })),
+        )
+    }
+
     /// Command palette entries with the cursor row highlighted; every
     /// row clickable (runs the entry, I8).
-    fn palette_pane(&self, co: Colors, cx: &mut Context<Self>) -> impl IntoElement {
+    fn palette_pane(&self, co: Colors, cx: &Context<Self>) -> impl IntoElement {
         let cursor = self.app.palette_cursor();
         div().flex().flex_col().gap_0().children(
             self.app
@@ -1003,7 +1214,7 @@ impl GpuiView {
     /// Agenda pane: rows grouped under date headers, SCHEDULED accent /
     /// DEADLINE error kind chips, the today group accented, overdue red.
     /// Row click jumps like Enter (`jump_list_row`).
-    fn agenda_pane(&self, co: Colors, cx: &mut Context<Self>) -> impl IntoElement {
+    fn agenda_pane(&self, co: Colors, cx: &Context<Self>) -> impl IntoElement {
         let today = today_ymd(
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
@@ -1072,7 +1283,7 @@ impl GpuiView {
     /// Detail pane with click-to-edit fields: title → rename, meta →
     /// toggle-todo, tags → edit-tags, properties → edit-property,
     /// body → edit-body.
-    fn detail_pane(&self, pane: gpui::Div, co: Colors, cx: &mut Context<Self>) -> gpui::Div {
+    fn detail_pane(&self, pane: gpui::Div, co: Colors, cx: &Context<Self>) -> gpui::Div {
         let Some(d) = self.app.detail(&self.shell) else {
             return pane.child(
                 div()
@@ -1148,21 +1359,24 @@ impl GpuiView {
                 if d.body.is_empty() {
                     body_el = body_el.child("+ body".to_owned());
                 } else {
-                    // Same palette as the editor pane's span_color.
-                    let span_color = |k: BodySpan| match k {
-                        BodySpan::Plain => co.fg,
-                        BodySpan::Meta => co.muted,
-                        BodySpan::Drawer => co.error,
-                        BodySpan::Keyword => co.accent,
-                        BodySpan::Literal => co.success,
-                        BodySpan::Comment => co.muted,
-                    };
+                    // C3: the preview reads exactly like the editor —
+                    // same spans, same palette — but as one StyledText
+                    // per line rather than a div per span.
                     for spans in highlight_body(&d.body) {
-                        let mut line = div().flex().min_h(px(17.0));
-                        for (kind, text) in spans {
-                            line = line.child(div().text_color(rgb(span_color(kind))).child(text));
-                        }
-                        body_el = body_el.child(line);
+                        let text: String = spans.iter().map(|(_, s)| s.as_str()).collect();
+                        body_el = body_el.child(div().min_h(px(17.0)).child(
+                            gpui::StyledText::new(text).with_highlights(
+                                span_ranges(&spans).into_iter().map(|(range, kind)| {
+                                    (
+                                        range,
+                                        gpui::HighlightStyle {
+                                            color: Some(rgb(span_color(co, kind)).into()),
+                                            ..Default::default()
+                                        },
+                                    )
+                                }),
+                            ),
+                        ));
                     }
                 }
                 body_el
@@ -1172,83 +1386,409 @@ impl GpuiView {
         ))
     }
 
-    /// Footer: pending-chord completions (which-key popup) when a
-    /// chord is in flight, otherwise the full clickable binding bar.
-    fn footer(&self, co: Colors, cx: &mut Context<Self>) -> impl IntoElement {
+    /// Footer: a single compact line.
+    ///
+    /// It used to paint the entire keymap, every frame, as a grid that
+    /// grew with the mode — hundreds of elements permanently occupying
+    /// the bottom of the window. The bindings now live in the
+    /// which-key panel ([`Self::which_key_panel`]), which opens on a
+    /// pending chord or on demand; the footer keeps only what is
+    /// always worth a line: the mode, the chord in flight, and the way
+    /// in.
+    fn footer(&self, co: Colors, cx: &Context<Self>) -> impl IntoElement {
         let pending = self.app.pending_chord();
         let bar = div()
             .flex()
-            .flex_wrap()
             .items_center()
-            .gap_1()
+            .gap_2()
             .px_2()
             .py_1()
             .bg(rgb(co.panel))
-            .text_size(px(11.0));
-        if pending.is_empty() {
-            // Doom-style which-key: one column per palette section,
-            // group title on top, chord-sorted entries beneath (I4 —
-            // the same which_key_groups data every shell reads).
-            bar.items_start()
-                .child(
-                    div()
-                        .px_1()
-                        .text_color(rgb(co.accent))
-                        .child(format!("[{:?}]", self.app.input_mode())),
-                )
-                .children(
-                    self.app
-                        .which_key_groups()
-                        .into_iter()
-                        .map(|(title, entries)| {
-                            let mut col = div()
-                                .flex()
-                                .flex_col()
-                                .px_2()
-                                .child(div().text_color(rgb(co.heading2)).child(title));
-                            for (chord, cmd) in entries {
-                                let run = cmd.clone();
-                                col = col.child(
-                                    div()
-                                        .flex()
-                                        .rounded_sm()
-                                        .cursor_pointer()
-                                        .hover(move |s| s.bg(rgb(co.hover)))
-                                        .on_mouse_down(
-                                            MouseButton::Left,
-                                            cx.listener(move |this: &mut Self, _ev, _w, cx| {
-                                                let cmd = run.clone();
-                                                this.click(&cmd, cx);
-                                            }),
-                                        )
-                                        .child(
-                                            div()
-                                                .w(px(56.0))
-                                                .text_color(rgb(co.accent))
-                                                .child(chord),
-                                        )
-                                        .child(div().text_color(rgb(co.muted)).child(cmd)),
-                                );
-                            }
-                            col
-                        }),
-                )
+            .text_size(px(11.0))
+            .child(
+                div()
+                    .px_1()
+                    .text_color(rgb(co.accent))
+                    .child(format!("[{:?}]", self.app.input_mode())),
+            );
+        // A chord in flight: show what it is and what can follow.
+        let bar = if pending.is_empty() {
+            bar.child(div().text_color(rgb(co.muted)).child(self.app.key_hints()))
         } else {
             bar.child(
                 div()
-                    .px_1()
                     .text_color(rgb(co.warning))
                     .child(format!("{pending} ‸")),
             )
-            .children(self.app.completions().into_iter().map(|(rest, cmd)| {
-                div()
-                    .flex()
-                    .px_1()
-                    .child(div().text_color(rgb(co.accent)).child(rest))
-                    .child(div().text_color(rgb(co.muted)).child(format!(" → {cmd}")))
-            }))
-        }
+            .children(
+                self.app
+                    .completions()
+                    .into_iter()
+                    .take(12)
+                    .map(|(rest, cmd)| {
+                        div()
+                            .flex()
+                            .px_1()
+                            .child(div().text_color(rgb(co.accent)).child(rest))
+                            .child(div().text_color(rgb(co.muted)).child(format!(" → {cmd}")))
+                    }),
+            )
+        };
+        let open = self.which_key_open;
+        bar.child(div().flex_grow()).child(
+            div()
+                .px_2()
+                .rounded_md()
+                .bg(rgb(if open { co.selection } else { co.bg }))
+                .text_color(rgb(co.accent))
+                .cursor_pointer()
+                .hover(move |s| s.bg(rgb(co.hover)))
+                .on_mouse_down(
+                    MouseButton::Left,
+                    cx.listener(|this: &mut Self, _ev, _w, cx| {
+                        this.which_key_open = !this.which_key_open;
+                        cx.notify();
+                    }),
+                )
+                .child(if open { "▾ keys" } else { "▸ keys" }),
+        )
     }
+
+    /// The Doom-style which-key panel: one column per palette section,
+    /// group title on top, chord-sorted entries beneath (I4 — the same
+    /// `which_key_groups` data every shell reads), every entry
+    /// clickable.
+    ///
+    /// Shown only when pinned open or while a chord is pending, and
+    /// scrollable, because the full keymap does not fit a window.
+    fn which_key_panel(&self, co: Colors, cx: &Context<Self>) -> gpui::Div {
+        let groups = self.app.which_key_groups();
+        div()
+            .flex()
+            .flex_row()
+            .max_h(px(280.0))
+            .border_t_1()
+            .border_color(rgb(co.border))
+            .bg(rgb(co.panel))
+            .child(
+                div()
+                    .id("which-key")
+                    .flex()
+                    .flex_row()
+                    .flex_wrap()
+                    .flex_grow()
+                    .gap_1()
+                    .px_2()
+                    .py_1()
+                    .text_size(px(11.0))
+                    .overflow_y_scroll()
+                    .track_scroll(&self.which_key_scroll)
+                    .children(groups.into_iter().map(|(title, entries)| {
+                        let mut col = div()
+                            .flex()
+                            .flex_col()
+                            .px_2()
+                            .child(div().text_color(rgb(co.heading2)).child(title));
+                        for (chord, cmd) in entries {
+                            let run = cmd.clone();
+                            col = col.child(
+                                div()
+                                    .flex()
+                                    .rounded_sm()
+                                    .cursor_pointer()
+                                    .hover(move |s| s.bg(rgb(co.hover)))
+                                    .on_mouse_down(
+                                        MouseButton::Left,
+                                        cx.listener(move |this: &mut Self, _ev, _w, cx| {
+                                            let cmd = run.clone();
+                                            this.click(&cmd, cx);
+                                        }),
+                                    )
+                                    .child(
+                                        div().w(px(56.0)).text_color(rgb(co.accent)).child(chord),
+                                    )
+                                    .child(div().text_color(rgb(co.muted)).child(cmd)),
+                            );
+                        }
+                        col
+                    })),
+            )
+            .child(scrollbar(co, &self.which_key_scroll.clone(), cx))
+    }
+
+    /// Toast strip: the newest three feedback items, severity-coloured.
+    fn toast_strip(&self, co: Colors) -> gpui::Div {
+        use closure_shell_core::FeedbackKind as K;
+        div()
+            .flex()
+            .gap_2()
+            .px_3()
+            .children(self.feedback.items().iter().rev().take(3).map(|item| {
+                let col = match item.kind {
+                    K::Error => co.error,
+                    K::Warning => co.warning,
+                    K::Success => co.success,
+                    K::Info | K::Progress(_) => co.accent,
+                };
+                div()
+                    .px_2()
+                    .rounded_md()
+                    .bg(rgb(mix_u32(co.bg, col, 48)))
+                    .border_1()
+                    .border_color(rgb(col))
+                    .text_color(rgb(col))
+                    .text_size(px(11.0))
+                    .child(format!("⚑ {}", item.text))
+            }))
+    }
+
+    /// The window's top bar: title, the clickable mode chip, and the
+    /// Notion-style capture and palette buttons.
+    fn header_bar(&self, co: Colors, cx: &Context<Self>) -> gpui::Div {
+        let button = |label: String, colour: u32, command: &'static str| {
+            div()
+                .px_2()
+                .rounded_md()
+                .bg(rgb(co.panel))
+                .text_size(px(11.0))
+                .text_color(rgb(colour))
+                .cursor_pointer()
+                .hover(move |s| s.bg(rgb(co.hover)))
+                .on_mouse_down(
+                    MouseButton::Left,
+                    cx.listener(move |this: &mut Self, _ev, _w, cx| this.click(command, cx)),
+                )
+                .child(label)
+        };
+        div()
+            .flex()
+            .items_center()
+            .px_3()
+            .py_1()
+            .gap_2()
+            .child(div().text_color(rgb(co.accent)).text_lg().child("closure"))
+            .child(button(
+                format!("{:?}", self.app.input_mode()),
+                co.warning,
+                "cycle-mode",
+            ))
+            .child(div().flex_grow())
+            .child(button("＋ capture".to_owned(), co.success, "capture-start"))
+            .child(button("❯ palette".to_owned(), co.accent, "palette"))
+    }
+
+    /// The right-click context menu, anchored where the click landed.
+    ///
+    /// Entries come from [`closure_shell_core::context_menu`], so each
+    /// one shows the chord that runs it in the active mode — the mouse
+    /// path teaches the keyboard path.
+    fn context_menu_overlay(&self, co: Colors, cx: &Context<Self>) -> Option<gpui::Deferred> {
+        let (position, target) = self.menu?;
+        let items = closure_shell_core::context_menu(target, self.app.input_mode());
+        Some(
+            gpui::deferred(
+                gpui::anchored()
+                    .position(position)
+                    .snap_to_window_with_margin(px(8.0))
+                    .child(
+                        div()
+                            .flex()
+                            .flex_col()
+                            .min_w(px(230.0))
+                            .py_1()
+                            .rounded_md()
+                            .bg(rgb(co.bg))
+                            .border_1()
+                            .border_color(rgb(co.border))
+                            .text_size(px(12.0))
+                            .children(items.into_iter().map(|item| {
+                                let command = item.action.command().to_owned();
+                                div()
+                                    .flex()
+                                    .items_center()
+                                    .gap_2()
+                                    .px_3()
+                                    .py_1()
+                                    .cursor_pointer()
+                                    .hover(move |s| s.bg(rgb(co.hover)))
+                                    .on_mouse_down(
+                                        MouseButton::Left,
+                                        cx.listener(move |this: &mut Self, _ev, _w, cx| {
+                                            let command = command.clone();
+                                            this.menu = None;
+                                            this.click(&command, cx);
+                                        }),
+                                    )
+                                    .child(
+                                        div().flex_grow().text_color(rgb(co.fg)).child(item.label),
+                                    )
+                                    // The binding, always, on every entry.
+                                    .child(
+                                        div()
+                                            .text_color(rgb(co.accent))
+                                            .text_size(px(11.0))
+                                            .child(item.action.chord().to_owned()),
+                                    )
+                            })),
+                    ),
+            )
+            .with_priority(2),
+        )
+    }
+}
+
+/// One hit-testable run of body text. `col_offset` is the char column
+/// `text` starts at, so a segment painted after the INSERT caret still
+/// reports absolute columns back to the editor.
+#[cfg(feature = "gpui")]
+fn editor_segment(
+    co: Colors,
+    ln: usize,
+    col_offset: usize,
+    text: String,
+    runs: Vec<StyledRun>,
+    cx: &Context<GpuiView>,
+) -> gpui::Div {
+    let styled = gpui::StyledText::new(text.clone()).with_highlights(runs.into_iter().map(
+        |(range, kind, hot)| {
+            (
+                range,
+                gpui::HighlightStyle {
+                    color: Some(rgb(span_color(co, kind)).into()),
+                    background_color: hot.then(|| rgb(co.selection).into()),
+                    ..Default::default()
+                },
+            )
+        },
+    ));
+    // Clone the layout handle out before the element is moved; it is
+    // what the mouse handlers below hit-test against.
+    let layout = styled.layout().clone();
+    let drag_layout = layout.clone();
+    let click_text = text.clone();
+    div()
+        .child(styled)
+        .on_mouse_down(
+            MouseButton::Left,
+            cx.listener(
+                move |this: &mut GpuiView, ev: &gpui::MouseDownEvent, _w, cx| {
+                    let col = col_offset + hit_col(&layout, &click_text, ev.position);
+                    if ev.click_count >= 2 {
+                        this.app.body_double_click(ln, col);
+                    } else {
+                        this.app.body_click(ln, col);
+                    }
+                    cx.stop_propagation();
+                    cx.notify();
+                },
+            ),
+        )
+        // G2: dragging with the left button held extends the charwise
+        // VISUAL selection (BodyEditor::drag_to).
+        .on_mouse_move(cx.listener(
+            move |this: &mut GpuiView, ev: &gpui::MouseMoveEvent, _w, cx| {
+                if ev.pressed_button == Some(MouseButton::Left) {
+                    let col = col_offset + hit_col(&drag_layout, &text, ev.position);
+                    this.app.body_drag(ln, col);
+                    cx.notify();
+                }
+            },
+        ))
+}
+
+/// A draggable scrollbar for the pane tracked by `handle`.
+///
+/// gpui ships no scrollbar widget, so this is one: a track carrying a
+/// thumb sized and placed by [`thumb_geometry`], with click-and-drag
+/// anywhere on the track mapped back through
+/// [`scroll_for_track_fraction`]. A pane whose content fits gets an
+/// empty track, so the gutter width never shifts under the mouse.
+///
+/// The handle's own bounds are the track's: the bar is painted as the
+/// scrolled pane's sibling with the same height.
+#[cfg(feature = "gpui")]
+fn scrollbar(co: Colors, handle: &gpui::ScrollHandle, cx: &Context<GpuiView>) -> gpui::Div {
+    /// Keeps the thumb grabbable on a huge vault.
+    const MIN_THUMB: f32 = 0.06;
+    let bounds = handle.bounds();
+    let viewport = f32::from(bounds.size.height);
+    let content = viewport + f32::from(handle.max_offset().height);
+    // gpui scroll offsets run negative as content moves up.
+    let scroll = -f32::from(handle.offset().y);
+    let track = div()
+        .w(px(10.0))
+        .h_full()
+        .flex()
+        .flex_col()
+        .bg(rgb(mix_u32(co.bg, co.panel, 160)));
+    let Some(thumb) = thumb_geometry(viewport, content, scroll, MIN_THUMB) else {
+        return track;
+    };
+    let track_top = f32::from(bounds.origin.y);
+    let jump = {
+        let handle = handle.clone();
+        move |y: gpui::Pixels| {
+            let fraction = (f32::from(y) - track_top) / viewport;
+            let offset = scroll_for_track_fraction(viewport, content, fraction);
+            handle.set_offset(gpui::point(px(0.0), px(-offset)));
+        }
+    };
+    let drag_jump = jump.clone();
+    track
+        .cursor_pointer()
+        .on_mouse_down(
+            MouseButton::Left,
+            cx.listener(
+                move |_this: &mut GpuiView, ev: &gpui::MouseDownEvent, _w, cx| {
+                    jump(ev.position.y);
+                    cx.stop_propagation();
+                    cx.notify();
+                },
+            ),
+        )
+        .on_mouse_move(cx.listener(
+            move |_this: &mut GpuiView, ev: &gpui::MouseMoveEvent, _w, cx| {
+                if ev.pressed_button == Some(MouseButton::Left) {
+                    drag_jump(ev.position.y);
+                    cx.notify();
+                }
+            },
+        ))
+        .child(div().h(gpui::relative(thumb.top)))
+        .child(
+            div()
+                .h(gpui::relative(thumb.height))
+                .w_full()
+                .rounded_sm()
+                .bg(rgb(co.muted))
+                .hover(move |s| s.bg(rgb(co.accent))),
+        )
+}
+
+/// Theme colour for a body-editor span kind. Shared by the editor
+/// pane and the read-only detail preview so both read identically.
+#[cfg(feature = "gpui")]
+const fn span_color(co: Colors, kind: BodySpan) -> u32 {
+    match kind {
+        BodySpan::Plain => co.fg,
+        BodySpan::Meta | BodySpan::Comment => co.muted,
+        BodySpan::Drawer => co.error,
+        BodySpan::Keyword => co.accent,
+        BodySpan::Literal => co.success,
+    }
+}
+
+/// Resolve a window-space mouse position to a char column in `text`
+/// through gpui's text layout.
+///
+/// `index_for_position` returns `Err` with the nearest index when the
+/// position falls outside the glyphs — a click in a line's empty tail
+/// — which is exactly the "park at the line end" behaviour, so both
+/// arms carry a usable offset.
+#[cfg(feature = "gpui")]
+fn hit_col(layout: &gpui::TextLayout, text: &str, position: gpui::Point<gpui::Pixels>) -> usize {
+    let byte = layout.index_for_position(position).unwrap_or_else(|i| i);
+    col_for_byte(text, byte)
 }
 
 /// A generic clickable list row (agenda / blocks / backlinks).
@@ -1277,7 +1817,7 @@ fn clickable(
     co: Colors,
     inner: gpui::Div,
     command: &'static str,
-    cx: &mut Context<GpuiView>,
+    cx: &Context<GpuiView>,
 ) -> gpui::Div {
     div()
         .rounded_sm()
@@ -1327,64 +1867,17 @@ impl Render for GpuiView {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let co = Colors::of(&self.theme);
         let mono = self.theme.typography.mono_family.to_owned();
+        // Keyboard navigation reveals its row; the wheel does not fight
+        // it, because a reveal is requested only when the selection
+        // actually moved since the last frame.
+        let selected = self.app.selected();
+        if selected != self.revealed {
+            self.outline_scroll
+                .scroll_to_item(selected, gpui::ScrollStrategy::Center);
+            self.revealed = selected;
+        }
 
-        let header = div()
-            .flex()
-            .items_center()
-            .px_3()
-            .py_1()
-            .gap_2()
-            .child(div().text_color(rgb(co.accent)).text_lg().child("closure"))
-            .child(
-                // Mode chip — click cycles the input mode.
-                div()
-                    .px_2()
-                    .rounded_md()
-                    .bg(rgb(co.panel))
-                    .text_size(px(11.0))
-                    .text_color(rgb(co.warning))
-                    .cursor_pointer()
-                    .hover(move |s| s.bg(rgb(co.hover)))
-                    .on_mouse_down(
-                        MouseButton::Left,
-                        cx.listener(|this: &mut Self, _ev, _w, cx| this.click("cycle-mode", cx)),
-                    )
-                    .child(format!("{:?}", self.app.input_mode())),
-            )
-            .child(div().flex_grow())
-            .child(
-                // Notion "+" — click captures (same command as `c`).
-                div()
-                    .px_2()
-                    .rounded_md()
-                    .bg(rgb(co.panel))
-                    .text_size(px(11.0))
-                    .text_color(rgb(co.success))
-                    .cursor_pointer()
-                    .hover(move |s| s.bg(rgb(co.hover)))
-                    .on_mouse_down(
-                        MouseButton::Left,
-                        cx.listener(|this: &mut Self, _ev, _w, cx| {
-                            this.click("capture-start", cx);
-                        }),
-                    )
-                    .child("＋ capture"),
-            )
-            .child(
-                div()
-                    .px_2()
-                    .rounded_md()
-                    .bg(rgb(co.panel))
-                    .text_size(px(11.0))
-                    .text_color(rgb(co.accent))
-                    .cursor_pointer()
-                    .hover(move |s| s.bg(rgb(co.hover)))
-                    .on_mouse_down(
-                        MouseButton::Left,
-                        cx.listener(|this: &mut Self, _ev, _w, cx| this.click("palette", cx)),
-                    )
-                    .child("❯ palette"),
-            );
+        let header = self.header_bar(co, cx);
 
         let context = div()
             .px_3()
@@ -1409,41 +1902,30 @@ impl Render for GpuiView {
             .text_size(px(11.0))
             .child(self.app.status().to_owned());
 
-        // Toast strip: the newest three feedback items, severity-coloured.
-        let toasts = div().flex().gap_2().px_3().children(
-            self.feedback
-                .items()
-                .iter()
-                .rev()
-                .take(3)
-                .map(|item| {
-                    use closure_shell_core::FeedbackKind as K;
-                    let col = match item.kind {
-                        K::Error => co.error,
-                        K::Warning => co.warning,
-                        K::Success => co.success,
-                        K::Info | K::Progress(_) => co.accent,
-                    };
-                    div()
-                        .px_2()
-                        .rounded_md()
-                        .bg(rgb(mix_u32(co.bg, col, 48)))
-                        .border_1()
-                        .border_color(rgb(col))
-                        .text_color(rgb(col))
-                        .text_size(px(11.0))
-                        .child(format!("⚑ {}", item.text))
-                })
-                .collect::<Vec<_>>(),
-        );
+        let toasts = self.toast_strip(co);
 
-        div()
+        // The bindings panel opens on demand, and always while a chord
+        // is in flight — that is the moment it is actually needed.
+        let show_keys = self.which_key_open || !self.app.pending_chord().is_empty();
+
+        let mut root = div()
             .key_context("ClosureGpui")
             .track_focus(&self.focus_handle(cx))
             .on_key_down(cx.listener(Self::on_key))
+            // A click anywhere outside an open menu dismisses it, the
+            // way every desktop menu behaves.
+            .on_mouse_down(
+                MouseButton::Left,
+                cx.listener(|this: &mut Self, _ev, _w, cx| {
+                    if this.menu.take().is_some() {
+                        cx.notify();
+                    }
+                }),
+            )
             .flex()
             .flex_col()
             .size_full()
+            .overflow_hidden()
             .bg(rgb(co.bg))
             .text_color(rgb(co.fg))
             .font_family(mono)
@@ -1451,8 +1933,15 @@ impl Render for GpuiView {
             .child(context)
             .child(toasts)
             .child(body)
-            .child(status)
-            .child(self.footer(co, cx))
+            .child(status);
+        if show_keys {
+            root = root.child(self.which_key_panel(co, cx));
+        }
+        root = root.child(self.footer(co, cx));
+        if let Some(menu) = self.context_menu_overlay(co, cx) {
+            root = root.child(menu);
+        }
+        root
     }
 }
 

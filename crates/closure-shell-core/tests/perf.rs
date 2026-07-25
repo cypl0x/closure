@@ -16,7 +16,12 @@ fn gen_vault_is_deterministic_and_sized() {
     assert_eq!(a, b, "same seed, same vault (I6)");
     assert_eq!(a.len(), 5, "file count");
     let heads = a[0].1.matches("\n* ").count() + usize::from(a[0].1.starts_with("* "));
-    assert_eq!(heads, 20, "headlines per file: {}", &a[0].1[..120.min(a[0].1.len())]);
+    assert_eq!(
+        heads,
+        20,
+        "headlines per file: {}",
+        &a[0].1[..120.min(a[0].1.len())]
+    );
     let c = gen_vault(5, 20, 43);
     assert_ne!(a, c, "different seed, different content");
 }
@@ -43,7 +48,13 @@ fn dispatch_p99_stays_under_budget_on_a_big_vault() {
     // shared input seam.
     let mut samples: Vec<u128> = Vec::with_capacity(1000);
     for i in 0..1000u32 {
-        let key = if i % 3 == 0 { "j" } else if i % 3 == 1 { "k" } else { "j" };
+        let key = if i % 3 == 0 {
+            "j"
+        } else if i % 3 == 1 {
+            "k"
+        } else {
+            "j"
+        };
         let t = std::time::Instant::now();
         app.on_key(&mut sh, key, false, false, key.chars().next());
         samples.push(t.elapsed().as_micros());

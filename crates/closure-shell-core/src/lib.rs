@@ -1076,7 +1076,11 @@ pub fn gen_vault(files: usize, headlines_per_file: usize, seed: u64) -> Vec<(Str
             let tag = if r % 5 == 0 { " :work:" } else { "" };
             let _ = writeln!(src, "* {todo}{w1} {w2} {f}-{h}{tag}");
             let _ = writeln!(src, ":PROPERTIES:");
-            let _ = writeln!(src, ":ID: 01H{:023X}", (u128::from(r) << 16) | ((f as u128) << 8) | h as u128);
+            let _ = writeln!(
+                src,
+                ":ID: 01H{:023X}",
+                (u128::from(r) << 16) | ((f as u128) << 8) | h as u128
+            );
             let _ = writeln!(src, ":END:");
             let _ = writeln!(src, "body {w2} line {}", r % 97);
         }
@@ -2366,6 +2370,74 @@ pub fn serialize_palette(sections: &[PaletteSection]) -> String {
     out
 }
 
+/// What a right-click landed on, selecting which context menu to show.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ContextTarget {
+    /// An outline row: the structural commands.
+    Row,
+    /// The body editor or its preview: editing and code blocks.
+    Body,
+    /// A detail-pane field: the per-field edit commands.
+    Detail,
+}
+
+/// The context menu for `target` in `mode`.
+///
+/// Derived from the mode's keymap, never hand-written per shell: every
+/// entry carries the chord that actually runs it (I4), which is how
+/// the mouse-only path stays a way to *discover* the keyboard one.
+/// A command with no binding in `mode` is dropped rather than shown
+/// with a blank chord — the menu shrinks instead of lying.
+#[must_use]
+pub fn context_menu(
+    target: ContextTarget,
+    mode: closure_config::InputMode,
+) -> Vec<PaletteItemView> {
+    let entries: &[(&str, &str)] = match target {
+        ContextTarget::Row => &[
+            ("Rename", "rename"),
+            ("Cycle TODO", "toggle-todo"),
+            ("Cycle priority", "cycle-priority"),
+            ("Edit tags", "edit-tags"),
+            ("Edit property", "edit-property"),
+            ("Edit body", "edit-body"),
+            ("Fold / unfold", "toggle-fold"),
+            ("Promote", "promote"),
+            ("Demote", "demote"),
+            ("Move up", "move-subtree-up"),
+            ("Move down", "move-subtree-down"),
+            ("Add sibling", "add-sibling"),
+            ("Backlinks", "backlinks"),
+            ("Undo history", "undo-history"),
+            ("Delete subtree", "delete"),
+        ],
+        ContextTarget::Body => &[
+            ("Edit body", "edit-body"),
+            ("Source blocks", "block-list"),
+            ("Backlinks", "backlinks"),
+            ("Undo", "undo"),
+            ("Redo", "redo"),
+        ],
+        ContextTarget::Detail => &[
+            ("Rename", "rename"),
+            ("Cycle TODO", "toggle-todo"),
+            ("Cycle priority", "cycle-priority"),
+            ("Edit tags", "edit-tags"),
+            ("Edit property", "edit-property"),
+            ("Edit body", "edit-body"),
+        ],
+    };
+    entries
+        .iter()
+        .filter_map(|(label, command)| {
+            Action::new(mode, *command).map(|action| PaletteItemView {
+                label: (*label).to_owned(),
+                action,
+            })
+        })
+        .collect()
+}
+
 /// The Notion-style slash command menu (G5c).
 ///
 /// Every palette command whose name fuzzy-matches `query`, as actionable
@@ -2426,6 +2498,23 @@ impl DragReorder {
     /// Update the hover target to `i`.
     pub const fn over(&mut self, i: usize) {
         self.to = Some(i);
+    }
+
+    /// The row the gesture picked up, while it is still in flight.
+    ///
+    /// A drag is unusable without an insertion indicator, and a shell
+    /// can only paint one if it can read the gesture mid-flight —
+    /// [`Self::drop`] answers once, at the end, and then resets.
+    #[must_use]
+    pub const fn source(&self) -> Option<usize> {
+        self.from
+    }
+
+    /// The row the pointer is currently over, or `None` until it has
+    /// moved off the source.
+    #[must_use]
+    pub const fn target(&self) -> Option<usize> {
+        self.to
     }
 
     /// Abandon the gesture.
@@ -3870,8 +3959,7 @@ impl BodyEditor {
     pub fn drag_to(&mut self, line: usize, col: usize) {
         let from = self.cursor;
         self.goto_line_col(line, col);
-        if !matches!(self.mode, EditorMode::Visual | EditorMode::VisualLine)
-            && self.cursor != from
+        if !matches!(self.mode, EditorMode::Visual | EditorMode::VisualLine) && self.cursor != from
         {
             self.anchor = from;
             self.mode = EditorMode::Visual;
@@ -4501,6 +4589,26 @@ pub struct ModalApp {
     body_scroll: Option<(usize, usize)>,
     /// Cursor row inside the `UndoHistory` pane (Q2-U3).
     hist_cursor: usize,
+    /// Memoised outline rows — see [`ModalApp::rows`]. Interior
+    /// mutability because `rows` is a `&self` query on the render
+    /// path; the memo is exact, guarded by the vault revision and the
+    /// active filter, so it can never serve a stale list.
+    row_memo: std::cell::RefCell<Option<RowMemo>>,
+    /// How many full vault walks the memo has paid for. Observability
+    /// for the render budget (`rows_recomputes`), asserted in tests.
+    row_recomputes: std::cell::Cell<u64>,
+}
+
+/// A filled outline-row memo together with the key it is valid under.
+#[derive(Debug, Clone)]
+struct RowMemo {
+    /// Vault revision the rows were derived from.
+    revision: u64,
+    /// Active fuzzy filter (empty outside the Search surface).
+    filter: String,
+    /// The derived rows, shared so handing them out costs a refcount
+    /// bump rather than a deep clone of every headline string.
+    rows: std::sync::Arc<Vec<Row>>,
 }
 
 impl ModalApp {
@@ -4526,6 +4634,8 @@ impl ModalApp {
             scroll_override: None,
             body_scroll: None,
             hist_cursor: 0,
+            row_memo: std::cell::RefCell::new(None),
+            row_recomputes: std::cell::Cell::new(0),
         }
     }
 
@@ -4672,7 +4782,7 @@ impl ModalApp {
     /// bar, and the live match count, pluralized.
     #[must_use]
     pub fn search_context(&self, shell: &Shell) -> String {
-        let n = self.rows(shell).len();
+        let n = self.rows_shared(shell).len();
         let m = if n == 1 { "match" } else { "matches" };
         format!("\u{2315} {}\u{258f} \u{b7} {} {}", self.query(), n, m)
     }
@@ -4735,11 +4845,81 @@ impl ModalApp {
     /// Rows: all headlines on Browse, fuzzy-filtered while searching.
     #[must_use]
     pub fn rows(&self, shell: &Shell) -> Vec<Row> {
+        self.rows_shared(shell).as_ref().clone()
+    }
+
+    /// The same outline rows as [`Self::rows`], shared rather than
+    /// cloned — the render path's entry point.
+    ///
+    /// A frame asks for the row list from the context line, the
+    /// outline pane, the detail pane and from inside every mouse
+    /// listener. Deriving it walks every document and allocates five
+    /// strings per headline, so the result is memoised against
+    /// `(vault revision, active filter)`: an unchanged vault and an
+    /// unchanged query hand back the previous `Arc` for the cost of a
+    /// refcount bump. Both key components are exactly what the
+    /// derivation reads, so the memo cannot go stale — a mutation
+    /// bumps [`closure_store::Vault::revision`] and a keystroke in the
+    /// search overlay changes the filter.
+    #[must_use]
+    pub fn rows_shared(&self, shell: &Shell) -> std::sync::Arc<Vec<Row>> {
         let filter = if self.surface == ModalSurface::Search {
             self.query.as_str()
         } else {
             ""
         };
+        let revision = shell.vault.revision();
+        {
+            let memo = self.row_memo.borrow();
+            if let Some(m) = memo.as_ref()
+                && m.revision == revision
+                && m.filter == filter
+            {
+                return std::sync::Arc::clone(&m.rows);
+            }
+        }
+        let rows = std::sync::Arc::new(Self::derive_rows(shell, filter));
+        self.row_recomputes.set(self.row_recomputes.get() + 1);
+        *self.row_memo.borrow_mut() = Some(RowMemo {
+            revision,
+            filter: filter.to_owned(),
+            rows: std::sync::Arc::clone(&rows),
+        });
+        rows
+    }
+
+    /// Drop the memo so the next [`Self::rows_shared`] pays for a full
+    /// walk. Nothing in normal operation needs this — the revision key
+    /// handles invalidation — but it lets a caller (or a test) demand
+    /// ground truth.
+    pub fn invalidate_rows(&mut self) {
+        *self.row_memo.borrow_mut() = None;
+    }
+
+    /// Ground truth: derive the outline rows without consulting or
+    /// filling the memo. What [`Self::rows_shared`] must always agree
+    /// with, and the escape hatch for a caller that would rather pay
+    /// the walk than trust a cache.
+    #[must_use]
+    pub fn rows_uncached(&self, shell: &Shell) -> Vec<Row> {
+        let filter = if self.surface == ModalSurface::Search {
+            self.query.as_str()
+        } else {
+            ""
+        };
+        Self::derive_rows(shell, filter)
+    }
+
+    /// How many full vault walks [`Self::rows_shared`] has paid for
+    /// since this app was created. The render budget is "at most one
+    /// per actual change", and the tests assert it.
+    #[must_use]
+    pub const fn rows_recomputes(&self) -> u64 {
+        self.row_recomputes.get()
+    }
+
+    /// The uncached derivation behind [`Self::rows_shared`].
+    fn derive_rows(shell: &Shell, filter: &str) -> Vec<Row> {
         let mut scored: Vec<(u32, Row)> = Vec::new();
         for (p, doc) in shell.vault.iter() {
             // Fold-aware outline walk (same rule as the launcher App):
@@ -4786,7 +4966,7 @@ impl ModalApp {
     /// set. Used by mouse clicks on a row (draw parity with [`App`]).
     pub fn select(&mut self, i: usize, shell: &Shell) {
         self.scroll_override = None;
-        let last = self.rows(shell).len().saturating_sub(1);
+        let last = self.rows_shared(shell).len().saturating_sub(1);
         self.selected = i.min(last);
     }
 
@@ -4796,7 +4976,7 @@ impl ModalApp {
     /// and [`Self::view_window`] returns to its keep-selection-visible
     /// rule.
     pub fn scroll_by(&mut self, delta: i32, shell: &Shell, page: usize) {
-        let rows = self.rows(shell).len();
+        let rows = self.rows_shared(shell).len();
         let page = page.max(1);
         let max_off = rows.saturating_sub(page);
         let base = self
@@ -4818,17 +4998,17 @@ impl ModalApp {
     #[must_use]
     pub fn view_window(&self, shell: &Shell, page: usize) -> (usize, Vec<Row>) {
         if let Some(o) = self.scroll_override {
-            let rows = self.rows(shell);
+            let rows = self.rows_shared(shell);
             let page = page.max(1);
             if rows.len() > page {
                 let off = o.min(rows.len() - page);
                 return (off, rows[off..off + page].to_vec());
             }
-            return (0, rows);
+            return (0, rows.as_ref().clone());
         }
-        let rows = self.rows(shell);
+        let rows = self.rows_shared(shell);
         if page == 0 || rows.len() <= page {
-            return (0, rows);
+            return (0, rows.as_ref().clone());
         }
         let max_offset = rows.len() - page;
         let offset = self.selected.saturating_sub(page - 1).min(max_offset);
@@ -4841,7 +5021,7 @@ impl ModalApp {
     /// [`App::detail`].
     #[must_use]
     pub fn detail(&self, shell: &Shell) -> Option<Detail> {
-        let rows = self.rows(shell);
+        let rows = self.rows_shared(shell);
         let row = rows.get(self.selected)?;
         let bid = closure_core::BlockId::from_existing(&row.id);
         let (h, path) = shell.vault.find_by_id(&bid)?;
@@ -4991,7 +5171,7 @@ impl ModalApp {
                 self.surface = ModalSurface::Browse;
                 self.selected = 0;
                 if let Some(id) = id
-                    && let Some(idx) = self.rows(shell).iter().position(|r| r.id == id)
+                    && let Some(idx) = self.rows_shared(shell).iter().position(|r| r.id == id)
                 {
                     self.selected = idx;
                 }
@@ -5003,7 +5183,7 @@ impl ModalApp {
         self.surface = ModalSurface::Browse;
         self.selected = 0;
         if let Some(path) = target_path
-            && let Some(idx) = self.rows(shell).iter().position(|r| r.path == path)
+            && let Some(idx) = self.rows_shared(shell).iter().position(|r| r.path == path)
         {
             self.selected = idx;
         }
@@ -5084,7 +5264,7 @@ impl ModalApp {
     /// `to` clamps to the last reachable slot. Ids are never
     /// regenerated by a move (I2).
     pub fn drag_drop_rows(&mut self, shell: &mut Shell, from: usize, to: usize) {
-        let rows = self.rows(shell);
+        let rows = self.rows_shared(shell);
         let Some(row) = rows.get(from) else { return };
         if from == to {
             return;
@@ -5097,14 +5277,14 @@ impl ModalApp {
             "move-subtree-down"
         };
         for _ in 0..rows.len() {
-            let Some(cur) = self.rows(shell).iter().position(|r| r.id == id) else {
+            let Some(cur) = self.rows_shared(shell).iter().position(|r| r.id == id) else {
                 break;
             };
             if (to < from && cur <= to) || (to > from && cur >= to) {
                 break;
             }
             self.run(shell, cmd);
-            if self.rows(shell).iter().position(|r| r.id == id) == Some(cur) {
+            if self.rows_shared(shell).iter().position(|r| r.id == id) == Some(cur) {
                 break; // a boundary refused the move
             }
         }
@@ -5115,7 +5295,7 @@ impl ModalApp {
     /// nothing is selected or no edit is recorded yet.
     #[must_use]
     pub fn undo_history_rows(&self, shell: &Shell) -> Vec<closure_core::HistoryRow> {
-        self.rows(shell)
+        self.rows_shared(shell)
             .get(self.selected)
             .and_then(|row| {
                 let path = std::path::PathBuf::from(&row.path);
@@ -5137,13 +5317,15 @@ impl ModalApp {
     /// ([`closure_store::Vault::jump_history_in`] — composed undo/redo
     /// primitives, persisted) and return to Browse.
     fn jump_undo_history(&mut self, shell: &mut Shell, index: usize) {
-        if let Some(row) = self.rows(shell).get(self.selected).cloned() {
+        if let Some(row) = self.rows_shared(shell).get(self.selected).cloned() {
             let path = std::path::PathBuf::from(&row.path);
             match shell.vault.jump_history_in(&path, index) {
                 Ok(()) => "jumped".clone_into(&mut self.status),
                 Err(e) => self.status = format!("jump failed: {e}"),
             }
-            self.selected = self.selected.min(self.rows(shell).len().saturating_sub(1));
+            self.selected = self
+                .selected
+                .min(self.rows_shared(shell).len().saturating_sub(1));
         }
         self.surface = ModalSurface::Browse;
     }
@@ -5158,7 +5340,7 @@ impl ModalApp {
     /// Re-point the selection at the row with `id` (the selection
     /// follows a moved subtree); no-op when the id is gone.
     fn select_id(&mut self, shell: &Shell, id: &str) {
-        if let Some(i) = self.rows(shell).iter().position(|r| r.id == id) {
+        if let Some(i) = self.rows_shared(shell).iter().position(|r| r.id == id) {
             self.selected = i;
         }
     }
@@ -5167,7 +5349,7 @@ impl ModalApp {
     /// level, no lower-level row between), forward or backward. `None`
     /// at the ends or when a parent boundary intervenes.
     fn sibling_index(&self, shell: &Shell, forward: bool) -> Option<usize> {
-        let rows = self.rows(shell);
+        let rows = self.rows_shared(shell);
         let cur = rows.get(self.selected)?;
         let (path, level) = (cur.path.clone(), cur.level);
         let scan: Box<dyn Iterator<Item = usize>> = if forward {
@@ -5250,7 +5432,11 @@ impl ModalApp {
         if let Some((_, title)) = self.backlink_rows(shell).get(self.selected).cloned() {
             self.link_target = None;
             self.surface = ModalSurface::Browse;
-            if let Some(idx) = self.rows(shell).iter().position(|r| r.title == title) {
+            if let Some(idx) = self
+                .rows_shared(shell)
+                .iter()
+                .position(|r| r.title == title)
+            {
                 self.selected = idx;
             }
         }
@@ -5534,7 +5720,7 @@ impl ModalApp {
                 self.selected = 0;
             }
             "down" => {
-                let last = self.rows(shell).len().saturating_sub(1);
+                let last = self.rows_shared(shell).len().saturating_sub(1);
                 self.selected = (self.selected + 1).min(last);
             }
             "up" => self.selected = self.selected.saturating_sub(1),
@@ -5605,7 +5791,7 @@ impl ModalApp {
     // the same precedent as `view_to_json` / `qml_item`.
     #[allow(clippy::too_many_lines)]
     fn run_command(&mut self, shell: &mut Shell, cmd: &str) {
-        let last = self.rows(shell).len().saturating_sub(1);
+        let last = self.rows_shared(shell).len().saturating_sub(1);
         match cmd {
             "next-file" => {
                 self.scroll_override = None;
@@ -5634,12 +5820,12 @@ impl ModalApp {
                 self.selected = 0;
             }
             "open-file" => {
-                if let Some(row) = self.rows(shell).get(self.selected) {
+                if let Some(row) = self.rows_shared(shell).get(self.selected) {
                     self.status = format!("{} — {}", row.path, row.title);
                 }
             }
             "backlinks" => {
-                if let Some(row) = self.rows(shell).get(self.selected).cloned() {
+                if let Some(row) = self.rows_shared(shell).get(self.selected).cloned() {
                     self.link_target = Some(row.id);
                     self.selected = 0;
                     self.surface = ModalSurface::Backlinks;
@@ -5664,14 +5850,16 @@ impl ModalApp {
                 self.surface = ModalSurface::Blocks;
             }
             "toggle-fold" => {
-                if let Some(row) = self.rows(shell).get(self.selected).cloned() {
+                if let Some(row) = self.rows_shared(shell).get(self.selected).cloned() {
                     let bid = closure_core::BlockId::from_existing(&row.id);
                     let _ = toggle_visibility(shell, &bid);
-                    self.selected = self.selected.min(self.rows(shell).len().saturating_sub(1));
+                    self.selected = self
+                        .selected
+                        .min(self.rows_shared(shell).len().saturating_sub(1));
                 }
             }
             "toggle-todo" => {
-                if let Some(row) = self.rows(shell).get(self.selected).cloned() {
+                if let Some(row) = self.rows_shared(shell).get(self.selected).cloned() {
                     let next = match self.detail(shell).and_then(|d| d.todo) {
                         None => Some("TODO"),
                         Some(k) if k == "TODO" => Some("DONE"),
@@ -5682,7 +5870,7 @@ impl ModalApp {
                 }
             }
             "cycle-priority" => {
-                if let Some(row) = self.rows(shell).get(self.selected).cloned() {
+                if let Some(row) = self.rows_shared(shell).get(self.selected).cloned() {
                     let next = match self.detail(shell).and_then(|d| d.priority) {
                         None => Some('A'),
                         Some('A') => Some('B'),
@@ -5694,13 +5882,13 @@ impl ModalApp {
                 }
             }
             "promote" => {
-                if let Some(row) = self.rows(shell).get(self.selected).cloned() {
+                if let Some(row) = self.rows_shared(shell).get(self.selected).cloned() {
                     let bid = closure_core::BlockId::from_existing(&row.id);
                     let _ = shell.promote(&bid);
                 }
             }
             "demote" => {
-                if let Some(row) = self.rows(shell).get(self.selected).cloned() {
+                if let Some(row) = self.rows_shared(shell).get(self.selected).cloned() {
                     let bid = closure_core::BlockId::from_existing(&row.id);
                     let _ = shell.demote(&bid);
                 }
@@ -5709,7 +5897,7 @@ impl ModalApp {
                 // Moving up = moving the previous sibling below us; the
                 // selection follows the moved heading (org rule).
                 if let Some(prev) = self.sibling_index(shell, false) {
-                    let rows = self.rows(shell);
+                    let rows = self.rows_shared(shell);
                     let (p, s) = (rows[prev].id.clone(), rows[self.selected].id.clone());
                     let _ = shell.move_after(
                         &closure_core::BlockId::from_existing(&p),
@@ -5720,7 +5908,7 @@ impl ModalApp {
             }
             "move-subtree-down" => {
                 if let Some(next) = self.sibling_index(shell, true) {
-                    let rows = self.rows(shell);
+                    let rows = self.rows_shared(shell);
                     let (s, n) = (rows[self.selected].id.clone(), rows[next].id.clone());
                     let _ = shell.move_after(
                         &closure_core::BlockId::from_existing(&s),
@@ -5730,13 +5918,13 @@ impl ModalApp {
                 }
             }
             "add-heading" => {
-                if let Some(row) = self.rows(shell).get(self.selected).cloned() {
+                if let Some(row) = self.rows_shared(shell).get(self.selected).cloned() {
                     let bid = closure_core::BlockId::from_existing(&row.id);
                     let _ = shell.add_sibling(&bid, "untitled");
                 }
             }
             "edit-tags" => {
-                if let Some(row) = self.rows(shell).get(self.selected).cloned() {
+                if let Some(row) = self.rows_shared(shell).get(self.selected).cloned() {
                     let tags = self.detail(shell).map(|d| d.tags).unwrap_or_default();
                     self.field_target = Some(row.id);
                     self.field_buf = tags.join(" ");
@@ -5744,14 +5932,14 @@ impl ModalApp {
                 }
             }
             "edit-property" => {
-                if let Some(row) = self.rows(shell).get(self.selected).cloned() {
+                if let Some(row) = self.rows_shared(shell).get(self.selected).cloned() {
                     self.field_target = Some(row.id);
                     self.field_buf.clear();
                     self.surface = ModalSurface::PropertyEdit;
                 }
             }
             "edit-body" => {
-                if let Some(row) = self.rows(shell).get(self.selected).cloned() {
+                if let Some(row) = self.rows_shared(shell).get(self.selected).cloned() {
                     self.edit_target = Some(row.id);
                     self.body
                         .load(self.detail(shell).map(|d| d.body).unwrap_or_default());
@@ -5769,7 +5957,7 @@ impl ModalApp {
                 };
             }
             "rename" => {
-                if let Some(row) = self.rows(shell).get(self.selected).cloned() {
+                if let Some(row) = self.rows_shared(shell).get(self.selected).cloned() {
                     self.field_target = Some(row.id);
                     self.field_buf = row.title;
                     self.surface = ModalSurface::Rename;
@@ -5777,7 +5965,7 @@ impl ModalApp {
                 }
             }
             "add-sibling" => {
-                if let Some(row) = self.rows(shell).get(self.selected).cloned() {
+                if let Some(row) = self.rows_shared(shell).get(self.selected).cloned() {
                     self.field_target = Some(row.id);
                     self.field_buf.clear();
                     self.surface = ModalSurface::AddSibling;
@@ -5785,33 +5973,39 @@ impl ModalApp {
                 }
             }
             "delete" => {
-                if let Some(row) = self.rows(shell).get(self.selected).cloned() {
+                if let Some(row) = self.rows_shared(shell).get(self.selected).cloned() {
                     let bid = closure_core::BlockId::from_existing(&row.id);
                     match shell.remove_subtree(&bid) {
                         Ok(()) => self.status = format!("deleted: {}", row.title),
                         Err(e) => self.status = format!("delete failed: {e}"),
                     }
-                    self.selected = self.selected.min(self.rows(shell).len().saturating_sub(1));
+                    self.selected = self
+                        .selected
+                        .min(self.rows_shared(shell).len().saturating_sub(1));
                 }
             }
             "undo" => {
-                if let Some(row) = self.rows(shell).get(self.selected).cloned() {
+                if let Some(row) = self.rows_shared(shell).get(self.selected).cloned() {
                     let path = std::path::PathBuf::from(&row.path);
                     match shell.vault.undo_in(&path) {
                         Ok(()) => "undo".clone_into(&mut self.status),
                         Err(e) => self.status = format!("undo failed: {e}"),
                     }
-                    self.selected = self.selected.min(self.rows(shell).len().saturating_sub(1));
+                    self.selected = self
+                        .selected
+                        .min(self.rows_shared(shell).len().saturating_sub(1));
                 }
             }
             "redo" => {
-                if let Some(row) = self.rows(shell).get(self.selected).cloned() {
+                if let Some(row) = self.rows_shared(shell).get(self.selected).cloned() {
                     let path = std::path::PathBuf::from(&row.path);
                     match shell.vault.redo_in(&path) {
                         Ok(()) => "redo".clone_into(&mut self.status),
                         Err(e) => self.status = format!("redo failed: {e}"),
                     }
-                    self.selected = self.selected.min(self.rows(shell).len().saturating_sub(1));
+                    self.selected = self
+                        .selected
+                        .min(self.rows_shared(shell).len().saturating_sub(1));
                 }
             }
             "palette" => {

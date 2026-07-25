@@ -75,16 +75,42 @@ gui-gpui:
 run-gpui vault:
     cargo run -p closure-cli --features gpui -- gpui {{vault}}
 
-# Release build of the reference gpui shell. Heavy: on desktops with an
-# aggressive oomd wrap it in a memory scope, e.g.
-#   systemd-run --user --scope -p MemoryHigh=6G -p MemoryMax=8G -- \
-#     nix develop -c just gpui-release
+# Release build of the reference gpui shell. This is the one to use:
+# the debug build runs gpui's GPU stack unoptimised and feels an order
+# of magnitude slower than the shipped shell. `just run-gpui` is the
+# debug launcher and is for debugging only.
+#
+# Heavy (~570 transitive crates). On a desktop with an aggressive
+# systemd-oomd, prefer `just gpui-release-scoped`, which caps the build
+# so the terminal survives it.
 gpui-release:
     cargo build --release -p closure-cli --features gpui -j 4
 
-# Launch the RELEASE gpui shell against a vault (needs a display).
+# The same build inside a capped systemd scope: oomd then kills the
+# scope rather than the terminal that started it. Run this one from
+# OUTSIDE a dev shell — it enters one itself.
+gpui-release-scoped:
+    systemd-run --user --scope -p MemoryHigh=6G -p MemoryMax=8G -- \
+      nix develop -c cargo build --release -p closure-cli --features gpui -j 4
+
+# Build (if needed) and launch the RELEASE gpui shell against a vault.
+#   nix develop -c just run-gpui-release ~/vault
 run-gpui-release vault: gpui-release
     ./target/release/closure gpui {{vault}}
+
+# Launch the already-built release shell without rebuilding — the fast
+# path once `gpui-release` has run once. Needs no dev shell.
+gpui vault:
+    ./target/release/closure gpui {{vault}}
+
+# Launch the release shell over a generated vault of the given size, to
+# eyeball scroll/typing latency against something big. The vault is
+# written under target/perf-vault (regenerated each run, deterministic).
+gpui-bigvault files="200" heads="60": gpui-release
+    rm -rf target/perf-vault
+    cargo run --release -q -p closure-shell-core --example gen_vault -- \
+      target/perf-vault {{files}} {{heads}}
+    ./target/release/closure gpui target/perf-vault
 
 # Embedded wasm plugin runtime build + test gate (opt-in; pulls
 # wasmtime + cranelift). Hermetic (WAT fixtures run in-process); kept

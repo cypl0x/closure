@@ -35,6 +35,8 @@ pub struct Vault {
     backlinks: HashMap<String, Vec<(PathBuf, BlockId)>>,
     /// Kill ring: cut subtree sources, most-recent last.
     kill_ring: Vec<String>,
+    /// Monotone change token — see [`Vault::revision`].
+    revision: u64,
 }
 
 /// An org-capture template: where a new entry lands and what it
@@ -146,6 +148,10 @@ impl Vault {
         self.documents = fresh.documents;
         self.by_id = fresh.by_id;
         self.backlinks = fresh.backlinks;
+        // Every document was replaced; the fresh vault's own counter
+        // restarts at 0, so bump ours rather than adopt it (I3: the
+        // token must never go backwards).
+        self.revision = self.revision.wrapping_add(1);
         Ok(())
     }
 
@@ -298,7 +304,21 @@ impl Vault {
             by_id,
             backlinks,
             kill_ring: Vec::new(),
+            revision: 0,
         })
+    }
+
+    /// Monotone change token for the loaded documents.
+    ///
+    /// Stable across every read, strictly increasing across every
+    /// mutation — kernel commands, undo/redo, file-level operations
+    /// and reloads alike. Shells memoise derived views (outline rows,
+    /// agendas, backlink tables) against it: an unchanged revision
+    /// means a cached derivation is still exact, which is what keeps
+    /// the render path off a full vault walk per frame.
+    #[must_use]
+    pub const fn revision(&self) -> u64 {
+        self.revision
     }
 
     /// Inverted backlink lookup. Returns every `(file, source-id)`
@@ -936,9 +956,7 @@ impl Vault {
                 self.set_tags(&bid, &tags)
             }
             "set-body" => self.set_body(&bid, &arg),
-            "add-sibling" => {
-                self.add_sibling(&bid, if arg.is_empty() { "untitled" } else { &arg })
-            }
+            "add-sibling" => self.add_sibling(&bid, if arg.is_empty() { "untitled" } else { &arg }),
             "remove-subtree" | "delete" => self.remove_subtree(&bid),
             "toggle-todo" => {
                 let next = match self.find_by_id(&bid).and_then(|(h, _)| h.todo()) {
@@ -1017,6 +1035,11 @@ impl Vault {
     /// Drop and rebuild every id/backlink index entry derived from
     /// `path`'s document.
     fn reindex_file(&mut self, path: &Path) {
+        // The single chokepoint every document mutation funnels
+        // through (kernel commands, capture, eval, undo/redo, jump),
+        // so the revision bump lives here rather than in each of the
+        // twenty public mutators.
+        self.revision = self.revision.wrapping_add(1);
         self.by_id.retain(|_, p| p != path);
         for v in self.backlinks.values_mut() {
             v.retain(|(p, _)| p != path);
@@ -11603,6 +11626,7 @@ impl Vault {
         fs::remove_file(path)?;
         self.documents.remove(path);
         self.by_id.retain(|_, p| p != path);
+        self.revision = self.revision.wrapping_add(1);
         Ok(())
     }
 
@@ -11626,6 +11650,7 @@ impl Vault {
             }
         }
         self.documents.insert(to.clone(), doc);
+        self.revision = self.revision.wrapping_add(1);
         Ok(to)
     }
 
@@ -11650,6 +11675,7 @@ impl Vault {
             self.by_id.insert(id, path.clone());
         }
         self.documents.insert(path.clone(), doc);
+        self.revision = self.revision.wrapping_add(1);
         Ok(path)
     }
 

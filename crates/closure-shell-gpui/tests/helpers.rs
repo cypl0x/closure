@@ -6,7 +6,7 @@
 
 use std::fs;
 
-use closure_shell_gpui::{char_cells, color_u32, mix_u32, resolve_theme};
+use closure_shell_gpui::{color_u32, mix_u32, resolve_theme};
 
 #[test]
 fn theme_colors_map_to_packed_rgb() {
@@ -173,38 +173,3 @@ fn known_dates_round_trip() {
     // Century boundary second: date -u -d "2000-12-31 23:59:59" +%s
     assert_eq!(closure_shell_gpui::today_ymd(978_307_199), "2000-12-31");
 }
-
-#[test]
-fn char_cells_one_cell_per_char() {
-    assert_eq!(
-        char_cells("ab c", 0),
-        vec![
-            ("a".to_owned(), 0),
-            ("b".to_owned(), 1),
-            (" ".to_owned(), 2),
-            ("c".to_owned(), 3),
-        ]
-    );
-}
-
-#[test]
-fn char_cells_columns_count_chars_not_bytes() {
-    assert_eq!(
-        char_cells("\u{e4}b", 5),
-        vec![("\u{e4}".to_owned(), 5), ("b".to_owned(), 6)]
-    );
-}
-
-#[test]
-fn char_cells_empty_text_yields_no_cells() {
-    assert_eq!(char_cells("", 3), vec![]);
-}
-
-#[test]
-fn char_cells_keeps_whitespace_cells() {
-    assert_eq!(
-        char_cells("\ta", 0),
-        vec![("\t".to_owned(), 0), ("a".to_owned(), 1)]
-    );
-}
-
