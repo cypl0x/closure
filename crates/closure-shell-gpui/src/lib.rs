@@ -1938,9 +1938,35 @@ impl GpuiView {
             )
             .child(
                 div()
-                    .text_size(px(10.0))
-                    .text_color(rgb(co.heading2))
-                    .child("your ticket — hand this over"),
+                    .flex()
+                    .items_center()
+                    .gap_2()
+                    .child(
+                        div()
+                            .text_size(px(10.0))
+                            .text_color(rgb(co.heading2))
+                            .child("your ticket — hand this over"),
+                    )
+                    // A ticket naming a port nothing listens on is
+                    // worse than no ticket, so binding is one click and
+                    // the ticket is rewritten to the real address.
+                    .child(
+                        div()
+                            .px_2()
+                            .rounded_md()
+                            .bg(rgb(co.panel))
+                            .text_size(px(10.0))
+                            .text_color(rgb(co.accent))
+                            .cursor_pointer()
+                            .hover(move |s| s.bg(rgb(co.hover)))
+                            .on_mouse_down(
+                                MouseButton::Left,
+                                cx.listener(|this: &mut Self, _ev, _w, cx| {
+                                    this.start_listening(cx);
+                                }),
+                            )
+                            .child("◎ listen"),
+                    ),
             )
             // Selectable-looking, and a click copies it to the kill ring.
             .child(
@@ -2041,6 +2067,59 @@ impl GpuiView {
             )
     }
 
+    /// Write the converged replica back into the vault's files.
+    ///
+    /// A borrow-split helper: `SyncApp` lives inside `app` and the
+    /// vault inside `shell`, and both are fields of this view, so the
+    /// call needs to name them separately.
+    fn apply_sync_to_vault(&mut self) -> usize {
+        let Some(sync) = self.app.sync() else {
+            return 0;
+        };
+        // Cloning the replica is cheaper than restructuring ownership
+        // for a per-sync operation, and keeps the write path honest:
+        // it reads a snapshot and writes through kernel commands.
+        let snapshot = sync.session().clone();
+        let mut applied = 0usize;
+        let ids: Vec<closure_core::BlockId> = snapshot.block_ids().cloned().collect();
+        for id in ids {
+            let Some((headline, _)) = self.shell.vault.find_by_id(&id) else {
+                continue;
+            };
+            let current_title = headline.title().to_owned();
+            let current_body = headline.body_text().to_owned();
+            if let Some(title) = snapshot.title_of(&id)
+                && title != current_title
+                && self.shell.rename_headline(&id, title).is_ok()
+            {
+                applied += 1;
+            }
+            if let Some(body) = snapshot.body_of(&id)
+                && body != current_body
+                && self.shell.set_body(&id, &body).is_ok()
+            {
+                applied += 1;
+            }
+        }
+        applied
+    }
+
+    /// Bind a listener and start accepting peers on a background
+    /// thread, so pairing works in both directions.
+    fn start_listening(&mut self, cx: &mut Context<Self>) {
+        let bound = match self.app.sync_mut().listen() {
+            Ok(addr) => addr,
+            Err(e) => {
+                self.app.set_status(format!("listen failed: {e}"));
+                cx.notify();
+                return;
+            }
+        };
+        self.app
+            .set_status(format!("listening on {bound} — hand over your ticket"));
+        cx.notify();
+    }
+
     /// Dial `addr` and exchange replicas.
     ///
     /// Blocking sockets on the UI thread would freeze the window, so
@@ -2074,9 +2153,14 @@ impl GpuiView {
                         let conflicts = this.app.sync_mut().merge_session(&session);
                         let blocks = this.app.sync_mut().block_count();
                         this.app.sync_mut().record_outcome(addr, Ok(blocks));
+                        // The replica converging is half a sync; the
+                        // files are the other half, and the only half
+                        // the user can see.
+                        let applied = this.apply_sync_to_vault();
                         if conflicts.is_empty() {
-                            this.app
-                                .set_status(format!("synced with {addr} — {blocks} block(s)"));
+                            this.app.set_status(format!(
+                                "synced with {addr} — {blocks} block(s), {applied} field(s) written"
+                            ));
                         } else {
                             let n = conflicts.len();
                             this.app.set_conflicts(conflicts);

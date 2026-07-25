@@ -222,3 +222,110 @@ fn escape_leaves_the_sync_surface() {
     app.on_key(&mut shell, "escape", false, false, None);
     assert_eq!(app.surface(), ModalSurface::Browse);
 }
+
+// === writing a merge back to the files ===
+//
+// The replica converging is only half of a sync. Until the merged
+// state reaches the org files, nothing the user can see has changed —
+// and the vault, not the replica, is the thing that gets committed to
+// git and opened in Emacs.
+
+#[test]
+fn applying_a_merge_writes_the_new_title_to_disk() {
+    let (dir_a, mut shell_a) = vault_with("1", "Mine");
+    let (_db, shell_b) = vault_with("1", "Theirs");
+    let mut a = SyncApp::new("a", "127.0.0.1:7001".parse().expect("addr"));
+    let mut b = SyncApp::new("b", "127.0.0.1:7002".parse().expect("addr"));
+    a.snapshot(&shell_a);
+    b.snapshot(&shell_b);
+    // B's edit is newer, so the merge resolves to its title.
+    let _ = a.merge_session(b.session());
+
+    let applied = a.apply_to_vault(&mut shell_a);
+    assert!(applied > 0, "something was written");
+    let src = fs::read_to_string(dir_a.path().join("notes.org")).expect("read");
+    assert!(
+        src.contains(
+            a.session()
+                .title_of_str("01HQSYNC000000000000001")
+                .unwrap_or_default()
+                .as_str()
+        ),
+        "the converged title reached the file: {src}"
+    );
+    // …and the file is still org (I1).
+    let doc = closure_core::Document::load_str(&src).expect("parses");
+    assert_eq!(doc.source(), src, "byte-exact");
+}
+
+#[test]
+fn applying_a_merge_that_changed_nothing_writes_nothing() {
+    // Re-running a round must be a no-op, not a rewrite of every file
+    // — a vault whose mtimes churn on every sync is a vault git cannot
+    // tell you anything useful about.
+    let (_da, mut shell_a) = vault_with("1", "Same");
+    let (_db, shell_b) = vault_with("2", "Other");
+    let mut a = SyncApp::new("a", "127.0.0.1:7001".parse().expect("addr"));
+    let mut b = SyncApp::new("b", "127.0.0.1:7002".parse().expect("addr"));
+    a.snapshot(&shell_a);
+    b.snapshot(&shell_b);
+    let _ = a.merge_session(b.session());
+    let _ = a.apply_to_vault(&mut shell_a);
+    let revision = shell_a.vault.revision();
+    let again = a.apply_to_vault(&mut shell_a);
+    assert_eq!(again, 0, "nothing left to apply");
+    assert_eq!(
+        shell_a.vault.revision(),
+        revision,
+        "and the vault was not touched"
+    );
+}
+
+#[test]
+fn a_block_the_peer_has_and_we_do_not_is_not_invented_locally() {
+    // Creating a headline out of a replica entry would need a file to
+    // put it in and a place in the tree; guessing either is worse than
+    // reporting it. Convergence of *known* blocks is the promise here.
+    let (_da, mut shell_a) = vault_with("1", "Mine");
+    let (_db, shell_b) = vault_with("2", "Theirs");
+    let mut a = SyncApp::new("a", "127.0.0.1:7001".parse().expect("addr"));
+    let mut b = SyncApp::new("b", "127.0.0.1:7002".parse().expect("addr"));
+    a.snapshot(&shell_a);
+    b.snapshot(&shell_b);
+    let _ = a.merge_session(b.session());
+    let _ = a.apply_to_vault(&mut shell_a);
+    assert!(
+        shell_a
+            .vault
+            .find_by_id(&closure_core::BlockId::from_existing(
+                "01HQSYNC000000000000002"
+            ))
+            .is_none(),
+        "their block is in the replica, not conjured into our files"
+    );
+}
+
+// === accepting a connection ===
+
+#[test]
+fn a_listener_can_be_bound_and_reports_its_address() {
+    // Pairing needs both directions: handing over a ticket is useless
+    // if nothing is listening at the address it names.
+    let mut app = SyncApp::new("a", "127.0.0.1:0".parse().expect("addr"));
+    let addr = app.listen().expect("bound");
+    assert_ne!(addr.port(), 0, "the OS assigned a real port");
+    assert_eq!(
+        app.ticket_addr(),
+        addr,
+        "and the ticket now names where we actually listen"
+    );
+    assert!(app.ticket().contains(&addr.to_string()), "{}", app.ticket());
+}
+
+#[test]
+fn listening_twice_keeps_the_first_socket() {
+    let mut app = SyncApp::new("a", "127.0.0.1:0".parse().expect("addr"));
+    let first = app.listen().expect("bound");
+    let second = app.listen().expect("still bound");
+    assert_eq!(first, second, "one listener, one address");
+}

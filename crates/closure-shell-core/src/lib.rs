@@ -2624,6 +2624,8 @@ pub struct SyncApp {
     signing: closure_sync::SigningKey,
     session: closure_sync::SyncSession,
     peers: Vec<Peer>,
+    /// Bound listener, once a shell has asked to accept connections.
+    listener: Option<std::sync::Arc<std::net::TcpListener>>,
 }
 
 impl std::fmt::Debug for SyncApp {
@@ -2653,6 +2655,7 @@ impl SyncApp {
             signing: closure_sync::generate_key(),
             session: closure_sync::SyncSession::new(name),
             peers: Vec::new(),
+            listener: None,
         }
     }
 
@@ -2755,6 +2758,81 @@ impl SyncApp {
     #[must_use]
     pub fn block_count(&self) -> usize {
         self.session.block_ids().count()
+    }
+
+    /// Write the converged replica back into the vault's files,
+    /// returning how many fields actually changed.
+    ///
+    /// The replica converging is only half of a sync: until the merged
+    /// state reaches the org files nothing the user can see has
+    /// changed, and it is the vault — not the replica — that gets
+    /// committed to git and opened in Emacs.
+    ///
+    /// Only blocks the vault already has are touched. A headline that
+    /// exists solely in the peer's replica would need a file to live
+    /// in and a place in the tree, and guessing either is worse than
+    /// leaving it: convergence of *known* blocks is the promise.
+    /// Writes go through the kernel commands like every other edit
+    /// (I8), and a field that already matches is skipped, so a
+    /// repeated round is a no-op rather than a rewrite of every file.
+    pub fn apply_to_vault(&self, shell: &mut Shell) -> usize {
+        let mut applied = 0usize;
+        let ids: Vec<closure_core::BlockId> = self.session.block_ids().cloned().collect();
+        for id in ids {
+            let Some((headline, _)) = shell.vault.find_by_id(&id) else {
+                continue;
+            };
+            let current_title = headline.title().to_owned();
+            let current_body = headline.body_text().to_owned();
+            if let Some(title) = self.session.title_of(&id)
+                && title != current_title
+                && shell.rename_headline(&id, title).is_ok()
+            {
+                applied += 1;
+            }
+            if let Some(body) = self.session.body_of(&id)
+                && body != current_body
+                && shell.set_body(&id, &body).is_ok()
+            {
+                applied += 1;
+            }
+        }
+        applied
+    }
+
+    /// Bind a listener so a peer can dial *in*.
+    ///
+    /// Pairing needs both directions: handing over a ticket is useless
+    /// if nothing answers at the address it names. Binding port 0 asks
+    /// the OS for a free one, and the ticket is rewritten to the real
+    /// address afterwards — a ticket naming a port nothing listens on
+    /// is worse than no ticket.
+    ///
+    /// # Errors
+    ///
+    /// The bind failure as a message.
+    pub fn listen(&mut self) -> Result<std::net::SocketAddr, String> {
+        if let Some(listener) = &self.listener {
+            return listener.local_addr().map_err(|e| format!("{e}"));
+        }
+        let listener = std::net::TcpListener::bind(self.addr).map_err(|e| format!("{e}"))?;
+        let bound = listener.local_addr().map_err(|e| format!("{e}"))?;
+        self.addr = bound;
+        self.listener = Some(std::sync::Arc::new(listener));
+        Ok(bound)
+    }
+
+    /// The address our ticket names.
+    #[must_use]
+    pub const fn ticket_addr(&self) -> std::net::SocketAddr {
+        self.addr
+    }
+
+    /// The bound listener, for a shell that wants to accept on its own
+    /// thread.
+    #[must_use]
+    pub fn listener(&self) -> Option<std::sync::Arc<std::net::TcpListener>> {
+        self.listener.clone()
     }
 }
 
