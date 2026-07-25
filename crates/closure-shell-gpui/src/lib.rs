@@ -96,6 +96,81 @@ pub enum BodySpan {
     Literal,
     /// Comment inside a src block.
     Comment,
+    /// An org link, `[[target]]` or `[[target][label]]`.
+    Link,
+    /// A table row or rule, `| a | b |` / `|---+---|`.
+    Table,
+}
+
+/// One org link found on a line.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LineLink {
+    /// Byte range of the whole `[[…]]` construct within the line.
+    pub range: std::ops::Range<usize>,
+    /// What it points at (`id:01HQ…`, a URL, a headline title).
+    pub target: String,
+    /// What it reads as — the target itself when there is no label.
+    pub label: String,
+}
+
+/// Every org link on one line, in order.
+///
+/// The target is carried out separately rather than discarded, because
+/// a rendered label with no way back to the id it points at would be
+/// prettier and useless — this is what lets a click follow the link.
+/// Unclosed brackets are not links: half-typed syntax must not swallow
+/// the rest of the line.
+#[must_use]
+pub fn line_links(line: &str) -> Vec<LineLink> {
+    let bytes = line.as_bytes();
+    let mut out = Vec::new();
+    let mut i = 0usize;
+    while i + 1 < bytes.len() {
+        if &bytes[i..i + 2] != b"[[" {
+            i += 1;
+            continue;
+        }
+        let Some(close) = line[i..].find("]]").map(|off| i + off) else {
+            break;
+        };
+        let inner = &line[i + 2..close];
+        // `[[target][label]]` splits on the inner `][`; without it the
+        // target labels itself.
+        let (target, label) = inner.split_once("][").unwrap_or((inner, inner));
+        out.push(LineLink {
+            range: i..close + 2,
+            target: target.to_owned(),
+            label: label.to_owned(),
+        });
+        i = close + 2;
+    }
+    out
+}
+
+/// Whether `line` is an org table row or rule.
+fn is_table_line(line: &str) -> bool {
+    line.trim_start().starts_with('|')
+}
+
+/// Split a prose line into `Plain`/`Link` spans, verbatim.
+fn prose_spans(line: &str) -> Vec<(BodySpan, String)> {
+    let links = line_links(line);
+    if links.is_empty() {
+        return vec![(BodySpan::Plain, line.to_owned())];
+    }
+    let mut out = Vec::with_capacity(links.len() * 2 + 1);
+    let mut at = 0usize;
+    for link in links {
+        if at < link.range.start {
+            out.push((BodySpan::Plain, line[at..link.range.start].to_owned()));
+        }
+        out.push((BodySpan::Link, line[link.range.clone()].to_owned()));
+        at = link.range.end;
+    }
+    if at < line.len() {
+        out.push((BodySpan::Plain, line[at..].to_owned()));
+    }
+    out
 }
 
 /// Syntax-highlight an org body for the editor pane: one entry per
@@ -148,8 +223,10 @@ pub fn highlight_body(body: &str) -> Vec<Vec<(BodySpan, String)>> {
                     .is_some_and(|(k, _)| k.ends_with(':')))
         {
             out.push(vec![(BodySpan::Drawer, line.to_owned())]);
+        } else if is_table_line(line) {
+            out.push(vec![(BodySpan::Table, line.to_owned())]);
         } else {
-            out.push(vec![(BodySpan::Plain, line.to_owned())]);
+            out.push(prose_spans(line));
         }
     }
     out
@@ -655,6 +732,24 @@ impl GpuiView {
             }
             self.last_status = status;
         }
+    }
+
+    /// Follow an org link target.
+    ///
+    /// `id:<ULID>` and a bare ULID select that headline; anything else
+    /// is reported rather than guessed at — opening a browser is the
+    /// user's call and closure does not make it for them.
+    fn follow_link(&mut self, target: &str, cx: &mut Context<Self>) {
+        let id = target.strip_prefix("id:").unwrap_or(target);
+        if self.app.select_by_id(&self.shell, id) {
+            // Leaving the editor is what makes the jump visible.
+            self.app.run(&mut self.shell, "open-file");
+            self.app.set_status(format!("followed {target}"));
+        } else {
+            self.app
+                .set_status(format!("{target} — not a headline in this vault"));
+        }
+        cx.notify();
     }
 
     /// Run a command from a mouse affordance (which-key chip, detail
@@ -2454,7 +2549,24 @@ fn editor_segment(
             MouseButton::Left,
             cx.listener(
                 move |this: &mut GpuiView, ev: &gpui::MouseDownEvent, _w, cx| {
-                    let col = col_offset + hit_col(&layout, &click_text, ev.position);
+                    let byte = layout
+                        .index_for_position(ev.position)
+                        .unwrap_or_else(|i| i)
+                        .min(click_text.len());
+                    // Ctrl-click follows an org link, the way it does
+                    // in every editor. A plain click still places the
+                    // cursor — the text stays editable rather than
+                    // turning into a page of hyperlinks.
+                    if ev.modifiers.control
+                        && let Some(link) = line_links(&click_text)
+                            .into_iter()
+                            .find(|l| l.range.contains(&byte))
+                    {
+                        this.follow_link(&link.target, cx);
+                        cx.stop_propagation();
+                        return;
+                    }
+                    let col = col_offset + col_for_byte(&click_text, byte);
                     if ev.click_count >= 2 {
                         this.app.body_double_click(ln, col);
                     } else {
@@ -2555,8 +2667,9 @@ const fn span_color(co: Colors, kind: BodySpan) -> u32 {
         BodySpan::Plain => co.fg,
         BodySpan::Meta | BodySpan::Comment => co.muted,
         BodySpan::Drawer => co.error,
-        BodySpan::Keyword => co.accent,
+        BodySpan::Keyword | BodySpan::Link => co.accent,
         BodySpan::Literal => co.success,
+        BodySpan::Table => co.heading2,
     }
 }
 

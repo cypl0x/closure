@@ -2378,6 +2378,121 @@ pub fn serialize_palette(sections: &[PaletteSection]) -> String {
     out
 }
 
+/// The contiguous run of table lines around line `line`, as a line
+/// range, or `None` when that line is not part of a table.
+///
+/// "Table" is what org means by it: consecutive lines whose first
+/// non-space character is a pipe. A blank line — or any prose —
+/// separates two tables rather than joining them.
+#[must_use]
+pub fn table_bounds(text: &str, line: usize) -> Option<std::ops::Range<usize>> {
+    let lines: Vec<&str> = text.lines().collect();
+    let is_row = |l: &str| l.trim_start().starts_with('|');
+    if !lines.get(line).is_some_and(|l| is_row(l)) {
+        return None;
+    }
+    let mut start = line;
+    while start > 0 && is_row(lines[start - 1]) {
+        start -= 1;
+    }
+    let mut end = line + 1;
+    while end < lines.len() && is_row(lines[end]) {
+        end += 1;
+    }
+    Some(start..end)
+}
+
+/// Realign an org table: every column padded to its widest cell, and
+/// every `|---+---|` rule redrawn to match.
+///
+/// This is the feature that makes plain-text tables bearable, and the
+/// reason TAB in org does more than move. Cells are measured in
+/// *characters*, so a non-ASCII cell still lines up. Idempotent —
+/// pressing TAB twice must not keep growing the table — and it never
+/// drops a cell from a half-typed row, only pads it out.
+#[must_use]
+pub fn align_table(table: &str) -> String {
+    /// Split a row into its cells, dropping the outer pipes.
+    fn cells(line: &str) -> Vec<&str> {
+        let t = line.trim();
+        let inner = t
+            .strip_prefix('|')
+            .map_or(t, |s| s.strip_suffix('|').unwrap_or(s));
+        inner.split('|').map(str::trim).collect()
+    }
+    let is_rule = |line: &str| {
+        let t = line.trim();
+        t.starts_with('|') && t.chars().all(|c| matches!(c, '|' | '-' | '+' | ' '))
+    };
+    let rows: Vec<&str> = table.lines().collect();
+    if rows.is_empty() {
+        return table.to_owned();
+    }
+    // Widths come from the content rows only; a rule has no content to
+    // measure and would otherwise dictate the width.
+    let mut widths: Vec<usize> = Vec::new();
+    for row in rows.iter().filter(|r| !is_rule(r)) {
+        for (i, cell) in cells(row).iter().enumerate() {
+            let w = cell.chars().count();
+            if i < widths.len() {
+                widths[i] = widths[i].max(w);
+            } else {
+                widths.push(w);
+            }
+        }
+    }
+    let mut out = String::with_capacity(table.len());
+    for row in rows {
+        if is_rule(row) {
+            out.push('|');
+            for (i, w) in widths.iter().enumerate() {
+                if i > 0 {
+                    out.push('+');
+                }
+                for _ in 0..w + 2 {
+                    out.push('-');
+                }
+            }
+            out.push('|');
+        } else {
+            let row_cells = cells(row);
+            out.push('|');
+            for (i, w) in widths.iter().enumerate() {
+                let cell = row_cells.get(i).copied().unwrap_or("");
+                out.push(' ');
+                out.push_str(cell);
+                for _ in 0..w.saturating_sub(cell.chars().count()) {
+                    out.push(' ');
+                }
+                out.push_str(" |");
+            }
+        }
+        out.push('\n');
+    }
+    out
+}
+
+/// Byte offset of the next cell's content on `row`, from `at`.
+///
+/// `None` when there is no next cell — at the last one, or off a
+/// table row entirely; the caller decides whether that means wrapping
+/// to the following row. The offset lands on the cell's *content*,
+/// past the padding, because that is where you want to start typing.
+#[must_use]
+pub fn next_table_cell(row: &str, at: usize) -> Option<usize> {
+    if !row.trim_start().starts_with('|') || at >= row.len() {
+        return None;
+    }
+    let pipe = row[at..].find('|').map(|off| at + off)?;
+    let rest = &row[pipe + 1..];
+    // The trailing pipe of the row is not a cell boundary.
+    if rest.trim().is_empty() {
+        return None;
+    }
+    let lead = rest.len() - rest.trim_start().len();
+    Some(pipe + 1 + lead)
+}
+
 /// The byte range of the source-block *content* enclosing `at`, and
 /// the block's language — the org-edit-special lookup.
 ///
@@ -6635,6 +6750,60 @@ impl ModalApp {
         self.slash.as_ref().map_or(0, |(_, c)| *c)
     }
 
+    /// TAB inside an org table: realign the whole table, then move to
+    /// the next cell, wrapping to the row below at the end of a row.
+    ///
+    /// Returns whether the cursor was in a table at all — `false`
+    /// leaves TAB to its other jobs.
+    fn table_tab(&mut self) -> bool {
+        let text = self.body.text().to_owned();
+        let (line, col) = self.body.cursor_line_col();
+        let Some(rows) = table_bounds(&text, line) else {
+            return false;
+        };
+        // Realign first, so the offsets below describe the table the
+        // user is about to land in rather than the one they left.
+        let lines: Vec<&str> = text.lines().collect();
+        let join = |slice: &[&str]| {
+            slice.iter().fold(String::new(), |mut acc, l| {
+                acc.push_str(l);
+                acc.push('\n');
+                acc
+            })
+        };
+        let aligned = align_table(&join(&lines[rows.clone()]));
+        let rebuilt = format!(
+            "{}{aligned}{}",
+            join(&lines[..rows.start]),
+            join(&lines[rows.end..])
+        );
+        let aligned_lines: Vec<&str> = rebuilt.lines().collect();
+
+        // Where the cursor should land: the next cell on this row, or
+        // the first cell of the row below.
+        let row_text = aligned_lines.get(line).copied().unwrap_or("");
+        let at = row_text
+            .char_indices()
+            .nth(col)
+            .map_or(row_text.len(), |(b, _)| b);
+        let (target_line, target_byte) = match next_table_cell(row_text, at) {
+            Some(next) => (line, next),
+            None if line + 1 < rows.end => {
+                let below = aligned_lines.get(line + 1).copied().unwrap_or("");
+                (line + 1, next_table_cell(below, 0).unwrap_or(0))
+            }
+            None => (line, at),
+        };
+        // Byte offset of the target within the whole buffer.
+        let mut offset = 0usize;
+        for l in aligned_lines.iter().take(target_line) {
+            offset += l.len() + 1;
+        }
+        self.body.load(rebuilt);
+        self.body.set_cursor_byte(offset + target_byte);
+        true
+    }
+
     /// Accept menu entry `i` from a click — the same accept Enter
     /// performs (I8). An index past the end leaves the menu alone.
     pub fn slash_click(&mut self, i: usize) {
@@ -6765,6 +6934,10 @@ impl ModalApp {
                             }
                         }
                         Some(_) => {}
+                        // Inside a table TAB does the org thing —
+                        // realign, then step to the next cell — and
+                        // everywhere else it keeps its old job.
+                        None if self.table_tab() => {}
                         None => self.body.tempo_expand_or_indent(),
                     }
                 }
