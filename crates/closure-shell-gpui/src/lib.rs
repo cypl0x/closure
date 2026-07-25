@@ -824,6 +824,20 @@ impl GpuiView {
                 "conflicts — {} pending · o ours · t theirs · Esc back",
                 self.app.conflicts().conflicts().len()
             ),
+            ModalSurface::Graph => format!(
+                "graph — {} hub(s), {} orphan(s), {} dead link(s) · Esc back",
+                self.app.hub_rows(&self.shell).len(),
+                self.app.orphan_rows(&self.shell).len(),
+                self.app.dead_link_rows(&self.shell).len()
+            ),
+            ModalSurface::Journal => format!(
+                "journal — {} recorded command(s) · Esc back",
+                self.app.journal_rows(&self.shell).len()
+            ),
+            ModalSurface::Cron => format!(
+                "scheduled jobs — {} declared in this vault · Esc back",
+                self.app.cron_rows(&self.shell).len()
+            ),
             ModalSurface::Sync => format!(
                 "sync — {} peer(s) · Enter adds a pasted ticket · Esc back",
                 self.app.sync().map_or(0, |s| s.peers().len())
@@ -1072,6 +1086,18 @@ impl GpuiView {
                 ),
             ),
             ModalSurface::Sync => pane.child(self.sync_pane(co, cx)),
+            ModalSurface::Graph => pane.child(self.graph_pane(co, cx)),
+            ModalSurface::Journal => {
+                pane.children(Self::text_rows(co, self.app.journal_rows(&self.shell)))
+            }
+            ModalSurface::Cron => pane.children(Self::text_rows(
+                co,
+                self.app
+                    .cron_rows(&self.shell)
+                    .into_iter()
+                    .map(|(spec, command)| format!("{spec}   {command}"))
+                    .collect(),
+            )),
             ModalSurface::Sniffer => pane.child(self.sniffer_pane(co, cx)),
             ModalSurface::Conflicts => pane.child(self.conflicts_pane(co, cx)),
             ModalSurface::UndoHistory => pane.children(self.undo_history_pane(co, cx)),
@@ -1577,6 +1603,79 @@ impl GpuiView {
             );
         }
         pane
+    }
+
+    /// A plain read-only list, with a line saying so when it is empty
+    /// — a blank pane is indistinguishable from a broken one.
+    fn text_rows(co: Colors, rows: Vec<String>) -> Vec<gpui::Div> {
+        if rows.is_empty() {
+            return vec![
+                div()
+                    .text_color(rgb(co.muted))
+                    .child("nothing here yet".to_owned()),
+            ];
+        }
+        rows.into_iter()
+            .map(|line| {
+                div()
+                    .px_2()
+                    .py_1()
+                    .text_size(px(12.0))
+                    .text_color(rgb(co.fg))
+                    .child(line)
+            })
+            .collect()
+    }
+
+    /// The link graph: what the vault points at most, what it points
+    /// at not at all, and what it points at in vain.
+    fn graph_pane(&self, co: Colors, cx: &Context<Self>) -> gpui::Div {
+        let section = |title: &'static str, colour: u32| {
+            div()
+                .mt_2()
+                .text_size(px(10.0))
+                .text_color(rgb(colour))
+                .child(title)
+        };
+        let jump = |id: String, label: String| {
+            div()
+                .px_2()
+                .py_1()
+                .rounded_sm()
+                .cursor_pointer()
+                .text_size(px(12.0))
+                .text_color(rgb(co.fg))
+                .hover(move |s| s.bg(rgb(co.hover)))
+                .on_mouse_down(
+                    MouseButton::Left,
+                    cx.listener(move |this: &mut Self, _ev, _w, cx| {
+                        this.app.select_by_id(&this.shell, &id);
+                        cx.notify();
+                    }),
+                )
+                .child(label)
+        };
+        let hubs = self.app.hub_rows(&self.shell);
+        let orphans = self.app.orphan_rows(&self.shell);
+        let dead = self.app.dead_link_rows(&self.shell);
+        div()
+            .flex()
+            .flex_col()
+            .child(section("hubs — most linked to", co.accent))
+            .children(
+                hubs.into_iter()
+                    .take(20)
+                    .map(|(id, title, n)| jump(id, format!("{n:>3}  {title}"))),
+            )
+            .child(section("orphans — nothing links here", co.warning))
+            .children(
+                orphans
+                    .into_iter()
+                    .take(50)
+                    .map(|(id, title)| jump(id, format!("     {title}"))),
+            )
+            .child(section("dead links — targets that do not exist", co.error))
+            .children(Self::text_rows(co, dead))
     }
 
     /// Pairing and collaboration.

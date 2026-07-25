@@ -4082,6 +4082,12 @@ pub enum ModalSurface {
     /// Pairing and collaboration: our ticket, the peers we have, and
     /// what the last round with each of them did.
     Sync,
+    /// The link graph: hubs, orphans, dead links.
+    Graph,
+    /// The recorded command journal.
+    Journal,
+    /// Scheduled jobs declared in the vault.
+    Cron,
 }
 
 /// Where an org-edit-special session came from, and therefore how it
@@ -5747,6 +5753,18 @@ impl ModalApp {
             ModalSurface::Conflicts => self.on_conflicts_key(shell, key),
             ModalSurface::Ex => self.on_ex_key(shell, key, text),
             ModalSurface::Sync => self.on_sync_key(key, text),
+            ModalSurface::Graph => {
+                let len = self.hub_rows(shell).len() + self.orphan_rows(shell).len();
+                self.on_pane_key(key, len);
+            }
+            ModalSurface::Journal => {
+                let len = self.journal_rows(shell).len();
+                self.on_pane_key(key, len);
+            }
+            ModalSurface::Cron => {
+                let len = self.cron_rows(shell).len();
+                self.on_pane_key(key, len);
+            }
             ModalSurface::EditBlock => self.on_editblock_key(shell, key, ctrl, alt, text),
             ModalSurface::Browse => self.on_browse_key(shell, key, ctrl, alt, text),
         }
@@ -5786,6 +5804,110 @@ impl ModalApp {
             return;
         }
         self.edit_body_key(shell, key, ctrl, alt, text);
+    }
+
+    /// Headlines ranked by how many links point at them, most first,
+    /// as `(id, title, count)`.
+    ///
+    /// The hubs of the vault: what everything else refers back to. A
+    /// title comes along because an id alone is not a thing anyone can
+    /// read.
+    #[must_use]
+    pub fn hub_rows(&self, shell: &Shell) -> Vec<(String, String, usize)> {
+        let mut counts: std::collections::HashMap<closure_core::BlockId, usize> =
+            std::collections::HashMap::new();
+        for targets in shell.vault.link_graph().values() {
+            for t in targets {
+                *counts.entry(t.clone()).or_insert(0) += 1;
+            }
+        }
+        let mut ranked: Vec<_> = counts.into_iter().collect();
+        // Count descending, then id, so equal counts do not shuffle
+        // between frames.
+        ranked.sort_by(|a, b| {
+            b.1.cmp(&a.1)
+                .then_with(|| a.0.to_string().cmp(&b.0.to_string()))
+        });
+        ranked
+            .into_iter()
+            .map(|(id, n)| {
+                let title = shell
+                    .vault
+                    .find_by_id(&id)
+                    .map_or_else(|| "?".to_owned(), |(h, _)| h.title().to_owned());
+                (id.to_string(), title, n)
+            })
+            .collect()
+    }
+
+    /// Headlines nothing links to, as `(id, title)` — the far end of
+    /// the same graph, and usually the interesting one.
+    #[must_use]
+    pub fn orphan_rows(&self, shell: &Shell) -> Vec<(String, String)> {
+        let mut targeted: std::collections::HashSet<closure_core::BlockId> =
+            std::collections::HashSet::new();
+        for targets in shell.vault.link_graph().values() {
+            for t in targets {
+                targeted.insert(t.clone());
+            }
+        }
+        shell
+            .vault
+            .iter()
+            .flat_map(|(_, doc)| doc.all_headlines())
+            .filter(|h| !targeted.contains(h.id()))
+            .map(|h| (h.id().to_string(), h.title().to_owned()))
+            .collect()
+    }
+
+    /// Link targets that resolve to nothing — typos and things that
+    /// were deleted out from under a reference.
+    #[must_use]
+    pub fn dead_link_rows(&self, shell: &Shell) -> Vec<String> {
+        let mut out = Vec::new();
+        for (path, doc) in shell.vault.iter() {
+            for h in doc.all_headlines() {
+                for raw in h.link_targets() {
+                    let Some(stripped) = raw.strip_prefix("id:") else {
+                        continue;
+                    };
+                    if !shell
+                        .vault
+                        .has_id(&closure_core::BlockId::from_existing(stripped))
+                    {
+                        // The source matters as much as the target: a
+                        // dead link is only fixable where it is
+                        // written.
+                        out.push(format!("{raw}  ← {} in {}", h.title(), path.display()));
+                    }
+                }
+            }
+        }
+        out
+    }
+
+    /// The recorded command journal, newest last.
+    #[must_use]
+    pub fn journal_rows(&self, shell: &Shell) -> Vec<String> {
+        closure_record::Journal::new(shell.vault.root(), true)
+            .entries()
+            .unwrap_or_default()
+    }
+
+    /// Scheduled jobs declared anywhere in the vault, as
+    /// `(spec, command)`.
+    ///
+    /// A malformed block is skipped rather than fatal: a typo in one
+    /// job must not make the pane unopenable.
+    #[must_use]
+    pub fn cron_rows(&self, shell: &Shell) -> Vec<(String, String)> {
+        shell
+            .vault
+            .iter()
+            .filter_map(|(_, doc)| closure_cron::parse_jobs(&doc.source()).ok())
+            .flatten()
+            .map(|job| (format!("{:?}", job.spec), job.command))
+            .collect()
     }
 
     /// Collaboration state, created on first use.
@@ -7403,6 +7525,15 @@ impl ModalApp {
                 "palette — type to filter, Enter to run".clone_into(&mut self.status);
             }
             "ex-command" => self.begin_ex(),
+            "graph" | "journal" | "cron" => {
+                self.selected = 0;
+                self.surface = match cmd {
+                    "graph" => ModalSurface::Graph,
+                    "journal" => ModalSurface::Journal,
+                    _ => ModalSurface::Cron,
+                };
+                self.status = format!("{cmd} — Esc back");
+            }
             "sync" => {
                 self.sync_buf.clear();
                 self.sync_mut();

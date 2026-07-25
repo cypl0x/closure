@@ -21,6 +21,8 @@ closure-tree-sitter = { path = "../closure-tree-sitter" }
 closure-sniffer = { path = "../closure-sniffer" }
 closure-crdt = { path = "../closure-crdt" }
 closure-sync = { path = "../closure-sync" }
+closure-record = { path = "../closure-record" }
+closure-cron = { path = "../closure-cron" }
 
 [dev-dependencies]
 tempfile = "3"
