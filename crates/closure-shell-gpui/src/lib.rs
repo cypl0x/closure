@@ -299,6 +299,18 @@ pub fn styled_runs(
     out
 }
 
+/// Whether the cursor needs a caret element of its own on this line.
+///
+/// The block cursor is drawn by inverting the glyph underneath it, so
+/// an empty line — or a cursor parked past the last glyph, which is
+/// where end-of-line and vertical motion both leave it — has nothing
+/// to invert and the cursor disappears. Those are exactly the cases
+/// that get an explicit block appended after the text.
+#[must_use]
+pub fn needs_trailing_caret(line: &str, on_cursor_line: bool, col: usize) -> bool {
+    on_cursor_line && col >= line.chars().count()
+}
+
 /// Cut a run list at byte offset `at`, rebasing the tail to start at
 /// zero. A run straddling the cut is split, keeping its kind and
 /// highlight flag on both sides.
@@ -561,6 +573,9 @@ struct Colors {
     muted: u32,
     accent: u32,
     selection: u32,
+    /// A louder selection, for text: the row tint is deliberately
+    /// subtle, and reusing it behind glyphs made VISUAL invisible.
+    selection_text: u32,
     hover: u32,
     error: u32,
     warning: u32,
@@ -586,6 +601,7 @@ impl Colors {
             muted: c(R::Muted),
             accent: c(R::Accent),
             selection,
+            selection_text: mix_u32(selection, c(R::Accent), 110),
             hover: mix_u32(bg, selection, 128),
             error: c(R::Error),
             warning: c(R::Warning),
@@ -1209,7 +1225,16 @@ impl GpuiView {
                     cx,
                 ));
         } else {
+            let trailing = needs_trailing_caret(&text, on_cursor_line, cur_col);
             row = row.child(editor_segment(co, ln, 0, text, runs, emphasis, cx));
+            if trailing {
+                // Nothing to invert here — an empty line, or the cursor
+                // parked past the last glyph — so the block is drawn as
+                // an element rather than as a highlight.
+                // (INSERT on the cursor line took the branch above, so
+                // this is always a NORMAL/VISUAL block.)
+                row = row.child(div().w(px(8.0)).h(px(18.0)).rounded_sm().bg(rgb(co.fg)));
+            }
         }
         row
     }
@@ -2543,6 +2568,11 @@ impl GpuiView {
                             .min_w(px(230.0))
                             .py_1()
                             .rounded_md()
+                            // A menu has to swallow the mouse: without
+                            // this, hovering an entry also hovers the
+                            // outline row it happens to be covering,
+                            // and both light up.
+                            .occlude()
                             .bg(rgb(co.bg))
                             .border_1()
                             .border_color(rgb(co.border))
@@ -2625,7 +2655,7 @@ fn editor_segment(
                 // and sit on the foreground one, so the cursor is
                 // legible whatever it happens to be sitting on.
                 (true, Emphasis::Cursor) => (rgb(co.bg).into(), Some(rgb(co.fg).into())),
-                (true, Emphasis::Selection) => (plain, Some(rgb(co.selection).into())),
+                (true, Emphasis::Selection) => (plain, Some(rgb(co.selection_text).into())),
             };
             (
                 range,

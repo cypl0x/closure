@@ -383,3 +383,51 @@ fn splitting_an_empty_run_list_gives_two_empty_halves() {
     let (head, tail) = split_runs(&[], 3);
     assert!(head.is_empty() && tail.is_empty());
 }
+
+// === the cursor on empty lines ===
+//
+// The block cursor is drawn by inverting the glyph under it. On an
+// empty line — or with the cursor parked past the last glyph — there
+// is no glyph to invert, so the cursor simply vanished. Those cases
+// need a block element of their own.
+
+use closure_shell_gpui::needs_trailing_caret;
+
+#[test]
+fn a_cursor_over_a_glyph_needs_no_extra_caret() {
+    assert!(!needs_trailing_caret("abc", true, 0));
+    assert!(!needs_trailing_caret("abc", true, 2), "on the last glyph");
+}
+
+#[test]
+fn a_cursor_past_the_last_glyph_needs_one() {
+    assert!(
+        needs_trailing_caret("abc", true, 3),
+        "at end of line there is nothing to invert"
+    );
+}
+
+#[test]
+fn an_empty_line_always_needs_one() {
+    assert!(needs_trailing_caret("", true, 0));
+}
+
+#[test]
+fn other_lines_never_need_one() {
+    assert!(!needs_trailing_caret("", false, 0), "not the cursor line");
+    assert!(!needs_trailing_caret("abc", false, 9));
+}
+
+#[test]
+fn a_column_past_the_end_still_counts_as_the_end() {
+    // Vertical motion can leave the column beyond a shorter line.
+    assert!(needs_trailing_caret("ab", true, 99));
+}
+
+#[test]
+fn multibyte_glyphs_are_counted_as_glyphs() {
+    // 3 chars, 7 bytes: column 2 is over a glyph, column 3 is past it.
+    let line = "\u{e4}\u{20ac}c";
+    assert!(!needs_trailing_caret(line, true, 2));
+    assert!(needs_trailing_caret(line, true, 3));
+}

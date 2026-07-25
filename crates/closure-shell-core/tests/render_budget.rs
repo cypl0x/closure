@@ -188,3 +188,76 @@ fn palette_navigation_does_not_rebuild_the_list() {
         "moving the cursor changes no entries"
     );
 }
+
+// === the status bar ===
+//
+// The indicators repaint every frame, and one of them counts source
+// blocks. `block_rows` reaches `Document::source()`, which does not
+// return a cached string — it *re-serialises the whole document*. So
+// the bar was re-printing every file in the vault on every keystroke,
+// which is exactly what typing lag feels like.
+
+#[test]
+fn block_rows_are_derived_once_per_revision() {
+    let (_d, shell, app) = fixture();
+    let before = app.block_recomputes();
+    for _ in 0..30 {
+        let _ = app.block_rows(&shell);
+    }
+    assert_eq!(
+        app.block_recomputes() - before,
+        1,
+        "30 repaints must not re-serialise the vault 30 times"
+    );
+}
+
+#[test]
+fn editing_the_vault_re_derives_the_blocks() {
+    let (_d, mut shell, app) = fixture();
+    let before = app.block_rows(&shell).len();
+    let warm = app.block_recomputes();
+    shell
+        .set_body(
+            &closure_core::BlockId::from_existing("01HQBUDGET00000000000000"),
+            "#+BEGIN_SRC sh\necho new\n#+END_SRC\n",
+        )
+        .expect("set body");
+    assert_eq!(
+        app.block_rows(&shell).len(),
+        before + 1,
+        "the new block shows up"
+    );
+    assert!(app.block_recomputes() > warm, "and it cost a re-derivation");
+}
+
+#[test]
+fn the_status_bar_costs_nothing_to_repaint() {
+    // The whole bar, thirty times, on an unchanged vault.
+    let (_d, shell, app) = fixture();
+    let _ = app.indicators(&shell);
+    let rows = app.rows_recomputes();
+    let blocks = app.block_recomputes();
+    for _ in 0..30 {
+        let _ = app.indicators(&shell);
+    }
+    assert_eq!(app.rows_recomputes(), rows, "no vault walks");
+    assert_eq!(app.block_recomputes(), blocks, "no re-serialisation");
+}
+
+#[test]
+fn typing_in_the_body_editor_does_not_touch_the_vault() {
+    // The editor buffer is not the vault: keystrokes must not
+    // invalidate anything derived from documents on disk.
+    let (_d, mut shell, mut app) = fixture();
+    app.select(0, &shell);
+    app.run(&mut shell, "edit-body");
+    let _ = app.indicators(&shell);
+    let rows = app.rows_recomputes();
+    let blocks = app.block_recomputes();
+    for c in "some typed prose".chars() {
+        app.on_key(&mut shell, "x", false, false, Some(c));
+        let _ = app.indicators(&shell);
+    }
+    assert_eq!(app.rows_recomputes(), rows, "typing walked the vault");
+    assert_eq!(app.block_recomputes(), blocks, "typing re-serialised files");
+}

@@ -5132,6 +5132,10 @@ pub struct ModalApp {
     palette_memo: std::cell::RefCell<Option<PaletteMemo>>,
     /// Derivations paid for; the render budget's third number.
     palette_recomputes: std::cell::Cell<u64>,
+    /// Memoised source-block list — see [`ModalApp::block_rows`].
+    block_memo: std::cell::RefCell<Option<(u64, std::sync::Arc<Vec<BlockRow>>)>>,
+    /// Derivations paid for; the render budget's fourth number.
+    block_recomputes: std::cell::Cell<u64>,
 }
 
 /// A filled detail memo with the key it is valid under.
@@ -5156,6 +5160,9 @@ struct PaletteMemo {
     /// The derived entries.
     entries: std::sync::Arc<Vec<PaletteEntry>>,
 }
+
+/// One listed source block: `(file, language, first line)`.
+pub type BlockRow = (String, String, String);
 
 /// A filled outline-row memo together with the key it is valid under.
 #[derive(Debug, Clone)]
@@ -5209,6 +5216,8 @@ impl ModalApp {
             detail_recomputes: std::cell::Cell::new(0),
             palette_memo: std::cell::RefCell::new(None),
             palette_recomputes: std::cell::Cell::new(0),
+            block_memo: std::cell::RefCell::new(None),
+            block_recomputes: std::cell::Cell::new(0),
         }
     }
 
@@ -6709,7 +6718,30 @@ impl ModalApp {
     /// Every `#+BEGIN_SRC` block across the vault as `(path, lang,
     /// first-line)` rows, in per-file document order.
     #[must_use]
-    pub fn block_rows(&self, shell: &Shell) -> Vec<(String, String, String)> {
+    pub fn block_rows(&self, shell: &Shell) -> Vec<BlockRow> {
+        self.block_rows_shared(shell).as_ref().clone()
+    }
+
+    /// The same source-block list, shared rather than cloned.
+    ///
+    /// Deriving it is expensive in a way that is easy to miss:
+    /// `Document::source()` does not hand back a cached string, it
+    /// *re-serialises the whole document*. Doing that for every file
+    /// in the vault is fine once; doing it from the status bar on
+    /// every frame meant re-printing the entire vault on every
+    /// keystroke, which is precisely what typing lag feels like.
+    /// Memoised on the vault revision — the only thing it reads.
+    #[must_use]
+    pub fn block_rows_shared(&self, shell: &Shell) -> std::sync::Arc<Vec<BlockRow>> {
+        let revision = shell.vault.revision();
+        {
+            let memo = self.block_memo.borrow();
+            if let Some((rev, rows)) = memo.as_ref()
+                && *rev == revision
+            {
+                return std::sync::Arc::clone(rows);
+            }
+        }
         let mut out = Vec::new();
         for (path, doc) in shell.vault.iter() {
             // Reuse the tested prose/code segmenter over the whole file
@@ -6721,7 +6753,18 @@ impl ModalApp {
                 }
             }
         }
-        out
+        let rows = std::sync::Arc::new(out);
+        self.block_recomputes.set(self.block_recomputes.get() + 1);
+        *self.block_memo.borrow_mut() = Some((revision, std::sync::Arc::clone(&rows)));
+        rows
+    }
+
+    /// How many times the source-block list has actually been
+    /// re-serialised out of the vault. The render budget is one per
+    /// change, and the reason the status bar is affordable.
+    #[must_use]
+    pub const fn block_recomputes(&self) -> u64 {
+        self.block_recomputes.get()
     }
 
     /// Backlinks list keys: up/down move, Enter jumps to the selected
