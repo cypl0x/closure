@@ -99,7 +99,9 @@ run-gpui-release vault: gpui-release
     ./target/release/closure gpui {{vault}}
 
 # Launch the already-built release shell without rebuilding — the fast
-# path once `gpui-release` has run once. Needs no dev shell.
+# path once `gpui-release` has run once. Still needs the dev shell: the
+# binary links the GL/X11/xkbcommon libraries it provides.
+#   nix develop -c just gpui ~/vault
 gpui vault:
     ./target/release/closure gpui {{vault}}
 
