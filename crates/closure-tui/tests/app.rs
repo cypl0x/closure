@@ -1739,3 +1739,105 @@ fn the_palette_keeps_its_own_binding() {
     app.handle_stroke("M-x");
     assert_eq!(app.mode(), AppMode::Palette);
 }
+
+// === parity with the GUI's newer surfaces ===
+//
+// The terminal shell is not a lesser shell — it is the one that works
+// over ssh, and a feature that exists only in the window is a feature
+// you cannot use on a server. These are the read-only panes the GUI
+// grew: the link graph, the recorded journal, and scheduled jobs.
+//
+// They follow the TUI's existing shape: the driver derives rows from
+// the vault and pushes them in, the same way paths, headlines and
+// backlinks already arrive.
+
+#[test]
+fn graph_opens_and_lists_what_it_was_given() {
+    let mut app = App::new(paths());
+    app.set_graph(
+        vec![("id1".to_owned(), "Hub".to_owned(), 3)],
+        vec![("id2".to_owned(), "Lonely".to_owned())],
+        vec!["id:missing".to_owned()],
+    );
+    app.handle_stroke("g");
+    app.handle_stroke("l");
+    assert_eq!(app.mode(), AppMode::Graph);
+    let rows = app.graph_rows();
+    assert!(rows.iter().any(|r| r.contains("Hub")), "{rows:?}");
+    assert!(rows.iter().any(|r| r.contains("Lonely")), "{rows:?}");
+    assert!(rows.iter().any(|r| r.contains("missing")), "{rows:?}");
+}
+
+#[test]
+fn the_graph_labels_each_section() {
+    // Three lists in one pane is unreadable without saying which is
+    // which.
+    let mut app = App::new(paths());
+    app.set_graph(
+        vec![("id1".to_owned(), "Hub".to_owned(), 3)],
+        vec![("id2".to_owned(), "Lonely".to_owned())],
+        vec!["id:missing".to_owned()],
+    );
+    let joined = app.graph_rows().join("\n").to_lowercase();
+    assert!(joined.contains("hubs"), "{joined}");
+    assert!(joined.contains("orphans"), "{joined}");
+    assert!(joined.contains("dead"), "{joined}");
+}
+
+#[test]
+fn journal_opens_and_lists_entries() {
+    let mut app = App::new(paths());
+    app.set_journal(vec!["2026-07-25 rename Hub".to_owned()]);
+    app.handle_stroke("g");
+    app.handle_stroke("j");
+    assert_eq!(app.mode(), AppMode::Journal);
+    assert_eq!(app.journal_rows().len(), 1);
+}
+
+#[test]
+fn cron_opens_and_lists_jobs() {
+    let mut app = App::new(paths());
+    app.set_cron(vec![("0 9 * * *".to_owned(), "capture Daily".to_owned())]);
+    app.handle_stroke("g");
+    app.handle_stroke("k");
+    assert_eq!(app.mode(), AppMode::Cron);
+    let rows = app.cron_rows();
+    assert_eq!(rows.len(), 1);
+    assert!(rows[0].contains("Daily"), "{rows:?}");
+}
+
+#[test]
+fn the_new_panes_all_escape_back_to_browse() {
+    for (a, b) in [("g", "l"), ("g", "j"), ("g", "k")] {
+        let mut app = App::new(paths());
+        app.handle_stroke(a);
+        app.handle_stroke(b);
+        assert_ne!(app.mode(), AppMode::Browse, "{a} {b} opened something");
+        app.handle_stroke("ESC");
+        assert_eq!(app.mode(), AppMode::Browse, "{a} {b}: ESC returns");
+    }
+}
+
+#[test]
+fn an_empty_pane_says_so_rather_than_showing_nothing() {
+    // A blank pane is indistinguishable from a broken one — the same
+    // rule the GUI panes follow.
+    let mut app = App::new(paths());
+    app.handle_stroke("g");
+    app.handle_stroke("j");
+    assert!(
+        !app.journal_rows().is_empty(),
+        "an empty journal still says something"
+    );
+}
+
+#[test]
+fn every_new_command_is_reachable_by_its_chord() {
+    // The keymap is shared, so a command bound there and unimplemented
+    // here is a dead chord in the terminal — the exact bug the GUI had.
+    for command in ["graph", "journal", "cron"] {
+        let mut app = App::new(paths());
+        app.apply_command_for_test(command);
+        assert_ne!(app.mode(), AppMode::Browse, "{command} must open a surface");
+    }
+}

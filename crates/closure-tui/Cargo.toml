@@ -13,11 +13,12 @@ workspace = true
 
 [dependencies]
 closure-config = { path = "../closure-config" }
-closure-record = { path = "../closure-record" }
 closure-core = { path = "../closure-core" }
 closure-input = { path = "../closure-input" }
 closure-org = { path = "../closure-org" }
 closure-query = { path = "../closure-query" }
+closure-record = { path = "../closure-record" }
+closure-cron = { path = "../closure-cron" }
 closure-store = { path = "../closure-store" }
 closure-undo = { path = "../closure-undo" }
 closure-tree-sitter = { path = "../closure-tree-sitter" }

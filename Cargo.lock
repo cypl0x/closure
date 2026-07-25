@@ -1617,6 +1617,7 @@ version = "0.0.0"
 dependencies = [
  "closure-config",
  "closure-core",
+ "closure-cron",
  "closure-input",
  "closure-org",
  "closure-query",

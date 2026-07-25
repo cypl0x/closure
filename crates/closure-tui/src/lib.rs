@@ -109,12 +109,26 @@ pub enum AppMode {
     Agenda,
     /// Typing a fuzzy query over body lines across the vault.
     BodySearch,
+    /// The link graph: hubs, orphans and dead links in one pane.
+    Graph,
+    /// The recorded command journal.
+    Journal,
+    /// Scheduled jobs declared in the vault.
+    Cron,
     /// The vim-style `:` command line. Understands the small set of
     /// commands muscle memory reaches for (`:w`, `:q`, `:wq`, `:x`)
     /// and falls through to any command name, so it is a superset of
     /// the palette rather than a replacement for it.
     Ex,
 }
+
+/// The link graph as three lists: hubs `(id, title, inbound)`,
+/// orphans `(id, title)`, and dead link targets.
+pub type LinkGraph = (
+    Vec<(String, String, usize)>,
+    Vec<(String, String)>,
+    Vec<String>,
+);
 
 /// Elm-style application state for the terminal shell. Strokes go in
 /// via [`Self::handle_stroke`]; rendering reads the accessors. No
@@ -138,6 +152,13 @@ pub struct App {
     last_config_error: Option<String>,
     /// Last message from the `:` command line, for the status line.
     status: String,
+    /// Link-graph rows, pushed in by the driver like everything else:
+    /// hubs `(id, title, inbound)`, orphans `(id, title)`, dead links.
+    graph: LinkGraph,
+    /// Recorded journal entries.
+    journal: Vec<String>,
+    /// Scheduled jobs, `(spec, command)`.
+    cron: Vec<(String, String)>,
     backlinks: Vec<(PathBuf, PathBuf, String)>,
     capture_request: Option<String>,
     rename_target: Option<String>,
@@ -203,6 +224,9 @@ impl App {
             scroll: 0,
             last_config_error: None,
             status: String::new(),
+            graph: (Vec::new(), Vec::new(), Vec::new()),
+            journal: Vec::new(),
+            cron: Vec::new(),
             backlinks: Vec::new(),
             capture_request: None,
             rename_target: None,
@@ -600,6 +624,77 @@ impl App {
         &self.status
     }
 
+    /// Push the link graph in, the way paths and backlinks arrive.
+    pub fn set_graph(
+        &mut self,
+        hubs: Vec<(String, String, usize)>,
+        orphans: Vec<(String, String)>,
+        dead: Vec<String>,
+    ) {
+        self.graph = (hubs, orphans, dead);
+    }
+
+    /// Push in the recorded journal.
+    pub fn set_journal(&mut self, entries: Vec<String>) {
+        self.journal = entries;
+    }
+
+    /// Push in the scheduled jobs.
+    pub fn set_cron(&mut self, jobs: Vec<(String, String)>) {
+        self.cron = jobs;
+    }
+
+    /// The graph pane's lines: three labelled sections, because three
+    /// lists in one pane are unreadable without saying which is which.
+    #[must_use]
+    pub fn graph_rows(&self) -> Vec<String> {
+        let (hubs, orphans, dead) = &self.graph;
+        let mut out = vec!["-- hubs (most linked to) --".to_owned()];
+        if hubs.is_empty() {
+            out.push("  (nothing links anywhere yet)".to_owned());
+        }
+        out.extend(hubs.iter().map(|(_, title, n)| format!("{n:>4}  {title}")));
+        out.push("-- orphans (nothing links here) --".to_owned());
+        if orphans.is_empty() {
+            out.push("  (none)".to_owned());
+        }
+        out.extend(orphans.iter().map(|(_, title)| format!("      {title}")));
+        out.push("-- dead links --".to_owned());
+        if dead.is_empty() {
+            out.push("  (none)".to_owned());
+        }
+        out.extend(dead.iter().map(|d| format!("      {d}")));
+        out
+    }
+
+    /// The journal pane's lines, or a line saying it is empty — a
+    /// blank pane is indistinguishable from a broken one.
+    #[must_use]
+    pub fn journal_rows(&self) -> Vec<String> {
+        if self.journal.is_empty() {
+            return vec!["no recorded commands (set record_commands = true)".to_owned()];
+        }
+        self.journal.clone()
+    }
+
+    /// The scheduled-jobs pane's lines.
+    #[must_use]
+    pub fn cron_rows(&self) -> Vec<String> {
+        if self.cron.is_empty() {
+            return vec!["no scheduled jobs in this vault".to_owned()];
+        }
+        self.cron
+            .iter()
+            .map(|(spec, command)| format!("{spec:16} {command}"))
+            .collect()
+    }
+
+    /// Run a command by name, for tests that assert a shared keymap
+    /// entry is actually implemented here too.
+    pub fn apply_command_for_test(&mut self, command: &str) {
+        self.apply_command(command);
+    }
+
     /// Current config validation error to surface in the TUI (status line).
     #[must_use]
     pub fn config_error(&self) -> Option<&str> {
@@ -609,76 +704,32 @@ impl App {
     /// Feed one key stroke into the active surface: query editing in
     /// search mode, the chord trie otherwise.
     pub fn handle_stroke(&mut self, stroke: &str) {
-        if matches!(self.mode, AppMode::Search | AppMode::SearchHeadlines) {
-            self.handle_search_stroke(stroke);
-            return;
-        }
-        if self.mode == AppMode::FileView {
-            self.handle_view_stroke(stroke);
-            return;
-        }
-        if self.mode == AppMode::Backlinks {
-            self.handle_backlinks_stroke(stroke);
-            return;
-        }
-        if self.mode == AppMode::Capture {
-            self.handle_capture_stroke(stroke);
-            return;
-        }
-        if self.mode == AppMode::Headlines {
-            self.handle_headlines_stroke(stroke);
-            return;
-        }
-        if self.mode == AppMode::Rename {
-            self.handle_rename_stroke(stroke);
-            return;
-        }
-        if self.mode == AppMode::AddHeadline {
-            self.handle_add_stroke(stroke);
-            return;
-        }
-        if self.mode == AppMode::Palette {
-            self.handle_palette_stroke(stroke);
-            return;
-        }
-        if self.mode == AppMode::Ex {
-            self.handle_ex_stroke(stroke);
-            return;
-        }
-        if self.mode == AppMode::DbView {
-            self.handle_dbview_stroke(stroke);
-            return;
-        }
-        if self.mode == AppMode::Blocks {
-            self.handle_blocks_stroke(stroke);
-            return;
-        }
-        if self.mode == AppMode::EditBody {
-            self.handle_editbody_stroke(stroke);
-            return;
-        }
-        if self.mode == AppMode::Agenda {
-            self.handle_agenda_stroke(stroke);
-            return;
-        }
-        if self.mode == AppMode::BodySearch {
-            self.handle_bodysearch_stroke(stroke);
-            return;
-        }
-        if self.mode == AppMode::EditCell {
-            self.handle_editcell_stroke(stroke);
-            return;
-        }
-        if self.mode == AppMode::ConfirmDelete {
-            if stroke == "y" {
-                self.delete_request = self.delete_target.take();
-                self.mode = AppMode::Browse;
-                self.result_cursor = 0;
-            } else {
-                self.delete_target = None;
-                self.mode = AppMode::Headlines;
+        // A surface that owns the keyboard handles the stroke and the
+        // chord trie never sees it; Browse is the only mode that falls
+        // through to the bindings.
+        match self.mode {
+            AppMode::Search | AppMode::SearchHeadlines => {
+                return self.handle_search_stroke(stroke);
             }
-            return;
+            AppMode::FileView => return self.handle_view_stroke(stroke),
+            AppMode::Backlinks => return self.handle_backlinks_stroke(stroke),
+            AppMode::Capture => return self.handle_capture_stroke(stroke),
+            AppMode::Headlines => return self.handle_headlines_stroke(stroke),
+            AppMode::Rename => return self.handle_rename_stroke(stroke),
+            AppMode::AddHeadline => return self.handle_add_stroke(stroke),
+            AppMode::Palette => return self.handle_palette_stroke(stroke),
+            AppMode::Ex => return self.handle_ex_stroke(stroke),
+            AppMode::Graph | AppMode::Journal | AppMode::Cron => {
+                return self.handle_pane_stroke(stroke);
+            }
+            AppMode::DbView => return self.handle_dbview_stroke(stroke),
+            AppMode::Blocks => return self.handle_blocks_stroke(stroke),
+            AppMode::EditBody => return self.handle_editbody_stroke(stroke),
+            AppMode::Agenda => return self.handle_agenda_stroke(stroke),
+            AppMode::BodySearch => return self.handle_bodysearch_stroke(stroke),
+            AppMode::EditCell => return self.handle_editcell_stroke(stroke),
+            AppMode::ConfirmDelete => return self.handle_confirm_stroke(stroke),
+            AppMode::Browse => {}
         }
         match self.trie.step(stroke) {
             TrieStep::Resolved(cmd) => {
@@ -986,6 +1037,49 @@ impl App {
                     self.query.push(c);
                 }
             }
+        }
+    }
+
+    /// Open one of the read-only panes.
+    fn open_pane(&mut self, cmd: &str) {
+        self.mode = match cmd {
+            "graph" => AppMode::Graph,
+            "journal" => AppMode::Journal,
+            _ => AppMode::Cron,
+        };
+        self.result_cursor = 0;
+    }
+
+    /// `y` confirms the pending delete; anything else backs out to the
+    /// list it was started from.
+    fn handle_confirm_stroke(&mut self, stroke: &str) {
+        if stroke == "y" {
+            self.delete_request = self.delete_target.take();
+            self.mode = AppMode::Browse;
+            self.result_cursor = 0;
+        } else {
+            self.delete_target = None;
+            self.mode = AppMode::Headlines;
+        }
+    }
+
+    /// Strokes for the read-only panes: a cursor and a way out.
+    fn handle_pane_stroke(&mut self, stroke: &str) {
+        let len = match self.mode {
+            AppMode::Graph => self.graph_rows().len(),
+            AppMode::Journal => self.journal_rows().len(),
+            _ => self.cron_rows().len(),
+        };
+        match stroke {
+            "ESC" | "q" => {
+                self.mode = AppMode::Browse;
+                self.result_cursor = 0;
+            }
+            "j" | "<down>" => {
+                self.result_cursor = (self.result_cursor + 1).min(len.saturating_sub(1));
+            }
+            "k" | "<up>" => self.result_cursor = self.result_cursor.saturating_sub(1),
+            _ => {}
         }
     }
 
@@ -1312,6 +1406,7 @@ impl App {
                 self.query.clear();
                 self.status.clear();
             }
+            "graph" | "journal" | "cron" => self.open_pane(cmd),
             "db-view" => {
                 self.mode = AppMode::DbView;
                 self.result_cursor = 0;
@@ -1551,6 +1646,62 @@ fn now_secs() -> u64 {
         .map_or(0, |d| d.as_secs())
 }
 
+/// Derive the read-only panes the GUI grew from the same vault. A
+/// feature that exists only in the window is a feature you cannot use
+/// over ssh, which is most of what a terminal shell is for.
+fn sync_panes(app: &mut App, vault: &Vault) {
+    let mut counts: std::collections::HashMap<closure_core::BlockId, usize> =
+        std::collections::HashMap::new();
+    for targets in vault.link_graph().values() {
+        for t in targets {
+            *counts.entry(t.clone()).or_insert(0) += 1;
+        }
+    }
+    let mut hubs: Vec<(String, String, usize)> = counts
+        .iter()
+        .map(|(id, n)| {
+            let title = vault
+                .find_by_id(id)
+                .map_or_else(|| "?".to_owned(), |(h, _)| h.title().to_owned());
+            (id.to_string(), title, *n)
+        })
+        .collect();
+    // Count descending, then id, so the list does not shuffle.
+    hubs.sort_by(|a, b| b.2.cmp(&a.2).then_with(|| a.0.cmp(&b.0)));
+    let orphans: Vec<(String, String)> = vault
+        .iter()
+        .flat_map(|(_, doc)| doc.all_headlines())
+        .filter(|h| !counts.contains_key(h.id()))
+        .map(|h| (h.id().to_string(), h.title().to_owned()))
+        .collect();
+    let mut dead: Vec<String> = Vec::new();
+    for (path, doc) in vault.iter() {
+        for h in doc.all_headlines() {
+            for raw in h.link_targets() {
+                if let Some(stripped) = raw.strip_prefix("id:")
+                    && !vault.has_id(&closure_core::BlockId::from_existing(stripped))
+                {
+                    dead.push(format!("{raw}  ← {} in {}", h.title(), path.display()));
+                }
+            }
+        }
+    }
+    app.set_graph(hubs, orphans, dead);
+    app.set_journal(
+        closure_record::Journal::new(vault.root(), true)
+            .entries()
+            .unwrap_or_default(),
+    );
+    app.set_cron(
+        vault
+            .iter()
+            .filter_map(|(_, doc)| closure_cron::parse_jobs(&doc.source()).ok())
+            .flatten()
+            .map(|job| (format!("{:?}", job.spec), job.command))
+            .collect(),
+    );
+}
+
 /// Refresh every vault-derived record in the app: paths, headline
 /// titles, file sources, and the backlink rows.
 fn sync_app(app: &mut App, vault: &Vault) {
@@ -1584,6 +1735,7 @@ fn sync_app(app: &mut App, vault: &Vault) {
         }
     }
     app.set_backlinks(backlinks);
+    sync_panes(app, vault);
     let spec = closure_query::ViewSpec::parse(":from all :columns title,todo,priority")
         .unwrap_or_else(|_| closure_query::ViewSpec {
             from: closure_query::Source::All,
@@ -2036,6 +2188,9 @@ fn overlay_content(app: &App) -> Option<(String, Vec<String>)> {
             format!("set property KEY=VALUE: {}", app.query()),
             Vec::new(),
         )),
+        AppMode::Graph => Some(("link graph".to_owned(), app.graph_rows())),
+        AppMode::Journal => Some(("recorded commands".to_owned(), app.journal_rows())),
+        AppMode::Cron => Some(("scheduled jobs".to_owned(), app.cron_rows())),
         AppMode::Ex => Some((
             format!(":{}  — :w :q :wq :x, or any command name", app.query()),
             if app.status().is_empty() {
