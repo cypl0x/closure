@@ -41,6 +41,11 @@ pub struct Config {
     /// Name of the environment variable holding the API key — the
     /// key itself never lives in the org file.
     pub llm_key_env: Option<String>,
+    /// Explicit endpoint URL, for anything speaking a known wire
+    /// format at an address of its own: vLLM, llama.cpp's server,
+    /// LM Studio, `OpenRouter`, a company proxy. The built-in providers
+    /// know their own URL and leave this unset.
+    pub llm_endpoint: Option<String>,
     /// Record every executed command to `journal.org` (off by
     /// default).
     pub record_commands: bool,
@@ -71,6 +76,7 @@ impl Default for Config {
             llm_provider: None,
             llm_model: None,
             llm_key_env: None,
+            llm_endpoint: None,
             record_commands: false,
             search_backend: None,
             llm_tools: None,
@@ -285,6 +291,7 @@ impl Config {
                 "llm_provider" => cfg.llm_provider = Some(value.into()),
                 "llm_model" => cfg.llm_model = Some(value.into()),
                 "llm_key_env" => cfg.llm_key_env = Some(value.into()),
+                "llm_endpoint" => cfg.llm_endpoint = Some(value.into()),
                 other => return Err(ConfigError::UnknownKey(other.into())),
             }
         }
@@ -298,6 +305,34 @@ impl Config {
             return Err(ConfigError::BadValue {
                 key: "llm_key_env".into(),
                 reason: "llm_provider is set but llm_key_env is required for BYOK".into(),
+            });
+        }
+
+        // An endpoint with nothing to use it is a typo, not a setting.
+        if cfg.llm_endpoint.is_some() && cfg.llm_provider.is_none() {
+            return Err(ConfigError::BadValue {
+                key: "llm_provider".into(),
+                reason: "llm_endpoint is set but no llm_provider says what speaks to it".into(),
+            });
+        }
+        // …and naming a wire format says nothing about *where*.
+        if cfg.llm_provider.as_deref() == Some("openai-compatible") && cfg.llm_endpoint.is_none() {
+            return Err(ConfigError::BadValue {
+                key: "llm_endpoint".into(),
+                reason: "provider `openai-compatible` needs llm_endpoint = <url of the \
+                         /v1/chat/completions route>"
+                    .into(),
+            });
+        }
+        if let Some(url) = &cfg.llm_endpoint
+            && !(url.starts_with("http://") || url.starts_with("https://"))
+        {
+            // Plain http stays allowed: it is how every local runner
+            // ships, and refusing it would just mean nobody can point
+            // this at llama.cpp.
+            return Err(ConfigError::BadValue {
+                key: "llm_endpoint".into(),
+                reason: format!("expected an http:// or https:// URL, got `{url}`"),
             });
         }
 

@@ -692,8 +692,22 @@ impl GpuiView {
             .as_ref()
             .and_then(|s| s.chars().next())
             .filter(|_| !m.control && !m.alt && !m.platform && !m.function);
+        let asking = self.app.surface() == ModalSurface::Llm && ks.key == "enter";
         self.app
             .on_key(&mut self.shell, &ks.key, m.control, m.alt, text);
+        // Enter on the assistant surface records the question in the
+        // core; sending it is I/O, so it happens here.
+        if asking
+            && self.app.chat_busy()
+            && let Some(question) = self
+                .app
+                .chat_turns()
+                .last()
+                .filter(|t| t.from_user)
+                .map(|t| t.text.clone())
+        {
+            self.ask_llm(question, cx);
+        }
         self.absorb_status();
         if self.app.should_quit() {
             cx.quit();
@@ -840,6 +854,10 @@ impl GpuiView {
                 "conflicts — {} pending · o ours · t theirs · Esc back",
                 self.app.conflicts().conflicts().len()
             ),
+            ModalSurface::Llm => {
+                let s = self.app.llm_config_status(&self.shell);
+                format!("assistant — {} · Enter sends · Esc back", s.detail)
+            }
             ModalSurface::Graph => format!(
                 "graph — {} hub(s), {} orphan(s), {} dead link(s) · Esc back",
                 self.app.hub_rows(&self.shell).len(),
@@ -1102,6 +1120,7 @@ impl GpuiView {
                 ),
             ),
             ModalSurface::Sync => pane.child(self.sync_pane(co, cx)),
+            ModalSurface::Llm => pane.child(self.llm_pane(co, cx)),
             ModalSurface::Graph => pane.child(self.graph_pane(co, cx)),
             ModalSurface::Journal => {
                 pane.children(Self::text_rows(co, self.app.journal_rows(&self.shell)))
@@ -1650,6 +1669,188 @@ impl GpuiView {
                     .child(line)
             })
             .collect()
+    }
+
+    /// The assistant: what `config.org` says is behind it, the
+    /// transcript, and the question field.
+    ///
+    /// The configuration line is the important part. A chat box that
+    /// silently does nothing because no provider is set — or because
+    /// the key's environment variable is not exported — is the worst
+    /// version of this, so the pane says which it is, and says it
+    /// before you type rather than after.
+    fn llm_pane(&self, co: Colors, cx: &Context<Self>) -> gpui::Div {
+        let status = self.app.llm_config_status(&self.shell);
+        let render_granted = self.app.llm_render_access();
+        let mut pane = div().flex().flex_col().gap_2().child(
+            div()
+                .flex()
+                .items_center()
+                .gap_2()
+                .child(
+                    div()
+                        .px_2()
+                        .rounded_md()
+                        .text_size(px(10.0))
+                        .bg(rgb(if status.ready { co.success } else { co.warning }))
+                        .text_color(rgb(co.bg))
+                        .child(if status.ready {
+                            "ready"
+                        } else {
+                            "not configured"
+                        }),
+                )
+                .child(
+                    div()
+                        .flex_grow()
+                        .text_size(px(11.0))
+                        .text_color(rgb(co.muted))
+                        .child(status.detail),
+                )
+                // The render grant is louder than the rest: it lets
+                // a model read the screen, so it is stated here as
+                // well as in the status bar, and it is one click.
+                .child(
+                    div()
+                        .px_2()
+                        .rounded_md()
+                        .text_size(px(10.0))
+                        .bg(rgb(co.panel))
+                        .text_color(rgb(if render_granted { co.accent } else { co.muted }))
+                        .cursor_pointer()
+                        .hover(move |s| s.bg(rgb(co.hover)))
+                        .on_mouse_down(
+                            MouseButton::Left,
+                            cx.listener(|this: &mut Self, _ev, _w, cx| {
+                                this.click("toggle-llm-render", cx);
+                            }),
+                        )
+                        .child(if render_granted {
+                            "◉ can read the screen"
+                        } else {
+                            "○ cannot read the screen"
+                        }),
+                ),
+        );
+        pane = pane.children(self.chat_transcript(co));
+        if self.app.chat_busy() {
+            pane = pane.child(
+                div()
+                    .px_2()
+                    .text_size(px(11.0))
+                    .text_color(rgb(co.warning))
+                    .child("…thinking".to_owned()),
+            );
+        }
+        pane.child(
+            div()
+                .mt_2()
+                .p_2()
+                .rounded_md()
+                .bg(rgb(co.bg))
+                .border_1()
+                .border_color(rgb(if status.ready { co.accent } else { co.border }))
+                .text_size(px(12.0))
+                .text_color(rgb(co.fg))
+                .child(format!("{}▏", self.app.chat_buffer())),
+        )
+    }
+
+    /// The transcript, or an explanation of what this pane is for when
+    /// there is not one yet.
+    fn chat_transcript(&self, co: Colors) -> Vec<gpui::Div> {
+        if self.app.chat_turns().is_empty() {
+            return vec![
+                div().text_color(rgb(co.muted)).text_size(px(12.0)).child(
+                    "Ask about the vault. The assistant reads and edits it through the same \
+                 commands you do, and can only see the rendered view if you grant it."
+                        .to_owned(),
+                ),
+            ];
+        }
+        self.app
+            .chat_turns()
+            .iter()
+            .map(|turn| {
+                let (who, colour) = if turn.from_user {
+                    ("you", co.accent)
+                } else {
+                    ("assistant", co.success)
+                };
+                div()
+                    .flex()
+                    .gap_2()
+                    .px_2()
+                    .py_1()
+                    .rounded_sm()
+                    .bg(rgb(if turn.from_user { co.bg } else { co.panel }))
+                    .child(
+                        div()
+                            .w(px(70.0))
+                            .text_size(px(10.0))
+                            .text_color(rgb(colour))
+                            .child(who),
+                    )
+                    .child(
+                        div()
+                            .flex_grow()
+                            .text_size(px(12.0))
+                            .text_color(rgb(co.fg))
+                            .child(turn.text.clone()),
+                    )
+            })
+            .collect()
+    }
+
+    /// Send the pending question to the configured provider.
+    ///
+    /// The provider call is blocking I/O, so it runs on the background
+    /// executor and only the answer comes back — the window stays
+    /// responsive while a model thinks. Tool calls are executed back on
+    /// the UI thread, because they touch the vault.
+    fn ask_llm(&mut self, question: String, cx: &mut Context<Self>) {
+        let status = self.app.llm_config_status(&self.shell);
+        if !status.ready {
+            self.app.chat_answer(status.detail);
+            cx.notify();
+            return;
+        }
+        let provider_name = status.provider.clone();
+        let model = status.model.clone().unwrap_or_default();
+        let endpoint = status.endpoint;
+        let key = closure_config::Config::from_path(&self.shell.vault.root().join("config.org"))
+            .ok()
+            .and_then(|c| c.llm_key_env)
+            .and_then(|var| closure_llm::resolve_key(&var))
+            .unwrap_or_default();
+        cx.spawn(async move |this, cx| {
+            let answer = cx
+                .background_executor()
+                .spawn(async move {
+                    // `llm_endpoint` is what points the local/OpenAI-
+                    // compatible providers somewhere other than their
+                    // default host.
+                    let host = endpoint.as_deref().unwrap_or("http://localhost:11434");
+                    let provider = closure_llm::build_provider(
+                        closure_llm::provider_kind(provider_name.as_deref()),
+                        &model,
+                        host,
+                        &key,
+                    );
+                    // One shot for now: the tool loop needs to run
+                    // commands against the vault, which lives on the UI
+                    // thread, so multi-turn tool use is the next step
+                    // rather than a lie told here.
+                    provider.complete(&question).map_err(|e| format!("{e}"))
+                })
+                .await;
+            let _ = this.update(cx, |this, cx| {
+                this.app
+                    .chat_answer(answer.unwrap_or_else(|e| format!("assistant failed: {e}")));
+                cx.notify();
+            });
+        })
+        .detach();
     }
 
     /// The link graph: what the vault points at most, what it points

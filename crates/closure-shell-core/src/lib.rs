@@ -4088,6 +4088,39 @@ pub enum ModalSurface {
     Journal,
     /// Scheduled jobs declared in the vault.
     Cron,
+    /// The assistant: a transcript, a question field, and what the
+    /// vault's `config.org` says is behind it.
+    Llm,
+}
+
+/// One turn of the assistant transcript.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ChatTurn {
+    /// Whether the user said it (rather than the model).
+    pub from_user: bool,
+    /// What was said.
+    pub text: String,
+}
+
+/// What the vault's `config.org` says about the assistant, and whether
+/// it can actually be used right now.
+///
+/// "Configured" and "usable" are different questions: the key lives in
+/// an environment variable, so a perfectly good config still fails at
+/// 2am when the variable is not exported. Both are reported, and the
+/// key's *value* never is.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LlmStatus {
+    /// Whether a question can be sent right now.
+    pub ready: bool,
+    /// Provider name from the config, if any.
+    pub provider: Option<String>,
+    /// Model identifier from the config, if any.
+    pub model: Option<String>,
+    /// Endpoint URL, when the config pins one.
+    pub endpoint: Option<String>,
+    /// A sentence for the pane: what is set, or what to add.
+    pub detail: String,
 }
 
 /// Where an org-edit-special session came from, and therefore how it
@@ -5104,6 +5137,13 @@ pub struct ModalApp {
     sync: Option<SyncApp>,
     /// The ticket-entry field on the Sync surface.
     sync_buf: String,
+    /// The assistant transcript, oldest first.
+    chat: Vec<ChatTurn>,
+    /// The question field on the assistant surface.
+    chat_buf: String,
+    /// Whether a question is in flight, so the pane can say so rather
+    /// than looking asleep.
+    chat_busy: bool,
     /// The sniffer surface's captured flows and rules (X3).
     sniffer: SnifferApp,
     /// The conflict surface's pending CRDT decisions.
@@ -5189,6 +5229,9 @@ impl ModalApp {
             block_out: None,
             sync: None,
             sync_buf: String::new(),
+            chat: Vec::new(),
+            chat_buf: String::new(),
+            chat_busy: false,
             sniffer: SnifferApp::new(),
             conflicts: ConflictApp::new(Vec::new(), mode),
             llm_render: false,
@@ -5762,6 +5805,7 @@ impl ModalApp {
             ModalSurface::Conflicts => self.on_conflicts_key(shell, key),
             ModalSurface::Ex => self.on_ex_key(shell, key, text),
             ModalSurface::Sync => self.on_sync_key(key, text),
+            ModalSurface::Llm => self.on_llm_key(key, text),
             ModalSurface::Graph => {
                 let len = self.hub_rows(shell).len() + self.orphan_rows(shell).len();
                 self.on_pane_key(key, len);
@@ -5941,6 +5985,151 @@ impl ModalApp {
     #[must_use]
     pub fn sync_buffer(&self) -> &str {
         &self.sync_buf
+    }
+
+    /// The assistant transcript, oldest first.
+    #[must_use]
+    pub fn chat_turns(&self) -> &[ChatTurn] {
+        &self.chat
+    }
+
+    /// The question field on the assistant surface.
+    #[must_use]
+    pub fn chat_buffer(&self) -> &str {
+        &self.chat_buf
+    }
+
+    /// Whether a question is waiting on the provider.
+    #[must_use]
+    pub const fn chat_busy(&self) -> bool {
+        self.chat_busy
+    }
+
+    /// Record a question and mark the conversation as waiting.
+    pub fn chat_ask(&mut self, text: String) {
+        self.chat.push(ChatTurn {
+            from_user: true,
+            text,
+        });
+        self.chat_busy = true;
+    }
+
+    /// Record an answer (or a failure) and stop waiting.
+    pub fn chat_answer(&mut self, text: String) {
+        self.chat.push(ChatTurn {
+            from_user: false,
+            text,
+        });
+        self.chat_busy = false;
+    }
+
+    /// Keys for the assistant: typing edits the question, Enter sends
+    /// it, Escape leaves.
+    fn on_llm_key(&mut self, key: &str, text: Option<char>) {
+        match key {
+            "escape" => {
+                self.surface = ModalSurface::Browse;
+            }
+            "backspace" => {
+                self.chat_buf.pop();
+            }
+            "enter" => {
+                let question = std::mem::take(&mut self.chat_buf);
+                let question = question.trim();
+                if !question.is_empty() {
+                    self.chat_ask(question.to_owned());
+                }
+            }
+            _ => {
+                if let Some(c) = text {
+                    self.chat_buf.push(c);
+                }
+            }
+        }
+    }
+
+    /// What the vault's `config.org` says about the assistant, and
+    /// whether it can be used right now.
+    ///
+    /// A chat box that silently does nothing because no provider is
+    /// configured is the worst version of this feature, so the pane
+    /// gets a sentence naming the keys to add. When a provider *is*
+    /// set, the key's environment variable is checked too — configured
+    /// and usable are different questions — and only ever named, never
+    /// printed.
+    #[must_use]
+    pub fn llm_config_status(&self, shell: &Shell) -> LlmStatus {
+        let cfg = closure_config::Config::from_path(&shell.vault.root().join("config.org")).ok();
+        let provider = cfg.as_ref().and_then(|c| c.llm_provider.clone());
+        let model = cfg.as_ref().and_then(|c| c.llm_model.clone());
+        let endpoint = cfg.as_ref().and_then(|c| c.llm_endpoint.clone());
+        let key_env = cfg.as_ref().and_then(|c| c.llm_key_env.clone());
+        let Some(provider_name) = provider.clone() else {
+            return LlmStatus {
+                ready: false,
+                provider,
+                model,
+                endpoint,
+                detail: "no assistant configured — add `llm_provider` (and `llm_model`, \
+                         `llm_key_env`) to the closure-config block in config.org"
+                    .to_owned(),
+            };
+        };
+        let model_name = model
+            .clone()
+            .unwrap_or_else(|| "(default model)".to_owned());
+        if let Some(var) = key_env {
+            if closure_llm::resolve_key(&var).is_none() {
+                return LlmStatus {
+                    ready: false,
+                    provider,
+                    model,
+                    endpoint,
+                    detail: format!(
+                        "{provider_name} / {model_name} — ${var} is not set in this environment"
+                    ),
+                };
+            }
+            return LlmStatus {
+                ready: true,
+                provider,
+                model,
+                endpoint,
+                detail: format!("{provider_name} / {model_name} — key from ${var}"),
+            };
+        }
+        LlmStatus {
+            ready: true,
+            provider,
+            model,
+            endpoint: endpoint.clone(),
+            detail: endpoint.map_or_else(
+                || format!("{provider_name} / {model_name} — no key required"),
+                |url| format!("{provider_name} / {model_name} — {url}"),
+            ),
+        }
+    }
+
+    /// Run one assistant tool line against the vault.
+    ///
+    /// The gate is the live one: `view-render` answers with the
+    /// *current* view only while render access is granted, and starts
+    /// refusing the moment it is revoked. A model that could still read
+    /// the screen after the user said no would make the toggle a lie.
+    /// Takes `&mut Shell` because some of these tools write — capture,
+    /// rename, set-property — and all of them go through the same
+    /// registry surface the chords do (I8).
+    pub fn llm_tool(&self, shell: &mut Shell, line: &str) -> String {
+        if line.trim() == closure_llm::RENDER_TOOL {
+            if !self.llm_render {
+                return format!(
+                    "error: '{}' not allowed — render access is revoked (toggle-llm-render)",
+                    closure_llm::RENDER_TOOL
+                );
+            }
+            return serialize_view(&browse_view(&shell.vault));
+        }
+        shell.vault.run_tool(line)
     }
 
     /// Keys for the Sync surface: typing edits the ticket field, Enter
@@ -7568,6 +7757,11 @@ impl ModalApp {
                 "palette — type to filter, Enter to run".clone_into(&mut self.status);
             }
             "ex-command" => self.begin_ex(),
+            "llm" => {
+                self.chat_buf.clear();
+                self.surface = ModalSurface::Llm;
+                "assistant — type a question, Enter sends, Esc back".clone_into(&mut self.status);
+            }
             "graph" | "journal" | "cron" => {
                 self.selected = 0;
                 self.surface = match cmd {

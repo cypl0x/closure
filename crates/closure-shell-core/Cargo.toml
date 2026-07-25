@@ -23,6 +23,7 @@ closure-crdt = { path = "../closure-crdt" }
 closure-sync = { path = "../closure-sync" }
 closure-record = { path = "../closure-record" }
 closure-cron = { path = "../closure-cron" }
+closure-llm = { path = "../closure-llm" }
 
 [dev-dependencies]
 tempfile = "3"
