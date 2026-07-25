@@ -889,8 +889,14 @@ impl GpuiView {
 
     /// The left outline list (Browse/Search and the typing surfaces
     /// that keep the tree visible).
-    fn rows_pane(&self, co: Colors, cx: &Context<Self>) -> impl IntoElement {
+    fn rows_pane(&self, co: Colors, cx: &Context<Self>) -> gpui::Div {
         let count = self.app.rows_shared(&self.shell).len();
+        if count == 0 {
+            // An empty outline is either a new vault or a search that
+            // matched nothing, and the two need different sentences.
+            // Either way a blank column teaches nothing.
+            return self.outline_empty_state(co, cx);
+        }
         let list = gpui::uniform_list(
             "outline",
             count,
@@ -919,6 +925,75 @@ impl GpuiView {
                 &self.outline_scroll.0.borrow().base_handle.clone(),
                 cx,
             ))
+    }
+
+    /// What the outline column says when it has no rows.
+    ///
+    /// Two different situations wearing the same blank column: a vault
+    /// with nothing in it yet, and a search that matched nothing. The
+    /// first wants to tell you how to start, the second how to get
+    /// back — so it says which one it is, and names the chord.
+    fn outline_empty_state(&self, co: Colors, cx: &Context<Self>) -> gpui::Div {
+        let searching = self.app.surface() == ModalSurface::Search;
+        let (headline, hint, command) = if searching {
+            (
+                "No matches",
+                "Nothing in the vault matches that. Esc clears the search.",
+                None,
+            )
+        } else {
+            (
+                "This vault is empty",
+                "Capture your first note, or point closure at a directory of .org files.",
+                Some("capture-start"),
+            )
+        };
+        let mut column = div()
+            .flex()
+            .flex_col()
+            .items_center()
+            .justify_center()
+            .gap_2()
+            .w(px(420.0))
+            .min_w(px(300.0))
+            .px_6()
+            .border_r_1()
+            .border_color(rgb(co.border))
+            .child(
+                div()
+                    .text_color(rgb(co.fg))
+                    .text_size(px(15.0))
+                    .child(headline),
+            )
+            .child(
+                div()
+                    .text_color(rgb(co.muted))
+                    .text_size(px(12.0))
+                    .child(hint),
+            );
+        if let Some(command) = command {
+            let chord = self.app.chord_for(command).unwrap_or_default();
+            column = column.child(
+                div()
+                    .mt_2()
+                    .px_3()
+                    .py_1()
+                    .rounded_md()
+                    .bg(rgb(co.panel))
+                    .text_size(px(12.0))
+                    .text_color(rgb(co.success))
+                    .cursor_pointer()
+                    .hover(move |s| s.bg(rgb(co.hover)))
+                    .on_mouse_down(
+                        MouseButton::Left,
+                        cx.listener(move |this: &mut Self, _ev, _w, cx| {
+                            this.click(command, cx);
+                        }),
+                    )
+                    .child(format!("＋ capture a note   {chord}")),
+            );
+        }
+        column
     }
 
     /// One outline row: the frame, the selection styling and the
