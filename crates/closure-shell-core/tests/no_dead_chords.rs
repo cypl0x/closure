@@ -212,3 +212,25 @@ fn select_by_id_reports_an_unknown_id_rather_than_moving() {
     assert!(!app.select_by_id(&shell, "01HQDEADNOTHINGHEREATALL"));
     assert_eq!(app.selected(), 1, "an unknown id must not move the cursor");
 }
+
+#[test]
+fn chord_for_answers_with_the_active_modes_binding() {
+    // The "every command shows its keybinding" rule needs one lookup a
+    // shell can call while painting any affordance — and it has to
+    // follow the *active* mode, not a fixed table.
+    let (_d, _shell, app) = fixture();
+    assert_eq!(
+        app.chord_for("quit"),
+        closure_input::chord_for_command(InputMode::Doom, "quit")
+    );
+    assert_eq!(app.chord_for("no-such-command"), None);
+
+    let vim = ModalApp::new(InputMode::Vim);
+    for command in every_bound_command() {
+        assert_eq!(
+            vim.chord_for(command),
+            closure_input::chord_for_command(InputMode::Vim, command),
+            "{command} in Vim"
+        );
+    }
+}

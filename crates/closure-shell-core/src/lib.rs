@@ -4685,6 +4685,10 @@ pub struct ModalApp {
     /// The Notion "/" block menu's query while it is open, and its
     /// cursor row. `None` when closed.
     slash: Option<(String, usize)>,
+    /// Output of the last source block run from the Blocks surface.
+    /// Cleared whenever the cursor moves or the pane closes, because
+    /// output shown beside a block that did not produce it is a lie.
+    block_out: Option<String>,
     /// The sniffer surface's captured flows and rules (X3).
     sniffer: SnifferApp,
     /// The conflict surface's pending CRDT decisions.
@@ -4725,6 +4729,7 @@ impl ModalApp {
     pub fn new(mode: InputMode) -> Self {
         Self {
             slash: None,
+            block_out: None,
             sniffer: SnifferApp::new(),
             conflicts: ConflictApp::new(Vec::new(), mode),
             llm_render: false,
@@ -5357,10 +5362,18 @@ impl ModalApp {
         match key {
             "escape" => {
                 self.selected = 0;
+                // Block output belongs to the pane that produced it.
+                self.block_out = None;
                 self.surface = ModalSurface::Browse;
             }
-            "down" | "j" => self.selected = (self.selected + 1).min(len.saturating_sub(1)),
-            "up" | "k" => self.selected = self.selected.saturating_sub(1),
+            "down" | "j" => {
+                self.block_out = None;
+                self.selected = (self.selected + 1).min(len.saturating_sub(1));
+            }
+            "up" | "k" => {
+                self.block_out = None;
+                self.selected = self.selected.saturating_sub(1);
+            }
             "enter" => self.jump_list_row(shell, self.selected),
             _ => {}
         }
@@ -6363,6 +6376,7 @@ impl ModalApp {
                 self.surface = ModalSurface::Palette;
                 "palette — type to filter, Enter to run".clone_into(&mut self.status);
             }
+            "eval-block" => self.eval_selected_block(shell),
             "headline-list" => {
                 self.selected = 0;
                 self.surface = ModalSurface::Headlines;
@@ -6435,6 +6449,54 @@ impl ModalApp {
                 }
             }
             other => self.status = format!("{other}: unknown command"),
+        }
+    }
+
+    /// The chord bound to `command` in the *active* mode, if any.
+    ///
+    /// The one lookup a shell calls while painting any affordance, so
+    /// that every button and menu entry can carry its keybinding — and
+    /// so that they all change together when the mode does. Sourced
+    /// from [`closure_input::chord_for_command`] (I4).
+    #[must_use]
+    pub fn chord_for(&self, command: &str) -> Option<&'static str> {
+        closure_input::chord_for_command(self.mode, command)
+    }
+
+    /// Output of the last source block run, while the Blocks surface
+    /// still shows the block that produced it.
+    #[must_use]
+    pub fn block_output(&self) -> Option<&str> {
+        self.block_out.as_deref()
+    }
+
+    /// Run the source block under the Blocks cursor through the kernel
+    /// (org-babel), keeping its output for the pane to paint.
+    ///
+    /// The execution path — and in particular the `eval_trust`
+    /// allowlist, the reason opening a file cannot run its code — is
+    /// the kernel's [`closure_store::Vault::eval_block`]. A refusal is
+    /// reported, never worked around.
+    fn eval_selected_block(&mut self, shell: &mut Shell) {
+        self.block_out = None;
+        let rows = self.block_rows(shell);
+        let Some((path, _, _)) = rows.get(self.selected).cloned() else {
+            "no source blocks in this vault".clone_into(&mut self.status);
+            return;
+        };
+        // `block_rows` is flat across files; `eval_block` counts within
+        // one, so rebase the cursor onto the block's own file.
+        let index = rows[..self.selected]
+            .iter()
+            .filter(|(p, _, _)| *p == path)
+            .count();
+        self.surface = ModalSurface::Blocks;
+        match shell.vault.eval_block(std::path::Path::new(&path), index) {
+            Ok(out) => {
+                self.status = format!("ran block #{index} of {path}");
+                self.block_out = Some(out);
+            }
+            Err(e) => self.status = format!("{e}"),
         }
     }
 

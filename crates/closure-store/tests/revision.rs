@@ -160,3 +160,77 @@ fn full_reload_bumps_the_revision() {
     v.reload().expect("reload");
     assert!(v.revision() > last, "a full reload replaces every document");
 }
+
+// === Iteration order ===
+//
+// Every list the shells paint — the outline, the block list, the
+// database view, the agenda — is derived by walking `iter()`. It was
+// backed by a `HashMap`, so that order was the hash seed's, and the
+// same vault listed its headlines in a different order on every
+// launch. A list that reshuffles between runs is not a list.
+
+#[test]
+fn iteration_is_ordered_by_path() {
+    let dir = tempfile::tempdir().expect("tmp");
+    for name in ["zeta.org", "alpha.org", "middle.org", "beta.org"] {
+        fs::write(dir.path().join(name), "* H\n").expect("write");
+    }
+    let v = Vault::open(dir.path()).expect("open");
+    let seen: Vec<String> = v
+        .iter()
+        .map(|(p, _)| {
+            p.file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or_default()
+                .to_owned()
+        })
+        .collect();
+    assert_eq!(
+        seen,
+        vec!["alpha.org", "beta.org", "middle.org", "zeta.org"],
+        "files come out sorted by path"
+    );
+}
+
+#[test]
+fn iteration_order_is_stable_across_reopens() {
+    let dir = tempfile::tempdir().expect("tmp");
+    for name in ["c.org", "a.org", "d.org", "b.org", "e.org", "f.org"] {
+        fs::write(dir.path().join(name), "* H\n").expect("write");
+    }
+    let order =
+        |v: &Vault| -> Vec<std::path::PathBuf> { v.iter().map(|(p, _)| p.to_path_buf()).collect() };
+    let first = order(&Vault::open(dir.path()).expect("open"));
+    // A fresh process would reseed the hasher; within one process,
+    // reopening is the closest reachable proxy — combined with the
+    // sort assertion above, that pins the order for good.
+    for _ in 0..5 {
+        assert_eq!(order(&Vault::open(dir.path()).expect("open")), first);
+    }
+}
+
+#[test]
+fn iteration_order_survives_a_mutation() {
+    let dir = tempfile::tempdir().expect("tmp");
+    for name in ["b.org", "a.org"] {
+        fs::write(dir.path().join(name), "* H\n").expect("write");
+    }
+    let mut v = Vault::open(dir.path()).expect("open");
+    assert_eq!(v.iter().count(), 2);
+    v.create_file(std::path::Path::new("aa.org"), "* New\n")
+        .expect("create");
+    let after: Vec<String> = v
+        .iter()
+        .map(|(p, _)| {
+            p.file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or_default()
+                .to_owned()
+        })
+        .collect();
+    assert_eq!(
+        after,
+        vec!["a.org", "aa.org", "b.org"],
+        "a new file slots into place rather than landing wherever"
+    );
+}

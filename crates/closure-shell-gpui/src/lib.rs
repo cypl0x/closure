@@ -937,23 +937,7 @@ impl GpuiView {
             ModalSurface::Sniffer => pane.child(self.sniffer_pane(co, cx)),
             ModalSurface::Conflicts => pane.child(self.conflicts_pane(co, cx)),
             ModalSurface::UndoHistory => pane.children(self.undo_history_pane(co, cx)),
-            ModalSurface::Blocks => pane.children(
-                self.app
-                    .block_rows(&self.shell)
-                    .into_iter()
-                    .enumerate()
-                    .map(|(i, (path, lang, first))| {
-                        list_row(
-                            co,
-                            i == self.app.selected(),
-                            format!("{lang:8} {first}  — {}", short_path(&path)),
-                            cx.listener(move |this: &mut Self, _ev, _w, cx| {
-                                this.app.jump_list_row(&this.shell, i);
-                                cx.notify();
-                            }),
-                        )
-                    }),
-            ),
+            ModalSurface::Blocks => pane.child(self.blocks_pane(co, cx)),
             ModalSurface::Backlinks => pane.children(
                 self.app
                     .backlink_rows(&self.shell)
@@ -1351,6 +1335,87 @@ impl GpuiView {
                             }),
                     )
             }))
+    }
+
+    /// Every `#+BEGIN_SRC` block in the vault, with a run button and
+    /// the output of the last run (org-babel).
+    ///
+    /// Clicking a row selects it; ▶ runs it through the kernel's
+    /// `eval-block`, which honours the `eval_trust` allowlist — a
+    /// refusal shows up in the status line rather than being worked
+    /// around. Output is cleared whenever the cursor moves, so what is
+    /// on screen always belongs to the block it sits under.
+    fn blocks_pane(&self, co: Colors, cx: &Context<Self>) -> gpui::Div {
+        let selected = self.app.selected();
+        let mut pane = div().flex().flex_col().gap_1().child(
+            div()
+                .flex()
+                .gap_2()
+                .items_center()
+                .child(
+                    div()
+                        .px_2()
+                        .rounded_md()
+                        .bg(rgb(co.panel))
+                        .text_color(rgb(co.success))
+                        .text_size(px(11.0))
+                        .cursor_pointer()
+                        .hover(move |s| s.bg(rgb(co.hover)))
+                        .on_mouse_down(
+                            MouseButton::Left,
+                            cx.listener(|this: &mut Self, _ev, _w, cx| {
+                                this.click("eval-block", cx);
+                            }),
+                        )
+                        .child("▶ run"),
+                )
+                .children(self.app.chord_for("eval-block").map(|chord| {
+                    div()
+                        .text_size(px(10.0))
+                        .text_color(rgb(co.accent))
+                        .child(chord)
+                })),
+        );
+        pane = pane.children(
+            self.app
+                .block_rows(&self.shell)
+                .into_iter()
+                .enumerate()
+                .map(|(i, (path, lang, first))| {
+                    list_row(
+                        co,
+                        i == selected,
+                        format!("{lang:8} {first}  — {}", short_path(&path)),
+                        cx.listener(move |this: &mut Self, _ev, _w, cx| {
+                            this.app.jump_list_row(&this.shell, i);
+                            cx.notify();
+                        }),
+                    )
+                }),
+        );
+        if let Some(out) = self.app.block_output() {
+            pane = pane.child(
+                div()
+                    .mt_2()
+                    .p_2()
+                    .rounded_md()
+                    .bg(rgb(co.panel))
+                    .border_1()
+                    .border_color(rgb(co.success))
+                    .text_size(px(12.0))
+                    .child(
+                        div()
+                            .text_size(px(10.0))
+                            .text_color(rgb(co.muted))
+                            .child("output"),
+                    )
+                    .children(
+                        out.lines()
+                            .map(|l| div().text_color(rgb(co.fg)).child(l.to_owned())),
+                    ),
+            );
+        }
+        pane
     }
 
     /// Captured network flows with their verdict, and the allow/block

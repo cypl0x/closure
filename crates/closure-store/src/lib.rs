@@ -1101,7 +1101,19 @@ impl Vault {
 
     /// Iterate `(path, document)` pairs.
     pub fn iter(&self) -> impl Iterator<Item = (&Path, &Document)> {
-        self.documents.iter().map(|(p, d)| (p.as_path(), d))
+        // Sorted by path, deliberately. Every list the shells paint —
+        // the outline, the block list, the database view, the agenda —
+        // is derived by walking this, and the backing map's order is
+        // the hash seed's, which differs per process. Without the sort
+        // the same vault lists its headlines differently on every
+        // launch, and "the row I want is third" never holds.
+        let mut entries: Vec<(&Path, &Document)> = self
+            .documents
+            .iter()
+            .map(|(p, d)| (p.as_path(), d))
+            .collect();
+        entries.sort_unstable_by_key(|(p, _)| *p);
+        entries.into_iter()
     }
 
     /// Every distinct tag string used across the vault, sorted.
