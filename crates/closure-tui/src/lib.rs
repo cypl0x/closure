@@ -513,6 +513,9 @@ impl App {
                 self.conflict_rows(),
                 "no conflict — merges arrive over sync, which this shell does not run yet",
             ),
+            // Graph, journal and cron are not here: each already labels
+            // its own empty state, and more usefully — the journal names
+            // the config knob that turns recording on.
             _ => return Vec::new(),
         };
         if rows.is_empty() {
@@ -3068,6 +3071,8 @@ fn overlay_content(app: &App) -> Option<(String, Vec<String>)> {
                 .map(|(_, cells)| cells.join("  |  "))
                 .collect(),
         )),
+        // The graph pane labels each of its three sections and says
+        // "(none)" under an empty one, so it is never blank.
         AppMode::Graph => Some(("link graph".to_owned(), app.graph_rows())),
         AppMode::Journal => Some(("recorded commands".to_owned(), app.journal_rows())),
         AppMode::Cron => Some(("scheduled jobs".to_owned(), app.cron_rows())),

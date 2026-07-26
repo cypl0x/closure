@@ -1197,9 +1197,11 @@ impl GpuiView {
             ModalSurface::Sync => pane.child(self.sync_pane(co, cx)),
             ModalSurface::Llm => pane.child(self.llm_pane(co, cx)),
             ModalSurface::Graph => pane.child(self.graph_pane(co, cx)),
-            ModalSurface::Journal => {
-                pane.children(Self::text_rows(co, self.app.journal_rows(&self.shell)))
-            }
+            ModalSurface::Journal => pane.children(Self::text_rows(
+                co,
+                self.app.journal_rows(&self.shell),
+                "no commands recorded yet — the journal fills as you edit",
+            )),
             ModalSurface::Cron => pane.children(Self::text_rows(
                 co,
                 self.app
@@ -1207,6 +1209,7 @@ impl GpuiView {
                     .into_iter()
                     .map(|(spec, command)| format!("{spec}   {command}"))
                     .collect(),
+                "no scheduled jobs — declare them in the vault with a :CRON: property",
             )),
             ModalSurface::Sniffer => pane.child(self.sniffer_pane(co, cx)),
             ModalSurface::Conflicts => pane.child(self.conflicts_pane(co, cx)),
@@ -1727,13 +1730,12 @@ impl GpuiView {
 
     /// A plain read-only list, with a line saying so when it is empty
     /// — a blank pane is indistinguishable from a broken one.
-    fn text_rows(co: Colors, rows: Vec<String>) -> Vec<gpui::Div> {
+    ///
+    /// `empty` names what is missing and how it gets filled: "nothing
+    /// here yet" tells a reader nothing they cannot already see.
+    fn text_rows(co: Colors, rows: Vec<String>, empty: &'static str) -> Vec<gpui::Div> {
         if rows.is_empty() {
-            return vec![
-                div()
-                    .text_color(rgb(co.muted))
-                    .child("nothing here yet".to_owned()),
-            ];
+            return vec![div().text_color(rgb(co.muted)).child(empty)];
         }
         rows.into_iter()
             .map(|line| {
@@ -1977,7 +1979,11 @@ impl GpuiView {
                     .map(|(id, title)| jump(id, format!("     {title}"))),
             )
             .child(section("dead links — targets that do not exist", co.error))
-            .children(Self::text_rows(co, dead))
+            .children(Self::text_rows(
+                co,
+                dead,
+                "none — every link in the vault resolves",
+            ))
     }
 
     /// Pairing and collaboration.
