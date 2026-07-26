@@ -204,6 +204,101 @@ fn u_undoes_inside_the_editor() {
     assert_eq!(app.buffer(), "hello world");
 }
 
+// === Dabbrev completion, the chord gpui already had. ===
+
+#[test]
+fn ctrl_n_completes_a_word_from_the_vault() {
+    let mut app = editing("");
+    app.set_sources(vec![(
+        PathBuf::from("a.org"),
+        "* Head\nphotosynthesis is a word\n".to_owned(),
+    )]);
+    app.handle_stroke("i");
+    for c in "phot".chars() {
+        app.handle_stroke(&c.to_string());
+    }
+    app.handle_stroke("C-n");
+    assert_eq!(app.buffer(), "photosynthesis");
+}
+
+#[test]
+fn ctrl_n_completes_org_keywords_too() {
+    let mut app = editing("");
+    app.handle_stroke("i");
+    for c in "#+BEGIN_S".chars() {
+        app.handle_stroke(&c.to_string());
+    }
+    app.handle_stroke("C-n");
+    assert_eq!(app.buffer(), "#+BEGIN_SRC");
+}
+
+#[test]
+fn ctrl_n_cycles_and_ctrl_p_goes_back() {
+    let mut app = editing("");
+    app.set_sources(vec![(
+        PathBuf::from("a.org"),
+        "alpha alphabet alphabetical\n".to_owned(),
+    )]);
+    app.handle_stroke("i");
+    for c in "alph".chars() {
+        app.handle_stroke(&c.to_string());
+    }
+    app.handle_stroke("C-n");
+    let first = app.buffer().to_owned();
+    app.handle_stroke("C-n");
+    let second = app.buffer().to_owned();
+    assert_ne!(first, second, "C-n cycles to the next candidate");
+    app.handle_stroke("C-p");
+    assert_eq!(app.buffer(), first, "C-p goes back");
+}
+
+#[test]
+fn typing_after_a_completion_ends_the_cycle() {
+    let mut app = editing("");
+    app.set_sources(vec![(
+        PathBuf::from("a.org"),
+        "photosynthesis\n".to_owned(),
+    )]);
+    app.handle_stroke("i");
+    for c in "phot".chars() {
+        app.handle_stroke(&c.to_string());
+    }
+    app.handle_stroke("C-n");
+    app.handle_stroke("!");
+    assert_eq!(app.buffer(), "photosynthesis!");
+    app.handle_stroke("C-n");
+    assert_eq!(app.buffer(), "photosynthesis!", "no candidate for that");
+}
+
+#[test]
+fn the_status_line_counts_the_completion_cycle() {
+    let mut app = editing("");
+    app.set_sources(vec![(
+        PathBuf::from("a.org"),
+        "alpha alphabet alphabetical\n".to_owned(),
+    )]);
+    app.handle_stroke("i");
+    for c in "alph".chars() {
+        app.handle_stroke(&c.to_string());
+    }
+    app.handle_stroke("C-n");
+    let status = app.body_status();
+    assert!(status.contains("1/"), "status was {status:?}");
+    app.handle_stroke("C-n");
+    assert!(app.body_status().contains("2/"), "{}", app.body_status());
+}
+
+#[test]
+fn completion_with_no_candidate_leaves_the_buffer_alone() {
+    let mut app = editing("");
+    app.handle_stroke("i");
+    for c in "zzz".chars() {
+        app.handle_stroke(&c.to_string());
+    }
+    app.handle_stroke("C-n");
+    assert_eq!(app.buffer(), "zzz");
+}
+
 #[test]
 fn the_pane_title_announces_the_mode() {
     let mut app = editing("text");

@@ -6483,6 +6483,18 @@ const ORG_COMPLETION_KEYWORDS: &[&str] = &[
 /// name — deduped after sorting.
 #[must_use]
 pub fn body_completions(prefix: &str, vault: &closure_store::Vault) -> Vec<String> {
+    let sources: Vec<String> = vault.iter().map(|(_p, doc)| doc.source()).collect();
+    body_completions_from(prefix, sources.iter().map(String::as_str))
+}
+
+/// [`body_completions`] over raw document sources, for a shell that
+/// holds text rather than a [`closure_store::Vault`] — the terminal
+/// shell keeps the vault in its driver, not in its app state.
+#[must_use]
+pub fn body_completions_from<'a>(
+    prefix: &str,
+    sources: impl Iterator<Item = &'a str>,
+) -> Vec<String> {
     if prefix.is_empty() {
         return Vec::new();
     }
@@ -6494,11 +6506,8 @@ pub fn body_completions(prefix: &str, vault: &closure_store::Vault) -> Vec<Strin
             entries.push((score, false, k.to_owned()));
         }
     }
-    for (_p, doc) in vault.iter() {
-        for word in doc
-            .source()
-            .split(|c: char| !(c.is_alphanumeric() || c == '_'))
-        {
+    for source in sources {
+        for word in source.split(|c: char| !(c.is_alphanumeric() || c == '_')) {
             if word.len() >= 3
                 && word != prefix
                 && let Some(score) = closure_query::fuzzy_score(prefix, word)

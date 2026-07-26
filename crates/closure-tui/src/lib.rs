@@ -249,6 +249,9 @@ pub struct App {
     llm_render: bool,
     /// Whether the LLM pane is composing rather than reading.
     llm_composing: bool,
+    /// The live dabbrev cycle: where the prefix starts, the candidates,
+    /// and which one is currently in the buffer.
+    completion: Option<(usize, Vec<String>, usize)>,
     conflicts: Vec<ConflictRow>,
 }
 
@@ -332,6 +335,7 @@ impl App {
             ask_request: None,
             llm_render: true,
             llm_composing: false,
+            completion: None,
             conflicts: Vec::new(),
         }
     }
@@ -617,12 +621,19 @@ impl App {
         } else {
             format!("  {pending}")
         };
+        // A live dabbrev cycle replaces the hint: which candidate of how
+        // many is the only thing worth the width while cycling.
+        let tail = match &self.completion {
+            Some((_, items, ix)) if *ix != usize::MAX => {
+                format!("completion {}/{}  C-n/C-p cycle", ix + 1, items.len())
+            }
+            _ => closure_shell_core::editor_hint(self.body.mode()).to_owned(),
+        };
         let (line, col) = self.body.cursor_line_col();
         format!(
-            "-- {mode} --{chord}   {}:{}   {}   C-s save",
+            "-- {mode} --{chord}   {}:{}   {tail}   C-s save",
             line + 1,
             col + 1,
-            closure_shell_core::editor_hint(self.body.mode()),
         )
     }
 
@@ -1298,8 +1309,46 @@ impl App {
         }
     }
 
+    /// `C-n`/`C-p`: cycle dabbrev candidates for the word being typed.
+    ///
+    /// The candidates come from the document sources the driver already
+    /// pushes in, so the terminal app needs no vault of its own.
+    fn cycle_completion(&mut self, forward: bool) {
+        let session = self.completion.take().or_else(|| {
+            let prefix = self.body.word_prefix().to_owned();
+            let items = closure_shell_core::body_completions_from(
+                &prefix,
+                self.sources.iter().map(|(_, s)| s.as_str()),
+            );
+            (!items.is_empty()).then(|| (self.body.word_start(), items, usize::MAX))
+        });
+        let Some((start, items, ix)) = session else {
+            return;
+        };
+        // usize::MAX marks a fresh cycle, so the first C-n takes item 0
+        // and the first C-p takes the last.
+        let next = if ix == usize::MAX {
+            if forward { 0 } else { items.len() - 1 }
+        } else if forward {
+            (ix + 1) % items.len()
+        } else {
+            (ix + items.len() - 1) % items.len()
+        };
+        self.body.replace_to_cursor(start, &items[next]);
+        self.completion = Some((start, items, next));
+    }
+
     /// Insert-mode strokes: readline chords, then plain text.
     fn editbody_insert_stroke(&mut self, stroke: &str) {
+        // Any stroke other than cycling ends the completion cycle.
+        if !matches!(stroke, "C-n" | "C-p") {
+            self.completion = None;
+        }
+        match stroke {
+            "C-n" => return self.cycle_completion(true),
+            "C-p" => return self.cycle_completion(false),
+            _ => {}
+        }
         match stroke {
             "ESC" => self.body.to_normal(),
             "RET" => self.body.insert_char('\n'),
