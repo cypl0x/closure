@@ -5,7 +5,7 @@
 //! These drive [`BodyEditor`] directly — the shells (gpui, TUI) both
 //! feed it the same stroke names, so one grammar covers both (I4).
 
-use closure_shell_core::{BodyEditor, EditorMode};
+use closure_shell_core::{BodyEditor, EditorMode, editor_hint};
 
 /// A Normal-mode editor over `text` with the cursor at byte 0.
 fn ed(text: &str) -> BodyEditor {
@@ -675,6 +675,25 @@ fn a_find_and_a_replace_also_show_as_pending() {
     let mut r = ed("abc");
     r.modal_key("r");
     assert_eq!(r.pending_chord(), "r");
+}
+
+#[test]
+fn the_hint_line_advertises_what_the_editor_actually_does() {
+    // Both shells paint this, so a chord named here works in both.
+    let normal = editor_hint(EditorMode::Normal);
+    for chord in ["diw", "caw", "dt"] {
+        assert!(
+            normal.contains(chord),
+            "NORMAL hint {normal:?} never mentions {chord}"
+        );
+    }
+    assert!(editor_hint(EditorMode::Insert).contains("Esc"));
+    assert!(editor_hint(EditorMode::Visual).contains("iw"));
+    assert_eq!(
+        editor_hint(EditorMode::Visual),
+        editor_hint(EditorMode::VisualLine),
+        "both visual modes take the same operators"
+    );
 }
 
 #[test]

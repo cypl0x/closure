@@ -1349,35 +1349,36 @@ impl GpuiView {
             EditorMode::Visual => ("VISUAL", co.heading3),
             EditorMode::VisualLine => ("V·LINE", co.heading2),
         };
-        let header = div()
-            .flex()
-            .items_center()
-            .gap_2()
-            .child(
+        let mut header = div().flex().items_center().gap_2().child(
+            div()
+                .px_2()
+                .rounded_sm()
+                .bg(rgb(mode_col))
+                .text_color(rgb(co.bg))
+                .text_size(px(11.0))
+                .child(mode_txt),
+        );
+        // The chord in progress, echoed the way vim's showcmd does — so
+        // a half-typed `2d3i` is visible rather than a silent editor.
+        let pending = self.app.body_pending_chord();
+        if !pending.is_empty() {
+            header = header.child(
                 div()
-                    .px_2()
+                    .px_1()
                     .rounded_sm()
-                    .bg(rgb(mode_col))
-                    .text_color(rgb(co.bg))
+                    .border_1()
+                    .border_color(rgb(mode_col))
+                    .text_color(rgb(mode_col))
                     .text_size(px(11.0))
-                    .child(mode_txt),
-            )
-            .child(
-                div()
-                    .text_color(rgb(co.muted))
-                    .text_size(px(11.0))
-                    .child(match mode {
-                        EditorMode::Insert => {
-                            "type · TAB tempo (<s…) · C-n complete · C-a/e/k/y readline · Esc → NORMAL"
-                        }
-                        EditorMode::Normal => {
-                            "h j k l 0 $ move · i a o insert · x dd yy p · v visual · Esc cancel"
-                        }
-                        EditorMode::Visual | EditorMode::VisualLine => {
-                            "motions extend · y yank · d delete · Esc → NORMAL"
-                        }
-                    }),
+                    .child(pending),
             );
+        }
+        let header = header.child(
+            div()
+                .text_color(rgb(co.muted))
+                .text_size(px(11.0))
+                .child(closure_shell_core::editor_hint(mode)),
+        );
         let mut body = div()
             .flex()
             .flex_col()

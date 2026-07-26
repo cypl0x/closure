@@ -619,9 +619,10 @@ impl App {
         };
         let (line, col) = self.body.cursor_line_col();
         format!(
-            "-- {mode} --{chord}   {}:{}   C-s save, ESC cancel",
+            "-- {mode} --{chord}   {}:{}   {}   C-s save",
             line + 1,
-            col + 1
+            col + 1,
+            closure_shell_core::editor_hint(self.body.mode()),
         )
     }
 

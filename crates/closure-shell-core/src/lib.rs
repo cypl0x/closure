@@ -4332,6 +4332,27 @@ impl Pending {
     }
 }
 
+/// The one-line vocabulary hint a shell paints beside the mode chip.
+///
+/// Shared so the terminal and the GUI advertise the same editor: a
+/// chord named here works in both (I4). Keep it in step with
+/// [`BodyEditor::modal_key`] — a hint that outlives its command is the
+/// same lie as a dead chord.
+#[must_use]
+pub const fn editor_hint(mode: EditorMode) -> &'static str {
+    match mode {
+        EditorMode::Insert => {
+            "type · TAB tempo (<s…) · C-n complete · C-a/e/k/y readline · Esc → NORMAL"
+        }
+        EditorMode::Normal => {
+            "w b e f t move · diw caw dt, operate · dd yy p · A I O J ~ r · v V visual · Esc cancel"
+        }
+        EditorMode::Visual | EditorMode::VisualLine => {
+            "motions + iw aw i( a\" extend · d c y > < operate · o swap ends · Esc → NORMAL"
+        }
+    }
+}
+
 /// A modal multi-line text editor with a real cursor — the state
 /// behind the org-edit-special surface.
 ///
@@ -8574,6 +8595,13 @@ impl ModalApp {
     #[must_use]
     pub const fn body_mode(&self) -> EditorMode {
         self.body.mode()
+    }
+
+    /// The body editor's chord in progress (`2d3i`), for the shell's
+    /// mode chip. Empty when nothing is outstanding.
+    #[must_use]
+    pub fn body_pending_chord(&self) -> String {
+        self.body.pending_chord()
     }
 
     /// Candidates of the live completion cycle (empty when none) — the
