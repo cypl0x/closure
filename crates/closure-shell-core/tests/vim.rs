@@ -627,6 +627,111 @@ fn visual_capital_d_and_capital_c_are_linewise() {
     assert_eq!(e.text(), "three");
 }
 
+// === Case operators. ===
+
+#[test]
+fn gu_and_gu_upper_change_case_over_a_motion() {
+    let mut lower = ed("HELLO world");
+    feed(&mut lower, "guiw");
+    assert_eq!(lower.text(), "hello world");
+
+    let mut upper = ed("hello world");
+    feed(&mut upper, "gUw");
+    assert_eq!(upper.text(), "HELLO world");
+}
+
+#[test]
+fn g_tilde_toggles_over_a_motion() {
+    let mut e = ed("hELLO there");
+    feed(&mut e, "g~iw");
+    assert_eq!(e.text(), "Hello there");
+}
+
+#[test]
+fn doubled_case_operators_take_the_whole_line() {
+    let mut e = ed("mixed Case\nsecond");
+    feed(&mut e, "gUU");
+    assert_eq!(e.text(), "MIXED CASE\nsecond");
+    feed(&mut e, "guu");
+    assert_eq!(e.text(), "mixed case\nsecond");
+}
+
+#[test]
+fn a_case_operator_takes_a_text_object() {
+    let mut e = ed("say \"quiet\" now");
+    e.set_cursor_byte(6);
+    feed(&mut e, "gUi\"");
+    assert_eq!(e.text(), "say \"QUIET\" now");
+}
+
+#[test]
+fn case_changes_are_undoable_and_repeatable() {
+    let mut e = ed("one two");
+    feed(&mut e, "gUiw");
+    assert_eq!(e.text(), "ONE two");
+    feed(&mut e, "u");
+    assert_eq!(e.text(), "one two");
+    feed(&mut e, "w.");
+    assert_eq!(e.text(), "one TWO", "dot repeats a case change");
+}
+
+#[test]
+fn visual_u_and_capital_u_change_the_selection() {
+    let mut e = ed("hello world");
+    feed(&mut e, "viwU");
+    assert_eq!(e.text(), "HELLO world");
+    feed(&mut e, "viwu");
+    assert_eq!(e.text(), "hello world");
+}
+
+// === The named keys a keyboard actually has. ===
+
+#[test]
+fn home_and_end_move_within_the_line() {
+    let mut e = ed("  hello");
+    e.modal_key("end");
+    assert_eq!(at(&e), 6, "on the last char");
+    e.modal_key("home");
+    assert_eq!(at(&e), 0);
+}
+
+#[test]
+fn delete_removes_the_char_under_the_cursor() {
+    let mut e = ed("abc");
+    e.modal_key("delete");
+    assert_eq!(e.text(), "bc");
+}
+
+#[test]
+fn page_keys_move_by_a_screenful() {
+    let text = "line\n".repeat(60);
+    let mut e = ed(&text);
+    e.modal_key("pagedown");
+    let (down, _) = e.cursor_line_col();
+    assert!(down > 5, "moved a screenful, landed on {down}");
+    e.modal_key("pageup");
+    assert_eq!(e.cursor_line_col().0, 0);
+}
+
+#[test]
+fn a_page_can_be_sized_by_the_shell_that_knows_its_viewport() {
+    let text = "line\n".repeat(60);
+    let mut e = ed(&text);
+    e.page(true, 12);
+    assert_eq!(e.cursor_line_col().0, 12);
+    e.page(false, 5);
+    assert_eq!(e.cursor_line_col().0, 7);
+}
+
+#[test]
+fn operators_take_the_named_keys_too() {
+    let mut e = ed("hello world");
+    e.set_cursor_byte(5);
+    e.modal_key("d");
+    e.modal_key("end");
+    assert_eq!(e.text(), "hello");
+}
+
 // === Dot-repeat. ===
 
 #[test]

@@ -4332,6 +4332,11 @@ impl Pending {
     }
 }
 
+/// Lines a `PageUp`/`PageDown` stroke moves when the editor is asked
+/// without a viewport. A shell that knows its own height should call
+/// [`BodyEditor::page`] with it instead.
+const PAGE_LINES: usize = 20;
+
 /// The one-line vocabulary hint a shell paints beside the mode chip.
 ///
 /// Shared so the terminal and the GUI advertise the same editor: a
@@ -4345,7 +4350,7 @@ pub const fn editor_hint(mode: EditorMode) -> &'static str {
             "type · TAB tempo (<s…) · C-n complete · C-a/e/k/y readline · Esc → NORMAL"
         }
         EditorMode::Normal => {
-            "w b e f t move · diw caw dt, operate · . repeat · dd yy p · A I O J ~ r · v V · Esc"
+            "w b e f t move · diw caw dt, gUiw operate · . repeat · dd yy p · A I O J r · v V · Esc"
         }
         EditorMode::Visual | EditorMode::VisualLine => {
             "motions + iw aw i( a\" extend · d c y > < operate · o swap ends · Esc → NORMAL"
@@ -4623,6 +4628,17 @@ impl BodyEditor {
     /// Move to the end of the current line (`$`).
     pub fn line_end_motion(&mut self) {
         self.cursor = self.line_end(self.cursor);
+    }
+
+    /// Move `lines` whole lines up or down — the page motion, sized by
+    /// the caller because only the shell knows its viewport height.
+    pub fn page(&mut self, down: bool, lines: usize) {
+        let line = if down {
+            self.cursor_line() + lines
+        } else {
+            self.cursor_line().saturating_sub(lines)
+        };
+        self.cursor = self.line_col_offset(line, 0);
     }
 
     /// Move up one line, column clamped.
@@ -4941,6 +4957,11 @@ impl BodyEditor {
             "y" if visual => self.visual_operator('y'),
             ">" if visual => self.visual_operator('>'),
             "<" if visual => self.visual_operator('<'),
+            // In Visual these are case changes, not undo — the `u` of
+            // `viwu`. Normal-mode `u` stays undo, further down.
+            "u" | "U" | "~" if visual => {
+                self.visual_operator(key.chars().next().unwrap_or('u'));
+            }
             "D" | "X" if visual => self.visual_linewise_operator('d'),
             "C" | "S" if visual => self.visual_linewise_operator('c'),
             "Y" if visual => self.visual_linewise_operator('y'),
@@ -4967,14 +4988,15 @@ impl BodyEditor {
             "r" => self.pending = Pending::Replace,
             // --- Motions.
             "h" | "left" | "l" | "right" | "j" | "down" | "k" | "up" | "w" | "W" | "b" | "B"
-            | "e" | "E" | "0" | "^" | "$" | "G" | "{" | "}" | ";" | "," => {
+            | "e" | "E" | "0" | "home" | "^" | "$" | "end" | "G" | "{" | "}" | ";" | ","
+            | "pageup" | "pagedown" => {
                 let n = self.take_count();
                 if let Some((target, _)) = self.motion(key, n, false) {
                     self.cursor = target;
                     // `$` as an operator target is the line end; as a
                     // cursor move it lands *on* the last char, because
                     // a Normal cursor never sits past one (vim).
-                    if key == "$" {
+                    if matches!(key, "$" | "end") {
                         self.cursor = self.offset_left(self.cursor);
                     }
                 }
@@ -5053,7 +5075,7 @@ impl BodyEditor {
                 self.mode = EditorMode::Insert;
                 self.insert_armed = false;
             }
-            "x" => {
+            "x" | "delete" => {
                 let n = self.take_count();
                 self.checkpoint();
                 self.delete_chars_forward(n);
@@ -5174,6 +5196,15 @@ impl BodyEditor {
         } else {
             self.take_count()
         };
+        // `gu`, `gU`, `g~` are operators in their own right: they arm a
+        // pending chord exactly as `d` does, and then take a motion or
+        // a text object (`guiw`) or double (`guu`).
+        if op.is_none() && matches!(key, "u" | "U" | "~") {
+            self.op_count = n;
+            self.count = 0;
+            self.pending = Pending::Op(key.chars().next().unwrap_or('u'));
+            return;
+        }
         let target = match key {
             "g" => Some(self.line_col_offset(if self.count_given { n - 1 } else { 0 }, 0)),
             "e" | "E" => Some(self.word_end_back(self.cursor, key == "E", n)),
@@ -5331,9 +5362,17 @@ impl BodyEditor {
                 }
                 (at, Inclusive)
             }
-            "0" => (self.line_start(self.cursor), Exclusive),
+            "0" | "home" => (self.line_start(self.cursor), Exclusive),
             "^" => (self.first_non_blank(self.cursor), Exclusive),
-            "$" => {
+            "pagedown" => (
+                self.line_col_offset(self.cursor_line() + PAGE_LINES * n, 0),
+                Linewise,
+            ),
+            "pageup" => (
+                self.line_col_offset(self.cursor_line().saturating_sub(PAGE_LINES * n), 0),
+                Linewise,
+            ),
+            "$" | "end" => {
                 let line = self.cursor_line() + n - 1;
                 (self.line_end(self.line_col_offset(line, 0)), Exclusive)
             }
@@ -5643,8 +5682,34 @@ impl BodyEditor {
                 }
             }
             '>' | '<' => self.run_linewise(op, self.line_start(lo), self.line_end(hi)),
+            'u' | 'U' | '~' => {
+                self.checkpoint();
+                self.recase(lo, hi, op);
+                self.cursor = lo;
+                if self.mode != EditorMode::Normal {
+                    self.mode = EditorMode::Normal;
+                }
+            }
             _ => {}
         }
+    }
+
+    /// Rewrite `lo..hi` to lower (`u`), upper (`U`) or flipped (`~`).
+    fn recase(&mut self, lo: usize, hi: usize, op: char) {
+        let mut recased = String::with_capacity(hi - lo);
+        for c in self.buf[lo..hi].chars() {
+            let to_upper = match op {
+                'u' => false,
+                'U' => true,
+                _ => !c.is_uppercase(),
+            };
+            if to_upper {
+                recased.extend(c.to_uppercase());
+            } else {
+                recased.extend(c.to_lowercase());
+            }
+        }
+        self.buf.replace_range(lo..hi, &recased);
     }
 
     /// `dd`/`yy`/`cc`/`>>`: `n` whole lines from the cursor's.
@@ -5706,6 +5771,11 @@ impl BodyEditor {
             '>' | '<' => {
                 self.checkpoint();
                 self.shift_lines(first, last_end, op == '>');
+            }
+            'u' | 'U' | '~' => {
+                self.checkpoint();
+                self.recase(first, last_end, op);
+                self.cursor = first;
             }
             _ => {}
         }
@@ -8627,6 +8697,12 @@ impl ModalApp {
                 // words, ctrl+backspace kills the word (same as C-w).
                 "left" if ctrl || alt => self.body.word_backward(),
                 "right" if ctrl || alt => self.body.word_forward(),
+                // The named keys every other text field answers to.
+                "home" => self.body.line_home(),
+                "end" => self.body.line_end_motion(),
+                "delete" => self.body.delete_at(),
+                "pageup" => self.body.page(false, 20),
+                "pagedown" => self.body.page(true, 20),
                 "k" if ctrl => {
                     self.completion = None;
                     self.body.kill_rest_of_line();

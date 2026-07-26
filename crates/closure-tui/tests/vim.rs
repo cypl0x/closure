@@ -130,6 +130,29 @@ fn arrow_keys_navigate_like_hjkl() {
 }
 
 #[test]
+fn the_named_keys_reach_the_editor() {
+    let mut app = editing("hello world");
+    app.handle_stroke("<end>");
+    assert_eq!(app.body_cursor(), (0, 10));
+    app.handle_stroke("<home>");
+    assert_eq!(app.body_cursor(), (0, 0));
+    app.handle_stroke("<delete>");
+    assert_eq!(app.buffer(), "ello world");
+}
+
+#[test]
+fn the_named_keys_work_in_insert_too() {
+    let mut app = editing("ab");
+    app.handle_stroke("i");
+    app.handle_stroke("<end>");
+    app.handle_stroke("!");
+    assert_eq!(app.buffer(), "ab!");
+    app.handle_stroke("<home>");
+    app.handle_stroke("<delete>");
+    assert_eq!(app.buffer(), "b!");
+}
+
+#[test]
 fn insert_mode_typing_still_builds_the_buffer() {
     let mut app = editing("");
     app.handle_stroke("i");
