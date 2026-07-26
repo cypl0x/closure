@@ -175,7 +175,9 @@ pub struct App {
     property_request: Option<(String, String, String)>,
     blocks: Vec<(PathBuf, String)>,
     eval_request: Option<(PathBuf, usize)>,
-    buffer: String,
+    /// The shared modal editor behind `EditBody` — the same one the
+    /// gpui shell drives, so both shells speak one vim grammar (I4).
+    body: closure_shell_core::BodyEditor,
     body_target: Option<String>,
     body_request: Option<(String, String)>,
     struct_request: Option<(String, String)>,
@@ -243,7 +245,7 @@ impl App {
             property_request: None,
             blocks: Vec::new(),
             eval_request: None,
-            buffer: String::new(),
+            body: closure_shell_core::BodyEditor::new(),
             body_target: None,
             body_request: None,
             struct_request: None,
@@ -319,7 +321,51 @@ impl App {
     /// The multi-line edit buffer (body editor).
     #[must_use]
     pub fn buffer(&self) -> &str {
-        &self.buffer
+        self.body.text()
+    }
+
+    /// The body editor's vim mode, for the mode indicator.
+    #[must_use]
+    pub const fn body_mode(&self) -> closure_shell_core::EditorMode {
+        self.body.mode()
+    }
+
+    /// The body editor's cursor as `(line, column)`, both 0-based —
+    /// where the terminal parks its caret.
+    #[must_use]
+    pub fn body_cursor(&self) -> (usize, usize) {
+        self.body.cursor_line_col()
+    }
+
+    /// Park the body cursor at a byte offset (clamped to a char
+    /// boundary) — the mouse/goto entry point.
+    pub fn set_body_cursor(&mut self, byte: usize) {
+        self.body.set_cursor_byte(byte);
+    }
+
+    /// The body editor's status line: the vim mode, the chord in
+    /// progress, and the keys that leave the surface.
+    #[must_use]
+    pub fn body_status(&self) -> String {
+        use closure_shell_core::EditorMode;
+        let mode = match self.body.mode() {
+            EditorMode::Insert => "INSERT",
+            EditorMode::Normal => "NORMAL",
+            EditorMode::Visual => "VISUAL",
+            EditorMode::VisualLine => "VISUAL LINE",
+        };
+        let pending = self.body.pending_chord();
+        let chord = if pending.is_empty() {
+            String::new()
+        } else {
+            format!("  {pending}")
+        };
+        let (line, col) = self.body.cursor_line_col();
+        format!(
+            "-- {mode} --{chord}   {}:{}   C-s save, ESC cancel",
+            line + 1,
+            col + 1
+        )
     }
 
     /// Consume the `(id, body)` body edit confirmed by the user, if
@@ -790,7 +836,7 @@ impl App {
                         .map(|r| r.body.clone())
                         .unwrap_or_default();
                     self.body_target = Some(id);
-                    self.buffer = body;
+                    self.body.load(body);
                     self.mode = AppMode::EditBody;
                 }
             }
@@ -925,32 +971,90 @@ impl App {
         }
     }
 
+    /// Feed one stroke to the shared modal editor.
+    ///
+    /// Terminal strokes arrive in the emacs notation the chord trie uses
+    /// (`ESC`, `RET`, `<down>`, `C-s`); [`BodyEditor`] speaks the shell
+    /// vocabulary (`escape`, `down`). Translating here is what lets one
+    /// editor serve both shells.
+    ///
+    /// [`BodyEditor`]: closure_shell_core::BodyEditor
     fn handle_editbody_stroke(&mut self, stroke: &str) {
+        use closure_shell_core::EditorMode;
+        // Saving and cancelling are the surface's own keys in every mode.
+        if stroke == "C-s" {
+            if let Some(id) = self.body_target.take() {
+                self.body_request = Some((id, self.body.text().to_owned()));
+            }
+            self.mode = AppMode::Browse;
+            self.body.clear();
+            return;
+        }
+        if self.body.mode() == EditorMode::Insert {
+            return self.editbody_insert_stroke(stroke);
+        }
+        // Esc on a quiet Normal surface cancels the edit; mid-chord (or
+        // in Visual) it belongs to the editor — the same rule the gpui
+        // shell applies.
+        if stroke == "ESC"
+            && self.body.mode() == EditorMode::Normal
+            && self.body.pending_stroke().is_none()
+            && self.body.pending_count() == 0
+        {
+            self.mode = AppMode::Browse;
+            self.body.clear();
+            self.body_target = None;
+            return;
+        }
+        if let Some(key) = Self::modal_key_of(stroke) {
+            self.body.modal_key(&key);
+        }
+    }
+
+    /// Insert-mode strokes: readline chords, then plain text.
+    fn editbody_insert_stroke(&mut self, stroke: &str) {
         match stroke {
-            "ESC" => {
-                self.mode = AppMode::Browse;
-                self.buffer.clear();
-                self.body_target = None;
-            }
-            "C-s" => {
-                if let Some(id) = self.body_target.take() {
-                    self.body_request = Some((id, std::mem::take(&mut self.buffer)));
-                }
-                self.mode = AppMode::Browse;
-                self.buffer.clear();
-            }
-            "RET" => self.buffer.push('\n'),
-            "SPC" => self.buffer.push(' '),
-            "DEL" => {
-                self.buffer.pop();
-            }
+            "ESC" => self.body.to_normal(),
+            "RET" => self.body.insert_char('\n'),
+            "SPC" => self.body.insert_char(' '),
+            "TAB" => self.body.tempo_expand_or_indent(),
+            "DEL" => self.body.backspace(),
+            "<up>" => self.body.up(),
+            "<down>" => self.body.down(),
+            // The readline set every "normal input field" answers to,
+            // sharing its arms with the arrow keys.
+            "<left>" | "C-b" => self.body.left(),
+            "<right>" | "C-f" => self.body.right(),
+            "C-a" => self.body.line_home(),
+            "C-e" => self.body.line_end_motion(),
+            "C-d" => self.body.delete_at(),
+            "C-k" => self.body.kill_rest_of_line(),
+            "C-u" => self.body.kill_to_line_start(),
+            "C-w" => self.body.delete_word_back(),
+            "C-y" => self.body.yank_insert(),
             s => {
                 let mut chars = s.chars();
                 if let (Some(c), None) = (chars.next(), chars.next()) {
-                    self.buffer.push(c);
+                    self.body.insert_char(c);
                 }
             }
         }
+    }
+
+    /// Translate a terminal stroke into the modal-editor key name, or
+    /// `None` when the editor has no use for it.
+    fn modal_key_of(stroke: &str) -> Option<String> {
+        Some(match stroke {
+            "ESC" => "escape".to_owned(),
+            "<up>" => "up".to_owned(),
+            "<down>" => "down".to_owned(),
+            "<left>" => "left".to_owned(),
+            "<right>" => "right".to_owned(),
+            "RET" => "enter".to_owned(),
+            "SPC" => " ".to_owned(),
+            s if s.chars().count() == 1 => s.to_owned(),
+            _ => return None,
+        })
     }
 
     fn handle_blocks_stroke(&mut self, stroke: &str) {
@@ -1472,6 +1576,8 @@ pub fn stroke_of(ev: &crossterm::event::KeyEvent) -> Option<String> {
         KeyCode::Backspace => "DEL".to_owned(),
         KeyCode::Up => "<up>".to_owned(),
         KeyCode::Down => "<down>".to_owned(),
+        KeyCode::Left => "<left>".to_owned(),
+        KeyCode::Right => "<right>".to_owned(),
         _ => return None,
     };
     if ev.modifiers.contains(KeyModifiers::CONTROL) {
@@ -2000,7 +2106,14 @@ fn draw(f: &mut ratatui::Frame<'_>, app: &App, vault: &Vault) {
     }
 
     if let Some((title, rows)) = overlay_content(app) {
-        draw_overlay_list(f, area, title, rows, app.result_cursor());
+        // In the body editor the highlighted row is the caret's line,
+        // not a result cursor.
+        let cursor = if app.mode() == AppMode::EditBody {
+            app.body_cursor().0
+        } else {
+            app.result_cursor()
+        };
+        draw_overlay_list(f, area, title, rows, cursor);
     }
 
     if let Some(lines) = app.popup_lines() {
@@ -2144,6 +2257,27 @@ fn style_for(kind: closure_tree_sitter::HighlightKind) -> Style {
 
 /// Title + rows of the bottom overlay for the active surface, `None`
 /// when no overlay is shown.
+/// The body editor's lines with a caret glyph at the cursor column.
+///
+/// The overlay is a ratatui `List`, which has no cell-level cursor, so
+/// the caret is drawn into the text — the same trick the whichkey pane
+/// uses for its prefix.
+fn body_editor_lines(app: &App) -> Vec<String> {
+    let (cur_line, cur_col) = app.body_cursor();
+    let mut out: Vec<String> = Vec::new();
+    for (i, line) in app.buffer().split('\n').enumerate() {
+        if i == cur_line {
+            let mut with_caret: String = line.chars().take(cur_col).collect();
+            with_caret.push('▏');
+            with_caret.extend(line.chars().skip(cur_col));
+            out.push(with_caret);
+        } else {
+            out.push(line.to_owned());
+        }
+    }
+    out
+}
+
 fn overlay_content(app: &App) -> Option<(String, Vec<String>)> {
     match app.mode() {
         AppMode::Search => Some((
@@ -2216,10 +2350,7 @@ fn overlay_content(app: &App) -> Option<(String, Vec<String>)> {
                 .map(|(t, id)| format!("{t}    [{id}]"))
                 .collect(),
         )),
-        AppMode::EditBody => Some((
-            "edit body — C-s save, ESC cancel".to_owned(),
-            app.buffer().lines().map(str::to_owned).collect(),
-        )),
+        AppMode::EditBody => Some((app.body_status(), body_editor_lines(app))),
         AppMode::Agenda => Some((
             "agenda (SCHEDULED / DEADLINE)".to_owned(),
             app.agenda_results()

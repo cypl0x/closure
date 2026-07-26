@@ -1381,6 +1381,11 @@ fn body_editor_esc_cancels() {
     app.handle_stroke("l");
     app.handle_stroke("i");
     app.handle_stroke("x");
+    // The editor is modal: the first Esc leaves INSERT, the second
+    // cancels the edit from a quiet NORMAL surface (vim, and what the
+    // gpui shell does).
+    app.handle_stroke("ESC");
+    assert_eq!(app.mode(), AppMode::EditBody);
     app.handle_stroke("ESC");
     assert_eq!(app.mode(), AppMode::Browse);
     assert_eq!(app.take_body_request(), None);

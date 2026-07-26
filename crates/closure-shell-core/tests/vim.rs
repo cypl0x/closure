@@ -648,6 +648,36 @@ fn cc_clears_the_line_and_enters_insert() {
 }
 
 #[test]
+fn the_chord_in_progress_reads_back_for_the_status_line() {
+    let mut e = ed("abc");
+    assert_eq!(e.pending_chord(), "");
+    e.modal_key("2");
+    assert_eq!(e.pending_chord(), "2");
+    e.modal_key("d");
+    assert_eq!(e.pending_chord(), "2d", "the count survives the operator");
+    e.modal_key("3");
+    assert_eq!(e.pending_chord(), "2d3");
+    e.modal_key("i");
+    assert_eq!(e.pending_chord(), "2d3i");
+    e.modal_key("escape");
+    assert_eq!(e.pending_chord(), "");
+}
+
+#[test]
+fn a_find_and_a_replace_also_show_as_pending() {
+    let mut e = ed("abc");
+    e.modal_key("d");
+    e.modal_key("t");
+    assert_eq!(e.pending_chord(), "dt");
+    e.modal_key("c");
+    assert_eq!(e.pending_chord(), "");
+
+    let mut r = ed("abc");
+    r.modal_key("r");
+    assert_eq!(r.pending_chord(), "r");
+}
+
+#[test]
 fn u_undoes_a_text_object_delete_as_one_edit() {
     let mut e = ed("hello world");
     feed(&mut e, "diw");

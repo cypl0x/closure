@@ -5989,6 +5989,42 @@ impl BodyEditor {
         self.pending.stroke()
     }
 
+    /// The whole chord in progress as the user typed it (`2d3i`) —
+    /// what a shell echoes in its status line. Empty when idle.
+    ///
+    /// The editor renders this itself rather than handing shells the
+    /// pieces, so the terminal and the GUI show the same thing (I4).
+    #[must_use]
+    pub fn pending_chord(&self) -> String {
+        let mut out = String::new();
+        if self.op_count > 0 {
+            out.push_str(&self.op_count.to_string());
+        }
+        if let Some(op) = self.pending_op() {
+            out.push(op);
+        }
+        if self.count > 0 {
+            out.push_str(&self.count.to_string());
+        }
+        match self.pending {
+            Pending::G(_) => out.push('g'),
+            Pending::Obj { around, .. } => out.push(if around { 'a' } else { 'i' }),
+            Pending::Find { kind, .. } => out.push(kind),
+            Pending::Replace => out.push('r'),
+            Pending::Op(_) | Pending::None => {}
+        }
+        out
+    }
+
+    /// The operator armed by the chord in progress, if any.
+    const fn pending_op(&self) -> Option<char> {
+        match self.pending {
+            Pending::Op(c) => Some(c),
+            Pending::G(op) | Pending::Obj { op, .. } | Pending::Find { op, .. } => op,
+            Pending::Replace | Pending::None => None,
+        }
+    }
+
     /// The pending vim count (0 = none) - the caller's cancel guard.
     #[must_use]
     pub const fn pending_count(&self) -> usize {
