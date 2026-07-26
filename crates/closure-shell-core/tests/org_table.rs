@@ -119,7 +119,7 @@ fn tab_moves_to_the_next_cell_on_the_same_row() {
     let row = "| a | b |";
     let at = row.find('a').expect("a");
     let next = next_table_cell(row, at).expect("a next cell");
-    assert_eq!(&row[next..next + 1], "b");
+    assert_eq!(&row[next..=next], "b");
 }
 
 #[test]

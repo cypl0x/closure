@@ -4264,6 +4264,74 @@ pub enum EditorMode {
     VisualLine,
 }
 
+/// Vim's three character classes. `w`/`b`/`e` and the `iw` object stop
+/// at every class boundary; the `W`/`B`/`E`/`iW` variants fold `Punct`
+/// into `Word` so only blanks delimit.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum CharClass {
+    Blank,
+    Word,
+    Punct,
+}
+
+/// Classify `c` for a small (`big == false`) or big word motion.
+fn char_class(c: char, big: bool) -> CharClass {
+    if c.is_whitespace() {
+        CharClass::Blank
+    } else if big || c.is_alphanumeric() || c == '_' {
+        CharClass::Word
+    } else {
+        CharClass::Punct
+    }
+}
+
+/// How a motion's target combines with the cursor into an operator
+/// range — vim's exclusive/inclusive/linewise distinction.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum MotionKind {
+    /// `w`, `b`, `0`, `$`: the target byte itself stays.
+    Exclusive,
+    /// `e`, `f`, `t`: the char under the target is taken too.
+    Inclusive,
+    /// `j`, `k`, `G`, `gg`, `ip`: whole lines, newline included.
+    Linewise,
+}
+
+/// What the editor is waiting for mid-chord. `d` alone is not an edit;
+/// it is a promise that the next stroke names a range.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Pending {
+    /// Nothing outstanding — the next stroke is a whole command.
+    None,
+    /// An operator (`d`/`c`/`y`/`>`/`<`) awaiting a motion, a text
+    /// object, or its own doubled key (`dd`).
+    Op(char),
+    /// `g` typed, alone (`gg`) or under an operator (`dgg`).
+    G(Option<char>),
+    /// `i`/`a` typed; the next stroke names the object (`iw`, `a"`).
+    /// `op == None` is Visual mode, where the object sets the selection.
+    Obj { op: Option<char>, around: bool },
+    /// `f`/`F`/`t`/`T` typed; the next stroke is the target char.
+    Find { op: Option<char>, kind: char },
+    /// `r` typed; the next stroke is the replacement char.
+    Replace,
+}
+
+impl Pending {
+    /// The stroke a shell should echo as "mid-chord", if any.
+    const fn stroke(self) -> Option<char> {
+        match self {
+            Self::None => None,
+            Self::Op(c) => Some(c),
+            Self::G(_) => Some('g'),
+            Self::Obj { around: true, .. } => Some('a'),
+            Self::Obj { around: false, .. } => Some('i'),
+            Self::Find { kind, .. } => Some(kind),
+            Self::Replace => Some('r'),
+        }
+    }
+}
+
 /// A modal multi-line text editor with a real cursor — the state
 /// behind the org-edit-special surface.
 ///
@@ -4283,10 +4351,18 @@ pub struct BodyEditor {
     /// Whether the register holds whole lines (`dd`/`yy` → `p` pastes
     /// below the current line).
     linewise: bool,
-    /// First stroke of a two-stroke Normal command (`d` of `dd`).
-    pending: Option<char>,
+    /// What the in-progress chord is still waiting for (`d` of `diw`).
+    pending: Pending,
     /// Pending vim count in Normal/Visual modes (0 = none).
     count: usize,
+    /// Count typed *before* the operator (the `2` of `2d3w`), so both
+    /// halves multiply the way vim multiplies them.
+    op_count: usize,
+    /// Whether the chord being resolved carried an explicit count —
+    /// `G` and `gg` mean "last"/"first" line only without one.
+    count_given: bool,
+    /// Last `f`/`F`/`t`/`T` as `(kind, target)`, for `;` and `,`.
+    last_find: Option<(char, char)>,
     /// Editor-local undo snapshots (buffer, cursor), newest last.
     undo_stack: Vec<(String, usize)>,
     /// Redo snapshots cleared by any fresh edit.
@@ -4314,8 +4390,11 @@ impl BodyEditor {
             anchor: 0,
             register: String::new(),
             linewise: false,
-            pending: None,
+            pending: Pending::None,
             count: 0,
+            op_count: 0,
+            count_given: false,
+            last_find: None,
             undo_stack: Vec::new(),
             redo_stack: Vec::new(),
             insert_armed: false,
@@ -4674,87 +4753,97 @@ impl BodyEditor {
         }
     }
 
-    /// One Normal/Visual-mode key (motions, `i`/`a`/`o`/`x`, `v`,
-    /// `dd`/`yy`/`p`, Visual `y`/`d`). `Esc` leaves Visual or clears a
-    /// pending stroke; the *caller* cancels the edit on `Esc` when
-    /// [`Self::pending_stroke`] is clear and the mode is Normal.
+    /// One Normal/Visual-mode key.
+    ///
+    /// The vocabulary is vim's real grammar rather than a handful of
+    /// hard-coded pairs: `[count]operator[count]{motion|text-object}`,
+    /// so `diw`, `2d3w`, `ca"`, `dt,`, `yG` and `>>` all compose from
+    /// the same three tables ([`Self::motion`], [`Self::text_object`],
+    /// [`Self::apply_operator`]).
+    ///
+    /// `Esc` leaves Visual or clears an in-progress chord; the *caller*
+    /// cancels the edit on `Esc` when [`Self::pending_stroke`] is clear
+    /// and the mode is Normal.
+    pub fn modal_key(&mut self, key: &str) {
+        // A chord waiting on a literal char argument consumes any key,
+        // digits included — `r5` and `df3` are not counts.
+        match self.pending {
+            Pending::Replace => return self.finish_replace(key),
+            Pending::Find { op, kind } => return self.finish_find(op, kind, key),
+            Pending::Obj { op, around } => return self.finish_object(op, around, key),
+            Pending::G(op) => return self.finish_g(op, key),
+            Pending::Op(op) => return self.after_operator(op, key),
+            Pending::None => {}
+        }
+        if self.take_digit(key) {
+            return;
+        }
+        self.normal_key(key);
+    }
+
+    /// Accumulate a count digit; `true` when the key was one. A leading
+    /// `0` is the line-start motion, not a count.
+    fn take_digit(&mut self, key: &str) -> bool {
+        let Some(d) = key.chars().next().filter(|_| key.len() == 1) else {
+            return false;
+        };
+        let Some(d) = d.to_digit(10).and_then(|d| usize::try_from(d).ok()) else {
+            return false;
+        };
+        if d == 0 && self.count == 0 {
+            return false;
+        }
+        self.count = self.count * 10 + d;
+        true
+    }
+
+    /// A whole command with no chord outstanding.
     // One arm per vim key: splitting the vocabulary would hide the
     // mode dispatch (same precedent as `run_command`).
     #[allow(clippy::too_many_lines)]
-    pub fn modal_key(&mut self, key: &str) {
-        if key.len() == 1
-            && let Some(d) = key.chars().next().and_then(|c| c.to_digit(10))
-        {
-            let d = usize::try_from(d).unwrap_or(9);
-            if !(d == 0 && self.count == 0) {
-                self.count = self.count * 10 + d;
-                return;
-            }
-        }
-        // Two-stroke commands first (`dd` / `yy`).
-        if self.mode == EditorMode::Normal {
-            match (self.pending.take(), key) {
-                (Some('d'), "d") => {
-                    self.checkpoint();
-                    let n = self.take_count();
-                    self.delete_line(n);
-                    return;
-                }
-                (Some('y'), "y") => {
-                    let n = self.take_count();
-                    self.yank_line(n);
-                    return;
-                }
-                (None, "d") => {
-                    self.pending = Some('d');
-                    return;
-                }
-                (None, "y") => {
-                    self.pending = Some('y');
-                    return;
-                }
-                _ => {}
-            }
-        }
+    fn normal_key(&mut self, key: &str) {
+        let visual = matches!(self.mode, EditorMode::Visual | EditorMode::VisualLine);
         match key {
-            "h" | "left" => {
+            // --- Operators. In Visual they act on the selection now;
+            // in Normal they arm a pending chord.
+            "d" | "x" if visual => self.visual_operator('d'),
+            "c" | "s" if visual => self.visual_operator('c'),
+            "y" if visual => self.visual_operator('y'),
+            ">" if visual => self.visual_operator('>'),
+            "<" if visual => self.visual_operator('<'),
+            "D" | "X" if visual => self.visual_linewise_operator('d'),
+            "C" | "S" if visual => self.visual_linewise_operator('c'),
+            "Y" if visual => self.visual_linewise_operator('y'),
+            "p" | "P" if visual => self.visual_paste(),
+            "d" | "c" | "y" | ">" | "<" => {
+                self.op_count = self.count;
+                self.count = 0;
+                self.pending = Pending::Op(key.chars().next().unwrap_or('d'));
+            }
+            // --- Text objects and find-char open a chord in Visual too.
+            "i" | "a" if visual => {
+                self.pending = Pending::Obj {
+                    op: None,
+                    around: key == "a",
+                };
+            }
+            "f" | "F" | "t" | "T" => {
+                self.pending = Pending::Find {
+                    op: None,
+                    kind: key.chars().next().unwrap_or('f'),
+                };
+            }
+            "g" => self.pending = Pending::G(None),
+            "r" => self.pending = Pending::Replace,
+            // --- Motions.
+            "h" | "left" | "l" | "right" | "j" | "down" | "k" | "up" | "w" | "W" | "b" | "B"
+            | "e" | "E" | "0" | "^" | "$" | "G" | "{" | "}" | ";" | "," => {
                 let n = self.take_count();
-                for _ in 0..n {
-                    self.left();
+                if let Some((target, _)) = self.motion(key, n, false) {
+                    self.cursor = target;
                 }
             }
-            "l" | "right" => {
-                let n = self.take_count();
-                for _ in 0..n {
-                    self.right();
-                }
-            }
-            "j" | "down" => {
-                let n = self.take_count();
-                for _ in 0..n {
-                    self.down();
-                }
-            }
-            "k" | "up" => {
-                let n = self.take_count();
-                for _ in 0..n {
-                    self.up();
-                }
-            }
-            "0" => self.line_home(),
-            "$" => self.line_end_motion(),
-            "w" => {
-                let n = self.take_count();
-                for _ in 0..n {
-                    self.word_forward();
-                }
-            }
-            "b" => {
-                let n = self.take_count();
-                for _ in 0..n {
-                    self.word_backward();
-                }
-            }
+            // --- Mode switches.
             "i" => {
                 self.count = 0;
                 self.to_insert();
@@ -4764,116 +4853,1140 @@ impl BodyEditor {
                 self.right();
                 self.to_insert();
             }
+            "I" => {
+                self.count = 0;
+                self.cursor = self.first_non_blank(self.cursor);
+                self.to_insert();
+            }
+            "A" => {
+                self.count = 0;
+                self.line_end_motion();
+                self.to_insert();
+            }
+            "o" if visual => {
+                std::mem::swap(&mut self.anchor, &mut self.cursor);
+            }
             "o" => {
                 self.count = 0;
                 self.checkpoint();
                 self.open_below();
             }
+            "O" => {
+                self.count = 0;
+                self.checkpoint();
+                self.open_above();
+            }
             "v" => {
                 self.count = 0;
-                self.anchor = self.cursor;
-                self.mode = EditorMode::Visual;
+                if self.mode == EditorMode::Visual {
+                    self.mode = EditorMode::Normal;
+                } else {
+                    if self.mode == EditorMode::Normal {
+                        self.anchor = self.cursor;
+                    }
+                    self.mode = EditorMode::Visual;
+                }
             }
             "V" => {
                 self.count = 0;
-                self.anchor = self.cursor;
-                self.mode = EditorMode::VisualLine;
-            }
-            "escape" if self.mode == EditorMode::Normal && self.count > 0 => self.count = 0,
-            "escape" if matches!(self.mode, EditorMode::Visual | EditorMode::VisualLine) => {
-                self.mode = EditorMode::Normal;
-            }
-            "y" if self.mode == EditorMode::VisualLine => {
-                let lo = self.line_start(self.anchor.min(self.cursor));
-                let hi_line_end = self.line_end(self.anchor.max(self.cursor));
-                let hi = if hi_line_end < self.buf.len() {
-                    hi_line_end + 1
+                if self.mode == EditorMode::VisualLine {
+                    self.mode = EditorMode::Normal;
                 } else {
-                    hi_line_end
-                };
-                let mut text = self.buf[lo..hi].to_owned();
-                if !text.ends_with('\n') {
-                    text.push('\n');
+                    if self.mode == EditorMode::Normal {
+                        self.anchor = self.cursor;
+                    }
+                    self.mode = EditorMode::VisualLine;
                 }
-                self.register = text;
-                self.linewise = true;
-                self.cursor = lo;
+            }
+            "escape" => {
+                self.count = 0;
+                self.op_count = 0;
                 self.mode = EditorMode::Normal;
             }
-            "d" | "x" if self.mode == EditorMode::VisualLine => {
+            // --- Whole-line and single-char edits.
+            "D" => self.operate_to_line_end('d'),
+            "C" => self.operate_to_line_end('c'),
+            "S" => {
+                let n = self.take_count();
+                self.apply_linewise_operator('c', n);
+            }
+            "s" => {
+                let n = self.take_count();
                 self.checkpoint();
-                let lo = self.line_start(self.anchor.min(self.cursor));
-                let hi_line_end = self.line_end(self.anchor.max(self.cursor));
-                let hi = if hi_line_end < self.buf.len() {
-                    hi_line_end + 1
-                } else {
-                    hi_line_end
-                };
-                let mut text = self.buf[lo..hi].to_owned();
-                if !text.ends_with('\n') {
-                    text.push('\n');
-                }
-                self.register = text;
-                self.linewise = true;
-                self.buf.replace_range(lo..hi, "");
-                self.cursor = if lo > 0 { self.line_start(lo - 1) } else { 0 };
-                self.mode = EditorMode::Normal;
+                self.delete_chars_forward(n);
+                self.mode = EditorMode::Insert;
+                self.insert_armed = false;
             }
-            "y" if self.mode == EditorMode::Visual => {
-                let (lo, hi) = self.selection();
-                self.register = self.buf[lo..hi].to_owned();
-                self.linewise = false;
-                self.cursor = lo;
-                self.mode = EditorMode::Normal;
-            }
-            "d" | "x" if self.mode == EditorMode::Visual => {
-                self.checkpoint();
-                let (lo, hi) = self.selection();
-                self.register = self.buf[lo..hi].to_owned();
-                self.linewise = false;
-                self.buf.replace_range(lo..hi, "");
-                self.cursor = lo;
-                self.mode = EditorMode::Normal;
-            }
-            "u" => self.undo_local(),
             "x" => {
-                self.checkpoint();
                 let n = self.take_count();
-                if n == 1 {
-                    self.delete_at();
-                } else {
-                    let start = self.cursor;
-                    let line_end = self.line_end(start);
-                    let mut end = start;
-                    for (i, ch) in self.buf[start..].char_indices().take(n) {
-                        let pos = start + i + ch.len_utf8();
-                        if pos > line_end {
-                            break;
-                        }
-                        end = pos;
-                    }
-                    if end > start {
-                        self.register = self.buf[start..end].to_owned();
-                        self.linewise = false;
-                        self.buf.replace_range(start..end, "");
-                    }
-                }
+                self.checkpoint();
+                self.delete_chars_forward(n);
             }
-            "p" => {
-                self.checkpoint();
+            "X" => {
                 let n = self.take_count();
+                self.checkpoint();
                 for _ in 0..n {
-                    self.paste();
+                    if let Some((i, c)) = self.buf[..self.cursor].char_indices().next_back()
+                        && c != '\n'
+                    {
+                        self.buf.remove(i);
+                        self.cursor = i;
+                    }
                 }
             }
+            "~" => {
+                let n = self.take_count();
+                self.checkpoint();
+                for _ in 0..n {
+                    self.toggle_case_at_cursor();
+                }
+            }
+            "J" => {
+                let n = self.take_count();
+                self.checkpoint();
+                for _ in 0..n {
+                    self.join_line();
+                }
+            }
+            "p" | "P" => {
+                let n = self.take_count();
+                self.checkpoint();
+                for _ in 0..n {
+                    if key == "p" {
+                        self.paste();
+                    } else {
+                        self.paste_before();
+                    }
+                }
+            }
+            "u" => {
+                self.count = 0;
+                self.undo_local();
+            }
+            _ => self.count = 0,
+        }
+    }
+
+    // ---- Chord continuations -------------------------------------
+
+    /// The stroke after an operator: its own key doubles it (`dd`), a
+    /// text object or find opens a further chord, anything else must
+    /// resolve as a motion or the operator is abandoned.
+    fn after_operator(&mut self, op: char, key: &str) {
+        if self.take_digit(key) {
+            return;
+        }
+        self.pending = Pending::None;
+        match key {
+            "escape" => {
+                self.count = 0;
+                self.op_count = 0;
+            }
+            // `dd`, `yy`, `cc`, `>>`, `<<` — linewise over count lines.
+            // `S` doubles for `cc` the way vim lets it.
+            k if k.starts_with(op) => {
+                let n = self.take_count_for_op();
+                self.apply_linewise_operator(op, n);
+            }
+            "i" | "a" => {
+                self.pending = Pending::Obj {
+                    op: Some(op),
+                    around: key == "a",
+                };
+            }
+            "f" | "F" | "t" | "T" => {
+                self.pending = Pending::Find {
+                    op: Some(op),
+                    kind: key.chars().next().unwrap_or('f'),
+                };
+            }
+            "g" => self.pending = Pending::G(Some(op)),
+            _ => {
+                // Vim's oldest wart: on a non-blank, `cw` changes the
+                // word without its trailing space, i.e. it is `ce`.
+                let key = match key {
+                    "w" | "W"
+                        if op == 'c'
+                            && self
+                                .char_at(self.cursor)
+                                .is_some_and(|c| !c.is_whitespace()) =>
+                    {
+                        if key == "w" {
+                            "e"
+                        } else {
+                            "E"
+                        }
+                    }
+                    k => k,
+                };
+                let n = self.take_count_for_op();
+                if let Some((target, kind)) = self.motion(key, n, true) {
+                    self.apply_operator(op, self.cursor, target, kind);
+                } else {
+                    self.count = 0;
+                    self.op_count = 0;
+                }
+            }
+        }
+    }
+
+    /// `g`-prefixed chords: `gg` (and `dgg`), `ge`, `g_`.
+    fn finish_g(&mut self, op: Option<char>, key: &str) {
+        self.pending = Pending::None;
+        let n = if op.is_some() {
+            self.take_count_for_op()
+        } else {
+            self.take_count()
+        };
+        let target = match key {
+            "g" => Some(self.line_col_offset(if self.count_given { n - 1 } else { 0 }, 0)),
+            "e" | "E" => Some(self.word_end_back(self.cursor, key == "E", n)),
+            "_" => Some(self.first_non_blank_backwards_from_line_end()),
+            _ => None,
+        };
+        let Some(target) = target else {
+            self.count = 0;
+            self.op_count = 0;
+            return;
+        };
+        let kind = if key == "g" {
+            MotionKind::Linewise
+        } else {
+            MotionKind::Inclusive
+        };
+        match op {
+            Some(op) => self.apply_operator(op, self.cursor, target, kind),
+            None => self.cursor = target,
+        }
+    }
+
+    /// The target char of an `f`/`F`/`t`/`T` chord.
+    fn finish_find(&mut self, op: Option<char>, kind: char, key: &str) {
+        self.pending = Pending::None;
+        let Some(target_char) = key.chars().next().filter(|_| key.chars().count() == 1) else {
+            self.count = 0;
+            self.op_count = 0;
+            return;
+        };
+        self.last_find = Some((kind, target_char));
+        self.run_find(op, kind, target_char);
+    }
+
+    /// Execute a find, shared by `f`-chords and the `;`/`,` repeats.
+    fn run_find(&mut self, op: Option<char>, kind: char, target_char: char) {
+        let n = if op.is_some() {
+            self.take_count_for_op()
+        } else {
+            self.take_count()
+        };
+        let Some(target) = self.find_char(kind, target_char, n) else {
+            self.count = 0;
+            self.op_count = 0;
+            return;
+        };
+        let motion_kind = if matches!(kind, 'f' | 't') {
+            MotionKind::Inclusive
+        } else {
+            MotionKind::Exclusive
+        };
+        match op {
+            Some(op) => self.apply_operator(op, self.cursor, target, motion_kind),
+            None => self.cursor = target,
+        }
+    }
+
+    /// The object char of an `i`/`a` chord (`iw`, `a"`, `ip`, …).
+    fn finish_object(&mut self, op: Option<char>, around: bool, key: &str) {
+        self.pending = Pending::None;
+        let n = if op.is_some() {
+            self.take_count_for_op()
+        } else {
+            self.take_count()
+        };
+        let Some(obj) = key.chars().next().filter(|_| key.chars().count() == 1) else {
+            self.count = 0;
+            self.op_count = 0;
+            return;
+        };
+        let Some((lo, hi, kind)) = self.text_object(obj, around, n) else {
+            return;
+        };
+        // An operator consumes the object range directly; in Visual the
+        // object *becomes* the selection.
+        if let Some(op) = op {
+            self.apply_range_operator(op, lo, hi, kind);
+        } else {
+            self.mode = if kind == MotionKind::Linewise {
+                EditorMode::VisualLine
+            } else {
+                EditorMode::Visual
+            };
+            self.anchor = lo;
+            self.cursor = self.prev_offset(hi).max(lo);
+        }
+    }
+
+    /// The replacement char of an `r` chord.
+    fn finish_replace(&mut self, key: &str) {
+        self.pending = Pending::None;
+        let n = self.take_count();
+        let Some(c) = key.chars().next().filter(|_| key.chars().count() == 1) else {
+            return;
+        };
+        if key == "escape" {
+            return;
+        }
+        // Vim refuses `r` when fewer than `count` chars remain on the line.
+        let mut end = self.cursor;
+        for _ in 0..n {
+            let next = self.next_offset(end);
+            if next == end || self.buf[end..].starts_with('\n') {
+                return;
+            }
+            end = next;
+        }
+        self.checkpoint();
+        let replacement: String = std::iter::repeat_n(c, n).collect();
+        self.buf.replace_range(self.cursor..end, &replacement);
+        self.cursor = self.prev_offset(end.min(self.buf.len())).max(self.cursor);
+    }
+
+    // ---- Motions -------------------------------------------------
+
+    /// Resolve `key` to a target offset and how it combines into a
+    /// range. `for_op` applies vim's rule that `dw` never joins lines.
+    fn motion(&self, key: &str, n: usize, for_op: bool) -> Option<(usize, MotionKind)> {
+        use MotionKind::{Exclusive, Inclusive, Linewise};
+        let (target, kind) = match key {
+            "h" | "left" => (self.repeat(n, self.cursor, Self::offset_left), Exclusive),
+            "l" | "right" => (self.repeat(n, self.cursor, Self::offset_right), Exclusive),
+            "j" | "down" => (self.line_col_offset(self.cursor_line() + n, 0), Linewise),
+            "k" | "up" => (
+                self.line_col_offset(self.cursor_line().saturating_sub(n), 0),
+                Linewise,
+            ),
+            "w" | "W" => {
+                let big = key == "W";
+                let mut at = self.cursor;
+                for _ in 0..n {
+                    at = self.word_forward_from(at, big);
+                }
+                // `dw` on the last word of a line stops at the line end
+                // instead of dragging the next line up.
+                if for_op && self.line_end(self.cursor) < at {
+                    (self.line_end(self.cursor), Exclusive)
+                } else {
+                    (at, Exclusive)
+                }
+            }
+            "b" | "B" => {
+                let big = key == "B";
+                let mut at = self.cursor;
+                for _ in 0..n {
+                    at = self.word_backward_from(at, big);
+                }
+                (at, Exclusive)
+            }
+            "e" | "E" => {
+                let big = key == "E";
+                let mut at = self.cursor;
+                for _ in 0..n {
+                    at = self.word_end_from(at, big);
+                }
+                (at, Inclusive)
+            }
+            "0" => (self.line_start(self.cursor), Exclusive),
+            "^" => (self.first_non_blank(self.cursor), Exclusive),
+            "$" => {
+                let line = self.cursor_line() + n - 1;
+                (self.line_end(self.line_col_offset(line, 0)), Exclusive)
+            }
+            "G" => {
+                let last = self.line_count().saturating_sub(1);
+                let line = if self.count_given { n - 1 } else { last };
+                (self.line_col_offset(line.min(last), 0), Linewise)
+            }
+            "}" => (self.paragraph_forward(n), Exclusive),
+            "{" => (self.paragraph_backward(n), Exclusive),
+            ";" | "," => {
+                let (kind, ch) = self.last_find?;
+                let kind = if key == ";" {
+                    kind
+                } else {
+                    match kind {
+                        'f' => 'F',
+                        'F' => 'f',
+                        't' => 'T',
+                        _ => 't',
+                    }
+                };
+                let target = self.find_char(kind, ch, n)?;
+                let k = if matches!(kind, 'f' | 't') {
+                    Inclusive
+                } else {
+                    Exclusive
+                };
+                (target, k)
+            }
+            _ => return None,
+        };
+        Some((target, kind))
+    }
+
+    /// Apply `f`/`F`/`t`/`T` `n` times within the cursor's line.
+    fn find_char(&self, kind: char, target: char, n: usize) -> Option<usize> {
+        let line_start = self.line_start(self.cursor);
+        let line_end = self.line_end(self.cursor);
+        let mut at = self.cursor;
+        for _ in 0..n {
+            at = match kind {
+                'f' | 't' => {
+                    // `t` starts one char further so `;` makes progress.
+                    let from = self.next_offset(if kind == 't' {
+                        self.next_offset(at)
+                    } else {
+                        at
+                    });
+                    let rel = self.buf[from.min(line_end)..line_end].find(target)?;
+                    from + rel
+                }
+                _ => {
+                    let to = if kind == 'T' {
+                        self.prev_offset(at)
+                    } else {
+                        at
+                    };
+                    let rel = self.buf[line_start..to.max(line_start)].rfind(target)?;
+                    line_start + rel
+                }
+            };
+        }
+        Some(match kind {
+            't' => self.prev_offset(at),
+            'T' => self.next_offset(at),
+            _ => at,
+        })
+    }
+
+    // ---- Text objects --------------------------------------------
+
+    /// Resolve `iw`/`aw`, `i(`/`a(` …, `i"`/`a"`, `ip`/`ap` to a byte
+    /// range plus its kind. `None` when the cursor is not inside one.
+    fn text_object(&self, obj: char, around: bool, n: usize) -> Option<(usize, usize, MotionKind)> {
+        match obj {
+            'w' | 'W' => self.word_object(obj == 'W', around, n),
+            'p' => self.paragraph_object(around),
+            '"' | '\'' | '`' => self.quote_object(obj, around),
+            '(' | ')' | 'b' => self.bracket_object('(', ')', around),
+            '[' | ']' => self.bracket_object('[', ']', around),
+            '{' | '}' | 'B' => self.bracket_object('{', '}', around),
+            '<' | '>' => self.bracket_object('<', '>', around),
+            _ => None,
+        }
+    }
+
+    /// `iw`/`aw`: the run of same-class chars under the cursor, plus
+    /// (for `aw`) the blanks after it — or before it at a line end.
+    fn word_object(&self, big: bool, around: bool, n: usize) -> Option<(usize, usize, MotionKind)> {
+        let c = self.char_at(self.cursor)?;
+        let class = char_class(c, big);
+        let mut lo = self.cursor;
+        while let Some((i, prev)) = self.buf[..lo].char_indices().next_back() {
+            if prev != '\n' && char_class(prev, big) == class {
+                lo = i;
+            } else {
+                break;
+            }
+        }
+        let mut hi = self.cursor;
+        while let Some(next) = self.char_at(hi) {
+            if next != '\n' && char_class(next, big) == class {
+                hi += next.len_utf8();
+            } else {
+                break;
+            }
+        }
+        // `2iw` spans the following runs too (blanks count as a run).
+        for _ in 1..n {
+            let Some(next) = self.char_at(hi) else { break };
+            if next == '\n' {
+                break;
+            }
+            let next_class = char_class(next, big);
+            while let Some(c) = self.char_at(hi) {
+                if c != '\n' && char_class(c, big) == next_class {
+                    hi += c.len_utf8();
+                } else {
+                    break;
+                }
+            }
+        }
+        if around {
+            let trailing_start = hi;
+            while let Some(next) = self.char_at(hi) {
+                if next != '\n' && next.is_whitespace() {
+                    hi += next.len_utf8();
+                } else {
+                    break;
+                }
+            }
+            // No trailing blanks (last word on the line): take the
+            // leading ones instead, the way vim does.
+            if hi == trailing_start && class != CharClass::Blank {
+                while let Some((i, prev)) = self.buf[..lo].char_indices().next_back() {
+                    if prev != '\n' && prev.is_whitespace() {
+                        lo = i;
+                    } else {
+                        break;
+                    }
+                }
+            }
+        }
+        Some((lo, hi, MotionKind::Exclusive))
+    }
+
+    /// `ip`/`ap`: the run of blank or non-blank lines around the cursor.
+    /// Always resolves — every cursor sits in some paragraph — but it
+    /// returns the same shape as its sibling objects so the caller can
+    /// treat all of them alike.
+    #[allow(clippy::unnecessary_wraps)]
+    fn paragraph_object(&self, around: bool) -> Option<(usize, usize, MotionKind)> {
+        let blank = |line: usize, ed: &Self| -> bool {
+            let s = ed.line_col_offset(line, 0);
+            ed.buf[s..ed.line_end(s)].trim().is_empty()
+        };
+        let cur = self.cursor_line();
+        let last = self.line_count().saturating_sub(1);
+        let want = blank(cur, self);
+        let mut first = cur;
+        while first > 0 && blank(first - 1, self) == want {
+            first -= 1;
+        }
+        let mut end = cur;
+        while end < last && blank(end + 1, self) == want {
+            end += 1;
+        }
+        if around {
+            let tail = end;
+            while end < last && blank(end + 1, self) != want {
+                end += 1;
+            }
+            if end == tail {
+                while first > 0 && blank(first - 1, self) != want {
+                    first -= 1;
+                }
+            }
+        }
+        let lo = self.line_col_offset(first, 0);
+        let hi = self.line_end(self.line_col_offset(end, 0));
+        Some((lo, hi, MotionKind::Linewise))
+    }
+
+    /// `i"`/`a"`: the quoted run on the cursor's line. Quotes pair up
+    /// left to right, so the cursor picks the first pair it is not
+    /// already past.
+    fn quote_object(&self, q: char, around: bool) -> Option<(usize, usize, MotionKind)> {
+        let start = self.line_start(self.cursor);
+        let end = self.line_end(self.cursor);
+        let positions: Vec<usize> = self.buf[start..end]
+            .char_indices()
+            .filter(|&(_, c)| c == q)
+            .map(|(i, _)| start + i)
+            .collect();
+        let (open, close) = positions
+            .chunks_exact(2)
+            .map(|p| (p[0], p[1]))
+            .find(|&(_, close)| self.cursor <= close)?;
+        Some(if around {
+            (open, self.next_offset(close), MotionKind::Exclusive)
+        } else {
+            (self.next_offset(open), close, MotionKind::Exclusive)
+        })
+    }
+
+    /// `i(`/`a(` and friends: the innermost balanced pair containing
+    /// the cursor, brackets included when `around`.
+    fn bracket_object(
+        &self,
+        open_c: char,
+        close_c: char,
+        around: bool,
+    ) -> Option<(usize, usize, MotionKind)> {
+        let here = self.char_at(self.cursor);
+        // Sitting on a bracket picks that pair rather than its parent.
+        let open = if here == Some(open_c) {
+            self.cursor
+        } else {
+            let mut depth = 0usize;
+            let mut found = None;
+            let search_end = if here == Some(close_c) {
+                self.cursor
+            } else {
+                self.next_offset(self.cursor)
+            };
+            for (i, c) in self.buf[..search_end].char_indices().rev() {
+                if c == close_c {
+                    depth += 1;
+                } else if c == open_c {
+                    if depth == 0 {
+                        found = Some(i);
+                        break;
+                    }
+                    depth -= 1;
+                }
+            }
+            found?
+        };
+        let mut depth = 0usize;
+        let mut close = None;
+        for (i, c) in self.buf[self.next_offset(open)..].char_indices() {
+            if c == open_c {
+                depth += 1;
+            } else if c == close_c {
+                if depth == 0 {
+                    close = Some(self.next_offset(open) + i);
+                    break;
+                }
+                depth -= 1;
+            }
+        }
+        let close = close?;
+        Some(if around {
+            (open, self.next_offset(close), MotionKind::Exclusive)
+        } else {
+            (self.next_offset(open), close, MotionKind::Exclusive)
+        })
+    }
+
+    // ---- Operators -----------------------------------------------
+
+    /// Combine cursor and motion target into a range, then run the
+    /// operator over it.
+    fn apply_operator(&mut self, op: char, from: usize, target: usize, kind: MotionKind) {
+        let (lo, hi) = match kind {
+            // Linewise ranges are widened to whole lines downstream, so
+            // the raw endpoints are all `run_linewise` needs.
+            MotionKind::Exclusive | MotionKind::Linewise => (from.min(target), from.max(target)),
+            MotionKind::Inclusive => {
+                let hi = from.max(target);
+                (from.min(target), self.next_offset(hi))
+            }
+        };
+        self.apply_range_operator(op, lo, hi, kind);
+    }
+
+    /// Run `op` over an already-resolved range.
+    fn apply_range_operator(&mut self, op: char, lo: usize, hi: usize, kind: MotionKind) {
+        self.count = 0;
+        self.op_count = 0;
+        if kind == MotionKind::Linewise {
+            let first = self.line_start(lo);
+            let last_end = self.line_end(hi);
+            return self.run_linewise(op, first, last_end);
+        }
+        if hi <= lo {
+            return;
+        }
+        match op {
+            'y' => {
+                self.register = self.buf[lo..hi].to_owned();
+                self.linewise = false;
+                self.cursor = lo;
+            }
+            'd' | 'c' => {
+                self.checkpoint();
+                self.register = self.buf[lo..hi].to_owned();
+                self.linewise = false;
+                self.buf.replace_range(lo..hi, "");
+                self.cursor = lo;
+                if op == 'c' {
+                    self.mode = EditorMode::Insert;
+                    self.insert_armed = false;
+                } else if self.mode != EditorMode::Normal {
+                    self.mode = EditorMode::Normal;
+                }
+            }
+            '>' | '<' => self.run_linewise(op, self.line_start(lo), self.line_end(hi)),
             _ => {}
         }
     }
 
-    /// The pending first stroke of a two-stroke command, if any.
+    /// `dd`/`yy`/`cc`/`>>`: `n` whole lines from the cursor's.
+    fn apply_linewise_operator(&mut self, op: char, n: usize) {
+        self.count = 0;
+        self.op_count = 0;
+        let first = self.line_start(self.cursor);
+        let mut last_end = self.line_end(first);
+        for _ in 1..n {
+            if last_end >= self.buf.len() {
+                break;
+            }
+            last_end = self.line_end(last_end + 1);
+        }
+        self.run_linewise(op, first, last_end);
+    }
+
+    /// The linewise core: `first` is a line start, `last_end` the end
+    /// (before the newline) of the last line in the range.
+    fn run_linewise(&mut self, op: char, first: usize, last_end: usize) {
+        let with_newline = if last_end < self.buf.len() {
+            last_end + 1
+        } else {
+            last_end
+        };
+        match op {
+            'y' => {
+                self.register = Self::as_lines(&self.buf[first..with_newline]);
+                self.linewise = true;
+                self.cursor = first;
+            }
+            'd' => {
+                self.checkpoint();
+                self.register = Self::as_lines(&self.buf[first..with_newline]);
+                self.linewise = true;
+                // Deleting through the last (newline-less) line eats the
+                // preceding newline so no dangling terminator remains.
+                let cut_from = if with_newline >= self.buf.len() && first > 0 {
+                    first - 1
+                } else {
+                    first
+                };
+                self.buf.replace_range(cut_from..with_newline, "");
+                // Vim parks the cursor on the line that moved up into
+                // the deleted one, clamped at the last line.
+                self.cursor = self.line_start(cut_from.min(self.buf.len()));
+            }
+            'c' => {
+                self.checkpoint();
+                self.register = Self::as_lines(&self.buf[first..with_newline]);
+                self.linewise = true;
+                // The line itself survives, emptied — that is what makes
+                // `cc` different from `dd` followed by `O`.
+                self.buf.replace_range(first..last_end, "");
+                self.cursor = first;
+                self.mode = EditorMode::Insert;
+                self.insert_armed = false;
+            }
+            '>' | '<' => {
+                self.checkpoint();
+                self.shift_lines(first, last_end, op == '>');
+            }
+            _ => {}
+        }
+        if self.mode != EditorMode::Insert {
+            self.mode = EditorMode::Normal;
+        }
+    }
+
+    /// Indent (`>`) or dedent (`<`) every line in the range by two
+    /// spaces — org bodies are space-indented, never tabbed.
+    fn shift_lines(&mut self, first: usize, last_end: usize, indent: bool) {
+        let mut starts = vec![first];
+        let mut at = first;
+        while at < last_end {
+            let end = self.line_end(at);
+            if end >= last_end {
+                break;
+            }
+            at = end + 1;
+            starts.push(at);
+        }
+        // Back to front so earlier edits do not shift later offsets.
+        for &start in starts.iter().rev() {
+            if indent {
+                self.buf.insert_str(start, "  ");
+            } else {
+                let end = self.line_end(start);
+                let drop = self.buf[start..end]
+                    .chars()
+                    .take(2)
+                    .take_while(|c| *c == ' ')
+                    .count();
+                self.buf.replace_range(start..start + drop, "");
+            }
+        }
+        self.cursor = self.first_non_blank(self.line_start(first.min(self.buf.len())));
+    }
+
+    /// `D`/`C`: the rest of the line, `n - 1` further lines included.
+    fn operate_to_line_end(&mut self, op: char) {
+        let n = self.take_count();
+        let mut end = self.line_end(self.cursor);
+        for _ in 1..n {
+            if end >= self.buf.len() {
+                break;
+            }
+            end = self.line_end(end + 1);
+        }
+        self.apply_range_operator(op, self.cursor, end, MotionKind::Exclusive);
+        if op == 'c' {
+            self.mode = EditorMode::Insert;
+            self.insert_armed = false;
+        }
+    }
+
+    /// A Visual-mode operator over the charwise selection.
+    fn visual_operator(&mut self, op: char) {
+        if self.mode == EditorMode::VisualLine {
+            return self.visual_linewise_operator(op);
+        }
+        let (lo, hi) = self.selection();
+        self.apply_range_operator(op, lo, hi, MotionKind::Exclusive);
+        if self.mode != EditorMode::Insert {
+            self.mode = EditorMode::Normal;
+        }
+    }
+
+    /// A Visual-mode operator forced linewise (`V`-mode, or `D`/`C`).
+    fn visual_linewise_operator(&mut self, op: char) {
+        let first = self.line_start(self.anchor.min(self.cursor));
+        let last_end = self.line_end(self.anchor.max(self.cursor));
+        self.count = 0;
+        self.op_count = 0;
+        self.run_linewise(op, first, last_end);
+    }
+
+    /// Visual `p`: the selection is replaced by the register, and the
+    /// replaced text becomes the new register (vim's swap).
+    fn visual_paste(&mut self) {
+        let (lo, hi) = if self.mode == EditorMode::VisualLine {
+            let first = self.line_start(self.anchor.min(self.cursor));
+            let end = self.line_end(self.anchor.max(self.cursor));
+            (first, end)
+        } else {
+            self.selection()
+        };
+        self.checkpoint();
+        let text = self.register.clone();
+        let replaced = self.buf[lo..hi].to_owned();
+        let insert = if self.linewise {
+            text.trim_end_matches('\n').to_owned()
+        } else {
+            text
+        };
+        self.buf.replace_range(lo..hi, &insert);
+        self.register = replaced;
+        self.linewise = false;
+        self.cursor = lo;
+        self.mode = EditorMode::Normal;
+    }
+
+    /// `x`/`s`: delete up to `n` chars forward, never past the line end.
+    fn delete_chars_forward(&mut self, n: usize) {
+        let start = self.cursor;
+        let line_end = self.line_end(start);
+        let mut end = start;
+        for _ in 0..n {
+            let next = self.next_offset(end);
+            if next == end || next > line_end {
+                break;
+            }
+            end = next;
+        }
+        if end > start {
+            self.register = self.buf[start..end].to_owned();
+            self.linewise = false;
+            self.buf.replace_range(start..end, "");
+        }
+    }
+
+    /// `~`: flip the case under the cursor and step right.
+    fn toggle_case_at_cursor(&mut self) {
+        let Some(c) = self.char_at(self.cursor).filter(|c| *c != '\n') else {
+            return;
+        };
+        let flipped: String = if c.is_uppercase() {
+            c.to_lowercase().collect()
+        } else {
+            c.to_uppercase().collect()
+        };
+        let end = self.cursor + c.len_utf8();
+        self.buf.replace_range(self.cursor..end, &flipped);
+        self.cursor = (self.cursor + flipped.len()).min(self.buf.len());
+    }
+
+    /// `J`: pull the next line up, separated by exactly one space.
+    fn join_line(&mut self) {
+        let end = self.line_end(self.cursor);
+        if end >= self.buf.len() {
+            return;
+        }
+        let next_start = end + 1;
+        let next_end = self.line_end(next_start);
+        let tail = self.buf[next_start..next_end].trim_start().to_owned();
+        let needs_space =
+            !tail.is_empty() && !self.buf[self.line_start(self.cursor)..end].ends_with(' ');
+        let joiner = if needs_space { " " } else { "" };
+        self.buf
+            .replace_range(end..next_end, &format!("{joiner}{tail}"));
+        self.cursor = end;
+    }
+
+    /// `O`: open a line above the current one and enter Insert.
+    pub fn open_above(&mut self) {
+        let start = self.line_start(self.cursor);
+        self.buf.insert(start, '\n');
+        self.cursor = start;
+        self.mode = EditorMode::Insert;
+        self.insert_armed = false;
+    }
+
+    /// `P`: paste linewise above the current line, charwise at the
+    /// cursor (as opposed to [`Self::paste`], which goes after).
+    pub fn paste_before(&mut self) {
+        if self.register.is_empty() {
+            return;
+        }
+        if self.linewise {
+            let start = self.line_start(self.cursor);
+            let text = format!("{}\n", self.register.trim_end_matches('\n'));
+            self.buf.insert_str(start, &text);
+            self.cursor = start;
+        } else {
+            let text = self.register.clone();
+            self.buf.insert_str(self.cursor, &text);
+        }
+    }
+
+    // ---- Offsets and lines ---------------------------------------
+
+    /// The char starting at `pos`, if any.
+    fn char_at(&self, pos: usize) -> Option<char> {
+        self.buf.get(pos..).and_then(|s| s.chars().next())
+    }
+
+    /// The offset after the char at `pos` (`pos` itself at the end).
+    fn next_offset(&self, pos: usize) -> usize {
+        self.char_at(pos).map_or(pos, |c| pos + c.len_utf8())
+    }
+
+    /// The offset of the char before `pos` (`0` at the start).
+    fn prev_offset(&self, pos: usize) -> usize {
+        self.buf
+            .get(..pos)
+            .and_then(|s| s.char_indices().next_back())
+            .map_or(0, |(i, _)| i)
+    }
+
+    /// One char left, stopping at the line start (the `h` motion).
+    fn offset_left(&self, pos: usize) -> usize {
+        match self.buf[..pos].char_indices().next_back() {
+            Some((i, c)) if c != '\n' => i,
+            _ => pos,
+        }
+    }
+
+    /// One char right, stopping at the line end (the `l` motion).
+    fn offset_right(&self, pos: usize) -> usize {
+        match self.char_at(pos) {
+            Some(c) if c != '\n' => pos + c.len_utf8(),
+            _ => pos,
+        }
+    }
+
+    /// Apply an offset step `n` times.
+    fn repeat(&self, n: usize, from: usize, step: fn(&Self, usize) -> usize) -> usize {
+        let mut at = from;
+        for _ in 0..n {
+            at = step(self, at);
+        }
+        at
+    }
+
+    /// The 0-based line the cursor is on.
+    fn cursor_line(&self) -> usize {
+        self.buf[..self.cursor].matches('\n').count()
+    }
+
+    /// Total line count (a trailing newline does not open a new line).
+    fn line_count(&self) -> usize {
+        self.buf.matches('\n').count() + 1
+    }
+
+    /// Byte offset of `line`/`col`, both clamped.
+    fn line_col_offset(&self, line: usize, col: usize) -> usize {
+        let last = self.line_count().saturating_sub(1);
+        let line = line.min(last);
+        let mut start = 0usize;
+        for _ in 0..line {
+            start = self.line_end(start);
+            if start < self.buf.len() {
+                start += 1;
+            }
+        }
+        let end = self.line_end(start);
+        let mut pos = start;
+        for c in self.buf[start..end].chars().take(col) {
+            pos += c.len_utf8();
+        }
+        pos
+    }
+
+    /// The first non-blank char of the line containing `pos` (`^`).
+    fn first_non_blank(&self, pos: usize) -> usize {
+        let start = self.line_start(pos);
+        let end = self.line_end(pos);
+        let indent = self.buf[start..end]
+            .char_indices()
+            .find(|&(_, c)| !c.is_whitespace())
+            .map_or(0, |(i, _)| i);
+        start + indent
+    }
+
+    /// `g_`: the last non-blank char of the line.
+    fn first_non_blank_backwards_from_line_end(&self) -> usize {
+        let start = self.line_start(self.cursor);
+        let end = self.line_end(self.cursor);
+        self.buf[start..end]
+            .char_indices()
+            .rfind(|&(_, c)| !c.is_whitespace())
+            .map_or(start, |(i, _)| start + i)
+    }
+
+    /// `w`/`W` from `pos`: past the current run, then past the blanks.
+    fn word_forward_from(&self, pos: usize, big: bool) -> usize {
+        let mut at = pos;
+        if let Some(c) = self.char_at(at) {
+            let class = char_class(c, big);
+            if class != CharClass::Blank {
+                while let Some(c) = self.char_at(at) {
+                    if char_class(c, big) == class {
+                        at += c.len_utf8();
+                    } else {
+                        break;
+                    }
+                }
+            }
+        }
+        while let Some(c) = self.char_at(at) {
+            if char_class(c, big) == CharClass::Blank {
+                at += c.len_utf8();
+            } else {
+                break;
+            }
+        }
+        at
+    }
+
+    /// `b`/`B` from `pos`: back over blanks, then to the run's start.
+    fn word_backward_from(&self, pos: usize, big: bool) -> usize {
+        let mut at = self.prev_offset(pos);
+        if at == pos {
+            return 0;
+        }
+        while at > 0 {
+            match self.char_at(at) {
+                Some(c) if char_class(c, big) == CharClass::Blank => at = self.prev_offset(at),
+                _ => break,
+            }
+        }
+        let Some(class) = self
+            .char_at(at)
+            .map(|c| char_class(c, big))
+            .filter(|c| *c != CharClass::Blank)
+        else {
+            return at;
+        };
+        while let Some((i, c)) = self.buf[..at].char_indices().next_back() {
+            if char_class(c, big) == class {
+                at = i;
+            } else {
+                break;
+            }
+        }
+        at
+    }
+
+    /// `e`/`E` from `pos`: forward to the end of the next run.
+    fn word_end_from(&self, pos: usize, big: bool) -> usize {
+        let mut at = self.next_offset(pos);
+        while let Some(c) = self.char_at(at) {
+            if char_class(c, big) == CharClass::Blank {
+                at = self.next_offset(at);
+            } else {
+                break;
+            }
+        }
+        let Some(class) = self.char_at(at).map(|c| char_class(c, big)) else {
+            return self.prev_offset(self.buf.len());
+        };
+        while let Some(c) = self.char_at(self.next_offset(at)) {
+            if char_class(c, big) == class && self.next_offset(at) != at {
+                at = self.next_offset(at);
+            } else {
+                break;
+            }
+        }
+        at
+    }
+
+    /// `ge`/`gE`: backwards to the previous run's end.
+    fn word_end_back(&self, pos: usize, big: bool, n: usize) -> usize {
+        let mut at = pos;
+        for _ in 0..n {
+            at = self.prev_offset(at);
+            while at > 0 {
+                match self.char_at(at) {
+                    Some(c) if char_class(c, big) == CharClass::Blank => at = self.prev_offset(at),
+                    _ => break,
+                }
+            }
+        }
+        at
+    }
+
+    /// `}`: the next blank line, or the last line.
+    fn paragraph_forward(&self, n: usize) -> usize {
+        let last = self.line_count().saturating_sub(1);
+        let mut line = self.cursor_line();
+        for _ in 0..n {
+            let mut next = line + 1;
+            while next <= last && !self.line_is_blank(next) {
+                next += 1;
+            }
+            line = next.min(last);
+        }
+        self.line_col_offset(line, 0)
+    }
+
+    /// `{`: the previous blank line, or line 0.
+    fn paragraph_backward(&self, n: usize) -> usize {
+        let mut line = self.cursor_line();
+        for _ in 0..n {
+            let mut prev = line;
+            loop {
+                if prev == 0 {
+                    break;
+                }
+                prev -= 1;
+                if self.line_is_blank(prev) {
+                    break;
+                }
+            }
+            line = prev;
+        }
+        self.line_col_offset(line, 0)
+    }
+
+    /// True when `line` holds nothing but whitespace.
+    fn line_is_blank(&self, line: usize) -> bool {
+        let start = self.line_col_offset(line, 0);
+        self.buf[start..self.line_end(start)].trim().is_empty()
+    }
+
+    /// Normalise a linewise register to always end in a newline.
+    fn as_lines(text: &str) -> String {
+        let mut out = text.to_owned();
+        if !out.ends_with('\n') {
+            out.push('\n');
+        }
+        out
+    }
+
+    /// The stroke of the chord in progress, if any.
     #[must_use]
     pub const fn pending_stroke(&self) -> Option<char> {
-        self.pending
+        self.pending.stroke()
     }
 
     /// The pending vim count (0 = none) - the caller's cancel guard.
@@ -4882,9 +5995,21 @@ impl BodyEditor {
         self.count
     }
 
+    /// Consume the count typed for a plain motion or edit.
     fn take_count(&mut self) -> usize {
+        self.count_given = self.count > 0;
         let n = self.count.max(1);
         self.count = 0;
+        n
+    }
+
+    /// Consume both halves of `[count]op[count]motion` — vim multiplies
+    /// them, so `2d3w` deletes six words.
+    fn take_count_for_op(&mut self) -> usize {
+        self.count_given = self.count > 0 || self.op_count > 0;
+        let n = self.count.max(1) * self.op_count.max(1);
+        self.count = 0;
+        self.op_count = 0;
         n
     }
 

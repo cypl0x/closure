@@ -1215,8 +1215,11 @@ fn visual_line_extends_and_deletes() {
     app.on_key(&mut sh, "d", false, false, Some('d'));
     assert_eq!(app.body_buffer(), "a\nd");
     assert_eq!(app.body_mode(), closure_shell_core::EditorMode::Normal);
+    // A linewise delete parks the cursor on the line that moved up into
+    // the deleted range (vim's rule), so "d" is the current line and the
+    // linewise paste lands below it.
     app.on_key(&mut sh, "p", false, false, Some('p'));
-    assert_eq!(app.body_buffer(), "a\nb\nc\nd");
+    assert_eq!(app.body_buffer(), "a\nd\nb\nc");
 }
 
 #[test]

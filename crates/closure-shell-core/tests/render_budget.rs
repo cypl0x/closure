@@ -33,9 +33,11 @@ fn fixture() -> (tempfile::TempDir, Shell, ModalApp) {
     let dir = tempfile::tempdir().expect("tmp");
     let mut src = String::new();
     for i in 0..40 {
-        src.push_str(&format!(
-            "* TODO Head {i}\n:PROPERTIES:\n:ID: 01HQBUDGET{i:014}\n:END:\nbody line for {i}\n"
-        ));
+        use std::fmt::Write as _;
+        let _ = writeln!(
+            src,
+            "* TODO Head {i}\n:PROPERTIES:\n:ID: 01HQBUDGET{i:014}\n:END:\nbody line for {i}"
+        );
     }
     fs::write(dir.path().join("notes.org"), src).expect("write");
     let vault = Vault::open(dir.path()).expect("open");
@@ -65,7 +67,7 @@ fn the_fold_flag_agrees_with_the_vault() {
     let (_d, mut shell, mut app) = fixture();
     app.select(3, &shell);
     app.run(&mut shell, "toggle-fold");
-    for row in app.rows(&shell).iter() {
+    for row in &app.rows(&shell) {
         assert_eq!(
             row.folded,
             closure_shell_core::is_row_folded(&shell, &row.id),
