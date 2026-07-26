@@ -18,6 +18,7 @@ fn big_app(n: usize) -> App {
             id: format!("id-{i}"),
             title: format!("Headline number {i} about things"),
             body: format!("body line for {i}\nsecond line {i}\n"),
+            ..HeadlineRecord::default()
         })
         .collect();
     app.set_headlines(headlines);

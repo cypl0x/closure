@@ -59,7 +59,7 @@ pub const fn mode_bindings(
 
 /// One headline as the shell sees it: where it lives, its stable
 /// block id, and its title.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct HeadlineRecord {
     /// File containing the headline.
     pub path: PathBuf,
@@ -69,6 +69,14 @@ pub struct HeadlineRecord {
     pub title: String,
     /// Headline body text (for inline editing).
     pub body: String,
+    /// TODO keyword, when the headline carries one.
+    pub todo: Option<String>,
+    /// `[#A]`-style priority letter.
+    pub priority: Option<char>,
+    /// Headline tags, without the surrounding colons.
+    pub tags: Vec<String>,
+    /// Whether `:VISIBILITY: folded` is set (the fold state).
+    pub folded: bool,
 }
 
 /// Which input surface the shell is on.
@@ -115,11 +123,37 @@ pub enum AppMode {
     Journal,
     /// Scheduled jobs declared in the vault.
     Cron,
+    /// Typing the selected headline's tags, space-separated.
+    EditTags,
+    /// Observed network flows with their allow/block verdict.
+    Sniffer,
+    /// Sync peers and their connection state.
+    Sync,
+    /// The LLM transcript, with a composer for the next question.
+    Llm,
+    /// Merge conflicts, each offering ours/theirs.
+    Conflicts,
+    /// The undo history of the selected file as a jumpable list.
+    UndoHistory,
     /// The vim-style `:` command line. Understands the small set of
     /// commands muscle memory reaches for (`:w`, `:q`, `:wq`, `:x`)
     /// and falls through to any command name, so it is a superset of
     /// the palette rather than a replacement for it.
     Ex,
+}
+
+/// One unresolved merge conflict as the shell shows it: which block and
+/// field diverged, and the two candidate values.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ConflictRow {
+    /// Block id the conflict is on.
+    pub block: String,
+    /// Conflicting field — `title` or `body`.
+    pub field: String,
+    /// The local value.
+    pub ours: String,
+    /// The incoming value.
+    pub theirs: String,
 }
 
 /// The link graph as three lists: hubs `(id, title, inbound)`,
@@ -133,6 +167,10 @@ pub type LinkGraph = (
 /// Elm-style application state for the terminal shell. Strokes go in
 /// via [`Self::handle_stroke`]; rendering reads the accessors. No
 /// terminal I/O lives here, which keeps every transition testable.
+// The flags are independent one-shot signals to the driver (quit, undo,
+// redo) plus two display toggles — grouping them into sub-structs would
+// only add a level of indirection to a flat state bag.
+#[allow(clippy::struct_excessive_bools)]
 pub struct App {
     paths: Vec<PathBuf>,
     selected: Option<usize>,
@@ -185,6 +223,33 @@ pub struct App {
     cut_request: Option<String>,
     paste_request: Option<String>,
     agenda: Vec<(PathBuf, String)>,
+    /// Which headline of the selected file the editing chords act on.
+    /// The Headlines list moves it; Browse-level chords read it, so
+    /// `t`/`p`/`z` hit the headline the user last looked at.
+    head_cursor: usize,
+    todo_request: Option<(String, Option<String>)>,
+    priority_request: Option<(String, Option<char>)>,
+    tags_request: Option<(String, Vec<String>)>,
+    /// Undo-history rows for the selected file as `(label, is_current)`.
+    history: Vec<(String, bool)>,
+    history_request: Option<usize>,
+    /// Headline the open minibuffer (tags) is editing.
+    field_target: Option<String>,
+    /// Observed flows as `(candidate, verdict)`, pushed by the driver.
+    sniffer: Vec<(String, String)>,
+    /// `(candidate, allow)` rule the user toggled.
+    flow_request: Option<(String, bool)>,
+    /// Sync peers as `(address, state)`.
+    peers: Vec<(String, String)>,
+    /// The LLM transcript as `(role, text)`.
+    chat: Vec<(String, String)>,
+    /// Question the user composed for the model.
+    ask_request: Option<String>,
+    /// Whether LLM answers render as org rather than raw text.
+    llm_render: bool,
+    /// Whether the LLM pane is composing rather than reading.
+    llm_composing: bool,
+    conflicts: Vec<ConflictRow>,
 }
 
 impl App {
@@ -253,6 +318,21 @@ impl App {
             cut_request: None,
             paste_request: None,
             agenda: Vec::new(),
+            head_cursor: 0,
+            todo_request: None,
+            priority_request: None,
+            tags_request: None,
+            history: Vec::new(),
+            history_request: None,
+            field_target: None,
+            sniffer: Vec::new(),
+            flow_request: None,
+            peers: Vec::new(),
+            chat: Vec::new(),
+            ask_request: None,
+            llm_render: true,
+            llm_composing: false,
+            conflicts: Vec::new(),
         }
     }
 
@@ -322,6 +402,183 @@ impl App {
     #[must_use]
     pub fn buffer(&self) -> &str {
         self.body.text()
+    }
+
+    /// Consume the `(id, keyword)` TODO change the user asked for.
+    pub const fn take_todo_request(&mut self) -> Option<(String, Option<String>)> {
+        self.todo_request.take()
+    }
+
+    /// Consume the `(id, priority)` change the user asked for.
+    pub const fn take_priority_request(&mut self) -> Option<(String, Option<char>)> {
+        self.priority_request.take()
+    }
+
+    /// Consume the `(id, tags)` change the user asked for.
+    pub const fn take_tags_request(&mut self) -> Option<(String, Vec<String>)> {
+        self.tags_request.take()
+    }
+
+    /// Consume the undo-history index the user jumped to.
+    pub const fn take_history_request(&mut self) -> Option<usize> {
+        self.history_request.take()
+    }
+
+    /// Provide the observed flows as `(candidate, verdict)`.
+    pub fn set_sniffer(&mut self, flows: Vec<(String, String)>) {
+        self.sniffer = flows;
+    }
+
+    /// The sniffer rows, in order.
+    #[must_use]
+    pub fn sniffer_rows(&self) -> Vec<String> {
+        self.sniffer
+            .iter()
+            .map(|(candidate, verdict)| format!("{verdict:<6} {candidate}"))
+            .collect()
+    }
+
+    /// Consume the `(candidate, allow)` flow rule the user toggled.
+    pub const fn take_flow_request(&mut self) -> Option<(String, bool)> {
+        self.flow_request.take()
+    }
+
+    /// Provide the sync peers as `(address, state)`.
+    pub fn set_peers(&mut self, peers: Vec<(String, String)>) {
+        self.peers = peers;
+    }
+
+    /// The peer rows, in order.
+    #[must_use]
+    pub fn peer_rows(&self) -> Vec<String> {
+        self.peers
+            .iter()
+            .map(|(addr, state)| format!("{addr}  [{state}]"))
+            .collect()
+    }
+
+    /// Provide the LLM transcript as `(role, text)`.
+    pub fn set_chat(&mut self, chat: Vec<(String, String)>) {
+        self.chat = chat;
+    }
+
+    /// The transcript rows, in order.
+    #[must_use]
+    pub fn chat_rows(&self) -> Vec<String> {
+        self.chat
+            .iter()
+            .map(|(role, text)| format!("{role}: {text}"))
+            .collect()
+    }
+
+    /// Consume the question the user composed for the model.
+    pub const fn take_ask_request(&mut self) -> Option<String> {
+        self.ask_request.take()
+    }
+
+    /// Whether LLM answers render as org rather than raw text.
+    #[must_use]
+    pub const fn llm_render(&self) -> bool {
+        self.llm_render
+    }
+
+    /// The rows of the open subsystem pane, or its empty state.
+    ///
+    /// An empty list is never shown bare: the terminal binary does not
+    /// run the sniffer, the sync transport or a model client yet, and a
+    /// blank box reads as a broken pane rather than an unfed one.
+    #[must_use]
+    pub fn pane_rows(&self) -> Vec<String> {
+        let (rows, empty) = match self.mode {
+            AppMode::Sniffer => (
+                self.sniffer_rows(),
+                "no flows — the terminal shell does not run the sniffer yet \
+                 (closure sniff --live, or the gpui shell)",
+            ),
+            AppMode::Sync => (
+                self.peer_rows(),
+                "no peer — the terminal shell does not dial the sync transport yet \
+                 (the gpui shell pairs)",
+            ),
+            AppMode::Llm => (
+                self.chat_rows(),
+                "nothing asked — the terminal shell has no model client yet \
+                 (config.org endpoint, or the gpui shell)",
+            ),
+            AppMode::Conflicts => (
+                self.conflict_rows(),
+                "no conflict — merges arrive over sync, which this shell does not run yet",
+            ),
+            _ => return Vec::new(),
+        };
+        if rows.is_empty() {
+            vec![empty.to_owned()]
+        } else {
+            rows
+        }
+    }
+
+    /// Provide the unresolved merge conflicts.
+    pub fn set_conflicts(&mut self, conflicts: Vec<ConflictRow>) {
+        self.conflicts = conflicts;
+    }
+
+    /// The conflict rows, in order — both sides on one line, because a
+    /// terminal has no room for the GUI's three-pane diff.
+    #[must_use]
+    pub fn conflict_rows(&self) -> Vec<String> {
+        self.conflicts
+            .iter()
+            .map(|c| {
+                format!(
+                    "{} {}: ours={:?} theirs={:?}",
+                    c.block, c.field, c.ours, c.theirs
+                )
+            })
+            .collect()
+    }
+
+    /// Provide the selected file's undo history as `(label, is_current)`
+    /// rows, oldest first — pushed in by the driver like every pane.
+    pub fn set_history(&mut self, history: Vec<(String, bool)>) {
+        self.history = history;
+    }
+
+    /// The undo-history rows, in order.
+    #[must_use]
+    pub fn history_rows(&self) -> Vec<String> {
+        self.history
+            .iter()
+            .map(|(label, current)| {
+                let mark = if *current { "*" } else { " " };
+                format!("{mark} {label}")
+            })
+            .collect()
+    }
+
+    /// The headline the editing chords act on: the one under the
+    /// headline cursor in the selected file, if any.
+    fn current_headline(&self) -> Option<&HeadlineRecord> {
+        let path = self.selected_path()?;
+        let mut of_file = self.headlines.iter().filter(|r| r.path.as_path() == path);
+        let nth = self.head_cursor.min(
+            self.headlines
+                .iter()
+                .filter(|r| r.path.as_path() == path)
+                .count()
+                .saturating_sub(1),
+        );
+        of_file.nth(nth)
+    }
+
+    /// The block id of [`Self::current_headline`], or a status line
+    /// saying why there is none.
+    fn current_headline_id(&mut self) -> Option<String> {
+        let id = self.current_headline().map(|r| r.id.clone());
+        if id.is_none() {
+            "no headline here — open a file with headlines first".clone_into(&mut self.status);
+        }
+        id
     }
 
     /// The body editor's vim mode, for the mode indicator.
@@ -774,7 +1031,32 @@ impl App {
             AppMode::Agenda => return self.handle_agenda_stroke(stroke),
             AppMode::BodySearch => return self.handle_bodysearch_stroke(stroke),
             AppMode::EditCell => return self.handle_editcell_stroke(stroke),
+            AppMode::EditTags => return self.handle_edittags_stroke(stroke),
+            AppMode::UndoHistory => return self.handle_history_stroke(stroke),
             AppMode::ConfirmDelete => return self.handle_confirm_stroke(stroke),
+            // The subsystem panes own their navigation keys but let
+            // everything else reach the trie, so the chords that act on
+            // the cursor row (`g b`, `g o`, `g t`) still fire.
+            AppMode::Sniffer => {
+                if self.handle_list_pane_stroke(stroke, self.sniffer.len()) {
+                    return;
+                }
+            }
+            AppMode::Sync => {
+                if self.handle_list_pane_stroke(stroke, self.peers.len()) {
+                    return;
+                }
+            }
+            AppMode::Conflicts => {
+                if self.handle_list_pane_stroke(stroke, self.conflicts.len()) {
+                    return;
+                }
+            }
+            AppMode::Llm => {
+                if self.handle_llm_stroke(stroke) {
+                    return;
+                }
+            }
             AppMode::Browse => {}
         }
         match self.trie.step(stroke) {
@@ -810,8 +1092,12 @@ impl App {
             "j" | "<down>" => {
                 let last = self.file_headlines().len().saturating_sub(1);
                 self.result_cursor = (self.result_cursor + 1).min(last);
+                self.head_cursor = self.result_cursor;
             }
-            "k" | "<up>" => self.result_cursor = self.result_cursor.saturating_sub(1),
+            "k" | "<up>" => {
+                self.result_cursor = self.result_cursor.saturating_sub(1);
+                self.head_cursor = self.result_cursor;
+            }
             "r" => {
                 let target = self
                     .file_headlines()
@@ -1458,6 +1744,161 @@ impl App {
         }
     }
 
+    /// `M-k`/`M-j`: reorder the cursor headline among its siblings.
+    ///
+    /// The vault only knows `move_after`, so moving up is "put the
+    /// previous sibling below us" — the same rule the GUI applies.
+    fn move_subtree(&mut self, up: bool) {
+        let ids: Vec<String> = self
+            .file_headlines()
+            .iter()
+            .map(|(_, id)| (*id).to_owned())
+            .collect();
+        let here = self.head_cursor.min(ids.len().saturating_sub(1));
+        let other = if up {
+            here.checked_sub(1)
+        } else {
+            Some(here + 1).filter(|n| *n < ids.len())
+        };
+        let (Some(other), true) = (other, !ids.is_empty()) else {
+            return;
+        };
+        // Whoever ends up second in the pair is the one that moves.
+        self.move_request = Some(if up {
+            (ids[other].clone(), ids[here].clone())
+        } else {
+            (ids[here].clone(), ids[other].clone())
+        });
+    }
+
+    fn handle_edittags_stroke(&mut self, stroke: &str) {
+        match stroke {
+            "ESC" => {
+                self.mode = AppMode::Browse;
+                self.query.clear();
+                self.field_target = None;
+            }
+            "RET" => {
+                if let Some(id) = self.field_target.take() {
+                    let tags: Vec<String> =
+                        self.query.split_whitespace().map(str::to_owned).collect();
+                    self.tags_request = Some((id, tags));
+                }
+                self.mode = AppMode::Browse;
+                self.query.clear();
+            }
+            "SPC" => self.query.push(' '),
+            "DEL" => {
+                self.query.pop();
+            }
+            s => {
+                let mut chars = s.chars();
+                if let (Some(c), None) = (chars.next(), chars.next()) {
+                    self.query.push(c);
+                }
+            }
+        }
+    }
+
+    /// The sniffer, sync and conflict panes are cursor lists over rows
+    /// the driver pushed; only the row source differs.
+    ///
+    /// Returns `false` for strokes the pane does not own, so they fall
+    /// through to the chord trie — that is what keeps `g b`, `g o` and
+    /// `g t` alive while a pane holds the screen.
+    fn handle_list_pane_stroke(&mut self, stroke: &str, len: usize) -> bool {
+        match stroke {
+            "j" | "<down>" => {
+                self.result_cursor = (self.result_cursor + 1).min(len.saturating_sub(1));
+            }
+            "k" | "<up>" => self.result_cursor = self.result_cursor.saturating_sub(1),
+            "ESC" | "q" | "h" | "DEL" => {
+                self.mode = AppMode::Browse;
+                self.result_cursor = 0;
+            }
+            _ => return false,
+        }
+        true
+    }
+
+    /// The LLM pane reads the transcript until `i` starts composing;
+    /// then it is a minibuffer that sends on RET.
+    fn handle_llm_stroke(&mut self, stroke: &str) -> bool {
+        if !self.llm_composing {
+            if stroke == "i" {
+                self.llm_composing = true;
+                self.query.clear();
+                return true;
+            }
+            return self.handle_list_pane_stroke(stroke, self.chat.len());
+        }
+        match stroke {
+            "ESC" => {
+                self.llm_composing = false;
+                self.query.clear();
+            }
+            "RET" => {
+                if !self.query.is_empty() {
+                    self.ask_request = Some(std::mem::take(&mut self.query));
+                }
+                self.llm_composing = false;
+            }
+            "SPC" => self.query.push(' '),
+            "DEL" => {
+                self.query.pop();
+            }
+            s => {
+                let mut chars = s.chars();
+                if let (Some(c), None) = (chars.next(), chars.next()) {
+                    self.query.push(c);
+                }
+            }
+        }
+        true
+    }
+
+    /// `g o` / `g t`: take one side of the cursor conflict. The write
+    /// rides the rename/body channels the shell already drains, so
+    /// conflict resolution is an ordinary edit (I8).
+    fn resolve_conflict(&mut self, ours: bool) {
+        let Some(c) = self.conflicts.get(self.result_cursor).cloned() else {
+            "no conflict here — g m lists them".clone_into(&mut self.status);
+            return;
+        };
+        let value = if ours { c.ours } else { c.theirs };
+        if c.field == "body" {
+            self.body_request = Some((c.block, value));
+        } else {
+            self.rename_request = Some((c.block, value));
+        }
+        self.conflicts.remove(self.result_cursor);
+        self.result_cursor = self
+            .result_cursor
+            .min(self.conflicts.len().saturating_sub(1));
+    }
+
+    fn handle_history_stroke(&mut self, stroke: &str) {
+        match stroke {
+            "j" | "<down>" => {
+                let last = self.history.len().saturating_sub(1);
+                self.result_cursor = (self.result_cursor + 1).min(last);
+            }
+            "k" | "<up>" => self.result_cursor = self.result_cursor.saturating_sub(1),
+            "RET" => {
+                if !self.history.is_empty() {
+                    self.history_request = Some(self.result_cursor);
+                }
+                self.mode = AppMode::Browse;
+                self.result_cursor = 0;
+            }
+            "ESC" | "q" | "h" | "DEL" => {
+                self.mode = AppMode::Browse;
+                self.result_cursor = 0;
+            }
+            _ => {}
+        }
+    }
+
     fn apply_command(&mut self, cmd: &str) {
         let last = self.paths.len().checked_sub(1);
         match cmd {
@@ -1556,7 +1997,176 @@ impl App {
                     self.scroll = 0;
                 }
             }
-            _ => {}
+            other => self.apply_headline_command(other),
+        }
+    }
+
+    /// The commands that act on the cursor headline or open a subsystem
+    /// pane. Split from [`Self::apply_command`] only for length; the
+    /// two together are the shell's whole command vocabulary.
+    fn apply_headline_command(&mut self, cmd: &str) {
+        match cmd {
+            // --- Headline edits. Each resolves the cursor headline and
+            // parks a request; the driver performs the vault write.
+            "toggle-todo" => {
+                let next = match self.current_headline().and_then(|r| r.todo.as_deref()) {
+                    None => Some("TODO".to_owned()),
+                    Some("TODO") => Some("DONE".to_owned()),
+                    Some(_) => None,
+                };
+                if let Some(id) = self.current_headline_id() {
+                    self.todo_request = Some((id, next));
+                }
+            }
+            "cycle-priority" => {
+                let next = match self.current_headline().and_then(|r| r.priority) {
+                    None => Some('A'),
+                    Some('A') => Some('B'),
+                    Some('B') => Some('C'),
+                    Some(_) => None,
+                };
+                if let Some(id) = self.current_headline_id() {
+                    self.priority_request = Some((id, next));
+                }
+            }
+            "edit-tags" => {
+                let tags = self
+                    .current_headline()
+                    .map(|r| r.tags.join(" "))
+                    .unwrap_or_default();
+                if let Some(id) = self.current_headline_id() {
+                    self.field_target = Some(id);
+                    self.query = tags;
+                    self.mode = AppMode::EditTags;
+                }
+            }
+            "toggle-fold" => {
+                // Folding is `:VISIBILITY:` in the file, so it rides the
+                // property channel the GUI uses (I1: it round-trips).
+                let next = if self.current_headline().is_some_and(|r| r.folded) {
+                    "all"
+                } else {
+                    "folded"
+                };
+                if let Some(id) = self.current_headline_id() {
+                    self.property_request = Some((id, "VISIBILITY".to_owned(), next.to_owned()));
+                }
+            }
+            "promote" | "demote" => {
+                if let Some(id) = self.current_headline_id() {
+                    self.struct_request = Some((cmd.to_owned(), id));
+                }
+            }
+            "move-subtree-up" | "move-subtree-down" => self.move_subtree(cmd == "move-subtree-up"),
+            "add-heading" => {
+                if let Some(id) = self.current_headline_id() {
+                    self.add_request = Some((id, "untitled".to_owned()));
+                }
+            }
+            "add-sibling" => {
+                if let Some(id) = self.current_headline_id() {
+                    self.add_target = Some(id);
+                    self.query.clear();
+                    self.mode = AppMode::AddHeadline;
+                }
+            }
+            "rename" => {
+                let title = self
+                    .current_headline()
+                    .map(|r| r.title.clone())
+                    .unwrap_or_default();
+                if let Some(id) = self.current_headline_id() {
+                    self.rename_target = Some(id);
+                    self.query = title;
+                    self.mode = AppMode::Rename;
+                }
+            }
+            "delete" => {
+                if let Some(id) = self.current_headline_id() {
+                    self.delete_target = Some(id);
+                    self.mode = AppMode::ConfirmDelete;
+                }
+            }
+            // `edit-special` opens the same editor: in a terminal the
+            // body *is* the special buffer, so pointing them at one
+            // surface is honest rather than a second half-editor.
+            "edit-body" | "edit-special" => {
+                let body = self
+                    .current_headline()
+                    .map(|r| r.body.clone())
+                    .unwrap_or_default();
+                if let Some(id) = self.current_headline_id() {
+                    self.body_target = Some(id);
+                    self.body.load(body);
+                    self.mode = AppMode::EditBody;
+                }
+            }
+            "edit-property" => {
+                if let Some(id) = self.current_headline_id() {
+                    self.cell_target = Some(id);
+                    self.query.clear();
+                    self.mode = AppMode::EditCell;
+                }
+            }
+            other => self.apply_pane_command(other),
+        }
+    }
+
+    /// The commands that open a subsystem pane or act on the row one
+    /// holds. Split from [`Self::apply_headline_command`] for length.
+    fn apply_pane_command(&mut self, cmd: &str) {
+        match cmd {
+            "eval-block" => {
+                let target = self
+                    .selected_path()
+                    .filter(|_| !self.block_results().is_empty())
+                    .map(Path::to_path_buf);
+                match target {
+                    Some(path) => self.eval_request = Some((path, self.result_cursor)),
+                    None => {
+                        "eval-block: this file has no source blocks".clone_into(&mut self.status);
+                    }
+                }
+            }
+            "undo-history" => {
+                self.mode = AppMode::UndoHistory;
+                self.result_cursor = self
+                    .history
+                    .iter()
+                    .position(|(_, current)| *current)
+                    .unwrap_or(0);
+            }
+            // --- Subsystem panes. The driver owns the sockets and the
+            // model client; the pane only shows rows and parks requests.
+            "sniffer" => {
+                self.mode = AppMode::Sniffer;
+                self.result_cursor = 0;
+            }
+            "sync" => {
+                self.mode = AppMode::Sync;
+                self.result_cursor = 0;
+            }
+            "llm" => {
+                self.mode = AppMode::Llm;
+                self.result_cursor = 0;
+                self.llm_composing = false;
+            }
+            "conflicts" => {
+                self.mode = AppMode::Conflicts;
+                self.result_cursor = 0;
+            }
+            "block-flow" | "allow-flow" => match self.sniffer.get(self.result_cursor) {
+                Some((candidate, _)) => {
+                    self.flow_request = Some((candidate.clone(), cmd == "allow-flow"));
+                }
+                None => "no flow here — g n lists the observed flows".clone_into(&mut self.status),
+            },
+            "resolve-ours" => self.resolve_conflict(true),
+            "resolve-theirs" => self.resolve_conflict(false),
+            "toggle-llm-render" => self.llm_render = !self.llm_render,
+            // A chord the keymap advertises but this shell cannot serve
+            // must say so — silence reads as a broken keyboard (I4).
+            other => self.status = format!("{other}: not available in the terminal shell"),
         }
     }
 }
@@ -1756,6 +2366,18 @@ fn now_secs() -> u64 {
 /// feature that exists only in the window is a feature you cannot use
 /// over ssh, which is most of what a terminal shell is for.
 fn sync_panes(app: &mut App, vault: &Vault) {
+    // The undo history belongs to the selected file, like undo itself.
+    let history = app
+        .selected_path()
+        .and_then(|p| vault.document(p))
+        .map(closure_core::Document::history_view)
+        .map(|rows| {
+            rows.into_iter()
+                .map(|r| (r.label.clone(), r.is_current))
+                .collect()
+        })
+        .unwrap_or_default();
+    app.set_history(history);
     let mut counts: std::collections::HashMap<closure_core::BlockId, usize> =
         std::collections::HashMap::new();
     for targets in vault.link_graph().values() {
@@ -1820,6 +2442,13 @@ fn sync_app(app: &mut App, vault: &Vault) {
                 id: h.id().as_str().to_owned(),
                 title: h.title().to_owned(),
                 body: h.body_text().to_owned(),
+                todo: h.todo().map(str::to_owned),
+                priority: h.priority(),
+                tags: h.tags().to_vec(),
+                folded: h
+                    .properties()
+                    .iter()
+                    .any(|(k, v)| k == "VISIBILITY" && v == "folded"),
             });
         }
     }
@@ -1979,6 +2608,27 @@ fn apply_requests(
             .map_err(vault_err)?;
         sync_app(app, vault);
     }
+    if let Some((id, keyword)) = app.take_todo_request() {
+        vault
+            .set_todo(
+                &closure_core::BlockId::from_existing(&id),
+                keyword.as_deref(),
+            )
+            .map_err(vault_err)?;
+        sync_app(app, vault);
+    }
+    if let Some((id, priority)) = app.take_priority_request() {
+        vault
+            .set_priority(&closure_core::BlockId::from_existing(&id), priority)
+            .map_err(vault_err)?;
+        sync_app(app, vault);
+    }
+    if let Some((id, tags)) = app.take_tags_request() {
+        vault
+            .set_tags(&closure_core::BlockId::from_existing(&id), &tags)
+            .map_err(vault_err)?;
+        sync_app(app, vault);
+    }
     apply_structure_requests(app, vault, journal)
 }
 
@@ -2057,6 +2707,12 @@ fn apply_structure_requests(
         && let Some(path) = app.selected_path().map(Path::to_path_buf)
     {
         let r = vault.redo_in(&path);
+        run(r, app, vault)?;
+    }
+    if let Some(index) = app.take_history_request()
+        && let Some(path) = app.selected_path().map(Path::to_path_buf)
+    {
+        let r = vault.jump_history_in(&path, index);
         run(r, app, vault)?;
     }
     Ok(())
@@ -2278,6 +2934,36 @@ fn body_editor_lines(app: &App) -> Vec<String> {
     out
 }
 
+/// The overlay for the single-line minibuffers: a prompt plus the live
+/// query, and no rows underneath.
+fn minibuffer_overlay(app: &App) -> Option<(String, Vec<String>)> {
+    let prompt = match app.mode() {
+        AppMode::Capture => "capture",
+        AppMode::Rename => "rename",
+        AppMode::AddHeadline => "add headline",
+        AppMode::EditCell => "set property KEY=VALUE",
+        AppMode::EditTags => "tags (space separated)",
+        _ => return None,
+    };
+    Some((format!("{prompt}: {}", app.query()), Vec::new()))
+}
+
+/// The overlay for the four subsystem panes, each a driver-fed list
+/// whose title carries the chords that act on the cursor row (V1).
+fn subsystem_overlay(app: &App) -> Option<(String, Vec<String>)> {
+    let title = match app.mode() {
+        AppMode::Sniffer => "sniffer — g b block · g w allow · ESC back".to_owned(),
+        AppMode::Sync => "sync peers — ESC back".to_owned(),
+        AppMode::Llm => format!(
+            "llm ({}) — i ask · g r toggle render · ESC back",
+            if app.llm_render() { "org" } else { "raw" }
+        ),
+        AppMode::Conflicts => "conflicts — g o ours · g t theirs · ESC back".to_owned(),
+        _ => return None,
+    };
+    Some((title, app.pane_rows()))
+}
+
 fn overlay_content(app: &App) -> Option<(String, Vec<String>)> {
     match app.mode() {
         AppMode::Search => Some((
@@ -2304,9 +2990,11 @@ fn overlay_content(app: &App) -> Option<(String, Vec<String>)> {
                 .map(|(p, t)| format!("{t}    ({})", p.display()))
                 .collect(),
         )),
-        AppMode::Capture => Some((format!("capture: {}", app.query()), Vec::new())),
-        AppMode::Rename => Some((format!("rename: {}", app.query()), Vec::new())),
-        AppMode::AddHeadline => Some((format!("add headline: {}", app.query()), Vec::new())),
+        AppMode::Capture
+        | AppMode::Rename
+        | AppMode::AddHeadline
+        | AppMode::EditCell
+        | AppMode::EditTags => minibuffer_overlay(app),
         AppMode::ConfirmDelete => Some((
             "delete subtree? y = confirm, other = cancel".to_owned(),
             Vec::new(),
@@ -2317,10 +3005,6 @@ fn overlay_content(app: &App) -> Option<(String, Vec<String>)> {
                 .iter()
                 .map(|(_, cells)| cells.join("  |  "))
                 .collect(),
-        )),
-        AppMode::EditCell => Some((
-            format!("set property KEY=VALUE: {}", app.query()),
-            Vec::new(),
         )),
         AppMode::Graph => Some(("link graph".to_owned(), app.graph_rows())),
         AppMode::Journal => Some(("recorded commands".to_owned(), app.journal_rows())),
@@ -2351,6 +3035,13 @@ fn overlay_content(app: &App) -> Option<(String, Vec<String>)> {
                 .collect(),
         )),
         AppMode::EditBody => Some((app.body_status(), body_editor_lines(app))),
+        AppMode::UndoHistory => Some((
+            "undo history — j/k move · RET jump · ESC back".to_owned(),
+            app.history_rows(),
+        )),
+        AppMode::Sniffer | AppMode::Sync | AppMode::Llm | AppMode::Conflicts => {
+            subsystem_overlay(app)
+        }
         AppMode::Agenda => Some((
             "agenda (SCHEDULED / DEADLINE)".to_owned(),
             app.agenda_results()

@@ -20,6 +20,7 @@ fn rec(id: &str, title: &str, body: &str) -> HeadlineRecord {
         id: id.to_owned(),
         title: title.to_owned(),
         body: body.to_owned(),
+        ..HeadlineRecord::default()
     }
 }
 

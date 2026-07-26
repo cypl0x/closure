@@ -345,6 +345,7 @@ fn rec(path: &str, id: &str, title: &str) -> closure_tui::HeadlineRecord {
         id: id.to_owned(),
         title: title.to_owned(),
         body: String::new(),
+        ..closure_tui::HeadlineRecord::default()
     }
 }
 
@@ -354,6 +355,7 @@ fn rec_body(path: &str, id: &str, title: &str, body: &str) -> closure_tui::Headl
         id: id.to_owned(),
         title: title.to_owned(),
         body: body.to_owned(),
+        ..closure_tui::HeadlineRecord::default()
     }
 }
 
