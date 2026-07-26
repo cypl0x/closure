@@ -4345,7 +4345,7 @@ pub const fn editor_hint(mode: EditorMode) -> &'static str {
             "type · TAB tempo (<s…) · C-n complete · C-a/e/k/y readline · Esc → NORMAL"
         }
         EditorMode::Normal => {
-            "w b e f t move · diw caw dt, operate · dd yy p · A I O J ~ r · v V visual · Esc cancel"
+            "w b e f t move · diw caw dt, operate · . repeat · dd yy p · A I O J ~ r · v V · Esc"
         }
         EditorMode::Visual | EditorMode::VisualLine => {
             "motions + iw aw i( a\" extend · d c y > < operate · o swap ends · Esc → NORMAL"
@@ -4359,6 +4359,11 @@ pub const fn editor_hint(mode: EditorMode) -> &'static str {
 /// Pure and unicode-safe (the cursor is a byte offset kept on a `char`
 /// boundary); a shell paints `text()` + `cursor_line_col()` and feeds
 /// keys through [`ModalApp`].
+// The flags are independent latches on the editing session (a count was
+// typed, the register is linewise, an Insert burst is armed, a change is
+// recording, a replay is running); grouping them would only add
+// indirection to what is already one cohesive editor state.
+#[allow(clippy::struct_excessive_bools)]
 #[derive(Debug, Clone)]
 pub struct BodyEditor {
     buf: String,
@@ -4384,6 +4389,20 @@ pub struct BodyEditor {
     count_given: bool,
     /// Last `f`/`F`/`t`/`T` as `(kind, target)`, for `;` and `,`.
     last_find: Option<(char, char)>,
+    /// Strokes of the command being typed, kept until it is known to be
+    /// a change worth remembering for `.`.
+    scratch: Vec<String>,
+    /// Text typed during the Insert session of the change in progress.
+    insert_text: String,
+    /// Whether the live Insert session belongs to a recorded change.
+    recording_insert: bool,
+    /// The last change as `(strokes, inserted text)` — what `.` replays.
+    last_change: Option<(Vec<String>, String)>,
+    /// True while `.` is replaying, so the replay records nothing.
+    replaying: bool,
+    /// Bumped by every [`Self::checkpoint`]: the signal that a command
+    /// actually changed the buffer, and so is a change `.` can repeat.
+    edit_seq: u64,
     /// Editor-local undo snapshots (buffer, cursor), newest last.
     undo_stack: Vec<(String, usize)>,
     /// Redo snapshots cleared by any fresh edit.
@@ -4416,6 +4435,12 @@ impl BodyEditor {
             op_count: 0,
             count_given: false,
             last_find: None,
+            scratch: Vec::new(),
+            insert_text: String::new(),
+            recording_insert: false,
+            last_change: None,
+            replaying: false,
+            edit_seq: 0,
             undo_stack: Vec::new(),
             redo_stack: Vec::new(),
             insert_armed: false,
@@ -4490,6 +4515,22 @@ impl BodyEditor {
 
     /// Switch to Normal (from Insert `Esc`).
     pub fn to_normal(&mut self) {
+        // Leaving Insert closes a recorded change: the strokes that
+        // opened it plus everything typed inside become one `.` unit,
+        // exactly as vim scopes a change.
+        if self.recording_insert {
+            self.recording_insert = false;
+            if self.scratch.is_empty() {
+                // An Insert session nobody opened with a command (the
+                // editor loads in Insert) is not a repeatable change.
+                self.insert_text.clear();
+            } else {
+                self.last_change = Some((
+                    std::mem::take(&mut self.scratch),
+                    std::mem::take(&mut self.insert_text),
+                ));
+            }
+        }
         self.mode = EditorMode::Normal;
         // vim rule: leaving Insert steps the cursor back onto the last
         // typed char (clamped at the line start by left()).
@@ -4516,6 +4557,7 @@ impl BodyEditor {
     /// Insert `c` at the cursor.
     pub fn insert_char(&mut self, c: char) {
         self.insert_guard();
+        self.record_typed(c.encode_utf8(&mut [0u8; 4]));
         self.buf.insert(self.cursor, c);
         self.cursor += c.len_utf8();
     }
@@ -4523,14 +4565,25 @@ impl BodyEditor {
     /// Insert `s` at the cursor, cursor after it.
     pub fn insert_str(&mut self, s: &str) {
         self.insert_guard();
+        self.record_typed(s);
         self.buf.insert_str(self.cursor, s);
         self.cursor += s.len();
+    }
+
+    /// Note text typed inside a change, so `.` can retype it.
+    fn record_typed(&mut self, s: &str) {
+        if self.recording_insert && !self.replaying {
+            self.insert_text.push_str(s);
+        }
     }
 
     /// Delete the char before the cursor (Insert Backspace).
     pub fn backspace(&mut self) {
         if let Some((i, _)) = self.buf[..self.cursor].char_indices().next_back() {
             self.insert_guard();
+            if self.recording_insert && !self.replaying {
+                self.insert_text.pop();
+            }
             self.buf.remove(i);
             self.cursor = i;
         }
@@ -4786,6 +4839,62 @@ impl BodyEditor {
     /// cancels the edit on `Esc` when [`Self::pending_stroke`] is clear
     /// and the mode is Normal.
     pub fn modal_key(&mut self, key: &str) {
+        // `.` is not itself a change and must never be recorded, or it
+        // would repeat itself.
+        if key == "." && self.pending == Pending::None {
+            return self.repeat_change();
+        }
+        if !self.replaying {
+            self.scratch.push(key.to_owned());
+        }
+        let before = self.edit_seq;
+        self.dispatch_modal_key(key);
+        if !self.replaying {
+            self.record_step(before);
+        }
+    }
+
+    /// Decide what the stroke just dispatched means for `.`.
+    ///
+    /// A command that changed the buffer is remembered; one that only
+    /// moved the cursor is forgotten; a chord still mid-flight is kept
+    /// so `d` + `i` + `w` commits as the single change `diw`.
+    fn record_step(&mut self, before: u64) {
+        if self.mode == EditorMode::Insert {
+            // The change continues into the typing; `to_normal` commits.
+            self.recording_insert = true;
+            self.insert_text.clear();
+        } else if self.pending == Pending::None && self.count == 0 && self.op_count == 0 {
+            // A bare count is still mid-command — `3` of `3x` must stay
+            // in the scratch or `.` would repeat a countless `x`.
+            if self.edit_seq == before {
+                self.scratch.clear();
+            } else {
+                self.last_change = Some((std::mem::take(&mut self.scratch), String::new()));
+            }
+        }
+    }
+
+    /// `.`: replay the last change at the cursor.
+    fn repeat_change(&mut self) {
+        let Some((keys, text)) = self.last_change.clone() else {
+            return;
+        };
+        self.replaying = true;
+        for k in &keys {
+            self.dispatch_modal_key(k);
+        }
+        if !text.is_empty() {
+            self.insert_str(&text);
+        }
+        if self.mode == EditorMode::Insert {
+            self.to_normal();
+        }
+        self.replaying = false;
+    }
+
+    /// The modal vocabulary proper, with no `.`-recording around it.
+    fn dispatch_modal_key(&mut self, key: &str) {
         // A chord waiting on a literal char argument consumes any key,
         // digits included — `r5` and `df3` are not counts.
         match self.pending {
@@ -4862,6 +4971,12 @@ impl BodyEditor {
                 let n = self.take_count();
                 if let Some((target, _)) = self.motion(key, n, false) {
                     self.cursor = target;
+                    // `$` as an operator target is the line end; as a
+                    // cursor move it lands *on* the last char, because
+                    // a Normal cursor never sits past one (vim).
+                    if key == "$" {
+                        self.cursor = self.offset_left(self.cursor);
+                    }
                 }
             }
             // --- Mode switches.
@@ -6072,6 +6187,10 @@ impl BodyEditor {
 
     /// Record the current state before a mutating edit (bounded at 50).
     fn checkpoint(&mut self) {
+        // Every buffer change funnels through here, which makes this the
+        // one honest signal that a command was a *change* (what `.`
+        // repeats) rather than a motion.
+        self.edit_seq = self.edit_seq.wrapping_add(1);
         if self.undo_stack.len() >= 50 {
             self.undo_stack.remove(0);
         }

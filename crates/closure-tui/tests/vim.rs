@@ -113,7 +113,7 @@ fn the_cursor_is_exposed_for_the_renderer() {
     feed(&mut app, "j");
     assert_eq!(app.body_cursor(), (1, 0));
     feed(&mut app, "$");
-    assert_eq!(app.body_cursor(), (1, 3));
+    assert_eq!(app.body_cursor(), (1, 2), "on the last char, not past it");
 }
 
 #[test]

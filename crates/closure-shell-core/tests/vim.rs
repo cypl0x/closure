@@ -627,6 +627,99 @@ fn visual_capital_d_and_capital_c_are_linewise() {
     assert_eq!(e.text(), "three");
 }
 
+// === Dot-repeat. ===
+
+#[test]
+fn dot_repeats_an_operator_and_text_object() {
+    let mut e = ed("one two three");
+    feed(&mut e, "daw");
+    assert_eq!(e.text(), "two three");
+    feed(&mut e, ".");
+    assert_eq!(e.text(), "three");
+}
+
+#[test]
+fn dot_repeats_a_single_char_edit() {
+    let mut e = ed("abcdef");
+    feed(&mut e, "x");
+    feed(&mut e, "..");
+    assert_eq!(e.text(), "def");
+}
+
+#[test]
+fn dot_replays_the_typing_of_a_change() {
+    let mut e = ed("foo bar");
+    feed(&mut e, "ciw");
+    e.insert_str("xy");
+    e.to_normal();
+    assert_eq!(e.text(), "xy bar");
+    feed(&mut e, "w.");
+    assert_eq!(e.text(), "xy xy", "the inserted text comes back too");
+}
+
+#[test]
+fn dot_replays_an_insert_session() {
+    let mut e = ed("ab");
+    feed(&mut e, "i");
+    e.insert_str("-");
+    e.to_normal();
+    assert_eq!(e.text(), "-ab");
+    feed(&mut e, "$.");
+    assert_eq!(e.text(), "-a-b");
+}
+
+#[test]
+fn dot_carries_the_count_it_was_recorded_with() {
+    let mut e = ed("abcdefgh");
+    feed(&mut e, "3x");
+    assert_eq!(e.text(), "defgh");
+    feed(&mut e, ".");
+    assert_eq!(e.text(), "gh");
+}
+
+#[test]
+fn a_motion_is_not_a_change_and_does_not_arm_dot() {
+    let mut e = ed("one two");
+    feed(&mut e, "x");
+    feed(&mut e, "w");
+    feed(&mut e, ".");
+    assert_eq!(e.text(), "ne wo", "the x repeated, not the w");
+}
+
+#[test]
+fn yank_and_undo_do_not_arm_dot() {
+    let mut e = ed("one two");
+    feed(&mut e, "x"); // arms dot
+    feed(&mut e, "yiw");
+    feed(&mut e, "u");
+    let before = e.text().to_owned();
+    feed(&mut e, ".");
+    assert_ne!(e.text(), before, "dot still repeats the x");
+}
+
+#[test]
+fn dot_repeats_a_line_delete() {
+    let mut e = ed("a\nb\nc\nd");
+    feed(&mut e, "dd");
+    feed(&mut e, ".");
+    assert_eq!(e.text(), "c\nd");
+}
+
+#[test]
+fn dot_before_any_change_is_a_safe_no_op() {
+    let mut e = ed("abc");
+    feed(&mut e, ".");
+    assert_eq!(e.text(), "abc");
+}
+
+#[test]
+fn dot_does_not_repeat_itself_into_a_loop() {
+    let mut e = ed("abcdef");
+    feed(&mut e, "x");
+    feed(&mut e, ".");
+    assert_eq!(e.text(), "cdef", "two deletions, not a runaway");
+}
+
 // === Regressions: the pre-existing vocabulary keeps working. ===
 
 #[test]
