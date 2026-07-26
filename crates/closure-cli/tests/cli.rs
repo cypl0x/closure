@@ -544,10 +544,18 @@ fn history_replay_reapplies_journal_commands() {
         format!("* [1700000000] cmd: cmd=rename&id={id}&arg=Replayed+title\n"),
     )
     .unwrap();
-    let out = ok(&["history", v.path().to_str().unwrap(), "--replay", "--dry-run"]);
+    let out = ok(&[
+        "history",
+        v.path().to_str().unwrap(),
+        "--replay",
+        "--dry-run",
+    ]);
     assert!(out.contains("would replay cmd"), "dry run lists: {out}");
     let out = ok(&["history", v.path().to_str().unwrap(), "--replay"]);
     assert!(out.contains("replayed cmd"), "{out}");
     let after = closure_store::Vault::open(v.path()).unwrap();
-    assert!(after.find_by_title("Replayed title").is_some(), "replay applied");
+    assert!(
+        after.find_by_title("Replayed title").is_some(),
+        "replay applied"
+    );
 }

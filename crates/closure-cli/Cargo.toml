@@ -61,3 +61,4 @@ tempfile = "3"
 # mappings (gtk widget_tree / qt qml_view) need no GUI feature.
 closure-shell-gtk = { path = "../closure-shell-gtk" }
 closure-shell-qt = { path = "../closure-shell-qt" }
+closure-shell-slint = { path = "../closure-shell-slint" }

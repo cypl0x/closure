@@ -1,9 +1,9 @@
 //! Pointing the LLM at an OpenAI-compatible endpoint.
 //!
-//! The provider set already covers Anthropic, OpenAI and a local
+//! The provider set already covers Anthropic, `OpenAI` and a local
 //! Ollama, but "OpenAI-compatible" is a whole ecosystem — vLLM,
-//! llama.cpp's server, LM Studio, OpenRouter, a company proxy — and
-//! all of them are "OpenAI's wire format at a different URL". That is
+//! `llama.cpp`'s server, LM Studio, `OpenRouter`, a company proxy — and
+//! all of them are "`OpenAI`'s wire format at a different URL". That is
 //! one setting, not a new provider each time.
 //!
 //! It lives in the vault's `config.org` like everything else: plain

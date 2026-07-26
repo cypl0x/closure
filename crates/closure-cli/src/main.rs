@@ -1629,7 +1629,12 @@ fn now_time_tuple() -> (u8, u8, u8, u8, u8) {
     (m, h, 1, 1, dw)
 }
 
-fn cmd_history(vault: &Path, grep: Option<&str>, replay: bool, dry_run: bool) -> Result<(), String> {
+fn cmd_history(
+    vault: &Path,
+    grep: Option<&str>,
+    replay: bool,
+    dry_run: bool,
+) -> Result<(), String> {
     let journal = closure_record::Journal::new(vault, true);
     let entries = grep
         .map_or_else(|| journal.entries(), |needle| journal.filtered(needle))

@@ -169,6 +169,23 @@ fn qt_qml_mapping_pins_its_structure() {
 }
 
 #[test]
+fn slint_mapping_pins_its_structure() {
+    // Q13: the fifth G8 column — the same canonical tree renders to a
+    // .slint document.
+    let s = closure_shell_slint::slint_view(&canonical_tree());
+    for marker in [
+        "export component Main inherits Window",
+        "GroupBox",
+        "ListView",
+        "PopupWindow",
+        "toast-warning",
+        "Ship parser",
+    ] {
+        assert!(s.contains(marker), "slint missing {marker}: {s}");
+    }
+}
+
+#[test]
 fn every_mapping_is_deterministic() {
     let t = canonical_tree();
     assert_eq!(
@@ -186,6 +203,10 @@ fn every_mapping_is_deterministic() {
     assert_eq!(
         closure_shell_qt::qml_view(&t),
         closure_shell_qt::qml_view(&t)
+    );
+    assert_eq!(
+        closure_shell_slint::slint_view(&t),
+        closure_shell_slint::slint_view(&t)
     );
     assert_eq!(view_to_json(&t), view_to_json(&t));
     assert!(!serialize_view(&t).is_empty());
