@@ -173,3 +173,44 @@ fn known_dates_round_trip() {
     // Century boundary second: date -u -d "2000-12-31 23:59:59" +%s
     assert_eq!(closure_shell_gpui::today_ymd(978_307_199), "2000-12-31");
 }
+
+// === Where this shell opens its pairing socket ===
+//
+// The reference shell is the one that actually dials and accepts, so
+// it is the one that has to read the two address keys and hand them to
+// the kernel-side `SyncApp` before anything binds.
+
+#[test]
+fn resolve_sync_addrs_reads_the_vault_config() {
+    let dir = tempfile::tempdir().expect("tmp");
+    fs::write(
+        dir.path().join("config.org"),
+        "#+BEGIN_SRC closure-config\n\
+         sync_bind = 0.0.0.0:9999\n\
+         sync_advertise = 100.101.102.103\n\
+         #+END_SRC\n",
+    )
+    .expect("write");
+    let (bind, advertise) = closure_shell_gpui::resolve_sync_addrs(dir.path());
+    assert_eq!(bind.to_string(), "0.0.0.0:9999");
+    assert_eq!(
+        advertise.expect("set").to_string(),
+        "100.101.102.103",
+        "the operator's choice of reachable address"
+    );
+}
+
+#[test]
+fn resolve_sync_addrs_defaults_to_the_pairing_port_on_every_interface() {
+    let empty = tempfile::tempdir().expect("tmp");
+    let (bind, advertise) = closure_shell_gpui::resolve_sync_addrs(empty.path());
+    assert_eq!(
+        bind.to_string(),
+        "0.0.0.0:7420",
+        "absent config, a peer on the network can still reach us"
+    );
+    assert!(
+        advertise.is_none(),
+        "and which address it dials is detected, not guessed by config"
+    );
+}

@@ -11,6 +11,7 @@
 
 #![forbid(unsafe_code)]
 
+use std::net::{IpAddr, SocketAddr};
 use std::path::PathBuf;
 
 use closure_org::{NodeKind, parse};
@@ -64,6 +65,15 @@ pub struct Config {
     /// `shell, python`). Empty = default-deny (the security default,
     /// C1a): no code block runs unless its language is listed here.
     pub eval_trust: Vec<String>,
+    /// Socket the pairing listener binds (`0.0.0.0:7420` to accept from
+    /// the network, `127.0.0.1:7420` to stay machine-local). Unset
+    /// leaves the choice to the shell.
+    pub sync_bind: Option<SocketAddr>,
+    /// Which of this host's addresses a peer should dial — what the
+    /// ticket names. Only the operator knows whether the peer is on the
+    /// LAN or the VPN, so a multi-homed host says here. Unset means
+    /// "detect it"; the port always comes from the bound socket.
+    pub sync_advertise: Option<IpAddr>,
 }
 
 impl Default for Config {
@@ -89,6 +99,8 @@ impl Default for Config {
             llm_tools: None,
             sniffer_blocklist: None,
             eval_trust: Vec::new(),
+            sync_bind: None,
+            sync_advertise: None,
         }
     }
 }
@@ -279,6 +291,30 @@ impl Config {
                         .collect();
                 }
                 "record_commands" => cfg.record_commands = parse_bool(key, value)?,
+                "sync_bind" => {
+                    cfg.sync_bind =
+                        Some(
+                            value
+                                .parse::<SocketAddr>()
+                                .map_err(|e| ConfigError::BadValue {
+                                    key: key.into(),
+                                    reason: format!(
+                                        "{line_info}: expected `host:port` (e.g. `0.0.0.0:7420`), \
+                                 got `{value}` — {e}"
+                                    ),
+                                })?,
+                        );
+                }
+                "sync_advertise" => {
+                    cfg.sync_advertise =
+                        Some(value.parse::<IpAddr>().map_err(|e| ConfigError::BadValue {
+                            key: key.into(),
+                            reason: format!(
+                                "{line_info}: expected a bare IP address (the port comes \
+                                 from the bound socket), got `{value}` — {e}"
+                            ),
+                        })?);
+                }
                 "search_backend" => cfg.search_backend = Some(value.into()),
                 "llm_tools" => {
                     cfg.llm_tools = Some(

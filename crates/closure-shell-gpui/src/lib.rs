@@ -103,6 +103,29 @@ pub fn resolve_view(vault_path: &Path) -> closure_shell_core::ViewMode {
     }
 }
 
+/// Where pairing listens, and which address its ticket hands out.
+///
+/// `sync_bind` is the socket to open, `sync_advertise` the address a
+/// peer should dial. Absent config binds
+/// [`closure_shell_core::DEFAULT_SYNC_BIND`] — the closure port on
+/// every interface — and lets the advertised address be detected, which
+/// is right for a LAN and wrong exactly when the machine has a second
+/// route (a mesh VPN); that is what the key is for. Never an error: I9
+/// validates at load, and a vault with a bad address must still open.
+#[must_use]
+pub fn resolve_sync_addrs(vault_path: &Path) -> (std::net::SocketAddr, Option<std::net::IpAddr>) {
+    closure_config::Config::from_path(&vault_path.join("config.org")).map_or(
+        (closure_shell_core::DEFAULT_SYNC_BIND, None),
+        |cfg| {
+            (
+                cfg.sync_bind
+                    .unwrap_or(closure_shell_core::DEFAULT_SYNC_BIND),
+                cfg.sync_advertise,
+            )
+        },
+    )
+}
+
 /// Semantic classification of a body-editor span (per line).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BodySpan {
@@ -1117,6 +1140,7 @@ pub fn run(vault_path: &Path) -> Result<(), String> {
     let theme = resolve_theme(vault_path);
     let input_mode = resolve_input_mode(vault_path);
     let view = resolve_view(vault_path);
+    let (sync_bind, sync_advertise) = resolve_sync_addrs(vault_path);
     // The window manager needs a name for the title bar, the task
     // switcher and the Wayland app id — an untitled window is the one
     // the user cannot find again. The vault is what distinguishes two
@@ -1158,6 +1182,10 @@ pub fn run(vault_path: &Path) -> Result<(), String> {
                     // the file buffer before the first frame, so the
                     // window the user asked for is the one they get.
                     view.set_view(view_pref);
+                    // Pairing has to know where it listens before the
+                    // user opens the surface: the ticket shown there is
+                    // what gets pasted into the other machine.
+                    view.app.configure_sync(sync_bind, sync_advertise);
                     view
                 })
             },
@@ -1333,6 +1361,12 @@ pub struct GpuiView {
     toast_gen: u64,
     /// Where an open context menu is anchored, if one is open.
     menu: Option<(gpui::Point<gpui::Pixels>, closure_shell_core::ContextTarget)>,
+    /// Whether an inbound-sync accept is currently waiting on the
+    /// listener. A network-facing listener that had nobody to trust
+    /// refuses to accept, and the paste that fixes that has to re-arm
+    /// it — without this, the second accept would be spawned onto a
+    /// socket the first one is already blocked on.
+    accept_armed: bool,
     /// Whether the full which-key panel is pinned open. A pending
     /// chord shows it regardless; this is the explicit "show me
     /// everything" toggle.
@@ -1406,6 +1440,7 @@ impl GpuiView {
             chat_seen: 0,
             toast_gen: 0,
             menu: None,
+            accept_armed: false,
             which_key_open: false,
             which_key_scroll: gpui::ScrollHandle::new(),
             palette_scroll: gpui::UniformListScrollHandle::new(),
@@ -1667,7 +1702,14 @@ impl GpuiView {
         cx: &mut Context<Self>,
     ) {
         let asking = self.app.surface() == ModalSurface::Llm && key == "enter";
+        let pairing = self.app.surface() == ModalSurface::Sync && key == "enter";
         self.app.on_key(&mut self.shell, key, ctrl, alt, text);
+        // Pasting a ticket is what makes a network-facing listener
+        // willing to answer, so it is also what re-arms the accept the
+        // guard refused.
+        if pairing && !self.accept_armed && self.app.sync_mut().listener().is_some() {
+            self.accept_one(cx);
+        }
         // Enter on the assistant surface records the question in the
         // core; sending it is I/O, so it happens here.
         if asking
@@ -3744,8 +3786,13 @@ impl GpuiView {
                 return;
             }
         };
-        self.app
-            .set_status(format!("listening on {bound} — hand over your ticket"));
+        // What we bound and what a peer dials are two addresses now, and
+        // the useful one is the second: `0.0.0.0:7420` in a status line
+        // tells the user nothing they can hand to anyone.
+        let ticket_addr = self.app.sync_mut().ticket_addr();
+        self.app.set_status(format!(
+            "listening on {bound}, dial {ticket_addr} — hand over your ticket"
+        ));
         cx.notify();
         self.accept_one(cx);
     }
@@ -3754,10 +3801,21 @@ impl GpuiView {
     /// next wait.
     fn accept_one(&mut self, cx: &Context<Self>) {
         self.app.sync_mut().snapshot(&self.shell);
+        // A socket open to the network is answered only once there is
+        // someone to tell apart from a stranger — an inbound round
+        // writes into the vault, and an empty trusted set accepts any
+        // well-formed signature.
+        if let Err(why) = self.app.sync_mut().inbound_ready() {
+            self.accept_armed = false;
+            self.app.set_status(why);
+            return;
+        }
         let sync = self.app.sync_mut();
         let Some(listener) = sync.listener() else {
+            self.accept_armed = false;
             return;
         };
+        self.accept_armed = true;
         let mut session = sync.session().clone();
         let signing = sync.signing_key().clone();
         let trusted = sync.trusted_keys();
@@ -3798,7 +3856,10 @@ impl GpuiView {
                     // A failed accept is the end of the loop rather than
                     // a spin: the listener is reported broken and the
                     // user can arm it again.
-                    Err(e) => this.app.set_status(format!("inbound sync failed: {e}")),
+                    Err(e) => {
+                        this.accept_armed = false;
+                        this.app.set_status(format!("inbound sync failed: {e}"));
+                    }
                 }
                 cx.notify();
             });

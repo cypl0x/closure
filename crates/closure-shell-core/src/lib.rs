@@ -2629,6 +2629,18 @@ pub struct Peer {
     pub state: PeerState,
 }
 
+/// Where pairing listens when nothing has said otherwise: the closure
+/// port, on every interface.
+///
+/// It used to be `127.0.0.1:7420`, which made every ticket a lie the
+/// moment it left the machine — the peer dialled its own loopback and
+/// reached itself. Binding wide is only half the fix; the other half is
+/// that a network-facing listener refuses inbound rounds until it has
+/// been given a peer to trust ([`SyncApp::inbound_ready`]), and that
+/// nothing binds at all until the user asks to listen.
+pub const DEFAULT_SYNC_BIND: std::net::SocketAddr =
+    std::net::SocketAddr::new(std::net::IpAddr::V4(std::net::Ipv4Addr::UNSPECIFIED), 7420);
+
 /// Collaboration state: our identity, the ticket we hand out, the
 /// peers we have been given, and the replica that merges with them.
 ///
@@ -2639,12 +2651,57 @@ pub struct Peer {
 /// that decides *what* happens is here, and testable without a network.
 pub struct SyncApp {
     name: String,
+    /// What the ticket names — where a *peer* dials us. Not necessarily
+    /// where we bind: `0.0.0.0` is bindable and undialable.
     addr: std::net::SocketAddr,
+    /// The socket we open. `0.0.0.0:7420` accepts from the network;
+    /// `127.0.0.1:…` keeps pairing on this machine.
+    bind: std::net::SocketAddr,
+    /// Which of our addresses to advertise, when the operator has said.
+    /// `None` means detect it at bind time.
+    advertise: Option<std::net::IpAddr>,
     signing: closure_sync::SigningKey,
     session: closure_sync::SyncSession,
     peers: Vec<Peer>,
     /// Bound listener, once a shell has asked to accept connections.
     listener: Option<std::sync::Arc<std::net::TcpListener>>,
+}
+
+/// Which of this host's addresses a peer should be told to dial.
+///
+/// An explicit choice wins — on a machine that is on a LAN *and* a
+/// mesh VPN, both addresses are "local" and only the operator knows
+/// which one the peer can route to. Otherwise the bind address is the
+/// answer, except when it is the unspecified one (`0.0.0.0` / `::`),
+/// which means "every interface" to `bind` and nothing at all to
+/// `connect`; then we ask the routing table which source address it
+/// would use to leave this host.
+fn advertised_ip(bind: std::net::IpAddr, advertise: Option<std::net::IpAddr>) -> std::net::IpAddr {
+    if let Some(ip) = advertise {
+        return ip;
+    }
+    if !bind.is_unspecified() {
+        return bind;
+    }
+    detect_outbound_ip().unwrap_or(match bind {
+        std::net::IpAddr::V4(_) => std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST),
+        std::net::IpAddr::V6(_) => std::net::IpAddr::V6(std::net::Ipv6Addr::LOCALHOST),
+    })
+}
+
+/// The source address the kernel would use to reach the outside world.
+///
+/// A connected UDP socket is the portable way to ask: `connect` on a
+/// datagram socket only fixes the peer and picks a route — no packet
+/// is sent, nothing is resolved, and no name server is consulted, so
+/// this stays honest on an offline machine (it simply returns `None`).
+/// The target is in TEST-NET-3 (RFC 5737), an address reserved for
+/// documentation precisely so that nothing real is ever implied.
+fn detect_outbound_ip() -> Option<std::net::IpAddr> {
+    let socket = std::net::UdpSocket::bind(("0.0.0.0", 0)).ok()?;
+    socket.connect(("203.0.113.1", 9)).ok()?;
+    let ip = socket.local_addr().ok()?.ip();
+    (!ip.is_unspecified()).then_some(ip)
 }
 
 impl std::fmt::Debug for SyncApp {
@@ -2655,6 +2712,7 @@ impl std::fmt::Debug for SyncApp {
         f.debug_struct("SyncApp")
             .field("name", &self.name)
             .field("addr", &self.addr)
+            .field("bind", &self.bind)
             .field("peers", &self.peers.len())
             .finish_non_exhaustive()
     }
@@ -2668,14 +2726,53 @@ impl SyncApp {
     /// user decides there is.
     #[must_use]
     pub fn new(name: &str, addr: std::net::SocketAddr) -> Self {
+        Self::with_bind(name, addr, None)
+    }
+
+    /// An identity that binds one address and advertises another.
+    ///
+    /// The two are the same on a single-homed host and different on
+    /// every interesting one: a machine reachable over a mesh VPN binds
+    /// `0.0.0.0` and hands out its `100.x` address, because that is the
+    /// one its peer can route to. Passing `None` for `advertise` asks
+    /// for detection — see [`advertised_ip`].
+    ///
+    /// The ticket is correct immediately, before anything is bound:
+    /// pairing starts by pasting it, and a ticket that only becomes
+    /// true after the user finds the "listen" button is a trap.
+    #[must_use]
+    pub fn with_bind(
+        name: &str,
+        bind: std::net::SocketAddr,
+        advertise: Option<std::net::IpAddr>,
+    ) -> Self {
         Self {
             name: name.to_owned(),
-            addr,
+            addr: std::net::SocketAddr::new(advertised_ip(bind.ip(), advertise), bind.port()),
+            bind,
+            advertise,
             signing: closure_sync::generate_key(),
             session: closure_sync::SyncSession::new(name),
             peers: Vec::new(),
             listener: None,
         }
+    }
+
+    /// Point the (not yet opened) socket somewhere else.
+    ///
+    /// A shell reads `config.org` after the state exists, so the
+    /// addresses arrive late; the keypair must survive that, which is
+    /// why this is a setter and not a fresh [`Self::with_bind`] — a new
+    /// identity would invalidate a ticket the user may already have
+    /// handed over. Once a listener is open the bind address is a fact
+    /// rather than a preference and only the advertised one moves.
+    pub fn rebind(&mut self, bind: std::net::SocketAddr, advertise: Option<std::net::IpAddr>) {
+        self.advertise = advertise;
+        if self.listener.is_none() {
+            self.bind = bind;
+        }
+        self.addr =
+            std::net::SocketAddr::new(advertised_ip(self.bind.ip(), advertise), self.bind.port());
     }
 
     /// Our replica name.
@@ -2834,9 +2931,14 @@ impl SyncApp {
         if let Some(listener) = &self.listener {
             return listener.local_addr().map_err(|e| format!("{e}"));
         }
-        let listener = std::net::TcpListener::bind(self.addr).map_err(|e| format!("{e}"))?;
+        let listener = std::net::TcpListener::bind(self.bind).map_err(|e| format!("{e}"))?;
         let bound = listener.local_addr().map_err(|e| format!("{e}"))?;
-        self.addr = bound;
+        self.bind = bound;
+        // The port is only knowable after the bind when it was 0, and
+        // the address a peer dials is never the unspecified one we may
+        // have just bound — so the ticket is recomputed from both.
+        self.addr =
+            std::net::SocketAddr::new(advertised_ip(bound.ip(), self.advertise), bound.port());
         self.listener = Some(std::sync::Arc::new(listener));
         Ok(bound)
     }
@@ -2845,6 +2947,38 @@ impl SyncApp {
     #[must_use]
     pub const fn ticket_addr(&self) -> std::net::SocketAddr {
         self.addr
+    }
+
+    /// The socket we bind (or have bound) — where we listen, as opposed
+    /// to [`Self::ticket_addr`], which is where a peer dials.
+    #[must_use]
+    pub const fn bind_addr(&self) -> std::net::SocketAddr {
+        self.bind
+    }
+
+    /// Whether it is safe to accept an inbound round right now.
+    ///
+    /// The transport verifies every frame's signature, but a peer is
+    /// only *authenticated* against a trusted set; an empty one is
+    /// integrity-only mode, where any self-consistent signature is
+    /// accepted. On loopback that set being empty means "anyone on this
+    /// machine", which is the user. On `0.0.0.0` it would mean anyone
+    /// who can reach the port — and an inbound round writes titles and
+    /// bodies into the vault. So a network-facing listener answers only
+    /// once it has been given someone to trust.
+    ///
+    /// # Errors
+    ///
+    /// The reason to show the user, naming the thing they have to do.
+    pub fn inbound_ready(&self) -> Result<(), String> {
+        if self.bind.ip().is_loopback() || !self.peers.is_empty() {
+            return Ok(());
+        }
+        Err(format!(
+            "listening on {} but trusting nobody — paste your peer's ticket first, \
+             or nothing that dials in can be told apart from a stranger",
+            self.bind
+        ))
     }
 
     /// The bound listener, for a shell that wants to accept on its own
@@ -7541,6 +7675,12 @@ pub struct ModalApp {
     /// Collaboration state, created on first use so a shell that never
     /// pairs never generates a keypair.
     sync: Option<SyncApp>,
+    /// Where pairing binds and what it advertises, from `config.org`.
+    /// Held here rather than in [`SyncApp`] because the shell reads the
+    /// config long before anything pairs, and creating the state early
+    /// would generate a keypair for a session that never asked to.
+    sync_bind: std::net::SocketAddr,
+    sync_advertise: Option<std::net::IpAddr>,
     /// The ticket-entry field on the Sync surface.
     sync_buf: String,
     /// The assistant transcript, oldest first.
@@ -7634,6 +7774,8 @@ impl ModalApp {
             special_return: None,
             block_out: None,
             sync: None,
+            sync_bind: DEFAULT_SYNC_BIND,
+            sync_advertise: None,
             sync_buf: String::new(),
             chat: Vec::new(),
             chat_buf: String::new(),
@@ -8454,12 +8596,29 @@ impl ModalApp {
     /// Collaboration state, created on first use.
     ///
     /// Creating it generates a keypair, so a session that never pairs
-    /// never generates one. The listen address is the loopback default
-    /// (`127.0.0.1:7420`); a shell binding a real socket replaces it.
+    /// never generates one. It binds [`DEFAULT_SYNC_BIND`] unless
+    /// [`Self::configure_sync`] has said otherwise.
     pub fn sync_mut(&mut self) -> &mut SyncApp {
-        self.sync.get_or_insert_with(|| {
-            SyncApp::new("local", std::net::SocketAddr::from(([127, 0, 0, 1], 7420)))
-        })
+        let (bind, advertise) = (self.sync_bind, self.sync_advertise);
+        self.sync
+            .get_or_insert_with(|| SyncApp::with_bind("local", bind, advertise))
+    }
+
+    /// Point pairing at a socket, from the vault's `config.org`.
+    ///
+    /// Called before the user pairs, and safe afterwards: an identity
+    /// that already exists is moved rather than replaced, so a ticket
+    /// handed out earlier keeps its key (see [`SyncApp::rebind`]).
+    pub fn configure_sync(
+        &mut self,
+        bind: std::net::SocketAddr,
+        advertise: Option<std::net::IpAddr>,
+    ) {
+        self.sync_bind = bind;
+        self.sync_advertise = advertise;
+        if let Some(sync) = self.sync.as_mut() {
+            sync.rebind(bind, advertise);
+        }
     }
 
     /// Collaboration state, or `None` until something has asked for it

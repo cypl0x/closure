@@ -329,3 +329,251 @@ fn listening_twice_keeps_the_first_socket() {
     let second = app.listen().expect("still bound");
     assert_eq!(first, second, "one listener, one address");
 }
+
+// === reaching another machine ===
+//
+// Everything above pairs two replicas that can already see each other.
+// Nothing could: the socket bound `127.0.0.1:7420` and the ticket
+// named it, so a ticket carried to a second machine told that machine
+// to dial *itself*. Which socket to open and which address to hand out
+// are two different questions, and the second one has no single right
+// answer — a host on Tailscale and on a LAN has two reachable
+// addresses and only the operator knows which one the peer is on.
+
+#[test]
+fn a_wide_bind_never_advertises_the_unspecified_address() {
+    // `0.0.0.0` means "every interface" to bind(2) and nothing at all
+    // to connect(2). A ticket naming it is worse than no ticket: it
+    // fails at the peer, after the paste, with a confusing error.
+    let mut app = SyncApp::with_bind("a", "0.0.0.0:0".parse().expect("addr"), None);
+    let bound = app.listen().expect("bound");
+    assert!(bound.ip().is_unspecified(), "we did bind every interface");
+    let advertised = app.ticket_addr();
+    assert!(
+        !advertised.ip().is_unspecified(),
+        "but the ticket names something dialable, got {advertised}"
+    );
+    assert_eq!(
+        advertised.port(),
+        bound.port(),
+        "on the port we actually bound"
+    );
+    assert!(!app.ticket().contains("0.0.0.0"), "{}", app.ticket());
+}
+
+#[test]
+fn an_explicit_advertise_address_wins_over_detection() {
+    // The Tailscale case: bind everything, hand out the one address
+    // the peer can route to.
+    let ip: std::net::IpAddr = "100.101.102.103".parse().expect("ip");
+    let mut app = SyncApp::with_bind("a", "0.0.0.0:0".parse().expect("addr"), Some(ip));
+    let bound = app.listen().expect("bound");
+    assert_eq!(
+        app.ticket_addr(),
+        std::net::SocketAddr::new(ip, bound.port())
+    );
+    assert!(app.ticket().contains("100.101.102.103"), "{}", app.ticket());
+}
+
+#[test]
+fn a_loopback_bind_still_advertises_loopback() {
+    // Two shells on one machine is a real configuration — and the one
+    // every test above uses. Detection must not "improve" it into a
+    // LAN address the local peer would then dial the long way round.
+    let mut app = SyncApp::with_bind("a", "127.0.0.1:0".parse().expect("addr"), None);
+    let bound = app.listen().expect("bound");
+    assert_eq!(
+        app.ticket_addr(),
+        bound,
+        "what we bound is what we hand out"
+    );
+}
+
+#[test]
+fn the_bind_address_is_readable_before_anything_is_bound() {
+    // The pairing surface shows where it will listen; it must not have
+    // to open a socket to find out.
+    let bind: std::net::SocketAddr = "0.0.0.0:7420".parse().expect("addr");
+    let app = SyncApp::with_bind("a", bind, None);
+    assert_eq!(app.bind_addr(), bind);
+}
+
+#[test]
+fn a_public_listener_refuses_inbound_until_a_peer_is_trusted() {
+    // An empty trusted set is integrity-only mode in the transport:
+    // any self-consistent signature is accepted, which on a loopback
+    // socket is nobody and on `0.0.0.0` is anyone on the network. The
+    // widened bind must not quietly widen who may write to the vault.
+    let mut app = SyncApp::with_bind("a", "0.0.0.0:0".parse().expect("addr"), None);
+    let refusal = app.inbound_ready().expect_err("refused");
+    assert!(
+        refusal.contains("ticket"),
+        "and says what to do about it: {refusal}"
+    );
+
+    let peer = SyncApp::new("b", "10.0.0.9:7420".parse().expect("addr"));
+    app.add_peer(&peer.ticket()).expect("pasted");
+    app.inbound_ready()
+        .expect("a trusted peer is what the listener was waiting for");
+}
+
+#[test]
+fn a_loopback_listener_accepts_without_a_pasted_ticket() {
+    // Nobody but this machine can reach it, and refusing here would
+    // break the two-windows-on-one-box flow that already works.
+    let app = SyncApp::with_bind("a", "127.0.0.1:0".parse().expect("addr"), None);
+    app.inbound_ready().expect("loopback needs no ceremony");
+}
+
+#[test]
+fn the_default_pairing_socket_is_reachable_from_the_network() {
+    // The old default (`127.0.0.1:7420`) made every ticket a
+    // machine-local one. A shell that has not been told otherwise now
+    // listens where a peer can reach it.
+    let (_dir, _shell, mut app) = app_fixture();
+    let sync = app.sync_mut();
+    assert!(
+        !sync.bind_addr().ip().is_unspecified() || sync.bind_addr().port() == 7420,
+        "the default names the pairing port"
+    );
+    assert_eq!(sync.bind_addr().to_string(), "0.0.0.0:7420");
+}
+
+#[test]
+fn configuring_the_socket_replaces_the_default() {
+    let (_dir, _shell, mut app) = app_fixture();
+    let bind: std::net::SocketAddr = "0.0.0.0:9999".parse().expect("addr");
+    let ip: std::net::IpAddr = "192.168.1.42".parse().expect("ip");
+    app.configure_sync(bind, Some(ip));
+    let sync = app.sync_mut();
+    assert_eq!(sync.bind_addr(), bind);
+    assert_eq!(
+        sync.ticket_addr(),
+        std::net::SocketAddr::new(ip, 9999),
+        "the ticket is right before a socket is ever opened — that is \
+         what gets pasted into the other machine"
+    );
+}
+
+#[test]
+fn a_wide_bind_pairs_end_to_end_over_a_real_socket() {
+    // The whole point, exercised the way two machines exercise it: bind
+    // every interface, hand over the ticket, and have the peer dial the
+    // address the ticket names — not the one we bound. On a host with
+    // no route out, detection falls back to loopback and this still
+    // pairs; what it must never do is dial `0.0.0.0`.
+    let (_dir_a, shell_a) = vault_with("1", "Mine");
+    let (_dir_b, shell_b) = vault_with("2", "Theirs");
+
+    let mut server = SyncApp::with_bind("a", "0.0.0.0:0".parse().expect("addr"), None);
+    server.listen().expect("bound");
+    server.snapshot(&shell_a);
+
+    let mut client = SyncApp::new("b", "127.0.0.1:0".parse().expect("addr"));
+    client.snapshot(&shell_b);
+
+    // Each side trusts exactly the key in the ticket it was handed.
+    client.add_peer(&server.ticket()).expect("their ticket");
+    server.add_peer(&client.ticket()).expect("our ticket");
+    server
+        .inbound_ready()
+        .expect("a trusted peer makes the public listener answer");
+
+    let dial = closure_sync::SyncTicket::decode(&server.ticket())
+        .expect("ticket decodes")
+        .addr;
+    assert!(
+        !dial.ip().is_unspecified(),
+        "the ticket must name something connect(2) accepts, got {dial}"
+    );
+
+    let listener = server.listener().expect("listening");
+    let mut server_session = server.session().clone();
+    let server_key = server.signing_key().clone();
+    let server_trusts = server.trusted_keys();
+    let accepted = std::thread::spawn(move || {
+        closure_sync::TcpSyncTransport::serve_once_secure(
+            &listener,
+            &mut server_session,
+            &server_key,
+            &server_trusts,
+        )
+        .map(|()| server_session)
+    });
+
+    let mut client_session = client.session().clone();
+    closure_sync::TcpSyncTransport::connect_and_sync_secure(
+        dial,
+        &mut client_session,
+        client.signing_key(),
+        &client.trusted_keys(),
+    )
+    .expect("dialled the address the ticket named");
+    let server_session = accepted.join().expect("thread").expect("served");
+
+    // Both replicas now hold both blocks: the round converged.
+    let ours: Vec<String> = client_session
+        .block_ids()
+        .map(ToString::to_string)
+        .collect();
+    let theirs: Vec<String> = server_session
+        .block_ids()
+        .map(ToString::to_string)
+        .collect();
+    assert_eq!(ours.len(), 2, "client sees both blocks: {ours:?}");
+    assert_eq!(theirs.len(), 2, "server sees both blocks: {theirs:?}");
+}
+
+#[test]
+fn an_untrusted_stranger_is_refused_by_a_paired_listener() {
+    // The other half of widening the bind: once a peer is trusted, a
+    // *third* party's frames are rejected on the wire rather than
+    // merged into the vault.
+    let (_dir, shell) = vault_with("1", "Mine");
+    let mut server = SyncApp::with_bind("a", "127.0.0.1:0".parse().expect("addr"), None);
+    server.listen().expect("bound");
+    server.snapshot(&shell);
+    let friend = SyncApp::new("b", "127.0.0.1:1".parse().expect("addr"));
+    server.add_peer(&friend.ticket()).expect("their ticket");
+
+    let dial = server.ticket_addr();
+    let listener = server.listener().expect("listening");
+    let mut server_session = server.session().clone();
+    let server_key = server.signing_key().clone();
+    let server_trusts = server.trusted_keys();
+    let round = std::thread::spawn(move || {
+        closure_sync::TcpSyncTransport::serve_once_secure(
+            &listener,
+            &mut server_session,
+            &server_key,
+            &server_trusts,
+        )
+    });
+
+    let (_sdir, stranger_shell) = vault_with("9", "Injected");
+    let stranger = SyncApp::new("mallory", "127.0.0.1:2".parse().expect("addr"));
+    let mut stranger_session = stranger.session().clone();
+    stranger_session.record_local(
+        &closure_core::Document::load_str(
+            "* Injected\n:PROPERTIES:\n:ID: 01HQSYNC000000000000009\n:END:\n",
+        )
+        .expect("parse"),
+    );
+    let _ = &stranger_shell;
+    // The stranger's frame is well-formed and correctly self-signed —
+    // it is simply signed by a key nobody pasted.
+    let _ = closure_sync::TcpSyncTransport::connect_and_sync_secure(
+        dial,
+        &mut stranger_session,
+        stranger.signing_key(),
+        &[],
+    );
+    let refusal = round
+        .join()
+        .expect("thread")
+        .expect_err("an unknown signer must not reach the vault");
+    assert!(
+        refusal.to_string().contains("untrusted"),
+        "and refused for that reason, not by accident: {refusal}"
+    );
+}

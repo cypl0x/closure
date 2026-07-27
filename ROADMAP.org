@@ -13,6 +13,37 @@ file is the fine-grained, capability-level queue between them. Blocked
 on a design decision? Record it under [[*Decisions][Decisions]], pick the most
 reversible option, keep moving.
 
+* DONE PAIR-Q14 — a ticket that survives leaving the machine [1/1]
+User backlog, 2026-07-27: "fix the bind address so we can test p2p".
+** DONE P1 bind and advertise are two questions [1/1]
+=SyncApp= bound =127.0.0.1:7420= and put that address in the ticket, so
+every ticket handed to a second machine told it to dial its *own*
+loopback. Two shells on one box paired; two people never could — the
+whole C3a/C3b stack (signed frames over Noise, tickets, CRDT merge) was
+reachable only between windows of the same session.
+=SyncApp::with_bind(name, bind, advertise)= splits the two: =bind= is
+the socket to open (=DEFAULT_SYNC_BIND= = =0.0.0.0:7420=), =advertise=
+is which of this host's addresses the ticket names. Unset =advertise=
+is detected from the routing table (=detect_outbound_ip=: a *connected
+UDP socket* to TEST-NET-3 — picks a source address, sends no packet,
+resolves no name, and returns =None= offline), because =0.0.0.0= is
+bindable and undialable and a ticket naming it fails at the peer after
+the paste. =sync_bind= / =sync_advertise= in config.org carry both,
+typed and validated at load (I9); =sync_advertise= is a bare IP since
+the port is whatever the listener actually bound. The multi-homed case
+— a host on a LAN *and* a mesh VPN, both "local", only one routable
+from the peer — is exactly what the explicit key is for.
+DECISION (2026-07-27): widening the bind must not widen who may write.
+=SyncMessage::from_signed_bytes= treats an empty trusted set as
+integrity-only mode (any self-consistent signature passes), which on
+loopback meant "this machine" and on =0.0.0.0= would mean anyone who
+can reach the port — and an inbound round writes titles and bodies into
+the vault. =SyncApp::inbound_ready= refuses to accept on a
+network-facing listener until a peer ticket has been pasted; pasting
+one re-arms the accept the guard refused (=accept_armed=). Noise NN
+gives confidentiality against a passive listener and nothing against an
+active MITM, so trust still rests on the ticket exchange, out of band.
+
 * DONE GPUI-SHELL-Q13 — the reference shell answers the backlog [6/6]
 User backlog, 2026-07-27. Every item is "after this the user can ___".
 ** DONE R1 the rail: every pane is one click away [1/1]
