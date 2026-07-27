@@ -2837,6 +2837,16 @@ impl LineInput {
 /// otherwise ([`ModalApp::set_body_viewport`]).
 pub const BODY_VIEWPORT_DEFAULT: usize = 20;
 
+/// One zoom step, as a ratio. Doom scales its font by an increment per
+/// press; a ratio is the same idea in a world with no font table.
+const ZOOM_STEP: f32 = 1.1;
+/// Zoom ceiling (`1.1^15` ≈ 4.2×) and floor (`1.1^-7` ≈ 0.51×). Past
+/// either end a "zoom level" stops being one: a wall of one glyph, or a
+/// font nobody can read.
+const ZOOM_MAX_STEPS: i8 = 15;
+/// See [`ZOOM_MAX_STEPS`].
+const ZOOM_MIN_STEPS: i8 = -7;
+
 /// A key the body editor is holding until the rest of its chord
 /// arrives.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -4909,6 +4919,11 @@ pub const fn editor_hint(mode: EditorMode) -> &'static str {
 pub struct BodyEditor {
     buf: String,
     cursor: usize,
+    /// The column vertical motion is *trying* to be in — vim's
+    /// `curswant`. A `j` through a two-character line clamps to it and
+    /// keeps wanting the original, so the next `j` comes back out to
+    /// where you were reading. Cleared by anything horizontal.
+    wanted_col: Option<usize>,
     mode: EditorMode,
     /// Visual-mode selection anchor (byte offset).
     anchor: usize,
@@ -4999,6 +5014,7 @@ impl BodyEditor {
         Self {
             buf: String::new(),
             cursor: 0,
+            wanted_col: None,
             mode: EditorMode::Insert,
             anchor: 0,
             register: String::new(),
@@ -5731,8 +5747,13 @@ impl BodyEditor {
             | "pageup" | "pagedown" | "_" | "+" | "-" | "enter" | "|" | "%" | "C-f" | "C-b"
             | "C-d" | "C-u" => {
                 let n = self.take_count();
+                // A vertical motion keeps aiming at the column it was
+                // aiming at; everything else re-aims at where it lands.
+                let vertical = matches!(key, "j" | "down" | "k" | "up");
+                let wanted = vertical.then(|| self.wanted_col());
                 if let Some((target, _)) = self.motion(key, n, false) {
                     self.cursor = target;
+                    self.set_wanted_col(wanted);
                     // `$` as an operator target is the line end; as a
                     // cursor move it lands *on* the last char, because
                     // a Normal cursor never sits past one (vim).
@@ -6423,14 +6444,37 @@ impl BodyEditor {
 
     /// Resolve `key` to a target offset and how it combines into a
     /// range. `for_op` applies vim's rule that `dw` never joins lines.
+    /// The column a vertical motion should aim for: the one it has been
+    /// aiming for since the last horizontal move, else where the cursor
+    /// is now.
+    fn wanted_col(&self) -> usize {
+        self.wanted_col.unwrap_or_else(|| self.cursor_line_col().1)
+    }
+
+    /// Remember the column for the vertical motions, or forget it.
+    ///
+    /// Everything horizontal — a motion, an edit, a click — decides a
+    /// new column; only `j`/`k` and the arrows inherit one.
+    const fn set_wanted_col(&mut self, col: Option<usize>) {
+        self.wanted_col = col;
+    }
+
     fn motion(&self, key: &str, n: usize, for_op: bool) -> Option<(usize, MotionKind)> {
         use MotionKind::{Exclusive, Inclusive, Linewise};
         let (target, kind) = match key {
             "h" | "left" => (self.repeat(n, self.cursor, Self::offset_left), Exclusive),
             "l" | "right" => (self.repeat(n, self.cursor, Self::offset_right), Exclusive),
-            "j" | "down" => (self.line_col_offset(self.cursor_line() + n, 0), Linewise),
+            // Vertical motion keeps the column, and keeps *wanting* the
+            // column it started in: vim's `curswant`, so passing through
+            // a short line on the way down does not cost you the place
+            // you were reading. It used to be a flat column zero, so
+            // every `j` jumped to the start of the next line.
+            "j" | "down" => (
+                self.line_col_offset(self.cursor_line() + n, self.wanted_col()),
+                Linewise,
+            ),
             "k" | "up" => (
-                self.line_col_offset(self.cursor_line().saturating_sub(n), 0),
+                self.line_col_offset(self.cursor_line().saturating_sub(n), self.wanted_col()),
                 Linewise,
             ),
             "w" | "W" => {
@@ -7064,6 +7108,40 @@ impl BodyEditor {
     }
 
     /// A Visual-mode operator over the charwise selection.
+    /// Insert text from outside the editor at the cursor, as one
+    /// undoable edit, replacing a VISUAL selection if there is one.
+    ///
+    /// Separate from [`Self::insert_str`] because that one is *typing*:
+    /// it feeds the dot-register so `.` retypes it. A clipboard paste
+    /// is not something the user typed, and `.` repeating it would be
+    /// a surprise with somebody else's text in it.
+    pub fn paste_external(&mut self, text: &str) {
+        self.checkpoint();
+        if matches!(self.mode, EditorMode::Visual | EditorMode::VisualLine) {
+            let (lo, hi) = if self.mode == EditorMode::VisualLine {
+                (
+                    self.line_start(self.anchor.min(self.cursor)),
+                    self.line_end(self.anchor.max(self.cursor)),
+                )
+            } else {
+                let (lo, hi) = self.selection();
+                (lo, hi)
+            };
+            self.buf.replace_range(lo..hi, "");
+            self.cursor = lo;
+            self.mode = EditorMode::Normal;
+        }
+        self.buf.insert_str(self.cursor, text);
+        self.cursor += text.len();
+        // A Normal cursor never sits past the last character of the
+        // line it is on.
+        if self.mode == EditorMode::Normal {
+            self.cursor = self
+                .prev_offset(self.cursor)
+                .max(self.line_start(self.cursor));
+        }
+    }
+
     fn visual_operator(&mut self, op: char) {
         if self.mode == EditorMode::VisualLine {
             return self.visual_linewise_operator(op);
@@ -7898,6 +7976,8 @@ pub struct ModalApp {
     recenter: Option<(u8, usize, usize)>,
     /// A body-editor prefix key waiting for the rest of its chord.
     pending_body: Option<BodyPrefix>,
+    /// Buffer text scale, in [`ZOOM_STEP`] powers.
+    zoom_steps: i8,
     /// Whether a row is *actually* selected, as opposed to the cursor
     /// merely sitting somewhere. Escape in the outline clears it, which
     /// is how a capture is told "file this at the top level, not under
@@ -8065,6 +8145,7 @@ impl ModalApp {
             recenter: None,
             pending_body: None,
             selection_active: true,
+            zoom_steps: 0,
             body_scroll: None,
             hist_cursor: 0,
             row_memo: std::cell::RefCell::new(None),
@@ -10556,6 +10637,29 @@ impl ModalApp {
             self.body_recenter_cycle();
             return true;
         }
+        // Doom's `text-scale`, on the same chords the rest of the
+        // desktop uses. It scales the buffer, not the chrome — which is
+        // what text-scale does too.
+        if ctrl {
+            match key {
+                "+" | "=" => {
+                    self.zoom_in();
+                    self.status = format!("zoom {:.0}%", self.zoom() * 100.0);
+                    return true;
+                }
+                "-" => {
+                    self.zoom_out();
+                    self.status = format!("zoom {:.0}%", self.zoom() * 100.0);
+                    return true;
+                }
+                "0" => {
+                    self.zoom_reset();
+                    "zoom 100%".clone_into(&mut self.status);
+                    return true;
+                }
+                _ => {}
+            }
+        }
         if self.pending_body == Some(BodyPrefix::Viewport) {
             self.pending_body = None;
             match key {
@@ -10730,6 +10834,68 @@ impl ModalApp {
     /// and what a test needs to address a position directly).
     pub fn body_set_cursor(&mut self, byte: usize) {
         self.body.set_cursor_byte(byte);
+    }
+
+    /// The buffer's text scale — Doom's `text-scale`, which is a
+    /// property of what you are reading rather than of the chrome
+    /// around it.
+    #[must_use]
+    pub fn zoom(&self) -> f32 {
+        ZOOM_STEP.powi(i32::from(self.zoom_steps))
+    }
+
+    /// One step larger (`C-+` / `C-=`).
+    pub const fn zoom_in(&mut self) {
+        if self.zoom_steps < ZOOM_MAX_STEPS {
+            self.zoom_steps += 1;
+        }
+    }
+
+    /// One step smaller (`C--`).
+    pub const fn zoom_out(&mut self) {
+        if self.zoom_steps > ZOOM_MIN_STEPS {
+            self.zoom_steps -= 1;
+        }
+    }
+
+    /// Back to unscaled (`C-0`).
+    pub const fn zoom_reset(&mut self) {
+        self.zoom_steps = 0;
+    }
+
+    /// What the window should call itself right now.
+    ///
+    /// The title was set once, at window creation, and never moved: a
+    /// closure window said the same thing whether it was showing an
+    /// outline, editing a body, or holding an unsaved paragraph. It is
+    /// the one piece of the app visible in a task switcher, so it says
+    /// which buffer and whether that buffer is saved — the convention
+    /// every other editor shares.
+    #[must_use]
+    pub fn window_title(&self, shell: &Shell, vault: &str) -> String {
+        let dirty = if self.body_dirty() { "● " } else { "" };
+        self.buffer_name(shell).map_or_else(
+            || format!("{dirty}closure — {vault}"),
+            |buffer| format!("{dirty}{buffer} — closure"),
+        )
+    }
+
+    /// Insert `text` from *outside* the editor — the system clipboard —
+    /// at the cursor, as one undoable edit.
+    ///
+    /// The window's paste types its characters as keystrokes, which is
+    /// what keeps the slash menu, completion and table alignment in
+    /// charge of it — and is exactly why it must not happen outside
+    /// INSERT, where a pasted URL would be read as a dozen commands.
+    /// This is the other path: text goes in as text, whatever mode the
+    /// editor is in, and a VISUAL selection is replaced by it the way
+    /// `p` replaces one.
+    pub fn body_paste_text(&mut self, text: &str) {
+        if text.is_empty() {
+            return;
+        }
+        self.completion = None;
+        self.body.paste_external(text);
     }
 
     /// The body editor's open `/` search line, for the shell to paint.

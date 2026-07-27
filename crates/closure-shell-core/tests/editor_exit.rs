@@ -207,3 +207,138 @@ fn the_clickable_view_still_returns_to_the_outline() {
     app.on_key(&mut sh, "escape", false, false, None);
     assert_eq!(app.surface(), ModalSurface::Browse);
 }
+
+// === pasting from outside vim's own registers ===
+
+#[test]
+fn the_system_paste_lands_in_the_buffer_in_normal_mode() {
+    // `C-v` is the desktop's paste and evil's visual-block; closure has
+    // no visual-block, and the reported complaint is that `C-v` "does
+    // not work in vim / Doom mode" — which is NORMAL, where the
+    // keystroke-typing paste path (rightly) refuses, because typing a
+    // pasted URL as commands would run a dozen of them.
+    let (_d, _sh, mut app) = editing();
+    app.body_set_cursor(0);
+    app.body_paste_text("pasted ");
+    assert!(
+        app.body_buffer().starts_with("pasted "),
+        "{:?}",
+        app.body_buffer()
+    );
+    assert_eq!(app.body_mode(), EditorMode::Normal, "and stays in NORMAL");
+}
+
+#[test]
+fn a_system_paste_is_one_undo_step() {
+    let (_d, mut sh, mut app) = editing();
+    let before = app.body_buffer().to_owned();
+    app.body_set_cursor(0);
+    app.body_paste_text("pasted text here");
+    app.on_key(&mut sh, "u", false, false, Some('u'));
+    assert_eq!(app.body_buffer(), before, "one `u` takes the whole paste");
+}
+
+#[test]
+fn a_system_paste_replaces_a_visual_selection() {
+    let (_d, mut sh, mut app) = editing();
+    app.body_set_cursor(0);
+    app.on_key(&mut sh, "v", false, false, Some('v'));
+    app.on_key(&mut sh, "e", false, false, Some('e')); // select "Original"
+    app.body_paste_text("New");
+    assert!(
+        app.body_buffer().starts_with("New"),
+        "the selection went and the paste took its place: {:?}",
+        app.body_buffer()
+    );
+    assert_eq!(app.body_mode(), EditorMode::Normal, "visual ends with it");
+}
+
+// === what the window calls itself ===
+
+#[test]
+fn the_title_names_the_vault_when_browsing() {
+    let (dir, sh) = shell();
+    let app = ModalApp::new(InputMode::Doom);
+    let name = dir.path().file_name().expect("name").to_string_lossy();
+    let title = app.window_title(&sh, &name);
+    assert!(title.contains(&*name), "{title}");
+    assert!(title.contains("closure"), "{title}");
+}
+
+#[test]
+fn the_title_names_the_buffer_being_edited() {
+    let (_d, mut sh) = shell();
+    let mut app = ModalApp::new(InputMode::Vim);
+    app.on_key(&mut sh, "i", false, false, Some('i'));
+    let title = app.window_title(&sh, "vault");
+    assert!(
+        title.contains("Note"),
+        "a window in a buffer says which buffer: {title}"
+    );
+}
+
+#[test]
+fn an_unsaved_buffer_is_marked_in_the_title() {
+    // The convention every editor shares, and the one place a user
+    // looks when they are about to close a window.
+    let (_d, mut sh, mut app) = editing();
+    append(&mut app, &mut sh, " and more");
+    let title = app.window_title(&sh, "vault");
+    assert!(title.starts_with('●'), "{title}");
+}
+
+// === zoom (Doom's text-scale, on the buffer) ===
+
+#[test]
+fn zoom_starts_at_one_and_steps_both_ways() {
+    let mut app = ModalApp::new(InputMode::Doom);
+    assert!((app.zoom() - 1.0).abs() < f32::EPSILON, "unscaled to begin");
+    app.zoom_in();
+    assert!(app.zoom() > 1.0, "bigger");
+    app.zoom_out();
+    assert!(
+        (app.zoom() - 1.0).abs() < 0.001,
+        "and exactly back: {}",
+        app.zoom()
+    );
+    app.zoom_out();
+    assert!(app.zoom() < 1.0, "smaller");
+}
+
+#[test]
+fn zoom_resets_to_one() {
+    let mut app = ModalApp::new(InputMode::Doom);
+    app.zoom_in();
+    app.zoom_in();
+    app.zoom_in();
+    app.zoom_reset();
+    assert!((app.zoom() - 1.0).abs() < f32::EPSILON);
+}
+
+#[test]
+fn zoom_is_bounded_at_both_ends() {
+    // A font of zero px is not a zoom level, and neither is a wall of
+    // one glyph.
+    let mut app = ModalApp::new(InputMode::Doom);
+    for _ in 0..50 {
+        app.zoom_out();
+    }
+    assert!(app.zoom() >= 0.5, "floor: {}", app.zoom());
+    for _ in 0..100 {
+        app.zoom_in();
+    }
+    assert!(app.zoom() <= 4.2, "ceiling: {}", app.zoom());
+}
+
+#[test]
+fn the_zoom_chords_reach_it_from_the_editor() {
+    let (_d, mut sh, mut app) = editing();
+    app.on_key(&mut sh, "+", true, false, Some('+'));
+    assert!(app.zoom() > 1.0, "C-+ zooms in");
+    app.on_key(&mut sh, "-", true, false, Some('-'));
+    assert!((app.zoom() - 1.0).abs() < 0.001, "C-- zooms back out");
+    app.on_key(&mut sh, "=", true, false, Some('='));
+    assert!(app.zoom() > 1.0, "C-= is the same key without shift");
+    app.on_key(&mut sh, "0", true, false, Some('0'));
+    assert!((app.zoom() - 1.0).abs() < f32::EPSILON, "C-0 resets");
+}

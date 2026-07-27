@@ -1304,3 +1304,63 @@ fn e_reaches_the_editor_through_gpuis_own_dispatch(cx: &mut gpui::TestAppContext
         );
     });
 }
+
+#[gpui::test]
+fn a_left_click_elsewhere_dismisses_the_context_menu(cx: &mut gpui::TestAppContext) {
+    // Reported as "right click in the editor and left clicking
+    // somewhere else doesn't dismiss the right click dialog". The root
+    // has a dismissing handler; what was never tested is whether a
+    // click on a *row* — which handles its own mouse-down — still
+    // reaches it.
+    let (_dir, view, vcx) = visual_window(cx, VAULT);
+    let row3 = centre(vcx, "outline-row-3");
+    vcx.simulate_mouse_down(row3, MouseButton::Right, Modifiers::none());
+    vcx.run_until_parked();
+    view.update(vcx, |v, _cx| assert!(v.menu_open(), "menu opened"));
+
+    let row0 = centre(vcx, "outline-row-0");
+    vcx.simulate_click(row0, Modifiers::none());
+    vcx.run_until_parked();
+    view.update(vcx, |v, _cx| {
+        assert!(!v.menu_open(), "a click on another row dismissed it");
+    });
+}
+
+#[gpui::test]
+fn a_left_click_in_the_body_dismisses_the_editor_context_menu(cx: &mut gpui::TestAppContext) {
+    // The case as reported: the menu opened over the *body editor*,
+    // where every line handles its own mouse-down to place the cursor.
+    let (_dir, view, vcx) = visual_window(cx, "* Note\nfirst line\nsecond line\n");
+    view.update(vcx, |v, cx| v.run_command("edit-body", cx));
+    vcx.run_until_parked();
+    let line0 = centre(vcx, "body-line-0");
+    vcx.simulate_mouse_down(line0, MouseButton::Right, Modifiers::none());
+    vcx.run_until_parked();
+    view.update(vcx, |v, _cx| assert!(v.menu_open(), "the body menu opened"));
+
+    let line1 = centre(vcx, "body-line-1");
+    vcx.simulate_click(line1, Modifiers::none());
+    vcx.run_until_parked();
+    view.update(vcx, |v, _cx| {
+        assert!(
+            !v.menu_open(),
+            "clicking another line put the cursor there and closed the menu"
+        );
+    });
+}
+
+#[gpui::test]
+fn a_left_click_in_empty_space_dismisses_the_context_menu(cx: &mut gpui::TestAppContext) {
+    let (_dir, view, vcx) = visual_window(cx, VAULT);
+    let at = centre(vcx, "outline-row-1");
+    vcx.simulate_mouse_down(at, MouseButton::Right, Modifiers::none());
+    vcx.run_until_parked();
+    view.update(vcx, |v, _cx| assert!(v.menu_open()));
+
+    // The status bar is not a row and not the menu: the plainest
+    // "somewhere else" there is.
+    let elsewhere = centre(vcx, "status-bar");
+    vcx.simulate_click(elsewhere, Modifiers::none());
+    vcx.run_until_parked();
+    view.update(vcx, |v, _cx| assert!(!v.menu_open()));
+}

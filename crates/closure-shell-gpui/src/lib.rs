@@ -1462,6 +1462,11 @@ pub struct GpuiView {
     toast_gen: u64,
     /// Where an open context menu is anchored, if one is open.
     menu: Option<(gpui::Point<gpui::Pixels>, closure_shell_core::ContextTarget)>,
+    /// The vault's directory name, for the window title.
+    vault_name: String,
+    /// The title last written to the window manager, so a frame that
+    /// changed nothing does not re-announce it.
+    window_title: String,
     /// Whether an inbound-sync accept is currently waiting on the
     /// listener. A network-facing listener that had nobody to trust
     /// refuses to accept, and the paste that fixes that has to re-arm
@@ -1523,10 +1528,16 @@ impl GpuiView {
         theme: Theme,
         cx: &mut Context<Self>,
     ) -> Self {
+        let vault_name = shell.vault.root().file_name().map_or_else(
+            || shell.vault.root().display().to_string(),
+            |n| n.to_string_lossy().into_owned(),
+        );
         Self {
             shell,
             app: ModalApp::new(input_mode),
             theme,
+            vault_name,
+            window_title: String::new(),
             focus_handle: cx.focus_handle(),
             feedback: closure_shell_core::Feedback::default(),
             last_status: String::new(),
@@ -1947,6 +1958,18 @@ impl GpuiView {
         let surface = self.app.surface();
         let insert = self.app.body_mode() == closure_shell_core::EditorMode::Insert;
         if !accepts_paste(surface, insert) {
+            // Outside INSERT the editor still takes a paste — it just
+            // must not arrive as keystrokes, which in NORMAL would run
+            // a pasted URL as a dozen commands. `C-v` in vim/Doom mode
+            // did nothing at all before this.
+            if surface.is_editor() {
+                let Some(text) = cx.read_from_clipboard().and_then(|item| item.text()) else {
+                    self.app.set_status("clipboard is empty".to_owned());
+                    return true;
+                };
+                self.app.body_paste_text(&text);
+                return true;
+            }
             return false;
         }
         let Some(text) = cx.read_from_clipboard().and_then(|item| item.text()) else {
@@ -2167,7 +2190,7 @@ impl GpuiView {
         if height <= 0.0 {
             return BODY_VIEW_DEFAULT;
         }
-        body_viewport_lines(height, BODY_LINE_H, BODY_CHROME)
+        body_viewport_lines(height, BODY_LINE_H * self.app.zoom(), BODY_CHROME)
     }
 
     /// How many columns of body text the editor pane can show.
@@ -2184,11 +2207,15 @@ impl GpuiView {
         /// Below this the pane cannot show a word.
         const MIN: usize = 8;
         let width = f32::from(self.body_track.bounds().size.width) - CHROME;
-        if !width.is_finite() || width < COL_W {
+        // A zoomed glyph is wider, so the pane holds fewer columns —
+        // the horizontal scroll has to know that or the cursor runs off
+        // the edge it is supposed to be following.
+        let col_w = COL_W * self.app.zoom();
+        if !width.is_finite() || width < col_w {
             return BODY_COLS_DEFAULT;
         }
         #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
-        let cols = (width / COL_W).floor() as usize;
+        let cols = (width / col_w).floor() as usize;
         cols.max(MIN)
     }
 
@@ -2901,7 +2928,7 @@ impl GpuiView {
                 .p_2()
                 .bg(rgb(co.panel))
                 .rounded_md()
-                .text_size(px(13.0))
+                .text_size(px(13.0 * self.app.zoom()))
                 // Not a scroll: the editor paints only the visible
                 // lines, so this handle never has anything to move.
                 // It is here to record the text's bounds, which is
@@ -2922,7 +2949,7 @@ impl GpuiView {
                 continue;
             }
             // L5: line-number gutter, current line accented.
-            let mut row = div().flex().min_h(px(18.0)).child(
+            let mut row = div().flex().min_h(px(BODY_LINE_H * self.app.zoom())).child(
                 div()
                     .w(px(34.0))
                     .mr_2()
@@ -5309,10 +5336,12 @@ fn editor_segment(
             let plain = rgb(span_color(co, kind)).into();
             let (fg, bg) = match mark {
                 None => (plain, None),
-                // Inverse video: the glyphs take the background colour
-                // and sit on the foreground one, so the cursor is
-                // legible whatever it happens to be sitting on.
-                Some(Emphasis::Cursor) => (rgb(co.bg).into(), Some(rgb(co.fg).into())),
+                // Inverse video, in the accent colour rather than plain
+                // foreground: the block cursor and the INSERT bar are
+                // the same cursor in two shapes, and drawing one white
+                // and the other blue made them look like two different
+                // things.
+                Some(Emphasis::Cursor) => (rgb(co.bg).into(), Some(rgb(co.accent).into())),
                 Some(Emphasis::Selection) => (plain, Some(rgb(co.selection_text).into())),
                 // A search hit is a wash, not an inversion: there can
                 // be a dozen on screen and the cursor still has to be
@@ -5688,6 +5717,15 @@ impl Render for GpuiView {
         // Every path that sets a status reaches the toast strip through
         // here, once per frame.
         self.absorb_status(cx);
+        // The title is the only part of the app a task switcher shows,
+        // and it used to be set once at creation and never moved. Only
+        // written when it actually changes — a window manager treats
+        // every set as an event.
+        let title = self.app.window_title(&self.shell, &self.vault_name);
+        if self.window_title != title {
+            window.set_window_title(&title);
+            self.window_title = title;
+        }
         self.reveal_cursors();
         // The editor sizes itself from its own measured height, which
         // is last frame's layout. When that moves — the buffer just
