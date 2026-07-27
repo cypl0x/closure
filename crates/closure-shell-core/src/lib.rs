@@ -7976,6 +7976,12 @@ pub struct ModalApp {
     recenter: Option<(u8, usize, usize)>,
     /// A body-editor prefix key waiting for the rest of its chord.
     pending_body: Option<BodyPrefix>,
+    /// Where the cursor was left in each body, by block id, so opening
+    /// a note again resumes rather than restarting at byte zero.
+    body_cursors: std::collections::HashMap<String, usize>,
+    /// The outline row the search overlay was opened from, so Esc can
+    /// put the cursor back rather than leaving it on a result index.
+    search_return: Option<usize>,
     /// Buffer text scale, in [`ZOOM_STEP`] powers.
     zoom_steps: i8,
     /// Whether a row is *actually* selected, as opposed to the cursor
@@ -8146,6 +8152,8 @@ impl ModalApp {
             pending_body: None,
             selection_active: true,
             zoom_steps: 0,
+            search_return: None,
+            body_cursors: std::collections::HashMap::new(),
             body_scroll: None,
             hist_cursor: 0,
             row_memo: std::cell::RefCell::new(None),
@@ -10452,10 +10460,13 @@ impl ModalApp {
                     self.accept_slash();
                     return;
                 }
-                "down" | "up" => {
+                // The arrows moved the menu and the chords did not, so
+                // in a modal mode the "/" menu was mouse-and-arrows
+                // only — which is the one thing it must not be.
+                "down" | "up" | "j" | "k" | "n" | "p" if key == "down" || key == "up" || ctrl => {
                     if let Some((query, cursor)) = self.slash.as_mut() {
                         let last = block_templates(query).len().saturating_sub(1);
-                        *cursor = if key == "down" {
+                        *cursor = if matches!(key, "down" | "j" | "n") {
                             (*cursor + 1).min(last)
                         } else {
                             cursor.saturating_sub(1)
@@ -10795,6 +10806,7 @@ impl ModalApp {
                         "unsaved edit — C-Enter or :w saves · :q! discards"
                             .clone_into(&mut self.status);
                     } else {
+                        self.remember_body_cursor();
                         self.edit_target = None;
                         self.body.clear();
                         self.surface = ModalSurface::Browse;
@@ -11019,10 +11031,20 @@ impl ModalApp {
     /// command (I8), then return to Browse. No-op if not editing.
     pub fn commit_edit_body(&mut self, shell: &mut Shell) {
         self.write_body(shell);
+        self.remember_body_cursor();
         self.edit_target = None;
         self.body.clear();
         self.body_baseline.clear();
         self.surface = ModalSurface::Browse;
+    }
+
+    /// Note where the cursor was left in the body being closed, so the
+    /// next visit resumes there.
+    fn remember_body_cursor(&mut self) {
+        if let Some(id) = &self.edit_target {
+            self.body_cursors
+                .insert(id.clone(), self.body.cursor_byte());
+        }
     }
 
     /// Write the buffer into the vault, leaving the editor open and the
@@ -11134,12 +11156,24 @@ impl ModalApp {
     ) {
         match key {
             "escape" => {
+                // Never mind: the outline goes back to the row it was
+                // on, not to whatever index the results left behind.
                 self.query.clear();
-                self.selected = 0;
+                self.selected = self.search_return.take().unwrap_or(0);
                 self.go_home();
             }
             "enter" => {
+                // The row list is *filtered* while the overlay is open,
+                // so the cursor is an index into the results; clearing
+                // the query unfilters it and that index then points at
+                // a different row entirely. The id is the only thing
+                // both lists agree on.
+                let hit = self.selected_row_id(shell);
                 self.query.clear();
+                self.search_return = None;
+                if let Some(id) = hit {
+                    self.select_by_id(shell, &id);
+                }
                 self.go_home();
             }
             "backspace" => {
@@ -11366,11 +11400,18 @@ impl ModalApp {
             "search-start" | "search-headline-start" => {
                 self.surface = ModalSurface::Search;
                 self.query.clear();
+                // Remembered so Esc is a real "never mind".
+                self.search_return = Some(self.selected);
                 self.selected = 0;
             }
+            // Enter *opens* the row. It used to report the row in the
+            // status line, which is not what Enter means in any other
+            // list in this app or any other: the selection is already
+            // where the cursor is, so naming it says nothing new.
             "open-file" => {
-                if let Some(row) = self.rows_shared(shell).get(self.selected) {
-                    self.status = format!("{} — {}", row.path, row.title);
+                if self.rows_shared(shell).get(self.selected).is_some() {
+                    self.selection_active = true;
+                    self.run_command(shell, "edit-body");
                 }
             }
             "backlinks" => {
@@ -11511,10 +11552,20 @@ impl ModalApp {
             }
             "edit-body" => {
                 if let Some(row) = self.rows_shared(shell).get(self.selected).cloned() {
+                    let resume = self.body_cursors.get(&row.id).copied();
                     self.edit_target = Some(row.id);
                     let body = self.detail(shell).map(|d| d.body).unwrap_or_default();
                     self.body_baseline.clone_from(&body);
+                    let len = body.len();
                     self.load_body(body);
+                    // Opening a note you were just in used to start at
+                    // byte zero, so any edit deeper in it meant
+                    // navigating back down every time. A body can shrink
+                    // between visits, so the remembered offset is
+                    // clamped rather than trusted (I5).
+                    if let Some(at) = resume {
+                        self.body.set_cursor_byte(at.min(len));
+                    }
                     self.surface = ModalSurface::EditBody;
                     self.status = if self.modal_editing() {
                         "edit body — NORMAL, i to insert, C-Enter save, Esc cancel".to_owned()

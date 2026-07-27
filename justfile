@@ -113,6 +113,15 @@ run-gpui-release vault: gpui-release
 gpui vault:
     ./target/release/closure gpui {{vault}}
 
+# The same shell forced onto the software rasteriser (Mesa's lavapipe).
+# For a machine with a display but no usable GPU — a server, a VM, a
+# passthrough that isn't — where gpui's Vulkan context otherwise fails
+# with `NoSupportedDeviceFound`. Slow, and it opens.
+#   nix develop -c just gpui-software ~/vault
+gpui-software vault:
+    VK_ICD_FILENAMES=/run/opengl-driver/share/vulkan/icd.d/lvp_icd.x86_64.json \
+      ./target/release/closure gpui {{vault}}
+
 # Launch the release shell over a generated vault of the given size, to
 # eyeball scroll/typing latency against something big. The vault is
 # written under target/perf-vault (regenerated each run, deterministic).

@@ -328,3 +328,63 @@ fn highlighting_a_headline_preserves_every_byte() {
         assert_eq!(joined, line, "round-trip of {line:?}");
     }
 }
+
+// === why the window would not open ===
+//
+// gpui picks its backend from the environment and then `unwrap`s the
+// GPU context, so a machine with no Vulkan driver gets a panic and a
+// backtrace through `blade_graphics` — which says nothing about what to
+// install. This is the check that runs first and says it in words.
+
+use closure_shell_gpui::gpui_preflight;
+
+#[test]
+fn a_session_with_a_display_and_a_driver_is_fine() {
+    let dir = tempfile::tempdir().expect("tmp");
+    let icd = dir.path().join("icd.d");
+    fs::create_dir_all(&icd).expect("mkdir");
+    fs::write(icd.join("intel_icd.x86_64.json"), "{}").expect("write");
+    assert_eq!(gpui_preflight(Some("wayland-1"), None, &[icd], None), None);
+}
+
+#[test]
+fn no_display_at_all_is_explained() {
+    let why = gpui_preflight(None, None, &[], None).expect("refused");
+    assert!(
+        why.contains("DISPLAY") || why.contains("display"),
+        "names what is missing: {why}"
+    );
+}
+
+#[test]
+fn a_display_without_a_vulkan_driver_is_explained() {
+    // Fabian's `inari`: X11 was there, the GPU context was not.
+    let dir = tempfile::tempdir().expect("tmp");
+    let empty = dir.path().join("icd.d");
+    fs::create_dir_all(&empty).expect("mkdir");
+    let why = gpui_preflight(None, Some(":0"), &[empty], None).expect("refused");
+    assert!(why.contains("Vulkan"), "{why}");
+    assert!(
+        why.contains("hardware.graphics.enable"),
+        "and says the NixOS fix: {why}"
+    );
+    assert!(
+        why.contains("lvp_icd") || why.contains("lavapipe"),
+        "and the software fallback: {why}"
+    );
+}
+
+#[test]
+fn an_explicit_icd_override_is_believed() {
+    // `VK_ICD_FILENAMES` names the driver directly; a missing icd.d
+    // directory is then irrelevant.
+    assert_eq!(
+        gpui_preflight(
+            Some("wayland-1"),
+            None,
+            &[],
+            Some("/nix/store/x/lvp_icd.json")
+        ),
+        None
+    );
+}

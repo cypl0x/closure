@@ -103,6 +103,74 @@ pub fn resolve_view(vault_path: &Path) -> closure_shell_core::ViewMode {
     }
 }
 
+/// Why the GPU window cannot open here, in words, or `None` when it
+/// can.
+///
+/// gpui picks its backend from `WAYLAND_DISPLAY`/`DISPLAY` and then
+/// `unwrap`s the GPU context, so a machine without a Vulkan driver gets
+/// a panic and a backtrace through `blade_graphics` —
+/// `NoSupportedDeviceFound`, which names nothing you could install.
+/// This runs first and says what is actually missing.
+///
+/// The Vulkan *loader* is a library (the dev shell has it); a Vulkan
+/// *driver* is an ICD manifest, which on NixOS comes from
+/// `hardware.graphics.enable` and lands in `/run/opengl-driver`. A box
+/// with no GPU at all can still run the software rasteriser, which ships
+/// in the same directory as `lvp_icd.*.json`.
+#[must_use]
+pub fn gpui_preflight(
+    wayland: Option<&str>,
+    x11: Option<&str>,
+    icd_dirs: &[std::path::PathBuf],
+    icd_override: Option<&str>,
+) -> Option<String> {
+    let has_display = wayland.is_some_and(|d| !d.is_empty()) || x11.is_some_and(|d| !d.is_empty());
+    if !has_display {
+        return Some(
+            "no display: neither WAYLAND_DISPLAY nor DISPLAY is set, so there is no \
+             compositor to open a window on. Over SSH, forward one (`ssh -X`) or run \
+             closure on the machine with the screen; the TUI (`closure tui`) needs \
+             neither."
+                .to_owned(),
+        );
+    }
+    // An explicit override names the driver outright, so the search
+    // directories stop mattering.
+    if icd_override.is_some_and(|v| !v.is_empty()) {
+        return None;
+    }
+    let has_driver = icd_dirs.iter().any(|dir| {
+        std::fs::read_dir(dir).is_ok_and(|mut entries| {
+            entries.any(|e| e.is_ok_and(|e| e.path().extension().is_some_and(|ext| ext == "json")))
+        })
+    });
+    if has_driver {
+        return None;
+    }
+    Some(
+        "no Vulkan driver: a display is available but no ICD manifest was found, so \
+         gpui's GPU context has nothing to run on (`NoSupportedDeviceFound`).\n  \
+         On NixOS: set `hardware.graphics.enable = true;` (`hardware.opengl.enable` \
+         before 24.11) and rebuild — that populates /run/opengl-driver.\n  \
+         With no GPU at all, the software rasteriser in the same directory works: \
+         VK_ICD_FILENAMES=/run/opengl-driver/share/vulkan/icd.d/lvp_icd.x86_64.json\n  \
+         Either way `closure tui` needs no GPU."
+            .to_owned(),
+    )
+}
+
+/// The standard places a Vulkan ICD manifest is looked for.
+#[must_use]
+pub fn vulkan_icd_dirs() -> Vec<std::path::PathBuf> {
+    [
+        "/run/opengl-driver/share/vulkan/icd.d",
+        "/usr/share/vulkan/icd.d",
+    ]
+    .iter()
+    .map(std::path::PathBuf::from)
+    .collect()
+}
+
 /// Where pairing listens, and which address its ticket hands out.
 ///
 /// `sync_bind` is the socket to open, `sync_advertise` the address a
@@ -1237,6 +1305,17 @@ use gpui::{
 /// surface through gpui's own panics on the UI thread.
 #[cfg(feature = "gpui")]
 pub fn run(vault_path: &Path) -> Result<(), String> {
+    // gpui `unwrap`s its GPU context, so without this the failure mode
+    // on a machine with no Vulkan driver is a panic and a backtrace
+    // through `blade_graphics` that names nothing you could install.
+    if let Some(why) = gpui_preflight(
+        std::env::var("WAYLAND_DISPLAY").ok().as_deref(),
+        std::env::var("DISPLAY").ok().as_deref(),
+        &vulkan_icd_dirs(),
+        std::env::var("VK_ICD_FILENAMES").ok().as_deref(),
+    ) {
+        return Err(why);
+    }
     let vault = Vault::open(vault_path).map_err(|e| format!("{e}"))?;
     let theme = resolve_theme(vault_path);
     let input_mode = resolve_input_mode(vault_path);
