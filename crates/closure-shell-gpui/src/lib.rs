@@ -616,10 +616,49 @@ pub const fn h_scroll_start(cursor_col: usize, cols: usize) -> usize {
 /// an empty line — or a cursor parked past the last glyph, which is
 /// where end-of-line and vertical motion both leave it — has nothing
 /// to invert and the cursor disappears. Those are exactly the cases
-/// that get an explicit block appended after the text.
+/// [`cursor_cell`] pads with a space.
 #[must_use]
 pub fn needs_trailing_caret(line: &str, on_cursor_line: bool, col: usize) -> bool {
     on_cursor_line && col >= line.chars().count()
+}
+
+/// The line as the cursor row is laid out, and the byte range the block
+/// cursor covers in it.
+///
+/// A cursor past the last glyph — `$` on a short line, `j` onto a
+/// shorter one, an empty line — has nothing to invert. It used to get a
+/// hardcoded 8×18px rectangle appended after the text, which is the
+/// right size at exactly one font size and one line height, and the
+/// wrong one at every other. Padding the line with a space instead
+/// makes the cursor a cell of *text*: the font decides how wide and how
+/// tall a cell is, and the same inversion draws it as everywhere else.
+#[must_use]
+pub fn cursor_cell(line: &str, col: usize) -> (String, std::ops::Range<usize>) {
+    let chars = line.chars().count();
+    if col >= chars {
+        let mut padded = line.to_owned();
+        padded.push(' ');
+        return (padded, line.len()..line.len() + 1);
+    }
+    let start = byte_for_col(line, col);
+    let end = byte_for_col(line, col + 1);
+    (line.to_owned(), start..end)
+}
+
+/// The cursor's mark on its own line, or `None` in INSERT.
+///
+/// INSERT draws a thin bar *between* two glyphs rather than a block over
+/// one, so it is the one mode with no marked cell. Every other mode has
+/// one — including VISUAL, which used to suppress the cursor entirely
+/// because the selection was already a background range: you could not
+/// see which end of the selection you were moving.
+#[must_use]
+pub fn cursor_mark(
+    line: &str,
+    col: usize,
+    insert: bool,
+) -> Option<(std::ops::Range<usize>, Emphasis)> {
+    (!insert).then(|| (cursor_cell(line, col).1, Emphasis::Cursor))
 }
 
 /// Cut a run list at byte offset `at`, rebasing the tail to start at
@@ -2477,14 +2516,23 @@ impl GpuiView {
             marks.extend(
                 selection_in_line(line_start, line_len, sel).map(|r| (r, Emphasis::Selection)),
             );
-        } else if on_cursor_line && !insert {
-            let start = byte_for_col(&text, cur_col);
-            let end = byte_for_col(&text, cur_col + 1);
-            if start < end {
-                marks.push((start..end, Emphasis::Cursor));
-            }
         }
-        let runs = styled_runs(spans, &marks);
+        // The cursor is marked *last*, so it wins wherever it overlaps
+        // ([`styled_runs`]). VISUAL used to suppress it entirely, which
+        // is the one mode where knowing which end you are moving matters
+        // most. The line is padded with a space when the cursor sits
+        // past its last glyph, so there is always a cell to invert.
+        let mut spans = spans.to_vec();
+        let mut text = text;
+        if on_cursor_line && let Some(mark) = cursor_mark(&text, cur_col, insert) {
+            let (padded, _) = cursor_cell(&text, cur_col);
+            if padded.len() > text.len() {
+                spans.push((BodySpan::Plain, " ".to_owned()));
+                text = padded;
+            }
+            marks.push(mark);
+        }
+        let runs = styled_runs(&spans, &marks);
         // Lines do not wrap: wrapping desyncs the one-number gutter,
         // the fixed row height and the arithmetic that turns pane
         // height into a line count. A long line scrolls sideways with
@@ -2512,9 +2560,10 @@ impl GpuiView {
                     cx,
                 ))
                 // INSERT draws a bar between the glyphs, in the accent
-                // colour and at full line height so it reads at a
-                // glance rather than as a dim seam.
-                .child(div().w(px(2.0)).h(px(18.0)).bg(rgb(co.accent)))
+                // colour. Its height is the row's — a flex child with no
+                // height of its own stretches — rather than a hardcoded
+                // 18px that is only right at one font size.
+                .child(div().w(px(2.0)).bg(rgb(co.accent)))
                 .child(editor_segment(
                     co,
                     ln,
@@ -2524,16 +2573,9 @@ impl GpuiView {
                     cx,
                 ));
         } else {
-            let trailing = needs_trailing_caret(&text, on_cursor_line, cur_col);
+            // The cursor — block or none — is already in the runs, over
+            // a real cell, so the whole line is one laid-out segment.
             row = row.child(editor_segment(co, ln, h_start, text, runs, cx));
-            if trailing {
-                // Nothing to invert here — an empty line, or the cursor
-                // parked past the last glyph — so the block is drawn as
-                // an element rather than as a highlight.
-                // (INSERT on the cursor line took the branch above, so
-                // this is always a NORMAL/VISUAL block.)
-                row = row.child(div().w(px(8.0)).h(px(18.0)).rounded_sm().bg(rgb(co.fg)));
-            }
         }
         row
     }
