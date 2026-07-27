@@ -26,9 +26,9 @@ tree-sitter-rust = { version = "0.24.2", optional = true }
 # `TsHighlighter` registry is whole when on. Build/test gate:
 # `just tree-sitter`.
 tree-sitter = [
-    "dep:tree-sitter",
-    "dep:tree-sitter-bash",
-    "dep:tree-sitter-rust",
-    "dep:tree-sitter-python",
-    "dep:tree-sitter-json",
+  "dep:tree-sitter",
+  "dep:tree-sitter-bash",
+  "dep:tree-sitter-rust",
+  "dep:tree-sitter-python",
+  "dep:tree-sitter-json",
 ]

@@ -18,6 +18,7 @@ the implementation tokens.
 ## Roles
 
 **Claude (this session) — the senior engineer:**
+
 1. Owns the leaf queue (below) and the architecture invariants
    (docs/spec.md I1–I10). Splits/reorders leaves when reality demands.
 2. Writes each dispatch prompt: exact files, exact API names verified
@@ -36,6 +37,7 @@ the implementation tokens.
    (leaf, dispatches used, verdict).
 
 **Grok (headless CLI) — the implementer:**
+
 - Invoked per work item, non-interactive, from the repo root:
   `nix run github:numtide/llm-agents.nix#grok -- --always-approve -p "<DISPATCH>"`
   (run via Bash with `run_in_background: true`; a dispatch that takes
@@ -111,4 +113,7 @@ without their pick.
 - Every cargo/just/nix build wrapped in the systemd-run memory cap.
 - Grok never sees: Cargo.toml, flake.nix, keymap invariant tests,
   .github, fixtures corpora.
+
+```
+
 ```

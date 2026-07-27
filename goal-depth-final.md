@@ -29,7 +29,7 @@ The reference shell's remaining recorded mouse/editor gaps. Hermetic seams in
 - **G5** wheel scroll inside the body editor pane (viewport override like the outline's
   `scroll_by`, selection movement clears it).
 
-## Q2 — kernel path-walking undo + undo-tree node jump  [CLAUDE-ONLY: I3 enforcement]
+## Q2 — kernel path-walking undo + undo-tree node jump [CLAUDE-ONLY: I3 enforcement]
 
 The recorded UndoHistory gap: the surface is read-only because the kernel cannot walk to
 an arbitrary node.
@@ -43,7 +43,7 @@ an arbitrary node.
 - **U3** shells: UndoHistory surface rows become actionable — Enter/click on a node jumps
   (registry command, chord in all five keymaps, I4). gpui + TUI render.
 
-## Q3 — CRDT title 3-way merge  [CLAUDE-ONLY: CRDT]
+## Q3 — CRDT title 3-way merge [CLAUDE-ONLY: CRDT]
 
 Kill the last silent-loss point: concurrent title edits resolve LWW today.
 
@@ -54,7 +54,7 @@ Kill the last silent-loss point: concurrent title edits resolve LWW today.
   resolve-ours/resolve-theirs route through rename (I3/I8). Convergence property tests:
   both replicas surface the identical conflict set regardless of merge order (I6).
 
-## Q4 — markdown to full depth  [CLAUDE-LED: parser; Grok may write RED corpora]
+## Q4 — markdown to full depth [CLAUDE-LED: parser; Grok may write RED corpora]
 
 - **M1** inline markup spans: emphasis, strong, code spans, links — classification only,
   span-preserving, roundtrip untouched by construction (I1); fuzz extended.
@@ -64,7 +64,7 @@ Kill the last silent-loss point: concurrent title edits resolve LWW today.
   `closure-query` backlink index read-only (no `:ID:` invention in md files — Decision:
   md identity = path+slug, org identity = ULID; the bridge maps between them).
 
-## Q5 — org semantic zones  [CLAUDE-ONLY: parser + eval]
+## Q5 — org semantic zones [CLAUDE-ONLY: parser + eval]
 
 The remaining "preserved as opaque text" list becomes semantic, one construct at a time.
 Verbatim roundtrip stays the invariant; semantics are accessors + commands over the
@@ -129,7 +129,7 @@ existing nodes (the D9 tables pattern).
   journal really captures everything.
 - **R2** `--replay` dry-run mode prints the command sequence (self-doc tie-in).
 
-## Q10 — P2P over the real internet  [CLAUDE-ONLY: sync]
+## Q10 — P2P over the real internet [CLAUDE-ONLY: sync]
 
 - **N1** `iroh` feature crate (`closure-sync/iroh` or `closure-sync-iroh`): native iroh
   endpoint (not the external binary) carrying the existing signed+encrypted
@@ -142,7 +142,7 @@ existing nodes (the D9 tables pattern).
   two-host checklist covers the rest. Honest recording: true cross-NAT CI is out of
   hermetic reach — Decision text says so.
 
-## Q11 — live collaboration  [CLAUDE-ONLY: sync/CRDT]
+## Q11 — live collaboration [CLAUDE-ONLY: sync/CRDT]
 
 Async merge exists; this adds the continuous session.
 

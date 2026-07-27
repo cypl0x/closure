@@ -106,7 +106,7 @@ layer. Every vision item is assigned to exactly one layer.
   see "Layer 1 — closure-org parser scope" below). Span-preserving
   hand-written recursive descent over line cursors. No external parser
   backend dep. **D9 — tables are queryable:** `OrgDoc::tables()` returns
-  `TableView`s for every table in the document — preamble *and* headline
+  `TableView`s for every table in the document — preamble _and_ headline
   bodies — with `data_rows()` yielding the trimmed cells (separators
   classified, not data). Recognition over the existing `TableRow` nodes, so
   I1 is untouched; this is the structured substrate the Notion-style
@@ -116,22 +116,22 @@ layer. Every vision item is assigned to exactly one layer.
   (per line, so I1 holds by construction): ATX headings, paragraphs, blank
   lines, list items, fenced code, and (D1) blockquotes, GFM tables, and
   thematic breaks. Proven by a proptest fuzz (`properties.rs`: I1 roundtrip
-  + I5 no-panic + I6 determinism on random input, in `just fuzz`) and a
-  golden corpus under `fixtures/md/`. `from_org`/`to_org` bridge the
-  line-level subset. **Q4 depth:** `inline_spans` classifies inline
-  markup (emphasis/strong/code/links) flat and gap-free — span texts
-  concatenate back to the input byte-exactly, unbalanced markers fall
-  to Plain (the Highlighter coverage rule; I1 untouched, this only
-  reads). Setext headings are first-class: an underline of `=`/`-`
-  directly under a pending paragraph turns the whole run into one
-  `Heading` block (level 1/2, span covering underline included);
-  `---` with no paragraph attached stays a `ThematicBreak`.
-  `link_targets` extracts inline `[t](target)` + wiki `[[target]]`
-  targets in document order, skipping code fences, and
-  `closure_query::md_backlinks(root, target)` resolves them read-only
-  by raw target or extension-less slug — **md identity is path/slug**
-  (no `:ID:` is ever invented in markdown files; org identity stays
-  the ULID — the Q4 Decision).
+  - I5 no-panic + I6 determinism on random input, in `just fuzz`) and a
+    golden corpus under `fixtures/md/`. `from_org`/`to_org` bridge the
+    line-level subset. **Q4 depth:** `inline_spans` classifies inline
+    markup (emphasis/strong/code/links) flat and gap-free — span texts
+    concatenate back to the input byte-exactly, unbalanced markers fall
+    to Plain (the Highlighter coverage rule; I1 untouched, this only
+    reads). Setext headings are first-class: an underline of `=`/`-`
+    directly under a pending paragraph turns the whole run into one
+    `Heading` block (level 1/2, span covering underline included);
+    `---` with no paragraph attached stays a `ThematicBreak`.
+    `link_targets` extracts inline `[t](target)` + wiki `[[target]]`
+    targets in document order, skipping code fences, and
+    `closure_query::md_backlinks(root, target)` resolves them read-only
+    by raw target or extension-less slug — **md identity is path/slug**
+    (no `:ID:` is ever invented in markdown files; org identity stays
+    the ULID — the Q4 Decision).
 - `closure-tree-sitter` — optional, for syntax-highlighting and code-block
   grammars inside `#+BEGIN_SRC` regions. Not used for primary parsing
   (I1 / I5 cost too high). The dep-free `KeywordHighlighter` is the
@@ -183,11 +183,11 @@ Semantic accessors over verbatim text (the D9 tables pattern — the
 bytes stay untouched, I1; semantics are read-only views + commands):
 
 - Babel `#+RESULTS:` — attach/replace after eval, `:results
-  value|output|silent` honoured, idempotent re-eval.
+value|output|silent` honoured, idempotent re-eval.
 - Clocking (Q5-O3) — `clock_entries` parses `CLOCK:` lines (start /
   end / minutes, `=>` duration preferred, else computed across days);
   `Vault::clock_minutes` aggregates per headline; `closure
-  clock-report` prints the table. Clock-in/out *commands* are the
+clock-report` prints the table. Clock-in/out _commands_ are the
   recorded residual (`rewrite_headline_append_logbook` is the ready
   substrate).
 - Footnotes (Q5-O2) — definition/reference recognition; a `[fn:name]`
@@ -208,8 +208,8 @@ Preserved as opaque text (no semantics — by Decision, not omission):
 - `closure-store` — vault loader, file watcher, atomic writes, indices,
   kill ring (cut/paste subtrees, a move so ids stay unique, I2). **D7 —
   OS-clipboard bridge:** the kill ring is the hub; a `Clipboard` adapter
-  mirrors its top *out* (`mirror_ring_top_to_clipboard`) and pulls external
-  text *in* (`pull_clipboard_to_ring`, which then pastes through the same
+  mirrors its top _out_ (`mirror_ring_top_to_clipboard`) and pulls external
+  text _in_ (`pull_clipboard_to_ring`, which then pastes through the same
   span-preserving path). Additive — cut/paste never need a clipboard. The
   hermetic default is `MemoryClipboard`; `SystemClipboard` (behind the
   `clipboard` feature) shells out to the platform tool (wl-copy/xclip/
@@ -276,8 +276,8 @@ base, ours, theirs)` returns the `FieldConflict`s (title/body) both sides
   hermetic, dep-minimal build (2026-06-19 char-CRDT Decision). Both sit
   behind the same `Edit` / `BlockId` surface with no `closure-core` API
   change. Titles carry causal clocks (Q3): each title register holds a
-  `VectorClock`, so a merge distinguishes a *sequential* overwrite (one
-  clock dominates — clean LWW) from a *concurrent* divergence (neither
+  `VectorClock`, so a merge distinguishes a _sequential_ overwrite (one
+  clock dominates — clean LWW) from a _concurrent_ divergence (neither
   dominates). `Replica::merge_with_conflicts` /
   `SyncSession::receive_with_conflicts` surface every concurrent title
   divergence as a `FieldConflict` for the `ConflictApp` resolution
@@ -339,7 +339,7 @@ base, ours, theirs)` returns the `FieldConflict`s (title/body) both sides
   shows in which-key (I4). The user controls render exposure live, per the
   vision's "configure that (live) too". **D4 — the full loop, hermetic:**
   `OpenAiWireProvider` is a dep-free mock of the OpenAI chat-completions
-  *wire* — it encodes each prompt into a real OpenAI request body and
+  _wire_ — it encodes each prompt into a real OpenAI request body and
   decodes the scripted reply out of a canonical OpenAI response envelope
   (`openai_response_json` ↔ `extract_openai_content`), so the dep-free JSON
   round trip is exercised with no curl/socket. `tests/view_loop.rs` drives
@@ -463,17 +463,17 @@ base, ours, theirs)` returns the `FieldConflict`s (title/body) both sides
   native mobile app stays an external Flutter project (Dart/Xcode/NDK are
   non-hermetic, like X1d) — see `docs/flutter-shell.md`.
   The vocabulary is grown for richer GUI surfaces (GUI-UX): `Node::Split
-  { direction: SplitDir, panes }` (G1a) is a multi-pane layout — the
+{ direction: SplitDir, panes }` (G1a) is a multi-pane layout — the
   foundation for a real editor surface (sidebar + main + detail). Like
   every kind it is exhaustively matched by `kind`/`aria_role`/
   `view_to_json`/`serialize_view` and both `render_view`s, so a renderer
   that omits it does not compile; the hermetic guarantee is the pane
-  *set + order + axis* (golden-tested), not pixels — those stay the
+  _set + order + axis_ (golden-tested), not pixels — those stay the
   embedder's display-bound job. `Node::Modal { title, body }` (G1b) is a
   titled overlay layer (command palette / confirm dialog / prompt) —
   `aria_role` `dialog`, the title as `aria_label`; the web shell emits
   `role="dialog"` and the embedder paints the dim/float. `Node::Toast {
-  level: ToastLevel, text }` (G1c) is a transient, severity-classed
+level: ToastLevel, text }` (G1c) is a transient, severity-classed
   notification — `ToastLevel` (Info/Success/Warning/Error) drives both the
   CSS class and the ARIA live-region politeness (`alert` for warn/error,
   `status` for info/success), the substrate G7 fills with async outcomes.
@@ -507,7 +507,7 @@ base, ours, theirs)` returns the `FieldConflict`s (title/body) both sides
   `:VISIBILITY: folded` property on the headline itself — written through
   the registry (`SetProperty`, I8, undoable I3), so it persists between
   program runs in plain text and is honoured by Emacs org-mode. Unfold
-  writes `:VISIBILITY: all`. A live query searches *into* folds (org
+  writes `:VISIBILITY: all`. A live query searches _into_ folds (org
   isearch behaviour); a folded row carries a `▸` badge. `toggle-fold` is
   bound in all five keymaps (I4: `z`, Emacs `C-c z`), in the palette
   (`fold`), and on `C-f` in the launcher. The command palette is polished + shared
@@ -528,7 +528,7 @@ base, ours, theirs)` returns the `FieldConflict`s (title/body) both sides
   unverifiable, but the `ViewTree`→native mapping is now regression-locked
   as far as hermetically possible. The UI capability matrix (G9) now spans
   five columns — `MIN`/`TUI`/`WEB`/`GTK`/`QT` (`*_NODE_KINDS` consts +
-  `ui_matrix_table`): after G3/G4 the native shells render the *full*
+  `ui_matrix_table`): after G3/G4 the native shells render the _full_
   `ViewTree`, so every column except `MIN` covers `ALL_NODE_KINDS`, each
   backed by an exhaustive `match` (a new kind is a compile error in every
   renderer). The runtime `Capability` matrix (`closure shells`) carries the
@@ -537,7 +537,7 @@ base, ours, theirs)` returns the `FieldConflict`s (title/body) both sides
   set, and `GTK`/`QT` columns are added. The native `ViewTree` editors
   (`TUI`/`GTK`/`QT`) meet the bar (asserted); `WEB`/`TAURI` are the
   capture-form web tier (no full `Edit`); `GPUI`/`EGUI` are interactive
-  editors whose themed/feedback *window* wiring is the remaining polish.
+  editors whose themed/feedback _window_ wiring is the remaining polish.
   GTK4 (G3) is no longer a read-only list: `closure_shell_gtk` consumes
   the shared `App`/`Shell` and renders the full `ViewTree` via
   `widget_tree` — a hermetic, golden-tested GTK4 widget-tree descriptor
@@ -588,10 +588,10 @@ base, ours, theirs)` returns the `FieldConflict`s (title/body) both sides
   command surface (not the type-to-filter launcher): Browse keys are
   commands resolved against the active mode's keymap with pending-chord
   which-key completions, `/` opens the search overlay that owns
-  type-to-filter, and the footer chords are therefore *honest* — what
+  type-to-filter, and the footer chords are therefore _honest_ — what
   the bar shows is exactly what the key does. The palette is a real
   M-x (Q8, 2026-07-05): `M-x` (or `:`) opens it in every mode and it
-  lists *every* keymap-bound command with its chord — curated
+  lists _every_ keymap-bound command with its chord — curated
   sections keep their descriptions, the rest land in a "Command"
   section by canonical name (I4). The idle footer is a Doom-style
   which-key panel (Q9): one column per section from
@@ -652,12 +652,12 @@ base, ours, theirs)` returns the `FieldConflict`s (title/body) both sides
   Completion is fuzzy (Q2, 2026-07-05): candidates match by
   `closure_query::fuzzy_score` subsequence, ranked score-descending
   (keywords beat vault words on ties, then alphabetical); a session
-  holds the top 8 and TAB *accepts* the applied candidate (ends the
+  holds the top 8 and TAB _accepts_ the applied candidate (ends the
   session, beating org-tempo; without a session TAB stays
   tempo/indent). The popup auto-opens after a 350 ms typing idle
   (Q7-C2): `completion_should_popup` (INSERT, no session, ≥3-char
   prefix, candidates exist) + `open_completion_popup` show candidates
-  *without* touching the buffer (`ix: None`); from that state `C-n`
+  _without_ touching the buffer (`ix: None`); from that state `C-n`
   applies the first candidate and TAB accepts it. The detail pane's
   read-only body preview renders `highlight_body` spans with the
   editor palette (Q7-C3).
@@ -722,7 +722,7 @@ base, ours, theirs)` returns the `FieldConflict`s (title/body) both sides
   `INTERACTIVE_EDITOR_CAPABILITIES` bar (asserted; the old
   capture-form-tier boundary test is revised in the same commit).
   `closure-wasm` gains `dispatch_command(org, cmd, id, arg)` (W4): the
-  same command vocabulary applied to org *source* through kernel
+  same command vocabulary applied to org _source_ through kernel
   `Command`s, so the single-HTML export edits offline — pure, in the
   default test suite; only the `#[wasm_bindgen]` wrapper stays behind
   the `wasm` feature (I10). `closure-wasm` (X2) is the
@@ -771,9 +771,9 @@ base, ours, theirs)` returns the `FieldConflict`s (title/body) both sides
   Each mode is a keybinding trie + mode state machine over the single
   command registry. Chord syntax supports `<SPC> f f`, literal `SPC`,
   `<C-c> <C-x>` (tempo-style). **D6 conformance:** all five modes bind the
-  *same* command set (only chords differ), proven by a matrix that every
+  _same_ command set (only chords differ), proven by a matrix that every
   command yields an `Action` (hence a non-empty chord, by construction) in
-  every mode; and the chord *shown* for a given (mode, command) is
+  every mode; and the chord _shown_ for a given (mode, command) is
   identical across three independent shell render paths — TUI
   (`render_snapshot`), web (`render_view`), and the gpui which-key
   (`App::palette_results`) — all sourced from `chord_for_command`

@@ -30,7 +30,7 @@ Standard text-field behaviour the user gets everywhere on KDE, inside INSERT mod
   `C-n`/`C-p` cycle (vim-style) in INSERT.
 - **C2** completion popup auto-opens after typing delay (≥3 word chars, debounce; hermetic
   core exposes `completion_should_popup(elapsed_ms)`, gpui drives the timer).
-- **C3** syntax highlighting for body text in the *read-only* rows pane (reuse
+- **C3** syntax highlighting for body text in the _read-only_ rows pane (reuse
   `highlight_body` spans when rendering non-edited body preview).
 
 ## Q8 — M-x command palette ✅ DONE 2026-07-05 (ROADMAP: GPUI-MX)
@@ -65,7 +65,7 @@ Standard text-field behaviour the user gets everywhere on KDE, inside INSERT mod
 
 - **Release build**: `systemd-run --user --scope -p MemoryHigh=6G -p MemoryMax=8G -- nix develop -c cargo build --release -p closure-cli --features gpui -j 4`; binary at `target/release/closure`. Justfile recipe `run-gpui-release` to add.
 - **Web**: `nix develop -c just wasm-web-bundle` → `target/wasm-web/editor.html` (self-contained). **Tauri**: `nix develop .#webview -c just run-tauri VAULT`.
-- **doomemacs-core harvest**: `/home/wap/dev/doomemacs-core` is the doom *core* only — no
+- **doomemacs-core harvest**: `/home/wap/dev/doomemacs-core` is the doom _core_ only — no
   `modules/config/default/+evil-bindings.el` there. Canonical org/evil bindings taken from
   upstream doomemacs knowledge (M-h/l promote/demote, M-j/k move subtree, M-RET heading,
   C-RET child, TAB cycle, zc/zo/za folds, gw/ge words) and baked into Q5/Q6 specs directly.

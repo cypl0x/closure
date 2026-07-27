@@ -19,7 +19,7 @@ leaf per commit. Nothing else.
    before every commit.** The gpui window code additionally must build:
    `... -- nix develop -c cargo build -p closure-shell-gpui --features gpui -j 4`
    with zero new warnings.
-4. **Architecture split (I7/I8, see docs/spec.md):** all *behaviour*
+4. **Architecture split (I7/I8, see docs/spec.md):** all _behaviour_
    (state, cursors, commands) lives in `closure-shell-core` and is
    hermetically tested in `crates/closure-shell-core/tests/`. The gpui
    window only translates events and paints; it gets NO logic that a
@@ -39,6 +39,7 @@ leaf per commit. Nothing else.
 ## LEAF QUEUE (do in order; stop when the queue is empty)
 
 ### L1 — Paint the VISUAL selection in the editor pane
+
 State exists (`BodyEditor` mode `Visual`, private `selection()`).
 Add a public accessor `ModalApp::body_selection() -> Option<(usize, usize)>`
 (byte range, `None` outside Visual) with hermetic tests (select "he"
@@ -48,6 +49,7 @@ spans overlapping the selection get `co.selection` background. Reuse
 the caret span-splitting pattern.
 
 ### L2 — Backlinks: click a row to jump
+
 `ModalApp` Backlinks surface: keyboard Enter jumps, mouse doesn't.
 Add `pub fn backlink_click(&mut self, shell: &Shell, i: usize)` doing
 exactly what Enter does (look at `on_backlinks_key`); hermetic test
@@ -55,6 +57,7 @@ exactly what Enter does (look at `on_backlinks_key`); hermetic test
 Wire the gpui backlink `list_row` listener to it.
 
 ### L3 — Toasts: render the shared Feedback queue in the gpui window
+
 `closure_shell_core::Feedback` + `with_feedback` exist (G7/P6) and are
 tested. Give `GpuiView` a `Feedback` field; `App`-level notifications
 (command results that currently only hit the status bar: save/delete/
@@ -64,6 +67,7 @@ a `ModalApp` change is NOT needed — do not add one; only push+paint in
 the window plus a small pure helper if required (test it).
 
 ### L4 — Viewport scroll decoupled from the cursor
+
 Wheel currently moves the selection. Add `scroll: usize` offset state
 to `ModalApp` with `pub fn scroll_by(&mut self, delta: i32, shell: &Shell)`
 and make `view_window(page)` respect it (clamped; selection stays
@@ -71,21 +75,25 @@ visible when it moves — keep the existing keep-on-screen rule as tests
 pin it). Hermetic tests first. gpui wheel handler calls `scroll_by`.
 
 ### L5 — Line numbers in the editor pane
+
 Display-only: number gutter in `editor_pane`, `co.muted`, current line
 `co.accent`. No state change, no new test needed beyond the existing
 goldens staying green (gate must stay green).
 
 ### L6 — Match count in the search overlay
+
 Search context line shows `⌕ query▏ · N matches`. The count is
 `rows(shell).len()` under an active query. Hermetic test on the
 context/status string source in shell-core (add a small pure fn if the
 string is built in the window today; behaviour-in-core rule applies).
 
 ## Verification recap (run before EVERY commit)
+
 ```
 systemd-run --user --scope -p MemoryHigh=6G -p MemoryMax=8G -- nix develop -c just check
 systemd-run --user --scope -p MemoryHigh=6G -p MemoryMax=8G -- nix develop -c cargo build -p closure-shell-gpui --features gpui -j 4
 ```
+
 Both green/clean, or do not commit. If a leaf turns out to require
 touching an out-of-scope area, STOP that leaf, record a note in
 ROADMAP.org under Decisions, and move to the next leaf.
