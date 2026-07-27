@@ -225,6 +225,74 @@ pub fn line_links(line: &str) -> Vec<LineLink> {
     out
 }
 
+/// What following an org link should do.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum LinkAction {
+    /// `id:<ULID>` or a bare ULID — select that headline.
+    Block(String),
+    /// `file:<path>` — a file in the vault.
+    File(String),
+    /// `file:<path>::<search>` — a file, and where in it.
+    FileAt(String, String),
+    /// A URL: `https:`, `mailto:`, anything with a scheme closure does
+    /// not own. Opening one is the user's call, not closure's.
+    External(String),
+    /// Org's fuzzy link, written with no scheme — a bare id or a
+    /// headline title. Which one it is, is the vault's to say: a
+    /// length-and-alphabet guess at "is this a ULID" would be wrong
+    /// for every id format but the current one.
+    Fuzzy(String),
+    /// Nothing to follow.
+    None,
+}
+
+/// Classify a link target.
+///
+/// The window understood `id:` and a bare ULID and reported everything
+/// else as "not a headline in this vault" — true, and useless: a
+/// `file:` link into the same vault had no reason to be refused, and a
+/// URL had no way out of the window at all.
+#[must_use]
+pub fn link_action(target: &str) -> LinkAction {
+    let target = target.trim();
+    if target.is_empty() {
+        return LinkAction::None;
+    }
+    if let Some(path) = target.strip_prefix("file:") {
+        return match path.split_once("::") {
+            Some((file, at)) => LinkAction::FileAt(file.to_owned(), at.to_owned()),
+            None => LinkAction::File(path.to_owned()),
+        };
+    }
+    if let Some(id) = target.strip_prefix("id:") {
+        return LinkAction::Block(id.to_owned());
+    }
+    // A named scheme, not any colon: org's fuzzy links contain them
+    // freely, so `Meeting: Monday` is a heading and treating it as a
+    // URL because it parses like one is how a link stops working.
+    // This is org's own approach — `org-link-parameters` is a list.
+    if EXTERNAL_SCHEMES.iter().any(|s| {
+        target.len() > s.len() && target.as_bytes()[s.len()] == b':' && starts_ci(target, s)
+    }) {
+        return LinkAction::External(target.to_owned());
+    }
+    LinkAction::Fuzzy(target.to_owned())
+}
+
+/// The link schemes closure hands back to the desktop rather than
+/// resolving itself — org's built-in set.
+const EXTERNAL_SCHEMES: &[&str] = &[
+    "http", "https", "mailto", "ftp", "ftps", "news", "irc", "ssh", "gopher", "doi", "magnet",
+    "tel", "sms",
+];
+
+/// Case-insensitive `starts_with` for the ASCII scheme names above.
+fn starts_ci(haystack: &str, prefix: &str) -> bool {
+    haystack
+        .get(..prefix.len())
+        .is_some_and(|h| h.eq_ignore_ascii_case(prefix))
+}
+
 /// Whether `line` is an org table row or rule.
 fn is_table_line(line: &str) -> bool {
     line.trim_start().starts_with('|')
@@ -407,50 +475,134 @@ pub fn span_ranges(spans: &[(BodySpan, String)]) -> Vec<(std::ops::Range<usize>,
     out
 }
 
-/// One painted run of a body line: the byte range it covers within
-/// the line, the span kind that colours it, and whether the
-/// cursor/selection background is drawn behind it.
-pub type StyledRun = (std::ops::Range<usize>, BodySpan, bool);
+/// What a marked run in the body editor *means*.
+///
+/// All three are a background range, and they must not look alike — a
+/// cursor drawn in the selection tint disappears against a selected
+/// row, which is exactly what it used to do.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Emphasis {
+    /// The VISUAL selection: tinted background, glyphs keep their
+    /// syntax colour.
+    Selection,
+    /// The cursor: inverse video, so it is legible on any background.
+    Cursor,
+    /// A `/` search hit. The editor moved the cursor to one and marked
+    /// none of them, so the pattern you were looking for was the one
+    /// thing on screen you could not see.
+    Search,
+}
 
-/// Merge a line's syntax spans with one background `highlight` range
+/// One painted run of a body line: the byte range it covers within the
+/// line, the span kind that colours it, and what — if anything — is
+/// drawn behind it.
+pub type StyledRun = (std::ops::Range<usize>, BodySpan, Option<Emphasis>);
+
+/// Merge a line's syntax spans with any number of background `marks`
 /// into the single ordered run list gpui takes.
 ///
-/// A line carries two independent stylings: the per-span syntax colour
-/// and a background for the VISUAL selection or the NORMAL-mode block
-/// caret. `StyledText::with_highlights` walks its input assuming
-/// ascending, non-overlapping, char-aligned ranges, so the spans are
-/// split at the highlight's edges rather than layered. Each run is
-/// `(byte range, span kind, is highlighted)`; the runs are contiguous
-/// and cover the line exactly.
+/// A line carries independent stylings: the per-span syntax colour, and
+/// backgrounds for the VISUAL selection, the NORMAL-mode block caret
+/// and every search hit on the line. `StyledText::with_highlights`
+/// walks its input assuming ascending, non-overlapping, char-aligned
+/// ranges, so the spans are split at every mark edge rather than
+/// layered. Later marks win where two overlap, which is how the cursor
+/// is drawn over a search hit it happens to sit on.
+///
+/// The runs are contiguous and cover the line exactly.
 #[must_use]
 pub fn styled_runs(
     spans: &[(BodySpan, String)],
-    highlight: Option<std::ops::Range<usize>>,
+    marks: &[(std::ops::Range<usize>, Emphasis)],
 ) -> Vec<StyledRun> {
-    let hl = highlight.filter(|h| h.start < h.end);
-    let mut out = Vec::with_capacity(spans.len() + 2);
+    // A zero-width mark marks nothing, and must not cut a span either:
+    // splitting `abc` at 2..2 would hand gpui two runs where one would
+    // do, and make two identical calls compare unequal.
+    let marks: Vec<&(std::ops::Range<usize>, Emphasis)> =
+        marks.iter().filter(|(m, _)| m.start < m.end).collect();
+    let mut out: Vec<StyledRun> = Vec::with_capacity(spans.len() + marks.len() * 2);
     for (range, kind) in span_ranges(spans) {
-        let Some(h) = &hl else {
-            out.push((range, kind, false));
-            continue;
-        };
-        // Three possible pieces per span: before / inside / after the
-        // highlight. Any of them may be empty and is then skipped.
-        let mid_start = range.start.max(h.start);
-        let mid_end = range.end.min(h.end);
-        if mid_start >= mid_end {
-            out.push((range, kind, false));
-            continue;
+        // Cut this span at every mark edge that falls inside it, then
+        // label each piece with the last mark covering it.
+        let strictly_inside = |at: usize| at > range.start && at < range.end;
+        let mut cuts = vec![range.start, range.end];
+        for (m, _) in &marks {
+            cuts.extend(
+                [m.start, m.end]
+                    .into_iter()
+                    .filter(|at| strictly_inside(*at)),
+            );
         }
-        if range.start < mid_start {
-            out.push((range.start..mid_start, kind, false));
-        }
-        out.push((mid_start..mid_end, kind, true));
-        if mid_end < range.end {
-            out.push((mid_end..range.end, kind, false));
+        cuts.sort_unstable();
+        cuts.dedup();
+        for pair in cuts.windows(2) {
+            let (start, end) = (pair[0], pair[1]);
+            let mark = marks
+                .iter()
+                .rfind(|(m, _)| m.start <= start && m.end >= end)
+                .map(|(_, e)| *e);
+            out.push((start..end, kind, mark));
         }
     }
     out
+}
+
+/// Every occurrence of `pattern` in `text`, as disjoint ascending byte
+/// ranges.
+///
+/// What marks a search hit. Case-sensitive, because
+/// [`closure_shell_core::BodyEditor`]'s own `/` is: a mark that lit up
+/// a word the cursor would not jump to is worse than no mark. Disjoint
+/// matters too — the ranges go to a renderer that assumes it, so `aa`
+/// in `aaaa` is two runs and not three. An empty pattern matches
+/// nothing: a search with nothing in it should not light up the buffer.
+#[must_use]
+pub fn line_matches(text: &str, pattern: &str) -> Vec<std::ops::Range<usize>> {
+    if pattern.is_empty() || text.is_empty() {
+        return Vec::new();
+    }
+    let mut out = Vec::new();
+    let mut at = 0usize;
+    while let Some(found) = text.get(at..).and_then(|rest| rest.find(pattern)) {
+        let start = at + found;
+        at = start + pattern.len();
+        out.push(start..at);
+    }
+    out
+}
+
+/// The first visible row of a capped list, as a range over it.
+///
+/// The graph pane painted the first 20 hubs while the keyboard cursor
+/// ran across all of them, so past the cap `j` moved a cursor that was
+/// not drawn and nothing scrolled after it. The window follows the
+/// cursor instead: the same rule the body editor's viewport uses.
+#[must_use]
+pub fn visible_window(cursor: usize, len: usize, cap: usize) -> std::ops::Range<usize> {
+    if len == 0 || cap == 0 {
+        return 0..0;
+    }
+    if len <= cap {
+        return 0..len;
+    }
+    let cursor = cursor.min(len - 1);
+    let start = if cursor < cap { 0 } else { cursor + 1 - cap };
+    start..(start + cap).min(len)
+}
+
+/// First visible column of a body line, from where the cursor is.
+///
+/// Lines do not wrap in the editor — wrapping desyncs the one-number
+/// gutter, the fixed row height and the arithmetic that turns pane
+/// height into a line count — so a long line has to scroll sideways
+/// instead. Same rule as the vertical viewport: the cursor's column is
+/// the last visible one once it runs off the edge.
+#[must_use]
+pub const fn h_scroll_start(cursor_col: usize, cols: usize) -> usize {
+    if cols == 0 || cursor_col < cols {
+        return 0;
+    }
+    cursor_col + 1 - cols
 }
 
 /// Whether the cursor needs a caret element of its own on this line.
@@ -752,24 +904,29 @@ pub const fn outline_follows_selection(surface: ModalSurface) -> bool {
     )
 }
 
-/// Whether the right-hand pane can reveal its own cursor row on
-/// `surface`.
+/// Where the right-hand pane's cursor row sits among its children on
+/// `surface`, or `None` when the pane cannot address a row by index.
 ///
-/// True for the panes that paint exactly one child per row, so the
-/// pane's scroll handle can address a row by index. The panes that
-/// group their rows under section headers cannot: there a child index
-/// is not a row index, and scrolling to one would land somewhere else.
+/// `Some(n)` means row `i` is child `i + n`: the flat lists paint one
+/// child per row and start at zero, while the sniffer and the conflict
+/// resolver put a button row above theirs — which is why they used to
+/// reveal nothing at all rather than reveal the wrong thing, and `j`
+/// walked their cursor off the bottom. `None` is for the panes that
+/// group rows under section headers, where a child index is not a row
+/// index; those keep their cursor visible by windowing the rows
+/// instead ([`visible_window`]).
 #[must_use]
-pub const fn side_reveals_selection(surface: ModalSurface) -> bool {
-    matches!(
-        surface,
+pub const fn side_reveal_offset(surface: ModalSurface) -> Option<usize> {
+    match surface {
         ModalSurface::Headlines
-            | ModalSurface::BodySearch
-            | ModalSurface::Backlinks
-            | ModalSurface::Journal
-            | ModalSurface::Cron
-            | ModalSurface::UndoHistory
-    )
+        | ModalSurface::BodySearch
+        | ModalSurface::Backlinks
+        | ModalSurface::Journal
+        | ModalSurface::Cron
+        | ModalSurface::UndoHistory => Some(0),
+        ModalSurface::Sniffer | ModalSurface::Conflicts => Some(1),
+        _ => None,
+    }
 }
 
 /// How many body lines the editor pane can show, from its measured
@@ -943,6 +1100,7 @@ pub fn run(vault_path: &Path) -> Result<(), String> {
                     drag: closure_shell_core::DragReorder::default(),
                     outline_scroll: gpui::UniformListScrollHandle::new(),
                     side_scroll: gpui::ScrollHandle::new(),
+                    body_track: gpui::ScrollHandle::new(),
                     revealed: usize::MAX,
                     side_revealed: usize::MAX,
                     palette_revealed: usize::MAX,
@@ -961,6 +1119,25 @@ pub fn run(vault_path: &Path) -> Result<(), String> {
                 window
                     .update(cx, |view, window, cx| {
                         window.focus(&view.focus_handle(cx));
+                        // A body edit still in the buffer when the X is
+                        // clicked used to go with the window. The
+                        // gesture that closed it is repeatable; the
+                        // paragraph that was in the buffer is not, so
+                        // the text wins and the close goes ahead.
+                        let handle = cx.entity().downgrade();
+                        window.on_window_should_close(cx, move |_w, cx| {
+                            handle
+                                .update(cx, |view: &mut GpuiView, _cx| {
+                                    if view.app.save_pending_edit(&mut view.shell) {
+                                        eprintln!(
+                                            "closure: saved the open body edit before closing"
+                                        );
+                                    }
+                                })
+                                .ok();
+                            true
+                        });
+                        let _ = view;
                     })
                     .ok();
             }
@@ -1053,6 +1230,10 @@ const BODY_CHROME: f32 = 46.0;
 #[cfg(feature = "gpui")]
 const BODY_VIEW_DEFAULT: usize = 40;
 
+/// Columns to assume before the pane has ever been laid out.
+#[cfg(feature = "gpui")]
+const BODY_COLS_DEFAULT: usize = 80;
+
 /// How long a toast stays on the strip.
 #[cfg(feature = "gpui")]
 const TOAST_TTL: std::time::Duration = std::time::Duration::from_secs(5);
@@ -1082,6 +1263,10 @@ struct GpuiView {
     outline_scroll: gpui::UniformListScrollHandle,
     /// Scroll state of the right-hand pane (detail, lists, editor).
     side_scroll: gpui::ScrollHandle,
+    /// Bounds of the body editor's painted text, so its own scrollbar
+    /// knows where its track is. The editor virtualizes its lines, so
+    /// this handle never actually scrolls — it is a measurement.
+    body_track: gpui::ScrollHandle,
     /// Last selection the outline was scrolled to, so a keyboard move
     /// reveals its row exactly once instead of fighting the wheel.
     revealed: usize,
@@ -1345,20 +1530,55 @@ impl GpuiView {
         true
     }
 
-    /// Follow an org link target.
+    /// Follow an org link target ([`link_action`]).
     ///
-    /// `id:<ULID>` and a bare ULID select that headline; anything else
-    /// is reported rather than guessed at — opening a browser is the
-    /// user's call and closure does not make it for them.
+    /// Ids and titles resolve inside the vault; a `file:` link selects
+    /// the first headline of that file — it used to be refused, which
+    /// made an ordinary org cross-reference dead in the reference
+    /// shell. A URL closure will not open: launching a browser is the
+    /// user's call. It goes to the clipboard instead, which is the one
+    /// thing that makes ctrl-clicking it worth anything, and the
+    /// status line says so rather than leaving the paste a surprise.
     fn follow_link(&mut self, target: &str, cx: &mut Context<Self>) {
-        let id = target.strip_prefix("id:").unwrap_or(target);
-        if self.app.select_by_id(&self.shell, id) {
+        match link_action(target) {
+            LinkAction::None => {}
+            LinkAction::Block(id) => self.jump_to(&id, target, cx),
+            LinkAction::Fuzzy(what) => self.jump_to(&what, target, cx),
+            LinkAction::File(path) => self.jump_to_file(&path, None, cx),
+            LinkAction::FileAt(path, at) => self.jump_to_file(&path, Some(&at), cx),
+            LinkAction::External(url) => {
+                cx.write_to_clipboard(gpui::ClipboardItem::new_string(url.clone()));
+                self.app
+                    .set_status(format!("{url} — copied to the clipboard"));
+                cx.notify();
+            }
+        }
+    }
+
+    /// Select the headline `what` names — by id, then by title.
+    fn jump_to(&mut self, what: &str, target: &str, cx: &mut Context<Self>) {
+        if self.app.select_by_id(&self.shell, what) || self.app.select_by_title(&self.shell, what) {
             // Leaving the editor is what makes the jump visible.
             self.app.run(&mut self.shell, "open-file");
             self.app.set_status(format!("followed {target}"));
         } else {
             self.app
                 .set_status(format!("{target} — not a headline in this vault"));
+        }
+        cx.notify();
+    }
+
+    /// Select the first headline of `path`, or the one `at` names.
+    fn jump_to_file(&mut self, path: &str, at: Option<&str>, cx: &mut Context<Self>) {
+        // `::*Heading` is org's in-file search; the leading `*` is the
+        // headline sigil, not part of the title.
+        let title = at.map(|a| a.trim_start_matches('*').trim());
+        if self.app.select_in_file(&self.shell, path, title) {
+            self.app.run(&mut self.shell, "open-file");
+            self.app.set_status(format!("followed file:{path}"));
+        } else {
+            self.app
+                .set_status(format!("file:{path} — not in this vault"));
         }
         cx.notify();
     }
@@ -1424,14 +1644,18 @@ impl GpuiView {
                 self.palette_revealed = cursor;
             }
         }
-        if side_reveals_selection(surface) {
-            let cursor = if surface == ModalSurface::UndoHistory {
-                self.app.undo_history_cursor()
-            } else {
-                selected
+        if let Some(offset) = side_reveal_offset(surface) {
+            // Each pane's own cursor, and where its row 0 sits among
+            // the pane's children — the sniffer and the conflict
+            // resolver have a button row above theirs.
+            let cursor = match surface {
+                ModalSurface::UndoHistory => self.app.undo_history_cursor(),
+                ModalSurface::Sniffer => self.app.sniffer_cursor(),
+                ModalSurface::Conflicts => self.app.conflicts().selected(),
+                _ => selected,
             };
             if cursor != self.side_revealed {
-                self.side_scroll.scroll_to_item(cursor);
+                self.side_scroll.scroll_to_item(cursor + offset);
                 self.side_revealed = cursor;
             }
         }
@@ -1463,6 +1687,28 @@ impl GpuiView {
             return BODY_VIEW_DEFAULT;
         }
         body_viewport_lines(height, BODY_LINE_H, BODY_CHROME)
+    }
+
+    /// How many columns of body text the editor pane can show.
+    ///
+    /// The gutter and the scrollbar come off the measured width first.
+    /// Never zero: an unmeasured pane (no bounds before the first
+    /// layout) assumes a usable line rather than scrolling every line
+    /// off the left edge.
+    fn body_cols(&self) -> usize {
+        /// Advance of one monospace glyph at the editor's text size.
+        const COL_W: f32 = 7.2;
+        /// The line-number gutter plus its margin, and the scrollbar.
+        const CHROME: f32 = 34.0 + 8.0 + 10.0;
+        /// Below this the pane cannot show a word.
+        const MIN: usize = 8;
+        let width = f32::from(self.body_track.bounds().size.width) - CHROME;
+        if !width.is_finite() || width < COL_W {
+            return BODY_COLS_DEFAULT;
+        }
+        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+        let cols = (width / COL_W).floor() as usize;
+        cols.max(MIN)
     }
 
     /// Context line describing the active surface (with the live input
@@ -1917,6 +2163,7 @@ impl GpuiView {
         line_start: usize,
         line_len: usize,
         spans: &[(BodySpan, String)],
+        h_start: usize,
         cx: &Context<Self>,
     ) -> gpui::Div {
         use closure_shell_core::EditorMode;
@@ -1924,29 +2171,52 @@ impl GpuiView {
         let (cur_line, cur_col) = self.app.body_cursor();
         let insert = self.app.body_mode() == EditorMode::Insert;
         let on_cursor_line = ln == cur_line;
-        // One background range per line: the VISUAL selection when one
-        // is live, otherwise the block cursor outside INSERT.
-        let highlight = self.app.body_selection().map_or_else(
-            || {
-                let start = byte_for_col(&text, cur_col);
-                let end = byte_for_col(&text, cur_col + 1);
-                (on_cursor_line && !insert && start < end).then_some(start..end)
-            },
-            |sel| selection_in_line(line_start, line_len, sel),
-        );
-        // A selection and a cursor are both a background range, but
+        // Search hits first, so the cursor and the selection are drawn
+        // over one they happen to sit on. Marking them at all is new:
+        // `/` moved the cursor to a match and left every match on
+        // screen looking like ordinary prose.
+        let mut marks: Vec<(std::ops::Range<usize>, Emphasis)> = self
+            .app
+            .body_search_pattern()
+            .map(|pattern| {
+                line_matches(&text, &pattern)
+                    .into_iter()
+                    .map(|r| (r, Emphasis::Search))
+                    .collect()
+            })
+            .unwrap_or_default();
+        // A selection and a cursor are both a background range, and
         // they must not look alike: the selection tint is the same
         // colour the outline uses for its selected row, which left the
         // block cursor all but invisible. The cursor inverts instead —
         // background-coloured glyphs on foreground — the way every
         // terminal draws one.
-        let emphasis = if self.app.body_selection().is_some() {
-            Emphasis::Selection
-        } else {
-            Emphasis::Cursor
-        };
-        let runs = styled_runs(spans, highlight);
-        let mut row = div().flex().flex_grow().cursor_text();
+        if let Some(sel) = self.app.body_selection() {
+            marks.extend(
+                selection_in_line(line_start, line_len, sel).map(|r| (r, Emphasis::Selection)),
+            );
+        } else if on_cursor_line && !insert {
+            let start = byte_for_col(&text, cur_col);
+            let end = byte_for_col(&text, cur_col + 1);
+            if start < end {
+                marks.push((start..end, Emphasis::Cursor));
+            }
+        }
+        let runs = styled_runs(spans, &marks);
+        // Lines do not wrap: wrapping desyncs the one-number gutter,
+        // the fixed row height and the arithmetic that turns pane
+        // height into a line count. A long line scrolls sideways with
+        // the cursor instead, and the runs are rebased with it.
+        let shift = byte_for_col(&text, h_start);
+        let (_, runs) = split_runs(&runs, shift);
+        let text = text.get(shift..).unwrap_or_default().to_owned();
+        let cur_col = cur_col.saturating_sub(h_start);
+        let mut row = div()
+            .flex()
+            .flex_grow()
+            .overflow_hidden()
+            .whitespace_nowrap()
+            .cursor_text();
         if on_cursor_line && insert {
             let at = byte_for_col(&text, cur_col);
             let (head, tail) = split_runs(&runs, at);
@@ -1954,10 +2224,9 @@ impl GpuiView {
                 .child(editor_segment(
                     co,
                     ln,
-                    0,
+                    h_start,
                     text[..at].to_owned(),
                     head,
-                    emphasis,
                     cx,
                 ))
                 // INSERT draws a bar between the glyphs, in the accent
@@ -1967,15 +2236,14 @@ impl GpuiView {
                 .child(editor_segment(
                     co,
                     ln,
-                    cur_col,
+                    h_start + cur_col,
                     text[at..].to_owned(),
                     tail,
-                    emphasis,
                     cx,
                 ));
         } else {
             let trailing = needs_trailing_caret(&text, on_cursor_line, cur_col);
-            row = row.child(editor_segment(co, ln, 0, text, runs, emphasis, cx));
+            row = row.child(editor_segment(co, ln, h_start, text, runs, cx));
             if trailing {
                 // Nothing to invert here — an empty line, or the cursor
                 // parked past the last glyph — so the block is drawn as
@@ -1992,44 +2260,45 @@ impl GpuiView {
     /// ([`highlight_body`]), a real caret at the editor cursor, the
     /// vim mode chip (doom spaceline colours: INSERT green / NORMAL
     /// blue), and the C-n completion popup.
-    fn editor_pane(&self, co: Colors, cx: &Context<Self>) -> gpui::Div {
+    /// The editor pane's status row: the mode chip, the modified dot,
+    /// the recording register, the chord in flight and the mode's hint.
+    fn editor_header(&self, co: Colors, mode_col: u32) -> gpui::Div {
         use closure_shell_core::EditorMode;
-        let view = self.body_view();
-        let scroll_start = self.app.body_scroll_start(view);
-        let (cur_line, _) = self.app.body_cursor();
         let mode = self.app.body_mode();
-        // doom spaceline colours: insert green, normal blue, visual grey-violet.
         // `R` is INSERT to the core, but it overwrites rather than
         // pushes right, and a chip that hides that is a lie.
-        let (mode_txt, mode_col) = match mode {
-            EditorMode::Insert if self.app.body_replacing() => ("REPLACE", co.warning),
-            EditorMode::Insert => ("INSERT", co.success),
-            EditorMode::Normal => ("NORMAL", co.accent),
-            EditorMode::Visual => ("VISUAL", co.heading3),
-            EditorMode::VisualLine => ("V·LINE", co.heading2),
+        let mode_txt = match mode {
+            EditorMode::Insert if self.app.body_replacing() => "REPLACE",
+            EditorMode::Insert => "INSERT",
+            EditorMode::Normal => "NORMAL",
+            EditorMode::Visual => "VISUAL",
+            EditorMode::VisualLine => "V·LINE",
         };
-        let mut header = div().flex().items_center().gap_2().child(
+        let chip = |text: String, bg: u32| {
             div()
-                .px_2()
+                .px_1()
                 .rounded_sm()
-                .bg(rgb(mode_col))
+                .bg(rgb(bg))
                 .text_color(rgb(co.bg))
                 .text_size(px(11.0))
-                .child(mode_txt),
-        );
+                .child(text)
+        };
+        let mut header = div()
+            .flex()
+            .items_center()
+            .gap_2()
+            .child(chip(mode_txt.to_owned(), mode_col).px_2());
+        // Modified-and-unwritten, the way every editor marks it. The
+        // shell had no dirty state at all, so an unsaved buffer looked
+        // exactly like a saved one right up until it was lost.
+        if self.app.body_dirty() {
+            header = header.child(chip("●".to_owned(), co.warning));
+        }
         // A macro under the needle, the way vim's `recording @q` says
         // it: without this the editor looks idle while every stroke is
         // being taped.
         if let Some(reg) = self.app.body_recording() {
-            header = header.child(
-                div()
-                    .px_1()
-                    .rounded_sm()
-                    .bg(rgb(co.error))
-                    .text_color(rgb(co.bg))
-                    .text_size(px(11.0))
-                    .child(format!("● @{reg}")),
-            );
+            header = header.child(chip(format!("● @{reg}"), co.error));
         }
         // The chord in progress, echoed the way vim's showcmd does — so
         // a half-typed `2d3i` is visible rather than a silent editor.
@@ -2047,14 +2316,34 @@ impl GpuiView {
                     .child(pending),
             );
         }
-        let header = header.child(
+        header.child(
             div()
                 .text_color(rgb(co.muted))
                 .text_size(px(11.0))
                 .child(closure_shell_core::editor_hint(mode)),
-        );
+        )
+    }
+
+    fn editor_pane(&self, co: Colors, cx: &Context<Self>) -> gpui::Div {
+        use closure_shell_core::EditorMode;
+        let view = self.body_view();
+        let scroll_start = self.app.body_scroll_start(view);
+        let (cur_line, cur_col) = self.app.body_cursor();
+        // Lines are clipped rather than wrapped, so a cursor past the
+        // right edge pulls the whole pane sideways with it.
+        let h_start = h_scroll_start(cur_col, self.body_cols());
+        // doom spaceline colours: insert green, normal blue, visual grey-violet.
+        let mode_col = match self.app.body_mode() {
+            EditorMode::Insert if self.app.body_replacing() => co.warning,
+            EditorMode::Insert => co.success,
+            EditorMode::Normal => co.accent,
+            EditorMode::Visual => co.heading3,
+            EditorMode::VisualLine => co.heading2,
+        };
+        let header = self.editor_header(co, mode_col);
         let mut body = with_menu(
             div()
+                .id("body-text")
                 .flex()
                 .flex_col()
                 .flex_grow()
@@ -2062,6 +2351,12 @@ impl GpuiView {
                 .bg(rgb(co.panel))
                 .rounded_md()
                 .text_size(px(13.0))
+                // Not a scroll: the editor paints only the visible
+                // lines, so this handle never has anything to move.
+                // It is here to record the text's bounds, which is
+                // where [`Self::body_scrollbar`] puts its track.
+                .overflow_y_scroll()
+                .track_scroll(&self.body_track)
                 .on_scroll_wheel(cx.listener(Self::on_body_scroll)),
             closure_shell_core::ContextTarget::Body,
             cx,
@@ -2084,20 +2379,33 @@ impl GpuiView {
                     .text_color(rgb(if ln == cur_line { co.accent } else { co.muted }))
                     .child(format!("{:>3}", ln + 1)),
             );
-            row = row.child(self.editor_line(co, ln, line_start, line_len, spans, cx));
+            row = row.child(self.editor_line(co, ln, line_start, line_len, spans, h_start, cx));
             if ln == cur_line {
                 row = row.bg(rgb(mix_u32(co.panel, co.selection, 96)));
             }
             body = body.child(row);
             line_start += line_len + 1;
         }
+        // The editor virtualizes its own lines, so the pane it sits in
+        // never overflows and the shared scrollbar had nothing to
+        // measure: a 500-line body scrolled by wheel with no
+        // indication of where in it you were. This bar reads the
+        // editor's own scroll state instead.
+        let lines = self.app.body_buffer().split('\n').count();
         let mut pane = div()
             .flex()
             .flex_col()
             .flex_grow()
             .gap_2()
             .child(header)
-            .child(body);
+            .child(
+                div()
+                    .flex()
+                    .flex_row()
+                    .flex_grow()
+                    .child(body)
+                    .child(self.body_scrollbar(co, lines, view, scroll_start, cx)),
+            );
         if let Some(menu) = self.slash_menu(co, cx) {
             pane = pane.child(menu);
         }
@@ -2105,6 +2413,81 @@ impl GpuiView {
             pane = pane.child(popup);
         }
         pane
+    }
+
+    /// A scrollbar for the body editor's own viewport.
+    ///
+    /// The pane's [`scrollbar`] cannot serve here: the editor paints
+    /// only the visible lines, so its container never overflows and
+    /// the shared bar measures a content height equal to its viewport.
+    /// The geometry is the same ([`thumb_geometry`]) in units of
+    /// lines, and a drag lands on a first-visible line through
+    /// [`ModalApp::body_scroll_to`].
+    fn body_scrollbar(
+        &self,
+        co: Colors,
+        lines: usize,
+        view: usize,
+        scroll_start: usize,
+        cx: &Context<Self>,
+    ) -> gpui::Div {
+        /// Keeps the thumb grabbable in a very long body.
+        const MIN_THUMB: f32 = 0.06;
+        #[allow(clippy::cast_precision_loss)]
+        let (content, viewport, scroll) = (lines as f32, view as f32, scroll_start as f32);
+        let track = div()
+            .w(px(10.0))
+            .h_full()
+            .flex()
+            .flex_col()
+            .bg(rgb(mix_u32(co.bg, co.panel, 160)));
+        let Some(thumb) = thumb_geometry(viewport, content, scroll, MIN_THUMB) else {
+            return track;
+        };
+        // The bar is the editor body's sibling and shares its height,
+        // so the body's measured bounds are the track's.
+        let bounds = self.body_track.bounds();
+        let track_top = f32::from(bounds.origin.y);
+        let track_h = f32::from(bounds.size.height);
+        let height = thumb.height;
+        let jump = move |this: &mut Self, y: gpui::Pixels| {
+            if track_h <= 0.0 {
+                return;
+            }
+            // In line units: the fraction of the *scrollable* range,
+            // scaled back onto the lines the body actually has.
+            let fraction = track_fraction(f32::from(y), track_top, track_h, height);
+            #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+            let line = scroll_for_track_fraction(viewport, content, fraction).round() as usize;
+            this.app.body_scroll_to(line, view);
+        };
+        track
+            .cursor_pointer()
+            .on_mouse_down(
+                MouseButton::Left,
+                cx.listener(move |this: &mut Self, ev: &gpui::MouseDownEvent, _w, cx| {
+                    jump(this, ev.position.y);
+                    cx.stop_propagation();
+                    cx.notify();
+                }),
+            )
+            .on_mouse_move(cx.listener(
+                move |this: &mut Self, ev: &gpui::MouseMoveEvent, _w, cx| {
+                    if ev.pressed_button == Some(MouseButton::Left) {
+                        jump(this, ev.position.y);
+                        cx.notify();
+                    }
+                },
+            ))
+            .child(div().h(gpui::relative(thumb.top)))
+            .child(
+                div()
+                    .h(gpui::relative(height))
+                    .w_full()
+                    .rounded_sm()
+                    .bg(rgb(co.muted))
+                    .hover(move |s| s.bg(rgb(co.accent))),
+            )
     }
 
     /// The Notion "/" block menu, when open: each entry inserts real
@@ -2662,30 +3045,37 @@ impl GpuiView {
         // The cursor's index runs across both lists, so the orphans
         // continue where the hubs left off.
         let orphan_base = hubs.len();
-        let (hidden_hubs, hidden_orphans) = (
-            hubs.len().saturating_sub(HUBS),
-            orphans.len().saturating_sub(ORPHANS),
-        );
+        // The lists are capped, and the cap used to be the *first* n:
+        // past it the cursor was simply not painted, so `j` moved
+        // something invisible and nothing scrolled after it. The window
+        // follows the cursor instead, and says what it is hiding on
+        // either side rather than quietly ending.
+        let hub_win = visible_window(cursor, hubs.len(), HUBS);
+        let orphan_win = visible_window(cursor.saturating_sub(orphan_base), orphans.len(), ORPHANS);
+        let (hub_before, hub_after) = (hub_win.start, hubs.len() - hub_win.end);
+        let (orphan_before, orphan_after) = (orphan_win.start, orphans.len() - orphan_win.end);
         div()
             .flex()
             .flex_col()
             .child(section("hubs — most linked to", co.accent))
+            .children(more(hub_before))
             .children(
                 hubs.into_iter()
                     .enumerate()
-                    .take(HUBS)
+                    .filter(|(i, _)| hub_win.contains(i))
                     .map(|(i, (id, title, n))| jump(i, id, format!("{n:>3}  {title}"))),
             )
-            .children(more(hidden_hubs))
+            .children(more(hub_after))
             .child(section("orphans — nothing links here", co.warning))
+            .children(more(orphan_before))
             .children(
                 orphans
                     .into_iter()
                     .enumerate()
-                    .take(ORPHANS)
+                    .filter(|(i, _)| orphan_win.contains(i))
                     .map(|(i, (id, title))| jump(orphan_base + i, id, format!("     {title}"))),
             )
-            .children(more(hidden_orphans))
+            .children(more(orphan_after))
             .child(section("dead links — targets that do not exist", co.error))
             .children(Self::text_rows(
                 co,
@@ -3405,43 +3795,71 @@ impl GpuiView {
         .child(clickable(
             co,
             {
-                // C3: the read-only body preview reuses the editor's
-                // highlight_body spans (same colours as edit mode).
-                let mut body_el = div()
-                    .mt_2()
-                    .flex_grow()
-                    .flex()
-                    .flex_col()
-                    .text_color(rgb(co.fg))
-                    .text_size(px(13.0));
-                if d.body.is_empty() {
-                    body_el = body_el.child("+ body".to_owned());
-                } else {
-                    // C3: the preview reads exactly like the editor —
-                    // same spans, same palette — but as one StyledText
-                    // per line rather than a div per span.
-                    for spans in self.highlighted(&d.body).iter() {
-                        let text: String = spans.iter().map(|(_, s)| s.as_str()).collect();
-                        body_el = body_el.child(div().min_h(px(17.0)).child(
-                            gpui::StyledText::new(text).with_highlights(
-                                span_ranges(spans).into_iter().map(|(range, kind)| {
-                                    (
-                                        range,
-                                        gpui::HighlightStyle {
-                                            color: Some(rgb(span_color(co, kind)).into()),
-                                            ..decorated(kind)
-                                        },
-                                    )
-                                }),
-                            ),
-                        ));
-                    }
-                }
-                with_menu(body_el, closure_shell_core::ContextTarget::Body, cx)
+                with_menu(
+                    self.body_preview(co, &d.body, cx),
+                    closure_shell_core::ContextTarget::Body,
+                    cx,
+                )
             },
             "edit-body",
             cx,
         ))
+    }
+
+    /// The read-only body preview under the detail fields.
+    ///
+    /// C3: it reads exactly like the editor — same spans, same palette,
+    /// same weight and slant — but as one `StyledText` per line rather
+    /// than a div per span. Ctrl-click follows a link here too; it used
+    /// to work only in the editor, so reading a note and wanting to go
+    /// where it points meant opening the editor first, which turned
+    /// every link into an invitation to start typing.
+    fn body_preview(&self, co: Colors, body: &str, cx: &Context<Self>) -> gpui::Div {
+        let mut el = div()
+            .mt_2()
+            .flex_grow()
+            .flex()
+            .flex_col()
+            .text_color(rgb(co.fg))
+            .text_size(px(13.0));
+        if body.is_empty() {
+            return el.child("+ body".to_owned());
+        }
+        for spans in self.highlighted(body).iter() {
+            let text: String = spans.iter().map(|(_, s)| s.as_str()).collect();
+            let styled = gpui::StyledText::new(text.clone()).with_highlights(
+                span_ranges(spans).into_iter().map(|(range, kind)| {
+                    (
+                        range,
+                        gpui::HighlightStyle {
+                            color: Some(rgb(span_color(co, kind)).into()),
+                            ..decorated(kind)
+                        },
+                    )
+                }),
+            );
+            let layout = styled.layout().clone();
+            el = el.child(div().min_h(px(17.0)).child(styled).on_mouse_down(
+                MouseButton::Left,
+                cx.listener(move |this: &mut Self, ev: &gpui::MouseDownEvent, _w, cx| {
+                    if !ev.modifiers.control {
+                        return;
+                    }
+                    let byte = layout
+                        .index_for_position(ev.position)
+                        .unwrap_or_else(|i| i)
+                        .min(text.len());
+                    if let Some(link) = line_links(&text)
+                        .into_iter()
+                        .find(|l| l.range.contains(&byte))
+                    {
+                        this.follow_link(&link.target, cx);
+                        cx.stop_propagation();
+                    }
+                }),
+            ));
+        }
+        el
     }
 
     /// Footer: a single compact line.
@@ -3642,12 +4060,34 @@ impl GpuiView {
     }
 
     /// Toast strip: the newest three feedback items, severity-coloured.
+    ///
+    /// Deferred and anchored rather than a row in the layout. As a flex
+    /// child it took its height from whether it had anything in it, so
+    /// every toast appearing and expiring — five seconds apart, all day
+    /// — pushed the outline and the editor down and let them back up.
+    /// `None` when there is nothing to say, so it costs no element.
+    fn toast_overlay(&self, co: Colors) -> Option<gpui::Deferred> {
+        if self.feedback.items().is_empty() {
+            return None;
+        }
+        Some(
+            gpui::deferred(
+                gpui::anchored()
+                    .position(gpui::point(px(12.0), px(52.0)))
+                    .snap_to_window_with_margin(px(8.0))
+                    .child(self.toast_strip(co)),
+            )
+            .with_priority(1),
+        )
+    }
+
+    /// The toasts themselves.
     fn toast_strip(&self, co: Colors) -> gpui::Div {
         use closure_shell_core::FeedbackKind as K;
         div()
             .flex()
-            .gap_2()
-            .px_3()
+            .flex_col()
+            .gap_1()
             .children(self.feedback.items().iter().rev().take(3).map(|item| {
                 let col = match item.kind {
                     K::Error => co.error,
@@ -3657,8 +4097,12 @@ impl GpuiView {
                 };
                 div()
                     .px_2()
+                    .py_1()
                     .rounded_md()
-                    .bg(rgb(mix_u32(co.bg, col, 48)))
+                    // Opaque, not tinted: it floats over the panes now,
+                    // and a translucent toast over body text is a
+                    // smear rather than a message.
+                    .bg(rgb(mix_u32(co.panel, col, 48)))
                     .border_1()
                     .border_color(rgb(col))
                     .text_color(rgb(col))
@@ -3772,21 +4216,6 @@ impl GpuiView {
 #[cfg(feature = "gpui")]
 type HighlightedBody = std::rc::Rc<Vec<Vec<(BodySpan, String)>>>;
 
-/// What a highlighted run in the body editor *means*.
-///
-/// Both are a background range, but they must not look alike — a
-/// cursor drawn in the selection tint disappears against a selected
-/// row, which is exactly what it used to do.
-#[cfg(feature = "gpui")]
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum Emphasis {
-    /// The VISUAL selection: tinted background, glyphs keep their
-    /// syntax colour.
-    Selection,
-    /// The cursor: inverse video, so it is legible on any background.
-    Cursor,
-}
-
 /// A hover explanation, in the theme's own colours.
 ///
 /// gpui's core ships no tooltip widget (Zed's lives in its `ui` crate),
@@ -3824,19 +4253,22 @@ fn editor_segment(
     col_offset: usize,
     text: String,
     runs: Vec<StyledRun>,
-    emphasis: Emphasis,
     cx: &Context<GpuiView>,
 ) -> gpui::Div {
     let styled = gpui::StyledText::new(text.clone()).with_highlights(runs.into_iter().map(
-        |(range, kind, hot)| {
+        |(range, kind, mark)| {
             let plain = rgb(span_color(co, kind)).into();
-            let (fg, bg) = match (hot, emphasis) {
-                (false, _) => (plain, None),
+            let (fg, bg) = match mark {
+                None => (plain, None),
                 // Inverse video: the glyphs take the background colour
                 // and sit on the foreground one, so the cursor is
                 // legible whatever it happens to be sitting on.
-                (true, Emphasis::Cursor) => (rgb(co.bg).into(), Some(rgb(co.fg).into())),
-                (true, Emphasis::Selection) => (plain, Some(rgb(co.selection_text).into())),
+                Some(Emphasis::Cursor) => (rgb(co.bg).into(), Some(rgb(co.fg).into())),
+                Some(Emphasis::Selection) => (plain, Some(rgb(co.selection_text).into())),
+                // A search hit is a wash, not an inversion: there can
+                // be a dozen on screen and the cursor still has to be
+                // the thing your eye finds first.
+                Some(Emphasis::Search) => (plain, Some(rgb(co.warning).into())),
             };
             (
                 range,
@@ -4155,8 +4587,6 @@ impl Render for GpuiView {
 
         let status = self.status_bar(co, cx);
 
-        let toasts = self.toast_strip(co);
-
         // The bindings panel opens on demand, and always while a chord
         // is in flight — that is the moment it is actually needed.
         let show_keys = self.which_key_open || !self.app.pending_chord().is_empty();
@@ -4198,13 +4628,15 @@ impl Render for GpuiView {
             .font_family(mono)
             .child(header)
             .child(context)
-            .child(toasts)
             .child(body)
             .child(status);
         if show_keys {
             root = root.child(self.which_key_panel(co, cx));
         }
         root = root.child(self.footer(co, cx));
+        if let Some(toasts) = self.toast_overlay(co) {
+            root = root.child(toasts);
+        }
         if let Some(menu) = self.context_menu_overlay(co, cx) {
             root = root.child(menu);
         }

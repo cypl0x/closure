@@ -16,14 +16,14 @@
 #![allow(clippy::unwrap_used, clippy::expect_used, missing_docs)]
 
 use closure_shell_gpui::{
-    BodySpan, byte_for_col, col_for_byte, selection_in_line, span_ranges, styled_runs,
+    BodySpan, Emphasis, byte_for_col, col_for_byte, selection_in_line, span_ranges, styled_runs,
 };
 
 /// gpui's `compute_runs` walks the highlight list assuming it is
 /// ascending and non-overlapping, and debug-asserts every bound is a
 /// char boundary. Any run list we hand it must satisfy all three plus
 /// cover the line exactly — otherwise the pane silently drops text.
-fn assert_well_formed(runs: &[(std::ops::Range<usize>, BodySpan, bool)], line: &str) {
+fn assert_well_formed(runs: &[closure_shell_gpui::StyledRun], line: &str) {
     let mut at = 0usize;
     for (range, _, _) in runs {
         assert_eq!(range.start, at, "runs must be contiguous: {runs:?}");
@@ -195,7 +195,7 @@ fn a_reversed_selection_is_normalised() {
     assert_eq!(selection_in_line(10, 10, (18, 12)), Some(2..8));
 }
 
-// === styled_runs: colour spans merged with the highlight range ===
+// === styled_runs: colour spans merged with the background marks ===
 //
 // A line carries two independent stylings — the syntax colour per span
 // and a background for the VISUAL selection or the block caret. gpui
@@ -211,12 +211,12 @@ fn spans() -> Vec<(BodySpan, String)> {
 
 #[test]
 fn without_a_highlight_the_runs_are_just_the_spans() {
-    let runs = styled_runs(&spans(), None);
+    let runs = styled_runs(&spans(), &[]);
     assert_eq!(
         runs,
         vec![
-            (0..3, BodySpan::Keyword, false),
-            (3..5, BodySpan::Plain, false),
+            (0..3, BodySpan::Keyword, None),
+            (3..5, BodySpan::Plain, None),
         ]
     );
     assert_well_formed(&runs, "let x");
@@ -225,14 +225,14 @@ fn without_a_highlight_the_runs_are_just_the_spans() {
 #[test]
 fn a_highlight_inside_one_span_splits_it_in_three() {
     // Block caret on the 'e' of `let`.
-    let runs = styled_runs(&spans(), Some(1..2));
+    let runs = styled_runs(&spans(), &[(1..2, Emphasis::Cursor)]);
     assert_eq!(
         runs,
         vec![
-            (0..1, BodySpan::Keyword, false),
-            (1..2, BodySpan::Keyword, true),
-            (2..3, BodySpan::Keyword, false),
-            (3..5, BodySpan::Plain, false),
+            (0..1, BodySpan::Keyword, None),
+            (1..2, BodySpan::Keyword, Some(Emphasis::Cursor)),
+            (2..3, BodySpan::Keyword, None),
+            (3..5, BodySpan::Plain, None),
         ]
     );
     assert_well_formed(&runs, "let x");
@@ -242,13 +242,13 @@ fn a_highlight_inside_one_span_splits_it_in_three() {
 fn a_highlight_spanning_a_boundary_marks_both_sides() {
     // Selection over "t x" — crosses the Keyword/Plain seam, and each
     // side must keep its own colour while sharing the background.
-    let runs = styled_runs(&spans(), Some(2..5));
+    let runs = styled_runs(&spans(), &[(2..5, Emphasis::Cursor)]);
     assert_eq!(
         runs,
         vec![
-            (0..2, BodySpan::Keyword, false),
-            (2..3, BodySpan::Keyword, true),
-            (3..5, BodySpan::Plain, true),
+            (0..2, BodySpan::Keyword, None),
+            (2..3, BodySpan::Keyword, Some(Emphasis::Cursor)),
+            (3..5, BodySpan::Plain, Some(Emphasis::Cursor)),
         ]
     );
     assert_well_formed(&runs, "let x");
@@ -256,20 +256,20 @@ fn a_highlight_spanning_a_boundary_marks_both_sides() {
 
 #[test]
 fn a_highlight_covering_everything_marks_every_run() {
-    let runs = styled_runs(&spans(), Some(0..5));
-    assert!(runs.iter().all(|(_, _, sel)| *sel), "{runs:?}");
+    let runs = styled_runs(&spans(), &[(0..5, Emphasis::Cursor)]);
+    assert!(runs.iter().all(|(_, _, m)| m.is_some()), "{runs:?}");
     assert_well_formed(&runs, "let x");
 }
 
 #[test]
 fn a_highlight_outside_the_line_changes_nothing() {
     assert_eq!(
-        styled_runs(&spans(), Some(9..12)),
-        styled_runs(&spans(), None)
+        styled_runs(&spans(), &[(9..12, Emphasis::Cursor)]),
+        styled_runs(&spans(), &[])
     );
     assert_eq!(
-        styled_runs(&spans(), Some(3..3)),
-        styled_runs(&spans(), None)
+        styled_runs(&spans(), &[(3..3, Emphasis::Cursor)]),
+        styled_runs(&spans(), &[])
     );
 }
 
@@ -281,22 +281,22 @@ fn runs_stay_on_char_boundaries_over_multibyte_text() {
     ];
     let line = "\u{e4}\u{20ac}#";
     // Highlight the € only: bytes 2..5.
-    let runs = styled_runs(&spans, Some(2..5));
+    let runs = styled_runs(&spans, &[(2..5, Emphasis::Cursor)]);
     assert_well_formed(&runs, line);
     assert_eq!(
         runs,
         vec![
-            (0..2, BodySpan::Plain, false),
-            (2..5, BodySpan::Plain, true),
-            (5..6, BodySpan::Comment, false),
+            (0..2, BodySpan::Plain, None),
+            (2..5, BodySpan::Plain, Some(Emphasis::Cursor)),
+            (5..6, BodySpan::Comment, None),
         ]
     );
 }
 
 #[test]
 fn an_empty_line_produces_no_runs() {
-    assert_eq!(styled_runs(&[], None), vec![]);
-    assert_eq!(styled_runs(&[], Some(0..1)), vec![]);
+    assert_eq!(styled_runs(&[], &[]), vec![]);
+    assert_eq!(styled_runs(&[], &[(0..1, Emphasis::Cursor)]), vec![]);
 }
 
 // === split_runs: the INSERT caret bar ===
@@ -311,26 +311,26 @@ use closure_shell_gpui::split_runs;
 
 #[test]
 fn splitting_between_runs_keeps_them_whole() {
-    let runs = styled_runs(&spans(), None);
+    let runs = styled_runs(&spans(), &[]);
     let (head, tail) = split_runs(&runs, 3);
-    assert_eq!(head, vec![(0..3, BodySpan::Keyword, false)]);
+    assert_eq!(head, vec![(0..3, BodySpan::Keyword, None)]);
     assert_eq!(
         tail,
-        vec![(0..2, BodySpan::Plain, false)],
+        vec![(0..2, BodySpan::Plain, None)],
         "tail rebased to 0"
     );
 }
 
 #[test]
 fn splitting_inside_a_run_cuts_it_in_two() {
-    let runs = styled_runs(&spans(), None);
+    let runs = styled_runs(&spans(), &[]);
     let (head, tail) = split_runs(&runs, 1);
-    assert_eq!(head, vec![(0..1, BodySpan::Keyword, false)]);
+    assert_eq!(head, vec![(0..1, BodySpan::Keyword, None)]);
     assert_eq!(
         tail,
         vec![
-            (0..2, BodySpan::Keyword, false),
-            (2..4, BodySpan::Plain, false)
+            (0..2, BodySpan::Keyword, None),
+            (2..4, BodySpan::Plain, None)
         ],
         "the cut run keeps its kind on both sides"
     );
@@ -340,7 +340,7 @@ fn splitting_inside_a_run_cuts_it_in_two() {
 
 #[test]
 fn splitting_at_zero_puts_everything_in_the_tail() {
-    let runs = styled_runs(&spans(), None);
+    let runs = styled_runs(&spans(), &[]);
     let (head, tail) = split_runs(&runs, 0);
     assert!(head.is_empty(), "a caret at column 0 has no prefix");
     assert_eq!(tail, runs, "and the tail is the untouched line");
@@ -348,7 +348,7 @@ fn splitting_at_zero_puts_everything_in_the_tail() {
 
 #[test]
 fn splitting_at_the_end_puts_everything_in_the_head() {
-    let runs = styled_runs(&spans(), None);
+    let runs = styled_runs(&spans(), &[]);
     let (head, tail) = split_runs(&runs, 5);
     assert_eq!(head, runs);
     assert!(tail.is_empty(), "a caret at end of line has no suffix");
@@ -356,7 +356,7 @@ fn splitting_at_the_end_puts_everything_in_the_head() {
 
 #[test]
 fn splitting_past_the_end_is_clamped_not_panicking() {
-    let runs = styled_runs(&spans(), None);
+    let runs = styled_runs(&spans(), &[]);
     let (head, tail) = split_runs(&runs, 999);
     assert_eq!(head, runs);
     assert!(tail.is_empty());
@@ -365,17 +365,17 @@ fn splitting_past_the_end_is_clamped_not_panicking() {
 #[test]
 fn splitting_preserves_the_highlight_flags() {
     // Selection over "t x", caret inside it at byte 4.
-    let runs = styled_runs(&spans(), Some(2..5));
+    let runs = styled_runs(&spans(), &[(2..5, Emphasis::Cursor)]);
     let (head, tail) = split_runs(&runs, 4);
     assert_eq!(
         head,
         vec![
-            (0..2, BodySpan::Keyword, false),
-            (2..3, BodySpan::Keyword, true),
-            (3..4, BodySpan::Plain, true),
+            (0..2, BodySpan::Keyword, None),
+            (2..3, BodySpan::Keyword, Some(Emphasis::Cursor)),
+            (3..4, BodySpan::Plain, Some(Emphasis::Cursor)),
         ]
     );
-    assert_eq!(tail, vec![(0..1, BodySpan::Plain, true)]);
+    assert_eq!(tail, vec![(0..1, BodySpan::Plain, Some(Emphasis::Cursor))]);
 }
 
 #[test]

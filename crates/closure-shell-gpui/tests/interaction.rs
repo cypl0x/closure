@@ -11,7 +11,7 @@
 
 use closure_shell_gpui::{
     ModalSurface, accepts_paste, body_viewport_lines, editor_key, outline_follows_selection,
-    paste_chars, side_reveals_selection, which_key_filter,
+    paste_chars, which_key_filter,
 };
 
 // === Shifted keys ===
@@ -193,25 +193,10 @@ fn a_side_list_cursor_does_not_scroll_the_outline() {
     }
 }
 
-#[test]
-fn the_flat_side_lists_reveal_their_own_cursor() {
-    // These paint one child per row, so the pane's scroll handle can
-    // address a row by index.
-    for surface in [
-        ModalSurface::Headlines,
-        ModalSurface::BodySearch,
-        ModalSurface::Backlinks,
-        ModalSurface::Journal,
-        ModalSurface::Cron,
-        ModalSurface::UndoHistory,
-    ] {
-        assert!(side_reveals_selection(surface), "{surface:?}");
-    }
-    // The panes that wrap their rows in sections cannot: a child index
-    // is not a row index there.
-    assert!(!side_reveals_selection(ModalSurface::Graph));
-    assert!(!side_reveals_selection(ModalSurface::Browse));
-}
+// Which pane can reveal its own cursor — and where that row sits among
+// the pane's children — is `side_reveal_offset`, covered in
+// `viewport.rs` along with the other three ways the window could show
+// something other than where the cursor was.
 
 // === The editor viewport ===
 //
@@ -292,4 +277,89 @@ fn the_prefix_matches_whole_strokes_only() {
 #[test]
 fn a_pending_chord_with_no_continuation_yields_nothing() {
     assert!(which_key_filter(groups(), "z").is_empty());
+}
+
+// === What a followed link does ===
+//
+// `follow_link` understood `id:` and a bare ULID; everything else came
+// back as "not a headline in this vault", which is true and useless —
+// a `file:` link into the same vault had no reason to be refused, and
+// a URL had no way out of the window at all.
+
+use closure_shell_gpui::{LinkAction, link_action};
+
+#[test]
+fn an_id_link_selects_the_block() {
+    assert_eq!(
+        link_action("id:01HQXGPUI0000000000000000"),
+        LinkAction::Block("01HQXGPUI0000000000000000".to_owned())
+    );
+}
+
+#[test]
+fn a_bare_target_is_left_for_the_vault_to_resolve() {
+    // Org's own `[[01HQ…]]` spelling, no scheme. Whether it is an id
+    // or a title is the vault's to say — guessing from length and
+    // alphabet would be wrong for every id format but today's.
+    assert_eq!(
+        link_action("01HQXGPUI0000000000000000"),
+        LinkAction::Fuzzy("01HQXGPUI0000000000000000".to_owned())
+    );
+}
+
+#[test]
+fn a_file_link_names_a_path_in_the_vault() {
+    assert_eq!(
+        link_action("file:notes/inbox.org"),
+        LinkAction::File("notes/inbox.org".to_owned())
+    );
+    // `./` is how org writes a relative one.
+    assert_eq!(
+        link_action("file:./inbox.org"),
+        LinkAction::File("./inbox.org".to_owned())
+    );
+}
+
+#[test]
+fn a_url_is_external() {
+    for url in [
+        "https://example.com/x",
+        "http://localhost:8080",
+        "mailto:mail@wolfhard.net",
+    ] {
+        assert_eq!(
+            link_action(url),
+            LinkAction::External(url.to_owned()),
+            "{url}"
+        );
+    }
+}
+
+#[test]
+fn anything_else_is_a_headline_title() {
+    // Org's fuzzy link: `[[Some Heading]]` points at a title.
+    assert_eq!(
+        link_action("Some Heading"),
+        LinkAction::Fuzzy("Some Heading".to_owned())
+    );
+    // A colon that is not a scheme does not make it a URL.
+    assert_eq!(
+        link_action("Meeting: Monday"),
+        LinkAction::Fuzzy("Meeting: Monday".to_owned())
+    );
+}
+
+#[test]
+fn an_empty_target_is_nothing() {
+    assert_eq!(link_action(""), LinkAction::None);
+    assert_eq!(link_action("   "), LinkAction::None);
+}
+
+#[test]
+fn a_file_link_with_a_headline_search_keeps_both() {
+    // `[[file:notes.org::* Heading]]` — the file, then where in it.
+    assert_eq!(
+        link_action("file:notes.org::*Heading"),
+        LinkAction::FileAt("notes.org".to_owned(), "*Heading".to_owned())
+    );
 }

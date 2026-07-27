@@ -7313,6 +7313,11 @@ pub struct ModalApp {
     body: BodyEditor,
     completion: Option<CompletionSession>,
     edit_target: Option<String>,
+    /// The body as it was when the editor opened it, so
+    /// [`Self::body_dirty`] can answer by comparison rather than with
+    /// a "was touched" bit — a buffer put back the way it was found
+    /// has nothing to save.
+    body_baseline: String,
     /// Headline id whose backlinks the Backlinks surface is showing.
     link_target: Option<String>,
     /// Target id + single-line buffer for the TagsEdit/PropertyEdit
@@ -7456,6 +7461,7 @@ impl ModalApp {
             query: String::new(),
             capture_buf: String::new(),
             body: BodyEditor::new(),
+            body_baseline: String::new(),
             completion: None,
             edit_target: None,
             link_target: None,
@@ -8666,7 +8672,16 @@ impl ModalApp {
         self.surface = ModalSurface::Browse;
         match line {
             "" => {}
-            "q" | "q!" | "quit" => self.quit = true,
+            // The bang is the whole point of the bang: `:q` will not
+            // take an unfinished paragraph with it, `:q!` will.
+            "q" | "quit" => {
+                if self.refuse_quit_when_dirty() {
+                    self.surface = ModalSurface::EditBody;
+                } else {
+                    self.quit = true;
+                }
+            }
+            "q!" | "quit!" => self.quit = true,
             "w" | "write" | "wq" | "x" | "wq!" | "x!" => {
                 if editing {
                     // Here a write has something to do: the editor
@@ -9071,6 +9086,50 @@ impl ModalApp {
     /// unknown id leaves the cursor alone rather than resetting it.
     pub fn select_by_id(&mut self, shell: &Shell, id: &str) -> bool {
         if let Some(i) = self.rows_shared(shell).iter().position(|r| r.id == id) {
+            self.selected = i;
+            return true;
+        }
+        false
+    }
+
+    /// Move the outline selection to the first row titled `title`,
+    /// reporting whether one was found.
+    ///
+    /// Org's fuzzy link — `[[Some Heading]]` — points at a title, not
+    /// an id, and it is the spelling a person writes by hand. Matching
+    /// is exact after trimming: a fuzzy match here would follow a link
+    /// to the wrong note, which is worse than not following it.
+    pub fn select_by_title(&mut self, shell: &Shell, title: &str) -> bool {
+        let want = title.trim();
+        if let Some(i) = self
+            .rows_shared(shell)
+            .iter()
+            .position(|r| r.title.trim() == want)
+        {
+            self.selected = i;
+            return true;
+        }
+        false
+    }
+
+    /// Move the outline selection into the file `path` names — to
+    /// `title` within it, or to its first headline.
+    ///
+    /// `file:` links are written relative to wherever the link lives,
+    /// so `./b.org`, `b.org` and `notes/b.org` can all mean the same
+    /// file; the match is on the trailing path components, which is
+    /// the most that can be resolved without knowing the linking
+    /// file's own directory.
+    pub fn select_in_file(&mut self, shell: &Shell, path: &str, title: Option<&str>) -> bool {
+        let want = path.trim().trim_start_matches("./");
+        let rows = self.rows_shared(shell);
+        let found = rows.iter().position(|r| {
+            let same_file = r.path == want
+                || r.path.ends_with(&format!("/{want}"))
+                || want.ends_with(&format!("/{}", r.path));
+            same_file && title.is_none_or(|t| r.title.trim() == t.trim())
+        });
+        if let Some(i) = found {
             self.selected = i;
             return true;
         }
@@ -9589,6 +9648,13 @@ impl ModalApp {
         self.body.search_prompt()
     }
 
+    /// The pattern the last `/` or `?` searched for, so a shell can
+    /// mark every hit rather than only moving the cursor to one.
+    #[must_use]
+    pub fn body_search_pattern(&self) -> Option<String> {
+        self.body.search_pattern().map(ToOwned::to_owned)
+    }
+
     /// Whether the body editor is in REPLACE (`R`) rather than INSERT —
     /// the same mode chip, a different word on it.
     #[must_use]
@@ -9711,7 +9777,64 @@ impl ModalApp {
             }
         }
         self.body.clear();
+        self.body_baseline.clear();
         self.surface = ModalSurface::Browse;
+    }
+
+    /// Whether the body editor holds something the vault does not.
+    ///
+    /// A comparison against what was loaded, not a "was touched" bit:
+    /// a buffer the user has put back the way they found it — by
+    /// undoing, or by retyping the same word — has nothing to save,
+    /// and warning about it would train them to ignore the warning.
+    #[must_use]
+    pub fn body_dirty(&self) -> bool {
+        self.edit_target.is_some() && self.body.text() != self.body_baseline
+    }
+
+    /// Write out a body edit still in progress, if there is one.
+    /// `true` when something was saved.
+    ///
+    /// What a window closing under an unfinished edit calls: the
+    /// gesture that closed the window is recoverable, the paragraph
+    /// that was in the buffer is not, so the text wins.
+    pub fn save_pending_edit(&mut self, shell: &mut Shell) -> bool {
+        if !self.body_dirty() {
+            return false;
+        }
+        self.commit_edit_body(shell);
+        true
+    }
+
+    /// Run one `:` line, for a shell (or a test) that has the text
+    /// already rather than a keystroke at a time.
+    pub fn run_ex_line(&mut self, shell: &mut Shell, line: &str) {
+        self.ex_return = Some(self.surface);
+        self.run_ex(shell, line);
+    }
+
+    /// Refuse to quit over an unsaved body, and say why.
+    ///
+    /// `true` when the caller should stop. The bare flag this replaced
+    /// meant `:q` in the middle of an edit threw the buffer away
+    /// without a word.
+    fn refuse_quit_when_dirty(&mut self) -> bool {
+        if !self.body_dirty() {
+            return false;
+        }
+        "unsaved body — :w saves, :wq saves and quits, :q! discards it"
+            .clone_into(&mut self.status);
+        true
+    }
+
+    /// Park the body-editor viewport so `line` is its first visible
+    /// one, clamped to the buffer — what a scrollbar drag needs, and
+    /// the absolute half of [`Self::body_scroll_by`].
+    pub fn body_scroll_to(&mut self, line: usize, viewport: usize) {
+        let lines = self.body.text().split('\n').count();
+        let max = lines.saturating_sub(viewport);
+        let (cl, _) = self.body.cursor_line_col();
+        self.body_scroll = Some((line.min(max), cl));
     }
 
     fn on_search_key(&mut self, shell: &Shell, key: &str, text: Option<char>) {
@@ -9819,7 +9942,11 @@ impl ModalApp {
                 self.scroll_override = None;
                 self.selected = last;
             }
-            "quit" => self.quit = true,
+            "quit" => {
+                if !self.refuse_quit_when_dirty() {
+                    self.quit = true;
+                }
+            }
             "capture-start" => {
                 self.surface = ModalSurface::Capture;
                 self.capture_buf.clear();
@@ -9951,8 +10078,9 @@ impl ModalApp {
             "edit-body" => {
                 if let Some(row) = self.rows_shared(shell).get(self.selected).cloned() {
                     self.edit_target = Some(row.id);
-                    self.body
-                        .load(self.detail(shell).map(|d| d.body).unwrap_or_default());
+                    let body = self.detail(shell).map(|d| d.body).unwrap_or_default();
+                    self.body_baseline.clone_from(&body);
+                    self.body.load(body);
                     self.surface = ModalSurface::EditBody;
                     "edit body — C-Enter save, Esc cancel".clone_into(&mut self.status);
                 }
