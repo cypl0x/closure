@@ -35,7 +35,7 @@ pub const GPUI_SHELL: &str = "gpui";
 #[cfg(feature = "gpui-test")]
 mod testing;
 #[cfg(feature = "gpui-test")]
-pub use testing::test_window;
+pub use testing::{ALL_SURFACES, opening_route, test_window, visual_window};
 
 /// Pack a theme [`closure_shell_core::Color`] into the `0xRRGGBB`
 /// integer gpui's `rgb()` expects.
@@ -1416,6 +1416,91 @@ impl GpuiView {
         self.reload_vault(cx);
     }
 
+    /// Run a registry command the way a mouse affordance does — the
+    /// same [`Self::click`] a which-key chip, a detail field or a menu
+    /// entry goes through.
+    pub fn run_command(&mut self, command: &str, cx: &mut Context<Self>) {
+        self.click(command, cx);
+    }
+
+    /// The outline's selected row index, for a test to assert a click
+    /// landed on the row it aimed at.
+    #[must_use]
+    pub const fn selected(&self) -> usize {
+        self.app.selected()
+    }
+
+    /// Whether row `i` is folded, for a test to assert a fold-arrow
+    /// click did what the chord does.
+    #[must_use]
+    pub fn row_folded(&self, i: usize) -> bool {
+        self.app
+            .rows_shared(&self.shell)
+            .get(i)
+            .is_some_and(|r| r.folded)
+    }
+
+    /// Row `i`'s TODO keyword, if it has one.
+    #[must_use]
+    pub fn row_todo(&self, i: usize) -> Option<String> {
+        self.app
+            .rows_shared(&self.shell)
+            .get(i)
+            .and_then(|r| r.todo.clone())
+    }
+
+    /// Row `i`'s title.
+    #[must_use]
+    pub fn row_title(&self, i: usize) -> Option<String> {
+        self.app
+            .rows_shared(&self.shell)
+            .get(i)
+            .map(|r| r.title.clone())
+    }
+
+    /// Whether a context menu is open.
+    #[must_use]
+    pub const fn menu_open(&self) -> bool {
+        self.menu.is_some()
+    }
+
+    /// Whether the which-key panel is pinned open.
+    #[must_use]
+    pub const fn which_key_open(&self) -> bool {
+        self.which_key_open
+    }
+
+    /// The chord waiting for its next key, if one is.
+    #[must_use]
+    pub fn pending_chord(&self) -> String {
+        self.app.pending_chord()
+    }
+
+    /// How many toasts are on the strip.
+    #[must_use]
+    pub fn toast_count(&self) -> usize {
+        self.feedback.items().len()
+    }
+
+    /// The first visible body line, for a test to assert the wheel
+    /// moved the editor's own viewport.
+    #[must_use]
+    pub fn body_scroll_start(&self) -> usize {
+        self.app.body_scroll_start(self.body_view())
+    }
+
+    /// Where the outline is scrolled to, in pixels from the top.
+    #[must_use]
+    pub fn outline_scroll_top(&self) -> f32 {
+        -f32::from(self.outline_scroll.0.borrow().base_handle.offset().y)
+    }
+
+    /// The body editor's cursor, as (line, column).
+    #[must_use]
+    pub fn body_cursor(&self) -> (usize, usize) {
+        self.app.body_cursor()
+    }
+
     /// Feed a keystroke the way the window's own handler does.
     ///
     /// The same seam `on_key` uses, so a test drives the shell through
@@ -1433,6 +1518,16 @@ impl GpuiView {
     fn on_key(&mut self, ev: &KeyDownEvent, _window: &mut Window, cx: &mut Context<Self>) {
         let ks = &ev.keystroke;
         let m = &ks.modifiers;
+        // The window is a modal editor: every key belongs to it, and
+        // saying so is not a formality. When a key event bubbles out
+        // unclaimed, gpui hands its `key_char` straight to the
+        // installed input method handler as if it were composed text
+        // (`x11/window.rs`, `wayland/window.rs`, `Window::
+        // dispatch_keystroke`) — and this window installs one, for
+        // dead keys and CJK. So every printable keystroke was applied
+        // twice: once here, once by gpui behind us. `hello` typed into
+        // a body arrived as `hheelllloo`.
+        cx.stop_propagation();
         let text = ks
             .key_char
             .as_ref()
@@ -1678,7 +1773,7 @@ impl GpuiView {
     /// user's call. It goes to the clipboard instead, which is the one
     /// thing that makes ctrl-clicking it worth anything, and the
     /// status line says so rather than leaving the paste a surprise.
-    fn follow_link(&mut self, target: &str, cx: &mut Context<Self>) {
+    pub fn follow_link(&mut self, target: &str, cx: &mut Context<Self>) {
         match link_action(target) {
             LinkAction::None => {}
             LinkAction::Block(id) => self.jump_to(&id, target, cx),
@@ -1820,7 +1915,8 @@ impl GpuiView {
     /// count only changes when the window is resized, and the frame
     /// after a resize corrects it. Before the first layout there are no
     /// bounds at all, and the pane assumes [`BODY_VIEW_DEFAULT`].
-    fn body_view(&self) -> usize {
+    #[must_use]
+    pub fn body_view(&self) -> usize {
         let height = f32::from(self.side_scroll.bounds().size.height);
         if height <= 0.0 {
             return BODY_VIEW_DEFAULT;
@@ -1957,6 +2053,7 @@ impl GpuiView {
             .border_color(rgb(co.border))
             .child(list)
             .child(scrollbar(
+                "outline-scrollbar",
                 co,
                 &self.outline_scroll.0.borrow().base_handle.clone(),
                 cx,
@@ -2042,8 +2139,18 @@ impl GpuiView {
         };
         let is_sel = i == self.app.selected();
         let mut line = div()
+            // A named element a test can find the painted bounds of, so
+            // a click lands where the user's would rather than at a
+            // coordinate the test made up.
+            .debug_selector(|| format!("outline-row-{i}"))
             .flex()
             .items_center()
+            // The row is the click target — selecting it, right-clicking
+            // it, dragging it. Sized to its cells it was 193px wide in
+            // a 420px column, so the right half of every row in the
+            // outline was dead space that looked exactly like the row.
+            .w_full()
+            .overflow_hidden()
             .px_2()
             .py_1()
             .text_size(px(14.0))
@@ -2131,6 +2238,7 @@ impl GpuiView {
             .child(div().w(px(indent)))
             .child(
                 div()
+                    .debug_selector(|| format!("fold-{i}"))
                     .w(px(18.0))
                     .text_color(rgb(if folded { co.accent } else { co.muted }))
                     .cursor_pointer()
@@ -2139,6 +2247,7 @@ impl GpuiView {
             )
             .child(
                 div()
+                    .debug_selector(|| format!("todo-{i}"))
                     .w(px(18.0))
                     .text_color(rgb(todo_col))
                     .cursor_pointer()
@@ -2182,7 +2291,12 @@ impl GpuiView {
             .flex_grow()
             .overflow_hidden()
             .child(self.side_content(co, cx))
-            .child(scrollbar(co, &self.side_scroll.clone(), cx))
+            .child(scrollbar(
+                "side-scrollbar",
+                co,
+                &self.side_scroll.clone(),
+                cx,
+            ))
     }
 
     /// What the right-hand pane actually shows for the active surface.
@@ -2199,6 +2313,10 @@ impl GpuiView {
             .flex()
             .flex_col()
             .flex_grow()
+            // This is the element whose bounds [`Self::body_view`]
+            // measures, so how tall it is decides how much of a body
+            // the editor paints. It is kept honest by the `min_h` on
+            // the row in [`Render::render`], not by anything here.
             .px_4()
             .py_3()
             .gap_2()
@@ -3824,6 +3942,7 @@ impl GpuiView {
                 .flex_grow(),
             )
             .child(scrollbar(
+                "palette-scrollbar",
                 co,
                 &self.palette_scroll.0.borrow().base_handle.clone(),
                 cx,
@@ -4052,14 +4171,19 @@ impl GpuiView {
     /// in.
     fn footer(&self, co: Colors, cx: &Context<Self>) -> impl IntoElement {
         let pending = self.app.pending_chord();
-        let bar = div()
+        // The hints and the chord completions are as long as they are —
+        // a dozen `x → command` chips is wider than any window. They go
+        // in their own shrinkable, clipped group, because a flex row
+        // that cannot shrink grows instead: the bar ran to 5195px in a
+        // 1920px window and carried the `keys` toggle out past the
+        // right edge, where no mouse could reach it.
+        let mut hints = div()
             .flex()
             .items_center()
             .gap_2()
-            .px_2()
-            .py_1()
-            .bg(rgb(co.panel))
-            .text_size(px(11.0))
+            .flex_shrink()
+            .min_w(px(0.0))
+            .overflow_hidden()
             .child(
                 div()
                     .px_1()
@@ -4067,31 +4191,43 @@ impl GpuiView {
                     .child(format!("[{:?}]", self.app.input_mode())),
             );
         // A chord in flight: show what it is and what can follow.
-        let bar = if pending.is_empty() {
-            bar.child(div().text_color(rgb(co.muted)).child(self.app.key_hints()))
+        hints = if pending.is_empty() {
+            hints.child(div().text_color(rgb(co.muted)).child(self.app.key_hints()))
         } else {
-            bar.child(
-                div()
-                    .text_color(rgb(co.warning))
-                    .child(format!("{pending} ‸")),
-            )
-            .children(
-                self.app
-                    .completions()
-                    .into_iter()
-                    .take(12)
-                    .map(|(rest, cmd)| {
-                        div()
-                            .flex()
-                            .px_1()
-                            .child(div().text_color(rgb(co.accent)).child(rest))
-                            .child(div().text_color(rgb(co.muted)).child(format!(" → {cmd}")))
-                    }),
-            )
+            hints
+                .child(
+                    div()
+                        .text_color(rgb(co.warning))
+                        .child(format!("{pending} ‸")),
+                )
+                .children(
+                    self.app
+                        .completions()
+                        .into_iter()
+                        .take(12)
+                        .map(|(rest, cmd)| {
+                            div()
+                                .flex()
+                                .px_1()
+                                .child(div().text_color(rgb(co.accent)).child(rest))
+                                .child(div().text_color(rgb(co.muted)).child(format!(" → {cmd}")))
+                        }),
+                )
         };
+        let bar = div()
+            .debug_selector(|| "footer-bar".to_owned())
+            .flex()
+            .items_center()
+            .gap_2()
+            .px_2()
+            .py_1()
+            .bg(rgb(co.panel))
+            .text_size(px(11.0))
+            .child(hints);
         let open = self.which_key_open;
         bar.child(div().flex_grow()).child(
             div()
+                .debug_selector(|| "which-key-toggle".to_owned())
                 .px_2()
                 .rounded_md()
                 .bg(rgb(if open { co.selection } else { co.bg }))
@@ -4150,8 +4286,10 @@ impl GpuiView {
                             .child(div().text_color(rgb(co.heading2)).child(title));
                         for (chord, cmd) in entries {
                             let run = cmd.clone();
+                            let selector = format!("wk-{cmd}");
                             col = col.child(
                                 div()
+                                    .debug_selector(move || selector)
                                     .flex()
                                     .rounded_sm()
                                     .cursor_pointer()
@@ -4172,7 +4310,12 @@ impl GpuiView {
                         col
                     })),
             )
-            .child(scrollbar(co, &self.which_key_scroll.clone(), cx))
+            .child(scrollbar(
+                "which-key-scrollbar",
+                co,
+                &self.which_key_scroll.clone(),
+                cx,
+            ))
     }
 
     /// The status line: the message on the left, the subsystem
@@ -4185,6 +4328,7 @@ impl GpuiView {
     fn status_bar(&self, co: Colors, cx: &Context<Self>) -> gpui::Div {
         use closure_shell_core::IndicatorLevel as L;
         div()
+            .debug_selector(|| "status-bar".to_owned())
             .flex()
             .items_center()
             .gap_2()
@@ -4295,6 +4439,7 @@ impl GpuiView {
     fn header_bar(&self, co: Colors, cx: &Context<Self>) -> gpui::Div {
         let button = |label: String, colour: u32, command: &'static str| {
             div()
+                .debug_selector(move || format!("header-{command}"))
                 .px_2()
                 .rounded_md()
                 .bg(rgb(co.panel))
@@ -4309,6 +4454,7 @@ impl GpuiView {
                 .child(label)
         };
         div()
+            .debug_selector(|| "header-bar".to_owned())
             .flex()
             .items_center()
             .px_3()
@@ -4340,6 +4486,7 @@ impl GpuiView {
                     .snap_to_window_with_margin(px(8.0))
                     .child(
                         div()
+                            .debug_selector(|| "context-menu".to_owned())
                             .flex()
                             .flex_col()
                             .min_w(px(230.0))
@@ -4356,7 +4503,9 @@ impl GpuiView {
                             .text_size(px(12.0))
                             .children(items.into_iter().map(|item| {
                                 let command = item.action.command().to_owned();
+                                let selector = format!("menu-{command}");
                                 div()
+                                    .debug_selector(move || selector)
                                     .flex()
                                     .items_center()
                                     .gap_2()
@@ -4739,6 +4888,7 @@ fn editor_segment(
     let drag_layout = layout.clone();
     let click_text = text.clone();
     div()
+        .debug_selector(move || format!("body-line-{ln}"))
         .child(styled)
         .on_mouse_down(
             MouseButton::Left,
@@ -4798,7 +4948,12 @@ fn editor_segment(
 /// The handle's own bounds are the track's: the bar is painted as the
 /// scrolled pane's sibling with the same height.
 #[cfg(feature = "gpui")]
-fn scrollbar(co: Colors, handle: &gpui::ScrollHandle, cx: &Context<GpuiView>) -> gpui::Div {
+fn scrollbar(
+    name: &'static str,
+    co: Colors,
+    handle: &gpui::ScrollHandle,
+    cx: &Context<GpuiView>,
+) -> gpui::Div {
     /// Keeps the thumb grabbable on a huge vault.
     const MIN_THUMB: f32 = 0.06;
     let bounds = handle.bounds();
@@ -4807,6 +4962,7 @@ fn scrollbar(co: Colors, handle: &gpui::ScrollHandle, cx: &Context<GpuiView>) ->
     // gpui scroll offsets run negative as content moves up.
     let scroll = -f32::from(handle.offset().y);
     let track = div()
+        .debug_selector(move || name.to_owned())
         .w(px(10.0))
         .h_full()
         .flex()
@@ -4969,6 +5125,7 @@ fn clickable(
     cx: &Context<GpuiView>,
 ) -> gpui::Div {
     div()
+        .debug_selector(move || format!("field-{command}"))
         .rounded_sm()
         .px_1()
         .cursor_pointer()
@@ -5032,6 +5189,7 @@ impl Render for GpuiView {
         let header = self.header_bar(co, cx);
 
         let context = div()
+            .debug_selector(|| "context-line".to_owned())
             .px_3()
             .py_1()
             .bg(rgb(co.panel))
@@ -5043,6 +5201,16 @@ impl Render for GpuiView {
             .flex()
             .flex_row()
             .flex_grow()
+            // A flex item's automatic minimum size is its *content*,
+            // so this row refused to shrink below the height of the
+            // panes inside it: a 300-line body made the right-hand
+            // pane 6000px tall, and every measurement taken from it —
+            // how many lines the editor paints, where the scrollbar
+            // thumb goes, what a page-down moves by — was taken
+            // against a viewport the size of the document. This is the
+            // only item in the chain that needed saying: below it the
+            // panes are row children, sized by `stretch`.
+            .min_h(px(0.0))
             .child(self.rows_pane(co, cx))
             .child(self.side_pane(co, cx));
 
