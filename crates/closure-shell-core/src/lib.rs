@@ -10030,7 +10030,16 @@ impl ModalApp {
             "toggle-fold" => {
                 if let Some(row) = self.rows_shared(shell).get(self.selected).cloned() {
                     let bid = closure_core::BlockId::from_existing(&row.id);
-                    let _ = toggle_visibility(shell, &bid);
+                    // Say which way it went, in the same words
+                    // [`OutlineApp::toggle_fold`] uses. This said
+                    // nothing at all, which left the shells' toast
+                    // rules for `folded:`/`unfolded:` matching a status
+                    // no modal shell ever produced.
+                    self.status = match toggle_visibility(shell, &bid) {
+                        Some(true) => format!("folded: {}", row.title),
+                        Some(false) => format!("unfolded: {}", row.title),
+                        None => format!("fold failed: {}", row.title),
+                    };
                     self.selected = self
                         .selected
                         .min(self.rows_shared(shell).len().saturating_sub(1));

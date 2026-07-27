@@ -1495,6 +1495,22 @@ impl GpuiView {
         -f32::from(self.outline_scroll.0.borrow().base_handle.offset().y)
     }
 
+    /// The same, for the right-hand pane.
+    #[must_use]
+    pub fn side_scroll_top(&self) -> f32 {
+        -f32::from(self.side_scroll.offset().y)
+    }
+
+    /// The right-hand pane's measured viewport height and how far its
+    /// content runs past it — what [`scrollbar`] sizes its thumb from.
+    #[must_use]
+    pub fn side_scroll_extent(&self) -> (f32, f32) {
+        (
+            f32::from(self.side_scroll.bounds().size.height),
+            f32::from(self.side_scroll.max_offset().height),
+        )
+    }
+
     /// The body editor's cursor, as (line, column).
     #[must_use]
     pub fn body_cursor(&self) -> (usize, usize) {
@@ -2666,6 +2682,16 @@ impl GpuiView {
             .flex()
             .flex_col()
             .flex_grow()
+            // [`BODY_LINE_H`] is the line height the viewport count is
+            // computed from, and the glyphs are a little taller than
+            // that — so the editor asks for a few more lines than it
+            // has room for and the column runs off the bottom of the
+            // window. Clipped here rather than trusting the estimate:
+            // the scrollbar beside it is `h_full`, so an overflowing
+            // column put the bottom of its own track past the window
+            // edge, where no drag could reach it.
+            .min_h(px(0.0))
+            .overflow_hidden()
             .gap_2()
             // Composed text — dead keys, compose sequences, any CJK
             // input method — arrives through `EntityInputHandler`
@@ -2681,8 +2707,10 @@ impl GpuiView {
                     .flex()
                     .flex_row()
                     .flex_grow()
+                    .min_h(px(0.0))
+                    .overflow_hidden()
                     .child(body)
-                    .child(self.body_scrollbar(co, lines, view, scroll_start, cx)),
+                    .child(Self::body_scrollbar(co, lines, view, scroll_start, cx)),
             );
         if let Some(menu) = self.slash_menu(co, cx) {
             pane = pane.child(menu);
@@ -2721,7 +2749,6 @@ impl GpuiView {
     /// lines, and a drag lands on a first-visible line through
     /// [`ModalApp::body_scroll_to`].
     fn body_scrollbar(
-        &self,
         co: Colors,
         lines: usize,
         view: usize,
@@ -2733,33 +2760,40 @@ impl GpuiView {
         #[allow(clippy::cast_precision_loss)]
         let (content, viewport, scroll) = (lines as f32, view as f32, scroll_start as f32);
         let track = div()
+            .debug_selector(|| "body-scrollbar".to_owned())
             .w(px(10.0))
             .h_full()
             .flex()
             .flex_col()
             .bg(rgb(mix_u32(co.bg, co.panel, 160)));
-        let Some(thumb) = thumb_geometry(viewport, content, scroll, MIN_THUMB) else {
-            return track;
-        };
         // The bar is the editor body's sibling and shares its height,
-        // so the body's measured bounds are the track's.
-        let bounds = self.body_track.bounds();
-        let track_top = f32::from(bounds.origin.y);
-        let track_h = f32::from(bounds.size.height);
-        let height = thumb.height;
+        // so the body's measured bounds are the track's — read when the
+        // mouse arrives rather than when the element is built, because
+        // on the frame the editor opens there are no bounds yet and a
+        // bar built from them would take the first drag and drop it
+        // (see [`scrollbar`]).
         let jump = move |this: &mut Self, y: gpui::Pixels| {
+            let bounds = this.body_track.bounds();
+            let track_h = f32::from(bounds.size.height);
+            let Some(thumb) = thumb_geometry(viewport, content, scroll, MIN_THUMB) else {
+                return;
+            };
             if track_h <= 0.0 {
                 return;
             }
             // In line units: the fraction of the *scrollable* range,
             // scaled back onto the lines the body actually has.
-            let fraction = track_fraction(f32::from(y), track_top, track_h, height);
+            let fraction = track_fraction(
+                f32::from(y),
+                f32::from(bounds.origin.y),
+                track_h,
+                thumb.height,
+            );
             #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
             let line = scroll_for_track_fraction(viewport, content, fraction).round() as usize;
             this.app.body_scroll_to(line, view);
         };
-        track
-            .cursor_pointer()
+        let track = track
             .on_mouse_down(
                 MouseButton::Left,
                 cx.listener(move |this: &mut Self, ev: &gpui::MouseDownEvent, _w, cx| {
@@ -2775,11 +2809,16 @@ impl GpuiView {
                         cx.notify();
                     }
                 },
-            ))
+            ));
+        let Some(thumb) = thumb_geometry(viewport, content, scroll, MIN_THUMB) else {
+            return track;
+        };
+        track
+            .cursor_pointer()
             .child(div().h(gpui::relative(thumb.top)))
             .child(
                 div()
-                    .h(gpui::relative(height))
+                    .h(gpui::relative(thumb.height))
                     .w_full()
                     .rounded_sm()
                     .bg(rgb(co.muted))
@@ -3895,6 +3934,7 @@ impl GpuiView {
                             .map(|(i, e)| {
                                 let is_cur = i == cursor;
                                 div()
+                                    .debug_selector(move || format!("palette-row-{i}"))
                                     .flex()
                                     .items_center()
                                     .px_2()
@@ -4408,6 +4448,7 @@ impl GpuiView {
     fn toast_strip(&self, co: Colors) -> gpui::Div {
         use closure_shell_core::FeedbackKind as K;
         div()
+            .debug_selector(|| "toast-strip".to_owned())
             .flex()
             .flex_col()
             .gap_1()
@@ -4947,6 +4988,15 @@ fn editor_segment(
 ///
 /// The handle's own bounds are the track's: the bar is painted as the
 /// scrolled pane's sibling with the same height.
+///
+/// The gestures read the handle *when the mouse arrives*, not when the
+/// element is built. A pane's measurements only exist once it has been
+/// laid out, so a bar built from them was a frame behind its own pane:
+/// open the headline list and the bar beside it was inert — it had
+/// been built while the pane still held the previous surface's content
+/// — until some unrelated repaint armed it. The thumb is still drawn
+/// from the build-time snapshot, which is only ever a frame stale and
+/// corrects itself on the next one.
 #[cfg(feature = "gpui")]
 fn scrollbar(
     name: &'static str,
@@ -4956,34 +5006,36 @@ fn scrollbar(
 ) -> gpui::Div {
     /// Keeps the thumb grabbable on a huge vault.
     const MIN_THUMB: f32 = 0.06;
-    let bounds = handle.bounds();
-    let viewport = f32::from(bounds.size.height);
-    let content = viewport + f32::from(handle.max_offset().height);
-    // gpui scroll offsets run negative as content moves up.
-    let scroll = -f32::from(handle.offset().y);
+    let jump = {
+        let handle = handle.clone();
+        move |y: gpui::Pixels| {
+            let bounds = handle.bounds();
+            let viewport = f32::from(bounds.size.height);
+            let content = viewport + f32::from(handle.max_offset().height);
+            // gpui scroll offsets run negative as content moves up.
+            let scroll = -f32::from(handle.offset().y);
+            // A pane whose content fits has nothing to drag.
+            let Some(thumb) = thumb_geometry(viewport, content, scroll, MIN_THUMB) else {
+                return;
+            };
+            let fraction = track_fraction(
+                f32::from(y),
+                f32::from(bounds.origin.y),
+                viewport,
+                thumb.height,
+            );
+            let offset = scroll_for_track_fraction(viewport, content, fraction);
+            handle.set_offset(gpui::point(px(0.0), px(-offset)));
+        }
+    };
+    let drag_jump = jump.clone();
     let track = div()
         .debug_selector(move || name.to_owned())
         .w(px(10.0))
         .h_full()
         .flex()
         .flex_col()
-        .bg(rgb(mix_u32(co.bg, co.panel, 160)));
-    let Some(thumb) = thumb_geometry(viewport, content, scroll, MIN_THUMB) else {
-        return track;
-    };
-    let track_top = f32::from(bounds.origin.y);
-    let jump = {
-        let handle = handle.clone();
-        let thumb_height = thumb.height;
-        move |y: gpui::Pixels| {
-            let fraction = track_fraction(f32::from(y), track_top, viewport, thumb_height);
-            let offset = scroll_for_track_fraction(viewport, content, fraction);
-            handle.set_offset(gpui::point(px(0.0), px(-offset)));
-        }
-    };
-    let drag_jump = jump.clone();
-    track
-        .cursor_pointer()
+        .bg(rgb(mix_u32(co.bg, co.panel, 160)))
         .on_mouse_down(
             MouseButton::Left,
             cx.listener(
@@ -5001,7 +5053,19 @@ fn scrollbar(
                     cx.notify();
                 }
             },
-        ))
+        ));
+    let bounds = handle.bounds();
+    let viewport = f32::from(bounds.size.height);
+    let content = viewport + f32::from(handle.max_offset().height);
+    let scroll = -f32::from(handle.offset().y);
+    // A pane whose content fits gets an empty track, so the gutter
+    // width never shifts under the mouse — and no pointer cursor,
+    // because there is nothing there to grab.
+    let Some(thumb) = thumb_geometry(viewport, content, scroll, MIN_THUMB) else {
+        return track;
+    };
+    track
+        .cursor_pointer()
         .child(div().h(gpui::relative(thumb.top)))
         .child(
             div()

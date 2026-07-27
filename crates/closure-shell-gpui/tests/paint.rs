@@ -665,3 +665,178 @@ fn the_wheel_scrolls_the_body_editor(cx: &mut gpui::TestAppContext) {
         "the wheel moved the editor's viewport: {before} -> {after}"
     );
 }
+
+// === the two scrollbars the shared one cannot serve ===
+
+#[gpui::test]
+fn dragging_the_body_scrollbar_scrolls_the_editor(cx: &mut gpui::TestAppContext) {
+    // The editor paints only its visible lines, so its container never
+    // overflows and the shared scrollbar has nothing to measure. This
+    // bar works in line units instead, which is its own arithmetic and
+    // had never been run.
+    let body = numbered("line", 400);
+    let (_dir, view, vcx) = visual_window(cx, &format!("* Long\n{body}"));
+    view.update(vcx, |v, cx| v.run_command("edit-body", cx));
+    vcx.simulate_keystrokes("escape g g");
+    vcx.run_until_parked();
+    assert_eq!(view.update(vcx, |v, _cx| v.body_scroll_start()), 0);
+    let track = vcx.debug_bounds("body-scrollbar").expect("painted");
+    // The whole track has to be inside the window. It was 1088px tall
+    // in a 1080px window — the editor column asks for a line or two
+    // more than fits, and the bar is its `h_full` sibling — so the
+    // bottom tenth of the track was off screen and undraggable, which
+    // is exactly the end of the document.
+    let viewport = vcx.update(|w, _cx| w.viewport_size());
+    assert!(
+        track.bottom() <= viewport.height,
+        "the track ends at {:?} in a {:?} window",
+        track.bottom(),
+        viewport.height
+    );
+
+    let at = Point::new(track.center().x, track.origin.y + track.size.height * 0.5);
+    vcx.simulate_mouse_down(at, MouseButton::Left, Modifiers::none());
+    vcx.run_until_parked();
+    let after = view.update(vcx, |v, _cx| v.body_scroll_start());
+    assert!(
+        after > 0,
+        "grabbing the middle of the track moved the editor: 0 -> {after}"
+    );
+    // And the far end of the track is the far end of the body.
+    let bottom = Point::new(track.center().x, track.bottom() - px(2.0));
+    vcx.simulate_mouse_move(bottom, MouseButton::Left, Modifiers::none());
+    let end = view.update(vcx, |v, _cx| v.body_scroll_start());
+    assert!(
+        end > after,
+        "and dragging to the bottom went further: {after} -> {end}"
+    );
+}
+
+#[gpui::test]
+fn dragging_the_side_scrollbar_scrolls_the_pane(cx: &mut gpui::TestAppContext) {
+    // The list surfaces put their rows straight in the scrolling pane,
+    // so this is the bar that moves them.
+    let long = numbered("* Row", 200);
+    let (_dir, view, vcx) = visual_window(cx, &long);
+    view.update(vcx, |v, cx| v.run_command("headline-list", cx));
+    vcx.run_until_parked();
+    let viewport = vcx.update(|w, _cx| w.viewport_size());
+    let track = vcx.debug_bounds("side-scrollbar").expect("painted");
+    assert!(
+        track.size.height > px(0.0) && track.bottom() <= viewport.height,
+        "a pane with 200 rows has a track, inside the window: {track:?}"
+    );
+    let before = view.update(vcx, |v, _cx| v.side_scroll_top());
+    let at = Point::new(track.center().x, track.origin.y + track.size.height * 0.75);
+    vcx.simulate_mouse_down(at, MouseButton::Left, Modifiers::none());
+    vcx.run_until_parked();
+    let after = view.update(vcx, |v, _cx| v.side_scroll_top());
+    assert!(
+        after > before,
+        "the pane scrolled down: {before} -> {after}"
+    );
+}
+
+#[gpui::test]
+fn a_scrollbar_works_on_the_frame_its_pane_appears(cx: &mut gpui::TestAppContext) {
+    // A pane has no measurements until it has been laid out, so a bar
+    // that decided at build time whether it had anything to drag was a
+    // frame behind its own pane: it was built while the pane still held
+    // the previous surface, so the first grab after opening a list did
+    // nothing, and only an unrelated repaint armed it. One click,
+    // immediately, with no repaint in between.
+    let long = numbered("* Row", 200);
+    let (_dir, view, vcx) = visual_window(cx, &long);
+    view.update(vcx, |v, cx| v.run_command("headline-list", cx));
+    vcx.run_until_parked();
+    let track = vcx.debug_bounds("side-scrollbar").expect("painted");
+    let at = Point::new(track.center().x, track.origin.y + track.size.height * 0.75);
+    vcx.simulate_mouse_down(at, MouseButton::Left, Modifiers::none());
+    vcx.run_until_parked();
+    let after = view.update(vcx, |v, _cx| v.side_scroll_top());
+    assert!(
+        after > 0.0,
+        "the very first grab scrolled the pane: {after}"
+    );
+}
+
+// === toasts ===
+
+#[gpui::test]
+fn a_status_change_raises_a_toast_inside_the_window(cx: &mut gpui::TestAppContext) {
+    // The strip is deferred and anchored rather than a row in the
+    // layout, which is exactly the arrangement that can be anchored
+    // off the edge of the window.
+    let (_dir, view, vcx) = visual_window(cx, VAULT);
+    assert!(
+        vcx.debug_bounds("toast-strip").is_none(),
+        "nothing to say yet"
+    );
+    // `status_toast` is deliberately selective — a fold is one of the
+    // things it raises.
+    vcx.simulate_keystrokes("tab");
+    vcx.run_until_parked();
+    view.update(vcx, |v, _cx| {
+        assert!(v.row_folded(0), "something happened worth saying");
+        assert!(
+            v.toast_count() > 0,
+            "and it reached the strip: {}",
+            v.status()
+        );
+    });
+    let viewport = vcx.update(|w, _cx| w.viewport_size());
+    let strip = vcx
+        .debug_bounds("toast-strip")
+        .expect("the strip is painted");
+    assert!(
+        strip.origin.x >= px(0.0)
+            && strip.origin.y >= px(0.0)
+            && strip.right() <= viewport.width
+            && strip.bottom() <= viewport.height,
+        "the toast is on screen: {strip:?} in {viewport:?}"
+    );
+}
+
+// === the palette is a list you can click ===
+
+#[gpui::test]
+fn a_palette_row_click_runs_that_command(cx: &mut gpui::TestAppContext) {
+    let (_dir, view, vcx) = visual_window(cx, VAULT);
+    view.update(vcx, |v, cx| v.run_command("palette", cx));
+    vcx.run_until_parked();
+    let at = centre(vcx, "palette-row-0");
+    vcx.simulate_click(at, Modifiers::none());
+    view.update(vcx, |v, _cx| {
+        assert_ne!(
+            v.surface(),
+            ModalSurface::Palette,
+            "the palette ran its entry and closed: {}",
+            v.status()
+        );
+    });
+}
+
+// === the clipboard chords, through gpui's own dispatch ===
+
+#[gpui::test]
+fn the_clipboard_chords_round_trip(cx: &mut gpui::TestAppContext) {
+    // These are intercepted before the keymap, and the window's key
+    // handler now claims every event it sees — so this is also the
+    // guard that claiming it did not swallow the desktop chords.
+    let (_dir, view, vcx) = visual_window(cx, "* Note\n");
+    vcx.simulate_keystrokes("i");
+    vcx.simulate_input("copy me");
+    // VISUAL LINE over the whole line, which needs no column motion.
+    vcx.simulate_keystrokes("escape shift-v");
+    vcx.simulate_keystrokes("ctrl-c");
+    assert_eq!(
+        vcx.read_from_clipboard().and_then(|i| i.text()).as_deref(),
+        Some("copy me"),
+        "the selection reached the clipboard"
+    );
+    vcx.simulate_keystrokes("shift-a");
+    vcx.simulate_keystrokes("ctrl-v");
+    view.update(vcx, |v, _cx| {
+        assert_eq!(v.body(), "copy mecopy me", "and pasted back in");
+    });
+}
