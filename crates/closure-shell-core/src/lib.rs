@@ -8263,6 +8263,9 @@ impl ModalApp {
         alt: bool,
         text: Option<char>,
     ) {
+        if self.leader_key(shell, key, ctrl, alt, text) {
+            return;
+        }
         if key == "enter" && ctrl {
             self.commit_edit_special(shell);
             return;
@@ -8278,6 +8281,40 @@ impl ModalApp {
         self.edit_body_key(shell, key, ctrl, alt, text);
     }
 
+    /// Whether this keystroke belongs to the `SPC` leader rather than
+    /// to the buffer, and route it if so.
+    ///
+    /// Doom's leader is the thing a Doom user's hands know, and it has
+    /// to work where they spend the session — inside the buffer. In
+    /// NORMAL that costs nothing: `SPC` is evil's forward-char, which
+    /// is exactly the binding Doom takes away from it. In INSERT it is
+    /// a space, because there it is prose. Only the Doom keymap has a
+    /// leader, so no other mode loses a keystroke to this.
+    fn leader_key(
+        &mut self,
+        shell: &mut Shell,
+        key: &str,
+        ctrl: bool,
+        alt: bool,
+        text: Option<char>,
+    ) -> bool {
+        if self.mode != InputMode::Doom || self.body.mode() == EditorMode::Insert {
+            return false;
+        }
+        if self.pending.is_empty() {
+            // A `SPC` mid-chord belongs to the chord: `d` then `SPC` is
+            // vim's "delete the next character", not a leader.
+            let editor_busy = self.body.pending_stroke().is_some() || self.body.pending_count() > 0;
+            if key != "space" || editor_busy {
+                return false;
+            }
+        }
+        // Opening a chord, or continuing one: the keymap dispatcher owns
+        // the strokes until the chord resolves or dies.
+        self.on_browse_key(shell, key, ctrl, alt, text);
+        true
+    }
+
     /// The file buffer's keys: the same editor, with `:w` semantics.
     ///
     /// `C-Enter` writes and *stays* — a file you are editing is a file
@@ -8291,6 +8328,9 @@ impl ModalApp {
         alt: bool,
         text: Option<char>,
     ) {
+        if self.leader_key(shell, key, ctrl, alt, text) {
+            return;
+        }
         if key == "enter" && ctrl {
             self.commit_file_buffer(shell);
             return;
@@ -9728,6 +9768,9 @@ impl ModalApp {
         alt: bool,
         text: Option<char>,
     ) {
+        if self.leader_key(shell, key, ctrl, alt, text) {
+            return;
+        }
         if key == "enter" && ctrl {
             self.commit_edit_body(shell);
             return;
@@ -10690,6 +10733,17 @@ impl ModalApp {
                 self.surface = ModalSurface::Browse;
                 "outline".clone_into(&mut self.status);
             }
+            // `SPC f s` / `:w`: write whatever buffer is open. Which
+            // one that is decides what "write" means — a body commits
+            // through the kernel command, a file writes its whole
+            // source — and outside a buffer there is nothing to write,
+            // because every other edit is already on disk.
+            "save-buffer" => match self.surface {
+                ModalSurface::EditFile => self.commit_file_buffer(shell),
+                ModalSurface::EditBody => self.commit_edit_body(shell),
+                ModalSurface::EditBlock => self.commit_edit_special(shell),
+                _ => "no buffer open — every edit is already written".clone_into(&mut self.status),
+            },
             // The switch between the two shapes of the shell: rows you
             // click, or the file itself in one buffer.
             "toggle-view" => {

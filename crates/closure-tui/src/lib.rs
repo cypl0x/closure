@@ -2243,6 +2243,16 @@ impl App {
                 self.mode = AppMode::Browse;
                 self.result_cursor = 0;
             }
+            // `SPC f s` / `C-s`: write the open buffer. The editing
+            // surface already answers `C-s` directly; this is the same
+            // save reached by name, so the chord is not the only door.
+            "save-buffer" => {
+                if self.mode == AppMode::EditBody {
+                    self.handle_editbody_stroke("C-s");
+                } else {
+                    "no buffer open — every edit is already written".clone_into(&mut self.status);
+                }
+            }
             // The two shapes of the shell, as far as a terminal has
             // them: the list, or the file whole. The GUI's editor view
             // is editable; this one is the reader the terminal already

@@ -31,6 +31,7 @@ const DOOM_KEYMAP: &[(&str, &str)] = &[
     ("q", "quit"),
     ("ESC", "quit"),
     ("/", "search-start"),
+    ("C-s", "save-buffer"),
     ("s", "search-headline-start"),
     ("RET", "open-file"),
     ("b", "backlinks"),
@@ -77,6 +78,29 @@ const DOOM_KEYMAP: &[(&str, &str)] = &[
     ("M-RET", "add-heading"),
     ("g u", "undo-history"),
     ("TAB", "toggle-fold"),
+    // The leader. Doom's identity is `SPC` plus a mnemonic tree, and a
+    // Doom user's hands know it better than any of the single letters
+    // above: `SPC f s` saves, `SPC :` is M-x, `SPC q q` quits, and
+    // `SPC` alone brings up which-key. The spellings are Doom's own
+    // wherever Doom has one for the same idea.
+    ("SPC :", "palette"),
+    ("SPC .", "headline-list"),
+    ("SPC ,", "browse"),
+    ("SPC f s", "save-buffer"),
+    ("SPC f f", "headline-list"),
+    ("SPC b b", "browse"),
+    ("SPC q q", "quit"),
+    ("SPC s s", "search-start"),
+    ("SPC s p", "body-search"),
+    ("SPC X", "capture-start"),
+    ("SPC o a", "agenda"),
+    ("SPC o g", "graph"),
+    ("SPC o l", "llm"),
+    ("SPC o s", "sync"),
+    ("SPC o n", "sniffer"),
+    ("SPC t v", "toggle-view"),
+    ("SPC t m", "cycle-mode"),
+    ("SPC u", "undo-history"),
 ];
 
 /// Emacs bindings: Ctrl/Meta chords, `C-x C-c` quits.
@@ -88,6 +112,7 @@ const EMACS_KEYMAP: &[(&str, &str)] = &[
     ("M-<", "first-file"),
     ("M->", "last-file"),
     ("C-x C-c", "quit"),
+    ("C-x C-s", "save-buffer"),
     ("C-s", "search-start"),
     ("C-c s", "search-headline-start"),
     ("RET", "open-file"),
@@ -148,6 +173,7 @@ const VIM_KEYMAP: &[(&str, &str)] = &[
     ("Z Z", "quit"),
     ("q", "quit"),
     ("/", "search-start"),
+    ("C-s", "save-buffer"),
     ("s", "search-headline-start"),
     ("RET", "open-file"),
     ("b", "backlinks"),
@@ -207,6 +233,7 @@ const HELIX_KEYMAP: &[(&str, &str)] = &[
     ("q", "quit"),
     ("ESC", "quit"),
     ("/", "search-start"),
+    ("C-s", "save-buffer"),
     ("s", "search-headline-start"),
     ("RET", "open-file"),
     ("b", "backlinks"),
@@ -267,6 +294,7 @@ const NOTION_KEYMAP: &[(&str, &str)] = &[
     ("M-x", "palette"),
     ("s", "search-headline-start"),
     ("C-s", "search-start"),
+    ("C-x C-s", "save-buffer"),
     ("RET", "open-file"),
     ("b", "backlinks"),
     ("c", "capture-start"),
