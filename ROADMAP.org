@@ -13,6 +13,48 @@ file is the fine-grained, capability-level queue between them. Blocked
 on a design decision? Record it under [[*Decisions][Decisions]], pick the most
 reversible option, keep moving.
 
+* DONE GPUI-SHELL-Q13 — the reference shell answers the backlog [6/6]
+User backlog, 2026-07-27. Every item is "after this the user can ___".
+** DONE R1 the rail: every pane is one click away [1/1]
+=ModalApp::destinations= — twelve destinations as data (id, icon,
+label, command, chord, surface, live badge), derived from the registry
+and the keymap (I4/I8), painted down the left edge of the gpui window.
+Pairing had *no* clickable entry point in any shell before this: =sync=
+was bound to =g s= and to nothing else, so P2P was undiscoverable to
+anyone who had not read the keymap. =browse= is the new way home.
+** DONE R2 a buffer opens the way Doom opens one [1/1]
+=BodyEditor::load= forced INSERT with the cursor at the end, so =diw=
+in a modal mode inserted the literal letters =diw=. The entry mode
+follows the input mode now (vim/doom/helix → NORMAL at the top,
+notion/emacs → INSERT), and the status line says which.
+** DONE R3 the window renders in the font it declares [1/1]
+gpui's =font_family()= takes ONE family; the window handed it the
+theme's whole CSS stack, so nothing resolved and every glyph came from
+a platform substitute. =font_stack= splits it, =app_font= hands gpui a
+family plus real fallbacks, and every theme leads with Maple Mono NF.
+** DONE R4 the cursor is a cell [1/1]
+VISUAL suppressed the block cursor entirely (you could not see which
+end you were moving); past the last glyph it was a hardcoded 8×18px
+rectangle. =cursor_cell= pads the line with a space so there is always
+a cell to invert, =cursor_mark= marks it in every mode but INSERT, and
+it is drawn last so it wins over a selection or a search hit.
+** DONE R5 the editor is a buffer, not a pane [1/1]
+=ModalSurface::is_editor= — the editing surfaces take the whole window
+(rail, outline and detail pane step aside) and name themselves the way
+a modeline does (=buffer_name=).
+** DONE R6 two shapes of the shell, and Doom's leader [1/1]
+=ViewMode::{Clickable, Editor}= + =toggle-view= (=g v=): the file as
+one full-window buffer with the vim grammar over it, =C-Enter= writes
+it (=Vault::set_source=, byte-exact + reindexed, I1/I2), Esc leaves it
+alone. Input mode switches the view with it; =view = editor= in
+config.org starts there. Doom gained its =SPC= leader — in the buffer
+as well as the outline — with =save-buffer= behind =SPC f s=.
+DECISION (2026-07-27): every window still *opens* on the outline, even
+in Doom mode. The rail and every affordance live there, and a window
+that opened into a raw file buffer would hide the app from anyone who
+had not asked for that; the config key and =g v= are the two ways to
+ask.
+
 * DONE DEPTH-Q10 — P2P pairing tickets [1/1]
 Queue Q10 of =goal-depth-final.md=.
 ** DONE N2 tickets over the REAL secure transport [1/1]
