@@ -1350,6 +1350,12 @@ impl GpuiView {
         self.app.surface()
     }
 
+    /// The activity rail's destinations — what [`Self::rail`] paints.
+    #[must_use]
+    pub fn destinations(&self) -> Vec<closure_shell_core::Destination> {
+        self.app.destinations(&self.shell)
+    }
+
     /// The body editor's buffer, for a test to assert on.
     #[must_use]
     pub fn body(&self) -> &str {
@@ -4360,6 +4366,118 @@ impl GpuiView {
             ))
     }
 
+    /// The activity rail: the app's panes as a column of labelled
+    /// buttons down the left edge, each carrying its chord.
+    ///
+    /// The chords were the only door into the subsystems, so the ones
+    /// nobody had memorised did not exist: the sniffer, the assistant,
+    /// the link graph, the journal, the job list — and pairing, which
+    /// had no clickable entry point in any shell at all. A glyph in the
+    /// status bar was not enough; a name, a key and a place that never
+    /// moves is.
+    ///
+    /// The list itself is [`closure_shell_core::Destination`] data, so
+    /// the TUI and the web tier can grow the same rail without
+    /// re-deciding what is in it (I4/G5a).
+    fn rail(&self, co: Colors, cx: &Context<Self>) -> gpui::Stateful<gpui::Div> {
+        div()
+            .debug_selector(|| "rail".to_owned())
+            .id("rail")
+            .flex()
+            .flex_col()
+            .gap_1()
+            .flex_none()
+            .py_2()
+            .px_1()
+            .w(px(146.0))
+            .h_full()
+            .overflow_y_scroll()
+            .bg(rgb(co.panel))
+            .border_r_1()
+            .border_color(rgb(co.border))
+            .children(
+                self.destinations()
+                    .into_iter()
+                    .map(|dest| Self::rail_button(co, dest, cx)),
+            )
+    }
+
+    /// One rail button: icon, name, live badge, and the chord that does
+    /// the same thing from the keyboard.
+    fn rail_button(
+        co: Colors,
+        dest: closure_shell_core::Destination,
+        cx: &Context<Self>,
+    ) -> gpui::Stateful<gpui::Div> {
+        let command = dest.command;
+        let tooltip = dest.chord.map_or_else(
+            || dest.label.to_owned(),
+            |chord| format!("{}  [{chord}]", dest.label),
+        );
+        let fg = if dest.active { co.accent } else { co.fg };
+        let mut button = div()
+            .debug_selector(move || format!("rail-{}", dest.id))
+            .id(dest.id)
+            .flex()
+            .items_center()
+            .gap_1p5()
+            .px_2()
+            .py_1()
+            .rounded_md()
+            .text_size(px(12.0))
+            .text_color(rgb(fg))
+            .cursor_pointer()
+            .hover(move |s| s.bg(rgb(co.hover)))
+            .on_mouse_down(
+                MouseButton::Left,
+                cx.listener(move |this: &mut Self, _ev, _w, cx| {
+                    this.click(command, cx);
+                }),
+            )
+            .tooltip(move |_w, cx| {
+                let text = tooltip.clone();
+                cx.new(move |_| Hint { text, co }).into()
+            })
+            // The open pane is marked by a filled bar down its left
+            // edge, not by colour alone: at a glance the rail has to
+            // answer "where am I?" without asking the eye to compare
+            // two greys.
+            .child(
+                div()
+                    .w(px(2.0))
+                    .h(px(14.0))
+                    .rounded_sm()
+                    .bg(rgb(if dest.active { co.accent } else { co.panel })),
+            )
+            .child(div().text_size(px(12.0)).child(dest.icon))
+            .child(div().flex_grow().child(dest.label));
+        if dest.active {
+            button = button.bg(rgb(co.selection));
+        }
+        if let Some(badge) = dest.badge {
+            button = button.child(
+                div()
+                    .px_1()
+                    .rounded_sm()
+                    .text_size(px(10.0))
+                    .bg(rgb(if dest.urgent { co.error } else { co.hover }))
+                    .text_color(rgb(if dest.urgent { co.bg } else { co.muted }))
+                    .child(badge),
+            );
+        } else if let Some(chord) = dest.chord {
+            // Every command shows its keybinding where the command is
+            // (the vision's rule), so the rail reads as a keymap you
+            // can click.
+            button = button.child(
+                div()
+                    .text_size(px(9.0))
+                    .text_color(rgb(co.muted))
+                    .child(chord.to_owned()),
+            );
+        }
+        button
+    }
+
     /// The status line: the message on the left, the subsystem
     /// indicators bottom-right, VS Code style.
     ///
@@ -5277,6 +5395,7 @@ impl Render for GpuiView {
             // only item in the chain that needed saying: below it the
             // panes are row children, sized by `stretch`.
             .min_h(px(0.0))
+            .child(self.rail(co, cx))
             .child(self.rows_pane(co, cx))
             .child(self.side_pane(co, cx));
 

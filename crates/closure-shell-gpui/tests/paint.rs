@@ -957,3 +957,73 @@ fn a_context_menu_is_never_anchored_off_the_window(cx: &mut gpui::TestAppContext
         "the menu snapped back inside: {menu:?} in {viewport:?}"
     );
 }
+
+// === the activity rail ===
+//
+// Every subsystem used to be behind a `g`-prefixed chord and nothing
+// else. Pairing was the worst case: `g s` or nothing, so a user who had
+// not read the keymap had no way to learn that closure can sync with
+// another machine at all. The rail is the mouse's map of the app, and
+// these are the tests that it is one — painted, clickable, and honest
+// about which pane is open.
+
+/// A `debug_bounds` selector for a rail button. The ids are `'static`,
+/// the formatted selector is not, and `debug_bounds` takes `'static`.
+fn rail_selector(id: &str) -> &'static str {
+    Box::leak(format!("rail-{id}").into_boxed_str())
+}
+
+#[gpui::test]
+fn the_rail_paints_a_button_for_every_destination(cx: &mut gpui::TestAppContext) {
+    let (_dir, view, vcx) = visual_window(cx, VAULT);
+    let dests = view.update(vcx, |v, _cx| v.destinations());
+    assert!(dests.len() >= 12, "sanity: {} destinations", dests.len());
+    for dest in dests {
+        let selector = rail_selector(dest.id);
+        assert!(
+            vcx.debug_bounds(selector).is_some(),
+            "`{selector}` ({}) was never painted",
+            dest.label
+        );
+    }
+}
+
+#[gpui::test]
+fn the_mouse_alone_reaches_pairing_the_sniffer_and_the_assistant(cx: &mut gpui::TestAppContext) {
+    let (_dir, view, vcx) = visual_window(cx, VAULT);
+    for (id, surface) in [
+        ("peers", ModalSurface::Sync),
+        ("sniffer", ModalSurface::Sniffer),
+        ("assistant", ModalSurface::Llm),
+        ("outline", ModalSurface::Browse),
+    ] {
+        let at = centre(vcx, rail_selector(id));
+        vcx.simulate_click(at, Modifiers::none());
+        vcx.run_until_parked();
+        view.update(vcx, |v, _cx| {
+            assert_eq!(
+                v.surface(),
+                surface,
+                "the {id} button opened {:?} instead",
+                v.surface()
+            );
+        });
+    }
+}
+
+#[gpui::test]
+fn the_rail_marks_the_open_pane(cx: &mut gpui::TestAppContext) {
+    let (_dir, view, vcx) = visual_window(cx, VAULT);
+    let active = |v: &closure_shell_gpui::GpuiView| {
+        v.destinations()
+            .into_iter()
+            .filter(|d| d.active)
+            .map(|d| d.id)
+            .collect::<Vec<_>>()
+    };
+    view.update(vcx, |v, _cx| assert_eq!(active(v), vec!["outline"]));
+    let at = centre(vcx, rail_selector("peers"));
+    vcx.simulate_click(at, Modifiers::none());
+    vcx.run_until_parked();
+    view.update(vcx, |v, _cx| assert_eq!(active(v), vec!["peers"]));
+}

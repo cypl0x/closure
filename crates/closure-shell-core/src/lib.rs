@@ -2836,6 +2836,76 @@ impl SyncApp {
     }
 }
 
+/// One entry in the activity rail: a pane the user can reach with one
+/// click, named, keyed and carrying whatever it currently holds.
+///
+/// The rail exists because the `g`-prefixed chords were the *only* door
+/// into the subsystems: pairing, in particular, had no clickable entry
+/// point anywhere in any shell, so P2P was undiscoverable to anyone who
+/// had not read the keymap. Derived data rather than render-time
+/// assembly, so every shell offers the same destinations in the same
+/// order with the same chords (I4).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Destination {
+    /// Stable identifier (`"peers"`, `"sniffer"`, …) — what tests and
+    /// shells match on, never the label.
+    pub id: &'static str,
+    /// One glyph, for a collapsed rail. Deliberately not a Nerd Font
+    /// codepoint: the TUI and the web tier render this too.
+    pub icon: &'static str,
+    /// What it is, in words. A glyph alone is a guessing game.
+    pub label: &'static str,
+    /// Registry command a click runs (I8).
+    pub command: &'static str,
+    /// Chord bound to that command in the active mode — `None` only if
+    /// the mode binds none, which `rail.rs` forbids.
+    pub chord: Option<&'static str>,
+    /// Surface the command opens, so the rail can mark the current one.
+    pub surface: ModalSurface,
+    /// Live count, when there is something to count. `None` renders no
+    /// badge at all rather than a `0`.
+    pub badge: Option<String>,
+    /// Whether that count is work waiting on the user (unresolved
+    /// conflicts, blocked flows) rather than mere activity.
+    pub urgent: bool,
+    /// Whether this is the surface currently open.
+    pub active: bool,
+}
+
+/// The rail's fixed running order, as
+/// `(id, icon, label, command, surface)`.
+///
+/// A table rather than a builder: the order is what the user's muscle
+/// memory learns, so it is one thing to read and one thing to change.
+/// Icons are plain Unicode — the TUI and the web tier paint these too,
+/// and a Nerd Font glyph would be a box in both.
+const RAIL: &[(&str, &str, &str, &str, ModalSurface)] = &[
+    ("outline", "⌂", "Outline", "browse", ModalSurface::Browse),
+    ("agenda", "◷", "Agenda", "agenda", ModalSurface::Agenda),
+    ("blocks", "⌗", "Blocks", "block-list", ModalSurface::Blocks),
+    ("graph", "⁂", "Graph", "graph", ModalSurface::Graph),
+    (
+        "backlinks",
+        "⟵",
+        "Backlinks",
+        "backlinks",
+        ModalSurface::Backlinks,
+    ),
+    ("journal", "≡", "Journal", "journal", ModalSurface::Journal),
+    ("cron", "⏱", "Jobs", "cron", ModalSurface::Cron),
+    ("peers", "⇄", "Peers", "sync", ModalSurface::Sync),
+    ("sniffer", "⇅", "Network", "sniffer", ModalSurface::Sniffer),
+    ("assistant", "✦", "Assistant", "llm", ModalSurface::Llm),
+    (
+        "conflicts",
+        "⚠",
+        "Conflicts",
+        "conflicts",
+        ModalSurface::Conflicts,
+    ),
+    ("palette", "⌘", "Commands", "palette", ModalSurface::Palette),
+];
+
 /// How loudly a status-bar indicator should read.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum IndicatorLevel {
@@ -8424,6 +8494,59 @@ impl ModalApp {
         self.status = text.into();
     }
 
+    /// The activity rail: every pane of the shell as a clickable
+    /// destination, in a fixed order, each with its chord and its live
+    /// badge.
+    ///
+    /// The status bar ([`Self::indicators`]) reports *state*; this
+    /// reports *where you can go*, which is not the same list — the
+    /// sniffer appears in both, pairing appeared in neither until this
+    /// existed, and the outline needs a way home that Esc alone gave
+    /// only the keyboard.
+    #[must_use]
+    pub fn destinations(&self, shell: &Shell) -> Vec<Destination> {
+        RAIL.iter()
+            .map(|&(id, icon, label, command, surface)| Destination {
+                id,
+                icon,
+                label,
+                command,
+                chord: self.chord_for(command),
+                surface,
+                badge: self.rail_badge(shell, id).map(|n| n.to_string()),
+                urgent: self.rail_urgent(id),
+                active: self.surface == surface,
+            })
+            .collect()
+    }
+
+    /// What the rail button `id` counts, when a count is worth showing.
+    /// `None` — and a zero — render no badge at all rather than a `0`.
+    fn rail_badge(&self, shell: &Shell, id: &str) -> Option<usize> {
+        let n = match id {
+            "backlinks" => self.backlink_rows(shell).len(),
+            "peers" => self.sync.as_ref().map_or(0, |s| s.peers().len()),
+            "sniffer" => self.sniffer.events().len(),
+            "conflicts" => self.conflicts.conflicts().len(),
+            _ => 0,
+        };
+        (n > 0).then_some(n)
+    }
+
+    /// Whether the rail button `id` is counting work that waits on the
+    /// user rather than mere activity.
+    fn rail_urgent(&self, id: &str) -> bool {
+        match id {
+            "conflicts" => !self.conflicts.conflicts().is_empty(),
+            "sniffer" => self
+                .sniffer
+                .events()
+                .iter()
+                .any(|e| e.action == Some(FlowAction::Block)),
+            _ => false,
+        }
+    }
+
     /// The bottom-right status bar: one item per subsystem, each
     /// reporting its live state and carrying the chord that opens it.
     ///
@@ -10277,6 +10400,15 @@ impl ModalApp {
                 self.selected = 0;
                 self.surface = ModalSurface::Conflicts;
                 "conflicts — o ours, t theirs, Esc back".clone_into(&mut self.status);
+            }
+            // The way home. Esc has always walked back out of a pane,
+            // but Esc is a keyboard-only door: the rail's home button
+            // needs a command of its own, and a `g h` for the users who
+            // would rather not reach for Esc.
+            "browse" => {
+                self.slash = None;
+                self.surface = ModalSurface::Browse;
+                "outline".clone_into(&mut self.status);
             }
             "resolve-ours" | "resolve-theirs" => {
                 if self.conflicts.conflicts().is_empty() {
