@@ -86,6 +86,23 @@ pub fn resolve_input_mode(vault_path: &Path) -> closure_config::InputMode {
         .map_or(closure_config::InputMode::Doom, |cfg| cfg.input_mode)
 }
 
+/// Which shape the window opens in, from the vault's `config.org`.
+///
+/// Defaults to the clickable outline — that is where the rail and every
+/// affordance are, and a window that opened straight into a raw file
+/// buffer would hide the app from anyone who had not asked for it.
+/// `view = editor` is how you ask; `g v` is how you change your mind.
+#[must_use]
+pub fn resolve_view(vault_path: &Path) -> closure_shell_core::ViewMode {
+    let name = closure_config::Config::from_path(&vault_path.join("config.org"))
+        .map_or_else(|_| "clickable".to_owned(), |cfg| cfg.view);
+    if name == "editor" {
+        closure_shell_core::ViewMode::Editor
+    } else {
+        closure_shell_core::ViewMode::Clickable
+    }
+}
+
 /// Semantic classification of a body-editor span (per line).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BodySpan {
@@ -885,7 +902,7 @@ pub const fn accepts_paste(surface: ModalSurface, insert: bool) -> bool {
         | ModalSurface::Ex
         | ModalSurface::Sync
         | ModalSurface::Llm => true,
-        ModalSurface::EditBody | ModalSurface::EditBlock => insert,
+        ModalSurface::EditBody | ModalSurface::EditBlock | ModalSurface::EditFile => insert,
         ModalSurface::Browse
         | ModalSurface::Backlinks
         | ModalSurface::Agenda
@@ -1099,6 +1116,7 @@ pub fn run(vault_path: &Path) -> Result<(), String> {
     let vault = Vault::open(vault_path).map_err(|e| format!("{e}"))?;
     let theme = resolve_theme(vault_path);
     let input_mode = resolve_input_mode(vault_path);
+    let view = resolve_view(vault_path);
     // The window manager needs a name for the title bar, the task
     // switcher and the Wayland app id — an untitled window is the one
     // the user cannot find again. The vault is what distinguishes two
@@ -1110,6 +1128,7 @@ pub fn run(vault_path: &Path) -> Result<(), String> {
             |n| n.to_string_lossy().into_owned()
         )
     );
+    let view_pref = view;
     Application::new().run(move |cx: &mut App| {
         let bounds = Bounds::centered(None, size(px(1080.0), px(720.0)), cx);
         // Closing the last window must end the process. gpui keeps the
@@ -1132,7 +1151,16 @@ pub fn run(vault_path: &Path) -> Result<(), String> {
                 window_min_size: Some(size(px(640.0), px(400.0))),
                 ..Default::default()
             },
-            |_, cx| cx.new(|cx| GpuiView::new(Shell::new(vault), input_mode, theme, cx)),
+            |_, cx| {
+                cx.new(|cx| {
+                    let mut view = GpuiView::new(Shell::new(vault), input_mode, theme, cx);
+                    // `view = editor` in the vault's config.org: open
+                    // the file buffer before the first frame, so the
+                    // window the user asked for is the one they get.
+                    view.set_view(view_pref);
+                    view
+                })
+            },
         );
         match opened {
             Ok(window) => {
@@ -1331,6 +1359,16 @@ pub struct GpuiView {
     /// Vault-reload generation: each armed poll carries one, and only
     /// the newest re-arms, so the loop cannot fork.
     reload_gen: u64,
+    /// How many body lines the *last painted frame* used.
+    ///
+    /// The editor sizes itself from its own measured height, which only
+    /// exists after it has been laid out once — so the frame that opens
+    /// a buffer paints with the previous layout's count. Opening a
+    /// 17-line file into a pane last measured at 15 lines painted 15 of
+    /// them and stopped, with half the window empty below, until some
+    /// unrelated keystroke repainted. Comparing this against the fresh
+    /// measurement is how the pane knows to ask for one more frame.
+    painted_view: std::cell::Cell<usize>,
 }
 
 #[cfg(feature = "gpui")]
@@ -1374,6 +1412,7 @@ impl GpuiView {
             highlight_cache: std::cell::RefCell::new(None),
             marked: None,
             reload_gen: 0,
+            painted_view: std::cell::Cell::new(0),
         }
     }
 
@@ -1387,6 +1426,12 @@ impl GpuiView {
     #[must_use]
     pub const fn surface(&self) -> ModalSurface {
         self.app.surface()
+    }
+
+    /// Put the window in `view` — the config's answer at startup, and
+    /// what a test sets to look at the other shape.
+    pub fn set_view(&mut self, view: closure_shell_core::ViewMode) {
+        self.app.set_view(view, &self.shell);
     }
 
     /// The activity rail's destinations — what [`Self::rail`] paints.
@@ -1765,7 +1810,7 @@ impl GpuiView {
             self.app.set_status("clipboard is empty".to_owned());
             return true;
         };
-        let multiline = matches!(surface, ModalSurface::EditBody | ModalSurface::EditBlock);
+        let multiline = surface.is_editor();
         let mut chars = paste_chars(&text, multiline);
         let truncated = chars.len() > MAX;
         chars.truncate(MAX);
@@ -1799,10 +1844,7 @@ impl GpuiView {
     /// leader prefix in the Emacs keymap (`C-c c` captures) and must
     /// not be swallowed.
     fn copy_selection(&mut self, cx: &Context<Self>) -> bool {
-        if !matches!(
-            self.app.surface(),
-            ModalSurface::EditBody | ModalSurface::EditBlock
-        ) {
+        if !self.app.surface().is_editor() {
             return false;
         }
         let Some((a, b)) = self.app.body_selection() else {
@@ -2022,7 +2064,7 @@ impl GpuiView {
             ModalSurface::Palette => format!("❯ {}▏", self.app.field_buffer()),
             // A full-window buffer names itself, the way a modeline
             // does: which headline this is, and which file it came from.
-            ModalSurface::EditBody | ModalSurface::EditBlock => self
+            ModalSurface::EditBody | ModalSurface::EditBlock | ModalSurface::EditFile => self
                 .app
                 .buffer_name(&self.shell)
                 .map_or_else(|| "✎ body".to_owned(), |name| format!("✎ {name}")),
@@ -2451,7 +2493,7 @@ impl GpuiView {
             ),
             // org-edit-special is the same editor with one block in it,
             // so it paints the same way; the header says which.
-            ModalSurface::EditBody | ModalSurface::EditBlock => {
+            ModalSurface::EditBody | ModalSurface::EditBlock | ModalSurface::EditFile => {
                 pane.child(self.editor_pane(co, cx))
             }
             _ => self.detail_pane(pane, co, cx),
@@ -2647,6 +2689,13 @@ impl GpuiView {
                 .text_size(px(11.0))
                 .child(closure_shell_core::editor_hint(mode)),
         )
+    }
+
+    /// How many body lines the last painted frame used — what
+    /// [`Self::body_view`] measured when that frame was built.
+    #[must_use]
+    pub fn painted_view(&self) -> usize {
+        self.painted_view.get()
     }
 
     fn editor_pane(&self, co: Colors, cx: &Context<Self>) -> gpui::Div {
@@ -4882,10 +4931,8 @@ impl gpui::EntityInputHandler for GpuiView {
 impl GpuiView {
     /// Whether composed text belongs in the body editor right now.
     fn editing_text(&self) -> bool {
-        matches!(
-            self.app.surface(),
-            ModalSurface::EditBody | ModalSurface::EditBlock
-        ) && self.app.body_mode() == closure_shell_core::EditorMode::Insert
+        self.app.surface().is_editor()
+            && self.app.body_mode() == closure_shell_core::EditorMode::Insert
     }
 
     /// The body cursor as a byte offset into the buffer.
@@ -5432,6 +5479,21 @@ impl Render for GpuiView {
         // here, once per frame.
         self.absorb_status(cx);
         self.reveal_cursors();
+        // The editor sizes itself from its own measured height, which
+        // is last frame's layout. When that moves — the buffer just
+        // opened, the rail stepped out of the way, the window resized —
+        // this frame paints a stale number of lines, so one more frame
+        // is asked for. It settles immediately: the measurement stops
+        // moving once the layout does.
+        if self.app.surface().is_editor() {
+            let view = self.body_view();
+            if self.painted_view.replace(view) != view {
+                // `cx.notify()` inside a render is not another frame —
+                // the window is already drawing. This asks for the next
+                // one, which is when the new measurement exists.
+                window.request_animation_frame();
+            }
+        }
         // The vault's files are the API, so something else writing them
         // — an Emacs on the same directory, a `git pull`, an inbound
         // sync round — has to reach the window. Armed once, from the
@@ -5439,7 +5501,6 @@ impl Render for GpuiView {
         if self.reload_gen == 0 {
             self.arm_reload(cx);
         }
-        let _ = window;
 
         let header = self.header_bar(co, cx);
 

@@ -1163,3 +1163,118 @@ fn the_source_block_editor_takes_the_window_too(cx: &mut gpui::TestAppContext) {
         "one block, whole window: {line:?} vs {rail:?}"
     );
 }
+
+// === the two shapes of the shell ===
+
+#[gpui::test]
+fn toggling_the_view_swaps_the_outline_for_the_file(cx: &mut gpui::TestAppContext) {
+    let (_dir, view, vcx) = visual_window(cx, VAULT);
+    let rail = vcx
+        .debug_bounds("rail")
+        .expect("the outline view is painted");
+    let at_rail = centre(vcx, rail_selector("peers"));
+
+    view.update(vcx, |v, cx| v.run_command("toggle-view", cx));
+    vcx.run_until_parked();
+    view.update(vcx, |v, _cx| {
+        assert_eq!(v.surface(), ModalSurface::EditFile);
+        assert!(
+            v.body().starts_with("* TODO Alpha"),
+            "the file itself, from its first byte: {:?}",
+            &v.body()[..20.min(v.body().len())]
+        );
+    });
+    let line = vcx.debug_bounds("body-line-0").expect("painted");
+    assert!(line.origin.x < rail.right(), "and it has the window");
+
+    view.update(vcx, |v, cx| v.run_command("toggle-view", cx));
+    vcx.run_until_parked();
+    view.update(vcx, |v, _cx| assert_eq!(v.surface(), ModalSurface::Browse));
+    vcx.simulate_click(at_rail, Modifiers::none());
+    vcx.run_until_parked();
+    view.update(vcx, |v, _cx| {
+        assert_eq!(v.surface(), ModalSurface::Sync, "the rail is back");
+    });
+}
+
+#[gpui::test]
+fn a_config_asking_for_the_editor_view_gets_it_before_the_first_frame(
+    cx: &mut gpui::TestAppContext,
+) {
+    let (_dir, view, vcx) = visual_window(cx, VAULT);
+    view.update(vcx, |v, cx| {
+        v.set_view(closure_shell_core::ViewMode::Editor);
+        cx.notify();
+    });
+    vcx.run_until_parked();
+    view.update(vcx, |v, _cx| {
+        assert_eq!(v.surface(), ModalSurface::EditFile)
+    });
+    assert!(
+        vcx.debug_bounds("body-line-0").is_some(),
+        "the file is on screen"
+    );
+}
+
+#[gpui::test]
+fn editing_the_file_buffer_and_saving_it_reaches_the_vault(cx: &mut gpui::TestAppContext) {
+    let (_dir, view, vcx) = visual_window(cx, VAULT);
+    view.update(vcx, |v, cx| v.run_command("toggle-view", cx));
+    vcx.run_until_parked();
+    // NORMAL on entry (a modal mode); `A` appends at the end of line 1.
+    vcx.simulate_keystrokes("shift-a");
+    vcx.simulate_input("!");
+    vcx.simulate_keystrokes("ctrl-enter");
+    vcx.run_until_parked();
+    view.update(vcx, |v, _cx| {
+        assert!(
+            v.body().starts_with("* TODO Alpha :work:!"),
+            "the buffer took the edit: {:?}",
+            v.body().lines().next()
+        );
+        assert!(
+            v.vault_contains(":work:!"),
+            "and C-Enter wrote the whole file back"
+        );
+    });
+}
+
+#[gpui::test]
+fn the_file_buffer_paints_every_line_that_fits(cx: &mut gpui::TestAppContext) {
+    // The pane paints a window of lines sized from its own measured
+    // height. A short file must therefore be painted whole: a buffer
+    // that silently stops two lines short of the end is a buffer you
+    // cannot trust.
+    let file = format!("* Head\n{}", numbered("line", 16));
+    let lines = file.lines().count();
+    let (_dir, view, vcx) = visual_window(cx, &file);
+    // A window the size of a laptop, not the harness's 1920×1080: the
+    // count is measured, and the measurement is what was wrong.
+    vcx.simulate_resize(size(px(1280.0), px(720.0)));
+    vcx.run_until_parked();
+    view.update(vcx, |v, cx| v.run_command("toggle-view", cx));
+    vcx.run_until_parked();
+    let (measured, painted) = view.update(vcx, |v, _cx| (v.body_view(), v.painted_view()));
+    assert!(
+        measured >= lines,
+        "{lines} lines fit in a 720px window, the pane measures {measured}"
+    );
+    // The pane sizes itself from *its own* measured height, which only
+    // exists after it has been laid out once — so the frame that opens
+    // the buffer paints with the previous layout's count. Opening a
+    // 17-line file over a 15-line measurement painted 15 lines and
+    // stopped, with half the window empty below them, until some other
+    // keystroke happened to repaint. The pane asks for that repaint
+    // itself now.
+    assert_eq!(
+        painted, measured,
+        "the painted frame used a stale line count"
+    );
+    for n in 0..lines {
+        let selector: &'static str = Box::leak(format!("body-line-{n}").into_boxed_str());
+        assert!(
+            vcx.debug_bounds(selector).is_some(),
+            "{selector} of {lines} was never painted"
+        );
+    }
+}

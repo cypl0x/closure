@@ -2243,6 +2243,25 @@ impl App {
                 self.mode = AppMode::Browse;
                 self.result_cursor = 0;
             }
+            // The two shapes of the shell, as far as a terminal has
+            // them: the list, or the file whole. The GUI's editor view
+            // is editable; this one is the reader the terminal already
+            // had, which is the same *choice* — file or list — without
+            // claiming an editor it does not have here yet.
+            "toggle-view" => {
+                if self.mode == AppMode::FileView {
+                    self.mode = AppMode::Browse;
+                    self.scroll = 0;
+                } else if self
+                    .selected_path()
+                    .is_some_and(|sel| self.sources.iter().any(|(p, _)| p.as_path() == sel))
+                {
+                    self.mode = AppMode::FileView;
+                    self.scroll = 0;
+                } else {
+                    "no file to open".clone_into(&mut self.status);
+                }
+            }
             "block-flow" | "allow-flow" => match self.sniffer.get(self.result_cursor) {
                 Some((candidate, _)) => {
                     self.flow_request = Some((candidate.clone(), cmd == "allow-flow"));

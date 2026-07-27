@@ -283,3 +283,28 @@ fn theme_kind_maps_string_to_dark_or_light_defaulting_dark() {
         ThemeKind::Dark
     );
 }
+
+// === which shape the GUI opens in ===
+
+#[test]
+fn view_defaults_to_the_clickable_outline() {
+    assert_eq!(Config::default().view, "clickable");
+}
+
+#[test]
+fn view_editor_asks_for_the_file_buffer() {
+    let cfg = Config::from_org_source("#+BEGIN_SRC closure-config\nview = editor\n#+END_SRC\n")
+        .expect("parses");
+    assert_eq!(cfg.view, "editor");
+    // `file` is the same request said the other way.
+    let alias = Config::from_org_source("#+BEGIN_SRC closure-config\nview = file\n#+END_SRC\n")
+        .expect("parses");
+    assert_eq!(alias.view, "editor");
+}
+
+#[test]
+fn an_unknown_view_is_a_config_error_not_a_silent_default() {
+    let err = Config::from_org_source("#+BEGIN_SRC closure-config\nview = sideways\n#+END_SRC\n")
+        .expect_err("rejected");
+    assert!(format!("{err}").contains("sideways"), "{err}");
+}

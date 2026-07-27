@@ -4258,6 +4258,40 @@ pub enum ModalSurface {
     /// The assistant: a transcript, a question field, and what the
     /// vault's `config.org` says is behind it.
     Llm,
+    /// The whole file, as one buffer — the editor view. `C-Enter` (or
+    /// `:w`) writes it back, `Esc` abandons it.
+    EditFile,
+}
+
+/// Which of the two shapes of the shell you are working in.
+///
+/// The GUI grew Notion-shaped: rows you click, a detail pane, a rail.
+/// That is the right shape for a mouse and the wrong one for someone who
+/// lives in Doom, where the *file* is the interface and the whole frame
+/// is a buffer. Both are the same vault and the same commands; what
+/// changes is what fills the window.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ViewMode {
+    /// The outline, the detail pane and the rail: rows you click.
+    Clickable,
+    /// The file itself, in one full-window buffer.
+    Editor,
+}
+
+impl ViewMode {
+    /// The view an input mode starts in.
+    ///
+    /// A modal mode is a statement about how you work: Vim, Doom and
+    /// Helix users edit files. Notion and Emacs mode start on the
+    /// outline — Emacs included, because its bindings here are the
+    /// launcher's `C-c` chords rather than evil's.
+    #[must_use]
+    pub const fn for_input(mode: InputMode) -> Self {
+        match mode {
+            InputMode::Vim | InputMode::Doom | InputMode::Helix => Self::Editor,
+            InputMode::Notion | InputMode::Emacs => Self::Clickable,
+        }
+    }
 }
 
 impl ModalSurface {
@@ -4270,7 +4304,7 @@ impl ModalSurface {
     /// place to write in.
     #[must_use]
     pub const fn is_editor(self) -> bool {
-        matches!(self, Self::EditBody | Self::EditBlock)
+        matches!(self, Self::EditBody | Self::EditBlock | Self::EditFile)
     }
 }
 
@@ -7461,6 +7495,10 @@ pub struct ModalApp {
     body: BodyEditor,
     completion: Option<CompletionSession>,
     edit_target: Option<String>,
+    /// Path of the file open in the editor view, when one is.
+    file_target: Option<std::path::PathBuf>,
+    /// Which shape of the shell we are in ([`ViewMode`]).
+    view: ViewMode,
     /// The body as it was when the editor opened it, so
     /// [`Self::body_dirty`] can answer by comparison rather than with
     /// a "was touched" bit — a buffer put back the way it was found
@@ -7612,6 +7650,14 @@ impl ModalApp {
             body_baseline: String::new(),
             completion: None,
             edit_target: None,
+            file_target: None,
+            // Every window opens on the outline: it is where the rail
+            // and every affordance live, and a shell that opened
+            // straight into a raw file buffer would hide the app from
+            // anyone who had not asked for that. `set_view` is how a
+            // vault config (`view = editor`) asks for it, and
+            // `toggle-view` is how a keyboard does.
+            view: ViewMode::Clickable,
             link_target: None,
             field_target: None,
             field_buf: String::new(),
@@ -8191,6 +8237,7 @@ impl ModalApp {
                 self.on_pane_key(key, len);
             }
             ModalSurface::EditBlock => self.on_editblock_key(shell, key, ctrl, alt, text),
+            ModalSurface::EditFile => self.on_editfile_key(shell, key, ctrl, alt, text),
             ModalSurface::Browse => self.on_browse_key(shell, key, ctrl, alt, text),
         }
     }
@@ -8226,6 +8273,35 @@ impl ModalApp {
             && self.body.pending_count() == 0
         {
             self.cancel_edit_special();
+            return;
+        }
+        self.edit_body_key(shell, key, ctrl, alt, text);
+    }
+
+    /// The file buffer's keys: the same editor, with `:w` semantics.
+    ///
+    /// `C-Enter` writes and *stays* — a file you are editing is a file
+    /// you keep editing, unlike a body, where the commit is the end of
+    /// the errand. `Esc` out of NORMAL leaves without writing.
+    fn on_editfile_key(
+        &mut self,
+        shell: &mut Shell,
+        key: &str,
+        ctrl: bool,
+        alt: bool,
+        text: Option<char>,
+    ) {
+        if key == "enter" && ctrl {
+            self.commit_file_buffer(shell);
+            return;
+        }
+        if key == "escape"
+            && self.body.mode() == EditorMode::Normal
+            && self.body.pending_stroke().is_none()
+            && self.body.pending_count() == 0
+        {
+            self.view = ViewMode::Clickable;
+            self.close_file_buffer();
             return;
         }
         self.edit_body_key(shell, key, ctrl, alt, text);
@@ -8770,6 +8846,89 @@ impl ModalApp {
         self.open_special(content);
     }
 
+    /// Which shape of the shell is showing ([`ViewMode`]).
+    #[must_use]
+    pub const fn view_mode(&self) -> ViewMode {
+        self.view
+    }
+
+    /// Put the shell in `view`, opening or closing the file buffer to
+    /// match.
+    ///
+    /// [`ModalApp::new`] has no vault, so a config that asks to start in
+    /// the editor view cannot be honoured at construction; the shells
+    /// call this once they have one.
+    pub fn set_view(&mut self, view: ViewMode, shell: &Shell) {
+        self.view = view;
+        match (view, self.surface) {
+            (ViewMode::Editor, ModalSurface::Browse) => self.open_file_buffer(shell),
+            (ViewMode::Clickable, ModalSurface::EditFile) => self.close_file_buffer(),
+            _ => {}
+        }
+    }
+
+    /// Open the selected row's file as one full-window buffer.
+    ///
+    /// The editor view *is* this: no rows, no detail pane — the file,
+    /// the way `find-file` gives it to you. An empty vault has no file
+    /// to open, so it stays where it is and says so.
+    fn open_file_buffer(&mut self, shell: &Shell) {
+        let Some(row) = self.rows_shared(shell).get(self.selected).cloned() else {
+            "no file to open — the vault is empty".clone_into(&mut self.status);
+            self.view = ViewMode::Clickable;
+            return;
+        };
+        let id = closure_core::BlockId::from_existing(&row.id);
+        let Some((_, path)) = shell.vault.find_by_id(&id) else {
+            "that headline has no file on disk".clone_into(&mut self.status);
+            self.view = ViewMode::Clickable;
+            return;
+        };
+        let path = path.to_path_buf();
+        let source = shell
+            .vault
+            .iter()
+            .find(|(p, _)| *p == path)
+            .map_or_else(String::new, |(_, doc)| doc.source());
+        self.body_baseline.clone_from(&source);
+        self.load_body(source);
+        self.file_target = Some(path);
+        self.surface = ModalSurface::EditFile;
+        self.status = if self.modal_editing() {
+            "file — NORMAL, i to insert, C-Enter save, Esc back".to_owned()
+        } else {
+            "file — C-Enter save, Esc back".to_owned()
+        };
+    }
+
+    /// Leave the file buffer without writing it.
+    fn close_file_buffer(&mut self) {
+        self.file_target = None;
+        self.body.clear();
+        self.body_baseline.clear();
+        self.surface = ModalSurface::Browse;
+    }
+
+    /// Write the file buffer back to its file, staying in it — `:w`,
+    /// not `:wq`.
+    fn commit_file_buffer(&mut self, shell: &mut Shell) {
+        let Some(path) = self.file_target.clone() else {
+            return;
+        };
+        let source = self.body.text().to_owned();
+        match shell.vault.set_source(&path, &source) {
+            Ok(()) => {
+                self.body_baseline = source;
+                self.invalidate_rows();
+                self.selected = self
+                    .selected
+                    .min(self.rows_shared(shell).len().saturating_sub(1));
+                self.status = format!("wrote {}", path.display());
+            }
+            Err(e) => self.status = format!("save failed: {e}"),
+        }
+    }
+
     /// What the open buffer is, for the shells to put where a modeline
     /// puts a buffer name. `None` when no buffer is open.
     ///
@@ -8780,6 +8939,9 @@ impl ModalApp {
     pub fn buffer_name(&self, shell: &Shell) -> Option<String> {
         if !self.surface.is_editor() {
             return None;
+        }
+        if let Some(path) = &self.file_target {
+            return Some(path.display().to_string());
         }
         let detail = self.detail(shell)?;
         Some(if self.surface == ModalSurface::EditBlock {
@@ -10374,6 +10536,16 @@ impl ModalApp {
                     InputMode::Doom => InputMode::Helix,
                     InputMode::Helix => InputMode::Notion,
                 };
+                // How you type and what you are looking at are the same
+                // decision: a mode with a NORMAL wants the file, a mode
+                // without one wants the rows. Toggling the view back is
+                // one chord away for anyone who disagrees.
+                self.view = ViewMode::for_input(self.mode);
+                match (self.view, self.surface) {
+                    (ViewMode::Clickable, ModalSurface::EditFile) => self.close_file_buffer(),
+                    (ViewMode::Editor, ModalSurface::Browse) => self.open_file_buffer(shell),
+                    _ => {}
+                }
             }
             "rename" => {
                 if let Some(row) = self.rows_shared(shell).get(self.selected).cloned() {
@@ -10517,6 +10689,24 @@ impl ModalApp {
                 self.slash = None;
                 self.surface = ModalSurface::Browse;
                 "outline".clone_into(&mut self.status);
+            }
+            // The switch between the two shapes of the shell: rows you
+            // click, or the file itself in one buffer.
+            "toggle-view" => {
+                // Keyed off the surface rather than the stored view: a
+                // modal mode *starts* in the editor view without a
+                // buffer open yet (nothing has a shell to open one
+                // with until the shell hands us one), and a toggle that
+                // trusted the flag would close a buffer that was never
+                // opened.
+                if self.surface == ModalSurface::EditFile {
+                    self.view = ViewMode::Clickable;
+                    self.close_file_buffer();
+                    "outline view".clone_into(&mut self.status);
+                } else {
+                    self.view = ViewMode::Editor;
+                    self.open_file_buffer(shell);
+                }
             }
             "resolve-ours" | "resolve-theirs" => {
                 if self.conflicts.conflicts().is_empty() {

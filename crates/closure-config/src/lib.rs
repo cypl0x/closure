@@ -25,6 +25,9 @@ pub struct Config {
     pub input_mode: InputMode,
     /// Theme name.
     pub theme: String,
+    /// Which shape the GUI opens in: the clickable outline, or the file
+    /// as one full-window buffer (`clickable` / `editor`).
+    pub view: String,
     /// Custom TODO keywords (in order).
     pub todo_keywords: Vec<String>,
     /// Priority letters in order of decreasing severity (default `A`,
@@ -69,6 +72,10 @@ impl Default for Config {
             default_vault: None,
             input_mode: InputMode::Doom,
             theme: "default".into(),
+            // The outline is where the rail and every affordance is;
+            // the editor view is one chord (`g v`) away, and this key
+            // is for the users who want to start there every time.
+            view: "clickable".into(),
             todo_keywords: vec!["TODO".into(), "DONE".into()],
             priority_levels: vec!['A', 'B', 'C'],
             tag_inheritance: true,
@@ -219,6 +226,16 @@ impl Config {
                         }
                     };
                 }
+                "view" => match value {
+                    "clickable" | "outline" => cfg.view = "clickable".into(),
+                    "editor" | "file" => cfg.view = "editor".into(),
+                    other => {
+                        return Err(ConfigError::BadValue {
+                            key: key.into(),
+                            reason: format!("{line_info}: unknown view `{other}`"),
+                        });
+                    }
+                },
                 "theme" => {
                     cfg.theme = value.into();
                 }

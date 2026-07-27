@@ -11614,6 +11614,43 @@ impl Vault {
         Some((h, path.as_path()))
     }
 
+    /// Replace a loaded file's whole source — what a full-window editor
+    /// over the file itself saves.
+    ///
+    /// Every other mutation is a kernel command against one block,
+    /// which is what keeps ids stable. This one hands the user the
+    /// text, so the promises are the ones the text can keep: the bytes
+    /// written are exactly the bytes given (I1 — the parse is a check,
+    /// not a rewrite), and the id index is rebuilt from the result, so
+    /// an id typed into the buffer is real the moment it is saved (I2).
+    ///
+    /// The document's in-memory command history is replaced along with
+    /// it: a buffer edit is not a kernel command and cannot be undone
+    /// as one. The editor's own undo stack covers the session.
+    ///
+    /// # Errors
+    ///
+    /// [`VaultError::Io`] if `path` is not a file this vault has
+    /// loaded — the editor addresses a file it is showing, and writing
+    /// an unknown path would scatter org files outside the vault — or
+    /// if the write fails; [`VaultError::Parse`] if `source` is not org
+    /// this parser can round-trip.
+    pub fn set_source(&mut self, path: &Path, source: &str) -> Result<(), VaultError> {
+        if !self.documents.contains_key(path) {
+            return Err(VaultError::Io(io::Error::new(
+                io::ErrorKind::NotFound,
+                path.display().to_string(),
+            )));
+        }
+        let doc = Document::load_str(source).map_err(|_| VaultError::Parse {
+            path: path.to_path_buf(),
+        })?;
+        fs::write(path, doc.source())?;
+        self.documents.insert(path.to_path_buf(), doc);
+        self.reindex_file(path);
+        Ok(())
+    }
+
     /// Atomically write `source` to `path`. Writes to a sibling
     /// `<name>.tmp` first then renames.
     pub fn save(&self, path: &Path, source: &str) -> Result<(), VaultError> {

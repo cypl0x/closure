@@ -129,6 +129,7 @@ pub const fn opening_route(surface: crate::ModalSurface) -> &'static [&'static s
         S::Journal => &["journal"],
         S::Cron => &["cron"],
         S::Llm => &["llm"],
+        S::EditFile => &["toggle-view"],
     }
 }
 
@@ -165,5 +166,6 @@ pub const ALL_SURFACES: &[crate::ModalSurface] = {
         S::Journal,
         S::Cron,
         S::Llm,
+        S::EditFile,
     ]
 };
