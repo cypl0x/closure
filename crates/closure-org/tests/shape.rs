@@ -8060,7 +8060,10 @@ fn clock_entries_keep_open_clocks_open() {
     let entries = closure_org::clock_entries("CLOCK: [2024-01-01 Mon 10:00]\n");
     assert_eq!(entries.len(), 1);
     assert!(entries[0].end.is_none());
-    assert!(entries[0].minutes.is_none(), "an open clock has no duration");
+    assert!(
+        entries[0].minutes.is_none(),
+        "an open clock has no duration"
+    );
 }
 
 #[test]

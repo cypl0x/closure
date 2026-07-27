@@ -8024,6 +8024,7 @@ impl OrgDoc {
                 NodeKind::Keyword => "Keyword",
                 NodeKind::Paragraph => "Paragraph",
                 NodeKind::CodeBlock => "CodeBlock",
+                NodeKind::Block => "Block",
                 NodeKind::ListItem => "ListItem",
                 NodeKind::TableRow => "TableRow",
             };
@@ -9008,6 +9009,11 @@ enum NodeMeta {
         checkbox: Option<Checkbox>,
         content_span: Span,
     },
+    Block {
+        name_span: Span,
+        args_span: Option<Span>,
+        content_span: Span,
+    },
 }
 
 /// List item marker kind.
@@ -9062,6 +9068,13 @@ pub enum NodeKind {
     Paragraph,
     /// A `#+BEGIN_SRC` / `#+END_SRC` fenced block.
     CodeBlock,
+    /// Any other `#+BEGIN_x` / `#+END_x` pair — quote, example, verse,
+    /// center, comment, export.
+    ///
+    /// Like [`NodeKind::CodeBlock`] this is a *greater element*: what
+    /// sits between the delimiters is content, never syntax, so a
+    /// starred line inside one is not a headline.
+    Block,
     /// A single list item line (`-`, `+`, `1.`, `1)`, optionally with
     /// leading indent and `[ ]` / `[X]` / `[-]` checkbox).
     ListItem,
@@ -9077,6 +9090,20 @@ pub struct CodeBlockView<'a> {
     /// Raw header arguments after the language (e.g. `:results output`).
     pub args: Option<&'a str>,
     /// Verbatim content between begin and end lines, including trailing
+    /// newline on each line.
+    pub content: &'a str,
+}
+
+/// Structural view of a [`Node`] classified as [`NodeKind::Block`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct BlockView<'a> {
+    /// Block name as written — `QUOTE`, `example`, `EXPORT`. Compare
+    /// it case-insensitively; org does.
+    pub name: &'a str,
+    /// Anything after the name on the begin line (`html` on
+    /// `#+BEGIN_EXPORT html`).
+    pub args: Option<&'a str>,
+    /// Verbatim content between the delimiters, including the trailing
     /// newline on each line.
     pub content: &'a str,
 }
@@ -9162,9 +9189,8 @@ pub fn clock_entries(body: &str) -> Vec<ClockEntry> {
         let computed = || -> Option<u64> {
             let e = end.as_deref()?;
             let day_delta = stamp_days(e)? - stamp_days(&start)?;
-            let mins =
-                day_delta * 24 * 60 + i64::try_from(stamp_minutes(e)?).ok()?
-                    - i64::try_from(stamp_minutes(&start)?).ok()?;
+            let mins = day_delta * 24 * 60 + i64::try_from(stamp_minutes(e)?).ok()?
+                - i64::try_from(stamp_minutes(&start)?).ok()?;
             u64::try_from(mins).ok()
         };
         let minutes = if start.is_empty() {
@@ -9318,6 +9344,126 @@ where
         out.push('\n');
     }
     out.push_str(":END:\n");
+    out
+}
+
+/// Whether `line` would parse as a headline, or already carries the
+/// comma escape for one.
+///
+/// A headline is a run of stars at column zero followed by a space or
+/// the end of the line — `*bold* text` is markup, not a headline, and
+/// must not be escaped. The escape nests: a body line the author
+/// really wants to read `,* x` is written `,,* x`, or the reader would
+/// hand back `* x`.
+fn is_escapable_body_line(line: &str) -> bool {
+    let bare = line.trim_start_matches(',');
+    let rest = bare.trim_start_matches('*');
+    bare.len() > rest.len() && (rest.is_empty() || rest.starts_with([' ', '\t']))
+}
+
+/// The block a `#+BEGIN_…` line opens, lower-cased, or `None` for any
+/// other line.
+///
+/// Org allows the delimiters to be indented (a block nested in a list
+/// item) and spells them in either case. `#+TITLE:` and the rest of
+/// the keyword family are *not* blocks, so only the `begin_` prefix
+/// counts.
+fn block_open(line: &str) -> Option<String> {
+    // `#+BEGIN_SRC rust` — the arguments are not part of the name.
+    let name = block_delimiter(line, "begin_")?
+        .split_whitespace()
+        .next()
+        .unwrap_or_default();
+    (!name.is_empty()).then(|| name.to_ascii_lowercase())
+}
+
+/// Whether `line` closes the block named `open`.
+fn block_closes(line: &str, open: &str) -> bool {
+    block_delimiter(line, "end_").is_some_and(|n| n.trim_end().eq_ignore_ascii_case(open))
+}
+
+/// The text after `#+<keyword>` on a delimiter line, in either case,
+/// with any indentation allowed before the `#+`.
+fn block_delimiter<'a>(line: &'a str, keyword: &str) -> Option<&'a str> {
+    let rest = line.trim_start().strip_prefix("#+")?;
+    let (head, tail) = rest.split_at_checked(keyword.len())?;
+    head.eq_ignore_ascii_case(keyword).then_some(tail)
+}
+
+/// Walk `body` line by line, saying for each whether it sits *inside* a
+/// `#+BEGIN_…`/`#+END_…` block.
+///
+/// The delimiters themselves are outside — they are org syntax, never
+/// content — and an unclosed block runs to the end of the body, which
+/// is the half-typed state every editing session passes through.
+fn body_lines_in_block(body: &str) -> impl Iterator<Item = (&str, bool)> {
+    let mut open: Option<String> = None;
+    body.split('\n').map(move |line| {
+        let Some(name) = &open else {
+            open = block_open(line);
+            return (line, false);
+        };
+        // The closing delimiter is syntax, not content, so it is
+        // outside the block it ends.
+        if block_closes(line, name) {
+            open = None;
+            return (line, false);
+        }
+        (line, true)
+    })
+}
+
+/// Escape a body so none of its lines can be read back as a headline.
+///
+/// A body is the text between one headline and the next, so a line
+/// beginning with `*` at column zero *is* a headline: written verbatim
+/// it splits the outline and reparents everything that followed. Org's
+/// answer is a leading comma, which [`unescape_body`] strips again —
+/// the two are a bijection, so a body survives any number of edit
+/// round trips unchanged.
+///
+/// Only column zero matters: `  * item` is a list, `*bold*` is markup,
+/// and both are left alone.
+///
+/// The interior of a `#+BEGIN_…`/`#+END_…` block is left verbatim.
+/// Such a block is a greater element — the parser does not read a
+/// starred line inside one as a headline — so the escape buys nothing
+/// there, and it costs: the comma reaches the file, `code_blocks()`
+/// hands the content back as written, and `eval-block` would run
+/// `,* x`.
+#[must_use]
+pub fn escape_body(body: &str) -> String {
+    let mut out = String::with_capacity(body.len());
+    for (i, (line, in_block)) in body_lines_in_block(body).enumerate() {
+        if i > 0 {
+            out.push('\n');
+        }
+        if !in_block && is_escapable_body_line(line) {
+            out.push(',');
+        }
+        out.push_str(line);
+    }
+    out
+}
+
+/// Strip the comma escape [`escape_body`] adds, so an editor shows the
+/// text the author meant rather than its on-disk spelling.
+///
+/// Symmetric with [`escape_body`] down to the block interiors: a comma
+/// inside a block was never an escape, so stripping one there would
+/// eat a byte of somebody's code.
+#[must_use]
+pub fn unescape_body(body: &str) -> String {
+    let mut out = String::with_capacity(body.len());
+    for (i, (line, in_block)) in body_lines_in_block(body).enumerate() {
+        if i > 0 {
+            out.push('\n');
+        }
+        match line.strip_prefix(',') {
+            Some(rest) if !in_block && is_escapable_body_line(rest) => out.push_str(rest),
+            _ => out.push_str(line),
+        }
+    }
     out
 }
 
@@ -9862,6 +10008,25 @@ impl Node {
         {
             Some(CodeBlockView {
                 language: lang_span.map(|s| &self.source[s.start..s.end]),
+                args: args_span.map(|s| &self.source[s.start..s.end]),
+                content: &self.source[content_span.start..content_span.end],
+            })
+        } else {
+            None
+        }
+    }
+
+    /// Structural view when this node is a [`NodeKind::Block`].
+    #[must_use]
+    pub fn as_block(&self) -> Option<BlockView<'_>> {
+        if let NodeMeta::Block {
+            name_span,
+            args_span,
+            content_span,
+        } = &self.meta
+        {
+            Some(BlockView {
+                name: &self.source[name_span.start..name_span.end],
                 args: args_span.map(|s| &self.source[s.start..s.end]),
                 content: &self.source[content_span.start..content_span.end],
             })
@@ -11594,6 +11759,21 @@ pub fn parse(src: &str) -> Result<OrgDoc, ParseError> {
             continue;
         }
 
+        // Every other `#+BEGIN_x` / `#+END_x` pair is a greater element
+        // too: quote, example, verse, center, comment, export. Reading
+        // their content as syntax made `* x` inside an example block a
+        // headline, so an Emacs-written file grew a phantom row.
+        if let Some((node, next_i)) = scan_greater_block(&lines, i, &source) {
+            flush_paragraph(
+                &source,
+                &mut paragraph,
+                target_nodes(&mut roots, &mut preamble),
+            );
+            push_node(&mut roots, &mut preamble, node);
+            i = next_i;
+            continue;
+        }
+
         if let Some((kind, meta)) = classify_special_line(line, span) {
             flush_paragraph(
                 &source,
@@ -11835,6 +12015,78 @@ fn classify_table_row(line: &str) -> bool {
     let body = line.strip_suffix('\n').unwrap_or(line);
     let trimmed = body.trim_start_matches([' ', '\t']);
     trimmed.starts_with('|')
+}
+
+/// Scan a non-`SRC` `#+BEGIN_x` / `#+END_x` pair into one
+/// [`NodeKind::Block`] node.
+///
+/// The pair is a greater element, so nothing between the delimiters is
+/// classified — which is the whole point: a starred line inside a
+/// quote or example block is content, and reading it as a headline
+/// split the outline of any file written in Emacs. `SRC` is left to
+/// [`scan_code_block`], which carries the language and arguments babel
+/// needs.
+///
+/// Only its own `#+END_` closes it, and an unclosed block returns
+/// `None` so the delimiter falls through to the line classifier — a
+/// half-typed block must not swallow the rest of the file.
+fn scan_greater_block(
+    lines: &[(&str, Span)],
+    start: usize,
+    source: &Arc<str>,
+) -> Option<(Node, usize)> {
+    let (line, span) = lines[start];
+    let body = line.strip_suffix('\n').unwrap_or(line);
+    let after = block_delimiter(body, "begin_")?;
+    // The name runs to the first space; the rest is arguments.
+    let name_len = after
+        .find([' ', '\t'])
+        .unwrap_or_else(|| after.trim_end().len());
+    let name = &after[..name_len];
+    if name.is_empty() || name.eq_ignore_ascii_case("src") {
+        return None;
+    }
+    let name_offset = span.start + (body.len() - after.len());
+    let name_span = Span {
+        start: name_offset,
+        end: name_offset + name_len,
+    };
+    let rest = after[name_len..].trim_start_matches([' ', '\t']);
+    let args = rest.trim_end();
+    let args_span = (!args.is_empty()).then(|| {
+        let offset = name_offset + (after.len() - rest.len());
+        Span {
+            start: offset,
+            end: offset + args.len(),
+        }
+    });
+    let content_start = span.end;
+    for (j, (ln, end_span)) in lines.iter().enumerate().skip(start + 1) {
+        let ln_body = ln.strip_suffix('\n').unwrap_or(ln);
+        if !block_closes(ln_body, name) {
+            continue;
+        }
+        return Some((
+            Node {
+                source: Arc::clone(source),
+                kind: NodeKind::Block,
+                span: Span {
+                    start: span.start,
+                    end: end_span.end,
+                },
+                meta: NodeMeta::Block {
+                    name_span,
+                    args_span,
+                    content_span: Span {
+                        start: content_start,
+                        end: end_span.start,
+                    },
+                },
+            },
+            j + 1,
+        ));
+    }
+    None
 }
 
 fn scan_code_block(
