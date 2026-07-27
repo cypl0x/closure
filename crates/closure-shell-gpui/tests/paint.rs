@@ -1278,3 +1278,29 @@ fn the_file_buffer_paints_every_line_that_fits(cx: &mut gpui::TestAppContext) {
         );
     }
 }
+
+#[gpui::test]
+fn e_reaches_the_editor_through_gpuis_own_dispatch(cx: &mut gpui::TestAppContext) {
+    // Reported as "vim key e is not working". The kernel motion, the
+    // `editor_key` seam and the operator all had tests; what none of
+    // them covered was gpui's dispatch, which is the only layer left
+    // between a real keypress and the buffer.
+    let (_dir, view, vcx) = visual_window(cx, "* Note\n");
+    vcx.simulate_keystrokes("i i");
+    vcx.simulate_input("hello world");
+    vcx.simulate_keystrokes("escape 0");
+    vcx.simulate_keystrokes("e");
+    view.update(vcx, |v, _cx| {
+        assert_eq!(v.body_cursor(), (0, 4), "`e` landed on the end of `hello`");
+    });
+    // From the `o` of `hello`, `de` runs to the end of the *next* word
+    // — vim's rule, not "delete the word I am standing on".
+    vcx.simulate_keystrokes("d e");
+    view.update(vcx, |v, _cx| {
+        assert_eq!(
+            v.body(),
+            "hell",
+            "`de` ran from the cursor to the next word end"
+        );
+    });
+}

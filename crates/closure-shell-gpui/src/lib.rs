@@ -2384,7 +2384,10 @@ impl GpuiView {
         let Some(row) = rows.get(i).cloned() else {
             return div();
         };
-        let is_sel = i == self.app.selected();
+        // Escape drops the selection so a capture files loose; the row
+        // has to stop looking selected when it does, or the outline is
+        // claiming something the next capture will contradict.
+        let is_sel = i == self.app.selected() && self.app.selection_active();
         let mut line = div()
             // A named element a test can find the painted bounds of, so
             // a click lands where the user's would rather than at a
@@ -2772,7 +2775,7 @@ impl GpuiView {
     /// blue), and the C-n completion popup.
     /// The editor pane's status row: the mode chip, the modified dot,
     /// the recording register, the chord in flight and the mode's hint.
-    fn editor_header(&self, co: Colors, mode_col: u32) -> gpui::Div {
+    fn editor_header(&self, co: Colors, mode_col: u32, cx: &Context<Self>) -> gpui::Div {
         use closure_shell_core::EditorMode;
         let mode = self.app.body_mode();
         // `R` is INSERT to the core, but it overwrites rather than
@@ -2826,12 +2829,43 @@ impl GpuiView {
                     .child(pending),
             );
         }
-        header.child(
+        header = header.child(
             div()
                 .text_color(rgb(co.muted))
                 .text_size(px(11.0))
                 .child(closure_shell_core::editor_hint(mode)),
-        )
+        );
+        // Saving and discarding were chords and nothing else: `C-Enter`
+        // if you knew, and an Esc that used to throw the buffer away if
+        // you did not. Both are buttons now, and both say their chord.
+        let button = |label: &'static str, colour: u32, chord: &'static str| {
+            div()
+                .px_2()
+                .rounded_md()
+                .bg(rgb(co.panel))
+                .border_1()
+                .border_color(rgb(colour))
+                .text_color(rgb(colour))
+                .text_size(px(11.0))
+                .cursor_pointer()
+                .hover(move |s| s.bg(rgb(co.hover)))
+                .child(format!("{label}  {chord}"))
+        };
+        header
+            .child(button("✓ save", co.success, "C-⏎").on_mouse_down(
+                MouseButton::Left,
+                cx.listener(|this: &mut Self, _ev, _w, cx| {
+                    this.app.commit_edit_body(&mut this.shell);
+                    cx.notify();
+                }),
+            ))
+            .child(button("✕ discard", co.error, ":q!").on_mouse_down(
+                MouseButton::Left,
+                cx.listener(|this: &mut Self, _ev, _w, cx| {
+                    this.app.run_ex_line(&mut this.shell, "q!");
+                    cx.notify();
+                }),
+            ))
     }
 
     /// How many body lines the last painted frame used — what
@@ -2857,7 +2891,7 @@ impl GpuiView {
             EditorMode::Visual => co.heading3,
             EditorMode::VisualLine => co.heading2,
         };
-        let header = self.editor_header(co, mode_col);
+        let header = self.editor_header(co, mode_col, cx);
         let mut body = with_menu(
             div()
                 .id("body-text")

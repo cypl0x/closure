@@ -152,13 +152,29 @@ impl Shell {
     /// # Errors
     ///
     /// Propagates [`closure_store::VaultError`] from the capture.
-    pub fn capture(&mut self, title: &str) -> Result<(), closure_store::VaultError> {
+    pub fn capture(
+        &mut self,
+        title: &str,
+    ) -> Result<closure_core::BlockId, closure_store::VaultError> {
         let template = closure_store::CaptureTemplate {
             target: std::path::PathBuf::from("inbox.org"),
             headline_prefix: "TODO ".to_owned(),
             body: String::new(),
         };
-        self.vault.capture(&template, title).map(|_| ())
+        self.vault.capture(&template, title)
+    }
+
+    /// Capture a new `TODO` as the last child of `parent` (I8).
+    ///
+    /// # Errors
+    ///
+    /// Propagates [`closure_store::VaultError`] from the capture.
+    pub fn capture_under(
+        &mut self,
+        parent: &closure_core::BlockId,
+        title: &str,
+    ) -> Result<closure_core::BlockId, closure_store::VaultError> {
+        self.vault.capture_under(parent, "TODO ", title)
     }
 
     /// Select `path` and reset the headline cursor.
@@ -2629,6 +2645,194 @@ pub struct Peer {
     pub state: PeerState,
 }
 
+/// A one-line text field: the text, and where in it the cursor is.
+///
+/// The overlays — capture, search, the pairing ticket, the tag and
+/// property fields — were plain `String`s that only knew `push` and
+/// `pop`. That is a field you can only edit at the end: no `C-a`, no
+/// `C-e`, no fixing a typo in the middle without retyping the tail,
+/// and no `C-w`. Every surface reimplementing that badly is worse than
+/// one type doing it once, so this is the field itself and the
+/// surfaces route their keys into it.
+///
+/// Positions are byte offsets on a char boundary; the motions step by
+/// *character*, because a captured German line is the normal case and
+/// half a `ß` is not a thing to leave behind.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct LineInput {
+    text: String,
+    cursor: usize,
+}
+
+impl LineInput {
+    /// The text as typed so far.
+    #[must_use]
+    pub fn text(&self) -> &str {
+        &self.text
+    }
+
+    /// Byte offset of the cursor within [`Self::text`].
+    #[must_use]
+    pub const fn cursor(&self) -> usize {
+        self.cursor
+    }
+
+    /// Replace the contents, cursor at the end — what restoring a
+    /// rejected ticket or a remembered query wants.
+    pub fn set_text(&mut self, text: &str) {
+        self.text.clear();
+        self.text.push_str(text);
+        self.cursor = self.text.len();
+    }
+
+    /// Empty the field.
+    pub fn clear(&mut self) {
+        self.text.clear();
+        self.cursor = 0;
+    }
+
+    /// Take the text out, leaving the field empty.
+    pub fn take(&mut self) -> String {
+        self.cursor = 0;
+        std::mem::take(&mut self.text)
+    }
+
+    /// Whether anything has been typed.
+    #[must_use]
+    pub const fn is_empty(&self) -> bool {
+        self.text.is_empty()
+    }
+
+    /// Insert one character at the cursor.
+    pub fn insert_char(&mut self, c: char) {
+        self.text.insert(self.cursor, c);
+        self.cursor += c.len_utf8();
+    }
+
+    /// Insert a run of text at the cursor — a paste.
+    pub fn insert_str(&mut self, s: &str) {
+        self.text.insert_str(self.cursor, s);
+        self.cursor += s.len();
+    }
+
+    /// Delete the character before the cursor.
+    pub fn backspace(&mut self) {
+        if let Some(prev) = self.prev_boundary() {
+            self.text.replace_range(prev..self.cursor, "");
+            self.cursor = prev;
+        }
+    }
+
+    /// Delete the character under the cursor.
+    pub fn delete(&mut self) {
+        if let Some(next) = self.next_boundary() {
+            self.text.replace_range(self.cursor..next, "");
+        }
+    }
+
+    /// One character left.
+    pub fn left(&mut self) {
+        if let Some(prev) = self.prev_boundary() {
+            self.cursor = prev;
+        }
+    }
+
+    /// One character right.
+    pub fn right(&mut self) {
+        if let Some(next) = self.next_boundary() {
+            self.cursor = next;
+        }
+    }
+
+    /// To the start of the line (`C-a`, Home).
+    pub const fn home(&mut self) {
+        self.cursor = 0;
+    }
+
+    /// To the end of the line (`C-e`, End).
+    pub const fn end(&mut self) {
+        self.cursor = self.text.len();
+    }
+
+    /// Delete the word before the cursor (`C-w`, ctrl+backspace).
+    pub fn delete_word_back(&mut self) {
+        let start = self.word_start();
+        self.text.replace_range(start..self.cursor, "");
+        self.cursor = start;
+    }
+
+    /// Delete from the cursor to the start of the line (`C-u`).
+    pub fn kill_to_start(&mut self) {
+        self.text.replace_range(..self.cursor, "");
+        self.cursor = 0;
+    }
+
+    /// Delete from the cursor to the end of the line (`C-k`).
+    pub fn kill_to_end(&mut self) {
+        self.text.truncate(self.cursor);
+    }
+
+    /// Offer `key` to the field, reporting whether it was consumed.
+    ///
+    /// The surface keeps the keys that mean something to *it* —
+    /// `enter`, `escape`, its own navigation — and hands the rest here,
+    /// so every one-line field in the app answers to the same chords.
+    pub fn key(&mut self, key: &str, ctrl: bool, alt: bool, text: Option<char>) -> bool {
+        match key {
+            "a" if ctrl => self.home(),
+            "e" if ctrl => self.end(),
+            "b" if ctrl => self.left(),
+            "f" if ctrl => self.right(),
+            "d" if ctrl => self.delete(),
+            "k" if ctrl => self.kill_to_end(),
+            "u" if ctrl => self.kill_to_start(),
+            "w" if ctrl => self.delete_word_back(),
+            "backspace" if ctrl || alt => self.delete_word_back(),
+            "backspace" => self.backspace(),
+            "delete" => self.delete(),
+            "left" => self.left(),
+            "right" => self.right(),
+            "home" => self.home(),
+            "end" => self.end(),
+            _ => {
+                // A bare character is text; the same letter under a
+                // modifier is a chord nobody bound, and typing its
+                // letter would be a surprise.
+                let Some(c) = text.filter(|_| !ctrl && !alt) else {
+                    return false;
+                };
+                self.insert_char(c);
+            }
+        }
+        true
+    }
+
+    /// Byte offset of the character boundary before the cursor.
+    fn prev_boundary(&self) -> Option<usize> {
+        self.text[..self.cursor]
+            .char_indices()
+            .next_back()
+            .map(|(i, _)| i)
+    }
+
+    /// Byte offset of the boundary after the character at the cursor.
+    fn next_boundary(&self) -> Option<usize> {
+        self.text[self.cursor..]
+            .chars()
+            .next()
+            .map(|c| self.cursor + c.len_utf8())
+    }
+
+    /// Where the word before the cursor starts: the run of whitespace
+    /// immediately behind it, and then the word behind that.
+    fn word_start(&self) -> usize {
+        let head = &self.text[..self.cursor];
+        let trimmed = head.trim_end();
+        let without_word = trimmed.trim_end_matches(|c: char| !c.is_whitespace());
+        without_word.len()
+    }
+}
+
 /// Body lines a shell is assumed to be able to paint until it says
 /// otherwise ([`ModalApp::set_body_viewport`]).
 pub const BODY_VIEWPORT_DEFAULT: usize = 20;
@@ -4280,7 +4484,7 @@ impl App {
             "enter" => {
                 if !self.capture_buf.is_empty() {
                     match shell.capture(&self.capture_buf) {
-                        Ok(()) => self.status = format!("captured: {}", self.capture_buf),
+                        Ok(_) => self.status = format!("captured: {}", self.capture_buf),
                         Err(e) => self.status = format!("capture failed: {e}"),
                     }
                 }
@@ -7642,13 +7846,19 @@ struct CompletionSession {
 /// five editing modes (vim `j`/`k`, `g g`; emacs `C-x C-c`; …) drive a
 /// GUI exactly as in the TUI. Typing happens only in the Search/Capture
 /// overlays. Pure + headless-testable; mutations via [`Shell`] (I8).
+// Four independent facts about the session — quitting, whether a row is
+// selected, whether an answer is in flight, whether to re-render it.
+// They are orthogonal and each is genuinely two-valued; an enum over
+// their sixteen combinations would describe the same thing worse.
+#[allow(clippy::struct_excessive_bools)]
 #[derive(Debug)]
 pub struct ModalApp {
     mode: InputMode,
     surface: ModalSurface,
     selected: usize,
     query: String,
-    capture_buf: String,
+    /// The capture overlay's one-line field (text + cursor).
+    capture_buf: LineInput,
     body: BodyEditor,
     completion: Option<CompletionSession>,
     edit_target: Option<String>,
@@ -7688,6 +7898,11 @@ pub struct ModalApp {
     recenter: Option<(u8, usize, usize)>,
     /// A body-editor prefix key waiting for the rest of its chord.
     pending_body: Option<BodyPrefix>,
+    /// Whether a row is *actually* selected, as opposed to the cursor
+    /// merely sitting somewhere. Escape in the outline clears it, which
+    /// is how a capture is told "file this at the top level, not under
+    /// whatever I happened to be looking at"; any motion selects again.
+    selection_active: bool,
     /// Body-editor wheel viewport `(start, cursor_line_when_set)`; the
     /// override self-clears when the cursor line changes (G5).
     body_scroll: Option<(usize, usize)>,
@@ -7824,7 +8039,7 @@ impl ModalApp {
             surface: ModalSurface::Browse,
             selected: 0,
             query: String::new(),
-            capture_buf: String::new(),
+            capture_buf: LineInput::default(),
             body: BodyEditor::new(),
             body_baseline: String::new(),
             completion: None,
@@ -7849,6 +8064,7 @@ impl ModalApp {
             body_anchor: None,
             recenter: None,
             pending_body: None,
+            selection_active: true,
             body_scroll: None,
             hist_cursor: 0,
             row_memo: std::cell::RefCell::new(None),
@@ -7982,7 +8198,7 @@ impl ModalApp {
             "escape" => {
                 self.field_buf.clear();
                 self.palette_cursor = 0;
-                self.surface = ModalSurface::Browse;
+                self.go_home();
             }
             "down" => {
                 let last = self.palette_entries().len().saturating_sub(1);
@@ -8011,7 +8227,7 @@ impl ModalApp {
             .map(|e| e.action.command().to_owned());
         self.field_buf.clear();
         self.palette_cursor = 0;
-        self.surface = ModalSurface::Browse;
+        self.go_home();
         if let Some(cmd) = pick {
             self.run_command(shell, &cmd);
         }
@@ -8058,7 +8274,13 @@ impl ModalApp {
     /// In-progress capture title.
     #[must_use]
     pub fn capture_buffer(&self) -> &str {
-        &self.capture_buf
+        self.capture_buf.text()
+    }
+    /// Byte offset of the cursor in the capture field, so a shell can
+    /// draw the caret where the next character will actually go.
+    #[must_use]
+    pub const fn capture_cursor(&self) -> usize {
+        self.capture_buf.cursor()
     }
     /// One-line status.
     #[must_use]
@@ -8242,6 +8464,9 @@ impl ModalApp {
         self.scroll_override = None;
         let last = self.rows_shared(shell).len().saturating_sub(1);
         self.selected = i.min(last);
+        // Clicking a row is the least ambiguous way there is of saying
+        // "this one".
+        self.selection_active = true;
     }
 
     /// Wheel scrolling: move the viewport by `delta` rows (negative =
@@ -8369,8 +8594,8 @@ impl ModalApp {
         text: Option<char>,
     ) {
         match self.surface {
-            ModalSurface::Search => self.on_search_key(shell, key, text),
-            ModalSurface::Capture => self.on_capture_key(shell, key, text),
+            ModalSurface::Search => self.on_search_key(shell, key, ctrl, alt, text),
+            ModalSurface::Capture => self.on_capture_key(shell, key, ctrl, alt, text),
             ModalSurface::EditBody => self.on_editbody_key(shell, key, ctrl, alt, text),
             ModalSurface::Backlinks => self.on_backlinks_key(shell, key),
             ModalSurface::Agenda => self.on_list_key(shell, key, ListKind::Agenda),
@@ -8716,7 +8941,7 @@ impl ModalApp {
     fn on_llm_key(&mut self, key: &str, text: Option<char>) {
         match key {
             "escape" => {
-                self.surface = ModalSurface::Browse;
+                self.go_home();
             }
             "backspace" => {
                 self.chat_buf.pop();
@@ -8826,7 +9051,7 @@ impl ModalApp {
         match key {
             "escape" => {
                 self.sync_buf.clear();
-                self.surface = ModalSurface::Browse;
+                self.go_home();
             }
             "backspace" => {
                 self.sync_buf.pop();
@@ -9337,9 +9562,17 @@ impl ModalApp {
             "q!" | "quit!" => self.quit = true,
             "w" | "write" | "wq" | "x" | "wq!" | "x!" => {
                 if editing {
-                    // Here a write has something to do: the editor
-                    // buffer is not in the vault until it is committed.
-                    self.commit_edit_body(shell);
+                    // `:w` in every vi ever written means "write and
+                    // carry on"; only the `q` half leaves. The ex line
+                    // returns to Browse before running its command, so
+                    // a plain write used to close the buffer it had
+                    // just saved.
+                    if line == "w" || line == "write" {
+                        self.write_body(shell);
+                        self.surface = ModalSurface::EditBody;
+                    } else {
+                        self.commit_edit_body(shell);
+                    }
                 } else {
                     // And here it does not, and saying "written" would
                     // be a lie about a write that never happened —
@@ -9382,7 +9615,7 @@ impl ModalApp {
             "k" | "up" => self.selected = self.selected.saturating_sub(1),
             "escape" | "q" => {
                 self.selected = 0;
-                self.surface = ModalSurface::Browse;
+                self.go_home();
             }
             _ => {}
         }
@@ -9395,7 +9628,7 @@ impl ModalApp {
             "escape" => {
                 self.query.clear();
                 self.selected = 0;
-                self.surface = ModalSurface::Browse;
+                self.go_home();
             }
             "backspace" => {
                 self.query.pop();
@@ -9433,7 +9666,7 @@ impl ModalApp {
             "k" | "up" => self.sniffer.select(self.sniffer_cursor().saturating_sub(1)),
             "a" => self.run_command(shell, "allow-flow"),
             "b" => self.run_command(shell, "block-flow"),
-            "escape" | "q" => self.surface = ModalSurface::Browse,
+            "escape" | "q" => self.go_home(),
             _ => {}
         }
     }
@@ -9447,7 +9680,7 @@ impl ModalApp {
                 .select(self.conflicts.selected().saturating_sub(1)),
             "o" => self.run_command(shell, "resolve-ours"),
             "t" => self.run_command(shell, "resolve-theirs"),
-            "escape" | "q" => self.surface = ModalSurface::Browse,
+            "escape" | "q" => self.go_home(),
             _ => {}
         }
     }
@@ -9467,7 +9700,7 @@ impl ModalApp {
             "escape" => {
                 self.field_target = None;
                 self.field_buf.clear();
-                self.surface = ModalSurface::Browse;
+                self.go_home();
             }
             "enter" => {
                 if let Some(id) = self.field_target.take() {
@@ -9501,7 +9734,7 @@ impl ModalApp {
                     }
                 }
                 self.field_buf.clear();
-                self.surface = ModalSurface::Browse;
+                self.go_home();
             }
             "backspace" => {
                 self.field_buf.pop();
@@ -9532,7 +9765,7 @@ impl ModalApp {
                 self.selected = 0;
                 // Block output belongs to the pane that produced it.
                 self.block_out = None;
-                self.surface = ModalSurface::Browse;
+                self.go_home();
             }
             "down" | "j" => {
                 self.block_out = None;
@@ -9879,6 +10112,7 @@ impl ModalApp {
     pub fn select_by_id(&mut self, shell: &Shell, id: &str) -> bool {
         if let Some(i) = self.rows_shared(shell).iter().position(|r| r.id == id) {
             self.selected = i;
+            self.selection_active = true;
             return true;
         }
         false
@@ -10442,17 +10676,25 @@ impl ModalApp {
                     self.body.redo_local();
                     return;
                 }
-                // Esc on a quiet Normal surface cancels the edit; every
-                // other key (incl. Esc mid-chord / in Visual) is the
-                // editor's own modal vocabulary.
+                // Esc on a quiet Normal surface leaves the editor —
+                // but only when there is nothing to lose. It used to
+                // clear the buffer and go, so a paragraph typed and
+                // Esc'd was gone with no prompt and no undo; the reflex
+                // second Esc after a chord that "did nothing" was the
+                // most reliable way to lose work in the whole app.
                 if key == "escape"
                     && self.body.mode() == EditorMode::Normal
                     && self.body.pending_stroke().is_none()
                     && self.body.pending_count() == 0
                 {
-                    self.edit_target = None;
-                    self.body.clear();
-                    self.surface = ModalSurface::Browse;
+                    if self.body_dirty() {
+                        "unsaved edit — C-Enter or :w saves · :q! discards"
+                            .clone_into(&mut self.status);
+                    } else {
+                        self.edit_target = None;
+                        self.body.clear();
+                        self.surface = ModalSurface::Browse;
+                    }
                 } else if ctrl {
                     // `C-d`, `C-f`, `C-a` … are chords in their own
                     // right; dropping the modifier turned them into the
@@ -10610,23 +10852,41 @@ impl ModalApp {
     /// Commit the body buffer to the target headline through the kernel
     /// command (I8), then return to Browse. No-op if not editing.
     pub fn commit_edit_body(&mut self, shell: &mut Shell) {
-        if let Some(id) = self.edit_target.take() {
-            let bid = closure_core::BlockId::from_existing(&id);
-            // A body line starting with `*` *is* a headline once it is
-            // back in the file: written verbatim it would split the
-            // outline and reparent every following sibling.
-            let mut body = closure_org::escape_body(self.body.text());
-            if !body.is_empty() && !body.ends_with('\n') {
-                body.push('\n');
-            }
-            match shell.set_body(&bid, &body) {
-                Ok(()) => "body saved".clone_into(&mut self.status),
-                Err(e) => self.status = format!("save failed: {e}"),
-            }
-        }
+        self.write_body(shell);
+        self.edit_target = None;
         self.body.clear();
         self.body_baseline.clear();
         self.surface = ModalSurface::Browse;
+    }
+
+    /// Write the buffer into the vault, leaving the editor open and the
+    /// buffer as it is.
+    ///
+    /// What `:w` needs and what committing is built out of: the write
+    /// and the leaving are two different decisions, and a plain `:w`
+    /// only ever meant the first one.
+    fn write_body(&mut self, shell: &mut Shell) {
+        let Some(id) = self.edit_target.clone() else {
+            return;
+        };
+        let bid = closure_core::BlockId::from_existing(&id);
+        // A body line starting with `*` *is* a headline once it is
+        // back in the file: written verbatim it would split the
+        // outline and reparent every following sibling.
+        let mut body = closure_org::escape_body(self.body.text());
+        if !body.is_empty() && !body.ends_with('\n') {
+            body.push('\n');
+        }
+        match shell.set_body(&bid, &body) {
+            Ok(()) => {
+                "body saved".clone_into(&mut self.status);
+                // Saved *is* the new baseline: `body_dirty` compares
+                // against what the vault holds, and after a write that
+                // is what is in the buffer.
+                self.body_baseline = self.body.text().to_owned();
+            }
+            Err(e) => self.status = format!("save failed: {e}"),
+        }
     }
 
     /// Whether the body editor holds something the vault does not.
@@ -10698,16 +10958,23 @@ impl ModalApp {
         self.body_scroll = Some((line.min(max), cl));
     }
 
-    fn on_search_key(&mut self, shell: &Shell, key: &str, text: Option<char>) {
+    fn on_search_key(
+        &mut self,
+        shell: &Shell,
+        key: &str,
+        ctrl: bool,
+        alt: bool,
+        text: Option<char>,
+    ) {
         match key {
             "escape" => {
                 self.query.clear();
                 self.selected = 0;
-                self.surface = ModalSurface::Browse;
+                self.go_home();
             }
             "enter" => {
                 self.query.clear();
-                self.surface = ModalSurface::Browse;
+                self.go_home();
             }
             "backspace" => {
                 self.query.pop();
@@ -10718,8 +10985,26 @@ impl ModalApp {
                 self.selected = (self.selected + 1).min(last);
             }
             "up" => self.selected = self.selected.saturating_sub(1),
+            // The arrows moved the result cursor and the chords every
+            // modal user reaches for did not, which is the one thing a
+            // search overlay must not get wrong.
+            "j" | "n" if ctrl => {
+                let last = self.rows_shared(shell).len().saturating_sub(1);
+                self.selected = (self.selected + 1).min(last);
+            }
+            "k" | "p" if ctrl => self.selected = self.selected.saturating_sub(1),
+            "w" if ctrl => {
+                let kept = self.query.trim_end();
+                let cut = kept.trim_end_matches(|c: char| !c.is_whitespace());
+                self.query.truncate(cut.len());
+                self.selected = 0;
+            }
+            "u" if ctrl => {
+                self.query.clear();
+                self.selected = 0;
+            }
             _ => {
-                if let Some(c) = text {
+                if let Some(c) = text.filter(|_| !ctrl && !alt) {
                     self.query.push(c);
                     self.selected = 0;
                 }
@@ -10727,31 +11012,105 @@ impl ModalApp {
         }
     }
 
-    fn on_capture_key(&mut self, shell: &mut Shell, key: &str, text: Option<char>) {
+    fn on_capture_key(
+        &mut self,
+        shell: &mut Shell,
+        key: &str,
+        ctrl: bool,
+        alt: bool,
+        text: Option<char>,
+    ) {
         match key {
             "escape" => {
-                self.surface = ModalSurface::Browse;
+                self.go_home();
                 self.capture_buf.clear();
             }
             "enter" => {
                 if !self.capture_buf.is_empty() {
-                    match shell.capture(&self.capture_buf) {
-                        Ok(()) => self.status = format!("captured: {}", self.capture_buf),
-                        Err(e) => self.status = format!("capture failed: {e}"),
-                    }
+                    let title = self.capture_buf.take();
+                    self.commit_capture(shell, &title);
                 }
-                self.surface = ModalSurface::Browse;
+                self.go_home();
                 self.capture_buf.clear();
             }
-            "backspace" => {
-                self.capture_buf.pop();
-            }
+            // Everything else is the field's: the readline chords, the
+            // arrows, and the characters themselves.
             _ => {
-                if let Some(c) = text {
-                    self.capture_buf.push(c);
-                }
+                self.capture_buf.key(key, ctrl, alt, text);
             }
         }
+    }
+
+    /// File `title` where the outline is pointing, and put the cursor
+    /// on what was just made.
+    ///
+    /// Two halves of the same complaint: a capture used to land at the
+    /// top of `inbox.org` whatever you were looking at, and the
+    /// selection stayed where it was — so the next thing you did
+    /// happened to the previous headline. Under the selection when
+    /// there is one, top level when Escape has said there is not.
+    fn commit_capture(&mut self, shell: &mut Shell, title: &str) {
+        let parent = self
+            .selection_active
+            .then(|| self.selected_row_id(shell))
+            .flatten();
+        let captured = match parent {
+            Some(parent) => {
+                let id = closure_core::BlockId::from_existing(&parent);
+                shell.capture_under(&id, title)
+            }
+            None => shell.capture(title),
+        };
+        match captured {
+            Ok(id) => {
+                self.status = format!("captured: {title}");
+                // The row list is rebuilt from the bumped revision, so
+                // the new id is findable the moment we ask.
+                self.select_by_id(shell, id.as_str());
+                self.selection_active = true;
+            }
+            Err(e) => self.status = format!("capture failed: {e}"),
+        }
+    }
+
+    /// The block id of the row under the cursor, if there is one.
+    fn selected_row_id(&self, shell: &Shell) -> Option<String> {
+        self.rows_shared(shell)
+            .get(self.selected)
+            .map(|r| r.id.clone())
+            .filter(|id| !id.is_empty())
+    }
+
+    /// Where an overlay returns to when it closes.
+    ///
+    /// In the clickable view that is the outline; in the editor view it
+    /// is the file buffer, which is the whole point of that view. They
+    /// all returned to the outline, so opening the palette or a capture
+    /// from a full-window buffer dropped you back into the row list —
+    /// a different shape of the app than the one you were using.
+    const fn home_surface(&self) -> ModalSurface {
+        match self.view {
+            ViewMode::Editor => ModalSurface::EditFile,
+            ViewMode::Clickable => ModalSurface::Browse,
+        }
+    }
+
+    /// Close the current overlay, returning to [`Self::home_surface`].
+    const fn go_home(&mut self) {
+        self.surface = self.home_surface();
+    }
+
+    /// Whether a row is selected, as opposed to the cursor merely
+    /// resting on one. Escape clears it; a motion or a capture makes
+    /// it true again.
+    #[must_use]
+    pub const fn selection_active(&self) -> bool {
+        self.selection_active
+    }
+
+    /// Drop the selection without moving the cursor.
+    pub const fn clear_selection(&mut self) {
+        self.selection_active = false;
     }
 
     fn on_browse_key(
@@ -10762,6 +11121,14 @@ impl ModalApp {
         alt: bool,
         text: Option<char>,
     ) {
+        // Escape in the outline drops the selection (and any half-typed
+        // chord): the way to tell a capture "file this loose, not under
+        // whatever the cursor happens to be resting on".
+        if key == "escape" {
+            self.pending.clear();
+            self.clear_selection();
+            return;
+        }
         let stroke = modal_stroke(key, ctrl, alt, text);
         let Some(stroke) = stroke else {
             self.pending.clear();
@@ -10786,6 +11153,24 @@ impl ModalApp {
     #[allow(clippy::too_many_lines)]
     fn run_command(&mut self, shell: &mut Shell, cmd: &str) {
         let last = self.rows_shared(shell).len().saturating_sub(1);
+        // Moving the cursor *is* selecting: Escape drops the selection
+        // so a capture goes to the top level, and the next motion is
+        // how you say you are looking at something again. Opening a
+        // surface is not a motion — `Esc` then `c` must still capture
+        // loose.
+        if matches!(
+            cmd,
+            "next-file"
+                | "prev-file"
+                | "first-file"
+                | "last-file"
+                | "next-sibling"
+                | "prev-sibling"
+                | "parent"
+                | "child"
+        ) {
+            self.selection_active = true;
+        }
         match cmd {
             "next-file" => {
                 self.scroll_override = None;
@@ -10888,16 +11273,29 @@ impl ModalApp {
                     let _ = shell.set_priority(&bid, next);
                 }
             }
+            // A refused level change (promoting a level-1 headline: no
+            // level 0 exists) used to be dropped on the floor, so the
+            // key did nothing and said nothing — which is exactly what
+            // "the UI doesn't refresh" feels like from the outside.
             "promote" => {
                 if let Some(row) = self.rows_shared(shell).get(self.selected).cloned() {
                     let bid = closure_core::BlockId::from_existing(&row.id);
-                    let _ = shell.promote(&bid);
+                    self.status = match shell.promote(&bid) {
+                        Ok(()) => format!("promoted: {}", row.title),
+                        Err(_) if row.level <= 1 => {
+                            "already at the top level — nothing to promote into".to_owned()
+                        }
+                        Err(e) => format!("promote failed: {e}"),
+                    };
                 }
             }
             "demote" => {
                 if let Some(row) = self.rows_shared(shell).get(self.selected).cloned() {
                     let bid = closure_core::BlockId::from_existing(&row.id);
-                    let _ = shell.demote(&bid);
+                    self.status = match shell.demote(&bid) {
+                        Ok(()) => format!("demoted: {}", row.title),
+                        Err(e) => format!("demote failed: {e}"),
+                    };
                 }
             }
             "move-subtree-up" => {

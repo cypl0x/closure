@@ -118,9 +118,12 @@ fn wq_and_x_both_write_and_quit() {
 }
 
 #[test]
-fn w_commits_the_body_when_the_editor_is_open() {
+fn w_writes_the_body_and_stays_in_the_editor() {
     // Here `:w` genuinely has something to do: the editor buffer is not
-    // in the vault until it is committed.
+    // in the vault until it is written. Contract revised 2026-07-28 on
+    // the user's report — `:w` in every vi means "write and carry on",
+    // and closing the buffer it had just saved was the complaint.
+    // `:wq` is the one that leaves.
     let (_d, mut shell, mut app) = fixture();
     app.select(0, &shell);
     app.run(&mut shell, "edit-body");
@@ -130,7 +133,15 @@ fn w_commits_the_body_when_the_editor_is_open() {
     // Esc leaves INSERT so `:` is a command, not text.
     app.on_key(&mut shell, "escape", false, false, None);
     ex(&mut app, &mut shell, "w");
-    assert_eq!(app.surface(), ModalSurface::Browse, "the editor closed");
+    assert_eq!(
+        app.surface(),
+        ModalSurface::EditBody,
+        "the editor stayed open"
+    );
+    assert!(!app.body_dirty(), "and the buffer counts as saved");
+    // Leaving is `:wq`'s job; the body must be in the vault either way.
+    ex(&mut app, &mut shell, "wq");
+    assert_eq!(app.surface(), ModalSurface::Browse);
     assert!(
         app.detail(&shell)
             .expect("detail")

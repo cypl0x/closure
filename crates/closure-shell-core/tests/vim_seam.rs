@@ -80,16 +80,20 @@ fn ctrl_r_still_redoes() {
 
 #[test]
 fn an_open_search_line_keeps_escape_to_itself() {
-    // Esc on a quiet NORMAL surface cancels the whole edit. With the
-    // search line open it must only close the search.
+    // Esc on a quiet NORMAL surface leaves the editor (2026-07-28: only
+    // when there is nothing unsaved to lose). With the search line open
+    // it must only close the search.
     let (_d, mut sh, mut app) = editing("alpha beta");
     feed(&mut app, &mut sh, "/bet");
     assert_eq!(app.body_search_prompt().as_deref(), Some("/bet"));
     app.on_key(&mut sh, "escape", false, false, None);
     assert_eq!(app.surface(), ModalSurface::EditBody, "still editing");
     assert_eq!(app.body_search_prompt(), None);
-    // And now a quiet Esc does cancel.
+    // And now a quiet Esc reaches the editor itself — which keeps the
+    // buffer, because this one has unsaved text in it.
     app.on_key(&mut sh, "escape", false, false, None);
+    assert_eq!(app.surface(), ModalSurface::EditBody);
+    app.run_ex_line(&mut sh, "q!");
     assert_eq!(app.surface(), ModalSurface::Browse);
 }
 

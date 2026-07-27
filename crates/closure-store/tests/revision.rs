@@ -234,3 +234,41 @@ fn iteration_order_survives_a_mutation() {
         "a new file slots into place rather than landing wherever"
     );
 }
+
+#[test]
+fn capture_bumps_the_revision_like_every_other_mutation() {
+    // The one write path that reached the documents without going
+    // through `reindex_file`, and so without moving the token every
+    // shell memoises against: a captured item did not appear in the
+    // outline until something *else* happened to change the vault.
+    let (_d, mut v) = vault_with(SRC);
+    let before = v.revision();
+    let template = closure_store::CaptureTemplate {
+        target: std::path::PathBuf::from("inbox.org"),
+        headline_prefix: "TODO ".to_owned(),
+        body: String::new(),
+    };
+    v.capture(&template, "Buy milk").expect("captured");
+    assert_ne!(
+        v.revision(),
+        before,
+        "a shell holding a cached row list must be told to rebuild it"
+    );
+}
+
+#[test]
+fn a_captured_headline_is_findable_by_id_immediately() {
+    // The other half of the same bug: the id index has to know about
+    // the new block before anything asks to select or sync it.
+    let (_d, mut v) = vault_with(SRC);
+    let template = closure_store::CaptureTemplate {
+        target: std::path::PathBuf::from("inbox.org"),
+        headline_prefix: "TODO ".to_owned(),
+        body: String::new(),
+    };
+    let id = v.capture(&template, "Buy milk").expect("captured");
+    assert!(
+        v.find_by_id(&id).is_some(),
+        "the capture is in the vault the moment it returns"
+    );
+}

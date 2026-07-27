@@ -390,7 +390,58 @@ impl Vault {
                 }
             }
         }
-        self.documents.insert(target, doc);
+        self.documents.insert(target.clone(), doc);
+        // Capture built its own index entries above and so used to
+        // return without reindexing — which also meant without moving
+        // the revision. Every shell memoises its row list against that
+        // token, so a captured item stayed invisible until something
+        // else happened to change the vault.
+        self.reindex_file(&target);
+        Ok(id)
+    }
+
+    /// Capture a new headline as the last child of `parent`.
+    ///
+    /// The flat [`Self::capture`] files everything at the top of one
+    /// inbox; this files it where the user is looking, which is what
+    /// an outliner is for. Same shape as the flat capture — a fresh
+    /// id, written through the document so the file on disk is what a
+    /// second reader would parse (I1/I2) — and the same reindex, so
+    /// the row lists memoised against the revision rebuild.
+    ///
+    /// # Errors
+    ///
+    /// [`VaultError::UnknownId`] when `parent` names no headline,
+    /// [`VaultError::Parse`] if the rewrite would not parse, and IO
+    /// failures from the write.
+    pub fn capture_under(
+        &mut self,
+        parent: &BlockId,
+        prefix: &str,
+        title: &str,
+    ) -> Result<BlockId, VaultError> {
+        let path = self
+            .by_id
+            .get(parent)
+            .cloned()
+            .ok_or_else(|| VaultError::UnknownId(parent.to_string()))?;
+        let doc = self
+            .documents
+            .get(&path)
+            .ok_or_else(|| VaultError::UnknownId(parent.to_string()))?;
+        let outline_path = doc
+            .path_of(parent)
+            .ok_or_else(|| VaultError::UnknownId(parent.to_string()))?;
+        let id = BlockId::fresh();
+        let org = closure_org::rewrite_add_child_with_id(
+            doc.org(),
+            &outline_path,
+            &format!("{prefix}{title}"),
+            id.as_str(),
+        )
+        .map_err(|_| VaultError::Parse { path: path.clone() })?;
+        let source = org.source().to_owned();
+        self.set_source(&path, &source)?;
         Ok(id)
     }
 

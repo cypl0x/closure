@@ -233,8 +233,18 @@ fn body_editor_escape_goes_normal_then_cancels() {
         "INSERT Esc -> NORMAL"
     );
     assert_eq!(app.body_mode(), closure_shell_core::EditorMode::Normal);
+    // Contract revised 2026-07-28: Esc on a *modified* buffer no longer
+    // throws it away — that was the most reliable way to lose work in
+    // the app. Discarding is `:q!`, which has to be typed on purpose.
     app.on_key(&mut sh, "escape", false, false, None);
-    assert_eq!(app.surface(), ModalSurface::Browse, "NORMAL Esc cancels");
+    assert_eq!(
+        app.surface(),
+        ModalSurface::EditBody,
+        "NORMAL Esc keeps an unsaved buffer"
+    );
+    assert!(app.body_buffer().contains("scratch"));
+    app.run_ex_line(&mut sh, "q!");
+    assert_eq!(app.surface(), ModalSurface::Browse, "`:q!` discards");
     assert_eq!(app.detail(&sh).expect("d").body.trim(), "");
 }
 
@@ -1310,7 +1320,11 @@ fn escape_clears_a_pending_count() {
     assert_eq!(app.body_mode(), closure_shell_core::EditorMode::Normal);
     app.on_key(&mut sh, "l", false, false, Some('l'));
     assert_eq!(app.body_cursor(), (0, 1));
+    // The buffer holds an unsaved edit, so Esc keeps it (2026-07-28);
+    // leaving it behind is `:q!`.
     app.on_key(&mut sh, "escape", false, false, None);
+    assert_eq!(app.surface(), ModalSurface::EditBody);
+    app.run_ex_line(&mut sh, "q!");
     assert_eq!(app.surface(), ModalSurface::Browse);
 }
 

@@ -59,7 +59,7 @@ fn model_reads_view_then_mutates_through_registry() {
             } else if let Some(title) = cmd.strip_prefix("capture ") {
                 // Mutation flows ONLY through the registry command (I8).
                 match sh.capture(title) {
-                    Ok(()) => "ok".to_owned(),
+                    Ok(_) => "ok".to_owned(),
                     Err(e) => format!("err: {e}"),
                 }
             } else {

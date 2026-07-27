@@ -13,6 +13,60 @@ file is the fine-grained, capability-level queue between them. Blocked
 on a design decision? Record it under [[*Decisions][Decisions]], pick the most
 reversible option, keep moving.
 
+* DONE VAULT-Q16 — capture lands, and the editor stops eating text [4/4]
+User backlog in =~/vault/inbox.org=, 2026-07-28.
+** DONE V1 a capture that appears, where you were looking [1/1]
+=Vault::capture= wrote the file, inserted the document and returned —
+the one mutation path that never called =reindex_file=, and so the only
+one that never moved =Vault::revision=. Every shell memoises its row
+list against that token, so the item you had just typed was not on
+screen: reported twice, as "adding elements with capture doesn't update
+the live view" and "UI doesn't refresh after capture".
+Filing it is the other half. =Vault::capture_under= +
+=closure_org::rewrite_add_child_with_id= put the new headline at the end
+of the selected subtree (org's own capture-target default); the flat
+inbox is the fallback for when nothing is selected. =Shell::capture=
+returns the =BlockId= now instead of dropping it, so the shell can
+select what it just made — whatever you do next happens to the new item
+rather than to whichever row the cursor had been resting on.
+=selection_active= is the "nothing is selected" state Escape puts the
+outline into (also asked for as "clear selection"): a capture then goes
+top level, a motion or a click selects again, and the row stops
+painting as selected so the outline is not claiming something the next
+capture will contradict.
+** DONE V2 a refusal that says so [1/1]
+=promote=/=demote= discarded their =Result= (=let _ = …=). Promoting a
+level-1 headline is refused by the kernel — there is no level 0 — so
+the key did nothing and said nothing, which from the outside is exactly
+"the level of a headline doesn't seem to refresh the UI". Both report
+now, success and refusal.
+** DONE V3 the one-line fields are text fields [1/1]
+=LineInput=: text plus a cursor, with the readline set (=C-a=, =C-e=,
+=C-b=/=C-f=, =C-d=, =C-k=, =C-u=, =C-w=, ctrl+backspace, arrows, Home/End)
+and character-wise motion so a German capture line does not lose half a
+=ß=. The overlays were =String=s that only knew =push= and =pop=: no
+cursor at all, so =C-a= had nothing to move and a typo in the middle
+meant retyping the tail. Capture routes through it; the search overlay
+gained =C-j=/=C-k= (and =C-n=/=C-p=) for the result cursor, which the
+arrows already had.
+** DONE V4 nothing discards a modified buffer [1/1]
+Esc on a quiet NORMAL surface cleared the buffer and returned to the
+outline — a paragraph typed and Esc'd was gone, no prompt, no undo, and
+the reflex second Esc after a chord that "did nothing" was the most
+reliable way to lose work in the app. Esc now leaves only an *unchanged*
+buffer (peeking must stay cheap) and otherwise says
+=C-Enter or :w saves · :q! discards=. =:w= writes and *stays* — the ex
+line returned to Browse before running its command, so a plain write
+closed the buffer it had just saved; =:wq= is the one that leaves.
+=write_body= is the write half, split out of =commit_edit_body=, and it
+moves the dirty baseline so a saved buffer stops counting as unsaved.
+The gpui editor header gained =✓ save= and =✕ discard= buttons, each
+naming its chord.
+DECISION (2026-07-28): overlays return to =home_surface()= — the outline
+in the clickable view, the *file buffer* in the editor view — instead of
+always to Browse. Opening the palette or a capture from a full-window
+buffer used to drop the user into a different shape of the whole app.
+
 * DONE EDIT-Q15 — the buffer looks like org and moves like Doom [2/2]
 User backlog in =~/vault/inbox.org=, 2026-07-27.
 ** DONE E1 org syntax in the buffer [1/1]

@@ -100,3 +100,31 @@ fn a_ctrl_chord_reaches_the_window_editor() {
     app.on_key(&mut sh, "a", true, false, None);
     assert_eq!(app.body_buffer(), "count 42");
 }
+
+// === `e`, as the window delivers it ===
+
+#[test]
+fn e_moves_to_the_end_of_the_word() {
+    let (_d, mut sh, mut app) = editing("hello world");
+    feed(&mut app, &mut sh, "e");
+    assert_eq!(app.body_cursor(), (0, 4), "on the last letter of `hello`");
+}
+
+#[test]
+fn e_extends_a_visual_selection() {
+    let (_d, mut sh, mut app) = editing("hello world");
+    feed(&mut app, &mut sh, "ve");
+    assert_eq!(app.body_mode(), EditorMode::Visual);
+    assert_eq!(
+        app.body_selection(),
+        Some((0, 5)),
+        "the selection grew to the word end"
+    );
+}
+
+#[test]
+fn de_deletes_to_the_end_of_the_word() {
+    let (_d, mut sh, mut app) = editing("hello world");
+    feed(&mut app, &mut sh, "de");
+    assert_eq!(app.body_buffer(), " world");
+}

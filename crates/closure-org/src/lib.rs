@@ -8823,6 +8823,34 @@ pub fn rewrite_add_sibling_after_with_id(
     parse(&src).map_err(|_| RewriteError::Parse)
 }
 
+/// Insert a new headline as the last *child* of the one at `path`,
+/// carrying `id`.
+///
+/// The sibling form files a capture beside what you were looking at;
+/// this one files it inside, which is what "capture under the current
+/// item" means in an outliner. Placement is the end of the subtree —
+/// org's own default for a capture target — so existing children keep
+/// their order and the new one arrives at the bottom.
+///
+/// # Errors
+///
+/// [`RewriteError::NotFound`] when `path` names no headline, or
+/// [`RewriteError::Parse`] if the rewritten source no longer parses.
+pub fn rewrite_add_child_with_id(
+    doc: &OrgDoc,
+    path: &[usize],
+    title: &str,
+    id: &str,
+) -> Result<OrgDoc, RewriteError> {
+    let target = navigate_headline(doc, path).ok_or(RewriteError::NotFound)?;
+    let end = subtree_end(target);
+    let stars = "*".repeat(usize::from(target.level.saturating_add(1)));
+    let insert = format!("{stars} {title}\n:PROPERTIES:\n:ID: {id}\n:END:\n");
+    let mut src = doc.source().to_owned();
+    src.insert_str(end, &insert);
+    parse(&src).map_err(|_| RewriteError::Parse)
+}
+
 /// Remove the subtree rooted at `path` from the document. The header,
 /// any property drawer, body nodes, and recursive children are all
 /// dropped; the resulting source remains a valid org document.
