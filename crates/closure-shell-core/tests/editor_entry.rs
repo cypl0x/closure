@@ -139,3 +139,62 @@ fn a_source_block_also_opens_in_normal() {
         "the block's interior took the command too"
     );
 }
+
+// === the editor is a buffer, not a pane ===
+
+#[test]
+fn only_the_two_editing_surfaces_are_the_editor() {
+    // Which surfaces take the whole window is a shell-agnostic fact:
+    // the TUI hides its panes for the same two, and a new surface that
+    // forgets to answer would silently paint itself into a corner.
+    use closure_shell_core::ModalSurface as S;
+    for surface in [S::EditBody, S::EditBlock] {
+        assert!(surface.is_editor(), "{surface:?} is a buffer");
+    }
+    for surface in [
+        S::Browse,
+        S::Search,
+        S::Capture,
+        S::Palette,
+        S::Sync,
+        S::Llm,
+        S::Sniffer,
+        S::Agenda,
+        S::Ex,
+    ] {
+        assert!(!surface.is_editor(), "{surface:?} is a pane");
+    }
+}
+
+// === the buffer says what it is ===
+
+#[test]
+fn an_open_body_buffer_is_named_after_its_headline_and_file() {
+    // A full-window buffer with no name is a wall of text you cannot
+    // place. Doom's modeline names the buffer; so does this, and every
+    // shell gets the same name from one place.
+    let (_d, mut shell, mut app) = fixture(InputMode::Doom);
+    assert_eq!(app.buffer_name(&shell), None, "no buffer, no name");
+    app.run(&mut shell, "edit-body");
+    let name = app.buffer_name(&shell).expect("a name");
+    assert!(name.contains("Note"), "the headline: {name}");
+    assert!(
+        name.contains("notes.org"),
+        "and the file it lives in: {name}"
+    );
+}
+
+#[test]
+fn a_source_block_buffer_says_which_language_it_is() {
+    let src = "* Note\n:PROPERTIES:\n:ID: 01HQENTRY000000000000003\n:END:\n\
+               #+BEGIN_SRC sh\necho one\n#+END_SRC\n";
+    let dir = tempfile::tempdir().expect("tmp");
+    fs::write(dir.path().join("notes.org"), src).expect("write");
+    let vault = Vault::open(dir.path()).expect("open");
+    let (mut shell, mut app) = (Shell::new(vault), ModalApp::new(InputMode::Doom));
+    app.run(&mut shell, "edit-body");
+    app.run(&mut shell, "edit-special");
+    let name = app.buffer_name(&shell).expect("a name");
+    assert!(name.contains("sh"), "the block's language: {name}");
+    assert!(name.contains("Note"), "and where it came from: {name}");
+}

@@ -4260,6 +4260,20 @@ pub enum ModalSurface {
     Llm,
 }
 
+impl ModalSurface {
+    /// Whether this surface is a text buffer rather than a pane.
+    ///
+    /// A buffer takes the whole window: the outline, the rail and the
+    /// detail pane get out of its way, the way `org-edit-special` gets
+    /// its own frame in Emacs. Editing a body in a third of the window,
+    /// beside a list of the other headlines, is a preview — not a
+    /// place to write in.
+    #[must_use]
+    pub const fn is_editor(self) -> bool {
+        matches!(self, Self::EditBody | Self::EditBlock)
+    }
+}
+
 /// One turn of the assistant transcript.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ChatTurn {
@@ -8754,6 +8768,27 @@ impl ModalApp {
         };
         self.special = Some((SpecialOrigin::File { path, index }, lang));
         self.open_special(content);
+    }
+
+    /// What the open buffer is, for the shells to put where a modeline
+    /// puts a buffer name. `None` when no buffer is open.
+    ///
+    /// A full-window buffer with no name is a wall of text you cannot
+    /// place: which headline is this, and which file did it come from?
+    /// Derived here so every shell names it identically.
+    #[must_use]
+    pub fn buffer_name(&self, shell: &Shell) -> Option<String> {
+        if !self.surface.is_editor() {
+            return None;
+        }
+        let detail = self.detail(shell)?;
+        Some(if self.surface == ModalSurface::EditBlock {
+            let lang = self.special_language();
+            let lang = if lang.is_empty() { "src" } else { lang };
+            format!("{lang} block — {} · {}", detail.title, detail.path)
+        } else {
+            format!("{} · {}", detail.title, detail.path)
+        })
     }
 
     /// Whether the active input mode edits modally — whether there is a

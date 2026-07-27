@@ -2020,7 +2020,12 @@ impl GpuiView {
             ModalSurface::TagsEdit => format!("✎ tags: {}▏", self.app.field_buffer()),
             ModalSurface::PropertyEdit => format!("✎ prop: {}▏", self.app.field_buffer()),
             ModalSurface::Palette => format!("❯ {}▏", self.app.field_buffer()),
-            ModalSurface::EditBody => "✎ body — C-Enter save, Esc cancel".to_owned(),
+            // A full-window buffer names itself, the way a modeline
+            // does: which headline this is, and which file it came from.
+            ModalSurface::EditBody | ModalSurface::EditBlock => self
+                .app
+                .buffer_name(&self.shell)
+                .map_or_else(|| "✎ body".to_owned(), |name| format!("✎ {name}")),
             ModalSurface::Backlinks => "backlinks — Esc back".to_owned(),
             ModalSurface::Agenda => "agenda — RET jump, Esc back".to_owned(),
             ModalSurface::Blocks => "src blocks — RET jump, Esc back".to_owned(),
@@ -2072,10 +2077,6 @@ impl GpuiView {
             ModalSurface::Ex => format!(
                 ":{}▏  — :w :q :wq :x, or any command name",
                 self.app.ex_buffer()
-            ),
-            ModalSurface::EditBlock => format!(
-                "⌗ edit-special [{}] — C-Enter write back, Esc discard",
-                self.app.special_language()
             ),
         }
     }
@@ -5464,10 +5465,18 @@ impl Render for GpuiView {
             // against a viewport the size of the document. This is the
             // only item in the chain that needed saying: below it the
             // panes are row children, sized by `stretch`.
-            .min_h(px(0.0))
-            .child(self.rail(co, cx))
-            .child(self.rows_pane(co, cx))
-            .child(self.side_pane(co, cx));
+            .min_h(px(0.0));
+        // A buffer takes the window. Editing a body in a third of it,
+        // beside a list of the headlines you are not editing, is a
+        // preview — `org-edit-special` gets its own frame in Emacs, and
+        // so does this.
+        let body = if self.app.surface().is_editor() {
+            body.child(self.side_pane(co, cx))
+        } else {
+            body.child(self.rail(co, cx))
+                .child(self.rows_pane(co, cx))
+                .child(self.side_pane(co, cx))
+        };
 
         let status = self.status_bar(co, cx);
 

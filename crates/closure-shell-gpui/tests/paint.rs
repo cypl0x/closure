@@ -1076,3 +1076,90 @@ fn an_empty_stack_falls_back_to_a_generic_monospace() {
         "monospace"
     );
 }
+
+// === the editor is its own window ===
+//
+// The body editor used to live in the right-hand pane: a third of the
+// window, beside a list of the headlines you were not editing. That is a
+// preview, not a place to write in. `org-edit-special` gets its own
+// frame in Emacs, and the buffer surfaces get the whole window here.
+//
+// (These assert geometry and hit-testing rather than the absence of a
+// `debug_bounds` entry: gpui keeps that map across frames, so a
+// selector painted once answers forever. Mouse listeners do not
+// survive a frame, which is what makes the click assertions honest.)
+
+#[gpui::test]
+fn the_body_editor_takes_the_whole_window(cx: &mut gpui::TestAppContext) {
+    let (_dir, view, vcx) = visual_window(cx, VAULT);
+    let rail = vcx.debug_bounds("rail").expect("the rail is painted first");
+    let at_rail = centre(vcx, rail_selector("peers"));
+
+    view.update(vcx, |v, cx| v.run_command("edit-body", cx));
+    vcx.run_until_parked();
+
+    let viewport = vcx.update(|w, _cx| w.viewport_size());
+    let line = vcx
+        .debug_bounds("body-line-0")
+        .expect("the buffer is painted");
+    assert!(
+        line.origin.x < rail.right(),
+        "the buffer starts where the rail was: {line:?} vs {rail:?}"
+    );
+    // The text element is only as wide as its text; the editor's own
+    // scrollbar is what reports how wide the *buffer* is.
+    let bar = vcx
+        .debug_bounds("body-scrollbar")
+        .expect("the editor's scrollbar");
+    assert!(
+        bar.right() > viewport.width * 0.9,
+        "and it runs to the far side: {bar:?} in {viewport:?}"
+    );
+    // Nothing of the rail is left to click on.
+    vcx.simulate_click(at_rail, Modifiers::none());
+    vcx.run_until_parked();
+    view.update(vcx, |v, _cx| {
+        assert_eq!(
+            v.surface(),
+            ModalSurface::EditBody,
+            "a click where the rail used to be did not leave the buffer"
+        );
+    });
+}
+
+#[gpui::test]
+fn leaving_the_editor_brings_the_window_back(cx: &mut gpui::TestAppContext) {
+    let (_dir, view, vcx) = visual_window(cx, VAULT);
+    let at_rail = centre(vcx, rail_selector("peers"));
+    view.update(vcx, |v, cx| v.run_command("edit-body", cx));
+    vcx.run_until_parked();
+    // Esc out of NORMAL cancels the edit, which is the way back.
+    vcx.simulate_keystrokes("escape");
+    vcx.run_until_parked();
+    view.update(vcx, |v, _cx| assert_eq!(v.surface(), ModalSurface::Browse));
+    vcx.simulate_click(at_rail, Modifiers::none());
+    vcx.run_until_parked();
+    view.update(vcx, |v, _cx| {
+        assert_eq!(v.surface(), ModalSurface::Sync, "the rail is back");
+    });
+}
+
+#[gpui::test]
+fn the_source_block_editor_takes_the_window_too(cx: &mut gpui::TestAppContext) {
+    let (_dir, view, vcx) = visual_window(cx, VAULT);
+    let rail = vcx.debug_bounds("rail").expect("painted");
+    for command in ["block-list", "edit-special"] {
+        view.update(vcx, |v, cx| v.run_command(command, cx));
+        vcx.run_until_parked();
+    }
+    view.update(vcx, |v, _cx| {
+        assert_eq!(v.surface(), ModalSurface::EditBlock);
+    });
+    let line = vcx
+        .debug_bounds("body-line-0")
+        .expect("the block is painted");
+    assert!(
+        line.origin.x < rail.right(),
+        "one block, whole window: {line:?} vs {rail:?}"
+    );
+}
