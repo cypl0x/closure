@@ -2838,6 +2838,7 @@ impl GpuiView {
         let cursor = self.app.slash_cursor();
         Some(
             div()
+                .debug_selector(|| "slash-menu".to_owned())
                 .flex()
                 .flex_col()
                 .p_1()
@@ -2899,6 +2900,7 @@ impl GpuiView {
         let ix = self.app.body_completion_ix().unwrap_or(0);
         Some(
             div()
+                .debug_selector(|| "completion-popup".to_owned())
                 .flex()
                 .flex_col()
                 .p_1()

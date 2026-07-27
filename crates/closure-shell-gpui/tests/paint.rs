@@ -840,3 +840,120 @@ fn the_clipboard_chords_round_trip(cx: &mut gpui::TestAppContext) {
         assert_eq!(v.body(), "copy mecopy me", "and pasted back in");
     });
 }
+
+// === the editor's own overlays ===
+
+#[gpui::test]
+fn the_slash_menu_opens_inside_the_window_and_inserts(cx: &mut gpui::TestAppContext) {
+    // The menu is a plain child of the editor column, not a deferred
+    // overlay, so it competes for height with the body above it — and
+    // that column is clipped to the window. A menu pushed out of the
+    // clip is a menu you cannot see or click.
+    let (_dir, view, vcx) = visual_window(cx, &format!("* Note\n{}", numbered("line", 300)));
+    view.update(vcx, |v, cx| v.run_command("edit-body", cx));
+    vcx.simulate_keystrokes("escape shift-g o");
+    vcx.simulate_input("/");
+    vcx.run_until_parked();
+
+    let viewport = vcx.update(|w, _cx| w.viewport_size());
+    let menu = vcx
+        .debug_bounds("slash-menu")
+        .expect("the slash menu is painted");
+    assert!(
+        menu.bottom() <= viewport.height && menu.right() <= viewport.width,
+        "the menu is on screen: {menu:?} in {viewport:?}"
+    );
+    assert!(
+        menu.size.height > px(0.0),
+        "and has something in it: {menu:?}"
+    );
+
+    let before = view.update(vcx, |v, _cx| v.body().to_owned());
+    vcx.simulate_click(menu.center(), Modifiers::none());
+    view.update(vcx, |v, _cx| {
+        assert_ne!(v.body(), before, "clicking an entry inserted its template");
+        assert!(
+            !v.body().contains("\n/"),
+            "and consumed the `/` trigger: {:?}",
+            v.body().lines().rev().take(3).collect::<Vec<_>>()
+        );
+    });
+}
+
+#[gpui::test]
+fn the_completion_popup_opens_inside_the_window(cx: &mut gpui::TestAppContext) {
+    let (_dir, view, vcx) = visual_window(
+        cx,
+        "* Note\nextraordinarily\n* Other\nsomething else here\n",
+    );
+    view.update(vcx, |v, cx| v.run_command("edit-body", cx));
+    // Type a prefix the vault can complete, then ask for it.
+    vcx.simulate_keystrokes("escape shift-g o");
+    vcx.simulate_input("extrao");
+    vcx.simulate_keystrokes("ctrl-n");
+    vcx.run_until_parked();
+
+    let viewport = vcx.update(|w, _cx| w.viewport_size());
+    let popup = vcx
+        .debug_bounds("completion-popup")
+        .expect("the popup is painted");
+    assert!(
+        popup.bottom() <= viewport.height && popup.right() <= viewport.width,
+        "the popup is on screen: {popup:?} in {viewport:?}"
+    );
+    assert!(popup.size.height > px(0.0), "and offers something");
+    view.update(vcx, |v, _cx| {
+        assert!(
+            v.body().contains("extraordinarily"),
+            "the completion was taken: {:?}",
+            v.body()
+        );
+    });
+}
+
+// === the context menu reaches more than the outline row ===
+
+#[gpui::test]
+fn a_right_click_in_the_body_opens_the_body_menu(cx: &mut gpui::TestAppContext) {
+    // `context_menu` has always known three targets; the window only
+    // ever wired the outline row, so a right-click in the editor
+    // dismissed the menu it never opened.
+    let (_dir, view, vcx) = visual_window(cx, "* Note\nfirst line\nsecond line\n");
+    view.update(vcx, |v, cx| v.run_command("edit-body", cx));
+    vcx.run_until_parked();
+    let at = centre(vcx, "body-line-0");
+    vcx.simulate_mouse_down(at, MouseButton::Right, Modifiers::none());
+    vcx.run_until_parked();
+    view.update(vcx, |v, _cx| assert!(v.menu_open(), "the body menu opened"));
+    assert!(
+        vcx.debug_bounds("context-menu").is_some(),
+        "and it was painted"
+    );
+}
+
+#[gpui::test]
+fn a_right_click_on_a_detail_field_opens_the_detail_menu(cx: &mut gpui::TestAppContext) {
+    let (_dir, view, vcx) = visual_window(cx, VAULT);
+    let at = centre(vcx, "field-rename");
+    vcx.simulate_mouse_down(at, MouseButton::Right, Modifiers::none());
+    vcx.run_until_parked();
+    view.update(vcx, |v, _cx| assert!(v.menu_open()));
+    assert!(vcx.debug_bounds("context-menu").is_some());
+}
+
+#[gpui::test]
+fn a_context_menu_is_never_anchored_off_the_window(cx: &mut gpui::TestAppContext) {
+    // It is anchored where the click landed, so a right-click near the
+    // bottom-right corner is the case that has to snap back.
+    let (_dir, _view, vcx) = visual_window(cx, VAULT);
+    let viewport = vcx.update(|w, _cx| w.viewport_size());
+    let row = vcx.debug_bounds("outline-row-3").expect("painted");
+    let corner = Point::new(row.right() - px(2.0), row.bottom() - px(2.0));
+    vcx.simulate_mouse_down(corner, MouseButton::Right, Modifiers::none());
+    vcx.run_until_parked();
+    let menu = vcx.debug_bounds("context-menu").expect("painted");
+    assert!(
+        menu.right() <= viewport.width && menu.bottom() <= viewport.height,
+        "the menu snapped back inside: {menu:?} in {viewport:?}"
+    );
+}
