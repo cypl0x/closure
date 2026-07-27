@@ -484,6 +484,227 @@ pub fn today_ymd(unix_secs: u64) -> String {
     format!("{y:04}-{m:02}-{d:02}")
 }
 
+/// The key name the core's editor vocabulary expects, from what gpui
+/// reports.
+///
+/// gpui names letter keysyms in lower case: `shift-a` arrives as key
+/// `"a"` with `modifiers.shift` set and `key_char` `"A"`. The body
+/// editor's vim vocabulary distinguishes the two — `a` appends, `A`
+/// appends at the line end — so passed through raw, every uppercase
+/// command in the editor (`A O I G D C S X P V J Y`) was dead. Named
+/// keys (`escape`, `enter`, `pageup`) and the symbols gpui already
+/// spells out (`$`, `>`) pass through untouched: uppercasing them
+/// would invent strokes the core never matches.
+///
+/// Caps Lock produces the uppercase char with no shift modifier, so
+/// the char is honoured as well as the modifier.
+#[must_use]
+pub fn editor_key(key: &str, shift: bool, key_char: Option<&str>) -> String {
+    let single_letter = key.len() == 1 && key.as_bytes()[0].is_ascii_alphabetic();
+    if !single_letter {
+        return key.to_owned();
+    }
+    let upper = key.to_ascii_uppercase();
+    if shift || key_char == Some(upper.as_str()) {
+        upper
+    } else {
+        key.to_owned()
+    }
+}
+
+/// Whether `surface` can receive pasted text as typed characters.
+///
+/// A paste is only ever a sequence of keystrokes — the core takes typed
+/// characters, and the window is the only place that can reach the
+/// system clipboard. So the surfaces that *are* text fields take one,
+/// and Browse and the read-only lists must not: there, the characters
+/// would be resolved as chords and a pasted URL would run a dozen
+/// commands. The body editor takes a paste only in INSERT, for the same
+/// reason.
+#[must_use]
+pub const fn accepts_paste(surface: ModalSurface, insert: bool) -> bool {
+    match surface {
+        ModalSurface::Search
+        | ModalSurface::Capture
+        | ModalSurface::Rename
+        | ModalSurface::AddSibling
+        | ModalSurface::TagsEdit
+        | ModalSurface::PropertyEdit
+        | ModalSurface::Palette
+        | ModalSurface::BodySearch
+        | ModalSurface::Ex
+        | ModalSurface::Sync
+        | ModalSurface::Llm => true,
+        ModalSurface::EditBody | ModalSurface::EditBlock => insert,
+        ModalSurface::Browse
+        | ModalSurface::Backlinks
+        | ModalSurface::Agenda
+        | ModalSurface::Blocks
+        | ModalSurface::UndoHistory
+        | ModalSurface::Headlines
+        | ModalSurface::DbView
+        | ModalSurface::Sniffer
+        | ModalSurface::Conflicts
+        | ModalSurface::Graph
+        | ModalSurface::Journal
+        | ModalSurface::Cron => false,
+    }
+}
+
+/// The characters a pasted string types, in order.
+///
+/// `multiline` says whether the target can hold a line break: the body
+/// editor can, a one-line field cannot — and there a break becomes a
+/// space, so the words survive even though the shape does not. CRLF
+/// collapses to LF, a tab becomes two spaces (a literal tab in INSERT
+/// triggers org-tempo/table expansion, which a paste must not), and the
+/// remaining control bytes are dropped rather than typed.
+#[must_use]
+pub fn paste_chars(text: &str, multiline: bool) -> Vec<char> {
+    let mut out = Vec::with_capacity(text.len());
+    for c in text.chars() {
+        match c {
+            '\r' => {}
+            '\n' => out.push(if multiline { '\n' } else { ' ' }),
+            '\t' => out.extend_from_slice(&[' ', ' ']),
+            c if c.is_control() => {}
+            c => out.push(c),
+        }
+    }
+    out
+}
+
+/// Whether a change of `selected` should scroll the *outline* into view
+/// on `surface`.
+///
+/// Nine surfaces reuse `selected` as their own list cursor in the
+/// right-hand pane while the outline stays on screen. Revealing that
+/// index in the outline scrolled the wrong pane: the left column jumped
+/// around while the cursor the user was actually moving stayed out of
+/// sight.
+#[must_use]
+pub const fn outline_follows_selection(surface: ModalSurface) -> bool {
+    !matches!(
+        surface,
+        ModalSurface::Agenda
+            | ModalSurface::Blocks
+            | ModalSurface::Backlinks
+            | ModalSurface::Headlines
+            | ModalSurface::DbView
+            | ModalSurface::BodySearch
+            | ModalSurface::Graph
+            | ModalSurface::Journal
+            | ModalSurface::Cron
+    )
+}
+
+/// Whether the right-hand pane can reveal its own cursor row on
+/// `surface`.
+///
+/// True for the panes that paint exactly one child per row, so the
+/// pane's scroll handle can address a row by index. The panes that
+/// group their rows under section headers cannot: there a child index
+/// is not a row index, and scrolling to one would land somewhere else.
+#[must_use]
+pub const fn side_reveals_selection(surface: ModalSurface) -> bool {
+    matches!(
+        surface,
+        ModalSurface::Headlines
+            | ModalSurface::BodySearch
+            | ModalSurface::Backlinks
+            | ModalSurface::Journal
+            | ModalSurface::Cron
+            | ModalSurface::UndoHistory
+    )
+}
+
+/// How many body lines the editor pane can show, from its measured
+/// height.
+///
+/// The viewport used to be a constant 40 lines, which is two bugs: in a
+/// short window the cursor walked off the bottom with nothing scrolling
+/// after it (the core scrolls to keep the cursor inside *this* count),
+/// and in a tall one the pane painted 40 lines and left the rest of the
+/// column blank. `chrome` is the pane's own furniture — mode header,
+/// padding — taken off the top.
+///
+/// Never zero: an unmeasured pane (height 0 before the first layout) or
+/// a nonsense line height still paints a few lines rather than an empty
+/// editor.
+#[must_use]
+pub fn body_viewport_lines(pane_height: f32, line_height: f32, chrome: f32) -> usize {
+    /// Below this the editor would show nothing usable.
+    const MIN: usize = 4;
+    /// A hard ceiling: painting more than this per frame is a bug.
+    const MAX: usize = 4096;
+    if line_height <= 0.0 || !line_height.is_finite() {
+        return MIN;
+    }
+    let usable = pane_height - chrome;
+    if !usable.is_finite() || usable < line_height {
+        return MIN;
+    }
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    let lines = (usable / line_height).floor() as usize;
+    lines.clamp(MIN, MAX)
+}
+
+/// Scroll fraction for a pointer at `y` on a scrollbar track, with the
+/// thumb centred under it.
+///
+/// `track_top` is where the track starts in window space, `viewport`
+/// its length and `thumb_height` the thumb's length as a fraction of
+/// it ([`Thumb::height`]). The pointer used to be read as the scroll
+/// fraction directly, which placed the *top* of the thumb wherever the
+/// pointer was — so the thumb trailed the mouse by up to its own
+/// length and never sat under the finger dragging it. Here the pointer
+/// grabs the thumb's middle, and the free travel is the track minus
+/// the thumb, so both ends are reachable without leaving the track.
+///
+/// Clamped to `0.0..=1.0`; a degenerate track or a full-length thumb
+/// has nowhere to go and yields zero.
+#[must_use]
+pub fn track_fraction(y: f32, track_top: f32, viewport: f32, thumb_height: f32) -> f32 {
+    let thumb = thumb_height.clamp(0.0, 1.0) * viewport;
+    let free = viewport - thumb;
+    if free <= 0.0 || !free.is_finite() {
+        return 0.0;
+    }
+    ((y - track_top - thumb / 2.0) / free).clamp(0.0, 1.0)
+}
+
+/// Keep only the which-key entries that can follow the chord already
+/// typed.
+///
+/// The panel opens on a pending chord, which is the one moment it
+/// should be showing what comes *next* rather than the entire keymap —
+/// Doom's behaviour, and the reason the panel exists. An empty prefix
+/// (the pinned-open panel) returns everything unchanged; a group left
+/// with no entries is dropped rather than shown as a bare title.
+///
+/// Matching is whole strokes: chords are space-separated, so `SPC f`
+/// matches `SPC f f` and not `SPC fx y`.
+#[must_use]
+pub fn which_key_filter(
+    groups: Vec<(String, Vec<(String, String)>)>,
+    prefix: &str,
+) -> Vec<(String, Vec<(String, String)>)> {
+    if prefix.is_empty() {
+        return groups;
+    }
+    let head = format!("{prefix} ");
+    groups
+        .into_iter()
+        .filter_map(|(title, entries)| {
+            let kept: Vec<(String, String)> = entries
+                .into_iter()
+                .filter(|(chord, _)| chord.starts_with(&head))
+                .collect();
+            (!kept.is_empty()).then_some((title, kept))
+        })
+        .collect()
+}
+
 /// Launch fallback when the `gpui` feature is disabled (the default,
 /// hermetic build). The kernel-side [`Shell`] is always available; the
 /// GPU window requires `--features gpui` and the system GPU/X11 libs.
@@ -523,11 +744,37 @@ pub fn run(vault_path: &Path) -> Result<(), String> {
     let vault = Vault::open(vault_path).map_err(|e| format!("{e}"))?;
     let theme = resolve_theme(vault_path);
     let input_mode = resolve_input_mode(vault_path);
+    // The window manager needs a name for the title bar, the task
+    // switcher and the Wayland app id — an untitled window is the one
+    // the user cannot find again. The vault is what distinguishes two
+    // closure windows, so it is in the title.
+    let title = format!(
+        "closure — {}",
+        vault_path.file_name().map_or_else(
+            || vault_path.display().to_string(),
+            |n| n.to_string_lossy().into_owned()
+        )
+    );
     Application::new().run(move |cx: &mut App| {
         let bounds = Bounds::centered(None, size(px(1080.0), px(720.0)), cx);
+        // Closing the last window must end the process. gpui keeps the
+        // app alive with no windows, which left an invisible closure
+        // running after the user clicked the X.
+        cx.on_window_closed(|cx| {
+            if cx.windows().is_empty() {
+                cx.quit();
+            }
+        })
+        .detach();
         let opened = cx.open_window(
             WindowOptions {
                 window_bounds: Some(WindowBounds::Windowed(bounds)),
+                titlebar: Some(gpui::TitlebarOptions {
+                    title: Some(title.clone().into()),
+                    ..Default::default()
+                }),
+                app_id: Some("net.wolfhard.closure".to_owned()),
+                window_min_size: Some(size(px(640.0), px(400.0))),
                 ..Default::default()
             },
             |_, cx| {
@@ -543,6 +790,10 @@ pub fn run(vault_path: &Path) -> Result<(), String> {
                     outline_scroll: gpui::UniformListScrollHandle::new(),
                     side_scroll: gpui::ScrollHandle::new(),
                     revealed: usize::MAX,
+                    side_revealed: usize::MAX,
+                    palette_revealed: usize::MAX,
+                    chat_seen: 0,
+                    toast_gen: 0,
                     menu: None,
                     which_key_open: false,
                     which_key_scroll: gpui::ScrollHandle::new(),
@@ -551,12 +802,20 @@ pub fn run(vault_path: &Path) -> Result<(), String> {
                 })
             },
         );
-        if let Ok(window) = opened {
-            window
-                .update(cx, |view, window, cx| {
-                    window.focus(&view.focus_handle(cx));
-                })
-                .ok();
+        match opened {
+            Ok(window) => {
+                window
+                    .update(cx, |view, window, cx| {
+                        window.focus(&view.focus_handle(cx));
+                    })
+                    .ok();
+            }
+            // A failed open used to be dropped on the floor, leaving a
+            // running process with no window and no explanation.
+            Err(e) => {
+                eprintln!("closure: opening the gpui window failed: {e}");
+                cx.quit();
+            }
         }
         cx.activate(true);
     });
@@ -624,9 +883,25 @@ impl Colors {
     }
 }
 
-/// Lines the body-editor pane paints per frame (G5 wheel viewport).
+/// Height of one body-editor line, in pixels — the `min_h` the pane
+/// gives each row, and so the divisor that turns the pane's measured
+/// height into a line count ([`body_viewport_lines`]).
 #[cfg(feature = "gpui")]
-const BODY_VIEW: usize = 40;
+const BODY_LINE_H: f32 = 18.0;
+
+/// The editor pane's own furniture above the text: the mode header and
+/// the pane padding, taken off the height before it is divided.
+#[cfg(feature = "gpui")]
+const BODY_CHROME: f32 = 46.0;
+
+/// Lines to assume before the pane has ever been laid out (its measured
+/// height is zero on the first frame).
+#[cfg(feature = "gpui")]
+const BODY_VIEW_DEFAULT: usize = 40;
+
+/// How long a toast stays on the strip.
+#[cfg(feature = "gpui")]
+const TOAST_TTL: std::time::Duration = std::time::Duration::from_secs(5);
 
 /// gpui view: owns the kernel-side [`Shell`] and the pure [`ModalApp`]
 /// editor state, plus a focus handle so the root receives key events.
@@ -656,6 +931,16 @@ struct GpuiView {
     /// Last selection the outline was scrolled to, so a keyboard move
     /// reveals its row exactly once instead of fighting the wheel.
     revealed: usize,
+    /// The same, for the right-hand pane's own list cursor.
+    side_revealed: usize,
+    /// The same, for the virtualized command palette.
+    palette_revealed: usize,
+    /// Chat turns already scrolled to, so a new answer brings itself
+    /// into view exactly once.
+    chat_seen: usize,
+    /// Toast generation: each new toast bumps it and arms a timer, and
+    /// the timer only clears the strip if nothing arrived after it.
+    toast_gen: u64,
     /// Where an open context menu is anchored, if one is open.
     menu: Option<(gpui::Point<gpui::Pixels>, closure_shell_core::ContextTarget)>,
     /// Whether the full which-key panel is pinned open. A pending
@@ -692,9 +977,18 @@ impl GpuiView {
             .as_ref()
             .and_then(|s| s.chars().next())
             .filter(|_| !m.control && !m.alt && !m.platform && !m.function);
-        let asking = self.app.surface() == ModalSurface::Llm && ks.key == "enter";
+        // The clipboard is the window's to reach, and the desktop
+        // chords for it are not in any keymap.
+        if self.clipboard_key(ks, cx) {
+            cx.notify();
+            return;
+        }
+        // gpui lowercases letter keysyms; the editor's vim vocabulary
+        // does not ([`editor_key`]).
+        let key = editor_key(&ks.key, m.shift, ks.key_char.as_deref());
+        let asking = self.app.surface() == ModalSurface::Llm && key == "enter";
         self.app
-            .on_key(&mut self.shell, &ks.key, m.control, m.alt, text);
+            .on_key(&mut self.shell, &key, m.control, m.alt, text);
         // Enter on the assistant surface records the question in the
         // core; sending it is I/O, so it happens here.
         if asking
@@ -708,7 +1002,6 @@ impl GpuiView {
         {
             self.ask_llm(question, cx);
         }
-        self.absorb_status();
         if self.app.should_quit() {
             cx.quit();
         }
@@ -754,14 +1047,148 @@ impl GpuiView {
 
     /// Feed a changed status line through [`status_toast`] into the
     /// shared feedback queue (the toast strip's only source).
-    fn absorb_status(&mut self) {
+    ///
+    /// Called once per frame rather than per gesture: every path that
+    /// sets a status — a click, a chord, a finished sync, a followed
+    /// link — then reaches the strip, instead of only the two that
+    /// remembered to ask.
+    fn absorb_status(&mut self, cx: &Context<Self>) {
         let status = self.app.status().to_owned();
         if status != self.last_status {
             if let Some((level, text)) = status_toast(&status) {
                 self.feedback.notify(level, text);
+                self.arm_toast_timer(cx);
             }
             self.last_status = status;
         }
+    }
+
+    /// Expire the toast strip after [`TOAST_TTL`].
+    ///
+    /// [`closure_shell_core::Feedback`] is a queue with no clock in it,
+    /// so nothing used to remove an item: the strip kept the last three
+    /// messages on screen for the rest of the session — a stale "body
+    /// saved" over an hour of editing — and the queue behind it grew
+    /// without bound. Each new toast bumps the generation and arms a
+    /// timer; the timer clears the strip only if it is still the
+    /// newest, so a burst of messages expires once, together.
+    fn arm_toast_timer(&mut self, cx: &Context<Self>) {
+        self.toast_gen = self.toast_gen.wrapping_add(1);
+        let generation = self.toast_gen;
+        cx.spawn(async move |this, cx| {
+            cx.background_executor().timer(TOAST_TTL).await;
+            let _ = this.update(cx, |this, cx| {
+                if this.toast_gen == generation {
+                    this.feedback.clear();
+                    cx.notify();
+                }
+            });
+        })
+        .detach();
+    }
+
+    /// The desktop clipboard chords, which live in no keymap: `C-v` /
+    /// `S-insert` paste, `C-c` copies the body selection. `true` when
+    /// the key was one of them and has been handled.
+    ///
+    /// Nothing else in the shell can reach the system clipboard — the
+    /// core is dep-free and the vault's kill ring is internal — so a
+    /// ticket handed over in the sync pane, a headline copied out of a
+    /// browser, or a snippet pasted into a note all pass through here.
+    fn clipboard_key(&mut self, ks: &gpui::Keystroke, cx: &Context<Self>) -> bool {
+        let m = &ks.modifiers;
+        let cmd = m.control || m.platform;
+        let pasting =
+            (cmd && ks.key == "v") || (m.shift && ks.key == "insert") || ks.key == "paste";
+        let copying = (cmd && ks.key == "c") || ks.key == "copy";
+        if pasting {
+            return self.paste_clipboard(cx);
+        }
+        if copying {
+            return self.copy_selection(cx);
+        }
+        false
+    }
+
+    /// Type the clipboard into the active surface.
+    ///
+    /// Only where the characters are text rather than commands
+    /// ([`accepts_paste`]) — everywhere else the key falls through to
+    /// the keymap, so a future `C-v` binding still works. The paste is
+    /// fed as keystrokes, which is what makes it undoable and what
+    /// keeps the field logic (slash menu, completion, table alignment)
+    /// in charge of it.
+    fn paste_clipboard(&mut self, cx: &Context<Self>) -> bool {
+        /// A paste is typed character by character; past this a single
+        /// gesture would stall the UI thread.
+        const MAX: usize = 20_000;
+        let surface = self.app.surface();
+        let insert = self.app.body_mode() == closure_shell_core::EditorMode::Insert;
+        if !accepts_paste(surface, insert) {
+            return false;
+        }
+        let Some(text) = cx.read_from_clipboard().and_then(|item| item.text()) else {
+            self.app.set_status("clipboard is empty".to_owned());
+            return true;
+        };
+        let multiline = matches!(surface, ModalSurface::EditBody | ModalSurface::EditBlock);
+        let mut chars = paste_chars(&text, multiline);
+        let truncated = chars.len() > MAX;
+        chars.truncate(MAX);
+        if chars.is_empty() {
+            self.app.set_status("nothing to paste".to_owned());
+            return true;
+        }
+        let n = chars.len();
+        for c in chars {
+            if c == '\n' {
+                self.app
+                    .on_key(&mut self.shell, "enter", false, false, None);
+            } else {
+                self.app
+                    .on_key(&mut self.shell, &c.to_string(), false, false, Some(c));
+            }
+        }
+        self.app.set_status(if truncated {
+            format!("pasted the first {n} character(s) — the rest was too long")
+        } else {
+            format!("pasted {n} character(s)")
+        });
+        true
+    }
+
+    /// Copy the body editor's VISUAL selection to the system clipboard
+    /// and the vault's kill ring, so it can be pasted either back into
+    /// closure or into another application.
+    ///
+    /// `false` — key not handled — anywhere else, because `C-c` is a
+    /// leader prefix in the Emacs keymap (`C-c c` captures) and must
+    /// not be swallowed.
+    fn copy_selection(&mut self, cx: &Context<Self>) -> bool {
+        if !matches!(
+            self.app.surface(),
+            ModalSurface::EditBody | ModalSurface::EditBlock
+        ) {
+            return false;
+        }
+        let Some((a, b)) = self.app.body_selection() else {
+            return false;
+        };
+        let (lo, hi) = if a <= b { (a, b) } else { (b, a) };
+        // `get` rather than an index: a range that is not on a char
+        // boundary yields None instead of a panic (I5).
+        let Some(text) = self.app.body_buffer().get(lo..hi).map(ToOwned::to_owned) else {
+            return false;
+        };
+        if text.is_empty() {
+            return false;
+        }
+        let n = text.chars().count();
+        cx.write_to_clipboard(gpui::ClipboardItem::new_string(text.clone()));
+        self.shell.vault.push_kill_ring(text);
+        self.app
+            .set_status(format!("copied {n} character(s) to the clipboard"));
+        true
     }
 
     /// Follow an org link target.
@@ -786,7 +1213,6 @@ impl GpuiView {
     /// field, header button) — the same dispatch the chords use (I8).
     fn click(&mut self, command: &str, cx: &mut Context<Self>) {
         self.app.run(&mut self.shell, command);
-        self.absorb_status();
         if self.app.should_quit() {
             cx.quit();
         }
@@ -809,9 +1235,80 @@ impl GpuiView {
         #[allow(clippy::cast_possible_truncation)]
         let steps = dy.abs().ceil().min(1000.0) as i32;
         let delta = if dy < 0.0 { steps } else { -steps };
-        self.app.body_scroll_by(delta, BODY_VIEW);
+        self.app.body_scroll_by(delta, self.body_view());
         cx.stop_propagation();
         cx.notify();
+    }
+
+    /// Bring every keyboard cursor into view, in the pane it belongs
+    /// to.
+    ///
+    /// Each pane remembers what it last scrolled to, so a reveal is
+    /// requested only when the cursor actually moved — otherwise the
+    /// wheel would be dragged back on every frame.
+    ///
+    /// Three separate cursors, and they used to share one reveal: the
+    /// outline was scrolled to `selected` even on the nine surfaces
+    /// where `selected` is a *right-hand pane* list index (the left
+    /// column jumped while the row being moved stayed off screen), and
+    /// neither the palette nor the side lists were revealed at all — so
+    /// arrowing down the palette walked the highlight off the bottom
+    /// with nothing following it.
+    fn reveal_cursors(&mut self) {
+        let surface = self.app.surface();
+        let selected = self.app.selected();
+        if outline_follows_selection(surface) && selected != self.revealed {
+            self.outline_scroll
+                .scroll_to_item(selected, gpui::ScrollStrategy::Center);
+            self.revealed = selected;
+        }
+        if surface == ModalSurface::Palette {
+            let cursor = self.app.palette_cursor();
+            if cursor != self.palette_revealed {
+                self.palette_scroll
+                    .scroll_to_item(cursor, gpui::ScrollStrategy::Center);
+                self.palette_revealed = cursor;
+            }
+        }
+        if side_reveals_selection(surface) {
+            let cursor = if surface == ModalSurface::UndoHistory {
+                self.app.undo_history_cursor()
+            } else {
+                selected
+            };
+            if cursor != self.side_revealed {
+                self.side_scroll.scroll_to_item(cursor);
+                self.side_revealed = cursor;
+            }
+        }
+        // The assistant's newest turn: a long transcript pushed the
+        // answer below the fold, and the reply is the whole point of
+        // asking. The transcript is one element, so this scrolls the
+        // pane to the end rather than to a row — where the newest turn
+        // and the question field both are.
+        if surface == ModalSurface::Llm {
+            let turns = self.app.chat_turns().len();
+            if turns != self.chat_seen {
+                let max = self.side_scroll.max_offset().height;
+                self.side_scroll.set_offset(gpui::point(px(0.0), -max));
+                self.chat_seen = turns;
+            }
+        }
+    }
+
+    /// How many body lines the editor shows, from the right-hand pane's
+    /// measured height ([`body_viewport_lines`]).
+    ///
+    /// The pane's bounds are last frame's, which is exactly right: the
+    /// count only changes when the window is resized, and the frame
+    /// after a resize corrects it. Before the first layout there are no
+    /// bounds at all, and the pane assumes [`BODY_VIEW_DEFAULT`].
+    fn body_view(&self) -> usize {
+        let height = f32::from(self.side_scroll.bounds().size.height);
+        if height <= 0.0 {
+            return BODY_VIEW_DEFAULT;
+        }
+        body_viewport_lines(height, BODY_LINE_H, BODY_CHROME)
     }
 
     /// Context line describing the active surface (with the live input
@@ -1145,28 +1642,29 @@ impl GpuiView {
             .flex_row()
             .flex_grow()
             .overflow_hidden()
-            .child(
-                div()
-                    .id("side")
-                    .flex()
-                    .flex_col()
-                    .flex_grow()
-                    .overflow_y_scroll()
-                    .track_scroll(&self.side_scroll)
-                    .child(self.side_content(co, cx)),
-            )
+            .child(self.side_content(co, cx))
             .child(scrollbar(co, &self.side_scroll.clone(), cx))
     }
 
     /// What the right-hand pane actually shows for the active surface.
-    fn side_content(&self, co: Colors, cx: &Context<Self>) -> gpui::Div {
+    ///
+    /// This *is* the scrolling element: the rows of a list surface are
+    /// its direct children, which is what lets the pane's scroll handle
+    /// address a row by index and bring the keyboard cursor into view
+    /// ([`side_reveals_selection`]). Wrapping them in an inner div, as
+    /// it used to, left the handle with a single child and nothing to
+    /// scroll to.
+    fn side_content(&self, co: Colors, cx: &Context<Self>) -> gpui::Stateful<gpui::Div> {
         let pane = div()
+            .id("side")
             .flex()
             .flex_col()
             .flex_grow()
             .px_4()
             .py_3()
             .gap_2()
+            .overflow_y_scroll()
+            .track_scroll(&self.side_scroll)
             .bg(rgb(co.bg));
         match self.app.surface() {
             ModalSurface::Palette => pane.child(self.palette_pane(co, cx)),
@@ -1342,11 +1840,15 @@ impl GpuiView {
     /// blue), and the C-n completion popup.
     fn editor_pane(&self, co: Colors, cx: &Context<Self>) -> gpui::Div {
         use closure_shell_core::EditorMode;
-        let scroll_start = self.app.body_scroll_start(BODY_VIEW);
+        let view = self.body_view();
+        let scroll_start = self.app.body_scroll_start(view);
         let (cur_line, _) = self.app.body_cursor();
         let mode = self.app.body_mode();
         // doom spaceline colours: insert green, normal blue, visual grey-violet.
+        // `R` is INSERT to the core, but it overwrites rather than
+        // pushes right, and a chip that hides that is a lie.
         let (mode_txt, mode_col) = match mode {
+            EditorMode::Insert if self.app.body_replacing() => ("REPLACE", co.warning),
             EditorMode::Insert => ("INSERT", co.success),
             EditorMode::Normal => ("NORMAL", co.accent),
             EditorMode::Visual => ("VISUAL", co.heading3),
@@ -1361,8 +1863,23 @@ impl GpuiView {
                 .text_size(px(11.0))
                 .child(mode_txt),
         );
+        // A macro under the needle, the way vim's `recording @q` says
+        // it: without this the editor looks idle while every stroke is
+        // being taped.
+        if let Some(reg) = self.app.body_recording() {
+            header = header.child(
+                div()
+                    .px_1()
+                    .rounded_sm()
+                    .bg(rgb(co.error))
+                    .text_color(rgb(co.bg))
+                    .text_size(px(11.0))
+                    .child(format!("● @{reg}")),
+            );
+        }
         // The chord in progress, echoed the way vim's showcmd does — so
         // a half-typed `2d3i` is visible rather than a silent editor.
+        // An open `/` search line comes through the same field.
         let pending = self.app.body_pending_chord();
         if !pending.is_empty() {
             header = header.child(
@@ -1382,21 +1899,25 @@ impl GpuiView {
                 .text_size(px(11.0))
                 .child(closure_shell_core::editor_hint(mode)),
         );
-        let mut body = div()
-            .flex()
-            .flex_col()
-            .flex_grow()
-            .p_2()
-            .bg(rgb(co.panel))
-            .rounded_md()
-            .text_size(px(13.0))
-            .on_scroll_wheel(cx.listener(Self::on_body_scroll));
+        let mut body = with_menu(
+            div()
+                .flex()
+                .flex_col()
+                .flex_grow()
+                .p_2()
+                .bg(rgb(co.panel))
+                .rounded_md()
+                .text_size(px(13.0))
+                .on_scroll_wheel(cx.listener(Self::on_body_scroll)),
+            closure_shell_core::ContextTarget::Body,
+            cx,
+        );
         let mut line_start = 0usize;
         for (ln, spans) in self.highlighted(self.app.body_buffer()).iter().enumerate() {
             let line_len: usize = spans.iter().map(|(_, s)| s.len()).sum();
             // G5: only the wheel-scrolled window of lines is painted;
             // byte offsets still accumulate for the skipped lines.
-            if !(scroll_start..scroll_start + BODY_VIEW).contains(&ln) {
+            if !(scroll_start..scroll_start + view).contains(&ln) {
                 line_start += line_len + 1;
                 continue;
             }
@@ -1933,7 +2454,17 @@ impl GpuiView {
 
     /// The link graph: what the vault points at most, what it points
     /// at not at all, and what it points at in vain.
+    ///
+    /// The keyboard cursor walks hubs then orphans (the core counts them
+    /// as one list), so the row under it is marked here — the pane used
+    /// to show no cursor at all, which made `j`/`k` on this surface look
+    /// broken. The lists are capped, and a capped list says so instead
+    /// of quietly ending.
     fn graph_pane(&self, co: Colors, cx: &Context<Self>) -> gpui::Div {
+        /// Hubs shown before the list is cut off.
+        const HUBS: usize = 20;
+        /// Orphans shown before the list is cut off.
+        const ORPHANS: usize = 50;
         let section = |title: &'static str, colour: u32| {
             div()
                 .mt_2()
@@ -1941,7 +2472,18 @@ impl GpuiView {
                 .text_color(rgb(colour))
                 .child(title)
         };
-        let jump = |id: String, label: String| {
+        let more = |hidden: usize| {
+            (hidden > 0).then(|| {
+                div()
+                    .px_2()
+                    .text_size(px(10.0))
+                    .text_color(rgb(co.muted))
+                    .child(format!("     …and {hidden} more"))
+            })
+        };
+        let cursor = self.app.selected();
+        let jump = |i: usize, id: String, label: String| {
+            let hot = i == cursor;
             div()
                 .px_2()
                 .py_1()
@@ -1949,7 +2491,8 @@ impl GpuiView {
                 .cursor_pointer()
                 .text_size(px(12.0))
                 .text_color(rgb(co.fg))
-                .hover(move |s| s.bg(rgb(co.hover)))
+                .bg(rgb(if hot { co.selection } else { co.bg }))
+                .hover(move |s| s.bg(rgb(if hot { co.selection } else { co.hover })))
                 .on_mouse_down(
                     MouseButton::Left,
                     cx.listener(move |this: &mut Self, _ev, _w, cx| {
@@ -1962,22 +2505,33 @@ impl GpuiView {
         let hubs = self.app.hub_rows(&self.shell);
         let orphans = self.app.orphan_rows(&self.shell);
         let dead = self.app.dead_link_rows(&self.shell);
+        // The cursor's index runs across both lists, so the orphans
+        // continue where the hubs left off.
+        let orphan_base = hubs.len();
+        let (hidden_hubs, hidden_orphans) = (
+            hubs.len().saturating_sub(HUBS),
+            orphans.len().saturating_sub(ORPHANS),
+        );
         div()
             .flex()
             .flex_col()
             .child(section("hubs — most linked to", co.accent))
             .children(
                 hubs.into_iter()
-                    .take(20)
-                    .map(|(id, title, n)| jump(id, format!("{n:>3}  {title}"))),
+                    .enumerate()
+                    .take(HUBS)
+                    .map(|(i, (id, title, n))| jump(i, id, format!("{n:>3}  {title}"))),
             )
+            .children(more(hidden_hubs))
             .child(section("orphans — nothing links here", co.warning))
             .children(
                 orphans
                     .into_iter()
-                    .take(50)
-                    .map(|(id, title)| jump(id, format!("     {title}"))),
+                    .enumerate()
+                    .take(ORPHANS)
+                    .map(|(i, (id, title))| jump(orphan_base + i, id, format!("     {title}"))),
             )
+            .children(more(hidden_orphans))
             .child(section("dead links — targets that do not exist", co.error))
             .children(Self::text_rows(
                 co,
@@ -2050,7 +2604,7 @@ impl GpuiView {
                             .child("◎ listen"),
                     ),
             )
-            // Selectable-looking, and a click copies it to the kill ring.
+            // Selectable-looking, and a click copies it out.
             .child(
                 div()
                     .p_2()
@@ -2065,10 +2619,15 @@ impl GpuiView {
                     .on_mouse_down(
                         MouseButton::Left,
                         cx.listener(|this: &mut Self, _ev, _w, cx| {
+                            // A ticket is handed to *another application*
+                            // — a chat window, a mail — so the kill ring
+                            // alone was useless here: it never left
+                            // closure.
                             let ticket = this.app.sync_mut().ticket();
+                            cx.write_to_clipboard(gpui::ClipboardItem::new_string(ticket.clone()));
                             this.shell.vault.push_kill_ring(ticket);
                             this.app
-                                .set_status("ticket copied to the kill ring".to_owned());
+                                .set_status("ticket copied to the clipboard".to_owned());
                             cx.notify();
                         }),
                     )
@@ -2186,8 +2745,16 @@ impl GpuiView {
         applied
     }
 
-    /// Bind a listener and start accepting peers on a background
-    /// thread, so pairing works in both directions.
+    /// Bind a listener and accept one inbound sync round on the
+    /// background executor, so pairing works in both directions.
+    ///
+    /// Binding alone is what this used to do, which made the ticket a
+    /// lie: the address was real, the port was open, and nothing ever
+    /// answered on it — the peer's `▲ push` hung in the backlog until it
+    /// timed out. The responder round is blocking socket I/O, so it runs
+    /// off the UI thread and only its outcome comes back; the replica
+    /// the peer sent is merged and written into the vault exactly as an
+    /// outbound round's is, and the listener re-arms for the next one.
     fn start_listening(&mut self, cx: &mut Context<Self>) {
         let bound = match self.app.sync_mut().listen() {
             Ok(addr) => addr,
@@ -2200,6 +2767,63 @@ impl GpuiView {
         self.app
             .set_status(format!("listening on {bound} — hand over your ticket"));
         cx.notify();
+        self.accept_one(cx);
+    }
+
+    /// Wait for one peer to dial in, merge what it sends, and arm the
+    /// next wait.
+    fn accept_one(&mut self, cx: &Context<Self>) {
+        self.app.sync_mut().snapshot(&self.shell);
+        let sync = self.app.sync_mut();
+        let Some(listener) = sync.listener() else {
+            return;
+        };
+        let mut session = sync.session().clone();
+        let signing = sync.signing_key().clone();
+        let trusted = sync.trusted_keys();
+        cx.spawn(async move |this, cx| {
+            let outcome = cx
+                .background_executor()
+                .spawn(async move {
+                    closure_sync::TcpSyncTransport::serve_once_secure(
+                        &listener,
+                        &mut session,
+                        &signing,
+                        &trusted,
+                    )
+                    .map(|()| session)
+                    .map_err(|e| format!("{e}"))
+                })
+                .await;
+            let _ = this.update(cx, |this, cx| {
+                match outcome {
+                    Ok(session) => {
+                        let conflicts = this.app.sync_mut().merge_session(&session);
+                        let blocks = this.app.sync_mut().block_count();
+                        let applied = this.apply_sync_to_vault();
+                        if conflicts.is_empty() {
+                            this.app.set_status(format!(
+                                "a peer synced in — {blocks} block(s), {applied} field(s) written"
+                            ));
+                        } else {
+                            let n = conflicts.len();
+                            this.app.set_conflicts(conflicts);
+                            this.app.set_status(format!(
+                                "a peer synced in — {n} conflict(s) to resolve (g m)"
+                            ));
+                        }
+                        // Keep answering: pairing is not a single round.
+                        this.accept_one(cx);
+                    }
+                    // A failed accept is the end of the loop rather than
+                    // a spin: the listener is reported broken and the
+                    // user can arm it again.
+                    Err(e) => this.app.set_status(format!("inbound sync failed: {e}")),
+                }
+                cx.notify();
+            });
+        })
+        .detach();
     }
 
     /// Dial `addr` and exchange replicas.
@@ -2555,7 +3179,12 @@ impl GpuiView {
     /// Detail pane with click-to-edit fields: title → rename, meta →
     /// toggle-todo, tags → edit-tags, properties → edit-property,
     /// body → edit-body.
-    fn detail_pane(&self, pane: gpui::Div, co: Colors, cx: &Context<Self>) -> gpui::Div {
+    fn detail_pane(
+        &self,
+        pane: gpui::Stateful<gpui::Div>,
+        co: Colors,
+        cx: &Context<Self>,
+    ) -> gpui::Stateful<gpui::Div> {
         let Some(d) = self.app.detail(&self.shell) else {
             return pane.child(
                 div()
@@ -2574,6 +3203,9 @@ impl GpuiView {
         } else {
             format!(":{}:", d.tags.join(":"))
         };
+        // Right-clicking a field offers the per-field edit commands; the
+        // body preview below offers the body ones (`with_menu`).
+        let pane = with_menu(pane, closure_shell_core::ContextTarget::Detail, cx);
         pane.child(clickable(
             co,
             div()
@@ -2651,7 +3283,7 @@ impl GpuiView {
                         ));
                     }
                 }
-                body_el
+                with_menu(body_el, closure_shell_core::ContextTarget::Body, cx)
             },
             "edit-body",
             cx,
@@ -2733,8 +3365,12 @@ impl GpuiView {
     ///
     /// Shown only when pinned open or while a chord is pending, and
     /// scrollable, because the full keymap does not fit a window.
+    ///
+    /// While a chord *is* pending the panel narrows to what can follow
+    /// it ([`which_key_filter`]) — the whole keymap is exactly the wrong
+    /// answer at the one moment the user has asked a specific question.
     fn which_key_panel(&self, co: Colors, cx: &Context<Self>) -> gpui::Div {
-        let groups = self.app.which_key_groups();
+        let groups = which_key_filter(self.app.which_key_groups(), &self.app.pending_chord());
         div()
             .flex()
             .flex_row()
@@ -2819,11 +3455,20 @@ impl GpuiView {
                     L::Warn => co.warning,
                 };
                 let mut chip = div()
+                    .id(item.id)
                     .px_2()
                     .rounded_md()
                     .text_color(rgb(colour))
                     .child(item.label);
                 if let Some(command) = item.command {
+                    // Hovering explains what it is — in a real tooltip.
+                    // It used to *overwrite the status line* on every
+                    // mouse move, which destroyed whatever the last
+                    // command had reported and never put it back.
+                    let hint = item.chord.map_or_else(
+                        || item.tooltip.clone(),
+                        |c| format!("{}  [{c}]", item.tooltip),
+                    );
                     chip = chip
                         .cursor_pointer()
                         .hover(move |s| s.bg(rgb(co.hover)))
@@ -2833,22 +3478,10 @@ impl GpuiView {
                                 this.click(command, cx);
                             }),
                         )
-                        // Hovering explains what it is; the tooltip is
-                        // the only place there is room to say it.
-                        .on_mouse_move(cx.listener({
-                            let tooltip = item.tooltip.clone();
-                            let chord = item.chord;
-                            move |this: &mut Self, _ev: &gpui::MouseMoveEvent, _w, cx| {
-                                let hint = chord.map_or_else(
-                                    || tooltip.clone(),
-                                    |c| format!("{tooltip}  [{c}]"),
-                                );
-                                if this.app.status() != hint {
-                                    this.app.set_status(hint);
-                                    cx.notify();
-                                }
-                            }
-                        }));
+                        .tooltip(move |_w, cx| {
+                            let hint = hint.clone();
+                            cx.new(move |_| Hint { text: hint, co }).into()
+                        });
                 }
                 chip
             }))
@@ -3000,6 +3633,33 @@ enum Emphasis {
     Cursor,
 }
 
+/// A hover explanation, in the theme's own colours.
+///
+/// gpui's core ships no tooltip widget (Zed's lives in its `ui` crate),
+/// and a tooltip has to be a view — so this is the smallest one that
+/// can be: a line of text on a panel.
+#[cfg(feature = "gpui")]
+struct Hint {
+    text: String,
+    co: Colors,
+}
+
+#[cfg(feature = "gpui")]
+impl Render for Hint {
+    fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
+        div()
+            .px_2()
+            .py_1()
+            .rounded_md()
+            .bg(rgb(self.co.panel))
+            .border_1()
+            .border_color(rgb(self.co.border))
+            .text_size(px(11.0))
+            .text_color(rgb(self.co.fg))
+            .child(self.text.clone())
+    }
+}
+
 /// One hit-testable run of body text. `col_offset` is the char column
 /// `text` starts at, so a segment painted after the INSERT caret still
 /// reports absolute columns back to the editor.
@@ -3090,9 +3750,11 @@ fn editor_segment(
 ///
 /// gpui ships no scrollbar widget, so this is one: a track carrying a
 /// thumb sized and placed by [`thumb_geometry`], with click-and-drag
-/// anywhere on the track mapped back through
-/// [`scroll_for_track_fraction`]. A pane whose content fits gets an
-/// empty track, so the gutter width never shifts under the mouse.
+/// anywhere on the track mapped back through [`track_fraction`] and
+/// [`scroll_for_track_fraction`] — the thumb centres on the pointer, so
+/// it stays under the finger dragging it. A pane whose content fits
+/// gets an empty track, so the gutter width never shifts under the
+/// mouse.
 ///
 /// The handle's own bounds are the track's: the bar is painted as the
 /// scrolled pane's sibling with the same height.
@@ -3117,8 +3779,9 @@ fn scrollbar(co: Colors, handle: &gpui::ScrollHandle, cx: &Context<GpuiView>) ->
     let track_top = f32::from(bounds.origin.y);
     let jump = {
         let handle = handle.clone();
+        let thumb_height = thumb.height;
         move |y: gpui::Pixels| {
-            let fraction = (f32::from(y) - track_top) / viewport;
+            let fraction = track_fraction(f32::from(y), track_top, viewport, thumb_height);
             let offset = scroll_for_track_fraction(viewport, content, fraction);
             handle.set_offset(gpui::point(px(0.0), px(-offset)));
         }
@@ -3202,6 +3865,31 @@ fn list_row(
         .child(text)
 }
 
+/// Give an element a right-click context menu for `target`.
+///
+/// The menu itself is [`closure_shell_core::context_menu`], which has
+/// always known about three targets; the window only ever wired the
+/// outline row, so a right-click in the editor or on a detail field
+/// dismissed the menu it never opened. Propagation stops here so the
+/// innermost target wins — the body's menu over the detail pane's.
+#[cfg(feature = "gpui")]
+fn with_menu<E: gpui::InteractiveElement>(
+    el: E,
+    target: closure_shell_core::ContextTarget,
+    cx: &Context<GpuiView>,
+) -> E {
+    el.on_mouse_down(
+        MouseButton::Right,
+        cx.listener(
+            move |this: &mut GpuiView, ev: &gpui::MouseDownEvent, _w, cx| {
+                this.menu = Some((ev.position, target));
+                cx.stop_propagation();
+                cx.notify();
+            },
+        ),
+    )
+}
+
 /// Wrap a detail field so a click begins the matching edit command.
 #[cfg(feature = "gpui")]
 fn clickable(
@@ -3258,15 +3946,10 @@ impl Render for GpuiView {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let co = Colors::of(&self.theme);
         let mono = self.theme.typography.mono_family.to_owned();
-        // Keyboard navigation reveals its row; the wheel does not fight
-        // it, because a reveal is requested only when the selection
-        // actually moved since the last frame.
-        let selected = self.app.selected();
-        if selected != self.revealed {
-            self.outline_scroll
-                .scroll_to_item(selected, gpui::ScrollStrategy::Center);
-            self.revealed = selected;
-        }
+        // Every path that sets a status reaches the toast strip through
+        // here, once per frame.
+        self.absorb_status(cx);
+        self.reveal_cursors();
 
         let header = self.header_bar(co, cx);
 
@@ -3303,6 +3986,20 @@ impl Render for GpuiView {
                 MouseButton::Left,
                 cx.listener(|this: &mut Self, _ev, _w, cx| {
                     if this.menu.take().is_some() {
+                        cx.notify();
+                    }
+                }),
+            )
+            // A row drag released anywhere but on a row — over the side
+            // pane, in the empty space under the last row — never
+            // reached a row's mouse-up handler, so the gesture stayed
+            // armed: the next hover retargeted it and the next click
+            // finished a move the user had abandoned.
+            .on_mouse_up(
+                MouseButton::Left,
+                cx.listener(|this: &mut Self, _ev, _w, cx| {
+                    if this.drag.source().is_some() {
+                        this.drag.cancel();
                         cx.notify();
                     }
                 }),

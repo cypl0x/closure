@@ -607,6 +607,18 @@ impl App {
         self.body.set_cursor_byte(byte);
     }
 
+    /// The body editor's buffer.
+    #[must_use]
+    pub fn body_buffer(&self) -> &str {
+        self.body.text()
+    }
+
+    /// The body editor's open `/` search line, if one is.
+    #[must_use]
+    pub fn body_search_prompt(&self) -> Option<String> {
+        self.body.search_prompt()
+    }
+
     /// The body editor's status line: the vim mode, the chord in
     /// progress, and the keys that leave the surface.
     #[must_use]
@@ -1307,6 +1319,10 @@ impl App {
             self.body_target = None;
             return;
         }
+        if stroke == "C-r" {
+            self.body.redo_local();
+            return;
+        }
         if let Some(key) = Self::modal_key_of(stroke) {
             self.body.modal_key(&key);
         }
@@ -1398,7 +1414,12 @@ impl App {
             "<pagedown>" => "pagedown".to_owned(),
             "RET" => "enter".to_owned(),
             "SPC" => " ".to_owned(),
+            "DEL" => "backspace".to_owned(),
             s if s.chars().count() == 1 => s.to_owned(),
+            // `C-d`, `C-f`, `C-a` … are chords of the editor's own
+            // grammar (scroll, increment). Dropped here, they were dead
+            // in the terminal while working in the GUI.
+            s if s.len() == 3 && s.starts_with("C-") => s.to_owned(),
             _ => return None,
         })
     }

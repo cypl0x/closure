@@ -12,7 +12,7 @@
 
 #![allow(clippy::unwrap_used, clippy::expect_used, missing_docs)]
 
-use closure_shell_gpui::{scroll_for_track_fraction, thumb_geometry};
+use closure_shell_gpui::{scroll_for_track_fraction, thumb_geometry, track_fraction};
 
 /// Fractions are compared with a tolerance; these are floats, and the
 /// tests care about the geometry, not the last bit.
@@ -103,6 +103,68 @@ fn a_drag_outside_the_track_clamps() {
 fn unscrollable_content_never_scrolls() {
     assert!(close(scroll_for_track_fraction(100.0, 50.0, 1.0), 0.0));
     assert!(close(scroll_for_track_fraction(0.0, 500.0, 1.0), 0.0));
+}
+
+// === where the pointer is, relative to the thumb ===
+//
+// The pointer used to be read as the scroll fraction directly, which
+// put the *top* of the thumb wherever the fraction landed — so the
+// thumb trailed the mouse by up to its own length and never sat under
+// the finger dragging it. The pointer grabs the thumb's middle.
+
+#[test]
+fn the_thumb_centres_on_the_pointer() {
+    // Track 0..200, a quarter-length thumb: the pointer half way down
+    // means the thumb's middle is half way down, i.e. half scrolled.
+    assert!(close(track_fraction(100.0, 0.0, 200.0, 0.25), 0.5));
+}
+
+#[test]
+fn the_ends_of_the_track_are_reachable() {
+    // The free travel is the track minus the thumb, so the pointer
+    // reaches both ends before it leaves the track.
+    assert!(close(track_fraction(25.0, 0.0, 200.0, 0.25), 0.0), "top");
+    assert!(
+        close(track_fraction(175.0, 0.0, 200.0, 0.25), 1.0),
+        "bottom"
+    );
+    assert!(close(track_fraction(0.0, 0.0, 200.0, 0.25), 0.0), "above");
+    assert!(close(track_fraction(999.0, 0.0, 200.0, 0.25), 1.0), "below");
+}
+
+#[test]
+fn the_track_offset_is_subtracted() {
+    // A pane further down the window: the track starts at 500.
+    assert!(close(track_fraction(600.0, 500.0, 200.0, 0.25), 0.5));
+}
+
+#[test]
+fn a_degenerate_track_never_divides_by_zero() {
+    assert!(close(track_fraction(10.0, 0.0, 0.0, 0.25), 0.0), "no track");
+    assert!(
+        close(track_fraction(10.0, 0.0, 200.0, 1.0), 0.0),
+        "a full-length thumb has nowhere to go"
+    );
+}
+
+#[test]
+fn dragging_a_thumb_lands_the_thumb_under_the_pointer() {
+    // The property the drag exists for: read the pointer, scroll, and
+    // the thumb's middle is where the pointer was.
+    let (viewport, content) = (100.0_f32, 400.0_f32);
+    for y in [10.0_f32, 30.0, 50.0, 70.0, 90.0] {
+        let t0 = thumb_geometry(viewport, content, 0.0, 0.05).expect("scrollable");
+        let f = track_fraction(y, 0.0, viewport, t0.height);
+        let offset = scroll_for_track_fraction(viewport, content, f);
+        let t = thumb_geometry(viewport, content, offset, 0.05).expect("scrollable");
+        let centre = (t.top + t.height / 2.0) * viewport;
+        let half = t.height / 2.0 * viewport;
+        let clamped = y.clamp(half, viewport - half);
+        assert!(
+            (centre - clamped).abs() < 0.01,
+            "pointer {y} -> thumb centre {centre} (expected {clamped})"
+        );
+    }
 }
 
 #[test]

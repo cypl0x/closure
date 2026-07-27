@@ -333,3 +333,59 @@ fn a_pending_chord_shows_in_the_status() {
         app.body_status()
     );
 }
+
+// === The chords that needed the modifier through the seam. ===
+//
+// `modal_key_of` dropped every `C-` stroke, so the scroll motions and
+// the number increments were dead in the terminal while working in the
+// editor's own tests.
+
+#[test]
+fn ctrl_f_pages_the_terminal_editor() {
+    use std::fmt::Write as _;
+    let text = (0..40).fold(String::new(), |mut acc, i| {
+        let _ = writeln!(acc, "line {i}");
+        acc
+    });
+    let mut app = editing(&text);
+    app.handle_stroke("C-f");
+    assert_eq!(app.body_cursor().0, 20);
+}
+
+#[test]
+fn ctrl_a_increments_in_the_terminal_editor() {
+    let mut app = editing("count 41");
+    app.handle_stroke("C-a");
+    assert_eq!(app.body_buffer(), "count 42");
+}
+
+#[test]
+fn ctrl_r_redoes_in_the_terminal_editor() {
+    let mut app = editing("hello");
+    feed(&mut app, "x");
+    assert_eq!(app.body_buffer(), "ello");
+    feed(&mut app, "u");
+    assert_eq!(app.body_buffer(), "hello");
+    app.handle_stroke("C-r");
+    assert_eq!(app.body_buffer(), "ello");
+}
+
+#[test]
+fn the_search_line_works_in_the_terminal_editor() {
+    let mut app = editing("alpha beta");
+    feed(&mut app, "/beta");
+    assert_eq!(app.body_search_prompt().as_deref(), Some("/beta"));
+    app.handle_stroke("RET");
+    assert_eq!(app.body_cursor(), (0, 6));
+}
+
+#[test]
+fn escape_closes_the_search_line_before_it_cancels_the_edit() {
+    let mut app = editing("alpha beta");
+    feed(&mut app, "/bet");
+    app.handle_stroke("ESC");
+    assert_eq!(app.mode(), AppMode::EditBody, "still editing");
+    assert_eq!(app.body_search_prompt(), None);
+    app.handle_stroke("ESC");
+    assert_eq!(app.mode(), AppMode::Browse);
+}

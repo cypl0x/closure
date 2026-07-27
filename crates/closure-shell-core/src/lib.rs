@@ -3303,7 +3303,7 @@ impl App {
             let bid = closure_core::BlockId::from_existing(&id);
             // Org bodies are newline-terminated; without a trailing
             // newline a following sibling headline would be absorbed.
-            let mut body = self.body_buf.clone();
+            let mut body = closure_org::escape_body(&self.body_buf);
             if !body.is_empty() && !body.ends_with('\n') {
                 body.push('\n');
             }
@@ -3672,7 +3672,7 @@ impl App {
             scheduled: h.scheduled().map(ToOwned::to_owned),
             deadline: h.deadline().map(ToOwned::to_owned),
             properties: h.properties().to_vec(),
-            body: h.body_text().to_owned(),
+            body: closure_org::unescape_body(h.body_text()),
             path: path.display().to_string(),
         })
     }
@@ -4315,6 +4315,20 @@ enum Pending {
     Find { op: Option<char>, kind: char },
     /// `r` typed; the next stroke is the replacement char.
     Replace,
+    /// `"` typed; the next stroke names the register the following
+    /// yank/delete/paste uses.
+    Register,
+    /// `m` typed; the next stroke names the mark to set.
+    Mark,
+    /// `` ` `` or `'` typed; the next stroke names the mark to jump to.
+    /// `linewise` is the `'` form, which lands on the line's first
+    /// non-blank and makes an operator take whole lines.
+    JumpMark { op: Option<char>, linewise: bool },
+    /// `q` typed with nothing recording; the next stroke names the
+    /// register to record into.
+    RecordMacro,
+    /// `@` typed; the next stroke names the macro to replay.
+    RunMacro,
 }
 
 impl Pending {
@@ -4328,8 +4342,30 @@ impl Pending {
             Self::Obj { around: false, .. } => Some('i'),
             Self::Find { kind, .. } => Some(kind),
             Self::Replace => Some('r'),
+            Self::Register => Some('"'),
+            Self::Mark => Some('m'),
+            Self::JumpMark { linewise: true, .. } => Some('\''),
+            Self::JumpMark {
+                linewise: false, ..
+            } => Some('`'),
+            Self::RecordMacro => Some('q'),
+            Self::RunMacro => Some('@'),
         }
     }
+}
+
+/// One step of a recorded macro: a modal stroke, or a run of text
+/// typed while the macro was in INSERT.
+///
+/// Two kinds rather than one because a macro spans modes: `ciwfoo<Esc>`
+/// is three strokes, then three characters that never reach
+/// [`BodyEditor::modal_key`] at all.
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum MacroStep {
+    /// A Normal/Visual stroke, replayed through the modal dispatch.
+    Key(String),
+    /// Text typed in INSERT, replayed verbatim.
+    Text(String),
 }
 
 /// Lines a `PageUp`/`PageDown` stroke moves when the editor is asked
@@ -4350,7 +4386,9 @@ pub const fn editor_hint(mode: EditorMode) -> &'static str {
             "type · TAB tempo (<s…) · C-n complete · C-a/e/k/y readline · Esc → NORMAL"
         }
         EditorMode::Normal => {
-            "w b e f t move · diw caw dt, gUiw operate · . repeat · dd yy p · A I O J r · v V · Esc"
+            "w b e f t % move · diw caw dis dt, gUiw operate · . repeat · dd yy Y p · \
+             \"a reg · ma `a mark · qa @a macro · /pat n N * # · C-a/C-x · C-d/C-u/C-f/C-b · \
+             A I O R J r gv gi · v V · Esc"
         }
         EditorMode::Visual | EditorMode::VisualLine => {
             "motions + iw aw i( a\" extend · d c y > < operate · o swap ends · Esc → NORMAL"
@@ -4416,6 +4454,38 @@ pub struct BodyEditor {
     /// edit takes one checkpoint, so the whole burst undoes as a unit
     /// (vim rule, G4).
     insert_armed: bool,
+    /// Named registers `a`–`z` with their own linewise flags. The
+    /// unnamed register stays [`Self::register`], so every command that
+    /// does not say otherwise behaves exactly as it always did.
+    registers: std::collections::BTreeMap<char, (String, bool)>,
+    /// The register named by a `"x` prefix, consumed by the next
+    /// yank/delete/paste. Uppercase means "append".
+    target_register: Option<char>,
+    /// Marks `a`–`z` as byte offsets. Edits do not move them, so a
+    /// stale mark is clamped to the buffer on use rather than trusted.
+    marks: std::collections::BTreeMap<char, usize>,
+    /// Recorded macros `a`–`z`.
+    macros: std::collections::BTreeMap<char, Vec<MacroStep>>,
+    /// The register being recorded into and the steps taken so far.
+    recording: Option<(char, Vec<MacroStep>)>,
+    /// The macro `@@` repeats.
+    last_macro: Option<char>,
+    /// True while a macro replays, so the replay records nothing.
+    running_macro: bool,
+    /// The last Visual range as `(anchor, cursor, mode)` — what `gv`
+    /// puts back.
+    last_visual: Option<(usize, usize, EditorMode)>,
+    /// Where INSERT was last left, which is where `gi` resumes.
+    last_insert: Option<usize>,
+    /// REPLACE mode (`R`): typing overwrites the char under the cursor
+    /// instead of pushing it right.
+    replacing: bool,
+    /// The open search line as `(forward, pattern so far)`.
+    search_input: Option<(bool, String)>,
+    /// The operator armed when the search line opened (`d/foo`).
+    search_op: Option<char>,
+    /// The last search as `(pattern, forward)` — what `n`/`N` repeat.
+    last_search: Option<(String, bool)>,
 }
 
 impl Default for BodyEditor {
@@ -4449,6 +4519,19 @@ impl BodyEditor {
             undo_stack: Vec::new(),
             redo_stack: Vec::new(),
             insert_armed: false,
+            registers: std::collections::BTreeMap::new(),
+            target_register: None,
+            marks: std::collections::BTreeMap::new(),
+            macros: std::collections::BTreeMap::new(),
+            recording: None,
+            last_macro: None,
+            running_macro: false,
+            last_visual: None,
+            last_insert: None,
+            replacing: false,
+            search_input: None,
+            search_op: None,
+            last_search: None,
         }
     }
 
@@ -4460,6 +4543,29 @@ impl BodyEditor {
         self.undo_stack.clear();
         self.redo_stack.clear();
         self.insert_armed = true;
+        self.reset_buffer_state();
+    }
+
+    /// Drop everything that describes *this* buffer's positions.
+    ///
+    /// Marks, the last selection and the last insert point are byte
+    /// offsets into the text that was here; carried into the next
+    /// headline they would point at unrelated words. Registers, macros
+    /// and the last search pattern are deliberately kept — those are
+    /// global in vim, and the whole point of yanking in one note is
+    /// pasting it into another.
+    fn reset_buffer_state(&mut self) {
+        self.marks.clear();
+        self.last_visual = None;
+        self.last_insert = None;
+        self.replacing = false;
+        self.search_input = None;
+        self.search_op = None;
+        self.recording = None;
+        self.target_register = None;
+        self.pending = Pending::None;
+        self.count = 0;
+        self.op_count = 0;
     }
 
     /// The buffer contents.
@@ -4516,10 +4622,19 @@ impl BodyEditor {
         self.undo_stack.clear();
         self.redo_stack.clear();
         self.insert_armed = true;
+        self.reset_buffer_state();
     }
 
     /// Switch to Normal (from Insert `Esc`).
     pub fn to_normal(&mut self) {
+        // A macro that entered INSERT has to leave it again on replay,
+        // and `Esc` never reaches `modal_key` — the shells answer it
+        // themselves. So the exit is recorded here.
+        if self.mode == EditorMode::Insert {
+            self.last_insert = Some(self.cursor);
+            self.push_macro_step(MacroStep::Key("escape".to_owned()));
+        }
+        self.replacing = false;
         // Leaving Insert closes a recorded change: the strokes that
         // opened it plus everything typed inside become one `.` unit,
         // exactly as vim scopes a change.
@@ -4559,10 +4674,18 @@ impl BodyEditor {
         }
     }
 
-    /// Insert `c` at the cursor.
+    /// Insert `c` at the cursor — or, in REPLACE mode, overwrite the
+    /// char under it. A newline is never overwritten: `R` past the line
+    /// end appends, it does not weld two lines together.
     pub fn insert_char(&mut self, c: char) {
         self.insert_guard();
         self.record_typed(c.encode_utf8(&mut [0u8; 4]));
+        if self.replacing
+            && let Some(under) = self.char_at(self.cursor).filter(|u| *u != '\n')
+        {
+            self.buf
+                .replace_range(self.cursor..self.cursor + under.len_utf8(), "");
+        }
         self.buf.insert(self.cursor, c);
         self.cursor += c.len_utf8();
     }
@@ -4580,6 +4703,7 @@ impl BodyEditor {
         if self.recording_insert && !self.replaying {
             self.insert_text.push_str(s);
         }
+        self.push_macro_step(MacroStep::Text(s.to_owned()));
     }
 
     /// Delete the char before the cursor (Insert Backspace).
@@ -4857,8 +4981,15 @@ impl BodyEditor {
     pub fn modal_key(&mut self, key: &str) {
         // `.` is not itself a change and must never be recorded, or it
         // would repeat itself.
-        if key == "." && self.pending == Pending::None {
+        if key == "." && self.pending == Pending::None && self.search_input.is_none() {
             return self.repeat_change();
+        }
+        // The strokes that drive the recorder are not part of what it
+        // records: `qa` … `q` would otherwise replay as "stop, start".
+        let recorder_stroke = self.pending == Pending::RecordMacro
+            || (key == "q" && self.pending == Pending::None && self.recording.is_some());
+        if !recorder_stroke {
+            self.push_macro_step(MacroStep::Key(key.to_owned()));
         }
         if !self.replaying {
             self.scratch.push(key.to_owned());
@@ -4868,6 +4999,23 @@ impl BodyEditor {
         if !self.replaying {
             self.record_step(before);
         }
+    }
+
+    /// Add one step to the macro being recorded, if one is.
+    fn push_macro_step(&mut self, step: MacroStep) {
+        if self.running_macro || self.replaying {
+            return;
+        }
+        let Some((_, steps)) = self.recording.as_mut() else {
+            return;
+        };
+        // Consecutive typed characters coalesce into one run, so a
+        // replay inserts them as a single edit.
+        if let (MacroStep::Text(add), Some(MacroStep::Text(tail))) = (&step, steps.last_mut()) {
+            tail.push_str(add);
+            return;
+        }
+        steps.push(step);
     }
 
     /// Decide what the stroke just dispatched means for `.`.
@@ -4911,20 +5059,39 @@ impl BodyEditor {
 
     /// The modal vocabulary proper, with no `.`-recording around it.
     fn dispatch_modal_key(&mut self, key: &str) {
+        // The search line owns every key while it is open — a pattern
+        // is text, not a chord.
+        if self.search_input.is_some() {
+            return self.search_key(key);
+        }
+        let was_visual = matches!(self.mode, EditorMode::Visual | EditorMode::VisualLine)
+            .then_some((self.anchor, self.cursor, self.mode));
         // A chord waiting on a literal char argument consumes any key,
         // digits included — `r5` and `df3` are not counts.
         match self.pending {
-            Pending::Replace => return self.finish_replace(key),
-            Pending::Find { op, kind } => return self.finish_find(op, kind, key),
-            Pending::Obj { op, around } => return self.finish_object(op, around, key),
-            Pending::G(op) => return self.finish_g(op, key),
-            Pending::Op(op) => return self.after_operator(op, key),
-            Pending::None => {}
+            Pending::Replace => self.finish_replace(key),
+            Pending::Find { op, kind } => self.finish_find(op, kind, key),
+            Pending::Obj { op, around } => self.finish_object(op, around, key),
+            Pending::G(op) => self.finish_g(op, key),
+            Pending::Op(op) => self.after_operator(op, key),
+            Pending::Register => self.finish_register(key),
+            Pending::Mark => self.finish_mark(key),
+            Pending::JumpMark { op, linewise } => self.finish_mark_jump(op, linewise, key),
+            Pending::RecordMacro => self.finish_record(key),
+            Pending::RunMacro => self.finish_run_macro(key),
+            Pending::None => {
+                if !self.take_digit(key) {
+                    self.normal_key(key);
+                }
+            }
         }
-        if self.take_digit(key) {
-            return;
+        // Whatever ended a Visual selection — `Esc`, an operator, a
+        // mode switch — is what `gv` puts back.
+        if let Some(last) = was_visual
+            && !matches!(self.mode, EditorMode::Visual | EditorMode::VisualLine)
+        {
+            self.last_visual = Some(last);
         }
-        self.normal_key(key);
     }
 
     /// Accumulate a count digit; `true` when the key was one. A leading
@@ -4986,10 +5153,40 @@ impl BodyEditor {
             }
             "g" => self.pending = Pending::G(None),
             "r" => self.pending = Pending::Replace,
+            // --- The stateful prefixes: register, mark, macro.
+            "\"" => self.pending = Pending::Register,
+            "m" => self.pending = Pending::Mark,
+            "`" | "'" => {
+                self.pending = Pending::JumpMark {
+                    op: None,
+                    linewise: key == "'",
+                };
+            }
+            "q" => {
+                // A second `q` closes the recording rather than opening
+                // another one.
+                if let Some((reg, steps)) = self.recording.take() {
+                    self.macros.insert(reg, steps);
+                } else {
+                    self.pending = Pending::RecordMacro;
+                }
+            }
+            "@" => self.pending = Pending::RunMacro,
+            // --- Search.
+            "/" | "?" => self.open_search(None, key == "/"),
+            "n" | "N" => {
+                let n = self.take_count();
+                self.repeat_search(None, key == "n", n);
+            }
+            "*" | "#" => {
+                let n = self.take_count();
+                self.search_word_under_cursor(key == "*", n);
+            }
             // --- Motions.
             "h" | "left" | "l" | "right" | "j" | "down" | "k" | "up" | "w" | "W" | "b" | "B"
             | "e" | "E" | "0" | "home" | "^" | "$" | "end" | "G" | "{" | "}" | ";" | ","
-            | "pageup" | "pagedown" => {
+            | "pageup" | "pagedown" | "_" | "+" | "-" | "enter" | "|" | "%" | "C-f" | "C-b"
+            | "C-d" | "C-u" => {
                 let n = self.take_count();
                 if let Some((target, _)) = self.motion(key, n, false) {
                     self.cursor = target;
@@ -5068,6 +5265,12 @@ impl BodyEditor {
                 let n = self.take_count();
                 self.apply_linewise_operator('c', n);
             }
+            // `Y` is `yy`, not `y$` — vim's own inconsistency, and the
+            // one every muscle memory has.
+            "Y" => {
+                let n = self.take_count();
+                self.apply_linewise_operator('y', n);
+            }
             "s" => {
                 let n = self.take_count();
                 self.checkpoint();
@@ -5121,6 +5324,16 @@ impl BodyEditor {
                 self.count = 0;
                 self.undo_local();
             }
+            "R" => {
+                self.count = 0;
+                self.to_insert();
+                self.replacing = true;
+            }
+            "C-a" | "C-x" => {
+                let n = self.take_count();
+                let delta = i64::try_from(n).unwrap_or(1);
+                self.change_number(if key == "C-a" { delta } else { -delta });
+            }
             _ => self.count = 0,
         }
     }
@@ -5157,6 +5370,17 @@ impl BodyEditor {
                     op: Some(op),
                     kind: key.chars().next().unwrap_or('f'),
                 };
+            }
+            "`" | "'" => {
+                self.pending = Pending::JumpMark {
+                    op: Some(op),
+                    linewise: key == "'",
+                };
+            }
+            "/" | "?" => self.open_search(Some(op), key == "/"),
+            "n" | "N" => {
+                let n = self.take_count_for_op();
+                self.repeat_search(Some(op), key == "n", n);
             }
             "g" => self.pending = Pending::G(Some(op)),
             _ => {
@@ -5205,10 +5429,46 @@ impl BodyEditor {
             self.pending = Pending::Op(key.chars().next().unwrap_or('u'));
             return;
         }
+        // `gJ` joins with no separator at all — the one thing plain `J`
+        // will not do. Not a motion, so it is answered here.
+        if op.is_none() && key == "J" {
+            self.checkpoint();
+            for _ in 0..n {
+                self.join_line_raw();
+            }
+            return;
+        }
+        // `gv` puts the last selection back; `gi` resumes typing where
+        // INSERT was last left. Neither is a range, so neither can be
+        // an operator target.
+        if op.is_none() && key == "v" {
+            if let Some((anchor, cursor, mode)) = self.last_visual {
+                self.anchor = anchor.min(self.buf.len());
+                self.set_cursor_byte(cursor);
+                self.mode = mode;
+            }
+            return;
+        }
+        if op.is_none() && key == "i" {
+            if let Some(at) = self.last_insert {
+                self.set_cursor_byte(at);
+            }
+            self.to_insert();
+            return;
+        }
         let target = match key {
             "g" => Some(self.line_col_offset(if self.count_given { n - 1 } else { 0 }, 0)),
             "e" | "E" => Some(self.word_end_back(self.cursor, key == "E", n)),
             "_" => Some(self.first_non_blank_backwards_from_line_end()),
+            // The display-line motions. Nothing soft-wraps here, so a
+            // display line is a real line and these are their plain
+            // counterparts — but they must exist, or `gj` would eat the
+            // `g` and leave the cursor where it was.
+            "0" | "home" => Some(self.line_start(self.cursor)),
+            "^" => Some(self.first_non_blank(self.cursor)),
+            "$" | "end" => Some(self.line_end(self.cursor)),
+            "j" | "down" => Some(self.line_col_offset(self.cursor_line() + n, 0)),
+            "k" | "up" => Some(self.line_col_offset(self.cursor_line().saturating_sub(n), 0)),
             _ => None,
         };
         let Some(target) = target else {
@@ -5216,14 +5476,20 @@ impl BodyEditor {
             self.op_count = 0;
             return;
         };
-        let kind = if key == "g" {
-            MotionKind::Linewise
-        } else {
-            MotionKind::Inclusive
+        let kind = match key {
+            "g" | "j" | "down" | "k" | "up" => MotionKind::Linewise,
+            "0" | "home" | "^" | "$" | "end" => MotionKind::Exclusive,
+            _ => MotionKind::Inclusive,
         };
-        match op {
-            Some(op) => self.apply_operator(op, self.cursor, target, kind),
-            None => self.cursor = target,
+        if let Some(op) = op {
+            self.apply_operator(op, self.cursor, target, kind);
+        } else {
+            self.cursor = target;
+            // As with `$`, a Normal cursor never sits past the last
+            // char of a line.
+            if matches!(key, "$" | "end") {
+                self.cursor = self.offset_left(self.cursor);
+            }
         }
     }
 
@@ -5291,6 +5557,298 @@ impl BodyEditor {
             self.anchor = lo;
             self.cursor = self.prev_offset(hi).max(lo);
         }
+    }
+
+    /// The register named by a `"x` prefix.
+    fn finish_register(&mut self, key: &str) {
+        self.pending = Pending::None;
+        self.target_register = key
+            .chars()
+            .next()
+            .filter(|c| key.chars().count() == 1 && c.is_ascii_alphabetic());
+    }
+
+    /// The mark named by an `m` chord.
+    fn finish_mark(&mut self, key: &str) {
+        self.pending = Pending::None;
+        if let Some(c) = key
+            .chars()
+            .next()
+            .filter(|c| key.chars().count() == 1 && c.is_ascii_alphabetic())
+        {
+            self.marks.insert(c, self.cursor);
+        }
+    }
+
+    /// The mark named by a `` ` `` / `'` chord, jumped to or operated on.
+    ///
+    /// An unset mark is not an error, it is nothing: vim beeps, and the
+    /// buffer must be left exactly as it was.
+    fn finish_mark_jump(&mut self, op: Option<char>, linewise: bool, key: &str) {
+        self.pending = Pending::None;
+        let n = if op.is_some() {
+            self.take_count_for_op()
+        } else {
+            self.take_count()
+        };
+        let _ = n;
+        let Some(&raw) = key
+            .chars()
+            .next()
+            .filter(|_| key.chars().count() == 1)
+            .and_then(|c| self.marks.get(&c))
+        else {
+            return;
+        };
+        let mut target = raw.min(self.buf.len());
+        while target > 0 && !self.buf.is_char_boundary(target) {
+            target -= 1;
+        }
+        if linewise {
+            target = self.first_non_blank(target);
+        }
+        let kind = if linewise {
+            MotionKind::Linewise
+        } else {
+            MotionKind::Exclusive
+        };
+        match op {
+            Some(op) => self.apply_operator(op, self.cursor, target, kind),
+            None => self.cursor = target,
+        }
+    }
+
+    /// The register a `q` chord starts recording into.
+    fn finish_record(&mut self, key: &str) {
+        self.pending = Pending::None;
+        if let Some(c) = key
+            .chars()
+            .next()
+            .filter(|c| key.chars().count() == 1 && c.is_ascii_alphabetic())
+        {
+            self.recording = Some((c, Vec::new()));
+        }
+    }
+
+    /// The macro an `@` chord replays; `@@` repeats the last one.
+    fn finish_run_macro(&mut self, key: &str) {
+        self.pending = Pending::None;
+        let n = self.take_count();
+        let reg = if key == "@" {
+            self.last_macro
+        } else {
+            key.chars()
+                .next()
+                .filter(|c| key.chars().count() == 1 && c.is_ascii_alphabetic())
+        };
+        if let Some(reg) = reg {
+            self.run_macro(reg, n);
+        }
+    }
+
+    /// Replay macro `reg` `n` times.
+    ///
+    /// The replay records nothing (a macro that recorded itself would
+    /// grow without bound) and leaves INSERT behind it, so a macro that
+    /// ends mid-typing is repeatable.
+    fn run_macro(&mut self, reg: char, n: usize) {
+        let Some(steps) = self.macros.get(&reg).cloned() else {
+            return;
+        };
+        self.last_macro = Some(reg);
+        let outer = self.running_macro;
+        self.running_macro = true;
+        for _ in 0..n {
+            for step in &steps {
+                match step {
+                    MacroStep::Key(k) if k == "escape" && self.mode == EditorMode::Insert => {
+                        self.to_normal();
+                    }
+                    MacroStep::Key(k) => self.dispatch_modal_key(k),
+                    MacroStep::Text(t) => {
+                        let t = t.clone();
+                        self.insert_str(&t);
+                    }
+                }
+            }
+            if self.mode == EditorMode::Insert {
+                self.to_normal();
+            }
+        }
+        self.running_macro = outer;
+    }
+
+    /// The register being recorded into, for a shell's `recording @q`
+    /// indicator. `None` when nothing is.
+    #[must_use]
+    pub const fn recording_register(&self) -> Option<char> {
+        match self.recording {
+            Some((reg, _)) => Some(reg),
+            None => None,
+        }
+    }
+
+    /// Whether typing overwrites rather than inserts (`R`).
+    #[must_use]
+    pub const fn replacing(&self) -> bool {
+        self.replacing
+    }
+
+    /// The open search line as the user sees it (`/beta`), or `None`.
+    #[must_use]
+    pub fn search_prompt(&self) -> Option<String> {
+        self.search_input
+            .as_ref()
+            .map(|(fwd, pat)| format!("{}{pat}", if *fwd { '/' } else { '?' }))
+    }
+
+    /// The last search pattern, for a shell that highlights matches.
+    #[must_use]
+    pub fn search_pattern(&self) -> Option<&str> {
+        self.last_search.as_ref().map(|(p, _)| p.as_str())
+    }
+
+    /// Open the `/` (or `?`) line, carrying any armed operator with it
+    /// so `d/foo` deletes up to the match.
+    fn open_search(&mut self, op: Option<char>, forward: bool) {
+        self.search_input = Some((forward, String::new()));
+        self.search_op = op;
+    }
+
+    /// One key of the open search line.
+    fn search_key(&mut self, key: &str) {
+        let Some((forward, pattern)) = self.search_input.as_mut() else {
+            return;
+        };
+        match key {
+            "escape" => {
+                self.search_input = None;
+                self.search_op = None;
+                self.count = 0;
+                self.op_count = 0;
+            }
+            "enter" => {
+                let forward = *forward;
+                let pattern = std::mem::take(pattern);
+                self.search_input = None;
+                let op = self.search_op.take();
+                if pattern.is_empty() {
+                    return;
+                }
+                self.last_search = Some((pattern, forward));
+                let n = if op.is_some() {
+                    self.take_count_for_op()
+                } else {
+                    self.take_count()
+                };
+                self.repeat_search(op, true, n);
+            }
+            // Backspacing past the `/` closes the line, the way it
+            // closes vim's — the pattern and its prompt are one thing.
+            "backspace" => {
+                if pattern.pop().is_none() {
+                    self.search_input = None;
+                    self.search_op = None;
+                }
+            }
+            k => {
+                if let Some(c) = k.chars().next().filter(|_| k.chars().count() == 1) {
+                    pattern.push(c);
+                }
+            }
+        }
+    }
+
+    /// Run the last search `n` times, `same` direction or reversed
+    /// (`N`), optionally as an operator target.
+    fn repeat_search(&mut self, op: Option<char>, same: bool, n: usize) {
+        let Some((pattern, forward)) = self.last_search.clone() else {
+            self.count = 0;
+            self.op_count = 0;
+            return;
+        };
+        let forward = forward == same;
+        let mut at = self.cursor;
+        for _ in 0..n {
+            let Some(next) = self.find_from(&pattern, at, forward) else {
+                self.count = 0;
+                self.op_count = 0;
+                return;
+            };
+            at = next;
+        }
+        match op {
+            Some(op) => self.apply_operator(op, self.cursor, at, MotionKind::Exclusive),
+            None => self.cursor = at,
+        }
+    }
+
+    /// `*`/`#`: search for the word under the cursor.
+    fn search_word_under_cursor(&mut self, forward: bool, n: usize) {
+        let Some((lo, hi, _)) = self.word_object(false, false, 1) else {
+            return;
+        };
+        let word = self.buf[lo..hi].to_owned();
+        if word.trim().is_empty() {
+            return;
+        }
+        self.last_search = Some((word, forward));
+        self.repeat_search(None, true, n);
+    }
+
+    /// The next occurrence of `pattern` from `at`, wrapping around the
+    /// buffer exactly once. `None` when the pattern is nowhere.
+    fn find_from(&self, pattern: &str, at: usize, forward: bool) -> Option<usize> {
+        if pattern.is_empty() {
+            return None;
+        }
+        if forward {
+            let from = self.next_offset(at);
+            self.buf
+                .get(from..)
+                .and_then(|s| s.find(pattern))
+                .map(|i| from + i)
+                .or_else(|| self.buf.find(pattern))
+        } else {
+            self.buf
+                .get(..at)
+                .and_then(|s| s.rfind(pattern))
+                .or_else(|| self.buf.rfind(pattern))
+        }
+    }
+
+    /// `C-a`/`C-x`: add `delta` to the first number at or right of the
+    /// cursor on its line, leaving the cursor on the number's last
+    /// digit (vim's rule).
+    fn change_number(&mut self, delta: i64) {
+        let line_end = self.line_end(self.cursor);
+        let Some(digit) = self.buf[self.cursor..line_end]
+            .char_indices()
+            .find(|&(_, c)| c.is_ascii_digit())
+            .map(|(i, _)| self.cursor + i)
+        else {
+            return;
+        };
+        let line_start = self.line_start(self.cursor);
+        let mut lo = digit;
+        while lo > line_start && self.buf.as_bytes()[lo - 1].is_ascii_digit() {
+            lo -= 1;
+        }
+        // A `-` immediately before the digits is part of the number.
+        if lo > line_start && self.buf.as_bytes()[lo - 1] == b'-' {
+            lo -= 1;
+        }
+        let mut hi = digit;
+        while hi < line_end && self.buf.as_bytes()[hi].is_ascii_digit() {
+            hi += 1;
+        }
+        let Ok(value) = self.buf[lo..hi].parse::<i64>() else {
+            return;
+        };
+        self.checkpoint();
+        let replacement = (value.saturating_add(delta)).to_string();
+        self.buf.replace_range(lo..hi, &replacement);
+        self.cursor = lo + replacement.len() - 1;
     }
 
     /// The replacement char of an `r` chord.
@@ -5383,6 +5941,24 @@ impl BodyEditor {
             }
             "}" => (self.paragraph_forward(n), Exclusive),
             "{" => (self.paragraph_backward(n), Exclusive),
+            // The first-non-blank line motions. `_` counts the current
+            // line, `+`/`-` count from it — vim's off-by-one, kept.
+            "_" => (
+                self.first_non_blank(self.line_col_offset(self.cursor_line() + n - 1, 0)),
+                Linewise,
+            ),
+            "+" | "enter" => (
+                self.first_non_blank(self.line_col_offset(self.cursor_line() + n, 0)),
+                Linewise,
+            ),
+            "-" => (
+                self.first_non_blank(self.line_col_offset(self.cursor_line().saturating_sub(n), 0)),
+                Linewise,
+            ),
+            // `|` is 1-based: `1|` is the line start.
+            "|" => (self.line_col_offset(self.cursor_line(), n - 1), Exclusive),
+            "%" => (self.matching_bracket()?, Inclusive),
+            "C-f" | "C-b" | "C-d" | "C-u" => (self.scroll_motion(key, n), Linewise),
             ";" | "," => {
                 let (kind, ch) = self.last_find?;
                 let kind = if key == ";" {
@@ -5406,6 +5982,69 @@ impl BodyEditor {
             _ => return None,
         };
         Some((target, kind))
+    }
+
+    /// `C-f`/`C-b` (a page) and `C-d`/`C-u` (half of one).
+    ///
+    /// The editor owns no viewport — the shells derive their scroll
+    /// from the cursor — so moving the cursor *is* the scroll, and both
+    /// pairs are line motions rather than viewport commands.
+    fn scroll_motion(&self, key: &str, n: usize) -> usize {
+        let step = if matches!(key, "C-f" | "C-b") {
+            PAGE_LINES
+        } else {
+            PAGE_LINES / 2
+        };
+        let line = self.cursor_line();
+        let target = if matches!(key, "C-f" | "C-d") {
+            line + step * n
+        } else {
+            line.saturating_sub(step * n)
+        };
+        self.line_col_offset(target, 0)
+    }
+
+    /// `%`: the bracket matching the first one at or right of the
+    /// cursor on its line.
+    ///
+    /// Vim scans forward for a bracket before matching, so `%` works
+    /// from anywhere on a line that has one; the match itself nests and
+    /// crosses lines. `None` when the line holds no bracket, or when
+    /// the one it holds is unbalanced.
+    fn matching_bracket(&self) -> Option<usize> {
+        const PAIRS: [(char, char); 3] = [('(', ')'), ('[', ']'), ('{', '}')];
+        let line_end = self.line_end(self.cursor);
+        let (at, here) = self.buf[self.cursor..line_end]
+            .char_indices()
+            .find(|&(_, c)| PAIRS.iter().any(|&(o, cl)| c == o || c == cl))
+            .map(|(i, c)| (self.cursor + i, c))?;
+        let forward = PAIRS.iter().find(|&&(o, _)| o == here);
+        let mut depth = 0usize;
+        if let Some(&(open, close)) = forward {
+            for (i, c) in self.buf[self.next_offset(at)..].char_indices() {
+                if c == open {
+                    depth += 1;
+                } else if c == close {
+                    if depth == 0 {
+                        return Some(self.next_offset(at) + i);
+                    }
+                    depth -= 1;
+                }
+            }
+            return None;
+        }
+        let &(open, close) = PAIRS.iter().find(|&&(_, cl)| cl == here)?;
+        for (i, c) in self.buf[..at].char_indices().rev() {
+            if c == close {
+                depth += 1;
+            } else if c == open {
+                if depth == 0 {
+                    return Some(i);
+                }
+                depth -= 1;
+            }
+        }
+        None
     }
 
     /// Apply `f`/`F`/`t`/`T` `n` times within the cursor's line.
@@ -5450,6 +6089,7 @@ impl BodyEditor {
     fn text_object(&self, obj: char, around: bool, n: usize) -> Option<(usize, usize, MotionKind)> {
         match obj {
             'w' | 'W' => self.word_object(obj == 'W', around, n),
+            's' => self.sentence_object(around),
             'p' => self.paragraph_object(around),
             '"' | '\'' | '`' => self.quote_object(obj, around),
             '(' | ')' | 'b' => self.bracket_object('(', ')', around),
@@ -5518,6 +6158,60 @@ impl BodyEditor {
             }
         }
         Some((lo, hi, MotionKind::Exclusive))
+    }
+
+    /// `is`/`as`: the sentence around the cursor.
+    ///
+    /// A sentence ends at `.`, `!` or `?` (with any closing bracket or
+    /// quote after it) and runs to the start of the next one. `as`
+    /// takes the blanks that separate it from its successor, so
+    /// `das` leaves the surrounding prose spaced as it was.
+    ///
+    /// Always resolves — every cursor sits in some sentence — but it
+    /// returns the shape of its sibling objects so the caller can treat
+    /// all of them alike.
+    #[allow(clippy::unnecessary_wraps)]
+    fn sentence_object(&self, around: bool) -> Option<(usize, usize, MotionKind)> {
+        const CLOSERS: [char; 4] = [')', ']', '"', '\''];
+        let para_start = self.line_start(self.cursor);
+        let para_end = self.line_end(self.cursor);
+        let text = &self.buf[para_start..para_end];
+        // Every sentence end within the line, as an offset one past the
+        // terminator and its closers.
+        let mut ends = Vec::new();
+        let bytes: Vec<(usize, char)> = text.char_indices().collect();
+        for (i, (off, c)) in bytes.iter().enumerate() {
+            if !matches!(c, '.' | '!' | '?') {
+                continue;
+            }
+            let mut end = off + c.len_utf8();
+            let mut j = i + 1;
+            while let Some((o, c)) = bytes.get(j).filter(|(_, c)| CLOSERS.contains(c)) {
+                end = o + c.len_utf8();
+                j += 1;
+            }
+            // A terminator mid-word (`3.5`) does not end a sentence.
+            if bytes.get(j).is_none_or(|(_, c)| c.is_whitespace()) {
+                ends.push(end);
+            }
+        }
+        let here = self.cursor - para_start;
+        let lo = ends.iter().copied().rfind(|&e| e <= here).map_or(0, |e| {
+            e + text[e..]
+                .find(|c: char| !c.is_whitespace())
+                .unwrap_or(text.len() - e)
+        });
+        let mut hi = ends
+            .iter()
+            .copied()
+            .find(|&e| e > here)
+            .unwrap_or(text.len());
+        if around {
+            hi += text[hi..]
+                .find(|c: char| !c.is_whitespace())
+                .unwrap_or(text.len() - hi);
+        }
+        Some((para_start + lo, para_start + hi, MotionKind::Exclusive))
     }
 
     /// `ip`/`ap`: the run of blank or non-blank lines around the cursor.
@@ -5664,14 +6358,12 @@ impl BodyEditor {
         }
         match op {
             'y' => {
-                self.register = self.buf[lo..hi].to_owned();
-                self.linewise = false;
+                self.set_register(self.buf[lo..hi].to_owned(), false);
                 self.cursor = lo;
             }
             'd' | 'c' => {
                 self.checkpoint();
-                self.register = self.buf[lo..hi].to_owned();
-                self.linewise = false;
+                self.set_register(self.buf[lo..hi].to_owned(), false);
                 self.buf.replace_range(lo..hi, "");
                 self.cursor = lo;
                 if op == 'c' {
@@ -5737,14 +6429,12 @@ impl BodyEditor {
         };
         match op {
             'y' => {
-                self.register = Self::as_lines(&self.buf[first..with_newline]);
-                self.linewise = true;
+                self.set_register(Self::as_lines(&self.buf[first..with_newline]), true);
                 self.cursor = first;
             }
             'd' => {
                 self.checkpoint();
-                self.register = Self::as_lines(&self.buf[first..with_newline]);
-                self.linewise = true;
+                self.set_register(Self::as_lines(&self.buf[first..with_newline]), true);
                 // Deleting through the last (newline-less) line eats the
                 // preceding newline so no dangling terminator remains.
                 let cut_from = if with_newline >= self.buf.len() && first > 0 {
@@ -5759,8 +6449,7 @@ impl BodyEditor {
             }
             'c' => {
                 self.checkpoint();
-                self.register = Self::as_lines(&self.buf[first..with_newline]);
-                self.linewise = true;
+                self.set_register(Self::as_lines(&self.buf[first..with_newline]), true);
                 // The line itself survives, emptied — that is what makes
                 // `cc` different from `dd` followed by `O`.
                 self.buf.replace_range(first..last_end, "");
@@ -5863,9 +6552,9 @@ impl BodyEditor {
             self.selection()
         };
         self.checkpoint();
-        let text = self.register.clone();
+        let (text, linewise) = self.take_register();
         let replaced = self.buf[lo..hi].to_owned();
-        let insert = if self.linewise {
+        let insert = if linewise {
             text.trim_end_matches('\n').to_owned()
         } else {
             text
@@ -5890,8 +6579,7 @@ impl BodyEditor {
             end = next;
         }
         if end > start {
-            self.register = self.buf[start..end].to_owned();
-            self.linewise = false;
+            self.set_register(self.buf[start..end].to_owned(), false);
             self.buf.replace_range(start..end, "");
         }
     }
@@ -5928,6 +6616,18 @@ impl BodyEditor {
         self.cursor = end;
     }
 
+    /// `gJ`: pull the next line up verbatim — no separator inserted and
+    /// the next line's own indent kept, which is the whole difference
+    /// from [`Self::join_line`].
+    fn join_line_raw(&mut self) {
+        let end = self.line_end(self.cursor);
+        if end >= self.buf.len() {
+            return;
+        }
+        self.buf.replace_range(end..=end, "");
+        self.cursor = end;
+    }
+
     /// `O`: open a line above the current one and enter Insert.
     pub fn open_above(&mut self) {
         let start = self.line_start(self.cursor);
@@ -5940,16 +6640,16 @@ impl BodyEditor {
     /// `P`: paste linewise above the current line, charwise at the
     /// cursor (as opposed to [`Self::paste`], which goes after).
     pub fn paste_before(&mut self) {
-        if self.register.is_empty() {
+        let (text, linewise) = self.take_register();
+        if text.is_empty() {
             return;
         }
-        if self.linewise {
+        if linewise {
             let start = self.line_start(self.cursor);
-            let text = format!("{}\n", self.register.trim_end_matches('\n'));
+            let text = format!("{}\n", text.trim_end_matches('\n'));
             self.buf.insert_str(start, &text);
             self.cursor = start;
         } else {
-            let text = self.register.clone();
             self.buf.insert_str(self.cursor, &text);
         }
     }
@@ -6180,6 +6880,41 @@ impl BodyEditor {
         self.buf[start..self.line_end(start)].trim().is_empty()
     }
 
+    /// Store yanked or deleted text, honouring a `"x` prefix.
+    ///
+    /// The unnamed register is always written — vim's rule, and what
+    /// keeps a bare `p` working after `"ayy`. An uppercase name appends
+    /// to the lowercase register instead of replacing it.
+    fn set_register(&mut self, text: String, linewise: bool) {
+        if let Some(name) = self.target_register.take() {
+            let lower = name.to_ascii_lowercase();
+            if name.is_uppercase() {
+                let entry = self
+                    .registers
+                    .entry(lower)
+                    .or_insert_with(|| (String::new(), linewise));
+                entry.0.push_str(&text);
+                entry.1 = linewise;
+            } else {
+                self.registers.insert(lower, (text.clone(), linewise));
+            }
+        }
+        self.register = text;
+        self.linewise = linewise;
+    }
+
+    /// The text a paste takes, honouring a `"x` prefix.
+    fn take_register(&mut self) -> (String, bool) {
+        match self.target_register.take() {
+            Some(name) => self
+                .registers
+                .get(&name.to_ascii_lowercase())
+                .cloned()
+                .unwrap_or_default(),
+            None => (self.register.clone(), self.linewise),
+        }
+    }
+
     /// Normalise a linewise register to always end in a newline.
     fn as_lines(text: &str) -> String {
         let mut out = text.to_owned();
@@ -6192,7 +6927,13 @@ impl BodyEditor {
     /// The stroke of the chord in progress, if any.
     #[must_use]
     pub const fn pending_stroke(&self) -> Option<char> {
-        self.pending.stroke()
+        // An open search line is mid-chord too: without this the shells
+        // would read its `Esc` as "cancel the whole edit".
+        match self.search_input {
+            Some((true, _)) => Some('/'),
+            Some((false, _)) => Some('?'),
+            None => self.pending.stroke(),
+        }
     }
 
     /// The whole chord in progress as the user typed it (`2d3i`) —
@@ -6202,6 +6943,9 @@ impl BodyEditor {
     /// pieces, so the terminal and the GUI show the same thing (I4).
     #[must_use]
     pub fn pending_chord(&self) -> String {
+        if let Some(prompt) = self.search_prompt() {
+            return prompt;
+        }
         let mut out = String::new();
         if self.op_count > 0 {
             out.push_str(&self.op_count.to_string());
@@ -6217,6 +6961,11 @@ impl BodyEditor {
             Pending::Obj { around, .. } => out.push(if around { 'a' } else { 'i' }),
             Pending::Find { kind, .. } => out.push(kind),
             Pending::Replace => out.push('r'),
+            Pending::Register => out.push('"'),
+            Pending::Mark => out.push('m'),
+            Pending::JumpMark { linewise, .. } => out.push(if linewise { '\'' } else { '`' }),
+            Pending::RecordMacro => out.push('q'),
+            Pending::RunMacro => out.push('@'),
             Pending::Op(_) | Pending::None => {}
         }
         out
@@ -6226,8 +6975,16 @@ impl BodyEditor {
     const fn pending_op(&self) -> Option<char> {
         match self.pending {
             Pending::Op(c) => Some(c),
-            Pending::G(op) | Pending::Obj { op, .. } | Pending::Find { op, .. } => op,
-            Pending::Replace | Pending::None => None,
+            Pending::G(op)
+            | Pending::Obj { op, .. }
+            | Pending::Find { op, .. }
+            | Pending::JumpMark { op, .. } => op,
+            Pending::Replace
+            | Pending::Register
+            | Pending::Mark
+            | Pending::RecordMacro
+            | Pending::RunMacro
+            | Pending::None => None,
         }
     }
 
@@ -6360,12 +7117,13 @@ impl BodyEditor {
     /// `p`: paste the register — linewise below the current line,
     /// charwise after the cursor.
     pub fn paste(&mut self) {
-        if self.register.is_empty() {
+        let (text, linewise) = self.take_register();
+        if text.is_empty() {
             return;
         }
-        if self.linewise {
+        if linewise {
             let end = self.line_end(self.cursor);
-            let text = format!("\n{}", self.register.trim_end_matches('\n'));
+            let text = format!("\n{}", text.trim_end_matches('\n'));
             self.buf.insert_str(end, &text);
             self.cursor = end + 1;
         } else {
@@ -6374,7 +7132,6 @@ impl BodyEditor {
                 .next()
                 .filter(|c| *c != '\n')
                 .map_or(self.cursor, |c| self.cursor + c.len_utf8());
-            let text = self.register.clone();
             self.buf.insert_str(pos, &text);
             self.cursor = pos;
         }
@@ -7210,7 +7967,10 @@ impl ModalApp {
             scheduled: h.scheduled().map(ToOwned::to_owned),
             deadline: h.deadline().map(ToOwned::to_owned),
             properties: h.properties().to_vec(),
-            body: h.body_text().to_owned(),
+            // The body is shown and edited as the author wrote it; the
+            // comma escape that keeps a `* line` out of the outline is
+            // an on-disk spelling ([`closure_org::escape_body`]).
+            body: closure_org::unescape_body(h.body_text()),
             path: path.display().to_string(),
         })
     }
@@ -8501,8 +9261,12 @@ impl ModalApp {
             return;
         }
         // `:` outside INSERT is the ex line, the way vim's is. Inside
-        // INSERT it is text — `:PROPERTIES:` and `12:30` are prose.
-        if text == Some(':') && self.body.mode() != EditorMode::Insert {
+        // INSERT it is text — `:PROPERTIES:` and `12:30` are prose —
+        // and inside an open `/` search it is part of the pattern.
+        if text == Some(':')
+            && self.body.mode() != EditorMode::Insert
+            && self.body.search_prompt().is_none()
+        {
             self.begin_ex();
             return;
         }
@@ -8782,6 +9546,11 @@ impl ModalApp {
                     self.edit_target = None;
                     self.body.clear();
                     self.surface = ModalSurface::Browse;
+                } else if ctrl {
+                    // `C-d`, `C-f`, `C-a` … are chords in their own
+                    // right; dropping the modifier turned them into the
+                    // plain letters and silently deleted a char.
+                    self.body.modal_key(&format!("C-{key}"));
                 } else {
                     self.body.modal_key(key);
                 }
@@ -8806,6 +9575,31 @@ impl ModalApp {
     #[must_use]
     pub fn body_pending_chord(&self) -> String {
         self.body.pending_chord()
+    }
+
+    /// Park the body editor's cursor at a byte offset (the mouse seam,
+    /// and what a test needs to address a position directly).
+    pub fn body_set_cursor(&mut self, byte: usize) {
+        self.body.set_cursor_byte(byte);
+    }
+
+    /// The body editor's open `/` search line, for the shell to paint.
+    #[must_use]
+    pub fn body_search_prompt(&self) -> Option<String> {
+        self.body.search_prompt()
+    }
+
+    /// Whether the body editor is in REPLACE (`R`) rather than INSERT —
+    /// the same mode chip, a different word on it.
+    #[must_use]
+    pub const fn body_replacing(&self) -> bool {
+        self.body.replacing()
+    }
+
+    /// The macro register the body editor is recording into, if any.
+    #[must_use]
+    pub const fn body_recording(&self) -> Option<char> {
+        self.body.recording_register()
     }
 
     /// Candidates of the live completion cycle (empty when none) — the
@@ -8904,7 +9698,10 @@ impl ModalApp {
     pub fn commit_edit_body(&mut self, shell: &mut Shell) {
         if let Some(id) = self.edit_target.take() {
             let bid = closure_core::BlockId::from_existing(&id);
-            let mut body = self.body.text().to_owned();
+            // A body line starting with `*` *is* a headline once it is
+            // back in the file: written verbatim it would split the
+            // outline and reparent every following sibling.
+            let mut body = closure_org::escape_body(self.body.text());
             if !body.is_empty() && !body.ends_with('\n') {
                 body.push('\n');
             }
