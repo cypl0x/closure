@@ -24,6 +24,17 @@ fn shell() -> (TempDir, Shell) {
     (dir, Shell::new(v))
 }
 
+/// Open the selected headline's body and get into INSERT.
+///
+/// Two `i`s: the first is the outline's edit-body chord, which lands in
+/// NORMAL in a modal input mode (a buffer opens the way Doom opens one);
+/// the second is vim's own insert.
+fn typing_body(app: &mut ModalApp, sh: &mut Shell) {
+    app.on_key(sh, "i", false, false, Some('i'));
+    assert_eq!(app.surface(), ModalSurface::EditBody);
+    app.on_key(sh, "i", false, false, Some('i'));
+}
+
 fn typ(app: &mut ModalApp, sh: &mut Shell, text: &str) {
     for c in text.chars() {
         if c == '\n' {
@@ -38,8 +49,7 @@ fn typ(app: &mut ModalApp, sh: &mut Shell, text: &str) {
 fn a_body_star_line_does_not_become_a_headline() {
     let (_d, mut sh) = shell();
     let mut app = ModalApp::new(InputMode::Vim);
-    app.on_key(&mut sh, "i", false, false, Some('i'));
-    assert_eq!(app.surface(), ModalSurface::EditBody);
+    typing_body(&mut app, &mut sh);
     typ(&mut app, &mut sh, "* Foo body\n");
     app.on_key(&mut sh, "enter", true, false, None); // C-Enter commit
     let titles: Vec<String> = app.rows(&sh).iter().map(|r| r.title.clone()).collect();
@@ -50,7 +60,7 @@ fn a_body_star_line_does_not_become_a_headline() {
 fn the_escape_is_invisible_to_the_editor() {
     let (_d, mut sh) = shell();
     let mut app = ModalApp::new(InputMode::Vim);
-    app.on_key(&mut sh, "i", false, false, Some('i'));
+    typing_body(&mut app, &mut sh);
     typ(&mut app, &mut sh, "* Foo body\n");
     app.on_key(&mut sh, "enter", true, false, None);
     // Reopening shows what was typed, not its on-disk spelling.
@@ -66,7 +76,7 @@ fn the_escape_is_invisible_to_the_editor() {
 fn the_escape_round_trips_through_a_second_edit() {
     let (_d, mut sh) = shell();
     let mut app = ModalApp::new(InputMode::Vim);
-    app.on_key(&mut sh, "i", false, false, Some('i'));
+    typing_body(&mut app, &mut sh);
     typ(&mut app, &mut sh, "* one\n");
     app.on_key(&mut sh, "enter", true, false, None);
     // Open and commit again, unchanged: the comma must not accumulate.

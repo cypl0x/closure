@@ -2236,6 +2236,13 @@ impl App {
                 self.mode = AppMode::Conflicts;
                 self.result_cursor = 0;
             }
+            // The rail's home button, as a command: the GUIs paint it,
+            // and here it is `g h` — the way back to the file list from
+            // whichever pane you are in.
+            "browse" => {
+                self.mode = AppMode::Browse;
+                self.result_cursor = 0;
+            }
             "block-flow" | "allow-flow" => match self.sniffer.get(self.result_cursor) {
                 Some((candidate, _)) => {
                     self.flow_request = Some((candidate.clone(), cmd == "allow-flow"));

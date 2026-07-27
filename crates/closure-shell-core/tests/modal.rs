@@ -200,6 +200,12 @@ fn vim_i_enters_body_editor_and_commits() {
     let mut app = ModalApp::new(InputMode::Vim);
     app.on_key(&mut sh, "i", false, false, Some('i')); // edit-body
     assert_eq!(app.surface(), ModalSurface::EditBody);
+    assert_eq!(
+        app.body_mode(),
+        closure_shell_core::EditorMode::Normal,
+        "a modal mode opens the buffer in NORMAL"
+    );
+    app.on_key(&mut sh, "i", false, false, Some('i')); // INSERT
     for c in "note".chars() {
         app.on_key(&mut sh, &c.to_string(), false, false, Some(c));
     }
@@ -215,7 +221,8 @@ fn vim_i_enters_body_editor_and_commits() {
 fn body_editor_escape_goes_normal_then_cancels() {
     let (_d, mut sh) = shell();
     let mut app = ModalApp::new(InputMode::Vim);
-    app.on_key(&mut sh, "i", false, false, Some('i'));
+    app.on_key(&mut sh, "i", false, false, Some('i')); // open the body
+    app.on_key(&mut sh, "i", false, false, Some('i')); // INSERT
     for c in "scratch".chars() {
         app.on_key(&mut sh, &c.to_string(), false, false, Some(c));
     }
@@ -235,7 +242,8 @@ fn body_editor_escape_goes_normal_then_cancels() {
 fn body_normal_mode_navigates_and_edits_vim_style() {
     let (_d, mut sh) = shell();
     let mut app = ModalApp::new(InputMode::Vim);
-    app.on_key(&mut sh, "i", false, false, Some('i'));
+    app.on_key(&mut sh, "i", false, false, Some('i')); // open the body
+    app.on_key(&mut sh, "i", false, false, Some('i')); // INSERT
     for c in "ab\ncd".chars() {
         if c == '\n' {
             app.on_key(&mut sh, "enter", false, false, None);
@@ -265,7 +273,8 @@ fn body_normal_mode_navigates_and_edits_vim_style() {
 fn body_normal_o_opens_line_below_in_insert() {
     let (_d, mut sh) = shell();
     let mut app = ModalApp::new(InputMode::Vim);
-    app.on_key(&mut sh, "i", false, false, Some('i'));
+    app.on_key(&mut sh, "i", false, false, Some('i')); // open the body
+    app.on_key(&mut sh, "i", false, false, Some('i')); // INSERT
     for c in "top".chars() {
         app.on_key(&mut sh, &c.to_string(), false, false, Some(c));
     }
@@ -856,7 +865,8 @@ fn org_tempo_s_tab_expands_to_src_block() {
     // `#+BEGIN_SRC ` so the language can be typed immediately.
     let (_d, mut sh) = shell();
     let mut app = ModalApp::new(InputMode::Vim);
-    app.on_key(&mut sh, "i", false, false, Some('i'));
+    app.on_key(&mut sh, "i", false, false, Some('i')); // open the body
+    app.on_key(&mut sh, "i", false, false, Some('i')); // INSERT
     for c in "<s".chars() {
         app.on_key(&mut sh, &c.to_string(), false, false, Some(c));
     }
@@ -881,7 +891,8 @@ fn org_tempo_expands_the_other_block_templates() {
     for (trigger, expanded) in cases {
         let (_d, mut sh) = shell();
         let mut app = ModalApp::new(InputMode::Vim);
-        app.on_key(&mut sh, "i", false, false, Some('i'));
+        app.on_key(&mut sh, "i", false, false, Some('i')); // open the body
+        app.on_key(&mut sh, "i", false, false, Some('i')); // INSERT
         for c in trigger.chars() {
             app.on_key(&mut sh, &c.to_string(), false, false, Some(c));
         }
@@ -894,7 +905,8 @@ fn org_tempo_expands_the_other_block_templates() {
 fn tab_without_template_indents() {
     let (_d, mut sh) = shell();
     let mut app = ModalApp::new(InputMode::Vim);
-    app.on_key(&mut sh, "i", false, false, Some('i'));
+    app.on_key(&mut sh, "i", false, false, Some('i')); // open the body
+    app.on_key(&mut sh, "i", false, false, Some('i')); // INSERT
     for c in "x".chars() {
         app.on_key(&mut sh, &c.to_string(), false, false, Some(c));
     }
@@ -909,7 +921,8 @@ fn tab_without_template_indents() {
 fn c_n_completes_org_keywords() {
     let (_d, mut sh) = shell();
     let mut app = ModalApp::new(InputMode::Vim);
-    app.on_key(&mut sh, "i", false, false, Some('i'));
+    app.on_key(&mut sh, "i", false, false, Some('i')); // open the body
+    app.on_key(&mut sh, "i", false, false, Some('i')); // INSERT
     for c in "TO".chars() {
         app.on_key(&mut sh, &c.to_string(), false, false, Some(c));
     }
@@ -921,7 +934,8 @@ fn c_n_completes_org_keywords() {
 fn c_n_completes_words_from_the_vault_dabbrev_style() {
     let (_d, mut sh) = shell();
     let mut app = ModalApp::new(InputMode::Vim);
-    app.on_key(&mut sh, "i", false, false, Some('i'));
+    app.on_key(&mut sh, "i", false, false, Some('i')); // open the body
+    app.on_key(&mut sh, "i", false, false, Some('i')); // INSERT
     for c in "Pers".chars() {
         app.on_key(&mut sh, &c.to_string(), false, false, Some(c));
     }
@@ -944,7 +958,8 @@ fn c_n_cycles_and_c_p_cycles_back() {
     let v = Vault::open(dir.path()).expect("open");
     let mut sh = Shell::new(v);
     let mut app = ModalApp::new(InputMode::Vim);
-    app.on_key(&mut sh, "i", false, false, Some('i'));
+    app.on_key(&mut sh, "i", false, false, Some('i')); // open the body
+    app.on_key(&mut sh, "i", false, false, Some('i')); // INSERT
     for c in "alph".chars() {
         app.on_key(&mut sh, &c.to_string(), false, false, Some(c));
     }
@@ -963,6 +978,10 @@ fn c_n_cycles_and_c_p_cycles_back() {
 
 fn editor_with(sh: &mut Shell, text: &str) -> ModalApp {
     let mut app = ModalApp::new(InputMode::Vim);
+    // The outline's `i` opens the body; the editor's own `i` starts
+    // typing into it. A modal mode opens the buffer in NORMAL, the way
+    // Doom opens one.
+    app.on_key(sh, "i", false, false, Some('i'));
     app.on_key(sh, "i", false, false, Some('i'));
     for c in text.chars() {
         if c == '\n' {
@@ -1483,7 +1502,8 @@ fn tab_accepts_the_active_completion_session() {
     let v = Vault::open(dir.path()).expect("open");
     let mut sh = Shell::new(v);
     let mut app = ModalApp::new(InputMode::Vim);
-    app.on_key(&mut sh, "i", false, false, Some('i'));
+    app.on_key(&mut sh, "i", false, false, Some('i')); // open the body
+    app.on_key(&mut sh, "i", false, false, Some('i')); // INSERT
     for c in "alp".chars() {
         app.on_key(&mut sh, &c.to_string(), false, false, Some(c));
     }
@@ -1502,7 +1522,8 @@ fn tab_accepts_the_active_completion_session() {
 fn tab_without_a_session_still_indents() {
     let (_d, mut sh) = shell();
     let mut app = ModalApp::new(InputMode::Vim);
-    app.on_key(&mut sh, "i", false, false, Some('i'));
+    app.on_key(&mut sh, "i", false, false, Some('i')); // open the body
+    app.on_key(&mut sh, "i", false, false, Some('i')); // INSERT
     for c in "hi".chars() {
         app.on_key(&mut sh, &c.to_string(), false, false, Some(c));
     }
@@ -1521,7 +1542,8 @@ fn completion_session_caps_at_eight_candidates() {
     let v = Vault::open(dir.path()).expect("open");
     let mut sh = Shell::new(v);
     let mut app = ModalApp::new(InputMode::Vim);
-    app.on_key(&mut sh, "i", false, false, Some('i'));
+    app.on_key(&mut sh, "i", false, false, Some('i')); // open the body
+    app.on_key(&mut sh, "i", false, false, Some('i')); // INSERT
     for c in "zebra".chars() {
         app.on_key(&mut sh, &c.to_string(), false, false, Some(c));
     }
@@ -1999,7 +2021,8 @@ fn click_ends_a_completion_session() {
     let v = Vault::open(dir.path()).expect("open");
     let mut sh = Shell::new(v);
     let mut app = ModalApp::new(InputMode::Vim);
-    app.on_key(&mut sh, "i", false, false, Some('i'));
+    app.on_key(&mut sh, "i", false, false, Some('i')); // open the body
+    app.on_key(&mut sh, "i", false, false, Some('i')); // INSERT
     for c in "alp".chars() {
         app.on_key(&mut sh, &c.to_string(), false, false, Some(c));
     }

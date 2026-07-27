@@ -239,7 +239,7 @@ fn keystrokes_reach_the_view_through_gpui(cx: &mut gpui::TestAppContext) {
     // which only `run` does, and only in production — every key the
     // user presses goes nowhere while every test stays green.
     let (_dir, view, vcx) = visual_window(cx, "* Note\n");
-    vcx.simulate_keystrokes("i");
+    vcx.simulate_keystrokes("i i");
     view.update(vcx, |v, _cx| {
         assert_eq!(v.surface(), ModalSurface::EditBody, "`i` opened the editor");
     });
@@ -250,7 +250,7 @@ fn keystrokes_reach_the_view_through_gpui(cx: &mut gpui::TestAppContext) {
 #[gpui::test]
 fn a_shifted_keystroke_survives_the_platform(cx: &mut gpui::TestAppContext) {
     let (_dir, view, vcx) = visual_window(cx, "* Note\n");
-    vcx.simulate_keystrokes("i");
+    vcx.simulate_keystrokes("i i");
     vcx.simulate_input("one two");
     vcx.simulate_keystrokes("escape 0 d i w");
     view.update(vcx, |v, _cx| assert_eq!(v.body(), " two"));
@@ -646,9 +646,9 @@ fn the_wheel_scrolls_the_body_editor(cx: &mut gpui::TestAppContext) {
     let body = numbered("line", 400);
     let (_dir, view, vcx) = visual_window(cx, &format!("* Long\n{body}"));
     view.update(vcx, |v, cx| v.run_command("edit-body", cx));
-    // The editor opens with the cursor at the end of a 400-line body,
-    // so line 0 is off screen until the cursor comes back to the top.
-    vcx.simulate_keystrokes("escape g g");
+    // The buffer opens in NORMAL at the top; `g g` is a no-op that
+    // states it, so the assertion below reads as an assertion.
+    vcx.simulate_keystrokes("g g");
     vcx.run_until_parked();
     let before = view.update(vcx, |v, _cx| v.body_scroll_start());
     assert_eq!(before, 0, "the editor is back at the top");
@@ -677,7 +677,7 @@ fn dragging_the_body_scrollbar_scrolls_the_editor(cx: &mut gpui::TestAppContext)
     let body = numbered("line", 400);
     let (_dir, view, vcx) = visual_window(cx, &format!("* Long\n{body}"));
     view.update(vcx, |v, cx| v.run_command("edit-body", cx));
-    vcx.simulate_keystrokes("escape g g");
+    vcx.simulate_keystrokes("g g");
     vcx.run_until_parked();
     assert_eq!(view.update(vcx, |v, _cx| v.body_scroll_start()), 0);
     let track = vcx.debug_bounds("body-scrollbar").expect("painted");
@@ -824,7 +824,7 @@ fn the_clipboard_chords_round_trip(cx: &mut gpui::TestAppContext) {
     // handler now claims every event it sees — so this is also the
     // guard that claiming it did not swallow the desktop chords.
     let (_dir, view, vcx) = visual_window(cx, "* Note\n");
-    vcx.simulate_keystrokes("i");
+    vcx.simulate_keystrokes("i i");
     vcx.simulate_input("copy me");
     // VISUAL LINE over the whole line, which needs no column motion.
     vcx.simulate_keystrokes("escape shift-v");
@@ -851,7 +851,7 @@ fn the_slash_menu_opens_inside_the_window_and_inserts(cx: &mut gpui::TestAppCont
     // clip is a menu you cannot see or click.
     let (_dir, view, vcx) = visual_window(cx, &format!("* Note\n{}", numbered("line", 300)));
     view.update(vcx, |v, cx| v.run_command("edit-body", cx));
-    vcx.simulate_keystrokes("escape shift-g o");
+    vcx.simulate_keystrokes("shift-g o");
     vcx.simulate_input("/");
     vcx.run_until_parked();
 
@@ -888,7 +888,7 @@ fn the_completion_popup_opens_inside_the_window(cx: &mut gpui::TestAppContext) {
     );
     view.update(vcx, |v, cx| v.run_command("edit-body", cx));
     // Type a prefix the vault can complete, then ask for it.
-    vcx.simulate_keystrokes("escape shift-g o");
+    vcx.simulate_keystrokes("shift-g o");
     vcx.simulate_input("extrao");
     vcx.simulate_keystrokes("ctrl-n");
     vcx.run_until_parked();

@@ -28,6 +28,8 @@ fn editing(text: &str) -> (TempDir, Shell, ModalApp) {
     let mut app = ModalApp::new(InputMode::Vim);
     app.on_key(&mut sh, "i", false, false, Some('i'));
     assert_eq!(app.surface(), ModalSurface::EditBody);
+    // The buffer opens in NORMAL in a modal mode; `i` starts typing.
+    app.on_key(&mut sh, "i", false, false, Some('i'));
     for c in text.chars() {
         if c == '\n' {
             app.on_key(&mut sh, "enter", false, false, None);

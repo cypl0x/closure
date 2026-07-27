@@ -156,6 +156,9 @@ fn committing_writes_the_block_back_and_leaves_the_file_alone() {
     let (dir, mut shell, mut app) = fixture();
     app.run(&mut shell, "block-list");
     app.run(&mut shell, "edit-special");
+    // The block buffer opens in NORMAL (Doom opens buffers that way),
+    // so typing starts with vim's own insert.
+    app.on_key(&mut shell, "i", false, false, Some('i'));
     for c in "echo edited".chars() {
         app.on_key(&mut shell, "x", false, false, Some(c));
     }
@@ -181,6 +184,9 @@ fn escaping_edit_special_discards_the_edit() {
     let (dir, mut shell, mut app) = fixture();
     app.run(&mut shell, "block-list");
     app.run(&mut shell, "edit-special");
+    // The block buffer opens in NORMAL (Doom opens buffers that way),
+    // so typing starts with vim's own insert.
+    app.on_key(&mut shell, "i", false, false, Some('i'));
     for c in "garbage".chars() {
         app.on_key(&mut shell, "x", false, false, Some(c));
     }
@@ -208,6 +214,9 @@ fn edit_special_from_the_body_editor_splices_back_into_the_buffer() {
     assert_eq!(app.surface(), ModalSurface::EditBlock);
     assert_eq!(app.body_buffer(), "echo hi\n");
 
+    // The block buffer opens in NORMAL (Doom opens buffers that way),
+    // so typing starts with vim's own insert.
+    app.on_key(&mut shell, "i", false, false, Some('i'));
     for c in "echo spliced".chars() {
         app.on_key(&mut shell, "x", false, false, Some(c));
     }

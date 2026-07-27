@@ -182,6 +182,9 @@ fn editing(body: &str) -> (tempfile::TempDir, Shell, ModalApp) {
     let (mut shell, mut app) = (Shell::new(vault), ModalApp::new(InputMode::Doom));
     app.select(0, &shell);
     app.run(&mut shell, "edit-body");
+    // Table TAB is INSERT-mode behaviour: the buffer opens in NORMAL in
+    // a modal mode, where TAB cycles folds the way org's does.
+    app.on_key(&mut shell, "i", false, false, Some('i'));
     (dir, shell, app)
 }
 

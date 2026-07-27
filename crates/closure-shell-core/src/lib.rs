@@ -4607,9 +4607,26 @@ impl BodyEditor {
 
     /// Load `text`, cursor at the end, Insert mode (the edit-body flow).
     pub fn load(&mut self, text: String) {
-        self.cursor = text.len();
+        self.load_in(text, EditorMode::Insert);
+    }
+
+    /// Load `text` and land in `mode`.
+    ///
+    /// Where the cursor goes follows from the mode rather than being a
+    /// second decision: INSERT opens at the end, the way appending to a
+    /// note does; NORMAL opens at the top, the way opening a buffer
+    /// does. A VISUAL entry mode makes no sense with no selection yet,
+    /// so it starts at the top too and collapses the anchor onto the
+    /// cursor.
+    pub fn load_in(&mut self, text: String, mode: EditorMode) {
+        self.cursor = if mode == EditorMode::Insert {
+            text.len()
+        } else {
+            0
+        };
         self.buf = text;
-        self.mode = EditorMode::Insert;
+        self.mode = mode;
+        self.anchor = self.cursor;
         self.undo_stack.clear();
         self.redo_stack.clear();
         self.insert_armed = true;
@@ -8720,10 +8737,39 @@ impl ModalApp {
         self.open_special(content);
     }
 
+    /// Whether the active input mode edits modally — whether there is a
+    /// NORMAL for a buffer to open in at all.
+    ///
+    /// Notion and Emacs have no modal state, so a body they open is a
+    /// text field and typing into it types. Vim, Doom and Helix do, and
+    /// in those the first thing typed into a fresh buffer is a command.
+    #[must_use]
+    pub const fn modal_editing(&self) -> bool {
+        matches!(
+            self.mode,
+            InputMode::Vim | InputMode::Doom | InputMode::Helix
+        )
+    }
+
+    /// Which editor mode a freshly opened buffer lands in.
+    const fn entry_mode(&self) -> EditorMode {
+        if self.modal_editing() {
+            EditorMode::Normal
+        } else {
+            EditorMode::Insert
+        }
+    }
+
+    /// Load `text` into the body editor the way *this* input mode opens
+    /// a buffer ([`Self::entry_mode`]).
+    fn load_body(&mut self, text: String) {
+        self.body.load_in(text, self.entry_mode());
+    }
+
     /// Load `content` into the editor as an edit-special session.
     fn open_special(&mut self, content: String) {
         self.special_return = Some(self.surface);
-        self.body.load(content);
+        self.load_body(content);
         self.surface = ModalSurface::EditBlock;
         self.status = format!(
             "edit-special [{}] — C-Enter write back, Esc discard",
@@ -8753,7 +8799,7 @@ impl ModalApp {
                 // Splice into the body buffer; the ordinary body commit
                 // is what carries it to disk.
                 buffer.replace_range(range, &edited);
-                self.body.load(buffer);
+                self.load_body(buffer);
                 self.body.set_cursor_byte(cursor);
                 "block spliced — C-Enter again to save the body".clone_into(&mut self.status);
             }
@@ -8765,7 +8811,7 @@ impl ModalApp {
     fn cancel_edit_special(&mut self) {
         let origin = self.special.take().map(|(o, _)| o);
         if let Some(SpecialOrigin::Body { buffer, cursor, .. }) = origin {
-            self.body.load(buffer);
+            self.load_body(buffer);
             self.body.set_cursor_byte(cursor);
         } else {
             self.body.clear();
@@ -9585,7 +9631,11 @@ impl ModalApp {
         for l in aligned_lines.iter().take(target_line) {
             offset += l.len() + 1;
         }
-        self.body.load(rebuilt);
+        // A realign happens mid-edit, so it keeps the mode the user is
+        // in: reloading into the *entry* mode would throw them out of
+        // INSERT halfway through typing a cell.
+        let mode = self.body.mode();
+        self.body.load_in(rebuilt, mode);
         self.body.set_cursor_byte(offset + target_byte);
         true
     }
@@ -10253,9 +10303,13 @@ impl ModalApp {
                     self.edit_target = Some(row.id);
                     let body = self.detail(shell).map(|d| d.body).unwrap_or_default();
                     self.body_baseline.clone_from(&body);
-                    self.body.load(body);
+                    self.load_body(body);
                     self.surface = ModalSurface::EditBody;
-                    "edit body — C-Enter save, Esc cancel".clone_into(&mut self.status);
+                    self.status = if self.modal_editing() {
+                        "edit body — NORMAL, i to insert, C-Enter save, Esc cancel".to_owned()
+                    } else {
+                        "edit body — C-Enter save, Esc cancel".to_owned()
+                    };
                 }
             }
             "cycle-mode" => {

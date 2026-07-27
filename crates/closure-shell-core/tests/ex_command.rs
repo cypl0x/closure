@@ -124,6 +124,8 @@ fn w_commits_the_body_when_the_editor_is_open() {
     let (_d, mut shell, mut app) = fixture();
     app.select(0, &shell);
     app.run(&mut shell, "edit-body");
+    // The buffer opens in NORMAL, so typing starts with `i`.
+    app.on_key(&mut shell, "i", false, false, Some('i'));
     type_str(&mut app, &mut shell, "typed in the editor");
     // Esc leaves INSERT so `:` is a command, not text.
     app.on_key(&mut shell, "escape", false, false, None);
@@ -178,6 +180,7 @@ fn colon_inside_the_body_editor_is_text_not_a_command() {
     let (_d, mut shell, mut app) = fixture();
     app.select(0, &shell);
     app.run(&mut shell, "edit-body");
+    app.on_key(&mut shell, "i", false, false, Some('i'));
     type_str(&mut app, &mut shell, "at 12:30");
     assert_eq!(app.surface(), ModalSurface::EditBody);
     assert_eq!(app.body_buffer(), "at 12:30");
@@ -188,7 +191,6 @@ fn colon_in_editor_normal_mode_opens_the_ex_line() {
     let (_d, mut shell, mut app) = fixture();
     app.select(0, &shell);
     app.run(&mut shell, "edit-body");
-    app.on_key(&mut shell, "escape", false, false, None);
     app.on_key(&mut shell, "x", false, false, Some(':'));
     assert_eq!(app.surface(), ModalSurface::Ex, "vim reflex, vim result");
 }

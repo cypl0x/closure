@@ -29,7 +29,12 @@ fn fixture() -> (tempfile::TempDir, Shell, ModalApp) {
     (dir, Shell::new(vault), ModalApp::new(InputMode::Doom))
 }
 
-/// Open the body editor, which starts in INSERT on an empty body.
+/// Open the body editor and start typing into it.
+///
+/// The "/" menu is an INSERT-mode affordance — it is Notion's, and it
+/// triggers on a typed slash — so the fixture gets there the way the
+/// user does: the buffer opens in NORMAL in a modal mode, and `i` is
+/// what starts typing.
 fn editing() -> (tempfile::TempDir, Shell, ModalApp) {
     let (dir, mut shell, mut app) = fixture();
     app.select(0, &shell);
@@ -37,9 +42,11 @@ fn editing() -> (tempfile::TempDir, Shell, ModalApp) {
     assert_eq!(app.surface(), ModalSurface::EditBody);
     assert_eq!(
         app.body_mode(),
-        closure_shell_core::EditorMode::Insert,
-        "edit-body drops straight into INSERT"
+        closure_shell_core::EditorMode::Normal,
+        "a modal mode opens the buffer in NORMAL"
     );
+    app.on_key(&mut shell, "i", false, false, Some('i'));
+    assert_eq!(app.body_mode(), closure_shell_core::EditorMode::Insert);
     (dir, shell, app)
 }
 

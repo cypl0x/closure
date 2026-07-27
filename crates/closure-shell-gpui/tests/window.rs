@@ -54,6 +54,8 @@ fn typing_into_the_body_editor_reaches_the_buffer(cx: &mut gpui::TestAppContext)
         .update(cx, |view, _w, cx| {
             view.press("i", false, false, cx);
             assert_eq!(view.surface(), ModalSurface::EditBody);
+            // A modal mode opens the buffer in NORMAL; `i` types.
+            view.press("i", false, false, cx);
             for c in "hello".chars() {
                 view.press(&c.to_string(), false, false, cx);
             }
@@ -70,7 +72,8 @@ fn an_uppercase_chord_survives_the_window_seam(cx: &mut gpui::TestAppContext) {
     let (_dir, window) = test_window(cx, "* Note\n");
     window
         .update(cx, |view, _w, cx| {
-            view.press("i", false, false, cx);
+            view.press("i", false, false, cx); // open the body
+            view.press("i", false, false, cx); // INSERT
             for c in "one two".chars() {
                 view.press(&c.to_string(), false, false, cx);
             }
@@ -92,7 +95,8 @@ fn a_ctrl_chord_reaches_the_editor(cx: &mut gpui::TestAppContext) {
     let (_dir, window) = test_window(cx, "* Note\n");
     window
         .update(cx, |view, _w, cx| {
-            view.press("i", false, false, cx);
+            view.press("i", false, false, cx); // open the body
+            view.press("i", false, false, cx); // INSERT
             for c in "count 41".chars() {
                 view.press(&c.to_string(), false, false, cx);
             }
@@ -123,7 +127,8 @@ fn a_window_closing_over_an_unsaved_edit_saves_it(cx: &mut gpui::TestAppContext)
     let (_dir, window) = test_window(cx, "* Note\n");
     window
         .update(cx, |view, _w, cx| {
-            view.press("i", false, false, cx);
+            view.press("i", false, false, cx); // open the body
+            view.press("i", false, false, cx); // INSERT
             for c in "rescued".chars() {
                 view.press(&c.to_string(), false, false, cx);
             }
@@ -199,7 +204,8 @@ fn committed_text_lands_in_the_body(cx: &mut gpui::TestAppContext) {
     let (_dir, window) = test_window(cx, "* Note\n");
     window
         .update(cx, |view, w, cx| {
-            view.press("i", false, false, cx);
+            view.press("i", false, false, cx); // open the body
+            view.press("i", false, false, cx); // INSERT takes the IME
             view.ime_commit(None, "é", w, cx);
             assert_eq!(view.body(), "é");
         })
@@ -213,7 +219,8 @@ fn a_composition_replaces_its_own_preedit(cx: &mut gpui::TestAppContext) {
     let (_dir, window) = test_window(cx, "* Note\n");
     window
         .update(cx, |view, w, cx| {
-            view.press("i", false, false, cx);
+            view.press("i", false, false, cx); // open the body
+            view.press("i", false, false, cx); // INSERT takes the IME
             view.ime_mark(None, "n", w, cx);
             view.ime_mark(None, "ni", w, cx);
             view.ime_mark(None, "にほん", w, cx);
@@ -229,7 +236,8 @@ fn an_abandoned_composition_leaves_nothing_behind(cx: &mut gpui::TestAppContext)
     let (_dir, window) = test_window(cx, "* Note\n");
     window
         .update(cx, |view, w, cx| {
-            view.press("i", false, false, cx);
+            view.press("i", false, false, cx); // open the body
+            view.press("i", false, false, cx); // INSERT
             for c in "ab".chars() {
                 view.press(&c.to_string(), false, false, cx);
             }
@@ -263,7 +271,8 @@ fn a_composition_is_one_undo_step(cx: &mut gpui::TestAppContext) {
     let (_dir, window) = test_window(cx, "* Note\n");
     window
         .update(cx, |view, w, cx| {
-            view.press("i", false, false, cx);
+            view.press("i", false, false, cx); // open the body
+            view.press("i", false, false, cx); // INSERT takes the IME
             view.ime_commit(None, "日本", w, cx);
             view.press("escape", false, false, cx);
             view.press("u", false, false, cx);
@@ -313,7 +322,8 @@ fn an_open_edit_is_never_reloaded_out_from_under(cx: &mut gpui::TestAppContext) 
     let (dir, window) = test_window(cx, "* Alpha\n");
     window
         .update(cx, |view, _w, cx| {
-            view.press("i", false, false, cx);
+            view.press("i", false, false, cx); // open the body
+            view.press("i", false, false, cx); // INSERT
             for c in "mine".chars() {
                 view.press(&c.to_string(), false, false, cx);
             }
