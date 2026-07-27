@@ -71,6 +71,14 @@ run-egui vault:
 gui-gpui:
     cargo build -p closure-cli --features gpui
 
+# The gpui *window* driven headlessly, over gpui's stub platform. Kept
+# out of `check` because it pulls Zed's ~570-crate GPU stack, which the
+# hermetic gate must not depend on (I10) — but this is the only thing
+# that runs the render path, the key path and the input-method handler
+# at all, so run it whenever the window changes.
+gpui-window:
+    cargo test -p closure-shell-gpui --features gpui-test -j 4
+
 # Launch the gpui desktop shell against a vault (needs a display).
 run-gpui vault:
     cargo run -p closure-cli --features gpui -- gpui {{vault}}

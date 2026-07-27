@@ -4958,6 +4958,34 @@ impl BodyEditor {
         }
     }
 
+    /// Replace a byte range of the buffer with `text`, parking the
+    /// cursor after it.
+    ///
+    /// The seam an input method needs: a composed character arrives as
+    /// a replacement over a range, not as a keypress. Offsets are
+    /// clamped to the buffer and snapped down to char boundaries, so a
+    /// bad range from the platform cannot panic (I5).
+    pub fn replace_range(&mut self, range: std::ops::Range<usize>, text: &str) {
+        let lo = self.snap_boundary(range.start.min(self.buf.len()));
+        let hi = self.snap_boundary(range.end.clamp(lo, self.buf.len()));
+        if lo == hi && text.is_empty() {
+            return;
+        }
+        self.checkpoint();
+        self.buf.replace_range(lo..hi, text);
+        self.cursor = lo + text.len();
+        self.last_insert = Some(self.cursor);
+    }
+
+    /// Round `at` down to the nearest char boundary.
+    fn snap_boundary(&self, at: usize) -> usize {
+        let mut at = at.min(self.buf.len());
+        while at > 0 && !self.buf.is_char_boundary(at) {
+            at -= 1;
+        }
+        at
+    }
+
     /// Redo the last editor-local undo (Normal C-r).
     pub fn redo_local(&mut self) {
         if let Some((buf, cur)) = self.redo_stack.pop() {
@@ -9825,6 +9853,19 @@ impl ModalApp {
         "unsaved body — :w saves, :wq saves and quits, :q! discards it"
             .clone_into(&mut self.status);
         true
+    }
+
+    /// Replace a byte range of the body buffer with `text`, leaving the
+    /// cursor after it.
+    ///
+    /// What an input method hands over: a compose sequence or a CJK IME
+    /// builds a character over several keystrokes and delivers it as a
+    /// replacement over a range, not as a keypress. Out-of-range or
+    /// non-boundary offsets are clamped rather than panicking (I5), and
+    /// the edit is one undo step like any other.
+    pub fn body_replace_range(&mut self, range: std::ops::Range<usize>, text: &str) {
+        self.completion = None;
+        self.body.replace_range(range, text);
     }
 
     /// Park the body-editor viewport so `line` is its first visible

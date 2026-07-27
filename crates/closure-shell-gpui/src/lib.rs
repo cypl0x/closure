@@ -32,6 +32,11 @@ pub use closure_shell_core::{
 /// Marker for the capability matrix.
 pub const GPUI_SHELL: &str = "gpui";
 
+#[cfg(feature = "gpui-test")]
+mod testing;
+#[cfg(feature = "gpui-test")]
+pub use testing::test_window;
+
 /// Pack a theme [`closure_shell_core::Color`] into the `0xRRGGBB`
 /// integer gpui's `rgb()` expects.
 #[must_use]
@@ -1088,31 +1093,7 @@ pub fn run(vault_path: &Path) -> Result<(), String> {
                 window_min_size: Some(size(px(640.0), px(400.0))),
                 ..Default::default()
             },
-            |_, cx| {
-                cx.new(|cx| GpuiView {
-                    shell: Shell::new(vault),
-                    app: ModalApp::new(input_mode),
-                    theme,
-                    focus_handle: cx.focus_handle(),
-                    feedback: closure_shell_core::Feedback::default(),
-                    last_status: String::new(),
-                    popup_gen: 0,
-                    drag: closure_shell_core::DragReorder::default(),
-                    outline_scroll: gpui::UniformListScrollHandle::new(),
-                    side_scroll: gpui::ScrollHandle::new(),
-                    body_track: gpui::ScrollHandle::new(),
-                    revealed: usize::MAX,
-                    side_revealed: usize::MAX,
-                    palette_revealed: usize::MAX,
-                    chat_seen: 0,
-                    toast_gen: 0,
-                    menu: None,
-                    which_key_open: false,
-                    which_key_scroll: gpui::ScrollHandle::new(),
-                    palette_scroll: gpui::UniformListScrollHandle::new(),
-                    highlight_cache: std::cell::RefCell::new(None),
-                })
-            },
+            |_, cx| cx.new(|cx| GpuiView::new(Shell::new(vault), input_mode, theme, cx)),
         );
         match opened {
             Ok(window) => {
@@ -1240,8 +1221,11 @@ const TOAST_TTL: std::time::Duration = std::time::Duration::from_secs(5);
 
 /// gpui view: owns the kernel-side [`Shell`] and the pure [`ModalApp`]
 /// editor state, plus a focus handle so the root receives key events.
+///
+/// Public so the window can be built and driven by a test over gpui's
+/// stub platform ([`test_window`]) rather than only compile-checked.
 #[cfg(feature = "gpui")]
-struct GpuiView {
+pub struct GpuiView {
     shell: Shell,
     app: ModalApp,
     theme: Theme,
@@ -1297,6 +1281,17 @@ struct GpuiView {
     /// frame, and scrolling repaints without changing a byte, so the
     /// classification is kept until the text does change.
     highlight_cache: std::cell::RefCell<Option<(String, HighlightedBody)>>,
+    /// The IME's preedit: the byte range in the body buffer holding
+    /// text the input method is still composing.
+    ///
+    /// A compose sequence or a CJK input method builds a character over
+    /// several keystrokes and hands back provisional text on the way.
+    /// Without this the window read `KeyDownEvent.key_char` only, so a
+    /// dead key produced nothing and an IME could not type at all.
+    marked: Option<std::ops::Range<usize>>,
+    /// Vault-reload generation: each armed poll carries one, and only
+    /// the newest re-arms, so the loop cannot fork.
+    reload_gen: u64,
 }
 
 #[cfg(feature = "gpui")]
@@ -1308,6 +1303,133 @@ impl Focusable for GpuiView {
 
 #[cfg(feature = "gpui")]
 impl GpuiView {
+    /// Build the view over `shell`. The only constructor, so a test
+    /// window and the real one cannot drift apart in their setup.
+    pub fn new(
+        shell: Shell,
+        input_mode: closure_config::InputMode,
+        theme: Theme,
+        cx: &mut Context<Self>,
+    ) -> Self {
+        Self {
+            shell,
+            app: ModalApp::new(input_mode),
+            theme,
+            focus_handle: cx.focus_handle(),
+            feedback: closure_shell_core::Feedback::default(),
+            last_status: String::new(),
+            popup_gen: 0,
+            drag: closure_shell_core::DragReorder::default(),
+            outline_scroll: gpui::UniformListScrollHandle::new(),
+            side_scroll: gpui::ScrollHandle::new(),
+            body_track: gpui::ScrollHandle::new(),
+            revealed: usize::MAX,
+            side_revealed: usize::MAX,
+            palette_revealed: usize::MAX,
+            chat_seen: 0,
+            toast_gen: 0,
+            menu: None,
+            which_key_open: false,
+            which_key_scroll: gpui::ScrollHandle::new(),
+            palette_scroll: gpui::UniformListScrollHandle::new(),
+            highlight_cache: std::cell::RefCell::new(None),
+            marked: None,
+            reload_gen: 0,
+        }
+    }
+
+    /// How many rows the outline is showing.
+    #[must_use]
+    pub fn row_count(&self) -> usize {
+        self.app.rows_shared(&self.shell).len()
+    }
+
+    /// The active surface, for a test to assert on.
+    #[must_use]
+    pub const fn surface(&self) -> ModalSurface {
+        self.app.surface()
+    }
+
+    /// The body editor's buffer, for a test to assert on.
+    #[must_use]
+    pub fn body(&self) -> &str {
+        self.app.body_buffer()
+    }
+
+    /// The status line, for a test to assert on.
+    #[must_use]
+    pub fn status(&self) -> &str {
+        self.app.status()
+    }
+
+    /// Write out a body edit still in progress — what the window's
+    /// close hook does. `true` when there was something to save.
+    pub fn save_pending_edit(&mut self) -> bool {
+        self.app.save_pending_edit(&mut self.shell)
+    }
+
+    /// Whether any file in the vault contains `needle`, for a test to
+    /// check that an edit reached disk.
+    #[must_use]
+    pub fn vault_contains(&self, needle: &str) -> bool {
+        self.shell
+            .vault
+            .iter()
+            .any(|(_, doc)| doc.source().contains(needle))
+    }
+
+    /// Commit composed text, as the platform's input method does.
+    ///
+    /// The named entry points to the `EntityInputHandler` impl: a test
+    /// drives the same methods the platform calls, so what is covered
+    /// is the handler rather than a paraphrase of it.
+    pub fn ime_commit(
+        &mut self,
+        range: Option<std::ops::Range<usize>>,
+        text: &str,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        gpui::EntityInputHandler::replace_text_in_range(self, range, text, window, cx);
+    }
+
+    /// Hand over provisional (preedit) text mid-composition.
+    pub fn ime_mark(
+        &mut self,
+        range: Option<std::ops::Range<usize>>,
+        text: &str,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        gpui::EntityInputHandler::replace_and_mark_text_in_range(
+            self, range, text, None, window, cx,
+        );
+    }
+
+    /// Abandon a composition in progress.
+    pub fn ime_unmark(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        gpui::EntityInputHandler::unmark_text(self, window, cx);
+    }
+
+    /// Run one vault-reload pass, as the armed poll does.
+    pub fn poll_vault(&mut self, cx: &mut Context<Self>) {
+        self.reload_vault(cx);
+    }
+
+    /// Feed a keystroke the way the window's own handler does.
+    ///
+    /// The same seam `on_key` uses, so a test drives the shell through
+    /// exactly the translation the window performs rather than a
+    /// parallel one that can agree with nothing.
+    pub fn press(&mut self, key: &str, shift: bool, ctrl: bool, cx: &mut Context<Self>) {
+        let text = (!ctrl && key.chars().count() == 1).then(|| {
+            let c = key.chars().next().unwrap_or(' ');
+            if shift { c.to_ascii_uppercase() } else { c }
+        });
+        let named = editor_key(key, shift, text.map(|c| c.to_string()).as_deref());
+        self.dispatch_key(&named, ctrl, false, text, cx);
+    }
+
     fn on_key(&mut self, ev: &KeyDownEvent, _window: &mut Window, cx: &mut Context<Self>) {
         let ks = &ev.keystroke;
         let m = &ks.modifiers;
@@ -1325,9 +1447,26 @@ impl GpuiView {
         // gpui lowercases letter keysyms; the editor's vim vocabulary
         // does not ([`editor_key`]).
         let key = editor_key(&ks.key, m.shift, ks.key_char.as_deref());
+        self.dispatch_key(&key, m.control, m.alt, text, cx);
+    }
+
+    /// Everything a keystroke does once it has a name: dispatch it into
+    /// the core, then the three window-side follow-ups (asking a
+    /// provider, quitting, arming the completion popup).
+    ///
+    /// Factored out so [`Self::press`] drives the same path a real key
+    /// event does — a test seam that agrees with nothing is worse than
+    /// none.
+    fn dispatch_key(
+        &mut self,
+        key: &str,
+        ctrl: bool,
+        alt: bool,
+        text: Option<char>,
+        cx: &mut Context<Self>,
+    ) {
         let asking = self.app.surface() == ModalSurface::Llm && key == "enter";
-        self.app
-            .on_key(&mut self.shell, &key, m.control, m.alt, text);
+        self.app.on_key(&mut self.shell, key, ctrl, alt, text);
         // Enter on the assistant surface records the question in the
         // core; sending it is I/O, so it happens here.
         if asking
@@ -2159,14 +2298,17 @@ impl GpuiView {
     fn editor_line(
         &self,
         co: Colors,
-        ln: usize,
-        line_start: usize,
-        line_len: usize,
+        geom: LineGeom,
         spans: &[(BodySpan, String)],
-        h_start: usize,
         cx: &Context<Self>,
     ) -> gpui::Div {
         use closure_shell_core::EditorMode;
+        let LineGeom {
+            ln,
+            line_start,
+            line_len,
+            h_start,
+        } = geom;
         let text: String = spans.iter().map(|(_, s)| s.as_str()).collect();
         let (cur_line, cur_col) = self.app.body_cursor();
         let insert = self.app.body_mode() == EditorMode::Insert;
@@ -2379,7 +2521,17 @@ impl GpuiView {
                     .text_color(rgb(if ln == cur_line { co.accent } else { co.muted }))
                     .child(format!("{:>3}", ln + 1)),
             );
-            row = row.child(self.editor_line(co, ln, line_start, line_len, spans, h_start, cx));
+            row = row.child(self.editor_line(
+                co,
+                LineGeom {
+                    ln,
+                    line_start,
+                    line_len,
+                    h_start,
+                },
+                spans,
+                cx,
+            ));
             if ln == cur_line {
                 row = row.bg(rgb(mix_u32(co.panel, co.selection, 96)));
             }
@@ -2397,6 +2549,14 @@ impl GpuiView {
             .flex_col()
             .flex_grow()
             .gap_2()
+            // Composed text — dead keys, compose sequences, any CJK
+            // input method — arrives through `EntityInputHandler`
+            // rather than as key events, and `handle_input` may only be
+            // called during paint. A zero-size canvas is the smallest
+            // paint hook gpui offers; it lives in the editor pane so
+            // the handler is installed exactly while the editor is on
+            // screen and taking text.
+            .child(self.ime_hook(cx))
             .child(header)
             .child(
                 div()
@@ -2413,6 +2573,25 @@ impl GpuiView {
             pane = pane.child(popup);
         }
         pane
+    }
+
+    /// A zero-size element whose paint installs the input method
+    /// handler.
+    ///
+    /// `Window::handle_input` debug-asserts it is called during paint,
+    /// and `render` is the element-tree build rather than paint — so
+    /// this is the hook. Without it the window read
+    /// `KeyDownEvent.key_char` and nothing else, which meant a dead key
+    /// produced no character and no IME could type at all.
+    fn ime_hook(&self, cx: &Context<Self>) -> gpui::Canvas<()> {
+        let entity = cx.entity();
+        let focus = self.focus_handle.clone();
+        gpui::canvas(
+            |_bounds, _w, _cx| (),
+            move |bounds, (), window, cx| {
+                window.handle_input(&focus, gpui::ElementInputHandler::new(bounds, entity), cx);
+            },
+        )
     }
 
     /// A scrollbar for the body editor's own viewport.
@@ -4216,6 +4395,280 @@ impl GpuiView {
 #[cfg(feature = "gpui")]
 type HighlightedBody = std::rc::Rc<Vec<Vec<(BodySpan, String)>>>;
 
+/// Textual input from the platform's input method.
+///
+/// The window read `KeyDownEvent.key_char` and nothing else, so a dead
+/// key (`´` then `e` for `é`), a compose sequence and every CJK input
+/// method produced no text at all — closure could not type half the
+/// characters its user's keyboard makes. gpui routes those through this
+/// trait instead of the key path, in UTF-16 code units; the conversion
+/// to the byte offsets [`closure_shell_core::BodyEditor`] addresses is
+/// [`byte_for_utf16`] and [`utf16_for_byte`].
+///
+/// Only the body editor takes it. The one-line fields are keystroke
+/// surfaces in the core with no range to replace, and Browse would
+/// read composed text as chords.
+#[cfg(feature = "gpui")]
+impl gpui::EntityInputHandler for GpuiView {
+    fn text_for_range(
+        &mut self,
+        range: std::ops::Range<usize>,
+        adjusted: &mut Option<std::ops::Range<usize>>,
+        _window: &mut Window,
+        _cx: &mut Context<Self>,
+    ) -> Option<String> {
+        let buf = self.app.body_buffer();
+        let start = byte_for_utf16(buf, range.start);
+        let end = byte_for_utf16(buf, range.end);
+        *adjusted = Some(utf16_for_byte(buf, start)..utf16_for_byte(buf, end));
+        buf.get(start..end).map(ToOwned::to_owned)
+    }
+
+    fn selected_text_range(
+        &mut self,
+        _ignore_disabled: bool,
+        _window: &mut Window,
+        _cx: &mut Context<Self>,
+    ) -> Option<gpui::UTF16Selection> {
+        if !self.editing_text() {
+            return None;
+        }
+        let buf = self.app.body_buffer();
+        let (lo, hi) = self.app.body_selection().map_or_else(
+            || (self.body_byte(), self.body_byte()),
+            |(a, b)| {
+                if a <= b { (a, b) } else { (b, a) }
+            },
+        );
+        Some(gpui::UTF16Selection {
+            range: utf16_for_byte(buf, lo)..utf16_for_byte(buf, hi),
+            reversed: false,
+        })
+    }
+
+    fn marked_text_range(
+        &self,
+        _window: &mut Window,
+        _cx: &mut Context<Self>,
+    ) -> Option<std::ops::Range<usize>> {
+        let buf = self.app.body_buffer();
+        let m = self.marked.clone()?;
+        Some(utf16_for_byte(buf, m.start)..utf16_for_byte(buf, m.end))
+    }
+
+    fn unmark_text(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
+        // Abandoning a composition removes the provisional text with
+        // it; leaving it behind would commit something the user backed
+        // out of.
+        if let Some(range) = self.marked.take() {
+            self.app.body_replace_range(range, "");
+            cx.notify();
+        }
+    }
+
+    fn replace_text_in_range(
+        &mut self,
+        range: Option<std::ops::Range<usize>>,
+        text: &str,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if !self.editing_text() {
+            return;
+        }
+        let target = self.resolve_ime_range(range);
+        self.marked = None;
+        self.app.body_replace_range(target, text);
+        cx.notify();
+    }
+
+    fn replace_and_mark_text_in_range(
+        &mut self,
+        range: Option<std::ops::Range<usize>>,
+        text: &str,
+        _new_selected: Option<std::ops::Range<usize>>,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if !self.editing_text() {
+            return;
+        }
+        let target = self.resolve_ime_range(range);
+        let start = target.start;
+        self.app.body_replace_range(target, text);
+        // Still composing: remember where the provisional text sits so
+        // the next hand-off replaces it rather than appending to it.
+        self.marked = (!text.is_empty()).then(|| start..start + text.len());
+        cx.notify();
+    }
+
+    fn bounds_for_range(
+        &mut self,
+        _range_utf16: std::ops::Range<usize>,
+        element_bounds: gpui::Bounds<gpui::Pixels>,
+        _window: &mut Window,
+        _cx: &mut Context<Self>,
+    ) -> Option<gpui::Bounds<gpui::Pixels>> {
+        // Where the IME puts its candidate window. The editor pane's
+        // bounds are the best answer available without laying the
+        // cursor's glyph out again.
+        Some(element_bounds)
+    }
+
+    fn character_index_for_point(
+        &mut self,
+        _point: gpui::Point<gpui::Pixels>,
+        _window: &mut Window,
+        _cx: &mut Context<Self>,
+    ) -> Option<usize> {
+        None
+    }
+}
+
+#[cfg(feature = "gpui")]
+impl GpuiView {
+    /// Whether composed text belongs in the body editor right now.
+    fn editing_text(&self) -> bool {
+        matches!(
+            self.app.surface(),
+            ModalSurface::EditBody | ModalSurface::EditBlock
+        ) && self.app.body_mode() == closure_shell_core::EditorMode::Insert
+    }
+
+    /// The body cursor as a byte offset into the buffer.
+    fn body_byte(&self) -> usize {
+        let buf = self.app.body_buffer();
+        let (line, col) = self.app.body_cursor();
+        let start: usize = buf.split('\n').take(line).map(|l| l.len() + 1).sum();
+        let text = buf.split('\n').nth(line).unwrap_or_default();
+        start + byte_for_col(text, col)
+    }
+
+    /// The byte range an IME hand-off should replace: what it asked for,
+    /// else the text it is already composing, else the cursor.
+    fn resolve_ime_range(&self, range: Option<std::ops::Range<usize>>) -> std::ops::Range<usize> {
+        if let Some(r) = range {
+            let buf = self.app.body_buffer();
+            return byte_for_utf16(buf, r.start)..byte_for_utf16(buf, r.end);
+        }
+        self.marked.clone().unwrap_or_else(|| {
+            let at = self.body_byte();
+            at..at
+        })
+    }
+
+    /// Poll the vault for files changed underneath it, and re-read
+    /// `config.org` for a theme or input mode that changed with them.
+    ///
+    /// closure is local-first, which means the files are the API: an
+    /// Emacs on the same vault, a `git pull`, an inbound sync round all
+    /// write org that the window then knew nothing about until the user
+    /// navigated hard enough to force a re-read. Each armed poll carries
+    /// a generation and only the newest re-arms, so the loop cannot
+    /// fork.
+    fn arm_reload(&mut self, cx: &Context<Self>) {
+        /// How often the vault is checked. Long enough to be free at
+        /// idle, short enough that an external edit shows up before the
+        /// user wonders whether it worked.
+        const EVERY: std::time::Duration = std::time::Duration::from_millis(1500);
+        self.reload_gen = self.reload_gen.wrapping_add(1);
+        let generation = self.reload_gen;
+        cx.spawn(async move |this, cx| {
+            loop {
+                cx.background_executor().timer(EVERY).await;
+                let keep = this
+                    .update(cx, |this, cx| {
+                        if this.reload_gen != generation {
+                            return false;
+                        }
+                        this.reload_vault(cx);
+                        true
+                    })
+                    .unwrap_or(false);
+                if !keep {
+                    return;
+                }
+            }
+        })
+        .detach();
+    }
+
+    /// One reload pass: reparse what changed on disk, then re-read the
+    /// config if anything did.
+    fn reload_vault(&mut self, cx: &mut Context<Self>) {
+        // Never while a body edit is open: reparsing under the editor
+        // would swap the text out from under the cursor, and the buffer
+        // is the user's, not the file's.
+        if self.app.body_dirty() {
+            return;
+        }
+        let Ok(reparsed) = self.shell.vault.reload_incremental() else {
+            return;
+        };
+        if reparsed == 0 {
+            return;
+        }
+        let root = self.shell.vault.root().to_owned();
+        self.theme = resolve_theme(&root);
+        self.app
+            .set_status(format!("{reparsed} file(s) changed on disk — reloaded"));
+        cx.notify();
+    }
+}
+
+/// UTF-16 code-unit offset for a byte offset into `text`.
+///
+/// The platform's input methods count in UTF-16 while the editor
+/// counts in bytes, and a conversion that is wrong by one puts a
+/// composed character in the wrong place — or panics on a slice that is
+/// not a char boundary. Offsets past the end clamp.
+#[must_use]
+pub fn utf16_for_byte(text: &str, byte: usize) -> usize {
+    let byte = byte.min(text.len());
+    text.get(..byte)
+        .unwrap_or(text)
+        .chars()
+        .map(char::len_utf16)
+        .sum()
+}
+
+/// Byte offset for a UTF-16 code-unit offset into `text` — the inverse
+/// of [`utf16_for_byte`].
+///
+/// An offset landing inside a surrogate pair rounds down to that
+/// character's start rather than splitting it, so the result is always
+/// a valid slice index.
+#[must_use]
+pub fn byte_for_utf16(text: &str, utf16: usize) -> usize {
+    let mut seen = 0usize;
+    for (byte, c) in text.char_indices() {
+        // Round *down*: an offset that lands inside a surrogate pair
+        // belongs to the character that started before it, and handing
+        // back the byte after it would split the pair on the next
+        // slice.
+        if seen + c.len_utf16() > utf16 {
+            return byte;
+        }
+        seen += c.len_utf16();
+    }
+    text.len()
+}
+
+/// Where one painted body line sits: its index, its byte offset and
+/// length in the buffer, and the column the pane is scrolled to.
+#[cfg(feature = "gpui")]
+#[derive(Clone, Copy)]
+struct LineGeom {
+    /// Zero-based line index in the buffer.
+    ln: usize,
+    /// The line's byte offset in the buffer.
+    line_start: usize,
+    /// The line's byte length.
+    line_len: usize,
+    /// First visible column ([`h_scroll_start`]).
+    h_start: usize,
+}
+
 /// A hover explanation, in the theme's own colours.
 ///
 /// gpui's core ships no tooltip widget (Zed's lives in its `ui` crate),
@@ -4560,13 +5013,21 @@ fn meta_line(d: &Detail) -> String {
 
 #[cfg(feature = "gpui")]
 impl Render for GpuiView {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let co = Colors::of(&self.theme);
         let mono = self.theme.typography.mono_family.to_owned();
         // Every path that sets a status reaches the toast strip through
         // here, once per frame.
         self.absorb_status(cx);
         self.reveal_cursors();
+        // The vault's files are the API, so something else writing them
+        // — an Emacs on the same directory, a `git pull`, an inbound
+        // sync round — has to reach the window. Armed once, from the
+        // first frame.
+        if self.reload_gen == 0 {
+            self.arm_reload(cx);
+        }
+        let _ = window;
 
         let header = self.header_bar(co, cx);
 
