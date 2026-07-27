@@ -9361,6 +9361,52 @@ fn is_escapable_body_line(line: &str) -> bool {
     bare.len() > rest.len() && (rest.is_empty() || rest.starts_with([' ', '\t']))
 }
 
+/// What a `#+BEGIN_…` / `#+END_…` line is, for a reader walking a body
+/// line by line.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BlockDelimiter<'a> {
+    /// `#+BEGIN_<name> [args]` — opens a block.
+    Begin {
+        /// Block name as written (`QUOTE`, `src`, `EXPORT`).
+        name: &'a str,
+        /// Anything after the name, or `None`.
+        args: Option<&'a str>,
+    },
+    /// `#+END_<name>` — closes the block of that name.
+    End {
+        /// Block name as written.
+        name: &'a str,
+    },
+}
+
+/// Classify `line` as a block delimiter, or `None` for anything else.
+///
+/// The one place that decides where a block starts and stops. Both
+/// halves of the comma escape, the parser and every shell that paints
+/// body text need the same answer, and each having its own
+/// `starts_with("#+begin")` is how they drift apart. Org allows the
+/// delimiters to be indented and spells them in either case; a
+/// `#+KEYWORD:` line is not a block.
+#[must_use]
+pub fn block_delimiter_of(line: &str) -> Option<BlockDelimiter<'_>> {
+    if let Some(after) = block_delimiter(line, "begin_") {
+        let name_len = after
+            .find([' ', '\t'])
+            .unwrap_or_else(|| after.trim_end().len());
+        let name = &after[..name_len];
+        if name.is_empty() {
+            return None;
+        }
+        let args = after[name_len..].trim();
+        return Some(BlockDelimiter::Begin {
+            name,
+            args: (!args.is_empty()).then_some(args),
+        });
+    }
+    let name = block_delimiter(line, "end_")?.trim_end();
+    (!name.is_empty()).then_some(BlockDelimiter::End { name })
+}
+
 /// The block a `#+BEGIN_…` line opens, lower-cased, or `None` for any
 /// other line.
 ///
@@ -9888,6 +9934,26 @@ pub struct MarkupView<'a> {
 /// isn't inside a word.
 #[must_use]
 pub fn find_markup(text: &str) -> Vec<MarkupView<'_>> {
+    markup_spans(text)
+        .into_iter()
+        .map(|(range, kind)| MarkupView {
+            kind,
+            // The content is the run without its two marker bytes.
+            content: &text[range.start + 1..range.end - 1],
+        })
+        .collect()
+}
+
+/// The same runs as [`find_markup`], as byte ranges over `text`
+/// covering the whole construct — markers included.
+///
+/// A renderer needs this rather than the content: to colour `*bold*`
+/// in place it has to know which bytes of the line to style, and a
+/// borrowed content slice cannot say where it came from. The ranges
+/// are ordered, disjoint, and on char boundaries, which is what the
+/// shells' span splitting assumes.
+#[must_use]
+pub fn markup_spans(text: &str) -> Vec<(std::ops::Range<usize>, MarkupKind)> {
     const MARKERS: &[(u8, MarkupKind)] = &[
         (b'*', MarkupKind::Bold),
         (b'/', MarkupKind::Italic),
@@ -9897,7 +9963,7 @@ pub fn find_markup(text: &str) -> Vec<MarkupView<'_>> {
         (b'_', MarkupKind::Underline),
     ];
     let bytes = text.as_bytes();
-    let mut out: Vec<MarkupView<'_>> = Vec::new();
+    let mut out: Vec<(std::ops::Range<usize>, MarkupKind)> = Vec::new();
     let mut i = 0usize;
     while i < bytes.len() {
         let b = bytes[i];
@@ -9939,10 +10005,7 @@ pub fn find_markup(text: &str) -> Vec<MarkupView<'_>> {
             j += 1;
         }
         if let Some(end) = found {
-            out.push(MarkupView {
-                kind,
-                content: &text[i + 1..end],
-            });
+            out.push((i..end + 1, kind));
             i = end + 1;
             continue;
         }

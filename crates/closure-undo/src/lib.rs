@@ -237,7 +237,11 @@ impl<T> UndoTree<T> {
             .zip(down.iter())
             .take_while(|(a, b)| a == b)
             .count();
-        let mut steps: Vec<Step> = up[common..].iter().rev().map(|&id| Step::Undo(id)).collect();
+        let mut steps: Vec<Step> = up[common..]
+            .iter()
+            .rev()
+            .map(|&id| Step::Undo(id))
+            .collect();
         steps.extend(down[common..].iter().map(|&id| Step::Redo(id)));
         Ok(steps)
     }

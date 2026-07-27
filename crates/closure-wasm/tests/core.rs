@@ -62,7 +62,10 @@ fn dispatch_command_rename_rewrites_the_source() {
     let out = closure_wasm::dispatch_command(org, "rename", "01HXAAAAAAAAAAAAAAAAAAAAAA", "New")
         .expect("dispatch");
     assert!(out.contains("* New"), "{out}");
-    assert!(out.contains(":ID: 01HXAAAAAAAAAAAAAAAAAAAAAA"), "id kept (I2)");
+    assert!(
+        out.contains(":ID: 01HXAAAAAAAAAAAAAAAAAAAAAA"),
+        "id kept (I2)"
+    );
 }
 
 #[test]

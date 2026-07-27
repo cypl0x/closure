@@ -166,7 +166,11 @@ fn setext_equals_is_a_level_one_heading() {
     assert_eq!(blocks.len(), 1, "{blocks:?}");
     assert_eq!(blocks[0].kind(), BlockKind::Heading);
     assert_eq!(blocks[0].heading_level(), Some(1));
-    assert_eq!(blocks[0].source(), "Title\n=====\n", "span covers both lines");
+    assert_eq!(
+        blocks[0].source(),
+        "Title\n=====\n",
+        "span covers both lines"
+    );
     assert_eq!(print(&doc), "Title\n=====\n", "roundtrip untouched");
 }
 
@@ -184,10 +188,18 @@ fn dashes_without_a_paragraph_stay_a_thematic_break() {
     let doc = parse("---\n").expect("parse");
     assert_eq!(doc.blocks()[0].kind(), BlockKind::ThematicBreak);
     let doc = parse("P\n\n---\n").expect("parse");
-    let kinds: Vec<BlockKind> = doc.blocks().iter().map(closure_markdown::Block::kind).collect();
+    let kinds: Vec<BlockKind> = doc
+        .blocks()
+        .iter()
+        .map(closure_markdown::Block::kind)
+        .collect();
     assert_eq!(
         kinds,
-        vec![BlockKind::Paragraph, BlockKind::BlankLine, BlockKind::ThematicBreak],
+        vec![
+            BlockKind::Paragraph,
+            BlockKind::BlankLine,
+            BlockKind::ThematicBreak
+        ],
         "blank line breaks the setext attachment"
     );
 }
@@ -221,5 +233,8 @@ fn link_targets_finds_inline_and_wiki_links() {
 #[test]
 fn link_targets_skips_code_fences() {
     let md = "```\n[not](a-link.md)\n```\nreal [yes](real.md)\n";
-    assert_eq!(closure_markdown::link_targets(md), vec!["real.md".to_owned()]);
+    assert_eq!(
+        closure_markdown::link_targets(md),
+        vec!["real.md".to_owned()]
+    );
 }

@@ -224,10 +224,7 @@ fn apply_to_noop_when_already_converged() {
 const FIXED: &str = "01HXAAAAAAAAAAAAAAAAAAAAAA";
 
 fn doc_titled(title: &str) -> Document {
-    Document::load_str(&format!(
-        "* {title}\n:PROPERTIES:\n:ID: {FIXED}\n:END:\n"
-    ))
-    .expect("load")
+    Document::load_str(&format!("* {title}\n:PROPERTIES:\n:ID: {FIXED}\n:END:\n")).expect("load")
 }
 
 #[test]
@@ -298,7 +295,11 @@ fn equal_timestamp_divergence_still_converges() {
     assert_eq!(a_side.merge_with_conflicts(&b0).len(), 1);
     assert_eq!(b_side.merge_with_conflicts(&a0).len(), 1);
     let id = BlockId::from_existing(FIXED);
-    assert_eq!(a_side.title_of(&id), b_side.title_of(&id), "tie broken deterministically");
+    assert_eq!(
+        a_side.title_of(&id),
+        b_side.title_of(&id),
+        "tie broken deterministically"
+    );
 }
 
 #[test]

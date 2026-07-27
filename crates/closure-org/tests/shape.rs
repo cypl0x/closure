@@ -8080,3 +8080,72 @@ fn clock_entries_skip_non_clock_lines_and_never_panic() {
     assert_eq!(entries.len(), 1, "malformed CLOCK is still one entry");
     assert!(entries[0].minutes.is_none());
 }
+
+// === Ranged inline markup ===
+//
+// `find_markup` hands back the *content* between the markers, which is
+// enough to know a run exists and useless to a renderer: to colour
+// `*bold*` in place a shell needs to know which bytes of the line the
+// whole construct covers, markers included.
+
+#[test]
+fn markup_spans_cover_the_markers_too() {
+    let spans = closure_org::markup_spans("a *bold* b");
+    assert_eq!(spans.len(), 1);
+    assert_eq!(spans[0].0, 2..8, "the stars are part of the run");
+    assert_eq!(spans[0].1, closure_org::MarkupKind::Bold);
+}
+
+#[test]
+fn markup_spans_are_ordered_and_disjoint() {
+    let text = "*b* /i/ =c= ~v~ +s+ _u_";
+    let spans = closure_org::markup_spans(text);
+    assert_eq!(spans.len(), 6);
+    let kinds: Vec<_> = spans.iter().map(|(_, k)| *k).collect();
+    assert_eq!(
+        kinds,
+        vec![
+            closure_org::MarkupKind::Bold,
+            closure_org::MarkupKind::Italic,
+            closure_org::MarkupKind::Code,
+            closure_org::MarkupKind::Verbatim,
+            closure_org::MarkupKind::Strikethrough,
+            closure_org::MarkupKind::Underline,
+        ]
+    );
+    for pair in spans.windows(2) {
+        assert!(pair[0].0.end <= pair[1].0.start, "disjoint and in order");
+    }
+}
+
+#[test]
+fn markup_spans_agree_with_find_markup() {
+    for text in [
+        "*bold*",
+        "a /it/ b",
+        "foo*bar*baz",
+        "* not bold*",
+        "plain text",
+        "=a= and =b=",
+        "unclosed *run",
+    ] {
+        let spans = closure_org::markup_spans(text);
+        let views = closure_org::find_markup(text);
+        assert_eq!(spans.len(), views.len(), "same runs for {text:?}");
+        for (span, view) in spans.iter().zip(&views) {
+            assert_eq!(span.1, view.kind, "{text:?}");
+            // The content is the run minus one marker byte at each end.
+            assert_eq!(&text[span.0.start + 1..span.0.end - 1], view.content);
+        }
+    }
+}
+
+#[test]
+fn markup_spans_stay_on_char_boundaries() {
+    // A renderer slices the line at these; landing mid-char panics.
+    let text = "ä *fett* ö";
+    for (range, _) in closure_org::markup_spans(text) {
+        assert!(text.is_char_boundary(range.start));
+        assert!(text.is_char_boundary(range.end));
+    }
+}

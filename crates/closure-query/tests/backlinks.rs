@@ -19,10 +19,16 @@ fn md_backlinks_find_files_linking_to_a_target() {
         .iter()
         .filter_map(|p| p.file_name().map(|n| n.to_string_lossy().into_owned()))
         .collect();
-    assert_eq!(names, vec!["a.md".to_owned(), "b.md".to_owned()], "slug and path both match");
+    assert_eq!(
+        names,
+        vec!["a.md".to_owned(), "b.md".to_owned()],
+        "slug and path both match"
+    );
 }
 
 #[test]
 fn md_backlinks_on_a_missing_dir_is_empty_never_a_panic() {
-    assert!(closure_query::md_backlinks(std::path::Path::new("/nonexistent-xyz"), "n.md").is_empty());
+    assert!(
+        closure_query::md_backlinks(std::path::Path::new("/nonexistent-xyz"), "n.md").is_empty()
+    );
 }

@@ -56,8 +56,8 @@ pub fn headline_titles_joined(org: &str) -> String {
 /// source — never a panic (I5).
 pub fn dispatch_command(org: &str, cmd: &str, id: &str, arg: &str) -> Result<String, String> {
     use closure_core::{
-        AddSibling, BlockId, Command as _, Demote, Promote, RemoveSubtree, RenameHeadline,
-        SetBody, SetTodo,
+        AddSibling, BlockId, Command as _, Demote, Promote, RemoveSubtree, RenameHeadline, SetBody,
+        SetTodo,
     };
     let mut doc = Document::load_str(org).map_err(|e| e.to_string())?;
     let bid = BlockId::from_existing(id);

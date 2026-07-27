@@ -183,9 +183,7 @@ impl Replica {
                 // the base's, so a later peer sees the edit as
                 // sequential, not concurrent (Q3).
                 let (title_ts, title_clock) = match base_block {
-                    Some(b) if b.title.value == title_value => {
-                        (b.title.ts, b.title.clock.clone())
-                    }
+                    Some(b) if b.title.value == title_value => (b.title.ts, b.title.clock.clone()),
                     Some(b) => {
                         let mut c = b.title.clock.clone();
                         c.merge(&VectorClock::at(replica, ts));
@@ -351,7 +349,9 @@ impl Replica {
             let mut entries: Vec<(&String, &u64)> = st.title.clock.counters.iter().collect();
             entries.sort();
             out.extend_from_slice(
-                &u32::try_from(entries.len()).unwrap_or(u32::MAX).to_le_bytes(),
+                &u32::try_from(entries.len())
+                    .unwrap_or(u32::MAX)
+                    .to_le_bytes(),
             );
             for (rep, &c) in entries {
                 put_str(&mut out, rep);

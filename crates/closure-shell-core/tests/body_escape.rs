@@ -100,3 +100,63 @@ fn the_launcher_editor_escapes_too() {
     app.begin_edit_body(&sh);
     assert_eq!(app.body_buffer().trim_end(), "* Foo body");
 }
+
+// === What the escape must stay invisible to ===
+//
+// The escape is an on-disk spelling, so every surface that shows body
+// text has to undo it. The detail pane and the editor did; the body
+// search hit list read `body_text()` raw and printed the comma.
+
+/// A vault whose one note has an escaped body line and two hits.
+fn searchable() -> (TempDir, Shell) {
+    let dir = tempfile::tempdir().expect("tmp");
+    fs::write(
+        dir.path().join("notes.org"),
+        "* Note\n,* needle one\nmiddle\nneedle two\n",
+    )
+    .expect("write");
+    let v = Vault::open(dir.path()).expect("open");
+    (dir, Shell::new(v))
+}
+
+/// The body-search surface with `query` typed into it, exactly as the
+/// shells reach it.
+fn searching(sh: &mut Shell, query: &str) -> ModalApp {
+    let mut app = ModalApp::new(InputMode::Vim);
+    app.run(sh, "body-search");
+    assert_eq!(app.surface(), ModalSurface::BodySearch);
+    typ(&mut app, sh, query);
+    app
+}
+
+#[test]
+fn a_body_search_hit_shows_the_text_the_author_typed() {
+    let (_d, mut sh) = searchable();
+    let app = searching(&mut sh, "needle one");
+    let rows = app.body_search_rows(&sh);
+    assert_eq!(rows.len(), 1);
+    assert_eq!(
+        rows[0].1, "Note — * needle one",
+        "the on-disk comma must not reach the hit list"
+    );
+}
+
+#[test]
+fn a_body_search_reports_every_matching_line() {
+    // One hit per headline hid the rest of the matches in the note you
+    // were looking through — the case the search exists for.
+    let (_d, mut sh) = searchable();
+    let app = searching(&mut sh, "needle");
+    let rows = app.body_search_rows(&sh);
+    assert_eq!(rows.len(), 2, "both lines, not just the first: {rows:?}");
+    assert!(rows[0].1.ends_with("* needle one"));
+    assert!(rows[1].1.ends_with("needle two"));
+}
+
+#[test]
+fn a_body_search_still_matches_nothing_on_an_empty_query() {
+    let (_d, mut sh) = searchable();
+    let mut app = ModalApp::new(InputMode::Vim);
+    app.run(&mut sh, "body-search");
+    assert!(app.body_search_rows(&sh).is_empty());
+}

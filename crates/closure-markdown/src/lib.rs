@@ -138,21 +138,22 @@ pub fn inline_spans(text: &str) -> Vec<(InlineKind, &str)> {
     let mut i = 0usize;
     while i < text.len() {
         let rest = &text[i..];
-        let matched: Option<(InlineKind, usize)> = if rest.starts_with("**") || rest.starts_with("__") {
-            delimited(rest, &rest[..2]).map(|n| (InlineKind::Strong, n))
-        } else if rest.starts_with('*') || rest.starts_with('_') {
-            delimited(rest, &rest[..1]).map(|n| (InlineKind::Emphasis, n))
-        } else if rest.starts_with('`') {
-            delimited(rest, "`").map(|n| (InlineKind::Code, n))
-        } else if rest.starts_with('[') {
-            rest.find("](").and_then(|mid| {
-                rest[mid + 2..]
-                    .find(')')
-                    .map(|close| (InlineKind::Link, mid + 2 + close + 1))
-            })
-        } else {
-            None
-        };
+        let matched: Option<(InlineKind, usize)> =
+            if rest.starts_with("**") || rest.starts_with("__") {
+                delimited(rest, &rest[..2]).map(|n| (InlineKind::Strong, n))
+            } else if rest.starts_with('*') || rest.starts_with('_') {
+                delimited(rest, &rest[..1]).map(|n| (InlineKind::Emphasis, n))
+            } else if rest.starts_with('`') {
+                delimited(rest, "`").map(|n| (InlineKind::Code, n))
+            } else if rest.starts_with('[') {
+                rest.find("](").and_then(|mid| {
+                    rest[mid + 2..]
+                        .find(')')
+                        .map(|close| (InlineKind::Link, mid + 2 + close + 1))
+                })
+            } else {
+                None
+            };
         if let Some((kind, len)) = matched {
             flush_plain(text, &mut spans, plain_start, i);
             spans.push((kind, &text[i..i + len]));

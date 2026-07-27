@@ -142,7 +142,12 @@ fn post_command_rename_is_undoable_via_command() {
 fn post_command_set_todo_and_add_sibling() {
     let (_td, mut v) = vault();
     let id = first_id(&v);
-    let r = respond(&mut v, "POST", "/command", &format!("cmd=set-todo&id={id}&arg=DONE"));
+    let r = respond(
+        &mut v,
+        "POST",
+        "/command",
+        &format!("cmd=set-todo&id={id}&arg=DONE"),
+    );
     assert_eq!(r.status, 200, "{}", r.body);
     let r = respond(
         &mut v,
@@ -159,7 +164,13 @@ fn post_command_unknown_or_bad_id_errors() {
     let (_td, mut v) = vault();
     let id = first_id(&v);
     assert_eq!(
-        respond(&mut v, "POST", "/command", &format!("cmd=frobnicate&id={id}")).status,
+        respond(
+            &mut v,
+            "POST",
+            "/command",
+            &format!("cmd=frobnicate&id={id}")
+        )
+        .status,
         400,
         "unknown command"
     );
@@ -181,7 +192,11 @@ fn get_view_returns_the_serialized_view_tree() {
     let (_td, mut v) = vault();
     let r = respond(&mut v, "GET", "/view", "");
     assert_eq!(r.status, 200);
-    assert!(r.content_type.starts_with("application/json"), "{}", r.content_type);
+    assert!(
+        r.content_type.starts_with("application/json"),
+        "{}",
+        r.content_type
+    );
     assert!(r.body.contains("Ship parser"), "view carries the rows");
 }
 
@@ -190,7 +205,12 @@ fn command_changes_the_view() {
     let (_td, mut v) = vault();
     let id = first_id(&v);
     let before = respond(&mut v, "GET", "/view", "").body;
-    respond(&mut v, "POST", "/command", &format!("cmd=rename&id={id}&arg=Zap"));
+    respond(
+        &mut v,
+        "POST",
+        "/command",
+        &format!("cmd=rename&id={id}&arg=Zap"),
+    );
     let after = respond(&mut v, "GET", "/view", "").body;
     assert_ne!(before, after);
     assert!(after.contains("Zap"));
@@ -203,7 +223,10 @@ fn root_page_carries_the_registry_keymap() {
     let (_td, mut v) = vault();
     let page = respond(&mut v, "GET", "/", "").body;
     assert!(page.contains("KEYMAP"), "keymap table present");
-    assert!(page.contains("/command"), "keys post to the command endpoint");
+    assert!(
+        page.contains("/command"),
+        "keys post to the command endpoint"
+    );
     // Sourced from the registry, never hardcoded: the vim chord for
     // undo appears exactly as closure-input maps it (D6 rule).
     let undo = closure_input::chord_for_command(closure_config::InputMode::Vim, "undo")

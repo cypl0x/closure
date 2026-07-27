@@ -78,5 +78,8 @@ fn clock_minutes_ignores_open_clocks() {
     )
     .expect("write");
     let v = closure_store::Vault::open(dir.path()).expect("open");
-    assert!(v.clock_minutes().is_empty(), "open clock has no minutes yet");
+    assert!(
+        v.clock_minutes().is_empty(),
+        "open clock has no minutes yet"
+    );
 }

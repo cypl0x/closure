@@ -10232,10 +10232,13 @@ impl ModalApp {
         let mut out = Vec::new();
         for (_, doc) in shell.vault.iter() {
             for h in doc.all_headlines() {
-                let body = h.body_text();
-                if let Some(line) = body
+                // The comma escape is an on-disk spelling: showing it
+                // in a hit means the line the user reads is not the
+                // line they typed.
+                let body = closure_org::unescape_body(h.body_text());
+                for line in body
                     .lines()
-                    .find(|l| l.to_lowercase().contains(needle.as_str()))
+                    .filter(|l| l.to_lowercase().contains(needle.as_str()))
                 {
                     out.push((
                         h.id().to_string(),

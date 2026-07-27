@@ -52,8 +52,7 @@ fn pairing_via_ticket_syncs_and_pins_the_signer() {
         sa.record_local(&doc(
             "* Alpha\n:PROPERTIES:\n:ID: 01AAAAAAAAAAAAAAAAAAAAAAAA\n:END:\n",
         ));
-        TcpSyncTransport::serve_once_secure(&listener, &mut sa, &a_key, &[b_pub])
-            .expect("serve");
+        TcpSyncTransport::serve_once_secure(&listener, &mut sa, &a_key, &[b_pub]).expect("serve");
         sa
     });
 
@@ -63,8 +62,7 @@ fn pairing_via_ticket_syncs_and_pins_the_signer() {
     ));
     let t = SyncTicket::decode(&ticket).expect("decode");
     // join = connect to the ticket's addr trusting exactly its key.
-    TcpSyncTransport::connect_and_sync_secure(t.addr, &mut sb, &b_key, &[t.pubkey])
-        .expect("join");
+    TcpSyncTransport::connect_and_sync_secure(t.addr, &mut sb, &b_key, &[t.pubkey]).expect("join");
     let sa = server.join().expect("thread");
     let ids_b: Vec<String> = sb.block_ids().map(ToString::to_string).collect();
     assert_eq!(ids_b.len(), 2, "b holds both blocks: {ids_b:?}");

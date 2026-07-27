@@ -366,8 +366,7 @@ fn jump_in_history_walks_across_branches() {
 fn jump_to_the_current_node_is_a_noop() {
     let mut doc = Document::load_str("* Old\n").expect("load");
     let id = doc.roots()[0].id().clone();
-    closure_core::Command::apply(&RenameHeadline::new(id, "A".into()), &mut doc)
-        .expect("apply");
+    closure_core::Command::apply(&RenameHeadline::new(id, "A".into()), &mut doc).expect("apply");
     let before = doc.source();
     doc.jump_in_history(0).expect("noop jump");
     assert_eq!(doc.source(), before);
@@ -378,8 +377,7 @@ fn jump_to_the_current_node_is_a_noop() {
 fn jump_to_an_unknown_index_errors_and_changes_nothing() {
     let mut doc = Document::load_str("* Old\n").expect("load");
     let id = doc.roots()[0].id().clone();
-    closure_core::Command::apply(&RenameHeadline::new(id, "A".into()), &mut doc)
-        .expect("apply");
+    closure_core::Command::apply(&RenameHeadline::new(id, "A".into()), &mut doc).expect("apply");
     let before = doc.source();
     assert!(doc.jump_in_history(99).is_err());
     assert_eq!(doc.source(), before, "failed jump leaves the doc intact");

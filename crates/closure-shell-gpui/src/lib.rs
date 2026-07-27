@@ -100,6 +100,84 @@ pub enum BodySpan {
     Link,
     /// A table row or rule, `| a | b |` / `|---+---|`.
     Table,
+    /// `*bold*`.
+    Bold,
+    /// `/italic/`.
+    Italic,
+    /// `=code=` — inline code, distinct from a src block's contents.
+    InlineCode,
+    /// `~verbatim~`.
+    Verbatim,
+    /// `+strikethrough+`.
+    Strike,
+    /// `_underline_`.
+    Underline,
+    /// The content of a `#+BEGIN_QUOTE` / `VERSE` / `CENTER` block:
+    /// prose, but somebody else's.
+    Quote,
+    /// The content of a `#+BEGIN_EXAMPLE` / `EXPORT` / `COMMENT`
+    /// block: verbatim, and not to be read as org syntax.
+    Example,
+}
+
+/// How a span is drawn beyond its colour.
+///
+/// Emphasis is weight and slant before it is hue: `*bold*` rendered as
+/// a differently-coloured word is not bold, it is a colour. Kept as
+/// plain data so it can be pinned without a GPU — the window turns it
+/// into a `gpui::HighlightStyle`.
+// Four orthogonal typographic rules, and they combine: bold italic
+// struck-through underlined text is one span, not four states. An
+// enum would have to enumerate the combinations.
+#[allow(clippy::struct_excessive_bools)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct Decoration {
+    /// Draw the glyphs bold.
+    pub bold: bool,
+    /// Draw them italic.
+    pub italic: bool,
+    /// Strike through them.
+    pub strike: bool,
+    /// Underline them.
+    pub underline: bool,
+}
+
+/// The decoration a span kind carries.
+#[must_use]
+pub const fn span_decoration(kind: BodySpan) -> Decoration {
+    let d = Decoration {
+        bold: false,
+        italic: false,
+        strike: false,
+        underline: false,
+    };
+    match kind {
+        BodySpan::Bold => Decoration { bold: true, ..d },
+        BodySpan::Italic | BodySpan::Quote => Decoration { italic: true, ..d },
+        BodySpan::Strike => Decoration { strike: true, ..d },
+        BodySpan::Underline | BodySpan::Link => Decoration {
+            underline: true,
+            ..d
+        },
+        _ => d,
+    }
+}
+
+/// The span kind for the content of the block named `name`.
+///
+/// A quote, a verse and a centred passage are prose somebody else
+/// wrote; an example, an export and a comment are verbatim text that
+/// must not be read as org syntax. `src` has its own path — the
+/// language highlighter — and never reaches here.
+const fn block_content_span(name: &str) -> BodySpan {
+    if name.eq_ignore_ascii_case("quote")
+        || name.eq_ignore_ascii_case("verse")
+        || name.eq_ignore_ascii_case("center")
+    {
+        BodySpan::Quote
+    } else {
+        BodySpan::Example
+    }
 }
 
 /// One org link found on a line.
@@ -152,25 +230,60 @@ fn is_table_line(line: &str) -> bool {
     line.trim_start().starts_with('|')
 }
 
-/// Split a prose line into `Plain`/`Link` spans, verbatim.
+/// Split a prose line into `Plain`, `Link` and emphasis spans,
+/// verbatim.
+///
+/// Links are found first and win: `[[https://x/a_b_c]]` is one link,
+/// not a link with an underline run chewed out of its middle. What is
+/// left between them is scanned for org's inline markup
+/// ([`closure_org::markup_spans`]) — which the shell rendered as flat
+/// prose until now, in a tool whose text is the product.
 fn prose_spans(line: &str) -> Vec<(BodySpan, String)> {
     let links = line_links(line);
-    if links.is_empty() {
-        return vec![(BodySpan::Plain, line.to_owned())];
-    }
     let mut out = Vec::with_capacity(links.len() * 2 + 1);
     let mut at = 0usize;
     for link in links {
         if at < link.range.start {
-            out.push((BodySpan::Plain, line[at..link.range.start].to_owned()));
+            push_markup_spans(&mut out, &line[at..link.range.start]);
         }
         out.push((BodySpan::Link, line[link.range.clone()].to_owned()));
         at = link.range.end;
     }
     if at < line.len() {
-        out.push((BodySpan::Plain, line[at..].to_owned()));
+        push_markup_spans(&mut out, &line[at..]);
+    }
+    if out.is_empty() {
+        out.push((BodySpan::Plain, line.to_owned()));
     }
     out
+}
+
+/// Append `text` to `out`, split into `Plain` and emphasis runs.
+fn push_markup_spans(out: &mut Vec<(BodySpan, String)>, text: &str) {
+    let mut at = 0usize;
+    for (range, kind) in closure_org::markup_spans(text) {
+        if at < range.start {
+            out.push((BodySpan::Plain, text[at..range.start].to_owned()));
+        }
+        out.push((markup_span(kind), text[range.clone()].to_owned()));
+        at = range.end;
+    }
+    if at < text.len() {
+        out.push((BodySpan::Plain, text[at..].to_owned()));
+    }
+}
+
+/// The span kind for one of org's inline markup kinds.
+const fn markup_span(kind: closure_org::MarkupKind) -> BodySpan {
+    use closure_org::MarkupKind as M;
+    match kind {
+        M::Bold => BodySpan::Bold,
+        M::Italic => BodySpan::Italic,
+        M::Code => BodySpan::InlineCode,
+        M::Verbatim => BodySpan::Verbatim,
+        M::Strikethrough => BodySpan::Strike,
+        M::Underline => BodySpan::Underline,
+    }
 }
 
 /// Syntax-highlight an org body for the editor pane: one entry per
@@ -184,52 +297,93 @@ fn prose_spans(line: &str) -> Vec<(BodySpan, String)> {
 /// `tree-sitter` feature of that crate, no API change here.
 #[must_use]
 pub fn highlight_body(body: &str) -> Vec<Vec<(BodySpan, String)>> {
+    use closure_org::BlockDelimiter as D;
     use closure_tree_sitter::{HighlightKind, Highlighter as _, KeywordHighlighter};
+    /// What the reader is inside of, if anything.
+    enum Open {
+        /// A `#+BEGIN_SRC`, with the language's highlighter.
+        Src(String, KeywordHighlighter),
+        /// Any other block: its name, and the kind its content takes.
+        Other(String, BodySpan),
+    }
     let mut out = Vec::new();
-    let mut in_src: Option<KeywordHighlighter> = None;
+    let mut open: Option<Open> = None;
     for line in body.split('\n') {
-        let trimmed = line.trim_start();
-        if trimmed.starts_with("#+") {
-            let lower = trimmed.to_ascii_lowercase();
-            if let Some(rest) = lower.strip_prefix("#+begin_src") {
-                in_src = Some(KeywordHighlighter::for_language(rest.trim()));
-            } else if lower.starts_with("#+end_src") {
-                in_src = None;
+        // A delimiter is syntax whatever it delimits, and only its own
+        // `#+END_` closes the block it opened.
+        match (closure_org::block_delimiter_of(line), &open) {
+            (Some(D::End { name }), Some(Open::Src(open_name, _) | Open::Other(open_name, _)))
+                if name.eq_ignore_ascii_case(open_name) =>
+            {
+                open = None;
+                out.push(vec![(BodySpan::Meta, line.to_owned())]);
+                continue;
             }
-            out.push(vec![(BodySpan::Meta, line.to_owned())]);
-        } else if let Some(hl) = &in_src {
-            let spans = hl
-                .highlight(line)
-                .into_iter()
-                .map(|h| {
-                    let kind = match h.kind {
-                        HighlightKind::Keyword => BodySpan::Keyword,
-                        HighlightKind::Literal => BodySpan::Literal,
-                        HighlightKind::Comment => BodySpan::Comment,
-                        _ => BodySpan::Plain,
-                    };
-                    (kind, line[h.start..h.end].to_owned())
-                })
-                .collect::<Vec<_>>();
-            out.push(if spans.is_empty() {
-                vec![(BodySpan::Plain, line.to_owned())]
-            } else {
-                spans
-            });
-        } else if trimmed.starts_with(':')
-            && (trimmed.ends_with(':')
-                || trimmed
-                    .split_once(' ')
-                    .is_some_and(|(k, _)| k.ends_with(':')))
-        {
-            out.push(vec![(BodySpan::Drawer, line.to_owned())]);
-        } else if is_table_line(line) {
-            out.push(vec![(BodySpan::Table, line.to_owned())]);
-        } else {
-            out.push(prose_spans(line));
+            (Some(D::Begin { name, args }), None) => {
+                open = Some(if name.eq_ignore_ascii_case("src") {
+                    Open::Src(
+                        name.to_owned(),
+                        KeywordHighlighter::for_language(args.unwrap_or_default().trim()),
+                    )
+                } else {
+                    Open::Other(name.to_owned(), block_content_span(name))
+                });
+                out.push(vec![(BodySpan::Meta, line.to_owned())]);
+                continue;
+            }
+            _ => {}
+        }
+        match &open {
+            // Src content goes through the shared highlighter contract
+            // — the dep-free keyword tier by default, real grammars
+            // behind closure-tree-sitter's `tree-sitter` feature.
+            Some(Open::Src(_, hl)) => {
+                let spans = hl
+                    .highlight(line)
+                    .into_iter()
+                    .map(|h| {
+                        let kind = match h.kind {
+                            HighlightKind::Keyword => BodySpan::Keyword,
+                            HighlightKind::Literal => BodySpan::Literal,
+                            HighlightKind::Comment => BodySpan::Comment,
+                            _ => BodySpan::Plain,
+                        };
+                        (kind, line[h.start..h.end].to_owned())
+                    })
+                    .collect::<Vec<_>>();
+                out.push(if spans.is_empty() {
+                    vec![(BodySpan::Plain, line.to_owned())]
+                } else {
+                    spans
+                });
+            }
+            // Everything else in a block is verbatim: `*x*` inside an
+            // example block is two stars and an x.
+            Some(Open::Other(_, kind)) => out.push(vec![(*kind, line.to_owned())]),
+            None => out.push(free_line_spans(line)),
         }
     }
     out
+}
+
+/// Classify one body line that is not inside a block.
+fn free_line_spans(line: &str) -> Vec<(BodySpan, String)> {
+    let trimmed = line.trim_start();
+    if trimmed.starts_with("#+") {
+        return vec![(BodySpan::Meta, line.to_owned())];
+    }
+    if trimmed.starts_with(':')
+        && (trimmed.ends_with(':')
+            || trimmed
+                .split_once(' ')
+                .is_some_and(|(k, _)| k.ends_with(':')))
+    {
+        return vec![(BodySpan::Drawer, line.to_owned())];
+    }
+    if is_table_line(line) {
+        return vec![(BodySpan::Table, line.to_owned())];
+    }
+    prose_spans(line)
 }
 
 /// Flatten one line's highlight spans into `(byte range, kind)` pairs
@@ -3275,7 +3429,7 @@ impl GpuiView {
                                         range,
                                         gpui::HighlightStyle {
                                             color: Some(rgb(span_color(co, kind)).into()),
-                                            ..Default::default()
+                                            ..decorated(kind)
                                         },
                                     )
                                 }),
@@ -3689,7 +3843,7 @@ fn editor_segment(
                 gpui::HighlightStyle {
                     color: Some(fg),
                     background_color: bg,
-                    ..Default::default()
+                    ..decorated(kind)
                 },
             )
         },
@@ -3818,17 +3972,48 @@ fn scrollbar(co: Colors, handle: &gpui::ScrollHandle, cx: &Context<GpuiView>) ->
         )
 }
 
+/// The weight, slant and rules a span kind carries, as gpui spells
+/// them ([`span_decoration`] is the toolkit-free half).
+///
+/// Emphasis has to be weight and slant, not hue: `*bold*` drawn in a
+/// different colour is not bold, it is a colour — and a paragraph with
+/// six kinds of markup in it would become a colour chart rather than
+/// prose.
+#[cfg(feature = "gpui")]
+fn decorated(kind: BodySpan) -> gpui::HighlightStyle {
+    let d = span_decoration(kind);
+    gpui::HighlightStyle {
+        font_weight: d.bold.then_some(gpui::FontWeight::BOLD),
+        font_style: d.italic.then_some(gpui::FontStyle::Italic),
+        strikethrough: d.strike.then(|| gpui::StrikethroughStyle {
+            thickness: px(1.0),
+            color: None,
+        }),
+        underline: d.underline.then(|| gpui::UnderlineStyle {
+            thickness: px(1.0),
+            color: None,
+            wavy: false,
+        }),
+        ..Default::default()
+    }
+}
+
 /// Theme colour for a body-editor span kind. Shared by the editor
 /// pane and the read-only detail preview so both read identically.
 #[cfg(feature = "gpui")]
 const fn span_color(co: Colors, kind: BodySpan) -> u32 {
     match kind {
-        BodySpan::Plain => co.fg,
-        BodySpan::Meta | BodySpan::Comment => co.muted,
+        // Emphasis is weight and slant first (see [`span_decoration`]);
+        // bold and italic keep the prose colour so a paragraph does
+        // not turn into a colour chart.
+        BodySpan::Plain | BodySpan::Bold | BodySpan::Italic | BodySpan::Underline => co.fg,
+        BodySpan::Meta | BodySpan::Comment | BodySpan::Strike => co.muted,
         BodySpan::Drawer => co.error,
         BodySpan::Keyword | BodySpan::Link => co.accent,
         BodySpan::Literal => co.success,
         BodySpan::Table => co.heading2,
+        BodySpan::InlineCode | BodySpan::Verbatim | BodySpan::Example => co.code,
+        BodySpan::Quote => co.heading3,
     }
 }
 

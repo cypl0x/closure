@@ -180,3 +180,159 @@ fn a_mixed_body_reconstructs_verbatim() {
          tail\n",
     );
 }
+
+// === inline markup ===
+//
+// closure-org has parsed `*bold*` / `/italic/` / `=code=` / `~verb~` /
+// `+strike+` / `_under_` since the parser existed, and the reference
+// shell rendered every one of them as flat prose — in a note-taking
+// tool whose text is the product. The runs are classified here and
+// carry their own decoration, so a shell can draw weight and slant
+// rather than only a colour.
+
+use closure_shell_gpui::{span_decoration, span_ranges};
+
+/// The kinds on one line, in order.
+fn kinds(body: &str) -> Vec<BodySpan> {
+    highlight_body(body)[0].iter().map(|(k, _)| *k).collect()
+}
+
+#[test]
+fn every_emphasis_marker_is_classified() {
+    assert_eq!(kinds("*b*"), vec![BodySpan::Bold]);
+    assert_eq!(kinds("/i/"), vec![BodySpan::Italic]);
+    assert_eq!(kinds("=c="), vec![BodySpan::InlineCode]);
+    assert_eq!(kinds("~v~"), vec![BodySpan::Verbatim]);
+    assert_eq!(kinds("+s+"), vec![BodySpan::Strike]);
+    assert_eq!(kinds("_u_"), vec![BodySpan::Underline]);
+}
+
+#[test]
+fn prose_around_emphasis_stays_prose() {
+    assert_eq!(
+        kinds("a *b* c"),
+        vec![BodySpan::Plain, BodySpan::Bold, BodySpan::Plain]
+    );
+    assert_verbatim("a *b* c");
+}
+
+#[test]
+fn emphasis_and_links_share_a_line() {
+    let ks = kinds("see *this* [[id:1][note]] now");
+    assert!(ks.contains(&BodySpan::Bold));
+    assert!(ks.contains(&BodySpan::Link));
+    assert_verbatim("see *this* [[id:1][note]] now");
+}
+
+#[test]
+fn a_link_wins_over_markup_inside_it() {
+    // `[[https://x/a_b_c]]` must stay one link, not a link with an
+    // underline run chewed out of its middle.
+    let ks = kinds("[[https://x/a_b_c][l]]");
+    assert_eq!(ks, vec![BodySpan::Link]);
+    assert_verbatim("[[https://x/a_b_c][l]]");
+}
+
+#[test]
+fn markup_never_reaches_a_headline_lookalike() {
+    // `*bold*` is markup; the escape and the parser both agree, and so
+    // must the renderer — a starred line is prose here, not a heading.
+    assert_verbatim("*bold* opening the line");
+}
+
+#[test]
+fn emphasis_carries_its_decoration() {
+    assert!(span_decoration(BodySpan::Bold).bold);
+    assert!(span_decoration(BodySpan::Italic).italic);
+    assert!(span_decoration(BodySpan::Strike).strike);
+    assert!(span_decoration(BodySpan::Underline).underline);
+    let plain = span_decoration(BodySpan::Plain);
+    assert!(!plain.bold && !plain.italic && !plain.strike && !plain.underline);
+}
+
+#[test]
+fn emphasis_spans_are_contiguous_and_char_aligned() {
+    let body = "ä *fett* ö /kursiv/";
+    let line = &highlight_body(body)[0];
+    let ranges = span_ranges(line);
+    let mut at = 0usize;
+    for (range, _) in &ranges {
+        assert_eq!(range.start, at, "contiguous");
+        assert!(body.is_char_boundary(range.start));
+        assert!(body.is_char_boundary(range.end));
+        at = range.end;
+    }
+    assert_eq!(at, body.len(), "covers the line");
+}
+
+// === block content ===
+//
+// Only `#+BEGIN_SRC` got its content classified. A quote, an example
+// or an export block read as undifferentiated prose, so the one thing
+// those blocks exist to say — this text is not mine / not prose — was
+// exactly what the shell did not show.
+
+#[test]
+fn quote_block_content_is_marked_as_quoted() {
+    let lines = highlight_body("#+BEGIN_QUOTE\nsaid someone\n#+END_QUOTE");
+    assert_eq!(lines[0][0].0, BodySpan::Meta, "the delimiter is syntax");
+    assert_eq!(lines[1][0].0, BodySpan::Quote);
+    assert_eq!(lines[2][0].0, BodySpan::Meta);
+}
+
+#[test]
+fn example_and_export_content_is_verbatim() {
+    for (open, close) in [
+        ("#+BEGIN_EXAMPLE", "#+END_EXAMPLE"),
+        ("#+BEGIN_EXPORT html", "#+END_EXPORT"),
+        ("#+BEGIN_COMMENT", "#+END_COMMENT"),
+    ] {
+        let body = format!("{open}\ncontent\n{close}");
+        assert_eq!(
+            highlight_body(&body)[1][0].0,
+            BodySpan::Example,
+            "{open} content"
+        );
+    }
+}
+
+#[test]
+fn verse_and_center_read_as_quoted_prose() {
+    for open in ["#+BEGIN_VERSE", "#+BEGIN_CENTER"] {
+        let name = open.trim_start_matches("#+BEGIN_");
+        let body = format!("{open}\nline\n#+END_{name}");
+        assert_eq!(highlight_body(&body)[1][0].0, BodySpan::Quote, "{open}");
+    }
+}
+
+#[test]
+fn markup_inside_a_block_is_left_alone() {
+    // The block's content is verbatim: `*x*` in an example block is
+    // two stars and an x, not an emphasis run.
+    let lines = highlight_body("#+BEGIN_EXAMPLE\n*x* /y/\n#+END_EXAMPLE");
+    assert_eq!(lines[1].len(), 1, "one span, unsplit: {:?}", lines[1]);
+    assert_verbatim("#+BEGIN_EXAMPLE\n*x* /y/\n#+END_EXAMPLE");
+}
+
+#[test]
+fn a_block_only_closes_on_its_own_end() {
+    let lines = highlight_body("#+BEGIN_QUOTE\na\n#+END_EXAMPLE\nb\n#+END_QUOTE");
+    assert_eq!(lines[3][0].0, BodySpan::Quote, "still inside the quote");
+}
+
+#[test]
+fn a_src_block_still_gets_its_language_highlighting() {
+    let lines = highlight_body("#+BEGIN_SRC rust\nfn x() {}\n#+END_SRC");
+    assert!(
+        lines[1].iter().any(|(k, _)| *k == BodySpan::Keyword),
+        "the keyword tier still runs: {:?}",
+        lines[1]
+    );
+}
+
+#[test]
+fn an_unclosed_block_still_classifies_its_content() {
+    // Half-typed is the normal state while writing one.
+    let lines = highlight_body("#+BEGIN_QUOTE\nstill quoted");
+    assert_eq!(lines[1][0].0, BodySpan::Quote);
+}

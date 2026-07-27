@@ -360,5 +360,9 @@ fn replaying_a_journal_reproduces_the_vault_byte_exact() {
             .collect::<Vec<_>>()
             .join("\n")
     };
-    assert_eq!(strip(&replayed), strip(&mutated), "replay reproduces the vault");
+    assert_eq!(
+        strip(&replayed),
+        strip(&mutated),
+        "replay reproduces the vault"
+    );
 }
