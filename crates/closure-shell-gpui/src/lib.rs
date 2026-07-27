@@ -163,6 +163,17 @@ pub enum BodySpan {
     /// The content of a `#+BEGIN_EXAMPLE` / `EXPORT` / `COMMENT`
     /// block: verbatim, and not to be read as org syntax.
     Example,
+    /// A headline's stars and title, carrying its nesting level — org's
+    /// outline faces cycle by level, so the level is the colour.
+    Headline(u8),
+    /// An unfinished TODO keyword on a headline.
+    Todo,
+    /// A finished one (`DONE`).
+    Done,
+    /// A `[#A]` priority cookie.
+    Priority,
+    /// The `:tag:tag:` run at the end of a headline.
+    Tags,
 }
 
 /// How a span is drawn beyond its colour.
@@ -197,7 +208,11 @@ pub const fn span_decoration(kind: BodySpan) -> Decoration {
         underline: false,
     };
     match kind {
-        BodySpan::Bold => Decoration { bold: true, ..d },
+        // A heading is heavier than its body, at every level — that is
+        // what makes an outline skimmable rather than merely coloured.
+        BodySpan::Bold | BodySpan::Headline(_) | BodySpan::Todo | BodySpan::Done => {
+            Decoration { bold: true, ..d }
+        }
         BodySpan::Italic | BodySpan::Quote => Decoration { italic: true, ..d },
         BodySpan::Strike => Decoration { strike: true, ..d },
         BodySpan::Underline | BodySpan::Link => Decoration {
@@ -481,6 +496,9 @@ pub fn highlight_body(body: &str) -> Vec<Vec<(BodySpan, String)>> {
 
 /// Classify one body line that is not inside a block.
 fn free_line_spans(line: &str) -> Vec<(BodySpan, String)> {
+    if let Some(spans) = headline_spans(line) {
+        return spans;
+    }
     let trimmed = line.trim_start();
     if trimmed.starts_with("#+") {
         return vec![(BodySpan::Meta, line.to_owned())];
@@ -497,6 +515,89 @@ fn free_line_spans(line: &str) -> Vec<(BodySpan, String)> {
         return vec![(BodySpan::Table, line.to_owned())];
     }
     prose_spans(line)
+}
+
+/// Classify a headline line, or `None` when the line is not one.
+///
+/// The editor view opens a whole org file, so most of what is on screen
+/// is headlines — and every one of them used to render as prose. The
+/// pieces org gives a face of its own are lifted out (the keyword, the
+/// priority cookie, the tag run) and everything else takes the level's
+/// colour, which is how org itself paints an outline.
+///
+/// What counts as a headline is the *kernel's* answer, not a second
+/// opinion: the line is parsed with [`closure_org::parse`] and the
+/// pieces come from the resulting [`closure_org::Headline`] (I7). That
+/// is what keeps `*bold*` prose and `  * item` a list bullet — one
+/// space and one column apart from an outline heading — and what makes
+/// the set of TODO keywords the parser's rather than this file's.
+fn headline_spans(line: &str) -> Option<Vec<(BodySpan, String)>> {
+    // Cheap reject first: parsing every prose line of a large buffer to
+    // learn it does not start with a star is work nobody asked for.
+    if !line.starts_with('*') {
+        return None;
+    }
+    let doc = closure_org::parse(line).ok()?;
+    let headline = doc.roots().first()?;
+    let level = headline.level();
+    // `* ` with nothing after it is still a headline; the parser says
+    // so, and typing one is how you begin.
+    let mut out: Vec<(BodySpan, String)> = Vec::new();
+    let mut at = 0usize;
+    let push = |kind: BodySpan, text: &str, out: &mut Vec<(BodySpan, String)>| {
+        if !text.is_empty() {
+            out.push((kind, text.to_owned()));
+        }
+    };
+    // Stars, plus the whitespace that separates them from the title.
+    let stars = line.len() - line.trim_start_matches('*').len();
+    let after_stars = stars + (line[stars..].len() - line[stars..].trim_start().len());
+    push(BodySpan::Headline(level), &line[at..after_stars], &mut out);
+    at = after_stars;
+
+    if let Some(keyword) = headline.todo()
+        && line[at..].starts_with(keyword)
+    {
+        let kind = if keyword == "DONE" {
+            BodySpan::Done
+        } else {
+            BodySpan::Todo
+        };
+        push(kind, keyword, &mut out);
+        at += keyword.len();
+    }
+    if let Some(letter) = headline.priority() {
+        let cookie = format!("[#{letter}]");
+        if let Some(start) = line[at..].find(&cookie) {
+            push(BodySpan::Headline(level), &line[at..at + start], &mut out);
+            push(BodySpan::Priority, &cookie, &mut out);
+            at += start + cookie.len();
+        }
+    }
+    // The tag run is anchored to the end of the line, which is the only
+    // place org accepts one — searching forwards would find `:a:` in a
+    // title and cut it out of the middle.
+    let tags = headline.tags();
+    let tail = if tags.is_empty() {
+        line.len()
+    } else {
+        let run = format!(":{}:", tags.join(":"));
+        line.trim_end()
+            .strip_suffix(&run)
+            .map_or(line.len(), str::len)
+    };
+    push(BodySpan::Headline(level), &line[at..tail], &mut out);
+    push(BodySpan::Tags, &line[tail..], &mut out);
+    // Neighbours of the same kind are one run: the pieces above are cut
+    // where the *parser* has something to say, not where the painter
+    // does, and two adjacent ranges in one colour are a redundant
+    // highlight for gpui to lay out.
+    out.dedup_by(|(kind, text), (prev_kind, prev_text)| {
+        (*kind == *prev_kind)
+            .then(|| prev_text.push_str(text))
+            .is_some()
+    });
+    Some(out)
 }
 
 /// Flatten one line's highlight spans into `(byte range, kind)` pairs
@@ -5411,13 +5512,27 @@ const fn span_color(co: Colors, kind: BodySpan) -> u32 {
         // bold and italic keep the prose colour so a paragraph does
         // not turn into a colour chart.
         BodySpan::Plain | BodySpan::Bold | BodySpan::Italic | BodySpan::Underline => co.fg,
-        BodySpan::Meta | BodySpan::Comment | BodySpan::Strike => co.muted,
-        BodySpan::Drawer => co.error,
+        // A tag run is de-emphasised for the same reason meta lines are:
+        // it is bookkeeping beside the sentence, not the sentence.
+        BodySpan::Meta | BodySpan::Comment | BodySpan::Strike | BodySpan::Tags => co.muted,
+        // A drawer and an open TODO are both "unfinished business the
+        // eye should catch first".
+        BodySpan::Drawer | BodySpan::Todo => co.error,
         BodySpan::Keyword | BodySpan::Link => co.accent,
-        BodySpan::Literal => co.success,
+        // Literals and finished work read as settled.
+        BodySpan::Literal | BodySpan::Done => co.success,
         BodySpan::Table => co.heading2,
         BodySpan::InlineCode | BodySpan::Verbatim | BodySpan::Example => co.code,
         BodySpan::Quote => co.heading3,
+        // Org cycles its outline faces by level; the palette has three
+        // heading colours, so depth 4 reads like depth 1 — which is
+        // what org does too once it runs out of faces.
+        BodySpan::Headline(level) => match level % 3 {
+            1 => co.accent,
+            2 => co.heading2,
+            _ => co.heading3,
+        },
+        BodySpan::Priority => co.warning,
     }
 }
 
@@ -5548,6 +5663,16 @@ impl Render for GpuiView {
         // moving once the layout does.
         if self.app.surface().is_editor() {
             let view = self.body_view();
+            // The kernel decides where the viewport sits and only the
+            // window knows how tall it is, so the measurement is handed
+            // over before anything asks to be framed — `C-l` and
+            // `zz`/`zt`/`zb` need "the middle of the screen" to mean
+            // this screen. Resolving the scroll here rather than in the
+            // (borrow-only) paint is also what lets it be sticky:
+            // scrolling by the minimum is measured from where the
+            // viewport already was.
+            self.app.set_body_viewport(view);
+            self.app.body_scroll_follow(view);
             if self.painted_view.replace(view) != view {
                 // `cx.notify()` inside a render is not another frame —
                 // the window is already drawing. This asks for the next

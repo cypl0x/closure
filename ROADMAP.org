@@ -13,6 +13,46 @@ file is the fine-grained, capability-level queue between them. Blocked
 on a design decision? Record it under [[*Decisions][Decisions]], pick the most
 reversible option, keep moving.
 
+* DONE EDIT-Q15 — the buffer looks like org and moves like Doom [2/2]
+User backlog in =~/vault/inbox.org=, 2026-07-27.
+** DONE E1 org syntax in the buffer [1/1]
+=highlight_body= knew about blocks, drawers, tables and inline markup
+and nothing about the construct org is made of: in the editor view —
+which opens a whole file — every headline rendered as prose. Stars,
+TODO keyword, priority cookie and tag run are now their own spans
+(=BodySpan::{Headline(level), Todo, Done, Priority, Tags}=), the level
+carried so the outline colours cycle the way org's faces do
+(=level % 3= over accent/heading2/heading3, headings bold).
+What counts as a headline is the *kernel's* answer, not a second
+opinion: the line goes through =closure_org::parse= and the pieces come
+off the resulting =Headline= (I7). That is what keeps =*bold*= prose and
+=  * item= a bullet — one space and one column from a heading — and what
+makes the TODO keyword set the parser's rather than the shell's.
+Adjacent same-kind runs are merged: the cuts happen where the parser
+has something to say, not where the painter does.
+** DONE E2 scrolling, and =C-l= [1/1]
+The viewport had one rule — park the cursor on the last visible line —
+which is right for a =j= and wrong for every *jump*: a search hit, =G=,
+a followed link all landed at the very bottom edge with no context
+under them. Doom's own settings say what to do instead
+(=lisp/doom-emacs.el=): =scroll-margin 0= (no forced context on an
+ordinary move) and =scroll-conservatively 10= (scroll by the minimum up
+to ten lines off the edge, recentre beyond that). =body_scroll_follow=
+is that rule, and it is stateful by necessity — "the minimum" is
+measured from where the viewport already was — so it is the painter's
+entry point and =body_scroll_start= stays the pure reader.
+=C-l= cycles centre → top → bottom (Emacs' =recenter-top-bottom=, which
+Doom keeps) in every mode, INSERT included; =zz=/=zt=/=zb= are the same
+three from evil's side, in the modal modes only, so =z= stays a letter
+while typing. A press that finds the viewport somewhere other than
+where the last one left it starts the cycle over.
+DECISION (2026-07-27): the kernel decides *where* the viewport sits and
+only the shell knows how *tall* it is, so the shell reports the height
+each frame (=set_body_viewport=) instead of the kernel guessing or the
+framing chords moving into the shell. Verified against the Doom source
+the user cloned to =~/dev/doomemacs-core= rather than from memory — the
+margin was going to be 3 until the source said 0.
+
 * DONE PAIR-Q14 — a ticket that survives leaving the machine [1/1]
 User backlog, 2026-07-27: "fix the bind address so we can test p2p".
 ** DONE P1 bind and advertise are two questions [1/1]

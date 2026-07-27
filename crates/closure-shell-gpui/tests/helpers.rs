@@ -214,3 +214,117 @@ fn resolve_sync_addrs_defaults_to_the_pairing_port_on_every_interface() {
         "and which address it dials is detected, not guessed by config"
     );
 }
+
+// === Org headline syntax in the buffer ===
+//
+// The editor view opens a whole org file, so most of what is on screen
+// is headlines — and every one of them rendered as prose: the stars,
+// the TODO keyword, the priority cookie and the tags all in the
+// paragraph colour. The classifier knew about blocks, drawers, tables
+// and inline markup, and nothing about the one construct org is made
+// of.
+
+fn kinds(line: &str) -> Vec<(BodySpan, String)> {
+    highlight_body(line).remove(0)
+}
+
+#[test]
+fn a_headline_line_is_classified_by_its_level() {
+    let spans = kinds("* Top");
+    assert_eq!(
+        spans,
+        vec![(BodySpan::Headline(1), "* Top".to_owned())],
+        "stars and title are one run at the level's colour"
+    );
+    assert_eq!(
+        kinds("*** Deep"),
+        vec![(BodySpan::Headline(3), "*** Deep".to_owned())]
+    );
+}
+
+#[test]
+fn a_todo_keyword_is_marked_apart_from_the_title() {
+    assert_eq!(
+        kinds("* TODO Ship it"),
+        vec![
+            (BodySpan::Headline(1), "* ".to_owned()),
+            (BodySpan::Todo, "TODO".to_owned()),
+            (BodySpan::Headline(1), " Ship it".to_owned()),
+        ]
+    );
+}
+
+#[test]
+fn a_done_keyword_is_not_a_todo_keyword() {
+    // Same construct, opposite meaning: a list where finished and
+    // unfinished look alike is the one thing a TODO list must not do.
+    assert_eq!(
+        kinds("** DONE Ship it"),
+        vec![
+            (BodySpan::Headline(2), "** ".to_owned()),
+            (BodySpan::Done, "DONE".to_owned()),
+            (BodySpan::Headline(2), " Ship it".to_owned()),
+        ]
+    );
+}
+
+#[test]
+fn a_priority_cookie_and_tags_get_their_own_spans() {
+    assert_eq!(
+        kinds("* TODO [#A] Ship it :work:urgent:"),
+        vec![
+            (BodySpan::Headline(1), "* ".to_owned()),
+            (BodySpan::Todo, "TODO".to_owned()),
+            (BodySpan::Headline(1), " ".to_owned()),
+            (BodySpan::Priority, "[#A]".to_owned()),
+            (BodySpan::Headline(1), " Ship it ".to_owned()),
+            (BodySpan::Tags, ":work:urgent:".to_owned()),
+        ]
+    );
+}
+
+#[test]
+fn bold_text_at_the_start_of_a_line_is_not_a_headline() {
+    // `*bold*` and `* headline` differ by one space, and getting this
+    // wrong would repaint half the prose in the outline colours.
+    let spans = kinds("*bold* opening");
+    assert!(
+        !matches!(spans.first(), Some((BodySpan::Headline(_), _))),
+        "{spans:?}"
+    );
+}
+
+#[test]
+fn an_indented_star_is_a_list_bullet_not_a_headline() {
+    let spans = kinds("  * a list item");
+    assert!(
+        !matches!(spans.first(), Some((BodySpan::Headline(_), _))),
+        "org headlines start at column zero: {spans:?}"
+    );
+}
+
+#[test]
+fn a_star_inside_a_block_stays_verbatim() {
+    let lines = highlight_body("#+BEGIN_EXAMPLE\n* not a headline\n#+END_EXAMPLE");
+    assert_eq!(
+        lines[1],
+        vec![(BodySpan::Example, "* not a headline".to_owned())],
+        "block content is not org syntax"
+    );
+}
+
+#[test]
+fn highlighting_a_headline_preserves_every_byte() {
+    // The painter reconstructs the line from its spans; a classifier
+    // that drops or duplicates a byte silently corrupts what is shown.
+    for line in [
+        "* TODO [#A] Ship it :work:urgent:",
+        "**** DONE  odd   spacing  :t:",
+        "* Ünïcödé — täg :ümlaut:",
+        "*",
+        "* ",
+    ] {
+        let joined: String = kinds(line).into_iter().map(|(_, t)| t).collect();
+        assert_eq!(joined, line, "round-trip of {line:?}");
+    }
+}

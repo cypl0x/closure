@@ -2629,6 +2629,29 @@ pub struct Peer {
     pub state: PeerState,
 }
 
+/// Body lines a shell is assumed to be able to paint until it says
+/// otherwise ([`ModalApp::set_body_viewport`]).
+pub const BODY_VIEWPORT_DEFAULT: usize = 20;
+
+/// A key the body editor is holding until the rest of its chord
+/// arrives.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum BodyPrefix {
+    /// `z` — evil's viewport prefix (`zz` / `zt` / `zb`).
+    Viewport,
+}
+
+/// Where the cursor line should end up in the viewport.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BodyFraming {
+    /// Middle of the pane (`zz`, and `C-l`'s first press).
+    Centre,
+    /// First visible line (`zt`).
+    Top,
+    /// Last visible line (`zb`).
+    Bottom,
+}
+
 /// Where pairing listens when nothing has said otherwise: the closure
 /// port, on every interface.
 ///
@@ -7651,6 +7674,20 @@ pub struct ModalApp {
     quit: bool,
     /// Explicit wheel-scroll viewport offset; None = follow selection.
     scroll_override: Option<usize>,
+    /// How many body lines the shell last said it can paint. The
+    /// kernel decides *where* the viewport sits and the shell knows how
+    /// big it is, so the shell reports it ([`Self::set_body_viewport`])
+    /// and the framing chords read it back.
+    body_viewport: usize,
+    /// The first visible line as last resolved by [`Self::body_scroll_follow`],
+    /// which is what "scroll by the minimum" is measured from.
+    body_anchor: Option<usize>,
+    /// `C-l`'s place in the centre → top → bottom cycle, with the
+    /// framing it produced — a press that finds the viewport somewhere
+    /// else is a first press, not the next one.
+    recenter: Option<(u8, usize, usize)>,
+    /// A body-editor prefix key waiting for the rest of its chord.
+    pending_body: Option<BodyPrefix>,
     /// Body-editor wheel viewport `(start, cursor_line_when_set)`; the
     /// override self-clears when the cursor line changes (G5).
     body_scroll: Option<(usize, usize)>,
@@ -7808,6 +7845,10 @@ impl ModalApp {
             status: String::new(),
             quit: false,
             scroll_override: None,
+            body_viewport: BODY_VIEWPORT_DEFAULT,
+            body_anchor: None,
+            recenter: None,
+            pending_body: None,
             body_scroll: None,
             hist_cursor: 0,
             row_memo: std::cell::RefCell::new(None),
@@ -9586,6 +9627,145 @@ impl ModalApp {
         if cl < viewport { 0 } else { cl + 1 - viewport }
     }
 
+    /// Report how many body lines the pane can paint.
+    ///
+    /// The framing chords (`C-l`, `zz`/`zt`/`zb`) have to answer "where
+    /// is the middle of the screen", and only the shell knows how big
+    /// the screen is. Called once per frame by the painter; a shell
+    /// that never calls it gets [`BODY_VIEWPORT_DEFAULT`].
+    pub const fn set_body_viewport(&mut self, lines: usize) {
+        if lines > 0 {
+            self.body_viewport = lines;
+        }
+    }
+
+    /// The viewport height the shell last reported.
+    #[must_use]
+    pub const fn body_viewport(&self) -> usize {
+        self.body_viewport
+    }
+
+    /// Put the body cursor at the start of `line`, clamped to the
+    /// buffer — what a jump (a search hit, `G`, a followed link) does
+    /// before the viewport is asked to follow it.
+    pub fn body_goto_line(&mut self, line: usize) {
+        let text = self.body.text();
+        let mut at = 0usize;
+        for (n, l) in text.split('\n').enumerate() {
+            if n == line {
+                break;
+            }
+            at += l.len() + 1;
+        }
+        self.body.set_cursor_byte(at.min(text.len()));
+        self.completion = None;
+    }
+
+    /// Resolve the first visible body line for this frame, moving the
+    /// viewport the way Doom's settings say to.
+    ///
+    /// `lisp/doom-emacs.el` sets `scroll-margin 0` and
+    /// `scroll-conservatively 10`: an ordinary move gets no forced
+    /// context and scrolls by the minimum, and a *jump* — further than
+    /// ten lines off the edge — recentres instead, because a line
+    /// pinned to the bottom edge of the pane has nothing under it to
+    /// read. The old rule always parked the cursor on the last visible
+    /// line, which made every search hit land at the very bottom.
+    ///
+    /// Stateful by necessity ("scroll by the minimum" is measured from
+    /// where the viewport already was), so this is the painter's entry
+    /// point; [`Self::body_scroll_start`] stays the pure reader.
+    pub fn body_scroll_follow(&mut self, viewport: usize) -> usize {
+        /// `scroll-conservatively`: further than this is a jump.
+        const CONSERVATIVELY: usize = 10;
+        let (cursor, _) = self.body.cursor_line_col();
+        let lines = self.body.text().split('\n').count();
+        let max = lines.saturating_sub(viewport);
+        if let Some((start, at)) = self.body_scroll
+            && at == cursor
+        {
+            self.body_anchor = Some(start);
+            return start;
+        }
+        let previous = self
+            .body_anchor
+            .unwrap_or_else(|| self.body_scroll_start(viewport));
+        let start = if (previous..previous + viewport).contains(&cursor) {
+            // Already on screen: Emacs does not move the window, and
+            // neither does anything else worth using.
+            previous
+        } else {
+            let distance = if cursor < previous {
+                previous - cursor
+            } else {
+                cursor + 1 - (previous + viewport)
+            };
+            if distance <= CONSERVATIVELY {
+                if cursor < previous {
+                    cursor
+                } else {
+                    cursor + 1 - viewport
+                }
+            } else {
+                cursor.saturating_sub(viewport / 2)
+            }
+        }
+        .min(max);
+        self.body_anchor = Some(start);
+        self.body_scroll = Some((start, cursor));
+        start
+    }
+
+    /// `C-l`: cycle the cursor line through centre, top and bottom.
+    ///
+    /// Emacs' `recenter-top-bottom`, which Doom keeps. A press that
+    /// finds the viewport somewhere other than where the last press
+    /// left it starts the cycle over — the cycle is about *this* line
+    /// in *this* framing, and a motion invalidates both.
+    pub fn body_recenter_cycle(&mut self) {
+        let viewport = self.body_viewport;
+        let (cursor, _) = self.body.cursor_line_col();
+        let current = self.body_scroll_start(viewport);
+        let step = match self.recenter {
+            Some((step, start, at)) if start == current && at == cursor => (step + 1) % 3,
+            _ => 0,
+        };
+        let framing = match step {
+            0 => BodyFraming::Centre,
+            1 => BodyFraming::Top,
+            _ => BodyFraming::Bottom,
+        };
+        let start = self.frame_body(framing);
+        self.recenter = Some((step, start, cursor));
+    }
+
+    /// `zz` / `zt` / `zb`: put the cursor line in the middle, at the
+    /// top or at the bottom, saying which rather than cycling.
+    pub fn body_frame(&mut self, framing: BodyFraming) {
+        let start = self.frame_body(framing);
+        let (cursor, _) = self.body.cursor_line_col();
+        // A framing chord is also a fresh starting point for `C-l`.
+        self.recenter = Some((0, start, cursor));
+    }
+
+    /// Park the viewport so the cursor line sits where `framing` says,
+    /// returning the resolved first visible line.
+    fn frame_body(&mut self, framing: BodyFraming) -> usize {
+        let viewport = self.body_viewport;
+        let (cursor, _) = self.body.cursor_line_col();
+        let lines = self.body.text().split('\n').count();
+        let max = lines.saturating_sub(viewport);
+        let start = match framing {
+            BodyFraming::Centre => cursor.saturating_sub(viewport / 2),
+            BodyFraming::Top => cursor,
+            BodyFraming::Bottom => (cursor + 1).saturating_sub(viewport),
+        }
+        .min(max);
+        self.body_scroll = Some((start, cursor));
+        self.body_anchor = Some(start);
+        start
+    }
+
     /// Wheel-scroll the body-editor viewport by `delta` lines (G5),
     /// clamped to `0..=lines - viewport`; any cursor-line change
     /// silently drops the override (the sibling of the outline's
@@ -10124,6 +10304,52 @@ impl ModalApp {
     }
 
     /// The body editor's own key handling, unaware of the "/" menu.
+    /// The chords that move the *viewport* rather than the text, taken
+    /// before the mode split because `C-l` is bound globally in Emacs
+    /// (Doom keeps it) and so recentres while typing as well.
+    ///
+    /// Returns whether the key was consumed.
+    fn viewport_chord(
+        &mut self,
+        shell: &Shell,
+        key: &str,
+        ctrl: bool,
+        alt: bool,
+        text: Option<char>,
+    ) -> bool {
+        if ctrl && key == "l" {
+            self.pending_body = None;
+            self.body_recenter_cycle();
+            return true;
+        }
+        if self.pending_body == Some(BodyPrefix::Viewport) {
+            self.pending_body = None;
+            match key {
+                "z" => self.body_frame(BodyFraming::Centre),
+                "t" => self.body_frame(BodyFraming::Top),
+                "b" => self.body_frame(BodyFraming::Bottom),
+                // `z` followed by anything else is a chord nobody
+                // bound; swallowing the second key too would eat an
+                // edit, so it falls through as itself.
+                _ => self.edit_body_key(shell, key, ctrl, alt, text),
+            }
+            return true;
+        }
+        // `z` is evil's viewport prefix, in the modal modes only — in
+        // INSERT, and in the mouse-first modes, it is the letter z.
+        if key == "z"
+            && self.body.mode() != EditorMode::Insert
+            && matches!(
+                self.mode,
+                InputMode::Vim | InputMode::Doom | InputMode::Helix
+            )
+        {
+            self.pending_body = Some(BodyPrefix::Viewport);
+            return true;
+        }
+        false
+    }
+
     fn edit_body_key(
         &mut self,
         shell: &Shell,
@@ -10132,6 +10358,9 @@ impl ModalApp {
         alt: bool,
         text: Option<char>,
     ) {
+        if self.viewport_chord(shell, key, ctrl, alt, text) {
+            return;
+        }
         match self.body.mode() {
             EditorMode::Insert => match key {
                 // G4: the first buffer-changing edit checkpoints the
