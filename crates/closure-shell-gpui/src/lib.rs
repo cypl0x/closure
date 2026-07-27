@@ -5197,6 +5197,34 @@ fn scrollbar(
         )
 }
 
+/// The window's font: the theme's stack as gpui wants it — one family
+/// plus an ordered fallback list.
+///
+/// gpui's `font_family()` takes a single family name, and the window
+/// used to hand it the theme's whole CSS-shaped stack. No font is called
+/// `"Maple Mono NF, JetBrains Mono, ui-monospace, monospace"`, so the
+/// lookup failed and every glyph in the app came from whatever the
+/// platform substituted — which is why the shell never looked like the
+/// font it declared.
+///
+/// One font for the whole window, mono: the outline's markers, the
+/// editor gutter, the block cursor and org tables all want cells that
+/// line up, and a Nerd Font covers the rail's glyphs.
+#[cfg(feature = "gpui")]
+#[must_use]
+pub fn app_font(theme: closure_shell_core::Theme) -> gpui::Font {
+    let stack = closure_shell_core::font_stack(theme.typography.mono_family);
+    let mut names = stack.into_iter();
+    // A theme that names no font is a broken theme, not a window with
+    // no text in it.
+    let family = names.next().unwrap_or("monospace");
+    let fallbacks: Vec<String> = names.map(ToOwned::to_owned).collect();
+    gpui::Font {
+        fallbacks: (!fallbacks.is_empty()).then(|| gpui::FontFallbacks::from_fonts(fallbacks)),
+        ..gpui::font(family)
+    }
+}
+
 /// The weight, slant and rules a span kind carries, as gpui spells
 /// them ([`span_decoration`] is the toolkit-free half).
 ///
@@ -5356,7 +5384,7 @@ fn meta_line(d: &Detail) -> String {
 impl Render for GpuiView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let co = Colors::of(&self.theme);
-        let mono = self.theme.typography.mono_family.to_owned();
+        let font = app_font(self.theme);
         // Every path that sets a status reaches the toast strip through
         // here, once per frame.
         self.absorb_status(cx);
@@ -5439,7 +5467,7 @@ impl Render for GpuiView {
             .overflow_hidden()
             .bg(rgb(co.bg))
             .text_color(rgb(co.fg))
-            .font_family(mono)
+            .font(font)
             .child(header)
             .child(context)
             .child(body)

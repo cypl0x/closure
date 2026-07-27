@@ -792,6 +792,25 @@ pub struct Typography {
     pub base_px: u16,
 }
 
+/// Split a CSS-shaped font stack into family names, best first.
+///
+/// The stacks are spelled the way CSS spells them because the web tier
+/// drops them straight into a `font-family` rule. Every native toolkit
+/// wants one family plus an ordered fallback list, and the gpui shell
+/// used to hand the *whole string* to gpui's `font_family()` — asking
+/// the platform for a font literally called
+/// `"JetBrains Mono, ui-monospace, monospace"`, getting nothing, and
+/// falling back to whatever the platform chose. Empty names are dropped
+/// so a ragged stack cannot ask for a font with no name.
+#[must_use]
+pub fn font_stack(stack: &str) -> Vec<&str> {
+    stack
+        .split(',')
+        .map(str::trim)
+        .filter(|name| !name.is_empty())
+        .collect()
+}
+
 /// A declarative, typed theme: palette + spacing + typography as data
 /// (G2). Resolved from the free-form `config.theme` string via
 /// [`Theme::from_name`]; each shell maps the tokens to its native style.
@@ -831,8 +850,8 @@ impl Theme {
                 gap_px: 4,
             },
             typography: Typography {
-                font_family: "Inter, system-ui, sans-serif",
-                mono_family: "JetBrains Mono, ui-monospace, monospace",
+                font_family: "Maple Mono NF, JetBrains Mono, ui-monospace, monospace",
+                mono_family: "Maple Mono NF, JetBrains Mono, ui-monospace, monospace",
                 base_px: 14,
             },
         }
@@ -861,8 +880,8 @@ impl Theme {
                 gap_px: 4,
             },
             typography: Typography {
-                font_family: "Inter, system-ui, sans-serif",
-                mono_family: "JetBrains Mono, ui-monospace, monospace",
+                font_family: "Maple Mono NF, JetBrains Mono, ui-monospace, monospace",
+                mono_family: "Maple Mono NF, JetBrains Mono, ui-monospace, monospace",
                 base_px: 14,
             },
         }
@@ -891,8 +910,8 @@ impl Theme {
                 gap_px: 4,
             },
             typography: Typography {
-                font_family: "Inter, system-ui, sans-serif",
-                mono_family: "JetBrains Mono, ui-monospace, monospace",
+                font_family: "Maple Mono NF, JetBrains Mono, ui-monospace, monospace",
+                mono_family: "Maple Mono NF, JetBrains Mono, ui-monospace, monospace",
                 base_px: 16,
             },
         }
@@ -924,8 +943,8 @@ impl Theme {
                 gap_px: 4,
             },
             typography: Typography {
-                font_family: "Inter, system-ui, sans-serif",
-                mono_family: "JetBrains Mono, ui-monospace, monospace",
+                font_family: "Maple Mono NF, JetBrains Mono, ui-monospace, monospace",
+                mono_family: "Maple Mono NF, JetBrains Mono, ui-monospace, monospace",
                 base_px: 14,
             },
         }

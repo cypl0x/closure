@@ -1027,3 +1027,52 @@ fn the_rail_marks_the_open_pane(cx: &mut gpui::TestAppContext) {
     vcx.run_until_parked();
     view.update(vcx, |v, _cx| assert_eq!(active(v), vec!["peers"]));
 }
+
+// === the font the window actually asks for ===
+//
+// The theme's stack is CSS-shaped; gpui's `font_family()` takes ONE
+// family name. The window handed it the whole comma-separated string,
+// so it asked for a font called "JetBrains Mono, ui-monospace,
+// monospace", no such family existed, and every glyph in the app came
+// from whatever the platform picked instead. `app_font` is the split.
+
+#[test]
+fn the_window_asks_for_one_family_and_names_its_fallbacks() {
+    let font = closure_shell_gpui::app_font(closure_shell_core::Theme::doom_vibrant());
+    assert_eq!(
+        font.family.as_ref(),
+        "Maple Mono NF",
+        "the user's font, by its real family name"
+    );
+    let fallbacks = font.fallbacks.expect("a fallback list");
+    assert_eq!(
+        fallbacks.fallback_list(),
+        ["JetBrains Mono", "ui-monospace", "monospace"],
+        "the rest of the stack, in order"
+    );
+}
+
+#[test]
+fn a_single_family_theme_still_produces_a_font() {
+    // Nothing to fall back to must not mean nothing to render with.
+    let mut theme = closure_shell_core::Theme::doom_vibrant();
+    theme.typography.mono_family = "Maple Mono NF";
+    let font = closure_shell_gpui::app_font(theme);
+    assert_eq!(font.family.as_ref(), "Maple Mono NF");
+    assert!(
+        font.fallbacks.is_none_or(|f| f.fallback_list().is_empty()),
+        "no fallbacks claimed that the theme did not name"
+    );
+}
+
+#[test]
+fn an_empty_stack_falls_back_to_a_generic_monospace() {
+    // A theme with no font named is a broken theme, not a window with no
+    // text: the window still has to render.
+    let mut theme = closure_shell_core::Theme::doom_vibrant();
+    theme.typography.mono_family = "";
+    assert_eq!(
+        closure_shell_gpui::app_font(theme).family.as_ref(),
+        "monospace"
+    );
+}

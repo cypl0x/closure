@@ -115,3 +115,83 @@ fn every_theme_fills_the_new_roles() {
         }
     }
 }
+
+// === font stacks ===
+//
+// `mono_family` is a CSS-shaped stack because the web tier drops it
+// straight into a `font-family` rule. Every native toolkit wants one
+// family name plus an ordered fallback list instead, and the gpui shell
+// handed the *whole string* to `font_family()` — so it asked for a font
+// literally called "JetBrains Mono, ui-monospace, monospace", got
+// nothing, and fell back to whatever the platform felt like. The split
+// belongs here, where every shell can share it.
+
+#[test]
+fn a_font_stack_splits_into_family_then_fallbacks() {
+    let stack = closure_shell_core::font_stack("Maple Mono NF, JetBrains Mono, monospace");
+    assert_eq!(
+        stack,
+        vec!["Maple Mono NF", "JetBrains Mono", "monospace"],
+        "in order, whitespace trimmed"
+    );
+}
+
+#[test]
+fn a_single_family_is_a_stack_of_one() {
+    assert_eq!(
+        closure_shell_core::font_stack("Maple Mono NF"),
+        vec!["Maple Mono NF"]
+    );
+}
+
+#[test]
+fn an_empty_or_ragged_stack_yields_no_empty_names() {
+    // A trailing comma or a double comma must not ask the toolkit for a
+    // font with no name.
+    assert!(closure_shell_core::font_stack("").is_empty());
+    assert_eq!(
+        closure_shell_core::font_stack("Maple Mono NF,, ,monospace,"),
+        vec!["Maple Mono NF", "monospace"]
+    );
+}
+
+#[test]
+fn every_theme_leads_with_maple_mono_nerd_font() {
+    // The user's font, and the one the editor is aligned for: a Nerd
+    // Font, so the rail glyphs and the org markers have coverage, and
+    // monospaced, so the gutter, the block cursor and the org tables
+    // line up.
+    for name in ["dark", "light", "high-contrast", "doom-vibrant"] {
+        let t = Theme::from_name(name);
+        assert_eq!(
+            closure_shell_core::font_stack(t.typography.mono_family)
+                .first()
+                .copied(),
+            Some("Maple Mono NF"),
+            "{name} mono stack: {}",
+            t.typography.mono_family
+        );
+        assert_eq!(
+            closure_shell_core::font_stack(t.typography.font_family)
+                .first()
+                .copied(),
+            Some("Maple Mono NF"),
+            "{name} ui stack: {} — one font, whole app",
+            t.typography.font_family
+        );
+    }
+}
+
+#[test]
+fn every_stack_ends_in_a_generic_family() {
+    // The name is what a machine without Maple Mono installed falls back
+    // to; without it the shells would land on the toolkit's default,
+    // which on some platforms is proportional.
+    for name in ["dark", "light", "high-contrast", "doom-vibrant"] {
+        let t = Theme::from_name(name);
+        for stack in [t.typography.mono_family, t.typography.font_family] {
+            let last = closure_shell_core::font_stack(stack).last().copied();
+            assert_eq!(last, Some("monospace"), "{name}: {stack}");
+        }
+    }
+}
