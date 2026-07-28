@@ -1394,3 +1394,48 @@ fn an_unwrapped_editor_still_paints_one_row_per_line(cx: &mut gpui::TestAppConte
     view.update(vcx, |v, _cx| assert!(!v.wraps()));
     assert!(vcx.debug_bounds("body-line-0").is_some());
 }
+
+#[gpui::test]
+fn the_outline_column_can_be_dragged_wider(cx: &mut gpui::TestAppContext) {
+    // A fixed 420px column had no way to show long titles and no way to
+    // get out of their way in a narrow window.
+    let (_dir, _view, vcx) = visual_window(cx, VAULT);
+    let before = vcx
+        .debug_bounds("outline-row-0")
+        .expect("painted")
+        .size
+        .width;
+    let handle = centre(vcx, "outline-resize");
+    vcx.simulate_mouse_down(handle, MouseButton::Left, Modifiers::none());
+    vcx.simulate_mouse_move(
+        Point::new(handle.x + px(120.0), handle.y),
+        Some(MouseButton::Left),
+        Modifiers::none(),
+    );
+    vcx.run_until_parked();
+    let after = vcx
+        .debug_bounds("outline-row-0")
+        .expect("painted")
+        .size
+        .width;
+    assert!(
+        after > before,
+        "wider after the drag: {before:?} → {after:?}"
+    );
+}
+
+#[gpui::test]
+fn the_outline_column_will_not_be_dragged_away(cx: &mut gpui::TestAppContext) {
+    // Past the minimum it stops being a column at all.
+    let (_dir, _view, vcx) = visual_window(cx, VAULT);
+    let handle = centre(vcx, "outline-resize");
+    vcx.simulate_mouse_down(handle, MouseButton::Left, Modifiers::none());
+    vcx.simulate_mouse_move(
+        Point::new(px(0.0), handle.y),
+        Some(MouseButton::Left),
+        Modifiers::none(),
+    );
+    vcx.run_until_parked();
+    let row = vcx.debug_bounds("outline-row-0").expect("still painted");
+    assert!(row.size.width > px(100.0), "clamped: {row:?}");
+}

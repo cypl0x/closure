@@ -8222,6 +8222,12 @@ pub struct ModalApp {
     surface: ModalSurface,
     selected: usize,
     query: String,
+    /// Capture lines typed before, newest last — the arrows and the
+    /// chords walk it, including ones that were cancelled.
+    capture_history: Vec<String>,
+    /// Where in [`Self::capture_history`] the field currently is;
+    /// `None` is the fresh line at the end.
+    capture_hist_at: Option<usize>,
     /// The capture overlay's one-line field (text + cursor).
     capture_buf: LineInput,
     body: BodyEditor,
@@ -8241,7 +8247,7 @@ pub struct ModalApp {
     /// Target id + single-line buffer for the TagsEdit/PropertyEdit
     /// surfaces (tags: space-separated; property: `key value`).
     field_target: Option<String>,
-    field_buf: String,
+    field_buf: LineInput,
     /// Cursor into [`Self::palette_entries`] while the Palette is open.
     palette_cursor: usize,
     pending: Vec<String>,
@@ -8415,6 +8421,8 @@ impl ModalApp {
             surface: ModalSurface::Browse,
             selected: 0,
             query: String::new(),
+            capture_history: Vec::new(),
+            capture_hist_at: None,
             capture_buf: LineInput::default(),
             body: BodyEditor::new(),
             body_baseline: String::new(),
@@ -8430,7 +8438,7 @@ impl ModalApp {
             view: ViewMode::Clickable,
             link_target: None,
             field_target: None,
-            field_buf: String::new(),
+            field_buf: LineInput::default(),
             palette_cursor: 0,
             pending: Vec::new(),
             status: String::new(),
@@ -8531,7 +8539,7 @@ impl ModalApp {
         {
             let memo = self.palette_memo.borrow();
             if let Some(m) = memo.as_ref()
-                && m.query == self.field_buf
+                && m.query == self.field_buf.text()
                 && m.mode == self.mode
             {
                 return std::sync::Arc::clone(&m.entries);
@@ -8541,7 +8549,7 @@ impl ModalApp {
         self.palette_recomputes
             .set(self.palette_recomputes.get() + 1);
         *self.palette_memo.borrow_mut() = Some(PaletteMemo {
-            query: self.field_buf.clone(),
+            query: self.field_buf.text().to_owned(),
             mode: self.mode,
             entries: std::sync::Arc::clone(&entries),
         });
@@ -8552,7 +8560,7 @@ impl ModalApp {
     /// the memo. What [`Self::palette_shared`] must always agree with.
     #[must_use]
     pub fn palette_entries_uncached(&self) -> Vec<PaletteEntry> {
-        command_palette(&self.field_buf, self.mode)
+        command_palette(self.field_buf.text(), self.mode)
             .into_iter()
             .flat_map(|s| s.items)
             .collect()
@@ -8586,13 +8594,13 @@ impl ModalApp {
             }
             "up" => self.palette_cursor = self.palette_cursor.saturating_sub(1),
             "backspace" => {
-                self.field_buf.pop();
+                self.field_buf.backspace();
                 self.palette_cursor = 0;
             }
             "enter" => self.commit_palette(shell),
             _ => {
                 if let Some(c) = text {
-                    self.field_buf.push(c);
+                    self.field_buf.insert_char(c);
                     self.palette_cursor = 0;
                 }
             }
@@ -8980,10 +8988,18 @@ impl ModalApp {
             ModalSurface::Backlinks => self.on_backlinks_key(shell, key),
             ModalSurface::Agenda => self.on_list_key(shell, key, ListKind::Agenda),
             ModalSurface::Blocks => self.on_list_key(shell, key, ListKind::Blocks),
-            ModalSurface::TagsEdit => self.on_field_key(shell, key, text, FieldKind::Tags),
-            ModalSurface::PropertyEdit => self.on_field_key(shell, key, text, FieldKind::Property),
-            ModalSurface::Rename => self.on_field_key(shell, key, text, FieldKind::Rename),
-            ModalSurface::AddSibling => self.on_field_key(shell, key, text, FieldKind::AddSibling),
+            ModalSurface::TagsEdit => {
+                self.on_field_key(shell, key, ctrl, alt, text, FieldKind::Tags);
+            }
+            ModalSurface::PropertyEdit => {
+                self.on_field_key(shell, key, ctrl, alt, text, FieldKind::Property);
+            }
+            ModalSurface::Rename => {
+                self.on_field_key(shell, key, ctrl, alt, text, FieldKind::Rename);
+            }
+            ModalSurface::AddSibling => {
+                self.on_field_key(shell, key, ctrl, alt, text, FieldKind::AddSibling);
+            }
             ModalSurface::Palette => self.on_palette_key(shell, key, text),
             ModalSurface::UndoHistory => match key {
                 // Navigable pane (Q2-U3): j/k walk, Enter jumps the
@@ -10082,7 +10098,15 @@ impl ModalApp {
     /// the Shell setter (I8), Esc cancels, Backspace deletes, printable
     /// chars append. Tags split on whitespace; property splits on the
     /// first space into `key value`.
-    fn on_field_key(&mut self, shell: &mut Shell, key: &str, text: Option<char>, kind: FieldKind) {
+    fn on_field_key(
+        &mut self,
+        shell: &mut Shell,
+        key: &str,
+        ctrl: bool,
+        alt: bool,
+        text: Option<char>,
+        kind: FieldKind,
+    ) {
         match key {
             "escape" => {
                 self.field_target = None;
@@ -10096,26 +10120,30 @@ impl ModalApp {
                         FieldKind::Tags => {
                             let tags: Vec<String> = self
                                 .field_buf
+                                .text()
                                 .split_whitespace()
                                 .map(ToOwned::to_owned)
                                 .collect();
                             let _ = shell.set_tags(&bid, &tags);
                         }
                         FieldKind::Property => {
-                            if let Some((k, v)) = self.field_buf.split_once(' ') {
+                            let entry = self.field_buf.text().to_owned();
+                            if let Some((k, v)) = entry.split_once(' ') {
                                 let _ = shell.set_property(&bid, k.trim(), v.trim());
-                            } else if !self.field_buf.trim().is_empty() {
-                                let _ = shell.set_property(&bid, self.field_buf.trim(), "");
+                            } else if !entry.trim().is_empty() {
+                                let _ = shell.set_property(&bid, entry.trim(), "");
                             }
                         }
                         FieldKind::Rename => {
-                            if !self.field_buf.trim().is_empty() {
-                                let _ = shell.rename_headline(&bid, self.field_buf.trim());
+                            let title = self.field_buf.text().trim().to_owned();
+                            if !title.is_empty() {
+                                let _ = shell.rename_headline(&bid, &title);
                             }
                         }
                         FieldKind::AddSibling => {
-                            if !self.field_buf.trim().is_empty() {
-                                let _ = shell.add_sibling(&bid, self.field_buf.trim());
+                            let title = self.field_buf.text().trim().to_owned();
+                            if !title.is_empty() {
+                                let _ = shell.add_sibling(&bid, &title);
                             }
                         }
                     }
@@ -10123,13 +10151,10 @@ impl ModalApp {
                 self.field_buf.clear();
                 self.go_home();
             }
-            "backspace" => {
-                self.field_buf.pop();
-            }
+            // The arrows and the readline chords are the field's, which
+            // is why it is a field and not a `String` with `push` on it.
             _ => {
-                if let Some(c) = text {
-                    self.field_buf.push(c);
-                }
+                self.field_buf.key(key, ctrl, alt, text);
             }
         }
     }
@@ -10137,7 +10162,7 @@ impl ModalApp {
     /// The single-line field-edit buffer (tags/property).
     #[must_use]
     pub fn field_buffer(&self) -> &str {
-        &self.field_buf
+        self.field_buf.text()
     }
 
     /// Generic up/down/Esc navigation for the read-only list surfaces
@@ -11590,6 +11615,9 @@ impl ModalApp {
     ) {
         match key {
             "escape" => {
+                // A thought you abandoned is the one you most often
+                // want back, so a cancelled capture is remembered too.
+                self.remember_capture();
                 self.go_home();
                 self.capture_buf.clear();
             }
@@ -11598,7 +11626,14 @@ impl ModalApp {
             // reopened afterwards. Shift+Enter is the newline, the way
             // a chat box and a Notion block both do it.
             "shift-enter" => self.capture_buf.insert_char('\n'),
+            // Up and back through what you have captured before — the
+            // shell-history gesture, and the chords for a modal mode.
+            "up" => self.walk_capture_history(1),
+            "down" => self.walk_capture_history(-1),
+            "k" if ctrl => self.walk_capture_history(1),
+            "j" if ctrl => self.walk_capture_history(-1),
             "enter" => {
+                self.remember_capture();
                 if !self.capture_buf.is_empty() {
                     let text = self.capture_buf.take();
                     self.commit_capture(shell, &text);
@@ -11622,6 +11657,44 @@ impl ModalApp {
     /// selection stayed where it was — so the next thing you did
     /// happened to the previous headline. Under the selection when
     /// there is one, top level when Escape has said there is not.
+    /// Keep what is in the capture field, so the arrows can bring it
+    /// back. Consecutive duplicates are one entry.
+    fn remember_capture(&mut self) {
+        let text = self.capture_buf.text().trim().to_owned();
+        self.capture_hist_at = None;
+        if text.is_empty()
+            || self
+                .capture_history
+                .last()
+                .is_some_and(|last| *last == text)
+        {
+            return;
+        }
+        self.capture_history.push(text);
+    }
+
+    /// Step `by` entries back (positive) or forward (negative) through
+    /// the capture history, newest first.
+    ///
+    /// Walking past the newest entry lands on the empty line you were
+    /// typing on, which is where a shell's history leaves you too.
+    fn walk_capture_history(&mut self, by: i32) {
+        if self.capture_history.is_empty() {
+            return;
+        }
+        let last = self.capture_history.len() - 1;
+        let next = match (self.capture_hist_at, by.is_positive()) {
+            (None, true) => Some(last),
+            (None, false) => None,
+            (Some(i), true) => Some(i.saturating_sub(1)),
+            (Some(i), false) if i >= last => None,
+            (Some(i), false) => Some(i + 1),
+        };
+        self.capture_hist_at = next;
+        let text = next.map_or("", |i| self.capture_history[i].as_str());
+        self.capture_buf.set_text(text);
+    }
+
     fn commit_capture(&mut self, shell: &mut Shell, text: &str) {
         // A capture can be more than one line (Shift+Enter). The first
         // line is the headline — a headline *is* one line in org — and
@@ -11927,7 +12000,7 @@ impl ModalApp {
                 if let Some(row) = self.rows_shared(shell).get(self.selected).cloned() {
                     let tags = self.detail(shell).map(|d| d.tags).unwrap_or_default();
                     self.field_target = Some(row.id);
-                    self.field_buf = tags.join(" ");
+                    self.field_buf.set_text(&tags.join(" "));
                     self.surface = ModalSurface::TagsEdit;
                 }
             }
@@ -11996,7 +12069,7 @@ impl ModalApp {
             "rename" => {
                 if let Some(row) = self.rows_shared(shell).get(self.selected).cloned() {
                     self.field_target = Some(row.id);
-                    self.field_buf = row.title;
+                    self.field_buf.set_text(&row.title);
                     self.surface = ModalSurface::Rename;
                     "rename — Enter save, Esc cancel".clone_into(&mut self.status);
                 }

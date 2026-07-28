@@ -336,3 +336,116 @@ fn the_first_line_is_the_headline_and_the_rest_is_the_body() {
         headline.body_text()
     );
 }
+
+// === the fields answer to the arrows ===
+
+#[test]
+fn the_rename_field_takes_the_arrows_and_the_chords() {
+    // Reported as "capture/rename weird behaviour with arrow
+    // left/right": capture became a real field, and rename was still a
+    // `String` that only knew push and pop.
+    let (_d, mut sh) = shell();
+    let mut app = ModalApp::new(InputMode::Doom);
+    app.select_by_id(&sh, "01HQCAP000000000000000001");
+    app.run(&mut sh, "rename");
+    assert_eq!(app.surface(), ModalSurface::Rename);
+    // The field opens with the current title in it.
+    app.on_key(&mut sh, "home", false, false, None);
+    app.on_key(&mut sh, "x", false, false, Some('>'));
+    assert!(
+        app.field_buffer().starts_with('>'),
+        "typing lands at the cursor: {:?}",
+        app.field_buffer()
+    );
+    app.on_key(&mut sh, "end", false, false, None);
+    app.on_key(&mut sh, "backspace", false, false, None);
+    assert!(
+        !app.field_buffer().ends_with('t'),
+        "and backspace takes from the end: {:?}",
+        app.field_buffer()
+    );
+}
+
+#[test]
+fn a_rename_still_commits_what_the_field_holds() {
+    let (_d, mut sh) = shell();
+    let mut app = ModalApp::new(InputMode::Doom);
+    app.select_by_id(&sh, "01HQCAP000000000000000003"); // Other
+    app.run(&mut sh, "rename");
+    app.on_key(&mut sh, "u", true, false, None); // C-u clears
+    for c in "Renamed".chars() {
+        app.on_key(&mut sh, "x", false, false, Some(c));
+    }
+    app.on_key(&mut sh, "enter", false, false, None);
+    assert!(
+        app.rows(&sh).iter().any(|r| r.title == "Renamed"),
+        "{:?}",
+        app.rows(&sh).iter().map(|r| &r.title).collect::<Vec<_>>()
+    );
+}
+
+// === capture remembers what you typed before ===
+
+#[test]
+fn the_arrows_walk_back_through_previous_captures() {
+    let (_d, mut sh) = shell();
+    let mut app = ModalApp::new(InputMode::Doom);
+    capture(&mut app, &mut sh, "first thought");
+    capture(&mut app, &mut sh, "second thought");
+
+    app.run(&mut sh, "capture-start");
+    app.on_key(&mut sh, "up", false, false, None);
+    assert_eq!(app.capture_buffer(), "second thought", "newest first");
+    app.on_key(&mut sh, "up", false, false, None);
+    assert_eq!(app.capture_buffer(), "first thought");
+    app.on_key(&mut sh, "down", false, false, None);
+    assert_eq!(app.capture_buffer(), "second thought", "and forward again");
+}
+
+#[test]
+fn a_discarded_capture_is_remembered_too() {
+    // "even discarded ones" — the text you threw away is exactly the
+    // text you most often want back.
+    let (_d, mut sh) = shell();
+    let mut app = ModalApp::new(InputMode::Doom);
+    app.run(&mut sh, "capture-start");
+    for c in "abandoned".chars() {
+        app.on_key(&mut sh, "x", false, false, Some(c));
+    }
+    app.on_key(&mut sh, "escape", false, false, None);
+
+    app.run(&mut sh, "capture-start");
+    app.on_key(&mut sh, "up", false, false, None);
+    assert_eq!(app.capture_buffer(), "abandoned");
+}
+
+#[test]
+fn the_chords_walk_the_history_in_a_modal_mode() {
+    let (_d, mut sh) = shell();
+    let mut app = ModalApp::new(InputMode::Doom);
+    capture(&mut app, &mut sh, "older");
+    capture(&mut app, &mut sh, "newer");
+    app.run(&mut sh, "capture-start");
+    app.on_key(&mut sh, "k", true, false, Some('k'));
+    assert_eq!(app.capture_buffer(), "newer");
+    app.on_key(&mut sh, "k", true, false, Some('k'));
+    assert_eq!(app.capture_buffer(), "older");
+    app.on_key(&mut sh, "j", true, false, Some('j'));
+    assert_eq!(app.capture_buffer(), "newer");
+}
+
+#[test]
+fn walking_past_the_newest_leaves_an_empty_line() {
+    let (_d, mut sh) = shell();
+    let mut app = ModalApp::new(InputMode::Doom);
+    capture(&mut app, &mut sh, "only one");
+    app.run(&mut sh, "capture-start");
+    app.on_key(&mut sh, "up", false, false, None);
+    assert_eq!(app.capture_buffer(), "only one");
+    app.on_key(&mut sh, "down", false, false, None);
+    assert_eq!(
+        app.capture_buffer(),
+        "",
+        "back to the blank line you were on"
+    );
+}

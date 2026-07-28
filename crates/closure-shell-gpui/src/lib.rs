@@ -1479,6 +1479,18 @@ impl Colors {
 #[cfg(feature = "gpui")]
 const BODY_LINE_H: f32 = 18.0;
 
+/// Where the outline column starts, and the range a drag may put it in.
+/// Narrower than the minimum is a column that cannot show a title;
+/// wider than the maximum leaves no room for the pane it is beside.
+#[cfg(feature = "gpui")]
+const OUTLINE_W_DEFAULT: f32 = 420.0;
+/// See [`OUTLINE_W_DEFAULT`].
+#[cfg(feature = "gpui")]
+const OUTLINE_W_MIN: f32 = 220.0;
+/// See [`OUTLINE_W_DEFAULT`].
+#[cfg(feature = "gpui")]
+const OUTLINE_W_MAX: f32 = 900.0;
+
 /// The editor pane's own furniture above the text: the mode header and
 /// the pane padding, taken off the height before it is divided.
 #[cfg(feature = "gpui")]
@@ -1544,6 +1556,13 @@ pub struct GpuiView {
     toast_gen: u64,
     /// Where an open context menu is anchored, if one is open.
     menu: Option<(gpui::Point<gpui::Pixels>, closure_shell_core::ContextTarget)>,
+    /// Width of the outline column, in pixels — dragged by the handle
+    /// on its right edge.
+    outline_w: f32,
+    /// While the outline edge is being dragged: the offset between the
+    /// pointer and the column edge, so the column does not jump to the
+    /// cursor on the first pixel of movement.
+    outline_drag: Option<f32>,
     /// Whether long body lines soft-wrap (`wrap = true` in config.org)
     /// rather than scrolling sideways.
     wrap: bool,
@@ -1623,6 +1642,8 @@ impl GpuiView {
             theme,
             vault_name,
             wrap: false,
+            outline_w: OUTLINE_W_DEFAULT,
+            outline_drag: None,
             window_title: String::new(),
             focus_handle: cx.focus_handle(),
             feedback: closure_shell_core::Feedback::default(),
@@ -1665,6 +1686,20 @@ impl GpuiView {
     /// what a test sets to look at the other shape.
     pub fn set_view(&mut self, view: closure_shell_core::ViewMode) {
         self.app.set_view(view, &self.shell);
+    }
+
+    /// Tell the window manager what this window is called, when that
+    /// has changed.
+    ///
+    /// The title is the only part of the app a task switcher shows, and
+    /// it used to be set once at creation and never moved. Written only
+    /// on a change — a window manager treats every set as an event.
+    fn refresh_title(&mut self, window: &mut Window) {
+        let title = self.app.window_title(&self.shell, &self.vault_name);
+        if self.window_title != title {
+            window.set_window_title(&title);
+            self.window_title = title;
+        }
     }
 
     /// Soft-wrap long body lines instead of scrolling sideways
@@ -2428,8 +2463,8 @@ impl GpuiView {
         div()
             .flex()
             .flex_row()
-            .w(px(420.0))
-            .min_w(px(300.0))
+            .w(px(self.outline_w))
+            .min_w(px(OUTLINE_W_MIN))
             .border_r_1()
             .border_color(rgb(co.border))
             .child(list)
@@ -2439,6 +2474,24 @@ impl GpuiView {
                 &self.outline_scroll.0.borrow().base_handle.clone(),
                 cx,
             ))
+            // The column was a fixed 420px, so a vault of long titles
+            // had no way to show them and a narrow window no way to get
+            // out of their way. This is the grab handle on its edge.
+            .child(
+                div()
+                    .debug_selector(|| "outline-resize".to_owned())
+                    .w(px(6.0))
+                    .h_full()
+                    .cursor_col_resize()
+                    .hover(move |s| s.bg(rgb(co.accent)))
+                    .on_mouse_down(
+                        MouseButton::Left,
+                        cx.listener(|this: &mut Self, ev: &gpui::MouseDownEvent, _w, cx| {
+                            this.outline_drag = Some(f32::from(ev.position.x) - this.outline_w);
+                            cx.notify();
+                        }),
+                    ),
+            )
     }
 
     /// What the outline column says when it has no rows.
@@ -5899,15 +5952,7 @@ impl Render for GpuiView {
         // Every path that sets a status reaches the toast strip through
         // here, once per frame.
         self.absorb_status(cx);
-        // The title is the only part of the app a task switcher shows,
-        // and it used to be set once at creation and never moved. Only
-        // written when it actually changes — a window manager treats
-        // every set as an event.
-        let title = self.app.window_title(&self.shell, &self.vault_name);
-        if self.window_title != title {
-            window.set_window_title(&title);
-            self.window_title = title;
-        }
+        self.refresh_title(window);
         self.reveal_cursors();
         // The editor sizes itself from its own measured height, which
         // is last frame's layout. When that moves — the buffer just
@@ -6004,9 +6049,27 @@ impl Render for GpuiView {
             // reached a row's mouse-up handler, so the gesture stayed
             // armed: the next hover retargeted it and the next click
             // finished a move the user had abandoned.
+            // Dragging the outline's edge. The move handler lives on
+            // the root because the pointer leaves the 6px handle the
+            // instant it starts moving.
+            .on_mouse_move(
+                cx.listener(|this: &mut Self, ev: &gpui::MouseMoveEvent, _w, cx| {
+                    let Some(grab) = this.outline_drag else {
+                        return;
+                    };
+                    if !ev.dragging() {
+                        this.outline_drag = None;
+                        return;
+                    }
+                    this.outline_w =
+                        (f32::from(ev.position.x) - grab).clamp(OUTLINE_W_MIN, OUTLINE_W_MAX);
+                    cx.notify();
+                }),
+            )
             .on_mouse_up(
                 MouseButton::Left,
                 cx.listener(|this: &mut Self, _ev, _w, cx| {
+                    this.outline_drag = None;
                     if this.drag.source().is_some() {
                         this.drag.cancel();
                         cx.notify();
