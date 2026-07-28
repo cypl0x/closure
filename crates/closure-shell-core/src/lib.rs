@@ -3071,9 +3071,15 @@ pub fn tutorial_org(mode: InputMode) -> String {
          {editing}\n\
          \n\
          - =C-Enter= or =:w= writes the buffer; =:w= stays in it, =:wq= leaves\n\
-         - =Esc= leaves an *unchanged* buffer; on a changed one it refuses and \
-         says so\n\
+         - =:q= closes the buffer — the app is =:qa=, the way vim closes a \
+         window\n  and quits only on the last one\n\
+         - =Esc= is the mode key and never closes: it means NORMAL, and \
+         pressing it\n  twice is a reflex, not a decision. (In notion/emacs \
+         mode there is no NORMAL,\n  so there it still closes an unchanged \
+         buffer.)\n\
          - =:q!= throws the edit away on purpose\n\
+         - opening another note keeps the one you were in, edits and all, \
+         unsaved\n  until you write it\n\
          - =C-l= cycles the cursor line: middle, top, bottom (=zz= / =zt= / \
          =zb= do it directly)\n\
          - =C-+= / =C--= / =C-0= zoom the buffer text\n\
@@ -3084,6 +3090,7 @@ pub fn tutorial_org(mode: InputMode) -> String {
          =***= note is a =****=. Prose\nthat merely starts with a star \
          (=*bold*=, a =  * list item=) stays prose.\n\
          \n\
+         {new_notes}\n\
          {registers}{reference}",
         leader = leader,
         next = chord(mode, "next-file"),
@@ -3093,8 +3100,38 @@ pub fn tutorial_org(mode: InputMode) -> String {
         palette = chord(mode, "palette"),
         quit = chord(mode, "quit"),
         capture = chord(mode, "capture-start"),
+        new_notes = tutorial_new_notes(mode),
         registers = registers,
         reference = tutorial_reference(mode),
+    )
+}
+
+/// The three ways to make a note, and the reason they are one answer.
+///
+/// Asked directly ("how do I create a new headline/sibling/subtree that
+/// is still compatible with the P2P sync?"), and the honest answer is
+/// about the `:ID:` rather than about any of the three chords.
+fn tutorial_new_notes(mode: InputMode) -> String {
+    let chord = |command: &str| {
+        closure_input::chord_for_command(mode, command)
+            .map_or_else(|| "(unbound in this mode)".to_owned(), |c| format!("={c}="))
+    };
+    format!(
+        "* Three ways to make a note, and why they are the same\n\
+         - {capture} — a capture, filed under the selection\n\
+         - {sibling} — a sibling, right after the selected one, at its level\n\
+         - =* Something= typed into a body — a child of the note being edited\n\
+         \n\
+         All three write an =:ID:= into the file. That property is what a \
+         note *is* to\neverything above the parser: sync addresses blocks by \
+         id, and so do =[[id:…]]=\nlinks, the undo tree and the cursor \
+         memory. So all three are ordinary notes — they\nsync, they can be \
+         linked to, and they are still the same note when the file is \
+         read\nback tomorrow. A headline you add by hand in another editor \
+         has no id until\nclosure touches it: it appears in the outline \
+         immediately, and is stamped the\nfirst time you edit it.\n",
+        capture = chord("capture-start"),
+        sibling = chord("add-sibling"),
     )
 }
 

@@ -129,6 +129,37 @@ pub enum VaultError {
 
 /// FNV-1a hash of a string, matching `closure_org::OrgDoc::source_hash`
 /// so an on-disk file can be hash-compared without re-parsing.
+/// Outline paths of every headline under `path`, depth first.
+///
+/// Structural indices, not byte offsets, so they survive the rewrites
+/// applied to the headlines they name (a properties drawer inserted
+/// into one moves no path).
+fn descendant_paths(org: &closure_org::OrgDoc, path: &[usize]) -> Vec<Vec<usize>> {
+    fn walk(h: &closure_org::Headline, base: &[usize], out: &mut Vec<Vec<usize>>) {
+        for (i, child) in h.children().iter().enumerate() {
+            let mut p = base.to_vec();
+            p.push(i);
+            out.push(p.clone());
+            walk(child, &p, out);
+        }
+    }
+    let Some(first) = path.first() else {
+        return Vec::new();
+    };
+    let Some(mut head) = org.roots().get(*first) else {
+        return Vec::new();
+    };
+    for i in &path[1..] {
+        let Some(next) = head.children().get(*i) else {
+            return Vec::new();
+        };
+        head = next;
+    }
+    let mut out = Vec::new();
+    walk(head, path, &mut out);
+    out
+}
+
 fn fnv1a(s: &str) -> u64 {
     const OFFSET: u64 = 0xcbf2_9ce4_8422_2325;
     const PRIME: u64 = 0x0000_0100_0000_01b3;
@@ -433,9 +464,23 @@ impl Vault {
         let outline_path = doc
             .path_of(id)
             .ok_or_else(|| VaultError::UnknownId(id.to_string()))?;
-        let org =
+        let mut org =
             closure_org::rewrite_body_with_children(doc.org(), &outline_path, body, children_src)
                 .map_err(|_| VaultError::Parse { path: path.clone() })?;
+        // A headline typed into a body is a headline like any other,
+        // and what a headline *is* to everything above the parser is
+        // its id: sync addresses blocks by id, and so do links, the
+        // undo tree and every row cache. Parsed without one it still
+        // gets an id — a fresh ULID, in memory, for this run only — so
+        // it worked perfectly until the file was read a second time and
+        // then it was a different block. Stamped here, on the way to
+        // disk, exactly like a capture. `ensure_id` leaves an existing
+        // one alone, so a pasted subtree keeps the identity it arrived
+        // with.
+        for child in descendant_paths(&org, &outline_path) {
+            org = closure_org::rewrite_headline_ensure_id(&org, &child, BlockId::fresh().as_str())
+                .map_err(|_| VaultError::Parse { path: path.clone() })?;
+        }
         let source = org.source().to_owned();
         self.set_source(&path, &source)
     }

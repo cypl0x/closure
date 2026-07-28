@@ -148,6 +148,50 @@ fn a_round_merges_a_peers_replica_into_ours() {
 }
 
 #[test]
+fn a_headline_made_any_of_the_three_ways_crosses_to_a_peer() {
+    // "How do I create a new headline/sibling/subtree that is still
+    // compatible with the P2P sync?" — the answer has to be "any of
+    // them", so this is all three against a real replica. What makes
+    // one syncable is its `:ID:`; a headline whose id lives only in
+    // memory is a different block on every read, and no peer can agree
+    // with us about it.
+    let (_da, mut shell_a) = vault_with("1", "Mine");
+    let mut a = SyncApp::new("a", "127.0.0.1:7003".parse().expect("addr"));
+    let root = closure_core::BlockId::from_existing("01HQSYNC000000000000001");
+    let root = shell_a
+        .vault
+        .find_by_title("Mine")
+        .map_or(root, |(h, _)| h.id().clone());
+    shell_a
+        .vault
+        .capture_under(&root, "", "Captured")
+        .expect("capture");
+    shell_a
+        .vault
+        .add_sibling(&root, "Sibling")
+        .expect("sibling");
+    shell_a
+        .vault
+        .set_body_with_children(&root, "", "* Typed\n")
+        .expect("typed");
+    a.snapshot(&shell_a);
+
+    let ours: Vec<String> = a.session().block_ids().map(ToString::to_string).collect();
+    assert_eq!(ours.len(), 4, "all four blocks are in the replica: {ours:?}");
+
+    // …and the peer that merges it sees the same four ids, which is
+    // the only thing "compatible with the sync" can mean.
+    let (_db, shell_b) = vault_with("2", "Theirs");
+    let mut b = SyncApp::new("b", "127.0.0.1:7004".parse().expect("addr"));
+    b.snapshot(&shell_b);
+    assert!(b.merge_session(a.session()).is_empty(), "no conflicts");
+    let theirs: Vec<String> = b.session().block_ids().map(ToString::to_string).collect();
+    for id in &ours {
+        assert!(theirs.contains(id), "{id} did not cross: {theirs:?}");
+    }
+}
+
+#[test]
 fn a_divergent_title_comes_back_as_a_conflict() {
     // The whole reason the Conflicts surface exists: LWW would pick a
     // side silently, so both are surfaced instead.
