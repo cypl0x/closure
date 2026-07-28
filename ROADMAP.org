@@ -13,6 +13,30 @@ file is the fine-grained, capability-level queue between them. Blocked
 on a design decision? Record it under [[*Decisions][Decisions]], pick the most
 reversible option, keep moving.
 
+* WIP DAILY-Q3 — the org work-verbs [1/6]
+From [[file:goal-gpui-daily.md][goal-gpui-daily.md]]: the verbs org users use every day, none of
+which any shell had.
+** DONE V4 SCHEDULED and DEADLINE, with a calendar [1/1]
+The kernel has had =set-planning= since M2 and no shell ever called it,
+so planning a task meant typing =<2026-07-30 Thu>= and knowing what day
+that is. Now =schedule= / =deadline= open a month grid (=g S= / =g D=,
+=SPC m s= / =SPC m d=, Emacs =C-c C-s= / =C-c C-d=) moved with the same
+motions as everything else — =h/l= day, =j/k= week, =</>= month, =.=
+today, =RET= sets, =x= clears, =Esc= leaves it alone. A typed date wins
+over the grid, repeater included (=2026-12-24 +1w=), because no picker
+can express one. Dates are pure arithmetic in the core
+(=days_from_civil= / =civil_from_days=), and the shells inject today, so
+every calendar in every test is reproducible. The terminal shell takes
+the same two verbs through a minibuffer.
+It surfaced a real kernel bug on the way: scheduling a note orphaned its
+=:ID:= — see the =fix(org)= commit. Planning is written through the
+kernel command, so it undoes like every other edit (I3).
+** TODO V1 refile
+** TODO V2 archive
+** TODO V3 clock in/out/report
+** TODO V5 TODO/priority/checkbox cycling
+** TODO V6 tag picker
+
 * DONE DAILY-Q1 — buffers, jumps and recents [5/5]
 From [[file:goal-gpui-daily.md][goal-gpui-daily.md]], the first queue: the shell held exactly one
 buffer, so opening a second note put the first somewhere you could not

@@ -1055,16 +1055,6 @@ fn headline_is_folded(h: &closure_core::DocHeadline) -> bool {
 /// One walk, two callers ([`App::rows`] and [`ModalApp::derive_rows`]):
 /// they were the same code twice, and a fold rule that differs between
 /// the launcher and the window is a fold rule nobody can reason about.
-/// A vault file's path as the user names it: relative to the vault
-/// root, or unchanged when it lies outside (which nothing in a loaded
-/// vault does, but a path is data and this is not the place to panic —
-/// I5).
-fn vault_relative(shell: &Shell, path: &std::path::Path) -> std::path::PathBuf {
-    path.strip_prefix(shell.vault.root())
-        .unwrap_or(path)
-        .to_path_buf()
-}
-
 fn outline_rows(shell: &Shell, filter: &str) -> Vec<Row> {
     let mut scored: Vec<(u32, Row)> = Vec::new();
     for (p, doc) in shell.vault.iter() {
@@ -1119,6 +1109,176 @@ fn outline_rows(shell: &Shell, filter: &str) -> Vec<Row> {
         scored.sort_by_key(|(sc, _)| std::cmp::Reverse(*sc));
     }
     scored.into_iter().map(|(_, r)| r).collect()
+}
+
+// ---- Q3-V4: civil dates, without a clock or a calendar crate -------
+//
+// Everything here is pure arithmetic over `(year, month, day)`. The
+// core never reads a clock — the shells inject today
+// ([`ModalApp::set_today`]) — so every calendar in every test is
+// reproducible, and a picker cannot drift between two frames of the
+// same second.
+
+/// Days since 1970-01-01 for a civil date (Howard Hinnant's
+/// `days_from_civil`, public domain; the same algorithm
+/// `closure_org`'s clock arithmetic uses).
+#[must_use]
+pub const fn days_from_civil(y: i64, m: i64, d: i64) -> i64 {
+    let y = if m <= 2 { y - 1 } else { y };
+    let era = if y >= 0 { y } else { y - 399 } / 400;
+    let yoe = y - era * 400;
+    let mp = (m + 9) % 12;
+    let doy = (153 * mp + 2) / 5 + d - 1;
+    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    era * 146_097 + doe - 719_468
+}
+
+/// The civil date `days` after 1970-01-01 — the inverse of
+/// [`days_from_civil`].
+#[must_use]
+pub const fn civil_from_days(days: i64) -> (i64, u32, u32) {
+    let z = days + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z.rem_euclid(146_097);
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    let y = yoe + era * 400 + if m <= 2 { 1 } else { 0 };
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    (y, m as u32, d as u32)
+}
+
+/// How many days a month has, leap years included.
+#[must_use]
+pub const fn days_in_month(year: i64, month: u32) -> u32 {
+    match month {
+        1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
+        2 => {
+            if (year % 4 == 0 && year % 100 != 0) || year % 400 == 0 {
+                29
+            } else {
+                28
+            }
+        }
+        // April, June, September, November — and anything that is not
+        // a month at all, which a caller cannot produce from a parsed
+        // date but must not be a panic if one ever does (I5).
+        _ => 30,
+    }
+}
+
+/// Org's three-letter weekday for a civil date — what goes inside the
+/// stamp, in the same spelling org itself writes.
+#[must_use]
+pub fn weekday_name(y: i64, m: u32, d: u32) -> &'static str {
+    const NAMES: [&str; 7] = ["Thu", "Fri", "Sat", "Sun", "Mon", "Tue", "Wed"];
+    // 1970-01-01 was a Thursday, so the epoch day indexes NAMES.
+    let days = days_from_civil(y, i64::from(m), i64::from(d));
+    NAMES[usize::try_from(days.rem_euclid(7)).unwrap_or(0)]
+}
+
+/// Monday-based weekday index (0 = Monday) for a civil date — the
+/// column a day sits in on a calendar that starts the week on Monday,
+/// as org-mode's agenda does.
+#[must_use]
+pub fn weekday_index(y: i64, m: u32, d: u32) -> usize {
+    let days = days_from_civil(y, i64::from(m), i64::from(d));
+    // 1970-01-01 was a Thursday = column 3.
+    usize::try_from((days + 3).rem_euclid(7)).unwrap_or(0)
+}
+
+/// Split `YYYY-MM-DD` into its parts, or `None` when it is not one.
+///
+/// Strict on purpose: this is what decides whether a *typed* date is
+/// accepted, and a date that is nearly right is the one that silently
+/// files a task in the wrong year.
+#[must_use]
+pub fn parse_ymd(text: &str) -> Option<(i64, u32, u32)> {
+    let mut parts = text.trim().splitn(3, '-');
+    let y: i64 = parts.next()?.parse().ok()?;
+    let m: u32 = parts.next()?.parse().ok()?;
+    let d: u32 = parts.next()?.parse().ok()?;
+    if !(1..=12).contains(&m) || d == 0 || d > days_in_month(y, m) {
+        return None;
+    }
+    Some((y, m, d))
+}
+
+/// The org stamp for a date and an optional repeater/warning tail:
+/// `<2026-07-30 Thu>`, `<2026-07-30 Thu +1w>`.
+#[must_use]
+pub fn org_stamp(y: i64, m: u32, d: u32, tail: &str) -> String {
+    let day = weekday_name(y, m, d);
+    let tail = tail.trim();
+    if tail.is_empty() {
+        format!("<{y:04}-{m:02}-{d:02} {day}>")
+    } else {
+        format!("<{y:04}-{m:02}-{d:02} {day} {tail}>")
+    }
+}
+
+/// A month as a picker draws it: seven columns, Monday first, blanks
+/// where the month has not started or has ended.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DateGrid {
+    /// Year on show.
+    pub year: i64,
+    /// Month on show, 1-based.
+    pub month: u32,
+    /// Which planning field is being set (`SCHEDULED` / `DEADLINE`).
+    pub field: String,
+    /// The selected day as `YYYY-MM-DD`.
+    pub selected: String,
+    /// Weeks of seven days; `None` is a blank cell.
+    pub weeks: Vec<Vec<Option<u32>>>,
+    /// What the user has typed instead, if anything.
+    pub typed: String,
+}
+
+/// Which planning field a date picker is filling (Q3-V4).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PlanField {
+    /// `SCHEDULED:` — when you will start.
+    Scheduled,
+    /// `DEADLINE:` — when it is due.
+    Deadline,
+}
+
+impl PlanField {
+    /// The org keyword this field writes.
+    #[must_use]
+    pub const fn keyword(self) -> &'static str {
+        match self {
+            Self::Scheduled => "SCHEDULED",
+            Self::Deadline => "DEADLINE",
+        }
+    }
+}
+
+/// The live date-picker session: which headline, which field, where
+/// the cursor is, and whatever has been typed over it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct DatePickSession {
+    /// Headline being planned.
+    id: String,
+    /// Field being written.
+    field: PlanField,
+    /// Cursor date.
+    date: (i64, u32, u32),
+    /// Typed date, which wins over the cursor when it parses.
+    typed: String,
+}
+
+/// A vault file's path as the user names it: relative to the vault
+/// root, or unchanged when it lies outside (which nothing in a loaded
+/// vault does, but a path is data and this is not the place to panic —
+/// I5).
+fn vault_relative(shell: &Shell, path: &std::path::Path) -> std::path::PathBuf {
+    path.strip_prefix(shell.vault.root())
+        .unwrap_or(path)
+        .to_path_buf()
 }
 
 /// Whether the row with block id `id` is currently folded — the
@@ -5529,6 +5689,9 @@ pub enum ModalSurface {
     /// The file picker: the files this vault has, the ones recent
     /// sessions were in first (Q1-B4).
     Files,
+    /// The date picker: a month grid over `SCHEDULED:` or `DEADLINE:`
+    /// (Q3-V4).
+    DatePick,
 }
 
 /// Which of the two shapes of the shell you are working in.
@@ -9192,6 +9355,12 @@ pub struct ModalApp {
     /// Files recent sessions opened, most recent first. Persisted to
     /// `config.org` with the rest of the durable view state.
     recent_files: Vec<std::path::PathBuf>,
+    /// Today, as the shell last told us (`YYYY-MM-DD`). The core reads
+    /// no clock: a date picker whose "today" came from `SystemTime`
+    /// would be a different picker in every test (Q3-V4).
+    today: String,
+    /// The live date-picker session, when one is open.
+    date_pick: Option<DatePickSession>,
     /// Memoised source-block list — see [`ModalApp::block_rows`].
     block_memo: std::cell::RefCell<Option<(u64, std::sync::Arc<Vec<BlockRow>>)>>,
     /// Derivations paid for; the render budget's fourth number.
@@ -9369,6 +9538,11 @@ impl ModalApp {
             jumps: Vec::new(),
             jump_at: 0,
             recent_files: Vec::new(),
+            // A vault opened before the shell says what day it is still
+            // has to draw a calendar; this is the epoch, and every
+            // shell overwrites it on the first frame.
+            today: "1970-01-01".to_owned(),
+            date_pick: None,
             shell_out: None,
             body_scroll: None,
             hist_cursor: 0,
@@ -9913,6 +10087,7 @@ impl ModalApp {
                 let len = self.cron_rows(shell).len();
                 self.on_pane_key(key, len);
             }
+            ModalSurface::DatePick => self.on_datepick_key(shell, key, text),
             ModalSurface::Buffers => self.on_picker_key(shell, key, text, PickerKind::Buffers),
             ModalSurface::Files => self.on_picker_key(shell, key, text, PickerKind::Files),
             ModalSurface::EditBlock => self.on_editblock_key(shell, key, ctrl, alt, text),
@@ -11087,6 +11262,251 @@ impl ModalApp {
                 {
                     self.query.push(c);
                     self.selected = 0;
+                }
+            }
+        }
+    }
+
+    // ---- Q3-V4: the date picker ------------------------------------
+
+    /// Tell the core what day it is (`YYYY-MM-DD`).
+    ///
+    /// The shells own the clock; the core owns the calendar. A date
+    /// nobody sets leaves the picker on the epoch rather than guessing.
+    pub fn set_today(&mut self, ymd: &str) {
+        if parse_ymd(ymd).is_some() {
+            ymd.clone_into(&mut self.today);
+        }
+    }
+
+    /// What the core believes today is.
+    #[must_use]
+    pub fn today(&self) -> &str {
+        &self.today
+    }
+
+    /// The month the picker is showing, or an empty grid when it is
+    /// closed — the renderers ask unconditionally.
+    #[must_use]
+    pub fn date_grid(&self) -> DateGrid {
+        let Some(session) = &self.date_pick else {
+            return DateGrid {
+                year: 0,
+                month: 0,
+                field: String::new(),
+                selected: String::new(),
+                weeks: Vec::new(),
+                typed: String::new(),
+            };
+        };
+        let (y, m, d) = session.date;
+        let first_col = weekday_index(y, m, 1);
+        let len = days_in_month(y, m);
+        let mut cells: Vec<Option<u32>> = vec![None; first_col];
+        cells.extend((1..=len).map(Some));
+        while !cells.len().is_multiple_of(7) {
+            cells.push(None);
+        }
+        DateGrid {
+            year: y,
+            month: m,
+            field: session.field.keyword().to_owned(),
+            selected: format!("{y:04}-{m:02}-{d:02}"),
+            weeks: cells.chunks(7).map(<[Option<u32>]>::to_vec).collect(),
+            typed: session.typed.clone(),
+        }
+    }
+
+    /// Put the picker's cursor on `day` of the month it is showing —
+    /// the mouse path into the calendar.
+    pub fn date_click(&mut self, day: u32) {
+        if let Some(session) = self.date_pick.as_mut() {
+            let (y, m, _) = session.date;
+            session.date = (y, m, day.clamp(1, days_in_month(y, m)));
+        }
+    }
+
+    /// Open the picker on the selected headline's `field`.
+    ///
+    /// It opens on the date the headline already has — planning a task
+    /// again is nearly always moving it by a few days, not starting
+    /// from today — and on today when it has none.
+    fn open_date_pick(&mut self, shell: &Shell, field: PlanField) {
+        // Escape drops the selection; planning "the headline the cursor
+        // happens to rest on" after that would file a date against a
+        // note the user has said they are not looking at.
+        let selected = self
+            .selection_active
+            .then(|| self.selected_row_id(shell))
+            .flatten();
+        let Some(row) = selected else {
+            "nothing selected — put the cursor on a headline first".clone_into(&mut self.status);
+            return;
+        };
+        let bid = closure_core::BlockId::from_existing(&row);
+        let existing = shell.vault.find_by_id(&bid).and_then(|(h, _)| {
+            let stamp = match field {
+                PlanField::Scheduled => h.scheduled(),
+                PlanField::Deadline => h.deadline(),
+            }?;
+            parse_ymd(stamp.trim_start_matches(['<', '[']).get(..10)?)
+        });
+        let date = existing
+            .or_else(|| parse_ymd(&self.today))
+            .unwrap_or((1970, 1, 1));
+        self.date_pick = Some(DatePickSession {
+            id: row,
+            field,
+            date,
+            typed: String::new(),
+        });
+        self.surface = ModalSurface::DatePick;
+        self.status = format!(
+            "{} — h/l day · j/k week · </> month · . today · RET set · x clear · Esc cancel",
+            field.keyword()
+        );
+    }
+
+    /// Move the picker's cursor by `days`, keeping it a real date.
+    fn date_step_days(&mut self, days: i64) {
+        if let Some(session) = self.date_pick.as_mut() {
+            let (y, m, d) = session.date;
+            session.date = civil_from_days(days_from_civil(y, i64::from(m), i64::from(d)) + days);
+        }
+    }
+
+    /// Move by whole months, clamping the day — a 31st stepped into a
+    /// 30-day month is the 30th, not a date that does not exist.
+    fn date_step_months(&mut self, months: i64) {
+        if let Some(session) = self.date_pick.as_mut() {
+            let (y, m, d) = session.date;
+            let total = y * 12 + i64::from(m) - 1 + months;
+            let ny = total.div_euclid(12);
+            #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+            let nm = (total.rem_euclid(12) + 1) as u32;
+            session.date = (ny, nm, d.min(days_in_month(ny, nm)));
+        }
+    }
+
+    /// Write what the picker is showing, and close it.
+    ///
+    /// The typed field wins when it parses: a repeater (`+1w`) is
+    /// something no month grid can express, and refusing to accept one
+    /// would make the picker the *less* capable way to plan.
+    fn commit_date_pick(&mut self, shell: &mut Shell) {
+        let Some(session) = self.date_pick.clone() else {
+            return;
+        };
+        let stamp = if session.typed.trim().is_empty() {
+            let (y, m, d) = session.date;
+            org_stamp(y, m, d, "")
+        } else {
+            let typed = session.typed.trim();
+            let (head, tail) = typed.split_once(' ').unwrap_or((typed, ""));
+            let Some((y, m, d)) = parse_ymd(head) else {
+                self.status =
+                    format!("`{typed}` is not a date — YYYY-MM-DD, with an optional repeater");
+                return;
+            };
+            org_stamp(y, m, d, tail)
+        };
+        self.write_planning(shell, &session.id, session.field, Some(&stamp));
+    }
+
+    /// Clear the field the picker was opened on.
+    fn clear_date_pick(&mut self, shell: &mut Shell) {
+        let Some(session) = self.date_pick.clone() else {
+            return;
+        };
+        self.write_planning(shell, &session.id, session.field, None);
+    }
+
+    /// Set one planning field, leaving the others as they are.
+    ///
+    /// [`closure_store::Vault::set_planning`] replaces the whole triple,
+    /// so the other two are read back first — planning a deadline must
+    /// not silently drop the schedule.
+    fn write_planning(
+        &mut self,
+        shell: &mut Shell,
+        id: &str,
+        field: PlanField,
+        stamp: Option<&str>,
+    ) {
+        let bid = closure_core::BlockId::from_existing(id);
+        let Some((scheduled, deadline, closed)) = shell.vault.find_by_id(&bid).map(|(h, _)| {
+            (
+                h.scheduled().map(ToOwned::to_owned),
+                h.deadline().map(ToOwned::to_owned),
+                h.closed().map(ToOwned::to_owned),
+            )
+        }) else {
+            "that headline is no longer in the vault".clone_into(&mut self.status);
+            return;
+        };
+        let (scheduled, deadline) = match field {
+            PlanField::Scheduled => (stamp.map(ToOwned::to_owned), deadline),
+            PlanField::Deadline => (scheduled, stamp.map(ToOwned::to_owned)),
+        };
+        match shell.vault.set_planning(
+            &bid,
+            scheduled.as_deref(),
+            deadline.as_deref(),
+            closed.as_deref(),
+        ) {
+            Ok(()) => {
+                self.invalidate_rows();
+                self.status = stamp.map_or_else(
+                    || format!("{} cleared", field.keyword()),
+                    |s| format!("{}: {s}", field.keyword()),
+                );
+            }
+            Err(e) => self.status = format!("could not set {}: {e}", field.keyword()),
+        }
+        self.date_pick = None;
+        self.surface = ModalSurface::Browse;
+    }
+
+    /// The date picker's keys.
+    fn on_datepick_key(&mut self, shell: &mut Shell, key: &str, text: Option<char>) {
+        match key {
+            "escape" => {
+                self.date_pick = None;
+                self.surface = ModalSurface::Browse;
+                "left as it was".clone_into(&mut self.status);
+            }
+            "enter" => self.commit_date_pick(shell),
+            "backspace" => {
+                if let Some(session) = self.date_pick.as_mut() {
+                    session.typed.pop();
+                }
+            }
+            // The motions are the app's own, so a hand that knows the
+            // outline knows the calendar. They apply to the grid, not
+            // to a typed date — typing is the other way in.
+            "h" | "left" => self.date_step_days(-1),
+            "l" | "right" => self.date_step_days(1),
+            "k" | "up" => self.date_step_days(-7),
+            "j" | "down" => self.date_step_days(7),
+            ">" => self.date_step_months(1),
+            "<" => self.date_step_months(-1),
+            "." => {
+                if let Some(today) = parse_ymd(&self.today)
+                    && let Some(session) = self.date_pick.as_mut()
+                {
+                    session.date = today;
+                }
+            }
+            "x" => self.clear_date_pick(shell),
+            _ => {
+                // Digits and dashes build a typed date; a repeater needs
+                // a space and a `+`.
+                if let Some(c) = text
+                    && (c.is_ascii_digit()
+                        || matches!(c, '-' | '+' | ' ' | '.' | 'w' | 'd' | 'm' | 'y'))
+                    && let Some(session) = self.date_pick.as_mut()
+                {
+                    session.typed.push(c);
                 }
             }
         }
@@ -13838,6 +14258,8 @@ impl ModalApp {
                     self.open_body_by_id(shell, &row.id);
                 }
             }
+            "schedule" => self.open_date_pick(shell, PlanField::Scheduled),
+            "deadline" => self.open_date_pick(shell, PlanField::Deadline),
             "buffer-list" => {
                 self.surface = ModalSurface::Buffers;
                 self.query.clear();

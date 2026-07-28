@@ -725,6 +725,34 @@ impl Vault {
         self.apply_to_block(id, &cmd)
     }
 
+    /// Set (or clear) the headline's planning timestamps through the
+    /// kernel [`SetPlanning`] command (undoable, I3) and persist.
+    ///
+    /// Each field is replaced by what is passed: `None` clears it, so
+    /// the caller reads the current triple first when it means to keep
+    /// one. Stamps carry their own delimiters (`<2026-07-30 Thu>` or
+    /// `[2026-07-30 Thu]`) — this writes what org would write, and does
+    /// not invent brackets around whatever it is handed.
+    ///
+    /// # Errors
+    ///
+    /// Same contract as [`Self::rename_headline`].
+    pub fn set_planning(
+        &mut self,
+        id: &BlockId,
+        scheduled: Option<&str>,
+        deadline: Option<&str>,
+        closed: Option<&str>,
+    ) -> Result<(), VaultError> {
+        let cmd = closure_core::SetPlanning::new(
+            id.clone(),
+            scheduled.map(ToOwned::to_owned),
+            deadline.map(ToOwned::to_owned),
+            closed.map(ToOwned::to_owned),
+        );
+        self.apply_to_block(id, &cmd)
+    }
+
     /// Replace the headline's tag list through the kernel [`SetTags`]
     /// command (undoable, I3) and persist to disk. An empty slice clears
     /// all tags.

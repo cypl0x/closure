@@ -1110,7 +1110,10 @@ pub const fn accepts_paste(surface: ModalSurface, insert: bool) -> bool {
         | ModalSurface::Conflicts
         | ModalSurface::Graph
         | ModalSurface::Journal
-        | ModalSurface::Cron => false,
+        | ModalSurface::Cron
+        // The date picker takes single keys (h/l/j/k, digits); a
+        // pasted blob of text is not a date.
+        | ModalSurface::DatePick => false,
     }
 }
 
@@ -1702,6 +1705,26 @@ impl GpuiView {
     #[must_use]
     pub const fn surface(&self) -> ModalSurface {
         self.app.surface()
+    }
+
+    /// Tell the core what day it is — the window owns the clock
+    /// (Q3-V4); a test owns it too, which is why this is public.
+    pub fn set_today(&mut self, ymd: &str) {
+        self.app.set_today(ymd);
+    }
+
+    /// The date the picker's cursor is on (`YYYY-MM-DD`), empty when it
+    /// is closed.
+    #[must_use]
+    pub fn picked_date(&self) -> String {
+        self.app.date_grid().selected
+    }
+
+    /// Put the picker's cursor on `day` — the click path, reachable by
+    /// a test without a pointer.
+    pub fn date_click(&mut self, day: u32, cx: &mut Context<Self>) {
+        self.app.date_click(day);
+        cx.notify();
     }
 
     /// How many buffers this session has open (Q1).
@@ -2515,6 +2538,10 @@ impl GpuiView {
                 .app
                 .buffer_name(&self.shell)
                 .map_or_else(|| "✎ body".to_owned(), |name| format!("✎ {name}")),
+            ModalSurface::DatePick => {
+                let grid = self.app.date_grid();
+                format!("{} — {}", grid.field, grid.selected)
+            }
             ModalSurface::Buffers => format!(
                 "buffers — {}▏ · {} open · RET opens · Esc back",
                 self.app.query(),
@@ -2976,6 +3003,7 @@ impl GpuiView {
                     cx,
                 ),
             ),
+            ModalSurface::DatePick => pane.child(self.date_pane(co, cx)),
             ModalSurface::Buffers => pane.children(self.buffer_pane(co, cx)),
             ModalSurface::Files => pane.children(self.file_pane(co, cx)),
             ModalSurface::Sync => pane.child(self.sync_pane(co, cx)),
@@ -3648,6 +3676,93 @@ impl GpuiView {
                         .child(item.clone())
                 })),
         )
+    }
+
+    /// The date picker (Q3-V4): a month grid over `SCHEDULED:` or
+    /// `DEADLINE:`, with the selected day inverted and today outlined.
+    ///
+    /// Every cell is a click target: the keyboard moves by day and week,
+    /// and a pointer picks a date the way a pointer expects to.
+    fn date_pane(&self, co: Colors, cx: &Context<Self>) -> gpui::Div {
+        const HEAD: [&str; 7] = ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"];
+        let grid = self.app.date_grid();
+        let today = self.app.today().to_owned();
+        let header = div()
+            .flex()
+            .flex_row()
+            .gap_2()
+            .children(HEAD.into_iter().map(|d| {
+                div()
+                    .w(px(32.0))
+                    .text_size(px(11.0))
+                    .text_color(rgb(co.muted))
+                    .child(d)
+            }));
+        let weeks: Vec<gpui::Div> = grid
+            .weeks
+            .iter()
+            .map(|week| {
+                div()
+                    .flex()
+                    .flex_row()
+                    .gap_2()
+                    .children(week.iter().map(|cell| {
+                        let Some(day) = *cell else {
+                            return div().w(px(32.0)).child(" ");
+                        };
+                        let ymd = format!("{:04}-{:02}-{day:02}", grid.year, grid.month);
+                        let selected = ymd == grid.selected;
+                        let is_today = ymd == today;
+                        div()
+                            .w(px(32.0))
+                            .px_1()
+                            .rounded_sm()
+                            .cursor_pointer()
+                            .text_size(px(13.0))
+                            .bg(rgb(if selected { co.accent } else { co.bg }))
+                            .text_color(rgb(if selected {
+                                co.bg
+                            } else if is_today {
+                                co.accent
+                            } else {
+                                co.fg
+                            }))
+                            .hover(move |s| s.bg(rgb(co.hover)))
+                            .on_mouse_down(
+                                MouseButton::Left,
+                                cx.listener(move |this: &mut Self, _ev, _w, cx| {
+                                    this.app.date_click(day);
+                                    cx.notify();
+                                }),
+                            )
+                            .child(format!("{day:2}"))
+                    }))
+            })
+            .collect();
+        div()
+            .flex()
+            .flex_col()
+            .gap_1()
+            .child(
+                div()
+                    .text_size(px(13.0))
+                    .text_color(rgb(co.accent))
+                    .child(format!(
+                        "{}   {} {}",
+                        grid.field,
+                        month_name(grid.month),
+                        grid.year
+                    )),
+            )
+            .child(header)
+            .children(weeks)
+            .child(div().text_size(px(11.0)).text_color(rgb(co.muted)).child(
+                if grid.typed.is_empty() {
+                    "h/l day · j/k week · </> month · . today · RET set · x clear".to_owned()
+                } else {
+                    format!("typed: {}▏", grid.typed)
+                },
+            ))
     }
 
     /// The open-buffer list (Q1-B1): every buffer this session has, the
@@ -6259,6 +6374,26 @@ fn list_row(
         .hover(move |s| s.bg(rgb(if selected { co.selection } else { co.hover })))
         .on_mouse_down(MouseButton::Left, listener)
         .child(text)
+}
+
+/// The month's name, for the date picker's header.
+#[must_use]
+pub const fn month_name(month: u32) -> &'static str {
+    match month {
+        1 => "January",
+        2 => "February",
+        3 => "March",
+        4 => "April",
+        5 => "May",
+        6 => "June",
+        7 => "July",
+        8 => "August",
+        9 => "September",
+        10 => "October",
+        11 => "November",
+        12 => "December",
+        _ => "",
+    }
 }
 
 /// Give an element a right-click context menu for `target`.

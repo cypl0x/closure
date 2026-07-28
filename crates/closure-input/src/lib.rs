@@ -91,6 +91,10 @@ const DOOM_KEYMAP: &[(&str, &str)] = &[
     ("g f", "recent-files"),
     ("g c", "buffer-close"),
     ("g C", "buffer-close-force"),
+    // Planning (Q3-V4): org's own `C-c C-s` / `C-c C-d` idea, in each
+    // mode's spelling.
+    ("g S", "schedule"),
+    ("g D", "deadline"),
     // The leader. Doom's identity is `SPC` plus a mnemonic tree, and a
     // Doom user's hands know it better than any of the single letters
     // above: `SPC f s` saves, `SPC :` is M-x, `SPC q q` quits, and
@@ -110,6 +114,8 @@ const DOOM_KEYMAP: &[(&str, &str)] = &[
     ("SPC b K", "buffer-close-force"),
     ("SPC b h", "browse"),
     ("SPC `", "buffer-alternate"),
+    ("SPC m s", "schedule"),
+    ("SPC m d", "deadline"),
     ("SPC q q", "quit"),
     ("SPC s s", "search-start"),
     ("SPC s p", "body-search"),
@@ -201,6 +207,8 @@ const EMACS_KEYMAP: &[(&str, &str)] = &[
     ("C-c ,", "buffer-alternate"),
     ("M-,", "jump-back"),
     ("M-.", "jump-forward"),
+    ("C-c C-s", "schedule"),
+    ("C-c C-d", "deadline"),
 ];
 
 /// Vim bindings: modal navigation keys.
@@ -274,6 +282,10 @@ const VIM_KEYMAP: &[(&str, &str)] = &[
     ("g f", "recent-files"),
     ("g c", "buffer-close"),
     ("g C", "buffer-close-force"),
+    // Planning (Q3-V4): org's own `C-c C-s` / `C-c C-d` idea, in each
+    // mode's spelling.
+    ("g S", "schedule"),
+    ("g D", "deadline"),
     // The prefix the rest of the desktop uses. Listed last so each
     // mode's own chord stays the one which-key and the tutorial show.
     ("C-p", "palette"),
@@ -351,6 +363,10 @@ const HELIX_KEYMAP: &[(&str, &str)] = &[
     ("g f", "recent-files"),
     ("g c", "buffer-close"),
     ("g C", "buffer-close-force"),
+    // Planning (Q3-V4): org's own `C-c C-s` / `C-c C-d` idea, in each
+    // mode's spelling.
+    ("g S", "schedule"),
+    ("g D", "deadline"),
     // The prefix the rest of the desktop uses. Listed last so each
     // mode's own chord stays the one which-key and the tutorial show.
     ("C-p", "palette"),
@@ -427,6 +443,10 @@ const NOTION_KEYMAP: &[(&str, &str)] = &[
     ("g f", "recent-files"),
     ("g c", "buffer-close"),
     ("g C", "buffer-close-force"),
+    // Planning (Q3-V4): org's own `C-c C-s` / `C-c C-d` idea, in each
+    // mode's spelling.
+    ("g S", "schedule"),
+    ("g D", "deadline"),
     // The prefix the rest of the desktop uses. Listed last so each
     // mode's own chord stays the one which-key and the tutorial show.
     ("C-p", "palette"),

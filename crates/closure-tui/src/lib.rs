@@ -144,6 +144,8 @@ pub enum AppMode {
     Buffers,
     /// Every file in the vault, the recent ones first (Q1).
     Files,
+    /// Typing a date for `SCHEDULED:` or `DEADLINE:` (Q3-V4).
+    PlanEdit,
 }
 
 /// One unresolved merge conflict as the shell shows it: which block and
@@ -266,6 +268,12 @@ pub struct App {
     jumps: Vec<(PathBuf, usize)>,
     /// Where in [`Self::jumps`] we are; the length means "the present".
     jump_at: usize,
+    /// The `(id, field, stamp)` planning change the user asked for; a
+    /// `None` stamp clears the field (Q3-V4).
+    planning_request: Option<(String, String, Option<String>)>,
+    /// Which planning field the minibuffer is filling, and for which
+    /// headline.
+    plan_target: Option<(String, String)>,
 }
 
 impl App {
@@ -350,6 +358,8 @@ impl App {
             llm_composing: false,
             completion: None,
             conflicts: Vec::new(),
+            planning_request: None,
+            plan_target: None,
             visited: Vec::new(),
             visit_seq: 0,
             jumps: Vec::new(),
@@ -423,6 +433,11 @@ impl App {
     #[must_use]
     pub fn buffer(&self) -> &str {
         self.body.text()
+    }
+
+    /// Consume the `(id, field, stamp)` planning change (Q3-V4).
+    pub const fn take_planning_request(&mut self) -> Option<(String, String, Option<String>)> {
+        self.planning_request.take()
     }
 
     /// Consume the `(id, keyword)` TODO change the user asked for.
@@ -1073,6 +1088,7 @@ impl App {
             AppMode::Blocks => return self.handle_blocks_stroke(stroke),
             AppMode::Buffers => return self.handle_buffer_pane_stroke(stroke, false),
             AppMode::Files => return self.handle_buffer_pane_stroke(stroke, true),
+            AppMode::PlanEdit => return self.handle_planedit_stroke(stroke),
             AppMode::EditBody => return self.handle_editbody_stroke(stroke),
             AppMode::Agenda => return self.handle_agenda_stroke(stroke),
             AppMode::BodySearch => return self.handle_bodysearch_stroke(stroke),
@@ -1586,8 +1602,70 @@ impl App {
     /// The Q1 verbs: buffers and the jumplist. Split out of
     /// [`Self::apply_command`] so neither match grows past what a
     /// reader can hold. Returns whether the command was one of them.
+    /// Planning (Q3-V4) in the terminal: the minibuffer takes the date,
+    /// because a month grid in an overlay is the gpui shell's job and a
+    /// typed `YYYY-MM-DD` is what a terminal is good at. An empty line
+    /// clears the field.
+    fn start_planning(&mut self, field: &str) {
+        let Some(id) = self.current_headline_id() else {
+            self.status = format!("no headline under the cursor to {}", field.to_lowercase());
+            return;
+        };
+        self.plan_target = Some((id, field.to_owned()));
+        // Empty, not prefilled: the terminal shell's headline records
+        // carry no planning stamps, and a prefill guessed from
+        // somewhere else would be a date the user did not set.
+        self.query.clear();
+        self.mode = AppMode::PlanEdit;
+        self.status = format!("{field}: YYYY-MM-DD (empty clears) · RET set · ESC cancel");
+    }
+
+    /// The planning minibuffer's keys.
+    fn handle_planedit_stroke(&mut self, stroke: &str) {
+        match stroke {
+            "ESC" => {
+                self.mode = AppMode::Browse;
+                self.query.clear();
+                self.plan_target = None;
+            }
+            "RET" => {
+                if let Some((id, field)) = self.plan_target.take() {
+                    let typed = self.query.trim().to_owned();
+                    if typed.is_empty() {
+                        self.planning_request = Some((id, field, None));
+                    } else {
+                        let (head, tail) = typed.split_once(' ').unwrap_or((typed.as_str(), ""));
+                        if let Some((y, m, d)) = closure_shell_core::parse_ymd(head) {
+                            let stamp = closure_shell_core::org_stamp(y, m, d, tail);
+                            self.planning_request = Some((id, field, Some(stamp)));
+                        } else {
+                            self.status =
+                                format!("`{typed}` is not a date — YYYY-MM-DD, optional repeater");
+                            self.plan_target = Some((id, field));
+                            return;
+                        }
+                    }
+                }
+                self.mode = AppMode::Browse;
+                self.query.clear();
+            }
+            "DEL" => {
+                self.query.pop();
+            }
+            "SPC" => self.query.push(' '),
+            s => {
+                let mut chars = s.chars();
+                if let (Some(c), None) = (chars.next(), chars.next()) {
+                    self.query.push(c);
+                }
+            }
+        }
+    }
+
     fn apply_buffer_command(&mut self, cmd: &str) -> bool {
         match cmd {
+            "schedule" => self.start_planning("SCHEDULED"),
+            "deadline" => self.start_planning("DEADLINE"),
             // Buffers and the jumplist (Q1). A "buffer" in the terminal
             // shell is a file it has been in — the same list the gpui
             // shell keeps, over the only thing this shell opens.
@@ -2976,6 +3054,35 @@ fn apply_requests(
             .map_err(vault_err)?;
         sync_app(app, vault);
     }
+    if let Some((id, field, stamp)) = app.take_planning_request() {
+        let bid = closure_core::BlockId::from_existing(&id);
+        // One field at a time: the kernel command replaces the whole
+        // triple, so the others are read back first (Q3-V4).
+        let (scheduled, deadline, closed) = vault.find_by_id(&bid).map_or_else(
+            || (None, None, None),
+            |(h, _)| {
+                (
+                    h.scheduled().map(ToOwned::to_owned),
+                    h.deadline().map(ToOwned::to_owned),
+                    h.closed().map(ToOwned::to_owned),
+                )
+            },
+        );
+        let (scheduled, deadline) = if field == "SCHEDULED" {
+            (stamp, deadline)
+        } else {
+            (scheduled, stamp)
+        };
+        vault
+            .set_planning(
+                &bid,
+                scheduled.as_deref(),
+                deadline.as_deref(),
+                closed.as_deref(),
+            )
+            .map_err(vault_err)?;
+        sync_app(app, vault);
+    }
     if let Some((id, keyword)) = app.take_todo_request() {
         vault
             .set_todo(
@@ -3443,6 +3550,7 @@ fn overlay_content(app: &App) -> Option<(String, Vec<String>)> {
                 .collect(),
         )),
         AppMode::Buffers | AppMode::Files => buffer_overlay(app),
+        AppMode::PlanEdit => Some((format!("date: {}▏", app.query()), Vec::new())),
         AppMode::Browse | AppMode::FileView => None,
     }
 }
