@@ -1979,12 +1979,15 @@ impl GpuiView {
         // gpui lowercases letter keysyms; the editor's vim vocabulary
         // does not ([`editor_key`]).
         let key = editor_key(&ks.key, m.shift, ks.key_char.as_deref());
-        // Shift+Enter is its own key to the core — the newline in a
-        // field whose plain Enter means "accept". The core's key names
-        // carry ctrl and alt as flags but not shift, so it arrives
-        // spelled out.
-        let key = if key == "enter" && m.shift {
-            "shift-enter".to_owned()
+        // The core's key names carry ctrl and alt as flags but not
+        // shift, so the keys where shift *changes the command* arrive
+        // spelled out: Shift+Enter is the newline in a field whose
+        // plain Enter means "accept", and org's table chords are the
+        // arrows and TAB with shift on them (`M-S-<right>` inserts a
+        // column where `M-<right>` moves one).
+        let key = if m.shift && matches!(key.as_str(), "enter" | "tab" | "left" | "right" | "up" | "down")
+        {
+            format!("shift-{key}")
         } else {
             key
         };

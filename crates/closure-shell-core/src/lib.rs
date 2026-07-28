@@ -2628,6 +2628,228 @@ pub fn next_table_cell(row: &str, at: usize) -> Option<usize> {
     Some(pipe + 1 + lead)
 }
 
+/// Byte offset of the previous cell's content on `row`, from `at` —
+/// `S-TAB`, the mirror of [`next_table_cell`].
+#[must_use]
+pub fn table_previous_cell(row: &str, at: usize) -> Option<usize> {
+    if !row.trim_start().starts_with('|') {
+        return None;
+    }
+    let at = at.min(row.len());
+    // Every cell start on the row, in order; the answer is the last one
+    // before the cursor's own.
+    let mut starts = Vec::new();
+    let mut cursor = 0usize;
+    while let Some(next) = next_table_cell(row, cursor) {
+        starts.push(next);
+        cursor = next;
+    }
+    let first = row.find('|').map(|p| {
+        let rest = &row[p + 1..];
+        p + 1 + (rest.len() - rest.trim_start().len())
+    })?;
+    starts.insert(0, first);
+    starts.iter().rev().find(|&&s| s < at).copied()
+}
+
+/// Byte offset where column `n`'s content starts on a table row,
+/// clamped to the last cell there is.
+fn cell_start(row: &str, n: usize) -> usize {
+    let Some(pipe) = row.find('|') else {
+        return 0;
+    };
+    let rest = &row[pipe + 1..];
+    let mut at = pipe + 1 + (rest.len() - rest.trim_start().len());
+    for _ in 0..n {
+        match next_table_cell(row, at) {
+            Some(next) => at = next,
+            None => break,
+        }
+    }
+    at
+}
+
+/// Which column (0-based) byte offset `at` sits in on a table row.
+///
+/// `None` off a table row. Counted by the pipes before the cursor,
+/// which is what org means by "the column you are in" — the cell it
+/// would move if you pressed `M-<right>`.
+#[must_use]
+pub fn table_column_at(row: &str, at: usize) -> Option<usize> {
+    if !row.trim_start().starts_with('|') {
+        return None;
+    }
+    let at = at.min(row.len());
+    let before = row[..at].matches('|').count();
+    Some(before.saturating_sub(1))
+}
+
+/// The cells of one org table row, outer pipes dropped and each
+/// trimmed. A rule row (`|---+---|`) yields its dashes like any other,
+/// so callers check [`is_rule_row`] first.
+fn row_cells(line: &str) -> Vec<String> {
+    let t = line.trim();
+    let inner = t
+        .strip_prefix('|')
+        .map_or(t, |s| s.strip_suffix('|').unwrap_or(s));
+    inner.split('|').map(|c| c.trim().to_owned()).collect()
+}
+
+/// Whether the line is an org table rule (`|---+---|`) rather than a
+/// row of content.
+fn is_rule_row(line: &str) -> bool {
+    let t = line.trim();
+    t.starts_with('|') && t.chars().all(|c| matches!(c, '|' | '-' | '+' | ' '))
+}
+
+/// Rebuild `text` with the table containing `line` replaced by `rows`,
+/// realigned — the shared tail of every table edit below.
+fn splice_table(text: &str, line: usize, rows: &[String]) -> String {
+    let Some(span) = table_bounds(text, line) else {
+        return text.to_owned();
+    };
+    let all: Vec<&str> = text.lines().collect();
+    let mut out = String::with_capacity(text.len());
+    for l in &all[..span.start] {
+        out.push_str(l);
+        out.push('\n');
+    }
+    if !rows.is_empty() {
+        out.push_str(&align_table(&rows.join("\n")));
+    }
+    for l in &all[span.end..] {
+        out.push_str(l);
+        out.push('\n');
+    }
+    out
+}
+
+/// Apply `f` to every row of the table containing `line`, as cells.
+/// `None` when `line` is not in a table, or when `f` refuses.
+fn map_table<F>(text: &str, line: usize, f: F) -> Option<String>
+where
+    F: Fn(&mut Vec<String>) -> bool,
+{
+    let span = table_bounds(text, line)?;
+    let all: Vec<&str> = text.lines().collect();
+    let mut rows: Vec<String> = Vec::with_capacity(span.len());
+    for l in all.iter().take(span.end).skip(span.start) {
+        let mut cells = row_cells(l);
+        if !f(&mut cells) {
+            return None;
+        }
+        if is_rule_row(l) {
+            // A rule is redrawn from the column widths by `align_table`,
+            // so it only has to keep its *count* of columns right.
+            rows.push(format!("|{}|", vec!["---"; cells.len()].join("+")));
+        } else {
+            rows.push(format!("| {} |", cells.join(" | ")));
+        }
+    }
+    Some(splice_table(text, line, &rows))
+}
+
+/// `M-<left>` / `M-<right>` in a table: swap the column at `col` with
+/// its neighbour, in every row. `None` at the edge, or off a table.
+#[must_use]
+pub fn table_move_column(text: &str, line: usize, col: usize, right: bool) -> Option<String> {
+    let other = if right { col.checked_add(1)? } else { col.checked_sub(1)? };
+    let width = table_bounds(text, line)
+        .and_then(|span| text.lines().nth(span.start).map(|l| row_cells(l).len()))?;
+    if col >= width || other >= width {
+        return None;
+    }
+    map_table(text, line, |cells| {
+        // A short row is padded rather than refused: a half-typed table
+        // is still a table.
+        while cells.len() <= col.max(other) {
+            cells.push(String::new());
+        }
+        cells.swap(col, other);
+        true
+    })
+}
+
+/// `M-S-<right>` / `M-S-<left>`: insert an empty column before `col`,
+/// or delete it, in every row.
+#[must_use]
+pub fn table_insert_column(text: &str, line: usize, col: usize) -> Option<String> {
+    table_bounds(text, line)?;
+    map_table(text, line, |cells| {
+        let at = col.min(cells.len());
+        cells.insert(at, String::new());
+        true
+    })
+}
+
+/// See [`table_insert_column`]. Refuses to delete the last column —
+/// a table with no columns is not a table.
+#[must_use]
+pub fn table_delete_column(text: &str, line: usize, col: usize) -> Option<String> {
+    let width = table_bounds(text, line)
+        .and_then(|span| text.lines().nth(span.start).map(|l| row_cells(l).len()))?;
+    if width <= 1 || col >= width {
+        return None;
+    }
+    map_table(text, line, |cells| {
+        if col < cells.len() {
+            cells.remove(col);
+        }
+        true
+    })
+}
+
+/// `M-<up>` / `M-<down>`: swap the row at `line` with its neighbour
+/// inside the same table. `None` at either end.
+#[must_use]
+pub fn table_move_row(text: &str, line: usize, down: bool) -> Option<String> {
+    let span = table_bounds(text, line)?;
+    let other = if down { line.checked_add(1)? } else { line.checked_sub(1)? };
+    if other < span.start || other >= span.end {
+        return None;
+    }
+    let all: Vec<&str> = text.lines().collect();
+    let mut rows: Vec<String> = all[span.clone()].iter().map(|l| (*l).to_owned()).collect();
+    rows.swap(line - span.start, other - span.start);
+    Some(splice_table(text, line, &rows))
+}
+
+/// `M-S-<down>`: an empty row above the one at `line`.
+#[must_use]
+pub fn table_insert_row(text: &str, line: usize) -> Option<String> {
+    let span = table_bounds(text, line)?;
+    let all: Vec<&str> = text.lines().collect();
+    let width = row_cells(all[span.start]).len().max(1);
+    let mut rows: Vec<String> = all[span.clone()].iter().map(|l| (*l).to_owned()).collect();
+    rows.insert(line - span.start, format!("|{}|", " |".repeat(width)));
+    Some(splice_table(text, line, &rows))
+}
+
+/// `M-S-<up>`: take the row at `line` out. A table whose last row goes
+/// is gone, rather than left half there.
+#[must_use]
+pub fn table_kill_row(text: &str, line: usize) -> Option<String> {
+    let span = table_bounds(text, line)?;
+    let all: Vec<&str> = text.lines().collect();
+    let mut rows: Vec<String> = all[span.clone()].iter().map(|l| (*l).to_owned()).collect();
+    rows.remove(line - span.start);
+    Some(splice_table(text, line, &rows))
+}
+
+/// `C-c -`: rule a line under the row at `line`.
+#[must_use]
+pub fn table_insert_hline(text: &str, line: usize) -> Option<String> {
+    let span = table_bounds(text, line)?;
+    let all: Vec<&str> = text.lines().collect();
+    let width = row_cells(all[span.start]).len().max(1);
+    let mut rows: Vec<String> = all[span.clone()].iter().map(|l| (*l).to_owned()).collect();
+    rows.insert(
+        line - span.start + 1,
+        format!("|{}|", vec!["---"; width].join("+")),
+    );
+    Some(splice_table(text, line, &rows))
+}
+
 /// The byte range of the source-block *content* enclosing `at`, and
 /// the block's language — the org-edit-special lookup.
 ///
@@ -3166,7 +3388,19 @@ const fn tutorial_editing(modal: bool) -> &'static str {
 /// clipboard in one without them.
 const fn tutorial_registers(modal: bool) -> &'static str {
     if modal {
-        "** Surround\n\
+        "** Tables\n\
+         A line starting with =|= is a table. TAB realigns the whole thing \
+         and steps to the\nnext cell, =S-TAB= back one. The rest is org's, \
+         and each key does nothing outside a\ntable, so the outline command \
+         it shares a chord with keeps it:\n\
+         - =M-<left>= / =M-<right>= — move this column\n\
+         - =M-<up>= / =M-<down>= — move this row\n\
+         - =M-S-<left>= / =M-S-<right>= — delete / insert a column\n\
+         - =M-S-<up>= / =M-S-<down>= — kill / insert a row\n\
+         - =M--= — rule a line under this row (Emacs says =C-c -=; here =C-c= \
+         is copy)\n\
+         \n\
+         ** Surround\n\
          Pairs, as an operator — evil-surround's vocabulary, and org's \
          emphasis markers\nare pairs too.\n\
          - =ysiw\"= wraps the word in quotes; =ys$)= to the end of the line, \
@@ -5670,6 +5904,24 @@ impl BodyEditor {
         self.redo_stack.clear();
         self.insert_armed = true;
         self.reset_buffer_state();
+    }
+
+    /// Replace the whole buffer as one undoable edit, leaving the
+    /// cursor at (or just before) byte `at`.
+    ///
+    /// [`Self::load_in`] is for *arriving* in a buffer and clears the
+    /// undo stack with everything else; a transform of the text you are
+    /// already editing — realigning a table, moving one of its columns
+    /// — is an edit like any other and has to be undoable like one.
+    pub fn replace_all(&mut self, text: String, at: usize) {
+        self.checkpoint();
+        self.buf = text;
+        let mut at = at.min(self.buf.len());
+        while at > 0 && !self.buf.is_char_boundary(at) {
+            at -= 1;
+        }
+        self.cursor = at;
+        self.anchor = at;
     }
 
     /// Drop everything that describes *this* buffer's positions.
@@ -11272,6 +11524,75 @@ impl ModalApp {
         self.slash.as_ref().map_or(0, |(_, c)| *c)
     }
 
+    /// Org's table editing chords, when the cursor is in a table.
+    ///
+    /// `M-<left>`/`M-<right>` move the column, `M-<up>`/`M-<down>` the
+    /// row; with shift they delete and insert instead; `M--` rules a
+    /// line (`C-c -` in Emacs, but `C-c` is the desktop copy chord
+    /// here); `S-TAB` steps back a cell. Each is the key org uses, and
+    /// each does nothing outside a table so the outline command it
+    /// shadows keeps the key — which is what `org-metaleft` does.
+    ///
+    /// `true` when the chord was a table command and was handled.
+    fn table_chord(&mut self, key: &str, ctrl: bool, alt: bool) -> bool {
+        if ctrl {
+            return false;
+        }
+        let text = self.body.text().to_owned();
+        let (line, col) = self.body.cursor_line_col();
+        let Some(row) = text.lines().nth(line) else {
+            return false;
+        };
+        let at = row
+            .char_indices()
+            .nth(col)
+            .map_or(row.len(), |(byte, _)| byte);
+        if key == "shift-tab" && !alt {
+            let Some(prev) = table_previous_cell(row, at) else {
+                return false;
+            };
+            let offset: usize = text.lines().take(line).map(|l| l.len() + 1).sum();
+            self.body.set_cursor_byte(offset + prev);
+            return true;
+        }
+        if !alt {
+            return false;
+        }
+        let Some(column) = table_column_at(row, at) else {
+            return false;
+        };
+        // Point follows the cell it was in: a column moved right is
+        // still the column you are editing, which is what makes
+        // `M-<right> M-<right>` walk it across.
+        let (edited, target) = match key {
+            "left" => (
+                table_move_column(&text, line, column, false),
+                column.saturating_sub(1),
+            ),
+            "right" => (table_move_column(&text, line, column, true), column + 1),
+            "up" => (table_move_row(&text, line, false), column),
+            "down" => (table_move_row(&text, line, true), column),
+            "shift-left" => (table_delete_column(&text, line, column), column),
+            "shift-right" => (table_insert_column(&text, line, column), column),
+            "shift-up" => (table_kill_row(&text, line), column),
+            "shift-down" => (table_insert_row(&text, line), column),
+            "-" => (table_insert_hline(&text, line), column),
+            _ => return false,
+        };
+        // A chord that *is* a table command has been handled whether or
+        // not it could move anything — `M-<left>` in the first column
+        // must not fall through and become a word motion.
+        if let Some(new_text) = edited {
+            let offset: usize = new_text.lines().take(line).map(|l| l.len() + 1).sum();
+            let landing = new_text
+                .lines()
+                .nth(line)
+                .map_or(0, |row| cell_start(row, target));
+            self.body.replace_all(new_text, offset + landing);
+        }
+        true
+    }
+
     /// TAB inside an org table: realign the whole table, then move to
     /// the next cell, wrapping to the row below at the end of a row.
     ///
@@ -11474,6 +11795,12 @@ impl ModalApp {
         text: Option<char>,
     ) {
         if self.viewport_chord(shell, key, ctrl, alt, text) {
+            return;
+        }
+        // Org's table chords, before the modes: `M-<arrow>` is a table
+        // command *in* a table and nothing anywhere else, which is
+        // `org-metaleft`'s own dispatch.
+        if self.table_chord(key, ctrl, alt) {
             return;
         }
         match self.body.mode() {
