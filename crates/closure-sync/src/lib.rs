@@ -286,6 +286,19 @@ impl SyncSession {
         self.replica.merge(msg.replica());
     }
 
+    /// Merge a received [`SyncMessage`], reporting every divergence the
+    /// automatic LWW would otherwise have resolved silently.
+    ///
+    /// The message-shaped half of [`Self::receive_with_conflicts`] —
+    /// what a transport that carries frames rather than sessions needs,
+    /// which is the disk-file courier as well as the socket.
+    pub fn receive_message_with_conflicts(
+        &mut self,
+        msg: &SyncMessage,
+    ) -> Vec<closure_crdt::FieldConflict> {
+        self.replica.merge_with_conflicts(msg.replica())
+    }
+
     /// Winning title for the block whose id is `id` (string form), for
     /// callers that hold the id as text rather than a [`BlockId`].
     #[must_use]

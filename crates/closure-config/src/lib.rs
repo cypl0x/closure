@@ -84,6 +84,16 @@ pub struct Config {
     /// LAN or the VPN, so a multi-homed host says here. Unset means
     /// "detect it"; the port always comes from the bound socket.
     pub sync_advertise: Option<IpAddr>,
+    /// A folder both machines can see — a Syncthing share, a Dropbox, a
+    /// mounted drive, a USB stick — where `sync-export` leaves a signed
+    /// bundle and `sync-import` picks up the peers'.
+    ///
+    /// The socket path needs both machines up at once and a route
+    /// between them; a shared folder needs neither. Same replica, same
+    /// trust anchor: a bundle is merged only when a paired peer signed
+    /// it, because a folder is exactly as trustworthy as whoever can
+    /// write to it.
+    pub sync_dir: Option<PathBuf>,
     /// Block id of the headline the last session was in — the outline
     /// opens on it rather than on row zero.
     ///
@@ -121,6 +131,7 @@ impl Default for Config {
             wrap: false,
             sync_bind: None,
             sync_advertise: None,
+            sync_dir: None,
             last_place: None,
         }
     }
@@ -342,6 +353,12 @@ impl Config {
              # when you paste a ticket; a ticket is an address and a\n\
              # public key, so there is nothing secret in it.\n\
              # sync_peers = closure-sync:100.1.2.3:7420|abc123…\n\
+             # A folder both machines can see — Syncthing, a Dropbox, a \
+             USB stick.\n# `sync-export` leaves a signed bundle in it and \
+             `sync-import` picks up\n# the peers', so neither machine has to \
+             be up when the other is. Still\n# only merges bundles signed by \
+             a peer you have paired with.\n\
+             # sync_dir = /home/you/Sync/closure\n\
              \n\
              # The assistant. The key itself never lives here: `llm_key_env` \
              names an\n# environment variable, so this file can be committed \
@@ -487,6 +504,9 @@ impl Config {
                 "record_commands" => cfg.record_commands = parse_bool(key, value)?,
                 "last_place" => {
                     cfg.last_place = (!value.trim().is_empty()).then(|| value.trim().to_owned());
+                }
+                "sync_dir" => {
+                    cfg.sync_dir = (!value.trim().is_empty()).then(|| PathBuf::from(value.trim()));
                 }
                 "wrap" => cfg.wrap = parse_bool(key, value)?,
                 "sync_peers" => {

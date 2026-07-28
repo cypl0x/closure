@@ -116,6 +116,25 @@ fn a_typed_headline_that_brought_its_own_id_keeps_it() {
 }
 
 #[test]
+fn a_vault_is_every_org_file_under_it_including_subdirectories() {
+    // "How do I handle multiple .org files?" — you do not: the vault is
+    // the directory, every `*.org` in it is loaded, and the outline is
+    // all of them in one list with the file as a column. Only where a
+    // capture *lands* is per-file.
+    let dir = tempfile::tempdir().expect("tempdir");
+    fs::write(dir.path().join("a.org"), "* From A\n").expect("write");
+    fs::write(dir.path().join("b.org"), "* From B\n").expect("write");
+    fs::create_dir(dir.path().join("projects")).expect("mkdir");
+    fs::write(dir.path().join("projects/c.org"), "* From C\n").expect("write");
+    fs::write(dir.path().join("notes.md"), "# not org\n").expect("write");
+    let v = Vault::open(dir.path()).expect("open");
+    for title in ["From A", "From B", "From C"] {
+        assert!(v.find_by_title(title).is_some(), "{title} is in the vault");
+    }
+    assert_eq!(v.iter().count(), 3, "and the markdown file is not");
+}
+
+#[test]
 fn every_new_headline_is_reachable_by_id_in_the_index() {
     // "Treated as a normal captured item" means the rest of the app
     // can find it: the row list, links, the undo tree and sync all go

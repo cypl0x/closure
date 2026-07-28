@@ -2372,12 +2372,24 @@ const PALETTE_COMMANDS: &[(&str, &str, &str, &str)] = &[
         "Navigate",
         "Fold or unfold the selected subtree",
     ),
+    (
+        "sync-export",
+        "sync-export",
+        "Sync",
+        "Leave a bundle in the shared folder (sync_dir)",
+    ),
+    (
+        "sync-import",
+        "sync-import",
+        "Sync",
+        "Pick up bundles peers left in the shared folder",
+    ),
     ("quit", "quit", "App", "Quit closure"),
 ];
 
 /// Section order for the command palette (G6); sections render in this
 /// order, empty ones dropped.
-const PALETTE_SECTIONS: &[&str] = &["Navigate", "Edit", "Mode", "App"];
+const PALETTE_SECTIONS: &[&str] = &["Navigate", "Edit", "Mode", "Sync", "App"];
 
 /// A command entry in the [`command_palette`] (G6): a label + human
 /// description + its actionable chord.
@@ -3231,6 +3243,19 @@ fn tutorial_reference(mode: InputMode) -> String {
          LAN *and* a VPN), set =sync_advertise= in\nconfig.org so the ticket \
          names the one your peer can actually reach.\n\
          \n\
+         ** Through a folder instead of a socket\n\
+         Set =sync_dir= in config.org to something both machines can see — a \
+         Syncthing\nshare, a Dropbox, a mounted drive, a USB stick. \
+         =sync-export= leaves a signed\nbundle in it; =sync-import= picks up \
+         the ones your peers left and writes what\nconverged back into your \
+         files. Neither machine has to be awake when the other\nis, and there \
+         has to be no route between them.\n\
+         \n\
+         You still pair first: a bundle is merged only when it is signed by \
+         someone whose\nticket you pasted. A shared folder is exactly as \
+         trustworthy as everyone who can\nwrite to it, so it is verified \
+         rather than believed.\n\
+         \n\
          * Where the files are\n\
          Every note is a plain =.org= file in this directory. Nothing is in a \
          database; a\nsecond program reading the directory sees exactly what \
@@ -3565,6 +3590,93 @@ impl SyncApp {
         for (_, doc) in shell.vault.iter() {
             self.session.record_local(doc);
         }
+    }
+
+    /// The file our bundle takes in a shared folder — one per replica,
+    /// named after the key that signs it so two machines never collide
+    /// and "not ours" is decidable without opening anything.
+    fn bundle_name(key: &closure_sync::VerifyingKey) -> String {
+        use std::fmt::Write as _;
+        let mut hex = String::with_capacity(16);
+        for b in key.to_bytes().iter().take(8) {
+            let _ = write!(hex, "{b:02x}");
+        }
+        format!("{hex}.closure-sync")
+    }
+
+    /// Leave our replica in `dir` as a signed bundle — sync through a
+    /// shared folder rather than a socket.
+    ///
+    /// Syncthing, a Dropbox, a USB stick, a mounted share: the two
+    /// machines never have to be up at the same time or have a route
+    /// between them. The bundle *is* the frame the socket would have
+    /// sent, signed with the same key, so the trust anchor does not
+    /// change — a folder is exactly as trustworthy as whoever can write
+    /// to it, which is why the other side verifies rather than believes.
+    ///
+    /// Rewritten in place on every export: one file per replica, kept
+    /// up to date, rather than a pile a folder syncer has to carry.
+    ///
+    /// # Errors
+    ///
+    /// The IO failure as a message.
+    pub fn export_bundle(&self, dir: &std::path::Path) -> Result<std::path::PathBuf, String> {
+        let msg = closure_sync::SyncMessage::from_session(&self.session);
+        let bytes = msg.to_signed_bytes(&self.signing);
+        std::fs::create_dir_all(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+        let path = dir.join(Self::bundle_name(&self.public_key()));
+        std::fs::write(&path, bytes).map_err(|e| format!("{}: {e}", path.display()))?;
+        Ok(path)
+    }
+
+    /// Merge every bundle in `dir` that a paired peer signed.
+    ///
+    /// Returns how many bundles were actually merged and the
+    /// divergences they brought, which are surfaced the same way the
+    /// socket's are rather than resolved. Ours is skipped; anything
+    /// unsigned, corrupt, or signed by a key whose ticket has not been
+    /// pasted is skipped too — a half-written file is what a folder
+    /// syncer *does* while it copies, and the next round has to still
+    /// work.
+    ///
+    /// # Errors
+    ///
+    /// Only a directory that cannot be listed. An empty or absent one
+    /// is a round that merged nothing, not a failure.
+    pub fn import_bundles(
+        &mut self,
+        dir: &std::path::Path,
+    ) -> Result<(usize, Vec<closure_crdt::FieldConflict>), String> {
+        if !dir.exists() {
+            return Ok((0, Vec::new()));
+        }
+        let ours = Self::bundle_name(&self.public_key());
+        let trusted = self.trusted_keys();
+        let mut entries: Vec<std::path::PathBuf> = std::fs::read_dir(dir)
+            .map_err(|e| format!("{}: {e}", dir.display()))?
+            .filter_map(Result::ok)
+            .map(|e| e.path())
+            .filter(|p| {
+                p.extension().and_then(|e| e.to_str()) == Some("closure-sync")
+                    && p.file_name().and_then(|n| n.to_str()) != Some(ours.as_str())
+            })
+            .collect();
+        // Deterministic order: two bundles that touch the same field
+        // must merge the same way twice.
+        entries.sort();
+        let mut merged = 0usize;
+        let mut conflicts = Vec::new();
+        for path in entries {
+            let Ok(bytes) = std::fs::read(&path) else {
+                continue;
+            };
+            let Ok(msg) = closure_sync::SyncMessage::from_signed_bytes(&bytes, &trusted) else {
+                continue;
+            };
+            conflicts.extend(self.session.receive_message_with_conflicts(&msg));
+            merged += 1;
+        }
+        Ok((merged, conflicts))
     }
 
     /// Merge a peer's replica into ours, returning every divergence
@@ -12077,6 +12189,61 @@ impl ModalApp {
         }
     }
 
+    /// Where the disk-file courier drops and looks for bundles, from
+    /// the vault's `config.org`.
+    fn sync_dir(shell: &Shell) -> Option<std::path::PathBuf> {
+        closure_config::Config::from_path(&shell.vault.root().join("config.org"))
+            .ok()?
+            .sync_dir
+    }
+
+    /// Leave our replica in the shared folder — `sync_dir` in
+    /// config.org, which is a Syncthing share, a Dropbox, a mounted
+    /// drive, a USB stick.
+    fn sync_export(&mut self, shell: &Shell) {
+        let Some(dir) = Self::sync_dir(shell) else {
+            "no sync_dir in config.org — set it to a folder both machines can see"
+                .clone_into(&mut self.status);
+            return;
+        };
+        self.sync_mut().snapshot(shell);
+        self.status = match self.sync_mut().export_bundle(&dir) {
+            Ok(path) => format!("left a bundle in {}", path.display()),
+            Err(e) => format!("export failed: {e}"),
+        };
+    }
+
+    /// Pick up every bundle a paired peer left in the shared folder and
+    /// write what converged back into the vault.
+    fn sync_import(&mut self, shell: &mut Shell) {
+        let Some(dir) = Self::sync_dir(shell) else {
+            "no sync_dir in config.org — set it to a folder both machines can see"
+                .clone_into(&mut self.status);
+            return;
+        };
+        self.sync_mut().snapshot(shell);
+        match self.sync_mut().import_bundles(&dir) {
+            Ok((0, _)) => {
+                "nothing new in the sync folder".clone_into(&mut self.status);
+            }
+            Ok((n, conflicts)) => {
+                // The replica converging is half a sync; the vault is
+                // what gets opened in Emacs and committed to git.
+                let applied = self.sync_mut().apply_to_vault(shell);
+                let mut pending_list = self.conflicts.conflicts().to_vec();
+                pending_list.extend(conflicts);
+                let pending = pending_list.len();
+                self.set_conflicts(pending_list);
+                self.status = if pending > 0 {
+                    format!("{n} bundle(s), {applied} field(s), {pending} conflict(s) to review")
+                } else {
+                    format!("{n} bundle(s), {applied} field(s) merged")
+                };
+            }
+            Err(e) => self.status = format!("import failed: {e}"),
+        }
+    }
+
     /// Paste back the peers this vault has paired with before.
     ///
     /// Pairing that has to be redone every session is not pairing, so
@@ -12586,6 +12753,8 @@ impl ModalApp {
                 self.surface = ModalSurface::Sync;
                 "sync — hand over your ticket, paste theirs, Esc back".clone_into(&mut self.status);
             }
+            "sync-export" => self.sync_export(shell),
+            "sync-import" => self.sync_import(shell),
             "edit-special" => self.begin_edit_special(shell),
             "eval-block" => self.eval_selected_block(shell),
             "headline-list" => {
