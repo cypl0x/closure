@@ -3166,7 +3166,20 @@ const fn tutorial_editing(modal: bool) -> &'static str {
 /// clipboard in one without them.
 const fn tutorial_registers(modal: bool) -> &'static str {
     if modal {
-        "** Registers\n\
+        "** Surround\n\
+         Pairs, as an operator — evil-surround's vocabulary, and org's \
+         emphasis markers\nare pairs too.\n\
+         - =ysiw\"= wraps the word in quotes; =ys$)= to the end of the line, \
+         =yss*= the line\n\
+         - =S= in VISUAL wraps the selection\n\
+         - =ds\"= takes a pair away, =cs\"'= swaps one for another\n\
+         - =*=, =/=, =_=, ==, =~=, =+= are pairs, so =ysiw*= is bold and \
+         =cs*/= makes it italic\n\
+         - the closing bracket hugs and the opening one pads: =ysiw)= gives \
+         =(word)=,\n  =ysiw(= gives =( word )=\n\
+         (HTML-tag surrounds — vim's =t= — are not implemented.)\n\
+         \n\
+         ** Registers\n\
          Yanking and deleting put text somewhere, and that somewhere has a \
          name.\n\
          - =yy= copies a line into the unnamed register, =p= puts it back\n\
@@ -5322,6 +5335,40 @@ enum CharClass {
 }
 
 /// Classify `c` for a small (`big == false`) or big word motion.
+/// The pair a surround char names, as `(open, close)`.
+///
+/// vim-surround's oldest convention is in here: the *closing* bracket
+/// wraps tight and the *opening* one leaves a space inside, so `ysiw)`
+/// gives `(word)` and `ysiw(` gives `( word )`. `b` and `B` are the
+/// tight forms of `()` and `{}`. Everything else is its own mirror,
+/// which covers the quotes and org's emphasis markers alike.
+///
+/// `None` is a char that names no pair — `t`, because HTML tags need a
+/// name typed after them and a note-taking app is not where that
+/// belongs.
+const fn surround_pair(c: char) -> Option<(&'static str, &'static str)> {
+    Some(match c {
+        '(' => ("( ", " )"),
+        ')' | 'b' => ("(", ")"),
+        '{' => ("{ ", " }"),
+        '}' | 'B' => ("{", "}"),
+        '[' => ("[ ", " ]"),
+        ']' => ("[", "]"),
+        '<' => ("< ", " >"),
+        '>' => ("<", ">"),
+        '"' => ("\"", "\""),
+        '\'' => ("'", "'"),
+        '`' => ("`", "`"),
+        '*' => ("*", "*"),
+        '/' => ("/", "/"),
+        '_' => ("_", "_"),
+        '=' => ("=", "="),
+        '~' => ("~", "~"),
+        '+' => ("+", "+"),
+        _ => return None,
+    })
+}
+
 fn char_class(c: char, big: bool) -> CharClass {
     if c.is_whitespace() {
         CharClass::Blank
@@ -5371,6 +5418,14 @@ enum Pending {
     /// `linewise` is the `'` form, which lands on the line's first
     /// non-blank and makes an operator take whole lines.
     JumpMark { op: Option<char>, linewise: bool },
+    /// `ys{motion}` (or VISUAL `S`) resolved to a range; the next
+    /// stroke names the pair to wrap it in.
+    SurroundWith { lo: usize, hi: usize },
+    /// `ds` typed; the next stroke names the pair to take away.
+    SurroundDelete,
+    /// `cs` typed; the next stroke names the pair to replace, and the
+    /// one after it what to replace it with.
+    SurroundChange(Option<char>),
     /// `q` typed with nothing recording; the next stroke names the
     /// register to record into.
     RecordMacro,
@@ -5395,6 +5450,7 @@ impl Pending {
             Self::JumpMark {
                 linewise: false, ..
             } => Some('`'),
+            Self::SurroundWith { .. } | Self::SurroundDelete | Self::SurroundChange(_) => Some('s'),
             Self::RecordMacro => Some('q'),
             Self::RunMacro => Some('@'),
         }
@@ -6175,6 +6231,9 @@ impl BodyEditor {
             Pending::Register => self.finish_register(key),
             Pending::Mark => self.finish_mark(key),
             Pending::JumpMark { op, linewise } => self.finish_mark_jump(op, linewise, key),
+            Pending::SurroundWith { lo, hi } => self.finish_surround(lo, hi, key),
+            Pending::SurroundDelete => self.finish_surround_delete(key),
+            Pending::SurroundChange(old) => self.finish_surround_change(old, key),
             Pending::RecordMacro => self.finish_record(key),
             Pending::RunMacro => self.finish_run_macro(key),
             Pending::None => {
@@ -6228,7 +6287,14 @@ impl BodyEditor {
                 self.visual_operator(key.chars().next().unwrap_or('u'));
             }
             "D" | "X" if visual => self.visual_linewise_operator('d'),
-            "C" | "S" if visual => self.visual_linewise_operator('c'),
+            // evil-surround takes VISUAL `S`; `C` keeps vim's linewise
+            // change, so the muscle memory for that is untouched.
+            "S" if visual => {
+                let (lo, hi) = self.selection();
+                self.mode = EditorMode::Normal;
+                self.pending = Pending::SurroundWith { lo, hi };
+            }
+            "C" if visual => self.visual_linewise_operator('c'),
             "Y" if visual => self.visual_linewise_operator('y'),
             "p" | "P" if visual => self.visual_paste(),
             "d" | "c" | "y" | ">" | "<" => {
@@ -6456,6 +6522,21 @@ impl BodyEditor {
                 self.count = 0;
                 self.op_count = 0;
             }
+            // evil-surround takes the three `s` chords off the
+            // operators: `ys{motion}{char}` wraps, `ds{char}` unwraps,
+            // `cs{old}{new}` swaps. None of the three collides with a
+            // motion, because `s` is not one.
+            "s" if op == 's' => {
+                // `yss` — the line, without its newline.
+                let lo = self.line_start(self.cursor);
+                let hi = self.line_end(self.cursor);
+                self.count = 0;
+                self.op_count = 0;
+                self.pending = Pending::SurroundWith { lo, hi };
+            }
+            "s" if op == 'y' => self.pending = Pending::Op('s'),
+            "s" if op == 'd' => self.pending = Pending::SurroundDelete,
+            "s" if op == 'c' => self.pending = Pending::SurroundChange(None),
             // `dd`, `yy`, `cc`, `>>`, `<<` — linewise over count lines.
             // `S` doubles for `cc` the way vim lets it.
             k if k.starts_with(op) => {
@@ -7212,12 +7293,91 @@ impl BodyEditor {
 
     /// Resolve `iw`/`aw`, `i(`/`a(` …, `i"`/`a"`, `ip`/`ap` to a byte
     /// range plus its kind. `None` when the cursor is not inside one.
+    /// Wrap `lo..hi` in the pair `key` names — the second half of
+    /// `ys{motion}`, of `yss`, and of VISUAL `S`.
+    fn finish_surround(&mut self, lo: usize, hi: usize, key: &str) {
+        self.pending = Pending::None;
+        let Some((open, close)) = key
+            .chars()
+            .next()
+            .filter(|_| key.chars().count() == 1)
+            .and_then(surround_pair)
+        else {
+            // `escape`, or a char that names no pair (`t` — HTML tags
+            // are not implemented). Nothing typed, nothing changed.
+            return;
+        };
+        let hi = hi.min(self.buf.len());
+        let lo = lo.min(hi);
+        self.checkpoint();
+        self.buf.insert_str(hi, close);
+        self.buf.insert_str(lo, open);
+        self.cursor = lo;
+        self.mode = EditorMode::Normal;
+        self.edit_seq += 1;
+    }
+
+    /// `ds{char}`: take the pair away, keep what was inside it.
+    fn finish_surround_delete(&mut self, key: &str) {
+        self.pending = Pending::None;
+        let Some((outer, inner)) = self.surround_spans(key) else {
+            return;
+        };
+        let kept = self.buf[inner.0..inner.1].to_owned();
+        self.checkpoint();
+        self.buf.replace_range(outer.0..outer.1, &kept);
+        self.cursor = outer.0;
+        self.edit_seq += 1;
+    }
+
+    /// `cs{old}{new}`: the first stroke names the pair to find, the
+    /// second what to put in its place.
+    fn finish_surround_change(&mut self, old: Option<char>, key: &str) {
+        let Some(c) = key.chars().next().filter(|_| key.chars().count() == 1) else {
+            self.pending = Pending::None;
+            return;
+        };
+        let Some(old) = old else {
+            self.pending = Pending::SurroundChange(Some(c));
+            return;
+        };
+        self.pending = Pending::None;
+        let Some((open, close)) = surround_pair(c) else {
+            return;
+        };
+        let Some((outer, inner)) = self.surround_spans(&old.to_string()) else {
+            return;
+        };
+        let replaced = format!("{open}{}{close}", &self.buf[inner.0..inner.1]);
+        self.checkpoint();
+        self.buf.replace_range(outer.0..outer.1, &replaced);
+        self.cursor = outer.0;
+        self.edit_seq += 1;
+    }
+
+    /// The pair `key` names around the cursor, as `(outer, inner)` byte
+    /// ranges — the delimiters included and excluded.
+    ///
+    /// It is the `a…`/`i…` text objects doing the finding, which is why
+    /// `ds)` understands nesting and `ds*` understands org emphasis:
+    /// they are the same two spans `di)` and `da)` already resolve.
+    fn surround_spans(&self, key: &str) -> Option<((usize, usize), (usize, usize))> {
+        let c = key.chars().next().filter(|_| key.chars().count() == 1)?;
+        surround_pair(c)?;
+        let (alo, ahi, _) = self.text_object(c, true, 1)?;
+        let (ilo, ihi, _) = self.text_object(c, false, 1)?;
+        (alo < ilo && ihi < ahi).then_some(((alo, ahi), (ilo, ihi)))
+    }
+
     fn text_object(&self, obj: char, around: bool, n: usize) -> Option<(usize, usize, MotionKind)> {
         match obj {
             'w' | 'W' => self.word_object(obj == 'W', around, n),
             's' => self.sentence_object(around),
             'p' => self.paragraph_object(around),
-            '"' | '\'' | '`' => self.quote_object(obj, around),
+            // Org's emphasis markers are same-char pairs exactly like
+            // the quotes, so `ci*` changes the bold run and `ds/` takes
+            // the italics off — the constructs this app is made of.
+            '"' | '\'' | '`' | '*' | '/' | '_' | '=' | '~' | '+' => self.quote_object(obj, around),
             '(' | ')' | 'b' => self.bracket_object('(', ')', around),
             '[' | ']' => self.bracket_object('[', ']', around),
             '{' | '}' | 'B' => self.bracket_object('{', '}', around),
@@ -7480,6 +7640,12 @@ impl BodyEditor {
             return self.run_linewise(op, first, last_end);
         }
         if hi <= lo {
+            return;
+        }
+        // The surround "operator" resolves a range like any other and
+        // then waits: the pair it wraps in is the *next* stroke.
+        if op == 's' {
+            self.pending = Pending::SurroundWith { lo, hi };
             return;
         }
         match op {
@@ -8126,6 +8292,15 @@ impl BodyEditor {
             Pending::JumpMark { linewise, .. } => out.push(if linewise { '\'' } else { '`' }),
             Pending::RecordMacro => out.push('q'),
             Pending::RunMacro => out.push('@'),
+            // Mid-surround: the range is settled and the pair is what
+            // the next stroke says.
+            Pending::SurroundWith { .. } | Pending::SurroundDelete => out.push('s'),
+            Pending::SurroundChange(old) => {
+                out.push('s');
+                if let Some(c) = old {
+                    out.push(c);
+                }
+            }
             Pending::Op(_) | Pending::None => {}
         }
         out
@@ -8144,6 +8319,9 @@ impl BodyEditor {
             | Pending::Mark
             | Pending::RecordMacro
             | Pending::RunMacro
+            | Pending::SurroundWith { .. }
+            | Pending::SurroundDelete
+            | Pending::SurroundChange(_)
             | Pending::None => None,
         }
     }
