@@ -1170,8 +1170,9 @@ fn leaving_the_editor_brings_the_window_back(cx: &mut gpui::TestAppContext) {
     let at_rail = centre(vcx, rail_selector("peers"));
     view.update(vcx, |v, cx| v.run_command("edit-body", cx));
     vcx.run_until_parked();
-    // Esc out of NORMAL cancels the edit, which is the way back.
-    vcx.simulate_keystrokes("escape");
+    // `:q` closes the buffer, which is the way back (contract revised
+    // 2026-07-28: Esc in a modal mode is the mode key, not the exit).
+    view.update(vcx, |v, cx| v.run_ex_line("q", cx));
     vcx.run_until_parked();
     view.update(vcx, |v, _cx| assert_eq!(v.surface(), ModalSurface::Browse));
     vcx.simulate_click(at_rail, Modifiers::none());

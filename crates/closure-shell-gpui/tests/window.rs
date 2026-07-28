@@ -108,13 +108,22 @@ fn a_ctrl_chord_reaches_the_editor(cx: &mut gpui::TestAppContext) {
 }
 
 #[gpui::test]
-fn escape_out_of_a_clean_editor_returns_to_browse(cx: &mut gpui::TestAppContext) {
+fn escape_is_the_mode_key_and_quit_is_the_exit(cx: &mut gpui::TestAppContext) {
+    // Contract revised 2026-07-28: Esc in a modal mode returns to
+    // NORMAL and never closes the buffer — pressing it twice is a
+    // reflex, and it used to be the reflex that lost a paragraph.
     let (_dir, window) = test_window(cx, "* Note\n");
     window
         .update(cx, |view, _w, cx| {
             view.press("i", false, false, cx);
             view.press("escape", false, false, cx);
             view.press("escape", false, false, cx);
+            assert_eq!(
+                view.surface(),
+                ModalSurface::EditBody,
+                "still in the buffer"
+            );
+            view.run_ex_line("q", cx);
             assert_eq!(view.surface(), ModalSurface::Browse);
         })
         .expect("live");

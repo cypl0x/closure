@@ -51,11 +51,15 @@ fn append(app: &mut ModalApp, sh: &mut Shell, text: &str) {
 }
 
 #[test]
-fn escape_still_leaves_an_untouched_buffer() {
-    // Opening a body to read it and pressing Esc must stay free.
+fn opening_a_body_to_read_it_and_leaving_stays_free() {
+    // Contract revised 2026-07-28: in a modal mode Esc no longer
+    // leaves (see "Esc is a mode key" below), so the cheap way out of
+    // a body opened just to read it is `:q` — which asks nothing and
+    // writes nothing when there is nothing to write.
     let (_d, mut sh, mut app) = editing();
-    app.on_key(&mut sh, "escape", false, false, None);
-    assert_eq!(app.surface(), ModalSurface::Browse);
+    app.run_ex_line(&mut sh, "q");
+    assert_ne!(app.surface(), ModalSurface::EditBody);
+    assert!(!app.should_quit());
 }
 
 #[test]
@@ -143,6 +147,105 @@ fn quit_bang_discards_on_purpose() {
     append(&mut app, &mut sh, " and more");
     app.run_ex_line(&mut sh, "q!");
     assert_ne!(app.surface(), ModalSurface::EditBody);
+}
+
+// === Esc is a mode key, not an exit ===
+//
+// Contract revised 2026-07-28 on the user's report: "Escape shouldn't
+// close/discard the body since you switch between normal and insert
+// mode in vim and it happens quite often that you hit escape twice
+// accidentally. We do have :q." Refusing only when the buffer was
+// modified was not enough — the reflex is the same either way, and a
+// buffer that closes on one press and refuses on the next is a buffer
+// you cannot build a habit around. In a modal mode Esc means NORMAL and
+// nothing else; `:q` is how you leave. The friendly modes have no
+// NORMAL to return to, so there Esc keeps its old job.
+
+#[test]
+fn escape_in_normal_keeps_a_clean_buffer_open() {
+    let (_d, mut sh, mut app) = editing();
+    app.on_key(&mut sh, "escape", false, false, None);
+    assert_eq!(
+        app.surface(),
+        ModalSurface::EditBody,
+        "Esc in a modal mode is a mode key"
+    );
+    let status = app.status();
+    assert!(status.contains(":q"), "and it says what closes: {status}");
+}
+
+#[test]
+fn escape_still_closes_a_clean_buffer_in_the_friendly_modes() {
+    for mode in [InputMode::Notion, InputMode::Emacs] {
+        let (_d, mut sh) = shell();
+        let mut app = ModalApp::new(mode);
+        app.run(&mut sh, "edit-body");
+        assert_eq!(app.surface(), ModalSurface::EditBody);
+        app.on_key(&mut sh, "escape", false, false, None);
+        assert_ne!(
+            app.surface(),
+            ModalSurface::EditBody,
+            "{mode:?}: there is no NORMAL for Esc to mean"
+        );
+    }
+}
+
+// === `:q` closes the buffer; the app is quit from the outline ===
+
+#[test]
+fn quit_closes_the_buffer_and_leaves_the_app_running() {
+    let (_d, mut sh, mut app) = editing();
+    app.run_ex_line(&mut sh, "q");
+    assert_ne!(app.surface(), ModalSurface::EditBody, "the buffer closed");
+    assert!(!app.should_quit(), "and the app did not");
+}
+
+#[test]
+fn quit_bang_closes_the_buffer_over_an_unsaved_edit() {
+    let (dir, mut sh, mut app) = editing();
+    append(&mut app, &mut sh, " and more");
+    app.run_ex_line(&mut sh, "q!");
+    assert_ne!(app.surface(), ModalSurface::EditBody);
+    assert!(!app.should_quit(), "the bang discards a buffer, not the app");
+    let disk = fs::read_to_string(dir.path().join("notes.org")).expect("read");
+    assert!(!disk.contains("and more"), "and it really discarded: {disk}");
+}
+
+#[test]
+fn write_quit_closes_the_buffer_and_leaves_the_app_running() {
+    let (_d, mut sh, mut app) = editing();
+    append(&mut app, &mut sh, " and more");
+    app.run_ex_line(&mut sh, "wq");
+    assert_ne!(app.surface(), ModalSurface::EditBody);
+    assert!(!app.should_quit());
+    assert!(!app.body_dirty(), "it wrote on the way out");
+}
+
+#[test]
+fn quit_from_the_outline_still_quits_the_app() {
+    // Vim's rule: `:q` closes the window, and quits when it was the
+    // last one. The outline is the last one.
+    let (_d, mut sh) = shell();
+    let mut app = ModalApp::new(InputMode::Vim);
+    app.run_ex_line(&mut sh, "q");
+    assert!(app.should_quit());
+}
+
+#[test]
+fn quit_all_quits_from_inside_a_buffer() {
+    let (_d, mut sh, mut app) = editing();
+    app.run_ex_line(&mut sh, "qa");
+    assert!(app.should_quit(), ":qa is how you leave from anywhere");
+}
+
+#[test]
+fn quit_all_refuses_over_an_unsaved_body_until_it_is_told_twice() {
+    let (_d, mut sh, mut app) = editing();
+    append(&mut app, &mut sh, " and more");
+    app.run_ex_line(&mut sh, "qa");
+    assert!(!app.should_quit(), "the buffer would have gone with it");
+    app.run_ex_line(&mut sh, "qa!");
+    assert!(app.should_quit(), "the bang is the whole point");
 }
 
 #[test]

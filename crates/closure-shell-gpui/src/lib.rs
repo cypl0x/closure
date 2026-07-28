@@ -1827,6 +1827,16 @@ impl GpuiView {
         self.click(command, cx);
     }
 
+    /// Run one `:` line, the way the ex overlay does — what the buffer
+    /// is left by (`:q`, `:w`, `:wq`) since Esc became the mode key.
+    pub fn run_ex_line(&mut self, line: &str, cx: &mut Context<Self>) {
+        self.app.run_ex_line(&mut self.shell, line);
+        if self.app.should_quit() {
+            cx.quit();
+        }
+        cx.notify();
+    }
+
     /// The outline's selected row index, for a test to assert a click
     /// landed on the row it aimed at.
     #[must_use]

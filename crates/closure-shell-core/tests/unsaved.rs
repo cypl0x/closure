@@ -99,34 +99,55 @@ fn plain_q_refuses_to_quit_over_an_unsaved_body() {
     assert_eq!(app.surface(), ModalSurface::EditBody, "still editing");
 }
 
+// Contract revised 2026-07-28: from inside a buffer, `:q` and its
+// bang close the *buffer* — vim's rule, where `:q` closes the window
+// and quits only when it was the last one. `:qa` is the whole app from
+// anywhere, and carries the same unsaved guard.
+
 #[test]
-fn bang_q_quits_anyway() {
+fn bang_q_throws_the_buffer_away_anyway() {
     let (_d, mut sh, mut app) = editing();
     app.on_key(&mut sh, "i", false, false, Some('i'));
     typ(&mut app, &mut sh, "throwaway");
     app.run_ex_line(&mut sh, "q!");
+    assert_ne!(
+        app.surface(),
+        ModalSurface::EditBody,
+        "the bang is the whole point"
+    );
+    assert!(!app.should_quit(), "of the buffer, not of the session");
+    assert_eq!(app.unsaved_bodies(), 0, "and it is not held either");
+}
+
+#[test]
+fn bang_qa_quits_anyway() {
+    let (_d, mut sh, mut app) = editing();
+    app.on_key(&mut sh, "i", false, false, Some('i'));
+    typ(&mut app, &mut sh, "throwaway");
+    app.run_ex_line(&mut sh, "qa!");
     assert!(app.should_quit(), "the bang is the whole point");
 }
 
 #[test]
-fn wq_saves_and_quits() {
+fn wq_saves_and_closes_the_buffer() {
     let (_d, mut sh, mut app) = editing();
     app.on_key(&mut sh, "i", false, false, Some('i'));
     typ(&mut app, &mut sh, "kept");
     app.run_ex_line(&mut sh, "wq");
-    assert!(app.should_quit());
+    assert_ne!(app.surface(), ModalSurface::EditBody);
     assert!(!app.body_dirty());
     assert!(
         sh.vault.iter().any(|(_, d)| d.source().contains("kept")),
-        "written before it quit"
+        "written on the way out"
     );
 }
 
 #[test]
-fn q_over_a_clean_editor_just_quits() {
+fn q_over_a_clean_editor_just_closes_it() {
     let (_d, mut sh, mut app) = editing();
     app.run_ex_line(&mut sh, "q");
-    assert!(app.should_quit(), "nothing to lose");
+    assert_ne!(app.surface(), ModalSurface::EditBody, "nothing to lose");
+    assert!(!app.should_quit());
 }
 
 #[test]

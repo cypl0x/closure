@@ -106,13 +106,19 @@ fn every_command_leaves_the_app_navigable() {
             app.selected(),
             rows.len()
         );
-        // …and Escape always gets back to Browse.
+        // …and there is always a way back to Browse. Escape, except
+        // in a buffer: contract revised 2026-07-28, Esc there is the
+        // mode key and `:q` is the exit, so a command that opens a
+        // buffer has to be leavable by the exit that buffer has.
         app.on_key(&mut shell, "escape", false, false, None);
         app.on_key(&mut shell, "escape", false, false, None);
+        if app.surface().is_editor() {
+            app.run_ex_line(&mut shell, "q!");
+        }
         assert_eq!(
             app.surface(),
             ModalSurface::Browse,
-            "{command}: Escape must return to Browse"
+            "{command}: no way back to the outline"
         );
     }
 }

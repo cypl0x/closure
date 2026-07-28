@@ -8370,6 +8370,16 @@ pub struct ModalApp {
     /// Where the cursor was left in each body, by block id, so opening
     /// a note again resumes rather than restarting at byte zero.
     body_cursors: std::collections::HashMap<String, usize>,
+    /// Modified buffers for headlines that are not the one on screen,
+    /// by block id, with the text they were loaded from.
+    ///
+    /// The buffer used to be a single slot: opening another note
+    /// overwrote it and the paragraph in the old one was gone. Clicking
+    /// a row in the outline beside the buffer is the most ordinary
+    /// thing there is to do while editing, so it cannot be the gesture
+    /// that loses text. Nothing here is on disk — the vault is written
+    /// by `:w`, `C-Enter`, or the window closing.
+    body_stash: std::collections::HashMap<String, (String, String)>,
     /// The outline row the search overlay was opened from, so Esc can
     /// put the cursor back rather than leaving it on a result index.
     search_return: Option<usize>,
@@ -8549,6 +8559,7 @@ impl ModalApp {
             zoom_steps: 0,
             search_return: None,
             body_cursors: std::collections::HashMap::new(),
+            body_stash: std::collections::HashMap::new(),
             shell_out: None,
             body_scroll: None,
             hist_cursor: 0,
@@ -10008,16 +10019,30 @@ impl ModalApp {
         }
         match line {
             "" => {}
-            // The bang is the whole point of the bang: `:q` will not
-            // take an unfinished paragraph with it, `:q!` will.
-            "q" | "quit" => {
+            // Vim's rule: `:q` closes the window, and quits when that
+            // was the last one. A buffer always has the outline behind
+            // it, so `:q` in a buffer closes the buffer and `:q` in the
+            // outline quits the app. `:qa` is how you leave from
+            // anywhere. The bang is the whole point of the bang: the
+            // plain form will not take an unfinished paragraph with it.
+            "q" | "quit" if editing => {
+                if self.refuse_quit_when_dirty() {
+                    self.surface = ModalSurface::EditBody;
+                } else {
+                    self.close_editor();
+                }
+            }
+            "q!" | "quit!" if editing => self.discard_editor(),
+            "q!" | "quit!" | "qa!" | "quitall!" | "qall!" => self.quit = true,
+            // `:q` outside a buffer is the last window: it quits. `:qa`
+            // says so from anywhere, and both stop for unsaved text.
+            "q" | "quit" | "qa" | "quitall" | "qall" => {
                 if self.refuse_quit_when_dirty() {
                     self.surface = ModalSurface::EditBody;
                 } else {
                     self.quit = true;
                 }
             }
-            "q!" | "quit!" => self.quit = true,
             "w" | "write" | "wq" | "x" | "wq!" | "x!" => {
                 if editing {
                     // `:w` in every vi ever written means "write and
@@ -10038,9 +10063,19 @@ impl ModalApp {
                     "the vault is written on every edit — nothing to save"
                         .clone_into(&mut self.status);
                 }
-                if line.starts_with("wq") || line.starts_with('x') {
+                // `:wq` from a buffer wrote it and closed it
+                // (`commit_edit_body`); quitting the app as well is the
+                // outline's meaning of the same line.
+                if !editing && (line.starts_with("wq") || line.starts_with('x')) {
                     self.quit = true;
                 }
+            }
+            "wqa" | "wqa!" | "xa" | "xa!" => {
+                if editing {
+                    self.commit_edit_body(shell);
+                }
+                self.save_pending_edit(shell);
+                self.quit = true;
             }
             other => {
                 // Anything else is a command name. Resolve it against
@@ -11136,7 +11171,16 @@ impl ModalApp {
                 }
                 "escape" => {
                     self.completion = None;
-                    self.body.to_normal();
+                    if self.modal_editing() {
+                        self.body.to_normal();
+                    } else {
+                        // Notion and Emacs have no NORMAL to drop into
+                        // — a buffer left in one is a text field that
+                        // will not take text — so there Esc is what
+                        // closes, and it still will not take a modified
+                        // buffer with it.
+                        self.escape_closes_buffer();
+                    }
                 }
                 "enter" => {
                     self.completion = None;
@@ -11176,25 +11220,28 @@ impl ModalApp {
                     self.body.redo_local();
                     return;
                 }
-                // Esc on a quiet Normal surface leaves the editor —
-                // but only when there is nothing to lose. It used to
-                // clear the buffer and go, so a paragraph typed and
-                // Esc'd was gone with no prompt and no undo; the reflex
-                // second Esc after a chord that "did nothing" was the
-                // most reliable way to lose work in the whole app.
+                // Esc on a quiet Normal surface used to leave the
+                // editor — first always, then (once a typed paragraph
+                // had been lost that way) only when the buffer was
+                // clean. Neither is a rule you can build a habit
+                // around: switching between INSERT and NORMAL is Esc,
+                // the second press after a chord that "did nothing" is
+                // a reflex, and a key that closes the buffer on some
+                // presses and not others gets pressed twice anyway.
+                //
+                // In a modal mode Esc means NORMAL and nothing else.
+                // `:q` closes. The friendly modes have no NORMAL for it
+                // to mean, so there it still leaves a clean buffer.
                 if key == "escape"
                     && self.body.mode() == EditorMode::Normal
                     && self.body.pending_stroke().is_none()
                     && self.body.pending_count() == 0
                 {
-                    if self.body_dirty() {
-                        "unsaved edit — C-Enter or :w saves · :q! discards"
+                    if self.modal_editing() {
+                        "NORMAL — :q closes, :w saves, C-Enter saves and closes"
                             .clone_into(&mut self.status);
                     } else {
-                        self.remember_body_cursor();
-                        self.edit_target = None;
-                        self.body.clear();
-                        self.surface = ModalSurface::Browse;
+                        self.escape_closes_buffer();
                     }
                 } else if ctrl {
                     // `C-d`, `C-f`, `C-a` … are chords in their own
@@ -11427,6 +11474,46 @@ impl ModalApp {
         self.surface = ModalSurface::Browse;
     }
 
+    /// Esc in a non-modal mode: close a clean buffer, refuse a
+    /// modified one and say what saves and what discards.
+    fn escape_closes_buffer(&mut self) {
+        if self.body_dirty() {
+            "unsaved edit — C-Enter or :w saves · :q! discards".clone_into(&mut self.status);
+        } else {
+            self.remember_body_cursor();
+            self.edit_target = None;
+            self.body.clear();
+            self.surface = ModalSurface::Browse;
+        }
+    }
+
+    /// Close the buffer without writing it, keeping whatever is in it
+    /// against its headline — `:q`.
+    ///
+    /// The caller has already refused when the buffer is modified, so
+    /// in practice the stash is empty here; it is taken anyway because
+    /// "close without losing text" is the rule, not a special case.
+    fn close_editor(&mut self) {
+        self.remember_body_cursor();
+        self.stash_body();
+        self.edit_target = None;
+        self.body.clear();
+        self.body_baseline.clear();
+        self.go_home();
+    }
+
+    /// Throw the buffer away — `:q!`. The stash goes with it, or the
+    /// next visit would restore exactly what was just discarded.
+    fn discard_editor(&mut self) {
+        self.drop_stash();
+        self.remember_body_cursor();
+        self.edit_target = None;
+        self.body.clear();
+        self.body_baseline.clear();
+        self.go_home();
+        "edit discarded".clone_into(&mut self.status);
+    }
+
     /// Run `cmd` as a shell command (`:!pwd`), behind the vault's
     /// `eval_trust`.
     ///
@@ -11527,6 +11614,10 @@ impl ModalApp {
                 // against what the vault holds, and after a write that
                 // is what is in the buffer.
                 self.body_baseline = self.body.text().to_owned();
+                // …and there is nothing left to restore, or the next
+                // visit would bring back an edit the vault already has
+                // and the note would read as permanently unsaved.
+                self.drop_stash();
             }
             Err(e) => self.status = format!("save failed: {e}"),
         }
@@ -11543,18 +11634,68 @@ impl ModalApp {
         self.edit_target.is_some() && self.body.text() != self.body_baseline
     }
 
-    /// Write out a body edit still in progress, if there is one.
-    /// `true` when something was saved.
+    /// Put the open buffer aside against its headline, if it holds
+    /// anything the vault does not.
+    ///
+    /// Called on the way out of a buffer — opening another note, or
+    /// closing this one without writing. A clean buffer stashes
+    /// nothing: there would be nothing to restore.
+    fn stash_body(&mut self) {
+        if !self.body_dirty() {
+            return;
+        }
+        if let Some(id) = self.edit_target.clone() {
+            self.body_stash.insert(
+                id,
+                (self.body.text().to_owned(), self.body_baseline.clone()),
+            );
+        }
+    }
+
+    /// Forget any stashed buffer for the note being edited — what a
+    /// write and an explicit discard both mean.
+    fn drop_stash(&mut self) {
+        if let Some(id) = &self.edit_target {
+            self.body_stash.remove(id);
+        }
+    }
+
+    /// How many bodies are modified and unwritten, the one on screen
+    /// included. Zero means the vault has everything.
+    #[must_use]
+    pub fn unsaved_bodies(&self) -> usize {
+        self.body_stash.len() + usize::from(self.body_dirty())
+    }
+
+    /// Write out every body edit still in progress. `true` when
+    /// something was saved.
     ///
     /// What a window closing under an unfinished edit calls: the
-    /// gesture that closed the window is recoverable, the paragraph
-    /// that was in the buffer is not, so the text wins.
+    /// gesture that closed the window is recoverable, the paragraphs
+    /// in the buffers are not, so the text wins — all of them, not
+    /// just the one that happened to be on screen.
     pub fn save_pending_edit(&mut self, shell: &mut Shell) -> bool {
-        if !self.body_dirty() {
-            return false;
+        let mut saved = if self.body_dirty() {
+            self.commit_edit_body(shell);
+            true
+        } else {
+            false
+        };
+        // Deterministic order, so a failure reports the same way twice.
+        let mut held: Vec<_> = std::mem::take(&mut self.body_stash).into_iter().collect();
+        held.sort_by(|(a, _), (b, _)| a.cmp(b));
+        for (id, (text, _)) in held {
+            let bid = closure_core::BlockId::from_existing(&id);
+            let mut body = closure_org::escape_body(&text);
+            if !body.is_empty() && !body.ends_with('\n') {
+                body.push('\n');
+            }
+            match shell.set_body(&bid, &body) {
+                Ok(()) => saved = true,
+                Err(e) => self.status = format!("save failed: {e}"),
+            }
         }
-        self.commit_edit_body(shell);
-        true
+        saved
     }
 
     /// Run one `:` line, for a shell (or a test) that has the text
@@ -12197,10 +12338,20 @@ impl ModalApp {
             }
             "edit-body" => {
                 if let Some(row) = self.rows_shared(shell).get(self.selected).cloned() {
+                    // Whatever is in the buffer now belongs to the note
+                    // it was opened on: its cursor is remembered and
+                    // its text put aside, and neither is going in the
+                    // vault unasked.
+                    self.remember_body_cursor();
+                    self.stash_body();
                     let resume = self.body_cursors.get(&row.id).copied();
+                    let restored = self.body_stash.remove(&row.id);
+                    let came_back = restored.is_some();
                     self.edit_target = Some(row.id);
-                    let body = self.detail(shell).map(|d| d.body).unwrap_or_default();
-                    self.body_baseline.clone_from(&body);
+                    let vault_body = self.detail(shell).map(|d| d.body).unwrap_or_default();
+                    let (body, baseline) =
+                        restored.unwrap_or_else(|| (vault_body.clone(), vault_body));
+                    self.body_baseline = baseline;
                     let len = body.len();
                     self.load_body(body);
                     // Opening a note you were just in used to start at
@@ -12212,10 +12363,15 @@ impl ModalApp {
                         self.body.set_cursor_byte(at.min(len));
                     }
                     self.surface = ModalSurface::EditBody;
-                    self.status = if self.modal_editing() {
-                        "edit body — NORMAL, i to insert, C-Enter save, Esc cancel".to_owned()
+                    self.status = if came_back {
+                        // Said out loud, because the buffer disagrees
+                        // with the file and the user did not do it just
+                        // now.
+                        "unsaved edits restored — :w saves, :q! discards".to_owned()
+                    } else if self.modal_editing() {
+                        "edit body — NORMAL, i to insert, C-Enter save, :q closes".to_owned()
                     } else {
-                        "edit body — C-Enter save, Esc cancel".to_owned()
+                        "edit body — C-Enter save, Esc closes".to_owned()
                     };
                 }
             }

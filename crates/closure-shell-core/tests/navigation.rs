@@ -181,7 +181,7 @@ fn reopening_a_body_puts_the_cursor_back() {
     app.run(&mut sh, "edit-body");
     app.body_set_cursor(6);
     assert_eq!(app.body_cursor(), (0, 6));
-    app.on_key(&mut sh, "escape", false, false, None); // clean buffer, leaves
+    app.run_ex_line(&mut sh, "q"); // `:q` is how a modal mode leaves
 
     app.run(&mut sh, "edit-body");
     assert_eq!(app.body_cursor(), (0, 6), "back where the cursor was left");
@@ -193,7 +193,7 @@ fn each_headline_remembers_its_own_cursor() {
     app.select_by_id(&sh, "01HQNAV000000000000000003");
     app.run(&mut sh, "edit-body");
     app.body_set_cursor(9);
-    app.on_key(&mut sh, "escape", false, false, None);
+    app.run_ex_line(&mut sh, "q");
 
     // A different headline is its own place, not the one we just left.
     app.select_by_id(&sh, "01HQNAV000000000000000001");
