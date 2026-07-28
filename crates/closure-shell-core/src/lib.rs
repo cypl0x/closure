@@ -3169,6 +3169,20 @@ fn tutorial_reference(mode: InputMode) -> String {
          itself, so this file\n  can be committed and synced without leaking \
          a credential.\n\
          \n\
+         =last_place= is written for you when the window closes: the id of the \
+         note you\nwere last in, so the next session opens on it rather than \
+         on the first headline.\nThe note you last /edited/ wins over the one \
+         the cursor was resting on. Delete\nthe line to start at the top \
+         again.\n\
+         \n\
+         Org itself has no \"last modified\" property — neither does closure \
+         invent one.\nThe conventions people use are a =:LAST_MODIFIED:= \
+         property maintained by a save\nhook, or =org-log-done= logbook \
+         entries; both are things you can add to your own\nfiles, and closure \
+         will keep them like any other property. What closure knows\nabout \
+         time is the journal and the undo tree, neither of which touches your \
+         text.\n\
+         \n\
          * Pairing with another machine\n\
          {sync} opens the pairing pane. It shows a *ticket*: one line naming \
          an address and\na public key. Hand it to the other person, paste \
@@ -8370,6 +8384,10 @@ pub struct ModalApp {
     /// Where the cursor was left in each body, by block id, so opening
     /// a note again resumes rather than restarting at byte zero.
     body_cursors: std::collections::HashMap<String, usize>,
+    /// The headline this session last opened a body on — what
+    /// [`Self::save_last_place`] remembers in preference to whatever
+    /// the cursor happens to be resting on.
+    last_edited: Option<String>,
     /// Modified buffers for headlines that are not the one on screen,
     /// by block id, with the text they were loaded from.
     ///
@@ -8559,6 +8577,7 @@ impl ModalApp {
             zoom_steps: 0,
             search_return: None,
             body_cursors: std::collections::HashMap::new(),
+            last_edited: None,
             body_stash: std::collections::HashMap::new(),
             shell_out: None,
             body_scroll: None,
@@ -12038,6 +12057,50 @@ impl ModalApp {
         }
     }
 
+    /// Open the outline on the headline the last session was in.
+    ///
+    /// The cursor inside a body was already remembered, which made the
+    /// outline forgetting the *note* the odd one out. An id that no
+    /// longer resolves leaves the cursor at the top: a vault is edited
+    /// elsewhere too, and a missing note is not an error.
+    pub fn restore_last_place(&mut self, shell: &Shell) {
+        let Ok(cfg) = closure_config::Config::from_path(&shell.vault.root().join("config.org"))
+        else {
+            return;
+        };
+        if let Some(id) = &cfg.last_place {
+            self.select_by_id(shell, id);
+        }
+    }
+
+    /// Write where this session was back to `config.org` — what the
+    /// window calls on the way out.
+    ///
+    /// The note last *edited* wins over the one merely under the
+    /// cursor: opening a body is the strongest statement there is
+    /// about where you were. With neither, the file is left alone
+    /// rather than cleared — dropping the selection (Esc) means "do
+    /// not move me next time", not "I was nowhere".
+    pub fn save_last_place(&mut self, shell: &Shell) {
+        let place = self
+            .last_edited
+            .clone()
+            .or_else(|| self.selection_active.then(|| self.selected_row_id(shell))?);
+        let Some(place) = place else {
+            return;
+        };
+        let path = shell.vault.root().join("config.org");
+        let source = std::fs::read_to_string(&path).unwrap_or_default();
+        match closure_config::set_config_key(&source, "last_place", &place) {
+            Ok(updated) => {
+                if let Err(e) = std::fs::write(&path, updated) {
+                    self.status = format!("could not remember where you were: {e}");
+                }
+            }
+            Err(e) => self.status = format!("could not remember where you were: {e}"),
+        }
+    }
+
     /// Write the current peer set back to `config.org`.
     fn save_peers(&mut self, shell: &Shell) {
         let Some(sync) = self.sync.as_ref() else {
@@ -12347,6 +12410,7 @@ impl ModalApp {
                     let resume = self.body_cursors.get(&row.id).copied();
                     let restored = self.body_stash.remove(&row.id);
                     let came_back = restored.is_some();
+                    self.last_edited = Some(row.id.clone());
                     self.edit_target = Some(row.id);
                     let vault_body = self.detail(shell).map(|d| d.body).unwrap_or_default();
                     let (body, baseline) =

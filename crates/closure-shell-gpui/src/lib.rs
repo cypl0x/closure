@@ -1371,6 +1371,9 @@ pub fn run(vault_path: &Path) -> Result<(), String> {
                     view.app.configure_sync(sync_bind, sync_advertise);
                     // Peers paired with before are still peers.
                     view.app.load_peers(&view.shell);
+                    // …and the note the last session was in is where
+                    // this one starts.
+                    view.app.restore_last_place(&view.shell);
                     view
                 })
             },
@@ -1394,6 +1397,10 @@ pub fn run(vault_path: &Path) -> Result<(), String> {
                                             "closure: saved the open body edit before closing"
                                         );
                                     }
+                                    // Where you were, for the next
+                                    // session — written here rather
+                                    // than on every arrow key.
+                                    view.app.save_last_place(&view.shell);
                                 })
                                 .ok();
                             true

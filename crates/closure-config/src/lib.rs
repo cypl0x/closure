@@ -84,6 +84,14 @@ pub struct Config {
     /// LAN or the VPN, so a multi-homed host says here. Unset means
     /// "detect it"; the port always comes from the bound socket.
     pub sync_advertise: Option<IpAddr>,
+    /// Block id of the headline the last session was in — the outline
+    /// opens on it rather than on row zero.
+    ///
+    /// Written by the window when it closes, not on every keystroke: a
+    /// config file rewritten at cursor speed is a config file at war
+    /// with the editor you have it open in. An id that no longer
+    /// resolves is ignored, because a vault is edited elsewhere too.
+    pub last_place: Option<String>,
 }
 
 impl Default for Config {
@@ -113,6 +121,7 @@ impl Default for Config {
             wrap: false,
             sync_bind: None,
             sync_advertise: None,
+            last_place: None,
         }
     }
 }
@@ -312,6 +321,11 @@ impl Config {
              # Full-text search engine. builtin | ripgrep | fd\n\
              # search_backend = ripgrep\n\
              \n\
+             # Where the last session was. Written when the window \
+             closes, so the\n# outline opens on the note you were in \
+             rather than on the first one.\n\
+             # last_place = 01HQ…\n\
+             \n\
              # Which languages a code block — or `:!` — may actually run.\n\
              # Empty is default-deny: nothing runs, whatever the file says, \
              because a\n# vault is something people can send you. Add \
@@ -471,6 +485,9 @@ impl Config {
                         .collect();
                 }
                 "record_commands" => cfg.record_commands = parse_bool(key, value)?,
+                "last_place" => {
+                    cfg.last_place = (!value.trim().is_empty()).then(|| value.trim().to_owned());
+                }
                 "wrap" => cfg.wrap = parse_bool(key, value)?,
                 "sync_peers" => {
                     cfg.sync_peers = value
