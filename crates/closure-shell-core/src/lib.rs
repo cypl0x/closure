@@ -1219,6 +1219,23 @@ pub fn org_stamp(y: i64, m: u32, d: u32, tail: &str) -> String {
     }
 }
 
+/// Now, from the system clock, as `YYYY-MM-DD HH:MM` (UTC) — what a
+/// shell without an injected clock stamps a `CLOCK:` entry with.
+#[must_use]
+pub fn now_local() -> String {
+    let secs = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs());
+    let days = i64::try_from(secs / 86_400).unwrap_or(0);
+    let (y, m, d) = civil_from_days(days);
+    let minutes = (secs % 86_400) / 60;
+    format!(
+        "{y:04}-{m:02}-{d:02} {:02}:{:02}",
+        minutes / 60,
+        minutes % 60
+    )
+}
+
 /// Today, from the system clock, as `YYYY-MM-DD` (UTC).
 ///
 /// The core never calls this — [`ModalApp::set_today`] is how a shell
@@ -9524,6 +9541,9 @@ pub struct ModalApp {
     date_pick: Option<DatePickSession>,
     /// The subtree waiting for a refile target (Q3-V1).
     refile_source: Option<String>,
+    /// Now, as the shell last said (`YYYY-MM-DD HH:MM`) — what a
+    /// clock entry is stamped with (Q3-V3).
+    now: String,
     /// Memoised source-block list — see [`ModalApp::block_rows`].
     block_memo: std::cell::RefCell<Option<(u64, std::sync::Arc<Vec<BlockRow>>)>>,
     /// Derivations paid for; the render budget's fourth number.
@@ -9723,6 +9743,7 @@ impl ModalApp {
             today: "1970-01-01".to_owned(),
             date_pick: None,
             refile_source: None,
+            now: "1970-01-01 00:00".to_owned(),
             shell_out: None,
             body_scroll: None,
             hist_cursor: 0,
@@ -11446,6 +11467,95 @@ impl ModalApp {
                 }
             }
         }
+    }
+
+    // ---- Q3-V3: the clock ------------------------------------------
+
+    /// Tell the core what time it is (`YYYY-MM-DD HH:MM`), which is
+    /// also what day it is.
+    ///
+    /// Same rule as [`Self::set_today`]: the shells own the clock so
+    /// the core stays reproducible.
+    pub fn set_now(&mut self, stamp: &str) {
+        let trimmed = stamp.trim();
+        let (date, _) = trimmed.split_once(' ').unwrap_or((trimmed, ""));
+        if parse_ymd(date).is_some() {
+            trimmed.clone_into(&mut self.now);
+            date.clone_into(&mut self.today);
+        }
+    }
+
+    /// What the core believes the time is.
+    #[must_use]
+    pub fn now(&self) -> &str {
+        &self.now
+    }
+
+    /// The running clock as a status line says it: the note and how
+    /// long it has been going. `None` when nothing is clocked in.
+    #[must_use]
+    pub fn running_clock(&self, shell: &Shell) -> Option<String> {
+        let (id, started) = shell.vault.running_clock()?;
+        let bid = closure_core::BlockId::from_existing(&id);
+        let title = shell
+            .vault
+            .find_by_id(&bid)
+            .map_or_else(|| id.clone(), |(h, _)| h.title().to_owned());
+        Some(format!("⏱ {title}  (since {started})"))
+    }
+
+    /// Start, stop or drop the clock on the selected headline.
+    fn clock(&mut self, shell: &mut Shell, verb: &str) {
+        // `clock-out` and `clock-cancel` act on whatever is running,
+        // wherever it is: you stop the clock you started, not the row
+        // the cursor happens to be on.
+        let running = shell.vault.running_clock().map(|(id, _)| id);
+        let selected = self
+            .selection_active
+            .then(|| self.selected_row_id(shell))
+            .flatten();
+        let target = match verb {
+            "clock-in" => selected,
+            _ => running.or(selected),
+        };
+        let Some(id) = target else {
+            "nothing selected, and no clock running".clone_into(&mut self.status);
+            return;
+        };
+        let bid = closure_core::BlockId::from_existing(&id);
+        let now = self.now.clone();
+        let result = match verb {
+            "clock-in" => shell.vault.clock_in(&bid, &now),
+            "clock-out" => shell.vault.clock_out(&bid, &now),
+            _ => shell.vault.clock_cancel(&bid),
+        };
+        match result {
+            Ok(()) => {
+                self.invalidate_rows();
+                self.status = match verb {
+                    "clock-in" => "clocked in".to_owned(),
+                    "clock-out" => "clocked out".to_owned(),
+                    _ => "clock cancelled".to_owned(),
+                };
+            }
+            Err(e) => self.status = format!("{verb}: {e}"),
+        }
+    }
+
+    /// Jump the outline to the headline whose clock is running.
+    fn clock_goto(&mut self, shell: &Shell) {
+        let Some((id, _)) = shell.vault.running_clock() else {
+            "no clock is running".clone_into(&mut self.status);
+            return;
+        };
+        self.select_by_id(shell, &id);
+        self.surface = ModalSurface::Browse;
+    }
+
+    /// Clocked time per headline, longest first — `(title, minutes)`.
+    #[must_use]
+    pub fn clock_report(shell: &Shell) -> Vec<(String, u64)> {
+        shell.vault.clock_minutes()
     }
 
     // ---- Q3-V1/V2: refile and archive ------------------------------
@@ -14847,6 +14957,8 @@ impl ModalApp {
                 }
             }
             "refile" => self.open_refile(shell),
+            "clock-in" | "clock-out" | "clock-cancel" => self.clock(shell, cmd),
+            "clock-goto" => self.clock_goto(shell),
             "archive" => self.archive_selected(shell),
             "schedule" => self.open_date_pick(shell, PlanField::Scheduled),
             "deadline" => self.open_date_pick(shell, PlanField::Deadline),

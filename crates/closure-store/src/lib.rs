@@ -55,6 +55,62 @@ pub struct CaptureTemplate {
 /// Extract a `YYYY-MM-DD` date from an org timestamp such as
 /// `<2026-06-13 Fri>` or `[2026-06-13]`. `None` when no 10-char
 /// `dddd-dd-dd` prefix is present.
+/// Turn `YYYY-MM-DD HH:MM` into the stamp body org writes inside a
+/// `CLOCK:` entry: `2026-07-28 Tue 09:15` (Q3-V3).
+fn org_clock_stamp(now: &str) -> Result<String, VaultError> {
+    let trimmed = now.trim();
+    let (date, time) = trimmed.split_once(' ').unwrap_or((trimmed, "00:00"));
+    let mut parts = date.split('-');
+    let bad = || VaultError::Command(format!("`{now}` is not `YYYY-MM-DD HH:MM`"));
+    let y: i64 = parts.next().ok_or_else(bad)?.parse().map_err(|_| bad())?;
+    let m: u32 = parts.next().ok_or_else(bad)?.parse().map_err(|_| bad())?;
+    let d: u32 = parts.next().ok_or_else(bad)?.parse().map_err(|_| bad())?;
+    let day = closure_shell_weekday(y, m, d);
+    Ok(format!("{y:04}-{m:02}-{d:02} {day} {time}"))
+}
+
+/// Org's three-letter weekday for a civil date.
+///
+/// The same arithmetic the shells' calendar uses; duplicated rather
+/// than depended on because the store sits *below* the shells (I7 —
+/// arrows point up).
+fn closure_shell_weekday(y: i64, m: u32, d: u32) -> &'static str {
+    const NAMES: [&str; 7] = ["Thu", "Fri", "Sat", "Sun", "Mon", "Tue", "Wed"];
+    let (y, m) = if m <= 2 { (y - 1, m + 12) } else { (y, m) };
+    let era = if y >= 0 { y } else { y - 399 } / 400;
+    let yoe = y - era * 400;
+    let mp = (i64::from(m) + 9) % 12;
+    let doy = (153 * mp + 2) / 5 + i64::from(d) - 1;
+    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    let days = era * 146_097 + doe - 719_468;
+    NAMES[usize::try_from(days.rem_euclid(7)).unwrap_or(0)]
+}
+
+/// Minutes between two `CLOCK:` stamp bodies (`2026-07-28 Tue 09:15`).
+fn clock_span_minutes(start: &str, end: &str) -> Option<u64> {
+    let parse = |s: &str| -> Option<i64> {
+        let mut it = s.split_whitespace();
+        let date = it.next()?;
+        let time = it.next_back()?;
+        let mut d = date.split('-');
+        let y: i64 = d.next()?.parse().ok()?;
+        let m: i64 = d.next()?.parse().ok()?;
+        let day: i64 = d.next()?.parse().ok()?;
+        let (h, min) = time.split_once(':')?;
+        let (h, min): (i64, i64) = (h.parse().ok()?, min.parse().ok()?);
+        let (y2, m2) = if m <= 2 { (y - 1, m + 12) } else { (y, m) };
+        let era = if y2 >= 0 { y2 } else { y2 - 399 } / 400;
+        let yoe = y2 - era * 400;
+        let mp = (m2 + 9) % 12;
+        let doy = (153 * mp + 2) / 5 + day - 1;
+        let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+        let days = era * 146_097 + doe - 719_468;
+        Some(days * 24 * 60 + h * 60 + min)
+    };
+    let (a, b) = (parse(start)?, parse(end)?);
+    u64::try_from(b - a).ok()
+}
+
 /// Shift every heading in a subtree's source by `delta` stars, so a
 /// tree filed under a deeper parent nests the way it read before
 /// (Q3-V1).
@@ -764,6 +820,116 @@ impl Vault {
     pub fn set_priority(&mut self, id: &BlockId, priority: Option<char>) -> Result<(), VaultError> {
         let cmd = SetPriority::new(id.clone(), priority);
         self.apply_to_block(id, &cmd)
+    }
+
+    /// Start a clock on `id` — org's `org-clock-in`.
+    ///
+    /// `now` is `YYYY-MM-DD HH:MM`; the store reads no clock, for the
+    /// same reason the date picker does not. The entry goes at the top
+    /// of the headline's `:LOGBOOK:` drawer, which is created if it has
+    /// none, and any clock running elsewhere is closed first: two open
+    /// clocks are two answers to "what are you doing", and org keeps
+    /// one.
+    ///
+    /// # Errors
+    ///
+    /// [`VaultError::UnknownId`] for a headline that is not there, plus
+    /// whatever the body write fails with.
+    pub fn clock_in(&mut self, id: &BlockId, now: &str) -> Result<(), VaultError> {
+        if let Some((running, _)) = self.running_clock() {
+            let running = BlockId::from_existing(&running);
+            self.clock_out(&running, now)?;
+        }
+        let body = self.body_of(id)?;
+        let stamp = org_clock_stamp(now)?;
+        let line = format!("CLOCK: [{stamp}]");
+        let updated = if body.contains(":LOGBOOK:") {
+            body.replacen(":LOGBOOK:\n", &format!(":LOGBOOK:\n{line}\n"), 1)
+        } else {
+            format!(":LOGBOOK:\n{line}\n:END:\n{body}")
+        };
+        self.set_body(id, &updated)
+    }
+
+    /// Close the clock running on `id` — org's `org-clock-out`.
+    ///
+    /// # Errors
+    ///
+    /// [`VaultError::Command`] when no clock is open on that headline.
+    pub fn clock_out(&mut self, id: &BlockId, now: &str) -> Result<(), VaultError> {
+        let body = self.body_of(id)?;
+        let stamp = org_clock_stamp(now)?;
+        let Some(open) = body
+            .lines()
+            .find(|l| l.trim_start().starts_with("CLOCK:") && !l.contains("--"))
+        else {
+            return Err(VaultError::Command("no clock is running here".into()));
+        };
+        let started = open
+            .split_once('[')
+            .and_then(|(_, rest)| rest.split_once(']'))
+            .map(|(inside, _)| inside.to_owned())
+            .ok_or_else(|| VaultError::Command("that clock entry has no start".into()))?;
+        let minutes = clock_span_minutes(&started, &stamp)
+            .ok_or_else(|| VaultError::Command("that clock entry has no readable start".into()))?;
+        let closed = format!(
+            "{}--[{stamp}] =>  {}:{:02}",
+            open.trim_end(),
+            minutes / 60,
+            minutes % 60
+        );
+        let updated = body.replacen(open, &closed, 1);
+        self.set_body(id, &updated)
+    }
+
+    /// Drop the open clock entry on `id` without recording any time —
+    /// org's `org-clock-cancel`.
+    ///
+    /// # Errors
+    ///
+    /// [`VaultError::Command`] when no clock is open on that headline.
+    pub fn clock_cancel(&mut self, id: &BlockId) -> Result<(), VaultError> {
+        let body = self.body_of(id)?;
+        let Some(open) = body
+            .lines()
+            .find(|l| l.trim_start().starts_with("CLOCK:") && !l.contains("--"))
+        else {
+            return Err(VaultError::Command("no clock is running here".into()));
+        };
+        let open_line = format!("{open}\n");
+        let mut updated = body.replacen(&open_line, "", 1);
+        // A logbook with nothing left in it is furniture.
+        if updated.contains(":LOGBOOK:\n:END:\n") {
+            updated = updated.replacen(":LOGBOOK:\n:END:\n", "", 1);
+        }
+        self.set_body(id, &updated)
+    }
+
+    /// The `(block id, start stamp)` of the one clock that is running,
+    /// if any — what a status bar shows.
+    #[must_use]
+    pub fn running_clock(&self) -> Option<(String, String)> {
+        for (_, doc) in self.iter() {
+            for h in doc.all_headlines() {
+                for line in h.body_text().lines() {
+                    if line.trim_start().starts_with("CLOCK:") && !line.contains("--") {
+                        let start = line
+                            .split_once('[')
+                            .and_then(|(_, rest)| rest.split_once(']'))
+                            .map(|(inside, _)| inside.to_owned())?;
+                        return Some((h.id().to_string(), start));
+                    }
+                }
+            }
+        }
+        None
+    }
+
+    /// A headline's body text, or [`VaultError::UnknownId`].
+    fn body_of(&self, id: &BlockId) -> Result<String, VaultError> {
+        self.find_by_id(id)
+            .map(|(h, _)| closure_org::unescape_body(h.body_text()))
+            .ok_or_else(|| VaultError::UnknownId(id.as_str().to_owned()))
     }
 
     /// Move the subtree rooted at `id` under `target`, as its last

@@ -282,6 +282,10 @@ pub struct App {
     refile_request: Option<(String, String)>,
     /// The subtree the driver should archive.
     archive_request: Option<String>,
+    /// The `(verb, headline)` clock change the driver should make.
+    clock_request: Option<(String, String)>,
+    /// What the driver says is clocked in, for the status line.
+    running_clock: Option<String>,
     /// The vault's TODO keyword sequence, pushed in by the driver
     /// (Q3-V5); the defaults until it says otherwise.
     keywords: Vec<String>,
@@ -376,6 +380,8 @@ impl App {
             refile_source: None,
             refile_request: None,
             archive_request: None,
+            clock_request: None,
+            running_clock: None,
             keywords: vec!["TODO".to_owned(), "DONE".to_owned()],
             priorities: vec!['A', 'B', 'C'],
             visited: Vec::new(),
@@ -1863,8 +1869,36 @@ impl App {
         self.archive_request.take()
     }
 
+    /// Put a message in the status line — what the driver says when a
+    /// request it applied came back with an error.
+    pub fn set_status(&mut self, text: impl Into<String>) {
+        self.status = text.into();
+    }
+
+    /// Consume the clock verb the user asked for (Q3-V3).
+    pub const fn take_clock_request(&mut self) -> Option<(String, String)> {
+        self.clock_request.take()
+    }
+
+    /// Show what the driver says is clocked in, for the status line.
+    pub fn set_running_clock(&mut self, running: Option<String>) {
+        self.running_clock = running;
+    }
+
+    /// What is clocked in, if anything.
+    #[must_use]
+    pub fn running_clock(&self) -> Option<&str> {
+        self.running_clock.as_deref()
+    }
+
     fn apply_buffer_command(&mut self, cmd: &str) -> bool {
         match cmd {
+            "clock-in" | "clock-out" | "clock-cancel" | "clock-goto" => {
+                // `clock-out`/`cancel`/`goto` act on whatever is
+                // running; only `clock-in` needs a cursor headline.
+                let id = self.current_headline_id().unwrap_or_default();
+                self.clock_request = Some((cmd.to_owned(), id));
+            }
             "refile" => self.start_refile(),
             "archive" => {
                 if let Some(id) = self.current_headline_id() {
@@ -3078,6 +3112,13 @@ fn sync_app(app: &mut App, vault: &Vault) {
     let cfg =
         closure_config::Config::from_path(&vault.root().join("config.org")).unwrap_or_default();
     app.set_cycles(cfg.todo_keywords, cfg.priority_levels);
+    app.set_running_clock(vault.running_clock().map(|(id, started)| {
+        let bid = closure_core::BlockId::from_existing(&id);
+        let title = vault
+            .find_by_id(&bid)
+            .map_or(id, |(h, _)| h.title().to_owned());
+        format!("⏱ {title} (since {started})")
+    }));
     let mut headlines: Vec<HeadlineRecord> = Vec::new();
     for (path, doc) in vault.iter() {
         for h in doc.all_headlines() {
@@ -3221,6 +3262,28 @@ fn apply_org_verb_requests(app: &mut App, vault: &mut Vault) -> Result<(), TuiEr
             )
             .map_err(vault_err)?;
         sync_app(app, vault);
+    }
+    if let Some((verb, id)) = app.take_clock_request() {
+        // The terminal shell has no injected clock (Q3-V3).
+        let now = closure_shell_core::now_local();
+        let running = vault.running_clock().map(|(running, _)| running);
+        let target = if verb == "clock-in" {
+            id
+        } else {
+            running.unwrap_or(id)
+        };
+        let bid = closure_core::BlockId::from_existing(&target);
+        let outcome = match verb.as_str() {
+            "clock-in" => vault.clock_in(&bid, &now),
+            "clock-out" => vault.clock_out(&bid, &now),
+            "clock-cancel" => vault.clock_cancel(&bid),
+            // `clock-goto` only moves the cursor; nothing is written.
+            _ => Ok(()),
+        };
+        match outcome {
+            Ok(()) => sync_app(app, vault),
+            Err(e) => app.set_status(format!("{verb}: {e}")),
+        }
     }
     if let Some(id) = app.take_archive_request() {
         // The terminal shell has no injected clock, so the archive

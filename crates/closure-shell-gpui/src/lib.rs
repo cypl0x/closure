@@ -1662,9 +1662,14 @@ impl GpuiView {
             || shell.vault.root().display().to_string(),
             |n| n.to_string_lossy().into_owned(),
         );
+        let mut app = ModalApp::new(input_mode);
+        // The window owns the clock; the core owns the calendar (Q3-V4
+        // / V3). Set once here so the first frame already knows what
+        // day it is, and again on every frame that paints a date.
+        app.set_now(&closure_shell_core::now_local());
         Self {
             shell,
-            app: ModalApp::new(input_mode),
+            app,
             theme,
             vault_name,
             wrap: false,
@@ -5595,6 +5600,25 @@ impl GpuiView {
                     .text_color(rgb(co.muted))
                     .child(self.app.status().to_owned()),
             )
+            // A clock you cannot see is a clock you forget to stop
+            // (Q3-V3): the running one sits beside the indicators,
+            // and clicking it jumps to the note it is running on.
+            .children(self.app.running_clock(&self.shell).map(|label| {
+                div()
+                    .id("running-clock")
+                    .px_2()
+                    .rounded_md()
+                    .cursor_pointer()
+                    .text_color(rgb(co.accent))
+                    .hover(move |s| s.bg(rgb(co.hover)))
+                    .on_mouse_down(
+                        MouseButton::Left,
+                        cx.listener(|this: &mut Self, _ev, _w, cx| {
+                            this.click("clock-goto", cx);
+                        }),
+                    )
+                    .child(label)
+            }))
             .children(self.app.indicators(&self.shell).into_iter().map(|item| {
                 let colour = match item.level {
                     L::Idle => co.muted,
@@ -6519,6 +6543,9 @@ impl Render for GpuiView {
         // Every path that sets a status reaches the toast strip through
         // here, once per frame.
         self.absorb_status(cx);
+        // A clock entry is stamped with the minute it was started, so
+        // the window keeps the core's idea of now up to date.
+        self.app.set_now(&closure_shell_core::now_local());
         self.refresh_title(window);
         self.reveal_cursors();
         // The editor sizes itself from its own measured height, which

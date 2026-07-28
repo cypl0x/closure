@@ -46,7 +46,18 @@ sibling (=notes.org= → =notes.org_archive=), stamping =:ARCHIVE_TIME:=
 and =:ARCHIVE_FILE:= before the move so they travel with it. The vault
 now loads =*.org_archive= as well, so an archived note still resolves by
 id after a restart rather than turning every link into it dead.
-** TODO V3 clock in/out/report
+** DONE V3 clock in/out/report [1/1]
+=clock_minutes()= could *read* =CLOCK:= lines since Q5-O3 and nothing
+could write one, so tracking time meant typing the logbook by hand.
+=clock-in= opens an entry at the top of the headline's =:LOGBOOK:=
+(creating the drawer when there is none) and closes whatever was running
+first — org keeps one clock, and so do we. =clock-out= closes it with
+the duration org's own format (=… =>  1:30=), =clock-cancel= drops it
+without recording time, and =clock-goto= puts the cursor back on the
+note that is running. Out and cancel act on the running clock wherever
+it is, not on the row under the cursor: you stop the clock you started.
+The gpui status bar shows the running clock and clicking it jumps there.
+Stamps come from the shell (=set_now=), so the core stays reproducible.
 ** DONE V5 TODO/priority/checkbox cycling [1/1]
 Both cycles were hardcoded — =TODO→DONE= and =A→B→C= — so a vault
 configured with =todo_keywords = TODO, NEXT, WAIT, DONE= had four
