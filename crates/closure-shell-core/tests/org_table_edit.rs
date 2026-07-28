@@ -72,7 +72,10 @@ fn a_column_moves_right_and_takes_the_rule_with_it() {
         out.lines().nth(2).is_some_and(|l| l.contains("---")),
         "the rule is still a rule"
     );
-    assert!(out.starts_with("intro line\n"), "and the prose is untouched");
+    assert!(
+        out.starts_with("intro line\n"),
+        "and the prose is untouched"
+    );
     assert!(out.ends_with("after the table\n"));
 }
 

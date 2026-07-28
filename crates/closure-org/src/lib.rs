@@ -8934,7 +8934,10 @@ fn rewrite_stars(doc: &OrgDoc, target: &Headline, new_level: u8) -> Result<OrgDo
         let stars = body.chars().take_while(|&c| c == '*').count();
         let after_stars = &body[stars..];
         let new_stars = "*".repeat(usize::from(level));
-        src.replace_range(span.start..span.end, &format!("{new_stars}{after_stars}{trailer}"));
+        src.replace_range(
+            span.start..span.end,
+            &format!("{new_stars}{after_stars}{trailer}"),
+        );
     }
     parse(&src).map_err(|_| RewriteError::Parse)
 }

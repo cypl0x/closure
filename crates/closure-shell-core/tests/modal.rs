@@ -914,7 +914,10 @@ fn a_folded_parent_still_says_it_has_children() {
     let (_d, mut sh) = nested();
     let mut app = ModalApp::new(InputMode::Doom);
     app.run(&mut sh, "toggle-fold");
-    assert!(app.rows(&sh)[0].has_children, "still foldable, now unfoldable");
+    assert!(
+        app.rows(&sh)[0].has_children,
+        "still foldable, now unfoldable"
+    );
 }
 
 #[test]

@@ -149,7 +149,10 @@ fn a_closing_window_saves_every_edit_it_is_holding() {
     append(&mut app, &mut sh, " one");
     open(&mut app, &mut sh, SECOND);
     append(&mut app, &mut sh, " two");
-    assert!(app.save_pending_edit(&mut sh), "there was something to save");
+    assert!(
+        app.save_pending_edit(&mut sh),
+        "there was something to save"
+    );
     let disk = fs::read_to_string(dir.path().join("notes.org")).expect("read");
     assert!(disk.contains("First body. one"), "{disk}");
     assert!(disk.contains("Second body. two"), "{disk}");

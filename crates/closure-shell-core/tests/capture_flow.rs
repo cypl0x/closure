@@ -253,7 +253,9 @@ fn folding_hides_a_subtree_that_was_demoted_into_place() {
     app.run(&mut sh, "demote");
     app.run(&mut sh, "toggle-fold");
     assert!(
-        !titles(&app, &sh).iter().any(|t| t.contains("Existing child")),
+        !titles(&app, &sh)
+            .iter()
+            .any(|t| t.contains("Existing child")),
         "the child folded away with its parent: {:?}",
         titles(&app, &sh)
     );

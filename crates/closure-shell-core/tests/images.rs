@@ -23,7 +23,8 @@ fn a_file_link_to_an_image_is_an_image() {
     let links = image_links("see [[file:assets/shot.png]] here");
     assert_eq!(links.len(), 1);
     assert_eq!(links[0].path, "assets/shot.png");
-    assert_eq!(&"see [[file:assets/shot.png]] here"[links[0].range.clone()],
+    assert_eq!(
+        &"see [[file:assets/shot.png]] here"[links[0].range.clone()],
         "[[file:assets/shot.png]]",
         "the range covers the whole link, so a shell can replace it"
     );
@@ -75,7 +76,9 @@ fn a_pasted_image_gets_a_sortable_unique_name() {
     let b = asset_file_name("png");
     assert_ne!(a, b, "two pastes are two files");
     assert_eq!(
-        std::path::Path::new(&a).extension().and_then(|e| e.to_str()),
+        std::path::Path::new(&a)
+            .extension()
+            .and_then(|e| e.to_str()),
         Some("png"),
         "{a}"
     );

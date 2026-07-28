@@ -185,7 +185,9 @@ fn the_commands_carry_a_rename_from_one_vault_to_the_other() {
     app_a.run(&mut shell_a, "sync-import");
 
     let id = closure_core::BlockId::from_existing("01HQDISK00000000000000RT");
-    shell_a.rename_headline(&id, "Renamed on A").expect("rename");
+    shell_a
+        .rename_headline(&id, "Renamed on A")
+        .expect("rename");
     app_a.run(&mut shell_a, "sync-export");
     assert!(
         app_a.status().contains("bundle"),

@@ -177,7 +177,11 @@ fn a_headline_made_any_of_the_three_ways_crosses_to_a_peer() {
     a.snapshot(&shell_a);
 
     let ours: Vec<String> = a.session().block_ids().map(ToString::to_string).collect();
-    assert_eq!(ours.len(), 4, "all four blocks are in the replica: {ours:?}");
+    assert_eq!(
+        ours.len(),
+        4,
+        "all four blocks are in the replica: {ours:?}"
+    );
 
     // …and the peer that merges it sees the same four ids, which is
     // the only thing "compatible with the sync" can mean.

@@ -67,7 +67,11 @@ fn ys_takes_any_motion_the_operators_take() {
 fn yss_surrounds_the_line() {
     let mut e = ed("one two\nsecond line\n");
     feed(&mut e, "yss=");
-    assert_eq!(e.text(), "=one two=\nsecond line\n", "the line, not the file");
+    assert_eq!(
+        e.text(),
+        "=one two=\nsecond line\n",
+        "the line, not the file"
+    );
 }
 
 #[test]
@@ -160,7 +164,11 @@ fn capital_s_surrounds_the_selection() {
     feed(&mut e, "vee");
     feed(&mut e, "S*");
     assert_eq!(e.text(), "*one two* three");
-    assert_eq!(e.mode(), EditorMode::Normal, "VISUAL ends with the surround");
+    assert_eq!(
+        e.mode(),
+        EditorMode::Normal,
+        "VISUAL ends with the surround"
+    );
 }
 
 #[test]

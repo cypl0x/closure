@@ -206,9 +206,15 @@ fn quit_bang_closes_the_buffer_over_an_unsaved_edit() {
     append(&mut app, &mut sh, " and more");
     app.run_ex_line(&mut sh, "q!");
     assert_ne!(app.surface(), ModalSurface::EditBody);
-    assert!(!app.should_quit(), "the bang discards a buffer, not the app");
+    assert!(
+        !app.should_quit(),
+        "the bang discards a buffer, not the app"
+    );
     let disk = fs::read_to_string(dir.path().join("notes.org")).expect("read");
-    assert!(!disk.contains("and more"), "and it really discarded: {disk}");
+    assert!(
+        !disk.contains("and more"),
+        "and it really discarded: {disk}"
+    );
 }
 
 #[test]

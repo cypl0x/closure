@@ -65,7 +65,8 @@ fn a_headline_typed_into_a_body_is_written_with_an_id() {
     // into the body editor is filed as a child (that is the point of
     // it), and it arrived on disk as bare stars — so every reload gave
     // it a new identity and no peer could ever agree with us about it.
-    let (dir, mut v) = vault("* Parent\n:PROPERTIES:\n:ID: 01HQNEW00000000000000001A\n:END:\nprose\n");
+    let (dir, mut v) =
+        vault("* Parent\n:PROPERTIES:\n:ID: 01HQNEW00000000000000001A\n:END:\nprose\n");
     let parent = id_of(&v, "Parent");
     v.set_body_with_children(&parent, "prose\n", "* Typed\n** Deeper\n")
         .expect("write");

@@ -215,5 +215,8 @@ fn o_swaps_the_ends_of_the_selection() {
     assert_eq!(app.body_cursor(), (0, 2));
     press(&mut app, &mut sh, 'o');
     assert_eq!(app.body_cursor(), (0, 0), "the cursor went to the anchor");
-    assert!(app.body_selection().is_some(), "and it is still a selection");
+    assert!(
+        app.body_selection().is_some(),
+        "and it is still a selection"
+    );
 }
