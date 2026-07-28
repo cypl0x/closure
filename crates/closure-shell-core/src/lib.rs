@@ -2628,6 +2628,80 @@ pub fn next_table_cell(row: &str, at: usize) -> Option<usize> {
     Some(pipe + 1 + lead)
 }
 
+/// An org link that points at a picture.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ImageLink {
+    /// Byte range of the whole `[[…]]` in the text it was found in.
+    pub range: std::ops::Range<usize>,
+    /// The target as written, `file:` stripped — still relative to the
+    /// vault if that is how it was written.
+    pub path: String,
+    /// The `[[target][description]]` half, when there is one; org calls
+    /// it the description and a window can use it as alt text.
+    pub description: Option<String>,
+}
+
+/// The file extensions a picture link is allowed to have.
+///
+/// A whitelist rather than "anything with an extension": `[[file:
+/// notes.org]]` is a link to a document and painting it as a broken
+/// image would be worse than leaving it as text.
+const IMAGE_EXTENSIONS: &[&str] = &["png", "jpg", "jpeg", "gif", "webp", "bmp", "svg"];
+
+/// Whether `path` names a file a shell could paint.
+fn is_image_path(path: &str) -> bool {
+    let Some((_, ext)) = path.rsplit_once('.') else {
+        return false;
+    };
+    let ext = ext.to_ascii_lowercase();
+    IMAGE_EXTENSIONS.contains(&ext.as_str())
+}
+
+/// Every image link in `text`, in order.
+///
+/// Org has no separate image syntax: an image *is* a file link whose
+/// target happens to be a picture, which is why nothing new goes in the
+/// file format for this. Both spellings org accepts are read —
+/// `[[file:x.png]]` and the bare `[[./x.png]]`.
+#[must_use]
+pub fn image_links(text: &str) -> Vec<ImageLink> {
+    let mut out = Vec::new();
+    let mut i = 0usize;
+    while let Some(open) = text[i..].find("[[").map(|off| i + off) {
+        let Some(close) = text[open..].find("]]").map(|off| open + off) else {
+            break;
+        };
+        let inner = &text[open + 2..close];
+        let (target, description) = match inner.split_once("][") {
+            Some((t, d)) => (t, Some(d.to_owned())),
+            None => (inner, None),
+        };
+        let path = target.strip_prefix("file:").unwrap_or(target);
+        if is_image_path(path) && !path.contains("://") {
+            out.push(ImageLink {
+                range: open..close + 2,
+                path: path.to_owned(),
+                description,
+            });
+        }
+        i = close + 2;
+    }
+    out
+}
+
+/// A fresh file name for an image arriving on the clipboard.
+///
+/// A ULID, so two pastes in the same second are two files and the
+/// directory sorts in the order they were pasted.
+#[must_use]
+pub fn asset_file_name(extension: &str) -> String {
+    format!(
+        "{}.{}",
+        closure_core::BlockId::fresh().as_str(),
+        extension.to_ascii_lowercase()
+    )
+}
+
 /// Byte offset of the previous cell's content on `row`, from `at` —
 /// `S-TAB`, the mirror of [`next_table_cell`].
 #[must_use]
@@ -3388,7 +3462,20 @@ const fn tutorial_editing(modal: bool) -> &'static str {
 /// clipboard in one without them.
 const fn tutorial_registers(modal: bool) -> &'static str {
     if modal {
-        "** Tables\n\
+        "** Images\n\
+         An image is an org link whose target is a picture — \
+         =[[file:assets/shot.png]]= —\nso nothing new goes in the file. \
+         Paste one from the clipboard (=C-v=) and it is\nwritten into the \
+         vault's =assets/= and linked at the cursor, with a *relative* \
+         path,\nso the note still resolves in Emacs and on the machine you \
+         sync with.\n=assets_dir= in config.org moves the directory; \
+         =toggle-inline-images= turns the\npictures off and leaves the links. \
+         Images are painted in the note *preview*: the\nbuffer's lines are a \
+         fixed height, which is what every viewport measurement is\nbuilt \
+         on, so the editor shows the link and the preview shows the \
+         picture.\n\
+         \n\
+         ** Tables\n\
          A line starting with =|= is a table. TAB realigns the whole thing \
          and steps to the\nnext cell, =S-TAB= back one. The rest is org's, \
          and each key does nothing outside a\ntable, so the outline command \
@@ -8963,6 +9050,10 @@ pub struct ModalApp {
     /// Where the cursor was left in each body, by block id, so opening
     /// a note again resumes rather than restarting at byte zero.
     body_cursors: std::collections::HashMap<String, usize>,
+    /// Whether image links are painted as pictures (org's
+    /// `org-toggle-inline-images`). Shown to begin with: a note with a
+    /// screenshot in it is a note you want to look at.
+    images_shown: bool,
     /// The headline this session last opened a body on — what
     /// [`Self::save_last_place`] remembers in preference to whatever
     /// the cursor happens to be resting on.
@@ -9156,6 +9247,7 @@ impl ModalApp {
             zoom_steps: 0,
             search_return: None,
             body_cursors: std::collections::HashMap::new(),
+            images_shown: true,
             last_edited: None,
             body_stash: std::collections::HashMap::new(),
             shell_out: None,
@@ -12704,6 +12796,53 @@ impl ModalApp {
         }
     }
 
+    /// Whether image links are painted as pictures — what a shell asks
+    /// before it loads any of them.
+    #[must_use]
+    pub const fn images_shown(&self) -> bool {
+        self.images_shown
+    }
+
+    /// File an image that arrived on the clipboard and put a link to it
+    /// where the cursor is. Returns the link that was inserted.
+    ///
+    /// The bytes go in the vault, under `assets_dir` (`assets` by
+    /// default), and the link written into the note is *relative*, so
+    /// the file still resolves when the vault is opened in Emacs or
+    /// synced to another machine. `None` when there is no buffer open:
+    /// there would be nowhere to put the link, and a picture in the
+    /// vault that nothing refers to is litter.
+    pub fn paste_image(&mut self, shell: &Shell, extension: &str, bytes: &[u8]) -> Option<String> {
+        if !self.surface.is_editor() {
+            return None;
+        }
+        let root = shell.vault.root();
+        let dir = closure_config::Config::from_path(&root.join("config.org"))
+            .ok()
+            .and_then(|c| c.assets_dir)
+            .unwrap_or_else(|| std::path::PathBuf::from("assets"));
+        let name = asset_file_name(extension);
+        let target = root.join(&dir);
+        if let Err(e) = std::fs::create_dir_all(&target) {
+            self.status = format!("could not make {}: {e}", target.display());
+            return None;
+        }
+        if let Err(e) = std::fs::write(target.join(&name), bytes) {
+            self.status = format!("could not write the image: {e}");
+            return None;
+        }
+        let link = format!("[[file:{}/{name}]]", dir.display());
+        // Through `replace_all` rather than `insert_str`: a paste is one
+        // edit whatever mode the buffer is in, and `insert_str`'s
+        // checkpoint is the INSERT-burst one.
+        let mut text = self.body.text().to_owned();
+        let at = self.body.cursor_byte().min(text.len());
+        text.insert_str(at, &link);
+        self.body.replace_all(text, at + link.len());
+        self.status = format!("filed {}/{name}", dir.display());
+        Some(link)
+    }
+
     /// Where the disk-file courier drops and looks for bundles, from
     /// the vault's `config.org`.
     fn sync_dir(shell: &Shell) -> Option<std::path::PathBuf> {
@@ -13267,6 +13406,14 @@ impl ModalApp {
                 self.sync_mut();
                 self.surface = ModalSurface::Sync;
                 "sync — hand over your ticket, paste theirs, Esc back".clone_into(&mut self.status);
+            }
+            "toggle-inline-images" => {
+                self.images_shown = !self.images_shown;
+                self.status = if self.images_shown {
+                    "inline images shown".to_owned()
+                } else {
+                    "inline images hidden — the links stay".to_owned()
+                };
             }
             "sync-export" => self.sync_export(shell),
             "sync-import" => self.sync_import(shell),

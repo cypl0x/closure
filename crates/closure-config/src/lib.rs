@@ -84,6 +84,10 @@ pub struct Config {
     /// LAN or the VPN, so a multi-homed host says here. Unset means
     /// "detect it"; the port always comes from the bound socket.
     pub sync_advertise: Option<IpAddr>,
+    /// Directory inside the vault that pasted images are filed in
+    /// (default `assets`). Relative to the vault root, because a link
+    /// in an org file is relative to the file.
+    pub assets_dir: Option<PathBuf>,
     /// A folder both machines can see — a Syncthing share, a Dropbox, a
     /// mounted drive, a USB stick — where `sync-export` leaves a signed
     /// bundle and `sync-import` picks up the peers'.
@@ -103,6 +107,41 @@ pub struct Config {
     /// resolves is ignored, because a vault is edited elsewhere too.
     pub last_place: Option<String>,
 }
+
+/// The tail of the generated `config.org`: the keys that have no
+/// default worth writing, shown commented out so the file says what
+/// *can* be set without claiming any of it is set.
+///
+/// Split out of [`Config::default_org`] because it is the half with no
+/// interpolation in it — and because that function is otherwise one
+/// long string that keeps growing a key at a time.
+const OPTIONAL_KEYS_DOC: &str = "\
+\n\
+# Pairing. `sync_bind` is the socket to open; `sync_advertise` is which of\n\
+# this host's addresses goes in the ticket you hand over — set it when the\n\
+# machine has more than one route to it (a LAN *and* a mesh VPN).\n\
+# sync_bind = 0.0.0.0:7420\n\
+# sync_advertise = 100.101.102.103\n\
+# Peers you have paired with. Written by the pairing pane\n\
+# when you paste a ticket; a ticket is an address and a\n\
+# public key, so there is nothing secret in it.\n\
+# sync_peers = closure-sync:100.1.2.3:7420|abc123…\n\
+# A folder both machines can see — Syncthing, a Dropbox, a USB stick.\n\
+# `sync-export` leaves a signed bundle in it and `sync-import` picks up\n\
+# the peers', so neither machine has to be up when the other is. Still\n\
+# only merges bundles signed by a peer you have paired with.\n\
+# sync_dir = /home/you/Sync/closure\n\
+\n\
+# The assistant. The key itself never lives here: `llm_key_env` names an\n\
+# environment variable, so this file can be committed and synced.\n\
+# llm_provider = anthropic\n\
+# llm_model = claude-sonnet-4-5\n\
+# llm_key_env = ANTHROPIC_API_KEY\n\
+# llm_endpoint = http://localhost:8080/v1/chat/completions\n\
+# llm_tools = read, search, capture\n\
+\n\
+# Network sniffer blocklist (`*` wildcards).\n\
+# sniffer_blocklist = *.doubleclick.net, telemetry.*\n";
 
 impl Default for Config {
     fn default() -> Self {
@@ -131,6 +170,7 @@ impl Default for Config {
             wrap: false,
             sync_bind: None,
             sync_advertise: None,
+            assets_dir: None,
             sync_dir: None,
             last_place: None,
         }
@@ -332,6 +372,11 @@ impl Config {
              # Full-text search engine. builtin | ripgrep | fd\n\
              # search_backend = ripgrep\n\
              \n\
+             # Where an image pasted into a note is filed, relative to \
+             the vault.\n# The link written into the file is relative to \
+             it too, so the note\n# still resolves in Emacs.\n\
+             # assets_dir = assets\n\
+             \n\
              # Where the last session was. Written when the window \
              closes, so the\n# outline opens on the note you were in \
              rather than on the first one.\n\
@@ -342,35 +387,7 @@ impl Config {
              because a\n# vault is something people can send you. Add \
              `shell, python` to opt in.\n\
              eval_trust = {eval}\n\
-             \n\
-             # Pairing. `sync_bind` is the socket to open; `sync_advertise` \
-             is which of\n# this host's addresses goes in the ticket you hand \
-             over — set it when the\n# machine has more than one route to it \
-             (a LAN *and* a mesh VPN).\n\
-             # sync_bind = 0.0.0.0:7420\n\
-             # sync_advertise = 100.101.102.103\n\
-             # Peers you have paired with. Written by the pairing pane\n\
-             # when you paste a ticket; a ticket is an address and a\n\
-             # public key, so there is nothing secret in it.\n\
-             # sync_peers = closure-sync:100.1.2.3:7420|abc123…\n\
-             # A folder both machines can see — Syncthing, a Dropbox, a \
-             USB stick.\n# `sync-export` leaves a signed bundle in it and \
-             `sync-import` picks up\n# the peers', so neither machine has to \
-             be up when the other is. Still\n# only merges bundles signed by \
-             a peer you have paired with.\n\
-             # sync_dir = /home/you/Sync/closure\n\
-             \n\
-             # The assistant. The key itself never lives here: `llm_key_env` \
-             names an\n# environment variable, so this file can be committed \
-             and synced.\n\
-             # llm_provider = anthropic\n\
-             # llm_model = claude-sonnet-4-5\n\
-             # llm_key_env = ANTHROPIC_API_KEY\n\
-             # llm_endpoint = http://localhost:8080/v1/chat/completions\n\
-             # llm_tools = read, search, capture\n\
-             \n\
-             # Network sniffer blocklist (`*` wildcards).\n\
-             # sniffer_blocklist = *.doubleclick.net, telemetry.*\n\
+             {optional}\
              #+END_SRC\n",
             input_mode = match d.input_mode {
                 InputMode::Emacs => "emacs",
@@ -385,6 +402,7 @@ impl Config {
             record = d.record_commands,
             wrap = d.wrap,
             eval = d.eval_trust.join(", "),
+            optional = OPTIONAL_KEYS_DOC,
         )
     }
 
@@ -504,6 +522,10 @@ impl Config {
                 "record_commands" => cfg.record_commands = parse_bool(key, value)?,
                 "last_place" => {
                     cfg.last_place = (!value.trim().is_empty()).then(|| value.trim().to_owned());
+                }
+                "assets_dir" => {
+                    cfg.assets_dir =
+                        (!value.trim().is_empty()).then(|| PathBuf::from(value.trim()));
                 }
                 "sync_dir" => {
                     cfg.sync_dir = (!value.trim().is_empty()).then(|| PathBuf::from(value.trim()));

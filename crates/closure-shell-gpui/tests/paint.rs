@@ -1548,6 +1548,32 @@ fn every_title_starts_at_the_same_x_for_its_level(cx: &mut gpui::TestAppContext)
 }
 
 #[gpui::test]
+fn a_note_with_an_image_link_paints_it(cx: &mut gpui::TestAppContext) {
+    // An image in org *is* a file link, so the window has to resolve it
+    // against the vault and paint the file. A link whose file is not
+    // there paints nothing — a broken-image box says less than the link.
+    // A 1×1 PNG, so the decoder has something real to chew on.
+    const PNG: &[u8] = &[
+        0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44,
+        0x52, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x06, 0x00, 0x00, 0x00, 0x1f,
+        0x15, 0xc4, 0x89, 0x00, 0x00, 0x00, 0x0a, 0x49, 0x44, 0x41, 0x54, 0x78, 0x9c, 0x63, 0x00,
+        0x01, 0x00, 0x00, 0x05, 0x00, 0x01, 0x0d, 0x0a, 0x2d, 0xb4, 0x00, 0x00, 0x00, 0x00, 0x49,
+        0x45, 0x4e, 0x44, 0xae, 0x42, 0x60, 0x82,
+    ];
+    let (dir, view, vcx) = visual_window(cx, "* Shot\n[[file:assets/x.png]]\n[[file:gone.png]]\n");
+    std::fs::create_dir_all(dir.path().join("assets")).expect("mkdir");
+    std::fs::write(dir.path().join("assets/x.png"), PNG).expect("write");
+    view.update(vcx, |v, cx| {
+        assert!(v.images_shown(), "shown to begin with");
+        assert_eq!(v.painted_images(), 1, "the one that exists");
+        v.run_command("toggle-inline-images", cx);
+        assert!(!v.images_shown());
+        assert_eq!(v.painted_images(), 0, "and none once toggled off");
+    });
+    vcx.run_until_parked();
+}
+
+#[gpui::test]
 fn only_a_row_with_a_subtree_offers_a_fold_arrow(cx: &mut gpui::TestAppContext) {
     // VAULT: Alpha has Beta under it; Beta, Gamma and Delta are leaves.
     let (_dir, _view, vcx) = visual_window(cx, VAULT);

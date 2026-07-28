@@ -2153,6 +2153,13 @@ impl GpuiView {
         const MAX: usize = 20_000;
         let surface = self.app.surface();
         let insert = self.app.body_mode() == closure_shell_core::EditorMode::Insert;
+        // A screenshot on the clipboard is a paste too. It is filed in
+        // the vault and the note gets a relative link, so what is in
+        // the file is the same org an editor on the other machine will
+        // read.
+        if surface.is_editor() && self.paste_clipboard_image(cx) {
+            return true;
+        }
         if !accepts_paste(surface, insert) {
             // Outside INSERT the editor still takes a paste — it just
             // must not arrive as keystrokes, which in NORMAL would run
@@ -2196,6 +2203,37 @@ impl GpuiView {
             format!("pasted {n} character(s)")
         });
         true
+    }
+
+    /// File a picture from the clipboard into the vault and link it at
+    /// the cursor. `true` when the clipboard held one.
+    ///
+    /// The window is the only place that can reach the system
+    /// clipboard, and the kernel is the only place that knows where the
+    /// vault keeps its assets — so this is the seam, and it is thin:
+    /// bytes and an extension go one way, the link comes back.
+    fn paste_clipboard_image(&mut self, cx: &Context<Self>) -> bool {
+        let Some(item) = cx.read_from_clipboard() else {
+            return false;
+        };
+        let Some(image) = item.entries().iter().find_map(|entry| match entry {
+            gpui::ClipboardEntry::Image(image) => Some(image),
+            gpui::ClipboardEntry::String(_) => None,
+        }) else {
+            return false;
+        };
+        let extension = match image.format {
+            gpui::ImageFormat::Png => "png",
+            gpui::ImageFormat::Jpeg => "jpg",
+            gpui::ImageFormat::Webp => "webp",
+            gpui::ImageFormat::Gif => "gif",
+            gpui::ImageFormat::Svg => "svg",
+            gpui::ImageFormat::Bmp => "bmp",
+            gpui::ImageFormat::Tiff => "tiff",
+        };
+        self.app
+            .paste_image(&self.shell, extension, &image.bytes)
+            .is_some()
     }
 
     /// Copy the body editor's VISUAL selection to the system clipboard
@@ -4815,6 +4853,45 @@ impl GpuiView {
     /// The read-only body preview under the detail fields.
     ///
     /// C3: it reads exactly like the editor — same spans, same palette,
+    /// Whether image links are being painted (`toggle-inline-images`).
+    #[must_use]
+    pub const fn images_shown(&self) -> bool {
+        self.app.images_shown()
+    }
+
+    /// How many images the selected note would paint — every link whose
+    /// file resolves, or none while the toggle is off. What a test
+    /// asserts on instead of hunting for a texture.
+    #[must_use]
+    pub fn painted_images(&self) -> usize {
+        if !self.app.images_shown() {
+            return 0;
+        }
+        let Some(detail) = self.app.detail(&self.shell) else {
+            return 0;
+        };
+        closure_shell_core::image_links(&detail.body)
+            .into_iter()
+            .filter(|link| self.image_path(&link.path).is_some())
+            .count()
+    }
+
+    /// Resolve an image link's target to a file that is actually there.
+    ///
+    /// Relative targets are relative to the vault, which is what makes
+    /// a note portable: the same link resolves in Emacs, on the other
+    /// machine, and here. A path that does not exist paints nothing —
+    /// a broken-image box tells the user less than the link does.
+    fn image_path(&self, target: &str) -> Option<std::path::PathBuf> {
+        let path = std::path::Path::new(target);
+        let full = if path.is_absolute() {
+            path.to_path_buf()
+        } else {
+            self.shell.vault.root().join(path)
+        };
+        full.is_file().then_some(full)
+    }
+
     /// same weight and slant — but as one `StyledText` per line rather
     /// than a div per span. Ctrl-click follows a link here too; it used
     /// to work only in the editor, so reading a note and wanting to go
@@ -4833,6 +4910,16 @@ impl GpuiView {
         }
         for spans in self.highlighted(body).iter() {
             let text: String = spans.iter().map(|(_, s)| s.as_str()).collect();
+            // The pictures this line points at, kept before `text` is
+            // moved into the click handler below.
+            let images: Vec<std::path::PathBuf> = if self.app.images_shown() {
+                closure_shell_core::image_links(&text)
+                    .into_iter()
+                    .filter_map(|link| self.image_path(&link.path))
+                    .collect()
+            } else {
+                Vec::new()
+            };
             let styled = gpui::StyledText::new(text.clone()).with_highlights(
                 span_ranges(spans).into_iter().map(|(range, kind)| {
                     (
@@ -4864,6 +4951,20 @@ impl GpuiView {
                     }
                 }),
             ));
+            // …and the pictures the line points at, under it. The
+            // editor's own lines are a fixed height — every viewport
+            // measurement is derived from it — so this is where a note
+            // *shows* its images, and the buffer keeps the link.
+            for path in images {
+                el = el.child(
+                    div().my_1().child(
+                        gpui::img(path)
+                            .max_w(px(560.0))
+                            .max_h(px(360.0))
+                            .rounded_md(),
+                    ),
+                );
+            }
         }
         el
     }
