@@ -31,8 +31,21 @@ the same two verbs through a minibuffer.
 It surfaced a real kernel bug on the way: scheduling a note orphaned its
 =:ID:= — see the =fix(org)= commit. Planning is written through the
 kernel command, so it undoes like every other edit (I3).
-** TODO V1 refile
-** TODO V2 archive
+** DONE V1 refile [1/1]
+=Vault::refile= moves a subtree under another headline, across files,
+re-levelling it so it nests the way it read and landing after whatever
+children the target already had. Ids travel verbatim (I2) — a refiled
+note is the same note, and every =id:= link into it still resolves. The
+two moves that would lose a tree (into itself, into its own branch) are
+refused by the store and never offered by the picker. The shells ask
+*where* with a fuzzy picker over every other headline, showing the file
+so two notes with one title are telling apart.
+** DONE V2 archive [1/1]
+=Vault::archive_subtree= moves a finished tree into its file's archive
+sibling (=notes.org= → =notes.org_archive=), stamping =:ARCHIVE_TIME:=
+and =:ARCHIVE_FILE:= before the move so they travel with it. The vault
+now loads =*.org_archive= as well, so an archived note still resolves by
+id after a restart rather than turning every link into it dead.
 ** TODO V3 clock in/out/report
 ** DONE V5 TODO/priority/checkbox cycling [1/1]
 Both cycles were hardcoded — =TODO→DONE= and =A→B→C= — so a vault

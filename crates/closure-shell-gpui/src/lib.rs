@@ -1097,6 +1097,8 @@ pub const fn accepts_paste(surface: ModalSurface, insert: bool) -> bool {
         // path or buffer name is text to filter with, not chords.
         | ModalSurface::Buffers
         | ModalSurface::Files
+        // The refile picker filters by typing, like the others.
+        | ModalSurface::Refile
         | ModalSurface::Llm => true,
         ModalSurface::EditBody | ModalSurface::EditBlock | ModalSurface::EditFile => insert,
         ModalSurface::Browse
@@ -2542,6 +2544,7 @@ impl GpuiView {
                 let grid = self.app.date_grid();
                 format!("{} — {}", grid.field, grid.selected)
             }
+            ModalSurface::Refile => format!("refile to — {}▏", self.app.query()),
             ModalSurface::Buffers => format!(
                 "buffers — {}▏ · {} open · RET opens · Esc back",
                 self.app.query(),
@@ -3004,6 +3007,7 @@ impl GpuiView {
                 ),
             ),
             ModalSurface::DatePick => pane.child(self.date_pane(co, cx)),
+            ModalSurface::Refile => pane.children(self.refile_pane(co, cx)),
             ModalSurface::Buffers => pane.children(self.buffer_pane(co, cx)),
             ModalSurface::Files => pane.children(self.file_pane(co, cx)),
             ModalSurface::Sync => pane.child(self.sync_pane(co, cx)),
@@ -3676,6 +3680,40 @@ impl GpuiView {
                         .child(item.clone())
                 })),
         )
+    }
+
+    /// The refile target picker (Q3-V1): every headline that could take
+    /// the subtree, indented by level, with the file it is in.
+    fn refile_pane(&self, co: Colors, cx: &Context<Self>) -> Vec<gpui::Div> {
+        let rows: Vec<_> = self
+            .app
+            .refile_rows(&self.shell)
+            .into_iter()
+            .enumerate()
+            .filter(|(_, r)| r.matches_filter)
+            .collect();
+        if rows.is_empty() {
+            return vec![
+                div()
+                    .text_color(rgb(co.muted))
+                    .child("no headline matches that"),
+            ];
+        }
+        rows.into_iter()
+            .enumerate()
+            .map(|(shown, (i, r))| {
+                let indent = "  ".repeat(usize::from(r.level.saturating_sub(1)));
+                list_row(
+                    co,
+                    shown == self.app.selected(),
+                    format!("{indent}{}    {}", r.title, r.path),
+                    cx.listener(move |this: &mut Self, _ev, _w, cx| {
+                        this.app.refile_click(&mut this.shell, i);
+                        cx.notify();
+                    }),
+                )
+            })
+            .collect()
     }
 
     /// The date picker (Q3-V4): a month grid over `SCHEDULED:` or

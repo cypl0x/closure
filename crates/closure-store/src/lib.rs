@@ -55,6 +55,47 @@ pub struct CaptureTemplate {
 /// Extract a `YYYY-MM-DD` date from an org timestamp such as
 /// `<2026-06-13 Fri>` or `[2026-06-13]`. `None` when no 10-char
 /// `dddd-dd-dd` prefix is present.
+/// Shift every heading in a subtree's source by `delta` stars, so a
+/// tree filed under a deeper parent nests the way it read before
+/// (Q3-V1).
+///
+/// Only lines that are headings move: a body line that begins with a
+/// star is escaped on disk (`,*`, org's own convention), so it is not
+/// one and must not grow a star.
+fn shift_subtree_levels(subtree: &str, delta: i16) -> String {
+    if delta == 0 {
+        return subtree.to_owned();
+    }
+    let mut out = String::with_capacity(subtree.len());
+    for line in subtree.split_inclusive('\n') {
+        let stars = line.chars().take_while(|&c| c == '*').count();
+        let is_heading = stars > 0
+            && line[stars..]
+                .chars()
+                .next()
+                .is_some_and(|c| c == ' ' || c == '\t');
+        if is_heading {
+            let level = i16::try_from(stars).unwrap_or(1) + delta;
+            let level = usize::try_from(level.max(1)).unwrap_or(1);
+            out.push_str(&"*".repeat(level));
+            out.push_str(&line[stars..]);
+        } else {
+            out.push_str(line);
+        }
+    }
+    out
+}
+
+/// Whether a subtree's source carries the `:ID:` `id` — the guard
+/// against filing a tree into one of its own branches.
+fn subtree_contains(subtree: &str, id: &str) -> bool {
+    subtree.lines().any(|l| {
+        l.trim()
+            .strip_prefix(":ID:")
+            .is_some_and(|v| v.trim() == id)
+    })
+}
+
 fn agenda_date(timestamp: &str) -> Option<String> {
     let body = timestamp.trim_start_matches(['<', '[']);
     let date: String = body.chars().take(10).collect();
@@ -723,6 +764,143 @@ impl Vault {
     pub fn set_priority(&mut self, id: &BlockId, priority: Option<char>) -> Result<(), VaultError> {
         let cmd = SetPriority::new(id.clone(), priority);
         self.apply_to_block(id, &cmd)
+    }
+
+    /// Move the subtree rooted at `id` under `target`, as its last
+    /// child — org's `org-refile`, across files included.
+    ///
+    /// The subtree is re-levelled so its root sits one under the target
+    /// and the shape inside it is kept, and it lands after whatever
+    /// children the target already had. Ids are carried verbatim (I2):
+    /// a refiled note is the same note, and every `id:` link into it
+    /// still resolves.
+    ///
+    /// # Errors
+    ///
+    /// [`VaultError::UnknownId`] when either end is missing, and
+    /// [`VaultError::Command`] when the move would put a subtree inside
+    /// itself — which would take the target with it.
+    pub fn refile(&mut self, id: &BlockId, target: &BlockId) -> Result<(), VaultError> {
+        if id == target {
+            return Err(VaultError::Command(
+                "a headline cannot be filed under itself".into(),
+            ));
+        }
+        let (_, source_path) = self
+            .find_by_id(id)
+            .ok_or_else(|| VaultError::UnknownId(id.as_str().to_owned()))?;
+        let source_path = source_path.to_path_buf();
+        let (target_headline, target_path) = self
+            .find_by_id(target)
+            .ok_or_else(|| VaultError::UnknownId(target.as_str().to_owned()))?;
+        let target_level = target_headline.level();
+        let target_path = target_path.to_path_buf();
+        let doc = self
+            .documents
+            .get(&source_path)
+            .ok_or_else(|| VaultError::UnknownId(id.as_str().to_owned()))?;
+        let subtree = doc
+            .org()
+            .subtree_of(id.as_str())
+            .ok_or_else(|| VaultError::Command(format!("no headline {id}")))?
+            .to_owned();
+        // A subtree that contains the target would be filing a tree
+        // under one of its own branches: the tree comes out of the file
+        // with the target inside it, and nothing is left to file into.
+        if source_path == target_path && subtree_contains(&subtree, target.as_str()) {
+            return Err(VaultError::Command(
+                "that target is inside the subtree being filed".into(),
+            ));
+        }
+        let level = doc
+            .headline_by_id(id)
+            .map_or(1, closure_core::DocHeadline::level);
+        let shifted =
+            shift_subtree_levels(&subtree, i16::from(target_level + 1) - i16::from(level));
+
+        self.remove_subtree(id)?;
+        // Re-read the target: removing the subtree may have rewritten
+        // the very file it lives in, so the path it had is stale.
+        let doc = self
+            .documents
+            .get(&target_path)
+            .ok_or_else(|| VaultError::UnknownId(target.as_str().to_owned()))?;
+        let after_path = doc
+            .path_of(target)
+            .ok_or_else(|| VaultError::Command(format!("no headline {target}")))?;
+        let new_org = closure_org::rewrite_splice_subtree_after(doc.org(), &after_path, &shifted)
+            .map_err(|e| VaultError::Command(e.to_string()))?;
+        let new_src = closure_org::print(&new_org);
+        let new_doc = Document::load_str(&new_src).map_err(|_| VaultError::Parse {
+            path: target_path.clone(),
+        })?;
+        fs::write(&target_path, new_doc.source())?;
+        self.documents.insert(target_path.clone(), new_doc);
+        self.reindex_file(&target_path);
+        Ok(())
+    }
+
+    /// Move the subtree rooted at `id` into its file's archive sibling
+    /// (`notes.org` → `notes.org_archive`), stamping where it came from
+    /// and when — org's `org-archive-subtree`.
+    ///
+    /// `today` is the date to stamp (`YYYY-MM-DD`); the store reads no
+    /// clock, for the same reason the date picker does not.
+    ///
+    /// Returns the archive file's path.
+    ///
+    /// # Errors
+    ///
+    /// [`VaultError::UnknownId`] when the headline is missing, plus the
+    /// write/parse failures of the files involved.
+    pub fn archive_subtree(&mut self, id: &BlockId, today: &str) -> Result<PathBuf, VaultError> {
+        let (_, source_path) = self
+            .find_by_id(id)
+            .ok_or_else(|| VaultError::UnknownId(id.as_str().to_owned()))?;
+        let source_path = source_path.to_path_buf();
+        // Stamped *before* the move, so the properties travel with the
+        // subtree rather than needing a second edit at the far end.
+        let origin = source_path
+            .file_name()
+            .map_or_else(String::new, |n| n.to_string_lossy().into_owned());
+        self.set_property(id, "ARCHIVE_TIME", today)?;
+        self.set_property(id, "ARCHIVE_FILE", &origin)?;
+
+        let doc = self
+            .documents
+            .get(&source_path)
+            .ok_or_else(|| VaultError::UnknownId(id.as_str().to_owned()))?;
+        let subtree = doc
+            .org()
+            .subtree_of(id.as_str())
+            .ok_or_else(|| VaultError::Command(format!("no headline {id}")))?
+            .to_owned();
+
+        let mut archive_name = source_path
+            .file_name()
+            .map_or_else(String::new, |n| n.to_string_lossy().into_owned());
+        archive_name.push_str("_archive");
+        let archive_path = source_path.with_file_name(archive_name);
+
+        let existing = self
+            .documents
+            .get(&archive_path)
+            .map(closure_core::Document::source)
+            .unwrap_or_default();
+        let mut combined = existing;
+        if !combined.is_empty() && !combined.ends_with('\n') {
+            combined.push('\n');
+        }
+        combined.push_str(&subtree);
+
+        self.remove_subtree(id)?;
+        let archived = Document::load_str(&combined).map_err(|_| VaultError::Parse {
+            path: archive_path.clone(),
+        })?;
+        fs::write(&archive_path, archived.source())?;
+        self.documents.insert(archive_path.clone(), archived);
+        self.reindex_file(&archive_path);
+        Ok(archive_path)
     }
 
     /// Make sure `path` declares `keywords` with a `#+TODO:` line, so
@@ -12035,7 +12213,14 @@ where
         if ty.is_dir() {
             walk_org(&path, f)?;
         } else if ty.is_file()
-            && path.extension().and_then(|e| e.to_str()) == Some("org")
+            // `notes.org_archive` is org's own archive spelling and an
+            // org file like any other: leaving it out would make every
+            // `id:` link into an archived note dead the moment the
+            // window reopened (Q3-V2).
+            && path
+                .extension()
+                .and_then(|e| e.to_str())
+                .is_some_and(|e| e == "org" || e == "org_archive")
             && let Err(e) = f(&path)
         {
             return Err(io::Error::other(e.to_string()));

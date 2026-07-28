@@ -99,6 +99,8 @@ const DOOM_KEYMAP: &[(&str, &str)] = &[
     ("] p", "priority-down"),
     ("[ p", "priority-up"),
     ("g X", "checkbox-toggle"),
+    ("g R", "refile"),
+    ("g A", "archive"),
     // The leader. Doom's identity is `SPC` plus a mnemonic tree, and a
     // Doom user's hands know it better than any of the single letters
     // above: `SPC f s` saves, `SPC :` is M-x, `SPC q q` quits, and
@@ -124,6 +126,8 @@ const DOOM_KEYMAP: &[(&str, &str)] = &[
     ("SPC m p", "priority-down"),
     ("SPC m P", "priority-up"),
     ("SPC m x", "checkbox-toggle"),
+    ("SPC m r", "refile"),
+    ("SPC m A", "archive"),
     ("SPC q q", "quit"),
     ("SPC s s", "search-start"),
     ("SPC s p", "body-search"),
@@ -221,6 +225,8 @@ const EMACS_KEYMAP: &[(&str, &str)] = &[
     ("C-c <down>", "priority-down"),
     ("C-c <up>", "priority-up"),
     ("C-c C-x C-b", "checkbox-toggle"),
+    ("C-c C-w", "refile"),
+    ("C-c C-x C-a", "archive"),
 ];
 
 /// Vim bindings: modal navigation keys.
@@ -302,6 +308,8 @@ const VIM_KEYMAP: &[(&str, &str)] = &[
     ("] p", "priority-down"),
     ("[ p", "priority-up"),
     ("g X", "checkbox-toggle"),
+    ("g R", "refile"),
+    ("g A", "archive"),
     // The prefix the rest of the desktop uses. Listed last so each
     // mode's own chord stays the one which-key and the tutorial show.
     ("C-p", "palette"),
@@ -387,6 +395,8 @@ const HELIX_KEYMAP: &[(&str, &str)] = &[
     ("] p", "priority-down"),
     ("[ p", "priority-up"),
     ("g X", "checkbox-toggle"),
+    ("g R", "refile"),
+    ("g A", "archive"),
     // The prefix the rest of the desktop uses. Listed last so each
     // mode's own chord stays the one which-key and the tutorial show.
     ("C-p", "palette"),
@@ -471,6 +481,8 @@ const NOTION_KEYMAP: &[(&str, &str)] = &[
     ("] p", "priority-down"),
     ("[ p", "priority-up"),
     ("g X", "checkbox-toggle"),
+    ("g R", "refile"),
+    ("g A", "archive"),
     // The prefix the rest of the desktop uses. Listed last so each
     // mode's own chord stays the one which-key and the tutorial show.
     ("C-p", "palette"),

@@ -146,6 +146,8 @@ pub enum AppMode {
     Files,
     /// Typing a date for `SCHEDULED:` or `DEADLINE:` (Q3-V4).
     PlanEdit,
+    /// Picking the headline a subtree is filed under (Q3-V1).
+    RefileTarget,
 }
 
 /// One unresolved merge conflict as the shell shows it: which block and
@@ -274,6 +276,12 @@ pub struct App {
     /// Which planning field the minibuffer is filling, and for which
     /// headline.
     plan_target: Option<(String, String)>,
+    /// The subtree waiting for a refile target (Q3-V1).
+    refile_source: Option<String>,
+    /// The `(subtree, target)` refile the driver should perform.
+    refile_request: Option<(String, String)>,
+    /// The subtree the driver should archive.
+    archive_request: Option<String>,
     /// The vault's TODO keyword sequence, pushed in by the driver
     /// (Q3-V5); the defaults until it says otherwise.
     keywords: Vec<String>,
@@ -365,6 +373,9 @@ impl App {
             conflicts: Vec::new(),
             planning_request: None,
             plan_target: None,
+            refile_source: None,
+            refile_request: None,
+            archive_request: None,
             keywords: vec!["TODO".to_owned(), "DONE".to_owned()],
             priorities: vec!['A', 'B', 'C'],
             visited: Vec::new(),
@@ -891,6 +902,25 @@ impl App {
             .collect()
     }
 
+    /// The ids behind [`Self::headline_results`], in the same order —
+    /// what the refile picker files into (Q3-V1).
+    #[must_use]
+    pub fn headline_result_ids(&self) -> Vec<String> {
+        let mut scored: Vec<(usize, u32)> = self
+            .headlines
+            .iter()
+            .enumerate()
+            .filter_map(|(i, r)| {
+                closure_query::fuzzy_score(&self.query, &r.title).map(|sc| (i, sc))
+            })
+            .collect();
+        scored.sort_by_key(|&(_, sc)| std::cmp::Reverse(sc));
+        scored
+            .iter()
+            .map(|&(i, _)| self.headlines[i].id.clone())
+            .collect()
+    }
+
     /// `(title, id)` rows of the selected file's headlines, in record
     /// order.
     #[must_use]
@@ -1096,6 +1126,7 @@ impl App {
             AppMode::Buffers => return self.handle_buffer_pane_stroke(stroke, false),
             AppMode::Files => return self.handle_buffer_pane_stroke(stroke, true),
             AppMode::PlanEdit => return self.handle_planedit_stroke(stroke),
+            AppMode::RefileTarget => return self.handle_refile_stroke(stroke),
             AppMode::EditBody => return self.handle_editbody_stroke(stroke),
             AppMode::Agenda => return self.handle_agenda_stroke(stroke),
             AppMode::BodySearch => return self.handle_bodysearch_stroke(stroke),
@@ -1765,8 +1796,83 @@ impl App {
         }
     }
 
+    /// Refile (Q3-V1) in the terminal: pick a target headline from the
+    /// same fuzzy list the headline search uses, then park the move for
+    /// the driver.
+    fn start_refile(&mut self) {
+        let Some(id) = self.current_headline_id() else {
+            "no headline under the cursor to file".clone_into(&mut self.status);
+            return;
+        };
+        self.refile_source = Some(id);
+        self.mode = AppMode::RefileTarget;
+        self.query.clear();
+        self.result_cursor = 0;
+        "refile to — type to filter · RET files it · ESC cancels".clone_into(&mut self.status);
+    }
+
+    /// The refile picker's keys.
+    fn handle_refile_stroke(&mut self, stroke: &str) {
+        let rows = self.headline_results();
+        match stroke {
+            "ESC" => {
+                self.mode = AppMode::Browse;
+                self.query.clear();
+                self.refile_source = None;
+                self.result_cursor = 0;
+            }
+            "<down>" => {
+                self.result_cursor = (self.result_cursor + 1).min(rows.len().saturating_sub(1));
+            }
+            "<up>" => self.result_cursor = self.result_cursor.saturating_sub(1),
+            "RET" => {
+                let target = self
+                    .headline_result_ids()
+                    .get(self.result_cursor)
+                    .cloned()
+                    .zip(self.refile_source.take());
+                if let Some((target, source)) = target {
+                    self.refile_request = Some((source, target));
+                }
+                self.mode = AppMode::Browse;
+                self.query.clear();
+                self.result_cursor = 0;
+            }
+            "DEL" => {
+                self.query.pop();
+                self.result_cursor = 0;
+            }
+            "SPC" => self.query.push(' '),
+            s => {
+                let mut chars = s.chars();
+                if let (Some(c), None) = (chars.next(), chars.next()) {
+                    self.query.push(c);
+                    self.result_cursor = 0;
+                }
+            }
+        }
+    }
+
+    /// Consume the `(subtree, target)` refile the user asked for.
+    pub const fn take_refile_request(&mut self) -> Option<(String, String)> {
+        self.refile_request.take()
+    }
+
+    /// Consume the id of the subtree the user asked to archive.
+    pub const fn take_archive_request(&mut self) -> Option<String> {
+        self.archive_request.take()
+    }
+
     fn apply_buffer_command(&mut self, cmd: &str) -> bool {
         match cmd {
+            "refile" => self.start_refile(),
+            "archive" => {
+                if let Some(id) = self.current_headline_id() {
+                    self.archive_request = Some(id);
+                } else {
+                    "no headline under the cursor to archive".clone_into(&mut self.status);
+                }
+            }
             "schedule" => self.start_planning("SCHEDULED"),
             "deadline" => self.start_planning("DEADLINE"),
             "todo-back" => self.cycle_todo(-1),
@@ -3101,6 +3207,33 @@ fn run_loop(
 /// executing it through the kernel-backed vault methods and re-syncing
 /// the app on success. Soft errors (missing block, empty history) are
 /// no-ops; hard errors propagate.
+/// The Q3 org verbs that move a whole subtree: refile and archive.
+///
+/// Split out of [`apply_requests`] for length, and because these two
+/// are the only requests that rewrite *two* files at once.
+fn apply_org_verb_requests(app: &mut App, vault: &mut Vault) -> Result<(), TuiError> {
+    let vault_err = |e: closure_store::VaultError| TuiError::Vault(e.to_string());
+    if let Some((source, target)) = app.take_refile_request() {
+        vault
+            .refile(
+                &closure_core::BlockId::from_existing(&source),
+                &closure_core::BlockId::from_existing(&target),
+            )
+            .map_err(vault_err)?;
+        sync_app(app, vault);
+    }
+    if let Some(id) = app.take_archive_request() {
+        // The terminal shell has no injected clock, so the archive
+        // stamp is the day the process sees (Q3-V2).
+        let today = closure_shell_core::today_local();
+        vault
+            .archive_subtree(&closure_core::BlockId::from_existing(&id), &today)
+            .map_err(vault_err)?;
+        sync_app(app, vault);
+    }
+    Ok(())
+}
+
 fn apply_requests(
     app: &mut App,
     vault: &mut Vault,
@@ -3146,6 +3279,7 @@ fn apply_requests(
             .map_err(vault_err)?;
         sync_app(app, vault);
     }
+    apply_org_verb_requests(app, vault)?;
     if let Some((id, field, stamp)) = app.take_planning_request() {
         let bid = closure_core::BlockId::from_existing(&id);
         // One field at a time: the kernel command replaces the whole
@@ -3643,6 +3777,13 @@ fn overlay_content(app: &App) -> Option<(String, Vec<String>)> {
         )),
         AppMode::Buffers | AppMode::Files => buffer_overlay(app),
         AppMode::PlanEdit => Some((format!("date: {}▏", app.query()), Vec::new())),
+        AppMode::RefileTarget => Some((
+            format!("refile to: {}▏", app.query()),
+            app.headline_results()
+                .iter()
+                .map(|(p, t)| format!("{t}    ({})", p.display()))
+                .collect(),
+        )),
         AppMode::Browse | AppMode::FileView => None,
     }
 }

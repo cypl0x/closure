@@ -1219,6 +1219,22 @@ pub fn org_stamp(y: i64, m: u32, d: u32, tail: &str) -> String {
     }
 }
 
+/// Today, from the system clock, as `YYYY-MM-DD` (UTC).
+///
+/// The core never calls this — [`ModalApp::set_today`] is how a shell
+/// says what day it is, which is what keeps every calendar in every
+/// test reproducible. It lives here so the shells that *do* have to ask
+/// the clock all ask it the same way.
+#[must_use]
+pub fn today_local() -> String {
+    let secs = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs());
+    let days = i64::try_from(secs / 86_400).unwrap_or(0);
+    let (y, m, d) = civil_from_days(days);
+    format!("{y:04}-{m:02}-{d:02}")
+}
+
 /// A month as a picker draws it: seven columns, Monday first, blanks
 /// where the month has not started or has ended.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -5824,6 +5840,9 @@ pub enum ModalSurface {
     /// The date picker: a month grid over `SCHEDULED:` or `DEADLINE:`
     /// (Q3-V4).
     DatePick,
+    /// The refile target picker: every other headline in the vault,
+    /// filtered as you type (Q3-V1).
+    Refile,
 }
 
 /// Which of the two shapes of the shell you are working in.
@@ -9503,6 +9522,8 @@ pub struct ModalApp {
     today: String,
     /// The live date-picker session, when one is open.
     date_pick: Option<DatePickSession>,
+    /// The subtree waiting for a refile target (Q3-V1).
+    refile_source: Option<String>,
     /// Memoised source-block list — see [`ModalApp::block_rows`].
     block_memo: std::cell::RefCell<Option<(u64, std::sync::Arc<Vec<BlockRow>>)>>,
     /// Derivations paid for; the render budget's fourth number.
@@ -9534,6 +9555,22 @@ pub struct BufferRow {
     pub dirty: bool,
     /// Whether it is the buffer on screen.
     pub current: bool,
+    /// Whether it survives the picker's live filter.
+    pub matches_filter: bool,
+}
+
+/// One candidate refile target ([`ModalApp::refile_rows`]).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RefileRow {
+    /// Headline title, as shown.
+    pub title: String,
+    /// Stable block id — what the move addresses.
+    pub id: String,
+    /// Vault-relative file, so two notes with one title are telling
+    /// apart.
+    pub path: String,
+    /// Outline level, for the indent in the list.
+    pub level: u8,
     /// Whether it survives the picker's live filter.
     pub matches_filter: bool,
 }
@@ -9685,6 +9722,7 @@ impl ModalApp {
             // shell overwrites it on the first frame.
             today: "1970-01-01".to_owned(),
             date_pick: None,
+            refile_source: None,
             shell_out: None,
             body_scroll: None,
             hist_cursor: 0,
@@ -10230,6 +10268,7 @@ impl ModalApp {
                 self.on_pane_key(key, len);
             }
             ModalSurface::DatePick => self.on_datepick_key(shell, key, text),
+            ModalSurface::Refile => self.on_refile_key(shell, key, text),
             ModalSurface::Buffers => self.on_picker_key(shell, key, text, PickerKind::Buffers),
             ModalSurface::Files => self.on_picker_key(shell, key, text, PickerKind::Files),
             ModalSurface::EditBlock => self.on_editblock_key(shell, key, ctrl, alt, text),
@@ -11397,6 +11436,185 @@ impl ModalApp {
                     PickerKind::Buffers => self.buffer_click(shell, row),
                     PickerKind::Files => self.file_click(shell, row),
                 }
+            }
+            _ => {
+                if let Some(c) = text
+                    && !c.is_control()
+                {
+                    self.query.push(c);
+                    self.selected = 0;
+                }
+            }
+        }
+    }
+
+    // ---- Q3-V1/V2: refile and archive ------------------------------
+
+    /// Every headline that could take the selected subtree, filtered as
+    /// you type.
+    ///
+    /// The subtree being filed is not among them, and neither is
+    /// anything inside it: those are the two moves that would lose the
+    /// tree, and the store refuses them anyway — but a picker that
+    /// offers a target it cannot use is a picker that lies.
+    #[must_use]
+    pub fn refile_rows(&self, shell: &Shell) -> Vec<RefileRow> {
+        let moving = self.refile_source.clone();
+        let filter = if self.surface == ModalSurface::Refile {
+            self.query.as_str()
+        } else {
+            ""
+        };
+        let inside = moving.as_ref().map(|id| Self::subtree_ids(shell, id));
+        shell
+            .vault
+            .iter()
+            .flat_map(|(path, doc)| {
+                let shown = vault_relative(shell, path).display().to_string();
+                doc.all_headlines().map(move |h| (shown.clone(), h))
+            })
+            .filter(|(_, h)| {
+                inside
+                    .as_ref()
+                    .is_none_or(|ids| !ids.contains(&h.id().to_string()))
+            })
+            .map(|(path, h)| {
+                let title = h.title().to_owned();
+                RefileRow {
+                    matches_filter: filter.is_empty()
+                        || closure_query::fuzzy_score(filter, &format!("{title} {path}")).is_some(),
+                    title,
+                    id: h.id().to_string(),
+                    path,
+                    level: h.level(),
+                }
+            })
+            .collect()
+    }
+
+    /// The ids of a subtree: the headline itself and everything under
+    /// it, by document order and level.
+    fn subtree_ids(shell: &Shell, id: &str) -> Vec<String> {
+        let bid = closure_core::BlockId::from_existing(id);
+        let Some((_, path)) = shell.vault.find_by_id(&bid) else {
+            return vec![id.to_owned()];
+        };
+        let path = path.to_path_buf();
+        let Some((_, doc)) = shell.vault.iter().find(|(p, _)| *p == path) else {
+            return vec![id.to_owned()];
+        };
+        let mut out = Vec::new();
+        let mut inside: Option<u8> = None;
+        for h in doc.all_headlines() {
+            let this = h.id().to_string();
+            match inside {
+                None if this == id => {
+                    inside = Some(h.level());
+                    out.push(this);
+                }
+                None => {}
+                Some(level) if h.level() > level => out.push(this),
+                Some(_) => break,
+            }
+        }
+        out
+    }
+
+    /// Open the refile picker on the selected subtree.
+    fn open_refile(&mut self, shell: &Shell) {
+        let selected = self
+            .selection_active
+            .then(|| self.selected_row_id(shell))
+            .flatten();
+        let Some(id) = selected else {
+            "nothing selected — put the cursor on a headline first".clone_into(&mut self.status);
+            return;
+        };
+        self.refile_source = Some(id);
+        self.surface = ModalSurface::Refile;
+        self.query.clear();
+        self.selected = 0;
+        "refile to — type to filter · RET files it · Esc cancels".clone_into(&mut self.status);
+    }
+
+    /// File the pending subtree under the target on row `i` — the click
+    /// path, and what Enter runs.
+    pub fn refile_click(&mut self, shell: &mut Shell, i: usize) {
+        let Some(source) = self.refile_source.clone() else {
+            return;
+        };
+        let Some(row) = self.refile_rows(shell).into_iter().nth(i) else {
+            return;
+        };
+        let from = closure_core::BlockId::from_existing(&source);
+        let to = closure_core::BlockId::from_existing(&row.id);
+        match shell.vault.refile(&from, &to) {
+            Ok(()) => {
+                self.status = format!("filed under {}", row.title);
+                self.invalidate_rows();
+                self.select_by_id(shell, &source);
+            }
+            Err(e) => self.status = format!("could not file it: {e}"),
+        }
+        self.refile_source = None;
+        self.surface = ModalSurface::Browse;
+        self.query.clear();
+    }
+
+    /// Move the selected subtree into its file's archive sibling.
+    fn archive_selected(&mut self, shell: &mut Shell) {
+        let selected = self
+            .selection_active
+            .then(|| self.selected_row_id(shell))
+            .flatten();
+        let Some(id) = selected else {
+            "nothing selected — put the cursor on a headline first".clone_into(&mut self.status);
+            return;
+        };
+        let bid = closure_core::BlockId::from_existing(&id);
+        let today = self.today.clone();
+        match shell.vault.archive_subtree(&bid, &today) {
+            Ok(path) => {
+                self.status = format!("archived to {}", vault_relative(shell, &path).display());
+                self.invalidate_rows();
+                self.selected = self
+                    .selected
+                    .min(self.rows_shared(shell).len().saturating_sub(1));
+            }
+            Err(e) => self.status = format!("could not archive it: {e}"),
+        }
+    }
+
+    /// The refile picker's keys — the same interaction as the other
+    /// pickers, over targets.
+    fn on_refile_key(&mut self, shell: &mut Shell, key: &str, text: Option<char>) {
+        let matches: Vec<usize> = self
+            .refile_rows(shell)
+            .iter()
+            .enumerate()
+            .filter(|(_, r)| r.matches_filter)
+            .map(|(i, _)| i)
+            .collect();
+        match key {
+            "escape" => {
+                self.refile_source = None;
+                self.query.clear();
+                self.selected = 0;
+                self.go_home();
+                "left where it was".clone_into(&mut self.status);
+            }
+            "down" => self.selected = (self.selected + 1).min(matches.len().saturating_sub(1)),
+            "up" => self.selected = self.selected.saturating_sub(1),
+            "backspace" => {
+                self.query.pop();
+                self.selected = 0;
+            }
+            "enter" => {
+                let Some(&row) = matches.get(self.selected) else {
+                    "nothing matches".clone_into(&mut self.status);
+                    return;
+                };
+                self.refile_click(shell, row);
             }
             _ => {
                 if let Some(c) = text
@@ -14628,6 +14846,8 @@ impl ModalApp {
                     self.open_body_by_id(shell, &row.id);
                 }
             }
+            "refile" => self.open_refile(shell),
+            "archive" => self.archive_selected(shell),
             "schedule" => self.open_date_pick(shell, PlanField::Scheduled),
             "deadline" => self.open_date_pick(shell, PlanField::Deadline),
             "buffer-list" => {

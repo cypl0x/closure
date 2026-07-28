@@ -133,6 +133,7 @@ pub const fn opening_route(surface: crate::ModalSurface) -> &'static [&'static s
         S::Buffers => &["buffer-list"],
         S::Files => &["recent-files"],
         S::DatePick => &["schedule"],
+        S::Refile => &["refile"],
     }
 }
 
@@ -173,5 +174,6 @@ pub const ALL_SURFACES: &[crate::ModalSurface] = {
         S::Buffers,
         S::Files,
         S::DatePick,
+        S::Refile,
     ]
 };
