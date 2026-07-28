@@ -106,6 +106,15 @@ pub struct Config {
     /// with the editor you have it open in. An id that no longer
     /// resolves is ignored, because a vault is edited elsewhere too.
     pub last_place: Option<String>,
+    /// Files the last sessions opened, most recent first — what the
+    /// file picker offers before it offers the rest of the vault.
+    ///
+    /// Same reasoning as [`Self::last_place`]: durable view state
+    /// belongs in the plain file the user can read, not in a hidden
+    /// state directory. Paths that no longer exist are skipped when the
+    /// picker is built rather than treated as an error, because a vault
+    /// is edited elsewhere too.
+    pub recent_files: Vec<PathBuf>,
 }
 
 /// The tail of the generated `config.org`: the keys that have no
@@ -173,6 +182,7 @@ impl Default for Config {
             assets_dir: None,
             sync_dir: None,
             last_place: None,
+            recent_files: Vec::new(),
         }
     }
 }
@@ -522,6 +532,14 @@ impl Config {
                 "record_commands" => cfg.record_commands = parse_bool(key, value)?,
                 "last_place" => {
                     cfg.last_place = (!value.trim().is_empty()).then(|| value.trim().to_owned());
+                }
+                "recent_files" => {
+                    cfg.recent_files = value
+                        .split(',')
+                        .map(|s| s.trim().to_owned())
+                        .filter(|s| !s.is_empty())
+                        .map(PathBuf::from)
+                        .collect();
                 }
                 "assets_dir" => {
                     cfg.assets_dir =

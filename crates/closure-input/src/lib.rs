@@ -79,17 +79,37 @@ const DOOM_KEYMAP: &[(&str, &str)] = &[
     ("M-RET", "add-heading"),
     ("g u", "undo-history"),
     ("TAB", "toggle-fold"),
+    // Buffers and the jumplist (Q1). `C-o`/`C-i` are vim's own; the
+    // unimpaired-style `[ b` / `] b` walk the buffer list, and `C-^`
+    // is the alternate buffer wherever a keyboard can type it.
+    ("C-o", "jump-back"),
+    ("C-i", "jump-forward"),
+    ("] b", "buffer-next"),
+    ("[ b", "buffer-prev"),
+    ("C-^", "buffer-alternate"),
+    ("g B", "buffer-list"),
+    ("g f", "recent-files"),
+    ("g c", "buffer-close"),
+    ("g C", "buffer-close-force"),
     // The leader. Doom's identity is `SPC` plus a mnemonic tree, and a
     // Doom user's hands know it better than any of the single letters
     // above: `SPC f s` saves, `SPC :` is M-x, `SPC q q` quits, and
     // `SPC` alone brings up which-key. The spellings are Doom's own
     // wherever Doom has one for the same idea.
     ("SPC :", "palette"),
-    ("SPC .", "headline-list"),
-    ("SPC ,", "browse"),
+    ("SPC .", "recent-files"),
+    ("SPC ,", "buffer-list"),
     ("SPC f s", "save-buffer"),
-    ("SPC f f", "headline-list"),
-    ("SPC b b", "browse"),
+    ("SPC f f", "recent-files"),
+    ("SPC f r", "recent-files"),
+    ("SPC s i", "headline-list"),
+    ("SPC b b", "buffer-list"),
+    ("SPC b n", "buffer-next"),
+    ("SPC b p", "buffer-prev"),
+    ("SPC b k", "buffer-close"),
+    ("SPC b K", "buffer-close-force"),
+    ("SPC b h", "browse"),
+    ("SPC `", "buffer-alternate"),
     ("SPC q q", "quit"),
     ("SPC s s", "search-start"),
     ("SPC s p", "body-search"),
@@ -167,6 +187,20 @@ const EMACS_KEYMAP: &[(&str, &str)] = &[
     ("M-RET", "add-heading"),
     ("C-c u", "undo-history"),
     ("TAB", "toggle-fold"),
+    // Buffers and the jumplist (Q1), spelled the way Emacs spells them:
+    // `C-x b` switches, `C-x k` kills, `C-x C-f`/`C-x C-r` find files,
+    // and `M-,` pops the mark the way xref does.
+    ("C-x b", "buffer-list"),
+    ("C-x C-b", "buffer-list"),
+    ("C-x <right>", "buffer-next"),
+    ("C-x <left>", "buffer-prev"),
+    ("C-x k", "buffer-close"),
+    ("C-x K", "buffer-close-force"),
+    ("C-x C-f", "recent-files"),
+    ("C-x C-r", "recent-files"),
+    ("C-c ,", "buffer-alternate"),
+    ("M-,", "jump-back"),
+    ("M-.", "jump-forward"),
 ];
 
 /// Vim bindings: modal navigation keys.
@@ -228,6 +262,18 @@ const VIM_KEYMAP: &[(&str, &str)] = &[
     ("M-RET", "add-heading"),
     ("g u", "undo-history"),
     ("TAB", "toggle-fold"),
+    // Buffers and the jumplist (Q1). `C-o`/`C-i` are vim's own; the
+    // unimpaired-style `[ b` / `] b` walk the buffer list, and `C-^`
+    // is the alternate buffer wherever a keyboard can type it.
+    ("C-o", "jump-back"),
+    ("C-i", "jump-forward"),
+    ("] b", "buffer-next"),
+    ("[ b", "buffer-prev"),
+    ("C-^", "buffer-alternate"),
+    ("g B", "buffer-list"),
+    ("g f", "recent-files"),
+    ("g c", "buffer-close"),
+    ("g C", "buffer-close-force"),
     // The prefix the rest of the desktop uses. Listed last so each
     // mode's own chord stays the one which-key and the tutorial show.
     ("C-p", "palette"),
@@ -293,6 +339,18 @@ const HELIX_KEYMAP: &[(&str, &str)] = &[
     ("M-RET", "add-heading"),
     ("g u", "undo-history"),
     ("TAB", "toggle-fold"),
+    // Buffers and the jumplist (Q1). `C-o`/`C-i` are vim's own; the
+    // unimpaired-style `[ b` / `] b` walk the buffer list, and `C-^`
+    // is the alternate buffer wherever a keyboard can type it.
+    ("C-o", "jump-back"),
+    ("C-i", "jump-forward"),
+    ("] b", "buffer-next"),
+    ("[ b", "buffer-prev"),
+    ("C-^", "buffer-alternate"),
+    ("g B", "buffer-list"),
+    ("g f", "recent-files"),
+    ("g c", "buffer-close"),
+    ("g C", "buffer-close-force"),
     // The prefix the rest of the desktop uses. Listed last so each
     // mode's own chord stays the one which-key and the tutorial show.
     ("C-p", "palette"),
@@ -357,6 +415,18 @@ const NOTION_KEYMAP: &[(&str, &str)] = &[
     ("M-RET", "add-heading"),
     ("g u", "undo-history"),
     ("TAB", "toggle-fold"),
+    // Buffers and the jumplist (Q1). `C-o`/`C-i` are vim's own; the
+    // unimpaired-style `[ b` / `] b` walk the buffer list, and `C-^`
+    // is the alternate buffer wherever a keyboard can type it.
+    ("C-o", "jump-back"),
+    ("C-i", "jump-forward"),
+    ("] b", "buffer-next"),
+    ("[ b", "buffer-prev"),
+    ("C-^", "buffer-alternate"),
+    ("g B", "buffer-list"),
+    ("g f", "recent-files"),
+    ("g c", "buffer-close"),
+    ("g C", "buffer-close-force"),
     // The prefix the rest of the desktop uses. Listed last so each
     // mode's own chord stays the one which-key and the tutorial show.
     ("C-p", "palette"),

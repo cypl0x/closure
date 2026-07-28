@@ -140,6 +140,10 @@ pub enum AppMode {
     /// and falls through to any command name, so it is a superset of
     /// the palette rather than a replacement for it.
     Ex,
+    /// The files this session has been in, most recent first (Q1).
+    Buffers,
+    /// Every file in the vault, the recent ones first (Q1).
+    Files,
 }
 
 /// One unresolved merge conflict as the shell shows it: which block and
@@ -253,6 +257,15 @@ pub struct App {
     /// and which one is currently in the buffer.
     completion: Option<(usize, Vec<String>, usize)>,
     conflicts: Vec<ConflictRow>,
+    /// Files this session has opened, in the order they were first
+    /// opened, each with the visit that last put it on top (Q1).
+    visited: Vec<(PathBuf, u64)>,
+    /// The visit counter behind [`Self::visited`].
+    visit_seq: u64,
+    /// The jumplist: `(file, headline cursor)`, oldest first.
+    jumps: Vec<(PathBuf, usize)>,
+    /// Where in [`Self::jumps`] we are; the length means "the present".
+    jump_at: usize,
 }
 
 impl App {
@@ -337,6 +350,10 @@ impl App {
             llm_composing: false,
             completion: None,
             conflicts: Vec::new(),
+            visited: Vec::new(),
+            visit_seq: 0,
+            jumps: Vec::new(),
+            jump_at: 0,
         }
     }
 
@@ -1054,6 +1071,8 @@ impl App {
             }
             AppMode::DbView => return self.handle_dbview_stroke(stroke),
             AppMode::Blocks => return self.handle_blocks_stroke(stroke),
+            AppMode::Buffers => return self.handle_buffer_pane_stroke(stroke, false),
+            AppMode::Files => return self.handle_buffer_pane_stroke(stroke, true),
             AppMode::EditBody => return self.handle_editbody_stroke(stroke),
             AppMode::Agenda => return self.handle_agenda_stroke(stroke),
             AppMode::BodySearch => return self.handle_bodysearch_stroke(stroke),
@@ -1422,6 +1441,222 @@ impl App {
             s if s.len() == 3 && s.starts_with("C-") => s.to_owned(),
             _ => return None,
         })
+    }
+
+    /// The buffer list and the file picker: `j`/`k` walk, Enter opens,
+    /// Esc goes back (Q1).
+    fn handle_buffer_pane_stroke(&mut self, stroke: &str, files: bool) {
+        let rows = if files {
+            self.file_results()
+        } else {
+            self.buffer_results()
+        };
+        match stroke {
+            "j" | "<down>" => {
+                self.result_cursor = (self.result_cursor + 1).min(rows.len().saturating_sub(1));
+            }
+            "k" | "<up>" => self.result_cursor = self.result_cursor.saturating_sub(1),
+            "RET" => {
+                if let Some(path) = rows.get(self.result_cursor).cloned() {
+                    self.push_jump();
+                    self.open_path(&path);
+                }
+            }
+            "ESC" | "q" | "h" | "DEL" => {
+                self.mode = AppMode::Browse;
+                self.result_cursor = 0;
+            }
+            _ => {}
+        }
+    }
+
+    /// The files this session has been in, most recent first.
+    #[must_use]
+    pub fn buffer_results(&self) -> Vec<PathBuf> {
+        let mut by_recency: Vec<&(PathBuf, u64)> = self.visited.iter().collect();
+        by_recency.sort_by_key(|e| std::cmp::Reverse(e.1));
+        by_recency.into_iter().map(|(p, _)| p.clone()).collect()
+    }
+
+    /// Every file in the vault, the ones this session has been in
+    /// first — the picker's order.
+    #[must_use]
+    pub fn file_results(&self) -> Vec<PathBuf> {
+        let mut out = self.buffer_results();
+        for p in &self.paths {
+            if !out.contains(p) {
+                out.push(p.clone());
+            }
+        }
+        out
+    }
+
+    /// The buffer on screen: the most recently visited file.
+    fn current_buffer(&self) -> Option<PathBuf> {
+        self.visited
+            .iter()
+            .max_by_key(|(_, seq)| *seq)
+            .map(|(p, _)| p.clone())
+    }
+
+    /// Put `path` at the top of the visited list.
+    fn touch_visited(&mut self, path: &Path) {
+        self.visit_seq += 1;
+        let seq = self.visit_seq;
+        if let Some(entry) = self.visited.iter_mut().find(|(p, _)| p == path) {
+            entry.1 = seq;
+        } else {
+            self.visited.push((path.to_path_buf(), seq));
+        }
+    }
+
+    /// Where the cursor is, in the terms the jumplist stores.
+    fn here(&self) -> Option<(PathBuf, usize)> {
+        self.selected_path()
+            .map(|p| (p.to_path_buf(), self.head_cursor))
+    }
+
+    /// Record the place a jump is leaving, dropping whatever was ahead.
+    fn push_jump(&mut self) {
+        let Some(here) = self.here() else { return };
+        self.jumps.truncate(self.jump_at);
+        if self.jumps.last() != Some(&here) {
+            self.jumps.push(here);
+        }
+        self.jump_at = self.jumps.len();
+    }
+
+    /// Open `path` in the file view, remembering the visit.
+    fn open_path(&mut self, path: &Path) {
+        if let Some(i) = self.paths.iter().position(|p| p == path) {
+            self.selected = Some(i);
+            self.touch_visited(path);
+            self.mode = AppMode::FileView;
+            self.scroll = 0;
+            self.result_cursor = 0;
+        } else {
+            self.status = format!("no such file in this vault: {}", path.display());
+        }
+    }
+
+    /// Go to a recorded jump point without recording one.
+    fn goto(&mut self, path: &Path, cursor: usize) {
+        if let Some(i) = self.paths.iter().position(|p| p == path) {
+            self.selected = Some(i);
+            self.head_cursor = cursor;
+            self.touch_visited(path);
+        }
+    }
+
+    /// Walk the visited files in the order they were first opened,
+    /// wrapping — `:bnext` / `:bprev`.
+    fn cycle_buffer(&mut self, delta: isize) {
+        if self.visited.is_empty() {
+            "no buffers open — open a file first".clone_into(&mut self.status);
+            return;
+        }
+        let len = isize::try_from(self.visited.len()).unwrap_or(1);
+        let at = self
+            .current_buffer()
+            .and_then(|c| self.visited.iter().position(|(p, _)| *p == c))
+            .unwrap_or(0);
+        let at_i = isize::try_from(at).unwrap_or(0);
+        let next = usize::try_from((at_i + delta).rem_euclid(len)).unwrap_or(0);
+        let target = self.visited[next].0.clone();
+        self.open_path(&target);
+    }
+
+    /// Open the file under the cursor, recording the jump and the visit
+    /// (Q1) — a file with no loaded source is not opened at all.
+    fn open_selected(&mut self) {
+        let has_source = self
+            .selected_path()
+            .is_some_and(|sel| self.sources.iter().any(|(p, _)| p.as_path() == sel));
+        if !has_source {
+            return;
+        }
+        self.push_jump();
+        self.mode = AppMode::FileView;
+        self.scroll = 0;
+        if let Some(p) = self.selected_path().map(Path::to_path_buf) {
+            self.touch_visited(&p);
+        }
+    }
+
+    /// The Q1 verbs: buffers and the jumplist. Split out of
+    /// [`Self::apply_command`] so neither match grows past what a
+    /// reader can hold. Returns whether the command was one of them.
+    fn apply_buffer_command(&mut self, cmd: &str) -> bool {
+        match cmd {
+            // Buffers and the jumplist (Q1). A "buffer" in the terminal
+            // shell is a file it has been in — the same list the gpui
+            // shell keeps, over the only thing this shell opens.
+            "buffer-list" => {
+                self.mode = AppMode::Buffers;
+                self.result_cursor = 0;
+            }
+            "recent-files" => {
+                self.mode = AppMode::Files;
+                self.result_cursor = 0;
+            }
+            "buffer-next" => self.cycle_buffer(1),
+            "buffer-prev" => self.cycle_buffer(-1),
+            "buffer-alternate" => {
+                let mut by_recency: Vec<&(PathBuf, u64)> = self.visited.iter().collect();
+                by_recency.sort_by_key(|e| std::cmp::Reverse(e.1));
+                if let Some(target) = by_recency.get(1).map(|(p, _)| p.clone()) {
+                    self.open_path(&target);
+                } else {
+                    "no other buffer to switch to".clone_into(&mut self.status);
+                }
+            }
+            "buffer-close" | "buffer-close-force" => {
+                let current = self.current_buffer();
+                if let Some(path) = current {
+                    self.visited.retain(|(p, _)| *p != path);
+                    self.jumps.retain(|(p, _)| *p != path);
+                    self.jump_at = self.jumps.len();
+                    if let Some(next) = self.current_buffer() {
+                        self.open_path(&next);
+                    } else {
+                        self.mode = AppMode::Browse;
+                        "no buffers left".clone_into(&mut self.status);
+                    }
+                } else {
+                    "no buffer to close".clone_into(&mut self.status);
+                }
+            }
+            "jump-back" => {
+                if self.jumps.is_empty() {
+                    "no jumps yet".clone_into(&mut self.status);
+                } else {
+                    if self.jump_at == self.jumps.len() {
+                        let here = self.here();
+                        if let Some(here) = here {
+                            self.jumps.push(here);
+                        }
+                    }
+                    if self.jump_at == 0 {
+                        "no older jump".clone_into(&mut self.status);
+                    } else {
+                        self.jump_at -= 1;
+                        let (path, cursor) = self.jumps[self.jump_at].clone();
+                        self.goto(&path, cursor);
+                    }
+                }
+            }
+            "jump-forward" => {
+                if self.jump_at + 1 < self.jumps.len() {
+                    self.jump_at += 1;
+                    let (path, cursor) = self.jumps[self.jump_at].clone();
+                    self.goto(&path, cursor);
+                } else {
+                    "no newer jump".clone_into(&mut self.status);
+                }
+            }
+            _ => return false,
+        }
+        true
     }
 
     fn handle_blocks_stroke(&mut self, stroke: &str) {
@@ -2069,16 +2304,12 @@ impl App {
                 self.pending.clear();
                 self.popup = None;
             }
-            "open-file" => {
-                let has_source = self
-                    .selected_path()
-                    .is_some_and(|sel| self.sources.iter().any(|(p, _)| p.as_path() == sel));
-                if has_source {
-                    self.mode = AppMode::FileView;
-                    self.scroll = 0;
+            "open-file" => self.open_selected(),
+            other => {
+                if !self.apply_buffer_command(other) {
+                    self.apply_headline_command(other);
                 }
             }
-            other => self.apply_headline_command(other),
         }
     }
 
@@ -3101,7 +3332,9 @@ fn subsystem_overlay(app: &App) -> Option<(String, Vec<String>)> {
     Some((title, app.pane_rows()))
 }
 
-fn overlay_content(app: &App) -> Option<(String, Vec<String>)> {
+/// The fuzzy finders' overlay: the file query and the headline query,
+/// split out so [`overlay_content`] stays readable.
+fn finder_overlay(app: &App) -> Option<(String, Vec<String>)> {
     match app.mode() {
         AppMode::Search => Some((
             format!("find file: {}", app.query()),
@@ -3117,6 +3350,13 @@ fn overlay_content(app: &App) -> Option<(String, Vec<String>)> {
                 .map(|(p, t)| format!("{t}    ({})", p.display()))
                 .collect(),
         )),
+        _ => None,
+    }
+}
+
+fn overlay_content(app: &App) -> Option<(String, Vec<String>)> {
+    match app.mode() {
+        AppMode::Search | AppMode::SearchHeadlines => finder_overlay(app),
         AppMode::Backlinks => Some((
             app.selected_path().map_or_else(
                 || "backlinks".to_owned(),
@@ -3202,8 +3442,23 @@ fn overlay_content(app: &App) -> Option<(String, Vec<String>)> {
                 .map(|s| (*s).to_owned())
                 .collect(),
         )),
+        AppMode::Buffers | AppMode::Files => buffer_overlay(app),
         AppMode::Browse | AppMode::FileView => None,
     }
+}
+
+/// The Q1 pickers' overlay: the buffers this session has, or every file
+/// with those first.
+fn buffer_overlay(app: &App) -> Option<(String, Vec<String>)> {
+    let (title, paths) = match app.mode() {
+        AppMode::Buffers => ("buffers (most recent first)", app.buffer_results()),
+        AppMode::Files => ("files (recent first)", app.file_results()),
+        _ => return None,
+    };
+    Some((
+        title.to_owned(),
+        paths.iter().map(|p| p.display().to_string()).collect(),
+    ))
 }
 
 /// Bottom-half overlay list with a cursor row, used by the fuzzy

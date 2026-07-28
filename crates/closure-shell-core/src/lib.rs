@@ -1055,6 +1055,16 @@ fn headline_is_folded(h: &closure_core::DocHeadline) -> bool {
 /// One walk, two callers ([`App::rows`] and [`ModalApp::derive_rows`]):
 /// they were the same code twice, and a fold rule that differs between
 /// the launcher and the window is a fold rule nobody can reason about.
+/// A vault file's path as the user names it: relative to the vault
+/// root, or unchanged when it lies outside (which nothing in a loaded
+/// vault does, but a path is data and this is not the place to panic —
+/// I5).
+fn vault_relative(shell: &Shell, path: &std::path::Path) -> std::path::PathBuf {
+    path.strip_prefix(shell.vault.root())
+        .unwrap_or(path)
+        .to_path_buf()
+}
+
 fn outline_rows(shell: &Shell, filter: &str) -> Vec<Row> {
     let mut scored: Vec<(u32, Row)> = Vec::new();
     for (p, doc) in shell.vault.iter() {
@@ -2827,7 +2837,11 @@ where
 /// its neighbour, in every row. `None` at the edge, or off a table.
 #[must_use]
 pub fn table_move_column(text: &str, line: usize, col: usize, right: bool) -> Option<String> {
-    let other = if right { col.checked_add(1)? } else { col.checked_sub(1)? };
+    let other = if right {
+        col.checked_add(1)?
+    } else {
+        col.checked_sub(1)?
+    };
     let width = table_bounds(text, line)
         .and_then(|span| text.lines().nth(span.start).map(|l| row_cells(l).len()))?;
     if col >= width || other >= width {
@@ -2878,7 +2892,11 @@ pub fn table_delete_column(text: &str, line: usize, col: usize) -> Option<String
 #[must_use]
 pub fn table_move_row(text: &str, line: usize, down: bool) -> Option<String> {
     let span = table_bounds(text, line)?;
-    let other = if down { line.checked_add(1)? } else { line.checked_sub(1)? };
+    let other = if down {
+        line.checked_add(1)?
+    } else {
+        line.checked_sub(1)?
+    };
     if other < span.start || other >= span.end {
         return None;
     }
@@ -5505,6 +5523,12 @@ pub enum ModalSurface {
     /// The whole file, as one buffer — the editor view. `C-Enter` (or
     /// `:w`) writes it back, `Esc` abandons it.
     EditFile,
+    /// The open-buffer list: everything this session has a buffer for,
+    /// most recently visited first, filtered as you type (Q1-B1).
+    Buffers,
+    /// The file picker: the files this vault has, the ones recent
+    /// sessions were in first (Q1-B4).
+    Files,
 }
 
 /// Which of the two shapes of the shell you are working in.
@@ -5617,6 +5641,15 @@ enum SpecialOrigin {
 enum ListKind {
     Agenda,
     Blocks,
+}
+
+/// Which of the two pickers a keystroke is going to (Q1).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PickerKind {
+    /// The open-buffer list.
+    Buffers,
+    /// The vault's files, recent first.
+    Files,
 }
 
 /// Which field a single-line modal field-edit surface is editing.
@@ -9145,10 +9178,91 @@ pub struct ModalApp {
     palette_memo: std::cell::RefCell<Option<PaletteMemo>>,
     /// Derivations paid for; the render budget's third number.
     palette_recomputes: std::cell::Cell<u64>,
+    /// Every buffer this session has open, in the order they were
+    /// opened (what `buffer-next` walks); the MRU order the picker
+    /// shows is [`OpenBuffer::seq`].
+    buffers: Vec<OpenBuffer>,
+    /// The visit counter handed to the buffer opened next.
+    buf_seq: u64,
+    /// The jumplist: every place a non-local move left, oldest first.
+    jumps: Vec<JumpPoint>,
+    /// Where in [`Self::jumps`] we are. Equal to the length means "at
+    /// the present" — nothing ahead to go forward to.
+    jump_at: usize,
+    /// Files recent sessions opened, most recent first. Persisted to
+    /// `config.org` with the rest of the durable view state.
+    recent_files: Vec<std::path::PathBuf>,
     /// Memoised source-block list — see [`ModalApp::block_rows`].
     block_memo: std::cell::RefCell<Option<(u64, std::sync::Arc<Vec<BlockRow>>)>>,
     /// Derivations paid for; the render budget's fourth number.
     block_recomputes: std::cell::Cell<u64>,
+}
+
+/// What an open buffer is: a headline's body, or a whole file.
+///
+/// Both are things the editor surfaces already open ([`ModalSurface::EditBody`]
+/// and [`ModalSurface::EditFile`]); until Q1 neither was *listed*, so
+/// opening a second one made the first unreachable except by finding
+/// its headline again.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum BufferRef {
+    /// A headline body, by stable block id (I2).
+    Body(String),
+    /// A whole file, by vault-relative path.
+    File(std::path::PathBuf),
+}
+
+/// One row of the open-buffer list ([`ModalApp::buffer_rows`]).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BufferRow {
+    /// What to show: the headline title, or the file's name.
+    pub name: String,
+    /// Which buffer this row is, for opening it.
+    pub target: BufferRef,
+    /// Whether it holds text the vault does not.
+    pub dirty: bool,
+    /// Whether it is the buffer on screen.
+    pub current: bool,
+    /// Whether it survives the picker's live filter.
+    pub matches_filter: bool,
+}
+
+/// One row of the file picker ([`ModalApp::file_rows`]).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FileRow {
+    /// Vault-relative path, as shown.
+    pub name: String,
+    /// The path to open.
+    pub path: std::path::PathBuf,
+    /// Whether a recent session was in it.
+    pub recent: bool,
+    /// Whether it survives the picker's live filter.
+    pub matches_filter: bool,
+}
+
+/// A place the jumplist can return to.
+///
+/// Deliberately not a byte offset into a file: a jump point names the
+/// *buffer* and the outline row, so a vault edited elsewhere between
+/// two jumps still lands somewhere true (I7 — no shell addresses
+/// content by offset). The cursor is a hint, clamped on arrival.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct JumpPoint {
+    /// The buffer that was open, if one was.
+    buffer: Option<BufferRef>,
+    /// The outline row's block id, if a row was selected.
+    row: Option<String>,
+    /// Where the cursor was inside the buffer.
+    cursor: usize,
+}
+
+/// An open buffer with the visit that put it at the top of the list.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct OpenBuffer {
+    /// What it is.
+    target: BufferRef,
+    /// Monotonic visit counter — the MRU order without a clock.
+    seq: u64,
 }
 
 /// A filled detail memo with the key it is valid under.
@@ -9250,6 +9364,11 @@ impl ModalApp {
             images_shown: true,
             last_edited: None,
             body_stash: std::collections::HashMap::new(),
+            buffers: Vec::new(),
+            buf_seq: 0,
+            jumps: Vec::new(),
+            jump_at: 0,
+            recent_files: Vec::new(),
             shell_out: None,
             body_scroll: None,
             hist_cursor: 0,
@@ -9794,6 +9913,8 @@ impl ModalApp {
                 let len = self.cron_rows(shell).len();
                 self.on_pane_key(key, len);
             }
+            ModalSurface::Buffers => self.on_picker_key(shell, key, text, PickerKind::Buffers),
+            ModalSurface::Files => self.on_picker_key(shell, key, text, PickerKind::Files),
             ModalSurface::EditBlock => self.on_editblock_key(shell, key, ctrl, alt, text),
             ModalSurface::EditFile => self.on_editfile_key(shell, key, ctrl, alt, text),
             ModalSurface::Browse => self.on_browse_key(shell, key, ctrl, alt, text),
@@ -10502,20 +10623,7 @@ impl ModalApp {
             return;
         };
         let path = path.to_path_buf();
-        let source = shell
-            .vault
-            .iter()
-            .find(|(p, _)| *p == path)
-            .map_or_else(String::new, |(_, doc)| doc.source());
-        self.body_baseline.clone_from(&source);
-        self.load_body(source);
-        self.file_target = Some(path);
-        self.surface = ModalSurface::EditFile;
-        self.status = if self.modal_editing() {
-            "file — NORMAL, i to insert, C-Enter save, Esc back".to_owned()
-        } else {
-            "file — C-Enter save, Esc back".to_owned()
-        };
+        self.open_file_path(shell, &path);
     }
 
     /// Leave the file buffer without writing it.
@@ -10544,6 +10652,454 @@ impl ModalApp {
             }
             Err(e) => self.status = format!("save failed: {e}"),
         }
+    }
+
+    // ---- Q1: buffers, jumps, recents ---------------------------------
+
+    /// Every buffer this session has open, most recently visited first.
+    ///
+    /// The shell held exactly one buffer before this: opening a second
+    /// note put the first in a stash with no way back to it except
+    /// finding its headline again. The list is derived, never stored
+    /// twice — the names come from the vault, the dirty bit from the
+    /// same comparison [`Self::body_dirty`] makes.
+    #[must_use]
+    pub fn buffer_rows(&self, shell: &Shell) -> Vec<BufferRow> {
+        let mut open: Vec<&OpenBuffer> = self.buffers.iter().collect();
+        // Most recent first, and a stable tiebreak so two buffers that
+        // somehow share a visit never swap between frames.
+        open.sort_by_key(|b| std::cmp::Reverse(b.seq));
+        let filter = self.picker_filter().to_owned();
+        open.into_iter()
+            .enumerate()
+            .map(|(i, b)| {
+                let name = Self::buffer_label(shell, &b.target);
+                BufferRow {
+                    matches_filter: filter.is_empty()
+                        || closure_query::fuzzy_score(&filter, &name).is_some(),
+                    name,
+                    target: b.target.clone(),
+                    dirty: self.buffer_is_dirty(&b.target),
+                    current: i == 0,
+                }
+            })
+            .collect()
+    }
+
+    /// The vault's files, the ones recent sessions were in first.
+    ///
+    /// There was no way to open a file that had no headline you could
+    /// find — a new note, an `#+INCLUDE`d fragment, a file whose
+    /// headings you did not remember. This is that way.
+    #[must_use]
+    pub fn file_rows(&self, shell: &Shell) -> Vec<FileRow> {
+        let filter = self.picker_filter();
+        // Named the way the user names them — relative to the vault —
+        // and opened by the absolute path the vault holds.
+        let all: Vec<std::path::PathBuf> = shell
+            .vault
+            .iter()
+            .map(|(p, _)| vault_relative(shell, p))
+            .collect();
+        let mut ordered: Vec<(std::path::PathBuf, bool)> = Vec::with_capacity(all.len());
+        for recent in &self.recent_files {
+            // A remembered path the vault no longer has is skipped, not
+            // an error: a vault is edited elsewhere too.
+            if all.contains(recent) {
+                ordered.push((recent.clone(), true));
+            }
+        }
+        for p in all {
+            if !ordered.iter().any(|(q, _)| *q == p) {
+                ordered.push((p, false));
+            }
+        }
+        ordered
+            .into_iter()
+            .map(|(path, recent)| {
+                let name = path.display().to_string();
+                FileRow {
+                    matches_filter: filter.is_empty()
+                        || closure_query::fuzzy_score(filter, &name).is_some(),
+                    name,
+                    path,
+                    recent,
+                }
+            })
+            .collect()
+    }
+
+    /// Open the file on row `i` of [`Self::file_rows`] — the mouse path
+    /// into the file picker.
+    pub fn file_click(&mut self, shell: &Shell, i: usize) {
+        let Some(row) = self.file_rows(shell).into_iter().nth(i) else {
+            return;
+        };
+        self.open_buffer(shell, &BufferRef::File(row.path), true);
+    }
+
+    /// Open the buffer on row `i` of [`Self::buffer_rows`] — the mouse
+    /// path into the buffer list (and the tab strip).
+    pub fn buffer_click(&mut self, shell: &Shell, i: usize) {
+        let Some(row) = self.buffer_rows(shell).into_iter().nth(i) else {
+            return;
+        };
+        self.open_buffer(shell, &row.target, true);
+    }
+
+    /// The live filter the two pickers share, empty everywhere else so
+    /// a stale query can never filter the outline.
+    const fn picker_filter(&self) -> &str {
+        if matches!(self.surface, ModalSurface::Buffers | ModalSurface::Files) {
+            self.query.as_str()
+        } else {
+            ""
+        }
+    }
+
+    /// What to call a buffer: the headline's title, or the file's path.
+    fn buffer_label(shell: &Shell, target: &BufferRef) -> String {
+        match target {
+            BufferRef::Body(id) => {
+                let bid = closure_core::BlockId::from_existing(id);
+                shell
+                    .vault
+                    .find_by_id(&bid)
+                    .map_or_else(|| id.clone(), |(h, _)| h.title().to_owned())
+            }
+            BufferRef::File(path) => vault_relative(shell, path).display().to_string(),
+        }
+    }
+
+    /// Whether a buffer holds text the vault does not — the on-screen
+    /// one by comparison, the others by what they left in the stash.
+    fn buffer_is_dirty(&self, target: &BufferRef) -> bool {
+        match target {
+            BufferRef::Body(id) => {
+                if self.edit_target.as_ref() == Some(id) && self.surface == ModalSurface::EditBody {
+                    self.body.text() != self.body_baseline
+                } else {
+                    self.body_stash.contains_key(id)
+                }
+            }
+            BufferRef::File(path) => {
+                self.file_target.as_ref() == Some(path)
+                    && self.surface == ModalSurface::EditFile
+                    && self.body.text() != self.body_baseline
+            }
+        }
+    }
+
+    /// Put `target` at the top of the buffer list, adding it if this is
+    /// the first visit.
+    fn touch_buffer(&mut self, target: BufferRef) {
+        self.buf_seq += 1;
+        let seq = self.buf_seq;
+        if let Some(existing) = self.buffers.iter_mut().find(|b| b.target == target) {
+            existing.seq = seq;
+        } else {
+            self.buffers.push(OpenBuffer { target, seq });
+        }
+    }
+
+    /// The buffer on screen, as the list understands it: the most
+    /// recently visited one.
+    fn current_buffer(&self) -> Option<BufferRef> {
+        self.buffers
+            .iter()
+            .max_by_key(|b| b.seq)
+            .map(|b| b.target.clone())
+    }
+
+    /// The one before it — what `C-^` toggles with.
+    fn alternate_buffer(&self) -> Option<BufferRef> {
+        let mut by_recency: Vec<&OpenBuffer> = self.buffers.iter().collect();
+        by_recency.sort_by_key(|b| std::cmp::Reverse(b.seq));
+        by_recency.get(1).map(|b| b.target.clone())
+    }
+
+    /// Where we are now, in the terms the jumplist stores.
+    fn current_place(&self, shell: &Shell) -> JumpPoint {
+        JumpPoint {
+            buffer: self.current_buffer(),
+            row: self.selected_row_id(shell),
+            cursor: self.body.cursor_byte(),
+        }
+    }
+
+    /// Record the place a non-local move is leaving.
+    ///
+    /// Vim's rule: a fresh jump drops whatever was ahead of the cursor
+    /// in the list, because you cannot go forward to a future you just
+    /// replaced. A repeat of the same place is not a jump.
+    fn push_jump(&mut self, place: JumpPoint) {
+        self.jumps.truncate(self.jump_at);
+        if self.jumps.last() == Some(&place) {
+            self.jump_at = self.jumps.len();
+            return;
+        }
+        self.jumps.push(place);
+        self.jump_at = self.jumps.len();
+    }
+
+    /// Go to a recorded place without recording one.
+    fn goto_place(&mut self, shell: &Shell, place: &JumpPoint) {
+        if let Some(target) = place.buffer.clone() {
+            self.open_buffer(shell, &target, false);
+            let len = self.body.text().len();
+            self.body.set_cursor_byte(place.cursor.min(len));
+        } else {
+            if self.surface.is_editor() {
+                self.leave_buffer();
+            }
+            self.surface = ModalSurface::Browse;
+        }
+        if let Some(id) = &place.row {
+            let id = id.clone();
+            self.select_by_id(shell, &id);
+        }
+    }
+
+    /// Open a buffer, recording the place being left when `record` is
+    /// set (every user-facing path does; the jumplist's own navigation
+    /// does not, or going back would be a move you could go back from).
+    fn open_buffer(&mut self, shell: &Shell, target: &BufferRef, record: bool) {
+        if record {
+            let place = self.current_place(shell);
+            self.push_jump(place);
+        }
+        match target {
+            BufferRef::Body(id) => {
+                let id = id.clone();
+                self.open_body_by_id(shell, &id);
+            }
+            BufferRef::File(path) => {
+                let path = path.clone();
+                self.open_file_path(shell, &path);
+            }
+        }
+    }
+
+    /// Leave whatever buffer is open: remember its cursor, put any
+    /// unsaved text aside against its own name.
+    fn leave_buffer(&mut self) {
+        self.remember_body_cursor();
+        self.stash_body();
+    }
+
+    /// Walk the open-buffer list by `delta`, wrapping — `:bnext` and
+    /// `:bprev`, which walk the order buffers were *opened* in, not the
+    /// order they were last looked at.
+    fn cycle_buffer(&mut self, shell: &Shell, delta: isize) {
+        let len = self.buffers.len();
+        if len == 0 {
+            "no buffers open — open a note first".clone_into(&mut self.status);
+            return;
+        }
+        let current = self.current_buffer();
+        let at = current
+            .as_ref()
+            .and_then(|c| self.buffers.iter().position(|b| b.target == *c))
+            .unwrap_or(0);
+        let len_i = isize::try_from(len).unwrap_or(1);
+        let at_i = isize::try_from(at).unwrap_or(0);
+        let next = usize::try_from((at_i + delta).rem_euclid(len_i)).unwrap_or(0);
+        let target = self.buffers[next].target.clone();
+        self.open_buffer(shell, &target, true);
+    }
+
+    /// Close the buffer on screen. Unsaved text takes a second, louder
+    /// chord (`buffer-close-force`) — one keystroke may not be able to
+    /// throw away something you typed.
+    fn close_current_buffer(&mut self, shell: &Shell, force: bool) {
+        let Some(target) = self.current_buffer() else {
+            "no buffer to close".clone_into(&mut self.status);
+            return;
+        };
+        if !force && self.buffer_is_dirty(&target) {
+            "unsaved edits — :w saves, buffer-close-force discards".clone_into(&mut self.status);
+            return;
+        }
+        if force {
+            if let BufferRef::Body(id) = &target {
+                self.body_stash.remove(id);
+            }
+        } else {
+            self.leave_buffer();
+        }
+        self.buffers.retain(|b| b.target != target);
+        // Jumping back into a buffer that is gone is worse than
+        // forgetting it was ever there.
+        self.jumps.retain(|j| j.buffer.as_ref() != Some(&target));
+        self.jump_at = self.jumps.len();
+        if let Some(next) = self.current_buffer() {
+            self.open_buffer(shell, &next, false);
+        } else {
+            self.edit_target = None;
+            self.file_target = None;
+            self.body.clear();
+            self.body_baseline.clear();
+            self.surface = ModalSurface::Browse;
+            "no buffers left".clone_into(&mut self.status);
+        }
+    }
+
+    /// Open a headline's body as the buffer, by id.
+    ///
+    /// Addressed by id rather than by "whatever row is selected", so
+    /// the buffer list, the jumplist and the outline can all open the
+    /// same note the same way. Whatever was open first has its cursor
+    /// remembered and its unsaved text put aside against its own name —
+    /// neither is going in the vault unasked.
+    fn open_body_by_id(&mut self, shell: &Shell, id: &str) {
+        let bid = closure_core::BlockId::from_existing(id);
+        let Some(vault_body) = shell
+            .vault
+            .find_by_id(&bid)
+            .map(|(h, _)| closure_org::unescape_body(h.body_text()))
+        else {
+            self.status = format!("that note is no longer in the vault: {id}");
+            return;
+        };
+        let file = shell.vault.find_by_id(&bid).map(|(_, p)| p.to_path_buf());
+        self.leave_buffer();
+        let resume = self.body_cursors.get(id).copied();
+        let restored = self.body_stash.remove(id);
+        let came_back = restored.is_some();
+        self.last_edited = Some(id.to_owned());
+        self.edit_target = Some(id.to_owned());
+        self.file_target = None;
+        let (body, baseline) = restored.unwrap_or_else(|| (vault_body.clone(), vault_body));
+        self.body_baseline = baseline;
+        let len = body.len();
+        self.load_body(body);
+        // Opening a note you were just in used to start at byte zero, so
+        // any edit deeper in it meant navigating back down every time. A
+        // body can shrink between visits, so the remembered offset is
+        // clamped rather than trusted (I5).
+        if let Some(at) = resume {
+            self.body.set_cursor_byte(at.min(len));
+        }
+        self.surface = ModalSurface::EditBody;
+        self.select_by_id(shell, id);
+        self.touch_buffer(BufferRef::Body(id.to_owned()));
+        if let Some(path) = file {
+            self.remember_recent_file(&path);
+        }
+        self.status = if came_back {
+            // Said out loud, because the buffer disagrees with the file
+            // and the user did not do it just now.
+            "unsaved edits restored — :w saves, :q! discards".to_owned()
+        } else if self.modal_editing() {
+            "edit body — NORMAL, i to insert, C-Enter save, :q closes".to_owned()
+        } else {
+            "edit body — C-Enter save, Esc closes".to_owned()
+        };
+    }
+
+    /// Open a file as one full-window buffer, by path — what the file
+    /// picker and the buffer list open a [`BufferRef::File`] with.
+    fn open_file_path(&mut self, shell: &Shell, path: &std::path::Path) {
+        // A path from the picker is vault-relative (that is how it is
+        // shown and how `config.org` keeps it); a path from the vault
+        // is absolute. Both name the same file, so both open it.
+        let absolute = if path.is_absolute() {
+            path.to_path_buf()
+        } else {
+            shell.vault.root().join(path)
+        };
+        let path = &absolute;
+        let Some(source) = shell
+            .vault
+            .iter()
+            .find(|(p, _)| *p == path)
+            .map(|(_, doc)| doc.source())
+        else {
+            self.status = format!("no such file in this vault: {}", path.display());
+            return;
+        };
+        self.leave_buffer();
+        self.edit_target = None;
+        self.body_baseline.clone_from(&source);
+        self.load_body(source);
+        self.file_target = Some(path.clone());
+        self.surface = ModalSurface::EditFile;
+        self.view = ViewMode::Editor;
+        self.touch_buffer(BufferRef::File(path.clone()));
+        let shown = vault_relative(shell, path);
+        self.remember_recent_file(&shown);
+        self.status = if self.modal_editing() {
+            format!("{} — NORMAL, i to insert, C-Enter save", shown.display())
+        } else {
+            format!("{} — C-Enter save, Esc back", shown.display())
+        };
+    }
+
+    /// The two pickers' keys: type to filter, arrows (and `C-n`/`C-p`'s
+    /// list equivalents) to walk, Enter to open, Esc to go back.
+    ///
+    /// One handler for both because they are the same interaction over
+    /// different rows — a second copy would be a second set of bugs.
+    fn on_picker_key(&mut self, shell: &Shell, key: &str, text: Option<char>, kind: PickerKind) {
+        let matches: Vec<usize> = match kind {
+            PickerKind::Buffers => self
+                .buffer_rows(shell)
+                .iter()
+                .enumerate()
+                .filter(|(_, r)| r.matches_filter)
+                .map(|(i, _)| i)
+                .collect(),
+            PickerKind::Files => self
+                .file_rows(shell)
+                .iter()
+                .enumerate()
+                .filter(|(_, r)| r.matches_filter)
+                .map(|(i, _)| i)
+                .collect(),
+        };
+        match key {
+            "escape" => {
+                self.query.clear();
+                self.selected = 0;
+                self.go_home();
+            }
+            "down" => self.selected = (self.selected + 1).min(matches.len().saturating_sub(1)),
+            "up" => self.selected = self.selected.saturating_sub(1),
+            "backspace" => {
+                self.query.pop();
+                self.selected = 0;
+            }
+            "enter" => {
+                let Some(&row) = matches.get(self.selected) else {
+                    "nothing matches".clone_into(&mut self.status);
+                    return;
+                };
+                self.query.clear();
+                self.selected = 0;
+                match kind {
+                    PickerKind::Buffers => self.buffer_click(shell, row),
+                    PickerKind::Files => self.file_click(shell, row),
+                }
+            }
+            _ => {
+                if let Some(c) = text
+                    && !c.is_control()
+                {
+                    self.query.push(c);
+                    self.selected = 0;
+                }
+            }
+        }
+    }
+
+    /// Remember a file the way `config.org` will keep it: most recent
+    /// first, no duplicates, and not so many that the picker becomes a
+    /// second file list.
+    fn remember_recent_file(&mut self, path: &std::path::Path) {
+        const RECENT_MAX: usize = 20;
+        self.recent_files.retain(|p| p != path);
+        self.recent_files.insert(0, path.to_path_buf());
+        self.recent_files.truncate(RECENT_MAX);
     }
 
     /// What the open buffer is, for the shells to put where a modeline
@@ -11271,11 +11827,7 @@ impl ModalApp {
         // The pane lists the tree in walk order; the vault addresses
         // history nodes by insertion order. Once a history has forked
         // those differ, and the row carries the one to send.
-        let Some(index) = self
-            .undo_history_rows(shell)
-            .get(row_at)
-            .map(|r| r.index)
-        else {
+        let Some(index) = self.undo_history_rows(shell).get(row_at).map(|r| r.index) else {
             return;
         };
         if let Some(row) = self.rows_shared(shell).get(self.selected).cloned() {
@@ -12929,6 +13481,10 @@ impl ModalApp {
         if let Some(id) = &cfg.last_place {
             self.select_by_id(shell, id);
         }
+        // The files recent sessions were in come back with it: the
+        // picker's whole point is that the note you were in yesterday
+        // is the first thing it offers (Q1-B4).
+        self.recent_files.clone_from(&cfg.recent_files);
     }
 
     /// Write where this session was back to `config.org` — what the
@@ -12944,18 +13500,36 @@ impl ModalApp {
             .last_edited
             .clone()
             .or_else(|| self.selection_active.then(|| self.selected_row_id(shell))?);
-        let Some(place) = place else {
-            return;
-        };
         let path = shell.vault.root().join("config.org");
-        let source = std::fs::read_to_string(&path).unwrap_or_default();
-        match closure_config::set_config_key(&source, "last_place", &place) {
-            Ok(updated) => {
-                if let Err(e) = std::fs::write(&path, updated) {
+        let mut source = std::fs::read_to_string(&path).unwrap_or_default();
+        if let Some(place) = place {
+            match closure_config::set_config_key(&source, "last_place", &place) {
+                Ok(updated) => source = updated,
+                Err(e) => {
                     self.status = format!("could not remember where you were: {e}");
+                    return;
                 }
             }
-            Err(e) => self.status = format!("could not remember where you were: {e}"),
+        }
+        // The recent-files list is written even when the session ended
+        // with no selection: which files you were in is true regardless
+        // of where the cursor happened to rest (Q1-B4).
+        if !self.recent_files.is_empty() {
+            let files: Vec<String> = self
+                .recent_files
+                .iter()
+                .map(|p| p.display().to_string())
+                .collect();
+            match closure_config::set_config_key(&source, "recent_files", &files.join(", ")) {
+                Ok(updated) => source = updated,
+                Err(e) => {
+                    self.status = format!("could not remember which files you were in: {e}");
+                    return;
+                }
+            }
+        }
+        if let Err(e) = std::fs::write(&path, source) {
+            self.status = format!("could not remember where you were: {e}");
         }
     }
 
@@ -13259,42 +13833,61 @@ impl ModalApp {
             }
             "edit-body" => {
                 if let Some(row) = self.rows_shared(shell).get(self.selected).cloned() {
-                    // Whatever is in the buffer now belongs to the note
-                    // it was opened on: its cursor is remembered and
-                    // its text put aside, and neither is going in the
-                    // vault unasked.
-                    self.remember_body_cursor();
-                    self.stash_body();
-                    let resume = self.body_cursors.get(&row.id).copied();
-                    let restored = self.body_stash.remove(&row.id);
-                    let came_back = restored.is_some();
-                    self.last_edited = Some(row.id.clone());
-                    self.edit_target = Some(row.id);
-                    let vault_body = self.detail(shell).map(|d| d.body).unwrap_or_default();
-                    let (body, baseline) =
-                        restored.unwrap_or_else(|| (vault_body.clone(), vault_body));
-                    self.body_baseline = baseline;
-                    let len = body.len();
-                    self.load_body(body);
-                    // Opening a note you were just in used to start at
-                    // byte zero, so any edit deeper in it meant
-                    // navigating back down every time. A body can shrink
-                    // between visits, so the remembered offset is
-                    // clamped rather than trusted (I5).
-                    if let Some(at) = resume {
-                        self.body.set_cursor_byte(at.min(len));
+                    let place = self.current_place(shell);
+                    self.push_jump(place);
+                    self.open_body_by_id(shell, &row.id);
+                }
+            }
+            "buffer-list" => {
+                self.surface = ModalSurface::Buffers;
+                self.query.clear();
+                self.selected = 0;
+                "buffers — type to filter · RET opens · Esc back".clone_into(&mut self.status);
+            }
+            "recent-files" => {
+                self.surface = ModalSurface::Files;
+                self.query.clear();
+                self.selected = 0;
+                "files — type to filter · RET opens · Esc back".clone_into(&mut self.status);
+            }
+            "buffer-next" => self.cycle_buffer(shell, 1),
+            "buffer-prev" => self.cycle_buffer(shell, -1),
+            "buffer-alternate" => {
+                if let Some(target) = self.alternate_buffer() {
+                    self.open_buffer(shell, &target, true);
+                } else {
+                    "no other buffer to switch to".clone_into(&mut self.status);
+                }
+            }
+            "buffer-close" => self.close_current_buffer(shell, false),
+            "buffer-close-force" => self.close_current_buffer(shell, true),
+            "jump-back" => {
+                if self.jump_at == 0 && self.jumps.is_empty() {
+                    "no jumps yet".clone_into(&mut self.status);
+                } else {
+                    // Standing at the present, the present itself has to
+                    // go on the list first, or there would be nothing to
+                    // come forward to.
+                    if self.jump_at == self.jumps.len() {
+                        let here = self.current_place(shell);
+                        self.jumps.push(here);
                     }
-                    self.surface = ModalSurface::EditBody;
-                    self.status = if came_back {
-                        // Said out loud, because the buffer disagrees
-                        // with the file and the user did not do it just
-                        // now.
-                        "unsaved edits restored — :w saves, :q! discards".to_owned()
-                    } else if self.modal_editing() {
-                        "edit body — NORMAL, i to insert, C-Enter save, :q closes".to_owned()
+                    if self.jump_at == 0 {
+                        "no older jump".clone_into(&mut self.status);
                     } else {
-                        "edit body — C-Enter save, Esc closes".to_owned()
-                    };
+                        self.jump_at -= 1;
+                        let place = self.jumps[self.jump_at].clone();
+                        self.goto_place(shell, &place);
+                    }
+                }
+            }
+            "jump-forward" => {
+                if self.jump_at + 1 < self.jumps.len() {
+                    self.jump_at += 1;
+                    let place = self.jumps[self.jump_at].clone();
+                    self.goto_place(shell, &place);
+                } else {
+                    "no newer jump".clone_into(&mut self.status);
                 }
             }
             "cycle-mode" => {

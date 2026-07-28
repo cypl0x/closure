@@ -130,6 +130,8 @@ pub const fn opening_route(surface: crate::ModalSurface) -> &'static [&'static s
         S::Cron => &["cron"],
         S::Llm => &["llm"],
         S::EditFile => &["toggle-view"],
+        S::Buffers => &["buffer-list"],
+        S::Files => &["recent-files"],
     }
 }
 
@@ -167,5 +169,7 @@ pub const ALL_SURFACES: &[crate::ModalSurface] = {
         S::Cron,
         S::Llm,
         S::EditFile,
+        S::Buffers,
+        S::Files,
     ]
 };

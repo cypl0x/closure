@@ -1093,6 +1093,10 @@ pub const fn accepts_paste(surface: ModalSurface, insert: bool) -> bool {
         | ModalSurface::BodySearch
         | ModalSurface::Ex
         | ModalSurface::Sync
+        // The two Q1 pickers are filter fields like Search: a pasted
+        // path or buffer name is text to filter with, not chords.
+        | ModalSurface::Buffers
+        | ModalSurface::Files
         | ModalSurface::Llm => true,
         ModalSurface::EditBody | ModalSurface::EditBlock | ModalSurface::EditFile => insert,
         ModalSurface::Browse
@@ -1700,6 +1704,42 @@ impl GpuiView {
         self.app.surface()
     }
 
+    /// How many buffers this session has open (Q1).
+    #[must_use]
+    pub fn buffer_row_count(&self) -> usize {
+        self.app.buffer_rows(&self.shell).len()
+    }
+
+    /// How many files the picker is offering (Q1).
+    #[must_use]
+    pub fn file_row_count(&self) -> usize {
+        self.app.file_rows(&self.shell).len()
+    }
+
+    /// The name of the buffer on screen, as the tab strip shows it.
+    #[must_use]
+    pub fn current_buffer_name(&self) -> Option<String> {
+        self.app
+            .buffer_rows(&self.shell)
+            .into_iter()
+            .find(|r| r.current)
+            .map(|r| r.name)
+    }
+
+    /// Whether the tab strip is painted this frame — it earns its row
+    /// only once a second buffer exists.
+    #[must_use]
+    pub fn tab_strip_visible(&self) -> bool {
+        self.buffer_row_count() >= 2
+    }
+
+    /// Switch to the buffer on row `i` of the list — the click path,
+    /// reachable by a test without a pointer.
+    pub fn buffer_click(&mut self, i: usize, cx: &mut Context<Self>) {
+        self.app.buffer_click(&self.shell, i);
+        cx.notify();
+    }
+
     /// Put the window in `view` — the config's answer at startup, and
     /// what a test sets to look at the other shape.
     pub fn set_view(&mut self, view: closure_shell_core::ViewMode) {
@@ -1985,8 +2025,11 @@ impl GpuiView {
         // plain Enter means "accept", and org's table chords are the
         // arrows and TAB with shift on them (`M-S-<right>` inserts a
         // column where `M-<right>` moves one).
-        let key = if m.shift && matches!(key.as_str(), "enter" | "tab" | "left" | "right" | "up" | "down")
-        {
+        let key = if m.shift
+            && matches!(
+                key.as_str(),
+                "enter" | "tab" | "left" | "right" | "up" | "down"
+            ) {
             format!("shift-{key}")
         } else {
             key
@@ -2472,6 +2515,16 @@ impl GpuiView {
                 .app
                 .buffer_name(&self.shell)
                 .map_or_else(|| "✎ body".to_owned(), |name| format!("✎ {name}")),
+            ModalSurface::Buffers => format!(
+                "buffers — {}▏ · {} open · RET opens · Esc back",
+                self.app.query(),
+                self.app.buffer_rows(&self.shell).len()
+            ),
+            ModalSurface::Files => format!(
+                "files — {}▏ · {} in this vault · RET opens · Esc back",
+                self.app.query(),
+                self.app.file_rows(&self.shell).len()
+            ),
             ModalSurface::Backlinks => "backlinks — Esc back".to_owned(),
             ModalSurface::Agenda => "agenda — RET jump, Esc back".to_owned(),
             ModalSurface::Blocks => "src blocks — RET jump, Esc back".to_owned(),
@@ -2923,6 +2976,8 @@ impl GpuiView {
                     cx,
                 ),
             ),
+            ModalSurface::Buffers => pane.children(self.buffer_pane(co, cx)),
+            ModalSurface::Files => pane.children(self.file_pane(co, cx)),
             ModalSurface::Sync => pane.child(self.sync_pane(co, cx)),
             ModalSurface::Llm => pane.child(self.llm_pane(co, cx)),
             ModalSurface::Graph => pane.child(self.graph_pane(co, cx)),
@@ -3592,6 +3647,129 @@ impl GpuiView {
                         .text_color(rgb(if i == ix { co.fg } else { co.muted }))
                         .child(item.clone())
                 })),
+        )
+    }
+
+    /// The open-buffer list (Q1-B1): every buffer this session has, the
+    /// current one first, unsaved ones marked, filtered as you type.
+    fn buffer_pane(&self, co: Colors, cx: &Context<Self>) -> Vec<gpui::Div> {
+        let rows: Vec<_> = self
+            .app
+            .buffer_rows(&self.shell)
+            .into_iter()
+            .enumerate()
+            .filter(|(_, r)| r.matches_filter)
+            .collect();
+        if rows.is_empty() {
+            return vec![
+                div()
+                    .text_color(rgb(co.muted))
+                    .child("no buffers open — open a note and it lands here"),
+            ];
+        }
+        rows.into_iter()
+            .enumerate()
+            .map(|(shown, (i, r))| {
+                let label = format!(
+                    "{} {}{}",
+                    if r.current { "●" } else { "○" },
+                    r.name,
+                    if r.dirty { "  [+]" } else { "" }
+                );
+                list_row(
+                    co,
+                    shown == self.app.selected(),
+                    label,
+                    cx.listener(move |this: &mut Self, _ev, _w, cx| {
+                        this.app.buffer_click(&this.shell, i);
+                        cx.notify();
+                    }),
+                )
+            })
+            .collect()
+    }
+
+    /// The file picker (Q1-B4): every file in the vault, the ones recent
+    /// sessions were in first.
+    fn file_pane(&self, co: Colors, cx: &Context<Self>) -> Vec<gpui::Div> {
+        let rows: Vec<_> = self
+            .app
+            .file_rows(&self.shell)
+            .into_iter()
+            .enumerate()
+            .filter(|(_, r)| r.matches_filter)
+            .collect();
+        if rows.is_empty() {
+            return vec![
+                div()
+                    .text_color(rgb(co.muted))
+                    .child("no file matches that"),
+            ];
+        }
+        rows.into_iter()
+            .enumerate()
+            .map(|(shown, (i, r))| {
+                let label = if r.recent {
+                    format!("★ {}", r.name)
+                } else {
+                    format!("  {}", r.name)
+                };
+                list_row(
+                    co,
+                    shown == self.app.selected(),
+                    label,
+                    cx.listener(move |this: &mut Self, _ev, _w, cx| {
+                        this.app.file_click(&this.shell, i);
+                        cx.notify();
+                    }),
+                )
+            })
+            .collect()
+    }
+
+    /// The tab strip (Q1-B5): the open buffers across the top, click to
+    /// switch. Hidden when there is at most one — a strip with a single
+    /// tab in it is furniture, not information.
+    fn tab_strip(&self, co: Colors, cx: &Context<Self>) -> Option<gpui::Stateful<gpui::Div>> {
+        if !self.tab_strip_visible() {
+            return None;
+        }
+        let rows = self.app.buffer_rows(&self.shell);
+        let tabs: Vec<gpui::Div> = rows
+            .into_iter()
+            .enumerate()
+            .map(|(i, r)| {
+                div()
+                    .px_2()
+                    .py_1()
+                    .rounded_sm()
+                    .cursor_pointer()
+                    .text_size(px(12.0))
+                    .whitespace_nowrap()
+                    .bg(rgb(if r.current { co.selection } else { co.bg }))
+                    .text_color(rgb(if r.current { co.fg } else { co.muted }))
+                    .hover(move |s| s.bg(rgb(co.hover)))
+                    .on_mouse_down(
+                        MouseButton::Left,
+                        cx.listener(move |this: &mut Self, _ev, _w, cx| {
+                            this.app.buffer_click(&this.shell, i);
+                            cx.notify();
+                        }),
+                    )
+                    .child(format!("{}{}", r.name, if r.dirty { " +" } else { "" }))
+            })
+            .collect();
+        Some(
+            div()
+                .id("tab-strip")
+                .flex()
+                .flex_row()
+                .gap_1()
+                .px_2()
+                .py_1()
+                .overflow_x_hidden()
+                .bg(rgb(co.panel))
+                .children(tabs),
         )
     }
 
@@ -6301,6 +6479,9 @@ impl Render for GpuiView {
             .font(font)
             .child(header)
             .child(context)
+            // The tab strip (Q1-B5) appears the moment a second buffer
+            // exists and not before: one tab is furniture.
+            .children(self.tab_strip(co, cx))
             .child(body)
             .child(status);
         if show_keys {

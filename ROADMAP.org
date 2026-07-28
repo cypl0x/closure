@@ -13,6 +13,42 @@ file is the fine-grained, capability-level queue between them. Blocked
 on a design decision? Record it under [[*Decisions][Decisions]], pick the most
 reversible option, keep moving.
 
+* DONE DAILY-Q1 — buffers, jumps and recents [5/5]
+From [[file:goal-gpui-daily.md][goal-gpui-daily.md]], the first queue: the shell held exactly one
+buffer, so opening a second note put the first somewhere you could not
+see and could not get back to.
+** DONE B1 the open-buffer list [1/1]
+=BufferRef= (a headline body, or a whole file) + =buffer_rows= — most
+recently visited first, unsaved ones marked, current one flagged. The
+verbs are =buffer-next= / =buffer-prev= (open order, wrapping, like
+=:bnext=), =buffer-list= (a picker that filters as you type),
+=buffer-close= and =buffer-close-force=. A dirty buffer takes the
+second, louder chord: one keystroke may not throw away typed text.
+** DONE B2 the alternate buffer [1/1]
+=buffer-alternate= toggles with the one before, and says so when there
+is no other. Doom =SPC `=, vim =C-^=, Emacs =C-c ,=.
+** DONE B3 the jumplist [1/1]
+Every non-local move (opening a body, a picker, a file) records the
+place it left; =jump-back= / =jump-forward= (=C-o= / =C-i=) walk it with
+vim's rule that a fresh jump drops what was ahead. A jump point names
+the buffer and the row, never a byte offset (I7), and the cursor is a
+hint clamped on arrival.
+** DONE B4 the file picker and recent files [1/1]
+There was no way to open a file whose headings you could not remember.
+=recent-files= lists the whole vault with the files recent sessions were
+in first; the list is persisted to =config.org= as vault-relative paths,
+beside =last_place=, because durable view state belongs in the plain
+file the user can read.
+** DONE B5 the tab strip [1/1]
+The gpui window paints the open buffers above the panes the moment a
+second one exists — click to switch, =+= for unsaved. One tab is
+furniture, so the strip hides itself.
+DECISION (2026-07-28): the terminal shell gets the same verbs over the
+only thing it opens (files), so no advertised chord is dead in it (I4).
+=SPC b b= / =SPC ,= / =SPC f f= / =SPC .= now mean what Doom means by
+them (switch buffer, find file); =headline-list= moved to Doom's own
+=SPC s i=.
+
 * DONE VAULT-Q17 — the vault documents itself, and the body is an outline [6/6]
 User backlog in =~/vault/inbox.org=, 2026-07-28.
 ** DONE W1 completion in the view that has the buffer [1/1]
