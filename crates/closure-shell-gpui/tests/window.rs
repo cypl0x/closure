@@ -65,6 +65,25 @@ fn typing_into_the_body_editor_reaches_the_buffer(cx: &mut gpui::TestAppContext)
 }
 
 #[gpui::test]
+fn e_reaches_the_buffer_as_a_motion(cx: &mut gpui::TestAppContext) {
+    // Reported twice as "e is not working", in NORMAL and in VISUAL.
+    // The motion is tested at the buffer level and through the core's
+    // key path; this is the last seam between them and the keyboard.
+    let (_dir, window) = test_window(cx, "* Note\none two three\n");
+    window
+        .update(cx, |view, _w, cx| {
+            view.press("i", false, false, cx);
+            assert_eq!(view.surface(), ModalSurface::EditBody);
+            view.press("e", false, false, cx);
+            assert_eq!(view.body_cursor(), (0, 2), "NORMAL: end of `one`");
+            view.press("v", false, false, cx);
+            view.press("e", false, false, cx);
+            assert_eq!(view.body_cursor(), (0, 6), "VISUAL: end of `two`");
+        })
+        .expect("live");
+}
+
+#[gpui::test]
 fn an_uppercase_chord_survives_the_window_seam(cx: &mut gpui::TestAppContext) {
     // gpui lowercases letter keysyms, so `A` arrived as `a` and every
     // uppercase editor command was dead. This is that seam, in the
