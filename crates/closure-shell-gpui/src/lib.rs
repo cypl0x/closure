@@ -3195,12 +3195,19 @@ impl GpuiView {
         // an exact byte partition, and each one is painted through the
         // same path with its own column window.
         let wrap_cols = self.wrap.then(|| self.body_cols());
+        let hidden = self.app.body_hidden_lines();
         let mut line_start = 0usize;
         for (ln, spans) in self.highlighted(self.app.body_buffer()).iter().enumerate() {
             let line_len: usize = spans.iter().map(|(_, s)| s.len()).sum();
             // G5: only the wheel-scrolled window of lines is painted;
             // byte offsets still accumulate for the skipped lines.
             if !(scroll_start..scroll_start + view).contains(&ln) {
+                line_start += line_len + 1;
+                continue;
+            }
+            // Folded lines are painted by nobody: the kernel decides
+            // which ones, so every shell hides the same text.
+            if hidden.binary_search(&ln).is_ok() {
                 line_start += line_len + 1;
                 continue;
             }

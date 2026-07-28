@@ -3124,6 +3124,56 @@ fn tutorial_reference(mode: InputMode) -> String {
     )
 }
 
+/// The lines a fold at `at` would cover: `(first, last)`, where `first`
+/// stays visible and everything through `last` hides.
+///
+/// A `#+BEGIN_…` line folds through its `#+END_…`; a headline folds
+/// through the line before the next headline at its level or shallower.
+/// Standing *inside* a block folds the block, because the cursor is
+/// usually in the thing you want out of the way. Anything else folds
+/// nothing — better than guessing at a range.
+fn fold_range(lines: &[&str], at: usize) -> Option<(usize, usize)> {
+    /// The headline depth of a line, or 0 when it is not one.
+    fn level(line: &str) -> usize {
+        let rest = line.trim_start_matches('*');
+        let stars = line.len() - rest.len();
+        if stars > 0 && (rest.starts_with([' ', '\t']) || rest.is_empty()) {
+            stars
+        } else {
+            0
+        }
+    }
+    let line = lines.get(at)?;
+    let stars = level(line);
+    if stars > 0 {
+        // Through to the line before the next headline at this level or
+        // shallower — which is what a subtree is.
+        let end = lines
+            .iter()
+            .enumerate()
+            .skip(at + 1)
+            .find(|(_, l)| matches!(level(l), s if s > 0 && s <= stars))
+            .map_or(lines.len(), |(i, _)| i);
+        return (end > at + 1).then_some((at, end - 1));
+    }
+    // Inside or on a block: walk back to its `#+BEGIN_`, then forward
+    // to the matching `#+END_`.
+    let opens_at = (0..=at)
+        .rev()
+        .find(|i| closure_org::block_delimiter_of(lines[*i]).is_some())?;
+    let name = match closure_org::block_delimiter_of(lines[opens_at])? {
+        closure_org::BlockDelimiter::Begin { name, .. } => name,
+        closure_org::BlockDelimiter::End { .. } => return None,
+    };
+    let end = lines.iter().enumerate().skip(opens_at + 1).find(|(_, l)| {
+        matches!(
+            closure_org::block_delimiter_of(l),
+            Some(closure_org::BlockDelimiter::End { name: n }) if n.eq_ignore_ascii_case(name)
+        )
+    })?;
+    Some((opens_at, end.0))
+}
+
 /// One zoom step, as a ratio. Doom scales its font by an increment per
 /// press; a ratio is the same idea in a world with no font table.
 const ZOOM_STEP: f32 = 1.1;
@@ -8229,6 +8279,8 @@ pub struct ModalApp {
     surface: ModalSurface,
     selected: usize,
     query: String,
+    /// Folded body ranges as `(first visible line, last hidden line)`.
+    body_folds: Vec<(usize, usize)>,
     /// Whether the headline tree is pinned beside the full-window
     /// editor. The shells paint it; the flag lives here so every shell
     /// answers `toggle-tree` the same way (I7).
@@ -8433,6 +8485,7 @@ impl ModalApp {
             selected: 0,
             query: String::new(),
             tree_open: false,
+            body_folds: Vec::new(),
             capture_history: Vec::new(),
             capture_hist_at: None,
             capture_buf: LineInput::default(),
@@ -10814,7 +10867,14 @@ impl ModalApp {
                 _ => {}
             }
         }
+        // A fold is a range of lines; once the lines move, the range is
+        // a guess, and a fold that hides the wrong text is worse than
+        // no fold. Dropping them on any edit is honest and cheap.
+        let before = self.body.text().len();
         self.edit_body_key(shell, key, ctrl, alt, text);
+        if self.body.text().len() != before {
+            self.body_folds.clear();
+        }
         if self.body.mode() == EditorMode::Insert {
             self.sync_slash();
         } else {
@@ -11775,6 +11835,53 @@ impl ModalApp {
         self.surface = self.home_surface();
     }
 
+    /// Body lines hidden by a fold, in order.
+    ///
+    /// The fold lives on the line rather than on the document: a shell
+    /// paints every line except these, so the kernel decides once what
+    /// is hidden and every shell hides the same thing (I7).
+    #[must_use]
+    pub fn body_hidden_lines(&self) -> Vec<usize> {
+        let mut out: Vec<usize> = self
+            .body_folds
+            .iter()
+            .flat_map(|(start, end)| (*start + 1)..=*end)
+            .collect();
+        out.sort_unstable();
+        out.dedup();
+        out
+    }
+
+    /// Fold or unfold whatever the body cursor is in: a `#+BEGIN_…`
+    /// block, or a headline's subtree.
+    ///
+    /// A note with three source blocks is mostly code you are not
+    /// reading, and a file opened in the editor view is mostly
+    /// headlines you are not editing. Org folds both.
+    fn toggle_body_fold(&mut self) {
+        let (line, _) = self.body.cursor_line_col();
+        if let Some(i) = self
+            .body_folds
+            .iter()
+            .position(|(s, e)| *s == line || (*s..=*e).contains(&line))
+        {
+            let (start, _) = self.body_folds.remove(i);
+            self.status = format!("unfolded line {}", start + 1);
+            return;
+        }
+        let text = self.body.text().to_owned();
+        let lines: Vec<&str> = text.split('\n').collect();
+        match fold_range(&lines, line) {
+            Some((start, end)) => {
+                self.body_folds.push((start, end));
+                self.status = format!("folded {} line(s)", end - start);
+            }
+            None => {
+                "nothing to fold here — a block or a headline folds".clone_into(&mut self.status);
+            }
+        }
+    }
+
     /// Paste back the peers this vault has paired with before.
     ///
     /// Pairing that has to be redone every session is not pairing, so
@@ -11975,6 +12082,10 @@ impl ModalApp {
                 self.selected = 0;
                 self.surface = ModalSurface::Blocks;
             }
+            // In a buffer, folding is about the buffer: the block or
+            // the subtree the cursor is in, not the outline row behind
+            // it.
+            "toggle-fold" if self.surface.is_editor() => self.toggle_body_fold(),
             "toggle-fold" => {
                 if let Some(row) = self.rows_shared(shell).get(self.selected).cloned() {
                     let bid = closure_core::BlockId::from_existing(&row.id);
