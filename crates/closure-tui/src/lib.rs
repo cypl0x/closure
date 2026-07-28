@@ -274,6 +274,11 @@ pub struct App {
     /// Which planning field the minibuffer is filling, and for which
     /// headline.
     plan_target: Option<(String, String)>,
+    /// The vault's TODO keyword sequence, pushed in by the driver
+    /// (Q3-V5); the defaults until it says otherwise.
+    keywords: Vec<String>,
+    /// The vault's priority letters, most severe first.
+    priorities: Vec<char>,
 }
 
 impl App {
@@ -360,6 +365,8 @@ impl App {
             conflicts: Vec::new(),
             planning_request: None,
             plan_target: None,
+            keywords: vec!["TODO".to_owned(), "DONE".to_owned()],
+            priorities: vec!['A', 'B', 'C'],
             visited: Vec::new(),
             visit_seq: 0,
             jumps: Vec::new(),
@@ -1662,10 +1669,110 @@ impl App {
         }
     }
 
+    /// Tell the shell what the vault's TODO sequence and priority
+    /// letters are (Q3-V5) — the driver reads them from `config.org`.
+    pub fn set_cycles(&mut self, keywords: Vec<String>, priorities: Vec<char>) {
+        if !keywords.is_empty() {
+            self.keywords = keywords;
+        }
+        if !priorities.is_empty() {
+            self.priorities = priorities;
+        }
+    }
+
+    /// Step the cursor headline's keyword through the vault's sequence.
+    ///
+    /// Same ring as the gpui shell's: `none → first → … → last → none`,
+    /// so the two shells cycle identically over the same vault.
+    fn cycle_todo(&mut self, delta: isize) {
+        let current = self.current_headline().and_then(|r| r.todo.clone());
+        let at = current
+            .as_deref()
+            .and_then(|k| self.keywords.iter().position(|w| w == k));
+        let ring = isize::try_from(self.keywords.len() + 1).unwrap_or(1);
+        let pos = match at {
+            Some(i) => isize::try_from(i).unwrap_or(0),
+            None if current.is_some() => -delta,
+            None => isize::try_from(self.keywords.len()).unwrap_or(0),
+        };
+        let next = self
+            .keywords
+            .get(usize::try_from((pos + delta).rem_euclid(ring)).unwrap_or(0))
+            .cloned();
+        if let Some(id) = self.current_headline_id() {
+            self.todo_request = Some((id, next));
+        }
+    }
+
+    /// Step the priority through the vault's letters, `none` included —
+    /// the cycle key's move, as opposed to [`Self::step_priority`].
+    fn cycle_priority(&mut self, delta: isize) {
+        let current = self.current_headline().and_then(|r| r.priority);
+        let at = current.and_then(|c| self.priorities.iter().position(|l| *l == c));
+        let ring = isize::try_from(self.priorities.len() + 1).unwrap_or(1);
+        let pos = match at {
+            Some(i) => isize::try_from(i).unwrap_or(0),
+            None if current.is_some() => -delta,
+            None => isize::try_from(self.priorities.len()).unwrap_or(0),
+        };
+        let next = self
+            .priorities
+            .get(usize::try_from((pos + delta).rem_euclid(ring)).unwrap_or(0))
+            .copied();
+        if let Some(id) = self.current_headline_id() {
+            self.priority_request = Some((id, next));
+        }
+    }
+
+    /// Move the priority one step of severity, stopping at the ends.
+    fn step_priority(&mut self, delta: isize) {
+        let current = self.current_headline().and_then(|r| r.priority);
+        let next = match current.and_then(|c| self.priorities.iter().position(|l| *l == c)) {
+            None if delta > 0 => self.priorities.first().copied(),
+            None => self.priorities.last().copied(),
+            Some(i) => {
+                let at = isize::try_from(i).unwrap_or(0) + delta;
+                let last = isize::try_from(self.priorities.len().saturating_sub(1)).unwrap_or(0);
+                self.priorities
+                    .get(usize::try_from(at.clamp(0, last)).unwrap_or(0))
+                    .copied()
+            }
+        };
+        if let Some(id) = self.current_headline_id() {
+            self.priority_request = Some((id, next));
+        }
+    }
+
+    /// Tick or untick the checkbox on the body editor's current line.
+    fn toggle_checkbox(&mut self) {
+        if self.mode != AppMode::EditBody {
+            "no buffer open — a checkbox lives in a body".clone_into(&mut self.status);
+            return;
+        }
+        let line = self.body.current_line().to_owned();
+        let Some(toggled) = closure_shell_core::toggle_checkbox_line(&line) else {
+            "no checkbox on this line".clone_into(&mut self.status);
+            return;
+        };
+        self.body.replace_current_line(&toggled);
+        let recounted = closure_shell_core::recount_cookies(self.body.text());
+        if recounted != self.body.text() {
+            let cursor = self.body.cursor_byte();
+            let mode = self.body.mode();
+            self.body.load_in(recounted, mode);
+            self.body
+                .set_cursor_byte(cursor.min(self.body.text().len()));
+        }
+    }
+
     fn apply_buffer_command(&mut self, cmd: &str) -> bool {
         match cmd {
             "schedule" => self.start_planning("SCHEDULED"),
             "deadline" => self.start_planning("DEADLINE"),
+            "todo-back" => self.cycle_todo(-1),
+            "priority-up" => self.step_priority(-1),
+            "priority-down" => self.step_priority(1),
+            "checkbox-toggle" => self.toggle_checkbox(),
             // Buffers and the jumplist (Q1). A "buffer" in the terminal
             // shell is a file it has been in — the same list the gpui
             // shell keeps, over the only thing this shell opens.
@@ -2398,27 +2505,8 @@ impl App {
         match cmd {
             // --- Headline edits. Each resolves the cursor headline and
             // parks a request; the driver performs the vault write.
-            "toggle-todo" => {
-                let next = match self.current_headline().and_then(|r| r.todo.as_deref()) {
-                    None => Some("TODO".to_owned()),
-                    Some("TODO") => Some("DONE".to_owned()),
-                    Some(_) => None,
-                };
-                if let Some(id) = self.current_headline_id() {
-                    self.todo_request = Some((id, next));
-                }
-            }
-            "cycle-priority" => {
-                let next = match self.current_headline().and_then(|r| r.priority) {
-                    None => Some('A'),
-                    Some('A') => Some('B'),
-                    Some('B') => Some('C'),
-                    Some(_) => None,
-                };
-                if let Some(id) = self.current_headline_id() {
-                    self.priority_request = Some((id, next));
-                }
-            }
+            "toggle-todo" => self.cycle_todo(1),
+            "cycle-priority" => self.cycle_priority(1),
             "edit-tags" => {
                 let tags = self
                     .current_headline()
@@ -2880,6 +2968,10 @@ fn sync_panes(app: &mut App, vault: &Vault) {
 /// titles, file sources, and the backlink rows.
 fn sync_app(app: &mut App, vault: &Vault) {
     app.set_paths(vault.paths());
+    // The cycles are the vault's, not the shell's (Q3-V5).
+    let cfg =
+        closure_config::Config::from_path(&vault.root().join("config.org")).unwrap_or_default();
+    app.set_cycles(cfg.todo_keywords, cfg.priority_levels);
     let mut headlines: Vec<HeadlineRecord> = Vec::new();
     for (path, doc) in vault.iter() {
         for h in doc.all_headlines() {

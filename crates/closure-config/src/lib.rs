@@ -18,6 +18,10 @@ use closure_org::{NodeKind, parse};
 use thiserror::Error;
 
 /// User-facing configuration.
+// The flags are independent switches over unrelated subsystems
+// (wrapping, journalling, tag inheritance, done-stamping); grouping
+// them into sub-structs would only add a path to type at every read.
+#[allow(clippy::struct_excessive_bools)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Config {
     /// Default vault directory, if the user pinned one.
@@ -106,6 +110,11 @@ pub struct Config {
     /// with the editor you have it open in. An id that no longer
     /// resolves is ignored, because a vault is edited elsewhere too.
     pub last_place: Option<String>,
+    /// Stamp `CLOSED: [ts]` when a headline reaches the last TODO
+    /// keyword, and take it off again when it leaves (org's
+    /// `org-log-done 'time`). Off by default: a timestamp written into
+    /// somebody's file is a change they did not ask for.
+    pub log_done: bool,
     /// Files the last sessions opened, most recent first — what the
     /// file picker offers before it offers the rest of the vault.
     ///
@@ -182,6 +191,7 @@ impl Default for Config {
             assets_dir: None,
             sync_dir: None,
             last_place: None,
+            log_done: false,
             recent_files: Vec::new(),
         }
     }
@@ -530,6 +540,7 @@ impl Config {
                         .collect();
                 }
                 "record_commands" => cfg.record_commands = parse_bool(key, value)?,
+                "log_done" => cfg.log_done = parse_bool(key, value)?,
                 "last_place" => {
                     cfg.last_place = (!value.trim().is_empty()).then(|| value.trim().to_owned());
                 }

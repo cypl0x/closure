@@ -95,6 +95,10 @@ const DOOM_KEYMAP: &[(&str, &str)] = &[
     // mode's spelling.
     ("g S", "schedule"),
     ("g D", "deadline"),
+    ("T", "todo-back"),
+    ("] p", "priority-down"),
+    ("[ p", "priority-up"),
+    ("g X", "checkbox-toggle"),
     // The leader. Doom's identity is `SPC` plus a mnemonic tree, and a
     // Doom user's hands know it better than any of the single letters
     // above: `SPC f s` saves, `SPC :` is M-x, `SPC q q` quits, and
@@ -116,6 +120,10 @@ const DOOM_KEYMAP: &[(&str, &str)] = &[
     ("SPC `", "buffer-alternate"),
     ("SPC m s", "schedule"),
     ("SPC m d", "deadline"),
+    ("SPC m t", "todo-back"),
+    ("SPC m p", "priority-down"),
+    ("SPC m P", "priority-up"),
+    ("SPC m x", "checkbox-toggle"),
     ("SPC q q", "quit"),
     ("SPC s s", "search-start"),
     ("SPC s p", "body-search"),
@@ -209,6 +217,10 @@ const EMACS_KEYMAP: &[(&str, &str)] = &[
     ("M-.", "jump-forward"),
     ("C-c C-s", "schedule"),
     ("C-c C-d", "deadline"),
+    ("C-c C-t", "todo-back"),
+    ("C-c <down>", "priority-down"),
+    ("C-c <up>", "priority-up"),
+    ("C-c C-x C-b", "checkbox-toggle"),
 ];
 
 /// Vim bindings: modal navigation keys.
@@ -286,6 +298,10 @@ const VIM_KEYMAP: &[(&str, &str)] = &[
     // mode's spelling.
     ("g S", "schedule"),
     ("g D", "deadline"),
+    ("T", "todo-back"),
+    ("] p", "priority-down"),
+    ("[ p", "priority-up"),
+    ("g X", "checkbox-toggle"),
     // The prefix the rest of the desktop uses. Listed last so each
     // mode's own chord stays the one which-key and the tutorial show.
     ("C-p", "palette"),
@@ -367,6 +383,10 @@ const HELIX_KEYMAP: &[(&str, &str)] = &[
     // mode's spelling.
     ("g S", "schedule"),
     ("g D", "deadline"),
+    ("T", "todo-back"),
+    ("] p", "priority-down"),
+    ("[ p", "priority-up"),
+    ("g X", "checkbox-toggle"),
     // The prefix the rest of the desktop uses. Listed last so each
     // mode's own chord stays the one which-key and the tutorial show.
     ("C-p", "palette"),
@@ -447,6 +467,10 @@ const NOTION_KEYMAP: &[(&str, &str)] = &[
     // mode's spelling.
     ("g S", "schedule"),
     ("g D", "deadline"),
+    ("T", "todo-back"),
+    ("] p", "priority-down"),
+    ("[ p", "priority-up"),
+    ("g X", "checkbox-toggle"),
     // The prefix the rest of the desktop uses. Listed last so each
     // mode's own chord stays the one which-key and the tutorial show.
     ("C-p", "palette"),

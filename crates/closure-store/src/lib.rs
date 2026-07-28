@@ -725,6 +725,59 @@ impl Vault {
         self.apply_to_block(id, &cmd)
     }
 
+    /// Make sure `path` declares `keywords` with a `#+TODO:` line, so
+    /// the keywords a vault is configured with are keywords the parser
+    /// — and Emacs — actually reads.
+    ///
+    /// Org keeps this in the file rather than in a config, and so do we:
+    /// a note written with `NEXT` is only a `NEXT` note in a file that
+    /// says what `NEXT` is. The line is written once, at the top, and
+    /// only when the file does not already declare every keyword; the
+    /// last keyword goes after the `|`, which is org's way of saying
+    /// "this one means finished".
+    ///
+    /// Returns whether the file was changed.
+    ///
+    /// # Errors
+    ///
+    /// Propagates the write/parse failures of [`Self::set_source`].
+    pub fn ensure_todo_keywords(
+        &mut self,
+        path: &Path,
+        keywords: &[String],
+    ) -> Result<bool, VaultError> {
+        if keywords.is_empty() {
+            return Ok(false);
+        }
+        let Some(source) = self.documents.get(path).map(closure_core::Document::source) else {
+            return Ok(false);
+        };
+        let declared = closure_org::declared_todo_keywords(&source);
+        if keywords.iter().all(|k| declared.contains(k)) {
+            return Ok(false);
+        }
+        let (unfinished, finished) = keywords.split_at(keywords.len() - 1);
+        let line = format!(
+            "#+TODO: {} | {}\n",
+            unfinished.join(" "),
+            finished.join(" ")
+        );
+        // Replace an existing declaration rather than stacking a second
+        // one: two `#+TODO:` lines are two sequences in org, which is
+        // not what a config change means.
+        let mut rest = String::with_capacity(source.len());
+        for l in source.lines() {
+            let t = l.trim_start();
+            if t.len() >= 7 && t[..7].eq_ignore_ascii_case("#+TODO:") {
+                continue;
+            }
+            rest.push_str(l);
+            rest.push('\n');
+        }
+        self.set_source(path, &format!("{line}{rest}"))?;
+        Ok(true)
+    }
+
     /// Set (or clear) the headline's planning timestamps through the
     /// kernel [`SetPlanning`] command (undoable, I3) and persist.
     ///

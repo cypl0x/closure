@@ -1271,6 +1271,138 @@ struct DatePickSession {
     typed: String,
 }
 
+// ---- Q3-V5: checkboxes and their cookies ---------------------------
+
+/// Tick or untick a checkbox list line (`- [ ] x` ↔ `- [X] x`), or
+/// `None` when the line has no checkbox on it.
+///
+/// Org writes `[X]`; `[x]` and the half-state `[-]` are read as ticked
+/// too, because other tools write those and a file is not ours alone.
+#[must_use]
+pub fn toggle_checkbox_line(line: &str) -> Option<String> {
+    let indent = line.len() - line.trim_start().len();
+    let rest = &line[indent..];
+    let bullet = ["- ", "+ ", "* "]
+        .into_iter()
+        .find(|b| rest.starts_with(b))?;
+    let after_bullet = &rest[bullet.len()..];
+    let box_at = line.len() - after_bullet.len();
+    let checked = if after_bullet.starts_with("[ ]") {
+        "[X]"
+    } else if after_bullet.starts_with("[X]")
+        || after_bullet.starts_with("[x]")
+        || after_bullet.starts_with("[-]")
+    {
+        "[ ]"
+    } else {
+        return None;
+    };
+    let mut out = line.to_owned();
+    out.replace_range(box_at..box_at + 3, checked);
+    Some(out)
+}
+
+/// Whether a list line carries a ticked checkbox.
+#[must_use]
+fn checkbox_state(line: &str) -> Option<bool> {
+    let rest = line.trim_start();
+    let after = ["- ", "+ ", "* "]
+        .into_iter()
+        .find_map(|b| rest.strip_prefix(b))?;
+    if after.starts_with("[ ]") {
+        Some(false)
+    } else if after.starts_with("[X]") || after.starts_with("[x]") {
+        Some(true)
+    } else {
+        None
+    }
+}
+
+/// `(ticked, total)` over the checkbox lines of `text`.
+#[must_use]
+pub fn checkbox_counts(text: &str) -> (usize, usize) {
+    let mut done = 0;
+    let mut total = 0;
+    for line in text.lines() {
+        if let Some(state) = checkbox_state(line) {
+            total += 1;
+            done += usize::from(state);
+        }
+    }
+    (done, total)
+}
+
+/// Rewrite the `[n/m]` and `[p%]` cookies on any line that owns
+/// checkboxes beneath it, leaving everything else byte-identical.
+///
+/// A cookie belongs to the lines indented under it — org's rule — so a
+/// list with sub-lists counts each level against its own cookie.
+#[must_use]
+pub fn recount_cookies(text: &str) -> String {
+    let lines: Vec<&str> = text.lines().collect();
+    let mut out: Vec<String> = Vec::with_capacity(lines.len());
+    for (i, line) in lines.iter().enumerate() {
+        let Some(cookie) = cookie_span(line) else {
+            out.push((*line).to_owned());
+            continue;
+        };
+        let indent = line.len() - line.trim_start().len();
+        let mut done = 0;
+        let mut total = 0;
+        for below in &lines[i + 1..] {
+            let below_indent = below.len() - below.trim_start().len();
+            if !below.trim().is_empty() && below_indent <= indent {
+                break;
+            }
+            if let Some(state) = checkbox_state(below) {
+                total += 1;
+                done += usize::from(state);
+            }
+        }
+        if total == 0 {
+            out.push((*line).to_owned());
+            continue;
+        }
+        let replacement = if line[cookie.clone()].ends_with("%]") {
+            format!("[{}%]", done * 100 / total)
+        } else {
+            format!("[{done}/{total}]")
+        };
+        let mut rewritten = (*line).to_owned();
+        rewritten.replace_range(cookie, &replacement);
+        out.push(rewritten);
+    }
+    let mut joined = out.join("\n");
+    if text.ends_with('\n') {
+        joined.push('\n');
+    }
+    joined
+}
+
+/// The byte range of a `[n/m]`, `[/]`, `[p%]` or `[%]` cookie in
+/// `line`, if it has one.
+#[must_use]
+pub fn cookie_span(line: &str) -> Option<std::ops::Range<usize>> {
+    let mut from = 0;
+    while let Some(open) = line[from..].find('[') {
+        let start = from + open;
+        let close = line[start..].find(']')?;
+        let end = start + close + 1;
+        let inner = &line[start + 1..end - 1];
+        let is_cookie = inner
+            .strip_suffix('%')
+            .is_some_and(|n| n.chars().all(|c| c.is_ascii_digit()))
+            || inner.split_once('/').is_some_and(|(a, b)| {
+                a.chars().all(|c| c.is_ascii_digit()) && b.chars().all(|c| c.is_ascii_digit())
+            });
+        if is_cookie {
+            return Some(start..end);
+        }
+        from = end;
+    }
+    None
+}
+
 /// A vault file's path as the user names it: relative to the vault
 /// root, or unchanged when it lies outside (which nothing in a loaded
 /// vault does, but a path is data and this is not the place to panic —
@@ -6576,6 +6708,16 @@ impl BodyEditor {
         &self.buf[self.line_start(self.cursor)..self.line_end(self.cursor)]
     }
 
+    /// Replace the line the cursor is on, keeping the cursor's column
+    /// where the new line is long enough to hold it (Q3-V5).
+    pub fn replace_current_line(&mut self, text: &str) {
+        let start = self.line_start(self.cursor);
+        let end = self.line_end(self.cursor);
+        let column = self.cursor - start;
+        self.buf.replace_range(start..end, text);
+        self.cursor = start + column.min(text.len());
+    }
+
     /// Byte offset where the word containing the cursor starts (the
     /// dabbrev prefix start; word chars are alphanumeric plus
     /// `_`/`#`/`+`/`:` so org keywords like `#+BEGIN_SRC` complete).
@@ -11267,6 +11409,209 @@ impl ModalApp {
         }
     }
 
+    // ---- Q3-V5: cycling keywords, priorities and checkboxes --------
+
+    /// The vault's typed config, or the defaults when it has none.
+    ///
+    /// Read per command rather than cached: these are keystroke-rate
+    /// verbs, not frame-rate ones, and a config the user has just
+    /// edited in the other pane should take effect on the next press.
+    fn vault_config(shell: &Shell) -> closure_config::Config {
+        closure_config::Config::from_path(&shell.vault.root().join("config.org"))
+            .unwrap_or_default()
+    }
+
+    /// Step the selected headline's TODO keyword through the vault's
+    /// own list — forwards (`toggle-todo`) or backwards (`todo-back`).
+    ///
+    /// The cycle is `none → first → … → last → none`, so "no keyword"
+    /// is a position in it, the way org's is. A keyword the vault does
+    /// not know (a note from another org setup) is not a position, so
+    /// stepping from it starts the list over rather than guessing.
+    fn cycle_todo(&mut self, shell: &mut Shell, delta: isize) {
+        let Some(row) = self.rows_shared(shell).get(self.selected).cloned() else {
+            return;
+        };
+        let cfg = Self::vault_config(shell);
+        let keywords = cfg.todo_keywords.clone();
+        if keywords.is_empty() {
+            "no TODO keywords configured".clone_into(&mut self.status);
+            return;
+        }
+        let current = self.detail(shell).and_then(|d| d.todo);
+        let at = current
+            .as_deref()
+            .and_then(|k| keywords.iter().position(|w| w == k));
+        // `none` sits at index `len`, so the ring is one longer than the
+        // keyword list.
+        let ring = isize::try_from(keywords.len() + 1).unwrap_or(1);
+        let pos = match at {
+            Some(i) => isize::try_from(i).unwrap_or(0),
+            // An unknown keyword steps to the first one either way.
+            None if current.is_some() => -delta,
+            None => isize::try_from(keywords.len()).unwrap_or(0),
+        };
+        let next_index = usize::try_from((pos + delta).rem_euclid(ring)).unwrap_or(0);
+        let next = keywords.get(next_index).cloned();
+        let bid = closure_core::BlockId::from_existing(&row.id);
+        // A keyword only *is* a keyword in a file that declares it, so
+        // the file learns the vault's sequence before it is written
+        // with one — otherwise `NEXT` goes in and comes back as the
+        // first word of the title.
+        if let Some(path) = shell.vault.find_by_id(&bid).map(|(_, p)| p.to_path_buf())
+            && let Err(e) = shell.vault.ensure_todo_keywords(&path, &keywords)
+        {
+            self.status = format!("could not declare the keywords: {e}");
+            return;
+        }
+        if shell.set_todo(&bid, next.as_deref()).is_err() {
+            "could not change the keyword".clone_into(&mut self.status);
+            return;
+        }
+        self.log_done_stamp(shell, &row.id, next.as_deref(), &keywords, cfg.log_done);
+        self.invalidate_rows();
+        self.status = next.map_or_else(
+            || format!("cleared the keyword on {}", row.title),
+            |k| format!("{k}: {}", row.title),
+        );
+    }
+
+    /// Stamp (or unstamp) `CLOSED:` when a headline reaches or leaves
+    /// the last keyword — org's `org-log-done 'time`, off unless the
+    /// vault asks for it.
+    ///
+    /// "Done" is the *last* configured keyword, which is what a keyword
+    /// list means: the states run left to right and the rightmost is
+    /// the finished one.
+    fn log_done_stamp(
+        &mut self,
+        shell: &mut Shell,
+        id: &str,
+        keyword: Option<&str>,
+        keywords: &[String],
+        enabled: bool,
+    ) {
+        if !enabled {
+            return;
+        }
+        let done = keywords.last().map(String::as_str);
+        let is_done = keyword.is_some() && keyword == done;
+        let bid = closure_core::BlockId::from_existing(id);
+        let Some((scheduled, deadline, closed)) = shell.vault.find_by_id(&bid).map(|(h, _)| {
+            (
+                h.scheduled().map(ToOwned::to_owned),
+                h.deadline().map(ToOwned::to_owned),
+                h.closed().map(ToOwned::to_owned),
+            )
+        }) else {
+            return;
+        };
+        if is_done == closed.is_some() {
+            return;
+        }
+        let stamp = is_done.then(|| {
+            let (y, m, d) = parse_ymd(&self.today).unwrap_or((1970, 1, 1));
+            // A CLOSED stamp is inactive: it is a record of when
+            // something happened, not something to put in the agenda.
+            format!("[{}]", org_stamp(y, m, d, "").trim_matches(['<', '>']))
+        });
+        if let Err(e) = shell.vault.set_planning(
+            &bid,
+            scheduled.as_deref(),
+            deadline.as_deref(),
+            stamp.as_deref(),
+        ) {
+            self.status = format!("could not stamp CLOSED: {e}");
+        }
+    }
+
+    /// Step the priority cookie through the vault's own list.
+    ///
+    /// `delta` is a step in the ring (`none → A → B → … → none`), the
+    /// cycle key's move.
+    fn cycle_priority(&mut self, shell: &mut Shell, delta: isize) {
+        let Some(row) = self.rows_shared(shell).get(self.selected).cloned() else {
+            return;
+        };
+        let levels = Self::vault_config(shell).priority_levels;
+        if levels.is_empty() {
+            "no priorities configured".clone_into(&mut self.status);
+            return;
+        }
+        let current = self.detail(shell).and_then(|d| d.priority);
+        let at = current.and_then(|c| levels.iter().position(|l| *l == c));
+        let ring = isize::try_from(levels.len() + 1).unwrap_or(1);
+        let pos = match at {
+            Some(i) => isize::try_from(i).unwrap_or(0),
+            None if current.is_some() => -delta,
+            None => isize::try_from(levels.len()).unwrap_or(0),
+        };
+        let next = levels
+            .get(usize::try_from((pos + delta).rem_euclid(ring)).unwrap_or(0))
+            .copied();
+        let bid = closure_core::BlockId::from_existing(&row.id);
+        let _ = shell.set_priority(&bid, next);
+        self.invalidate_rows();
+    }
+
+    /// Move the priority by one step of *severity* and stop at the ends
+    /// — `priority-up` / `priority-down`.
+    ///
+    /// Different from the cycle on purpose: raising the top priority
+    /// should not silently clear it, which is what wrapping would do.
+    fn step_priority(&mut self, shell: &mut Shell, delta: isize) {
+        let Some(row) = self.rows_shared(shell).get(self.selected).cloned() else {
+            return;
+        };
+        let levels = Self::vault_config(shell).priority_levels;
+        if levels.is_empty() {
+            "no priorities configured".clone_into(&mut self.status);
+            return;
+        }
+        let current = self.detail(shell).and_then(|d| d.priority);
+        let next = match current.and_then(|c| levels.iter().position(|l| *l == c)) {
+            // Nothing set: a step down starts at the top, a step up at
+            // the bottom — either way the first press means something.
+            None if delta > 0 => levels.first().copied(),
+            None => levels.last().copied(),
+            Some(i) => {
+                let at = isize::try_from(i).unwrap_or(0) + delta;
+                let last = isize::try_from(levels.len().saturating_sub(1)).unwrap_or(0);
+                levels
+                    .get(usize::try_from(at.clamp(0, last)).unwrap_or(0))
+                    .copied()
+            }
+        };
+        let bid = closure_core::BlockId::from_existing(&row.id);
+        let _ = shell.set_priority(&bid, next);
+        self.invalidate_rows();
+    }
+
+    /// Tick or untick the checkbox on the body editor's current line,
+    /// and recount every `[/]` / `[%]` cookie the buffer has.
+    ///
+    /// Buffer-local: the vault sees it when the buffer is written, like
+    /// every other edit made in the editor.
+    fn toggle_checkbox(&mut self) {
+        if !self.surface.is_editor() {
+            "no buffer open — a checkbox lives in a body".clone_into(&mut self.status);
+            return;
+        }
+        let line = self.body.current_line().to_owned();
+        let Some(toggled) = toggle_checkbox_line(&line) else {
+            "no checkbox on this line".clone_into(&mut self.status);
+            return;
+        };
+        self.body.replace_current_line(&toggled);
+        let recounted = recount_cookies(self.body.text());
+        if recounted != self.body.text() {
+            let cursor = self.body.cursor_byte();
+            self.body.load_in(recounted, self.body.mode());
+            self.body
+                .set_cursor_byte(cursor.min(self.body.text().len()));
+        }
+    }
+
     // ---- Q3-V4: the date picker ------------------------------------
 
     /// Tell the core what day it is (`YYYY-MM-DD`).
@@ -13332,6 +13677,44 @@ impl ModalApp {
     /// What `:w` needs and what committing is built out of: the write
     /// and the leaving are two different decisions, and a plain `:w`
     /// only ever meant the first one.
+    /// Bring a headline's `[n/m]` / `[p%]` cookie up to date with the
+    /// checkboxes in its body, if it has one.
+    ///
+    /// Renaming is the only way to change a title, so this goes through
+    /// the same kernel command every rename does (I8) — and only when
+    /// the number actually moved, so a save never costs an edit the
+    /// user cannot see.
+    fn recount_headline_cookie(&mut self, shell: &mut Shell, id: &str) {
+        let bid = closure_core::BlockId::from_existing(id);
+        let Some((title, body)) = shell
+            .vault
+            .find_by_id(&bid)
+            .map(|(h, _)| (h.title().to_owned(), h.body_text().to_owned()))
+        else {
+            return;
+        };
+        let Some(span) = cookie_span(&title) else {
+            return;
+        };
+        let (done, total) = checkbox_counts(&body);
+        if total == 0 {
+            return;
+        }
+        let replacement = if title[span.clone()].ends_with("%]") {
+            format!("[{}%]", done * 100 / total)
+        } else {
+            format!("[{done}/{total}]")
+        };
+        if title[span.clone()] == replacement {
+            return;
+        }
+        let mut updated = title;
+        updated.replace_range(span, &replacement);
+        if shell.vault.rename_headline(&bid, &updated).is_ok() {
+            self.invalidate_rows();
+        }
+    }
+
     fn write_body(&mut self, shell: &mut Shell) {
         let Some(id) = self.edit_target.clone() else {
             return;
@@ -13356,6 +13739,10 @@ impl ModalApp {
         };
         match written {
             Ok(()) => {
+                // A headline that carries a `[/]` cookie is counting the
+                // checkboxes in its body, so saving the body is when the
+                // count changes (Q3-V5).
+                self.recount_headline_cookie(shell, &id);
                 "body saved".clone_into(&mut self.status);
                 // Saved *is* the new baseline: `body_dirty` compares
                 // against what the vault holds, and after a write that
@@ -14158,29 +14545,12 @@ impl ModalApp {
                         .min(self.rows_shared(shell).len().saturating_sub(1));
                 }
             }
-            "toggle-todo" => {
-                if let Some(row) = self.rows_shared(shell).get(self.selected).cloned() {
-                    let next = match self.detail(shell).and_then(|d| d.todo) {
-                        None => Some("TODO"),
-                        Some(k) if k == "TODO" => Some("DONE"),
-                        Some(_) => None,
-                    };
-                    let bid = closure_core::BlockId::from_existing(&row.id);
-                    let _ = shell.set_todo(&bid, next);
-                }
-            }
-            "cycle-priority" => {
-                if let Some(row) = self.rows_shared(shell).get(self.selected).cloned() {
-                    let next = match self.detail(shell).and_then(|d| d.priority) {
-                        None => Some('A'),
-                        Some('A') => Some('B'),
-                        Some('B') => Some('C'),
-                        Some(_) => None,
-                    };
-                    let bid = closure_core::BlockId::from_existing(&row.id);
-                    let _ = shell.set_priority(&bid, next);
-                }
-            }
+            "toggle-todo" => self.cycle_todo(shell, 1),
+            "todo-back" => self.cycle_todo(shell, -1),
+            "cycle-priority" => self.cycle_priority(shell, 1),
+            "priority-down" => self.step_priority(shell, 1),
+            "priority-up" => self.step_priority(shell, -1),
+            "checkbox-toggle" => self.toggle_checkbox(),
             // A refused level change (promoting a level-1 headline: no
             // level 0 exists) used to be dropped on the floor, so the
             // key did nothing and said nothing — which is exactly what

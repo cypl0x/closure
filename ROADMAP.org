@@ -34,7 +34,24 @@ kernel command, so it undoes like every other edit (I3).
 ** TODO V1 refile
 ** TODO V2 archive
 ** TODO V3 clock in/out/report
-** TODO V5 TODO/priority/checkbox cycling
+** DONE V5 TODO/priority/checkbox cycling [1/1]
+Both cycles were hardcoded — =TODO→DONE= and =A→B→C= — so a vault
+configured with =todo_keywords = TODO, NEXT, WAIT, DONE= had four
+keywords and two of them unreachable. They now walk the vault's own
+lists, in both directions (=toggle-todo= / =todo-back=, =cycle-priority=
+plus =priority-up= / =priority-down=, which stop at the ends rather than
+wrapping into nothing).
+It surfaced the same shape of bug as V4: the *parser* knew exactly two
+keywords, so =* NEXT Ship it= came back with =NEXT= as part of the
+title. Fixed at the source org uses — =#+TODO: TODO NEXT WAIT | DONE= in
+the file — and the shells write that line into a file before putting a
+keyword in it that the file does not declare. Emacs reads the same line,
+so a custom sequence stays portable.
+=checkbox-toggle= ticks the box on the cursor line (=[ ]= ↔ =[X]=) and
+recounts every =[/]= / =[%]= cookie, including the one on the headline
+when the body is saved. =log_done = true= stamps =CLOSED: [ts]= on
+reaching the last keyword and takes it off on leaving it (off by
+default: a timestamp nobody asked for is a change nobody asked for).
 ** TODO V6 tag picker
 
 * DONE DAILY-Q1 — buffers, jumps and recents [5/5]

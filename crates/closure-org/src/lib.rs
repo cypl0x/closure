@@ -79,6 +79,14 @@ impl OrgDoc {
         &self.roots
     }
 
+    /// The TODO keywords this file declares (`#+TODO:`), or the
+    /// defaults when it declares none — the same list the parser used
+    /// to classify its headings.
+    #[must_use]
+    pub fn todo_keywords(&self) -> Vec<String> {
+        declared_todo_keywords(&self.source)
+    }
+
     /// The document's full source text.
     #[must_use]
     pub fn source(&self) -> &str {
@@ -11922,6 +11930,10 @@ pub fn parse(src: &str) -> Result<OrgDoc, ParseError> {
     let mut preamble: Vec<Node> = Vec::new();
     let mut roots: Vec<Headline> = Vec::new();
     let mut paragraph: Option<Span> = None;
+    // A file says which keywords it uses (`#+TODO:`), the way org does;
+    // one pre-scan, because a heading may appear before we would
+    // otherwise have read the line that declares them.
+    let keywords = declared_todo_keywords(src);
 
     let lines: Vec<(&str, Span)> = {
         let mut v = Vec::new();
@@ -11941,7 +11953,7 @@ pub fn parse(src: &str) -> Result<OrgDoc, ParseError> {
     while i < lines.len() {
         let (line, span) = lines[i];
 
-        if let Some(head) = classify_heading(line, span) {
+        if let Some(head) = classify_heading(line, span, &keywords) {
             flush_paragraph(
                 &source,
                 &mut paragraph,
@@ -12567,6 +12579,46 @@ struct HeadInfo {
 
 const TODO_KEYWORDS: &[&str] = &["TODO", "DONE"];
 
+/// The TODO keywords a file declares with `#+TODO:` (or its
+/// `#+SEQ_TODO:` / `#+TYP_TODO:` spellings), or the defaults when it
+/// declares none.
+///
+/// Org's own mechanism, and the reason it is in the file rather than in
+/// config: Emacs reads the same line, so a vault with custom keywords
+/// stays a vault Emacs can open. The `|` that separates the unfinished
+/// states from the finished ones is a separator, not a keyword; the
+/// `(t)` fast-access hints org allows are stripped.
+#[must_use]
+pub fn declared_todo_keywords(src: &str) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for line in src.lines() {
+        let trimmed = line.trim_start();
+        let rest = ["#+TODO:", "#+SEQ_TODO:", "#+TYP_TODO:"]
+            .into_iter()
+            .find_map(|k| {
+                trimmed
+                    .get(..k.len())
+                    .filter(|head| head.eq_ignore_ascii_case(k))
+                    .map(|_| &trimmed[k.len()..])
+            });
+        let Some(rest) = rest else { continue };
+        for word in rest.split_whitespace() {
+            if word == "|" {
+                continue;
+            }
+            let word = word.split_once('(').map_or(word, |(head, _)| head);
+            if !word.is_empty() && !out.iter().any(|k| k == word) {
+                out.push(word.to_owned());
+            }
+        }
+    }
+    if out.is_empty() {
+        TODO_KEYWORDS.iter().map(|k| (*k).to_owned()).collect()
+    } else {
+        out
+    }
+}
+
 #[allow(clippy::ptr_arg)]
 fn target_nodes<'a>(
     roots: &'a mut Vec<Headline>,
@@ -12601,7 +12653,7 @@ fn flush_paragraph(source: &Arc<str>, paragraph: &mut Option<Span>, out: &mut Ve
 /// the end of the line (before the newline) is further split into:
 /// optional leading TODO keyword, optional `[#X]` priority, title, and
 /// optional trailing `:tag:tag:` list.
-fn classify_heading(line: &str, span: Span) -> Option<HeadInfo> {
+fn classify_heading(line: &str, span: Span, keywords: &[String]) -> Option<HeadInfo> {
     let body = line.strip_suffix('\n').unwrap_or(line);
     let stars = body.chars().take_while(|&c| c == '*').count();
     if stars == 0 {
@@ -12633,7 +12685,8 @@ fn classify_heading(line: &str, span: Span) -> Option<HeadInfo> {
     let working = &content[..(title_trim_end - content_start)];
 
     // Parse TODO keyword from left.
-    let (todo_span, after_todo_str, after_todo_pos) = strip_leading_todo(working, content_start);
+    let (todo_span, after_todo_str, after_todo_pos) =
+        strip_leading_todo(working, content_start, keywords);
 
     // Parse priority `[#X]` from left.
     let (priority_span, after_prio_str, after_prio_pos) =
@@ -12739,9 +12792,13 @@ const fn is_tag_char(c: char) -> bool {
 
 /// Try to strip a leading TODO keyword. Returns the matched span (if any)
 /// plus the remaining substring and its absolute start position.
-fn strip_leading_todo(working: &str, base: usize) -> (Option<Span>, &str, usize) {
-    for &kw in TODO_KEYWORDS {
-        if let Some(rest) = working.strip_prefix(kw)
+fn strip_leading_todo<'a>(
+    working: &'a str,
+    base: usize,
+    keywords: &[String],
+) -> (Option<Span>, &'a str, usize) {
+    for kw in keywords {
+        if let Some(rest) = working.strip_prefix(kw.as_str())
             && (rest.is_empty() || rest.starts_with([' ', '\t']))
         {
             return (
