@@ -11967,13 +11967,50 @@ pub fn parse(src: &str) -> Result<OrgDoc, ParseError> {
         // drawer yet), a `:PROPERTIES:` / `:END:` block with `:KEY: value`
         // entries between is captured structurally and excluded from the
         // headline's body.
-        if paragraph.is_none()
+        //
+        // A planning line sits *between* the heading and its drawer in
+        // org's own grammar, and it is what `set-planning` writes:
+        //
+        //     * TODO Ship it
+        //     SCHEDULED: <2026-07-29 Wed>
+        //     :PROPERTIES:
+        //     :ID: 01H…
+        //
+        // Mid-scan that line is a pending paragraph, which used to block
+        // the drawer entirely — so scheduling a note made its `:ID:`
+        // unreadable, the next open minted a fresh one, and every
+        // `id:` link into it, the stored `last_place` and any CRDT merge
+        // addressing it broke (I2). One pending planning line directly
+        // under the header is therefore allowed through; anything else
+        // in between still is not, because then the drawer is prose.
+        let planning_pending = paragraph.is_some_and(|span| {
+            let text = &source[span.start..span.end];
+            roots.last().is_some_and(|h| {
+                h.body.is_empty()
+                    && span.start == h.header_span.end
+                    // Exactly the planning line and nothing else: a
+                    // paragraph that has grown a second line is prose,
+                    // and prose before a `:PROPERTIES:` block means the
+                    // block is prose too.
+                    && !text.trim_end_matches('\n').contains('\n')
+                    && is_planning_line(text)
+            })
+        });
+        if (paragraph.is_none() || planning_pending)
             && let Some(h) = roots.last()
             && h.body.is_empty()
             && h.properties.is_none()
             && trimmed_line(line) == ":PROPERTIES:"
             && let Some((drawer, next_i)) = scan_property_drawer(&lines, i, &source)
         {
+            // The planning line is body text like any other line — it
+            // is read off the source by `Headline::planning`, not out
+            // of the body — so it is flushed, not dropped (I1).
+            flush_paragraph(
+                &source,
+                &mut paragraph,
+                target_nodes(&mut roots, &mut preamble),
+            );
             if let Some(h_mut) = roots.last_mut() {
                 h_mut.properties = Some(drawer);
             }
@@ -12483,11 +12520,28 @@ pub fn print(doc: &OrgDoc) -> String {
 
 fn print_headline(doc: &OrgDoc, h: &Headline, out: &mut String) {
     out.push_str(doc.source_of(h.header_span));
-    if let Some(p) = &h.properties {
-        out.push_str(doc.source_of(p.drawer_span));
-    }
+    // The drawer is a field on the headline and the body is a list, so
+    // printing "drawer, then body" is only right when the drawer comes
+    // first on disk. A planning line sits *above* the drawer in org's
+    // grammar (and is what `set-planning` writes), so the two are
+    // emitted in the order the source has them — otherwise I1 fails on
+    // every scheduled note with an `:ID:`.
+    let drawer = h.properties.as_ref().map(|p| p.drawer_span);
+    let mut drawer_written = false;
     for n in &h.body {
+        if let Some(span) = drawer
+            && !drawer_written
+            && span.start < n.span.start
+        {
+            out.push_str(doc.source_of(span));
+            drawer_written = true;
+        }
         out.push_str(doc.source_of(n.span));
+    }
+    if let Some(span) = drawer
+        && !drawer_written
+    {
+        out.push_str(doc.source_of(span));
     }
     for c in &h.children {
         print_headline(doc, c, out);
