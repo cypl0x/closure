@@ -942,6 +942,43 @@ fn a_right_click_on_a_detail_field_opens_the_detail_menu(cx: &mut gpui::TestAppC
 }
 
 #[gpui::test]
+fn a_click_in_the_body_dismisses_the_menu(cx: &mut gpui::TestAppContext) {
+    // Every handler that places a caret stops propagation — it has to,
+    // or the click keeps travelling — so the root's "a click anywhere
+    // dismisses the menu" never ran for the one surface where you are
+    // most likely to right-click and then change your mind. The menu
+    // stayed open over the text while you typed into it.
+    let (_dir, view, vcx) = visual_window(cx, "* Note\nfirst line\nsecond line\nthird line\n");
+    view.update(vcx, |v, cx| v.run_command("edit-body", cx));
+    vcx.run_until_parked();
+    // The menu opens *below* where it was asked for, so the line that
+    // takes the dismissing click is one above it — otherwise the click
+    // lands on the menu, which is a different gesture entirely.
+    let lower = centre(vcx, "body-line-3");
+    vcx.simulate_mouse_down(lower, MouseButton::Right, Modifiers::none());
+    vcx.run_until_parked();
+    view.update(vcx, |v, _cx| assert!(v.menu_open(), "the menu opened"));
+    let upper = centre(vcx, "body-line-1");
+    vcx.simulate_click(upper, Modifiers::none());
+    view.update(vcx, |v, _cx| {
+        assert!(!v.menu_open(), "and a click on the text put it away");
+        assert_eq!(v.body_cursor().0, 1, "while still placing the caret");
+    });
+}
+
+#[gpui::test]
+fn a_click_on_a_scrollbar_dismisses_the_menu(cx: &mut gpui::TestAppContext) {
+    // The other propagation-stopping handler, and the same bug.
+    let (_dir, view, vcx) = visual_window(cx, VAULT);
+    let row = centre(vcx, "outline-row-1");
+    vcx.simulate_mouse_down(row, MouseButton::Right, Modifiers::none());
+    vcx.run_until_parked();
+    let bar = centre(vcx, "outline-scrollbar");
+    vcx.simulate_click(bar, Modifiers::none());
+    view.update(vcx, |v, _cx| assert!(!v.menu_open(), "the menu went away"));
+}
+
+#[gpui::test]
 fn a_context_menu_is_never_anchored_off_the_window(cx: &mut gpui::TestAppContext) {
     // It is anchored where the click landed, so a right-click near the
     // bottom-right corner is the case that has to snap back.
@@ -1208,7 +1245,7 @@ fn a_config_asking_for_the_editor_view_gets_it_before_the_first_frame(
     });
     vcx.run_until_parked();
     view.update(vcx, |v, _cx| {
-        assert_eq!(v.surface(), ModalSurface::EditFile)
+        assert_eq!(v.surface(), ModalSurface::EditFile);
     });
     assert!(
         vcx.debug_bounds("body-line-0").is_some(),
@@ -1473,4 +1510,66 @@ fn outline_rows_line_up_whatever_they_contain(cx: &mut gpui::TestAppContext) {
         rights.windows(2).all(|w| w[0] == w[1]),
         "and ends at the same one, however long the title: {rights:?}"
     );
+}
+
+#[gpui::test]
+fn every_title_starts_at_the_same_x_for_its_level(cx: &mut gpui::TestAppContext) {
+    // The row *frame* lined up; the cells inside it did not. A flex
+    // item is shrinkable unless it says otherwise, and the title's flex
+    // basis is its content — so a title long enough to overflow the row
+    // took its shrink out of the indent, the fold arrow and the status
+    // glyph as well as itself, and every column on that row moved left
+    // by an amount that depended on the length of the headline.
+    let vault = "\
+* Alpha
+* A headline with a very much longer title than the ones around it, long enough to overflow the column it is painted in
+* Gamma
+* TODO Delta
+";
+    let (_dir, _view, vcx) = visual_window(cx, vault);
+    let lefts: Vec<_> = (0..4)
+        .map(|i| {
+            vcx.debug_bounds(match i {
+                0 => "title-0",
+                1 => "title-1",
+                2 => "title-2",
+                _ => "title-3",
+            })
+            .expect("painted")
+            .origin
+            .x
+        })
+        .collect();
+    assert!(
+        lefts.windows(2).all(|w| w[0] == w[1]),
+        "same level, same x: {lefts:?}"
+    );
+}
+
+#[gpui::test]
+fn selecting_a_row_does_not_resize_the_outline(cx: &mut gpui::TestAppContext) {
+    // "Selecting an element and depending on the length of the headline
+    // the tree view gets resized." Selecting fills the right-hand pane
+    // with that headline's title, body and properties, and a flex item
+    // that can shrink gives way to a sibling whose content grew.
+    let vault = "\
+* Alpha
+Short.
+* A headline whose title is very much longer than the others, and whose body is longer still
+This body is a single line with no break in it at all, which is the widest thing the detail pane will be asked to lay out, and it is much wider than the window.
+* Gamma
+Short too.
+";
+    let (_dir, _view, vcx) = visual_window(cx, vault);
+    let width =
+        |c: &mut gpui::VisualTestContext| c.debug_bounds("outline-row-0").expect("painted").size;
+    let before = width(vcx);
+    let long = centre(vcx, "outline-row-1");
+    vcx.simulate_click(long, Modifiers::none());
+    vcx.run_until_parked();
+    assert_eq!(width(vcx), before, "the long row did not move the edge");
+    let short = centre(vcx, "outline-row-2");
+    vcx.simulate_click(short, Modifiers::none());
+    vcx.run_until_parked();
+    assert_eq!(width(vcx), before, "and neither did coming back off it");
 }

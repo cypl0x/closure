@@ -2626,6 +2626,17 @@ impl GpuiView {
             .py_1()
             .text_size(px(14.0))
             .cursor_pointer()
+            // The selection marker is on every row, transparent on the
+            // ones that are not selected. Added only to the selected
+            // row, its 2px pushed that row's whole content right — so
+            // moving the cursor down the list nudged each title
+            // sideways as it arrived and back as it left.
+            .border_l_2()
+            .border_color(if is_sel {
+                rgb(co.accent).into()
+            } else {
+                gpui::transparent_black()
+            })
             .bg(rgb(if is_sel { co.selection } else { co.bg }))
             .hover(move |s| s.bg(rgb(if is_sel { co.selection } else { co.hover })))
             .on_mouse_down(
@@ -2667,9 +2678,6 @@ impl GpuiView {
                     cx.notify();
                 }),
             );
-        if is_sel {
-            line = line.border_l_2().border_color(rgb(co.accent));
-        }
         // The drop target under a live drag reads as an insertion line.
         if self.drag.target() == Some(i) && self.drag.source() != Some(i) {
             line = line.border_b_2().border_color(rgb(co.warning));
@@ -2705,12 +2713,17 @@ impl GpuiView {
                 cx.notify();
             })
         };
+        // Every fixed cell says `flex_none`. A flex item shrinks by
+        // default, so without it the indent, the arrow and the glyph
+        // gave up width to a long title — the columns of a row moved
+        // with the length of its headline.
         let mut line = line
-            .child(div().w(px(indent)))
+            .child(div().w(px(indent)).flex_none())
             .child(
                 div()
                     .debug_selector(|| format!("fold-{i}"))
                     .w(px(18.0))
+                    .flex_none()
                     .text_color(rgb(if folded { co.accent } else { co.muted }))
                     .cursor_pointer()
                     .on_mouse_down(MouseButton::Left, act("toggle-fold"))
@@ -2720,6 +2733,7 @@ impl GpuiView {
                 div()
                     .debug_selector(|| format!("todo-{i}"))
                     .w(px(18.0))
+                    .flex_none()
                     .text_color(rgb(todo_col))
                     .cursor_pointer()
                     .on_mouse_down(MouseButton::Left, act("toggle-todo"))
@@ -2750,7 +2764,14 @@ impl GpuiView {
             // "juggling" as the selection moved down the list.
             .child(
                 div()
-                    .flex_grow()
+                    .debug_selector(move || format!("title-{i}"))
+                    // `flex_1`, not `flex_grow`: basis zero. Sized from
+                    // its content the title overflowed the row, and the
+                    // overflow was taken out of *every* shrinkable cell
+                    // beside it — so the indent, the fold arrow and the
+                    // glyph all moved left by an amount that depended on
+                    // how long the headline was.
+                    .flex_1()
                     .min_w(px(0.0))
                     .overflow_hidden()
                     .whitespace_nowrap()
@@ -3124,7 +3145,7 @@ impl GpuiView {
     /// How many body lines the last painted frame used — what
     /// [`Self::body_view`] measured when that frame was built.
     #[must_use]
-    pub fn painted_view(&self) -> usize {
+    pub const fn painted_view(&self) -> usize {
         self.painted_view.get()
     }
 
@@ -6084,14 +6105,24 @@ impl Render for GpuiView {
             .on_key_down(cx.listener(Self::on_key))
             // A click anywhere outside an open menu dismisses it, the
             // way every desktop menu behaves.
-            .on_mouse_down(
-                MouseButton::Left,
-                cx.listener(|this: &mut Self, _ev, _w, cx| {
-                    if this.menu.take().is_some() {
+            //
+            // In the *capture* phase, because every handler that places
+            // a caret has to stop propagation to keep the click from
+            // travelling on — the body lines, the scrollbars. In the
+            // bubble phase this never ran for them, so a right-click in
+            // the editor left a menu hanging over the text no click
+            // could put away. The menu itself `.occlude()`s, so a click
+            // on an entry does not reach this hitbox at all: the entry
+            // still gets to run its command.
+            .capture_any_mouse_down(cx.listener(
+                |this: &mut Self, ev: &gpui::MouseDownEvent, _w, cx| {
+                    // Right-click is how a menu is *opened*; dismissing
+                    // here would race the handler about to open one.
+                    if ev.button == MouseButton::Left && this.menu.take().is_some() {
                         cx.notify();
                     }
-                }),
-            )
+                },
+            ))
             // A row drag released anywhere but on a row — over the side
             // pane, in the empty space under the last row — never
             // reached a row's mouse-up handler, so the gesture stayed
