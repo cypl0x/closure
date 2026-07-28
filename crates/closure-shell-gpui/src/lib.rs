@@ -3567,7 +3567,6 @@ impl GpuiView {
             .into_iter()
             .enumerate()
             .map(|(i, r)| {
-                let indent = f32::from(u16::try_from(r.depth).unwrap_or(u16::MAX)) * 14.0;
                 div()
                     .flex()
                     .px_2()
@@ -3582,7 +3581,17 @@ impl GpuiView {
                             cx.notify();
                         }),
                     )
-                    .child(div().w(px(indent)))
+                    // The branches, in the muted colour: they are the
+                    // shape of the history, not part of any one edit.
+                    // The window's font is mono ([`app_font`]), so the
+                    // bars stack into columns without help.
+                    .child(
+                        div()
+                            .flex_none()
+                            .whitespace_nowrap()
+                            .text_color(rgb(co.muted))
+                            .child(r.graph.clone()),
+                    )
                     .child(
                         div()
                             .text_color(rgb(if r.is_current { co.accent } else { co.muted }))

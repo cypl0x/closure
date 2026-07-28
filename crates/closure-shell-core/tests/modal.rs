@@ -852,6 +852,48 @@ fn row_fold_state_is_queryable_for_the_renderer() {
 }
 
 #[test]
+fn clicking_a_forked_history_row_jumps_to_that_row() {
+    // The pane lists the tree in walk order and the vault addresses
+    // nodes by insertion order; once a history forks they differ, and
+    // a click that sent the display index would land on whatever edit
+    // happened to be at that position.
+    let (_d, mut sh) = nested();
+    let mut app = ModalApp::new(InputMode::Doom);
+    app.select(0, &sh);
+    app.run(&mut sh, "rename");
+    // Three renames with an undo in the middle, which is a fork.
+    for title in ["Alpha", "Beta"] {
+        app.run(&mut sh, "rename");
+        for c in title.chars() {
+            app.on_key(&mut sh, &c.to_string(), false, false, Some(c));
+        }
+        app.on_key(&mut sh, "enter", false, false, None);
+    }
+    app.run(&mut sh, "undo");
+    app.run(&mut sh, "rename");
+    for c in "Gamma".chars() {
+        app.on_key(&mut sh, &c.to_string(), false, false, Some(c));
+    }
+    app.on_key(&mut sh, "enter", false, false, None);
+
+    let rows = app.undo_history_rows(&sh);
+    let (at, row) = rows
+        .iter()
+        .enumerate()
+        .find(|(_, r)| r.label.contains("Beta"))
+        .expect("Beta is on the other branch");
+    let want = row.index;
+    app.undo_history_click(&mut sh, at);
+    let after = app.undo_history_rows(&sh);
+    let current = after.iter().find(|r| r.is_current).expect("a cursor");
+    assert_eq!(current.index, want, "the click landed on the row it named");
+    assert!(
+        sh.vault.iter().any(|(_, d)| d.source().contains("Beta")),
+        "and the document is at that edit"
+    );
+}
+
+#[test]
 fn a_row_says_whether_it_has_anything_to_fold() {
     // The outline painted a fold arrow on every row, including the
     // leaves, where clicking it does nothing at all — which is most of

@@ -250,15 +250,57 @@ impl Document {
     #[must_use]
     pub fn history_view(&self) -> Vec<HistoryRow> {
         let current = self.history.current();
-        self.history
-            .nodes()
+        let nodes = self.history.nodes();
+        // Children by parent, in insertion order — a branch made later
+        // is drawn below the one it forked from.
+        let mut children: Vec<Vec<usize>> = vec![Vec::new(); nodes.len()];
+        let mut roots: Vec<usize> = Vec::new();
+        for (i, n) in nodes.iter().enumerate() {
+            match n.parent.and_then(|p| nodes.iter().position(|m| m.id == p)) {
+                Some(p) => children[p].push(i),
+                None => roots.push(i),
+            }
+        }
+        // Depth-first, so a whole branch is together on screen rather
+        // than interleaved with the one it forked from. `bars` carries,
+        // per ancestor, whether that ancestor still has siblings below
+        // it — which is the difference between a `│` and a blank.
+        let mut out: Vec<HistoryRow> = Vec::with_capacity(nodes.len());
+        let mut stack: Vec<(usize, Option<usize>, Vec<bool>, bool)> = roots
             .iter()
-            .map(|n| HistoryRow {
-                depth: self.history.depth(n.id).unwrap_or(0),
-                label: edit_label(&n.payload),
-                is_current: Some(n.id) == current,
-            })
-            .collect()
+            .rev()
+            .enumerate()
+            .map(|(rev, &i)| (i, None, Vec::new(), rev == 0))
+            .collect();
+        while let Some((i, parent_row, bars, last)) = stack.pop() {
+            let mut graph = String::new();
+            for bar in &bars {
+                graph.push_str(if *bar { "│  " } else { "   " });
+            }
+            if parent_row.is_some() {
+                graph.push_str(if last { "└─ " } else { "├─ " });
+            }
+            let row = out.len();
+            out.push(HistoryRow {
+                // The tree's own depth, not the drawing's: a root's
+                // child is at 1 with no continuation bar beside it.
+                depth: self.history.depth(nodes[i].id).unwrap_or(0),
+                label: edit_label(&nodes[i].payload),
+                is_current: Some(nodes[i].id) == current,
+                graph,
+                parent: parent_row,
+                index: i,
+            });
+            let mut child_bars = bars;
+            if parent_row.is_some() {
+                child_bars.push(!last);
+            }
+            let kids = &children[i];
+            for (rev, &child) in kids.iter().enumerate().rev() {
+                stack.push((child, Some(row), child_bars.clone(), rev + 1 == kids.len()));
+            }
+        }
+        out
     }
 
     /// Undo the current edit. Reverses the active node's payload and
@@ -517,6 +559,20 @@ pub struct HistoryRow {
     pub label: String,
     /// Whether this node is the undo cursor.
     pub is_current: bool,
+    /// The tree drawing for this row — the ancestors' continuation
+    /// bars and this row's own tee or corner (`│  ├─ `).
+    ///
+    /// Precomputed here rather than in each shell: an undo tree drawn
+    /// differently by the TUI and the window is two answers to the same
+    /// question (I7).
+    pub graph: String,
+    /// Index of this row's parent *in this list*, when it has one.
+    pub parent: Option<usize>,
+    /// Insertion index of the node — what [`Document::jump_in_history`]
+    /// addresses. Rows come out in walk order, which is not insertion
+    /// order once the history has forked, so a row that did not carry
+    /// this would send a click to whatever edit happened to be there.
+    pub index: usize,
 }
 
 /// Short human label for an [`Edit`] — the undo-history row text.

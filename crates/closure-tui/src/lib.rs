@@ -2508,7 +2508,9 @@ fn sync_panes(app: &mut App, vault: &Vault) {
         .map(closure_core::Document::history_view)
         .map(|rows| {
             rows.into_iter()
-                .map(|r| (r.label.clone(), r.is_current))
+                // The branches come with the row: the kernel draws the
+                // tree once and every shell shows the same one (I7).
+                .map(|r| (format!("{}{}", r.graph, r.label), r.is_current))
                 .collect()
         })
         .unwrap_or_default();

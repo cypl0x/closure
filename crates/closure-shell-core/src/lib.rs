@@ -11175,7 +11175,17 @@ impl ModalApp {
     /// Jump the selected row's document to history node `index`
     /// ([`closure_store::Vault::jump_history_in`] — composed undo/redo
     /// primitives, persisted) and return to Browse.
-    fn jump_undo_history(&mut self, shell: &mut Shell, index: usize) {
+    fn jump_undo_history(&mut self, shell: &mut Shell, row_at: usize) {
+        // The pane lists the tree in walk order; the vault addresses
+        // history nodes by insertion order. Once a history has forked
+        // those differ, and the row carries the one to send.
+        let Some(index) = self
+            .undo_history_rows(shell)
+            .get(row_at)
+            .map(|r| r.index)
+        else {
+            return;
+        };
         if let Some(row) = self.rows_shared(shell).get(self.selected).cloned() {
             let path = std::path::PathBuf::from(&row.path);
             match shell.vault.jump_history_in(&path, index) {
