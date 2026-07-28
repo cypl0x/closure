@@ -2272,6 +2272,19 @@ impl App {
                     "no file to open".clone_into(&mut self.status);
                 }
             }
+            // The terminal's file view is the whole terminal, so the
+            // tree beside it is the *outline* it came from: the toggle
+            // means the same thing in both shells — show me the shape
+            // of the vault again — and here that is `toggle-view`.
+            "toggle-tree" => {
+                if self.mode == AppMode::FileView {
+                    self.mode = AppMode::Browse;
+                    self.scroll = 0;
+                    "headline tree shown".clone_into(&mut self.status);
+                } else {
+                    "the outline is already the view".clone_into(&mut self.status);
+                }
+            }
             "block-flow" | "allow-flow" => match self.sniffer.get(self.result_cursor) {
                 Some((candidate, _)) => {
                     self.flow_request = Some((candidate.clone(), cmd == "allow-flow"));

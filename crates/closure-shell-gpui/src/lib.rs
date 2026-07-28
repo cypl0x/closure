@@ -1556,7 +1556,6 @@ pub struct GpuiView {
     toast_gen: u64,
     /// Where an open context menu is anchored, if one is open.
     menu: Option<(gpui::Point<gpui::Pixels>, closure_shell_core::ContextTarget)>,
-    /// Width of the outline column, in pixels — dragged by the handle
     /// on its right edge.
     outline_w: f32,
     /// While the outline edge is being dragged: the offset between the
@@ -1642,6 +1641,7 @@ impl GpuiView {
             theme,
             vault_name,
             wrap: false,
+
             outline_w: OUTLINE_W_DEFAULT,
             outline_drag: None,
             window_title: String::new(),
@@ -1686,6 +1686,29 @@ impl GpuiView {
     /// what a test sets to look at the other shape.
     pub fn set_view(&mut self, view: closure_shell_core::ViewMode) {
         self.app.set_view(view, &self.shell);
+    }
+
+    /// Fill the window's middle row with the panes this surface wants.
+    ///
+    /// A buffer takes the window: editing a body in a third of it,
+    /// beside a list of the headlines you are *not* editing, is a
+    /// preview — `org-edit-special` gets its own frame in Emacs, and so
+    /// does this. But writing *into* an outline is a different job from
+    /// reading one, so `toggle-tree` brings the tree back beside the
+    /// buffer without leaving it.
+    fn panes(&self, body: gpui::Div, co: Colors, cx: &Context<Self>) -> gpui::Div {
+        if !self.app.surface().is_editor() {
+            return body
+                .child(self.rail(co, cx))
+                .child(self.rows_pane(co, cx))
+                .child(self.side_pane(co, cx));
+        }
+        if self.app.tree_open() {
+            body.child(self.rows_pane(co, cx))
+                .child(self.side_pane(co, cx))
+        } else {
+            body.child(self.side_pane(co, cx))
+        }
     }
 
     /// Tell the window manager what this window is called, when that
@@ -6012,17 +6035,7 @@ impl Render for GpuiView {
             // only item in the chain that needed saying: below it the
             // panes are row children, sized by `stretch`.
             .min_h(px(0.0));
-        // A buffer takes the window. Editing a body in a third of it,
-        // beside a list of the headlines you are not editing, is a
-        // preview — `org-edit-special` gets its own frame in Emacs, and
-        // so does this.
-        let body = if self.app.surface().is_editor() {
-            body.child(self.side_pane(co, cx))
-        } else {
-            body.child(self.rail(co, cx))
-                .child(self.rows_pane(co, cx))
-                .child(self.side_pane(co, cx))
-        };
+        let body = self.panes(body, co, cx);
 
         let status = self.status_bar(co, cx);
 

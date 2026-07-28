@@ -8222,6 +8222,10 @@ pub struct ModalApp {
     surface: ModalSurface,
     selected: usize,
     query: String,
+    /// Whether the headline tree is pinned beside the full-window
+    /// editor. The shells paint it; the flag lives here so every shell
+    /// answers `toggle-tree` the same way (I7).
+    tree_open: bool,
     /// Capture lines typed before, newest last — the arrows and the
     /// chords walk it, including ones that were cancelled.
     capture_history: Vec<String>,
@@ -8421,6 +8425,7 @@ impl ModalApp {
             surface: ModalSurface::Browse,
             selected: 0,
             query: String::new(),
+            tree_open: false,
             capture_history: Vec::new(),
             capture_hist_at: None,
             capture_buf: LineInput::default(),
@@ -11761,6 +11766,13 @@ impl ModalApp {
         self.surface = self.home_surface();
     }
 
+    /// Whether the headline tree is pinned beside a full-window buffer
+    /// (`toggle-tree`).
+    #[must_use]
+    pub const fn tree_open(&self) -> bool {
+        self.tree_open
+    }
+
     /// Whether a row is selected, as opposed to the cursor merely
     /// resting on one. Escape clears it; a motion or a capture makes
     /// it true again.
@@ -11859,11 +11871,20 @@ impl ModalApp {
                 self.capture_buf.clear();
             }
             "search-start" | "search-headline-start" => {
-                self.surface = ModalSurface::Search;
-                self.query.clear();
-                // Remembered so Esc is a real "never mind".
-                self.search_return = Some(self.selected);
-                self.selected = 0;
+                // Doom's `SPC s s` is search-*buffer*: swiper over the
+                // thing you are looking at. Bound to the vault-wide
+                // headline search it threw you out of the buffer to look
+                // somewhere else entirely, which is not what a search
+                // from inside an editor can mean.
+                if self.surface.is_editor() {
+                    self.body.modal_key("/");
+                } else {
+                    self.surface = ModalSurface::Search;
+                    self.query.clear();
+                    // Remembered so Esc is a real "never mind".
+                    self.search_return = Some(self.selected);
+                    self.selected = 0;
+                }
             }
             // Enter *opens* the row. It used to report the row in the
             // status line, which is not what Enter means in any other
@@ -12237,6 +12258,18 @@ impl ModalApp {
                     self.view = ViewMode::Editor;
                     self.open_file_buffer(shell);
                 }
+            }
+            // The tree beside a full-window buffer: writing *into* an
+            // outline is a different job from reading one, and this is
+            // how you get the shape back without leaving the buffer.
+            // The shells own the panel, so the core owns the flag.
+            "toggle-tree" => {
+                self.tree_open = !self.tree_open;
+                self.status = if self.tree_open {
+                    "headline tree shown".to_owned()
+                } else {
+                    "headline tree hidden".to_owned()
+                };
             }
             "resolve-ours" | "resolve-theirs" => {
                 if self.conflicts.conflicts().is_empty() {

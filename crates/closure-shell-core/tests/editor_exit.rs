@@ -456,3 +456,36 @@ fn prose_that_merely_starts_with_a_star_is_still_escaped() {
         app.rows(&sh).iter().map(|r| &r.title).collect::<Vec<_>>()
     );
 }
+
+// === the tree beside a full-window buffer ===
+
+#[test]
+fn the_headline_tree_toggles_without_leaving_the_buffer() {
+    let (_d, mut sh, mut app) = file_view();
+    assert!(!app.tree_open(), "the editor view is the window by default");
+    app.run(&mut sh, "toggle-tree");
+    assert!(app.tree_open());
+    assert_eq!(
+        app.surface(),
+        ModalSurface::EditFile,
+        "and the buffer is still the one open"
+    );
+    app.run(&mut sh, "toggle-tree");
+    assert!(!app.tree_open());
+}
+
+#[test]
+fn every_mode_can_reach_the_tree_toggle() {
+    for mode in [
+        InputMode::Doom,
+        InputMode::Vim,
+        InputMode::Emacs,
+        InputMode::Helix,
+        InputMode::Notion,
+    ] {
+        assert!(
+            closure_input::chord_for_command(mode, "toggle-tree").is_some(),
+            "{mode:?} binds toggle-tree"
+        );
+    }
+}

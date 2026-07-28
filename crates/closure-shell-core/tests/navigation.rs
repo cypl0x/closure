@@ -277,3 +277,49 @@ fn cycling_completion_applies_a_candidate() {
         app.body_buffer()
     );
 }
+
+// === SPC s s in a buffer searches the buffer ===
+
+#[test]
+fn search_from_inside_the_editor_searches_the_buffer() {
+    // Doom's `SPC s s` is `search-buffer` — swiper over the thing you
+    // are looking at. Bound to the vault-wide headline search, it threw
+    // you out of the buffer to look somewhere else entirely.
+    let (_d, mut sh, mut app) = app();
+    app.select_by_id(&sh, "01HQNAV000000000000000003");
+    app.run(&mut sh, "edit-body");
+    app.run(&mut sh, "search-start");
+    assert_eq!(
+        app.surface(),
+        ModalSurface::EditBody,
+        "still in the buffer, not in the outline's search"
+    );
+    assert!(
+        app.body_search_prompt().is_some(),
+        "with the buffer's own search line open"
+    );
+}
+
+#[test]
+fn a_buffer_search_finds_a_line_in_it() {
+    let (_d, mut sh, mut app) = app();
+    app.select_by_id(&sh, "01HQNAV000000000000000003");
+    app.run(&mut sh, "edit-body");
+    app.run(&mut sh, "search-start");
+    for c in "body".chars() {
+        app.on_key(&mut sh, &c.to_string(), false, false, Some(c));
+    }
+    app.on_key(&mut sh, "enter", false, false, None);
+    assert_eq!(app.surface(), ModalSurface::EditBody);
+    assert!(
+        app.body_cursor().1 > 0 || app.body_cursor().0 > 0,
+        "the cursor moved to the hit"
+    );
+}
+
+#[test]
+fn search_from_the_outline_still_searches_the_vault() {
+    let (_d, mut sh, mut app) = app();
+    app.run(&mut sh, "search-start");
+    assert_eq!(app.surface(), ModalSurface::Search);
+}
