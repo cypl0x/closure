@@ -1439,3 +1439,38 @@ fn the_outline_column_will_not_be_dragged_away(cx: &mut gpui::TestAppContext) {
     let row = vcx.debug_bounds("outline-row-0").expect("still painted");
     assert!(row.size.width > px(100.0), "clamped: {row:?}");
 }
+
+#[gpui::test]
+fn outline_rows_line_up_whatever_they_contain(cx: &mut gpui::TestAppContext) {
+    // Reported as the tree view "weirdly juggling": the keyword column
+    // was painted only on rows that had one, and nothing clipped, so
+    // titles started at different x positions and the file name slid
+    // about as the content changed.
+    let vault = "\
+* TODO Alpha
+* A headline with a very much longer title than the ones around it here
+* DONE Gamma
+* Delta
+";
+    let (_dir, _view, vcx) = visual_window(cx, vault);
+    let mut lefts = Vec::new();
+    let mut rights = Vec::new();
+    for selector in [
+        "outline-row-0",
+        "outline-row-1",
+        "outline-row-2",
+        "outline-row-3",
+    ] {
+        let bounds = vcx.debug_bounds(selector).expect("painted");
+        lefts.push(bounds.origin.x);
+        rights.push(bounds.right());
+    }
+    assert!(
+        lefts.windows(2).all(|w| w[0] == w[1]),
+        "every row starts at the same x: {lefts:?}"
+    );
+    assert!(
+        rights.windows(2).all(|w| w[0] == w[1]),
+        "and ends at the same one, however long the title: {rights:?}"
+    );
+}

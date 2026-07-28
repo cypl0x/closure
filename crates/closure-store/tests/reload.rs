@@ -85,3 +85,41 @@ fn revalidate_config_detects_bad_config_with_line_info() {
         other => panic!("expected BadValue with location, got {other:?}"),
     }
 }
+
+#[test]
+fn an_external_edit_moves_the_revision_so_shells_repaint() {
+    // The other half of "filesystem sync refresh": reparsing is no use
+    // if the row lists memoised against `revision()` do not rebuild.
+    // Something else writing the vault — an Emacs on the same
+    // directory, a `git pull`, an inbound sync round — has to reach the
+    // window.
+    let dir = vault(&[("a.org", "* One\n")]);
+    let mut v = Vault::open(dir.path()).expect("open");
+    let before = v.revision();
+
+    std::fs::write(dir.path().join("a.org"), "* One\n* Two\n").expect("external write");
+    let changed = v.reload_incremental().expect("reload");
+    assert_eq!(changed, 1, "the changed file was reparsed");
+    assert_ne!(v.revision(), before, "and the token moved");
+}
+
+#[test]
+fn a_new_file_appearing_moves_the_revision_too() {
+    let dir = vault(&[("a.org", "* One\n")]);
+    let mut v = Vault::open(dir.path()).expect("open");
+    let before = v.revision();
+    std::fs::write(dir.path().join("b.org"), "* Elsewhere\n").expect("write");
+    v.reload_incremental().expect("reload");
+    assert_ne!(v.revision(), before);
+}
+
+#[test]
+fn a_reload_that_changed_nothing_leaves_the_revision_alone() {
+    // The poll runs every 1.5s; if it moved the token each time, every
+    // memo in every shell would rebuild forever.
+    let dir = vault(&[("a.org", "* One\n")]);
+    let mut v = Vault::open(dir.path()).expect("open");
+    let before = v.revision();
+    v.reload_incremental().expect("reload");
+    assert_eq!(v.revision(), before, "an idle poll costs nothing");
+}

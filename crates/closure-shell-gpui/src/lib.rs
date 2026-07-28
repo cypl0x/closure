@@ -1481,6 +1481,15 @@ impl Colors {
 #[cfg(feature = "gpui")]
 const BODY_LINE_H: f32 = 18.0;
 
+/// Width reserved for the TODO keyword in an outline row, painted or
+/// not — a column that appears only on some rows moves every title
+/// beside it.
+#[cfg(feature = "gpui")]
+const TODO_COL_W: f32 = 44.0;
+/// Most a row will spend on its file name before clipping it.
+#[cfg(feature = "gpui")]
+const PATH_COL_W: f32 = 120.0;
+
 /// Where the outline column starts, and the range a drag may put it in.
 /// Narrower than the minimum is a column that cannot show a title;
 /// wider than the maximum leaves no room for the pane it is beside.
@@ -2716,32 +2725,49 @@ impl GpuiView {
                     .on_mouse_down(MouseButton::Left, act("toggle-todo"))
                     .child(glyph),
             );
-        if let Some(todo) = &row.todo {
-            line = line.child(
+        // The keyword column is always there, whether or not this row
+        // has a keyword. Painted only when there is one, the titles of
+        // a mixed list started at two different x positions and the
+        // whole column appeared to shuffle as you moved through it.
+        let keyword = div().w(px(TODO_COL_W)).mr_1().flex_none();
+        line = line.child(if let Some(todo) = &row.todo {
+            keyword
+                .px_1()
+                .rounded_sm()
+                .text_color(rgb(todo_col))
+                .text_size(px(11.0))
+                .cursor_pointer()
+                .hover(move |s| s.bg(rgb(co.hover)))
+                .on_mouse_down(MouseButton::Left, act("toggle-todo"))
+                .child(todo.clone())
+        } else {
+            keyword
+        });
+        line
+            // The title takes the slack and is clipped by it. Left to
+            // size itself, a long title pushed the file name off the
+            // end and a short one let it slide back — which is the
+            // "juggling" as the selection moved down the list.
+            .child(
                 div()
-                    .mr_2()
-                    .px_1()
-                    .rounded_sm()
-                    .text_color(rgb(todo_col))
-                    .text_size(px(11.0))
-                    .cursor_pointer()
-                    .hover(move |s| s.bg(rgb(co.hover)))
-                    .on_mouse_down(MouseButton::Left, act("toggle-todo"))
-                    .child(todo.clone()),
-            );
-        }
-        line.child(
-            div()
-                .text_color(rgb(co.outline(row.level)))
-                .child(row.title.clone()),
-        )
-        .child(div().flex_grow())
-        .child(
-            div()
-                .text_color(rgb(co.muted))
-                .text_size(px(10.0))
-                .child(short_path(&row.path)),
-        )
+                    .flex_grow()
+                    .min_w(px(0.0))
+                    .overflow_hidden()
+                    .whitespace_nowrap()
+                    .text_color(rgb(co.outline(row.level)))
+                    .child(row.title.clone()),
+            )
+            .child(
+                div()
+                    .flex_none()
+                    .ml_2()
+                    .max_w(px(PATH_COL_W))
+                    .overflow_hidden()
+                    .whitespace_nowrap()
+                    .text_color(rgb(co.muted))
+                    .text_size(px(10.0))
+                    .child(short_path(&row.path)),
+            )
     }
 
     /// Right-hand pane: detail (clickable fields), palette, a list
