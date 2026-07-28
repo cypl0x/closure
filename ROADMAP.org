@@ -13,6 +13,57 @@ file is the fine-grained, capability-level queue between them. Blocked
 on a design decision? Record it under [[*Decisions][Decisions]], pick the most
 reversible option, keep moving.
 
+* DONE VAULT-Q17 — the vault documents itself, and the body is an outline [6/6]
+User backlog in =~/vault/inbox.org=, 2026-07-28.
+** DONE W1 completion in the view that has the buffer [1/1]
+=completion_should_popup= was pinned to =ModalSurface::EditBody=. The
+editor *view* is =EditFile= — a different surface over the same buffer —
+so the popup could never arm there, which is what "autocompletion is
+not working" was. Now every editing surface (=is_editor()=).
+** DONE W2 =:!cmd=, behind the gate the evaluator already has [1/1]
+Vim's shell escape, refused unless =eval_trust= lists =shell= — running
+arbitrary shell from an editor is the same capability a =#+BEGIN_SRC
+shell= block is, and a vault is a file someone can send you (C1a). Runs
+in the vault directory, reports the exit code, and keeps stdout and
+stderr where a shell can show them (=shell_output=).
+** DONE W3 a capture longer than one line [1/1]
+Enter files the item, so there was no way to type a second line.
+Shift+Enter is the newline (the chat-box convention, and the gpui seam
+spells the keystroke =shift-enter= because the core's key names carry
+ctrl and alt but not shift); the first line becomes the headline, the
+rest becomes its body.
+** DONE W4 the friendliest mode can always type [1/1]
+Switching input mode with a buffer open left the editor in whatever
+vim-state it was in, so switching to Notion — which has no NORMAL —
+produced a text field that would not take text. The open buffer follows
+the new mode now. Also =C-p= → palette and =C-k= → capture in every mode
+whose chords were free (Emacs keeps =C-p= for previous-line), listed
+*last* in each keymap so each mode's own chord stays the one which-key
+and the tutorial show.
+** DONE W5 the vault documents itself [1/1]
+=closure init-vault= writes =config.org= and =tutorial.org=. Both are
+*generated*: the config from =Config::default_org()= (round-tripped in a
+test — what we write we must read back as the same defaults), the
+tutorial from =tutorial_org(mode)= with every chord looked up in the
+live keymap (I4). A hand-written sample of either is wrong the first
+time a key or a chord moves, and the person who finds out is a new user
+following it. An existing =config.org= is never overwritten.
+** DONE W6 a headline typed into a body is a child [1/1]
+=split_body_headlines= + =rewrite_body_with_children=: the comma escape
+stays for prose that merely starts with a star, and a real =* Foo= typed
+into a body becomes a child of the headline it was typed in, rebased so
+the shallowest typed level sits one under the parent (a =*= in a =***=
+body is a =****=) with relative nesting kept. Existing children survive
+— the body editor never showed them, so it must not be able to delete
+them.
+DECISION (2026-07-28): soft wrap is opt-in (=wrap = true=), not the
+default. =wrap_body= cuts a body into [`VisualLine`]s that partition its
+bytes *exactly* — the break space stays on the row it broke, because a
+cursor sitting on it has to be somewhere — and the painter walks visual
+rows with the gutter numbering each logical line once. Wrapping and
+horizontal scroll are alternatives; the clipped default keeps the fixed
+row height the viewport arithmetic depends on.
+
 * DONE VAULT-Q16 — capture lands, and the editor stops eating text [4/4]
 User backlog in =~/vault/inbox.org=, 2026-07-28.
 ** DONE V1 a capture that appears, where you were looking [1/1]

@@ -101,6 +101,10 @@ const DOOM_KEYMAP: &[(&str, &str)] = &[
     ("SPC t v", "toggle-view"),
     ("SPC t m", "cycle-mode"),
     ("SPC u", "undo-history"),
+    // The prefix the rest of the desktop uses. Listed last so each
+    // mode's own chord stays the one which-key and the tutorial show.
+    ("C-p", "palette"),
+    ("C-k", "capture-start"),
 ];
 
 /// Emacs bindings: Ctrl/Meta chords, `C-x C-c` quits.
@@ -220,6 +224,10 @@ const VIM_KEYMAP: &[(&str, &str)] = &[
     ("M-RET", "add-heading"),
     ("g u", "undo-history"),
     ("TAB", "toggle-fold"),
+    // The prefix the rest of the desktop uses. Listed last so each
+    // mode's own chord stays the one which-key and the tutorial show.
+    ("C-p", "palette"),
+    ("C-k", "capture-start"),
 ];
 
 /// Helix bindings: vim-like with `U` redo and `g e` for end.
@@ -280,6 +288,10 @@ const HELIX_KEYMAP: &[(&str, &str)] = &[
     ("M-RET", "add-heading"),
     ("g u", "undo-history"),
     ("TAB", "toggle-fold"),
+    // The prefix the rest of the desktop uses. Listed last so each
+    // mode's own chord stays the one which-key and the tutorial show.
+    ("C-p", "palette"),
+    ("C-k", "capture-start"),
 ];
 
 /// Notion bindings: mouse + arrows + slash command, minimal chords.
@@ -339,6 +351,10 @@ const NOTION_KEYMAP: &[(&str, &str)] = &[
     ("M-RET", "add-heading"),
     ("g u", "undo-history"),
     ("TAB", "toggle-fold"),
+    // The prefix the rest of the desktop uses. Listed last so each
+    // mode's own chord stays the one which-key and the tutorial show.
+    ("C-p", "palette"),
+    ("C-k", "capture-start"),
 ];
 
 /// The canonical `(chord, command)` keymap for an input mode — the

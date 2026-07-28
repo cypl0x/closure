@@ -7,7 +7,7 @@
 use std::collections::BTreeSet;
 
 use closure_config::InputMode;
-use closure_input::mode_keymap;
+use closure_input::{command_for, mode_keymap};
 
 const MODES: [InputMode; 5] = [
     InputMode::Notion,
@@ -135,4 +135,35 @@ fn every_mode_binds_toggle_fold() {
             "{mode:?} binds toggle-fold"
         );
     }
+}
+
+#[test]
+fn the_desktop_prefix_reaches_the_palette_and_a_capture() {
+    // Asked for as "the capture prefix should be more significant —
+    // maybe the LazyVim / VS Code / Zed one, `C-p` or `C-k`". Every
+    // mode that does not already spend those chords on something older
+    // gets them; Emacs keeps `C-p` for previous-line, because breaking
+    // that would be worse than not having the shortcut.
+    for mode in [
+        InputMode::Vim,
+        InputMode::Doom,
+        InputMode::Helix,
+        InputMode::Notion,
+    ] {
+        assert_eq!(
+            command_for(mode, "C-p"),
+            Some("palette"),
+            "{mode:?}: C-p opens the palette"
+        );
+        assert_eq!(
+            command_for(mode, "C-k"),
+            Some("capture-start"),
+            "{mode:?}: C-k starts a capture"
+        );
+    }
+    assert_eq!(
+        command_for(InputMode::Emacs, "C-p"),
+        Some("prev-file"),
+        "Emacs keeps its own C-p"
+    );
 }

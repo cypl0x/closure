@@ -9487,6 +9487,126 @@ fn body_lines_in_block(body: &str) -> impl Iterator<Item = (&str, bool)> {
     })
 }
 
+/// Split an edited body into the prose that stays a body and the
+/// headlines the user typed into it.
+///
+/// A body line starting with `*` at column zero *is* a headline once it
+/// is back in the file, which is why bodies are comma-escaped. Escaping
+/// is right for text that happens to start with a star; it is not what
+/// anyone means when they type `* Something` into a note, which is
+/// "this belongs under this". Everything from the first such line on is
+/// handed back separately so it can become real children.
+///
+/// Block interiors are never headlines — a source block full of
+/// asterisks is code — and neither is `*bold*`, which has no space
+/// after its stars.
+#[must_use]
+pub fn split_body_headlines(body: &str) -> (String, String) {
+    let mut at: Option<usize> = None;
+    let mut offset = 0usize;
+    for (line, in_block) in body_lines_in_block(body) {
+        if !in_block && is_headline_line(line) {
+            at = Some(offset);
+            break;
+        }
+        offset += line.len() + 1;
+    }
+    at.map_or_else(
+        || (body.to_owned(), String::new()),
+        |cut| {
+            (
+                body[..cut].trim_end_matches('\n').to_owned(),
+                body[cut..].to_owned(),
+            )
+        },
+    )
+}
+
+/// Whether `line` would parse as a headline: stars at column zero, then
+/// a space or nothing at all.
+fn is_headline_line(line: &str) -> bool {
+    let rest = line.trim_start_matches('*');
+    rest.len() < line.len() && (rest.is_empty() || rest.starts_with([' ', '\t']))
+}
+
+/// Replace a headline's body, and file `children_src` under it as real
+/// children rebased to its depth.
+///
+/// The typed headlines keep their *relative* nesting and are lifted so
+/// the shallowest of them sits one level under the parent: a single `*`
+/// typed into the body of a `***` headline becomes a `****`. Existing
+/// children are left exactly where they are — the body editor never
+/// showed them, so it must not be able to delete them — and the new
+/// ones land between the body and them.
+///
+/// # Errors
+///
+/// [`RewriteError::NotFound`] when `path` names no headline, or
+/// [`RewriteError::Parse`] if the result would not parse.
+pub fn rewrite_body_with_children(
+    doc: &OrgDoc,
+    path: &[usize],
+    body: &str,
+    children_src: &str,
+) -> Result<OrgDoc, RewriteError> {
+    let target = navigate_headline(doc, path).ok_or(RewriteError::NotFound)?;
+    // The body runs from the end of the header (or its drawer) to the
+    // first child, or to the end of the subtree when there is none.
+    let start = target
+        .properties
+        .as_ref()
+        .map_or(target.header_span.end, |p| {
+            p.drawer_span.end.max(target.header_span.end)
+        });
+    let end = target
+        .children
+        .first()
+        .map_or_else(|| subtree_end(target), |c| c.header_span.start);
+
+    // The region starts *after* the newline that ends the header (or
+    // the drawer), so the body text goes in as-is — a newline of our
+    // own here would open every edited note with a blank line.
+    let mut middle = String::new();
+    if !body.trim().is_empty() {
+        middle.push_str(body.trim_start_matches('\n').trim_end_matches('\n'));
+        middle.push('\n');
+    }
+    middle.push_str(&rebase_headlines(children_src, target.level));
+
+    let mut src = doc.source().to_owned();
+    src.replace_range(start..end, &middle);
+    parse(&src).map_err(|_| RewriteError::Parse)
+}
+
+/// Shift every headline in `src` so the shallowest sits one level under
+/// `parent_level`, keeping the relative shape.
+fn rebase_headlines(src: &str, parent_level: u8) -> String {
+    let shallowest = src
+        .split('\n')
+        .filter(|l| is_headline_line(l))
+        .map(|l| l.len() - l.trim_start_matches('*').len())
+        .min();
+    let Some(shallowest) = shallowest else {
+        return src.to_owned();
+    };
+    let base = usize::from(parent_level) + 1;
+    let mut out = String::with_capacity(src.len() + 8);
+    for (i, line) in src.split('\n').enumerate() {
+        if i > 0 {
+            out.push('\n');
+        }
+        if is_headline_line(line) {
+            let stars = line.len() - line.trim_start_matches('*').len();
+            let level = base + (stars - shallowest);
+            out.push_str(&"*".repeat(level));
+            out.push_str(line.trim_start_matches('*'));
+        } else {
+            out.push_str(line);
+        }
+    }
+    out
+}
+
 /// Escape a body so none of its lines can be read back as a headline.
 ///
 /// A body is the text between one headline and the next, so a line

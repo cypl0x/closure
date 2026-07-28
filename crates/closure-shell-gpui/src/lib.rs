@@ -1321,6 +1321,8 @@ pub fn run(vault_path: &Path) -> Result<(), String> {
     let input_mode = resolve_input_mode(vault_path);
     let view = resolve_view(vault_path);
     let (sync_bind, sync_advertise) = resolve_sync_addrs(vault_path);
+    let wrap =
+        closure_config::Config::from_path(&vault_path.join("config.org")).is_ok_and(|c| c.wrap);
     // The window manager needs a name for the title bar, the task
     // switcher and the Wayland app id — an untitled window is the one
     // the user cannot find again. The vault is what distinguishes two
@@ -1362,6 +1364,7 @@ pub fn run(vault_path: &Path) -> Result<(), String> {
                     // the file buffer before the first frame, so the
                     // window the user asked for is the one they get.
                     view.set_view(view_pref);
+                    view.set_wrap(wrap);
                     // Pairing has to know where it listens before the
                     // user opens the surface: the ticket shown there is
                     // what gets pasted into the other machine.
@@ -1541,6 +1544,9 @@ pub struct GpuiView {
     toast_gen: u64,
     /// Where an open context menu is anchored, if one is open.
     menu: Option<(gpui::Point<gpui::Pixels>, closure_shell_core::ContextTarget)>,
+    /// Whether long body lines soft-wrap (`wrap = true` in config.org)
+    /// rather than scrolling sideways.
+    wrap: bool,
     /// The vault's directory name, for the window title.
     vault_name: String,
     /// The title last written to the window manager, so a frame that
@@ -1616,6 +1622,7 @@ impl GpuiView {
             app: ModalApp::new(input_mode),
             theme,
             vault_name,
+            wrap: false,
             window_title: String::new(),
             focus_handle: cx.focus_handle(),
             feedback: closure_shell_core::Feedback::default(),
@@ -1658,6 +1665,18 @@ impl GpuiView {
     /// what a test sets to look at the other shape.
     pub fn set_view(&mut self, view: closure_shell_core::ViewMode) {
         self.app.set_view(view, &self.shell);
+    }
+
+    /// Soft-wrap long body lines instead of scrolling sideways
+    /// (`wrap = true` in config.org).
+    pub const fn set_wrap(&mut self, wrap: bool) {
+        self.wrap = wrap;
+    }
+
+    /// Whether the editor is wrapping.
+    #[must_use]
+    pub const fn wraps(&self) -> bool {
+        self.wrap
     }
 
     /// The activity rail's destinations — what [`Self::rail`] paints.
@@ -1874,6 +1893,15 @@ impl GpuiView {
         // gpui lowercases letter keysyms; the editor's vim vocabulary
         // does not ([`editor_key`]).
         let key = editor_key(&ks.key, m.shift, ks.key_char.as_deref());
+        // Shift+Enter is its own key to the core — the newline in a
+        // field whose plain Enter means "accept". The core's key names
+        // carry ctrl and alt as flags but not shift, so it arrives
+        // spelled out.
+        let key = if key == "enter" && m.shift {
+            "shift-enter".to_owned()
+        } else {
+            key
+        };
         self.dispatch_key(&key, m.control, m.alt, text, cx);
     }
 
@@ -2782,11 +2810,16 @@ impl GpuiView {
             line_start,
             line_len,
             h_start,
+            cols,
         } = geom;
         let text: String = spans.iter().map(|(_, s)| s.as_str()).collect();
         let (cur_line, cur_col) = self.app.body_cursor();
         let insert = self.app.body_mode() == EditorMode::Insert;
-        let on_cursor_line = ln == cur_line;
+        // Unwrapped, a logical line is one row and owns its cursor.
+        // Wrapped, only the row the column actually falls in does —
+        // otherwise every row of a paragraph would draw one.
+        let on_cursor_line =
+            ln == cur_line && cols.is_none_or(|n| (h_start..h_start + n + 1).contains(&cur_col));
         // Search hits first, so the cursor and the selection are drawn
         // over one they happen to sit on. Marking them at all is new:
         // `/` moved the cursor to a match and left every match on
@@ -2835,6 +2868,16 @@ impl GpuiView {
         let shift = byte_for_col(&text, h_start);
         let (_, runs) = split_runs(&runs, shift);
         let text = text.get(shift..).unwrap_or_default().to_owned();
+        // A wrapped row also *ends* somewhere: the rest of the logical
+        // line belongs to the rows below it.
+        let (text, runs) = match cols {
+            None => (text, runs),
+            Some(n) => {
+                let end = byte_for_col(&text, n);
+                let (head, _) = split_runs(&runs, end);
+                (text.get(..end).unwrap_or(&text).to_owned(), head)
+            }
+        };
         let cur_col = cur_col.saturating_sub(h_start);
         let mut row = div()
             .flex()
@@ -2981,6 +3024,29 @@ impl GpuiView {
         self.painted_view.get()
     }
 
+    /// The column windows one logical line is painted in: exactly one
+    /// when clipping (from the horizontal scroll offset to the end of
+    /// the line), one per wrapped row when wrapping.
+    fn row_windows_for(
+        text: &str,
+        h_start: usize,
+        wrap_cols: Option<usize>,
+    ) -> Vec<(usize, Option<usize>)> {
+        let Some(cols) = wrap_cols else {
+            return vec![(h_start, None)];
+        };
+        let mut at = 0usize;
+        closure_shell_core::wrap_body(text, cols)
+            .into_iter()
+            .map(|row| {
+                let width = text[row.start..row.end].chars().count();
+                let window = (at, Some(width));
+                at += width;
+                window
+            })
+            .collect()
+    }
+
     fn editor_pane(&self, co: Colors, cx: &Context<Self>) -> gpui::Div {
         use closure_shell_core::EditorMode;
         let view = self.body_view();
@@ -3018,6 +3084,13 @@ impl GpuiView {
             closure_shell_core::ContextTarget::Body,
             cx,
         );
+        // `wrap = true` in config.org: a long line becomes several rows
+        // instead of scrolling sideways. The two are alternatives — a
+        // wrapped row has no horizontal offset to have — so the rows
+        // are cut by [`closure_shell_core::wrap_body`], which hands back
+        // an exact byte partition, and each one is painted through the
+        // same path with its own column window.
+        let wrap_cols = self.wrap.then(|| self.body_cols());
         let mut line_start = 0usize;
         for (ln, spans) in self.highlighted(self.app.body_buffer()).iter().enumerate() {
             let line_len: usize = spans.iter().map(|(_, s)| s.len()).sum();
@@ -3027,30 +3100,44 @@ impl GpuiView {
                 line_start += line_len + 1;
                 continue;
             }
-            // L5: line-number gutter, current line accented.
-            let mut row = div().flex().min_h(px(BODY_LINE_H * self.app.zoom())).child(
-                div()
-                    .w(px(34.0))
-                    .mr_2()
-                    .text_size(px(11.0))
-                    .text_color(rgb(if ln == cur_line { co.accent } else { co.muted }))
-                    .child(format!("{:>3}", ln + 1)),
-            );
-            row = row.child(self.editor_line(
-                co,
-                LineGeom {
-                    ln,
-                    line_start,
-                    line_len,
-                    h_start,
-                },
-                spans,
-                cx,
-            ));
-            if ln == cur_line {
-                row = row.bg(rgb(mix_u32(co.panel, co.selection, 96)));
+            let text: String = spans.iter().map(|(_, s)| s.as_str()).collect();
+            for (i, (start_col, width)) in Self::row_windows_for(&text, h_start, wrap_cols)
+                .into_iter()
+                .enumerate()
+            {
+                // L5: line-number gutter, current line accented. A
+                // continuation row carries no number — the gutter says
+                // which *logical* line this is, once.
+                let gutter = div().w(px(34.0)).mr_2();
+                let gutter = if i == 0 {
+                    gutter
+                        .text_size(px(11.0))
+                        .text_color(rgb(if ln == cur_line { co.accent } else { co.muted }))
+                        .child(format!("{:>3}", ln + 1))
+                } else {
+                    gutter
+                };
+                let mut row = div()
+                    .flex()
+                    .min_h(px(BODY_LINE_H * self.app.zoom()))
+                    .child(gutter);
+                row = row.child(self.editor_line(
+                    co,
+                    LineGeom {
+                        ln,
+                        line_start,
+                        line_len,
+                        h_start: start_col,
+                        cols: width,
+                    },
+                    spans,
+                    cx,
+                ));
+                if ln == cur_line {
+                    row = row.bg(rgb(mix_u32(co.panel, co.selection, 96)));
+                }
+                body = body.child(row);
             }
-            body = body.child(row);
             line_start += line_len + 1;
         }
         // The editor virtualizes its own lines, so the pane it sits in
@@ -3059,7 +3146,7 @@ impl GpuiView {
         // indication of where in it you were. This bar reads the
         // editor's own scroll state instead.
         let lines = self.app.body_buffer().split('\n').count();
-        let mut pane = div()
+        let pane = div()
             .flex()
             .flex_col()
             .flex_grow()
@@ -3093,6 +3180,17 @@ impl GpuiView {
                     .child(body)
                     .child(Self::body_scrollbar(co, lines, view, scroll_start, cx)),
             );
+        self.with_editor_overlays(pane, co, cx)
+    }
+
+    /// Hang the editor's two overlays — the "/" block menu and the
+    /// completion popup — on the pane, when they are open.
+    fn with_editor_overlays(
+        &self,
+        mut pane: gpui::Div,
+        co: Colors,
+        cx: &Context<Self>,
+    ) -> gpui::Div {
         if let Some(menu) = self.slash_menu(co, cx) {
             pane = pane.child(menu);
         }
@@ -5367,8 +5465,13 @@ struct LineGeom {
     line_start: usize,
     /// The line's byte length.
     line_len: usize,
-    /// First visible column ([`h_scroll_start`]).
+    /// First visible column ([`h_scroll_start`]) — or, when wrapping,
+    /// the column this visual row starts at.
     h_start: usize,
+    /// How many columns this row paints, when wrapping. `None` paints
+    /// to the end of the line and lets the pane clip it, which is the
+    /// unwrapped behaviour.
+    cols: Option<usize>,
 }
 
 /// A hover explanation, in the theme's own colours.

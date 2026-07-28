@@ -1031,6 +1031,14 @@ enum Cmd {
         /// Path to the vault directory.
         vault: PathBuf,
     },
+    /// Write closure's own documentation into a vault: `config.org`
+    /// (the defaults, generated from the schema) and `tutorial.org`
+    /// (generated from the live keymap). An existing `config.org` is
+    /// never overwritten.
+    InitVault {
+        /// Path to the vault directory.
+        vault: PathBuf,
+    },
     /// Launch the egui/eframe desktop shell (browse, fuzzy filter,
     /// detail pane, capture/rename/delete, command palette).
     Egui {
@@ -1478,6 +1486,7 @@ fn run(cmd: &Cmd) -> Result<(), String> {
         ),
         Cmd::Build => cmd_build(),
         Cmd::Gpui { vault } => cmd_gpui(vault),
+        Cmd::InitVault { vault } => cmd_init_vault(vault),
         Cmd::Egui { vault } => cmd_egui(vault),
         Cmd::WhereIs { name } => cmd_where_is(name),
         Cmd::Doc { name } => cmd_doc(name),
@@ -2323,6 +2332,40 @@ fn cmd_build() -> Result<(), String> {
     println!("name:    {}", env!("CARGO_PKG_NAME"));
     println!("version: {}", env!("CARGO_PKG_VERSION"));
     println!("authors: {}", env!("CARGO_PKG_AUTHORS"));
+    Ok(())
+}
+
+/// Write `config.org` and `tutorial.org` into a vault.
+///
+/// Both are *generated* — the config from the typed schema, the
+/// tutorial from the live keymap — because a hand-written sample of
+/// either is wrong the first time a key or a chord moves, and the
+/// person who finds out is a new user following it.
+///
+/// An existing `config.org` is left alone: it is the user's file, and
+/// overwriting a configuration to "document" it would be the worst
+/// possible trade.
+fn cmd_init_vault(vault: &Path) -> Result<(), String> {
+    fs::create_dir_all(vault).map_err(|e| format!("create {}: {e}", vault.display()))?;
+    let config_path = vault.join("config.org");
+    if config_path.exists() {
+        println!("kept {} (already yours)", config_path.display());
+    } else {
+        fs::write(&config_path, closure_config::Config::default_org())
+            .map_err(|e| format!("write {}: {e}", config_path.display()))?;
+        println!("wrote {}", config_path.display());
+    }
+    // The tutorial is written for the mode the vault is actually
+    // configured for, so its chords are the ones this user will press.
+    let mode = closure_config::Config::from_path(&config_path)
+        .map_or(closure_config::InputMode::Doom, |c| c.input_mode);
+    let tutorial_path = vault.join("tutorial.org");
+    fs::write(&tutorial_path, closure_shell_core::tutorial_org(mode))
+        .map_err(|e| format!("write {}: {e}", tutorial_path.display()))?;
+    println!(
+        "wrote {} (for input_mode = {mode:?})",
+        tutorial_path.display()
+    );
     Ok(())
 }
 

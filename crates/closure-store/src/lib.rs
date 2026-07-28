@@ -400,6 +400,46 @@ impl Vault {
         Ok(id)
     }
 
+    /// Set a headline's body, filing any headlines typed into it as
+    /// real children of it.
+    ///
+    /// The body editor shows a body; a line starting with `*` in one is
+    /// a headline the moment it goes back to disk. Escaping it (org's
+    /// comma) is right for prose that happens to start with a star and
+    /// wrong for what people actually mean, which is "this belongs
+    /// under this". See [`closure_org::rewrite_body_with_children`] for
+    /// the rebasing rule and why existing children are untouched.
+    ///
+    /// # Errors
+    ///
+    /// [`VaultError::UnknownId`] when `id` names no headline,
+    /// [`VaultError::Parse`] if the result would not parse, and IO
+    /// failures from the write.
+    pub fn set_body_with_children(
+        &mut self,
+        id: &BlockId,
+        body: &str,
+        children_src: &str,
+    ) -> Result<(), VaultError> {
+        let path = self
+            .by_id
+            .get(id)
+            .cloned()
+            .ok_or_else(|| VaultError::UnknownId(id.to_string()))?;
+        let doc = self
+            .documents
+            .get(&path)
+            .ok_or_else(|| VaultError::UnknownId(id.to_string()))?;
+        let outline_path = doc
+            .path_of(id)
+            .ok_or_else(|| VaultError::UnknownId(id.to_string()))?;
+        let org =
+            closure_org::rewrite_body_with_children(doc.org(), &outline_path, body, children_src)
+                .map_err(|_| VaultError::Parse { path: path.clone() })?;
+        let source = org.source().to_owned();
+        self.set_source(&path, &source)
+    }
+
     /// Capture a new headline as the last child of `parent`.
     ///
     /// The flat [`Self::capture`] files everything at the top of one

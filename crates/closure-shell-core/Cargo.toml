@@ -17,6 +17,7 @@ closure-org = { path = "../closure-org" }
 closure-store = { path = "../closure-store" }
 closure-query = { path = "../closure-query" }
 closure-config = { path = "../closure-config" }
+closure-eval = { path = "../closure-eval" }
 closure-input = { path = "../closure-input" }
 closure-tree-sitter = { path = "../closure-tree-sitter" }
 closure-sniffer = { path = "../closure-sniffer" }

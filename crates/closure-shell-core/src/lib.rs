@@ -164,6 +164,20 @@ impl Shell {
         self.vault.capture(&template, title)
     }
 
+    /// Set a body, filing headlines typed into it as children (I8).
+    ///
+    /// # Errors
+    ///
+    /// Propagates [`closure_store::VaultError`].
+    pub fn set_body_with_children(
+        &mut self,
+        id: &closure_core::BlockId,
+        body: &str,
+        children_src: &str,
+    ) -> Result<(), closure_store::VaultError> {
+        self.vault.set_body_with_children(id, body, children_src)
+    }
+
     /// Capture a new `TODO` as the last child of `parent` (I8).
     ///
     /// # Errors
@@ -2836,6 +2850,279 @@ impl LineInput {
 /// Body lines a shell is assumed to be able to paint until it says
 /// otherwise ([`ModalApp::set_body_viewport`]).
 pub const BODY_VIEWPORT_DEFAULT: usize = 20;
+
+/// One painted row of a wrapped body: a slice of a logical line.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct VisualLine {
+    /// Which logical line (0-based) this row came from — what the
+    /// gutter number refers to.
+    pub logical: usize,
+    /// Byte range within the whole body.
+    pub start: usize,
+    /// End of the range (exclusive).
+    pub end: usize,
+    /// Whether this is the first row of its logical line, so the gutter
+    /// numbers each line once rather than once per row.
+    pub first: bool,
+}
+
+/// Break `body` into visual rows at most `cols` characters wide.
+///
+/// The editor clips long lines and scrolls sideways instead, which was
+/// a deliberate decision — wrapping desyncs the one-number gutter, the
+/// fixed row height, and the arithmetic that turns pane height into a
+/// line count. Wrapping is therefore opt-in (`wrap = true`), and this
+/// is the piece that makes it honest: every row says which logical line
+/// it belongs to and exactly which bytes it holds, so the gutter, the
+/// cursor and the scroll all still have something exact to ask.
+///
+/// Breaks at the last space that fits; a word longer than the width is
+/// broken rather than dropped, because a URL is the normal case. Never
+/// loses a byte, and never splits a character.
+#[must_use]
+pub fn wrap_body(body: &str, cols: usize) -> Vec<VisualLine> {
+    let cols = cols.max(1);
+    let mut out = Vec::new();
+    let mut line_start = 0usize;
+    for (logical, line) in body.split('\n').enumerate() {
+        let mut at = 0usize; // byte offset within `line`
+        let mut first = true;
+        loop {
+            let rest = &line[at..];
+            if rest.chars().count() <= cols {
+                out.push(VisualLine {
+                    logical,
+                    start: line_start + at,
+                    end: line_start + line.len(),
+                    first,
+                });
+                break;
+            }
+            // The byte offset `cols` characters in — never mid-char.
+            let hard = rest.char_indices().nth(cols).map_or(rest.len(), |(i, _)| i);
+            // Prefer the last space that fits; a word wider than the
+            // pane is broken instead of hanging off it. The space stays
+            // at the end of the row it broke, so the rows are an exact
+            // partition of the bytes — a cursor sitting on that space
+            // has to be *somewhere*, and a row that owns no bytes is a
+            // row the cursor can fall through.
+            let cut = rest[..hard]
+                .rfind(' ')
+                .map_or(hard, |sp| if sp == 0 { hard } else { sp + 1 });
+            out.push(VisualLine {
+                logical,
+                start: line_start + at,
+                end: line_start + at + cut,
+                first,
+            });
+            at += cut;
+            first = false;
+        }
+        line_start += line.len() + 1;
+    }
+    out
+}
+
+/// The tutorial closure writes into a vault, for the given input mode.
+///
+/// Every chord in it is looked up in the keymap the app dispatches
+/// through (I4), so it cannot describe a binding that does not exist:
+/// a hand-written tutorial is wrong the first time a chord moves, and
+/// the person who finds out is a new user following it.
+///
+/// It is an org file because that is what closure is — the tutorial is
+/// a note you can fold, search, edit and sync like any other.
+#[must_use]
+pub fn tutorial_org(mode: InputMode) -> String {
+    /// The chord for `command`, or a plain statement that this mode
+    /// does not bind it — never a guess.
+    fn chord(mode: InputMode, command: &str) -> String {
+        closure_input::chord_for_command(mode, command)
+            .map_or_else(|| "(unbound in this mode)".to_owned(), |c| format!("={c}="))
+    }
+    let modal = matches!(mode, InputMode::Vim | InputMode::Doom | InputMode::Helix);
+    let mode_name = match mode {
+        InputMode::Emacs => "emacs",
+        InputMode::Vim => "vim",
+        InputMode::Doom => "doom",
+        InputMode::Helix => "helix",
+        InputMode::Notion => "notion",
+    };
+    // Doom's identity is the leader, and a tutorial that never says the
+    // word teaches the wrong app — even though every command below also
+    // has a shorter chord of its own.
+    let leader = if matches!(mode, InputMode::Doom) {
+        "\n* The leader\n\
+         =SPC= alone opens which-key: press it and wait, and the panel lists \
+         what the next\nkey would do. =SPC :=  is the palette, =SPC f s= \
+         saves, =SPC q q= quits, =SPC o a= the\nagenda. Everything under it \
+         also has a shorter chord, which is what the rest of\nthis file \
+         shows.\n"
+    } else {
+        ""
+    };
+    let editing = tutorial_editing(modal);
+    let registers = tutorial_registers(modal);
+    format!(
+        "#+TITLE: closure — a tour\n\
+         #+FILETAGS: :closure:tutorial:\n\
+         \n\
+         Written by closure itself for =input_mode = {mode_name}=. Every chord \
+         below is read out\nof the keymap the app dispatches through, so it \
+         cannot describe a binding that\ndoes not exist. Regenerate it after \
+         changing modes: =closure init-vault .=\n\
+         \n\
+         {leader}\n* Moving around\n\
+         The outline is the vault: every headline in every =.org= file, in one \
+         list.\n\
+         - {next} / {prev} — next and previous row\n\
+         - {search} — search; type, then Enter selects the hit *in the \
+         outline*\n\
+         - {open} — open the selected item's body for editing\n\
+         - {palette} — the command palette: every command, with its chord\n\
+         - =Esc= — drop the selection (see /Capture/, below)\n\
+         - {quit} — leave\n\
+         \n\
+         * Capture\n\
+         {capture} opens one line. Enter files it; Shift+Enter adds a second \
+         line, and\nthen the first line is the headline and the rest is its \
+         body.\n\
+         \n\
+         A capture is filed *under whatever is selected*, which is what an \
+         outliner is for.\nPress =Esc= first to select nothing, and it goes to \
+         the top level of =inbox.org=.\nEither way the new item ends up \
+         selected, so the next thing you do happens to it.\n\
+         \n\
+         * Editing a body\n\
+         {editing}\n\
+         \n\
+         - =C-Enter= or =:w= writes the buffer; =:w= stays in it, =:wq= leaves\n\
+         - =Esc= leaves an *unchanged* buffer; on a changed one it refuses and \
+         says so\n\
+         - =:q!= throws the edit away on purpose\n\
+         - =C-l= cycles the cursor line: middle, top, bottom (=zz= / =zt= / \
+         =zb= do it directly)\n\
+         - =C-+= / =C--= / =C-0= zoom the buffer text\n\
+         - =/= searches inside the buffer; =u= undoes, =C-r= redoes\n\
+         \n\
+         Type =* Something= on a line of its own and it becomes a *child* of \
+         the note you\nare editing, at the right depth — a =*= typed in a \
+         =***= note is a =****=. Prose\nthat merely starts with a star \
+         (=*bold*=, a =  * list item=) stays prose.\n\
+         \n\
+         {registers}{reference}",
+        leader = leader,
+        next = chord(mode, "next-file"),
+        prev = chord(mode, "prev-file"),
+        search = chord(mode, "search-start"),
+        open = chord(mode, "open-file"),
+        palette = chord(mode, "palette"),
+        quit = chord(mode, "quit"),
+        capture = chord(mode, "capture-start"),
+        registers = registers,
+        reference = tutorial_reference(mode),
+    )
+}
+
+/// What a buffer does when you open it, which is the one thing a modal
+/// mode has to explain and a mouse-first one has to promise.
+const fn tutorial_editing(modal: bool) -> &'static str {
+    if modal {
+        "This mode is *modal*: a buffer opens in NORMAL, where the keys are \
+         commands.\n=i= starts typing, =Esc= stops. That is why pressing =d= \
+         in a fresh buffer deletes\nsomething instead of typing a letter — it \
+         is a command, not a mistake."
+    } else {
+        "This mode has no modes: a buffer opens ready to type, and every key \
+         is text.\nThe editor is always in INSERT, which is what the mode \
+         indicator says."
+    }
+}
+
+/// Where yanked text goes — the registers in a modal mode, the system
+/// clipboard in one without them.
+const fn tutorial_registers(modal: bool) -> &'static str {
+    if modal {
+        "** Registers\n\
+         Yanking and deleting put text somewhere, and that somewhere has a \
+         name.\n\
+         - =yy= copies a line into the unnamed register, =p= puts it back\n\
+         - =\"ayy= copies into register =a=; =\"ap= puts *that* one back\n\
+         - =dd= deletes a line — a delete fills the same register, so =p= \
+         after =dd= moves it\n\
+         - =q a= records a macro into register =a=, =q= stops, =@a= replays \
+         it\n\
+         The registers are the editor's, not the system's: =C-v= pastes what \
+         the *desktop*\ncopied, which is a different clipboard and \
+         deliberately so.\n"
+    } else {
+        "** The clipboard\n\
+         =C-c= and =C-v= are the system clipboard, the way they are \
+         everywhere else.\n"
+    }
+}
+
+/// The second half of the tutorial: the per-command reference, and what
+/// the files around it are.
+fn tutorial_reference(mode: InputMode) -> String {
+    fn chord(mode: InputMode, command: &str) -> String {
+        closure_input::chord_for_command(mode, command)
+            .map_or_else(|| "(unbound in this mode)".to_owned(), |c| format!("={c}="))
+    }
+    format!(
+        "* Tags, TODOs and properties\n\
+         - {todo} — cycle the TODO keyword\n\
+         - {tags} — edit tags (=:work:urgent:=)\n\
+         - {property} — add or edit a property\n\
+         - {fold} — fold or unfold the subtree\n\
+         - {promote} / {demote} — change a headline's level\n\
+         \n\
+         * Undo\n\
+         Every edit goes through the kernel, so every edit is undoable — \
+         including the\nones a chord made by accident. {undo} undoes, {redo} \
+         redoes, and {history}\nshows the tree of where you have been.\n\
+         \n\
+         * config.org\n\
+         The file beside this one *is* the configuration: how you type, the \
+         colours, which\nlanguages may run, where pairing listens. Delete a \
+         line to get its default back.\n\
+         \n\
+         Two keys are worth reading twice:\n\
+         - =eval_trust= is default-deny. A vault is something people can send \
+         you, so no\n  code block runs — and =:!cmd= is refused — until you \
+         list a language here.\n\
+         - =llm_key_env= names an /environment variable/, never the key \
+         itself, so this file\n  can be committed and synced without leaking \
+         a credential.\n\
+         \n\
+         * Pairing with another machine\n\
+         {sync} opens the pairing pane. It shows a *ticket*: one line naming \
+         an address and\na public key. Hand it to the other person, paste \
+         theirs, and both press listen.\n\
+         \n\
+         The ticket exchange is the trust anchor — anyone whose ticket you \
+         paste can write\nto your vault, and a listener that trusts nobody \
+         refuses to answer at all. On a\nmachine with more than one address (a \
+         LAN *and* a VPN), set =sync_advertise= in\nconfig.org so the ticket \
+         names the one your peer can actually reach.\n\
+         \n\
+         * Where the files are\n\
+         Every note is a plain =.org= file in this directory. Nothing is in a \
+         database; a\nsecond program reading the directory sees exactly what \
+         closure sees. That is the\nwhole design — you can leave at any time \
+         and take your notes with you.\n",
+        todo = chord(mode, "toggle-todo"),
+        tags = chord(mode, "edit-tags"),
+        property = chord(mode, "edit-property"),
+        fold = chord(mode, "toggle-fold"),
+        promote = chord(mode, "promote"),
+        demote = chord(mode, "demote"),
+        undo = chord(mode, "undo"),
+        redo = chord(mode, "redo"),
+        history = chord(mode, "undo-history"),
+        sync = chord(mode, "sync"),
+    )
+}
 
 /// One zoom step, as a ratio. Doom scales its font by an increment per
 /// press; a ratio is the same idea in a world with no font table.
@@ -7976,6 +8263,9 @@ pub struct ModalApp {
     recenter: Option<(u8, usize, usize)>,
     /// A body-editor prefix key waiting for the rest of its chord.
     pending_body: Option<BodyPrefix>,
+    /// Output of the last `:!` shell escape, kept so a shell can show
+    /// more than the one line a status bar holds.
+    shell_out: Option<String>,
     /// Where the cursor was left in each body, by block id, so opening
     /// a note again resumes rather than restarting at byte zero.
     body_cursors: std::collections::HashMap<String, usize>,
@@ -8154,6 +8444,7 @@ impl ModalApp {
             zoom_steps: 0,
             search_return: None,
             body_cursors: std::collections::HashMap::new(),
+            shell_out: None,
             body_scroll: None,
             hist_cursor: 0,
             row_memo: std::cell::RefCell::new(None),
@@ -9635,8 +9926,15 @@ impl ModalApp {
     fn run_ex(&mut self, shell: &mut Shell, line: &str) {
         let editing = self.ex_return == Some(ModalSurface::EditBody);
         self.ex_buf.clear();
-        self.ex_return = None;
+        let was = self.ex_return.take();
         self.surface = ModalSurface::Browse;
+        // `:!cmd` is vim's shell escape. It stays where it was typed —
+        // running a command is not a reason to close the buffer.
+        if let Some(cmd) = line.strip_prefix('!') {
+            self.surface = was.unwrap_or_else(|| self.home_surface());
+            self.run_shell_escape(shell, cmd.trim());
+            return;
+        }
         match line {
             "" => {}
             // The bang is the whole point of the bang: `:q` will not
@@ -10992,7 +11290,11 @@ impl ModalApp {
     /// word prefix of at least 3 chars with candidates behind it.
     #[must_use]
     pub fn completion_should_popup(&self, shell: &Shell) -> bool {
-        self.surface == ModalSurface::EditBody
+        // Every editing surface, not just the pane one: the editor
+        // *view* holds the same buffer under a different surface, and
+        // pinning this to `EditBody` is why completion never appeared
+        // there.
+        self.surface.is_editor()
             && self.body.mode() == EditorMode::Insert
             && self.completion.is_none()
             && self.body.word_prefix().chars().count() >= 3
@@ -11038,6 +11340,62 @@ impl ModalApp {
         self.surface = ModalSurface::Browse;
     }
 
+    /// Run `cmd` as a shell command (`:!pwd`), behind the vault's
+    /// `eval_trust`.
+    ///
+    /// Running arbitrary shell from an editor is the same capability
+    /// the evaluator already default-denies (C1a) — a vault is a file
+    /// somebody can send you — so it answers to the same key rather
+    /// than inventing a looser rule for the same thing. The working
+    /// directory is the vault, because that is the directory the user
+    /// is thinking about.
+    fn run_shell_escape(&mut self, shell: &Shell, cmd: &str) {
+        if cmd.is_empty() {
+            ":! needs a command — `:!ls`, `:!git status`".clone_into(&mut self.status);
+            return;
+        }
+        let trust = closure_config::Config::from_path(&shell.vault.root().join("config.org"))
+            .map(|c| c.eval_trust)
+            .unwrap_or_default();
+        if !closure_eval::eval_allowed(&trust, "shell") {
+            self.status = format!(
+                "refused to run `{cmd}` — add `eval_trust = shell` to the \
+                 closure-config block in config.org to allow it"
+            );
+            return;
+        }
+        let quoted = cmd.replace('\'', r"'\''");
+        let program = format!("cd '{}' && {}", shell.vault.root().display(), quoted);
+        match closure_eval::eval_with_input(&program, "") {
+            Ok(out) => {
+                let mut text = out.stdout;
+                if !out.stderr.is_empty() {
+                    text.push_str(&out.stderr);
+                }
+                self.status = if out.exit == 0 {
+                    format!("`{cmd}` ok")
+                } else {
+                    format!("`{cmd}` exited {}", out.exit)
+                };
+                self.shell_out = Some(if text.trim().is_empty() {
+                    format!("(no output, exit {})", out.exit)
+                } else {
+                    text
+                });
+            }
+            Err(e) => {
+                self.status = format!("`{cmd}` failed: {e}");
+                self.shell_out = None;
+            }
+        }
+    }
+
+    /// Output of the last `:!` command, for a shell to show.
+    #[must_use]
+    pub fn shell_output(&self) -> Option<&str> {
+        self.shell_out.as_deref()
+    }
+
     /// Note where the cursor was left in the body being closed, so the
     /// next visit resumes there.
     fn remember_body_cursor(&mut self) {
@@ -11058,14 +11416,24 @@ impl ModalApp {
             return;
         };
         let bid = closure_core::BlockId::from_existing(&id);
-        // A body line starting with `*` *is* a headline once it is
-        // back in the file: written verbatim it would split the
-        // outline and reparent every following sibling.
-        let mut body = closure_org::escape_body(self.body.text());
+        // A body line starting with `*` *is* a headline once it is back
+        // in the file. Escaping it with a comma (org's own convention)
+        // is right for prose that happens to start with a star, and
+        // wrong for what people mean when they type `* Something` into
+        // a note — which is that it belongs *under* this one. Typed
+        // headlines are filed as children, rebased to this headline's
+        // depth; the rest is escaped as before.
+        let (prose, typed) = closure_org::split_body_headlines(self.body.text());
+        let mut body = closure_org::escape_body(&prose);
         if !body.is_empty() && !body.ends_with('\n') {
             body.push('\n');
         }
-        match shell.set_body(&bid, &body) {
+        let written = if typed.trim().is_empty() {
+            shell.set_body(&bid, &body)
+        } else {
+            shell.set_body_with_children(&bid, &body, &typed)
+        };
+        match written {
             Ok(()) => {
                 "body saved".clone_into(&mut self.status);
                 // Saved *is* the new baseline: `body_dirty` compares
@@ -11225,10 +11593,15 @@ impl ModalApp {
                 self.go_home();
                 self.capture_buf.clear();
             }
+            // Enter files the item, so there was no way to type a
+            // second line: a captured thought had to fit on one or be
+            // reopened afterwards. Shift+Enter is the newline, the way
+            // a chat box and a Notion block both do it.
+            "shift-enter" => self.capture_buf.insert_char('\n'),
             "enter" => {
                 if !self.capture_buf.is_empty() {
-                    let title = self.capture_buf.take();
-                    self.commit_capture(shell, &title);
+                    let text = self.capture_buf.take();
+                    self.commit_capture(shell, &text);
                 }
                 self.go_home();
                 self.capture_buf.clear();
@@ -11249,7 +11622,13 @@ impl ModalApp {
     /// selection stayed where it was — so the next thing you did
     /// happened to the previous headline. Under the selection when
     /// there is one, top level when Escape has said there is not.
-    fn commit_capture(&mut self, shell: &mut Shell, title: &str) {
+    fn commit_capture(&mut self, shell: &mut Shell, text: &str) {
+        // A capture can be more than one line (Shift+Enter). The first
+        // line is the headline — a headline *is* one line in org — and
+        // the rest is its body, which is where the thought actually
+        // was.
+        let (title, body) = text.split_once('\n').unwrap_or((text, ""));
+        let title = title.trim_end();
         let parent = self
             .selection_active
             .then(|| self.selected_row_id(shell))
@@ -11263,6 +11642,15 @@ impl ModalApp {
         };
         match captured {
             Ok(id) => {
+                if !body.trim().is_empty() {
+                    let mut body = closure_org::escape_body(body);
+                    if !body.ends_with('\n') {
+                        body.push('\n');
+                    }
+                    if let Err(e) = shell.set_body(&id, &body) {
+                        self.status = format!("captured, but the body failed: {e}");
+                    }
+                }
                 self.status = format!("captured: {title}");
                 // The row list is rebuilt from the bumped revision, so
                 // the new id is findable the moment we ask.
@@ -11582,6 +11970,18 @@ impl ModalApp {
                     InputMode::Doom => InputMode::Helix,
                     InputMode::Helix => InputMode::Notion,
                 };
+                // An open buffer follows the new mode. Notion and Emacs
+                // have no NORMAL, so a buffer left in one after the
+                // switch is a text field that will not take text —
+                // which is the worst thing the friendliest mode in the
+                // app could do.
+                if self.surface.is_editor() {
+                    if self.modal_editing() {
+                        self.body.to_normal();
+                    } else {
+                        self.body.to_insert();
+                    }
+                }
                 // How you type and what you are looking at are the same
                 // decision: a mode with a NORMAL wants the file, a mode
                 // without one wants the rows. Toggling the view back is

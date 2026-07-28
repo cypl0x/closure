@@ -45,45 +45,84 @@ fn typ(app: &mut ModalApp, sh: &mut Shell, text: &str) {
     }
 }
 
+// Contract revised 2026-07-28, on the user's report: a *headline* typed
+// into a body is not prose that needs escaping — it is an outline entry,
+// and what people mean by it is "this belongs under this". So a `* Foo`
+// line becomes a real child (see `tests/body_children.rs` in
+// closure-org for the rebasing rule). The comma escape stays for what
+// it was always for: reading files that already contain one, and prose
+// that merely *looks* like a headline.
+
 #[test]
-fn a_body_star_line_does_not_become_a_headline() {
+fn a_body_star_line_becomes_a_child_of_the_note() {
     let (_d, mut sh) = shell();
     let mut app = ModalApp::new(InputMode::Vim);
     typing_body(&mut app, &mut sh);
     typ(&mut app, &mut sh, "* Foo body\n");
     app.on_key(&mut sh, "enter", true, false, None); // C-Enter commit
     let titles: Vec<String> = app.rows(&sh).iter().map(|r| r.title.clone()).collect();
-    assert_eq!(titles, vec!["Foo", "Bar"], "still two headlines");
+    assert_eq!(
+        titles,
+        vec!["Foo", "Foo body", "Bar"],
+        "filed under the note it was typed in"
+    );
+    let level = app
+        .rows(&sh)
+        .iter()
+        .find(|r| r.title == "Foo body")
+        .expect("there")
+        .level;
+    assert_eq!(level, 2, "one level under `Foo`");
 }
 
 #[test]
-fn the_escape_is_invisible_to_the_editor() {
+fn the_prose_around_it_stays_in_the_body() {
     let (_d, mut sh) = shell();
     let mut app = ModalApp::new(InputMode::Vim);
     typing_body(&mut app, &mut sh);
-    typ(&mut app, &mut sh, "* Foo body\n");
+    typ(&mut app, &mut sh, "some prose\n* Foo body\n");
     app.on_key(&mut sh, "enter", true, false, None);
-    // Reopening shows what was typed, not its on-disk spelling.
     assert_eq!(
         app.detail(&sh).expect("detail").body.trim_end(),
-        "* Foo body"
+        "some prose",
+        "the body kept the prose and lost only the headline"
     );
-    app.on_key(&mut sh, "i", false, false, Some('i'));
-    assert_eq!(app.body_buffer().trim_end(), "* Foo body");
 }
 
 #[test]
-fn the_escape_round_trips_through_a_second_edit() {
+fn text_that_merely_looks_like_a_headline_is_still_escaped() {
+    // `*bold*` has no space after its star, so it is markup, not an
+    // outline entry — it stays in the body, escaped on disk exactly as
+    // before.
+    let (dir, mut sh) = shell();
+    let mut app = ModalApp::new(InputMode::Vim);
+    typing_body(&mut app, &mut sh);
+    typ(&mut app, &mut sh, "*bold* opening\n");
+    app.on_key(&mut sh, "enter", true, false, None);
+    assert_eq!(app.rows(&sh).len(), 2, "no headline was invented");
+    assert_eq!(
+        app.detail(&sh).expect("detail").body.trim_end(),
+        "*bold* opening"
+    );
+    let on_disk = fs::read_to_string(dir.path().join("notes.org")).expect("read");
+    assert!(on_disk.contains("*bold* opening"), "{on_disk}");
+}
+
+#[test]
+fn committing_an_unchanged_body_twice_changes_nothing() {
+    // The old worry was commas accumulating; the new one is a child
+    // being filed twice. Neither may happen.
     let (_d, mut sh) = shell();
     let mut app = ModalApp::new(InputMode::Vim);
     typing_body(&mut app, &mut sh);
     typ(&mut app, &mut sh, "* one\n");
     app.on_key(&mut sh, "enter", true, false, None);
-    // Open and commit again, unchanged: the comma must not accumulate.
+    let after_first: Vec<String> = app.rows(&sh).iter().map(|r| r.title.clone()).collect();
+
     app.on_key(&mut sh, "i", false, false, Some('i'));
     app.on_key(&mut sh, "enter", true, false, None);
-    assert_eq!(app.detail(&sh).expect("detail").body.trim_end(), "* one");
-    assert_eq!(app.rows(&sh).len(), 2, "no headline was invented");
+    let after_second: Vec<String> = app.rows(&sh).iter().map(|r| r.title.clone()).collect();
+    assert_eq!(after_first, after_second, "a second commit is a no-op");
 }
 
 #[test]

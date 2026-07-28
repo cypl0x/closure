@@ -283,3 +283,56 @@ fn ctrl_j_and_k_move_through_search_results() {
     assert_eq!(app.selected(), start, "C-k moves back");
     assert_eq!(app.query(), "", "and neither typed a letter");
 }
+
+// === a capture longer than one line ===
+
+#[test]
+fn shift_enter_starts_a_second_line_in_a_capture() {
+    // Enter files the item, so there was no way to type a second line:
+    // a captured thought had to be one line or be re-opened afterwards.
+    let (_d, mut sh) = shell();
+    let mut app = ModalApp::new(InputMode::Doom);
+    app.run(&mut sh, "capture-start");
+    for c in "Ring Leon".chars() {
+        app.on_key(&mut sh, "x", false, false, Some(c));
+    }
+    app.on_key(&mut sh, "shift-enter", false, false, None);
+    for c in "about the flat".chars() {
+        app.on_key(&mut sh, "x", false, false, Some(c));
+    }
+    assert_eq!(app.capture_buffer(), "Ring Leon\nabout the flat");
+    assert_eq!(app.surface(), ModalSurface::Capture, "still capturing");
+}
+
+#[test]
+fn the_first_line_is_the_headline_and_the_rest_is_the_body() {
+    let (_d, mut sh) = shell();
+    let mut app = ModalApp::new(InputMode::Doom);
+    app.run(&mut sh, "capture-start");
+    for c in "Ring Leon".chars() {
+        app.on_key(&mut sh, "x", false, false, Some(c));
+    }
+    app.on_key(&mut sh, "shift-enter", false, false, None);
+    for c in "about the flat".chars() {
+        app.on_key(&mut sh, "x", false, false, Some(c));
+    }
+    app.on_key(&mut sh, "enter", false, false, None);
+
+    let rows = app.rows(&sh);
+    let new = rows
+        .iter()
+        .find(|r| r.title.contains("Ring Leon"))
+        .expect("captured");
+    assert!(
+        !new.title.contains("about the flat"),
+        "the headline is the first line only: {:?}",
+        new.title
+    );
+    let id = closure_core::BlockId::from_existing(&new.id);
+    let (headline, _) = sh.vault.find_by_id(&id).expect("in the vault");
+    assert!(
+        headline.body_text().contains("about the flat"),
+        "the rest is the body: {:?}",
+        headline.body_text()
+    );
+}

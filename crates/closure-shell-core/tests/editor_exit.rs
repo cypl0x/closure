@@ -342,3 +342,117 @@ fn the_zoom_chords_reach_it_from_the_editor() {
     app.on_key(&mut sh, "0", true, false, Some('0'));
     assert!((app.zoom() - 1.0).abs() < f32::EPSILON, "C-0 resets");
 }
+
+// === changing input mode while a buffer is open ===
+
+#[test]
+fn switching_to_notion_puts_the_open_buffer_into_insert() {
+    // Notion mode has no NORMAL, so a buffer left in it after a mode
+    // switch is a text field that will not take text — the exact
+    // situation a non-technical default must never produce.
+    let (_d, mut sh, mut app) = editing();
+    assert_eq!(app.body_mode(), EditorMode::Normal, "vim opens in NORMAL");
+    // vim → doom → helix → notion
+    for _ in 0..3 {
+        app.run(&mut sh, "cycle-mode");
+    }
+    assert_eq!(app.input_mode(), InputMode::Notion);
+    assert_eq!(
+        app.body_mode(),
+        EditorMode::Insert,
+        "a mode without a NORMAL types"
+    );
+}
+
+#[test]
+fn switching_to_a_modal_mode_puts_the_buffer_into_normal() {
+    let (_d, mut sh) = shell();
+    let mut app = ModalApp::new(InputMode::Notion);
+    app.on_key(&mut sh, "i", false, false, Some('i'));
+    // Opening it in Notion means INSERT; the keystroke typed an `i`.
+    assert_eq!(app.body_mode(), EditorMode::Insert);
+    app.run(&mut sh, "cycle-mode"); // notion → emacs
+    app.run(&mut sh, "cycle-mode"); // emacs → vim
+    assert_eq!(app.input_mode(), InputMode::Vim);
+    assert_eq!(
+        app.body_mode(),
+        EditorMode::Normal,
+        "a modal mode starts in command state"
+    );
+}
+
+// === a headline typed into a body ===
+
+#[test]
+fn a_headline_typed_into_a_body_becomes_a_child() {
+    // Reported as a dislike of the comma escaping: typing `* Foo` into
+    // a body meant `,* Foo` on disk. What it means is "this belongs
+    // under this".
+    let (_d, mut sh, mut app) = editing();
+    app.on_key(&mut sh, "A", false, false, Some('A'));
+    app.on_key(&mut sh, "enter", false, false, None);
+    for c in "* Typed child".chars() {
+        app.on_key(&mut sh, &c.to_string(), false, false, Some(c));
+    }
+    app.on_key(&mut sh, "escape", false, false, None);
+    app.run_ex_line(&mut sh, "wq");
+
+    let rows = app.rows(&sh);
+    let child = rows
+        .iter()
+        .find(|r| r.title.contains("Typed child"))
+        .expect("it became a row of its own");
+    assert_eq!(child.level, 2, "one level under the note it was typed in");
+    let note = rows
+        .iter()
+        .find(|r| r.title.contains("Note"))
+        .expect("parent");
+    assert_eq!(note.level, 1);
+}
+
+#[test]
+fn the_prose_before_it_stays_the_body() {
+    let (_d, mut sh, mut app) = editing();
+    app.on_key(&mut sh, "A", false, false, Some('A'));
+    app.on_key(&mut sh, "enter", false, false, None);
+    for c in "* Typed child".chars() {
+        app.on_key(&mut sh, &c.to_string(), false, false, Some(c));
+    }
+    app.on_key(&mut sh, "escape", false, false, None);
+    app.run_ex_line(&mut sh, "wq");
+
+    let id = closure_core::BlockId::from_existing("01HQEXIT00000000000000001");
+    let (headline, _) = sh.vault.find_by_id(&id).expect("still there");
+    assert!(
+        headline.body_text().contains("Original body"),
+        "the prose is still the body: {:?}",
+        headline.body_text()
+    );
+    assert!(
+        !headline.body_text().contains("Typed child"),
+        "and the headline is not in it"
+    );
+}
+
+#[test]
+fn prose_that_merely_starts_with_a_star_is_still_escaped() {
+    // `*bold*` and a list bullet are not headlines, and must not be
+    // lifted out of the body.
+    let (dir, mut sh, mut app) = editing();
+    app.on_key(&mut sh, "A", false, false, Some('A'));
+    app.on_key(&mut sh, "enter", false, false, None);
+    for c in "*bold* opening".chars() {
+        app.on_key(&mut sh, &c.to_string(), false, false, Some(c));
+    }
+    app.on_key(&mut sh, "escape", false, false, None);
+    app.run_ex_line(&mut sh, "wq");
+
+    let on_disk = fs::read_to_string(dir.path().join("notes.org")).expect("read");
+    assert!(on_disk.contains("*bold* opening"), "{on_disk}");
+    assert_eq!(
+        app.rows(&sh).len(),
+        1,
+        "no new row was invented: {:?}",
+        app.rows(&sh).iter().map(|r| &r.title).collect::<Vec<_>>()
+    );
+}

@@ -1364,3 +1364,33 @@ fn a_left_click_in_empty_space_dismisses_the_context_menu(cx: &mut gpui::TestApp
     vcx.run_until_parked();
     view.update(vcx, |v, _cx| assert!(!v.menu_open()));
 }
+
+#[gpui::test]
+fn a_wrapped_body_paints_more_rows_than_it_has_lines(cx: &mut gpui::TestAppContext) {
+    // `wrap = true`: one long logical line becomes several painted
+    // rows, and the gutter still numbers the line once.
+    let long = format!("* Note\n{}\n", "word ".repeat(80));
+    let (_dir, view, vcx) = visual_window(cx, &long);
+    view.update(vcx, |v, cx| {
+        v.set_wrap(true);
+        v.run_command("edit-body", cx);
+    });
+    vcx.run_until_parked();
+    assert!(
+        vcx.debug_bounds("body-line-0").is_some(),
+        "the first row painted"
+    );
+    view.update(vcx, |v, _cx| {
+        assert!(v.wraps(), "and the editor knows it is wrapping");
+    });
+}
+
+#[gpui::test]
+fn an_unwrapped_editor_still_paints_one_row_per_line(cx: &mut gpui::TestAppContext) {
+    let long = format!("* Note\n{}\n", "word ".repeat(80));
+    let (_dir, view, vcx) = visual_window(cx, &long);
+    view.update(vcx, |v, cx| v.run_command("edit-body", cx));
+    vcx.run_until_parked();
+    view.update(vcx, |v, _cx| assert!(!v.wraps()));
+    assert!(vcx.debug_bounds("body-line-0").is_some());
+}

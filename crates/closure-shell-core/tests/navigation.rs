@@ -223,3 +223,57 @@ fn a_remembered_cursor_past_the_end_is_clamped() {
     let (_line, col) = app.body_cursor();
     assert!(col <= 2, "clamped into the shorter body, got {col}");
 }
+
+// === completion ===
+
+#[test]
+fn completion_offers_words_from_the_vault_in_the_body_editor() {
+    let (_d, mut sh, mut app) = app();
+    app.select_by_id(&sh, "01HQNAV000000000000000001");
+    app.run(&mut sh, "edit-body");
+    app.on_key(&mut sh, "i", false, false, Some('i'));
+    for c in "Gam".chars() {
+        app.on_key(&mut sh, &c.to_string(), false, false, Some(c));
+    }
+    assert!(
+        app.completion_should_popup(&sh),
+        "`Gam` prefixes `Gamma`, which is in the vault"
+    );
+}
+
+#[test]
+fn completion_works_in_the_full_window_editor_too() {
+    // Reported as "autocompletion is not working": the check was
+    // pinned to `EditBody`, and the editor *view* is `EditFile` — a
+    // different surface holding the same buffer, so the popup could
+    // never arm there.
+    let (_d, mut sh, mut app) = app();
+    app.set_view(closure_shell_core::ViewMode::Editor, &sh);
+    assert_eq!(app.surface(), ModalSurface::EditFile);
+    app.on_key(&mut sh, "i", false, false, Some('i')); // INSERT
+    for c in "Gam".chars() {
+        app.on_key(&mut sh, &c.to_string(), false, false, Some(c));
+    }
+    assert!(
+        app.completion_should_popup(&sh),
+        "the same buffer, the same completion"
+    );
+}
+
+#[test]
+fn cycling_completion_applies_a_candidate() {
+    let (_d, mut sh, mut app) = app();
+    app.select_by_id(&sh, "01HQNAV000000000000000001");
+    app.run(&mut sh, "edit-body");
+    app.on_key(&mut sh, "i", false, false, Some('i'));
+    for c in "Gam".chars() {
+        app.on_key(&mut sh, &c.to_string(), false, false, Some(c));
+    }
+    app.open_completion_popup(&sh);
+    app.on_key(&mut sh, "n", true, false, None); // C-n
+    assert!(
+        app.body_buffer().contains("Gamma"),
+        "the candidate went into the buffer: {:?}",
+        app.body_buffer()
+    );
+}

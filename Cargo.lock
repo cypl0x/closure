@@ -1485,6 +1485,7 @@ dependencies = [
  "closure-core",
  "closure-crdt",
  "closure-cron",
+ "closure-eval",
  "closure-input",
  "closure-llm",
  "closure-org",
