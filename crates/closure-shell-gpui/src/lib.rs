@@ -2719,7 +2719,12 @@ impl GpuiView {
         // with the length of its headline.
         let mut line = line
             .child(div().w(px(indent)).flex_none())
-            .child(
+            // The arrow is there only when there is a subtree under it.
+            // Painted on every row, a leaf offered an affordance that
+            // does nothing when clicked — which is most of what "the
+            // collapse isn't working" looks like from the outside. The
+            // column stays either way, so the titles still line up.
+            .child(if row.has_children {
                 div()
                     .debug_selector(|| format!("fold-{i}"))
                     .w(px(18.0))
@@ -2727,8 +2732,10 @@ impl GpuiView {
                     .text_color(rgb(if folded { co.accent } else { co.muted }))
                     .cursor_pointer()
                     .on_mouse_down(MouseButton::Left, act("toggle-fold"))
-                    .child(if folded { "▸" } else { "▾" }),
-            )
+                    .child(if folded { "▸" } else { "▾" })
+            } else {
+                div().w(px(18.0)).flex_none()
+            })
             .child(
                 div()
                     .debug_selector(|| format!("todo-{i}"))

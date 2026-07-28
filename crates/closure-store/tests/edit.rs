@@ -219,6 +219,49 @@ fn promote_is_undoable() {
     assert!(disk.contains("** C"), "I3: level edit on undo-tree");
 }
 
+// === a level change moves the subtree, the way org's own
+// `M-S-<left>`/`M-S-<right>` do (these commands claim those chords) ===
+//
+// Moving the headline alone silently re-parents its children: demote a
+// parent and its children become its *siblings*, so folding it hides
+// nothing and the outline indents a subtree that is no longer one.
+// That is the reported "tree collapse isn't working, especially for
+// promoted/demoted items".
+
+#[test]
+fn demote_takes_the_children_with_it() {
+    let td = write_vault(&[("a.org", "* Parent\n** Child\n*** Grandchild\n* Next\n")]);
+    let mut v = Vault::open(td.path()).expect("open");
+    let id = id_of(&v, "Parent");
+    v.demote(&id).expect("demote");
+    let disk = fs::read_to_string(td.path().join("a.org")).expect("read");
+    assert_eq!(
+        disk, "** Parent\n*** Child\n**** Grandchild\n* Next\n",
+        "the whole subtree moved, and the headline after it did not"
+    );
+}
+
+#[test]
+fn promote_takes_the_children_with_it() {
+    let td = write_vault(&[("a.org", "* Top\n** Parent\n*** Child\n** Other\n")]);
+    let mut v = Vault::open(td.path()).expect("open");
+    let id = id_of(&v, "Parent");
+    v.promote(&id).expect("promote");
+    let disk = fs::read_to_string(td.path().join("a.org")).expect("read");
+    assert_eq!(disk, "* Top\n* Parent\n** Child\n** Other\n");
+}
+
+#[test]
+fn a_moved_subtree_can_be_undone_whole() {
+    let td = write_vault(&[("a.org", "* Parent\n** Child\n")]);
+    let mut v = Vault::open(td.path()).expect("open");
+    let id = id_of(&v, "Parent");
+    v.demote(&id).expect("demote");
+    v.undo_in(&td.path().join("a.org")).expect("undo");
+    let disk = fs::read_to_string(td.path().join("a.org")).expect("read");
+    assert_eq!(disk, "* Parent\n** Child\n", "I3: one edit, one undo");
+}
+
 #[test]
 fn promote_unknown_id_errors() {
     let td = write_vault(&[("a.org", "* A\n")]);

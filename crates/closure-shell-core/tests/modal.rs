@@ -852,6 +852,30 @@ fn row_fold_state_is_queryable_for_the_renderer() {
 }
 
 #[test]
+fn a_row_says_whether_it_has_anything_to_fold() {
+    // The outline painted a fold arrow on every row, including the
+    // leaves, where clicking it does nothing at all — which is most of
+    // what "collapse isn't working" looks like from the outside.
+    let (_d, sh) = nested();
+    let app = ModalApp::new(InputMode::Doom);
+    let rows = app.rows(&sh);
+    assert!(rows[0].has_children, "Ship parser has a subtask");
+    assert!(!rows[1].has_children, "Subtask is a leaf");
+    assert!(!rows[2].has_children, "and so is Personal wiki");
+}
+
+#[test]
+fn a_folded_parent_still_says_it_has_children() {
+    // Its children are off the list while it is folded, so a row that
+    // learned the answer from the *rows* would lose its own arrow the
+    // moment it was used.
+    let (_d, mut sh) = nested();
+    let mut app = ModalApp::new(InputMode::Doom);
+    app.run(&mut sh, "toggle-fold");
+    assert!(app.rows(&sh)[0].has_children, "still foldable, now unfoldable");
+}
+
+#[test]
 fn palette_click_runs_the_clicked_entry() {
     // Mouse path for the palette: clicking row i runs that entry —
     // same commit as Enter on a moved cursor.

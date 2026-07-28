@@ -8899,20 +8899,43 @@ pub fn rewrite_headline_demote(doc: &OrgDoc, path: &[usize]) -> Result<OrgDoc, R
     rewrite_stars(doc, target, new_level)
 }
 
+/// Every header in the subtree rooted at `h`, with the level it takes
+/// when the root moves by `delta`. Levels are clamped to a real
+/// headline: no zero stars, no more than [`u8::MAX`].
+fn subtree_levels(h: &Headline, delta: i16, out: &mut Vec<(Span, u8)>) {
+    let moved = (i16::from(h.level) + delta).clamp(1, i16::from(u8::MAX));
+    out.push((h.header_span, u8::try_from(moved).unwrap_or(u8::MAX)));
+    for child in &h.children {
+        subtree_levels(child, delta, out);
+    }
+}
+
+/// Restar the headline — and everything under it — so the subtree keeps
+/// its shape.
+///
+/// Moving the header alone silently re-parented the children: demote a
+/// parent and its children become its siblings, which leaves a fold
+/// with nothing to hide and an outline indenting a subtree that is no
+/// longer one. Org's own `org-promote-subtree` / `org-demote-subtree`
+/// — the `M-S-<left>` / `M-S-<right>` these commands claim — move the
+/// whole subtree, and so does this.
 fn rewrite_stars(doc: &OrgDoc, target: &Headline, new_level: u8) -> Result<OrgDoc, RewriteError> {
-    let header = &doc.source()[target.header_span.start..target.header_span.end];
-    let (body, trailer) = header
-        .strip_suffix('\n')
-        .map_or((header, ""), |b| (b, "\n"));
-    let stars = body.chars().take_while(|&c| c == '*').count();
-    let after_stars = &body[stars..];
-    let new_stars = "*".repeat(usize::from(new_level));
-    let new_header = format!("{new_stars}{after_stars}{trailer}");
+    let delta = i16::from(new_level) - i16::from(target.level);
+    let mut levels = Vec::new();
+    subtree_levels(target, delta, &mut levels);
+    // Back to front, so a rewrite never moves a span still to come.
+    levels.sort_by_key(|(span, _)| std::cmp::Reverse(span.start));
     let mut src = doc.source().to_owned();
-    src.replace_range(
-        target.header_span.start..target.header_span.end,
-        &new_header,
-    );
+    for (span, level) in levels {
+        let header = &doc.source()[span.start..span.end];
+        let (body, trailer) = header
+            .strip_suffix('\n')
+            .map_or((header, ""), |b| (b, "\n"));
+        let stars = body.chars().take_while(|&c| c == '*').count();
+        let after_stars = &body[stars..];
+        let new_stars = "*".repeat(usize::from(level));
+        src.replace_range(span.start..span.end, &format!("{new_stars}{after_stars}{trailer}"));
+    }
     parse(&src).map_err(|_| RewriteError::Parse)
 }
 

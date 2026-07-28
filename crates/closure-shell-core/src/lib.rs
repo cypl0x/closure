@@ -402,6 +402,13 @@ pub struct Row {
     /// has already computed it — asking the vault again per row per
     /// frame is the same answer at wheel speed.
     pub folded: bool,
+    /// Whether the headline has a subtree at all — read from the
+    /// document, not from the rows, so a folded parent (whose children
+    /// are not in the list) still says yes.
+    ///
+    /// A fold arrow on a row with nothing under it is an affordance
+    /// that does nothing when clicked.
+    pub has_children: bool,
 }
 
 /// One agenda row for the GUI agenda pane, flags precomputed
@@ -1035,6 +1042,73 @@ fn headline_is_folded(h: &closure_core::DocHeadline) -> bool {
     h.properties()
         .iter()
         .any(|(k, v)| k == "VISIBILITY" && v == "folded")
+}
+
+/// The outline, as rows: every headline in the vault, in document
+/// order, minus the ones a fold is hiding.
+///
+/// A `:VISIBILITY: folded` headline hides its descendants — but only in
+/// the listing. A live query searches into folds, the way org's isearch
+/// does, so a non-empty `filter` walks past the fold rule entirely and
+/// sorts by fuzzy score instead.
+///
+/// One walk, two callers ([`App::rows`] and [`ModalApp::derive_rows`]):
+/// they were the same code twice, and a fold rule that differs between
+/// the launcher and the window is a fold rule nobody can reason about.
+fn outline_rows(shell: &Shell, filter: &str) -> Vec<Row> {
+    let mut scored: Vec<(u32, Row)> = Vec::new();
+    for (p, doc) in shell.vault.iter() {
+        let headlines: Vec<_> = doc.all_headlines().collect();
+        let mut hide_below: Option<u8> = None;
+        for (i, h) in headlines.iter().enumerate() {
+            // The fold state is needed twice: to hide descendants here,
+            // and by the outline to draw the arrow. Compute it once and
+            // carry it on the row.
+            let folded = headline_is_folded(h);
+            if filter.is_empty() {
+                if let Some(limit) = hide_below {
+                    if h.level() > limit {
+                        continue;
+                    }
+                    hide_below = None;
+                }
+                if folded {
+                    hide_below = Some(h.level());
+                }
+            }
+            let score = if filter.is_empty() {
+                Some(0)
+            } else {
+                closure_query::fuzzy_score(filter, h.title())
+            };
+            if let Some(sc) = score {
+                scored.push((
+                    sc,
+                    Row {
+                        id: h.id().to_string(),
+                        path: p.display().to_string(),
+                        title: h.title().to_owned(),
+                        level: h.level(),
+                        todo: h.todo().map(ToOwned::to_owned),
+                        folded,
+                        // Document order is outline order, so the next
+                        // headline is a child exactly when it is deeper.
+                        // Read from the document rather than the rows:
+                        // a folded parent's children are not in the list
+                        // at all, and it must not lose its own arrow the
+                        // moment the arrow is used.
+                        has_children: headlines
+                            .get(i + 1)
+                            .is_some_and(|next| next.level() > h.level()),
+                    },
+                ));
+            }
+        }
+    }
+    if !filter.is_empty() {
+        scored.sort_by_key(|(sc, _)| std::cmp::Reverse(*sc));
+    }
+    scored.into_iter().map(|(_, r)| r).collect()
 }
 
 /// Whether the row with block id `id` is currently folded — the
@@ -4399,49 +4473,7 @@ impl App {
     /// `closure_query`, I7).
     #[must_use]
     pub fn rows(&self, shell: &Shell) -> Vec<Row> {
-        let mut scored: Vec<(u32, Row)> = Vec::new();
-        for (p, doc) in shell.vault.iter() {
-            // Fold-aware outline walk: a `:VISIBILITY: folded` headline
-            // hides its descendants — but only in the outline listing; a
-            // live query searches into folds (like org isearch).
-            let mut hide_below: Option<u8> = None;
-            for h in doc.all_headlines() {
-                let folded = headline_is_folded(h);
-                if self.query.is_empty() {
-                    if let Some(limit) = hide_below {
-                        if h.level() > limit {
-                            continue;
-                        }
-                        hide_below = None;
-                    }
-                    if folded {
-                        hide_below = Some(h.level());
-                    }
-                }
-                let score = if self.query.is_empty() {
-                    Some(0)
-                } else {
-                    closure_query::fuzzy_score(&self.query, h.title())
-                };
-                if let Some(sc) = score {
-                    scored.push((
-                        sc,
-                        Row {
-                            id: h.id().to_string(),
-                            path: p.display().to_string(),
-                            title: h.title().to_owned(),
-                            level: h.level(),
-                            todo: h.todo().map(ToOwned::to_owned),
-                            folded,
-                        },
-                    ));
-                }
-            }
-        }
-        if !self.query.is_empty() {
-            scored.sort_by_key(|(sc, _)| std::cmp::Reverse(*sc));
-        }
-        scored.into_iter().map(|(_, r)| r).collect()
+        outline_rows(shell, &self.query)
     }
 
     /// The visible slice of rows for a viewport of `page` rows, plus
@@ -8864,51 +8896,7 @@ impl ModalApp {
 
     /// The uncached derivation behind [`Self::rows_shared`].
     fn derive_rows(shell: &Shell, filter: &str) -> Vec<Row> {
-        let mut scored: Vec<(u32, Row)> = Vec::new();
-        for (p, doc) in shell.vault.iter() {
-            // Fold-aware outline walk (same rule as the launcher App):
-            // folds hide descendants in the listing, search sees through.
-            let mut hide_below: Option<u8> = None;
-            for h in doc.all_headlines() {
-                // The fold state is needed twice: to hide descendants
-                // here, and by the outline to draw the arrow. Compute
-                // it once and carry it on the row.
-                let folded = headline_is_folded(h);
-                if filter.is_empty() {
-                    if let Some(limit) = hide_below {
-                        if h.level() > limit {
-                            continue;
-                        }
-                        hide_below = None;
-                    }
-                    if folded {
-                        hide_below = Some(h.level());
-                    }
-                }
-                let score = if filter.is_empty() {
-                    Some(0)
-                } else {
-                    closure_query::fuzzy_score(filter, h.title())
-                };
-                if let Some(sc) = score {
-                    scored.push((
-                        sc,
-                        Row {
-                            id: h.id().to_string(),
-                            path: p.display().to_string(),
-                            title: h.title().to_owned(),
-                            level: h.level(),
-                            todo: h.todo().map(ToOwned::to_owned),
-                            folded,
-                        },
-                    ));
-                }
-            }
-        }
-        if !filter.is_empty() {
-            scored.sort_by_key(|(sc, _)| std::cmp::Reverse(*sc));
-        }
-        scored.into_iter().map(|(_, r)| r).collect()
+        outline_rows(shell, filter)
     }
 
     /// Move the selection to row `i`, clamped to the current result
@@ -11780,15 +11768,25 @@ impl ModalApp {
             .selection_active
             .then(|| self.selected_row_id(shell))
             .flatten();
-        let captured = match parent {
+        let captured = match &parent {
             Some(parent) => {
-                let id = closure_core::BlockId::from_existing(&parent);
+                let id = closure_core::BlockId::from_existing(parent);
                 shell.capture_under(&id, title)
             }
             None => shell.capture(title),
         };
         match captured {
             Ok(id) => {
+                // Filing into a folded headline puts the item somewhere
+                // you cannot see and leaves the selection on a row that
+                // is not in the list. Org opens the target it captures
+                // into; so does this.
+                if let Some(parent) = &parent
+                    && row_is_folded(shell, parent)
+                {
+                    let pid = closure_core::BlockId::from_existing(parent);
+                    let _ = shell.set_property(&pid, "VISIBILITY", "all");
+                }
                 if !body.trim().is_empty() {
                     let mut body = closure_org::escape_body(body);
                     if !body.ends_with('\n') {

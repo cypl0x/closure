@@ -236,6 +236,65 @@ fn promoting_a_child_lifts_it_in_the_rows() {
     assert_eq!(row.level, 1);
 }
 
+// === folding, after the tree has been rearranged ===
+//
+// "Tree collapse isn't working correctly, especially for new/promoted/
+// demoted items." Each of these is a fold taken over a subtree that was
+// built after the vault was opened.
+
+#[test]
+fn folding_hides_a_subtree_that_was_demoted_into_place() {
+    // A level change used to move the header alone, so demoting the
+    // parent turned its children into its siblings: the fold arrow then
+    // had nothing under it to hide.
+    let (_d, mut sh) = shell();
+    let mut app = ModalApp::new(InputMode::Doom);
+    app.select_by_id(&sh, "01HQCAP000000000000000001"); // Project, with a child
+    app.run(&mut sh, "demote");
+    app.run(&mut sh, "toggle-fold");
+    assert!(
+        !titles(&app, &sh).iter().any(|t| t.contains("Existing child")),
+        "the child folded away with its parent: {:?}",
+        titles(&app, &sh)
+    );
+}
+
+#[test]
+fn folding_hides_a_child_that_was_just_captured() {
+    let (_d, mut sh) = shell();
+    let mut app = ModalApp::new(InputMode::Doom);
+    app.select_by_id(&sh, "01HQCAP000000000000000001"); // Project
+    capture(&mut app, &mut sh, "Fresh");
+    app.select_by_id(&sh, "01HQCAP000000000000000001");
+    app.run(&mut sh, "toggle-fold");
+    let after = titles(&app, &sh);
+    assert!(
+        !after.iter().any(|t| t.contains("Fresh")),
+        "a row captured this session folds like any other: {after:?}"
+    );
+    assert!(after.iter().any(|t| t.contains("Project")), "{after:?}");
+}
+
+#[test]
+fn capturing_into_a_folded_headline_opens_it() {
+    // Otherwise the item you just typed is filed somewhere you cannot
+    // see, and the selection lands on a row that is not in the list.
+    let (_d, mut sh) = shell();
+    let mut app = ModalApp::new(InputMode::Doom);
+    app.select_by_id(&sh, "01HQCAP000000000000000001");
+    app.run(&mut sh, "toggle-fold");
+    capture(&mut app, &mut sh, "Fresh");
+    let after = titles(&app, &sh);
+    assert!(
+        after.iter().any(|t| t.contains("Fresh")),
+        "what you captured is on screen: {after:?}"
+    );
+    assert!(
+        app.rows(&sh)[app.selected()].title.contains("Fresh"),
+        "and it is the selected row: {after:?}"
+    );
+}
+
 // === the overlays as text fields ===
 
 #[test]

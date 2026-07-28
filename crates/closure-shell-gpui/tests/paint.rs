@@ -1547,6 +1547,22 @@ fn every_title_starts_at_the_same_x_for_its_level(cx: &mut gpui::TestAppContext)
 }
 
 #[gpui::test]
+fn only_a_row_with_a_subtree_offers_a_fold_arrow(cx: &mut gpui::TestAppContext) {
+    // VAULT: Alpha has Beta under it; Beta, Gamma and Delta are leaves.
+    let (_dir, _view, vcx) = visual_window(cx, VAULT);
+    assert!(
+        vcx.debug_bounds("fold-0").is_some(),
+        "Alpha has something to fold"
+    );
+    for leaf in ["fold-1", "fold-2", "fold-3"] {
+        assert!(
+            vcx.debug_bounds(leaf).is_none(),
+            "{leaf}: a leaf offers no arrow to click"
+        );
+    }
+}
+
+#[gpui::test]
 fn selecting_a_row_does_not_resize_the_outline(cx: &mut gpui::TestAppContext) {
     // "Selecting an element and depending on the length of the headline
     // the tree view gets resized." Selecting fills the right-hand pane
