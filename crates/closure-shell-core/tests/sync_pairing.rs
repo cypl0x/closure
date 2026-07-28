@@ -577,3 +577,62 @@ fn an_untrusted_stranger_is_refused_by_a_paired_listener() {
         "and refused for that reason, not by accident: {refusal}"
     );
 }
+
+#[test]
+fn a_vault_bigger_than_one_frame_pairs_over_a_real_socket() {
+    // "P2P push: ~/vault seems to be too big". The replica crossed as a
+    // single Noise message, which holds 64 KiB minus its tag, so past
+    // that size the push failed rather than taking two messages.
+    let (_dir_a, shell_a) = vault_with("1", "Mine");
+    let (_dir_b, shell_b) = vault_with("2", "Theirs");
+
+    let mut server = SyncApp::with_bind("a", "127.0.0.1:0".parse().expect("addr"), None);
+    server.listen().expect("bound");
+    server.snapshot(&shell_a);
+    // Pad the replica well past a single frame.
+    {
+        let session = server.session_mut();
+        for i in 0..400 {
+            let id = format!("01HQPAD{i:019}");
+            let body = "y".repeat(500);
+            let doc = closure_core::Document::load_str(&format!(
+                "* Padded {i}\n:PROPERTIES:\n:ID: {id}\n:END:\n{body}\n"
+            ))
+            .expect("parse");
+            session.record_local(&doc);
+        }
+    }
+
+    let mut client = SyncApp::new("b", "127.0.0.1:0".parse().expect("addr"));
+    client.snapshot(&shell_b);
+    client.add_peer(&server.ticket()).expect("their ticket");
+    server.add_peer(&client.ticket()).expect("our ticket");
+
+    let dial = server.ticket_addr();
+    let listener = server.listener().expect("listening");
+    let mut server_session = server.session().clone();
+    let server_key = server.signing_key().clone();
+    let server_trusts = server.trusted_keys();
+    let round = std::thread::spawn(move || {
+        closure_sync::TcpSyncTransport::serve_once_secure(
+            &listener,
+            &mut server_session,
+            &server_key,
+            &server_trusts,
+        )
+    });
+
+    let mut client_session = client.session().clone();
+    closure_sync::TcpSyncTransport::connect_and_sync_secure(
+        dial,
+        &mut client_session,
+        client.signing_key(),
+        &client.trusted_keys(),
+    )
+    .expect("a big vault still crosses");
+    round.join().expect("thread").expect("served");
+    assert!(
+        client_session.block_ids().count() > 400,
+        "the padded blocks arrived"
+    );
+}

@@ -91,3 +91,43 @@ fn tampered_ciphertext_fails_to_decrypt() {
         "AEAD tag must reject a tampered ciphertext"
     );
 }
+
+#[test]
+fn a_vault_larger_than_one_noise_frame_still_crosses() {
+    // Reported as "P2P push: ~/vault seems to be too big". A Noise
+    // transport message caps at 64 KiB minus its tag, and a replica is
+    // one payload — so past that size the push failed outright rather
+    // than taking two messages.
+
+    let mut session = SyncSession::new("big");
+    // ~200 KiB of blocks: comfortably past a single frame.
+    for i in 0..400 {
+        let id = format!("01HQBIG{i:019}");
+        let body = "x".repeat(500);
+        let doc = Document::load_str(&format!(
+            "* Note {i}\n:PROPERTIES:\n:ID: {id}\n:END:\n{body}\n"
+        ))
+        .expect("parse");
+        session.record_local(&doc);
+    }
+    let payload = SyncMessage::from_session(&session).to_bytes();
+    assert!(
+        payload.len() > 65_535,
+        "the fixture is big enough to matter: {} bytes",
+        payload.len()
+    );
+
+    let (mut a, mut b) = NoiseChannel::pair().expect("handshake");
+    let frames = a.encrypt_chunks(&payload).expect("encrypted");
+    assert!(frames.len() > 1, "it took more than one frame");
+    let back = b.decrypt_chunks(&frames).expect("decrypted");
+    assert_eq!(back, payload, "and arrived byte for byte");
+}
+
+#[test]
+fn a_small_payload_still_takes_one_frame() {
+    let (mut a, mut b) = NoiseChannel::pair().expect("handshake");
+    let frames = a.encrypt_chunks(b"small").expect("encrypted");
+    assert_eq!(frames.len(), 1);
+    assert_eq!(b.decrypt_chunks(&frames).expect("decrypted"), b"small");
+}

@@ -516,6 +516,40 @@ impl NoiseChannel {
         Ok((Self { transport: ini_t }, Self { transport: resp_t }))
     }
 
+    /// Encrypt `plaintext` into as many AEAD frames as it takes.
+    ///
+    /// A Noise transport message holds 64 KiB minus its tag, and a
+    /// replica is one payload — so a vault past that size failed to
+    /// push at all, which is what "the vault seems to be too big"
+    /// looked like from the outside. The chunks are sequential messages
+    /// on the same channel, so the nonce sequence keeps them ordered
+    /// and the receiver rejects a reordered or replayed one.
+    ///
+    /// # Errors
+    ///
+    /// [`SyncError::Transport`] if the cipher fails.
+    pub fn encrypt_chunks(&mut self, plaintext: &[u8]) -> Result<Vec<Vec<u8>>, SyncError> {
+        plaintext
+            .chunks(NOISE_MAX_PLAINTEXT)
+            .map(|chunk| self.encrypt(chunk))
+            .collect()
+    }
+
+    /// Decrypt what [`Self::encrypt_chunks`] produced, back into one
+    /// payload.
+    ///
+    /// # Errors
+    ///
+    /// [`SyncError::Transport`] if any frame fails to decrypt — a
+    /// missing or reordered chunk included.
+    pub fn decrypt_chunks(&mut self, frames: &[Vec<u8>]) -> Result<Vec<u8>, SyncError> {
+        let mut out = Vec::new();
+        for frame in frames {
+            out.extend_from_slice(&self.decrypt(frame)?);
+        }
+        Ok(out)
+    }
+
     /// Encrypt `plaintext` into one AEAD frame.
     ///
     /// # Errors
@@ -612,6 +646,40 @@ fn write_framed<W: std::io::Write>(w: &mut W, bytes: &[u8]) -> Result<(), SyncEr
     w.write_all(&len.to_le_bytes())
         .and_then(|()| w.write_all(bytes))
         .map_err(|e| SyncError::Io(e.to_string()))
+}
+
+/// Write a chunked, encrypted payload: the chunk count, then each
+/// length-prefixed frame.
+///
+/// A replica bigger than one Noise message used to fail outright; it
+/// takes as many frames as it needs now, and the count tells the reader
+/// how many to expect.
+fn write_chunked<W: std::io::Write>(w: &mut W, frames: &[Vec<u8>]) -> Result<(), SyncError> {
+    let count =
+        u32::try_from(frames.len()).map_err(|_| SyncError::Transport("too many frames".into()))?;
+    w.write_all(&count.to_le_bytes())
+        .map_err(|e| SyncError::Io(e.to_string()))?;
+    for frame in frames {
+        write_framed(w, frame)?;
+    }
+    Ok(())
+}
+
+/// Read what [`write_chunked`] wrote.
+fn read_chunked<R: std::io::Read>(r: &mut R) -> Result<Vec<Vec<u8>>, SyncError> {
+    /// A sane ceiling: a peer claiming millions of frames is not a peer
+    /// to allocate for (I5).
+    const MAX_FRAMES: u32 = 100_000;
+    let mut count_buf = [0u8; 4];
+    r.read_exact(&mut count_buf)
+        .map_err(|e| SyncError::Io(e.to_string()))?;
+    let count = u32::from_le_bytes(count_buf);
+    if count > MAX_FRAMES {
+        return Err(SyncError::Transport(format!(
+            "peer announced {count} frames, which is not a sync"
+        )));
+    }
+    (0..count).map(|_| read_framed(r)).collect()
 }
 
 /// Read a `u32`-length-prefixed frame from any reader.
@@ -801,9 +869,9 @@ impl TcpSyncTransport {
             std::net::TcpStream::connect(addr).map_err(|e| SyncError::Io(e.to_string()))?;
         let mut chan = NoiseChannel::handshake_initiator(&mut stream)?;
         let frame = SyncMessage::from_session(session).to_signed_bytes(signing_key);
-        write_framed(&mut stream, &chan.encrypt(&frame)?)?;
-        let ct = read_framed(&mut stream)?;
-        let theirs = SyncMessage::from_signed_bytes(&chan.decrypt(&ct)?, trusted)?;
+        write_chunked(&mut stream, &chan.encrypt_chunks(&frame)?)?;
+        let ct = read_chunked(&mut stream)?;
+        let theirs = SyncMessage::from_signed_bytes(&chan.decrypt_chunks(&ct)?, trusted)?;
         session.apply_message(&theirs);
         Ok(())
     }
@@ -824,11 +892,11 @@ impl TcpSyncTransport {
             .accept()
             .map_err(|e| SyncError::Io(e.to_string()))?;
         let mut chan = NoiseChannel::handshake_responder(&mut stream)?;
-        let ct = read_framed(&mut stream)?;
-        let theirs = SyncMessage::from_signed_bytes(&chan.decrypt(&ct)?, trusted)?;
+        let ct = read_chunked(&mut stream)?;
+        let theirs = SyncMessage::from_signed_bytes(&chan.decrypt_chunks(&ct)?, trusted)?;
         session.apply_message(&theirs);
         let frame = SyncMessage::from_session(session).to_signed_bytes(signing_key);
-        write_framed(&mut stream, &chan.encrypt(&frame)?)?;
+        write_chunked(&mut stream, &chan.encrypt_chunks(&frame)?)?;
         Ok(())
     }
 }

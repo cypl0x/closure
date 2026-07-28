@@ -3345,6 +3345,13 @@ impl SyncApp {
         &self.session
     }
 
+    /// The replica, mutably — what a shell folds local edits into, and
+    /// what a test uses to build one big enough to matter.
+    #[must_use]
+    pub const fn session_mut(&mut self) -> &mut closure_sync::SyncSession {
+        &mut self.session
+    }
+
     /// Add a peer from a pasted ticket.
     ///
     /// # Errors
