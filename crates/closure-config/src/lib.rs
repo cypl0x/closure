@@ -65,6 +65,11 @@ pub struct Config {
     /// `shell, python`). Empty = default-deny (the security default,
     /// C1a): no code block runs unless its language is listed here.
     pub eval_trust: Vec<String>,
+    /// Pairing tickets for peers already paired with, so a peer pasted
+    /// once is still there tomorrow. A ticket is an address and a
+    /// public key — nothing secret, and readable in the file like
+    /// everything else.
+    pub sync_peers: Vec<String>,
     /// Soft-wrap long body lines instead of scrolling sideways. Off by
     /// default: wrapping costs the one-number gutter and the fixed row
     /// height, and prose people want wrapped is not the only thing in
@@ -104,6 +109,7 @@ impl Default for Config {
             llm_tools: None,
             sniffer_blocklist: None,
             eval_trust: Vec::new(),
+            sync_peers: Vec::new(),
             wrap: false,
             sync_bind: None,
             sync_advertise: None,
@@ -156,6 +162,73 @@ pub enum ConfigError {
         /// Human-readable reason.
         reason: String,
     },
+}
+
+/// Set one key in a `config.org`, leaving everything else exactly as it
+/// was.
+///
+/// The app writes settings back — a pasted pairing ticket should still
+/// be there tomorrow — and the file it writes into is one a person
+/// reads and edits. So this replaces a single line, or adds one inside
+/// the block, and never reformats: the prose around the block, the
+/// comments inside it, the order of the keys and any key this build has
+/// never heard of all survive. A file with no block at all grows one at
+/// the end, which is what an empty or prose-only config.org needs.
+///
+/// # Errors
+///
+/// [`ConfigError::ParseOrg`] if the *result* would not parse as org —
+/// checked rather than assumed, because this writes a file the user
+/// owns.
+pub fn set_config_key(source: &str, key: &str, value: &str) -> Result<String, ConfigError> {
+    let line = format!("{key} = {value}");
+    let mut out = String::with_capacity(source.len() + line.len() + 32);
+    let mut in_block = false;
+    let mut replaced = false;
+    let mut inserted = false;
+    for raw in source.split_inclusive('\n') {
+        let trimmed = raw.trim();
+        if trimmed.eq_ignore_ascii_case("#+BEGIN_SRC closure-config") {
+            in_block = true;
+            out.push_str(raw);
+            continue;
+        }
+        if in_block && trimmed.eq_ignore_ascii_case("#+END_SRC") {
+            // The key was not in the block: add it just before the end,
+            // so it lands with its siblings rather than after them.
+            if !replaced {
+                out.push_str(&line);
+                out.push('\n');
+                inserted = true;
+            }
+            in_block = false;
+            out.push_str(raw);
+            continue;
+        }
+        let is_this_key = in_block
+            && trimmed
+                .split_once('=')
+                .is_some_and(|(k, _)| k.trim() == key);
+        if is_this_key && !replaced {
+            out.push_str(&line);
+            out.push('\n');
+            replaced = true;
+            continue;
+        }
+        out.push_str(raw);
+    }
+    if !replaced && !inserted {
+        if !out.is_empty() && !out.ends_with('\n') {
+            out.push('\n');
+        }
+        out.push_str("\n#+BEGIN_SRC closure-config\n");
+        out.push_str(&line);
+        out.push_str("\n#+END_SRC\n");
+    }
+    // What we wrote has to be readable again, including by the org
+    // parser — this is somebody's file.
+    parse(&out).map_err(|e| ConfigError::ParseOrg(e.to_string()))?;
+    Ok(out)
 }
 
 /// Parse an org-config boolean (`true`/`yes`/`1` or `false`/`no`/`0`).
@@ -251,6 +324,10 @@ impl Config {
              (a LAN *and* a mesh VPN).\n\
              # sync_bind = 0.0.0.0:7420\n\
              # sync_advertise = 100.101.102.103\n\
+             # Peers you have paired with. Written by the pairing pane\n\
+             # when you paste a ticket; a ticket is an address and a\n\
+             # public key, so there is nothing secret in it.\n\
+             # sync_peers = closure-sync:100.1.2.3:7420|abc123…\n\
              \n\
              # The assistant. The key itself never lives here: `llm_key_env` \
              names an\n# environment variable, so this file can be committed \
@@ -395,6 +472,13 @@ impl Config {
                 }
                 "record_commands" => cfg.record_commands = parse_bool(key, value)?,
                 "wrap" => cfg.wrap = parse_bool(key, value)?,
+                "sync_peers" => {
+                    cfg.sync_peers = value
+                        .split(',')
+                        .map(|s| s.trim().to_owned())
+                        .filter(|s| !s.is_empty())
+                        .collect();
+                }
                 "sync_bind" => {
                     cfg.sync_bind =
                         Some(

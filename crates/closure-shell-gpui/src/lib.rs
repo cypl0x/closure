@@ -1369,6 +1369,8 @@ pub fn run(vault_path: &Path) -> Result<(), String> {
                     // user opens the surface: the ticket shown there is
                     // what gets pasted into the other machine.
                     view.app.configure_sync(sync_bind, sync_advertise);
+                    // Peers paired with before are still peers.
+                    view.app.load_peers(&view.shell);
                     view
                 })
             },

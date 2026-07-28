@@ -489,3 +489,50 @@ fn every_mode_can_reach_the_tree_toggle() {
         );
     }
 }
+
+// === a peer pasted once stays paired ===
+
+#[test]
+fn a_pasted_ticket_is_written_to_the_config() {
+    // "P2P connection should be persisted": pairing that has to be
+    // redone every session is not pairing.
+    let (dir, mut sh) = shell();
+    let mut app = ModalApp::new(InputMode::Doom);
+    let peer = closure_shell_core::SyncApp::new("them", "10.0.0.9:7420".parse().expect("addr"));
+    app.run(&mut sh, "sync");
+    for c in peer.ticket().chars() {
+        app.on_key(&mut sh, "x", false, false, Some(c));
+    }
+    app.on_key(&mut sh, "enter", false, false, None);
+    assert_eq!(app.sync().expect("open").peers().len(), 1);
+
+    let written = fs::read_to_string(dir.path().join("config.org")).expect("config written");
+    assert!(
+        written.contains(&peer.ticket()),
+        "the ticket is in the file: {written}"
+    );
+}
+
+#[test]
+fn saved_peers_are_loaded_back() {
+    let (dir, mut sh) = shell();
+    let peer = closure_shell_core::SyncApp::new("them", "10.0.0.9:7420".parse().expect("addr"));
+    fs::write(
+        dir.path().join("config.org"),
+        format!(
+            "#+BEGIN_SRC closure-config\nsync_peers = {}\n#+END_SRC\n",
+            peer.ticket()
+        ),
+    )
+    .expect("write");
+    // Reopen so the vault sees the file.
+    let reopened = Shell::new(Vault::open(dir.path()).expect("open"));
+    let _ = &mut sh;
+    let mut app = ModalApp::new(InputMode::Doom);
+    app.load_peers(&reopened);
+    assert_eq!(
+        app.sync().expect("created").peers().len(),
+        1,
+        "yesterday's peer is still there"
+    );
+}

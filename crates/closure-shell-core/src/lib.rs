@@ -9031,7 +9031,7 @@ impl ModalApp {
             ModalSurface::Sniffer => self.on_sniffer_key(shell, key),
             ModalSurface::Conflicts => self.on_conflicts_key(shell, key),
             ModalSurface::Ex => self.on_ex_key(shell, key, text),
-            ModalSurface::Sync => self.on_sync_key(key, text),
+            ModalSurface::Sync => self.on_sync_key(shell, key, text),
             ModalSurface::Llm => self.on_llm_key(key, text),
             ModalSurface::Graph => {
                 let len = self.hub_rows(shell).len() + self.orphan_rows(shell).len();
@@ -9448,7 +9448,7 @@ impl ModalApp {
 
     /// Keys for the Sync surface: typing edits the ticket field, Enter
     /// adds the peer, Escape leaves.
-    fn on_sync_key(&mut self, key: &str, text: Option<char>) {
+    fn on_sync_key(&mut self, shell: &Shell, key: &str, text: Option<char>) {
         match key {
             "escape" => {
                 self.sync_buf.clear();
@@ -9462,6 +9462,8 @@ impl ModalApp {
                 match self.sync_mut().add_peer(ticket.trim()) {
                     Ok(()) => {
                         let n = self.sync_mut().peers().len();
+                        // A peer pasted once is a peer tomorrow.
+                        self.save_peers(shell);
                         self.status = format!("peer added — {n} peer(s)");
                     }
                     Err(e) => {
@@ -11764,6 +11766,51 @@ impl ModalApp {
     /// Close the current overlay, returning to [`Self::home_surface`].
     const fn go_home(&mut self) {
         self.surface = self.home_surface();
+    }
+
+    /// Paste back the peers this vault has paired with before.
+    ///
+    /// Pairing that has to be redone every session is not pairing, so
+    /// the tickets live in `config.org` — a ticket is an address and a
+    /// public key, nothing secret, and the vault is plain files (I1).
+    pub fn load_peers(&mut self, shell: &Shell) {
+        let Ok(cfg) = closure_config::Config::from_path(&shell.vault.root().join("config.org"))
+        else {
+            return;
+        };
+        for ticket in &cfg.sync_peers {
+            // A ticket that no longer parses is skipped rather than
+            // fatal: the file is the user's to edit.
+            let _ = self.sync_mut().add_peer(ticket);
+        }
+    }
+
+    /// Write the current peer set back to `config.org`.
+    fn save_peers(&mut self, shell: &Shell) {
+        let Some(sync) = self.sync.as_ref() else {
+            return;
+        };
+        let tickets: Vec<String> = sync
+            .peers()
+            .iter()
+            .map(|p| {
+                closure_sync::SyncTicket {
+                    addr: p.addr,
+                    pubkey: p.key,
+                }
+                .encode()
+            })
+            .collect();
+        let path = shell.vault.root().join("config.org");
+        let source = std::fs::read_to_string(&path).unwrap_or_default();
+        match closure_config::set_config_key(&source, "sync_peers", &tickets.join(", ")) {
+            Ok(updated) => {
+                if let Err(e) = std::fs::write(&path, updated) {
+                    self.status = format!("peer saved for this session only: {e}");
+                }
+            }
+            Err(e) => self.status = format!("peer saved for this session only: {e}"),
+        }
     }
 
     /// Whether the headline tree is pinned beside a full-window buffer
