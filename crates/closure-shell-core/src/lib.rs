@@ -13766,6 +13766,92 @@ impl ModalApp {
     /// Index of the selected row's nearest sibling (same file, same
     /// level, no lower-level row between), forward or backward. `None`
     /// at the ends or when a parent boundary intervenes.
+    /// At the end of a sibling run, walk the subtree *out* of its
+    /// parent instead of refusing to move.
+    ///
+    /// The move chords used to return in silence here: no move, no
+    /// message, no hint that `M-h` then `M-k` was the way to lift a
+    /// first child to the top ("cannot move children of headline to the
+    /// top and promote to *"). A motion that does nothing and says
+    /// nothing reads as a broken feature, and needing two chords to
+    /// express one intention is a worse answer than the outliner one —
+    /// keep pressing and the item rises through its parents.
+    ///
+    /// Promoting is the whole move going down: the subtree already sits
+    /// after everything of its parent's, so at the parent's level that
+    /// *is* "after the parent". Going up it also has to step over the
+    /// parent it just left.
+    ///
+    /// `M-h` / `M-l` stay pure level changes for when that is all you
+    /// meant.
+    fn escape_parent(&mut self, shell: &mut Shell, forward: bool) {
+        let Some(row) = self.rows_shared(shell).get(self.selected).cloned() else {
+            return;
+        };
+        if row.level <= 1 {
+            "already at the top level — nothing left to move out of".clone_into(&mut self.status);
+            return;
+        }
+        let bid = closure_core::BlockId::from_existing(&row.id);
+        let parent = self
+            .parent_index(shell)
+            .map(|i| self.rows_shared(shell)[i].id.clone());
+        // Out of the parent's subtree *before* changing level. Promoting
+        // in place would adopt whichever siblings still followed us —
+        // they are deeper than we now are, so the text makes them ours.
+        // Landing past the parent's whole subtree first leaves them
+        // exactly where they were.
+        if let Some(parent) = &parent {
+            let _ = shell.move_after(&bid, &closure_core::BlockId::from_existing(parent));
+        }
+        self.select_id(shell, &row.id);
+        if let Err(e) = shell.promote(&bid) {
+            self.status = format!("move failed: {e}");
+            return;
+        }
+        self.select_id(shell, &row.id);
+        // Going up it also has to step over the parent it just left,
+        // which is now an ordinary previous sibling.
+        if !forward && parent.is_some() {
+            self.swap_with_sibling(shell, false);
+        }
+        self.status = format!("{} moved out one level", row.title);
+    }
+
+    /// Swap the selected subtree with its neighbouring sibling,
+    /// reporting whether there was one. The selection rides along.
+    fn swap_with_sibling(&mut self, shell: &mut Shell, forward: bool) -> bool {
+        let Some(other) = self.sibling_index(shell, forward) else {
+            return false;
+        };
+        let rows = self.rows_shared(shell);
+        let (mine, theirs) = (rows[self.selected].id.clone(), rows[other].id.clone());
+        let (mine, theirs) = (
+            closure_core::BlockId::from_existing(&mine),
+            closure_core::BlockId::from_existing(&theirs),
+        );
+        // `move_after(id, after)` puts `id` below `after`: going down
+        // that is us below them, going up it is them below us.
+        let _ = if forward {
+            shell.move_after(&mine, &theirs)
+        } else {
+            shell.move_after(&theirs, &mine)
+        };
+        self.select_id(shell, mine.as_str());
+        true
+    }
+
+    /// Index of the row that owns the selection — the nearest one above
+    /// it at a shallower level, in the same file.
+    fn parent_index(&self, shell: &Shell) -> Option<usize> {
+        let rows = self.rows_shared(shell);
+        let cur = rows.get(self.selected)?;
+        let (path, level) = (cur.path.clone(), cur.level);
+        (0..self.selected)
+            .rev()
+            .find(|&j| rows[j].path == path && rows[j].level < level)
+    }
+
     fn sibling_index(&self, shell: &Shell, forward: bool) -> Option<usize> {
         let rows = self.rows_shared(shell);
         let cur = rows.get(self.selected)?;
@@ -15833,28 +15919,18 @@ impl ModalApp {
                     };
                 }
             }
+            // Moving up = moving the previous sibling below us; the
+            // selection follows the moved heading (org rule). At the
+            // end of a sibling run there is nobody to swap with, so the
+            // subtree walks out of its parent instead.
             "move-subtree-up" => {
-                // Moving up = moving the previous sibling below us; the
-                // selection follows the moved heading (org rule).
-                if let Some(prev) = self.sibling_index(shell, false) {
-                    let rows = self.rows_shared(shell);
-                    let (p, s) = (rows[prev].id.clone(), rows[self.selected].id.clone());
-                    let _ = shell.move_after(
-                        &closure_core::BlockId::from_existing(&p),
-                        &closure_core::BlockId::from_existing(&s),
-                    );
-                    self.select_id(shell, &s);
+                if !self.swap_with_sibling(shell, false) {
+                    self.escape_parent(shell, false);
                 }
             }
             "move-subtree-down" => {
-                if let Some(next) = self.sibling_index(shell, true) {
-                    let rows = self.rows_shared(shell);
-                    let (s, n) = (rows[self.selected].id.clone(), rows[next].id.clone());
-                    let _ = shell.move_after(
-                        &closure_core::BlockId::from_existing(&s),
-                        &closure_core::BlockId::from_existing(&n),
-                    );
-                    self.select_id(shell, &s);
+                if !self.swap_with_sibling(shell, true) {
+                    self.escape_parent(shell, true);
                 }
             }
             // org's four new-headline chords, plus the outline's own
@@ -16010,9 +16086,7 @@ impl ModalApp {
                 if let Some(row) = self.rows_shared(shell).get(self.selected).cloned() {
                     let bid = closure_core::BlockId::from_existing(&row.id);
                     match shell.paste_subtree(&bid) {
-                        Ok(()) => {
-                            format!("pasted after {}", row.title).clone_into(&mut self.status)
-                        }
+                        Ok(()) => self.status = format!("pasted after {}", row.title),
                         Err(e) => self.status = format!("paste failed: {e}"),
                     }
                 } else {
