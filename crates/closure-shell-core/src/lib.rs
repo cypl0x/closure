@@ -13064,6 +13064,16 @@ impl ModalApp {
         self.field_buf.text()
     }
 
+    /// Byte offset of the cursor in that field — the twin of
+    /// [`Self::capture_cursor`], and for the same reason: a shell that
+    /// cannot ask this paints the caret after the last character, and
+    /// then Left, `C-a` and Alt+Backspace all look like they did
+    /// nothing.
+    #[must_use]
+    pub const fn field_cursor(&self) -> usize {
+        self.field_buf.cursor()
+    }
+
     /// Generic up/down/Esc navigation for the read-only list surfaces
     /// (agenda, blocks) whose rows don't drive a jump.
     fn on_list_key(&mut self, shell: &Shell, key: &str, kind: ListKind) {
