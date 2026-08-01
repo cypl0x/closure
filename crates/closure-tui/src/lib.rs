@@ -1899,6 +1899,25 @@ impl App {
                 let id = self.current_headline_id().unwrap_or_default();
                 self.clock_request = Some((cmd.to_owned(), id));
             }
+            "tag-picker" => {
+                // The terminal's tag field is the minibuffer; the
+                // *picker* part is TAB, which completes the word being
+                // typed against every tag the vault already uses — the
+                // point of a picker being that `:readng:` never happens
+                // twice (Q3-V6).
+                let tags = self
+                    .current_headline()
+                    .map(|r| r.tags.join(" "))
+                    .unwrap_or_default();
+                if let Some(id) = self.current_headline_id() {
+                    self.field_target = Some(id);
+                    self.query = tags;
+                    self.mode = AppMode::EditTags;
+                    "tags — TAB completes from the vault · RET writes".clone_into(&mut self.status);
+                } else {
+                    "no headline under the cursor to tag".clone_into(&mut self.status);
+                }
+            }
             "refile" => self.start_refile(),
             "archive" => {
                 if let Some(id) = self.current_headline_id() {
@@ -2412,6 +2431,37 @@ impl App {
         });
     }
 
+    /// Complete the tag being typed from the ones the vault already
+    /// uses, longest-common-prefix style: unambiguous prefixes finish,
+    /// an ambiguous one says what the candidates are (Q3-V6).
+    fn complete_tag(&mut self) {
+        let prefix = self.query.rsplit(' ').next().unwrap_or_default().to_owned();
+        if prefix.is_empty() {
+            return;
+        }
+        let mut known: Vec<String> = self
+            .headlines
+            .iter()
+            .flat_map(|r| r.tags.iter().cloned())
+            .collect();
+        known.sort();
+        known.dedup();
+        let matches: Vec<&String> = known.iter().filter(|t| t.starts_with(&prefix)).collect();
+        match matches.as_slice() {
+            [] => "no tag in this vault starts with that".clone_into(&mut self.status),
+            [only] => {
+                let completed = (*only).clone();
+                self.query.truncate(self.query.len() - prefix.len());
+                self.query.push_str(&completed);
+                self.query.push(' ');
+            }
+            many => {
+                let names: Vec<&str> = many.iter().map(|t| t.as_str()).collect();
+                self.status = format!("tags: {}", names.join(" "));
+            }
+        }
+    }
+
     fn handle_edittags_stroke(&mut self, stroke: &str) {
         match stroke {
             "ESC" => {
@@ -2428,6 +2478,9 @@ impl App {
                 self.mode = AppMode::Browse;
                 self.query.clear();
             }
+            // TAB completes the tag being typed against the ones the
+            // vault already uses (Q3-V6).
+            "TAB" => self.complete_tag(),
             "SPC" => self.query.push(' '),
             "DEL" => {
                 self.query.pop();
