@@ -2709,6 +2709,21 @@ impl App {
             // parks a request; the driver performs the vault write.
             "toggle-todo" => self.cycle_todo(1),
             "cycle-priority" => self.cycle_priority(1),
+            // `?` pins the whole keymap into the same popup a pending
+            // chord fills, rather than the completions of a prefix.
+            "toggle-which-key" => {
+                self.popup = if self.popup.is_some() {
+                    None
+                } else {
+                    let mut lines: Vec<String> = self
+                        .bindings
+                        .iter()
+                        .map(|(chord, cmd)| format!("{chord} → {cmd}"))
+                        .collect();
+                    lines.sort();
+                    Some(lines)
+                };
+            }
             // `d` cuts to the kill ring, `p` puts it back after the
             // cursor — the same pair the GUI has.
             "paste-subtree" => self.paste_request = self.current_headline_id(),

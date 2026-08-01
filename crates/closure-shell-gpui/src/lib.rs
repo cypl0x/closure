@@ -1824,7 +1824,6 @@ pub struct GpuiView {
     /// Whether the full which-key panel is pinned open. A pending
     /// chord shows it regardless; this is the explicit "show me
     /// everything" toggle.
-    which_key_open: bool,
     /// Scroll state of the which-key panel — it lists every binding in
     /// the mode, which does not fit a window.
     which_key_scroll: gpui::ScrollHandle,
@@ -1910,7 +1909,6 @@ impl GpuiView {
             toast_gen: 0,
             menu: None,
             accept_armed: false,
-            which_key_open: false,
             which_key_scroll: gpui::ScrollHandle::new(),
             palette_scroll: gpui::UniformListScrollHandle::new(),
             highlight_cache: std::cell::RefCell::new(None),
@@ -2193,9 +2191,13 @@ impl GpuiView {
     }
 
     /// Whether the which-key panel is pinned open.
+    ///
+    /// The state is the core's: the panel answers to a command and a
+    /// chord (`?`), and the button here runs the same command rather
+    /// than keeping a second copy of the answer.
     #[must_use]
     pub const fn which_key_open(&self) -> bool {
-        self.which_key_open
+        self.app.which_key_open()
     }
 
     /// The chord waiting for its next key, if one is.
@@ -5981,7 +5983,7 @@ impl GpuiView {
             .bg(rgb(co.panel))
             .text_size(self.sz(11.0))
             .child(hints);
-        let open = self.which_key_open;
+        let open = self.app.which_key_open();
         bar.child(div().flex_grow()).child(
             div()
                 .debug_selector(|| "which-key-toggle".to_owned())
@@ -5994,7 +5996,7 @@ impl GpuiView {
                 .on_mouse_down(
                     MouseButton::Left,
                     cx.listener(|this: &mut Self, _ev, _w, cx| {
-                        this.which_key_open = !this.which_key_open;
+                        this.app.run(&mut this.shell, "toggle-which-key");
                         cx.notify();
                     }),
                 )
@@ -7247,7 +7249,7 @@ impl Render for GpuiView {
 
         // The bindings panel opens on demand, and always while a chord
         // is in flight — that is the moment it is actually needed.
-        let show_keys = self.which_key_open || !self.app.pending_chord().is_empty();
+        let show_keys = self.app.which_key_open() || !self.app.pending_chord().is_empty();
 
         let mut root = div()
             .key_context("ClosureGpui")

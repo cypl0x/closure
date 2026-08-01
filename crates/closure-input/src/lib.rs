@@ -41,6 +41,12 @@ const DOOM_KEYMAP: &[(&str, &str)] = &[
     ("C-r", "redo"),
     ("M", "cycle-mode"),
     (":", "ex-command"),
+    // The which-key panel had a button in the corner and no key,
+    // which for a panel that exists to tell you what the keys are
+    // is the wrong way round. `?` is free in every mode here and
+    // is what a TUI has meant by "show me the bindings" for
+    // decades.
+    ("?", "toggle-which-key"),
     ("M-x", "palette"),
     ("v", "db-view"),
     ("e", "block-list"),
@@ -197,6 +203,12 @@ const EMACS_KEYMAP: &[(&str, &str)] = &[
     ("C-x r", "redo"),
     ("C-c m", "cycle-mode"),
     (":", "ex-command"),
+    // The which-key panel had a button in the corner and no key,
+    // which for a panel that exists to tell you what the keys are
+    // is the wrong way round. `?` is free in every mode here and
+    // is what a TUI has meant by "show me the bindings" for
+    // decades.
+    ("?", "toggle-which-key"),
     ("M-x", "palette"),
     ("v", "db-view"),
     ("e", "block-list"),
@@ -221,6 +233,7 @@ const EMACS_KEYMAP: &[(&str, &str)] = &[
     ("C-c t", "toggle-todo"),
     ("C-c p", "cycle-priority"),
     ("C-y", "paste-subtree"),
+    ("C-h", "toggle-which-key"),
     ("C-c y", "edit-tags"),
     ("C-c o", "edit-property"),
     ("C-c g", "toggle-llm-render"),
@@ -307,6 +320,12 @@ const VIM_KEYMAP: &[(&str, &str)] = &[
     ("C-r", "redo"),
     ("M", "cycle-mode"),
     (":", "ex-command"),
+    // The which-key panel had a button in the corner and no key,
+    // which for a panel that exists to tell you what the keys are
+    // is the wrong way round. `?` is free in every mode here and
+    // is what a TUI has meant by "show me the bindings" for
+    // decades.
+    ("?", "toggle-which-key"),
     ("M-x", "palette"),
     ("v", "db-view"),
     ("e", "block-list"),
@@ -419,6 +438,12 @@ const HELIX_KEYMAP: &[(&str, &str)] = &[
     ("U", "redo"),
     ("M", "cycle-mode"),
     (":", "ex-command"),
+    // The which-key panel had a button in the corner and no key,
+    // which for a panel that exists to tell you what the keys are
+    // is the wrong way round. `?` is free in every mode here and
+    // is what a TUI has meant by "show me the bindings" for
+    // decades.
+    ("?", "toggle-which-key"),
     ("M-x", "palette"),
     ("v", "db-view"),
     ("e", "block-list"),
@@ -531,6 +556,12 @@ const NOTION_KEYMAP: &[(&str, &str)] = &[
     ("C-r", "redo"),
     ("M", "cycle-mode"),
     (":", "ex-command"),
+    // The which-key panel had a button in the corner and no key,
+    // which for a panel that exists to tell you what the keys are
+    // is the wrong way round. `?` is free in every mode here and
+    // is what a TUI has meant by "show me the bindings" for
+    // decades.
+    ("?", "toggle-which-key"),
     ("v", "db-view"),
     ("e", "block-list"),
     ("g x", "eval-block"),

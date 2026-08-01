@@ -9896,6 +9896,10 @@ pub struct ModalApp {
     field_buf: LineInput,
     /// Which of the four new-headline chords opened the title prompt.
     new_heading: NewHeading,
+    /// Whether the which-key panel is pinned open. A pending chord
+    /// shows it too, but that one closes itself the moment the chord
+    /// resolves; this is the one a person asked for.
+    which_key_open: bool,
     /// Commands run *from the palette*, most recent first, deduped and
     /// capped. Chords are deliberately not in here: `j` and `k` are
     /// pressed hundreds of times a session and are never what you open
@@ -10255,6 +10259,7 @@ impl ModalApp {
             },
             palette_history: Vec::new(),
             history_gen: 0,
+            which_key_open: false,
             palette_cursor: 0,
             pending: Vec::new(),
             status: String::new(),
@@ -10587,6 +10592,17 @@ impl ModalApp {
     #[must_use]
     pub const fn should_quit(&self) -> bool {
         self.quit
+    }
+
+    /// Whether the which-key panel is pinned open.
+    ///
+    /// It used to be a bool inside the gpui window with a button as its
+    /// only door, so there was no command to bind and nothing for the
+    /// palette to list — for a panel whose whole job is telling you
+    /// what the keys are, there was no key.
+    #[must_use]
+    pub const fn which_key_open(&self) -> bool {
+        self.which_key_open
     }
 
     /// The active mode's full chord→command listing (which-key).
@@ -16359,6 +16375,7 @@ impl ModalApp {
                 }
             }
             "palette" => self.open_palette(),
+            "toggle-which-key" => self.which_key_open = !self.which_key_open,
             "ex-command" => self.begin_ex(),
             "llm" => {
                 self.chat_buf.clear();
