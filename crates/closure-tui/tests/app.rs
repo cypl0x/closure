@@ -864,7 +864,14 @@ fn add_ret_emits_after_id_and_title_once() {
     assert_eq!(app.mode(), AppMode::Browse);
     assert_eq!(
         app.take_add_request(),
-        Some(("id-a2".to_owned(), "Nu".to_owned()))
+        Some((
+            "id-a2".to_owned(),
+            "Nu".to_owned(),
+            closure_shell_core::NewHeading {
+                child: false,
+                todo: false
+            }
+        ))
     );
     assert_eq!(app.take_add_request(), None);
 }

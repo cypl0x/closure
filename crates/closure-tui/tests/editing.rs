@@ -185,12 +185,44 @@ fn moving_past_the_ends_is_a_no_op() {
 
 #[test]
 fn meta_ret_adds_a_heading_after_the_cursor() {
+    // Contract revised 2026-08-01: `M-RET` used to insert a headline
+    // called "untitled" without asking. It asks for the title now, the
+    // way org leaves you typing in the empty heading it opened, and
+    // `M-S-RET` / `C-RET` / `C-S-RET` fill in the rest of the grid.
     let mut app = app();
     app.handle_stroke("M-RET");
+    for k in ["N", "u"] {
+        app.handle_stroke(k);
+    }
+    app.handle_stroke("RET");
     assert_eq!(
         app.take_add_request(),
-        Some(("id-1".to_owned(), "untitled".to_owned()))
+        Some((
+            "id-1".to_owned(),
+            "Nu".to_owned(),
+            closure_shell_core::NewHeading {
+                child: false,
+                todo: false
+            }
+        ))
     );
+}
+
+#[test]
+fn the_shift_and_ctrl_chords_pick_the_todo_and_the_child() {
+    for (stroke, want) in [
+        ("M-RET", (false, false)),
+        ("M-S-RET", (false, true)),
+        ("C-RET", (true, false)),
+        ("C-S-RET", (true, true)),
+    ] {
+        let mut app = app();
+        app.handle_stroke(stroke);
+        app.handle_stroke("N");
+        app.handle_stroke("RET");
+        let got = app.take_add_request().map(|(_, _, n)| (n.child, n.todo));
+        assert_eq!(got, Some(want), "{stroke}");
+    }
 }
 
 #[test]

@@ -444,6 +444,26 @@ impl Shell {
         self.vault.remove_subtree(id)
     }
 
+    /// Add a child headline under `parent`, `prefix` in front of the
+    /// title, through the kernel command (I8).
+    ///
+    /// [`Self::capture_under`] is this with org's `TODO ` prefix
+    /// fixed. A new headline is not always a task — `C-RET` makes a
+    /// plain one and `C-S-RET` makes the TODO — so the keyword has to
+    /// be the caller's to decide.
+    ///
+    /// # Errors
+    ///
+    /// Propagates [`closure_store::VaultError`].
+    pub fn add_child(
+        &mut self,
+        parent: &closure_core::BlockId,
+        prefix: &str,
+        title: &str,
+    ) -> Result<closure_core::BlockId, closure_store::VaultError> {
+        self.vault.capture_under(parent, prefix, title)
+    }
+
     /// Add a sibling headline after `after_id` through the kernel
     /// command (I8).
     ///
@@ -2900,6 +2920,24 @@ const PALETTE_COMMANDS: &[(&str, &str, &str, &str)] = &[
         "add-sibling",
         "Edit",
         "Add a sibling headline",
+    ),
+    (
+        "add-todo-sibling",
+        "add-todo-heading",
+        "Edit",
+        "Add a sibling headline as a TODO",
+    ),
+    (
+        "add-child",
+        "add-child-heading",
+        "Edit",
+        "Add a child headline",
+    ),
+    (
+        "add-todo-child",
+        "add-todo-child-heading",
+        "Edit",
+        "Add a child headline as a TODO",
     ),
     ("rename", "rename", "Edit", "Rename the headline"),
     ("delete", "delete", "Edit", "Delete the headline"),
@@ -6204,6 +6242,46 @@ enum FieldKind {
     Property,
     Rename,
     AddSibling,
+}
+
+/// What the title prompt will make when it is accepted: org's grid of
+/// new-headline chords, as two flags.
+///
+/// | | sibling | child |
+/// | plain | `M-RET` | `C-RET` |
+/// | TODO | `M-S-RET` | `C-S-RET` |
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct NewHeading {
+    /// A child of the selection rather than a sibling after it.
+    pub child: bool,
+    /// It arrives carrying org's `TODO` keyword.
+    pub todo: bool,
+}
+
+impl NewHeading {
+    /// The flavour each of the four commands asks for.
+    #[must_use]
+    pub const fn for_command(cmd: &str) -> Self {
+        // A `match` on `&str` is not const, and these four are worth
+        // keeping in one place rather than spelling the flags at every
+        // call site.
+        Self {
+            child: matches!(
+                cmd.as_bytes(),
+                b"add-child-heading" | b"add-todo-child-heading"
+            ),
+            todo: matches!(
+                cmd.as_bytes(),
+                b"add-todo-heading" | b"add-todo-child-heading"
+            ),
+        }
+    }
+
+    /// What org writes in front of the title.
+    #[must_use]
+    pub const fn prefix(self) -> &'static str {
+        if self.todo { "TODO " } else { "" }
+    }
 }
 
 /// The body editor's vim-style mode (org-edit-special surface).
@@ -9624,6 +9702,8 @@ pub struct ModalApp {
     /// surfaces (tags: space-separated; property: `key value`).
     field_target: Option<String>,
     field_buf: LineInput,
+    /// Which of the four new-headline chords opened the title prompt.
+    new_heading: NewHeading,
     /// Cursor into [`Self::palette_entries`] while the Palette is open.
     palette_cursor: usize,
     pending: Vec<String>,
@@ -9966,6 +10046,10 @@ impl ModalApp {
             link_target: None,
             field_target: None,
             field_buf: LineInput::default(),
+            new_heading: NewHeading {
+                child: false,
+                todo: false,
+            },
             palette_cursor: 0,
             pending: Vec::new(),
             status: String::new(),
@@ -13056,7 +13140,16 @@ impl ModalApp {
                         FieldKind::AddSibling => {
                             let title = self.field_buf.text().trim().to_owned();
                             if !title.is_empty() {
-                                let _ = shell.add_sibling(&bid, &title);
+                                let new = self.new_heading;
+                                // org writes the keyword into the
+                                // headline text itself, which is what
+                                // the store's capture prefix is.
+                                if new.child {
+                                    let _ = shell.add_child(&bid, new.prefix(), &title);
+                                } else {
+                                    let line = format!("{}{title}", new.prefix());
+                                    let _ = shell.add_sibling(&bid, &line);
+                                }
                             }
                         }
                     }
@@ -13070,6 +13163,30 @@ impl ModalApp {
                 self.field_buf.key(key, ctrl, alt, text);
             }
         }
+    }
+
+    /// Open the title prompt for one of the new-headline commands.
+    ///
+    /// org's `M-RET` opens an empty heading and leaves you typing in
+    /// it; the outline has no line to type on, so the prompt is where
+    /// the title is typed. Which flavour of heading it will become is
+    /// remembered until it is accepted.
+    fn begin_new_heading(&mut self, shell: &Shell, cmd: &str) {
+        let Some(row) = self.rows_shared(shell).get(self.selected).cloned() else {
+            "nothing selected — put the cursor on a headline first".clone_into(&mut self.status);
+            return;
+        };
+        self.new_heading = NewHeading::for_command(cmd);
+        self.field_target = Some(row.id);
+        self.field_buf.clear();
+        self.surface = ModalSurface::AddSibling;
+        let what = match (self.new_heading.child, self.new_heading.todo) {
+            (false, false) => "sibling",
+            (false, true) => "sibling TODO",
+            (true, false) => "child",
+            (true, true) => "child TODO",
+        };
+        self.status = format!("new {what} — Enter save, Esc cancel");
     }
 
     /// The single-line field-edit buffer (tags/property).
@@ -15597,12 +15714,16 @@ impl ModalApp {
                     self.select_id(shell, &s);
                 }
             }
-            "add-heading" => {
-                if let Some(row) = self.rows_shared(shell).get(self.selected).cloned() {
-                    let bid = closure_core::BlockId::from_existing(&row.id);
-                    let _ = shell.add_sibling(&bid, "untitled");
-                }
-            }
+            // org's four new-headline chords, plus the outline's own
+            // `add-sibling`, which is the plain-sibling one by another
+            // name. All of them ask for a title: `M-RET` used to make a
+            // headline called "untitled" without asking, so the only
+            // chord that existed was also one you had to undo.
+            "add-heading"
+            | "add-todo-heading"
+            | "add-child-heading"
+            | "add-todo-child-heading"
+            | "add-sibling" => self.begin_new_heading(shell, cmd),
             "edit-tags" => {
                 if let Some(row) = self.rows_shared(shell).get(self.selected).cloned() {
                     let tags = self.detail(shell).map(|d| d.tags).unwrap_or_default();
@@ -15724,14 +15845,6 @@ impl ModalApp {
                     self.field_buf.set_text(&row.title);
                     self.surface = ModalSurface::Rename;
                     "rename — Enter save, Esc cancel".clone_into(&mut self.status);
-                }
-            }
-            "add-sibling" => {
-                if let Some(row) = self.rows_shared(shell).get(self.selected).cloned() {
-                    self.field_target = Some(row.id);
-                    self.field_buf.clear();
-                    self.surface = ModalSurface::AddSibling;
-                    "add sibling — Enter save, Esc cancel".clone_into(&mut self.status);
                 }
             }
             "delete" => {
@@ -16187,6 +16300,15 @@ fn list_step(key: &str, ctrl: bool) -> Option<ListStep> {
 /// `<down>`, `RET`, bare `g`/`G`). Returns `None` for keys with no
 /// stroke representation.
 fn modal_stroke(key: &str, ctrl: bool, alt: bool, text: Option<char>) -> Option<String> {
+    // A shell spells the keys where shift *changes the command* as
+    // `shift-<key>` — Enter, TAB and the arrows, the ones with no
+    // shifted character of their own. The keymaps spell that idea org's
+    // way, modifiers outermost: `M-S-RET` is org-insert-todo-heading,
+    // `M-S-<right>` inserts a table column. A shifted *letter* never
+    // comes through here as `shift-a`; it arrives as `A`.
+    let (shift, key) = key
+        .strip_prefix("shift-")
+        .map_or((false, key), |rest| (true, rest));
     let base = match key {
         "enter" => "RET".to_owned(),
         "escape" => "ESC".to_owned(),
@@ -16207,6 +16329,7 @@ fn modal_stroke(key: &str, ctrl: bool, alt: bool, text: Option<char>) -> Option<
             }
         }
     };
+    let base = if shift { format!("S-{base}") } else { base };
     if ctrl {
         Some(format!("C-{base}"))
     } else if alt {

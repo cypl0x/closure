@@ -76,7 +76,15 @@ const DOOM_KEYMAP: &[(&str, &str)] = &[
     ("M-l", "demote"),
     ("M-k", "move-subtree-up"),
     ("M-j", "move-subtree-down"),
+    // org's new-headline chords. `M-RET` is org-meta-return and
+    // Shift is org's TODO axis (`org-insert-todo-heading`). Ctrl
+    // means "one level down": in org it only distinguishes
+    // respect-content, which an outline with no point inside a
+    // subtree cannot mean, so it earns the child instead.
     ("M-RET", "add-heading"),
+    ("M-S-RET", "add-todo-heading"),
+    ("C-RET", "add-child-heading"),
+    ("C-S-RET", "add-todo-child-heading"),
     ("g u", "undo-history"),
     ("TAB", "toggle-fold"),
     // Buffers and the jumplist (Q1). `C-o`/`C-i` are vim's own; the
@@ -219,7 +227,15 @@ const EMACS_KEYMAP: &[(&str, &str)] = &[
     ("M-<right>", "demote"),
     ("M-<up>", "move-subtree-up"),
     ("M-<down>", "move-subtree-down"),
+    // org's new-headline chords. `M-RET` is org-meta-return and
+    // Shift is org's TODO axis (`org-insert-todo-heading`). Ctrl
+    // means "one level down": in org it only distinguishes
+    // respect-content, which an outline with no point inside a
+    // subtree cannot mean, so it earns the child instead.
     ("M-RET", "add-heading"),
+    ("M-S-RET", "add-todo-heading"),
+    ("C-RET", "add-child-heading"),
+    ("C-S-RET", "add-todo-child-heading"),
     ("C-c u", "undo-history"),
     ("TAB", "toggle-fold"),
     // Buffers and the jumplist (Q1), spelled the way Emacs spells them:
@@ -320,7 +336,15 @@ const VIM_KEYMAP: &[(&str, &str)] = &[
     ("M-l", "demote"),
     ("M-k", "move-subtree-up"),
     ("M-j", "move-subtree-down"),
+    // org's new-headline chords. `M-RET` is org-meta-return and
+    // Shift is org's TODO axis (`org-insert-todo-heading`). Ctrl
+    // means "one level down": in org it only distinguishes
+    // respect-content, which an outline with no point inside a
+    // subtree cannot mean, so it earns the child instead.
     ("M-RET", "add-heading"),
+    ("M-S-RET", "add-todo-heading"),
+    ("C-RET", "add-child-heading"),
+    ("C-S-RET", "add-todo-child-heading"),
     ("g u", "undo-history"),
     ("TAB", "toggle-fold"),
     // Buffers and the jumplist (Q1). `C-o`/`C-i` are vim's own; the
@@ -419,7 +443,15 @@ const HELIX_KEYMAP: &[(&str, &str)] = &[
     ("M-l", "demote"),
     ("M-k", "move-subtree-up"),
     ("M-j", "move-subtree-down"),
+    // org's new-headline chords. `M-RET` is org-meta-return and
+    // Shift is org's TODO axis (`org-insert-todo-heading`). Ctrl
+    // means "one level down": in org it only distinguishes
+    // respect-content, which an outline with no point inside a
+    // subtree cannot mean, so it earns the child instead.
     ("M-RET", "add-heading"),
+    ("M-S-RET", "add-todo-heading"),
+    ("C-RET", "add-child-heading"),
+    ("C-S-RET", "add-todo-child-heading"),
     ("g u", "undo-history"),
     ("TAB", "toggle-fold"),
     // Buffers and the jumplist (Q1). `C-o`/`C-i` are vim's own; the
@@ -517,7 +549,15 @@ const NOTION_KEYMAP: &[(&str, &str)] = &[
     ("M-l", "demote"),
     ("M-k", "move-subtree-up"),
     ("M-j", "move-subtree-down"),
+    // org's new-headline chords. `M-RET` is org-meta-return and
+    // Shift is org's TODO axis (`org-insert-todo-heading`). Ctrl
+    // means "one level down": in org it only distinguishes
+    // respect-content, which an outline with no point inside a
+    // subtree cannot mean, so it earns the child instead.
     ("M-RET", "add-heading"),
+    ("M-S-RET", "add-todo-heading"),
+    ("C-RET", "add-child-heading"),
+    ("C-S-RET", "add-todo-child-heading"),
     ("g u", "undo-history"),
     ("TAB", "toggle-fold"),
     // Buffers and the jumplist (Q1). `C-o`/`C-i` are vim's own; the

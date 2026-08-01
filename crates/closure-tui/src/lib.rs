@@ -210,7 +210,9 @@ pub struct App {
     rename_target: Option<String>,
     rename_request: Option<(String, String)>,
     add_target: Option<String>,
-    add_request: Option<(String, String)>,
+    add_request: Option<(String, String, closure_shell_core::NewHeading)>,
+    /// Which of org's four new-headline chords opened the prompt.
+    new_heading: closure_shell_core::NewHeading,
     delete_target: Option<String>,
     delete_request: Option<String>,
     undo_request: bool,
@@ -341,6 +343,10 @@ impl App {
             rename_request: None,
             add_target: None,
             add_request: None,
+            new_heading: closure_shell_core::NewHeading {
+                child: false,
+                todo: false,
+            },
             delete_target: None,
             delete_request: None,
             undo_request: false,
@@ -801,7 +807,9 @@ impl App {
 
     /// Consume the `(after-id, title)` add-sibling confirmed by the
     /// user, if any. The shell performs the vault write.
-    pub const fn take_add_request(&mut self) -> Option<(String, String)> {
+    pub const fn take_add_request(
+        &mut self,
+    ) -> Option<(String, String, closure_shell_core::NewHeading)> {
         self.add_request.take()
     }
 
@@ -2235,7 +2243,8 @@ impl App {
                 if let Some(id) = self.add_target.take()
                     && !self.query.is_empty()
                 {
-                    self.add_request = Some((id, std::mem::take(&mut self.query)));
+                    self.add_request =
+                        Some((id, std::mem::take(&mut self.query), self.new_heading));
                 }
                 self.mode = AppMode::Browse;
                 self.query.clear();
@@ -2729,13 +2738,16 @@ impl App {
                 }
             }
             "move-subtree-up" | "move-subtree-down" => self.move_subtree(cmd == "move-subtree-up"),
-            "add-heading" => {
+            // org's four new-headline chords, and `add-sibling`,
+            // which is the plain-sibling one by another name. `M-RET`
+            // used to make a headline called "untitled" without asking.
+            "add-heading"
+            | "add-todo-heading"
+            | "add-child-heading"
+            | "add-todo-child-heading"
+            | "add-sibling" => {
                 if let Some(id) = self.current_headline_id() {
-                    self.add_request = Some((id, "untitled".to_owned()));
-                }
-            }
-            "add-sibling" => {
-                if let Some(id) = self.current_headline_id() {
+                    self.new_heading = closure_shell_core::NewHeading::for_command(cmd);
                     self.add_target = Some(id);
                     self.query.clear();
                     self.mode = AppMode::AddHeadline;
@@ -3379,10 +3391,20 @@ fn apply_requests(
             .map_err(vault_err)?;
         sync_app(app, vault);
     }
-    if let Some((after, title)) = app.take_add_request() {
-        vault
-            .add_sibling(&closure_core::BlockId::from_existing(&after), &title)
-            .map_err(vault_err)?;
+    if let Some((after, title, new)) = app.take_add_request() {
+        let bid = closure_core::BlockId::from_existing(&after);
+        // org writes the keyword into the headline text itself, which
+        // is what the store's capture prefix is.
+        if new.child {
+            vault
+                .capture_under(&bid, new.prefix(), &title)
+                .map(|_| ())
+                .map_err(vault_err)?;
+        } else {
+            vault
+                .add_sibling(&bid, &format!("{}{title}", new.prefix()))
+                .map_err(vault_err)?;
+        }
         sync_app(app, vault);
     }
     if let Some(id) = app.take_delete_request() {

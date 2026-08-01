@@ -1762,6 +1762,12 @@ fn move_subtree_down_swaps_siblings() {
 
 #[test]
 fn add_heading_inserts_a_sibling_below() {
+    // Contract revised 2026-08-01 on the user's report: `M-RET` used to
+    // insert a headline called "untitled" without asking, so the one
+    // new-headline chord that existed was also one you had to undo. It
+    // asks for the title now, the way org leaves you typing in the
+    // empty heading it opened. See `tests/new_headline.rs` for the
+    // other three chords in the grid.
     let dir = tempfile::tempdir().expect("tmp");
     fs::write(dir.path().join("notes.org"), "* first\n* second\n").expect("write");
     let v = Vault::open(dir.path()).expect("open");
@@ -1769,13 +1775,16 @@ fn add_heading_inserts_a_sibling_below() {
     let mut app = ModalApp::new(InputMode::Doom);
     // select row 0
     app.run(&mut sh, "add-heading");
+    assert_eq!(app.surface(), ModalSurface::AddSibling, "it asks first");
+    for c in "third".chars() {
+        app.on_key(&mut sh, &c.to_string(), false, false, Some(c));
+    }
+    app.on_key(&mut sh, "enter", false, false, None);
     let rows = app.rows(&sh);
     assert_eq!(rows.len(), 3, "grew by 1");
+    assert_eq!(rows[1].title, "third", "inserted below the selection");
     assert_eq!(rows[1].level, rows[0].level, "same level");
-    assert!(
-        rows[1].title != "second",
-        "inserted sibling, not the old second"
-    );
+    assert_eq!(rows[1].todo, None, "plain: `M-S-RET` is the TODO one");
 }
 
 #[test]
