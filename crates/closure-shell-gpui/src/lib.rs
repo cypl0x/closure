@@ -37,6 +37,23 @@ mod testing;
 #[cfg(feature = "gpui-test")]
 pub use testing::{ALL_SURFACES, opening_route, test_window, visual_window};
 
+/// `text` cut to at most `max` characters, the last of them an
+/// ellipsis standing in for what was dropped.
+///
+/// Counted in characters, not bytes: a German headline is the normal
+/// case here, and slicing one at a byte offset panics.
+#[must_use]
+pub fn elide(text: &str, max: usize) -> String {
+    if text.chars().count() <= max {
+        return text.to_owned();
+    }
+    let keep = max.saturating_sub(1);
+    text.chars()
+        .take(keep)
+        .chain(std::iter::once('…'))
+        .collect()
+}
+
 /// Pack a theme [`closure_shell_core::Color`] into the `0xRRGGBB`
 /// integer gpui's `rgb()` expects.
 #[must_use]
@@ -2603,15 +2620,136 @@ impl GpuiView {
 
     /// Context line describing the active surface (with the live input
     /// buffer + caret for the typing surfaces).
+    /// The capture overlay's context row: where this thought will be
+    /// filed, as breadcrumbs, followed by what is being typed.
+    ///
+    /// The path is the answer to "which “Notes”?" and the control at
+    /// the same time — every crumb is a click, and the click retargets
+    /// the capture in place instead of making the user cancel,
+    /// re-select and type the line again. The step it will file into
+    /// is the filled chip; the rest are quiet until hovered.
+    ///
+    /// A deep path collapses in the middle rather than pushing the
+    /// typed line off the row: the file and the last three steps stay,
+    /// and the hidden ones are named in the ellipsis' tooltip. The
+    /// ends are what identify a path; the middle is what a person
+    /// skips reading anyway.
+    fn capture_bar(&self, co: Colors, cx: &Context<Self>) -> gpui::Div {
+        let crumbs = self.app.capture_crumbs(&self.shell);
+        let last = crumbs.len().saturating_sub(1);
+        // Which crumbs to draw, by index; `None` is the gap.
+        let shown: Vec<Option<usize>> = if crumbs.len() > 5 {
+            let mut v = vec![Some(0), None];
+            v.extend((last - 2..=last).map(Some));
+            v
+        } else {
+            (0..crumbs.len()).map(Some).collect()
+        };
+        let hidden: Vec<String> = if crumbs.len() > 5 {
+            crumbs[1..last - 2]
+                .iter()
+                .map(|c| c.label.clone())
+                .collect()
+        } else {
+            Vec::new()
+        };
+        let sep = |text: &'static str| {
+            div()
+                .flex_none()
+                .px(px(2.0))
+                .text_color(rgb(co.border))
+                .child(text)
+        };
+        let mut row = div()
+            .debug_selector(|| "capture-bar".to_owned())
+            .flex()
+            .flex_row()
+            .items_center()
+            .gap(px(1.0))
+            .child(
+                div()
+                    .flex_none()
+                    .pr_1()
+                    .text_color(rgb(co.success))
+                    .child("＋"),
+            );
+        for (n, slot) in shown.into_iter().enumerate() {
+            if n > 0 {
+                row = row.child(sep("›"));
+            }
+            let Some(i) = slot else {
+                let names = hidden.join("  ›  ");
+                row = row.child(
+                    div()
+                        .id("capture-crumb-gap")
+                        .flex_none()
+                        .px_1()
+                        .rounded_md()
+                        .text_color(rgb(co.muted))
+                        .child("…")
+                        .tooltip(move |_w, cx| {
+                            let names = names.clone();
+                            cx.new(move |_| Hint { text: names, co }).into()
+                        }),
+                );
+                continue;
+            };
+            let crumb = &crumbs[i];
+            // The file is not a headline and should not read like one.
+            let idle = if crumb.id.is_none() { co.muted } else { co.fg };
+            // A headline can be a sentence. Left whole, one crumb
+            // pushes the line being typed off its own row — so the
+            // chip is trimmed and the tooltip keeps the whole of it.
+            let hint = if crumb.active {
+                format!("filing here: {}", crumb.label)
+            } else if crumb.id.is_none() {
+                format!("file it at the top of {}", crumb.label)
+            } else {
+                format!("file it under “{}”", crumb.label)
+            };
+            let mut chip = div()
+                .id(gpui::SharedString::from(format!("capture-crumb-{i}")))
+                .flex_none()
+                .px_2()
+                .rounded_md()
+                .text_color(rgb(if crumb.active { co.bg } else { idle }))
+                .child(gpui::SharedString::from(elide(&crumb.label, 28)))
+                .tooltip(move |_w, cx| {
+                    let hint = hint.clone();
+                    cx.new(move |_| Hint { text: hint, co }).into()
+                });
+            if crumb.active {
+                chip = chip.bg(rgb(co.accent)).font_weight(gpui::FontWeight::BOLD);
+            } else {
+                chip = chip
+                    .cursor_pointer()
+                    .hover(move |s| s.bg(rgb(co.hover)))
+                    .on_mouse_down(
+                        MouseButton::Left,
+                        cx.listener(move |this: &mut Self, _ev, _w, cx| {
+                            this.app.pick_capture_crumb(&this.shell, i);
+                            cx.notify();
+                        }),
+                    );
+            }
+            row = row.child(chip);
+        }
+        row.child(sep("·")).child(
+            div()
+                .flex_grow()
+                .text_color(rgb(co.fg))
+                .child(format!("{}▏", self.app.capture_buffer())),
+        )
+    }
+
     fn context_line(&self) -> String {
         let n = self.app.rows(&self.shell).len();
         match self.app.surface() {
             ModalSurface::Browse => format!("{n} headline(s)"),
             ModalSurface::Search => self.app.search_context(&self.shell),
-            // Where it lands is part of what you are typing: the same
-            // words file under a headline or loose in the capture file
-            // depending on the selection, and you cannot see that from
-            // the title alone.
+            // The capture surface draws breadcrumbs instead
+            // ([`Self::capture_bar`]); this is the text fallback for
+            // anything reading the context line as a string.
             ModalSurface::Capture => format!(
                 "＋ capture {} : {}▏",
                 self.app.capture_target_label(&self.shell),
@@ -6672,8 +6810,14 @@ impl Render for GpuiView {
             .py_1()
             .bg(rgb(co.panel))
             .text_color(rgb(co.fg))
-            .text_size(px(12.0))
-            .child(self.context_line());
+            .text_size(px(12.0));
+        // Capture draws its target as clickable breadcrumbs; every
+        // other surface has one line to say and says it.
+        let context = if self.app.surface() == ModalSurface::Capture {
+            context.child(self.capture_bar(co, cx))
+        } else {
+            context.child(self.context_line())
+        };
 
         let body = div()
             .flex()

@@ -479,3 +479,30 @@ fn the_icd_search_covers_more_than_nixos() {
         );
     }
 }
+
+// === Long labels in a one-line bar ===
+
+use closure_shell_gpui::elide;
+
+#[test]
+fn a_short_label_is_left_alone() {
+    assert_eq!(elide("Project", 28), "Project");
+    assert_eq!(elide("", 4), "");
+}
+
+#[test]
+fn a_long_label_ends_in_an_ellipsis_of_the_right_length() {
+    let out = elide("Compare current init.el with doom emacs default", 28);
+    assert_eq!(out.chars().count(), 28, "fits the budget exactly: {out}");
+    assert!(out.ends_with('…'), "{out}");
+    assert!(out.starts_with("Compare current"), "{out}");
+}
+
+#[test]
+fn eliding_counts_characters_not_bytes() {
+    // A German capture line is the normal case, and cutting at a byte
+    // offset inside a multi-byte character panics.
+    let out = elide("Ünïcödé — täg für die Wohnung Kranenburg", 12);
+    assert_eq!(out.chars().count(), 12, "{out}");
+    assert!(out.ends_with('…'));
+}
