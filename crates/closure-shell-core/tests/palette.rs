@@ -6,7 +6,7 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
 use closure_config::InputMode;
-use closure_shell_core::{command_palette, serialize_palette};
+use closure_shell_core::{command_palette, command_palette_with_history, serialize_palette};
 
 #[test]
 fn palette_groups_commands_into_sections_with_descriptions_and_chords() {
@@ -108,4 +108,82 @@ fn a_component_that_matches_nothing_still_rules_the_entry_out() {
         sections.is_empty(),
         "every component has to match, or the filter means nothing"
     );
+}
+
+// === Recency: what you reached for last is what you reach for next ===
+//
+// Reported 2026-08-01: "action bar menu should sort and suggest the
+// most recent ones at the top". The palette listed its curated sections
+// in a fixed order for everyone forever, so the command you ran four
+// times this hour was as far down as the one you have never run.
+
+#[test]
+fn recent_commands_get_a_section_of_their_own_at_the_top() {
+    let recent = ["rename".to_owned(), "delete".to_owned()];
+    let sections = command_palette_with_history("", InputMode::Doom, &recent);
+    assert_eq!(
+        sections[0].title, "Recent",
+        "first, or it is not a suggestion"
+    );
+    let listed: Vec<&str> = sections[0]
+        .items
+        .iter()
+        .map(|e| e.action.command())
+        .collect();
+    assert_eq!(listed, ["rename", "delete"], "most recent first");
+}
+
+#[test]
+fn without_a_history_the_palette_is_exactly_what_it_was() {
+    let with_none = command_palette_with_history("", InputMode::Doom, &[]);
+    let plain = command_palette("", InputMode::Doom);
+    assert_eq!(
+        serialize_palette(&with_none),
+        serialize_palette(&plain),
+        "an empty history changes nothing"
+    );
+}
+
+#[test]
+fn the_recent_section_is_filtered_like_every_other() {
+    // A suggestion that ignores what you typed is noise.
+    let recent = ["rename".to_owned(), "delete".to_owned()];
+    let sections = command_palette_with_history("rename", InputMode::Doom, &recent);
+    let listed: Vec<&str> = sections[0]
+        .items
+        .iter()
+        .map(|e| e.action.command())
+        .collect();
+    assert_eq!(sections[0].title, "Recent");
+    assert_eq!(listed, ["rename"], "delete does not match the query");
+}
+
+#[test]
+fn a_recent_section_that_matches_nothing_does_not_appear() {
+    let recent = ["delete".to_owned()];
+    let sections = command_palette_with_history("rename", InputMode::Doom, &recent);
+    assert!(
+        sections.iter().all(|s| s.title != "Recent"),
+        "empty sections never surface"
+    );
+}
+
+#[test]
+fn a_recent_command_still_appears_in_its_own_section() {
+    // The Recent section is a shortcut, not a move: someone who knows
+    // rename lives under Edit must still find it there.
+    let recent = ["rename".to_owned()];
+    let sections = command_palette_with_history("", InputMode::Doom, &recent);
+    let edit = sections
+        .iter()
+        .find(|s| s.title == "Edit")
+        .expect("Edit section");
+    assert!(edit.items.iter().any(|e| e.action.command() == "rename"));
+}
+
+#[test]
+fn a_command_this_mode_cannot_run_is_not_suggested() {
+    let recent = ["zzzznotacommand".to_owned()];
+    let sections = command_palette_with_history("", InputMode::Doom, &recent);
+    assert!(sections.iter().all(|s| s.title != "Recent"));
 }

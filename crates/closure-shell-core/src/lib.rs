@@ -3006,6 +3006,29 @@ pub struct PaletteSection {
 /// a final "Command" section labelled by their canonical name.
 #[must_use]
 pub fn command_palette(query: &str, mode: closure_config::InputMode) -> Vec<PaletteSection> {
+    command_palette_with_history(query, mode, &[])
+}
+
+/// [`command_palette`], with the commands this session has already run
+/// (most recent first) suggested in a `Recent` section at the top.
+///
+/// The curated sections are in a fixed order that is the same for
+/// everybody forever, so the command you ran four times this hour sat
+/// exactly as far down as the one you have never run. Recency is the
+/// cheapest useful signal a launcher has, and every launcher worth
+/// using leans on it.
+///
+/// It is a shortcut, not a move: a suggested command still appears in
+/// the section it belongs to, because someone who knows where `rename`
+/// lives must still find it there. The section is filtered by the same
+/// query as the rest — a suggestion that ignores what you typed is
+/// noise — and disappears when nothing in it matches.
+#[must_use]
+pub fn command_palette_with_history(
+    query: &str,
+    mode: closure_config::InputMode,
+    recent: &[String],
+) -> Vec<PaletteSection> {
     let mut sections: Vec<PaletteSection> = PALETTE_SECTIONS
         .iter()
         .filter_map(|section| {
@@ -3076,7 +3099,47 @@ pub fn command_palette(query: &str, mode: closure_config::InputMode) -> Vec<Pale
             items: scored.into_iter().map(|(_, e)| e).collect(),
         });
     }
+    // History order, not score order: the point of the section is that
+    // it answers "the thing I just did" before you have finished
+    // typing, and re-ranking it by the filter would put a stranger
+    // above the command you ran ten seconds ago.
+    let suggestions: Vec<PaletteEntry> = recent
+        .iter()
+        .filter(|cmd| query.is_empty() || closure_query::orderless_score(query, cmd).is_some())
+        .filter_map(|cmd| palette_entry_for(cmd, mode))
+        .collect();
+    if !suggestions.is_empty() {
+        sections.insert(
+            0,
+            PaletteSection {
+                title: "Recent".to_owned(),
+                items: suggestions,
+            },
+        );
+    }
     sections
+}
+
+/// The palette entry for one canonical command: its curated label and
+/// description when it has them, its own name otherwise. `None` when
+/// this mode cannot run it.
+fn palette_entry_for(cmd: &str, mode: closure_config::InputMode) -> Option<PaletteEntry> {
+    let action = Action::new(mode, cmd)?;
+    let curated = PALETTE_COMMANDS
+        .iter()
+        .find(|(_, canonical, ..)| *canonical == cmd);
+    Some(match curated {
+        Some((label, _, _, desc)) => PaletteEntry {
+            label: (*label).to_owned(),
+            description: (*desc).to_owned(),
+            action,
+        },
+        None => PaletteEntry {
+            label: cmd.to_owned(),
+            description: format!("Run {cmd}"),
+            action,
+        },
+    })
 }
 
 /// Serialise a [`command_palette`] to a deterministic text snapshot (G6) —
@@ -9707,6 +9770,15 @@ pub struct ModalApp {
     field_buf: LineInput,
     /// Which of the four new-headline chords opened the title prompt.
     new_heading: NewHeading,
+    /// Commands run *from the palette*, most recent first, deduped and
+    /// capped. Chords are deliberately not in here: `j` and `k` are
+    /// pressed hundreds of times a session and are never what you open
+    /// the palette to find.
+    palette_history: Vec<String>,
+    /// Bumped whenever [`Self::palette_history`] changes, so the
+    /// palette memo notices — its key is the query and the mode, and
+    /// neither of those moves when the history does.
+    history_gen: u64,
     /// Cursor into [`Self::palette_entries`] while the Palette is open.
     palette_cursor: usize,
     pending: Vec<String>,
@@ -9983,6 +10055,8 @@ struct PaletteMemo {
     query: String,
     /// The mode whose chords they carry.
     mode: InputMode,
+    /// The palette history generation they were built against.
+    history_gen: u64,
     /// The derived entries.
     entries: std::sync::Arc<Vec<PaletteEntry>>,
 }
@@ -10053,6 +10127,8 @@ impl ModalApp {
                 child: false,
                 todo: false,
             },
+            palette_history: Vec::new(),
+            history_gen: 0,
             palette_cursor: 0,
             pending: Vec::new(),
             status: String::new(),
@@ -10173,6 +10249,7 @@ impl ModalApp {
             if let Some(m) = memo.as_ref()
                 && m.query == self.field_buf.text()
                 && m.mode == self.mode
+                && m.history_gen == self.history_gen
             {
                 return std::sync::Arc::clone(&m.entries);
             }
@@ -10183,6 +10260,7 @@ impl ModalApp {
         *self.palette_memo.borrow_mut() = Some(PaletteMemo {
             query: self.field_buf.text().to_owned(),
             mode: self.mode,
+            history_gen: self.history_gen,
             entries: std::sync::Arc::clone(&entries),
         });
         entries
@@ -10192,7 +10270,7 @@ impl ModalApp {
     /// the memo. What [`Self::palette_shared`] must always agree with.
     #[must_use]
     pub fn palette_entries_uncached(&self) -> Vec<PaletteEntry> {
-        command_palette(self.field_buf.text(), self.mode)
+        command_palette_with_history(self.field_buf.text(), self.mode, &self.palette_history)
             .into_iter()
             .flat_map(|s| s.items)
             .collect()
@@ -10265,8 +10343,23 @@ impl ModalApp {
         self.palette_cursor = 0;
         self.close_palette();
         if let Some(cmd) = pick {
+            self.remember_palette_command(&cmd);
             self.run_command(shell, &cmd);
         }
+    }
+
+    /// Record a command the palette just ran, newest first.
+    ///
+    /// Re-running something moves it back to the front rather than
+    /// adding a second copy, so the list stays a set of distinct
+    /// commands in the order you last wanted them. Capped because a
+    /// suggestion list longer than the eye reads is not a suggestion.
+    fn remember_palette_command(&mut self, cmd: &str) {
+        const KEEP: usize = 5;
+        self.palette_history.retain(|c| c != cmd);
+        self.palette_history.insert(0, cmd.to_owned());
+        self.palette_history.truncate(KEEP);
+        self.history_gen += 1;
     }
 
     /// Open the command palette over whatever is on screen.

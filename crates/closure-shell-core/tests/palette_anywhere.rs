@@ -138,3 +138,55 @@ fn the_shell_knows_what_to_paint_behind_the_palette() {
         "the buffer is still what is behind it"
     );
 }
+
+// === The palette remembers what you ran ===
+
+#[test]
+fn a_command_run_from_the_palette_is_suggested_next_time() {
+    let (_d, mut shell, mut app) = fixture(InputMode::Doom);
+    app.run(&mut shell, "palette");
+    for c in "zoom-in".chars() {
+        app.on_key(&mut shell, &c.to_string(), false, false, Some(c));
+    }
+    app.on_key(&mut shell, "enter", false, false, None);
+    app.run(&mut shell, "palette");
+    let first = app.palette_entries().first().map(|e| e.label.clone());
+    assert_eq!(
+        first.as_deref(),
+        Some("zoom-in"),
+        "the last thing you ran is the first thing offered"
+    );
+}
+
+#[test]
+fn a_chord_is_not_palette_history() {
+    // `j` and `k` are pressed hundreds of times a session and are never
+    // what you open the palette to find. Only what the palette itself
+    // ran counts as its history.
+    // `zoom-in` because it is nowhere near the top of the unsuggested
+    // palette — finding it first could only mean it was suggested.
+    let (_d, mut shell, mut app) = fixture(InputMode::Doom);
+    app.run(&mut shell, "zoom-in");
+    app.run(&mut shell, "palette");
+    let first = app.palette_entries().first().map(|e| e.label.clone());
+    assert_ne!(first.as_deref(), Some("zoom-in"));
+}
+
+#[test]
+fn running_the_same_command_twice_leaves_one_entry() {
+    let (_d, mut shell, mut app) = fixture(InputMode::Doom);
+    for _ in 0..2 {
+        app.run(&mut shell, "palette");
+        for c in "zoom-in".chars() {
+            app.on_key(&mut shell, &c.to_string(), false, false, Some(c));
+        }
+        app.on_key(&mut shell, "enter", false, false, None);
+    }
+    app.run(&mut shell, "palette");
+    let zooms = app
+        .palette_entries()
+        .iter()
+        .filter(|e| e.label == "zoom-in")
+        .count();
+    assert_eq!(zooms, 2, "once in Recent, once in the section it lives in");
+}
