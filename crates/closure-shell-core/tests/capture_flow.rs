@@ -857,3 +857,102 @@ fn the_path_survives_the_selection_moving_with_it() {
         .expect("captured");
     assert_eq!(new.level, 3, "filed under the crumb it ended on");
 }
+
+// === Capturing several things under one headline ===
+//
+// Reported 2026-08-01: "we need to think about capturing items as
+// children to another headline that you should be able to jump to the
+// newly created or keep the selection on the parent tree element …
+// something like shift or ctrl or alt + enter to keep the selection
+// onto the parent. If you have better ideas … please implement the
+// more productive variant."
+//
+// Keeping the selection is the means; the end is filing several
+// thoughts under the same headline without re-opening the prompt and
+// re-aiming it between each one. So `C-Enter` files and *stays*: same
+// target, empty line, ready for the next one. Plain `Enter` keeps
+// meaning "that was the one thing I had", closes, and takes you to it.
+// Shift+Enter was already the newline in a multi-line capture.
+
+/// Type `title` into an already-open capture overlay and accept it
+/// with `C-Enter`.
+fn capture_more(app: &mut ModalApp, sh: &mut Shell, title: &str) {
+    for c in title.chars() {
+        app.on_key(sh, "x", false, false, Some(c));
+    }
+    app.on_key(sh, "enter", true, false, None);
+}
+
+#[test]
+fn ctrl_enter_files_it_and_keeps_the_prompt_open() {
+    let (_d, mut sh) = shell();
+    let mut app = ModalApp::new(InputMode::Doom);
+    app.select(0, &sh); // Project
+    app.run(&mut sh, "capture-start");
+    capture_more(&mut app, &mut sh, "First");
+    assert_eq!(
+        app.surface(),
+        ModalSurface::Capture,
+        "still capturing, ready for the next one"
+    );
+    assert_eq!(app.capture_buffer(), "", "with an empty line");
+    assert!(titles(&app, &sh).contains(&"First".to_owned()));
+}
+
+#[test]
+fn the_selection_stays_on_the_parent() {
+    let (_d, mut sh) = shell();
+    let mut app = ModalApp::new(InputMode::Doom);
+    app.select(0, &sh);
+    app.run(&mut sh, "capture-start");
+    capture_more(&mut app, &mut sh, "First");
+    app.on_key(&mut sh, "escape", false, false, None);
+    assert_eq!(
+        app.detail(&sh).expect("detail").title,
+        "Project",
+        "the cursor never left the headline being filed into"
+    );
+}
+
+#[test]
+fn a_run_of_captures_all_land_under_the_same_parent() {
+    let (_d, mut sh) = shell();
+    let mut app = ModalApp::new(InputMode::Doom);
+    app.select(0, &sh);
+    app.run(&mut sh, "capture-start");
+    for title in ["First", "Second", "Third"] {
+        capture_more(&mut app, &mut sh, title);
+    }
+    app.on_key(&mut sh, "escape", false, false, None);
+    let rows = app.rows(&sh);
+    for title in ["First", "Second", "Third"] {
+        let row = rows
+            .iter()
+            .find(|r| r.title == title)
+            .unwrap_or_else(|| panic!("{title} was filed"));
+        assert_eq!(row.level, 2, "{title} is a child of Project");
+    }
+}
+
+#[test]
+fn plain_enter_still_closes_and_goes_to_the_new_item() {
+    // The old gesture is the common one and does not change.
+    let (_d, mut sh) = shell();
+    let mut app = ModalApp::new(InputMode::Doom);
+    app.select(0, &sh);
+    capture(&mut app, &mut sh, "Only one");
+    assert_ne!(app.surface(), ModalSurface::Capture, "the prompt closed");
+    assert_eq!(app.detail(&sh).expect("detail").title, "Only one");
+}
+
+#[test]
+fn ctrl_enter_on_an_empty_line_does_not_file_a_blank() {
+    let (_d, mut sh) = shell();
+    let mut app = ModalApp::new(InputMode::Doom);
+    app.select(0, &sh);
+    app.run(&mut sh, "capture-start");
+    let before = titles(&app, &sh).len();
+    app.on_key(&mut sh, "enter", true, false, None);
+    assert_eq!(titles(&app, &sh).len(), before, "nothing was filed");
+    assert_eq!(app.surface(), ModalSurface::Capture, "and it stayed open");
+}

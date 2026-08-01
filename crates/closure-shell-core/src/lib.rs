@@ -15167,11 +15167,25 @@ impl ModalApp {
             "down" => self.walk_capture_history(-1),
             "k" if ctrl => self.walk_capture_history(1),
             "j" if ctrl => self.walk_capture_history(-1),
+            // Files it and *stays*: same target, empty line, ready for
+            // the next one. Filing several thoughts under one headline
+            // used to mean reopening the prompt and re-aiming it
+            // between each, because plain Enter closes and takes the
+            // cursor to what it just made. Shift+Enter was already the
+            // newline, so the spare modifier is Ctrl.
+            "enter" if ctrl => {
+                self.remember_capture();
+                if !self.capture_buf.is_empty() {
+                    let text = self.capture_buf.take();
+                    self.commit_capture(shell, &text, false);
+                }
+                self.capture_buf.clear();
+            }
             "enter" => {
                 self.remember_capture();
                 if !self.capture_buf.is_empty() {
                     let text = self.capture_buf.take();
-                    self.commit_capture(shell, &text);
+                    self.commit_capture(shell, &text, true);
                 }
                 self.go_home();
                 self.capture_buf.clear();
@@ -15359,7 +15373,7 @@ impl ModalApp {
             )
     }
 
-    fn commit_capture(&mut self, shell: &mut Shell, text: &str) {
+    fn commit_capture(&mut self, shell: &mut Shell, text: &str, follow: bool) {
         // A capture can be more than one line (Shift+Enter). The first
         // line is the headline — a headline *is* one line in org — and
         // the rest is its body, which is where the thought actually
@@ -15409,9 +15423,16 @@ impl ModalApp {
                 }
                 self.status = format!("captured: {title}");
                 // The row list is rebuilt from the bumped revision, so
-                // the new id is findable the moment we ask.
-                self.select_by_id(shell, id.as_str());
-                self.selection_active = true;
+                // the new id is findable the moment we ask. Staying put
+                // is what keeps the *target* put: the capture prompt
+                // aims at whatever the cursor is on, so a run of
+                // `C-Enter`s all land in the same place.
+                if follow {
+                    self.select_by_id(shell, id.as_str());
+                    self.selection_active = true;
+                } else {
+                    self.status = format!("captured: {title} — still filing here");
+                }
             }
             Err(e) => self.status = format!("capture failed: {e}"),
         }
