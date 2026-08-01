@@ -81,6 +81,22 @@
           qt6.qtbase
           qt6.qtdeclarative
         ];
+        # Mesa's lavapipe: a Vulkan driver that runs on the CPU.
+        # `gpuiLibs` carries the Vulkan *loader*, which is dispatch and
+        # no rendering; a machine with no GPU (a headless server over
+        # VNC, a CI runner, a VM without passthrough) carries no
+        # *driver*, and gpui then dies in blade with
+        # `NoSupportedDeviceFound`. Naming the manifest here lets the
+        # shell open a window anywhere `nix develop` runs, with nothing
+        # installed on the host — the preflight
+        # (`closure-shell-gpui::gpui_preflight`) uses it only when the
+        # machine has no driver of its own, since software rendering
+        # costs an order of magnitude in frame time. Linux only: the
+        # macOS path is Metal, and there is no ICD to name.
+        softwareIcd =
+          if pkgs.stdenv.hostPlatform.isLinux
+          then "${pkgs.mesa}/share/vulkan/icd.d/lvp_icd.${pkgs.stdenv.hostPlatform.parsed.cpu.name}.json"
+          else "";
       in {
         webview = pkgs.mkShell {
           packages = [
@@ -92,6 +108,7 @@
           ];
           buildInputs = gpuiLibs ++ webviewLibs;
           LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath (gpuiLibs ++ webviewLibs);
+          CLOSURE_SOFTWARE_ICD = softwareIcd;
         };
 
         default = pkgs.mkShell {
@@ -115,6 +132,9 @@
 
           env = {
             RUST_BACKTRACE = "1";
+            # The CPU Vulkan driver the gpui shell falls back to when
+            # the machine has none of its own. See `softwareIcd` above.
+            CLOSURE_SOFTWARE_ICD = softwareIcd;
           };
 
           # gpui dlopen's the Vulkan/Wayland/xkb libs at runtime.
