@@ -5330,7 +5330,7 @@ impl GpuiView {
         co: Colors,
         cx: &Context<Self>,
     ) -> gpui::Stateful<gpui::Div> {
-        let Some(d) = self.app.detail(&self.shell) else {
+        let Some(d) = self.app.selected_detail(&self.shell) else {
             return pane.child(
                 div()
                     .text_color(rgb(co.muted))
@@ -5424,7 +5424,7 @@ impl GpuiView {
         if !self.app.images_shown() {
             return 0;
         }
-        let Some(detail) = self.app.detail(&self.shell) else {
+        let Some(detail) = self.app.selected_detail(&self.shell) else {
             return 0;
         };
         closure_shell_core::image_links(&detail.body)

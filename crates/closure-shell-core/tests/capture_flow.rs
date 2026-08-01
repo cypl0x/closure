@@ -758,3 +758,45 @@ fn the_file_crumb_files_into_the_file_it_came_from_not_its_namesake() {
         "and not into its namesake at the root"
     );
 }
+
+// === Escape empties the right-hand pane too ===
+//
+// Escape means "I am looking at nothing" — it is what makes the next
+// capture file loose. The detail pane went on showing the headline it
+// had just stopped pointing at, so the screen said one thing and the
+// next capture did another.
+
+#[test]
+fn escape_empties_the_detail_pane() {
+    let (_d, mut sh) = shell();
+    let mut app = ModalApp::new(InputMode::Doom);
+    app.select_by_id(&sh, "01HQCAP000000000000000001");
+    assert!(
+        app.selected_detail(&sh).is_some(),
+        "a selected headline has a detail"
+    );
+
+    app.on_key(&mut sh, "escape", false, false, None);
+    assert!(
+        app.selected_detail(&sh).is_none(),
+        "nothing selected, nothing to show"
+    );
+    assert!(
+        app.detail(&sh).is_some(),
+        "the row under the cursor is still readable — the commands \
+         that act on it did not change meaning"
+    );
+}
+
+#[test]
+fn a_motion_brings_the_detail_pane_back() {
+    let (_d, mut sh) = shell();
+    let mut app = ModalApp::new(InputMode::Doom);
+    app.select_by_id(&sh, "01HQCAP000000000000000001");
+    app.on_key(&mut sh, "escape", false, false, None);
+    app.on_key(&mut sh, "j", false, false, Some('j'));
+    assert!(
+        app.selected_detail(&sh).is_some(),
+        "moving selects, and a selection has a detail again"
+    );
+}

@@ -10262,6 +10262,23 @@ impl ModalApp {
         self.detail_shared(shell).map(|d| d.as_ref().clone())
     }
 
+    /// The detail of the *selected* headline — what a shell paints in
+    /// the side pane, and nothing when Escape has said there is no
+    /// selection.
+    ///
+    /// [`Self::detail`] answers a different question: what is under the
+    /// cursor, which is what the commands that act on a row read. The
+    /// two came apart when Escape dropped the selection and the side
+    /// pane went on showing the headline it had just stopped pointing
+    /// at — the screen said one thing while the next capture did
+    /// another.
+    #[must_use]
+    pub fn selected_detail(&self, shell: &Shell) -> Option<std::sync::Arc<Detail>> {
+        self.selection_active
+            .then(|| self.detail_shared(shell))
+            .flatten()
+    }
+
     /// The same detail, shared rather than cloned — the render path's
     /// entry point.
     ///
