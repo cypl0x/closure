@@ -103,8 +103,20 @@ pub fn resolve_view(vault_path: &Path) -> closure_shell_core::ViewMode {
     }
 }
 
-/// Why the GPU window cannot open here, in words, or `None` when it
-/// can.
+/// What the GPU window can do on this machine.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Preflight {
+    /// A display and a Vulkan driver are both there; open the window.
+    Ready,
+    /// A display, but no driver the machine owns — render on the
+    /// software rasteriser at this ICD manifest instead. Slow, and it
+    /// opens.
+    Software(std::path::PathBuf),
+    /// Nothing to open a window on, and why, in words.
+    Refused(String),
+}
+
+/// Whether the GPU window can open here, and on what.
 ///
 /// gpui picks its backend from `WAYLAND_DISPLAY`/`DISPLAY` and then
 /// `unwrap`s the GPU context, so a machine without a Vulkan driver gets
@@ -114,19 +126,24 @@ pub fn resolve_view(vault_path: &Path) -> closure_shell_core::ViewMode {
 ///
 /// The Vulkan *loader* is a library (the dev shell has it); a Vulkan
 /// *driver* is an ICD manifest, which on NixOS comes from
-/// `hardware.graphics.enable` and lands in `/run/opengl-driver`. A box
-/// with no GPU at all can still run the software rasteriser, which ships
-/// in the same directory as `lvp_icd.*.json`.
+/// `hardware.graphics.enable` and lands in `/run/opengl-driver`, and
+/// elsewhere from the distro's mesa package. A headless server has
+/// neither — and that is what `software_icd` is for: the dev shell
+/// ships lavapipe and points `CLOSURE_SOFTWARE_ICD` at its manifest, so
+/// a box with no GPU still opens a window without the user installing
+/// anything. It is a fallback only: a real driver always wins, because
+/// software rendering costs an order of magnitude in frame time.
 #[must_use]
 pub fn gpui_preflight(
     wayland: Option<&str>,
     x11: Option<&str>,
     icd_dirs: &[std::path::PathBuf],
     icd_override: Option<&str>,
-) -> Option<String> {
+    software_icd: Option<&str>,
+) -> Preflight {
     let has_display = wayland.is_some_and(|d| !d.is_empty()) || x11.is_some_and(|d| !d.is_empty());
     if !has_display {
-        return Some(
+        return Preflight::Refused(
             "no display: neither WAYLAND_DISPLAY nor DISPLAY is set, so there is no \
              compositor to open a window on. Over SSH, forward one (`ssh -X`) or run \
              closure on the machine with the screen; the TUI (`closure tui`) needs \
@@ -137,7 +154,7 @@ pub fn gpui_preflight(
     // An explicit override names the driver outright, so the search
     // directories stop mattering.
     if icd_override.is_some_and(|v| !v.is_empty()) {
-        return None;
+        return Preflight::Ready;
     }
     let has_driver = icd_dirs.iter().any(|dir| {
         std::fs::read_dir(dir).is_ok_and(|mut entries| {
@@ -145,26 +162,46 @@ pub fn gpui_preflight(
         })
     });
     if has_driver {
-        return None;
+        return Preflight::Ready;
     }
-    Some(
+    // The env var can outlive the store path that set it, and a
+    // manifest that is not on disk fails inside the loader with the
+    // very panic this function exists to prevent.
+    if let Some(icd) = software_icd.map(std::path::PathBuf::from)
+        && icd.is_file()
+    {
+        return Preflight::Software(icd);
+    }
+    Preflight::Refused(
         "no Vulkan driver: a display is available but no ICD manifest was found, so \
          gpui's GPU context has nothing to run on (`NoSupportedDeviceFound`).\n  \
-         On NixOS: set `hardware.graphics.enable = true;` (`hardware.opengl.enable` \
-         before 24.11) and rebuild — that populates /run/opengl-driver.\n  \
-         With no GPU at all, the software rasteriser in the same directory works: \
-         VK_ICD_FILENAMES=/run/opengl-driver/share/vulkan/icd.d/lvp_icd.x86_64.json\n  \
+         Normally there is nothing to do: `nix develop` ships the lavapipe software \
+         rasteriser and points CLOSURE_SOFTWARE_ICD at it, so a machine with no GPU \
+         still opens a window. Seeing this means that variable is unset or stale — \
+         run through the dev shell (`nix develop -c just run-gpui-release VAULT`).\n  \
+         On NixOS with a GPU: set `hardware.graphics.enable = true;` \
+         (`hardware.opengl.enable` before 24.11) and rebuild — that populates \
+         /run/opengl-driver.\n  \
+         Any lavapipe manifest also works, named outright: \
+         VK_ICD_FILENAMES=/path/to/lvp_icd.x86_64.json\n  \
          Either way `closure tui` needs no GPU."
             .to_owned(),
     )
 }
 
 /// The standard places a Vulkan ICD manifest is looked for.
+///
+/// The loader's own search path, minus the per-user and `XDG_DATA_DIRS`
+/// entries: NixOS' `/run/opengl-driver` first, then where a distro
+/// package, a local build and an administrator put one. Looking only
+/// where NixOS puts it reports "no driver" on a machine that has one.
 #[must_use]
 pub fn vulkan_icd_dirs() -> Vec<std::path::PathBuf> {
     [
         "/run/opengl-driver/share/vulkan/icd.d",
         "/usr/share/vulkan/icd.d",
+        "/usr/local/share/vulkan/icd.d",
+        "/etc/vulkan/icd.d",
     ]
     .iter()
     .map(std::path::PathBuf::from)
@@ -1305,6 +1342,41 @@ use gpui::{
     size,
 };
 
+/// Run this same command again with the Vulkan loader pointed at the
+/// software rasteriser at `icd`, and report how it went.
+///
+/// The loader reads its driver override from the environment before
+/// this process gets to ask, and setting an environment variable is
+/// `unsafe` under edition 2024 — which this workspace forbids outright.
+/// So the choice goes to a fresh process instead: the same executable,
+/// the same arguments, one variable added. `VK_DRIVER_FILES` is the
+/// current name and `VK_ICD_FILENAMES` the one older loaders read; a
+/// loader that knows both prefers the former.
+///
+/// The child cannot loop back here: it finds the override set, and an
+/// override is believed outright.
+#[cfg(feature = "gpui")]
+fn rerun_on_software_rasteriser(icd: &Path) -> Result<(), String> {
+    eprintln!(
+        "closure: no Vulkan driver on this machine — rendering on the lavapipe software \
+         rasteriser ({}). Frames are slow; `closure tui` is not.",
+        icd.display()
+    );
+    let exe = std::env::current_exe()
+        .map_err(|e| format!("cannot find closure's own path to re-run it: {e}"))?;
+    let status = std::process::Command::new(exe)
+        .args(std::env::args_os().skip(1))
+        .env("VK_DRIVER_FILES", icd)
+        .env("VK_ICD_FILENAMES", icd)
+        .status()
+        .map_err(|e| format!("cannot re-run on the software rasteriser: {e}"))?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err(format!("software rasteriser run ended: {status}"))
+    }
+}
+
 /// Launch the gpui desktop window against the vault at `vault_path`.
 /// Blocks until the window closes.
 ///
@@ -1317,13 +1389,16 @@ pub fn run(vault_path: &Path) -> Result<(), String> {
     // gpui `unwrap`s its GPU context, so without this the failure mode
     // on a machine with no Vulkan driver is a panic and a backtrace
     // through `blade_graphics` that names nothing you could install.
-    if let Some(why) = gpui_preflight(
+    match gpui_preflight(
         std::env::var("WAYLAND_DISPLAY").ok().as_deref(),
         std::env::var("DISPLAY").ok().as_deref(),
         &vulkan_icd_dirs(),
         std::env::var("VK_ICD_FILENAMES").ok().as_deref(),
+        std::env::var("CLOSURE_SOFTWARE_ICD").ok().as_deref(),
     ) {
-        return Err(why);
+        Preflight::Ready => {}
+        Preflight::Software(icd) => return rerun_on_software_rasteriser(&icd),
+        Preflight::Refused(why) => return Err(why),
     }
     let vault = Vault::open(vault_path).map_err(|e| format!("{e}"))?;
     let theme = resolve_theme(vault_path);

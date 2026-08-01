@@ -336,7 +336,15 @@ fn highlighting_a_headline_preserves_every_byte() {
 // backtrace through `blade_graphics` — which says nothing about what to
 // install. This is the check that runs first and says it in words.
 
-use closure_shell_gpui::gpui_preflight;
+use closure_shell_gpui::{Preflight, gpui_preflight, vulkan_icd_dirs};
+
+/// The refusal text, or a panic naming what came back instead.
+fn refusal(p: Preflight) -> String {
+    match p {
+        Preflight::Refused(why) => why,
+        other => panic!("expected a refusal, got {other:?}"),
+    }
+}
 
 #[test]
 fn a_session_with_a_display_and_a_driver_is_fine() {
@@ -344,12 +352,15 @@ fn a_session_with_a_display_and_a_driver_is_fine() {
     let icd = dir.path().join("icd.d");
     fs::create_dir_all(&icd).expect("mkdir");
     fs::write(icd.join("intel_icd.x86_64.json"), "{}").expect("write");
-    assert_eq!(gpui_preflight(Some("wayland-1"), None, &[icd], None), None);
+    assert_eq!(
+        gpui_preflight(Some("wayland-1"), None, &[icd], None, None),
+        Preflight::Ready
+    );
 }
 
 #[test]
 fn no_display_at_all_is_explained() {
-    let why = gpui_preflight(None, None, &[], None).expect("refused");
+    let why = refusal(gpui_preflight(None, None, &[], None, None));
     assert!(
         why.contains("DISPLAY") || why.contains("display"),
         "names what is missing: {why}"
@@ -362,7 +373,7 @@ fn a_display_without_a_vulkan_driver_is_explained() {
     let dir = tempfile::tempdir().expect("tmp");
     let empty = dir.path().join("icd.d");
     fs::create_dir_all(&empty).expect("mkdir");
-    let why = gpui_preflight(None, Some(":0"), &[empty], None).expect("refused");
+    let why = refusal(gpui_preflight(None, Some(":0"), &[empty], None, None));
     assert!(why.contains("Vulkan"), "{why}");
     assert!(
         why.contains("hardware.graphics.enable"),
@@ -371,6 +382,10 @@ fn a_display_without_a_vulkan_driver_is_explained() {
     assert!(
         why.contains("lvp_icd") || why.contains("lavapipe"),
         "and the software fallback: {why}"
+    );
+    assert!(
+        why.contains("nix develop"),
+        "and where the fallback comes from: {why}"
     );
 }
 
@@ -383,8 +398,84 @@ fn an_explicit_icd_override_is_believed() {
             Some("wayland-1"),
             None,
             &[],
-            Some("/nix/store/x/lvp_icd.json")
+            Some("/nix/store/x/lvp_icd.json"),
+            None
         ),
-        None
+        Preflight::Ready
     );
+}
+
+#[test]
+fn a_driverless_box_falls_back_to_the_bundled_rasteriser() {
+    // A headless server (no GPU, no distro Vulkan package) with a
+    // display: the dev shell ships lavapipe, so the window can still
+    // open — slowly — instead of refusing.
+    let dir = tempfile::tempdir().expect("tmp");
+    let empty = dir.path().join("icd.d");
+    fs::create_dir_all(&empty).expect("mkdir");
+    let lvp = dir.path().join("lvp_icd.x86_64.json");
+    fs::write(&lvp, "{}").expect("write");
+    assert_eq!(
+        gpui_preflight(
+            None,
+            Some(":0"),
+            &[empty],
+            None,
+            Some(&lvp.to_string_lossy())
+        ),
+        Preflight::Software(lvp)
+    );
+}
+
+#[test]
+fn a_real_driver_beats_the_bundled_rasteriser() {
+    // Software rendering is the fallback, never the choice: a machine
+    // with a GPU must not be quietly dropped onto lavapipe.
+    let dir = tempfile::tempdir().expect("tmp");
+    let icd = dir.path().join("icd.d");
+    fs::create_dir_all(&icd).expect("mkdir");
+    fs::write(icd.join("radeon_icd.x86_64.json"), "{}").expect("write");
+    let lvp = dir.path().join("lvp_icd.x86_64.json");
+    fs::write(&lvp, "{}").expect("write");
+    assert_eq!(
+        gpui_preflight(None, Some(":0"), &[icd], None, Some(&lvp.to_string_lossy())),
+        Preflight::Ready
+    );
+}
+
+#[test]
+fn a_software_icd_that_is_not_on_disk_is_not_believed() {
+    // The env var can outlive the store path that set it. A manifest
+    // that is not there would fail inside the loader with the same
+    // opaque panic the preflight exists to prevent.
+    let dir = tempfile::tempdir().expect("tmp");
+    let empty = dir.path().join("icd.d");
+    fs::create_dir_all(&empty).expect("mkdir");
+    let why = refusal(gpui_preflight(
+        None,
+        Some(":0"),
+        &[empty],
+        None,
+        Some("/nix/store/gone/lvp_icd.x86_64.json"),
+    ));
+    assert!(why.contains("Vulkan"), "{why}");
+}
+
+#[test]
+fn the_icd_search_covers_more_than_nixos() {
+    // A driver installed by a distro package lands in one of the
+    // loader's own search paths; looking only where NixOS puts it
+    // reports "no driver" on a machine that has one.
+    let dirs = vulkan_icd_dirs();
+    for want in [
+        "/run/opengl-driver/share/vulkan/icd.d",
+        "/usr/share/vulkan/icd.d",
+        "/usr/local/share/vulkan/icd.d",
+        "/etc/vulkan/icd.d",
+    ] {
+        assert!(
+            dirs.iter().any(|d| d == std::path::Path::new(want)),
+            "{want} is searched: {dirs:?}"
+        );
+    }
 }
