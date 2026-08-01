@@ -1416,7 +1416,17 @@ pub fn palette_list_height(rows: usize, zoom: f32) -> f32 {
         reason = "a row count this side of the cap is exact in f32"
     )]
     let n = rows.clamp(1, PALETTE_LIST_ROWS) as f32;
-    n * scaled_text_px(PALETTE_ROW_H, zoom)
+    // Plus the list container's own padding. Budgeting exactly `n` rows
+    // left the box that many pixels short and clipped the last one —
+    // loudest with a single match, where the clipped row is the only
+    // row there is.
+    n * palette_row_height(zoom) + scaled_text_px(PALETTE_LIST_PAD * 2.0, zoom)
+}
+
+/// One palette row's height at this zoom.
+#[must_use]
+pub fn palette_row_height(zoom: f32) -> f32 {
+    scaled_text_px(PALETTE_ROW_H, zoom)
 }
 
 /// A palette row's text size.
@@ -1425,6 +1435,15 @@ const PALETTE_ROW_TEXT: f32 = 13.0;
 const PALETTE_ROW_H: f32 = PALETTE_ROW_TEXT * 1.4 + 8.0;
 /// The most rows the palette shows before it scrolls instead.
 const PALETTE_LIST_ROWS: usize = 12;
+/// The list container's padding, above and below (gpui's `p_1`).
+const PALETTE_LIST_PAD: f32 = 4.0;
+/// The label column, wide enough for the longest command name.
+#[cfg(feature = "gpui")]
+const PALETTE_LABEL_W: f32 = 168.0;
+/// The chord column. Right-aligned, so chords line up down the list
+/// instead of drifting with the description above them.
+#[cfg(feature = "gpui")]
+const PALETTE_CHORD_W: f32 = 84.0;
 
 /// Keep only the which-key entries that can follow the chord already
 /// typed.
@@ -5487,7 +5506,10 @@ impl GpuiView {
             .debug_selector(|| "palette-panel".to_owned())
             .flex()
             .flex_col()
-            .w(px(660.0))
+            // Wide enough for name + description + chord to sit as
+            // three columns rather than three things fighting for the
+            // same line.
+            .w(px(scaled_text_px(820.0, self.app.zoom())))
             .rounded_md()
             .border_1()
             .border_color(rgb(co.border))
@@ -5586,6 +5608,13 @@ impl GpuiView {
                                 div()
                                     .debug_selector(move || format!("palette-row-{i}"))
                                     .flex()
+                                    // A `uniform_list` item is as wide
+                                    // as it asks to be, so without this
+                                    // the rows sat in the left third of
+                                    // a panel they were meant to fill
+                                    // and the chord column stopped in
+                                    // the middle of nowhere.
+                                    .w_full()
                                     .items_center()
                                     .px_2()
                                     .py_1()
@@ -5611,21 +5640,35 @@ impl GpuiView {
                                             cx.notify();
                                         }),
                                     )
+                                    // Three columns that line up down
+                                    // the list: name, what it does, the
+                                    // chord. The description used to
+                                    // grow into the chord with nothing
+                                    // between them, so every row read
+                                    // `Go to the next filej`.
+                                    .gap_3()
                                     .child(
                                         div()
-                                            .w(px(140.0))
+                                            .flex_none()
+                                            .w(px(scaled_text_px(PALETTE_LABEL_W, zoom)))
+                                            .overflow_hidden()
                                             .text_color(rgb(co.fg))
                                             .child(e.label.clone()),
                                     )
                                     .child(
                                         div()
                                             .flex_grow()
+                                            .overflow_hidden()
                                             .text_color(rgb(co.muted))
                                             .text_size(sz_at(11.0, zoom))
                                             .child(e.description.clone()),
                                     )
                                     .child(
                                         div()
+                                            .flex_none()
+                                            .w(px(scaled_text_px(PALETTE_CHORD_W, zoom)))
+                                            .flex()
+                                            .justify_end()
                                             .text_color(rgb(co.accent))
                                             .text_size(sz_at(11.0, zoom))
                                             .child(e.action.chord().to_owned()),

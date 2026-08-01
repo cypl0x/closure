@@ -269,9 +269,19 @@ fn the_palette_list_is_as_tall_as_its_matches() {
     // a list exactly zero pixels tall.
     let one = palette_list_height(1, 1.0);
     assert!(one > 0.0, "one match is still a row: {one}");
+    // Five rows are five times one *row* — the container's own padding
+    // is added once, not per row. Asserting `5 × one` was what pinned
+    // the padding out of the budget and clipped the last match.
+    let row = closure_shell_gpui::palette_row_height(1.0);
     assert!(
-        (palette_list_height(5, 1.0) / one - 5.0).abs() < 0.001,
-        "five rows are five times one"
+        4.0f32
+            .mul_add(
+                -row,
+                palette_list_height(5, 1.0) - palette_list_height(1, 1.0)
+            )
+            .abs()
+            < 0.001,
+        "four more rows are four more row heights"
     );
     // Empty is still a row's worth — the "no matches" line lives there.
     assert!((palette_list_height(0, 1.0) - one).abs() < f32::EPSILON);
@@ -282,4 +292,46 @@ fn the_palette_list_is_as_tall_as_its_matches() {
     );
     // And it scales with the window's zoom like everything else.
     assert!((palette_list_height(3, 2.0) / palette_list_height(3, 1.0) - 2.0).abs() < 0.001);
+}
+
+// === The palette box is tall enough for the rows it promises ===
+//
+// Reported 2026-08-02: "the box is always too small so that the last
+// item in the list will just be the half of it shown in the height.
+// Especially when there is just a single item because of the filter it
+// looks weird."
+//
+// The height budgeted for `n` rows was `n × row height` exactly, and
+// the list container adds its own padding above and below. So every
+// palette was short by that padding and the last row was clipped —
+// most visibly with one match, where the clipped row is the only row.
+
+#[test]
+fn the_list_is_taller_than_the_rows_it_holds() {
+    let rows = 3.0 * closure_shell_gpui::palette_row_height(1.0);
+    assert!(
+        palette_list_height(3, 1.0) > rows,
+        "{} must clear {rows} to leave room for its own padding",
+        palette_list_height(3, 1.0)
+    );
+}
+
+#[test]
+fn a_single_match_gets_a_whole_row() {
+    let one = closure_shell_gpui::palette_row_height(1.0);
+    assert!(
+        palette_list_height(1, 1.0) >= one,
+        "one row plus padding, not a clipped one"
+    );
+}
+
+#[test]
+fn the_padding_does_not_grow_with_the_row_count() {
+    // Otherwise a long list drifts steadily taller than its contents.
+    let slack = |n: usize| {
+        #[expect(clippy::cast_precision_loss, reason = "small counts")]
+        let rows = n as f32 * closure_shell_gpui::palette_row_height(1.0);
+        palette_list_height(n, 1.0) - rows
+    };
+    assert!((slack(1) - slack(9)).abs() < 0.001, "constant slack");
 }
