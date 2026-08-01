@@ -9771,6 +9771,12 @@ pub struct ModalApp {
     /// Now, as the shell last said (`YYYY-MM-DD HH:MM`) — what a
     /// clock entry is stamped with (Q3-V3).
     now: String,
+    /// What the palette was opened over, when that was a buffer.
+    ///
+    /// The palette floats rather than replacing a pane, and closing it
+    /// has to give back exactly what it covered — a buffer with its
+    /// text and cursor, not the outline.
+    palette_return: Option<ModalSurface>,
     /// The headline the tag picker is editing (Q3-V6).
     tag_target: Option<String>,
     /// The tags ticked so far, before they are written.
@@ -9988,6 +9994,7 @@ impl ModalApp {
             date_pick: None,
             refile_source: None,
             now: "1970-01-01 00:00".to_owned(),
+            palette_return: None,
             tag_target: None,
             tag_draft: Vec::new(),
             shell_out: None,
@@ -10124,7 +10131,7 @@ impl ModalApp {
             "escape" => {
                 self.field_buf.clear();
                 self.palette_cursor = 0;
-                self.go_home();
+                self.close_palette();
             }
             "down" => {
                 let last = self.palette_entries().len().saturating_sub(1);
@@ -10153,9 +10160,44 @@ impl ModalApp {
             .map(|e| e.action.command().to_owned());
         self.field_buf.clear();
         self.palette_cursor = 0;
-        self.go_home();
+        self.close_palette();
         if let Some(cmd) = pick {
             self.run_command(shell, &cmd);
+        }
+    }
+
+    /// Open the command palette over whatever is on screen.
+    fn open_palette(&mut self) {
+        self.field_buf.clear();
+        self.palette_cursor = 0;
+        // Opened over a buffer it is a floating bar, not a replacement:
+        // closing it gives that buffer back ([`Self::close_palette`]).
+        self.palette_return = self.surface.is_editor().then_some(self.surface);
+        self.surface = ModalSurface::Palette;
+        "palette — type to filter, Enter to run".clone_into(&mut self.status);
+    }
+
+    /// Put the palette away, giving back whatever it floated over.
+    const fn close_palette(&mut self) {
+        match self.palette_return.take() {
+            Some(surface) => self.surface = surface,
+            None => self.go_home(),
+        }
+    }
+
+    /// The surface the palette is floating over — what a shell paints
+    /// underneath it.
+    ///
+    /// The palette is a bar over your work (Raycast, Zed, the VS Code
+    /// command bar), not a pane that replaces it, so the window needs
+    /// to know what was there. Everywhere else this is just the active
+    /// surface.
+    #[must_use]
+    pub fn surface_beneath(&self) -> ModalSurface {
+        if self.surface == ModalSurface::Palette {
+            self.palette_return.unwrap_or_else(|| self.home_surface())
+        } else {
+            self.surface
         }
     }
 
@@ -13894,15 +13936,33 @@ impl ModalApp {
             self.body_recenter_cycle();
             return true;
         }
-        // Doom's `text-scale`. The chords are the mode's keymap's, not
-        // a match written out here: a chord this path invented would be
-        // one which-key and M-x could never show (I4).
-        if ctrl
+        // The chords that belong to the *window* rather than to the
+        // text: zoom (Doom's `text-scale`) and the command palette.
+        // Every letter in a buffer belongs to the buffer, which is
+        // right for letters and wrong for these — `M-x` types nothing,
+        // and a writer who cannot reach M-x from the one place they
+        // spend the session has no launcher at all. Resolved through
+        // the mode's keymap, never spelled out here, so which-key and
+        // the palette show the same chord this path answers to (I4).
+        if (ctrl || alt)
             && let Some(stroke) = modal_stroke(key, ctrl, alt, text)
             && let Some(cmd) = closure_input::command_for(self.mode, &stroke)
-            && self.zoom_command(cmd)
         {
-            return true;
+            if self.zoom_command(cmd) {
+                return true;
+            }
+            // Only the meta layer, for the palette. `C-p` is bound to
+            // it as the desktop prefix, but inside a buffer `C-p`/`C-n`
+            // are readline's — they walk the completion — and a chord
+            // the buffer already answers is not the window's to take.
+            // `M-x` is bound to the palette in all five modes and means
+            // nothing to the editor, which is why it is the one that
+            // gets through.
+            if alt && cmd == "palette" {
+                self.pending_body = None;
+                self.open_palette();
+                return true;
+            }
         }
         if self.pending_body == Some(BodyPrefix::Viewport) {
             self.pending_body = None;
@@ -15663,12 +15723,7 @@ impl ModalApp {
                         .min(self.rows_shared(shell).len().saturating_sub(1));
                 }
             }
-            "palette" => {
-                self.field_buf.clear();
-                self.palette_cursor = 0;
-                self.surface = ModalSurface::Palette;
-                "palette — type to filter, Enter to run".clone_into(&mut self.status);
-            }
+            "palette" => self.open_palette(),
             "ex-command" => self.begin_ex(),
             "llm" => {
                 self.chat_buf.clear();
