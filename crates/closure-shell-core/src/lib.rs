@@ -5956,6 +5956,9 @@ pub enum ModalSurface {
     /// The refile target picker: every other headline in the vault,
     /// filtered as you type (Q3-V1).
     Refile,
+    /// The tag picker: every tag the vault uses, ticked where this
+    /// headline carries it (Q3-V6).
+    TagPick,
 }
 
 /// Which of the two shapes of the shell you are working in.
@@ -9653,6 +9656,10 @@ pub struct ModalApp {
     /// Now, as the shell last said (`YYYY-MM-DD HH:MM`) — what a
     /// clock entry is stamped with (Q3-V3).
     now: String,
+    /// The headline the tag picker is editing (Q3-V6).
+    tag_target: Option<String>,
+    /// The tags ticked so far, before they are written.
+    tag_draft: Vec<String>,
     /// Memoised source-block list — see [`ModalApp::block_rows`].
     block_memo: std::cell::RefCell<Option<(u64, std::sync::Arc<Vec<BlockRow>>)>>,
     /// Derivations paid for; the render budget's fourth number.
@@ -9685,6 +9692,17 @@ pub struct BufferRow {
     /// Whether it is the buffer on screen.
     pub current: bool,
     /// Whether it survives the picker's live filter.
+    pub matches_filter: bool,
+}
+
+/// One tag in the picker ([`ModalApp::tag_rows`]).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TagRow {
+    /// The tag, without its colons.
+    pub name: String,
+    /// Whether the headline will carry it when the picker commits.
+    pub on: bool,
+    /// Whether it survives the live filter.
     pub matches_filter: bool,
 }
 
@@ -9855,6 +9873,8 @@ impl ModalApp {
             date_pick: None,
             refile_source: None,
             now: "1970-01-01 00:00".to_owned(),
+            tag_target: None,
+            tag_draft: Vec::new(),
             shell_out: None,
             body_scroll: None,
             hist_cursor: 0,
@@ -10418,6 +10438,7 @@ impl ModalApp {
             }
             ModalSurface::DatePick => self.on_datepick_key(shell, key, text),
             ModalSurface::Refile => self.on_refile_key(shell, key, text),
+            ModalSurface::TagPick => self.on_tagpick_key(shell, key, text),
             ModalSurface::Buffers => self.on_picker_key(shell, key, text, PickerKind::Buffers),
             ModalSurface::Files => self.on_picker_key(shell, key, text, PickerKind::Files),
             ModalSurface::EditBlock => self.on_editblock_key(shell, key, ctrl, alt, text),
@@ -11589,6 +11610,154 @@ impl ModalApp {
             _ => {
                 if let Some(c) = text
                     && !c.is_control()
+                {
+                    self.query.push(c);
+                    self.selected = 0;
+                }
+            }
+        }
+    }
+
+    // ---- Q3-V6: the tag picker -------------------------------------
+
+    /// Every tag in the vault, ticked where the selected headline
+    /// already carries it, filtered as you type.
+    ///
+    /// A typed tag that matches nothing is still offered as itself:
+    /// the picker is for spelling tags you already use consistently,
+    /// not for refusing new ones.
+    #[must_use]
+    pub fn tag_rows(&self, shell: &Shell) -> Vec<TagRow> {
+        let filter = if self.surface == ModalSurface::TagPick {
+            self.query.as_str()
+        } else {
+            ""
+        };
+        let mut rows: Vec<TagRow> = shell
+            .vault
+            .all_tags()
+            .into_iter()
+            .map(|name| TagRow {
+                matches_filter: filter.is_empty()
+                    || closure_query::fuzzy_score(filter, &name).is_some(),
+                on: self.tag_draft.contains(&name),
+                name,
+            })
+            .collect();
+        // The tags the headline has but the vault does not know about
+        // — because they were only just ticked — are rows too.
+        for name in &self.tag_draft {
+            if !rows.iter().any(|r| r.name == *name) {
+                rows.push(TagRow {
+                    matches_filter: filter.is_empty()
+                        || closure_query::fuzzy_score(filter, name).is_some(),
+                    on: true,
+                    name: name.clone(),
+                });
+            }
+        }
+        rows.sort_by(|a, b| a.name.cmp(&b.name));
+        rows
+    }
+
+    /// Open the tag picker on the selected headline.
+    fn open_tag_picker(&mut self, shell: &Shell) {
+        let selected = self
+            .selection_active
+            .then(|| self.selected_row_id(shell))
+            .flatten();
+        let Some(id) = selected else {
+            "nothing selected — put the cursor on a headline first".clone_into(&mut self.status);
+            return;
+        };
+        let bid = closure_core::BlockId::from_existing(&id);
+        self.tag_draft = shell
+            .vault
+            .find_by_id(&bid)
+            .map(|(h, _)| h.tags().to_vec())
+            .unwrap_or_default();
+        self.tag_target = Some(id);
+        self.surface = ModalSurface::TagPick;
+        self.query.clear();
+        self.selected = 0;
+        "tags — type to filter · SPC toggles · RET writes · Esc cancels"
+            .clone_into(&mut self.status);
+    }
+
+    /// Tick or untick `name` in the draft — the click path.
+    pub fn tag_toggle(&mut self, name: &str) {
+        if let Some(at) = self.tag_draft.iter().position(|t| t == name) {
+            self.tag_draft.remove(at);
+        } else {
+            self.tag_draft.push(name.to_owned());
+        }
+    }
+
+    /// Write the draft to the headline and close the picker.
+    fn commit_tag_picker(&mut self, shell: &mut Shell) {
+        let Some(id) = self.tag_target.take() else {
+            return;
+        };
+        let bid = closure_core::BlockId::from_existing(&id);
+        let tags = self.tag_draft.clone();
+        match shell.set_tags(&bid, &tags) {
+            Ok(()) => {
+                self.invalidate_rows();
+                self.status = if tags.is_empty() {
+                    "tags cleared".to_owned()
+                } else {
+                    format!("tags: {}", tags.join(" "))
+                };
+            }
+            Err(e) => self.status = format!("could not set the tags: {e}"),
+        }
+        self.tag_draft.clear();
+        self.query.clear();
+        self.surface = ModalSurface::Browse;
+    }
+
+    /// The tag picker's keys.
+    fn on_tagpick_key(&mut self, shell: &mut Shell, key: &str, text: Option<char>) {
+        let matches: Vec<String> = self
+            .tag_rows(shell)
+            .into_iter()
+            .filter(|r| r.matches_filter)
+            .map(|r| r.name)
+            .collect();
+        match key {
+            "escape" => {
+                self.tag_target = None;
+                self.tag_draft.clear();
+                self.query.clear();
+                self.selected = 0;
+                self.go_home();
+                "tags left as they were".clone_into(&mut self.status);
+            }
+            "down" => self.selected = (self.selected + 1).min(matches.len().saturating_sub(1)),
+            "up" => self.selected = self.selected.saturating_sub(1),
+            "backspace" => {
+                self.query.pop();
+                self.selected = 0;
+            }
+            "enter" => self.commit_tag_picker(shell),
+            " " | "space" => {
+                // Space ticks what the cursor is on; with nothing
+                // matching, it ticks what was typed — that is how a new
+                // tag gets into a vault at all.
+                let target = matches.get(self.selected).cloned().or_else(|| {
+                    let typed = self.query.trim().to_owned();
+                    (!typed.is_empty()).then_some(typed)
+                });
+                if let Some(name) = target {
+                    self.tag_toggle(&name);
+                    self.query.clear();
+                    self.selected = 0;
+                }
+            }
+            _ => {
+                if let Some(c) = text
+                    && !c.is_control()
+                    && c != ' '
                 {
                     self.query.push(c);
                     self.selected = 0;
@@ -15231,6 +15400,7 @@ impl ModalApp {
                 }
             }
             "refile" => self.open_refile(shell),
+            "tag-picker" => self.open_tag_picker(shell),
             "clock-in" | "clock-out" | "clock-cancel" => self.clock(shell, cmd),
             "clock-goto" => self.clock_goto(shell),
             "archive" => self.archive_selected(shell),

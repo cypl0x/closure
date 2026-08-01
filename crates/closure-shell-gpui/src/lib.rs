@@ -1153,6 +1153,7 @@ pub const fn accepts_paste(surface: ModalSurface, insert: bool) -> bool {
         | ModalSurface::Files
         // The refile picker filters by typing, like the others.
         | ModalSurface::Refile
+        | ModalSurface::TagPick
         | ModalSurface::Llm => true,
         ModalSurface::EditBody | ModalSurface::EditBlock | ModalSurface::EditFile => insert,
         ModalSurface::Browse
@@ -2771,6 +2772,9 @@ impl GpuiView {
                 format!("{} — {}", grid.field, grid.selected)
             }
             ModalSurface::Refile => format!("refile to — {}▏", self.app.query()),
+            ModalSurface::TagPick => {
+                format!("tags — {}▏ · SPC toggles · RET writes", self.app.query())
+            }
             ModalSurface::Buffers => format!(
                 "buffers — {}▏ · {} open · RET opens · Esc back",
                 self.app.query(),
@@ -3246,6 +3250,7 @@ impl GpuiView {
             ),
             ModalSurface::DatePick => pane.child(self.date_pane(co, cx)),
             ModalSurface::Refile => pane.children(self.refile_pane(co, cx)),
+            ModalSurface::TagPick => pane.children(self.tag_pane(co, cx)),
             ModalSurface::Buffers => pane.children(self.buffer_pane(co, cx)),
             ModalSurface::Files => pane.children(self.file_pane(co, cx)),
             ModalSurface::Sync => pane.child(self.sync_pane(co, cx)),
@@ -3918,6 +3923,39 @@ impl GpuiView {
                         .child(item.clone())
                 })),
         )
+    }
+
+    /// The tag picker (Q3-V6): every tag the vault uses, ticked where
+    /// this headline carries it.
+    fn tag_pane(&self, co: Colors, cx: &Context<Self>) -> Vec<gpui::Div> {
+        let rows: Vec<_> = self
+            .app
+            .tag_rows(&self.shell)
+            .into_iter()
+            .filter(|r| r.matches_filter)
+            .collect();
+        if rows.is_empty() {
+            return vec![
+                div()
+                    .text_color(rgb(co.muted))
+                    .child("no tag matches — SPC makes it a new one"),
+            ];
+        }
+        rows.into_iter()
+            .enumerate()
+            .map(|(i, r)| {
+                let name = r.name.clone();
+                list_row(
+                    co,
+                    i == self.app.selected(),
+                    format!("{} {}", if r.on { "☑" } else { "☐" }, r.name),
+                    cx.listener(move |this: &mut Self, _ev, _w, cx| {
+                        this.app.tag_toggle(&name);
+                        cx.notify();
+                    }),
+                )
+            })
+            .collect()
     }
 
     /// The refile target picker (Q3-V1): every headline that could take
