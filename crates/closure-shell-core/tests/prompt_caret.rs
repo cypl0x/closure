@@ -38,7 +38,7 @@ fn type_into(app: &mut ModalApp, sh: &mut Shell, text: &str) {
 #[test]
 fn the_rename_prompt_says_where_its_cursor_is() {
     let (_d, mut sh, mut app) = fixture();
-    app.select(0, &mut sh);
+    app.select(0, &sh);
     app.run(&mut sh, "rename");
     assert_eq!(app.surface(), ModalSurface::Rename);
     app.on_key(&mut sh, "u", true, false, None); // C-u, clear the line
@@ -54,7 +54,7 @@ fn the_rename_prompt_says_where_its_cursor_is() {
 #[test]
 fn typing_lands_at_the_cursor_not_at_the_end() {
     let (_d, mut sh, mut app) = fixture();
-    app.select(0, &mut sh);
+    app.select(0, &sh);
     app.run(&mut sh, "rename");
     app.on_key(&mut sh, "u", true, false, None);
     type_into(&mut app, &mut sh, "abc");
@@ -67,7 +67,7 @@ fn typing_lands_at_the_cursor_not_at_the_end() {
 #[test]
 fn alt_backspace_kills_a_word_in_the_rename_prompt() {
     let (_d, mut sh, mut app) = fixture();
-    app.select(0, &mut sh);
+    app.select(0, &sh);
     app.run(&mut sh, "rename");
     app.on_key(&mut sh, "u", true, false, None);
     type_into(&mut app, &mut sh, "foo bar");

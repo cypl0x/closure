@@ -12815,14 +12815,20 @@ impl ModalApp {
     /// is a superset of the palette it replaced rather than a
     /// replacement for it.
     fn run_ex(&mut self, shell: &mut Shell, line: &str) {
-        let editing = self.ex_return == Some(ModalSurface::EditBody);
-        self.ex_buf.clear();
         let was = self.ex_return.take();
-        self.surface = ModalSurface::Browse;
+        let editing = was == Some(ModalSurface::EditBody);
+        self.ex_buf.clear();
+        // The `:` line hands back the surface it was opened over, the
+        // way the palette does. It used to drop to Browse here and
+        // leave every arm to climb back — so each line that did not
+        // think to closed the buffer you were typing in: a bare `:`, a
+        // typo, and every command that has nothing to do with the
+        // buffer at all. Leaving is a decision the individual lines
+        // below make; it is not the command line's default.
+        self.surface = was.unwrap_or_else(|| self.home_surface());
         // `:!cmd` is vim's shell escape. It stays where it was typed —
         // running a command is not a reason to close the buffer.
         if let Some(cmd) = line.strip_prefix('!') {
-            self.surface = was.unwrap_or_else(|| self.home_surface());
             self.run_shell_escape(shell, cmd.trim());
             return;
         }
@@ -12897,8 +12903,16 @@ impl ModalApp {
                         .flat_map(|s| &s.items)
                         .any(|e| e.action.command() == other);
                 if known {
+                    // `:foo` is the same command `M-x foo` runs, and
+                    // the palette hands the buffer back afterwards —
+                    // two spellings of one command must not disagree
+                    // about whether the buffer survives it (I4). So the
+                    // buffer is *written* rather than closed, and where
+                    // we end up is the command's decision: `:agenda`
+                    // opens the agenda, `:zoom-in` changes nothing but
+                    // the size of the text you were already typing.
                     if editing {
-                        self.commit_edit_body(shell);
+                        self.write_body(shell);
                     }
                     self.run_command(shell, other);
                 } else {

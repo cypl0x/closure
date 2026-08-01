@@ -205,3 +205,85 @@ fn colon_in_editor_normal_mode_opens_the_ex_line() {
     app.on_key(&mut shell, "x", false, false, Some(':'));
     assert_eq!(app.surface(), ModalSurface::Ex, "vim reflex, vim result");
 }
+
+// === `:` from inside a buffer hands the buffer back ===
+//
+// Reported 2026-08-01: "in the body editor the `:` commands will
+// instantly bring you back to the tree and preview view". `run_ex` set
+// the surface to Browse before it looked at the line, and left it to
+// each arm to climb back — so every line that did not think to (a bare
+// `:`, a typo, a command with nothing to do with the buffer) closed the
+// buffer you were typing in. The `:` line hands back what it floated
+// over, the way the palette does; only the lines that mean to leave
+// leave.
+
+/// The body editor, in NORMAL, with `text` typed into it.
+fn in_the_buffer(app: &mut ModalApp, shell: &mut Shell, text: &str) {
+    app.select(0, shell);
+    app.run(shell, "edit-body");
+    app.on_key(shell, "i", false, false, Some('i'));
+    type_str(app, shell, text);
+    app.on_key(shell, "escape", false, false, None);
+}
+
+#[test]
+fn an_empty_ex_line_hands_the_buffer_back() {
+    let (_d, mut shell, mut app) = fixture();
+    in_the_buffer(&mut app, &mut shell, "half a paragraph");
+    app.on_key(&mut shell, "x", false, false, Some(':'));
+    app.on_key(&mut shell, "enter", false, false, None);
+    assert_eq!(app.surface(), ModalSurface::EditBody, "still editing");
+    assert_eq!(app.body_buffer(), "half a paragraph");
+}
+
+#[test]
+fn a_nonsense_ex_command_does_not_close_the_buffer() {
+    // A typo is the most likely thing to arrive on this line, and
+    // losing your place in the buffer is a heavy price for one.
+    let (_d, mut shell, mut app) = fixture();
+    in_the_buffer(&mut app, &mut shell, "half a paragraph");
+    ex(&mut app, &mut shell, "zzzznotacommand");
+    assert_eq!(app.surface(), ModalSurface::EditBody, "still editing");
+    assert!(app.status().contains("zzzznotacommand"), "{}", app.status());
+    assert_eq!(app.body_buffer(), "half a paragraph");
+}
+
+#[test]
+fn escape_on_the_ex_line_hands_the_buffer_back() {
+    let (_d, mut shell, mut app) = fixture();
+    in_the_buffer(&mut app, &mut shell, "half a paragraph");
+    app.on_key(&mut shell, "x", false, false, Some(':'));
+    app.on_key(&mut shell, "escape", false, false, None);
+    assert_eq!(app.surface(), ModalSurface::EditBody);
+}
+
+#[test]
+fn a_command_with_nothing_to_do_with_the_buffer_leaves_it_open() {
+    // `:zoom-in` is the same command the palette runs, and the palette
+    // hands the buffer back afterwards. Two spellings of one command
+    // must not disagree about whether your buffer survives it (I4).
+    let (_d, mut shell, mut app) = fixture();
+    in_the_buffer(&mut app, &mut shell, "half a paragraph");
+    ex(&mut app, &mut shell, "zoom-in");
+    assert!(app.zoom() > 1.0, "the command ran");
+    assert_eq!(app.surface(), ModalSurface::EditBody, "and gave it back");
+    assert_eq!(app.body_buffer(), "half a paragraph");
+}
+
+#[test]
+fn a_command_that_opens_another_surface_writes_the_buffer_first() {
+    // Leaving is the command's decision, not the ex line's — but
+    // unwritten text must not leave with it.
+    let (_d, mut shell, mut app) = fixture();
+    in_the_buffer(&mut app, &mut shell, "typed then walked away from");
+    ex(&mut app, &mut shell, "agenda");
+    assert_eq!(app.surface(), ModalSurface::Agenda, "the command decided");
+    app.select(0, &shell);
+    assert!(
+        app.detail(&shell)
+            .expect("detail")
+            .body
+            .contains("typed then walked away from"),
+        "the buffer reached the vault on the way out"
+    );
+}
