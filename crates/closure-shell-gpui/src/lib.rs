@@ -873,7 +873,8 @@ pub const fn h_scroll_start(cursor_col: usize, cols: usize) -> usize {
     cursor_col + 1 - cols
 }
 
-/// A one-line prompt with its caret drawn at `cursor` (a byte offset).
+/// A one-line prompt as it is laid out, and the byte range its caret
+/// covers, from a `cursor` given as a byte offset.
 ///
 /// Every one-line surface — the capture bar, rename/add/tags/property,
 /// the palette's filter — used to paint `format!("{text}▏")`, which put
@@ -881,19 +882,34 @@ pub const fn h_scroll_start(cursor_col: usize, cols: usize) -> usize {
 /// The core has always moved the cursor for Left/Right, the readline
 /// chords and Alt+Backspace ([`closure_shell_core::ModalApp::
 /// field_cursor`]); with the caret pinned to the end, all of those
-/// looked unbound, and the next character appeared somewhere the user
-/// had no reason to expect.
+/// looked unbound.
 ///
-/// A repaint must never panic, so an offset past the end or inside a
-/// multi-byte glyph snaps down to the boundary below it rather than
-/// slicing there.
+/// Splitting the string at the cursor instead fixed that and bought a
+/// second bug: an inserted glyph takes width, so a caret moving to the
+/// front shoved the whole line sideways ("weird shift in capture prompt
+/// when ctlr+a is pressed"). A caret is not a character — it is a mark
+/// over the cell it is on. This is [`cursor_cell`], which the body
+/// editor's block cursor already uses, so the two cursors are one
+/// implementation and cannot drift apart; the cell padding and the
+/// multi-byte handling come with it.
 #[must_use]
-pub fn field_with_caret(text: &str, cursor: usize) -> String {
-    let mut at = cursor.min(text.len());
+pub fn field_caret_cell(text: &str, cursor: usize) -> (String, std::ops::Range<usize>) {
+    // `cursor_cell` counts in char columns, a `LineInput` cursor is a
+    // byte offset, and an offset that lands inside a glyph belongs to
+    // that glyph.
+    let at = floor_boundary(text, cursor);
+    cursor_cell(text, text[..at].chars().count())
+}
+
+/// The char boundary at or below `at`, so a byte offset that landed
+/// mid-glyph names the glyph it is inside rather than panicking a
+/// repaint.
+fn floor_boundary(text: &str, at: usize) -> usize {
+    let mut at = at.min(text.len());
     while !text.is_char_boundary(at) {
         at -= 1;
     }
-    format!("{}\u{258f}{}", &text[..at], &text[at..])
+    at
 }
 
 /// Whether the cursor needs a caret element of its own on this line.
@@ -2870,22 +2886,79 @@ impl GpuiView {
             }
             row = row.child(chip);
         }
-        row.child(sep("·")).child(
+        row.child(sep("·"))
+            .child(div().flex_grow().text_color(rgb(co.fg)).child(caret_text(
+                co,
+                self.app.capture_buffer(),
+                self.app.capture_cursor(),
+            )))
+    }
+
+    /// The row under the header: breadcrumbs while capturing, a live
+    /// field while a prompt is open, one line of text otherwise.
+    fn context_row(&self, co: Colors, cx: &Context<Self>) -> gpui::Div {
+        let row = div()
+            .debug_selector(|| "context-line".to_owned())
+            .px_3()
+            .py_1()
+            .bg(rgb(co.panel))
+            .text_color(rgb(co.fg))
+            .text_size(self.sz(12.0));
+        // Capture draws its target as clickable breadcrumbs; every
+        // other surface has one line to say and says it.
+        if self.app.surface() == ModalSurface::Capture {
+            row.child(self.capture_bar(co, self.app.zoom(), cx))
+        } else if let Some(prompt) = self.prompt_row(co) {
+            row.child(prompt)
+        } else {
+            row.child(self.context_line())
+        }
+    }
+
+    /// The prompt surfaces paint a label and a live field with a block
+    /// caret in it; everything else has one line to say and says it
+    /// ([`Self::context_line`]).
+    fn prompt_row(&self, co: Colors) -> Option<gpui::Div> {
+        let (label, text, cursor) = match self.app.surface() {
+            ModalSurface::Rename => (
+                "\u{270e} rename: ",
+                self.app.field_buffer(),
+                self.app.field_cursor(),
+            ),
+            ModalSurface::AddSibling => (
+                "\u{ff0b} add: ",
+                self.app.field_buffer(),
+                self.app.field_cursor(),
+            ),
+            ModalSurface::TagsEdit => (
+                "\u{270e} tags: ",
+                self.app.field_buffer(),
+                self.app.field_cursor(),
+            ),
+            ModalSurface::PropertyEdit => (
+                "\u{270e} prop: ",
+                self.app.field_buffer(),
+                self.app.field_cursor(),
+            ),
+            _ => return None,
+        };
+        Some(
             div()
-                .flex_grow()
-                .text_color(rgb(co.fg))
-                .child(field_with_caret(
-                    self.app.capture_buffer(),
-                    self.app.capture_cursor(),
-                )),
+                .flex()
+                .flex_row()
+                .items_center()
+                .child(div().flex_none().child(label))
+                .child(div().flex_grow().child(caret_text(co, text, cursor))),
         )
     }
 
-    /// The shared one-line field, with the caret where its cursor is.
-    fn field_caret(&self) -> String {
-        field_with_caret(self.app.field_buffer(), self.app.field_cursor())
-    }
-
+    /// The string form of the context row.
+    ///
+    /// The prompt surfaces are painted as elements instead
+    /// ([`Self::prompt_row`], [`Self::capture_bar`]) because their
+    /// caret is a *mark* over a cell rather than a character in the
+    /// text; what is returned here for them is the same line without
+    /// one, for anything reading the context row as a string.
     fn context_line(&self) -> String {
         let n = self.app.rows(&self.shell).len();
         match self.app.surface() {
@@ -2897,13 +2970,13 @@ impl GpuiView {
             ModalSurface::Capture => format!(
                 "＋ capture {} : {}",
                 self.app.capture_target_label(&self.shell),
-                field_with_caret(self.app.capture_buffer(), self.app.capture_cursor())
+                self.app.capture_buffer()
             ),
-            ModalSurface::Rename => format!("✎ rename: {}", self.field_caret()),
-            ModalSurface::AddSibling => format!("＋ add: {}", self.field_caret()),
-            ModalSurface::TagsEdit => format!("✎ tags: {}", self.field_caret()),
-            ModalSurface::PropertyEdit => format!("✎ prop: {}", self.field_caret()),
-            ModalSurface::Palette => format!("❯ {}", self.field_caret()),
+            ModalSurface::Rename => format!("✎ rename: {}", self.app.field_buffer()),
+            ModalSurface::AddSibling => format!("＋ add: {}", self.app.field_buffer()),
+            ModalSurface::TagsEdit => format!("✎ tags: {}", self.app.field_buffer()),
+            ModalSurface::PropertyEdit => format!("✎ prop: {}", self.app.field_buffer()),
+            ModalSurface::Palette => format!("❯ {}", self.app.field_buffer()),
             // A full-window buffer names itself, the way a modeline
             // does: which headline this is, and which file it came from.
             ModalSurface::EditBody | ModalSurface::EditBlock | ModalSurface::EditFile => self
@@ -5432,12 +5505,11 @@ impl GpuiView {
                     .border_color(rgb(co.border))
                     .text_size(self.sz(15.0))
                     .child(div().text_color(rgb(co.accent)).child("\u{276f}"))
-                    .child(
-                        div()
-                            .flex_grow()
-                            .text_color(rgb(co.fg))
-                            .child(self.field_caret()),
-                    )
+                    .child(div().flex_grow().text_color(rgb(co.fg)).child(caret_text(
+                        co,
+                        self.app.field_buffer(),
+                        self.app.field_cursor(),
+                    )))
                     .child(
                         div()
                             .text_color(rgb(co.muted))
@@ -6673,6 +6745,27 @@ impl Render for Hint {
     }
 }
 
+/// A one-line prompt with a block caret over the cell its cursor is on.
+///
+/// The caret is a mark, not a character: painting it as an inserted
+/// glyph made the line reflow every time the cursor moved, which is
+/// what "weird shift in capture prompt when ctlr+a is pressed" was.
+/// Inverse video in the accent colour, the same two colours the body
+/// editor's block cursor uses in [`editor_segment`] — one cursor in one
+/// shape wherever it appears.
+#[cfg(feature = "gpui")]
+fn caret_text(co: Colors, text: &str, cursor: usize) -> gpui::StyledText {
+    let (laid, cell) = field_caret_cell(text, cursor);
+    gpui::StyledText::new(gpui::SharedString::from(laid)).with_highlights([(
+        cell,
+        gpui::HighlightStyle {
+            color: Some(rgb(co.bg).into()),
+            background_color: Some(rgb(co.accent).into()),
+            ..Default::default()
+        },
+    )])
+}
+
 /// One hit-testable run of body text. `col_offset` is the char column
 /// `text` starts at, so a segment painted after the INSERT caret still
 /// reports absolute columns back to the editor.
@@ -7132,20 +7225,7 @@ impl Render for GpuiView {
 
         let header = self.header_bar(co, cx);
 
-        let context = div()
-            .debug_selector(|| "context-line".to_owned())
-            .px_3()
-            .py_1()
-            .bg(rgb(co.panel))
-            .text_color(rgb(co.fg))
-            .text_size(self.sz(12.0));
-        // Capture draws its target as clickable breadcrumbs; every
-        // other surface has one line to say and says it.
-        let context = if self.app.surface() == ModalSurface::Capture {
-            context.child(self.capture_bar(co, self.app.zoom(), cx))
-        } else {
-            context.child(self.context_line())
-        };
+        let context = self.context_row(co, cx);
 
         let body = div()
             .flex()
