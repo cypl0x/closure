@@ -10126,25 +10126,41 @@ impl ModalApp {
 
     /// Palette keys: typing filters, Up/Down move, Enter runs the
     /// highlighted command through [`Self::run`], Esc cancels.
-    fn on_palette_key(&mut self, shell: &mut Shell, key: &str, text: Option<char>) {
+    fn on_palette_key(
+        &mut self,
+        shell: &mut Shell,
+        key: &str,
+        ctrl: bool,
+        alt: bool,
+        text: Option<char>,
+    ) {
+        // The palette is a minibuffer, so it walks the way every other
+        // popup does ([`list_step`]) — arrows, `C-n`/`C-p`, `C-j`/`C-k`.
+        // It had only the arrows, which is a mouse-hand gesture on a
+        // surface you reached from the home row.
+        if let Some(step) = list_step(key, ctrl) {
+            let last = self.palette_entries().len().saturating_sub(1);
+            self.palette_cursor = match step {
+                ListStep::Next => (self.palette_cursor + 1).min(last),
+                ListStep::Prev => self.palette_cursor.saturating_sub(1),
+            };
+            return;
+        }
         match key {
             "escape" => {
                 self.field_buf.clear();
                 self.palette_cursor = 0;
                 self.close_palette();
             }
-            "down" => {
-                let last = self.palette_entries().len().saturating_sub(1);
-                self.palette_cursor = (self.palette_cursor + 1).min(last);
-            }
-            "up" => self.palette_cursor = self.palette_cursor.saturating_sub(1),
             "backspace" => {
                 self.field_buf.backspace();
                 self.palette_cursor = 0;
             }
             "enter" => self.commit_palette(shell),
             _ => {
-                if let Some(c) = text {
+                // A modified letter is a chord nobody bound, not a
+                // character to filter by: `C-j` used to type a `j`.
+                if let Some(c) = text.filter(|_| !ctrl && !alt) {
                     self.field_buf.insert_char(c);
                     self.palette_cursor = 0;
                 }
@@ -10553,7 +10569,7 @@ impl ModalApp {
             ModalSurface::AddSibling => {
                 self.on_field_key(shell, key, ctrl, alt, text, FieldKind::AddSibling);
             }
-            ModalSurface::Palette => self.on_palette_key(shell, key, text),
+            ModalSurface::Palette => self.on_palette_key(shell, key, ctrl, alt, text),
             ModalSurface::UndoHistory => match key {
                 // Navigable pane (Q2-U3): j/k walk, Enter jumps the
                 // undo tree to the cursor node, Esc/q dismiss.
@@ -14015,6 +14031,13 @@ impl ModalApp {
                 // burst (BodyEditor::insert_guard), so Esc+u undoes it.
                 "n" if ctrl => self.cycle_completion(shell, true),
                 "p" if ctrl => self.cycle_completion(shell, false),
+                // Doom's company map: while the popup is showing,
+                // `C-j`/`C-k` walk it too. Only while it is — with no
+                // popup up, `C-k` below is still readline's
+                // kill-to-end-of-line, and taking that away to gain a
+                // second spelling of `C-n` would be a bad trade.
+                "j" if ctrl && self.completion.is_some() => self.cycle_completion(shell, true),
+                "k" if ctrl && self.completion.is_some() => self.cycle_completion(shell, false),
                 // Readline chords (the "normal input field" set).
                 "a" if ctrl => self.body.line_home(),
                 "e" if ctrl => self.body.line_end_motion(),
@@ -16103,6 +16126,36 @@ impl ModalApp {
     /// has something to resolve.
     pub fn set_conflicts(&mut self, conflicts: Vec<closure_crdt::FieldConflict>) {
         self.conflicts = ConflictApp::new(conflicts, self.mode);
+    }
+}
+
+/// One step through a popup's list.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ListStep {
+    /// Down the list.
+    Next,
+    /// Up the list.
+    Prev,
+}
+
+/// Which way a popup's list steps for this key, if it steps at all.
+///
+/// Three pairs mean the same thing to a hand in front of a list: the
+/// arrows, Emacs' `C-n`/`C-p`, and Doom's `C-j`/`C-k` — the pair evil
+/// puts on company's and vertico's maps so a modal user never leaves
+/// the home row to pick a candidate. One function so every popup
+/// answers to all three (I4) instead of each surface picking one.
+///
+/// Callers where `C-k` already means kill-to-end-of-line ask this only
+/// while a popup is actually showing, which is the scope company's own
+/// map has.
+fn list_step(key: &str, ctrl: bool) -> Option<ListStep> {
+    match key {
+        "down" => Some(ListStep::Next),
+        "up" => Some(ListStep::Prev),
+        "n" | "j" if ctrl => Some(ListStep::Next),
+        "p" | "k" if ctrl => Some(ListStep::Prev),
+        _ => None,
     }
 }
 
