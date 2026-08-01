@@ -225,6 +225,36 @@ pub fn fuzzy_score(needle: &str, hay: &str) -> Option<u32> {
     Some(BASE.saturating_sub(penalty).saturating_sub(start))
 }
 
+/// Score `needle` against `hay` the way Doom's `orderless` completion
+/// style matches: whitespace splits the query into components, and
+/// every component must match somewhere in the candidate, in any
+/// order.
+///
+/// [`fuzzy_score`] is a single subsequence, so a space in the query has
+/// to be a space in the candidate — which is why typing `add sibling`
+/// found nothing and you had to know the command was spelled
+/// `add-sibling`. A filter that makes you guess the punctuation is a
+/// filter you have to already know the answer to use.
+///
+/// The score is the mean of the components' own scores, so it stays in
+/// [`fuzzy_score`]'s range and a tighter match still outranks a
+/// scattered one. A query that is empty or all whitespace matches
+/// everything, as it does there.
+#[must_use]
+pub fn orderless_score(needle: &str, hay: &str) -> Option<u32> {
+    const BASE: u32 = 1_000_000;
+    let mut total: u64 = 0;
+    let mut parts: u64 = 0;
+    for component in needle.split_whitespace() {
+        total += u64::from(fuzzy_score(component, hay)?);
+        parts += 1;
+    }
+    if parts == 0 {
+        return Some(BASE);
+    }
+    u32::try_from(total / parts).ok()
+}
+
 /// Filter `items` by fuzzy-matching `needle`, best score first.
 /// Ties keep the input order (stable sort).
 #[must_use]

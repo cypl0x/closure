@@ -75,3 +75,72 @@ fn filter_no_matches_is_empty() {
     let items = vec!["a", "b"];
     assert!(fuzzy_filter("zzz", &items).is_empty());
 }
+
+// === orderless: whitespace splits the query into components ===
+//
+// Reported 2026-08-01: "when you try to filter for the add-sibling
+// function, you have to type the -, in order to get a match. Just
+// typing 'add sibling' won't match." A plain subsequence match needs
+// the space to appear in the candidate, and `add-sibling` has a hyphen
+// there. Doom's completion style is `orderless`: whitespace splits the
+// query into components, each of which must match somewhere in the
+// candidate, in any order.
+
+use closure_query::orderless_score;
+
+#[test]
+fn a_space_no_longer_has_to_be_in_the_candidate() {
+    assert!(
+        orderless_score("add sibling", "add-sibling").is_some(),
+        "the reported case"
+    );
+    assert!(orderless_score("add sibling", "add_sibling").is_some());
+    assert!(orderless_score("move subtree up", "move-subtree-up").is_some());
+}
+
+#[test]
+fn components_match_in_any_order() {
+    // This is the whole point of the name: `orderless`.
+    assert!(orderless_score("sibling add", "add-sibling").is_some());
+    assert!(orderless_score("up subtree", "move-subtree-up").is_some());
+}
+
+#[test]
+fn every_component_still_has_to_match() {
+    assert!(orderless_score("add zzz", "add-sibling").is_none());
+    assert!(orderless_score("sibling delete", "add-sibling").is_none());
+}
+
+#[test]
+fn a_single_component_behaves_like_the_plain_matcher() {
+    for (needle, hay) in [("fb", "foo_bar"), ("fzy", "fuzzy"), ("notes", "notes")] {
+        assert_eq!(
+            orderless_score(needle, hay).is_some(),
+            fuzzy_score(needle, hay).is_some(),
+            "{needle} vs {hay}"
+        );
+    }
+    assert!(orderless_score("zq", "fuzzy").is_none());
+}
+
+#[test]
+fn an_empty_or_blank_query_matches_everything() {
+    assert!(orderless_score("", "anything").is_some());
+    assert!(orderless_score("   ", "anything").is_some(), "only spaces");
+}
+
+#[test]
+fn a_tighter_match_still_outranks_a_scattered_one() {
+    // Ranking has to survive the split, or the most-wanted candidate
+    // stops being the first one.
+    let tight = orderless_score("add sib", "add-sibling");
+    let loose = orderless_score("add sib", "a-d-d-s-i-b-x");
+    assert!(tight.is_some() && loose.is_some(), "both match at all");
+    assert!(tight > loose, "tight {tight:?} should beat loose {loose:?}");
+}
+
+#[test]
+fn extra_whitespace_between_components_is_not_a_component() {
+    assert!(orderless_score("add    sibling", "add-sibling").is_some());
+    assert!(orderless_score("  add sibling  ", "add-sibling").is_some());
+}

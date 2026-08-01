@@ -3013,10 +3013,13 @@ pub fn command_palette(query: &str, mode: closure_config::InputMode) -> Vec<Pale
                 .iter()
                 .filter(|(.., sec, _)| sec == section)
                 .filter_map(|(label, canonical, _, desc)| {
+                    // Doom's `orderless`: `add sibling` finds
+                    // `add-sibling` without you having to know where
+                    // the hyphen goes.
                     let score = if query.is_empty() {
                         Some(0)
                     } else {
-                        closure_query::fuzzy_score(query, label)
+                        closure_query::orderless_score(query, label)
                     }?;
                     let action = Action::new(mode, *canonical)?;
                     Some((
@@ -3051,7 +3054,7 @@ pub fn command_palette(query: &str, mode: closure_config::InputMode) -> Vec<Pale
         let score = if query.is_empty() {
             Some(0)
         } else {
-            closure_query::fuzzy_score(query, cmd)
+            closure_query::orderless_score(query, cmd)
         };
         if let Some(score) = score
             && let Some(action) = Action::new(mode, cmd)

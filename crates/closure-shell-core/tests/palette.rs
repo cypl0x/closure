@@ -68,3 +68,44 @@ fn palette_offers_fold_with_its_chord() {
         );
     }
 }
+
+// === The palette filters the way Doom's completion does ===
+//
+// Reported 2026-08-01: "when you try to filter for the add-sibling
+// function, you have to type the -, in order to get a match. Just
+// typing 'add sibling' won't match." Typing the exact punctuation of a
+// command name is knowing the answer before you ask the question.
+
+#[test]
+fn typing_a_space_finds_a_hyphenated_command() {
+    let sections = command_palette("add sibling", InputMode::Doom);
+    let found: Vec<&str> = sections
+        .iter()
+        .flat_map(|s| &s.items)
+        .map(|e| e.action.command())
+        .collect();
+    assert!(
+        found.contains(&"add-sibling"),
+        "the reported case: {found:?}"
+    );
+}
+
+#[test]
+fn the_components_can_come_in_any_order() {
+    let sections = command_palette("sibling add", InputMode::Doom);
+    let found: Vec<&str> = sections
+        .iter()
+        .flat_map(|s| &s.items)
+        .map(|e| e.action.command())
+        .collect();
+    assert!(found.contains(&"add-sibling"), "{found:?}");
+}
+
+#[test]
+fn a_component_that_matches_nothing_still_rules_the_entry_out() {
+    let sections = command_palette("add zzzznope", InputMode::Doom);
+    assert!(
+        sections.is_empty(),
+        "every component has to match, or the filter means nothing"
+    );
+}
