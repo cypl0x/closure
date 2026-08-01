@@ -3171,7 +3171,19 @@ impl GpuiView {
         div()
             .flex()
             .flex_row()
-            .flex_grow()
+            // `flex_1` rather than `flex_grow`: the difference is the
+            // basis. Growing from a basis of *auto* makes this pane's
+            // base size the width of what is in it, so a long headline
+            // made the row's total wider than the window and the
+            // outline column paid the difference out of its own width —
+            // the tree jumped wider and narrower as the selection moved
+            // between short and long titles. From a basis of zero the
+            // pane takes what is left over and nothing else decides it.
+            // The matching `min_w` kills the automatic minimum size,
+            // which is content-sized for the same reason the body row
+            // needed `min_h` ([`Render::render`]).
+            .flex_1()
+            .min_w(px(0.0))
             .overflow_hidden()
             .child(self.side_content(co, cx))
             .child(scrollbar(
