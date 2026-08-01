@@ -9620,6 +9620,48 @@ impl BodyEditor {
 
     /// Readline `C-w`: delete the word (plus trailing spaces) before
     /// the cursor into the register.
+    /// Delete from the cursor to the end of the word after it
+    /// (`M-d` — readline's and Emacs' `kill-word`).
+    ///
+    /// Deliberately not vim's `w` motion, which lands on the *start of
+    /// the next* word and so would swallow the space between them.
+    /// Emacs stops at the end of the word it killed, which is what
+    /// leaves you able to type a replacement in place.
+    pub fn delete_word_forward(&mut self) {
+        let rest: Vec<(usize, char)> = self.buf[self.cursor..].char_indices().collect();
+        let mut at = 0;
+        // Whitespace before the word is part of the reach, not the kill
+        // target: point between two words kills the next one.
+        while let Some(&(_, c)) = rest.get(at)
+            && c.is_whitespace()
+            && c != '\n'
+        {
+            at += 1;
+        }
+        let word = |c: char| c.is_alphanumeric() || c == '_';
+        // A run of word characters, or — when point is on punctuation —
+        // a run of that instead, so the chord is never a no-op with
+        // something in front of it.
+        let on_word = rest.get(at).is_some_and(|&(_, c)| word(c));
+        while let Some(&(_, c)) = rest.get(at) {
+            if c == '\n' || c.is_whitespace() || word(c) != on_word {
+                break;
+            }
+            at += 1;
+        }
+        let end = rest
+            .get(at)
+            .map_or(self.buf.len(), |&(i, _)| self.cursor + i);
+        if end > self.cursor {
+            self.insert_guard();
+            self.register = self.buf[self.cursor..end].to_owned();
+            self.linewise = false;
+            self.buf.replace_range(self.cursor..end, "");
+        }
+    }
+
+    /// Delete from the start of the word before the cursor to the
+    /// cursor (`C-w`, ctrl+backspace, Alt+Backspace).
     pub fn delete_word_back(&mut self) {
         let line_start = self.line_start(self.cursor);
         let s = &self.buf[line_start..self.cursor];
@@ -14419,6 +14461,18 @@ impl ModalApp {
         false
     }
 
+    /// Kill the word before (or after) the cursor, ending any
+    /// completion session — the candidate list was computed for a
+    /// prefix that no longer exists.
+    fn kill_word(&mut self, forward: bool) {
+        self.completion = None;
+        if forward {
+            self.body.delete_word_forward();
+        } else {
+            self.body.delete_word_back();
+        }
+    }
+
     fn edit_body_key(
         &mut self,
         shell: &Shell,
@@ -14473,11 +14527,17 @@ impl ModalApp {
                     self.completion = None;
                     self.body.kill_to_line_start();
                 }
-                // C-w and the desktop ctrl+backspace share the kill.
-                "w" | "backspace" if ctrl => {
-                    self.completion = None;
-                    self.body.delete_word_back();
-                }
+                // `C-w`, the desktop's ctrl+backspace and readline's
+                // Alt+Backspace are one kill. The body editor took
+                // Ctrl alone, so Alt+Backspace fell through to plain
+                // backspace and ate exactly one character — which
+                // reads as a broken chord rather than an unbound one,
+                // because something did happen.
+                "w" if ctrl => self.kill_word(false),
+                "backspace" if ctrl || alt => self.kill_word(false),
+                // `M-d` is `kill-word` in readline and in Emacs: the
+                // twin of the kill above, forwards.
+                "d" if alt => self.kill_word(true),
                 "y" if ctrl => {
                     self.completion = None;
                     self.body.yank_insert();
