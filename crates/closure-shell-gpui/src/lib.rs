@@ -1110,6 +1110,27 @@ pub fn scaled_text_px(base: f32, zoom: f32) -> f32 {
     base * zoom
 }
 
+/// Which capture crumbs the bar draws, by index — `None` is the
+/// elision gap — and the labels that gap stands for.
+///
+/// A path deeper than five is elided in the middle: the root, a gap,
+/// and the last three, which are the ones that say where a capture is
+/// actually going.
+#[cfg(feature = "gpui")]
+fn crumb_slots(crumbs: &[closure_shell_core::CaptureCrumb]) -> (Vec<Option<usize>>, Vec<String>) {
+    let last = crumbs.len().saturating_sub(1);
+    if crumbs.len() <= 5 {
+        return ((0..crumbs.len()).map(Some).collect(), Vec::new());
+    }
+    let mut shown = vec![Some(0), None];
+    shown.extend((last - 2..=last).map(Some));
+    let hidden = crumbs[1..last - 2]
+        .iter()
+        .map(|c| c.label.clone())
+        .collect();
+    (shown, hidden)
+}
+
 /// [`scaled_text_px`] as gpui pixels, for the row builders that are
 /// plain functions rather than methods and so carry the zoom by hand.
 #[cfg(feature = "gpui")]
@@ -1856,6 +1877,13 @@ impl GpuiView {
         self.app.surface()
     }
 
+    /// What the window paints underneath the palette — the surface
+    /// itself everywhere else.
+    #[must_use]
+    pub fn surface_beneath(&self) -> ModalSurface {
+        self.app.surface_beneath()
+    }
+
     /// Tell the core what day it is — the window owns the clock
     /// (Q3-V4); a test owns it too, which is why this is public.
     pub fn set_today(&mut self, ymd: &str) {
@@ -1927,7 +1955,7 @@ impl GpuiView {
     /// reading one, so `toggle-tree` brings the tree back beside the
     /// buffer without leaving it.
     fn panes(&self, body: gpui::Div, co: Colors, cx: &Context<Self>) -> gpui::Div {
-        if !self.app.surface().is_editor() {
+        if !self.app.surface_beneath().is_editor() {
             return body
                 .child(self.rail(co, cx))
                 .child(self.rows_pane(co, cx))
@@ -2156,12 +2184,25 @@ impl GpuiView {
     /// exactly the translation the window performs rather than a
     /// parallel one that can agree with nothing.
     pub fn press(&mut self, key: &str, shift: bool, ctrl: bool, cx: &mut Context<Self>) {
-        let text = (!ctrl && key.chars().count() == 1).then(|| {
+        self.press_with(key, shift, ctrl, false, cx);
+    }
+
+    /// [`Self::press`] with the meta layer as well — `M-x` is a chord
+    /// the window answers and the buffer does not.
+    pub fn press_with(
+        &mut self,
+        key: &str,
+        shift: bool,
+        ctrl: bool,
+        alt: bool,
+        cx: &mut Context<Self>,
+    ) {
+        let text = (!ctrl && !alt && key.chars().count() == 1).then(|| {
             let c = key.chars().next().unwrap_or(' ');
             if shift { c.to_ascii_uppercase() } else { c }
         });
         let named = editor_key(key, shift, text.map(|c| c.to_string()).as_deref());
-        self.dispatch_key(&named, ctrl, false, text, cx);
+        self.dispatch_key(&named, ctrl, alt, text, cx);
     }
 
     fn on_key(&mut self, ev: &KeyDownEvent, _window: &mut Window, cx: &mut Context<Self>) {
@@ -2686,23 +2727,7 @@ impl GpuiView {
     /// skips reading anyway.
     fn capture_bar(&self, co: Colors, zoom: f32, cx: &Context<Self>) -> gpui::Div {
         let crumbs = self.app.capture_crumbs(&self.shell);
-        let last = crumbs.len().saturating_sub(1);
-        // Which crumbs to draw, by index; `None` is the gap.
-        let shown: Vec<Option<usize>> = if crumbs.len() > 5 {
-            let mut v = vec![Some(0), None];
-            v.extend((last - 2..=last).map(Some));
-            v
-        } else {
-            (0..crumbs.len()).map(Some).collect()
-        };
-        let hidden: Vec<String> = if crumbs.len() > 5 {
-            crumbs[1..last - 2]
-                .iter()
-                .map(|c| c.label.clone())
-                .collect()
-        } else {
-            Vec::new()
-        };
+        let (shown, hidden) = crumb_slots(&crumbs);
         let sep = |text: &'static str| {
             div()
                 .flex_none()
@@ -3282,8 +3307,7 @@ impl GpuiView {
             .overflow_y_scroll()
             .track_scroll(&self.side_scroll)
             .bg(rgb(co.bg));
-        match self.app.surface() {
-            ModalSurface::Palette => pane.child(self.palette_pane(co, cx)),
+        match self.app.surface_beneath() {
             ModalSurface::Agenda => pane.child(self.agenda_pane(co, cx)),
             ModalSurface::Headlines => pane.children(
                 self.id_rows(
@@ -4797,6 +4821,36 @@ impl GpuiView {
     /// other pastes it and presses Enter, and either side can then run
     /// a round. Divergent titles land in the Conflicts surface rather
     /// than being resolved silently.
+    /// The vault's own sync ticket, selectable-looking; a click copies
+    /// it out.
+    fn sync_ticket_box(&self, co: Colors, ticket: String, cx: &Context<Self>) -> gpui::Div {
+        div()
+            .p_2()
+            .rounded_md()
+            .bg(rgb(co.panel))
+            .border_1()
+            .border_color(rgb(co.border))
+            .text_size(self.sz(11.0))
+            .text_color(rgb(co.success))
+            .cursor_pointer()
+            .hover(move |s| s.bg(rgb(co.hover)))
+            .on_mouse_down(
+                MouseButton::Left,
+                cx.listener(|this: &mut Self, _ev, _w, cx| {
+                    // A ticket is handed to *another application* — a
+                    // chat window, a mail — so the kill ring alone was
+                    // useless here: it never left closure.
+                    let ticket = this.app.sync_mut().ticket();
+                    cx.write_to_clipboard(gpui::ClipboardItem::new_string(ticket.clone()));
+                    this.shell.vault.push_kill_ring(ticket);
+                    this.app
+                        .set_status("ticket copied to the clipboard".to_owned());
+                    cx.notify();
+                }),
+            )
+            .child(ticket)
+    }
+
     fn sync_pane(&self, co: Colors, cx: &Context<Self>) -> gpui::Div {
         // The `sync` command initialises this before switching here,
         // so the None arm only fires if someone paints the surface
@@ -4857,35 +4911,7 @@ impl GpuiView {
                             .child("◎ listen"),
                     ),
             )
-            // Selectable-looking, and a click copies it out.
-            .child(
-                div()
-                    .p_2()
-                    .rounded_md()
-                    .bg(rgb(co.panel))
-                    .border_1()
-                    .border_color(rgb(co.border))
-                    .text_size(self.sz(11.0))
-                    .text_color(rgb(co.success))
-                    .cursor_pointer()
-                    .hover(move |s| s.bg(rgb(co.hover)))
-                    .on_mouse_down(
-                        MouseButton::Left,
-                        cx.listener(|this: &mut Self, _ev, _w, cx| {
-                            // A ticket is handed to *another application*
-                            // — a chat window, a mail — so the kill ring
-                            // alone was useless here: it never left
-                            // closure.
-                            let ticket = this.app.sync_mut().ticket();
-                            cx.write_to_clipboard(gpui::ClipboardItem::new_string(ticket.clone()));
-                            this.shell.vault.push_kill_ring(ticket);
-                            this.app
-                                .set_status("ticket copied to the clipboard".to_owned());
-                            cx.notify();
-                        }),
-                    )
-                    .child(ticket),
-            )
+            .child(self.sync_ticket_box(co, ticket, cx))
             .child(
                 div()
                     .text_size(self.sz(10.0))
@@ -5309,19 +5335,109 @@ impl GpuiView {
             }))
     }
 
-    /// Command palette entries, virtualized.
+    /// The command palette, floating over the work.
+    ///
+    /// It used to be a *pane*: opening the launcher replaced the
+    /// right-hand column, which is where the note is — so M-x hid the
+    /// thing you opened it for, and from inside a buffer it could not
+    /// be opened at all. Every editor that has one puts it in front
+    /// instead (VS Code, Zed, `LazyVim`'s Telescope, Raycast): a bar near
+    /// the top with the query in it, the matches under it, and the work
+    /// still visible behind. A click on the scrim dismisses it, which
+    /// is the same "never mind" Escape is.
+    fn palette_overlay(&self, co: Colors, cx: &Context<Self>) -> Option<gpui::Deferred> {
+        if self.app.surface() != ModalSurface::Palette {
+            return None;
+        }
+        let panel = div()
+            .debug_selector(|| "palette-panel".to_owned())
+            .flex()
+            .flex_col()
+            .w(px(660.0))
+            .max_h(px(440.0))
+            .rounded_md()
+            .border_1()
+            .border_color(rgb(co.border))
+            .bg(rgb(co.panel))
+            // The panel eats the mouse; the scrim behind it is what
+            // dismisses on a click.
+            .occlude()
+            .overflow_hidden()
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap_2()
+                    .px_4()
+                    .py_3()
+                    .border_b_1()
+                    .border_color(rgb(co.border))
+                    .text_size(self.sz(15.0))
+                    .child(div().text_color(rgb(co.accent)).child("\u{276f}"))
+                    .child(
+                        div()
+                            .flex_grow()
+                            .text_color(rgb(co.fg))
+                            .child(format!("{}\u{258f}", self.app.field_buffer())),
+                    )
+                    .child(
+                        div()
+                            .text_color(rgb(co.muted))
+                            .text_size(self.sz(11.0))
+                            .child(format!("{} commands", self.app.palette_shared().len())),
+                    ),
+            )
+            .child(self.palette_list(co, cx))
+            .child(
+                div()
+                    .px_4()
+                    .py_1()
+                    .border_t_1()
+                    .border_color(rgb(co.border))
+                    .text_color(rgb(co.muted))
+                    .text_size(self.sz(10.0))
+                    .child("\u{2191}\u{2193} move  ·  RET run  ·  Esc dismiss"),
+            );
+        Some(
+            gpui::deferred(
+                div()
+                    .debug_selector(|| "palette-overlay".to_owned())
+                    .absolute()
+                    .inset_0()
+                    .flex()
+                    .flex_col()
+                    .items_center()
+                    .pt(px(90.0))
+                    .bg(gpui::rgba(0x0000_0059))
+                    .on_mouse_down(
+                        MouseButton::Left,
+                        cx.listener(|this: &mut Self, _ev, _w, cx| {
+                            this.app
+                                .on_key(&mut this.shell, "escape", false, false, None);
+                            cx.notify();
+                        }),
+                    )
+                    .child(panel),
+            )
+            .with_priority(2),
+        )
+    }
+
+    /// The palette's matches, virtualized.
     ///
     /// It listed every command as a real element — the palette is the
     /// longest list in the shell, so it was also the slowest thing to
     /// scroll. A `uniform_list` builds only what the viewport shows,
     /// and the entries themselves come from the memo rather than being
     /// rescored per frame.
-    fn palette_pane(&self, co: Colors, cx: &Context<Self>) -> gpui::Div {
+    fn palette_list(&self, co: Colors, cx: &Context<Self>) -> gpui::Div {
         let count = self.app.palette_shared().len();
         div()
             .flex()
             .flex_row()
             .flex_grow()
+            .min_h(px(0.0))
+            .p_1()
             .child(
                 gpui::uniform_list(
                     "palette",
@@ -6923,7 +7039,7 @@ impl Render for GpuiView {
         // this frame paints a stale number of lines, so one more frame
         // is asked for. It settles immediately: the measurement stops
         // moving once the layout does.
-        if self.app.surface().is_editor() {
+        if self.app.surface_beneath().is_editor() {
             let view = self.body_view();
             // The kernel decides where the viewport sits and only the
             // window knows how tall it is, so the measurement is handed
@@ -7068,6 +7184,9 @@ impl Render for GpuiView {
         }
         if let Some(menu) = self.context_menu_overlay(co, cx) {
             root = root.child(menu);
+        }
+        if let Some(palette) = self.palette_overlay(co, cx) {
+            root = root.child(palette);
         }
         root
     }

@@ -380,3 +380,36 @@ fn the_zoom_chords_reach_the_core_from_the_outline(cx: &mut gpui::TestAppContext
         })
         .expect("live");
 }
+
+#[gpui::test]
+fn the_palette_floats_over_the_buffer_it_was_opened_from(cx: &mut gpui::TestAppContext) {
+    // It used to take over the right-hand pane, which is where the
+    // *note* is: opening the launcher hid the thing you opened it for.
+    // It is a bar over the work now, the way Zed's and VS Code's are,
+    // so the buffer is still what is underneath.
+    let (_dir, window) = test_window(cx, "* Alpha\nbody text\n");
+    window
+        .update(cx, |view, _w, cx| {
+            view.press("i", false, false, cx); // open the body
+            assert!(view.surface().is_editor());
+            view.press_with("x", false, false, true, cx); // M-x
+            assert_eq!(view.surface(), ModalSurface::Palette);
+            assert_eq!(
+                view.surface_beneath(),
+                ModalSurface::EditBody,
+                "the buffer is still behind it"
+            );
+            cx.notify();
+        })
+        .expect("live");
+    cx.run_until_parked();
+    window
+        .update(cx, |view, _w, cx| {
+            view.press("escape", false, false, cx);
+            assert_eq!(view.surface(), ModalSurface::EditBody, "and comes back");
+            assert_eq!(view.body().trim_end(), "body text", "with its text");
+            cx.notify();
+        })
+        .expect("live");
+    cx.run_until_parked();
+}
