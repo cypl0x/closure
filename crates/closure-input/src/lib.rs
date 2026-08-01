@@ -155,6 +155,13 @@ const DOOM_KEYMAP: &[(&str, &str)] = &[
     // mode's own chord stays the one which-key and the tutorial show.
     ("C-p", "palette"),
     ("C-k", "capture-start"),
+    // Doom's `text-scale`, on the chords the rest of the desktop uses.
+    // `C-+` is the shifted spelling of the same physical key, so both
+    // arrive depending on the keyboard.
+    ("C-=", "zoom-in"),
+    ("C-+", "zoom-in"),
+    ("C--", "zoom-out"),
+    ("C-0", "zoom-reset"),
 ];
 
 /// Emacs bindings: Ctrl/Meta chords, `C-x C-c` quits.
@@ -242,6 +249,17 @@ const EMACS_KEYMAP: &[(&str, &str)] = &[
     ("C-c C-x C-q", "clock-cancel"),
     ("C-c C-x C-j", "clock-goto"),
     ("C-c C-q", "tag-picker"),
+    // `text-scale-adjust`'s own chords, which Emacs hangs off `C-x`;
+    // the bare ones are here too because the rest of the desktop uses
+    // them and this keymap is what which-key renders (I4).
+    ("C-x C-+", "zoom-in"),
+    ("C-x C-=", "zoom-in"),
+    ("C-x C--", "zoom-out"),
+    ("C-x C-0", "zoom-reset"),
+    ("C-=", "zoom-in"),
+    ("C-+", "zoom-in"),
+    ("C--", "zoom-out"),
+    ("C-0", "zoom-reset"),
 ];
 
 /// Vim bindings: modal navigation keys.
@@ -334,6 +352,13 @@ const VIM_KEYMAP: &[(&str, &str)] = &[
     // mode's own chord stays the one which-key and the tutorial show.
     ("C-p", "palette"),
     ("C-k", "capture-start"),
+    // Doom's `text-scale`, on the chords the rest of the desktop uses.
+    // `C-+` is the shifted spelling of the same physical key, so both
+    // arrive depending on the keyboard.
+    ("C-=", "zoom-in"),
+    ("C-+", "zoom-in"),
+    ("C--", "zoom-out"),
+    ("C-0", "zoom-reset"),
 ];
 
 /// Helix bindings: vim-like with `U` redo and `g e` for end.
@@ -426,6 +451,13 @@ const HELIX_KEYMAP: &[(&str, &str)] = &[
     // mode's own chord stays the one which-key and the tutorial show.
     ("C-p", "palette"),
     ("C-k", "capture-start"),
+    // Doom's `text-scale`, on the chords the rest of the desktop uses.
+    // `C-+` is the shifted spelling of the same physical key, so both
+    // arrive depending on the keyboard.
+    ("C-=", "zoom-in"),
+    ("C-+", "zoom-in"),
+    ("C--", "zoom-out"),
+    ("C-0", "zoom-reset"),
 ];
 
 /// Notion bindings: mouse + arrows + slash command, minimal chords.
@@ -517,6 +549,13 @@ const NOTION_KEYMAP: &[(&str, &str)] = &[
     // mode's own chord stays the one which-key and the tutorial show.
     ("C-p", "palette"),
     ("C-k", "capture-start"),
+    // Doom's `text-scale`, on the chords the rest of the desktop uses.
+    // `C-+` is the shifted spelling of the same physical key, so both
+    // arrive depending on the keyboard.
+    ("C-=", "zoom-in"),
+    ("C-+", "zoom-in"),
+    ("C--", "zoom-out"),
+    ("C-0", "zoom-reset"),
 ];
 
 /// The canonical `(chord, command)` keymap for an input mode — the

@@ -2884,6 +2884,15 @@ impl App {
             "resolve-ours" => self.resolve_conflict(true),
             "resolve-theirs" => self.resolve_conflict(false),
             "toggle-llm-render" => self.llm_render = !self.llm_render,
+            // A terminal cell is the emulator's, not ours: there is no
+            // font size here to scale. Saying where the zoom actually
+            // lives is the honest answer — pretending the chord did
+            // nothing reads as a broken keyboard (I4).
+            "zoom-in" | "zoom-out" | "zoom-reset" => {
+                "zoom belongs to the terminal here — use its own font size".clone_into(
+                    &mut self.status,
+                );
+            }
             // A chord the keymap advertises but this shell cannot serve
             // must say so — silence reads as a broken keyboard (I4).
             other => self.status = format!("{other}: not available in the terminal shell"),

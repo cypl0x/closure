@@ -2815,12 +2815,15 @@ const PALETTE_COMMANDS: &[(&str, &str, &str, &str)] = &[
         "Sync",
         "Pick up bundles peers left in the shared folder",
     ),
+    ("zoom-in", "zoom-in", "View", "Scale the text up one step"),
+    ("zoom-out", "zoom-out", "View", "Scale the text down one step"),
+    ("zoom-reset", "zoom-reset", "View", "Back to 100%"),
     ("quit", "quit", "App", "Quit closure"),
 ];
 
 /// Section order for the command palette (G6); sections render in this
 /// order, empty ones dropped.
-const PALETTE_SECTIONS: &[&str] = &["Navigate", "Edit", "Mode", "Sync", "App"];
+const PALETTE_SECTIONS: &[&str] = &["Navigate", "Edit", "View", "Mode", "Sync", "App"];
 
 /// A command entry in the [`command_palette`] (G6): a label + human
 /// description + its actionable chord.
@@ -13779,28 +13782,15 @@ impl ModalApp {
             self.body_recenter_cycle();
             return true;
         }
-        // Doom's `text-scale`, on the same chords the rest of the
-        // desktop uses. It scales the buffer, not the chrome — which is
-        // what text-scale does too.
-        if ctrl {
-            match key {
-                "+" | "=" => {
-                    self.zoom_in();
-                    self.status = format!("zoom {:.0}%", self.zoom() * 100.0);
-                    return true;
-                }
-                "-" => {
-                    self.zoom_out();
-                    self.status = format!("zoom {:.0}%", self.zoom() * 100.0);
-                    return true;
-                }
-                "0" => {
-                    self.zoom_reset();
-                    "zoom 100%".clone_into(&mut self.status);
-                    return true;
-                }
-                _ => {}
-            }
+        // Doom's `text-scale`. The chords are the mode's keymap's, not
+        // a match written out here: a chord this path invented would be
+        // one which-key and M-x could never show (I4).
+        if ctrl
+            && let Some(stroke) = modal_stroke(key, ctrl, alt, text)
+            && let Some(cmd) = closure_input::command_for(self.mode, &stroke)
+            && self.zoom_command(cmd)
+        {
+            return true;
         }
         if self.pending_body == Some(BodyPrefix::Viewport) {
             self.pending_body = None;
@@ -14022,6 +14012,23 @@ impl ModalApp {
     /// Back to unscaled (`C-0`).
     pub const fn zoom_reset(&mut self) {
         self.zoom_steps = 0;
+    }
+
+    /// Run `cmd` if it is one of the three zoom commands, reporting the
+    /// new scale; `false` if it is some other command.
+    ///
+    /// One implementation for both routes: the outline runs it through
+    /// [`Self::run_command`], the buffer through its own key path,
+    /// and neither may drift from the other.
+    fn zoom_command(&mut self, cmd: &str) -> bool {
+        match cmd {
+            "zoom-in" => self.zoom_in(),
+            "zoom-out" => self.zoom_out(),
+            "zoom-reset" => self.zoom_reset(),
+            _ => return false,
+        }
+        self.status = format!("zoom {:.0}%", self.zoom() * 100.0);
+        true
     }
 
     /// What the window should call itself right now.
@@ -15401,6 +15408,9 @@ impl ModalApp {
             }
             "refile" => self.open_refile(shell),
             "tag-picker" => self.open_tag_picker(shell),
+            "zoom-in" | "zoom-out" | "zoom-reset" => {
+                self.zoom_command(cmd);
+            }
             "clock-in" | "clock-out" | "clock-cancel" => self.clock(shell, cmd),
             "clock-goto" => self.clock_goto(shell),
             "archive" => self.archive_selected(shell),

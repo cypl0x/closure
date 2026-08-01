@@ -167,3 +167,32 @@ fn the_desktop_prefix_reaches_the_palette_and_a_capture() {
         "Emacs keeps its own C-p"
     );
 }
+
+#[test]
+fn every_mode_zooms_on_the_desktop_chords() {
+    // Doom's `text-scale` lives on the chords the rest of the desktop
+    // uses, and they are the keymap's — not a hardcoded match inside
+    // the editor, where which-key and M-x could never see them (I4).
+    for mode in MODES {
+        assert_eq!(
+            command_for(mode, "C-="),
+            Some("zoom-in"),
+            "{mode:?}: C-= zooms in"
+        );
+        assert_eq!(
+            command_for(mode, "C-+"),
+            Some("zoom-in"),
+            "{mode:?}: the shifted spelling of the same key"
+        );
+        assert_eq!(
+            command_for(mode, "C--"),
+            Some("zoom-out"),
+            "{mode:?}: C-- zooms out"
+        );
+        assert_eq!(
+            command_for(mode, "C-0"),
+            Some("zoom-reset"),
+            "{mode:?}: C-0 is 100%"
+        );
+    }
+}
