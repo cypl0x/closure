@@ -356,8 +356,12 @@ impl Vault {
     /// execute), from `config.org`. Absent or invalid config yields an
     /// empty list — default-deny, the C1a security default: an
     /// unreadable policy never silently permits execution.
+    ///
+    /// Public because the shells now run blocks straight out of an open
+    /// buffer as well as out of a saved file, and a second route to
+    /// evaluation must consult the same policy rather than invent one.
     #[must_use]
-    fn eval_trust(&self) -> Vec<String> {
+    pub fn eval_trust(&self) -> Vec<String> {
         let cfg_path = self.root.join("config.org");
         if !cfg_path.exists() {
             return Vec::new();

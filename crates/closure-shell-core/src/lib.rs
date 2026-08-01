@@ -68,6 +68,113 @@ fn normalise_lang(token: &str) -> String {
     }
 }
 
+/// A `#+BEGIN_SRC … #+END_SRC` block located by line in a buffer —
+/// what `C-c C-c` runs ([`code_block_at`]).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BufferBlock {
+    /// The `#+BEGIN_SRC` line, 0-based.
+    pub begin: usize,
+    /// The `#+END_SRC` line, 0-based.
+    pub end: usize,
+    /// The fence's language token, as written (`sh`, not `shell`) —
+    /// the trust gate canonicalises both sides itself.
+    pub lang: String,
+    /// The rest of the header line: `:var x=1`, `:results silent`.
+    pub args: String,
+    /// The block's content, newline-terminated per line.
+    pub program: String,
+}
+
+/// The block `line` is inside, fences included, or `None` in prose.
+///
+/// Line-based rather than [`segment_body`]-based on purpose: this
+/// answers *which* block the cursor is in and where its fences are, so
+/// the results can be written back next to it.
+///
+/// An unterminated fence is not a block: mid-edit, the writer has not
+/// decided where it ends, and running to the end of the buffer would
+/// run whatever they type next.
+#[must_use]
+pub fn code_block_at(text: &str, line: usize) -> Option<BufferBlock> {
+    let lines: Vec<&str> = text.lines().collect();
+    let mut begin: Option<usize> = None;
+    for (i, raw) in lines.iter().enumerate() {
+        let head = raw.trim_start();
+        if begin.is_none() && head.to_ascii_uppercase().starts_with("#+BEGIN_SRC") {
+            begin = Some(i);
+        } else if let Some(start) = begin
+            && head.to_ascii_uppercase().starts_with("#+END_SRC")
+        {
+            if (start..=i).contains(&line) {
+                let header = lines[start].trim_start();
+                let rest = header[header.find(' ').unwrap_or(header.len())..].trim_start();
+                let (lang, args) = rest.split_once(' ').unwrap_or((rest, ""));
+                let mut program = String::new();
+                for body_line in &lines[start + 1..i] {
+                    program.push_str(body_line);
+                    program.push('\n');
+                }
+                return Some(BufferBlock {
+                    begin: start,
+                    end: i,
+                    lang: lang.to_owned(),
+                    args: args.to_owned(),
+                    program,
+                });
+            }
+            begin = None;
+        }
+    }
+    None
+}
+
+/// `text` with `results` attached as a `#+RESULTS:` block directly
+/// after line `after` (a block's `#+END_SRC`), replacing the one
+/// already there.
+///
+/// The shape is org's — `#+RESULTS:` then one `: ` line per output
+/// line, `:` alone when a block printed nothing — and matches what
+/// [`closure_org::rewrite_attach_results_to_code_block`] writes on the
+/// saved-file path, so a run from the buffer and a run from the Blocks
+/// list leave the same text behind.
+#[must_use]
+pub fn attach_results(text: &str, after: usize, results: &str) -> String {
+    let lines: Vec<&str> = text.lines().collect();
+    let mut out: Vec<String> = lines[..=after.min(lines.len().saturating_sub(1))]
+        .iter()
+        .map(|l| (*l).to_owned())
+        .collect();
+    out.push("#+RESULTS:".to_owned());
+    if results.is_empty() {
+        out.push(":".to_owned());
+    } else {
+        for line in results.lines() {
+            out.push(format!(": {line}"));
+        }
+    }
+    // Whatever the previous run left is replaced, not stacked up.
+    let mut rest = lines[(after + 1).min(lines.len())..].iter().peekable();
+    if rest.peek().is_some_and(|l| {
+        l.trim_start()
+            .to_ascii_uppercase()
+            .starts_with("#+RESULTS:")
+    }) {
+        rest.next();
+        while rest
+            .peek()
+            .is_some_and(|l| *l == &":" || l.starts_with(": "))
+        {
+            rest.next();
+        }
+    }
+    out.extend(rest.map(|l| (*l).to_owned()));
+    let mut joined = out.join("\n");
+    if text.ends_with('\n') {
+        joined.push('\n');
+    }
+    joined
+}
+
 /// Split a headline body into prose / code-block [`BodySegment`]s.
 ///
 /// Consecutive prose lines coalesce into one [`BodySegment::Prose`];
@@ -15594,7 +15701,23 @@ impl ModalApp {
             "sync-export" => self.sync_export(shell),
             "sync-import" => self.sync_import(shell),
             "edit-special" => self.begin_edit_special(shell),
-            "eval-block" => self.eval_selected_block(shell),
+            // Where it was pressed decides what runs. In a buffer that
+            // is the block under the cursor (org's `C-c C-c`); in the
+            // Blocks list it is the row the cursor is on. Anywhere else
+            // there is no block in view, and the old code read the
+            // *outline's* selection as an index into the vault-wide
+            // block list — pressing it on the third headline ran the
+            // third block in the vault, whatever that was.
+            "eval-block" => {
+                if self.surface.is_editor() {
+                    self.eval_block_in_buffer(shell);
+                } else if self.surface == ModalSurface::Blocks {
+                    self.eval_selected_block(shell);
+                } else {
+                    "no source block under the cursor — open the note, or list the blocks"
+                        .clone_into(&mut self.status);
+                }
+            }
             "headline-list" => {
                 self.selected = 0;
                 self.surface = ModalSurface::Headlines;
@@ -15745,6 +15868,54 @@ impl ModalApp {
     /// allowlist, the reason opening a file cannot run its code — is
     /// the kernel's [`closure_store::Vault::eval_block`]. A refusal is
     /// reported, never worked around.
+    /// `C-c C-c`: run the block the cursor is in, from the buffer as it
+    /// stands rather than from the file on disk.
+    ///
+    /// Org runs what you are looking at, unsaved edits included, and
+    /// writes `#+RESULTS:` back into the buffer — so a run is an edit
+    /// like any other and `u` undoes it. The trust gate is the same
+    /// one [`closure_store::Vault::eval_block`] consults: a second
+    /// route to evaluation must not be a way around the policy.
+    fn eval_block_in_buffer(&mut self, shell: &Shell) {
+        self.block_out = None;
+        let (line, _) = self.body.cursor_line_col();
+        let Some(block) = code_block_at(self.body.text(), line) else {
+            "no source block under the cursor".clone_into(&mut self.status);
+            return;
+        };
+        if !closure_eval::eval_allowed(&shell.vault.eval_trust(), &block.lang) {
+            self.status = format!(
+                "`{}` is not in this vault's eval_trust — blocked",
+                block.lang
+            );
+            return;
+        }
+        let Some(backend) = closure_eval::backend_for(&block.lang) else {
+            self.status = format!("no backend for `{}`", block.lang);
+            return;
+        };
+        let header = closure_eval::HeaderArgs::parse(&block.args);
+        let program = format!(
+            "{}{}",
+            closure_eval::var_prelude(&block.lang, &header.vars),
+            block.program
+        );
+        match backend.eval_bounded(&program, closure_eval::Bounds::default()) {
+            Ok(out) => {
+                if header.is_silent() {
+                    self.status = format!("ran the {} block · results silent", block.lang);
+                } else {
+                    let text = attach_results(self.body.text(), block.end, &out.stdout);
+                    let at = self.body.cursor_byte();
+                    self.body.replace_all(text, at);
+                    self.status = format!("ran the {} block", block.lang);
+                }
+                self.block_out = Some(out.stdout);
+            }
+            Err(e) => self.status = format!("the block failed: {e}"),
+        }
+    }
+
     fn eval_selected_block(&mut self, shell: &mut Shell) {
         self.block_out = None;
         let rows = self.block_rows(shell);
