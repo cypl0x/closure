@@ -10732,3 +10732,54 @@ fn vault_todo_keywords_read_from_config() {
     let v = Vault::open(td.path()).expect("open");
     assert_eq!(v.todo_keywords(), vec!["TODO", "NEXT", "WAITING", "DONE"]);
 }
+
+// === Opening a vault that is not there ===
+//
+// Reported 2026-08-01: `closure gpui ~/vault` on a machine where that
+// directory does not exist failed with
+//
+//     error: io: No such file or directory (os error 2)
+//
+// which names neither the path it tried nor anything to do about it.
+// The user spent the confusion on the shell — "somehow my command
+// doesn't work anymore" — when the answer was that the vault lives on
+// their other machine. An error about a path has to say which path.
+
+#[test]
+fn opening_a_vault_that_is_not_there_names_the_path() {
+    let dir = tempfile::tempdir().expect("tmp");
+    let missing = dir.path().join("no-such-vault");
+    let err = Vault::open(&missing).expect_err("a missing root is an error");
+    let msg = err.to_string();
+    assert!(
+        msg.contains(&missing.display().to_string()),
+        "names the path it tried: {msg}"
+    );
+    assert!(
+        msg.contains("init-vault"),
+        "and what makes one there: {msg}"
+    );
+}
+
+#[test]
+fn opening_a_file_as_a_vault_says_it_is_not_a_directory() {
+    // `closure gpui notes.org` is the same slip one character later.
+    let dir = tempfile::tempdir().expect("tmp");
+    let file = dir.path().join("notes.org");
+    std::fs::write(&file, "* Note\n").expect("write");
+    let err = Vault::open(&file).expect_err("a file is not a vault");
+    let msg = err.to_string();
+    assert!(
+        msg.contains(&file.display().to_string()),
+        "names the path: {msg}"
+    );
+    assert!(msg.contains("directory"), "and why it refused: {msg}");
+}
+
+#[test]
+fn an_empty_directory_is_a_perfectly_good_vault() {
+    // Refusing a missing path must not turn into refusing a new one.
+    let dir = tempfile::tempdir().expect("tmp");
+    let v = Vault::open(dir.path()).expect("an empty vault opens");
+    assert_eq!(v.iter().count(), 0);
+}

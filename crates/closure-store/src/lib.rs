@@ -202,6 +202,24 @@ pub enum VaultError {
         /// The file that failed.
         path: PathBuf,
     },
+    /// The vault root does not exist.
+    ///
+    /// Distinguished from a bare [`Self::Io`] because the io error for
+    /// a missing directory is `No such file or directory (os error 2)`
+    /// and names nothing — not the path it tried, not what would make
+    /// one. A user whose vault lives on another machine reads that and
+    /// concludes the shell is broken.
+    #[error("no vault at {path} — `closure init-vault {path}` makes one there")]
+    NoVault {
+        /// The path that was asked for.
+        path: PathBuf,
+    },
+    /// The vault root exists but is a file.
+    #[error("{path} is a file, not a vault directory")]
+    NotADirectory {
+        /// The path that was asked for.
+        path: PathBuf,
+    },
     /// Watcher subsystem error.
     #[error("watch: {0}")]
     Watch(String),
@@ -401,6 +419,21 @@ impl Vault {
 
     /// Open the vault at `root`, loading every `*.org` file underneath.
     pub fn open(root: &Path) -> Result<Self, VaultError> {
+        // Refuse a root that is not there before walking it. The walk's
+        // own io error says `No such file or directory (os error 2)`
+        // and names neither the path nor a way out, which is a bad
+        // answer to the most ordinary mistake there is: pointing at a
+        // vault that lives on your other machine.
+        if !root.exists() {
+            return Err(VaultError::NoVault {
+                path: root.to_path_buf(),
+            });
+        }
+        if !root.is_dir() {
+            return Err(VaultError::NotADirectory {
+                path: root.to_path_buf(),
+            });
+        }
         let root = root.to_path_buf();
         let mut documents: HashMap<PathBuf, Document> = HashMap::new();
         let mut by_id: HashMap<BlockId, PathBuf> = HashMap::new();
