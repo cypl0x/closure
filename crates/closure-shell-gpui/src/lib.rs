@@ -2608,7 +2608,15 @@ impl GpuiView {
         match self.app.surface() {
             ModalSurface::Browse => format!("{n} headline(s)"),
             ModalSurface::Search => self.app.search_context(&self.shell),
-            ModalSurface::Capture => format!("＋ capture: {}▏", self.app.capture_buffer()),
+            // Where it lands is part of what you are typing: the same
+            // words file under a headline or loose in the capture file
+            // depending on the selection, and you cannot see that from
+            // the title alone.
+            ModalSurface::Capture => format!(
+                "＋ capture {} : {}▏",
+                self.app.capture_target_label(&self.shell),
+                self.app.capture_buffer()
+            ),
             ModalSurface::Rename => format!("✎ rename: {}▏", self.app.field_buffer()),
             ModalSurface::AddSibling => format!("＋ add: {}▏", self.app.field_buffer()),
             ModalSurface::TagsEdit => format!("✎ tags: {}▏", self.app.field_buffer()),

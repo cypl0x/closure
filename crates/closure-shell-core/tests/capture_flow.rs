@@ -510,3 +510,73 @@ fn walking_past_the_newest_leaves_an_empty_line() {
         "back to the blank line you were on"
     );
 }
+
+// === Where is this going? ===
+//
+// A capture is filed under whatever is selected, and at the top level
+// of the capture file when nothing is. Both are right; neither was
+// visible. The overlay said "capture: type a title" either way, so the
+// only way to learn where a thought had landed was to file it and look
+// — and by then it was in the wrong subtree.
+
+#[test]
+fn the_capture_prompt_names_the_subtree_it_files_into() {
+    let (_d, mut sh) = shell();
+    let mut app = ModalApp::new(InputMode::Doom);
+    app.select_by_id(&sh, "01HQCAP000000000000000001");
+    app.run(&mut sh, "capture-start");
+    let label = app.capture_target_label(&sh);
+    assert!(
+        label.contains("Project"),
+        "the prompt names the parent: {label}"
+    );
+    assert!(
+        app.status().contains("Project"),
+        "and so does the status line: {}",
+        app.status()
+    );
+}
+
+#[test]
+fn with_nothing_selected_the_prompt_names_the_capture_file() {
+    let (_d, mut sh) = shell();
+    let mut app = ModalApp::new(InputMode::Doom);
+    app.select_by_id(&sh, "01HQCAP000000000000000001");
+    app.on_key(&mut sh, "escape", false, false, None);
+    app.run(&mut sh, "capture-start");
+    let label = app.capture_target_label(&sh);
+    assert!(
+        label.contains("inbox.org"),
+        "loose captures say where they land: {label}"
+    );
+    assert!(
+        !label.contains("Project"),
+        "and do not claim a parent they will not use: {label}"
+    );
+}
+
+#[test]
+fn the_named_target_is_the_one_the_capture_uses() {
+    // The label is a promise about the next Enter. It is derived from
+    // the same selection the commit reads, so the two cannot drift.
+    let (_d, mut sh) = shell();
+    let mut app = ModalApp::new(InputMode::Doom);
+    app.select_by_id(&sh, "01HQCAP000000000000000003");
+    app.run(&mut sh, "capture-start");
+    assert!(app.capture_target_label(&sh).contains("Other"));
+    for c in "Filed here".chars() {
+        app.on_key(&mut sh, "x", false, false, Some(c));
+    }
+    app.on_key(&mut sh, "enter", false, false, None);
+    let rows = app.rows(&sh);
+    let at = rows
+        .iter()
+        .position(|r| r.title.contains("Filed here"))
+        .expect("captured");
+    let parent = rows
+        .iter()
+        .position(|r| r.title.contains("Other"))
+        .expect("parent");
+    assert!(at > parent, "filed under the headline the prompt named");
+    assert_eq!(rows[at].level, 2);
+}

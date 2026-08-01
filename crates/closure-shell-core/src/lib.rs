@@ -134,6 +134,13 @@ pub struct Shell {
     pub selection: Selection,
 }
 
+/// The file a capture lands in when nothing is selected — org's
+/// refile target, the one place a thought with no home goes.
+///
+/// Named once, because the shells tell the user where their capture is
+/// going and a second spelling of it would be a second answer.
+pub const CAPTURE_FILE: &str = "inbox.org";
+
 impl Shell {
     /// Build a shell over an already-loaded vault.
     #[must_use]
@@ -147,7 +154,7 @@ impl Shell {
         }
     }
 
-    /// Capture a new `TODO` entry into `inbox.org` (I8).
+    /// Capture a new `TODO` entry into [`CAPTURE_FILE`] (I8).
     ///
     /// # Errors
     ///
@@ -157,7 +164,7 @@ impl Shell {
         title: &str,
     ) -> Result<closure_core::BlockId, closure_store::VaultError> {
         let template = closure_store::CaptureTemplate {
-            target: std::path::PathBuf::from("inbox.org"),
+            target: std::path::PathBuf::from(CAPTURE_FILE),
             headline_prefix: "TODO ".to_owned(),
             body: String::new(),
         };
@@ -14360,6 +14367,28 @@ impl ModalApp {
         self.capture_buf.set_text(text);
     }
 
+    /// Where the next capture will be filed, in words: `under “Foo”`,
+    /// or `into inbox.org` when nothing is selected.
+    ///
+    /// Both destinations are right and neither was visible — the
+    /// overlay said "capture" either way, so the only way to learn
+    /// where a thought had landed was to file it and go look. Derived
+    /// from the same selection [`Self::commit_capture`] reads, so the
+    /// promise and the filing cannot drift apart.
+    #[must_use]
+    pub fn capture_target_label(&self, shell: &Shell) -> String {
+        self.selection_active
+            .then(|| self.selected_row_id(shell))
+            .flatten()
+            .and_then(|id| {
+                self.rows_shared(shell)
+                    .iter()
+                    .find(|r| r.id == id)
+                    .map(|r| format!("under “{}”", r.title))
+            })
+            .unwrap_or_else(|| format!("into {CAPTURE_FILE}"))
+    }
+
     fn commit_capture(&mut self, shell: &mut Shell, text: &str) {
         // A capture can be more than one line (Shift+Enter). The first
         // line is the headline — a headline *is* one line in org — and
@@ -14799,6 +14828,7 @@ impl ModalApp {
             "capture-start" => {
                 self.surface = ModalSurface::Capture;
                 self.capture_buf.clear();
+                self.status = format!("capture {}", self.capture_target_label(shell));
             }
             "search-start" | "search-headline-start" => {
                 // Doom's `SPC s s` is search-*buffer*: swiper over the
