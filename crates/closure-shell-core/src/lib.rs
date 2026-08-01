@@ -372,6 +372,43 @@ impl Shell {
     /// # Errors
     ///
     /// Propagates [`closure_store::VaultError`].
+    /// Every child of `id`, verbatim — what a body editor showing the
+    /// whole subtree puts under the prose (I8).
+    ///
+    /// # Errors
+    ///
+    /// Propagates [`closure_store::VaultError`].
+    pub fn children_source(
+        &self,
+        id: &closure_core::BlockId,
+    ) -> Result<String, closure_store::VaultError> {
+        self.vault.children_source(id)
+    }
+
+    /// Replace everything under `id` — body and children — with what
+    /// the buffer holds (I8).
+    ///
+    /// # Errors
+    ///
+    /// Propagates [`closure_store::VaultError`].
+    pub fn set_subtree(
+        &mut self,
+        id: &closure_core::BlockId,
+        body: &str,
+        children_src: &str,
+    ) -> Result<(), closure_store::VaultError> {
+        self.vault.set_subtree(id, body, children_src)
+    }
+
+    /// Set a body, filing headlines typed into it as children (I8).
+    ///
+    /// [`Self::set_subtree`] is the one to reach for when the buffer
+    /// shows the children too — this one can add them but never remove
+    /// them.
+    ///
+    /// # Errors
+    ///
+    /// Propagates [`closure_store::VaultError`].
     pub fn set_body_with_children(
         &mut self,
         id: &closure_core::BlockId,
@@ -10973,6 +11010,34 @@ impl ModalApp {
     /// `C-Enter` writes and *stays* — a file you are editing is a file
     /// you keep editing, unlike a body, where the commit is the end of
     /// the errand. `Esc` out of NORMAL leaves without writing.
+    /// Saving is the window's business, not the buffer's.
+    ///
+    /// `C-s` is bound to `save-buffer` in every mode, and inside a
+    /// buffer the editor took it along with every other modified chord
+    /// — so the one place saving means anything was the one place the
+    /// chord was dead. Reports whether it claimed the key.
+    fn save_chord(
+        &mut self,
+        shell: &mut Shell,
+        key: &str,
+        ctrl: bool,
+        alt: bool,
+        text: Option<char>,
+    ) -> bool {
+        if !(ctrl || alt) {
+            return false;
+        }
+        let Some(stroke) = modal_stroke(key, ctrl, alt, text) else {
+            return false;
+        };
+        if closure_input::command_for(self.mode, &stroke) != Some("save-buffer") {
+            return false;
+        }
+        self.pending_body = None;
+        self.run_command(shell, "save-buffer");
+        true
+    }
+
     fn on_editfile_key(
         &mut self,
         shell: &mut Shell,
@@ -10982,6 +11047,9 @@ impl ModalApp {
         text: Option<char>,
     ) {
         if self.leader_key(shell, key, ctrl, alt, text) {
+            return;
+        }
+        if self.save_chord(shell, key, ctrl, alt, text) {
             return;
         }
         if key == "enter" && ctrl {
@@ -11944,6 +12012,21 @@ impl ModalApp {
         else {
             self.status = format!("that note is no longer in the vault: {id}");
             return;
+        };
+        // The buffer is the whole subtree: the headline's own prose,
+        // then its children verbatim. Showing only the prose is what
+        // made a headline typed into a note disappear the moment it was
+        // saved — it had become a child, and children were not shown.
+        let vault_body = match shell.children_source(&bid) {
+            Ok(kids) if !kids.is_empty() => {
+                let mut whole = vault_body;
+                if !whole.is_empty() && !whole.ends_with('\n') {
+                    whole.push('\n');
+                }
+                whole.push_str(&kids);
+                whole
+            }
+            _ => vault_body,
         };
         let file = shell.vault.find_by_id(&bid).map(|(_, p)| p.to_path_buf());
         self.leave_buffer();
@@ -14114,6 +14197,9 @@ impl ModalApp {
         if self.leader_key(shell, key, ctrl, alt, text) {
             return;
         }
+        if self.save_chord(shell, key, ctrl, alt, text) {
+            return;
+        }
         if key == "enter" && ctrl {
             self.commit_edit_body(shell);
             return;
@@ -15030,11 +15116,10 @@ impl ModalApp {
         if !body.is_empty() && !body.ends_with('\n') {
             body.push('\n');
         }
-        let written = if typed.trim().is_empty() {
-            shell.set_body(&bid, &body)
-        } else {
-            shell.set_body_with_children(&bid, &body, &typed)
-        };
+        // The buffer showed every child, so it is the whole truth
+        // about what is under this headline: a child deleted from it is
+        // deleted, which `set_body_with_children` could not express.
+        let written = shell.set_subtree(&bid, &body, &typed);
         match written {
             Ok(()) => {
                 // A headline that carries a `[/]` cookie is counting the
@@ -15050,9 +15135,42 @@ impl ModalApp {
                 // visit would bring back an edit the vault already has
                 // and the note would read as permanently unsaved.
                 self.drop_stash();
+                self.refill_from_vault(shell, &id);
             }
             Err(e) => self.status = format!("save failed: {e}"),
         }
+    }
+
+    /// Reload the open buffer from what was just written.
+    ///
+    /// A child typed into the buffer has no `:ID:` in it; the write
+    /// stamps one on the way to disk. Leaving the buffer as the user
+    /// typed it means the next save sees an id-less child again and
+    /// mints a *second* one, so a block's identity would churn on every
+    /// save. Reading back what was written is also what puts the
+    /// stamped drawer on screen, where the rest of the subtree's are.
+    fn refill_from_vault(&mut self, shell: &Shell, id: &str) {
+        let bid = closure_core::BlockId::from_existing(id);
+        let Some(body) = shell
+            .vault
+            .find_by_id(&bid)
+            .map(|(h, _)| closure_org::unescape_body(h.body_text()))
+        else {
+            return;
+        };
+        let mut whole = body;
+        if let Ok(kids) = shell.children_source(&bid)
+            && !kids.is_empty()
+        {
+            if !whole.is_empty() && !whole.ends_with('\n') {
+                whole.push('\n');
+            }
+            whole.push_str(&kids);
+        }
+        let at = self.body.cursor_byte().min(whole.len());
+        self.body_baseline.clone_from(&whole);
+        self.load_body(whole);
+        self.body.set_cursor_byte(at);
     }
 
     /// Whether the body editor holds something the vault does not.
@@ -16359,7 +16477,11 @@ impl ModalApp {
             // because every other edit is already on disk.
             "save-buffer" => match self.surface {
                 ModalSurface::EditFile => self.commit_file_buffer(shell),
-                ModalSurface::EditBody => self.commit_edit_body(shell),
+                // Write and carry on, the way `C-s` does in every
+                // editor and the way the file buffer beside it already
+                // did. Closing on save is what made a headline you had
+                // just typed go out of sight.
+                ModalSurface::EditBody => self.write_body(shell),
                 ModalSurface::EditBlock => self.commit_edit_special(shell),
                 _ => "no buffer open — every edit is already written".clone_into(&mut self.status),
             },

@@ -9577,6 +9577,81 @@ fn is_headline_line(line: &str) -> bool {
 ///
 /// [`RewriteError::NotFound`] when `path` names no headline, or
 /// [`RewriteError::Parse`] if the result would not parse.
+/// Every child of the headline at `path`, verbatim, as it sits in the
+/// file — headers, drawers, bodies and nesting included.
+///
+/// The read half of "a headline's body *is* its subtree": what comes
+/// back here is what the body editor shows under the prose, and what
+/// [`rewrite_subtree_content`] writes back. Verbatim matters — the
+/// children's own `:ID:` drawers ride along, so a subtree read out and
+/// written back keeps the identities that links, sync and the undo
+/// tree address it by.
+///
+/// `None` when `path` names no headline; an empty string when it names
+/// one with no children.
+#[must_use]
+pub fn children_source(doc: &OrgDoc, path: &[usize]) -> Option<String> {
+    let target = navigate_headline(doc, path)?;
+    let Some(first) = target.children.first() else {
+        return Some(String::new());
+    };
+    let start = first.header_span.start;
+    let end = subtree_end(target);
+    Some(doc.source()[start..end].to_owned())
+}
+
+/// Replace everything under the headline at `path` — its body *and*
+/// its children — with `body` followed by `children_src`.
+///
+/// [`rewrite_body_with_children`] replaces only the body region and
+/// leaves existing children alone, which was right while the body
+/// editor could not show them: what it cannot show it must not be able
+/// to delete. Now that the editor shows the whole subtree, the buffer
+/// is the whole truth about what is under a headline, and saving it
+/// has to be able to remove a child as well as add one.
+///
+/// The children are rebased to sit one level under the target, so a
+/// subtree read out of one headline can be written into another.
+pub fn rewrite_subtree_content(
+    doc: &OrgDoc,
+    path: &[usize],
+    body: &str,
+    children_src: &str,
+) -> Result<OrgDoc, RewriteError> {
+    let target = navigate_headline(doc, path).ok_or(RewriteError::NotFound)?;
+    // After the header — or the drawer, which belongs to the headline
+    // and not to its body — through to the end of the last descendant.
+    let start = target
+        .properties
+        .as_ref()
+        .map_or(target.header_span.end, |p| {
+            p.drawer_span.end.max(target.header_span.end)
+        });
+    let end = subtree_end(target);
+    let mut middle = String::new();
+    if !body.trim().is_empty() {
+        middle.push_str(body.trim_start_matches('\n').trim_end_matches('\n'));
+        middle.push('\n');
+    }
+    middle.push_str(&rebase_headlines(children_src, target.level));
+    // The region being replaced ends exactly where the next headline
+    // begins, so an unterminated last line runs straight into it:
+    // typing `** Three` on the buffer's last line produced
+    // `** Three* Next` — one corrupt line, and a headline gone.
+    if !middle.is_empty() && !middle.ends_with('\n') {
+        middle.push('\n');
+    }
+    let mut src = doc.source().to_owned();
+    src.replace_range(start..end, &middle);
+    parse(&src).map_err(|_| RewriteError::Parse)
+}
+
+/// Replace a headline's body, filing any headlines typed into it as
+/// children rebased to its depth. Existing children are left in place.
+///
+/// [`rewrite_subtree_content`] is the one to reach for when the buffer
+/// shows the children too — this one can add them but never remove
+/// them.
 pub fn rewrite_body_with_children(
     doc: &OrgDoc,
     path: &[usize],

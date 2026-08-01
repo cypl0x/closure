@@ -18,7 +18,11 @@ use tempfile::TempDir;
 
 fn shell() -> (TempDir, Shell) {
     let dir = tempfile::tempdir().expect("tmp");
-    fs::write(dir.path().join("notes.org"), "* Foo\n** Bar\n").expect("write");
+    // Childless on purpose: a body editor shows its headline's whole
+    // subtree now, so a child here would put `** Bar` in every buffer
+    // these motion tests assert on. Subtree editing has its own suite
+    // (`closure-shell-core/tests/subtree_in_body.rs`).
+    fs::write(dir.path().join("notes.org"), "* Foo\n").expect("write");
     let v = Vault::open(dir.path()).expect("open");
     (dir, Shell::new(v))
 }

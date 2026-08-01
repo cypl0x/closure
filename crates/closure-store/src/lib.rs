@@ -580,6 +580,83 @@ impl Vault {
     /// [`VaultError::UnknownId`] when `id` names no headline,
     /// [`VaultError::Parse`] if the result would not parse, and IO
     /// failures from the write.
+    /// Every child of `id`, verbatim, for a body editor that shows the
+    /// whole subtree ([`closure_org::children_source`]).
+    ///
+    /// # Errors
+    ///
+    /// [`VaultError::UnknownId`] when nothing has that id.
+    pub fn children_source(&self, id: &BlockId) -> Result<String, VaultError> {
+        let path = self
+            .by_id
+            .get(id)
+            .cloned()
+            .ok_or_else(|| VaultError::UnknownId(id.to_string()))?;
+        let doc = self
+            .documents
+            .get(&path)
+            .ok_or_else(|| VaultError::UnknownId(id.to_string()))?;
+        let outline_path = doc
+            .path_of(id)
+            .ok_or_else(|| VaultError::UnknownId(id.to_string()))?;
+        closure_org::children_source(doc.org(), &outline_path)
+            .ok_or_else(|| VaultError::UnknownId(id.to_string()))
+    }
+
+    /// Replace everything under `id` — body and children — with what a
+    /// body editor showing the whole subtree now holds (I8).
+    ///
+    /// [`Self::set_body_with_children`] adds children without being
+    /// able to remove them, which is right for an editor that cannot
+    /// show them and wrong for one that can.
+    ///
+    /// # Errors
+    ///
+    /// [`VaultError::UnknownId`] for a missing block, [`VaultError::
+    /// Parse`] when the result will not parse.
+    pub fn set_subtree(
+        &mut self,
+        id: &BlockId,
+        body: &str,
+        children_src: &str,
+    ) -> Result<(), VaultError> {
+        let path = self
+            .by_id
+            .get(id)
+            .cloned()
+            .ok_or_else(|| VaultError::UnknownId(id.to_string()))?;
+        let doc = self
+            .documents
+            .get(&path)
+            .ok_or_else(|| VaultError::UnknownId(id.to_string()))?;
+        let outline_path = doc
+            .path_of(id)
+            .ok_or_else(|| VaultError::UnknownId(id.to_string()))?;
+        let mut org =
+            closure_org::rewrite_subtree_content(doc.org(), &outline_path, body, children_src)
+                .map_err(|_| VaultError::Parse { path: path.clone() })?;
+        // A headline typed into the buffer is a headline like any
+        // other, and to everything above the parser a headline *is* its
+        // id. `ensure_id` leaves an existing one alone, so a child read
+        // out of the file and written back keeps its identity.
+        for child in descendant_paths(&org, &outline_path) {
+            org = closure_org::rewrite_headline_ensure_id(&org, &child, BlockId::fresh().as_str())
+                .map_err(|_| VaultError::Parse { path: path.clone() })?;
+        }
+        let source = org.source().to_owned();
+        self.set_source(&path, &source)
+    }
+
+    /// Set a body, filing headlines typed into it as children, leaving
+    /// existing children in place.
+    ///
+    /// [`Self::set_subtree`] is the one to reach for when the buffer
+    /// shows the children too.
+    ///
+    /// # Errors
+    ///
+    /// [`VaultError::UnknownId`] for a missing block, [`VaultError::
+    /// Parse`] when the result will not parse.
     pub fn set_body_with_children(
         &mut self,
         id: &BlockId,

@@ -267,7 +267,12 @@ fn a_command_with_nothing_to_do_with_the_buffer_leaves_it_open() {
     ex(&mut app, &mut shell, "zoom-in");
     assert!(app.zoom() > 1.0, "the command ran");
     assert_eq!(app.surface(), ModalSurface::EditBody, "and gave it back");
-    assert_eq!(app.body_buffer(), "half a paragraph");
+    // The command wrote the buffer on the way through, and a write is
+    // followed by a read-back so the ids the vault stamps end up on
+    // screen. So what is in the buffer afterwards is what the *file*
+    // holds — org bodies are newline-terminated — rather than the
+    // unterminated line that was typed.
+    assert_eq!(app.body_buffer(), "half a paragraph\n");
 }
 
 #[test]
