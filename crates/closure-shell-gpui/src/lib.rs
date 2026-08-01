@@ -1359,6 +1359,34 @@ pub fn track_fraction(y: f32, track_top: f32, viewport: f32, thumb_height: f32) 
     ((y - track_top - thumb / 2.0) / free).clamp(0.0, 1.0)
 }
 
+/// How tall the floating palette's list is, in px, for `rows` matches
+/// at `zoom`.
+///
+/// A `uniform_list` fills the space it is handed and asks for none of
+/// its own, and the palette panel sizes to its content — so "grow" had
+/// nothing to grow into and the list painted zero pixels tall, under a
+/// query line that worked. The height is therefore stated: a row per
+/// match, one row's worth when there are none (the empty line lives
+/// there), and a cap so a long list stops rather than running off the
+/// window — past the cap it scrolls, which is what the scrollbar
+/// beside it is for.
+#[must_use]
+pub fn palette_list_height(rows: usize, zoom: f32) -> f32 {
+    #[expect(
+        clippy::cast_precision_loss,
+        reason = "a row count this side of the cap is exact in f32"
+    )]
+    let n = rows.clamp(1, PALETTE_LIST_ROWS) as f32;
+    n * scaled_text_px(PALETTE_ROW_H, zoom)
+}
+
+/// A palette row's text size.
+const PALETTE_ROW_TEXT: f32 = 13.0;
+/// One palette row: its line box plus the `py_1` above and below it.
+const PALETTE_ROW_H: f32 = PALETTE_ROW_TEXT * 1.4 + 8.0;
+/// The most rows the palette shows before it scrolls instead.
+const PALETTE_LIST_ROWS: usize = 12;
+
 /// Keep only the which-key entries that can follow the chord already
 /// typed.
 ///
@@ -5354,7 +5382,6 @@ impl GpuiView {
             .flex()
             .flex_col()
             .w(px(660.0))
-            .max_h(px(440.0))
             .rounded_md()
             .border_1()
             .border_color(rgb(co.border))
@@ -5435,8 +5462,8 @@ impl GpuiView {
         div()
             .flex()
             .flex_row()
-            .flex_grow()
-            .min_h(px(0.0))
+            // Stated, not grown: see [`palette_list_height`].
+            .h(px(palette_list_height(count, self.app.zoom())))
             .p_1()
             .child(
                 gpui::uniform_list(
@@ -5459,6 +5486,12 @@ impl GpuiView {
                                     .py_1()
                                     .rounded_sm()
                                     .cursor_pointer()
+                                    // Stated so a row is the height
+                                    // [`palette_list_height`] budgets
+                                    // for; inheriting gpui's default
+                                    // made every row taller than the
+                                    // list thought it was.
+                                    .text_size(sz_at(PALETTE_ROW_TEXT, zoom))
                                     .bg(rgb(if is_cur { co.selection } else { co.bg }))
                                     .hover(move |s| {
                                         s.bg(rgb(if is_cur { co.selection } else { co.hover }))

@@ -1616,3 +1616,27 @@ Short too.
     vcx.run_until_parked();
     assert_eq!(width(vcx), before, "and neither did coming back off it");
 }
+
+#[gpui::test]
+fn the_palette_actually_paints_its_matches(cx: &mut gpui::TestAppContext) {
+    // The bug the screenshot showed: query line, footer, "78 commands"
+    // — and no rows. A `uniform_list` fills the height it is handed and
+    // asks for none, so inside a panel that sizes to its content it was
+    // handed nothing. Bounds are the window's own report, which is the
+    // only way to tell a list of 78 from a list drawn 0px tall.
+    let (_dir, view, vcx) = visual_window(cx, VAULT);
+    view.update(vcx, |v, cx| v.run_command("palette", cx));
+    vcx.run_until_parked();
+    let panel = vcx.debug_bounds("palette-panel").expect("the panel paints");
+    let row = vcx.debug_bounds("palette-row-0").expect("the first match");
+    assert!(row.size.height > px(0.0), "a row with no height: {row:?}");
+    assert!(
+        row.bottom() <= panel.bottom(),
+        "the row is painted outside its own panel: {row:?} in {panel:?}"
+    );
+    let second = vcx.debug_bounds("palette-row-1").expect("the second match");
+    assert!(
+        second.origin.y > row.origin.y,
+        "the matches stack: {row:?} then {second:?}"
+    );
+}

@@ -18,7 +18,7 @@
 
 use closure_shell_gpui::{
     BodySpan, Emphasis, ModalSurface, body_text_px, h_scroll_start, line_matches, outline_text_px,
-    scaled_text_px, side_reveal_offset, styled_runs, visible_window,
+    palette_list_height, scaled_text_px, side_reveal_offset, styled_runs, visible_window,
 };
 
 // === a capped list still shows its cursor ===
@@ -257,4 +257,29 @@ fn every_pane_scales_from_the_one_number() {
     // The two named panes are the same function underneath.
     assert!((outline_text_px(1.7) - scaled_text_px(14.0, 1.7)).abs() < f32::EPSILON);
     assert!((body_text_px(1.7) - scaled_text_px(13.0, 1.7)).abs() < f32::EPSILON);
+}
+
+// === the floating palette has to be given a height ===
+
+#[test]
+fn the_palette_list_is_as_tall_as_its_matches() {
+    // A `uniform_list` fills the space it is given and asks for none:
+    // inside a panel that sizes to its content, "grow" had nothing to
+    // grow into, so the palette painted its query line, its footer and
+    // a list exactly zero pixels tall.
+    let one = palette_list_height(1, 1.0);
+    assert!(one > 0.0, "one match is still a row: {one}");
+    assert!(
+        (palette_list_height(5, 1.0) / one - 5.0).abs() < 0.001,
+        "five rows are five times one"
+    );
+    // Empty is still a row's worth — the "no matches" line lives there.
+    assert!((palette_list_height(0, 1.0) - one).abs() < f32::EPSILON);
+    // Long lists stop growing rather than running off the window.
+    assert!(
+        (palette_list_height(500, 1.0) - palette_list_height(12, 1.0)).abs() < f32::EPSILON,
+        "capped"
+    );
+    // And it scales with the window's zoom like everything else.
+    assert!((palette_list_height(3, 2.0) / palette_list_height(3, 1.0) - 2.0).abs() < 0.001);
 }
