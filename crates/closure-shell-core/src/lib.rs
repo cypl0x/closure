@@ -3814,6 +3814,8 @@ pub struct Peer {
 pub struct LineInput {
     text: String,
     cursor: usize,
+    /// What the last kill took out, for `C-y` to put back.
+    kill: String,
 }
 
 impl LineInput {
@@ -3909,19 +3911,45 @@ impl LineInput {
     /// Delete the word before the cursor (`C-w`, ctrl+backspace).
     pub fn delete_word_back(&mut self) {
         let start = self.word_start();
+        self.kill = self.text[start..self.cursor].to_owned();
         self.text.replace_range(start..self.cursor, "");
         self.cursor = start;
     }
 
     /// Delete from the cursor to the start of the line (`C-u`).
     pub fn kill_to_start(&mut self) {
+        self.kill = self.text[..self.cursor].to_owned();
         self.text.replace_range(..self.cursor, "");
         self.cursor = 0;
     }
 
     /// Delete from the cursor to the end of the line (`C-k`).
     pub fn kill_to_end(&mut self) {
+        self.kill = self.text[self.cursor..].to_owned();
         self.text.truncate(self.cursor);
+    }
+
+    /// The text the last kill took out, if any.
+    ///
+    /// A kill that cannot be put back is a delete wearing a kill's
+    /// name: `C-k` in a prompt used to drop the rest of the line on the
+    /// floor while the same chord in the editor was recoverable.
+    #[must_use]
+    pub fn kill(&self) -> &str {
+        &self.kill
+    }
+
+    /// Adopt a kill made in another field, so `C-y` can cross prompts.
+    pub fn set_kill(&mut self, text: &str) {
+        self.kill.clear();
+        self.kill.push_str(text);
+    }
+
+    /// Put the last kill back at the cursor (`C-y`).
+    pub fn yank(&mut self) {
+        let kill = std::mem::take(&mut self.kill);
+        self.insert_str(&kill);
+        self.kill = kill;
     }
 
     /// Offer `key` to the field, reporting whether it was consumed.
@@ -3939,6 +3967,7 @@ impl LineInput {
             "k" if ctrl => self.kill_to_end(),
             "u" if ctrl => self.kill_to_start(),
             "w" if ctrl => self.delete_word_back(),
+            "y" if ctrl => self.yank(),
             "backspace" if ctrl || alt => self.delete_word_back(),
             "backspace" => self.backspace(),
             "delete" => self.delete(),
@@ -9915,6 +9944,14 @@ pub struct ModalApp {
     /// shows it too, but that one closes itself the moment the chord
     /// resolves; this is the one a person asked for.
     which_key_open: bool,
+    /// The kill every one-line prompt shares, so `C-k` in one field and
+    /// `C-y` in another mean what they do in a terminal.
+    ///
+    /// Deliberately *not* the vault's kill ring: that one holds org
+    /// subtrees and is what `p` splices back into the outline, so a
+    /// fragment of a title on it would paste prose where a headline
+    /// belongs.
+    line_kill: String,
     /// Commands run *from the palette*, most recent first, deduped and
     /// capped. Chords are deliberately not in here: `j` and `k` are
     /// pressed hundreds of times a session and are never what you open
@@ -10275,6 +10312,7 @@ impl ModalApp {
             palette_history: Vec::new(),
             history_gen: 0,
             which_key_open: false,
+            line_kill: String::new(),
             palette_cursor: 0,
             pending: Vec::new(),
             status: String::new(),
@@ -13508,7 +13546,9 @@ impl ModalApp {
             // The arrows and the readline chords are the field's, which
             // is why it is a field and not a `String` with `push` on it.
             _ => {
+                self.field_buf.set_kill(&self.line_kill);
                 self.field_buf.key(key, ctrl, alt, text);
+                self.line_kill = self.field_buf.kill().to_owned();
             }
         }
     }
@@ -15452,7 +15492,9 @@ impl ModalApp {
             // Everything else is the field's: the readline chords, the
             // arrows, and the characters themselves.
             _ => {
+                self.capture_buf.set_kill(&self.line_kill);
                 self.capture_buf.key(key, ctrl, alt, text);
+                self.line_kill = self.capture_buf.kill().to_owned();
             }
         }
     }
