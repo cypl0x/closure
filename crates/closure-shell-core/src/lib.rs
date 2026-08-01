@@ -10437,10 +10437,16 @@ impl ModalApp {
     /// surface.
     #[must_use]
     pub fn surface_beneath(&self) -> ModalSurface {
-        if self.surface == ModalSurface::Palette {
-            self.palette_return.unwrap_or_else(|| self.home_surface())
-        } else {
-            self.surface
+        match self.surface {
+            ModalSurface::Palette => self.palette_return.unwrap_or_else(|| self.home_surface()),
+            // The `:` line is a bar at the bottom of whatever you are
+            // in — vim's is, Emacs' minibuffer is, and the palette
+            // above already is. It used to have nothing underneath it,
+            // so opening it in a buffer made the window fall back to
+            // the outline and the whole layout jumped ("everything is
+            // shifting and I always get confused").
+            ModalSurface::Ex => self.ex_return.unwrap_or_else(|| self.home_surface()),
+            other => other,
         }
     }
 
@@ -10938,6 +10944,16 @@ impl ModalApp {
         }
         if key == "enter" && ctrl {
             self.commit_file_buffer(shell);
+            return;
+        }
+        // The full-window editor answers `:` the way the body editor
+        // does. It did not, so in the one view that is nothing but a
+        // buffer, the chord every vim user reaches for typed a colon.
+        if text == Some(':')
+            && self.body.mode() != EditorMode::Insert
+            && self.body.search_prompt().is_none()
+        {
+            self.begin_ex();
             return;
         }
         if key == "escape"
@@ -13044,6 +13060,12 @@ impl ModalApp {
     fn run_ex(&mut self, shell: &mut Shell, line: &str) {
         let was = self.ex_return.take();
         let editing = was == Some(ModalSurface::EditBody);
+        // The full-window editor is a buffer too, and `:w` in it means
+        // the file, not the headline. Without this the one view that is
+        // nothing but a buffer answered `:w` with "the vault is written
+        // on every edit — nothing to save", which is a lie about a
+        // buffer that genuinely was not written yet.
+        let editing_file = was == Some(ModalSurface::EditFile);
         self.ex_buf.clear();
         // The `:` line hands back the surface it was opened over, the
         // way the palette does. It used to drop to Browse here and
@@ -13075,6 +13097,18 @@ impl ModalApp {
                 }
             }
             "q!" | "quit!" if editing => self.discard_editor(),
+            "q" | "quit" if editing_file => {
+                if self.body_dirty() {
+                    "unsaved edit — :w writes it · :q! discards".clone_into(&mut self.status);
+                } else {
+                    self.close_file_buffer();
+                    self.view = ViewMode::Clickable;
+                }
+            }
+            "q!" | "quit!" if editing_file => {
+                self.close_file_buffer();
+                self.view = ViewMode::Clickable;
+            }
             "q!" | "quit!" | "qa!" | "quitall!" | "qall!" => self.quit = true,
             // `:q` outside a buffer is the last window: it quits. `:qa`
             // says so from anywhere, and both stop for unsaved text.
@@ -13083,6 +13117,13 @@ impl ModalApp {
                     self.surface = ModalSurface::EditBody;
                 } else {
                     self.quit = true;
+                }
+            }
+            "w" | "write" | "wq" | "x" | "wq!" | "x!" if editing_file => {
+                self.commit_file_buffer(shell);
+                if line != "w" && line != "write" {
+                    self.close_file_buffer();
+                    self.view = ViewMode::Clickable;
                 }
             }
             "w" | "write" | "wq" | "x" | "wq!" | "x!" => {

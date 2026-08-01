@@ -287,3 +287,103 @@ fn a_command_that_opens_another_surface_writes_the_buffer_first() {
         "the buffer reached the vault on the way out"
     );
 }
+
+// === The `:` line floats over the buffer, it does not replace it ===
+//
+// Reported 2026-08-01, twice, and named top priority: "in Editor view
+// pressing `:` will forcefully reset to the tree view (left) + detail
+// view (right)" — "this behavior is quite annoying, because everything
+// is shifting and I always get confused".
+//
+// The command line already returned you to the buffer when it closed
+// (`run_ex`), but while it was *open* the window had nothing to paint:
+// the surface was `Ex`, which is not an editor, so the shell fell back
+// to the outline and the whole layout jumped. A command line is a bar
+// at the bottom of the buffer you are in — vim's is, Emacs' minibuffer
+// is, and closure's palette already is.
+
+#[test]
+fn the_buffer_stays_on_screen_while_the_ex_line_is_open() {
+    let (_d, mut shell, mut app) = fixture();
+    in_the_buffer(&mut app, &mut shell, "half a paragraph");
+    let under = app.surface();
+    app.on_key(&mut shell, "x", false, false, Some(':'));
+    assert_eq!(app.surface(), ModalSurface::Ex, "the line is open");
+    assert_eq!(
+        app.surface_beneath(),
+        under,
+        "and the buffer is still what the window paints"
+    );
+}
+
+#[test]
+fn the_ex_line_over_the_outline_still_paints_the_outline() {
+    let (_d, mut shell, mut app) = fixture();
+    app.on_key(&mut shell, "x", false, false, Some(':'));
+    assert_eq!(app.surface_beneath(), ModalSurface::Browse);
+}
+
+#[test]
+fn the_full_window_editor_keeps_its_shape_too() {
+    // `view = editor` is the shape the report was written from: the
+    // file buffer fills the window and there is no tree to fall back
+    // to without the layout jumping.
+    let (_d, mut shell, mut app) = fixture();
+    app.run(&mut shell, "toggle-view");
+    let under = app.surface_beneath();
+    assert!(under.is_editor(), "the editor view is a buffer: {under:?}");
+    app.on_key(&mut shell, "x", false, false, Some(':'));
+    assert_eq!(app.surface(), ModalSurface::Ex);
+    assert_eq!(app.surface_beneath(), under, "nothing shifted");
+}
+
+#[test]
+fn escaping_the_ex_line_leaves_the_buffer_exactly_where_it_was() {
+    let (_d, mut shell, mut app) = fixture();
+    in_the_buffer(&mut app, &mut shell, "half a paragraph");
+    let (surface, cursor) = (app.surface(), app.body_cursor());
+    app.on_key(&mut shell, "x", false, false, Some(':'));
+    app.on_key(&mut shell, "escape", false, false, None);
+    assert_eq!(app.surface(), surface);
+    assert_eq!(app.body_cursor(), cursor);
+}
+
+#[test]
+fn colon_opens_the_ex_line_in_the_full_window_editor() {
+    let (_d, mut shell, mut app) = fixture();
+    app.run(&mut shell, "toggle-view");
+    app.on_key(&mut shell, "x", false, false, Some(':'));
+    assert_eq!(app.surface(), ModalSurface::Ex, "vim reflex, vim result");
+}
+
+#[test]
+fn w_writes_the_file_buffer_and_stays_in_it() {
+    // A `:` line that opens but whose `w` says "nothing to save" is
+    // worse than one that never opened.
+    let (_d, mut shell, mut app) = fixture();
+    app.run(&mut shell, "toggle-view");
+    assert!(app.surface().is_editor(), "the file buffer is open");
+    app.on_key(&mut shell, "i", false, false, Some('i'));
+    type_str(&mut app, &mut shell, "* Typed into the file\n");
+    app.on_key(&mut shell, "escape", false, false, None);
+    ex(&mut app, &mut shell, "w");
+    assert!(app.surface().is_editor(), "still in the buffer");
+    assert!(
+        app.status().contains("wrote"),
+        "and it wrote something: {}",
+        app.status()
+    );
+    assert!(!app.body_dirty(), "the buffer counts as saved");
+}
+
+#[test]
+fn wq_writes_the_file_buffer_and_closes_it() {
+    let (_d, mut shell, mut app) = fixture();
+    app.run(&mut shell, "toggle-view");
+    app.on_key(&mut shell, "i", false, false, Some('i'));
+    type_str(&mut app, &mut shell, "* Another one\n");
+    app.on_key(&mut shell, "escape", false, false, None);
+    ex(&mut app, &mut shell, "wq");
+    assert!(!app.surface().is_editor(), "the buffer closed");
+    assert!(!app.should_quit(), "closing a buffer is not quitting");
+}
