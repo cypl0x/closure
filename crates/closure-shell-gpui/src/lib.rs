@@ -5790,7 +5790,7 @@ impl GpuiView {
             co,
             {
                 with_menu(
-                    self.body_preview(co, &d.body, cx),
+                    self.body_preview(co, &Self::preview_text(d.as_ref()), cx),
                     closure_shell_core::ContextTarget::Body,
                     cx,
                 )
@@ -5798,6 +5798,26 @@ impl GpuiView {
             "edit-body",
             cx,
         ))
+    }
+
+    /// What the preview pane paints: the headline's own prose, then
+    /// everything under it.
+    ///
+    /// A headline whose content is its children — most of them, in an
+    /// outline — previewed as blank, so the only way to find out
+    /// whether there was anything there was to open the editor. Same
+    /// text, same highlighting as the editor gives it, which is what
+    /// "just like in the body editor" asked for.
+    fn preview_text(d: &Detail) -> String {
+        if d.children.is_empty() {
+            return d.body.clone();
+        }
+        let mut text = d.body.clone();
+        if !text.is_empty() && !text.ends_with('\n') {
+            text.push('\n');
+        }
+        text.push_str(&d.children);
+        text
     }
 
     /// The read-only body preview under the detail fields.

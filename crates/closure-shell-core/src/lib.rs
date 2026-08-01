@@ -753,6 +753,20 @@ pub struct Detail {
     pub properties: Vec<(String, String)>,
     /// Body text below the headline.
     pub body: String,
+    /// Everything *under* the headline: its children, at every depth,
+    /// as they read in the file.
+    ///
+    /// A headline whose content is its children — which is most of them
+    /// in an outline — used to preview as blank, so you had to open the
+    /// editor to find out whether there was anything there. Kept apart
+    /// from [`Self::body`] so a shell can style the two differently and
+    /// so every existing reader of the body keeps meaning what it
+    /// meant.
+    ///
+    /// Property drawers are stripped: unlike the editor's buffer this
+    /// is never written back, so the four lines per child that carry
+    /// its id are pure noise here.
+    pub children: String,
     /// File the headline lives in (display path).
     pub path: String,
 }
@@ -5748,6 +5762,7 @@ impl App {
             deadline: h.deadline().map(ToOwned::to_owned),
             properties: h.properties().to_vec(),
             body: closure_org::unescape_body(h.body_text()),
+            children: String::new(),
             path: path.display().to_string(),
         })
     }
@@ -10864,6 +10879,14 @@ impl ModalApp {
             // comma escape that keeps a `* line` out of the outline is
             // an on-disk spelling ([`closure_org::escape_body`]).
             body: closure_org::unescape_body(h.body_text()),
+            // What is *under* the headline, for a pane that would
+            // otherwise show a blank preview for every headline whose
+            // content is its children.
+            children: shell
+                .vault
+                .children_source(&bid)
+                .map(|src| closure_org::strip_property_drawers(&src))
+                .unwrap_or_default(),
             path: path.display().to_string(),
         })
     }

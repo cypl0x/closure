@@ -9577,6 +9577,33 @@ fn is_headline_line(line: &str) -> bool {
 ///
 /// [`RewriteError::NotFound`] when `path` names no headline, or
 /// [`RewriteError::Parse`] if the result would not parse.
+/// `src` with every `:PROPERTIES:` … `:END:` drawer removed.
+///
+/// A read-only preview has no round trip to protect, so it has no
+/// reason to spend four lines per child on the drawer that carries the
+/// child's id. The editor keeps them: there the text *is* what gets
+/// written back.
+#[must_use]
+pub fn strip_property_drawers(src: &str) -> String {
+    let mut out = String::with_capacity(src.len());
+    let mut in_drawer = false;
+    for line in src.lines() {
+        let trimmed = line.trim();
+        if in_drawer {
+            // `:END:` closes it; anything else inside is a property.
+            in_drawer = !trimmed.eq_ignore_ascii_case(":END:");
+            continue;
+        }
+        if trimmed.eq_ignore_ascii_case(":PROPERTIES:") {
+            in_drawer = true;
+            continue;
+        }
+        out.push_str(line);
+        out.push('\n');
+    }
+    out
+}
+
 /// Every child of the headline at `path`, verbatim, as it sits in the
 /// file — headers, drawers, bodies and nesting included.
 ///
