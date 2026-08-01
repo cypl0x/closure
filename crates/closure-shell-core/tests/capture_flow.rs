@@ -800,3 +800,60 @@ fn a_motion_brings_the_detail_pane_back() {
         "moving selects, and a selection has a detail again"
     );
 }
+
+// === The outline follows the crumb ===
+//
+// Clicking a crumb pointed the capture somewhere else and left the
+// tree behind, so the path on screen and the highlighted row disagreed
+// about where you were.
+
+#[test]
+fn picking_a_crumb_moves_the_outline_selection_to_it() {
+    let (_d, mut sh) = shell();
+    let mut app = ModalApp::new(InputMode::Doom);
+    app.select_by_id(&sh, "01HQCAP000000000000000002"); // Existing child
+    app.run(&mut sh, "capture-start");
+    app.pick_capture_crumb(&sh, 1); // Project
+
+    let rows = app.rows(&sh);
+    assert_eq!(
+        rows[app.selected()].id,
+        "01HQCAP000000000000000001",
+        "the tree highlights the headline the path now points at"
+    );
+}
+
+#[test]
+fn the_path_survives_the_selection_moving_with_it() {
+    // The crumbs are pinned to the headline the capture started from,
+    // not re-derived from wherever the selection has since gone — or
+    // clicking a parent would truncate the path and take the way back
+    // down with it.
+    let (_d, mut sh) = shell();
+    let mut app = ModalApp::new(InputMode::Doom);
+    app.select_by_id(&sh, "01HQCAP000000000000000002");
+    app.run(&mut sh, "capture-start");
+    app.pick_capture_crumb(&sh, 1);
+    assert_eq!(
+        crumb_labels(&app, &sh),
+        vec![
+            "notes.org".to_owned(),
+            "Project".to_owned(),
+            "Existing child".to_owned()
+        ],
+        "still the whole path"
+    );
+
+    app.pick_capture_crumb(&sh, 2);
+    assert_eq!(active_crumb(&app, &sh), "Existing child", "and back down");
+    for c in "Back down here".chars() {
+        app.on_key(&mut sh, "x", false, false, Some(c));
+    }
+    app.on_key(&mut sh, "enter", false, false, None);
+    let rows = app.rows(&sh);
+    let new = rows
+        .iter()
+        .find(|r| r.title.contains("Back down here"))
+        .expect("captured");
+    assert_eq!(new.level, 3, "filed under the crumb it ended on");
+}

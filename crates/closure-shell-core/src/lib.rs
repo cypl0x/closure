@@ -9481,6 +9481,13 @@ pub struct ModalApp {
     /// A pick belongs to the capture being typed, not to the app, so
     /// it is cleared whenever the overlay opens.
     capture_crumb_pick: Option<usize>,
+    /// The headline the open capture's path was drawn from.
+    ///
+    /// Pinned when the overlay opens, because picking a crumb moves
+    /// the outline selection onto it — and a path re-derived from the
+    /// selection would truncate itself at every click, taking the way
+    /// back down with it.
+    capture_path_root: Option<String>,
     body: BodyEditor,
     completion: Option<CompletionSession>,
     edit_target: Option<String>,
@@ -9804,6 +9811,7 @@ impl ModalApp {
             capture_hist_at: None,
             capture_buf: LineInput::default(),
             capture_crumb_pick: None,
+            capture_path_root: None,
             body: BodyEditor::new(),
             body_baseline: String::new(),
             completion: None,
@@ -14405,6 +14413,7 @@ impl ModalApp {
                 self.remember_capture();
                 self.go_home();
                 self.capture_buf.clear();
+                self.capture_path_root = None;
             }
             // Enter files the item, so there was no way to type a
             // second line: a captured thought had to fit on one or be
@@ -14425,6 +14434,7 @@ impl ModalApp {
                 }
                 self.go_home();
                 self.capture_buf.clear();
+                self.capture_path_root = None;
             }
             // Everything else is the field's: the readline chords, the
             // arrows, and the characters themselves.
@@ -14493,11 +14503,13 @@ impl ModalApp {
     /// capture file, which is where a loose thought goes.
     #[must_use]
     pub fn capture_crumbs(&self, shell: &Shell) -> Vec<CaptureCrumb> {
-        let Some(id) = self
-            .selection_active
-            .then(|| self.selected_row_id(shell))
-            .flatten()
-        else {
+        // The pinned root while an overlay is open, the live selection
+        // otherwise — the prompt has to be right before the pin exists.
+        let Some(id) = self.capture_path_root.clone().or_else(|| {
+            self.selection_active
+                .then(|| self.selected_row_id(shell))
+                .flatten()
+        }) else {
             return vec![CaptureCrumb {
                 id: None,
                 label: CAPTURE_FILE.to_owned(),
@@ -14570,6 +14582,14 @@ impl ModalApp {
             return;
         }
         self.capture_crumb_pick = Some(index);
+        // The tree follows the path: pointing the capture at a
+        // headline and leaving the highlight on a different one makes
+        // the screen disagree with itself about where you are. The
+        // file crumb names no headline, so there is nothing to move to
+        // and the outline stays where it is.
+        if let Some(id) = crumbs[index].id.clone() {
+            self.select_by_id(shell, &id);
+        }
         self.status = format!("capture {}", self.capture_target_label(shell));
     }
 
@@ -15048,6 +15068,10 @@ impl ModalApp {
                 self.capture_buf.clear();
                 // A pick belongs to the thought it was made for.
                 self.capture_crumb_pick = None;
+                self.capture_path_root = self
+                    .selection_active
+                    .then(|| self.selected_row_id(shell))
+                    .flatten();
                 self.status = format!("capture {}", self.capture_target_label(shell));
             }
             "search-start" | "search-headline-start" => {
