@@ -196,3 +196,20 @@ fn every_mode_zooms_on_the_desktop_chords() {
         );
     }
 }
+
+#[test]
+fn emacs_runs_a_block_on_org_s_own_chord() {
+    // `C-c C-c` is what an org user's hands do to run the block point
+    // is in; it was bound to nothing at all.
+    assert_eq!(
+        command_for(InputMode::Emacs, "C-c C-c"),
+        Some("eval-block"),
+        "Emacs: C-c C-c runs the block"
+    );
+    for mode in MODES {
+        assert!(
+            closure_input::chord_for_command(mode, "eval-block").is_some(),
+            "{mode:?} can still reach it"
+        );
+    }
+}

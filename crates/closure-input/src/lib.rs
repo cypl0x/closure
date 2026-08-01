@@ -249,6 +249,8 @@ const EMACS_KEYMAP: &[(&str, &str)] = &[
     ("C-c C-x C-q", "clock-cancel"),
     ("C-c C-x C-j", "clock-goto"),
     ("C-c C-q", "tag-picker"),
+    // org's own "run the block point is in".
+    ("C-c C-c", "eval-block"),
     // `text-scale-adjust`'s own chords, which Emacs hangs off `C-x`;
     // the bare ones are here too because the rest of the desktop uses
     // them and this keymap is what which-key renders (I4).
