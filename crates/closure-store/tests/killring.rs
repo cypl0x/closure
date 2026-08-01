@@ -109,3 +109,56 @@ fn text_can_be_pushed_onto_the_ring_directly() {
     v.push_kill_ring("second".to_owned());
     assert_eq!(v.ring_top(), Some("second"), "most recent is on top");
 }
+
+// === A headline whose id was never written to the file ===
+//
+// `cut` located its subtree through `OrgDoc::subtree_of`, which reads
+// the `:ID:` property out of the *source text*. A headline that has
+// never been given a drawer — most of them, in a file a person typed —
+// has its id only in the in-memory index, so `cut` could not find it
+// and refused. Every other operation addresses those headlines fine,
+// which is how it went unnoticed until `delete` started cutting.
+
+#[test]
+fn cut_works_on_a_headline_with_no_id_drawer() {
+    let dir = write_vault(&[("n.org", "* Alpha\n** Kid\nbody\n* Beta\n")]);
+    let mut v = Vault::open(dir.path()).expect("open");
+    let path = dir.path().join("n.org");
+    let alpha = v
+        .document(&path)
+        .expect("doc")
+        .all_block_ids()
+        .first()
+        .cloned()
+        .expect("an id");
+    v.cut(&path, &alpha).expect("cut a drawerless headline");
+    assert!(
+        v.ring_top()
+            .is_some_and(|s| s.contains("Alpha") && s.contains("Kid")),
+        "the whole subtree is on the ring: {:?}",
+        v.ring_top()
+    );
+    let left = v.document(&path).expect("doc").org().source().to_owned();
+    assert!(!left.contains("Alpha"), "and out of the file: {left}");
+    assert!(left.contains("Beta"), "its sibling stayed");
+}
+
+#[test]
+fn cut_takes_the_headline_it_was_asked_for() {
+    // The subtree is found by walking to the right node, so picking the
+    // second one must not hand back the first.
+    let dir = write_vault(&[("n.org", "* Alpha\n* Beta\n** Kid\n* Gamma\n")]);
+    let mut v = Vault::open(dir.path()).expect("open");
+    let path = dir.path().join("n.org");
+    let beta = v
+        .document(&path)
+        .expect("doc")
+        .all_block_ids()
+        .get(1)
+        .cloned()
+        .expect("second id");
+    v.cut(&path, &beta).expect("cut");
+    let top = v.ring_top().expect("ring").to_owned();
+    assert!(top.contains("Beta") && top.contains("Kid"), "{top}");
+    assert!(!top.contains("Alpha") && !top.contains("Gamma"), "{top}");
+}

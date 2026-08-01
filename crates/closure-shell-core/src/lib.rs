@@ -444,6 +444,53 @@ impl Shell {
         self.vault.remove_subtree(id)
     }
 
+    /// Cut the subtree rooted at `id`: onto the kill ring, then out of
+    /// the document, through the kernel command (I8).
+    ///
+    /// What `delete` does. Dropping the text on the floor left undo as
+    /// the only way back, and undo is not a way to *move* something.
+    ///
+    /// # Errors
+    ///
+    /// [`closure_store::VaultError::UnknownId`] when nothing has that
+    /// id; otherwise the [`closure_store::Vault::cut`] contract.
+    pub fn cut_subtree(
+        &mut self,
+        id: &closure_core::BlockId,
+    ) -> Result<(), closure_store::VaultError> {
+        let path = self
+            .vault
+            .find_by_id(id)
+            .map(|(_, p)| p.to_path_buf())
+            .ok_or_else(|| closure_store::VaultError::UnknownId(id.as_str().to_owned()))?;
+        self.vault.cut(&path, id)
+    }
+
+    /// Paste the kill ring's top as the sibling after `after` (I8).
+    ///
+    /// # Errors
+    ///
+    /// [`closure_store::VaultError::UnknownId`] when nothing has that
+    /// id; otherwise the [`closure_store::Vault::paste`] contract,
+    /// which refuses an empty ring.
+    pub fn paste_subtree(
+        &mut self,
+        after: &closure_core::BlockId,
+    ) -> Result<(), closure_store::VaultError> {
+        let path = self
+            .vault
+            .find_by_id(after)
+            .map(|(_, p)| p.to_path_buf())
+            .ok_or_else(|| closure_store::VaultError::UnknownId(after.as_str().to_owned()))?;
+        self.vault.paste(&path, after)
+    }
+
+    /// The top of the kill ring, if anything has been cut or copied.
+    #[must_use]
+    pub fn ring_top(&self) -> Option<&str> {
+        self.vault.ring_top()
+    }
+
     /// Add a child headline under `parent`, `prefix` in front of the
     /// title, through the kernel command (I8).
     ///
@@ -15943,16 +15990,34 @@ impl ModalApp {
                     "rename — Enter save, Esc cancel".clone_into(&mut self.status);
                 }
             }
+            // A delete is a *cut*: the subtree goes on the kill ring on
+            // its way out, so `d` then `p` moves it the way vim moves a
+            // line. Dropping the text left undo as the only way back,
+            // and undo is not a way to move something.
             "delete" => {
                 if let Some(row) = self.rows_shared(shell).get(self.selected).cloned() {
                     let bid = closure_core::BlockId::from_existing(&row.id);
-                    match shell.remove_subtree(&bid) {
-                        Ok(()) => self.status = format!("deleted: {}", row.title),
+                    match shell.cut_subtree(&bid) {
+                        Ok(()) => self.status = format!("cut: {} — p pastes it", row.title),
                         Err(e) => self.status = format!("delete failed: {e}"),
                     }
                     self.selected = self
                         .selected
                         .min(self.rows_shared(shell).len().saturating_sub(1));
+                }
+            }
+            "paste-subtree" => {
+                if let Some(row) = self.rows_shared(shell).get(self.selected).cloned() {
+                    let bid = closure_core::BlockId::from_existing(&row.id);
+                    match shell.paste_subtree(&bid) {
+                        Ok(()) => {
+                            format!("pasted after {}", row.title).clone_into(&mut self.status)
+                        }
+                        Err(e) => self.status = format!("paste failed: {e}"),
+                    }
+                } else {
+                    "nothing selected — put the cursor where it should land"
+                        .clone_into(&mut self.status);
                 }
             }
             "undo" => {

@@ -63,8 +63,11 @@ fn t_cycles_the_todo_keyword_through_todo_done_none() {
 }
 
 #[test]
-fn p_cycles_the_priority_through_a_b_c_none() {
+fn g_p_cycles_the_priority_through_a_b_c_none() {
+    // Contract revised 2026-08-01: bare `p` is paste in the modal
+    // modes, so priority cycling lives on the `g` map.
     let mut app = app();
+    app.handle_stroke("g");
     app.handle_stroke("p");
     assert_eq!(
         app.take_priority_request(),
@@ -75,6 +78,7 @@ fn p_cycles_the_priority_through_a_b_c_none() {
     let mut r = rec("id-1", "Alpha");
     r.priority = Some('B');
     b.set_headlines(vec![r]);
+    b.handle_stroke("g");
     b.handle_stroke("p");
     assert_eq!(
         b.take_priority_request(),
@@ -85,6 +89,7 @@ fn p_cycles_the_priority_through_a_b_c_none() {
     let mut r = rec("id-1", "Alpha");
     r.priority = Some('C');
     c.set_headlines(vec![r]);
+    c.handle_stroke("g");
     c.handle_stroke("p");
     assert_eq!(c.take_priority_request(), Some(("id-1".to_owned(), None)));
 }

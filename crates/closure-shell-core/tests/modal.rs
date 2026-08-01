@@ -607,11 +607,17 @@ fn vim_t_cycles_todo_on_selection() {
 }
 
 #[test]
-fn vim_p_cycles_priority_on_selection() {
+fn vim_g_p_cycles_priority_on_selection() {
+    // Contract revised 2026-08-01: bare `p` is paste, the way every
+    // modal editor spells it — `d` cuts a subtree to the kill ring and
+    // `p` puts it back. Priority cycling moved to the `g` map and kept
+    // `] p` / `[ p` for stepping in one direction.
     let (_d, mut sh) = shell();
     let mut app = ModalApp::new(InputMode::Vim);
+    app.on_key(&mut sh, "g", false, false, Some('g'));
     app.on_key(&mut sh, "p", false, false, Some('p')); // cycle-priority None->A
     assert_eq!(app.detail(&sh).unwrap().priority, Some('A'));
+    app.on_key(&mut sh, "g", false, false, Some('g'));
     app.on_key(&mut sh, "p", false, false, Some('p'));
     assert_eq!(app.detail(&sh).unwrap().priority, Some('B'));
 }
@@ -625,7 +631,7 @@ fn emacs_c_c_t_cycles_todo() {
     );
     assert_eq!(
         chord_for_command(InputMode::Vim, "cycle-priority"),
-        Some("p")
+        Some("g p")
     );
     let (_d, mut sh) = shell();
     let mut app = ModalApp::new(InputMode::Emacs);

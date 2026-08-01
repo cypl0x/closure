@@ -349,6 +349,7 @@ impl App {
             },
             delete_target: None,
             delete_request: None,
+            paste_request: None,
             undo_request: false,
             redo_request: false,
             input_mode: closure_config::InputMode::Doom,
@@ -363,7 +364,6 @@ impl App {
             struct_request: None,
             move_request: None,
             cut_request: None,
-            paste_request: None,
             agenda: Vec::new(),
             head_cursor: 0,
             todo_request: None,
@@ -2709,6 +2709,9 @@ impl App {
             // parks a request; the driver performs the vault write.
             "toggle-todo" => self.cycle_todo(1),
             "cycle-priority" => self.cycle_priority(1),
+            // `d` cuts to the kill ring, `p` puts it back after the
+            // cursor — the same pair the GUI has.
+            "paste-subtree" => self.paste_request = self.current_headline_id(),
             "edit-tags" => {
                 let tags = self
                     .current_headline()
@@ -3408,9 +3411,13 @@ fn apply_requests(
         sync_app(app, vault);
     }
     if let Some(id) = app.take_delete_request() {
-        vault
-            .remove_subtree(&closure_core::BlockId::from_existing(&id))
-            .map_err(vault_err)?;
+        // A delete is a cut: the subtree rides the kill ring out on its
+        // way to the floor, so `p` can put it back.
+        let bid = closure_core::BlockId::from_existing(&id);
+        match vault.find_by_id(&bid).map(|(_, p)| p.to_path_buf()) {
+            Some(path) => vault.cut(&path, &bid).map_err(vault_err)?,
+            None => vault.remove_subtree(&bid).map_err(vault_err)?,
+        }
         sync_app(app, vault);
     }
     if let Some((id, body)) = app.take_body_request() {

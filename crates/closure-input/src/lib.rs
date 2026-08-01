@@ -63,7 +63,12 @@ const DOOM_KEYMAP: &[(&str, &str)] = &[
     ("d", "delete"),
     ("i", "edit-body"),
     ("t", "toggle-todo"),
-    ("p", "cycle-priority"),
+    // `p` is paste, the way every modal editor spells it: `d`
+    // cuts a subtree to the kill ring and `p` puts it back.
+    // `cycle-priority` moves to the `g` map, keeping `] p` / `[ p`
+    // for stepping a priority in one direction.
+    ("p", "paste-subtree"),
+    ("g p", "cycle-priority"),
     ("y", "edit-tags"),
     ("o", "edit-property"),
     ("g r", "toggle-llm-render"),
@@ -215,6 +220,7 @@ const EMACS_KEYMAP: &[(&str, &str)] = &[
     ("C-c e", "edit-body"),
     ("C-c t", "toggle-todo"),
     ("C-c p", "cycle-priority"),
+    ("C-y", "paste-subtree"),
     ("C-c y", "edit-tags"),
     ("C-c o", "edit-property"),
     ("C-c g", "toggle-llm-render"),
@@ -323,7 +329,12 @@ const VIM_KEYMAP: &[(&str, &str)] = &[
     ("d", "delete"),
     ("i", "edit-body"),
     ("t", "toggle-todo"),
-    ("p", "cycle-priority"),
+    // `p` is paste, the way every modal editor spells it: `d`
+    // cuts a subtree to the kill ring and `p` puts it back.
+    // `cycle-priority` moves to the `g` map, keeping `] p` / `[ p`
+    // for stepping a priority in one direction.
+    ("p", "paste-subtree"),
+    ("g p", "cycle-priority"),
     ("y", "edit-tags"),
     ("o", "edit-property"),
     ("g r", "toggle-llm-render"),
@@ -430,7 +441,12 @@ const HELIX_KEYMAP: &[(&str, &str)] = &[
     ("d", "delete"),
     ("i", "edit-body"),
     ("t", "toggle-todo"),
-    ("p", "cycle-priority"),
+    // `p` is paste, the way every modal editor spells it: `d`
+    // cuts a subtree to the kill ring and `p` puts it back.
+    // `cycle-priority` moves to the `g` map, keeping `] p` / `[ p`
+    // for stepping a priority in one direction.
+    ("p", "paste-subtree"),
+    ("g p", "cycle-priority"),
     ("y", "edit-tags"),
     ("o", "edit-property"),
     ("g r", "toggle-llm-render"),
@@ -536,7 +552,12 @@ const NOTION_KEYMAP: &[(&str, &str)] = &[
     ("d", "delete"),
     ("i", "edit-body"),
     ("t", "toggle-todo"),
-    ("p", "cycle-priority"),
+    // `p` is paste, the way every modal editor spells it: `d`
+    // cuts a subtree to the kill ring and `p` puts it back.
+    // `cycle-priority` moves to the `g` map, keeping `] p` / `[ p`
+    // for stepping a priority in one direction.
+    ("p", "paste-subtree"),
+    ("g p", "cycle-priority"),
     ("y", "edit-tags"),
     ("o", "edit-property"),
     ("g r", "toggle-llm-render"),

@@ -719,10 +719,22 @@ impl Vault {
             .documents
             .get(path)
             .ok_or_else(|| VaultError::UnknownId(path.display().to_string()))?;
+        // Addressed by position, not by the `:ID:` in the text.
+        // `OrgDoc::subtree_of` reads the property out of the source, so
+        // a headline that has never been given a drawer — most of them,
+        // in a file a person typed — could not be cut at all, while
+        // every other operation addressed it fine. Both orders are
+        // depth-first, which is what makes the index shared.
+        let ix = doc
+            .all_block_ids()
+            .iter()
+            .position(|b| b == id)
+            .ok_or_else(|| VaultError::Command(format!("no headline {id}")))?;
         let source = doc
             .org()
-            .subtree_of(id.as_str())
+            .headline_at_dfs_index(ix)
             .ok_or_else(|| VaultError::Command(format!("no headline {id}")))?
+            .subtree_source()
             .to_owned();
         self.remove_subtree(id)?;
         self.kill_ring.push(source);
