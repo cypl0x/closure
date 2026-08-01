@@ -17,8 +17,8 @@
 #![allow(clippy::unwrap_used, clippy::expect_used, missing_docs)]
 
 use closure_shell_gpui::{
-    BodySpan, Emphasis, ModalSurface, h_scroll_start, line_matches, side_reveal_offset,
-    styled_runs, visible_window,
+    BodySpan, Emphasis, ModalSurface, body_text_px, h_scroll_start, line_matches,
+    outline_text_px, side_reveal_offset, styled_runs, visible_window,
 };
 
 // === a capped list still shows its cursor ===
@@ -225,4 +225,20 @@ fn marks_outside_the_line_are_ignored() {
         styled_runs(&spans(), &[(20..30, Emphasis::Search)]),
         styled_runs(&spans(), &[])
     );
+}
+
+// === zoom reaches the text the outline is made of ===
+
+#[test]
+fn zoom_scales_the_outline_and_the_body_together() {
+    // The scale was applied to the body pane alone, so `C-+` pressed in
+    // the outline — where a reader spends most of the session — changed
+    // nothing they could see.
+    assert!((outline_text_px(1.0) - 14.0).abs() < f32::EPSILON);
+    assert!((body_text_px(1.0) - 13.0).abs() < f32::EPSILON);
+    assert!(outline_text_px(2.0) > outline_text_px(1.0));
+    assert!(body_text_px(2.0) > body_text_px(1.0));
+    // The ratio is the zoom's, not a per-pane invention.
+    assert!((outline_text_px(2.0) / outline_text_px(1.0) - 2.0).abs() < 0.001);
+    assert!((body_text_px(0.5) / body_text_px(1.0) - 0.5).abs() < 0.001);
 }

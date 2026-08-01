@@ -362,3 +362,21 @@ fn an_open_edit_is_never_reloaded_out_from_under(cx: &mut gpui::TestAppContext) 
         })
         .expect("live");
 }
+
+#[gpui::test]
+fn the_zoom_chords_reach_the_core_from_the_outline(cx: &mut gpui::TestAppContext) {
+    // The chord is the keymap's, and the window's own key translation
+    // has to deliver it: `C-=` from the outline, not only from inside
+    // a buffer.
+    let (_dir, window) = test_window(cx, "* Alpha\nbody\n");
+    window
+        .update(cx, |view, _w, cx| {
+            assert_eq!(view.surface(), ModalSurface::Browse);
+            let plain = view.zoom();
+            view.press("=", false, true, cx);
+            assert!(view.zoom() > plain, "C-= zoomed in");
+            view.press("0", false, true, cx);
+            assert!((view.zoom() - 1.0).abs() < f32::EPSILON, "C-0 reset it");
+        })
+        .expect("live");
+}

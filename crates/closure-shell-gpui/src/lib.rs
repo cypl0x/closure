@@ -1097,6 +1097,29 @@ pub fn today_ymd(unix_secs: u64) -> String {
     format!("{y:04}-{m:02}-{d:02}")
 }
 
+/// The outline's text size at `zoom`, in px.
+///
+/// Zoom used to reach the body pane alone, so `C-+` pressed in the
+/// outline — where most of a session is spent — changed nothing the
+/// reader could see. Both panes are *text you are reading*; the chrome
+/// around them (status line, headers, breadcrumbs) is not, and stays
+/// where it is, which is what Doom's `text-scale` does too.
+#[must_use]
+pub fn outline_text_px(zoom: f32) -> f32 {
+    OUTLINE_TEXT * zoom
+}
+
+/// The body pane's text size at `zoom`, in px. See [`outline_text_px`].
+#[must_use]
+pub fn body_text_px(zoom: f32) -> f32 {
+    BODY_TEXT * zoom
+}
+
+/// Unscaled outline row text.
+const OUTLINE_TEXT: f32 = 14.0;
+/// Unscaled body text.
+const BODY_TEXT: f32 = 13.0;
+
 /// The key name the core's editor vocabulary expects, from what gpui
 /// reports.
 ///
@@ -1799,6 +1822,12 @@ impl GpuiView {
     #[must_use]
     pub fn row_count(&self) -> usize {
         self.app.rows_shared(&self.shell).len()
+    }
+
+    /// The text scale the panes are painted at.
+    #[must_use]
+    pub fn zoom(&self) -> f32 {
+        self.app.zoom()
     }
 
     /// The active surface, for a test to assert on.
@@ -2995,7 +3024,7 @@ impl GpuiView {
             .overflow_hidden()
             .px_2()
             .py_1()
-            .text_size(px(14.0))
+            .text_size(px(outline_text_px(self.app.zoom())))
             .cursor_pointer()
             // The selection marker is on every row, transparent on the
             // ones that are not selected. Added only to the selected
@@ -3593,7 +3622,7 @@ impl GpuiView {
                 .p_2()
                 .bg(rgb(co.panel))
                 .rounded_md()
-                .text_size(px(13.0 * self.app.zoom()))
+                .text_size(px(body_text_px(self.app.zoom())))
                 // Not a scroll: the editor paints only the visible
                 // lines, so this handle never has anything to move.
                 // It is here to record the text's bounds, which is
