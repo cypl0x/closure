@@ -105,6 +105,7 @@ const DOOM_KEYMAP: &[(&str, &str)] = &[
     ("g O", "clock-out"),
     ("g Q", "clock-cancel"),
     ("g J", "clock-goto"),
+    ("g T", "tag-picker"),
     // The leader. Doom's identity is `SPC` plus a mnemonic tree, and a
     // Doom user's hands know it better than any of the single letters
     // above: `SPC f s` saves, `SPC :` is M-x, `SPC q q` quits, and
@@ -136,6 +137,7 @@ const DOOM_KEYMAP: &[(&str, &str)] = &[
     ("SPC m o", "clock-out"),
     ("SPC m c", "clock-cancel"),
     ("SPC m g", "clock-goto"),
+    ("SPC m T", "tag-picker"),
     ("SPC q q", "quit"),
     ("SPC s s", "search-start"),
     ("SPC s p", "body-search"),
@@ -239,6 +241,7 @@ const EMACS_KEYMAP: &[(&str, &str)] = &[
     ("C-c C-x C-o", "clock-out"),
     ("C-c C-x C-q", "clock-cancel"),
     ("C-c C-x C-j", "clock-goto"),
+    ("C-c C-q", "tag-picker"),
 ];
 
 /// Vim bindings: modal navigation keys.
@@ -326,6 +329,7 @@ const VIM_KEYMAP: &[(&str, &str)] = &[
     ("g O", "clock-out"),
     ("g Q", "clock-cancel"),
     ("g J", "clock-goto"),
+    ("g T", "tag-picker"),
     // The prefix the rest of the desktop uses. Listed last so each
     // mode's own chord stays the one which-key and the tutorial show.
     ("C-p", "palette"),
@@ -417,6 +421,7 @@ const HELIX_KEYMAP: &[(&str, &str)] = &[
     ("g O", "clock-out"),
     ("g Q", "clock-cancel"),
     ("g J", "clock-goto"),
+    ("g T", "tag-picker"),
     // The prefix the rest of the desktop uses. Listed last so each
     // mode's own chord stays the one which-key and the tutorial show.
     ("C-p", "palette"),
@@ -507,6 +512,7 @@ const NOTION_KEYMAP: &[(&str, &str)] = &[
     ("g O", "clock-out"),
     ("g Q", "clock-cancel"),
     ("g J", "clock-goto"),
+    ("g T", "tag-picker"),
     // The prefix the rest of the desktop uses. Listed last so each
     // mode's own chord stays the one which-key and the tutorial show.
     ("C-p", "palette"),
