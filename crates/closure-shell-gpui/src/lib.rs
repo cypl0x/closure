@@ -1097,22 +1097,36 @@ pub fn today_ymd(unix_secs: u64) -> String {
     format!("{y:04}-{m:02}-{d:02}")
 }
 
-/// The outline's text size at `zoom`, in px.
+/// A `base` px text size at `zoom`.
 ///
-/// Zoom used to reach the body pane alone, so `C-+` pressed in the
-/// outline — where most of a session is spent — changed nothing the
-/// reader could see. Both panes are *text you are reading*; the chrome
-/// around them (status line, headers, breadcrumbs) is not, and stays
-/// where it is, which is what Doom's `text-scale` does too.
+/// Zoom reached the body pane alone at first, then the outline; every
+/// other size in the window was a literal, so a picker, the block
+/// output, the agenda and the status line all stayed at 11px under a
+/// 3× body. This window is one surface, not a frame of independently
+/// scaled Emacs buffers: one number scales all of its text, and the
+/// sizes keep their ratios to each other.
 #[must_use]
-pub fn outline_text_px(zoom: f32) -> f32 {
-    OUTLINE_TEXT * zoom
+pub fn scaled_text_px(base: f32, zoom: f32) -> f32 {
+    base * zoom
 }
 
-/// The body pane's text size at `zoom`, in px. See [`outline_text_px`].
+/// [`scaled_text_px`] as gpui pixels, for the row builders that are
+/// plain functions rather than methods and so carry the zoom by hand.
+#[cfg(feature = "gpui")]
+fn sz_at(base: f32, zoom: f32) -> gpui::Pixels {
+    px(scaled_text_px(base, zoom))
+}
+
+/// The outline's text size at `zoom`, in px.
+#[must_use]
+pub fn outline_text_px(zoom: f32) -> f32 {
+    scaled_text_px(OUTLINE_TEXT, zoom)
+}
+
+/// The body pane's text size at `zoom`, in px.
 #[must_use]
 pub fn body_text_px(zoom: f32) -> f32 {
-    BODY_TEXT * zoom
+    scaled_text_px(BODY_TEXT, zoom)
 }
 
 /// Unscaled outline row text.
@@ -1828,6 +1842,12 @@ impl GpuiView {
     #[must_use]
     pub fn zoom(&self) -> f32 {
         self.app.zoom()
+    }
+
+    /// A `base` px text size at the window's current zoom — every
+    /// `text_size` in the window goes through here ([`scaled_text_px`]).
+    fn sz(&self, base: f32) -> gpui::Pixels {
+        px(scaled_text_px(base, self.app.zoom()))
     }
 
     /// The active surface, for a test to assert on.
@@ -2664,7 +2684,7 @@ impl GpuiView {
     /// and the hidden ones are named in the ellipsis' tooltip. The
     /// ends are what identify a path; the middle is what a person
     /// skips reading anyway.
-    fn capture_bar(&self, co: Colors, cx: &Context<Self>) -> gpui::Div {
+    fn capture_bar(&self, co: Colors, zoom: f32, cx: &Context<Self>) -> gpui::Div {
         let crumbs = self.app.capture_crumbs(&self.shell);
         let last = crumbs.len().saturating_sub(1);
         // Which crumbs to draw, by index; `None` is the gap.
@@ -2719,7 +2739,12 @@ impl GpuiView {
                         .child("…")
                         .tooltip(move |_w, cx| {
                             let names = names.clone();
-                            cx.new(move |_| Hint { text: names, co }).into()
+                            cx.new(move |_| Hint {
+                                text: names,
+                                co,
+                                zoom,
+                            })
+                            .into()
                         }),
                 );
                 continue;
@@ -2746,7 +2771,12 @@ impl GpuiView {
                 .child(gpui::SharedString::from(elide(&crumb.label, 28)))
                 .tooltip(move |_w, cx| {
                     let hint = hint.clone();
-                    cx.new(move |_| Hint { text: hint, co }).into()
+                    cx.new(move |_| Hint {
+                        text: hint,
+                        co,
+                        zoom,
+                    })
+                    .into()
                 });
             if crumb.active {
                 chip = chip.bg(rgb(co.accent)).font_weight(gpui::FontWeight::BOLD);
@@ -2963,13 +2993,13 @@ impl GpuiView {
             .child(
                 div()
                     .text_color(rgb(co.fg))
-                    .text_size(px(15.0))
+                    .text_size(self.sz(15.0))
                     .child(headline),
             )
             .child(
                 div()
                     .text_color(rgb(co.muted))
-                    .text_size(px(12.0))
+                    .text_size(self.sz(12.0))
                     .child(hint),
             );
         if let Some(command) = command {
@@ -2981,7 +3011,7 @@ impl GpuiView {
                     .py_1()
                     .rounded_md()
                     .bg(rgb(co.panel))
-                    .text_size(px(12.0))
+                    .text_size(self.sz(12.0))
                     .text_color(rgb(co.success))
                     .cursor_pointer()
                     .hover(move |s| s.bg(rgb(co.hover)))
@@ -3024,7 +3054,7 @@ impl GpuiView {
             .overflow_hidden()
             .px_2()
             .py_1()
-            .text_size(px(outline_text_px(self.app.zoom())))
+            .text_size(self.sz(OUTLINE_TEXT))
             .cursor_pointer()
             // The selection marker is on every row, transparent on the
             // ones that are not selected. Added only to the selected
@@ -3082,7 +3112,7 @@ impl GpuiView {
         if self.drag.target() == Some(i) && self.drag.source() != Some(i) {
             line = line.border_b_2().border_color(rgb(co.warning));
         }
-        Self::outline_cells(line, co, i, &row, cx)
+        Self::outline_cells(line, co, self.app.zoom(), i, &row, cx)
     }
 
     /// The cells of an outline row: indent, fold arrow, status glyph,
@@ -3091,6 +3121,7 @@ impl GpuiView {
     fn outline_cells(
         line: gpui::Div,
         co: Colors,
+        zoom: f32,
         i: usize,
         row: &Row,
         cx: &Context<Self>,
@@ -3156,7 +3187,7 @@ impl GpuiView {
                 .px_1()
                 .rounded_sm()
                 .text_color(rgb(todo_col))
-                .text_size(px(11.0))
+                .text_size(sz_at(11.0, zoom))
                 .cursor_pointer()
                 .hover(move |s| s.bg(rgb(co.hover)))
                 .on_mouse_down(MouseButton::Left, act("toggle-todo"))
@@ -3193,7 +3224,7 @@ impl GpuiView {
                     .overflow_hidden()
                     .whitespace_nowrap()
                     .text_color(rgb(co.muted))
-                    .text_size(px(10.0))
+                    .text_size(sz_at(10.0, zoom))
                     .child(short_path(&row.path)),
             )
     }
@@ -3287,11 +3318,13 @@ impl GpuiView {
             ModalSurface::Graph => pane.child(self.graph_pane(co, cx)),
             ModalSurface::Journal => pane.children(Self::text_rows(
                 co,
+                self.app.zoom(),
                 self.app.journal_rows(&self.shell),
                 "no commands recorded yet — the journal fills as you edit",
             )),
             ModalSurface::Cron => pane.children(Self::text_rows(
                 co,
+                self.app.zoom(),
                 self.app
                     .cron_rows(&self.shell)
                     .into_iter()
@@ -3311,6 +3344,7 @@ impl GpuiView {
                     .map(|(i, (_id, title))| {
                         list_row(
                             co,
+                            self.app.zoom(),
                             i == self.app.selected(),
                             format!("⟵ {title}"),
                             cx.listener(move |this: &mut Self, _ev, _w, cx| {
@@ -3491,7 +3525,7 @@ impl GpuiView {
                 .rounded_sm()
                 .bg(rgb(bg))
                 .text_color(rgb(co.bg))
-                .text_size(px(11.0))
+                .text_size(self.sz(11.0))
                 .child(text)
         };
         let mut header = div()
@@ -3523,14 +3557,14 @@ impl GpuiView {
                     .border_1()
                     .border_color(rgb(mode_col))
                     .text_color(rgb(mode_col))
-                    .text_size(px(11.0))
+                    .text_size(self.sz(11.0))
                     .child(pending),
             );
         }
         header = header.child(
             div()
                 .text_color(rgb(co.muted))
-                .text_size(px(11.0))
+                .text_size(self.sz(11.0))
                 .child(closure_shell_core::editor_hint(mode)),
         );
         // Saving and discarding were chords and nothing else: `C-Enter`
@@ -3544,7 +3578,7 @@ impl GpuiView {
                 .border_1()
                 .border_color(rgb(colour))
                 .text_color(rgb(colour))
-                .text_size(px(11.0))
+                .text_size(self.sz(11.0))
                 .cursor_pointer()
                 .hover(move |s| s.bg(rgb(co.hover)))
                 .child(format!("{label}  {chord}"))
@@ -3622,7 +3656,7 @@ impl GpuiView {
                 .p_2()
                 .bg(rgb(co.panel))
                 .rounded_md()
-                .text_size(px(body_text_px(self.app.zoom())))
+                .text_size(self.sz(BODY_TEXT))
                 // Not a scroll: the editor paints only the visible
                 // lines, so this handle never has anything to move.
                 // It is here to record the text's bounds, which is
@@ -3667,7 +3701,7 @@ impl GpuiView {
                 let gutter = div().w(px(34.0)).mr_2();
                 let gutter = if i == 0 {
                     gutter
-                        .text_size(px(11.0))
+                        .text_size(self.sz(11.0))
                         .text_color(rgb(if ln == cur_line { co.accent } else { co.muted }))
                         .child(format!("{:>3}", ln + 1))
                 } else {
@@ -3884,7 +3918,7 @@ impl GpuiView {
                 .child(
                     div()
                         .px_2()
-                        .text_size(px(10.0))
+                        .text_size(self.sz(10.0))
                         .text_color(rgb(co.muted))
                         .child(format!("insert block  /{query}")),
                 )
@@ -3912,13 +3946,13 @@ impl GpuiView {
                         .child(
                             div()
                                 .w(px(90.0))
-                                .text_size(px(12.0))
+                                .text_size(self.sz(12.0))
                                 .text_color(rgb(if hot { co.fg } else { co.muted }))
                                 .child(tpl.label),
                         )
                         .child(
                             div()
-                                .text_size(px(11.0))
+                                .text_size(self.sz(11.0))
                                 .text_color(rgb(co.code))
                                 .child(preview),
                         )
@@ -3946,7 +3980,7 @@ impl GpuiView {
                 .children(items.iter().enumerate().map(|(i, item)| {
                     div()
                         .px_2()
-                        .text_size(px(12.0))
+                        .text_size(self.sz(12.0))
                         .bg(rgb(if i == ix { co.selection } else { co.bg }))
                         .text_color(rgb(if i == ix { co.fg } else { co.muted }))
                         .child(item.clone())
@@ -3976,6 +4010,7 @@ impl GpuiView {
                 let name = r.name.clone();
                 list_row(
                     co,
+                    self.app.zoom(),
                     i == self.app.selected(),
                     format!("{} {}", if r.on { "☑" } else { "☐" }, r.name),
                     cx.listener(move |this: &mut Self, _ev, _w, cx| {
@@ -4010,6 +4045,7 @@ impl GpuiView {
                 let indent = "  ".repeat(usize::from(r.level.saturating_sub(1)));
                 list_row(
                     co,
+                    self.app.zoom(),
                     shown == self.app.selected(),
                     format!("{indent}{}    {}", r.title, r.path),
                     cx.listener(move |this: &mut Self, _ev, _w, cx| {
@@ -4037,7 +4073,7 @@ impl GpuiView {
             .children(HEAD.into_iter().map(|d| {
                 div()
                     .w(px(32.0))
-                    .text_size(px(11.0))
+                    .text_size(self.sz(11.0))
                     .text_color(rgb(co.muted))
                     .child(d)
             }));
@@ -4061,7 +4097,7 @@ impl GpuiView {
                             .px_1()
                             .rounded_sm()
                             .cursor_pointer()
-                            .text_size(px(13.0))
+                            .text_size(self.sz(13.0))
                             .bg(rgb(if selected { co.accent } else { co.bg }))
                             .text_color(rgb(if selected {
                                 co.bg
@@ -4088,7 +4124,7 @@ impl GpuiView {
             .gap_1()
             .child(
                 div()
-                    .text_size(px(13.0))
+                    .text_size(self.sz(13.0))
                     .text_color(rgb(co.accent))
                     .child(format!(
                         "{}   {} {}",
@@ -4099,13 +4135,16 @@ impl GpuiView {
             )
             .child(header)
             .children(weeks)
-            .child(div().text_size(px(11.0)).text_color(rgb(co.muted)).child(
-                if grid.typed.is_empty() {
-                    "h/l day · j/k week · </> month · . today · RET set · x clear".to_owned()
-                } else {
-                    format!("typed: {}▏", grid.typed)
-                },
-            ))
+            .child(
+                div()
+                    .text_size(self.sz(11.0))
+                    .text_color(rgb(co.muted))
+                    .child(if grid.typed.is_empty() {
+                        "h/l day · j/k week · </> month · . today · RET set · x clear".to_owned()
+                    } else {
+                        format!("typed: {}▏", grid.typed)
+                    }),
+            )
     }
 
     /// The open-buffer list (Q1-B1): every buffer this session has, the
@@ -4136,6 +4175,7 @@ impl GpuiView {
                 );
                 list_row(
                     co,
+                    self.app.zoom(),
                     shown == self.app.selected(),
                     label,
                     cx.listener(move |this: &mut Self, _ev, _w, cx| {
@@ -4174,6 +4214,7 @@ impl GpuiView {
                 };
                 list_row(
                     co,
+                    self.app.zoom(),
                     shown == self.app.selected(),
                     label,
                     cx.listener(move |this: &mut Self, _ev, _w, cx| {
@@ -4202,7 +4243,7 @@ impl GpuiView {
                     .py_1()
                     .rounded_sm()
                     .cursor_pointer()
-                    .text_size(px(12.0))
+                    .text_size(self.sz(12.0))
                     .whitespace_nowrap()
                     .bg(rgb(if r.current { co.selection } else { co.bg }))
                     .text_color(rgb(if r.current { co.fg } else { co.muted }))
@@ -4294,6 +4335,7 @@ impl GpuiView {
             .map(|(i, (label, id))| {
                 list_row(
                     co,
+                    self.app.zoom(),
                     i == selected,
                     label,
                     cx.listener(move |this: &mut Self, _ev, _w, cx| {
@@ -4318,7 +4360,7 @@ impl GpuiView {
                 .pr_2()
                 .overflow_hidden()
                 .text_color(rgb(colour))
-                .text_size(px(size))
+                .text_size(self.sz(size))
                 .child(text)
         };
         let selected = self.app.selected();
@@ -4385,7 +4427,7 @@ impl GpuiView {
                         .rounded_md()
                         .bg(rgb(co.panel))
                         .text_color(rgb(co.success))
-                        .text_size(px(11.0))
+                        .text_size(self.sz(11.0))
                         .cursor_pointer()
                         .hover(move |s| s.bg(rgb(co.hover)))
                         .on_mouse_down(
@@ -4398,7 +4440,7 @@ impl GpuiView {
                 )
                 .children(self.app.chord_for("eval-block").map(|chord| {
                     div()
-                        .text_size(px(10.0))
+                        .text_size(self.sz(10.0))
                         .text_color(rgb(co.accent))
                         .child(chord)
                 })),
@@ -4411,6 +4453,7 @@ impl GpuiView {
                 .map(|(i, (path, lang, first))| {
                     list_row(
                         co,
+                        self.app.zoom(),
                         i == selected,
                         format!("{lang:8} {first}  — {}", short_path(&path)),
                         cx.listener(move |this: &mut Self, _ev, _w, cx| {
@@ -4429,10 +4472,10 @@ impl GpuiView {
                     .bg(rgb(co.panel))
                     .border_1()
                     .border_color(rgb(co.success))
-                    .text_size(px(12.0))
+                    .text_size(self.sz(12.0))
                     .child(
                         div()
-                            .text_size(px(10.0))
+                            .text_size(self.sz(10.0))
                             .text_color(rgb(co.muted))
                             .child("output"),
                     )
@@ -4450,7 +4493,7 @@ impl GpuiView {
     ///
     /// `empty` names what is missing and how it gets filled: "nothing
     /// here yet" tells a reader nothing they cannot already see.
-    fn text_rows(co: Colors, rows: Vec<String>, empty: &'static str) -> Vec<gpui::Div> {
+    fn text_rows(co: Colors, zoom: f32, rows: Vec<String>, empty: &'static str) -> Vec<gpui::Div> {
         if rows.is_empty() {
             return vec![div().text_color(rgb(co.muted)).child(empty)];
         }
@@ -4459,7 +4502,7 @@ impl GpuiView {
                 div()
                     .px_2()
                     .py_1()
-                    .text_size(px(12.0))
+                    .text_size(sz_at(12.0, zoom))
                     .text_color(rgb(co.fg))
                     .child(line)
             })
@@ -4486,7 +4529,7 @@ impl GpuiView {
                     div()
                         .px_2()
                         .rounded_md()
-                        .text_size(px(10.0))
+                        .text_size(self.sz(10.0))
                         .bg(rgb(if status.ready { co.success } else { co.warning }))
                         .text_color(rgb(co.bg))
                         .child(if status.ready {
@@ -4498,7 +4541,7 @@ impl GpuiView {
                 .child(
                     div()
                         .flex_grow()
-                        .text_size(px(11.0))
+                        .text_size(self.sz(11.0))
                         .text_color(rgb(co.muted))
                         .child(status.detail),
                 )
@@ -4509,7 +4552,7 @@ impl GpuiView {
                     div()
                         .px_2()
                         .rounded_md()
-                        .text_size(px(10.0))
+                        .text_size(self.sz(10.0))
                         .bg(rgb(co.panel))
                         .text_color(rgb(if render_granted { co.accent } else { co.muted }))
                         .cursor_pointer()
@@ -4532,7 +4575,7 @@ impl GpuiView {
             pane = pane.child(
                 div()
                     .px_2()
-                    .text_size(px(11.0))
+                    .text_size(self.sz(11.0))
                     .text_color(rgb(co.warning))
                     .child("…thinking".to_owned()),
             );
@@ -4545,7 +4588,7 @@ impl GpuiView {
                 .bg(rgb(co.bg))
                 .border_1()
                 .border_color(rgb(if status.ready { co.accent } else { co.border }))
-                .text_size(px(12.0))
+                .text_size(self.sz(12.0))
                 .text_color(rgb(co.fg))
                 .child(format!("{}▏", self.app.chat_buffer())),
         )
@@ -4556,11 +4599,14 @@ impl GpuiView {
     fn chat_transcript(&self, co: Colors) -> Vec<gpui::Div> {
         if self.app.chat_turns().is_empty() {
             return vec![
-                div().text_color(rgb(co.muted)).text_size(px(12.0)).child(
-                    "Ask about the vault. The assistant reads and edits it through the same \
+                div()
+                    .text_color(rgb(co.muted))
+                    .text_size(self.sz(12.0))
+                    .child(
+                        "Ask about the vault. The assistant reads and edits it through the same \
                  commands you do, and can only see the rendered view if you grant it."
-                        .to_owned(),
-                ),
+                            .to_owned(),
+                    ),
             ];
         }
         self.app
@@ -4582,14 +4628,14 @@ impl GpuiView {
                     .child(
                         div()
                             .w(px(70.0))
-                            .text_size(px(10.0))
+                            .text_size(self.sz(10.0))
                             .text_color(rgb(colour))
                             .child(who),
                     )
                     .child(
                         div()
                             .flex_grow()
-                            .text_size(px(12.0))
+                            .text_size(self.sz(12.0))
                             .text_color(rgb(co.fg))
                             .child(turn.text.clone()),
                     )
@@ -4664,7 +4710,7 @@ impl GpuiView {
         let section = |title: &'static str, colour: u32| {
             div()
                 .mt_2()
-                .text_size(px(10.0))
+                .text_size(self.sz(10.0))
                 .text_color(rgb(colour))
                 .child(title)
         };
@@ -4672,7 +4718,7 @@ impl GpuiView {
             (hidden > 0).then(|| {
                 div()
                     .px_2()
-                    .text_size(px(10.0))
+                    .text_size(self.sz(10.0))
                     .text_color(rgb(co.muted))
                     .child(format!("     …and {hidden} more"))
             })
@@ -4685,7 +4731,7 @@ impl GpuiView {
                 .py_1()
                 .rounded_sm()
                 .cursor_pointer()
-                .text_size(px(12.0))
+                .text_size(self.sz(12.0))
                 .text_color(rgb(co.fg))
                 .bg(rgb(if hot { co.selection } else { co.bg }))
                 .hover(move |s| s.bg(rgb(if hot { co.selection } else { co.hover })))
@@ -4738,6 +4784,7 @@ impl GpuiView {
             .child(section("dead links — targets that do not exist", co.error))
             .children(Self::text_rows(
                 co,
+                self.app.zoom(),
                 dead,
                 "none — every link in the vault resolves",
             ))
@@ -4768,12 +4815,15 @@ impl GpuiView {
             .flex_col()
             .gap_2()
             .child(
-                div().text_size(px(11.0)).text_color(rgb(co.muted)).child(
-                    "Give the other person your ticket. Paste theirs below and press Enter. \
+                div()
+                    .text_size(self.sz(11.0))
+                    .text_color(rgb(co.muted))
+                    .child(
+                        "Give the other person your ticket. Paste theirs below and press Enter. \
                          Then ▲ push to send them your replica; conflicting titles appear under \
                          Conflicts instead of one side winning silently."
-                        .to_owned(),
-                ),
+                            .to_owned(),
+                    ),
             )
             .child(
                 div()
@@ -4782,7 +4832,7 @@ impl GpuiView {
                     .gap_2()
                     .child(
                         div()
-                            .text_size(px(10.0))
+                            .text_size(self.sz(10.0))
                             .text_color(rgb(co.heading2))
                             .child("your ticket — hand this over"),
                     )
@@ -4794,7 +4844,7 @@ impl GpuiView {
                             .px_2()
                             .rounded_md()
                             .bg(rgb(co.panel))
-                            .text_size(px(10.0))
+                            .text_size(self.sz(10.0))
                             .text_color(rgb(co.accent))
                             .cursor_pointer()
                             .hover(move |s| s.bg(rgb(co.hover)))
@@ -4815,7 +4865,7 @@ impl GpuiView {
                     .bg(rgb(co.panel))
                     .border_1()
                     .border_color(rgb(co.border))
-                    .text_size(px(11.0))
+                    .text_size(self.sz(11.0))
                     .text_color(rgb(co.success))
                     .cursor_pointer()
                     .hover(move |s| s.bg(rgb(co.hover)))
@@ -4838,7 +4888,7 @@ impl GpuiView {
             )
             .child(
                 div()
-                    .text_size(px(10.0))
+                    .text_size(self.sz(10.0))
                     .text_color(rgb(co.heading2))
                     .child("their ticket — type or paste, then Enter"),
             )
@@ -4849,22 +4899,31 @@ impl GpuiView {
                     .bg(rgb(co.bg))
                     .border_1()
                     .border_color(rgb(co.accent))
-                    .text_size(px(11.0))
+                    .text_size(self.sz(11.0))
                     .text_color(rgb(co.fg))
                     .child(format!("{typed}▏")),
             )
             .child(
                 div()
-                    .text_size(px(10.0))
+                    .text_size(self.sz(10.0))
                     .text_color(rgb(co.muted))
                     .child(format!("replica: {blocks} block(s) known")),
             )
-            .children(peers.into_iter().map(|peer| Self::peer_row(co, &peer, cx)))
+            .children(
+                peers
+                    .into_iter()
+                    .map(|peer| Self::peer_row(co, self.app.zoom(), &peer, cx)),
+            )
     }
 
     /// One peer: a push button, its address, and what the last round
     /// with it did.
-    fn peer_row(co: Colors, peer: &closure_shell_core::Peer, cx: &Context<Self>) -> gpui::Div {
+    fn peer_row(
+        co: Colors,
+        zoom: f32,
+        peer: &closure_shell_core::Peer,
+        cx: &Context<Self>,
+    ) -> gpui::Div {
         use closure_shell_core::PeerState as S;
         let (colour, state) = match &peer.state {
             S::Known => (co.muted, "known".to_owned()),
@@ -4884,7 +4943,7 @@ impl GpuiView {
                 div()
                     .px_2()
                     .rounded_md()
-                    .text_size(px(11.0))
+                    .text_size(sz_at(11.0, zoom))
                     .text_color(rgb(co.accent))
                     .cursor_pointer()
                     .hover(move |s| s.bg(rgb(co.hover)))
@@ -4899,13 +4958,13 @@ impl GpuiView {
             .child(
                 div()
                     .w(px(160.0))
-                    .text_size(px(11.0))
+                    .text_size(sz_at(11.0, zoom))
                     .text_color(rgb(co.fg))
                     .child(addr.to_string()),
             )
             .child(
                 div()
-                    .text_size(px(11.0))
+                    .text_size(sz_at(11.0, zoom))
                     .text_color(rgb(colour))
                     .child(state),
             )
@@ -5126,7 +5185,7 @@ impl GpuiView {
                 .rounded_md()
                 .bg(rgb(co.panel))
                 .text_color(rgb(colour))
-                .text_size(px(11.0))
+                .text_size(self.sz(11.0))
                 .cursor_pointer()
                 .hover(move |s| s.bg(rgb(co.hover)))
                 .on_mouse_down(
@@ -5148,7 +5207,7 @@ impl GpuiView {
                     .child(
                         div()
                             .text_color(rgb(co.muted))
-                            .text_size(px(11.0))
+                            .text_size(self.sz(11.0))
                             .child(format!("{} rule(s)", sniffer.rules().len())),
                     ),
             )
@@ -5179,7 +5238,7 @@ impl GpuiView {
                     .child(
                         div()
                             .w(px(56.0))
-                            .text_size(px(10.0))
+                            .text_size(self.sz(10.0))
                             .text_color(rgb(colour))
                             .child(verdict),
                     )
@@ -5203,7 +5262,7 @@ impl GpuiView {
                 .rounded_md()
                 .bg(rgb(co.panel))
                 .text_color(rgb(co.accent))
-                .text_size(px(11.0))
+                .text_size(self.sz(11.0))
                 .cursor_pointer()
                 .hover(move |s| s.bg(rgb(co.hover)))
                 .on_mouse_down(
@@ -5235,7 +5294,7 @@ impl GpuiView {
                     .bg(rgb(if hot { co.selection } else { co.bg }))
                     .child(
                         div()
-                            .text_size(px(10.0))
+                            .text_size(self.sz(10.0))
                             .text_color(rgb(co.muted))
                             .child(format!("{} · {:?}", c.block, c.field)),
                     )
@@ -5269,6 +5328,7 @@ impl GpuiView {
                     count,
                     cx.processor(|this, range: std::ops::Range<usize>, _w, cx| {
                         let co = Colors::of(&this.theme);
+                        let zoom = this.app.zoom();
                         let entries = this.app.palette_shared();
                         let cursor = this.app.palette_cursor();
                         range
@@ -5307,13 +5367,13 @@ impl GpuiView {
                                         div()
                                             .flex_grow()
                                             .text_color(rgb(co.muted))
-                                            .text_size(px(11.0))
+                                            .text_size(sz_at(11.0, zoom))
                                             .child(e.description.clone()),
                                     )
                                     .child(
                                         div()
                                             .text_color(rgb(co.accent))
-                                            .text_size(px(11.0))
+                                            .text_size(sz_at(11.0, zoom))
                                             .child(e.action.chord().to_owned()),
                                     )
                             })
@@ -5357,7 +5417,7 @@ impl GpuiView {
                 out = out.child(
                     div()
                         .mt_2()
-                        .text_size(px(11.0))
+                        .text_size(self.sz(11.0))
                         .text_color(rgb(header_color))
                         .child(format!("{}{suffix}", row.date)),
                 );
@@ -5390,7 +5450,7 @@ impl GpuiView {
                     .child(
                         div()
                             .w(px(80.0))
-                            .text_size(px(10.0))
+                            .text_size(self.sz(10.0))
                             .text_color(rgb(kind_color))
                             .child(row.kind),
                     )
@@ -5443,7 +5503,7 @@ impl GpuiView {
             co,
             div()
                 .text_color(rgb(co.muted))
-                .text_size(px(12.0))
+                .text_size(self.sz(12.0))
                 .child(meta_line(&d)),
             "toggle-todo",
             cx,
@@ -5452,7 +5512,7 @@ impl GpuiView {
             co,
             div()
                 .text_color(rgb(co.warning))
-                .text_size(px(12.0))
+                .text_size(self.sz(12.0))
                 .child(tags),
             "edit-tags",
             cx,
@@ -5461,7 +5521,7 @@ impl GpuiView {
             co,
             div()
                 .text_color(rgb(co.error))
-                .text_size(px(11.0))
+                .text_size(self.sz(11.0))
                 .child(props),
             "edit-property",
             cx,
@@ -5469,7 +5529,7 @@ impl GpuiView {
         .child(
             div()
                 .text_color(rgb(co.muted))
-                .text_size(px(10.0))
+                .text_size(self.sz(10.0))
                 .child(d.path.clone()),
         )
         .child(clickable(
@@ -5540,7 +5600,7 @@ impl GpuiView {
             .flex()
             .flex_col()
             .text_color(rgb(co.fg))
-            .text_size(px(13.0));
+            .text_size(self.sz(13.0));
         if body.is_empty() {
             return el.child("+ body".to_owned());
         }
@@ -5667,7 +5727,7 @@ impl GpuiView {
             .px_2()
             .py_1()
             .bg(rgb(co.panel))
-            .text_size(px(11.0))
+            .text_size(self.sz(11.0))
             .child(hints);
         let open = self.which_key_open;
         bar.child(div().flex_grow()).child(
@@ -5720,7 +5780,7 @@ impl GpuiView {
                     .gap_1()
                     .px_2()
                     .py_1()
-                    .text_size(px(11.0))
+                    .text_size(self.sz(11.0))
                     .overflow_y_scroll()
                     .track_scroll(&self.which_key_scroll)
                     .children(groups.into_iter().map(|(title, entries)| {
@@ -5795,7 +5855,7 @@ impl GpuiView {
             .children(
                 self.destinations()
                     .into_iter()
-                    .map(|dest| Self::rail_button(co, dest, cx)),
+                    .map(|dest| Self::rail_button(co, self.app.zoom(), dest, cx)),
             )
     }
 
@@ -5803,6 +5863,7 @@ impl GpuiView {
     /// the same thing from the keyboard.
     fn rail_button(
         co: Colors,
+        zoom: f32,
         dest: closure_shell_core::Destination,
         cx: &Context<Self>,
     ) -> gpui::Stateful<gpui::Div> {
@@ -5821,7 +5882,7 @@ impl GpuiView {
             .px_2()
             .py_1()
             .rounded_md()
-            .text_size(px(12.0))
+            .text_size(sz_at(12.0, zoom))
             .text_color(rgb(fg))
             .cursor_pointer()
             .hover(move |s| s.bg(rgb(co.hover)))
@@ -5833,7 +5894,7 @@ impl GpuiView {
             )
             .tooltip(move |_w, cx| {
                 let text = tooltip.clone();
-                cx.new(move |_| Hint { text, co }).into()
+                cx.new(move |_| Hint { text, co, zoom }).into()
             })
             // The open pane is marked by a filled bar down its left
             // edge, not by colour alone: at a glance the rail has to
@@ -5846,7 +5907,7 @@ impl GpuiView {
                     .rounded_sm()
                     .bg(rgb(if dest.active { co.accent } else { co.panel })),
             )
-            .child(div().text_size(px(12.0)).child(dest.icon))
+            .child(div().text_size(sz_at(12.0, zoom)).child(dest.icon))
             .child(div().flex_grow().child(dest.label));
         if dest.active {
             button = button.bg(rgb(co.selection));
@@ -5856,7 +5917,7 @@ impl GpuiView {
                 div()
                     .px_1()
                     .rounded_sm()
-                    .text_size(px(10.0))
+                    .text_size(sz_at(10.0, zoom))
                     .bg(rgb(if dest.urgent { co.error } else { co.hover }))
                     .text_color(rgb(if dest.urgent { co.bg } else { co.muted }))
                     .child(badge),
@@ -5867,7 +5928,7 @@ impl GpuiView {
             // can click.
             button = button.child(
                 div()
-                    .text_size(px(9.0))
+                    .text_size(sz_at(9.0, zoom))
                     .text_color(rgb(co.muted))
                     .child(chord.to_owned()),
             );
@@ -5884,6 +5945,7 @@ impl GpuiView {
     /// a conflict resolver exist at all.
     fn status_bar(&self, co: Colors, cx: &Context<Self>) -> gpui::Div {
         use closure_shell_core::IndicatorLevel as L;
+        let zoom = self.app.zoom();
         div()
             .debug_selector(|| "status-bar".to_owned())
             .flex()
@@ -5892,7 +5954,7 @@ impl GpuiView {
             .px_3()
             .py_1()
             .bg(rgb(co.panel))
-            .text_size(px(11.0))
+            .text_size(self.sz(11.0))
             .child(
                 div()
                     .flex_grow()
@@ -5951,7 +6013,12 @@ impl GpuiView {
                         )
                         .tooltip(move |_w, cx| {
                             let hint = hint.clone();
-                            cx.new(move |_| Hint { text: hint, co }).into()
+                            cx.new(move |_| Hint {
+                                text: hint,
+                                co,
+                                zoom,
+                            })
+                            .into()
                         });
                 }
                 chip
@@ -6006,7 +6073,7 @@ impl GpuiView {
                     .border_1()
                     .border_color(rgb(col))
                     .text_color(rgb(col))
-                    .text_size(px(11.0))
+                    .text_size(self.sz(11.0))
                     .child(format!("⚑ {}", item.text))
             }))
     }
@@ -6020,7 +6087,7 @@ impl GpuiView {
                 .px_2()
                 .rounded_md()
                 .bg(rgb(co.panel))
-                .text_size(px(11.0))
+                .text_size(self.sz(11.0))
                 .text_color(rgb(colour))
                 .cursor_pointer()
                 .hover(move |s| s.bg(rgb(co.hover)))
@@ -6077,7 +6144,7 @@ impl GpuiView {
                             .bg(rgb(co.bg))
                             .border_1()
                             .border_color(rgb(co.border))
-                            .text_size(px(12.0))
+                            .text_size(self.sz(12.0))
                             .children(items.into_iter().map(|item| {
                                 let command = item.action.command().to_owned();
                                 let selector = format!("menu-{command}");
@@ -6105,7 +6172,7 @@ impl GpuiView {
                                     .child(
                                         div()
                                             .text_color(rgb(co.accent))
-                                            .text_size(px(11.0))
+                                            .text_size(self.sz(11.0))
                                             .child(item.action.chord().to_owned()),
                                     )
                             })),
@@ -6407,6 +6474,7 @@ struct LineGeom {
 struct Hint {
     text: String,
     co: Colors,
+    zoom: f32,
 }
 
 #[cfg(feature = "gpui")]
@@ -6419,7 +6487,7 @@ impl Render for Hint {
             .bg(rgb(self.co.panel))
             .border_1()
             .border_color(rgb(self.co.border))
-            .text_size(px(11.0))
+            .text_size(sz_at(11.0, self.zoom))
             .text_color(rgb(self.co.fg))
             .child(self.text.clone())
     }
@@ -6722,6 +6790,7 @@ fn hit_col(layout: &gpui::TextLayout, text: &str, position: gpui::Point<gpui::Pi
 #[cfg(feature = "gpui")]
 fn list_row(
     co: Colors,
+    zoom: f32,
     selected: bool,
     text: String,
     listener: impl Fn(&gpui::MouseDownEvent, &mut Window, &mut App) + 'static,
@@ -6731,7 +6800,7 @@ fn list_row(
         .py_1()
         .rounded_sm()
         .cursor_pointer()
-        .text_size(px(13.0))
+        .text_size(sz_at(13.0, zoom))
         .bg(rgb(if selected { co.selection } else { co.bg }))
         .hover(move |s| s.bg(rgb(if selected { co.selection } else { co.hover })))
         .on_mouse_down(MouseButton::Left, listener)
@@ -6889,11 +6958,11 @@ impl Render for GpuiView {
             .py_1()
             .bg(rgb(co.panel))
             .text_color(rgb(co.fg))
-            .text_size(px(12.0));
+            .text_size(self.sz(12.0));
         // Capture draws its target as clickable breadcrumbs; every
         // other surface has one line to say and says it.
         let context = if self.app.surface() == ModalSurface::Capture {
-            context.child(self.capture_bar(co, cx))
+            context.child(self.capture_bar(co, self.app.zoom(), cx))
         } else {
             context.child(self.context_line())
         };

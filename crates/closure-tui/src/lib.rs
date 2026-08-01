@@ -2889,9 +2889,8 @@ impl App {
             // lives is the honest answer — pretending the chord did
             // nothing reads as a broken keyboard (I4).
             "zoom-in" | "zoom-out" | "zoom-reset" => {
-                "zoom belongs to the terminal here — use its own font size".clone_into(
-                    &mut self.status,
-                );
+                "zoom belongs to the terminal here — use its own font size"
+                    .clone_into(&mut self.status);
             }
             // A chord the keymap advertises but this shell cannot serve
             // must say so — silence reads as a broken keyboard (I4).

@@ -17,8 +17,8 @@
 #![allow(clippy::unwrap_used, clippy::expect_used, missing_docs)]
 
 use closure_shell_gpui::{
-    BodySpan, Emphasis, ModalSurface, body_text_px, h_scroll_start, line_matches,
-    outline_text_px, side_reveal_offset, styled_runs, visible_window,
+    BodySpan, Emphasis, ModalSurface, body_text_px, h_scroll_start, line_matches, outline_text_px,
+    scaled_text_px, side_reveal_offset, styled_runs, visible_window,
 };
 
 // === a capped list still shows its cursor ===
@@ -241,4 +241,20 @@ fn zoom_scales_the_outline_and_the_body_together() {
     // The ratio is the zoom's, not a per-pane invention.
     assert!((outline_text_px(2.0) / outline_text_px(1.0) - 2.0).abs() < 0.001);
     assert!((body_text_px(0.5) / body_text_px(1.0) - 0.5).abs() < 0.001);
+}
+
+#[test]
+fn every_pane_scales_from_the_one_number() {
+    // Zoom reached two panes; the other sixty-odd text sizes in the
+    // window were literals, so a picker, the block output, the agenda
+    // and the status line all stayed at 11px under a 3x body. One
+    // window, one scale: the sizes differ, the ratio does not.
+    for base in [10.0_f32, 11.0, 12.0, 13.0, 14.0, 15.0] {
+        assert!((scaled_text_px(base, 1.0) - base).abs() < f32::EPSILON);
+        assert!((scaled_text_px(base, 2.0) / base - 2.0).abs() < 0.001);
+        assert!((scaled_text_px(base, 0.5) / base - 0.5).abs() < 0.001);
+    }
+    // The two named panes are the same function underneath.
+    assert!((outline_text_px(1.7) - scaled_text_px(14.0, 1.7)).abs() < f32::EPSILON);
+    assert!((body_text_px(1.7) - scaled_text_px(13.0, 1.7)).abs() < f32::EPSILON);
 }

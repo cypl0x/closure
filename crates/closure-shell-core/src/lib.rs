@@ -2816,7 +2816,12 @@ const PALETTE_COMMANDS: &[(&str, &str, &str, &str)] = &[
         "Pick up bundles peers left in the shared folder",
     ),
     ("zoom-in", "zoom-in", "View", "Scale the text up one step"),
-    ("zoom-out", "zoom-out", "View", "Scale the text down one step"),
+    (
+        "zoom-out",
+        "zoom-out",
+        "View",
+        "Scale the text down one step",
+    ),
     ("zoom-reset", "zoom-reset", "View", "Back to 100%"),
     ("quit", "quit", "App", "Quit closure"),
 ];
