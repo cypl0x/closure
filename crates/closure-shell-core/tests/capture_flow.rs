@@ -580,3 +580,181 @@ fn the_named_target_is_the_one_the_capture_uses() {
     assert!(at > parent, "filed under the headline the prompt named");
     assert_eq!(rows[at].level, 2);
 }
+
+// === The whole path, not just the parent ===
+//
+// "under “Existing child”" names one headline; it does not say which
+// “Existing child”, and a vault has several. The path says it — and
+// once the path is on screen it is also the control: each step is a
+// place the capture could go instead, one click away.
+
+fn crumb_labels(app: &ModalApp, sh: &Shell) -> Vec<String> {
+    app.capture_crumbs(sh)
+        .into_iter()
+        .map(|c| c.label)
+        .collect()
+}
+
+fn active_crumb(app: &ModalApp, sh: &Shell) -> String {
+    app.capture_crumbs(sh)
+        .into_iter()
+        .find(|c| c.active)
+        .expect("one crumb is always the target")
+        .label
+}
+
+#[test]
+fn the_crumbs_are_the_whole_path_down_to_the_target() {
+    let (_d, mut sh) = shell();
+    let mut app = ModalApp::new(InputMode::Doom);
+    app.select_by_id(&sh, "01HQCAP000000000000000002");
+    app.run(&mut sh, "capture-start");
+    assert_eq!(
+        crumb_labels(&app, &sh),
+        vec![
+            "notes.org".to_owned(),
+            "Project".to_owned(),
+            "Existing child".to_owned()
+        ],
+        "file first, then every headline above the target"
+    );
+    let crumbs = app.capture_crumbs(&sh);
+    assert_eq!(crumbs[0].id, None, "the file is not a headline");
+    assert_eq!(crumbs[2].id.as_deref(), Some("01HQCAP000000000000000002"));
+    assert!(
+        crumbs[2].active,
+        "the selection is the target until told otherwise"
+    );
+    assert!(!crumbs[0].active && !crumbs[1].active);
+}
+
+#[test]
+fn picking_a_crumb_moves_the_capture_up_the_path() {
+    let (_d, mut sh) = shell();
+    let mut app = ModalApp::new(InputMode::Doom);
+    app.select_by_id(&sh, "01HQCAP000000000000000002");
+    app.run(&mut sh, "capture-start");
+    app.pick_capture_crumb(&sh, 1);
+    assert_eq!(active_crumb(&app, &sh), "Project");
+    assert!(
+        app.capture_target_label(&sh).contains("Project"),
+        "and the prompt agrees"
+    );
+    assert_eq!(
+        crumb_labels(&app, &sh).len(),
+        3,
+        "the path stays whole, so the way back down is still there"
+    );
+
+    for c in "Second child".chars() {
+        app.on_key(&mut sh, "x", false, false, Some(c));
+    }
+    app.on_key(&mut sh, "enter", false, false, None);
+    let rows = app.rows(&sh);
+    let new = rows
+        .iter()
+        .find(|r| r.title.contains("Second child"))
+        .expect("captured");
+    assert_eq!(new.level, 2, "a child of Project, not of Existing child");
+}
+
+#[test]
+fn picking_the_file_crumb_files_at_the_top_of_that_file() {
+    let (_d, mut sh) = shell();
+    let mut app = ModalApp::new(InputMode::Doom);
+    app.select_by_id(&sh, "01HQCAP000000000000000002");
+    app.run(&mut sh, "capture-start");
+    app.pick_capture_crumb(&sh, 0);
+    assert!(
+        app.capture_target_label(&sh).contains("notes.org"),
+        "the file you were looking at — not the inbox: {}",
+        app.capture_target_label(&sh)
+    );
+
+    for c in "Loose in notes".chars() {
+        app.on_key(&mut sh, "x", false, false, Some(c));
+    }
+    app.on_key(&mut sh, "enter", false, false, None);
+    let rows = app.rows(&sh);
+    let new = rows
+        .iter()
+        .find(|r| r.title.contains("Loose in notes"))
+        .expect("captured");
+    assert_eq!(new.level, 1);
+    assert!(
+        new.path.ends_with("notes.org"),
+        "in the file the crumb named, not the inbox: {}",
+        new.path
+    );
+}
+
+#[test]
+fn the_next_capture_starts_from_the_selection_again() {
+    // A pick is about the capture you are typing, not a mode you are
+    // now in. The next one starts where the selection is, or the pick
+    // outlives the thought that needed it.
+    let (_d, mut sh) = shell();
+    let mut app = ModalApp::new(InputMode::Doom);
+    app.select_by_id(&sh, "01HQCAP000000000000000002");
+    app.run(&mut sh, "capture-start");
+    app.pick_capture_crumb(&sh, 0);
+    app.on_key(&mut sh, "escape", false, false, None);
+
+    app.select_by_id(&sh, "01HQCAP000000000000000002");
+    app.run(&mut sh, "capture-start");
+    assert_eq!(active_crumb(&app, &sh), "Existing child");
+}
+
+#[test]
+fn with_nothing_selected_there_is_one_crumb_and_it_is_the_inbox() {
+    let (_d, mut sh) = shell();
+    let mut app = ModalApp::new(InputMode::Doom);
+    app.select_by_id(&sh, "01HQCAP000000000000000001");
+    app.on_key(&mut sh, "escape", false, false, None);
+    app.run(&mut sh, "capture-start");
+    let crumbs = app.capture_crumbs(&sh);
+    assert_eq!(crumb_labels(&app, &sh), vec!["inbox.org".to_owned()]);
+    assert!(crumbs[0].active && crumbs[0].id.is_none());
+}
+
+#[test]
+fn the_file_crumb_files_into_the_file_it_came_from_not_its_namesake() {
+    // Two `notes.org` in one vault, one of them in a subdirectory. The
+    // crumb shows a file name because a path is not a label — so the
+    // capture has to be filed by path, or it lands in whichever
+    // namesake sorts first.
+    let dir = tempfile::tempdir().expect("tmp");
+    fs::write(dir.path().join("notes.org"), SRC).expect("write");
+    fs::create_dir(dir.path().join("sub")).expect("mkdir");
+    fs::write(
+        dir.path().join("sub").join("notes.org"),
+        "* Deep\n:PROPERTIES:\n:ID: 01HQCAP000000000000000009\n:END:\n",
+    )
+    .expect("write");
+    let mut sh = Shell::new(Vault::open(dir.path()).expect("open"));
+    let mut app = ModalApp::new(InputMode::Doom);
+
+    app.select_by_id(&sh, "01HQCAP000000000000000009");
+    app.run(&mut sh, "capture-start");
+    assert_eq!(
+        app.capture_crumbs(&sh).first().expect("file crumb").label,
+        "notes.org",
+        "the chip shows the name"
+    );
+    app.pick_capture_crumb(&sh, 0);
+    for c in "Into the subdirectory".chars() {
+        app.on_key(&mut sh, "x", false, false, Some(c));
+    }
+    app.on_key(&mut sh, "enter", false, false, None);
+
+    let landed = fs::read_to_string(dir.path().join("sub").join("notes.org")).expect("read");
+    assert!(
+        landed.contains("Into the subdirectory"),
+        "filed into sub/notes.org: {landed}"
+    );
+    let other = fs::read_to_string(dir.path().join("notes.org")).expect("read");
+    assert!(
+        !other.contains("Into the subdirectory"),
+        "and not into its namesake at the root"
+    );
+}

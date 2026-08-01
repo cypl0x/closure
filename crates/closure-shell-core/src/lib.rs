@@ -141,6 +141,71 @@ pub struct Shell {
 /// going and a second spelling of it would be a second answer.
 pub const CAPTURE_FILE: &str = "inbox.org";
 
+/// One step on the path a capture will file into: the file at the
+/// head, then each headline down to the target.
+///
+/// Shells render these as breadcrumbs and hand a click back through
+/// [`ModalApp::pick_capture_crumb`], so the same list is both the
+/// answer to "where is this going" and the way to change it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CaptureCrumb {
+    /// Block id of the headline, or `None` for the file crumb — and
+    /// for a headline that carries no `:ID:`, which cannot be filed
+    /// under and so is shown but not offered.
+    pub id: Option<String>,
+    /// File name or headline title, as shown.
+    pub label: String,
+    /// Whether this is the step the capture will actually file into.
+    /// Exactly one crumb in a list is active.
+    pub active: bool,
+}
+
+/// A file name and the headline chain under it: each step's block id
+/// (absent when the headline carries no `:ID:`) and its title.
+type CaptureChain = (String, Vec<(Option<String>, String)>);
+
+/// The file name and the headline chain (outermost first) above and
+/// including `id`, or `None` when the id is not in the vault.
+///
+/// Read from the document rather than from the visible rows: a filter
+/// or a fold can hide an ancestor from the outline, and the path a
+/// capture takes does not change because you cannot currently see part
+/// of it.
+fn capture_chain(shell: &Shell, id: &str) -> Option<CaptureChain> {
+    let bid = closure_core::BlockId::from_existing(id);
+    let (_, path) = shell.vault.find_by_id(&bid)?;
+    let file = path.file_name().map_or_else(
+        || path.display().to_string(),
+        |n| n.to_string_lossy().into_owned(),
+    );
+    let doc = shell.vault.document(path)?;
+    let target = doc.headline_by_id(&bid)?.path().to_vec();
+    // Every headline carries its outline path, so an ancestor is one
+    // whose path is a prefix of the target's — no tree walk, and the
+    // order falls out of the depth.
+    let mut chain: Vec<(usize, Option<String>, String)> = doc
+        .all_headlines()
+        .filter(|h| {
+            !h.path().is_empty() && h.path().len() <= target.len() && target.starts_with(h.path())
+        })
+        .map(|h| {
+            (
+                h.path().len(),
+                Some(h.id().to_string()),
+                h.title().to_owned(),
+            )
+        })
+        .collect();
+    chain.sort_by_key(|(depth, _, _)| *depth);
+    Some((
+        file,
+        chain
+            .into_iter()
+            .map(|(_, id, title)| (id, title))
+            .collect(),
+    ))
+}
+
 impl Shell {
     /// Build a shell over an already-loaded vault.
     #[must_use]
@@ -165,6 +230,30 @@ impl Shell {
     ) -> Result<closure_core::BlockId, closure_store::VaultError> {
         let template = closure_store::CaptureTemplate {
             target: std::path::PathBuf::from(CAPTURE_FILE),
+            headline_prefix: "TODO ".to_owned(),
+            body: String::new(),
+        };
+        self.vault.capture(&template, title)
+    }
+
+    /// Capture a new `TODO` entry at the top level of `file`, relative
+    /// to the vault root (I8).
+    ///
+    /// [`Self::capture`] is this with [`CAPTURE_FILE`]: the inbox is
+    /// where a thought goes when there is no better answer, not the
+    /// only file a capture can reach. A missing file is created, the
+    /// way org creates a capture target.
+    ///
+    /// # Errors
+    ///
+    /// Propagates [`closure_store::VaultError`] from the capture.
+    pub fn capture_into(
+        &mut self,
+        file: &str,
+        title: &str,
+    ) -> Result<closure_core::BlockId, closure_store::VaultError> {
+        let template = closure_store::CaptureTemplate {
+            target: std::path::PathBuf::from(file),
             headline_prefix: "TODO ".to_owned(),
             body: String::new(),
         };
@@ -9386,6 +9475,12 @@ pub struct ModalApp {
     capture_hist_at: Option<usize>,
     /// The capture overlay's one-line field (text + cursor).
     capture_buf: LineInput,
+    /// Which step of [`Self::capture_crumbs`] this capture files into,
+    /// when the user has picked one; `None` is the selection itself.
+    ///
+    /// A pick belongs to the capture being typed, not to the app, so
+    /// it is cleared whenever the overlay opens.
+    capture_crumb_pick: Option<usize>,
     body: BodyEditor,
     completion: Option<CompletionSession>,
     edit_target: Option<String>,
@@ -9708,6 +9803,7 @@ impl ModalApp {
             capture_history: Vec::new(),
             capture_hist_at: None,
             capture_buf: LineInput::default(),
+            capture_crumb_pick: None,
             body: BodyEditor::new(),
             body_baseline: String::new(),
             completion: None,
@@ -14367,26 +14463,122 @@ impl ModalApp {
         self.capture_buf.set_text(text);
     }
 
+    /// The path a capture will file into: the file, then every
+    /// headline down to the target.
+    ///
+    /// "under “Notes”" names one headline, and a vault has several of
+    /// those; the path says *which*. It is also the control — each
+    /// step is somewhere the capture could go instead, so filing one
+    /// level up is a click and not a cancel, a re-select and a retype.
+    ///
+    /// Always at least one crumb, and exactly one of them is
+    /// [`CaptureCrumb::active`]: with nothing selected that is the
+    /// capture file, which is where a loose thought goes.
+    #[must_use]
+    pub fn capture_crumbs(&self, shell: &Shell) -> Vec<CaptureCrumb> {
+        let Some(id) = self
+            .selection_active
+            .then(|| self.selected_row_id(shell))
+            .flatten()
+        else {
+            return vec![CaptureCrumb {
+                id: None,
+                label: CAPTURE_FILE.to_owned(),
+                active: true,
+            }];
+        };
+        let Some((file, chain)) = capture_chain(shell, &id) else {
+            return vec![CaptureCrumb {
+                id: None,
+                label: CAPTURE_FILE.to_owned(),
+                active: true,
+            }];
+        };
+        let mut crumbs = Vec::with_capacity(chain.len() + 1);
+        crumbs.push(CaptureCrumb {
+            id: None,
+            label: file,
+            active: false,
+        });
+        crumbs.extend(chain.into_iter().map(|(id, label)| CaptureCrumb {
+            id,
+            label,
+            active: false,
+        }));
+        // The selection is the target until the user says otherwise,
+        // and a pick that outran the path (the outline moved under it)
+        // falls back to the same place rather than to none.
+        let last = crumbs.len() - 1;
+        let at = self
+            .capture_crumb_pick
+            .filter(|i| *i <= last)
+            .unwrap_or(last);
+        crumbs[at].active = true;
+        crumbs
+    }
+
+    /// The selected headline's file, relative to the vault root — what
+    /// the file crumb actually means when it is filed into.
+    ///
+    /// The crumb shows a file *name* because a path is not a label;
+    /// the capture needs the path, because a vault may hold more than
+    /// one file with that name.
+    fn selected_capture_file(&self, shell: &Shell) -> Option<String> {
+        let id = self
+            .selection_active
+            .then(|| self.selected_row_id(shell))
+            .flatten()?;
+        let bid = closure_core::BlockId::from_existing(&id);
+        let (_, path) = shell.vault.find_by_id(&bid)?;
+        let rel = path.strip_prefix(shell.vault.root()).unwrap_or(path);
+        Some(rel.to_string_lossy().into_owned())
+    }
+
+    /// File the capture being typed into crumb `index` of
+    /// [`Self::capture_crumbs`] — the click on a breadcrumb.
+    ///
+    /// Out-of-range indices are ignored rather than clamped: a click
+    /// on a crumb that is no longer there should do nothing, not
+    /// silently retarget the capture somewhere the user did not point.
+    pub fn pick_capture_crumb(&mut self, shell: &Shell, index: usize) {
+        let crumbs = self.capture_crumbs(shell);
+        if index >= crumbs.len() {
+            return;
+        }
+        // A crumb with no id and no file behind it cannot be filed
+        // into (a headline that never got an `:ID:`); the file crumb
+        // always can.
+        if index > 0 && crumbs[index].id.is_none() {
+            self.status = format!("“{}” has no id to file under", crumbs[index].label);
+            return;
+        }
+        self.capture_crumb_pick = Some(index);
+        self.status = format!("capture {}", self.capture_target_label(shell));
+    }
+
     /// Where the next capture will be filed, in words: `under “Foo”`,
     /// or `into inbox.org` when nothing is selected.
     ///
     /// Both destinations are right and neither was visible — the
     /// overlay said "capture" either way, so the only way to learn
     /// where a thought had landed was to file it and go look. Derived
-    /// from the same selection [`Self::commit_capture`] reads, so the
-    /// promise and the filing cannot drift apart.
+    /// from the same crumbs [`Self::commit_capture`] files into, so
+    /// the promise and the filing cannot drift apart.
     #[must_use]
     pub fn capture_target_label(&self, shell: &Shell) -> String {
-        self.selection_active
-            .then(|| self.selected_row_id(shell))
-            .flatten()
-            .and_then(|id| {
-                self.rows_shared(shell)
-                    .iter()
-                    .find(|r| r.id == id)
-                    .map(|r| format!("under “{}”", r.title))
-            })
-            .unwrap_or_else(|| format!("into {CAPTURE_FILE}"))
+        self.capture_crumbs(shell)
+            .into_iter()
+            .find(|c| c.active)
+            .map_or_else(
+                || format!("into {CAPTURE_FILE}"),
+                |c| {
+                    if c.id.is_some() {
+                        format!("under “{}”", c.label)
+                    } else {
+                        format!("into {}", c.label)
+                    }
+                },
+            )
     }
 
     fn commit_capture(&mut self, shell: &mut Shell, text: &str) {
@@ -14396,16 +14588,25 @@ impl ModalApp {
         // was.
         let (title, body) = text.split_once('\n').unwrap_or((text, ""));
         let title = title.trim_end();
-        let parent = self
-            .selection_active
-            .then(|| self.selected_row_id(shell))
-            .flatten();
-        let captured = match &parent {
-            Some(parent) => {
+        // The active crumb *is* the target — the same list the prompt
+        // showed, so what was on screen is what happens.
+        let target = self.capture_crumbs(shell).into_iter().find(|c| c.active);
+        let parent = target.as_ref().and_then(|c| c.id.clone());
+        let captured = match (&parent, &target) {
+            (Some(parent), _) => {
                 let id = closure_core::BlockId::from_existing(parent);
                 shell.capture_under(&id, title)
             }
-            None => shell.capture(title),
+            // The file crumb: the top level of the file being looked
+            // at, which is only the inbox when nothing is selected.
+            // Filed by its path under the vault root, never by the
+            // name on the chip — two directories can hold a
+            // `notes.org` and only one of them is the one on screen.
+            (None, Some(_)) => match self.selected_capture_file(shell) {
+                Some(file) => shell.capture_into(&file, title),
+                None => shell.capture(title),
+            },
+            (None, None) => shell.capture(title),
         };
         match captured {
             Ok(id) => {
@@ -14828,6 +15029,8 @@ impl ModalApp {
             "capture-start" => {
                 self.surface = ModalSurface::Capture;
                 self.capture_buf.clear();
+                // A pick belongs to the thought it was made for.
+                self.capture_crumb_pick = None;
                 self.status = format!("capture {}", self.capture_target_label(shell));
             }
             "search-start" | "search-headline-start" => {
