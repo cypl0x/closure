@@ -10882,6 +10882,20 @@ pub struct ModalApp {
     /// pressed hundreds of times a session and are never what you open
     /// the palette to find.
     palette_history: Vec<String>,
+    /// What each prompt has been given before, newest first, keyed by
+    /// the kind of prompt rather than by the surface — the four
+    /// new-headline chords share one prompt and so share one history.
+    ///
+    /// Recorded on the way *out* whichever door was used. A history
+    /// that only kept what you accepted would forget exactly the case
+    /// the report is about: three sentences into a capture, `Esc`.
+    prompt_history: std::collections::BTreeMap<&'static str, Vec<String>>,
+    /// Where a history walk has got to, and the line it interrupted.
+    ///
+    /// The draft is held so that walking past the newest entry gives it
+    /// back — looking through history must not cost you what you had
+    /// already typed.
+    history_walk: Option<(usize, String)>,
     /// Bumped whenever [`Self::palette_history`] changes, so the
     /// palette memo notices — its key is the query and the mode, and
     /// neither of those moves when the history does.
@@ -11297,6 +11311,8 @@ impl ModalApp {
                 todo: false,
             },
             palette_history: Vec::new(),
+            prompt_history: std::collections::BTreeMap::new(),
+            history_walk: None,
             history_gen: 0,
             which_key_open: false,
             line_kill: String::new(),
@@ -12059,6 +12075,16 @@ impl ModalApp {
         // folds, because folds live on the app. So the rescue is one
         // wrapper rather than a hook per motion: whatever the key did,
         // the caret must not end on a line no shell will paint.
+        // History, before the surface sees the key. `M-p`/`M-n` walk
+        // it; `escape` and `enter` are the two doors out of a prompt
+        // and both record what was in it — a history that kept only
+        // what you accepted would forget the case the report is about.
+        if (key == "p" || key == "n") && alt && !ctrl && self.walk_history(key == "p") {
+            return;
+        }
+        if matches!(key, "escape" | "enter") {
+            self.remember_prompt();
+        }
         let before = self.body.cursor_line_col().0;
         let editing = self.surface.is_editor();
         match self.surface {
@@ -16753,6 +16779,131 @@ impl ModalApp {
     }
 
     /// [`Self::active_prompt`] without the borrow, for the shells.
+    /// Which history this surface draws on, or `None` for a surface
+    /// that is not a prompt.
+    ///
+    /// The pickers share the outline's filter field but not its
+    /// history: a filter typed to find a buffer is not a candidate for
+    /// the one that finds a file.
+    const fn prompt_kind(surface: ModalSurface) -> Option<&'static str> {
+        Some(match surface {
+            ModalSurface::Capture => "capture",
+            ModalSurface::Rename => "rename",
+            ModalSurface::AddSibling => "heading",
+            ModalSurface::TagsEdit | ModalSurface::TagPick => "tags",
+            ModalSurface::PropertyEdit => "property",
+            ModalSurface::Search | ModalSurface::BodySearch => "search",
+            ModalSurface::Ex => "ex",
+            ModalSurface::Llm => "llm",
+            ModalSurface::Refile => "refile",
+            _ => return None,
+        })
+    }
+
+    /// The field a prompt types into, mutably.
+    const fn prompt_mut(&mut self) -> Option<&mut LineInput> {
+        match self.surface {
+            ModalSurface::Capture => Some(&mut self.capture_buf),
+            ModalSurface::Rename
+            | ModalSurface::AddSibling
+            | ModalSurface::TagsEdit
+            | ModalSurface::PropertyEdit
+            | ModalSurface::Palette => Some(&mut self.field_buf),
+            ModalSurface::Search
+            | ModalSurface::BodySearch
+            | ModalSurface::Buffers
+            | ModalSurface::Files
+            | ModalSurface::TagPick
+            | ModalSurface::Refile
+            | ModalSurface::Headlines
+            | ModalSurface::Blocks
+            | ModalSurface::UndoHistory
+            | ModalSurface::Messages => Some(&mut self.query),
+            ModalSurface::Ex => Some(&mut self.ex_buf),
+            ModalSurface::Sync => Some(&mut self.sync_buf),
+            ModalSurface::Llm => Some(&mut self.chat_buf),
+            _ => None,
+        }
+    }
+
+    /// Remember what this prompt was holding, whichever door it left
+    /// by. Called on the way out of every prompt surface.
+    fn remember_prompt(&mut self) {
+        const KEEP: usize = 100;
+        let Some(kind) = Self::prompt_kind(self.surface) else {
+            return;
+        };
+        let Some(text) = self.prompt().map(|f| f.text().to_owned()) else {
+            return;
+        };
+        self.history_walk = None;
+        if text.trim().is_empty() {
+            return;
+        }
+        let ring = self.prompt_history.entry(kind).or_default();
+        // A repeat is one entry: a history of the same word five times
+        // is four keystrokes between you and the one before it.
+        ring.retain(|e| *e != text);
+        ring.insert(0, text);
+        ring.truncate(KEEP);
+    }
+
+    /// How many entries this prompt's history holds.
+    ///
+    /// A prompt that can recall something says so: a feature nothing
+    /// mentions is a feature nobody presses, and this one exists for
+    /// the moment *after* the mistake, when you are not exploring.
+    #[must_use]
+    pub fn prompt_history_len(&self) -> usize {
+        Self::prompt_kind(self.surface)
+            .and_then(|k| self.prompt_history.get(k))
+            .map_or(0, Vec::len)
+    }
+
+    /// `M-p` / `M-n`: walk this prompt's history.
+    ///
+    /// Emacs's own minibuffer keys, and it has to be those rather than
+    /// `C-p`/`C-n` — those are the completion cycle in a prompt and the
+    /// list walk in a picker.
+    fn walk_history(&mut self, back: bool) -> bool {
+        let Some(kind) = Self::prompt_kind(self.surface) else {
+            return false;
+        };
+        let ring = self.prompt_history.get(kind).cloned().unwrap_or_default();
+        if ring.is_empty() {
+            return false;
+        }
+        let current = self
+            .prompt()
+            .map(|f| f.text().to_owned())
+            .unwrap_or_default();
+        let (at, draft) = match self.history_walk.take() {
+            Some((i, draft)) => (Some(i), draft),
+            // Starting a walk: the line you were typing is the thing to
+            // come back to, not the first entry.
+            None => (None, current),
+        };
+        let next = match (at, back) {
+            (None, true) => Some(0),
+            (Some(i), true) => Some((i + 1).min(ring.len() - 1)),
+            (Some(i), false) if i > 0 => Some(i - 1),
+            // Forward off the newest entry, or forward without a walk
+            // in progress: back to the line you were typing.
+            (None | Some(_), false) => None,
+        };
+        let text = match next {
+            Some(i) => {
+                self.history_walk = Some((i, draft));
+                ring[i].clone()
+            }
+            None => draft,
+        };
+        if let Some(field) = self.prompt_mut() {
+            field.set_text(&text);
+        }
+        true
+    }
+
     const fn prompt(&self) -> Option<&LineInput> {
         match self.surface {
             ModalSurface::Capture => Some(&self.capture_buf),

@@ -3151,6 +3151,22 @@ impl GpuiView {
         row.child(sep("·")).children(self.capture_field(co, cx))
     }
 
+    /// "M-p N back", when this prompt has anything to recall.
+    ///
+    /// A feature nothing mentions is a feature nobody presses, and this
+    /// one exists for the moment *after* a mistake, when you are not in
+    /// the mood to go exploring for it.
+    fn history_hint(&self, co: Colors) -> Option<gpui::Div> {
+        let n = self.app.prompt_history_len();
+        (n > 0).then(|| {
+            div()
+                .flex_none()
+                .text_size(self.sz(10.0))
+                .text_color(rgb(co.muted))
+                .child(format!("M-p {n} back"))
+        })
+    }
+
     /// The row under the header: breadcrumbs while capturing, a live
     /// field while a prompt is open, one line of text otherwise.
     fn context_row(&self, co: Colors, cx: &Context<Self>) -> gpui::Div {
@@ -3164,7 +3180,16 @@ impl GpuiView {
         // Capture draws its target as clickable breadcrumbs; every
         // other surface has one line to say and says it.
         let line = if self.app.surface() == ModalSurface::Capture {
-            self.capture_bar(co, self.app.zoom(), cx)
+            // The history hint goes here too: capture has a bar of its
+            // own rather than the prompt row, and capture is the
+            // surface the report is about — three sentences in, `Esc`.
+            div()
+                .flex()
+                .flex_row()
+                .items_center()
+                .gap_2()
+                .child(self.capture_bar(co, self.app.zoom(), cx))
+                .children(self.history_hint(co))
         } else if let Some(prompt) = self.prompt_row(co, cx) {
             prompt
         } else {
@@ -3349,6 +3374,7 @@ impl GpuiView {
                 // What this field will do, in the field's own row. It
                 // was in the status line at the bottom of the window,
                 // which is the wrong end of the screen from the caret.
+                .children(self.history_hint(co))
                 .children((!hint.is_empty()).then(|| {
                     div()
                         .flex_none()
