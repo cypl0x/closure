@@ -15881,6 +15881,23 @@ impl ModalApp {
         self.status = format!("capture {}", self.capture_target_label(shell));
     }
 
+    /// Whether the capture will land as a `child` of the crumb it is
+    /// pointing at, or at the `top level` of a file.
+    ///
+    /// The breadcrumbs name the target and the filled chip says which
+    /// step it is, which answers "where" and leaves "as a child of it,
+    /// or beside it?" to be guessed ("the capture prefix should mention
+    /// if it will be placed as a child to a corresponding element").
+    #[must_use]
+    pub fn capture_placement(&self, shell: &Shell) -> &'static str {
+        let onto_headline = self
+            .capture_crumbs(shell)
+            .into_iter()
+            .find(|c| c.active)
+            .is_some_and(|c| c.id.is_some());
+        if onto_headline { "child" } else { "top level" }
+    }
+
     /// Where the next capture will be filed, in words: `under “Foo”`,
     /// or `into inbox.org` when nothing is selected.
     ///

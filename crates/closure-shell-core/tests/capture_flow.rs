@@ -956,3 +956,55 @@ fn ctrl_enter_on_an_empty_line_does_not_file_a_blank() {
     assert_eq!(titles(&app, &sh).len(), before, "nothing was filed");
     assert_eq!(app.surface(), ModalSurface::Capture, "and it stayed open");
 }
+
+// === The bar says what the capture will *be*, not just where ===
+//
+// Reported: "the capture prefix should mention if it will be placed as
+// a child to a corresponding element."
+//
+// The breadcrumbs name the target and the filled chip says which step
+// it is, which answers "where" — and leaves "as a child of it, or
+// beside it?" to be guessed. One word fixes that, and it is the word
+// the status line was already using.
+
+#[test]
+fn capturing_onto_a_headline_says_child() {
+    let (_d, mut sh) = shell();
+    let mut app = ModalApp::new(InputMode::Doom);
+    app.select(0, &sh); // Project
+    app.run(&mut sh, "capture-start");
+    assert_eq!(app.capture_placement(&sh), "child");
+}
+
+#[test]
+fn capturing_with_no_selection_says_top_level() {
+    // Escape drops the selection, which is how you say "file this
+    // loose" — and then it is not a child of anything.
+    let (_d, mut sh) = shell();
+    let mut app = ModalApp::new(InputMode::Doom);
+    // Escape in the outline is how you say "file this loose"; a fresh
+    // app has not selected anything yet either.
+    app.on_key(&mut sh, "escape", false, false, None);
+    app.run(&mut sh, "capture-start");
+    assert_eq!(app.capture_placement(&sh), "top level");
+}
+
+#[test]
+fn it_agrees_with_where_the_capture_actually_lands() {
+    // The label is worthless if it can disagree with the filing.
+    let (_d, mut sh) = shell();
+    let mut app = ModalApp::new(InputMode::Doom);
+    app.select(0, &sh);
+    app.run(&mut sh, "capture-start");
+    let said = app.capture_placement(&sh);
+    for c in "Filed".chars() {
+        app.on_key(&mut sh, &c.to_string(), false, false, Some(c));
+    }
+    app.on_key(&mut sh, "enter", false, false, None);
+    let row = app
+        .rows(&sh)
+        .into_iter()
+        .find(|r| r.title == "Filed")
+        .expect("filed");
+    assert_eq!(said, if row.level > 1 { "child" } else { "top level" });
+}

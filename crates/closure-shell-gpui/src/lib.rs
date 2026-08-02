@@ -2862,7 +2862,9 @@ impl GpuiView {
                     .flex_none()
                     .pr_1()
                     .text_color(rgb(co.success))
-                    .child("＋"),
+                    // The word, not just the glyph: the crumbs say
+                    // where and this says what it will be there.
+                    .child(format!("＋ {}", self.app.capture_placement(&self.shell))),
             );
         for (n, slot) in shown.into_iter().enumerate() {
             if n > 0 {
