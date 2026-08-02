@@ -1606,6 +1606,50 @@ fn a_note_with_an_image_link_paints_it(cx: &mut gpui::TestAppContext) {
 }
 
 #[gpui::test]
+fn a_long_title_stays_inside_the_detail_pane(cx: &mut gpui::TestAppContext) {
+    // "[#A] horizontal scroll for long titles detail preview".
+    //
+    // The screenshot: a headline title running off the right edge of
+    // the *window* and stopping, with no ellipsis, no wrap and nothing
+    // to scroll — the end of the title simply did not exist on screen.
+    //
+    // Scrolling is what was asked for; wrapping is what the thing
+    // needs. A title is one unit you want to read whole, and a title
+    // you have to drag sideways to finish reading is a title you read
+    // twice. So it wraps, and this asserts the property the report is
+    // really about: nothing lands outside the window.
+    // Asserting the painted *bounds* stay in the window proves
+    // nothing: the pane clips, so gpui reports a box inside the window
+    // whose text is nonetheless cut in half. The faithful property is
+    // that a long title takes more than one line — which is only true
+    // if it wraps.
+    let short = "* Short\n:PROPERTIES:\n:ID: 01HQSHRT00000000000000000\n:END:\nbody\n";
+    let long = "* A really extremely long headline title that goes on and on and keeps \
+                going well past any sensible pane width XYZZY-TITLE-END\n\
+                :PROPERTIES:\n:ID: 01HQLONG00000000000000000\n:END:\nbody\n";
+
+    let (_d1, _v1, vcx1) = visual_window(cx, short);
+    let one_line = vcx1
+        .debug_bounds("field-rename")
+        .expect("the title painted")
+        .size
+        .height;
+
+    let (_d2, _v2, vcx2) = visual_window(cx, long);
+    let wrapped = vcx2
+        .debug_bounds("field-rename")
+        .expect("the title painted")
+        .size
+        .height;
+
+    assert!(
+        wrapped > one_line,
+        "a title too wide for the pane has to wrap rather than be cut: \
+         {wrapped:?} vs {one_line:?}"
+    );
+}
+
+#[gpui::test]
 fn the_editor_shows_the_pictures_too(cx: &mut gpui::TestAppContext) {
     // "editor view inline image toggle". The preview painted images
     // from the first day and the editor never did — so writing a note

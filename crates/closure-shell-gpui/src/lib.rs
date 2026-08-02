@@ -6972,6 +6972,16 @@ impl GpuiView {
                 }))
                 .child(
                     div()
+                        // A title too wide for the pane wraps instead
+                        // of running off the edge and stopping. It was
+                        // simply cut — no ellipsis, no wrap, nothing
+                        // to scroll, so the end of a long headline did
+                        // not exist on screen. `min_w(0)` is what lets
+                        // a flex child shrink below its content width
+                        // at all; without it the row keeps the title's
+                        // natural width and the pane clips the result.
+                        .flex_1()
+                        .min_w(px(0.0))
                         .text_color(rgb(co.accent))
                         .text_lg()
                         .font_weight(gpui::FontWeight::BOLD)
