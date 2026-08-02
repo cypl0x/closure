@@ -109,6 +109,7 @@ pub const fn opening_route(surface: crate::ModalSurface) -> &'static [&'static s
         S::Capture => &["capture-start"],
         S::EditBody => &["edit-body"],
         S::Backlinks => &["backlinks"],
+        S::Messages => &["messages"],
         S::Agenda => &["agenda"],
         S::Blocks => &["block-list"],
         S::TagsEdit => &["edit-tags"],

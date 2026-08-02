@@ -93,6 +93,8 @@ pub enum AppMode {
     FileView,
     /// Listing the notes that link into the selected file.
     Backlinks,
+    /// The message log — every status line this session has shown.
+    Messages,
     /// Typing the title of a new capture entry in a minibuffer.
     Capture,
     /// Navigating the selected file's headlines with a cursor.
@@ -225,6 +227,9 @@ pub struct App {
     /// driver owns the vault, so the terminal asks for the re-read the
     /// way it asks for every other write.
     reload_request: bool,
+    /// Every status line this session has shown, newest first — the
+    /// `*Messages*` buffer the window keeps too.
+    messages: Vec<String>,
     /// Whether long lines wrap in the file view instead of being cut
     /// at the pane edge. The window has the same switch; the chord is
     /// the same one (I4).
@@ -366,6 +371,7 @@ impl App {
             undo_request: false,
             redo_request: false,
             reload_request: false,
+            messages: Vec::new(),
             wrap: false,
             input_mode: closure_config::InputMode::Doom,
             view_rows: Vec::new(),
@@ -827,17 +833,43 @@ impl App {
         self.popup = None;
         self.result_cursor = 0;
         self.scroll = 0;
-        "reloaded — vault re-read from disk".clone_into(&mut self.status);
+        self.say("reloaded — vault re-read from disk");
+    }
+
+    /// Open the log. The bottom line holds one message; this is where
+    /// the rest of them went — same log, same chord as the window (I4).
+    const fn open_messages(&mut self) {
+        self.mode = AppMode::Messages;
+        self.result_cursor = 0;
+    }
+
+    /// Every status line this session has shown, newest first.
+    #[must_use]
+    pub fn messages(&self) -> &[String] {
+        &self.messages
     }
 
     /// Fold long lines at the pane edge, or cut them there.
+    /// Show `text` on the bottom line and keep it — the terminal's half
+    /// of the `*Messages*` log the window keeps.
+    fn say(&mut self, text: impl Into<String>) {
+        /// How far back the log goes.
+        const KEEP: usize = 200;
+        let text = text.into();
+        if self.messages.first() != Some(&text) {
+            self.messages.insert(0, text.clone());
+            self.messages.truncate(KEEP);
+        }
+        self.status = text;
+    }
+
     fn toggle_wrap(&mut self) {
         self.wrap = !self.wrap;
-        self.status = if self.wrap {
+        self.say(if self.wrap {
             "wrap on — long lines fold at the pane edge".to_owned()
         } else {
             "wrap off — long lines are cut at the edge".to_owned()
-        };
+        });
     }
 
     /// Whether long lines wrap in the file view.
@@ -1192,6 +1224,15 @@ impl App {
             }
             AppMode::FileView => return self.handle_view_stroke(stroke),
             AppMode::Backlinks => return self.handle_backlinks_stroke(stroke),
+            // The log is read-only: walk it, or leave.
+            AppMode::Messages => {
+                match stroke {
+                    "j" | "<down>" => self.result_cursor += 1,
+                    "k" | "<up>" => self.result_cursor = self.result_cursor.saturating_sub(1),
+                    _ => self.mode = AppMode::Browse,
+                }
+                return;
+            }
             AppMode::Capture => return self.handle_capture_stroke(stroke),
             AppMode::Headlines => return self.handle_headlines_stroke(stroke),
             AppMode::Rename => return self.handle_rename_stroke(stroke),
@@ -2712,6 +2753,14 @@ impl App {
             "quit" => self.quit = true,
             "reload-shell" => self.start_over(),
             "toggle-wrap" => self.toggle_wrap(),
+            "messages" => self.open_messages(),
+            other => self.apply_list_command(other),
+        }
+    }
+
+    /// The rest of the command table — the list and navigation verbs.
+    fn apply_list_command(&mut self, cmd: &str) {
+        match cmd {
             "search-start" => {
                 self.mode = AppMode::Search;
                 self.query.clear();
@@ -3954,6 +4003,10 @@ fn finder_overlay(app: &App) -> Option<(String, Vec<String>)> {
 fn overlay_content(app: &App) -> Option<(String, Vec<String>)> {
     match app.mode() {
         AppMode::Search | AppMode::SearchHeadlines => finder_overlay(app),
+        AppMode::Messages => Some((
+            "messages — newest first".to_owned(),
+            app.messages().to_vec(),
+        )),
         AppMode::Backlinks => Some((
             app.selected_path().map_or_else(
                 || "backlinks".to_owned(),

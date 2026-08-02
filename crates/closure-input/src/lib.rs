@@ -61,6 +61,9 @@ const DOOM_KEYMAP: &[(&str, &str)] = &[
     // `C-c z` in Emacs — a chord the strip itself can name, which
     // is what "specify keybinding" asked for.
     ("g z", "dismiss-notifications"),
+    // …and the log they came from. Emacs keeps its `*Messages*` buffer
+    // for the same reason: the bottom line only ever holds the newest.
+    ("g M", "messages"),
     // Half a screen at a time, vim's own chords for it. In a
     // buffer these stay readline's (`C-u` kills to the line
     // start, `C-d` deletes forward) — the vim engine has its own
@@ -262,6 +265,9 @@ const EMACS_KEYMAP: &[(&str, &str)] = &[
     // `C-c z` in Emacs — a chord the strip itself can name, which
     // is what "specify keybinding" asked for.
     ("g z", "dismiss-notifications"),
+    // …and the log they came from. Emacs keeps its `*Messages*` buffer
+    // for the same reason: the bottom line only ever holds the newest.
+    ("g M", "messages"),
     // Half a screen at a time, vim's own chords for it. In a
     // buffer these stay readline's (`C-u` kills to the line
     // start, `C-d` deletes forward) — the vim engine has its own
@@ -409,6 +415,9 @@ const VIM_KEYMAP: &[(&str, &str)] = &[
     // `C-c z` in Emacs — a chord the strip itself can name, which
     // is what "specify keybinding" asked for.
     ("g z", "dismiss-notifications"),
+    // …and the log they came from. Emacs keeps its `*Messages*` buffer
+    // for the same reason: the bottom line only ever holds the newest.
+    ("g M", "messages"),
     // Half a screen at a time, vim's own chords for it. In a
     // buffer these stay readline's (`C-u` kills to the line
     // start, `C-d` deletes forward) — the vim engine has its own
@@ -561,6 +570,9 @@ const HELIX_KEYMAP: &[(&str, &str)] = &[
     // `C-c z` in Emacs — a chord the strip itself can name, which
     // is what "specify keybinding" asked for.
     ("g z", "dismiss-notifications"),
+    // …and the log they came from. Emacs keeps its `*Messages*` buffer
+    // for the same reason: the bottom line only ever holds the newest.
+    ("g M", "messages"),
     // Half a screen at a time, vim's own chords for it. In a
     // buffer these stay readline's (`C-u` kills to the line
     // start, `C-d` deletes forward) — the vim engine has its own
@@ -713,6 +725,9 @@ const NOTION_KEYMAP: &[(&str, &str)] = &[
     // `C-c z` in Emacs — a chord the strip itself can name, which
     // is what "specify keybinding" asked for.
     ("g z", "dismiss-notifications"),
+    // …and the log they came from. Emacs keeps its `*Messages*` buffer
+    // for the same reason: the bottom line only ever holds the newest.
+    ("g M", "messages"),
     // Half a screen at a time, vim's own chords for it. In a
     // buffer these stay readline's (`C-u` kills to the line
     // start, `C-d` deletes forward) — the vim engine has its own

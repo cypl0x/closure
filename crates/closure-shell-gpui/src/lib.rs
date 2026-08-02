@@ -1280,6 +1280,9 @@ pub const fn accepts_paste(surface: ModalSurface, insert: bool) -> bool {
         // The refile picker filters by typing, like the others.
         | ModalSurface::Refile
         | ModalSurface::TagPick
+        // The message log filters by typing too, though nothing in it
+        // can be edited.
+        | ModalSurface::Messages
         | ModalSurface::Llm => true,
         ModalSurface::EditBody | ModalSurface::EditBlock | ModalSurface::EditFile => insert,
         ModalSurface::Browse
@@ -3196,6 +3199,12 @@ impl GpuiView {
         let n = self.app.rows(&self.shell).len();
         match self.app.surface() {
             ModalSurface::Browse => format!("{n} headline(s)"),
+            ModalSurface::Messages => {
+                format!(
+                    "messages — {} kept · type to filter",
+                    self.app.messages().len()
+                )
+            }
             ModalSurface::Search => self.app.search_context(&self.shell),
             // The capture surface draws breadcrumbs instead
             // ([`Self::capture_bar`]); this is the text fallback for
@@ -5923,6 +5932,7 @@ impl GpuiView {
                             .filter_map(|i| view.rows.get(i).cloned().map(|e| (i, e)))
                             .map(|(i, e)| {
                                 let is_cur = i == cursor;
+                                let wide = e.detail.is_empty() && e.trailing.is_empty();
                                 div()
                                     .debug_selector(move || format!("palette-row-{i}"))
                                     .flex()
@@ -5973,10 +5983,19 @@ impl GpuiView {
                                     // between them, so every row read
                                     // `Go to the next filej`.
                                     .gap_3()
+                                    // A row with nothing in the other
+                                    // two columns gives its label the
+                                    // whole width: a message log whose
+                                    // messages are cut at a third of
+                                    // the panel is not a log you can
+                                    // read.
                                     .child(
                                         div()
-                                            .flex_none()
-                                            .w(px(scaled_text_px(PALETTE_LABEL_W, zoom)))
+                                            .when(!wide, |d| {
+                                                d.flex_none()
+                                                    .w(px(scaled_text_px(PALETTE_LABEL_W, zoom)))
+                                            })
+                                            .when(wide, gpui::Div::flex_grow)
                                             .overflow_hidden()
                                             .flex()
                                             .whitespace_nowrap()

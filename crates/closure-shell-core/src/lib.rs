@@ -6641,6 +6641,9 @@ pub enum ModalSurface {
     Conflicts,
     /// The vim-style `:` command line.
     Ex,
+    /// The message log — every status line this session has shown,
+    /// because the bottom line only ever holds the newest.
+    Messages,
     /// org-edit-special: one source block, on its own, in its own
     /// language. `C-Enter` writes it back, `Esc` discards.
     EditBlock,
@@ -6733,6 +6736,7 @@ impl ModalSurface {
                 | Self::Headlines
                 | Self::Blocks
                 | Self::UndoHistory
+                | Self::Messages
                 | Self::Ex
                 | Self::Sync
                 | Self::Llm
@@ -10432,6 +10436,14 @@ pub struct ModalApp {
     /// shows it too, but that one closes itself the moment the chord
     /// resolves; this is the one a person asked for.
     which_key_open: bool,
+    /// Every status line this session has shown, newest first.
+    ///
+    /// The bottom line was one `String`, overwritten by whatever
+    /// happened next — "saved", "3 file(s) changed on disk", "peer
+    /// added" all landed in the same slot and the previous one was gone
+    /// before you had finished reading it. Emacs keeps a `*Messages*`
+    /// buffer for exactly this reason.
+    messages: Vec<String>,
     /// The notification log. It lived in the gpui window, which is
     /// why it had no command and no chord — there was nothing for the
     /// keymap to point at. Here it has both, and the terminal shell
@@ -10866,6 +10878,7 @@ impl ModalApp {
             history_gen: 0,
             which_key_open: false,
             line_kill: String::new(),
+            messages: Vec::new(),
             notifications: Feedback::default(),
             palette_cursor: 0,
             pending: Vec::new(),
@@ -11176,7 +11189,7 @@ impl ModalApp {
         // closing it gives that buffer back ([`Self::close_palette`]).
         self.palette_return = self.surface.is_editor().then_some(self.surface);
         self.surface = ModalSurface::Palette;
-        "palette — type to filter, Enter to run".clone_into(&mut self.status);
+        self.say("palette — type to filter, Enter to run");
     }
 
     /// Put the palette away, giving back whatever it floated over.
@@ -11606,7 +11619,10 @@ impl ModalApp {
                 self.on_field_key(shell, key, ctrl, alt, text, FieldKind::AddSibling);
             }
             ModalSurface::Palette => self.on_palette_key(shell, key, ctrl, alt, text),
-            ModalSurface::UndoHistory | ModalSurface::Headlines | ModalSurface::Blocks => {
+            ModalSurface::UndoHistory
+            | ModalSurface::Headlines
+            | ModalSurface::Blocks
+            | ModalSurface::Messages => {
                 self.on_picker_list_key(shell, key, ctrl, alt, text);
             }
             ModalSurface::DbView => {
@@ -12105,13 +12121,13 @@ impl ModalApp {
                         let n = self.sync_mut().peers().len();
                         // A peer pasted once is a peer tomorrow.
                         self.save_peers(shell);
-                        self.status = format!("peer added — {n} peer(s)");
+                        self.say(format!("peer added — {n} peer(s)"));
                     }
                     Err(e) => {
                         // Keep the text so it can be corrected rather
                         // than retyped.
                         self.sync_buf.set_text(&ticket);
-                        self.status = format!("bad ticket: {e}");
+                        self.say(format!("bad ticket: {e}"));
                     }
                 }
             }
@@ -12131,7 +12147,31 @@ impl ModalApp {
     /// Replace the status line — for a shell reporting something the
     /// core did not produce, such as what the pointer is hovering.
     pub fn set_status(&mut self, text: impl Into<String>) {
-        self.status = text.into();
+        self.say(text);
+    }
+
+    /// Show `text` on the bottom line and keep it.
+    ///
+    /// The one place a message reaches that line, so it is also the one
+    /// place that can remember it. A repeat of the newest is not new
+    /// information — a log full of "saved" is a log you stop reading —
+    /// and the depth is capped, because a history that never forgets is
+    /// a leak with a scrollbar.
+    fn say(&mut self, text: impl Into<String>) {
+        /// How far back the log goes.
+        const KEEP: usize = 200;
+        let text = text.into();
+        if self.messages.first() != Some(&text) {
+            self.messages.insert(0, text.clone());
+            self.messages.truncate(KEEP);
+        }
+        self.status = text;
+    }
+
+    /// Every status line this session has shown, newest first.
+    #[must_use]
+    pub fn messages(&self) -> &[String] {
+        &self.messages
     }
 
     /// The activity rail: every pane of the shell as a clickable
@@ -12303,8 +12343,7 @@ impl ModalApp {
         match self.surface {
             ModalSurface::EditBody => self.begin_special_from_body(),
             ModalSurface::Blocks => self.begin_special_from_list(shell),
-            _ => "edit-special: open a source block first (g e lists them)"
-                .clone_into(&mut self.status),
+            _ => self.say("edit-special: open a source block first (g e lists them)"),
         }
     }
 
@@ -12315,7 +12354,7 @@ impl ModalApp {
         let buffer = self.body.text().to_owned();
         let cursor = self.body.cursor_byte();
         let Some((range, lang)) = enclosing_src_block(&buffer, cursor) else {
-            "edit-special: the cursor is not inside a source block".clone_into(&mut self.status);
+            self.say("edit-special: the cursor is not inside a source block");
             return;
         };
         let content = buffer[range.clone()].to_owned();
@@ -12339,7 +12378,7 @@ impl ModalApp {
     fn begin_special_from_list(&mut self, shell: &Shell) {
         let rows = self.block_rows(shell);
         let Some((path, lang, _)) = rows.get(self.selected).cloned() else {
-            "edit-special: no source blocks in this vault".clone_into(&mut self.status);
+            self.say("edit-special: no source blocks in this vault");
             return;
         };
         let index = rows[..self.selected]
@@ -12353,7 +12392,7 @@ impl ModalApp {
             .and_then(|doc| doc.org().code_blocks().get(index).copied())
             .and_then(|n| n.as_code_block().map(|cb| cb.content.to_owned()))
         else {
-            "edit-special: could not read that block".clone_into(&mut self.status);
+            self.say("edit-special: could not read that block");
             return;
         };
         self.special = Some((SpecialOrigin::File { path, index }, lang));
@@ -12388,13 +12427,13 @@ impl ModalApp {
     /// to open, so it stays where it is and says so.
     fn open_file_buffer(&mut self, shell: &Shell) {
         let Some(row) = self.rows_shared(shell).get(self.selected).cloned() else {
-            "no file to open — the vault is empty".clone_into(&mut self.status);
+            self.say("no file to open — the vault is empty");
             self.view = ViewMode::Clickable;
             return;
         };
         let id = closure_core::BlockId::from_existing(&row.id);
         let Some((_, path)) = shell.vault.find_by_id(&id) else {
-            "that headline has no file on disk".clone_into(&mut self.status);
+            self.say("that headline has no file on disk");
             self.view = ViewMode::Clickable;
             return;
         };
@@ -12424,7 +12463,7 @@ impl ModalApp {
                 self.selected = self
                     .selected
                     .min(self.rows_shared(shell).len().saturating_sub(1));
-                self.status = format!("wrote {}", path.display());
+                self.say(format!("wrote {}", path.display()));
             }
             Err(e) => self.status = format!("save failed: {e}"),
         }
@@ -12669,7 +12708,7 @@ impl ModalApp {
     fn cycle_buffer(&mut self, shell: &Shell, delta: isize) {
         let len = self.buffers.len();
         if len == 0 {
-            "no buffers open — open a note first".clone_into(&mut self.status);
+            self.say("no buffers open — open a note first");
             return;
         }
         let current = self.current_buffer();
@@ -12689,11 +12728,11 @@ impl ModalApp {
     /// throw away something you typed.
     fn close_current_buffer(&mut self, shell: &Shell, force: bool) {
         let Some(target) = self.current_buffer() else {
-            "no buffer to close".clone_into(&mut self.status);
+            self.say("no buffer to close");
             return;
         };
         if !force && self.buffer_is_dirty(&target) {
-            "unsaved edits — :w saves, buffer-close-force discards".clone_into(&mut self.status);
+            self.say("unsaved edits — :w saves, buffer-close-force discards");
             return;
         }
         if force {
@@ -12716,7 +12755,7 @@ impl ModalApp {
             self.body.clear();
             self.body_baseline.clear();
             self.surface = ModalSurface::Browse;
-            "no buffers left".clone_into(&mut self.status);
+            self.say("no buffers left");
         }
     }
 
@@ -12734,7 +12773,7 @@ impl ModalApp {
             .find_by_id(&bid)
             .map(|(h, _)| closure_org::unescape_body(h.body_text()))
         else {
-            self.status = format!("that note is no longer in the vault: {id}");
+            self.say(format!("that note is no longer in the vault: {id}"));
             return;
         };
         // The buffer is the whole subtree: the headline's own prose,
@@ -12777,7 +12816,7 @@ impl ModalApp {
         if let Some(path) = file {
             self.remember_recent_file(&path);
         }
-        self.status = if came_back {
+        self.say(if came_back {
             // Said out loud, because the buffer disagrees with the file
             // and the user did not do it just now.
             "unsaved edits restored — :w saves, :q! discards".to_owned()
@@ -12785,7 +12824,7 @@ impl ModalApp {
             "edit body — NORMAL, i to insert, C-Enter save, :q closes".to_owned()
         } else {
             "edit body — C-Enter save, Esc closes".to_owned()
-        };
+        });
     }
 
     /// Open a file as one full-window buffer, by path — what the file
@@ -12806,7 +12845,7 @@ impl ModalApp {
             .find(|(p, _)| *p == path)
             .map(|(_, doc)| doc.source())
         else {
-            self.status = format!("no such file in this vault: {}", path.display());
+            self.say(format!("no such file in this vault: {}", path.display()));
             return;
         };
         self.leave_buffer();
@@ -12819,11 +12858,11 @@ impl ModalApp {
         self.touch_buffer(BufferRef::File(path.clone()));
         let shown = vault_relative(shell, path);
         self.remember_recent_file(&shown);
-        self.status = if self.modal_editing() {
+        self.say(if self.modal_editing() {
             format!("{} — NORMAL, i to insert, C-Enter save", shown.display())
         } else {
             format!("{} — C-Enter save, Esc back", shown.display())
-        };
+        });
     }
 
     /// The two pickers' keys: type to filter, arrows (and `C-n`/`C-p`'s
@@ -12864,7 +12903,7 @@ impl ModalApp {
             }
             "enter" => {
                 let Some(&row) = matches.get(self.selected) else {
-                    "nothing matches".clone_into(&mut self.status);
+                    self.say("nothing matches");
                     return;
                 };
                 self.query.clear();
@@ -12999,7 +13038,7 @@ impl ModalApp {
             .then(|| self.selected_row_id(shell))
             .flatten();
         let Some(id) = selected else {
-            "nothing selected — put the cursor on a headline first".clone_into(&mut self.status);
+            self.say("nothing selected — put the cursor on a headline first");
             return;
         };
         let bid = closure_core::BlockId::from_existing(&id);
@@ -13012,8 +13051,7 @@ impl ModalApp {
         self.surface = ModalSurface::TagPick;
         self.query.clear();
         self.selected = 0;
-        "tags — type to filter · SPC toggles · RET writes · Esc cancels"
-            .clone_into(&mut self.status);
+        self.say("tags — type to filter · SPC toggles · RET writes · Esc cancels");
     }
 
     /// Tick or untick `name` in the draft — the click path.
@@ -13035,11 +13073,11 @@ impl ModalApp {
         match shell.set_tags(&bid, &tags) {
             Ok(()) => {
                 self.invalidate_rows();
-                self.status = if tags.is_empty() {
+                self.say(if tags.is_empty() {
                     "tags cleared".to_owned()
                 } else {
                     format!("tags: {}", tags.join(" "))
-                };
+                });
             }
             Err(e) => self.status = format!("could not set the tags: {e}"),
         }
@@ -13070,7 +13108,7 @@ impl ModalApp {
                 self.query.clear();
                 self.selected = 0;
                 self.go_home();
-                "tags left as they were".clone_into(&mut self.status);
+                self.say("tags left as they were");
             }
             "enter" => self.commit_tag_picker(shell),
             " " | "space" => {
@@ -13143,7 +13181,7 @@ impl ModalApp {
             _ => running.or(selected),
         };
         let Some(id) = target else {
-            "nothing selected, and no clock running".clone_into(&mut self.status);
+            self.say("nothing selected, and no clock running");
             return;
         };
         let bid = closure_core::BlockId::from_existing(&id);
@@ -13156,11 +13194,11 @@ impl ModalApp {
         match result {
             Ok(()) => {
                 self.invalidate_rows();
-                self.status = match verb {
+                self.say(match verb {
                     "clock-in" => "clocked in".to_owned(),
                     "clock-out" => "clocked out".to_owned(),
                     _ => "clock cancelled".to_owned(),
-                };
+                });
             }
             Err(e) => self.status = format!("{verb}: {e}"),
         }
@@ -13169,7 +13207,7 @@ impl ModalApp {
     /// Jump the outline to the headline whose clock is running.
     fn clock_goto(&mut self, shell: &Shell) {
         let Some((id, _)) = shell.vault.running_clock() else {
-            "no clock is running".clone_into(&mut self.status);
+            self.say("no clock is running");
             return;
         };
         self.select_by_id(shell, &id);
@@ -13261,14 +13299,14 @@ impl ModalApp {
             .then(|| self.selected_row_id(shell))
             .flatten();
         let Some(id) = selected else {
-            "nothing selected — put the cursor on a headline first".clone_into(&mut self.status);
+            self.say("nothing selected — put the cursor on a headline first");
             return;
         };
         self.refile_source = Some(id);
         self.surface = ModalSurface::Refile;
         self.query.clear();
         self.selected = 0;
-        "refile to — type to filter · RET files it · Esc cancels".clone_into(&mut self.status);
+        self.say("refile to — type to filter · RET files it · Esc cancels");
     }
 
     /// File the pending subtree under the target on row `i` — the click
@@ -13284,7 +13322,7 @@ impl ModalApp {
         let to = closure_core::BlockId::from_existing(&row.id);
         match shell.vault.refile(&from, &to) {
             Ok(()) => {
-                self.status = format!("filed under {}", row.title);
+                self.say(format!("filed under {}", row.title));
                 self.invalidate_rows();
                 self.select_by_id(shell, &source);
             }
@@ -13302,14 +13340,17 @@ impl ModalApp {
             .then(|| self.selected_row_id(shell))
             .flatten();
         let Some(id) = selected else {
-            "nothing selected — put the cursor on a headline first".clone_into(&mut self.status);
+            self.say("nothing selected — put the cursor on a headline first");
             return;
         };
         let bid = closure_core::BlockId::from_existing(&id);
         let today = self.today.clone();
         match shell.vault.archive_subtree(&bid, &today) {
             Ok(path) => {
-                self.status = format!("archived to {}", vault_relative(shell, &path).display());
+                self.say(format!(
+                    "archived to {}",
+                    vault_relative(shell, &path).display()
+                ));
                 self.invalidate_rows();
                 self.selected = self
                     .selected
@@ -13342,11 +13383,11 @@ impl ModalApp {
                 self.query.clear();
                 self.selected = 0;
                 self.go_home();
-                "left where it was".clone_into(&mut self.status);
+                self.say("left where it was");
             }
             "enter" => {
                 let Some(&row) = matches.get(self.selected) else {
-                    "nothing matches".clone_into(&mut self.status);
+                    self.say("nothing matches");
                     return;
                 };
                 self.refile_click(shell, row);
@@ -13383,7 +13424,7 @@ impl ModalApp {
         let cfg = Self::vault_config(shell);
         let keywords = cfg.todo_keywords.clone();
         if keywords.is_empty() {
-            "no TODO keywords configured".clone_into(&mut self.status);
+            self.say("no TODO keywords configured");
             return;
         }
         let current = self.detail(shell).and_then(|d| d.todo);
@@ -13409,19 +13450,19 @@ impl ModalApp {
         if let Some(path) = shell.vault.find_by_id(&bid).map(|(_, p)| p.to_path_buf())
             && let Err(e) = shell.vault.ensure_todo_keywords(&path, &keywords)
         {
-            self.status = format!("could not declare the keywords: {e}");
+            self.say(format!("could not declare the keywords: {e}"));
             return;
         }
         if shell.set_todo(&bid, next.as_deref()).is_err() {
-            "could not change the keyword".clone_into(&mut self.status);
+            self.say("could not change the keyword");
             return;
         }
         self.log_done_stamp(shell, &row.id, next.as_deref(), &keywords, cfg.log_done);
         self.invalidate_rows();
-        self.status = next.map_or_else(
+        self.say(next.map_or_else(
             || format!("cleared the keyword on {}", row.title),
             |k| format!("{k}: {}", row.title),
-        );
+        ));
     }
 
     /// Stamp (or unstamp) `CLOSED:` when a headline reaches or leaves
@@ -13469,7 +13510,7 @@ impl ModalApp {
             deadline.as_deref(),
             stamp.as_deref(),
         ) {
-            self.status = format!("could not stamp CLOSED: {e}");
+            self.say(format!("could not stamp CLOSED: {e}"));
         }
     }
 
@@ -13483,7 +13524,7 @@ impl ModalApp {
         };
         let levels = Self::vault_config(shell).priority_levels;
         if levels.is_empty() {
-            "no priorities configured".clone_into(&mut self.status);
+            self.say("no priorities configured");
             return;
         }
         let current = self.detail(shell).and_then(|d| d.priority);
@@ -13513,7 +13554,7 @@ impl ModalApp {
         };
         let levels = Self::vault_config(shell).priority_levels;
         if levels.is_empty() {
-            "no priorities configured".clone_into(&mut self.status);
+            self.say("no priorities configured");
             return;
         }
         let current = self.detail(shell).and_then(|d| d.priority);
@@ -13542,12 +13583,12 @@ impl ModalApp {
     /// every other edit made in the editor.
     fn toggle_checkbox(&mut self) {
         if !self.surface.is_editor() {
-            "no buffer open — a checkbox lives in a body".clone_into(&mut self.status);
+            self.say("no buffer open — a checkbox lives in a body");
             return;
         }
         let line = self.body.current_line().to_owned();
         let Some(toggled) = toggle_checkbox_line(&line) else {
-            "no checkbox on this line".clone_into(&mut self.status);
+            self.say("no checkbox on this line");
             return;
         };
         self.body.replace_current_line(&toggled);
@@ -13633,7 +13674,7 @@ impl ModalApp {
             .then(|| self.selected_row_id(shell))
             .flatten();
         let Some(row) = selected else {
-            "nothing selected — put the cursor on a headline first".clone_into(&mut self.status);
+            self.say("nothing selected — put the cursor on a headline first");
             return;
         };
         let bid = closure_core::BlockId::from_existing(&row);
@@ -13654,10 +13695,10 @@ impl ModalApp {
             typed: String::new(),
         });
         self.surface = ModalSurface::DatePick;
-        self.status = format!(
+        self.say(format!(
             "{} — h/l day · j/k week · </> month · . today · RET set · x clear · Esc cancel",
             field.keyword()
-        );
+        ));
     }
 
     /// Move the picker's cursor by `days`, keeping it a real date.
@@ -13734,7 +13775,7 @@ impl ModalApp {
                 h.closed().map(ToOwned::to_owned),
             )
         }) else {
-            "that headline is no longer in the vault".clone_into(&mut self.status);
+            self.say("that headline is no longer in the vault");
             return;
         };
         let (scheduled, deadline) = match field {
@@ -13749,10 +13790,10 @@ impl ModalApp {
         ) {
             Ok(()) => {
                 self.invalidate_rows();
-                self.status = stamp.map_or_else(
+                self.say(stamp.map_or_else(
                     || format!("{} cleared", field.keyword()),
                     |s| format!("{}: {s}", field.keyword()),
-                );
+                ));
             }
             Err(e) => self.status = format!("could not set {}: {e}", field.keyword()),
         }
@@ -13766,7 +13807,7 @@ impl ModalApp {
             "escape" => {
                 self.date_pick = None;
                 self.surface = ModalSurface::Browse;
-                "left as it was".clone_into(&mut self.status);
+                self.say("left as it was");
             }
             "enter" => self.commit_date_pick(shell),
             "backspace" => {
@@ -13889,10 +13930,10 @@ impl ModalApp {
         self.special_return = Some(self.surface);
         self.load_body(content);
         self.surface = ModalSurface::EditBlock;
-        self.status = format!(
+        self.say(format!(
             "edit-special [{}] — C-Enter write back, Esc discard",
             self.special_language()
-        );
+        ));
     }
 
     /// Write the edited block back the way its origin requires.
@@ -13904,8 +13945,8 @@ impl ModalApp {
         match origin {
             SpecialOrigin::File { path, index } => {
                 match shell.vault.set_block_content(&path, index, &edited) {
-                    Ok(()) => "block written".clone_into(&mut self.status),
-                    Err(e) => self.status = format!("edit-special failed: {e}"),
+                    Ok(()) => self.say("block written"),
+                    Err(e) => self.say(format!("edit-special failed: {e}")),
                 }
                 self.body.clear();
             }
@@ -13919,7 +13960,7 @@ impl ModalApp {
                 buffer.replace_range(range, &edited);
                 self.load_body(buffer);
                 self.body.set_cursor_byte(cursor);
-                "block spliced — C-Enter again to save the body".clone_into(&mut self.status);
+                self.say("block spliced — C-Enter again to save the body");
             }
         }
         self.surface = self.special_return.take().unwrap_or(ModalSurface::Browse);
@@ -13934,7 +13975,7 @@ impl ModalApp {
         } else {
             self.body.clear();
         }
-        "edit-special discarded".clone_into(&mut self.status);
+        self.say("edit-special discarded");
         self.surface = self.special_return.take().unwrap_or(ModalSurface::Browse);
     }
 
@@ -13943,7 +13984,7 @@ impl ModalApp {
         self.ex_buf.clear();
         self.ex_return = Some(self.surface);
         self.surface = ModalSurface::Ex;
-        ":".clone_into(&mut self.status);
+        self.say(":");
     }
 
     /// Keys for the `:` line: typing edits it, Enter runs it, Escape
@@ -14025,7 +14066,7 @@ impl ModalApp {
             "q!" | "quit!" if editing => self.discard_editor(),
             "q" | "quit" if editing_file => {
                 if self.body_dirty() {
-                    "unsaved edit — :w writes it · :q! discards".clone_into(&mut self.status);
+                    self.say("unsaved edit — :w writes it · :q! discards");
                 } else {
                     self.close_file_buffer();
                     self.view = ViewMode::Clickable;
@@ -14069,8 +14110,7 @@ impl ModalApp {
                     // And here it does not, and saying "written" would
                     // be a lie about a write that never happened —
                     // every edit goes through the kernel to disk (I8).
-                    "the vault is written on every edit — nothing to save"
-                        .clone_into(&mut self.status);
+                    self.say("the vault is written on every edit — nothing to save");
                 }
                 // `:wq` from a buffer wrote it and closed it
                 // (`commit_edit_body`); quitting the app as well is the
@@ -14110,7 +14150,7 @@ impl ModalApp {
                     }
                     self.run_command(shell, other);
                 } else {
-                    self.status = format!("not an editor command: {other}");
+                    self.say(format!("not an editor command: {other}"));
                 }
             }
         }
@@ -14297,14 +14337,17 @@ impl ModalApp {
     /// remembered until it is accepted.
     fn begin_new_heading(&mut self, shell: &Shell, cmd: &str) {
         let Some(row) = self.rows_shared(shell).get(self.selected).cloned() else {
-            "nothing selected — put the cursor on a headline first".clone_into(&mut self.status);
+            self.say("nothing selected — put the cursor on a headline first");
             return;
         };
         self.new_heading = NewHeading::for_command(cmd);
         self.field_target = Some(row.id);
         self.field_buf.clear();
         self.surface = ModalSurface::AddSibling;
-        self.status = format!("new {} — Enter save, Esc cancel", self.new_heading_label());
+        self.say(format!(
+            "new {} — Enter save, Esc cancel",
+            self.new_heading_label()
+        ));
     }
 
     /// What the open title prompt is about to make: `sibling`,
@@ -14683,7 +14726,7 @@ impl ModalApp {
         if let Some(row) = self.rows_shared(shell).get(self.selected).cloned() {
             let path = std::path::PathBuf::from(&row.path);
             match shell.vault.jump_history_in(&path, index) {
-                Ok(()) => "jumped".clone_into(&mut self.status),
+                Ok(()) => self.say("jumped"),
                 Err(e) => self.status = format!("jump failed: {e}"),
             }
             self.selected = self
@@ -14792,7 +14835,7 @@ impl ModalApp {
             return;
         };
         if row.level <= 1 {
-            "already at the top level — nothing left to move out of".clone_into(&mut self.status);
+            self.say("already at the top level — nothing left to move out of");
             return;
         }
         let bid = closure_core::BlockId::from_existing(&row.id);
@@ -14809,7 +14852,7 @@ impl ModalApp {
         }
         self.select_id(shell, &row.id);
         if let Err(e) = shell.promote(&bid) {
-            self.status = format!("move failed: {e}");
+            self.say(format!("move failed: {e}"));
             return;
         }
         self.select_id(shell, &row.id);
@@ -14818,7 +14861,7 @@ impl ModalApp {
         if !forward && parent.is_some() {
             self.swap_with_sibling(shell, false);
         }
-        self.status = format!("{} moved out one level", row.title);
+        self.say(format!("{} moved out one level", row.title));
     }
 
     /// Swap the selected subtree with its neighbouring sibling,
@@ -15579,8 +15622,7 @@ impl ModalApp {
                     && self.body.pending_count() == 0
                 {
                     if self.modal_editing() {
-                        "NORMAL — :q closes, :w saves, C-Enter saves and closes"
-                            .clone_into(&mut self.status);
+                        self.say("NORMAL — :q closes, :w saves, C-Enter saves and closes");
                     } else {
                         self.escape_closes_buffer();
                     }
@@ -15661,7 +15703,7 @@ impl ModalApp {
             "zoom-reset" => self.zoom_reset(),
             _ => return false,
         }
-        self.status = format!("zoom {:.0}%", self.zoom() * 100.0);
+        self.say(format!("zoom {:.0}%", self.zoom() * 100.0));
         true
     }
 
@@ -15765,7 +15807,7 @@ impl ModalApp {
         // The popup (and the cycle) shows the top 8 ranked candidates.
         items.truncate(8);
         if items.is_empty() {
-            "no completions".clone_into(&mut self.status);
+            self.say("no completions");
             return;
         }
         let text = items[0].clone();
@@ -15814,7 +15856,8 @@ impl ModalApp {
             // same field rather than each growing one.
             | ModalSurface::Headlines
             | ModalSurface::Blocks
-            | ModalSurface::UndoHistory => Some(&mut self.query),
+            | ModalSurface::UndoHistory
+            | ModalSurface::Messages => Some(&mut self.query),
             ModalSurface::Ex => Some(&mut self.ex_buf),
             ModalSurface::Sync => Some(&mut self.sync_buf),
             ModalSurface::Llm => Some(&mut self.chat_buf),
@@ -15941,7 +15984,7 @@ impl ModalApp {
                 if let Some(row) = self.rows_shared(shell).get(self.selected).cloned() {
                     let path = std::path::PathBuf::from(&row.path);
                     match shell.vault.jump_history_in(&path, index) {
-                        Ok(()) => "jumped".clone_into(&mut self.status),
+                        Ok(()) => self.say("jumped"),
                         Err(e) => self.status = format!("jump failed: {e}"),
                     }
                     self.selected = self
@@ -16087,6 +16130,24 @@ impl ModalApp {
                     })
                     .collect(),
             ),
+            ModalSurface::Messages => (
+                "messages",
+                "the newest is first",
+                filtered(
+                    self.messages.clone(),
+                    self.prompt_text().unwrap_or_default(),
+                    Clone::clone,
+                )
+                .into_iter()
+                .map(|text| PickRow {
+                    label: text,
+                    detail: String::new(),
+                    trailing: String::new(),
+                    matches: Vec::new(),
+                    current: false,
+                })
+                .collect(),
+            ),
             ModalSurface::UndoHistory => (
                 "undo history",
                 "RET jumps the document to that edit",
@@ -16140,7 +16201,8 @@ impl ModalApp {
             // same field rather than each growing one.
             | ModalSurface::Headlines
             | ModalSurface::Blocks
-            | ModalSurface::UndoHistory => Some(&self.query),
+            | ModalSurface::UndoHistory
+            | ModalSurface::Messages => Some(&self.query),
             ModalSurface::Ex => Some(&self.ex_buf),
             ModalSurface::Sync => Some(&self.sync_buf),
             ModalSurface::Llm => Some(&self.chat_buf),
@@ -16297,7 +16359,7 @@ impl ModalApp {
     /// modified one and say what saves and what discards.
     fn escape_closes_buffer(&mut self) {
         if self.body_dirty() {
-            "unsaved edit — C-Enter or :w saves · :q! discards".clone_into(&mut self.status);
+            self.say("unsaved edit — C-Enter or :w saves · :q! discards");
         } else {
             self.remember_body_cursor();
             self.edit_target = None;
@@ -16330,7 +16392,7 @@ impl ModalApp {
         self.body.clear();
         self.body_baseline.clear();
         self.go_home();
-        "edit discarded".clone_into(&mut self.status);
+        self.say("edit discarded");
     }
 
     /// Run `cmd` as a shell command (`:!pwd`), behind the vault's
@@ -16344,17 +16406,17 @@ impl ModalApp {
     /// is thinking about.
     fn run_shell_escape(&mut self, shell: &Shell, cmd: &str) {
         if cmd.is_empty() {
-            ":! needs a command — `:!ls`, `:!git status`".clone_into(&mut self.status);
+            self.say(":! needs a command — `:!ls`, `:!git status`");
             return;
         }
         let trust = closure_config::Config::from_path(&shell.vault.root().join("config.org"))
             .map(|c| c.eval_trust)
             .unwrap_or_default();
         if !closure_eval::eval_allowed(&trust, "shell") {
-            self.status = format!(
+            self.say(format!(
                 "refused to run `{cmd}` — add `eval_trust = shell` to the \
                  closure-config block in config.org to allow it"
-            );
+            ));
             return;
         }
         let quoted = cmd.replace('\'', r"'\''");
@@ -16365,11 +16427,11 @@ impl ModalApp {
                 if !out.stderr.is_empty() {
                     text.push_str(&out.stderr);
                 }
-                self.status = if out.exit == 0 {
+                self.say(if out.exit == 0 {
                     format!("`{cmd}` ok")
                 } else {
                     format!("`{cmd}` exited {}", out.exit)
-                };
+                });
                 self.shell_out = Some(if text.trim().is_empty() {
                     format!("(no output, exit {})", out.exit)
                 } else {
@@ -16377,7 +16439,7 @@ impl ModalApp {
                 });
             }
             Err(e) => {
-                self.status = format!("`{cmd}` failed: {e}");
+                self.say(format!("`{cmd}` failed: {e}"));
                 self.shell_out = None;
             }
         }
@@ -16469,7 +16531,7 @@ impl ModalApp {
                 // checkboxes in its body, so saving the body is when the
                 // count changes (Q3-V5).
                 self.recount_headline_cookie(shell, &id);
-                "body saved".clone_into(&mut self.status);
+                self.say("body saved");
                 // Saved *is* the new baseline: `body_dirty` compares
                 // against what the vault holds, and after a write that
                 // is what is in the buffer.
@@ -16607,8 +16669,7 @@ impl ModalApp {
         if !self.body_dirty() {
             return false;
         }
-        "unsaved body — :w saves, :wq saves and quits, :q! discards it"
-            .clone_into(&mut self.status);
+        self.say("unsaved body — :w saves, :wq saves and quits, :q! discards it");
         true
     }
 
@@ -16884,7 +16945,7 @@ impl ModalApp {
         // into (a headline that never got an `:ID:`); the file crumb
         // always can.
         if index > 0 && crumbs[index].id.is_none() {
-            self.status = format!("“{}” has no id to file under", crumbs[index].label);
+            self.say(format!("“{}” has no id to file under", crumbs[index].label));
             return;
         }
         self.capture_crumb_pick = Some(index);
@@ -16896,7 +16957,7 @@ impl ModalApp {
         if let Some(id) = crumbs[index].id.clone() {
             self.select_by_id(shell, &id);
         }
-        self.status = format!("capture {}", self.capture_target_label(shell));
+        self.say(format!("capture {}", self.capture_target_label(shell)));
     }
 
     /// Whether the capture will land as a `child` of the crumb it is
@@ -16986,10 +17047,10 @@ impl ModalApp {
                         body.push('\n');
                     }
                     if let Err(e) = shell.set_body(&id, &body) {
-                        self.status = format!("captured, but the body failed: {e}");
+                        self.say(format!("captured, but the body failed: {e}"));
                     }
                 }
-                self.status = format!("captured: {title}");
+                self.say(format!("captured: {title}"));
                 // The row list is rebuilt from the bumped revision, so
                 // the new id is findable the moment we ask. Staying put
                 // is what keeps the *target* put: the capture prompt
@@ -16999,7 +17060,7 @@ impl ModalApp {
                     self.select_by_id(shell, id.as_str());
                     self.selection_active = true;
                 } else {
-                    self.status = format!("captured: {title} — still filing here");
+                    self.say(format!("captured: {title} — still filing here"));
                 }
             }
             Err(e) => self.status = format!("capture failed: {e}"),
@@ -17064,7 +17125,7 @@ impl ModalApp {
             .position(|(s, e)| *s == line || (*s..=*e).contains(&line))
         {
             let (start, _) = self.body_folds.remove(i);
-            self.status = format!("unfolded line {}", start + 1);
+            self.say(format!("unfolded line {}", start + 1));
             return;
         }
         let text = self.body.text().to_owned();
@@ -17072,10 +17133,10 @@ impl ModalApp {
         match fold_range(&lines, line) {
             Some((start, end)) => {
                 self.body_folds.push((start, end));
-                self.status = format!("folded {} line(s)", end - start);
+                self.say(format!("folded {} line(s)", end - start));
             }
             None => {
-                "nothing to fold here — a block or a headline folds".clone_into(&mut self.status);
+                self.say("nothing to fold here — a block or a headline folds");
             }
         }
     }
@@ -17108,11 +17169,11 @@ impl ModalApp {
         let name = asset_file_name(extension);
         let target = root.join(&dir);
         if let Err(e) = std::fs::create_dir_all(&target) {
-            self.status = format!("could not make {}: {e}", target.display());
+            self.say(format!("could not make {}: {e}", target.display()));
             return None;
         }
         if let Err(e) = std::fs::write(target.join(&name), bytes) {
-            self.status = format!("could not write the image: {e}");
+            self.say(format!("could not write the image: {e}"));
             return None;
         }
         let link = format!("[[file:{}/{name}]]", dir.display());
@@ -17123,7 +17184,7 @@ impl ModalApp {
         let at = self.body.cursor_byte().min(text.len());
         text.insert_str(at, &link);
         self.body.replace_all(text, at + link.len());
-        self.status = format!("filed {}/{name}", dir.display());
+        self.say(format!("filed {}/{name}", dir.display()));
         Some(link)
     }
 
@@ -17140,29 +17201,28 @@ impl ModalApp {
     /// drive, a USB stick.
     fn sync_export(&mut self, shell: &Shell) {
         let Some(dir) = Self::sync_dir(shell) else {
-            "no sync_dir in config.org — set it to a folder both machines can see"
-                .clone_into(&mut self.status);
+            self.say("no sync_dir in config.org — set it to a folder both machines can see");
             return;
         };
         self.sync_mut().snapshot(shell);
-        self.status = match self.sync_mut().export_bundle(&dir) {
+        let said = match self.sync_mut().export_bundle(&dir) {
             Ok(path) => format!("left a bundle in {}", path.display()),
             Err(e) => format!("export failed: {e}"),
         };
+        self.say(said);
     }
 
     /// Pick up every bundle a paired peer left in the shared folder and
     /// write what converged back into the vault.
     fn sync_import(&mut self, shell: &mut Shell) {
         let Some(dir) = Self::sync_dir(shell) else {
-            "no sync_dir in config.org — set it to a folder both machines can see"
-                .clone_into(&mut self.status);
+            self.say("no sync_dir in config.org — set it to a folder both machines can see");
             return;
         };
         self.sync_mut().snapshot(shell);
         match self.sync_mut().import_bundles(&dir) {
             Ok((0, _)) => {
-                "nothing new in the sync folder".clone_into(&mut self.status);
+                self.say("nothing new in the sync folder");
             }
             Ok((n, conflicts)) => {
                 // The replica converging is half a sync; the vault is
@@ -17172,11 +17232,11 @@ impl ModalApp {
                 pending_list.extend(conflicts);
                 let pending = pending_list.len();
                 self.set_conflicts(pending_list);
-                self.status = if pending > 0 {
+                self.say(if pending > 0 {
                     format!("{n} bundle(s), {applied} field(s), {pending} conflict(s) to review")
                 } else {
                     format!("{n} bundle(s), {applied} field(s) merged")
-                };
+                });
             }
             Err(e) => self.status = format!("import failed: {e}"),
         }
@@ -17238,7 +17298,7 @@ impl ModalApp {
             match closure_config::set_config_key(&source, "last_place", &place) {
                 Ok(updated) => source = updated,
                 Err(e) => {
-                    self.status = format!("could not remember where you were: {e}");
+                    self.say(format!("could not remember where you were: {e}"));
                     return;
                 }
             }
@@ -17255,13 +17315,13 @@ impl ModalApp {
             match closure_config::set_config_key(&source, "recent_files", &files.join(", ")) {
                 Ok(updated) => source = updated,
                 Err(e) => {
-                    self.status = format!("could not remember which files you were in: {e}");
+                    self.say(format!("could not remember which files you were in: {e}"));
                     return;
                 }
             }
         }
         if let Err(e) = std::fs::write(&path, source) {
-            self.status = format!("could not remember where you were: {e}");
+            self.say(format!("could not remember where you were: {e}"));
         }
     }
 
@@ -17301,7 +17361,7 @@ impl ModalApp {
         self.save_pending_edit(shell);
         self.save_last_place(shell);
         if let Err(e) = shell.vault.reload() {
-            self.status = format!("reload failed: {e}");
+            self.say(format!("reload failed: {e}"));
             self.notify(ToastLevel::Error, format!("reload failed: {e}"));
             return;
         }
@@ -17338,7 +17398,7 @@ impl ModalApp {
         self.configure_sync(bind, advertise);
         self.load_peers(shell);
         self.restore_last_place(shell);
-        "reloaded — vault and config re-read from disk".clone_into(&mut self.status);
+        self.say("reloaded — vault and config re-read from disk");
         self.notify(ToastLevel::Success, "reloaded");
     }
 
@@ -17363,7 +17423,7 @@ impl ModalApp {
         match closure_config::set_config_key(&source, "sync_peers", &tickets.join(", ")) {
             Ok(updated) => {
                 if let Err(e) = std::fs::write(&path, updated) {
-                    self.status = format!("peer saved for this session only: {e}");
+                    self.say(format!("peer saved for this session only: {e}"));
                 }
             }
             Err(e) => self.status = format!("peer saved for this session only: {e}"),
@@ -17471,13 +17531,18 @@ impl ModalApp {
                 }
             }
             "reload-shell" => self.reload_session(shell),
+            "messages" => {
+                self.query.clear();
+                self.selected = 0;
+                self.surface = ModalSurface::Messages;
+            }
             "toggle-wrap" => {
                 self.wrap = !self.wrap;
-                self.status = if self.wrap {
+                self.say(if self.wrap {
                     "wrap on — long lines fold at the pane edge".to_owned()
                 } else {
                     "wrap off — long lines scroll sideways".to_owned()
-                };
+                });
             }
             "capture-start" => {
                 self.surface = ModalSurface::Capture;
@@ -17488,7 +17553,7 @@ impl ModalApp {
                     .selection_active
                     .then(|| self.selected_row_id(shell))
                     .flatten();
-                self.status = format!("capture {}", self.capture_target_label(shell));
+                self.say(format!("capture {}", self.capture_target_label(shell)));
             }
             "search-start" | "search-headline-start" => {
                 // Doom's `SPC s s` is search-*buffer*: swiper over the
@@ -17531,7 +17596,7 @@ impl ModalApp {
                     .iter()
                     .position(|r| r.is_current)
                     .unwrap_or(0);
-                "undo history — type to filter · RET jumps there".clone_into(&mut self.status);
+                self.say("undo history — type to filter · RET jumps there");
             }
             "agenda" => {
                 self.selected = 0;
@@ -17553,11 +17618,11 @@ impl ModalApp {
                     // nothing at all, which left the shells' toast
                     // rules for `folded:`/`unfolded:` matching a status
                     // no modal shell ever produced.
-                    self.status = match toggle_visibility(shell, &bid) {
+                    self.say(match toggle_visibility(shell, &bid) {
                         Some(true) => format!("folded: {}", row.title),
                         Some(false) => format!("unfolded: {}", row.title),
                         None => format!("fold failed: {}", row.title),
-                    };
+                    });
                     self.selected = self
                         .selected
                         .min(self.rows_shared(shell).len().saturating_sub(1));
@@ -17576,22 +17641,22 @@ impl ModalApp {
             "promote" => {
                 if let Some(row) = self.rows_shared(shell).get(self.selected).cloned() {
                     let bid = closure_core::BlockId::from_existing(&row.id);
-                    self.status = match shell.promote(&bid) {
+                    self.say(match shell.promote(&bid) {
                         Ok(()) => format!("promoted: {}", row.title),
                         Err(_) if row.level <= 1 => {
                             "already at the top level — nothing to promote into".to_owned()
                         }
                         Err(e) => format!("promote failed: {e}"),
-                    };
+                    });
                 }
             }
             "demote" => {
                 if let Some(row) = self.rows_shared(shell).get(self.selected).cloned() {
                     let bid = closure_core::BlockId::from_existing(&row.id);
-                    self.status = match shell.demote(&bid) {
+                    self.say(match shell.demote(&bid) {
                         Ok(()) => format!("demoted: {}", row.title),
                         Err(e) => format!("demote failed: {e}"),
-                    };
+                    });
                 }
             }
             // Moving up = moving the previous sibling below us; the
@@ -17654,13 +17719,13 @@ impl ModalApp {
                 self.surface = ModalSurface::Buffers;
                 self.query.clear();
                 self.selected = 0;
-                "buffers — type to filter · RET opens · Esc back".clone_into(&mut self.status);
+                self.say("buffers — type to filter · RET opens · Esc back");
             }
             "recent-files" => {
                 self.surface = ModalSurface::Files;
                 self.query.clear();
                 self.selected = 0;
-                "files — type to filter · RET opens · Esc back".clone_into(&mut self.status);
+                self.say("files — type to filter · RET opens · Esc back");
             }
             "buffer-next" => self.cycle_buffer(shell, 1),
             "buffer-prev" => self.cycle_buffer(shell, -1),
@@ -17668,14 +17733,14 @@ impl ModalApp {
                 if let Some(target) = self.alternate_buffer() {
                     self.open_buffer(shell, &target, true);
                 } else {
-                    "no other buffer to switch to".clone_into(&mut self.status);
+                    self.say("no other buffer to switch to");
                 }
             }
             "buffer-close" => self.close_current_buffer(shell, false),
             "buffer-close-force" => self.close_current_buffer(shell, true),
             "jump-back" => {
                 if self.jump_at == 0 && self.jumps.is_empty() {
-                    "no jumps yet".clone_into(&mut self.status);
+                    self.say("no jumps yet");
                 } else {
                     // Standing at the present, the present itself has to
                     // go on the list first, or there would be nothing to
@@ -17685,7 +17750,7 @@ impl ModalApp {
                         self.jumps.push(here);
                     }
                     if self.jump_at == 0 {
-                        "no older jump".clone_into(&mut self.status);
+                        self.say("no older jump");
                     } else {
                         self.jump_at -= 1;
                         let place = self.jumps[self.jump_at].clone();
@@ -17699,7 +17764,7 @@ impl ModalApp {
                     let place = self.jumps[self.jump_at].clone();
                     self.goto_place(shell, &place);
                 } else {
-                    "no newer jump".clone_into(&mut self.status);
+                    self.say("no newer jump");
                 }
             }
             "cycle-mode" => {
@@ -17737,7 +17802,7 @@ impl ModalApp {
                     self.field_target = Some(row.id);
                     self.field_buf.set_text(&row.title);
                     self.surface = ModalSurface::Rename;
-                    "rename — Enter save, Esc cancel".clone_into(&mut self.status);
+                    self.say("rename — Enter save, Esc cancel");
                 }
             }
             // A delete is a *cut*: the subtree goes on the kill ring on
@@ -17764,15 +17829,14 @@ impl ModalApp {
                         Err(e) => self.status = format!("paste failed: {e}"),
                     }
                 } else {
-                    "nothing selected — put the cursor where it should land"
-                        .clone_into(&mut self.status);
+                    self.say("nothing selected — put the cursor where it should land");
                 }
             }
             "undo" => {
                 if let Some(row) = self.rows_shared(shell).get(self.selected).cloned() {
                     let path = std::path::PathBuf::from(&row.path);
                     match shell.vault.undo_in(&path) {
-                        Ok(()) => "undo".clone_into(&mut self.status),
+                        Ok(()) => self.say("undo"),
                         Err(e) => self.status = format!("undo failed: {e}"),
                     }
                     self.selected = self
@@ -17784,7 +17848,7 @@ impl ModalApp {
                 if let Some(row) = self.rows_shared(shell).get(self.selected).cloned() {
                     let path = std::path::PathBuf::from(&row.path);
                     match shell.vault.redo_in(&path) {
-                        Ok(()) => "redo".clone_into(&mut self.status),
+                        Ok(()) => self.say("redo"),
                         Err(e) => self.status = format!("redo failed: {e}"),
                     }
                     self.selected = self
@@ -17811,7 +17875,7 @@ impl ModalApp {
             "llm" => {
                 self.chat_buf.clear();
                 self.surface = ModalSurface::Llm;
-                "assistant — type a question, Enter sends, Esc back".clone_into(&mut self.status);
+                self.say("assistant — type a question, Enter sends, Esc back");
             }
             "graph" | "journal" | "cron" => {
                 self.selected = 0;
@@ -17820,21 +17884,21 @@ impl ModalApp {
                     "journal" => ModalSurface::Journal,
                     _ => ModalSurface::Cron,
                 };
-                self.status = format!("{cmd} — Esc back");
+                self.say(format!("{cmd} — Esc back"));
             }
             "sync" => {
                 self.sync_buf.clear();
                 self.sync_mut();
                 self.surface = ModalSurface::Sync;
-                "sync — hand over your ticket, paste theirs, Esc back".clone_into(&mut self.status);
+                self.say("sync — hand over your ticket, paste theirs, Esc back");
             }
             "toggle-inline-images" => {
                 self.images_shown = !self.images_shown;
-                self.status = if self.images_shown {
+                self.say(if self.images_shown {
                     "inline images shown".to_owned()
                 } else {
                     "inline images hidden — the links stay".to_owned()
-                };
+                });
             }
             "sync-export" => self.sync_export(shell),
             "sync-import" => self.sync_import(shell),
@@ -17852,45 +17916,46 @@ impl ModalApp {
                 } else if self.surface == ModalSurface::Blocks {
                     self.eval_selected_block(shell);
                 } else {
-                    "no source block under the cursor — open the note, or list the blocks"
-                        .clone_into(&mut self.status);
+                    self.say(
+                        "no source block under the cursor — open the note, or list the blocks",
+                    );
                 }
             }
             "headline-list" => {
                 self.selected = 0;
                 self.surface = ModalSurface::Headlines;
-                "headlines — type to filter · RET goes to it".clone_into(&mut self.status);
+                self.say("headlines — type to filter · RET goes to it");
             }
             "db-view" => {
                 self.selected = 0;
                 self.surface = ModalSurface::DbView;
-                "database — RET jump, Esc back".clone_into(&mut self.status);
+                self.say("database — RET jump, Esc back");
             }
             "body-search" => {
                 self.query.clear();
                 self.selected = 0;
                 self.surface = ModalSurface::BodySearch;
-                "body search — type to filter, RET jump, Esc back".clone_into(&mut self.status);
+                self.say("body search — type to filter, RET jump, Esc back");
             }
             "toggle-llm-render" => {
                 self.llm_render = !self.llm_render;
-                self.status = format!(
+                self.say(format!(
                     "LLM render access {}",
                     if self.llm_render {
                         "granted"
                     } else {
                         "revoked"
                     }
-                );
+                ));
             }
             "sniffer" => {
                 self.selected = 0;
                 self.surface = ModalSurface::Sniffer;
-                "flows — a allow, b block, Esc back".clone_into(&mut self.status);
+                self.say("flows — a allow, b block, Esc back");
             }
             "allow-flow" | "block-flow" => {
                 if self.sniffer.events().is_empty() {
-                    "no captured flows".clone_into(&mut self.status);
+                    self.say("no captured flows");
                 } else {
                     if cmd == "allow-flow" {
                         self.sniffer.allow_selected();
@@ -17898,16 +17963,17 @@ impl ModalApp {
                         self.sniffer.block_selected();
                     }
                     self.surface = ModalSurface::Sniffer;
-                    self.status = self
-                        .sniffer
-                        .detail()
-                        .unwrap_or_else(|| "flow rule updated".to_owned());
+                    self.say(
+                        self.sniffer
+                            .detail()
+                            .unwrap_or_else(|| "flow rule updated".to_owned()),
+                    );
                 }
             }
             "conflicts" => {
                 self.selected = 0;
                 self.surface = ModalSurface::Conflicts;
-                "conflicts — o ours, t theirs, Esc back".clone_into(&mut self.status);
+                self.say("conflicts — o ours, t theirs, Esc back");
             }
             // The way home. Esc has always walked back out of a pane,
             // but Esc is a keyboard-only door: the rail's home button
@@ -17916,7 +17982,7 @@ impl ModalApp {
             "browse" => {
                 self.slash = None;
                 self.surface = ModalSurface::Browse;
-                "outline".clone_into(&mut self.status);
+                self.say("outline");
             }
             // `SPC f s` / `:w`: write whatever buffer is open. Which
             // one that is decides what "write" means — a body commits
@@ -17931,7 +17997,7 @@ impl ModalApp {
                 // just typed go out of sight.
                 ModalSurface::EditBody => self.write_body(shell),
                 ModalSurface::EditBlock => self.commit_edit_special(shell),
-                _ => "no buffer open — every edit is already written".clone_into(&mut self.status),
+                _ => self.say("no buffer open — every edit is already written"),
             },
             // The switch between the two shapes of the shell: rows you
             // click, or the file itself in one buffer.
@@ -17945,7 +18011,7 @@ impl ModalApp {
                 if self.surface == ModalSurface::EditFile {
                     self.view = ViewMode::Clickable;
                     self.close_file_buffer();
-                    "outline view".clone_into(&mut self.status);
+                    self.say("outline view");
                 } else {
                     self.view = ViewMode::Editor;
                     self.open_file_buffer(shell);
@@ -17957,15 +18023,15 @@ impl ModalApp {
             // The shells own the panel, so the core owns the flag.
             "toggle-tree" => {
                 self.tree_open = !self.tree_open;
-                self.status = if self.tree_open {
+                self.say(if self.tree_open {
                     "headline tree shown".to_owned()
                 } else {
                     "headline tree hidden".to_owned()
-                };
+                });
             }
             "resolve-ours" | "resolve-theirs" => {
                 if self.conflicts.conflicts().is_empty() {
-                    "no conflicts to resolve".clone_into(&mut self.status);
+                    self.say("no conflicts to resolve");
                 } else {
                     let ours = cmd == "resolve-ours";
                     let result = if ours {
@@ -17974,10 +18040,10 @@ impl ModalApp {
                         self.conflicts.resolve_theirs(shell)
                     };
                     let side = if ours { "ours" } else { "theirs" };
-                    self.status = match result {
+                    self.say(match result {
                         Ok(()) => format!("resolved {side}"),
                         Err(e) => format!("resolve failed: {e}"),
-                    };
+                    });
                     self.surface = ModalSurface::Conflicts;
                 }
             }
@@ -18022,18 +18088,18 @@ impl ModalApp {
         self.block_out = None;
         let (line, _) = self.body.cursor_line_col();
         let Some(block) = code_block_at(self.body.text(), line) else {
-            "no source block under the cursor".clone_into(&mut self.status);
+            self.say("no source block under the cursor");
             return;
         };
         if !closure_eval::eval_allowed(&shell.vault.eval_trust(), &block.lang) {
-            self.status = format!(
+            self.say(format!(
                 "`{}` is not in this vault's eval_trust — blocked",
                 block.lang
-            );
+            ));
             return;
         }
         let Some(backend) = closure_eval::backend_for(&block.lang) else {
-            self.status = format!("no backend for `{}`", block.lang);
+            self.say(format!("no backend for `{}`", block.lang));
             return;
         };
         let header = closure_eval::HeaderArgs::parse(&block.args);
@@ -18045,12 +18111,12 @@ impl ModalApp {
         match backend.eval_bounded(&program, closure_eval::Bounds::default()) {
             Ok(out) => {
                 if header.is_silent() {
-                    self.status = format!("ran the {} block · results silent", block.lang);
+                    self.say(format!("ran the {} block · results silent", block.lang));
                 } else {
                     let text = attach_results(self.body.text(), block.end, &out.stdout);
                     let at = self.body.cursor_byte();
                     self.body.replace_all(text, at);
-                    self.status = format!("ran the {} block", block.lang);
+                    self.say(format!("ran the {} block", block.lang));
                 }
                 self.block_out = Some(out.stdout);
             }
@@ -18062,7 +18128,7 @@ impl ModalApp {
         self.block_out = None;
         let rows = self.block_rows(shell);
         let Some((path, _, _)) = rows.get(self.selected).cloned() else {
-            "no source blocks in this vault".clone_into(&mut self.status);
+            self.say("no source blocks in this vault");
             return;
         };
         // `block_rows` is flat across files; `eval_block` counts within
@@ -18074,7 +18140,7 @@ impl ModalApp {
         self.surface = ModalSurface::Blocks;
         match shell.vault.eval_block(std::path::Path::new(&path), index) {
             Ok(out) => {
-                self.status = format!("ran block #{index} of {path}");
+                self.say(format!("ran block #{index} of {path}"));
                 self.block_out = Some(out);
             }
             Err(e) => self.status = format!("{e}"),
