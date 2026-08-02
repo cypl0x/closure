@@ -4051,6 +4051,19 @@ const PALETTE_COMMANDS: &[(&str, &str, &str, &str)] = &[
     ),
     ("rename", "rename", "Edit", "Rename the headline"),
     ("delete", "delete", "Edit", "Delete the headline"),
+    (
+        "toggle-mark",
+        "toggle-mark",
+        "Edit",
+        "Mark this headline, or take the mark off",
+    ),
+    ("unmark-all", "unmark-all", "Edit", "Clear every mark"),
+    (
+        "delete-marked",
+        "delete-marked",
+        "Edit",
+        "Cut the marked headlines, or the one under the cursor",
+    ),
     ("cycle-mode", "cycle-mode", "Mode", "Switch the input mode"),
     (
         "fold",
@@ -11641,6 +11654,14 @@ pub struct ModalApp {
     /// that only kept what you accepted would forget exactly the case
     /// the report is about: three sentences into a capture, `Esc`.
     prompt_history: std::collections::BTreeMap<&'static str, Vec<String>>,
+    /// Headlines marked for a bulk action, by id.
+    ///
+    /// dired's marks. Held by id rather than by row index because the
+    /// rows are derived and renumber themselves whenever the vault
+    /// changes — a mark that meant "row 3" would point at a different
+    /// headline the moment one above it was deleted, which is the one
+    /// thing a bulk delete must never do.
+    marks: std::collections::BTreeSet<String>,
     /// Which directory `find-file` is looking at, vault-relative.
     ///
     /// Relative rather than absolute so that it cannot express a path
@@ -12076,6 +12097,7 @@ impl ModalApp {
             },
             palette_history: Vec::new(),
             prompt_history: std::collections::BTreeMap::new(),
+            marks: std::collections::BTreeSet::new(),
             find_dir: std::path::PathBuf::new(),
             pane_return: None,
             history_walk: None,
@@ -17996,6 +18018,34 @@ impl ModalApp {
         })
     }
 
+    /// Is this headline marked for a bulk action?
+    #[must_use]
+    pub fn is_marked(&self, id: &str) -> bool {
+        self.marks.contains(id)
+    }
+
+    /// How many headlines are marked.
+    #[must_use]
+    pub fn marked_count(&self) -> usize {
+        self.marks.len()
+    }
+
+    /// The ids an action applies to: the marks when there are any, and
+    /// the row under the cursor when there are none.
+    ///
+    /// dired's own rule, and the thing that makes `D` safe to press
+    /// without first checking what is marked.
+    fn action_targets(&self, shell: &Shell) -> Vec<String> {
+        if !self.marks.is_empty() {
+            return self.marks.iter().cloned().collect();
+        }
+        self.rows_shared(shell)
+            .get(self.selected)
+            .map(|r| r.id.clone())
+            .into_iter()
+            .collect()
+    }
+
     /// How many times the editor's unnamed register has changed.
     ///
     /// What a shell watches to decide whether to write the system
@@ -19569,6 +19619,43 @@ impl ModalApp {
                 self.selected = 0;
                 self.find_dir = std::path::PathBuf::new();
                 self.surface = ModalSurface::FindFile;
+            }
+            "toggle-mark" => {
+                if let Some(row) = self.rows_shared(shell).get(self.selected).cloned() {
+                    if !self.marks.remove(&row.id) {
+                        self.marks.insert(row.id);
+                    }
+                    // dired steps on, so a run of rows is marked by
+                    // holding one key rather than alternating with the
+                    // arrow.
+                    let last = self.rows_shared(shell).len().saturating_sub(1);
+                    self.selected = (self.selected + 1).min(last);
+                    self.say(format!("{} marked", self.marks.len()));
+                }
+            }
+            "unmark-all" => {
+                let n = self.marks.len();
+                self.marks.clear();
+                self.say(format!("{n} mark(s) cleared"));
+            }
+            "delete-marked" => {
+                let targets = self.action_targets(shell);
+                let mut gone = 0usize;
+                for id in &targets {
+                    let bid = closure_core::BlockId::from_existing(id);
+                    match shell.cut_subtree(&bid) {
+                        Ok(()) => gone += 1,
+                        Err(e) => self.say(format!("delete failed: {e}")),
+                    }
+                }
+                // A mark that outlives what it pointed at is a mark
+                // that deletes something else next time.
+                self.marks.clear();
+                self.invalidate_rows();
+                self.selected = self
+                    .selected
+                    .min(self.rows_shared(shell).len().saturating_sub(1));
+                self.say(format!("deleted {gone} — p pastes the last one"));
             }
             "messages" => {
                 self.query.clear();

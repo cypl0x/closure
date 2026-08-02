@@ -22,6 +22,9 @@ use thiserror::Error;
 
 /// Doom/default bindings: SPC-leader friendly, single-key navigation.
 const DOOM_KEYMAP: &[(&str, &str)] = &[
+    ("m", "toggle-mark"),
+    ("U", "unmark-all"),
+    ("D", "delete-marked"),
     ("j", "next-file"),
     ("k", "prev-file"),
     ("<down>", "next-file"),
@@ -229,6 +232,9 @@ const DOOM_KEYMAP: &[(&str, &str)] = &[
 
 /// Emacs bindings: Ctrl/Meta chords, `C-x C-c` quits.
 const EMACS_KEYMAP: &[(&str, &str)] = &[
+    ("C-c M", "toggle-mark"),
+    ("C-c X", "unmark-all"),
+    ("C-c K", "delete-marked"),
     ("C-n", "next-file"),
     ("C-p", "prev-file"),
     ("<down>", "next-file"),
@@ -378,6 +384,9 @@ const EMACS_KEYMAP: &[(&str, &str)] = &[
 
 /// Vim bindings: modal navigation keys.
 const VIM_KEYMAP: &[(&str, &str)] = &[
+    ("m", "toggle-mark"),
+    ("U", "unmark-all"),
+    ("D", "delete-marked"),
     ("j", "next-file"),
     ("k", "prev-file"),
     ("<down>", "next-file"),
@@ -535,6 +544,9 @@ const VIM_KEYMAP: &[(&str, &str)] = &[
 
 /// Helix bindings: vim-like with `U` redo and `g e` for end.
 const HELIX_KEYMAP: &[(&str, &str)] = &[
+    ("m", "toggle-mark"),
+    ("X", "unmark-all"),
+    ("D", "delete-marked"),
     ("j", "next-file"),
     ("k", "prev-file"),
     ("<down>", "next-file"),
@@ -691,6 +703,9 @@ const HELIX_KEYMAP: &[(&str, &str)] = &[
 
 /// Notion bindings: mouse + arrows + slash command, minimal chords.
 const NOTION_KEYMAP: &[(&str, &str)] = &[
+    ("C-c M", "toggle-mark"),
+    ("C-c X", "unmark-all"),
+    ("C-c K", "delete-marked"),
     ("<down>", "next-file"),
     ("<up>", "prev-file"),
     ("g g", "first-file"),

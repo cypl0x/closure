@@ -3817,8 +3817,10 @@ impl GpuiView {
                 .border_b_2()
                 .border_color(rgb(drop_line_color(&self.theme)));
         }
+        let marked = self.app.is_marked(&row.id);
         Self::outline_cells(
             line,
+            marked,
             co,
             &self.theme,
             self.app.zoom(),
@@ -3855,12 +3857,14 @@ impl GpuiView {
     /// The cells of an outline row: indent, fold arrow, status glyph,
     /// TODO chip, title and file. Each is its own click target running
     /// the same registry command its chord does (I8).
-    #[allow(clippy::too_many_arguments)]
+    #[allow(clippy::too_many_arguments, clippy::too_many_lines)]
     // The row is a table: its cells need the colours, the theme, the
     // zoom and the column widths, and bundling four numbers into a
-    // struct to satisfy a count would hide what they are.
+    // struct to satisfy a count would hide what they are. It reads as
+    // one run of cells for the same reason.
     fn outline_cells(
         line: gpui::Div,
+        marked: bool,
         co: Colors,
         theme: &closure_shell_core::Theme,
         zoom: f32,
@@ -3906,6 +3910,18 @@ impl GpuiView {
         // four levels put their `TODO` at four different x, and the one
         // question the outline exists to answer — what is still open —
         // could not be answered by running an eye down a column.
+        // dired's mark, in the gutter before the status dot. Asked of
+        // the app rather than carried on the row: the rows are memoised
+        // by vault revision and filter, so a flag on them would go
+        // stale the moment a mark changed without the vault doing so.
+        let line = line.child(
+            div()
+                .w(px(scaled_text_px(GLYPH_COL, zoom) * 0.6))
+                .flex_none()
+                .text_size(px(glyph_size))
+                .text_color(rgb(co.warning))
+                .child(if marked { "\u{2022}" } else { " " }),
+        );
         let mut line = line.child(
             div()
                 .debug_selector(|| format!("todo-{i}"))

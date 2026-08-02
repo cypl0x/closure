@@ -216,6 +216,11 @@ pub struct App {
     /// Which of org's four new-headline chords opened the prompt.
     new_heading: closure_shell_core::NewHeading,
     delete_target: Option<String>,
+    /// Headlines marked for a bulk action, by id — dired's marks.
+    marks: std::collections::BTreeSet<String>,
+    /// The rest of a confirmed bulk delete, for the driver to work
+    /// through after the first.
+    pending_deletes: Vec<String>,
     delete_request: Option<String>,
     /// How many list rows the terminal last drew — what `C-d` / `C-u`
     /// take half of. The draw loop reports it; a run that never does
@@ -333,6 +338,8 @@ impl App {
     pub fn with_bindings(paths: Vec<PathBuf>, bindings: &[(&str, &str)]) -> Self {
         let selected = if paths.is_empty() { None } else { Some(0) };
         Self {
+            marks: std::collections::BTreeSet::new(),
+            pending_deletes: Vec::new(),
             paths,
             selected,
             bindings: bindings
@@ -913,8 +920,13 @@ impl App {
 
     /// Consume the block id whose subtree deletion the user confirmed,
     /// if any. The shell performs the vault write.
-    pub const fn take_delete_request(&mut self) -> Option<String> {
-        self.delete_request.take()
+    pub fn take_delete_request(&mut self) -> Option<String> {
+        // The rest of a confirmed bulk delete drains through the same
+        // accessor, one per call, so the driver's existing loop covers
+        // marks without knowing they exist.
+        self.delete_request
+            .take()
+            .or_else(|| self.pending_deletes.pop())
     }
 
     /// Consume the `(block id, new title)` rename confirmed by the
@@ -2233,6 +2245,12 @@ impl App {
     fn handle_confirm_stroke(&mut self, stroke: &str) {
         if stroke == "y" {
             self.delete_request = self.delete_target.take();
+            // The rest of the marked set follows the one the confirm
+            // was raised for; the driver handles them one at a time.
+            self.marks
+                .remove(self.delete_request.as_deref().unwrap_or_default());
+            self.pending_deletes = self.marks.iter().cloned().collect();
+            self.marks.clear();
             self.mode = AppMode::Browse;
             self.result_cursor = 0;
         } else {
@@ -2855,6 +2873,9 @@ impl App {
     /// The commands that act on the cursor headline or open a subsystem
     /// pane. Split from [`Self::apply_command`] only for length; the
     /// two together are the shell's whole command vocabulary.
+    // A flat one-arm-per-command dispatch reads clearest as one
+    // match, the same precedent as the core's `run_command`.
+    #[allow(clippy::too_many_lines)]
     fn apply_headline_command(&mut self, cmd: &str) {
         match cmd {
             // --- Headline edits. Each resolves the cursor headline and
@@ -2936,6 +2957,39 @@ impl App {
             }
             "delete" => {
                 if let Some(id) = self.current_headline_id() {
+                    self.delete_target = Some(id);
+                    self.mode = AppMode::ConfirmDelete;
+                }
+            }
+            // dired's marks. The terminal keeps its own set — the ids
+            // are the vault's, so the two shells agree about what a
+            // mark means even though neither shares state with the
+            // other.
+            "toggle-mark" => {
+                if let Some(id) = self.current_headline_id() {
+                    if !self.marks.remove(&id) {
+                        self.marks.insert(id);
+                    }
+                    self.status = format!("{} marked", self.marks.len());
+                }
+            }
+            "unmark-all" => {
+                let n = self.marks.len();
+                self.marks.clear();
+                self.status = format!("{n} mark(s) cleared");
+            }
+            // Marks win when there are any, the row under the cursor
+            // when there are none — dired's rule, and what makes this
+            // safe to press without looking. It goes through the same
+            // confirmation a single delete does: a bulk delete is the
+            // last thing that should skip it.
+            "delete-marked" => {
+                let first = if self.marks.is_empty() {
+                    self.current_headline_id()
+                } else {
+                    self.marks.iter().next().cloned()
+                };
+                if let Some(id) = first {
                     self.delete_target = Some(id);
                     self.mode = AppMode::ConfirmDelete;
                 }
