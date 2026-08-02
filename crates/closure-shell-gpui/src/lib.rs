@@ -3732,7 +3732,19 @@ impl GpuiView {
                                 .text_size(px(glyph_px(&self.theme, self.app.zoom())))
                                 .child(chrome.icon),
                         )
-                        .child(chrome.label.clone()),
+                        .child(chrome.label.clone())
+                        // The keyword in the keyword's own colour —
+                        // the same `keyword_span` the outline and the
+                        // detail header paint it with, so `TODO` here
+                        // is the red it is everywhere else. It used to
+                        // be three characters inside the label string,
+                        // drawn in the prompt's chrome colour like the
+                        // word "sibling" beside it.
+                        .children(chrome.keyword.as_ref().map(|k| {
+                            div()
+                                .text_color(rgb(span_color(co, keyword_span(k))))
+                                .child(k.clone())
+                        })),
                 )
                 .child(
                     div()

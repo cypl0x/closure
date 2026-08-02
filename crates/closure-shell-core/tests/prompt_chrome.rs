@@ -101,3 +101,67 @@ fn the_label_never_ends_in_its_own_punctuation() {
         }
     }
 }
+
+// === the keyword in a prompt label is a keyword ===
+//
+// "new sibling TODO: (shift+c aka C) should color the word TODO just
+// in the same color as TODO is in the headline tree view — This is
+// still not fixed", with a screenshot of `+ new sibling TODO:` and the
+// note "Is still not red, despite you have said it is fixed".
+//
+// The label was one string in one colour, so the word TODO inside it
+// was prompt-chrome text like any other. A shell cannot colour part of
+// a string it is handed whole: the keyword has to be its own field,
+// the way the icon had to be its own field for the same reason.
+
+#[test]
+fn the_todo_prompt_hands_the_keyword_over_separately() {
+    let (_d, mut shell, mut app) = fixture();
+    app.run(&mut shell, "add-todo-heading");
+    let chrome = app.prompt_chrome(&shell).expect("a prompt");
+    assert_eq!(
+        chrome.keyword.as_deref(),
+        Some("TODO"),
+        "the keyword has to be paintable on its own: {chrome:?}"
+    );
+}
+
+#[test]
+fn the_label_no_longer_carries_the_keyword_in_its_text() {
+    // Otherwise it is drawn twice — once in the label and once in the
+    // keyword's own colour.
+    let (_d, mut shell, mut app) = fixture();
+    app.run(&mut shell, "add-todo-heading");
+    let chrome = app.prompt_chrome(&shell).expect("a prompt");
+    assert!(
+        !chrome.label.contains("TODO"),
+        "the keyword is still inside the label: {:?}",
+        chrome.label
+    );
+    assert!(
+        chrome.label.contains("sibling"),
+        "and the rest of it survived: {:?}",
+        chrome.label
+    );
+}
+
+#[test]
+fn a_plain_sibling_has_no_keyword_to_paint() {
+    let (_d, mut shell, mut app) = fixture();
+    app.run(&mut shell, "add-sibling");
+    let chrome = app.prompt_chrome(&shell).expect("a prompt");
+    assert_eq!(chrome.keyword, None);
+    assert!(chrome.label.contains("sibling"));
+}
+
+#[test]
+fn the_keyword_is_the_vaults_own_first_keyword() {
+    // Not the literal string "TODO": a vault that declares
+    // `todo_keywords = NEXT | DONE` gets NEXT here, and the colour it
+    // is painted in is that keyword's.
+    let (_d, mut shell, mut app) = fixture();
+    app.run(&mut shell, "add-todo-heading");
+    let chrome = app.prompt_chrome(&shell).expect("a prompt");
+    let first = shell.vault.todo_keywords().first().cloned();
+    assert_eq!(chrome.keyword, first.or_else(|| Some("TODO".to_owned())));
+}

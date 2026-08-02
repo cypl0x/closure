@@ -969,6 +969,18 @@ pub struct PromptChrome {
     /// Its own field is what lets a shell paint it at the size an icon
     /// needs.
     pub icon: &'static str,
+    /// The TODO keyword this prompt will apply, if it applies one.
+    ///
+    /// "new sibling TODO … should color the word TODO just in the same
+    /// color as TODO is in the headline tree view". It used to be three
+    /// characters inside [`Self::label`], and a shell cannot colour
+    /// part of a string it is handed whole — exactly why the icon
+    /// needed a field of its own, one report earlier.
+    ///
+    /// The vault's first configured keyword rather than the literal
+    /// `TODO`, so a vault that declares `NEXT` says NEXT and paints it
+    /// in NEXT's colour.
+    pub keyword: Option<String>,
 }
 
 /// One cell of the which-key panel: a group heading, or a binding.
@@ -16331,6 +16343,19 @@ impl ModalApp {
         }
     }
 
+    /// Just the kind — sibling or child — with the keyword left out.
+    ///
+    /// The prompt carries the keyword in its own field now, so a
+    /// shell can paint it in that keyword's colour; spelling it into
+    /// the label as well would draw it twice.
+    pub const fn new_heading_kind(&self) -> &'static str {
+        if self.new_heading.child {
+            "child"
+        } else {
+            "sibling"
+        }
+    }
+
     /// The single-line field-edit buffer (tags/property).
     #[must_use]
     pub fn field_buffer(&self) -> &str {
@@ -18399,7 +18424,7 @@ impl ModalApp {
             // One prompt serves all four new-headline chords, so it has
             // to say which one opened it.
             ModalSurface::AddSibling => (
-                format!("new {}", self.new_heading_label()),
+                format!("new {}", self.new_heading_kind()),
                 String::new(),
                 T::Edit,
                 "\u{f067}",
@@ -18472,6 +18497,18 @@ impl ModalApp {
             hint,
             tone,
             icon,
+            // Only the new-headline prompt applies one, and only when
+            // the chord that opened it was the TODO variant.
+            keyword: (self.surface == ModalSurface::AddSibling && self.new_heading.todo).then(
+                || {
+                    shell
+                        .vault
+                        .todo_keywords()
+                        .first()
+                        .cloned()
+                        .unwrap_or_else(|| "TODO".to_owned())
+                },
+            ),
         })
     }
 
