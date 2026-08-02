@@ -141,3 +141,42 @@ fn every_mode_can_reach_it() {
         );
     }
 }
+
+// === what this binary was built from ===
+//
+// "Create a function/command that returns these values or
+// alternatively prints them to the stdout/*MESSAGES* buffer."
+
+#[test]
+fn the_version_command_names_the_build() {
+    let (_d, mut shell, mut app) = fixture();
+    app.run(&mut shell, "build-info");
+    let log = app.messages().join("\n");
+    assert!(
+        log.contains(&closure_core::build_info().describe()),
+        "the build is not in the log: {log}"
+    );
+}
+
+#[test]
+fn it_names_closure_too_so_the_line_stands_alone() {
+    // A bare hash in a message log says nothing about what it is the
+    // hash of.
+    let (_d, mut shell, mut app) = fixture();
+    app.run(&mut shell, "build-info");
+    assert!(app.messages().join("\n").contains("closure"));
+}
+
+#[test]
+fn it_is_reachable_from_the_palette() {
+    // No chord, deliberately: this is something you ask for once while
+    // filing a bug, not a key worth spending. `M-x build-info` finds
+    // it, and `version` — the word people actually type — resolves to
+    // the same command.
+    let names = closure_shell_core::palette_command_names();
+    assert!(names.contains(&"build-info"), "not in the palette");
+    assert_eq!(
+        closure_shell_core::canonical_command("version"),
+        "build-info"
+    );
+}

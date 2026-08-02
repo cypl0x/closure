@@ -2204,3 +2204,83 @@ impl Command for EnsureId {
         Ok(Edit::Noop)
     }
 }
+
+// === What was built ===
+
+/// What the running binary was built from.
+///
+/// "build time git commit hash (and if from dirty working tree append
+/// that too) … I don't want to have a timestamp when the executable
+/// has been built, because that would break the reproducibility."
+///
+/// The reproducibility argument decides the shape. A timestamp is a
+/// property of *when* you built; a commit is a property of *what* you
+/// built — so two builds of one tree stay identical, which is what
+/// nix's epoch mtimes protect, and the value still names the source
+/// exactly. The dirty flag keeps that honest: a build from an edited
+/// tree is not the commit it names.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct BuildInfo {
+    /// Short commit hash, or `None` when built without a git tree —
+    /// a source tarball, which is ordinary and must not be a failure.
+    pub commit: Option<&'static str>,
+    /// How many commits lead to it. "the commit count is something I
+    /// could make use of as well".
+    pub commits: Option<u64>,
+    /// Whether tracked files differed from that commit when this was
+    /// compiled.
+    ///
+    /// Tracked only: untracked files were not compiled into anything,
+    /// and calling a build dirty for an editor swap file beside it
+    /// would make the flag mean nothing.
+    pub dirty: bool,
+}
+
+impl BuildInfo {
+    /// One line naming the build, for a status bar or a message log.
+    ///
+    /// Deliberately free of anything that changes between two builds
+    /// of the same source.
+    #[must_use]
+    pub fn describe(&self) -> String {
+        let mut out = match (self.commit, self.commits) {
+            (Some(c), Some(n)) => format!("{c} ({n} commits)"),
+            (Some(c), None) => c.to_owned(),
+            (None, Some(n)) => format!("unknown commit ({n} commits)"),
+            (None, None) => "unknown commit".to_owned(),
+        };
+        if self.dirty {
+            // Named, not punctuated: `-dirty` reads as part of a hash.
+            out.push_str(" · dirty tree");
+        }
+        out
+    }
+}
+
+/// What this binary was built from ([`BuildInfo`]).
+#[must_use]
+pub const fn build_info() -> BuildInfo {
+    BuildInfo {
+        commit: option_env!("CLOSURE_GIT_COMMIT"),
+        // `option_env!` is a `&str`; parsing it in a const fn needs a
+        // match rather than `.parse()`.
+        commits: match option_env!("CLOSURE_GIT_COMMITS") {
+            Some(s) => parse_u64(s.as_bytes(), 0, 0),
+            None => None,
+        },
+        dirty: option_env!("CLOSURE_GIT_DIRTY").is_some(),
+    }
+}
+
+/// Decimal parse, const so [`build_info`] can stay one.
+const fn parse_u64(bytes: &[u8], at: usize, acc: u64) -> Option<u64> {
+    if at >= bytes.len() {
+        return if at == 0 { None } else { Some(acc) };
+    }
+    let b = bytes[at];
+    if b.is_ascii_digit() {
+        parse_u64(bytes, at + 1, acc * 10 + (b - b'0') as u64)
+    } else {
+        None
+    }
+}

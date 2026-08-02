@@ -4063,6 +4063,12 @@ const PALETTE_COMMANDS: &[(&str, &str, &str, &str)] = &[
         "Time every keypress and log the slow ones",
     ),
     (
+        "build-info",
+        "build-info",
+        "App",
+        "Say which commit this binary was built from",
+    ),
+    (
         "toggle-tree",
         "toggle-tree",
         "View",
@@ -5672,6 +5678,8 @@ const COMMAND_ALIASES: &[(&str, &str)] = &[
     // Which mode? The keymap, not the editor's vim mode, which is the
     // other thing "mode" means three lines away in the status bar.
     ("cycle-mode", "next-input-mode"),
+    // "version" is what people type; `build-info` is what it is.
+    ("version", "build-info"),
 ];
 
 /// The name a command answers to now, given any name it has ever had.
@@ -20990,6 +20998,15 @@ impl ModalApp {
                 self.say("sync — hand over your ticket, paste theirs, Esc back");
             }
             "preview-diagrams" => self.preview_diagrams(shell),
+            // "Create a function/command that returns these values or
+            // alternatively prints them to the stdout/*MESSAGES*
+            // buffer." Both: `closure_core::build_info()` is the
+            // function, and this puts it where a bug report can copy
+            // it from.
+            "build-info" => {
+                let line = format!("closure {}", closure_core::build_info().describe());
+                self.say(line);
+            }
             "toggle-trace" => {
                 self.tracing = !self.tracing;
                 self.say(if self.tracing {
