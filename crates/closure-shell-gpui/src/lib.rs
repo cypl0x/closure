@@ -1747,11 +1747,24 @@ impl Colors {
     }
 }
 
-/// Height of one body-editor line, in pixels — the `min_h` the pane
+/// Height of one body-editor line, in pixels — the height the pane
 /// gives each row, and so the divisor that turns the pane's measured
 /// height into a line count ([`body_viewport_lines`]).
-#[cfg(feature = "gpui")]
 const BODY_LINE_H: f32 = 18.0;
+
+/// The height of one body row, and the unit the viewport is counted in.
+///
+/// One number for both, because they were two: the count divided the
+/// pane by `BODY_LINE_H` while each row was painted with
+/// `min_h(BODY_LINE_H)` — a *minimum*, which a glyph box a shade taller
+/// than the constant quietly exceeds. Thirty rows of "a shade" is a row
+/// and a half, so the pane clipped its own last line while the core,
+/// told it owned that many whole rows, scrolled the cursor onto it:
+/// "Caret gets hidden at the bottom of the file".
+#[must_use]
+pub fn body_row_h(zoom: f32) -> f32 {
+    BODY_LINE_H * zoom
+}
 
 /// Width reserved for the TODO keyword in an outline row, painted or
 /// not — a column that appears only on some rows moves every title
@@ -1776,8 +1789,7 @@ const OUTLINE_W_MAX: f32 = 900.0;
 
 /// The editor pane's own furniture above the text: the mode header and
 /// the pane padding, taken off the height before it is divided.
-#[cfg(feature = "gpui")]
-const BODY_CHROME: f32 = 46.0;
+pub const BODY_CHROME: f32 = 46.0;
 
 /// Lines to assume before the pane has ever been laid out (its measured
 /// height is zero on the first frame).
@@ -2806,7 +2818,7 @@ impl GpuiView {
         if height <= 0.0 {
             return BODY_VIEW_DEFAULT;
         }
-        body_viewport_lines(height, BODY_LINE_H * self.app.zoom(), BODY_CHROME)
+        body_viewport_lines(height, body_row_h(self.app.zoom()), BODY_CHROME)
     }
 
     /// How many columns of body text the editor pane can show.
@@ -4054,6 +4066,22 @@ impl GpuiView {
             .collect()
     }
 
+    /// L5: the line-number gutter, current line accented.
+    ///
+    /// A continuation row carries no number — the gutter says which
+    /// *logical* line this is, once.
+    fn line_gutter(&self, co: Colors, ln: usize, first: bool, current: bool) -> gpui::Div {
+        let gutter = div().w(px(34.0)).mr_2();
+        if first {
+            gutter
+                .text_size(self.sz(11.0))
+                .text_color(rgb(if current { co.accent } else { co.muted }))
+                .child(format!("{:>3}", ln + 1))
+        } else {
+            gutter
+        }
+    }
+
     fn editor_pane(&self, co: Colors, cx: &Context<Self>) -> gpui::Div {
         use closure_shell_core::EditorMode;
         let view = self.body_view();
@@ -4119,21 +4147,16 @@ impl GpuiView {
                 .into_iter()
                 .enumerate()
             {
-                // L5: line-number gutter, current line accented. A
-                // continuation row carries no number — the gutter says
-                // which *logical* line this is, once.
-                let gutter = div().w(px(34.0)).mr_2();
-                let gutter = if i == 0 {
-                    gutter
-                        .text_size(self.sz(11.0))
-                        .text_color(rgb(if ln == cur_line { co.accent } else { co.muted }))
-                        .child(format!("{:>3}", ln + 1))
-                } else {
-                    gutter
-                };
+                let gutter = self.line_gutter(co, ln, i == 0, ln == cur_line);
                 let mut row = div()
                     .flex()
-                    .min_h(px(BODY_LINE_H * self.app.zoom()))
+                    // Stated rather than a minimum, and the same number
+                    // the viewport is counted in: a row that grows past
+                    // it makes the count a lie and the last line a
+                    // sliver with the caret in it.
+                    .h(px(body_row_h(self.app.zoom())))
+                    .line_height(px(body_row_h(self.app.zoom())))
+                    .overflow_hidden()
                     .child(gutter);
                 row = row.child(self.editor_line(
                     co,
