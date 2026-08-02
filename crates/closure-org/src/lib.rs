@@ -10192,8 +10192,15 @@ pub enum MarkupKind {
     /// `/italic/`
     Italic,
     /// `=code=`
+    ///
+    /// Note: org's manual calls `=…=` *verbatim* and `~…~` *code*,
+    /// so these two names are the other way round from org's. It is
+    /// invisible while both render in one colour, and a trap the day
+    /// they stop — raised with the user 2026-08-02 rather than
+    /// swapped unasked, because the rename touches four shipped
+    /// contracts and changes nothing anybody can see.
     Code,
-    /// `~verbatim~`
+    /// `~verbatim~` — see the note above.
     Verbatim,
     /// `+strike+`
     Strikethrough,

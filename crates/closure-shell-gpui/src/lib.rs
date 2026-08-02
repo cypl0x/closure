@@ -844,6 +844,24 @@ pub fn span_ranges(spans: &[(BodySpan, String)]) -> Vec<(std::ops::Range<usize>,
     out
 }
 
+/// The emphasis runs of an outline title, covering it exactly once.
+///
+/// "/emphasis/ *bold* ~strikethrough~ … in the header? … these are
+/// ordinary org-mode headlines. Look how pretty they are." The buffer
+/// has painted these from the start; the tree painted the title as one
+/// flat run in the level's colour, so a headline named `/italic/`
+/// showed its slashes and nothing else.
+///
+/// The same classifier the body uses, on the title alone — a headline
+/// should look like itself in the tree and in the text, and two
+/// answers to "what is emphasised here" would eventually disagree.
+#[must_use]
+pub fn title_runs(title: &str) -> Vec<(std::ops::Range<usize>, BodySpan)> {
+    highlight_body(title)
+        .first()
+        .map_or_else(Vec::new, |spans| span_ranges(spans))
+}
+
 /// What a marked run in the body editor *means*.
 ///
 /// All three are a background range, and they must not look alike — a
@@ -4414,8 +4432,11 @@ impl GpuiView {
                     })
                     // The palette's own painter, on the palette's own
                     // spans: filtering the tree used to give a shorter
-                    // list and no reason for it.
-                    .children(match_runs(co, &row.title, &row.matches)),
+                    // list and no reason for it. Each run carries the
+                    // title's own emphasis as well, so `/italic/` in a
+                    // headline is italic here exactly as it is in the
+                    // buffer.
+                    .children(title_children(co, &row.title, &row.matches)),
             )
             .child(
                 div()
@@ -8278,6 +8299,65 @@ impl GpuiView {
 /// you why it is in the list. `spans` are byte ranges from
 /// [`closure_query::match_spans`], ascending and non-overlapping, so
 /// walking them is one pass with no sorting and no slicing backwards.
+/// An outline title, cut into runs that carry both its search matches
+/// and its org emphasis.
+///
+/// Two facts about the same bytes, so one pass over them: a match is a
+/// colour, emphasis is a face, and a run can want both — the hit
+/// inside `*bold*` is accented *and* bold.
+#[cfg(any(feature = "gpui", feature = "gpui-test"))]
+fn title_children(co: Colors, label: &str, matches: &[(usize, usize)]) -> Vec<gpui::Div> {
+    let emphasis = title_runs(label);
+    // Nothing to say about this title beyond its text.
+    if emphasis.len() <= 1 && matches.is_empty() {
+        return vec![div().child(label.to_owned())];
+    }
+    // Every boundary either kind of run introduces, so no piece
+    // straddles a change of face or of colour.
+    let mut cuts: Vec<usize> = vec![0, label.len()];
+    for (range, _) in &emphasis {
+        cuts.push(range.start);
+        cuts.push(range.end);
+    }
+    for &(start, end) in matches {
+        cuts.push(start);
+        cuts.push(end);
+    }
+    cuts.retain(|c| *c <= label.len() && label.is_char_boundary(*c));
+    cuts.sort_unstable();
+    cuts.dedup();
+
+    let mut out = Vec::with_capacity(cuts.len());
+    for pair in cuts.windows(2) {
+        let (start, end) = (pair[0], pair[1]);
+        let Some(text) = label.get(start..end) else {
+            continue;
+        };
+        let kind = emphasis
+            .iter()
+            .find(|(r, _)| r.start <= start && end <= r.end)
+            .map_or(BodySpan::Plain, |(_, k)| *k);
+        let hit = matches.iter().any(|&(s, e)| s <= start && end <= e);
+        let mut piece = div().child(text.to_owned());
+        // A search hit takes the accent; otherwise the emphasis speaks,
+        // and plain text keeps whatever colour the row set.
+        if hit {
+            piece = piece.text_color(rgb(co.accent));
+        } else if kind != BodySpan::Plain {
+            piece = piece.text_color(rgb(span_color(co, kind)));
+        }
+        let d = span_decoration(kind);
+        if d.bold {
+            piece = piece.font_weight(gpui::FontWeight::BOLD);
+        }
+        if d.italic {
+            piece = piece.italic();
+        }
+        out.push(piece);
+    }
+    out
+}
+
 #[cfg(any(feature = "gpui", feature = "gpui-test"))]
 fn match_runs(co: Colors, label: &str, spans: &[(usize, usize)]) -> Vec<gpui::Div> {
     if spans.is_empty() {
