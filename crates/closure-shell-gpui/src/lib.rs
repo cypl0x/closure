@@ -3309,53 +3309,33 @@ impl GpuiView {
     fn prompt_row(&self, co: Colors, cx: &Context<Self>) -> Option<gpui::Div> {
         let text = self.app.prompt_text()?;
         let cursor = self.app.prompt_cursor();
-        let rows = self.app.rows_shared(&self.shell).len();
-        let (label, hint): (&str, String) = match self.app.surface() {
-            ModalSurface::Rename => ("\u{270e} rename: ", String::new()),
-            // Not just "add": one prompt serves all four new-headline
-            // chords, so it has to say which one opened it.
-            ModalSurface::AddSibling => (
-                match self.app.new_heading_label() {
-                    "sibling TODO" => "\u{ff0b} new sibling TODO: ",
-                    "child" => "\u{ff0b} new child: ",
-                    "child TODO" => "\u{ff0b} new child TODO: ",
-                    _ => "\u{ff0b} new sibling: ",
-                },
-                String::new(),
-            ),
-            ModalSurface::TagsEdit => ("\u{270e} tags: ", String::new()),
-            ModalSurface::PropertyEdit => ("\u{270e} prop: ", String::new()),
-            ModalSurface::Ex => (":", ":w :q :wq :x, or any command name".to_owned()),
-            ModalSurface::Search => ("\u{2315} ", format!("{rows} match(es)")),
-            ModalSurface::BodySearch => (
-                "\u{2315} body: ",
-                format!("{} line(s)", self.app.body_search_rows(&self.shell).len()),
-            ),
-            ModalSurface::Refile => ("refile to: ", "RET files it here".to_owned()),
-            ModalSurface::TagPick => ("tags: ", "SPC toggles \u{b7} RET writes".to_owned()),
-            ModalSurface::Buffers => (
-                "buffers: ",
-                format!(
-                    "{} open \u{b7} RET opens",
-                    self.app.buffer_rows(&self.shell).len()
-                ),
-            ),
-            ModalSurface::Files => (
-                "files: ",
-                format!(
-                    "{} in this vault \u{b7} RET opens",
-                    self.app.file_rows(&self.shell).len()
-                ),
-            ),
-            _ => return None,
-        };
+        let chrome = self.app.prompt_chrome(&self.shell)?;
+        // Powerline: the label is a block of colour with the next
+        // segment's arrow biting into it, so the eye finds "what am I
+        // typing into" before it reads a word. The arrow is a Nerd Font
+        // glyph, which the shell now ships.
+        let tone = prompt_tone_color(co, chrome.tone);
         Some(
             div()
                 .flex()
                 .flex_row()
                 .items_center()
-                .gap_2()
-                .child(div().flex_none().child(label))
+                .child(
+                    div()
+                        .flex_none()
+                        .px_2()
+                        .bg(rgb(tone))
+                        .text_color(rgb(co.bg))
+                        .font_weight(gpui::FontWeight::BOLD)
+                        .child(chrome.label.clone()),
+                )
+                .child(
+                    div()
+                        .flex_none()
+                        .mr_2()
+                        .text_color(rgb(tone))
+                        .child("\u{e0b0}"),
+                )
                 .child(
                     div()
                         .flex_1()
@@ -3375,12 +3355,26 @@ impl GpuiView {
                 // was in the status line at the bottom of the window,
                 // which is the wrong end of the screen from the caret.
                 .children(self.history_hint(co))
-                .children((!hint.is_empty()).then(|| {
+                .children((!chrome.hint.is_empty()).then(|| {
+                    // The right-hand segment, mirrored: its arrow points
+                    // back into the bar it sits at the end of.
                     div()
+                        .flex()
+                        .flex_row()
+                        .items_center()
                         .flex_none()
                         .text_size(self.sz(10.0))
-                        .text_color(rgb(co.muted))
-                        .child(hint)
+                        // A shade off the bar it sits on, or the arrow
+                        // is painted in the background colour and the
+                        // segment reads as plain text with a gap.
+                        .child(div().text_color(rgb(co.selection)).child("\u{e0b2}"))
+                        .child(
+                            div()
+                                .px_2()
+                                .bg(rgb(co.selection))
+                                .text_color(rgb(co.fg))
+                                .child(chrome.hint.clone()),
+                        )
                 }))
                 .children(prompt_buttons(co, self.sz(11.0), cx)),
         )
@@ -8412,6 +8406,25 @@ pub fn selection_marker_color(theme: &closure_shell_core::Theme, selected: bool)
 #[must_use]
 pub fn drop_line_color(theme: &closure_shell_core::Theme) -> u32 {
     color_u32(theme.color(closure_shell_core::ColorRole::Warning))
+}
+
+/// The colour a prompt's leading segment takes, by what the prompt is
+/// for.
+///
+/// A powerline of one colour is a stripe. Doom Vibrant's own roles: a
+/// filter is the accent you are already following, an edit is the
+/// violet of a headline you are changing, a target is the settled
+/// green of somewhere to put things, and the `:` line is the warning
+/// amber because it runs anything.
+#[cfg(feature = "gpui")]
+const fn prompt_tone_color(co: Colors, tone: closure_shell_core::PromptTone) -> u32 {
+    use closure_shell_core::PromptTone as T;
+    match tone {
+        T::Filter => co.accent,
+        T::Edit => co.heading2,
+        T::Target => co.success,
+        T::Command => co.warning,
+    }
 }
 
 /// `"s"` when `n` is not one — so a count reads as English.

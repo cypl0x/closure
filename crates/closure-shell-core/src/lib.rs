@@ -872,6 +872,43 @@ impl Detail {
     }
 }
 
+/// What a prompt is for, as a colour role a shell can resolve.
+///
+/// A powerline of one colour is a stripe: the tone is what makes a
+/// rename read differently from a search and both differently from
+/// the `:` line, which can run anything.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum PromptTone {
+    /// Narrowing something that is already on screen.
+    Filter,
+    /// Writing a name or a value into the document.
+    Edit,
+    /// Choosing where something goes.
+    Target,
+    /// The `:` line — it runs commands, so it is the loud one.
+    Command,
+}
+
+/// The words around a prompt's field: what it is, and what it will do.
+///
+/// It was a match inside the gpui painter, so the terminal and the web
+/// shell had no way to show the same prompt. The arrows and the font
+/// weights stay in the shell that can draw them; the words are the
+/// same everywhere.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PromptChrome {
+    /// What this prompt is — "search", "rename", "new sibling TODO".
+    ///
+    /// No trailing punctuation: in a powerline the separator is the
+    /// arrow, and a `:` inside a coloured block reads as a typo.
+    pub label: String,
+    /// What it will do, or what it has found. Empty when there is
+    /// nothing useful to say.
+    pub hint: String,
+    /// Which colour role the label's segment takes.
+    pub tone: PromptTone,
+}
+
 /// One cell of the which-key panel: a group heading, or a binding.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum WhichKeyCell {
@@ -17062,6 +17099,67 @@ impl ModalApp {
         ring.retain(|e| *e != text);
         ring.insert(0, text);
         ring.truncate(KEEP);
+    }
+
+    /// The words around the open prompt's field, or `None` when the
+    /// surface is not a prompt.
+    #[must_use]
+    pub fn prompt_chrome(&self, shell: &Shell) -> Option<PromptChrome> {
+        use PromptTone as T;
+        let rows = self.rows_shared(shell).len();
+        let (label, hint, tone) = match self.surface {
+            ModalSurface::Rename => ("rename".to_owned(), String::new(), T::Edit),
+            // One prompt serves all four new-headline chords, so it has
+            // to say which one opened it.
+            ModalSurface::AddSibling => (
+                format!("new {}", self.new_heading_label()),
+                String::new(),
+                T::Edit,
+            ),
+            ModalSurface::TagsEdit => ("tags".to_owned(), String::new(), T::Edit),
+            ModalSurface::PropertyEdit => ("property".to_owned(), String::new(), T::Edit),
+            ModalSurface::Capture => (
+                "capture".to_owned(),
+                self.capture_target_label(shell),
+                T::Edit,
+            ),
+            ModalSurface::Ex => (
+                "command".to_owned(),
+                ":w :q :wq :x, or any command name".to_owned(),
+                T::Command,
+            ),
+            ModalSurface::Search => ("search".to_owned(), format!("{rows} match(es)"), T::Filter),
+            ModalSurface::BodySearch => (
+                "body".to_owned(),
+                format!("{} line(s)", self.body_search_rows(shell).len()),
+                T::Filter,
+            ),
+            ModalSurface::Refile => (
+                "refile to".to_owned(),
+                "RET files it here".to_owned(),
+                T::Target,
+            ),
+            ModalSurface::TagPick => (
+                "tags".to_owned(),
+                "SPC toggles \u{b7} RET writes".to_owned(),
+                T::Target,
+            ),
+            ModalSurface::Buffers => (
+                "buffers".to_owned(),
+                format!("{} open \u{b7} RET opens", self.buffer_rows(shell).len()),
+                T::Filter,
+            ),
+            ModalSurface::Files => (
+                "files".to_owned(),
+                format!(
+                    "{} in this vault \u{b7} RET opens",
+                    self.file_rows(shell).len()
+                ),
+                T::Filter,
+            ),
+            _ => return None,
+        };
+        Some(PromptChrome { label, hint, tone })
     }
 
     /// How many entries this prompt's history holds.
