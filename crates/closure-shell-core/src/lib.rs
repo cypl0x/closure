@@ -1245,6 +1245,42 @@ pub struct Typography {
     pub base_px: u16,
 }
 
+/// A step on the type scale — what a shell asks for instead of a
+/// number.
+///
+/// There was no scale: eighty-five literal sizes through the painter,
+/// `10.0` here and `11.0` next to it, so "the chrome is too small" had
+/// eighty-five places to be fixed and no way to stay fixed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TypeStep {
+    /// Prose, and everything that is the content rather than about it.
+    Body,
+    /// Chrome the eye uses constantly: the rail, the header, the
+    /// footer. Within a pixel of the body, because it is read as often.
+    Ui,
+    /// Annotations beside content — a file name, a chord chip.
+    Small,
+    /// Counters and badges. Small, never illegible.
+    Tiny,
+}
+
+impl Typography {
+    /// The pixel size of `step`, from the one size a theme declares.
+    ///
+    /// Derived rather than declared per step so that a theme raising
+    /// `base_px` — as high-contrast does — moves the whole scale with
+    /// it, instead of leaving fixed sizes underneath a larger body.
+    #[must_use]
+    pub const fn step_px(self, step: TypeStep) -> u16 {
+        match step {
+            TypeStep::Body => self.base_px,
+            TypeStep::Ui => self.base_px.saturating_sub(1),
+            TypeStep::Small => self.base_px.saturating_sub(2),
+            TypeStep::Tiny => self.base_px.saturating_sub(3),
+        }
+    }
+}
+
 /// Split a CSS-shaped font stack into family names, best first.
 ///
 /// The stacks are spelled the way CSS spells them because the web tier

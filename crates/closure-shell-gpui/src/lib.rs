@@ -341,9 +341,23 @@ pub const fn span_decoration(kind: BodySpan) -> Decoration {
     match kind {
         // A heading is heavier than its body, at every level — that is
         // what makes an outline skimmable rather than merely coloured.
-        BodySpan::Bold | BodySpan::Headline(_) | BodySpan::Todo | BodySpan::Done => {
-            Decoration { bold: true, ..d }
-        }
+        BodySpan::Bold | BodySpan::Todo | BodySpan::Done => Decoration { bold: true, ..d },
+        // Depth in weight, the way the outline already spells it in
+        // colour. Every headline used to be bold at every level, so a
+        // level-5 heading shouted as loudly as the level-1 above it —
+        // in a file with five levels that is five things all claiming
+        // to be the most important. The top two carry the document,
+        // the middle ones are structure, the fourth is the hinge —
+        // bold *and* italic, which is the face the bundle ships for it
+        // — and from the fifth down they are detail, which is what
+        // org's own faces do below `org-level-4` in most themes. Never
+        // plain: a headline has to stay distinguishable from the prose
+        // under it at every depth, and three of the eight levels were.
+        BodySpan::Headline(level) => Decoration {
+            bold: level <= 4,
+            italic: level >= 4,
+            ..d
+        },
         BodySpan::Italic | BodySpan::Quote => Decoration { italic: true, ..d },
         BodySpan::Strike => Decoration { strike: true, ..d },
         BodySpan::Underline | BodySpan::Link => Decoration {
@@ -1280,6 +1294,23 @@ fn crumb_slots(crumbs: &[closure_shell_core::CaptureCrumb]) -> (Vec<Option<usize
 #[cfg(feature = "gpui")]
 fn sz_at(base: f32, zoom: f32) -> gpui::Pixels {
     px(scaled_text_px(base, zoom))
+}
+
+/// The size the chrome is painted at: the rail, the header and the
+/// footer, at `zoom`.
+///
+/// One function for all three because they are one decision. Three
+/// literals that merely happened to agree drifted the first time any
+/// of them was touched, and all three had drifted *below* the prose
+/// they sit around — which is what "too tiny" was. They are not
+/// annotations: the rail is how you move between panes and the footer
+/// is how you learn the keys, so they are read as often as the body.
+#[must_use]
+pub fn chrome_px(theme: &closure_shell_core::Theme, zoom: f32) -> f32 {
+    scaled_text_px(
+        f32::from(theme.typography.step_px(closure_shell_core::TypeStep::Ui)),
+        zoom,
+    )
 }
 
 /// The outline's text size at `zoom`, in px.
@@ -3735,6 +3766,22 @@ impl GpuiView {
         } else {
             cookie
         });
+        Self::outline_title_cells(line, co, zoom, i, row)
+    }
+
+    /// The title and the file name: the two cells that take the slack.
+    ///
+    /// Split from the chips beside them because those are a fixed set
+    /// of fixed-width columns and these two are the ones that stretch —
+    /// and because the row grew a priority column and went past what
+    /// one function should be.
+    fn outline_title_cells(
+        line: gpui::Div,
+        co: Colors,
+        zoom: f32,
+        i: usize,
+        row: &Row,
+    ) -> gpui::Div {
         line
             // The title takes the slack and is clipped by it. Left to
             // size itself, a long title pushed the file name off the
@@ -3754,6 +3801,15 @@ impl GpuiView {
                     .overflow_hidden()
                     .whitespace_nowrap()
                     .text_color(rgb(co.outline(row.level)))
+                    // The same weight rule the buffer paints a headline
+                    // with, so a note is the same shape in the tree and
+                    // in the text.
+                    .when(span_decoration(BodySpan::Headline(row.level)).bold, |d| {
+                        d.font_weight(gpui::FontWeight::BOLD)
+                    })
+                    .when(span_decoration(BodySpan::Headline(row.level)).italic, |d| {
+                        d.italic()
+                    })
                     .child(row.title.clone()),
             )
             .child(
@@ -6672,16 +6728,24 @@ impl GpuiView {
             .bg(rgb(co.panel))
             .border_r_1()
             .border_color(rgb(co.border))
-            .children(
-                self.destinations()
-                    .into_iter()
-                    .map(|dest| Self::rail_button(co, self.app.zoom(), dest, cx)),
-            )
+            .children(self.destinations().into_iter().map(|dest| {
+                // The rail is how you move between panes, so
+                // it is read as often as the prose and is sized
+                // with it rather than two pixels under it.
+                Self::rail_button(
+                    chrome_px(&self.theme, self.app.zoom()),
+                    co,
+                    self.app.zoom(),
+                    dest,
+                    cx,
+                )
+            }))
     }
 
     /// One rail button: icon, name, live badge, and the chord that does
     /// the same thing from the keyboard.
     fn rail_button(
+        chrome: f32,
         co: Colors,
         zoom: f32,
         dest: closure_shell_core::Destination,
@@ -6702,7 +6766,7 @@ impl GpuiView {
             .px_2()
             .py_1()
             .rounded_md()
-            .text_size(sz_at(12.0, zoom))
+            .text_size(px(chrome))
             .text_color(rgb(fg))
             .cursor_pointer()
             .hover(move |s| s.bg(rgb(co.hover)))
@@ -6727,7 +6791,7 @@ impl GpuiView {
                     .rounded_sm()
                     .bg(rgb(if dest.active { co.accent } else { co.panel })),
             )
-            .child(div().text_size(sz_at(12.0, zoom)).child(dest.icon))
+            .child(div().text_size(px(chrome)).child(dest.icon))
             .child(div().flex_grow().child(dest.label));
         if dest.active {
             button = button.bg(rgb(co.selection));
@@ -6928,6 +6992,9 @@ impl GpuiView {
     /// The window's top bar: title, the clickable mode chip, and the
     /// Notion-style capture and palette buttons.
     fn header_bar(&self, co: Colors, cx: &Context<Self>) -> gpui::Div {
+        // Sized with the rail and the footer: one decision about the
+        // chrome, not three literals that happen to agree today.
+        let chrome = chrome_px(&self.theme, self.app.zoom());
         let button = |label: String, colour: u32, command: &'static str| {
             let label = header_label(&label, self.app.chord_for(command));
             div()
@@ -6935,7 +7002,7 @@ impl GpuiView {
                 .px_2()
                 .rounded_md()
                 .bg(rgb(co.panel))
-                .text_size(self.sz(11.0))
+                .text_size(px(chrome))
                 .text_color(rgb(colour))
                 .cursor_pointer()
                 .hover(move |s| s.bg(rgb(co.hover)))
