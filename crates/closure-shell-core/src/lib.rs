@@ -11886,6 +11886,12 @@ pub struct ModalApp {
     /// Off by default and free when off: a measurement that costs
     /// something to collect changes the thing it is measuring.
     tracing: bool,
+    /// The file the last vault-changing command touched.
+    ///
+    /// What `u` and `C-r` speak to. Undo follows the edit rather
+    /// than the cursor, because the commands most worth undoing are
+    /// the ones that move the cursor off what they changed.
+    last_edited_file: Option<std::path::PathBuf>,
     /// The notification log. It lived in the gpui window, which is
     /// why it had no command and no chord — there was nothing for the
     /// keymap to point at. Here it has both, and the terminal shell
@@ -12397,6 +12403,7 @@ impl ModalApp {
             line_kill: String::new(),
             messages: Vec::new(),
             tracing: false,
+            last_edited_file: None,
             notifications: Feedback::default(),
             palette_cursor: 0,
             pending: Vec::new(),
@@ -12453,6 +12460,22 @@ impl ModalApp {
     /// exactly this entry point.
     pub fn run(&mut self, shell: &mut Shell, command: &str) {
         self.run_command(shell, canonical_command(command));
+    }
+
+    /// The file `u` and `C-r` speak to.
+    ///
+    /// The last file a command actually changed, and only the selected
+    /// row's file when nothing has been changed yet. Asking the
+    /// selection was the whole bug: `d` moves the cursor off the thing
+    /// it just cut, so `u` undid an edit in whatever file the cursor
+    /// landed in — and once the last headline was gone there was no
+    /// row to ask and `u` did nothing at all.
+    fn undo_target(&self, shell: &Shell) -> Option<std::path::PathBuf> {
+        self.last_edited_file.clone().or_else(|| {
+            self.rows_shared(shell)
+                .get(self.selected)
+                .map(|r| std::path::PathBuf::from(&r.path))
+        })
     }
 
     /// Record the buffer a command just left, so the pane it opened
@@ -20295,7 +20318,33 @@ impl ModalApp {
         // Hooked on `run` alone it worked for the tests and not on
         // screen, because `:messages` never touches `run`.
         let from = self.surface;
+        // Which file this command is about to touch, and whether it
+        // touched anything. Undo has to follow the *edit*, not the
+        // cursor: `d` is precisely the command that moves the
+        // selection off what it just changed, so asking the row that
+        // is selected afterwards sends `u` to another file — or, once
+        // the last headline is gone, to no row at all and nowhere.
+        //
+        // Recorded here for the same reason the pane-return is: every
+        // door into a command comes through this one function, and one
+        // omission per mutating command was how the last version of
+        // this went wrong.
+        let touching = self
+            .rows_shared(shell)
+            .get(self.selected)
+            .map(|r| std::path::PathBuf::from(&r.path));
+        let revision = shell.vault.revision();
         self.run_command_inner(shell, cmd);
+        // …but undo and redo *act on* that file, they do not choose a
+        // new one. Letting them record would have `u` retarget itself
+        // to wherever the cursor happened to be, so the `C-r` after it
+        // went somewhere else entirely.
+        if shell.vault.revision() != revision
+            && !matches!(cmd, "undo" | "redo")
+            && let Some(path) = touching
+        {
+            self.last_edited_file = Some(path);
+        }
         self.note_pane_return(from);
     }
 
@@ -20757,8 +20806,7 @@ impl ModalApp {
                 }
             }
             "undo" => {
-                if let Some(row) = self.rows_shared(shell).get(self.selected).cloned() {
-                    let path = std::path::PathBuf::from(&row.path);
+                if let Some(path) = self.undo_target(shell) {
                     match shell.vault.undo_in(&path) {
                         Ok(()) => self.say("undo"),
                         Err(e) => self.status = format!("undo failed: {e}"),
@@ -20766,11 +20814,12 @@ impl ModalApp {
                     self.selected = self
                         .selected
                         .min(self.rows_shared(shell).len().saturating_sub(1));
+                } else {
+                    self.say("nothing to undo");
                 }
             }
             "redo" => {
-                if let Some(row) = self.rows_shared(shell).get(self.selected).cloned() {
-                    let path = std::path::PathBuf::from(&row.path);
+                if let Some(path) = self.undo_target(shell) {
                     match shell.vault.redo_in(&path) {
                         Ok(()) => self.say("redo"),
                         Err(e) => self.status = format!("redo failed: {e}"),
@@ -20778,6 +20827,8 @@ impl ModalApp {
                     self.selected = self
                         .selected
                         .min(self.rows_shared(shell).len().saturating_sub(1));
+                } else {
+                    self.say("nothing to redo");
                 }
             }
             "palette" => self.open_palette(),
