@@ -506,3 +506,53 @@ fn eliding_counts_characters_not_bytes() {
     assert_eq!(out.chars().count(), 12, "{out}");
     assert!(out.ends_with('…'));
 }
+
+// === What closure kills belongs on the system clipboard ===
+//
+// Reported 2026-08-02: "sync with system clipboard (two way)".
+//
+// One direction already worked: `C-c` writes a selection out and `C-v`
+// reads one in. The other did not — `d` in the outline, `dd`/`yy` in the
+// editor and `C-k` in a prompt all filled closure's own kill ring and
+// stopped there, so a subtree you had just cut could not be pasted into
+// anything else on the desktop.
+//
+// The bridge is "did the ring change": whatever put something there,
+// the top of it is what a paste elsewhere should produce.
+
+#[test]
+fn a_new_ring_top_is_what_gets_mirrored() {
+    use closure_shell_gpui::ring_to_mirror;
+    assert_eq!(
+        ring_to_mirror(None, Some("cut text")),
+        Some("cut text".to_owned()),
+        "something was killed"
+    );
+}
+
+#[test]
+fn an_unchanged_ring_mirrors_nothing() {
+    // The check runs after every keystroke, so it has to be quiet when
+    // nothing happened — writing the clipboard on every key would fight
+    // whatever else on the desktop owns it.
+    use closure_shell_gpui::ring_to_mirror;
+    assert_eq!(ring_to_mirror(Some("same"), Some("same")), None);
+    assert_eq!(ring_to_mirror(None, None), None);
+}
+
+#[test]
+fn a_ring_that_emptied_mirrors_nothing() {
+    // Undo can take the last kill back off. That is not a reason to
+    // blank the desktop's clipboard.
+    use closure_shell_gpui::ring_to_mirror;
+    assert_eq!(ring_to_mirror(Some("was there"), None), None);
+}
+
+#[test]
+fn replacing_the_top_mirrors_the_new_one() {
+    use closure_shell_gpui::ring_to_mirror;
+    assert_eq!(
+        ring_to_mirror(Some("first"), Some("second")),
+        Some("second".to_owned())
+    );
+}

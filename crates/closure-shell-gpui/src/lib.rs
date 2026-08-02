@@ -2372,9 +2372,18 @@ impl GpuiView {
         text: Option<char>,
         cx: &mut Context<Self>,
     ) {
+        let killed_before = self.shell.ring_top().map(ToOwned::to_owned);
         let asking = self.app.surface() == ModalSurface::Llm && key == "enter";
         let pairing = self.app.surface() == ModalSurface::Sync && key == "enter";
         self.app.on_key(&mut self.shell, key, ctrl, alt, text);
+        // Anything that killed something puts it on the desktop's
+        // clipboard too, so a subtree cut here can be pasted anywhere
+        // else. Keyed off the ring rather than off a list of commands:
+        // whatever fills it — `d`, `dd`, `C-k` in a prompt, a future
+        // one — is covered by the same three lines.
+        if let Some(text) = ring_to_mirror(killed_before.as_deref(), self.shell.ring_top()) {
+            cx.write_to_clipboard(gpui::ClipboardItem::new_string(text));
+        }
         // Pasting a ticket is what makes a network-facing listener
         // willing to answer, so it is also what re-arms the accept the
         // guard refused.
@@ -7171,6 +7180,25 @@ fn decorated(kind: BodySpan) -> gpui::HighlightStyle {
         }),
         ..Default::default()
     }
+}
+
+/// What to put on the system clipboard after a keystroke, given the
+/// kill ring's top before and after it.
+///
+/// One direction of the clipboard bridge already worked: `C-c` writes a
+/// selection out, `C-v` reads one in. The other did not — `d` in the
+/// outline, `dd`/`yy` in the editor and `C-k` in a prompt filled
+/// closure's own ring and stopped there, so a subtree you had just cut
+/// could not be pasted into anything else on the desktop.
+///
+/// `None` when nothing changed: the check runs after every key, and
+/// writing the clipboard on every one would fight whatever else on the
+/// desktop owns it. A ring that *emptied* — undo taking the last kill
+/// back — is not a reason to blank the clipboard either.
+#[must_use]
+pub fn ring_to_mirror(before: Option<&str>, after: Option<&str>) -> Option<String> {
+    let after = after?;
+    (Some(after) != before).then(|| after.to_owned())
 }
 
 /// One step of outline indentation, in pixels at this zoom.
