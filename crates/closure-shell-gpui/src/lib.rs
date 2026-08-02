@@ -858,6 +858,32 @@ pub fn visible_window(cursor: usize, len: usize, cap: usize) -> std::ops::Range<
     start..(start + cap).min(len)
 }
 
+/// How many columns of body text a pane `width` pixels wide can show.
+///
+/// The gutter, its margin and the scrollbar come off the front; a
+/// zoomed glyph is wider, so a zoomed pane holds fewer columns — the
+/// horizontal scroll has to know that or the cursor runs off the edge
+/// it is supposed to be following. Never zero: an unmeasured pane (no
+/// bounds before the first layout) assumes a usable line rather than
+/// scrolling every one of them.
+#[must_use]
+pub fn body_columns(width: f32, zoom: f32) -> usize {
+    /// Advance of one monospace glyph at the editor's text size.
+    const COL_W: f32 = 7.2;
+    /// The line-number gutter plus its margin, and the scrollbar.
+    const CHROME: f32 = 34.0 + 8.0 + 10.0;
+    /// Below this the pane cannot show a word.
+    const MIN: usize = 8;
+    let usable = width - CHROME;
+    let col_w = COL_W * zoom;
+    if !usable.is_finite() || col_w <= 0.0 || usable < col_w {
+        return BODY_COLS_DEFAULT;
+    }
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    let cols = (usable / col_w).floor() as usize;
+    cols.max(MIN)
+}
+
 /// First visible column of a body line, from where the cursor is.
 ///
 /// Lines do not wrap in the editor — wrapping desyncs the one-number
@@ -867,10 +893,15 @@ pub fn visible_window(cursor: usize, len: usize, cap: usize) -> std::ops::Range<
 /// the last visible one once it runs off the edge.
 #[must_use]
 pub const fn h_scroll_start(cursor_col: usize, cols: usize) -> usize {
-    if cols == 0 || cursor_col < cols {
+    /// Columns kept between the caret and the right edge. Flush against
+    /// it, the caret is a two-pixel bar in the pane's own padding —
+    /// which is the half of "I don't have the option to view where I am
+    /// typing" that scrolling alone does not answer.
+    const MARGIN: usize = 2;
+    if cols <= MARGIN || cursor_col + MARGIN < cols {
         return 0;
     }
-    cursor_col + 1 - cols
+    cursor_col + 1 + MARGIN - cols
 }
 
 /// A one-line prompt split into the halves either side of its caret,
@@ -1797,7 +1828,6 @@ pub const BODY_CHROME: f32 = 46.0;
 const BODY_VIEW_DEFAULT: usize = 40;
 
 /// Columns to assume before the pane has ever been laid out.
-#[cfg(feature = "gpui")]
 const BODY_COLS_DEFAULT: usize = 80;
 
 /// How long a toast stays on the strip.
@@ -2828,23 +2858,19 @@ impl GpuiView {
     /// layout) assumes a usable line rather than scrolling every line
     /// off the left edge.
     fn body_cols(&self) -> usize {
-        /// Advance of one monospace glyph at the editor's text size.
-        const COL_W: f32 = 7.2;
-        /// The line-number gutter plus its margin, and the scrollbar.
-        const CHROME: f32 = 34.0 + 8.0 + 10.0;
-        /// Below this the pane cannot show a word.
-        const MIN: usize = 8;
-        let width = f32::from(self.body_track.bounds().size.width) - CHROME;
-        // A zoomed glyph is wider, so the pane holds fewer columns —
-        // the horizontal scroll has to know that or the cursor runs off
-        // the edge it is supposed to be following.
-        let col_w = COL_W * self.app.zoom();
-        if !width.is_finite() || width < col_w {
-            return BODY_COLS_DEFAULT;
-        }
-        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
-        let cols = (width / col_w).floor() as usize;
-        cols.max(MIN)
+        // `body_track` records the *text's* bounds, for the scrollbar
+        // to size its thumb against — so on a long line it reports the
+        // width of the line, not of the pane showing it. Asking it how
+        // wide the viewport is answered "as wide as the content", the
+        // cursor was therefore never past the edge, and the horizontal
+        // scroll never moved: "typing will go out of the view and I
+        // don't have the option to view where I am typing". The pane's
+        // own handle is the one that clips, and the one `body_view`
+        // already trusts for the height.
+        body_columns(
+            f32::from(self.side_scroll.bounds().size.width),
+            self.app.zoom(),
+        )
     }
 
     /// Context line describing the active surface (with the live input

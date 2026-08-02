@@ -81,3 +81,57 @@ fn a_row_is_tall_enough_for_its_glyphs() {
 fn an_unmeasured_pane_still_claims_something() {
     assert!(body_viewport_lines(0.0, body_row_h(1.0), BODY_CHROME) >= 4);
 }
+
+// ---- horizontal ---------------------------------------------------
+
+use closure_shell_gpui::{body_columns, h_scroll_start};
+
+#[test]
+fn a_cursor_past_the_edge_pulls_the_view_with_it() {
+    // "editor horizontal scroll. Typing will go out of the view and I
+    // don't have the option to view where I am typing if the line is to
+    // loong". The columns must come from the pane that clips, not from
+    // the text: measured against the text, a long line makes the pane
+    // look as wide as the line and nothing ever scrolls.
+    let cols = body_columns(1030.0, 1.0);
+    assert!(cols > 8 && cols < 200, "a 1030px pane holds {cols} columns");
+    // The margin means the view starts moving two columns before the
+    // caret would actually leave the pane.
+    assert_eq!(
+        h_scroll_start(cols - 3, cols),
+        0,
+        "still comfortably on screen"
+    );
+    assert!(h_scroll_start(cols, cols) > 0, "past the edge scrolls");
+    assert!(
+        h_scroll_start(200, cols) > 0,
+        "column 200 of a long line is not visible in {cols} columns"
+    );
+}
+
+#[test]
+fn the_column_count_shrinks_as_the_text_grows() {
+    let plain = body_columns(1030.0, 1.0);
+    let zoomed = body_columns(1030.0, 2.0);
+    assert!(zoomed < plain, "{zoomed} vs {plain}");
+}
+
+#[test]
+fn an_unmeasured_pane_assumes_a_usable_line() {
+    assert!(body_columns(0.0, 1.0) >= 8);
+    assert!(body_columns(f32::NAN, 1.0) >= 8);
+}
+
+#[test]
+fn the_caret_is_never_flush_against_the_right_edge() {
+    // Scrolling so the caret lands in the *last* column leaves it a
+    // two-pixel bar inside the pane's padding, which is the half of the
+    // report that scrolling alone does not answer.
+    let cols = body_columns(1030.0, 1.0);
+    let start = h_scroll_start(200, cols);
+    let last_visible = start + cols - 1;
+    assert!(
+        200 < last_visible,
+        "caret at 200, window {start}..={last_visible}"
+    );
+}

@@ -96,15 +96,18 @@ fn a_sectioned_pane_still_reveals_nothing() {
 #[test]
 fn a_line_that_fits_is_not_scrolled() {
     assert_eq!(h_scroll_start(0, 80), 0);
-    assert_eq!(h_scroll_start(79, 80), 0);
+    assert_eq!(h_scroll_start(77, 80), 0);
 }
 
 #[test]
 fn the_cursor_pulls_the_line_left_when_it_runs_off_the_edge() {
-    // Column 100 in an 80-column pane: the last visible column is the
-    // cursor's, the way the vertical viewport keeps the cursor line.
-    assert_eq!(h_scroll_start(80, 80), 1);
-    assert_eq!(h_scroll_start(100, 80), 21);
+    // Two columns of margin since 2026-08-02: the caret used to land in
+    // the *last* column, where it is a two-pixel bar in the pane's own
+    // padding — the half of "I don't have the option to view where I am
+    // typing" that scrolling alone does not answer. So the view starts
+    // moving two columns early and the caret is never flush.
+    assert_eq!(h_scroll_start(80, 80), 3);
+    assert_eq!(h_scroll_start(100, 80), 23);
 }
 
 #[test]
