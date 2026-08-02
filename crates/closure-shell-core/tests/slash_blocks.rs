@@ -235,7 +235,7 @@ fn an_open_menu_does_not_swallow_ordinary_saves() {
     // C-Enter still commits the body; the menu must not intercept it.
     let (_d, mut shell, mut app) = editing();
     type_str(&mut app, &mut shell, "/code");
-    app.on_key(&mut shell, "enter", true, false, None);
+    app.run(&mut shell, "commit-edit");
     assert_eq!(app.surface(), ModalSurface::Browse, "the body was saved");
 }
 

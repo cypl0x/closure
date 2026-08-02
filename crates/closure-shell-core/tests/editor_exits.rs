@@ -54,7 +54,7 @@ fn save_writes_and_keeps_the_buffer() {
 #[test]
 fn save_and_close_writes_and_leaves() {
     let (dir, mut sh, mut app) = editing();
-    app.on_key(&mut sh, "enter", true, false, None); // C-Enter
+    app.run(&mut sh, "commit-edit"); // C-Enter
     assert!(on_disk(&dir).contains("edited"), "written");
     assert!(!app.surface().is_editor(), "and closed");
 }

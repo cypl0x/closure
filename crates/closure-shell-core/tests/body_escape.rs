@@ -59,7 +59,7 @@ fn a_body_star_line_becomes_a_child_of_the_note() {
     let mut app = ModalApp::new(InputMode::Vim);
     typing_body(&mut app, &mut sh);
     typ(&mut app, &mut sh, "* Foo body\n");
-    app.on_key(&mut sh, "enter", true, false, None); // C-Enter commit
+    app.run(&mut sh, "commit-edit"); // C-c C-c since 2026-08-02
     let titles: Vec<String> = app.rows(&sh).iter().map(|r| r.title.clone()).collect();
     assert_eq!(
         titles,
@@ -81,7 +81,7 @@ fn the_prose_around_it_stays_in_the_body() {
     let mut app = ModalApp::new(InputMode::Vim);
     typing_body(&mut app, &mut sh);
     typ(&mut app, &mut sh, "some prose\n* Foo body\n");
-    app.on_key(&mut sh, "enter", true, false, None);
+    app.run(&mut sh, "commit-edit");
     assert_eq!(
         app.detail(&sh).expect("detail").body.trim_end(),
         "some prose",
@@ -98,7 +98,7 @@ fn text_that_merely_looks_like_a_headline_is_still_escaped() {
     let mut app = ModalApp::new(InputMode::Vim);
     typing_body(&mut app, &mut sh);
     typ(&mut app, &mut sh, "*bold* opening\n");
-    app.on_key(&mut sh, "enter", true, false, None);
+    app.run(&mut sh, "commit-edit");
     assert_eq!(app.rows(&sh).len(), 2, "no headline was invented");
     assert_eq!(
         app.detail(&sh).expect("detail").body.trim_end(),
@@ -116,11 +116,11 @@ fn committing_an_unchanged_body_twice_changes_nothing() {
     let mut app = ModalApp::new(InputMode::Vim);
     typing_body(&mut app, &mut sh);
     typ(&mut app, &mut sh, "* one\n");
-    app.on_key(&mut sh, "enter", true, false, None);
+    app.run(&mut sh, "commit-edit");
     let after_first: Vec<String> = app.rows(&sh).iter().map(|r| r.title.clone()).collect();
 
     app.on_key(&mut sh, "i", false, false, Some('i'));
-    app.on_key(&mut sh, "enter", true, false, None);
+    app.run(&mut sh, "commit-edit");
     let after_second: Vec<String> = app.rows(&sh).iter().map(|r| r.title.clone()).collect();
     assert_eq!(after_first, after_second, "a second commit is a no-op");
 }

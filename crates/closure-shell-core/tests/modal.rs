@@ -209,7 +209,7 @@ fn vim_i_enters_body_editor_and_commits() {
     for c in "note".chars() {
         app.on_key(&mut sh, &c.to_string(), false, false, Some(c));
     }
-    app.on_key(&mut sh, "enter", true, false, None); // C-Enter commit
+    app.run(&mut sh, "commit-edit"); // C-Enter commit
     assert_eq!(app.surface(), ModalSurface::Browse);
     let d = app.detail(&sh).expect("detail");
     assert_eq!(d.body.trim_end(), "note");
@@ -275,7 +275,7 @@ fn body_normal_mode_navigates_and_edits_vim_style() {
     app.on_key(&mut sh, "i", false, false, Some('i')); // back to INSERT
     app.on_key(&mut sh, "z", false, false, Some('z')); // inserts AT cursor
     assert_eq!(app.body_buffer(), "zb\ncd", "insert at cursor, not append");
-    app.on_key(&mut sh, "enter", true, false, None); // C-Enter commits
+    app.run(&mut sh, "commit-edit"); // C-Enter commits
     assert_eq!(app.detail(&sh).expect("d").body.trim_end(), "zb\ncd");
 }
 

@@ -164,7 +164,7 @@ fn saving_the_buffer_writes_the_file() {
     // `A` appends at the end of the first line, so the edit is visible
     // without depending on where the cursor starts.
     feed(&mut app, &mut shell, "A!");
-    app.on_key(&mut shell, "enter", true, false, None); // C-Enter saves
+    app.run(&mut shell, "commit-edit"); // C-Enter saves
     let on_disk = fs::read_to_string(dir.path().join("notes.org")).expect("read");
     assert!(on_disk.starts_with("* One!"), "written: {on_disk:?}");
     assert_eq!(
@@ -179,7 +179,7 @@ fn a_saved_file_edit_reaches_the_outline() {
     let (_d, mut shell, mut app) = fixture(InputMode::Doom);
     app.run(&mut shell, "toggle-view");
     feed(&mut app, &mut shell, "A!");
-    app.on_key(&mut shell, "enter", true, false, None);
+    app.run(&mut shell, "commit-edit");
     app.run(&mut shell, "toggle-view");
     let titles: Vec<String> = app.rows(&shell).iter().map(|r| r.title.clone()).collect();
     assert_eq!(titles, vec!["One!".to_owned(), "Two".to_owned()]);

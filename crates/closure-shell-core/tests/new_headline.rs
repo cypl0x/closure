@@ -266,7 +266,7 @@ fn the_prompt_says_todo_for_the_shifted_chord() {
 fn it_says_child_for_the_ctrl_chords() {
     let (_d, mut sh, mut app) = fixture(InputMode::Doom);
     app.select(0, &sh);
-    app.on_key(&mut sh, "enter", true, false, None);
+    app.on_key(&mut sh, "enter", true, false, None); // C-RET: add a child
     assert_eq!(app.new_heading_label(), "child");
 }
 
@@ -318,7 +318,7 @@ fn ctrl_enter_leaves_it_where_it_was() {
     for c in "Gamma".chars() {
         app.on_key(&mut sh, &c.to_string(), false, false, Some(c));
     }
-    app.on_key(&mut sh, "enter", true, false, None); // C-Enter accepts
+    app.on_key(&mut sh, "enter", true, false, None); // C-Enter: file it and stay
     assert_eq!(
         app.detail(&sh).expect("detail").title,
         "Alpha",

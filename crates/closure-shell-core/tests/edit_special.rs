@@ -162,7 +162,7 @@ fn committing_writes_the_block_back_and_leaves_the_file_alone() {
     for c in "echo edited".chars() {
         app.on_key(&mut shell, "x", false, false, Some(c));
     }
-    app.on_key(&mut shell, "enter", true, false, None);
+    app.run(&mut shell, "commit-edit");
     assert_eq!(
         app.surface(),
         ModalSurface::Blocks,
@@ -220,7 +220,7 @@ fn edit_special_from_the_body_editor_splices_back_into_the_buffer() {
     for c in "echo spliced".chars() {
         app.on_key(&mut shell, "x", false, false, Some(c));
     }
-    app.on_key(&mut shell, "enter", true, false, None);
+    app.run(&mut shell, "commit-edit");
     assert_eq!(app.surface(), ModalSurface::EditBody, "back in the body");
     let body = app.body_buffer();
     assert!(body.contains("echo spliced"), "spliced: {body:?}");
@@ -230,7 +230,7 @@ fn edit_special_from_the_body_editor_splices_back_into_the_buffer() {
     // Nothing on disk until the body itself is committed.
     let before = fs::read_to_string(dir.path().join("notes.org")).expect("read");
     assert!(!before.contains("echo spliced"), "not written yet");
-    app.on_key(&mut shell, "enter", true, false, None);
+    app.run(&mut shell, "commit-edit");
     let after = fs::read_to_string(dir.path().join("notes.org")).expect("read");
     assert!(after.contains("echo spliced"), "written on body commit");
 }

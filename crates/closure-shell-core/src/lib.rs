@@ -4300,14 +4300,15 @@ fn editor_which_key(mode: InputMode) -> Vec<(String, Vec<(String, String)>)> {
         if modal {
             vec![
                 ("C-s", "save and stay"),
-                ("C-\u{23ce}", "save and close"),
+                ("C-c C-c", "save and close"),
+                ("C-c C-k", "discard"),
                 (":w :q :wq", "write, quit, both"),
-                (":q!", "discard"),
             ]
         } else {
             vec![
                 ("C-x C-s", "save and stay"),
-                ("C-\u{23ce}", "save and close"),
+                ("C-c C-c", "save and close"),
+                ("C-c C-k", "discard"),
                 ("Esc", "close a clean buffer"),
             ]
         },
@@ -4871,6 +4872,10 @@ const ZOOM_MIN_STEPS: i8 = -7;
 enum BodyPrefix {
     /// `z` — evil's viewport prefix (`zz` / `zt` / `zb`).
     Viewport,
+    /// `C-c` — org's own prefix, waiting for `C-c` (accept) or `C-k`
+    /// (abandon). Held here rather than resolved as a single stroke
+    /// because a prefix is two keys and `window_chord` knows one.
+    OrgAccept,
 }
 
 /// Where the cursor line should end up in the viewport.
@@ -11010,6 +11015,9 @@ impl ModalApp {
             if self.pending_body == Some(BodyPrefix::Viewport) {
                 return "z".to_owned();
             }
+            if self.pending_body == Some(BodyPrefix::OrgAccept) {
+                return "C-c".to_owned();
+            }
             return String::new();
         }
         self.pending_chord()
@@ -11025,18 +11033,19 @@ impl ModalApp {
     /// relevant to the corresponding mode".
     #[must_use]
     pub fn buffer_actions(&self) -> Vec<(&'static str, &'static str, Option<&'static str>)> {
-        let modal = matches!(
-            self.mode,
-            InputMode::Vim | InputMode::Doom | InputMode::Helix
-        );
         vec![
             (
                 "\u{2713} save",
                 "save-buffer",
                 closure_input::chord_for_command(self.mode, "save-buffer"),
             ),
-            ("\u{2713} save & close", "commit-edit", Some("C-\u{23ce}")),
-            ("\u{2715} discard", "discard-edit", modal.then_some(":q!")),
+            // org-edit-special's own pair. Not in the outline keymap:
+            // `C-c C-c` there is org's "do the thing at point", which
+            // for a source block is running it. One chord, two
+            // meanings by surface — which is org's own rule, and only
+            // the surface can tell them apart.
+            ("\u{2713} save & close", "commit-edit", Some("C-c C-c")),
+            ("\u{2715} discard", "discard-edit", Some("C-c C-k")),
         ]
     }
 
@@ -15118,14 +15127,13 @@ impl ModalApp {
         alt: bool,
         text: Option<char>,
     ) {
+        if self.org_accept_chord(shell, key, ctrl, alt) {
+            return;
+        }
         if self.leader_key(shell, key, ctrl, alt, text) {
             return;
         }
         if self.window_chord(shell, key, ctrl, alt, text) {
-            return;
-        }
-        if key == "enter" && ctrl {
-            self.commit_edit_body(shell);
             return;
         }
         // `:` outside INSERT is the ex line, the way vim's is. Inside
@@ -15402,6 +15410,31 @@ impl ModalApp {
     /// (Doom keeps it) and so recentres while typing as well.
     ///
     /// Returns whether the key was consumed.
+    /// org's `C-c` prefix inside a buffer: `C-c C-c` accepts the edit,
+    /// `C-c C-k` abandons it, the way `org-edit-special` does.
+    ///
+    /// A prefix is two keys and `window_chord` resolves one, so this is
+    /// held like the `z` viewport prefix rather than looked up as a
+    /// single stroke. `C-c` followed by anything nobody bound does
+    /// nothing at all — swallowing the second key too would eat a
+    /// keystroke for a chord that does not exist.
+    fn org_accept_chord(&mut self, shell: &mut Shell, key: &str, ctrl: bool, alt: bool) -> bool {
+        if self.pending_body == Some(BodyPrefix::OrgAccept) {
+            self.pending_body = None;
+            match (key, ctrl) {
+                ("c", true) => self.run_command(shell, "commit-edit"),
+                ("k", true) => self.run_command(shell, "discard-edit"),
+                _ => {}
+            }
+            return true;
+        }
+        if key == "c" && ctrl && !alt {
+            self.pending_body = Some(BodyPrefix::OrgAccept);
+            return true;
+        }
+        false
+    }
+
     fn viewport_chord(
         &mut self,
         shell: &Shell,
@@ -17575,6 +17608,26 @@ impl ModalApp {
                 }
             }
             "reload-shell" => self.reload_session(shell),
+            // org-edit-special's pair. `C-Enter` used to do the first
+            // of these from inside the editor's key handler, which
+            // stood on the chord org wants for its table commands.
+            // One command, the right meaning for the surface: a source
+            // block writes back to where it came from, a file buffer
+            // writes the file, a body commits the headline. org's
+            // `C-c C-c` is context-sensitive in exactly this way.
+            "commit-edit" => match self.surface {
+                ModalSurface::EditBlock => self.commit_edit_special(shell),
+                ModalSurface::EditFile => self.commit_file_buffer(shell),
+                _ => self.commit_edit_body(shell),
+            },
+            "discard-edit" => {
+                if self.surface == ModalSurface::EditFile {
+                    self.close_file_buffer();
+                    self.view = ViewMode::Clickable;
+                } else {
+                    self.discard_editor();
+                }
+            }
             "messages" => {
                 self.query.clear();
                 self.selected = 0;

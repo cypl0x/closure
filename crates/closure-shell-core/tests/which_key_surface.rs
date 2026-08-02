@@ -139,14 +139,20 @@ fn the_buffers_affordances_name_chords_this_mode_can_run() {
 }
 
 #[test]
-fn a_modal_mode_keeps_its_ex_discard() {
-    let (_d, _sh, app) = editing(InputMode::Doom);
-    let discard = app
-        .buffer_actions()
-        .into_iter()
-        .find(|(label, ..)| label.contains("discard"))
-        .expect("a discard action");
-    assert_eq!(discard.2, Some(":q!"), "vim's own spelling stays");
+fn every_mode_gets_the_same_discard_chord() {
+    // Was `:q!` for the modal modes and nothing for the rest, until the
+    // user asked for org's pair on 2026-08-02: `C-c C-k` abandons an
+    // `org-edit-special` buffer, and a body editor is one. `:q!` still
+    // works from the `:` line where that line can be opened.
+    for mode in [InputMode::Doom, InputMode::Notion, InputMode::Emacs] {
+        let (_d, _sh, app) = editing(mode);
+        let discard = app
+            .buffer_actions()
+            .into_iter()
+            .find(|(label, ..)| label.contains("discard"))
+            .expect("a discard action");
+        assert_eq!(discard.2, Some("C-c C-k"), "{mode:?}");
+    }
 }
 
 #[test]
