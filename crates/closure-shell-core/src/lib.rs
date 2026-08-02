@@ -3259,6 +3259,21 @@ pub fn command_palette_with_history(
         .filter_map(|cmd| palette_entry_for(cmd, mode))
         .collect();
     if !suggestions.is_empty() {
+        // Promotion *moves* a command. Adding the section without
+        // taking its members out of the sections below listed the thing
+        // you had just run twice, with the same label and the same
+        // chord — a list offering the same command twice is asking you
+        // to work out how the two entries differ. A section left empty
+        // by the move goes with it; a heading with nothing under it is
+        // furniture.
+        let promoted: std::collections::BTreeSet<&str> =
+            suggestions.iter().map(|e| e.action.command()).collect();
+        for section in &mut sections {
+            section
+                .items
+                .retain(|e| !promoted.contains(e.action.command()));
+        }
+        sections.retain(|s| !s.items.is_empty());
         sections.insert(
             0,
             PaletteSection {

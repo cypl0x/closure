@@ -169,16 +169,34 @@ fn a_recent_section_that_matches_nothing_does_not_appear() {
 }
 
 #[test]
-fn a_recent_command_still_appears_in_its_own_section() {
-    // The Recent section is a shortcut, not a move: someone who knows
-    // rename lives under Edit must still find it there.
+fn a_recent_command_leaves_its_own_section() {
+    // This asserted the opposite until 2026-08-02 — "the Recent section
+    // is a shortcut, not a move" — and the user filed the result as a
+    // bug with a screenshot of `undo-history` listed twice. They are
+    // right: the two entries carry the same label and the same chord,
+    // so showing both asks the reader to work out how they differ. The
+    // promotion moves a command now.
     let recent = ["rename".to_owned()];
     let sections = command_palette_with_history("", InputMode::Doom, &recent);
     let edit = sections
         .iter()
         .find(|s| s.title == "Edit")
         .expect("Edit section");
-    assert!(edit.items.iter().any(|e| e.action.command() == "rename"));
+    assert!(
+        !edit.items.iter().any(|e| e.action.command() == "rename"),
+        "promoted out of Edit"
+    );
+    let recent_section = sections
+        .iter()
+        .find(|s| s.title == "Recent")
+        .expect("Recent section");
+    assert!(
+        recent_section
+            .items
+            .iter()
+            .any(|e| e.action.command() == "rename"),
+        "and into Recent"
+    );
 }
 
 #[test]

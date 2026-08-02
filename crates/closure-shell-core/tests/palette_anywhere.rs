@@ -188,5 +188,8 @@ fn running_the_same_command_twice_leaves_one_entry() {
         .iter()
         .filter(|e| e.label == "zoom-in")
         .count();
-    assert_eq!(zooms, 2, "once in Recent, once in the section it lives in");
+    // Was 2 — "once in Recent, once in the section it lives in" —
+    // until the user filed the second listing as a duplicate on
+    // 2026-08-02. Promotion moves a command rather than copying it.
+    assert_eq!(zooms, 1, "listed once, at the top");
 }
