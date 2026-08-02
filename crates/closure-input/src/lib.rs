@@ -130,6 +130,10 @@ const DOOM_KEYMAP: &[(&str, &str)] = &[
     ("C-S-RET", "add-todo-child-heading"),
     ("g u", "undo-history"),
     ("TAB", "toggle-fold"),
+    // …and the spelling that survives a buffer, for the modes with no
+    // NORMAL to press `z a` in. Org folds with TAB, so the modified
+    // TAB is the one that means it where a bare one is a snippet.
+    ("M-TAB", "toggle-fold"),
     // Buffers and the jumplist (Q1). `C-o`/`C-i` are vim's own; the
     // unimpaired-style `[ b` / `] b` walk the buffer list, and `C-^`
     // is the alternate buffer wherever a keyboard can type it.
@@ -319,6 +323,10 @@ const EMACS_KEYMAP: &[(&str, &str)] = &[
     ("C-S-RET", "add-todo-child-heading"),
     ("C-c u", "undo-history"),
     ("TAB", "toggle-fold"),
+    // …and the spelling that survives a buffer, for the modes with no
+    // NORMAL to press `z a` in. Org folds with TAB, so the modified
+    // TAB is the one that means it where a bare one is a snippet.
+    ("M-TAB", "toggle-fold"),
     // Buffers and the jumplist (Q1), spelled the way Emacs spells them:
     // `C-x b` switches, `C-x k` kills, `C-x C-f`/`C-x C-r` find files,
     // and `M-,` pops the mark the way xref does.
@@ -470,6 +478,10 @@ const VIM_KEYMAP: &[(&str, &str)] = &[
     ("C-S-RET", "add-todo-child-heading"),
     ("g u", "undo-history"),
     ("TAB", "toggle-fold"),
+    // …and the spelling that survives a buffer, for the modes with no
+    // NORMAL to press `z a` in. Org folds with TAB, so the modified
+    // TAB is the one that means it where a bare one is a snippet.
+    ("M-TAB", "toggle-fold"),
     // Buffers and the jumplist (Q1). `C-o`/`C-i` are vim's own; the
     // unimpaired-style `[ b` / `] b` walk the buffer list, and `C-^`
     // is the alternate buffer wherever a keyboard can type it.
@@ -618,6 +630,10 @@ const HELIX_KEYMAP: &[(&str, &str)] = &[
     ("C-S-RET", "add-todo-child-heading"),
     ("g u", "undo-history"),
     ("TAB", "toggle-fold"),
+    // …and the spelling that survives a buffer, for the modes with no
+    // NORMAL to press `z a` in. Org folds with TAB, so the modified
+    // TAB is the one that means it where a bare one is a snippet.
+    ("M-TAB", "toggle-fold"),
     // Buffers and the jumplist (Q1). `C-o`/`C-i` are vim's own; the
     // unimpaired-style `[ b` / `] b` walk the buffer list, and `C-^`
     // is the alternate buffer wherever a keyboard can type it.
@@ -765,6 +781,10 @@ const NOTION_KEYMAP: &[(&str, &str)] = &[
     ("C-S-RET", "add-todo-child-heading"),
     ("g u", "undo-history"),
     ("TAB", "toggle-fold"),
+    // …and the spelling that survives a buffer, for the modes with no
+    // NORMAL to press `z a` in. Org folds with TAB, so the modified
+    // TAB is the one that means it where a bare one is a snippet.
+    ("M-TAB", "toggle-fold"),
     // Buffers and the jumplist (Q1). `C-o`/`C-i` are vim's own; the
     // unimpaired-style `[ b` / `] b` walk the buffer list, and `C-^`
     // is the alternate buffer wherever a keyboard can type it.

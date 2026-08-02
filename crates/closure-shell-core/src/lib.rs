@@ -11582,7 +11582,7 @@ impl ModalApp {
         };
         if !matches!(
             cmd,
-            "save-buffer" | "toggle-which-key" | "reload-shell" | "toggle-wrap"
+            "save-buffer" | "toggle-which-key" | "reload-shell" | "toggle-wrap" | "toggle-fold"
         ) {
             return false;
         }
@@ -15195,6 +15195,13 @@ impl ModalApp {
                 "z" => self.body_frame(BodyFraming::Centre),
                 "t" => self.body_frame(BodyFraming::Top),
                 "b" => self.body_frame(BodyFraming::Bottom),
+                // vim's own fold toggle, in the prefix that was already
+                // here. `toggle-fold` is bound to `z` and `TAB` in the
+                // outline and a buffer owns both — `TAB` expands a
+                // tempo snippet, `z` opens this prefix — so the folds
+                // existed with no key that reached them from inside the
+                // text they fold.
+                "a" => self.toggle_body_fold(),
                 // `z` followed by anything else is a chord nobody
                 // bound; swallowing the second key too would eat an
                 // edit, so it falls through as itself.
