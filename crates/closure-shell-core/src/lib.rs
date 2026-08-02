@@ -4447,6 +4447,28 @@ fn tutorial_reference(mode: InputMode) -> String {
 /// Standing *inside* a block folds the block, because the cursor is
 /// usually in the thing you want out of the way. Anything else folds
 /// nothing — better than guessing at a range.
+/// Every property drawer in `text`, as fold ranges.
+///
+/// What a buffer starts with folded. The handle line stays visible, the
+/// way a folded block keeps its `#+BEGIN_`: a fold you cannot see is a
+/// disappearance.
+fn drawer_folds(text: &str) -> Vec<(usize, usize)> {
+    let lines: Vec<&str> = text.split('\n').collect();
+    let mut out = Vec::new();
+    let mut at = 0usize;
+    while at < lines.len() {
+        if lines[at].trim().eq_ignore_ascii_case(":PROPERTIES:")
+            && let Some((start, end)) = fold_range(&lines, at)
+        {
+            out.push((start, end));
+            at = end + 1;
+            continue;
+        }
+        at += 1;
+    }
+    out
+}
+
 fn fold_range(lines: &[&str], at: usize) -> Option<(usize, usize)> {
     /// The headline depth of a line, or 0 when it is not one.
     fn level(line: &str) -> usize {
@@ -4470,6 +4492,19 @@ fn fold_range(lines: &[&str], at: usize) -> Option<(usize, usize)> {
             .find(|(_, l)| matches!(level(l), s if s > 0 && s <= stars))
             .map_or(lines.len(), |(i, _)| i);
         return (end > at + 1).then_some((at, end - 1));
+    }
+    // A property drawer folds like a block: `:PROPERTIES:` through the
+    // `:END:` that closes it. Same shape, and the same reason — four
+    // lines of bookkeeping between you and the next thing you meant to
+    // read.
+    if line.trim().eq_ignore_ascii_case(":PROPERTIES:") {
+        let end = lines
+            .iter()
+            .enumerate()
+            .skip(at + 1)
+            .find(|(_, l)| l.trim().eq_ignore_ascii_case(":END:"))
+            .map(|(i, _)| i)?;
+        return (end > at).then_some((at, end));
     }
     // Inside or on a block: walk back to its `#+BEGIN_`, then forward
     // to the matching `#+END_`.
@@ -13210,6 +13245,12 @@ impl ModalApp {
     /// Load `text` into the body editor the way *this* input mode opens
     /// a buffer ([`Self::entry_mode`]).
     fn load_body(&mut self, text: String) {
+        // Drawers open folded. They have to be *in* the buffer — that
+        // is what carries a child's identity through the read/write
+        // round trip — so the only honest way to quiet four lines of
+        // `:ID:` per child is to stop painting them. Display-only: the
+        // text is untouched, so a save writes exactly what was read.
+        self.body_folds = drawer_folds(&text);
         self.body.load_in(text, self.entry_mode());
     }
 

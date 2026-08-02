@@ -142,3 +142,109 @@ fn editing_the_buffer_drops_the_folds() {
         "an edit clears the folds"
     );
 }
+
+// === Drawers fold too, and start folded ===
+//
+// Fallout from the body editor showing a headline's whole subtree: every
+// child brings its `:PROPERTIES:` / `:ID:` / `:END:` along, which is
+// four lines of bookkeeping per child. They have to be *in* the text —
+// that is what carries a child's identity through the read/write round
+// trip — so the only honest way to quiet them is to stop painting them.
+//
+// Display-only, in both directions: the buffer keeps every line, so a
+// save writes exactly what was read, and unfolding shows what was there
+// all along.
+
+const DRAWERED: &str = "\
+prose at the top
+** Kid
+:PROPERTIES:
+:ID: 01HQDRW0000000000000001
+:END:
+kid prose
+";
+
+fn with_drawers() -> (TempDir, Shell, ModalApp) {
+    let dir = tempfile::tempdir().expect("tmp");
+    fs::write(
+        dir.path().join("notes.org"),
+        format!("* Parent\n:PROPERTIES:\n:ID: 01HQDRW0000000000000009\n:END:\n{DRAWERED}"),
+    )
+    .expect("write");
+    let vault = Vault::open(dir.path()).expect("open");
+    let mut sh = Shell::new(vault);
+    let mut app = ModalApp::new(InputMode::Doom);
+    app.select(0, &sh);
+    app.run(&mut sh, "edit-body");
+    (dir, sh, app)
+}
+
+#[test]
+fn a_drawer_is_hidden_the_moment_the_buffer_opens() {
+    let (_d, _sh, app) = with_drawers();
+    let text = app.body_buffer().to_owned();
+    let lines: Vec<&str> = text.split('\n').collect();
+    let hidden = app.body_hidden_lines();
+    for (i, l) in lines.iter().enumerate() {
+        if l.trim() == ":ID: 01HQDRW0000000000000001" || l.trim() == ":END:" {
+            assert!(hidden.contains(&i), "line {i} ({l}) should be hidden");
+        }
+    }
+}
+
+#[test]
+fn the_line_that_says_there_is_a_drawer_stays_visible() {
+    // A fold you cannot see is a disappearance. `:PROPERTIES:` is the
+    // handle you unfold by, exactly as `#+BEGIN_` is for a block.
+    let (_d, _sh, app) = with_drawers();
+    let text = app.body_buffer().to_owned();
+    let lines: Vec<&str> = text.split('\n').collect();
+    let hidden = app.body_hidden_lines();
+    let at = lines
+        .iter()
+        .position(|l| l.trim() == ":PROPERTIES:")
+        .expect("a drawer");
+    assert!(!hidden.contains(&at), "the handle is still painted");
+}
+
+#[test]
+fn the_prose_around_it_is_untouched() {
+    let (_d, _sh, app) = with_drawers();
+    let text = app.body_buffer().to_owned();
+    let lines: Vec<&str> = text.split('\n').collect();
+    let hidden = app.body_hidden_lines();
+    for (i, l) in lines.iter().enumerate() {
+        if l.trim() == "kid prose" || l.trim() == "prose at the top" || l.starts_with("** ") {
+            assert!(!hidden.contains(&i), "{l} must stay on screen");
+        }
+    }
+}
+
+#[test]
+fn folding_hides_nothing_from_the_buffer_itself() {
+    // The whole contract: display-only. What the vault gets back is what
+    // it handed over.
+    let (dir, mut sh, mut app) = with_drawers();
+    let before = fs::read_to_string(dir.path().join("notes.org")).expect("read");
+    app.run(&mut sh, "save-buffer");
+    let after = fs::read_to_string(dir.path().join("notes.org")).expect("read");
+    assert_eq!(before, after, "a fold is not an edit");
+}
+
+#[test]
+fn the_fold_chord_unfolds_a_drawer_like_any_other_fold() {
+    let (_d, mut sh, mut app) = with_drawers();
+    let text = app.body_buffer().to_owned();
+    let lines: Vec<&str> = text.split('\n').collect();
+    let at = lines
+        .iter()
+        .position(|l| l.trim() == ":PROPERTIES:")
+        .expect("a drawer");
+    app.body_set_cursor(text.split('\n').take(at).map(|l| l.len() + 1).sum());
+    app.run(&mut sh, "toggle-fold");
+    assert!(
+        app.body_hidden_lines().is_empty(),
+        "unfolded: {:?}",
+        app.body_hidden_lines()
+    );
+}
