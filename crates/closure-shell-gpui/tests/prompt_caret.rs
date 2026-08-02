@@ -1,86 +1,65 @@
-//! The caret in a one-line prompt sits where the cursor is, and costs
-//! the line no width when it moves.
+//! The caret in a one-line prompt: where the cursor is, shaped like the
+//! mode it is in.
 //!
-//! Two bugs, one after the other. The capture bar, the rename/tag/
-//! property fields and the palette's filter were painted as
-//! `format!("{buffer}▏")` — the caret glued to the end of the text. The
-//! core had been moving the cursor the whole time (Left, `C-a`, `C-b`,
-//! Alt+Backspace all reach a `LineInput`), so the prompts read as if
-//! none of those keys were bound.
+//! Three reports, in order. The caret was welded to the end of the text
+//! (`format!("{buffer}▏")`), so Left, `C-a` and Alt+Backspace all looked
+//! unbound. Splitting the string at the cursor fixed that and shoved the
+//! line sideways by a whole character cell whenever the caret moved —
+//! "weird shift in capture prompt when ctlr+a is pressed". A block over
+//! the cell fixed *that* and was wrong in a third way: "block cursor
+//! shown in capture/etc. prompt instead of line cursor (it's INSERT
+//! mode)".
 //!
-//! Splitting the string at the cursor fixed that and introduced the
-//! next one, reported as "weird shift in capture prompt when ctlr+a is
-//! pressed": an inserted glyph *takes width*, so a caret that moves to
-//! the front shoves the whole line sideways. A caret is not a
-//! character. It is a mark over the cell it is on — which is what the
-//! body editor's block cursor has always been ([`cursor_cell`]), and
-//! reusing that means the two cursors cannot drift apart.
+//! A prompt is always INSERT — there is no NORMAL to drop into — so its
+//! caret is the thin bar between two glyphs that the body editor draws
+//! in INSERT, in the same accent colour, laid out the same way: two
+//! spans with a 2px bar between them. Moving it costs the line two
+//! pixels rather than a character's width, which is what made the shift
+//! visible in the first place.
 
 #![allow(clippy::unwrap_used, clippy::expect_used, missing_docs)]
 
-use closure_shell_gpui::field_caret_cell;
+use closure_shell_gpui::caret_split;
 
 #[test]
-fn the_caret_covers_the_glyph_the_cursor_is_on() {
-    let (text, range) = field_caret_cell("abc", 1);
-    assert_eq!(text, "abc", "nothing inserted: the line is the line");
-    assert_eq!(range, 1..2, "one cell, the 'b'");
+fn the_text_splits_where_the_cursor_is() {
+    assert_eq!(caret_split("abc", 1), ("a", "bc"));
 }
 
 #[test]
-fn a_cursor_at_the_end_gets_a_cell_to_sit_on() {
-    // There is no glyph after the last one, and a caret you cannot see
-    // is worse than one drawn over a space.
-    let (text, range) = field_caret_cell("abc", 3);
-    assert_eq!(text, "abc ");
-    assert_eq!(range, 3..4);
+fn a_cursor_at_either_end_leaves_the_other_half_empty() {
+    assert_eq!(caret_split("abc", 0), ("", "abc"));
+    assert_eq!(caret_split("abc", 3), ("abc", ""));
 }
 
 #[test]
-fn an_empty_prompt_still_shows_its_caret() {
-    let (text, range) = field_caret_cell("", 0);
-    assert_eq!(text, " ");
-    assert_eq!(range, 0..1);
+fn an_empty_prompt_splits_into_nothing_twice() {
+    assert_eq!(caret_split("", 0), ("", ""));
 }
 
 #[test]
-fn moving_the_caret_never_changes_the_text() {
-    // This is the whole of the `C-a` report: the painted string has to
-    // be identical wherever the cursor is, or the line reflows under
-    // the user as they move through it.
+fn the_two_halves_are_always_the_whole_text() {
+    // Nothing is inserted and nothing is dropped: the line reads the
+    // same wherever the caret is, which is the whole of the shift
+    // report.
     let line = "hello world";
-    let at_end = field_caret_cell(line, line.len()).0;
-    for cursor in 0..line.len() {
-        assert_eq!(
-            field_caret_cell(line, cursor).0,
-            line,
-            "cursor {cursor} repainted the line"
-        );
+    for cursor in 0..=line.len() {
+        let (head, tail) = caret_split(line, cursor);
+        assert_eq!(format!("{head}{tail}"), line, "cursor {cursor}");
     }
-    assert_eq!(at_end, "hello world ", "only the end pads, by one space");
 }
 
 #[test]
-fn a_multibyte_glyph_is_one_cell_not_one_byte() {
-    // `é` is two bytes and one cell. A caret covering one byte would
-    // paint half a glyph.
-    let (text, range) = field_caret_cell("café", 3);
-    assert_eq!(text, "café");
-    assert_eq!(range, 3..5, "the whole of the é");
+fn a_multibyte_glyph_is_never_split_down_the_middle() {
+    // `é` is two bytes. Cutting between them would panic a repaint.
+    assert_eq!(caret_split("café", 5), ("café", ""));
+    assert_eq!(caret_split("café", 4), ("caf", "é"), "snaps to the glyph");
+    assert_eq!(caret_split("café", 3), ("caf", "é"));
 }
 
 #[test]
-fn a_cursor_inside_a_glyph_snaps_to_it() {
+fn a_cursor_past_the_end_lands_at_the_end() {
     // Nothing should be able to make a repaint panic, least of all a
-    // byte offset that lands mid-glyph.
-    let (text, range) = field_caret_cell("café", 4);
-    assert_eq!(text, "café");
-    assert_eq!(range, 3..5);
-}
-
-#[test]
-fn a_cursor_past_the_end_lands_on_the_pad() {
-    let (text, range) = field_caret_cell("ab", 99);
-    assert_eq!(text, "ab ");
-    assert_eq!(range, 2..3);
+    // stale cursor from the frame before.
+    assert_eq!(caret_split("ab", 99), ("ab", ""));
 }

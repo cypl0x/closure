@@ -873,32 +873,30 @@ pub const fn h_scroll_start(cursor_col: usize, cols: usize) -> usize {
     cursor_col + 1 - cols
 }
 
-/// A one-line prompt as it is laid out, and the byte range its caret
-/// covers, from a `cursor` given as a byte offset.
+/// A one-line prompt split into the halves either side of its caret,
+/// from a `cursor` given as a byte offset.
 ///
-/// Every one-line surface — the capture bar, rename/add/tags/property,
-/// the palette's filter — used to paint `format!("{text}▏")`, which put
-/// the caret after the last character no matter where the cursor was.
-/// The core has always moved the cursor for Left/Right, the readline
-/// chords and Alt+Backspace ([`closure_shell_core::ModalApp::
-/// field_cursor`]); with the caret pinned to the end, all of those
-/// looked unbound.
+/// Three reports shaped this. The caret was welded to the end of the
+/// text, so Left, `C-a` and Alt+Backspace all looked unbound. Splitting
+/// the string and inserting a `▏` fixed that and shoved the line
+/// sideways by a whole character cell whenever the caret moved. A block
+/// over the cell ([`cursor_cell`], which the body editor's NORMAL
+/// cursor uses) fixed that and was wrong in a third way: a prompt is
+/// always INSERT — there is no NORMAL to drop into — and INSERT draws a
+/// thin bar *between* two glyphs.
 ///
-/// Splitting the string at the cursor instead fixed that and bought a
-/// second bug: an inserted glyph takes width, so a caret moving to the
-/// front shoved the whole line sideways ("weird shift in capture prompt
-/// when ctlr+a is pressed"). A caret is not a character — it is a mark
-/// over the cell it is on. This is [`cursor_cell`], which the body
-/// editor's block cursor already uses, so the two cursors are one
-/// implementation and cannot drift apart; the cell padding and the
-/// multi-byte handling come with it.
+/// So the caller paints these two halves with a 2px bar between them,
+/// exactly as the editor paints its own INSERT caret. Nothing is
+/// inserted into the text, so the line reads the same wherever the
+/// caret is, and moving it costs two pixels rather than a character's
+/// width.
+///
+/// A repaint must never panic, so an offset past the end or inside a
+/// multi-byte glyph snaps down to the boundary below it.
 #[must_use]
-pub fn field_caret_cell(text: &str, cursor: usize) -> (String, std::ops::Range<usize>) {
-    // `cursor_cell` counts in char columns, a `LineInput` cursor is a
-    // byte offset, and an offset that lands inside a glyph belongs to
-    // that glyph.
+pub fn caret_split(text: &str, cursor: usize) -> (&str, &str) {
     let at = floor_boundary(text, cursor);
-    cursor_cell(text, text[..at].chars().count())
+    (&text[..at], &text[at..])
 }
 
 /// The char boundary at or below `at`, so a byte offset that landed
@@ -6819,16 +6817,18 @@ impl Render for Hint {
 /// editor's block cursor uses in [`editor_segment`] — one cursor in one
 /// shape wherever it appears.
 #[cfg(feature = "gpui")]
-fn caret_text(co: Colors, text: &str, cursor: usize) -> gpui::StyledText {
-    let (laid, cell) = field_caret_cell(text, cursor);
-    gpui::StyledText::new(gpui::SharedString::from(laid)).with_highlights([(
-        cell,
-        gpui::HighlightStyle {
-            color: Some(rgb(co.bg).into()),
-            background_color: Some(rgb(co.accent).into()),
-            ..Default::default()
-        },
-    )])
+fn caret_text(co: Colors, text: &str, cursor: usize) -> gpui::Div {
+    let (head, tail) = caret_split(text, cursor);
+    div()
+        .flex()
+        .flex_row()
+        .child(div().flex_none().child(head.to_owned()))
+        // The bar takes the row's height by stretching, rather than a
+        // hardcoded pixel count that is only right at one font size —
+        // the same trick, and the same 2px and accent colour, as the
+        // editor's INSERT caret.
+        .child(div().flex_none().w(px(2.0)).bg(rgb(co.accent)))
+        .child(div().flex_none().child(tail.to_owned()))
 }
 
 /// One hit-testable run of body text. `col_offset` is the char column
