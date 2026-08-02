@@ -6567,6 +6567,37 @@ impl ViewMode {
 }
 
 impl ModalSurface {
+    /// Whether this surface has a one-line field the user types into.
+    ///
+    /// The list of them, once: [`ModalApp::prompt`] maps each to the
+    /// buffer behind it and cannot also be the answer to "is this a
+    /// prompt", which is what a shell asks when it decides whether to
+    /// draw a field or flash one.
+    #[must_use]
+    pub const fn takes_text(self) -> bool {
+        matches!(
+            self,
+            Self::Capture
+                | Self::Rename
+                | Self::AddSibling
+                | Self::TagsEdit
+                | Self::PropertyEdit
+                | Self::Palette
+                | Self::Search
+                | Self::BodySearch
+                | Self::Buffers
+                | Self::Files
+                | Self::TagPick
+                | Self::Refile
+                | Self::Headlines
+                | Self::Blocks
+                | Self::UndoHistory
+                | Self::Ex
+                | Self::Sync
+                | Self::Llm
+        )
+    }
+
     /// Whether this surface is a text buffer rather than a pane.
     ///
     /// A buffer takes the whole window: the outline, the rail and the

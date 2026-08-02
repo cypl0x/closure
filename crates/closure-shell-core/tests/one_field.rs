@@ -246,3 +246,25 @@ fn the_kill_ring_is_shared_between_fields() {
     press(&mut app, &mut shell, "y", true, false);
     assert_eq!(app.prompt_text(), Some("borrowed"));
 }
+
+#[test]
+fn the_two_lists_of_prompt_surfaces_agree() {
+    // `ModalSurface::takes_text` answers "is this a prompt" and
+    // `prompt_text` answers "what is in it". Two lists that have to
+    // match, so this is the one place that says so.
+    let (_d, mut shell, mut app) = fixture();
+    for cmd in FIELDS {
+        let (_d2, mut sh, mut a) = open(cmd);
+        assert!(
+            a.surface().takes_text(),
+            "{cmd} opens {:?}, which does not admit to taking text",
+            a.surface()
+        );
+        type_in(&mut a, &mut sh, "q");
+        assert!(a.prompt_text().is_some(), "{cmd} has no buffer");
+    }
+    // …and the outline, which is neither.
+    app.run(&mut shell, "browse");
+    assert!(!app.surface().takes_text());
+    assert!(app.prompt_text().is_none());
+}

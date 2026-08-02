@@ -1878,6 +1878,12 @@ pub struct GpuiView {
     /// Without this the window read `KeyDownEvent.key_char` only, so a
     /// dead key produced nothing and an IME could not type at all.
     marked: Option<std::ops::Range<usize>>,
+    /// The prompt the flash last played for, and how many times it has
+    /// played ([`prompt_flash`]). Window state rather than kernel
+    /// state: which surface is open is the core's business, noticing
+    /// that it just appeared is the window's.
+    flash_at: Option<ModalSurface>,
+    flash_gen: u32,
     /// Vault-reload generation: each armed poll carries one, and only
     /// the newest re-arms, so the loop cannot fork.
     reload_gen: u64,
@@ -1947,6 +1953,8 @@ impl GpuiView {
             palette_scroll: gpui::UniformListScrollHandle::new(),
             highlight_cache: std::cell::RefCell::new(None),
             marked: None,
+            flash_at: None,
+            flash_gen: 0,
             reload_gen: 0,
             painted_view: std::cell::Cell::new(0),
         }
@@ -2374,6 +2382,7 @@ impl GpuiView {
         let pairing = self.app.surface() == ModalSurface::Sync && key == "enter";
         self.app.on_key(&mut self.shell, key, ctrl, alt, text);
         self.relaunch_if_reloaded(reloads_before);
+        self.note_prompt();
         // Anything that killed something puts it on the desktop's
         // clipboard too, so a subtree cut here can be pasted anywhere
         // else. Keyed off the ring rather than off a list of commands:
@@ -2696,6 +2705,7 @@ impl GpuiView {
         let reloads_before = self.app.reloads();
         self.app.run(&mut self.shell, command);
         self.relaunch_if_reloaded(reloads_before);
+        self.note_prompt();
         if self.app.should_quit() {
             cx.quit();
         }
@@ -2959,6 +2969,7 @@ impl GpuiView {
         } else {
             div().child(self.context_line())
         };
+        let line = self.flashed(line, co);
         let Some(strip) = self.prompt_completion_strip(co, cx) else {
             return row.child(line);
         };
@@ -2966,6 +2977,32 @@ impl GpuiView {
         // outline: a one-line prompt has one line's worth of context to
         // keep visible, and the strip is only there while cycling.
         row.flex().flex_col().gap_1().child(line).child(strip)
+    }
+
+    /// Wrap a prompt row in the flash that plays when it opens.
+    ///
+    /// The border comes up in the accent colour and fades back over a
+    /// third of a second. A border rather than a fill: the row is one
+    /// line of text you are about to read, and a background pulsing
+    /// under it would be harder to read *because* it was noticeable.
+    fn flashed(&self, row: gpui::Div, co: Colors) -> gpui::AnimationElement<gpui::Div> {
+        use gpui::AnimationExt as _;
+        let generation = self.flash_gen;
+        row.border_1()
+            .rounded_sm()
+            .border_color(gpui::rgba(co.accent << 8))
+            .with_animation(
+                ("prompt-flash", generation),
+                gpui::Animation::new(std::time::Duration::from_millis(340))
+                    .with_easing(gpui::ease_out_quint()),
+                move |el, delta| {
+                    // Opaque accent at the start, invisible at the end,
+                    // so the row settles into the strip it lives in.
+                    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+                    let alpha = ((1.0 - delta) * 255.0) as u32;
+                    el.border_color(gpui::rgba((co.accent << 8) | alpha))
+                },
+            )
     }
 
     /// The prompt's completion candidates, laid out along one line.
@@ -7036,6 +7073,13 @@ impl GpuiView {
         .detach();
     }
 
+    /// Replay the flash when a prompt has just opened ([`prompt_flash`]).
+    fn note_prompt(&mut self) {
+        let (at, generation) = prompt_flash(self.flash_at, self.app.surface(), self.flash_gen);
+        self.flash_at = at;
+        self.flash_gen = generation;
+    }
+
     /// The window's half of a fresh start.
     ///
     /// `reload-shell` re-reads the vault and rebuilds the session, but
@@ -7114,6 +7158,36 @@ fn match_runs(co: Colors, label: &str, spans: &[(usize, usize)]) -> Vec<gpui::Di
         out.push(div().child(tail.to_owned()));
     }
     out
+}
+
+/// Whether opening `now` is a prompt appearing, and the animation
+/// generation that follows from it.
+///
+/// "flash/animate the prompt when activated in order to retrieve the
+/// attention. It is quite small and can be übersehen." A prompt is one
+/// line in a strip at the top of a window whose middle is the note you
+/// are reading, so opening one changes almost nothing on screen and the
+/// next thing you type goes somewhere you did not mean.
+///
+/// gpui keys an animation by element id and replays it when the id
+/// changes, so the flash is this number: it moves exactly when a prompt
+/// opens. Staying in one must not move it — an animation restarted on
+/// every keystroke is a prompt that never stops blinking — and leaving
+/// one forgets it, so coming back to the same prompt flashes rather
+/// than being mistaken for never having left.
+#[must_use]
+pub fn prompt_flash(
+    last: Option<ModalSurface>,
+    now: ModalSurface,
+    generation: u32,
+) -> (Option<ModalSurface>, u32) {
+    if !now.takes_text() {
+        return (None, generation);
+    }
+    if last == Some(now) {
+        return (last, generation);
+    }
+    (Some(now), generation.wrapping_add(1))
 }
 
 /// UTF-16 code-unit offset for a byte offset into `text`.
