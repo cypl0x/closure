@@ -907,6 +907,13 @@ pub struct PromptChrome {
     pub hint: String,
     /// Which colour role the label's segment takes.
     pub tone: PromptTone,
+    /// A glyph for the segment, in the shell's icon font.
+    ///
+    /// "very tiny search icon": the old one was a magnifier inside the
+    /// label string, so it was drawn at the label's size and weight.
+    /// Its own field is what lets a shell paint it at the size an icon
+    /// needs.
+    pub icon: &'static str,
 }
 
 /// One cell of the which-key panel: a group heading, or a binding.
@@ -17107,47 +17114,61 @@ impl ModalApp {
     pub fn prompt_chrome(&self, shell: &Shell) -> Option<PromptChrome> {
         use PromptTone as T;
         let rows = self.rows_shared(shell).len();
-        let (label, hint, tone) = match self.surface {
-            ModalSurface::Rename => ("rename".to_owned(), String::new(), T::Edit),
+        let (label, hint, tone, icon) = match self.surface {
+            ModalSurface::Rename => ("rename".to_owned(), String::new(), T::Edit, "\u{f044}"),
             // One prompt serves all four new-headline chords, so it has
             // to say which one opened it.
             ModalSurface::AddSibling => (
                 format!("new {}", self.new_heading_label()),
                 String::new(),
                 T::Edit,
+                "\u{f067}",
             ),
-            ModalSurface::TagsEdit => ("tags".to_owned(), String::new(), T::Edit),
-            ModalSurface::PropertyEdit => ("property".to_owned(), String::new(), T::Edit),
+            ModalSurface::TagsEdit => ("tags".to_owned(), String::new(), T::Edit, "\u{f02c}"),
+            ModalSurface::PropertyEdit => {
+                ("property".to_owned(), String::new(), T::Edit, "\u{f013}")
+            }
             ModalSurface::Capture => (
                 "capture".to_owned(),
                 self.capture_target_label(shell),
                 T::Edit,
+                "\u{f040}",
             ),
             ModalSurface::Ex => (
                 "command".to_owned(),
                 ":w :q :wq :x, or any command name".to_owned(),
                 T::Command,
+                "\u{f120}",
             ),
-            ModalSurface::Search => ("search".to_owned(), format!("{rows} match(es)"), T::Filter),
+            ModalSurface::Search => (
+                "search".to_owned(),
+                format!("{rows} match(es)"),
+                T::Filter,
+                "\u{f002}",
+            ),
             ModalSurface::BodySearch => (
                 "body".to_owned(),
                 format!("{} line(s)", self.body_search_rows(shell).len()),
                 T::Filter,
+                "\u{f002}",
             ),
             ModalSurface::Refile => (
                 "refile to".to_owned(),
                 "RET files it here".to_owned(),
                 T::Target,
+                "\u{f07b}",
             ),
             ModalSurface::TagPick => (
                 "tags".to_owned(),
                 "SPC toggles \u{b7} RET writes".to_owned(),
                 T::Target,
+                "\u{f02c}",
             ),
             ModalSurface::Buffers => (
                 "buffers".to_owned(),
                 format!("{} open \u{b7} RET opens", self.buffer_rows(shell).len()),
                 T::Filter,
+                "\u{f0c5}",
             ),
             ModalSurface::Files => (
                 "files".to_owned(),
@@ -17156,10 +17177,16 @@ impl ModalApp {
                     self.file_rows(shell).len()
                 ),
                 T::Filter,
+                "\u{f15c}",
             ),
             _ => return None,
         };
-        Some(PromptChrome { label, hint, tone })
+        Some(PromptChrome {
+            label,
+            hint,
+            tone,
+            icon,
+        })
     }
 
     /// How many entries this prompt's history holds.

@@ -1324,6 +1324,35 @@ pub fn chrome_px(theme: &closure_shell_core::Theme, zoom: f32) -> f32 {
     )
 }
 
+/// The size a status glyph is drawn at: the fold arrow, the TODO dot,
+/// the search magnifier.
+///
+/// Above the body, not below it. One or two characters carrying a
+/// whole meaning need more size than a word does, and they were being
+/// drawn at whatever their container inherited — which, once the
+/// chrome was sized, was smaller than the prose beside them.
+#[must_use]
+pub fn glyph_px(theme: &closure_shell_core::Theme, zoom: f32) -> f32 {
+    scaled_text_px(f32::from(theme.typography.base_px) + 2.0, zoom)
+}
+
+/// The size of the keyword and priority chips.
+///
+/// "Do increase the size of the TODO and DONE texts as well" — they
+/// were the smallest thing on a row, under a fixed 11px that did not
+/// move when the theme's base did.
+#[must_use]
+pub fn chip_text_px(theme: &closure_shell_core::Theme, zoom: f32) -> f32 {
+    scaled_text_px(
+        f32::from(
+            theme
+                .typography
+                .step_px(closure_shell_core::TypeStep::Small),
+        ),
+        zoom,
+    )
+}
+
 /// The outline's text size at `zoom`, in px.
 #[must_use]
 pub fn outline_text_px(zoom: f32) -> f32 {
@@ -3322,11 +3351,24 @@ impl GpuiView {
                 .items_center()
                 .child(
                     div()
+                        .flex()
+                        .flex_row()
+                        .items_center()
+                        .gap_1p5()
                         .flex_none()
                         .px_2()
                         .bg(rgb(tone))
                         .text_color(rgb(co.bg))
                         .font_weight(gpui::FontWeight::BOLD)
+                        // The icon at icon size: the old magnifier was a
+                        // character inside the label string, so it was
+                        // drawn at the label's size — "very tiny search
+                        // icon".
+                        .child(
+                            div()
+                                .text_size(px(glyph_px(&self.theme, self.app.zoom())))
+                                .child(chrome.icon),
+                        )
                         .child(chrome.label.clone()),
                 )
                 .child(
@@ -3730,7 +3772,16 @@ impl GpuiView {
                 .border_b_2()
                 .border_color(rgb(drop_line_color(&self.theme)));
         }
-        Self::outline_cells(line, co, self.app.zoom(), self.keyword_chars(), i, &row, cx)
+        Self::outline_cells(
+            line,
+            co,
+            &self.theme,
+            self.app.zoom(),
+            self.keyword_chars(),
+            i,
+            &row,
+            cx,
+        )
     }
 
     /// How many characters the keyword column has to hold.
@@ -3759,9 +3810,14 @@ impl GpuiView {
     /// The cells of an outline row: indent, fold arrow, status glyph,
     /// TODO chip, title and file. Each is its own click target running
     /// the same registry command its chord does (I8).
+    #[allow(clippy::too_many_arguments)]
+    // The row is a table: its cells need the colours, the theme, the
+    // zoom and the column widths, and bundling four numbers into a
+    // struct to satisfy a count would hide what they are.
     fn outline_cells(
         line: gpui::Div,
         co: Colors,
+        theme: &closure_shell_core::Theme,
         zoom: f32,
         kw_chars: f32,
         i: usize,
@@ -3772,6 +3828,8 @@ impl GpuiView {
         // frame is the same answer at wheel speed.
         let folded = row.folded;
         let step = indent_step(zoom);
+        let glyph_size = glyph_px(theme, zoom);
+        let chip_size = chip_text_px(theme, zoom);
         // One predicate for "is this finished", shared with the body
         // highlighter and the glyph: they used to be three lists and
         // `CANCELLED` came out green here and alarm-red in the buffer.
@@ -3808,6 +3866,7 @@ impl GpuiView {
                 .debug_selector(|| format!("todo-{i}"))
                 .w(px(scaled_text_px(GLYPH_COL, zoom)))
                 .flex_none()
+                .text_size(px(glyph_size))
                 .text_color(rgb(todo_col))
                 .cursor_pointer()
                 .on_mouse_down(MouseButton::Left, act("toggle-todo"))
@@ -3831,7 +3890,8 @@ impl GpuiView {
                 .px_1()
                 .rounded_sm()
                 .text_color(rgb(todo_col))
-                .text_size(sz_at(CHIP_TEXT, zoom))
+                .text_size(px(chip_size))
+                .font_weight(gpui::FontWeight::BOLD)
                 .cursor_pointer()
                 .hover(move |s| s.bg(rgb(co.hover)))
                 .on_mouse_down(MouseButton::Left, act("toggle-todo"))
@@ -3852,7 +3912,8 @@ impl GpuiView {
         line = line.child(if let Some(letter) = row.priority {
             cookie
                 .text_color(rgb(priority_color(co, letter)))
-                .text_size(sz_at(CHIP_TEXT, zoom))
+                .text_size(px(chip_size))
+                .font_weight(gpui::FontWeight::BOLD)
                 .cursor_pointer()
                 .hover(move |s| s.bg(rgb(co.hover)))
                 .on_mouse_down(MouseButton::Left, act("cycle-priority"))
@@ -3886,6 +3947,10 @@ impl GpuiView {
                 .debug_selector(|| format!("fold-{i}"))
                 .w(px(18.0))
                 .flex_none()
+                // "Especially the folded/unfolded indicator is too
+                // tiny": one character that says whether a subtree is
+                // hiding anything.
+                .text_size(px(glyph_size))
                 .text_color(rgb(if folded { co.accent } else { co.muted }))
                 .cursor_pointer()
                 .on_mouse_down(MouseButton::Left, act("toggle-fold"))
