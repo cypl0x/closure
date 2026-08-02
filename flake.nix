@@ -97,6 +97,17 @@
           if pkgs.stdenv.hostPlatform.isLinux
           then "${pkgs.mesa}/share/vulkan/icd.d/lvp_icd.${pkgs.stdenv.hostPlatform.parsed.cpu.name}.json"
           else "";
+
+        # The faces the gpui shell embeds. Maple Mono NF is OFL-1.1, so
+        # redistribution is allowed; the bytes come from here rather
+        # than from git because a face is two and a half megabytes and
+        # five of them do not belong in a source history. The lockfile
+        # pins them like every other input.
+        #
+        # Without it the build embeds nothing and the shell falls back
+        # to the system font stack — which is what it did before, and
+        # is why `*bold*` was not bold.
+        fontDir = "${pkgs.maple-mono.NF}/share/fonts/truetype";
       in {
         webview = pkgs.mkShell {
           packages = [
@@ -109,6 +120,7 @@
           buildInputs = gpuiLibs ++ webviewLibs;
           LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath (gpuiLibs ++ webviewLibs);
           CLOSURE_SOFTWARE_ICD = softwareIcd;
+          CLOSURE_FONT_DIR = fontDir;
         };
 
         default = pkgs.mkShell {
@@ -135,6 +147,8 @@
             # The CPU Vulkan driver the gpui shell falls back to when
             # the machine has none of its own. See `softwareIcd` above.
             CLOSURE_SOFTWARE_ICD = softwareIcd;
+            # See `fontDir` above: what the gpui shell embeds.
+            CLOSURE_FONT_DIR = fontDir;
           };
 
           # gpui dlopen's the Vulkan/Wayland/xkb libs at runtime.

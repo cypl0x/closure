@@ -1694,6 +1694,16 @@ pub fn run(vault_path: &Path) -> Result<(), String> {
     );
     let view_pref = view;
     Application::new().run(move |cx: &mut App| {
+        // Before the first window: a weight and a slant have to be
+        // found in a real face, and the platform's substitute for a
+        // font nobody installed has exactly one. Registering the faces
+        // is what makes `*bold*` bold.
+        let faces = bundled_fonts();
+        if !faces.is_empty()
+            && let Err(e) = cx.text_system().add_fonts(faces)
+        {
+            eprintln!("closure: bundled fonts failed to load ({e}); using the system stack");
+        }
         let bounds = Bounds::centered(None, size(px(1080.0), px(720.0)), cx);
         // Closing the last window must end the process. gpui keeps the
         // app alive with no windows, which left an invisible closure
@@ -7663,6 +7673,64 @@ fn scrollbar(
         )
 }
 
+/// The font faces that ship inside the binary, by name.
+///
+/// Empty when the build had no `CLOSURE_FONT_DIR` — a plain
+/// `cargo build` outside the flake — in which case the shell falls back
+/// to the system stack, which is what it did before.
+pub const BUNDLED_FACES: &[&str] = if cfg!(bundled_fonts) {
+    &["Regular", "Italic", "Bold", "BoldItalic", "SemiBold"]
+} else {
+    &[]
+};
+
+/// The bundled faces' bytes, in [`BUNDLED_FACES`] order.
+///
+/// `*bold*` was not bold, and this is why: the emphasis machinery was
+/// correct all along, but a weight and a slant have to be *found* in a
+/// real face. The window was running on whatever the platform
+/// substituted for a font nobody had installed, and a substitute with
+/// one face cannot be made bold. Strikethrough is drawn by the
+/// renderer, which is why that one worked and these two did not.
+#[must_use]
+pub fn bundled_fonts() -> Vec<std::borrow::Cow<'static, [u8]>> {
+    #[cfg(bundled_fonts)]
+    {
+        vec![
+            std::borrow::Cow::Borrowed(
+                &include_bytes!(concat!(env!("OUT_DIR"), "/Regular.ttf"))[..],
+            ),
+            std::borrow::Cow::Borrowed(
+                &include_bytes!(concat!(env!("OUT_DIR"), "/Italic.ttf"))[..],
+            ),
+            std::borrow::Cow::Borrowed(&include_bytes!(concat!(env!("OUT_DIR"), "/Bold.ttf"))[..]),
+            std::borrow::Cow::Borrowed(
+                &include_bytes!(concat!(env!("OUT_DIR"), "/BoldItalic.ttf"))[..],
+            ),
+            std::borrow::Cow::Borrowed(
+                &include_bytes!(concat!(env!("OUT_DIR"), "/SemiBold.ttf"))[..],
+            ),
+        ]
+    }
+    #[cfg(not(bundled_fonts))]
+    {
+        Vec::new()
+    }
+}
+
+/// The family the window asks gpui for.
+///
+/// The first name in the theme's stack, which is the one the bundle
+/// registers — a shell that ships a font and then asks for a different
+/// family has bundled nothing.
+#[must_use]
+pub fn font_family_name(theme: &closure_shell_core::Theme) -> &'static str {
+    closure_shell_core::font_stack(theme.typography.mono_family)
+        .into_iter()
+        .next()
+        .unwrap_or("monospace")
+}
+
 /// The window's font: the theme's stack as gpui wants it — one family
 /// plus an ordered fallback list.
 ///
@@ -7685,6 +7753,11 @@ pub fn app_font(theme: closure_shell_core::Theme) -> gpui::Font {
     // no text in it.
     let family = names.next().unwrap_or("monospace");
     let fallbacks: Vec<String> = names.map(ToOwned::to_owned).collect();
+    debug_assert_eq!(
+        family,
+        font_family_name(&theme),
+        "the bundle registers the family the window asks for"
+    );
     gpui::Font {
         fallbacks: (!fallbacks.is_empty()).then(|| gpui::FontFallbacks::from_fonts(fallbacks)),
         ..gpui::font(family)
