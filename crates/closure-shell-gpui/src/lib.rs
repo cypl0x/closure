@@ -1922,11 +1922,40 @@ pub fn body_row_h(zoom: f32) -> f32 {
     BODY_LINE_H * zoom
 }
 
-/// Width reserved for the TODO keyword in an outline row, painted or
-/// not — a column that appears only on some rows moves every title
+/// Characters reserved for the TODO keyword in an outline row, painted
+/// or not — a column that appears only on some rows moves every title
 /// beside it.
+///
+/// Six covers `CANCELLED` at the padding the chip carries; a longer
+/// keyword somebody configures is clipped rather than wrapped.
 #[cfg(feature = "gpui")]
-const TODO_COL_W: f32 = 44.0;
+const KEYWORD_CHARS: f32 = 6.0;
+
+/// The size the row's chips are painted at, unzoomed — the keyword and
+/// the priority cookie.
+pub const CHIP_TEXT: f32 = 11.0;
+
+/// How wide one monospace glyph is, as a fraction of the font size.
+///
+/// The window is Maple Mono NF throughout, so this is a property of
+/// the face rather than a guess. A shade generous: a column one pixel
+/// too narrow wraps, which is the whole bug, and one pixel too wide
+/// costs a pixel.
+const MONO_ADVANCE: f32 = 0.65;
+
+/// The width of a chip column holding `chars` characters, at `zoom`.
+///
+/// The keyword sat in a column written in *unzoomed* pixels while the
+/// text inside it scaled, so past about 1.4 the word no longer fitted
+/// and wrapped — `TOD` over `O`, `DON` over `E` — and the priority
+/// cookie beside it inherited the defect the moment it was written.
+///
+/// A column that holds text is as wide as that text, so it is measured
+/// from the text and cannot be outgrown by the thing it contains.
+#[must_use]
+pub fn chip_col_px(chars: f32, zoom: f32) -> f32 {
+    chars * scaled_text_px(CHIP_TEXT, zoom) * MONO_ADVANCE
+}
 /// Most a row will spend on its file name before clipping it.
 #[cfg(feature = "gpui")]
 const PATH_COL_W: f32 = 120.0;
@@ -3736,13 +3765,21 @@ impl GpuiView {
         // has a keyword. Painted only when there is one, the titles of
         // a mixed list started at two different x positions and the
         // whole column appeared to shuffle as you moved through it.
-        let keyword = div().w(px(TODO_COL_W)).mr_1().flex_none();
+        // Wide enough for the longest keyword the kernel ships, at
+        // whatever zoom this is — and never wrapping, so a keyword
+        // nobody anticipated is clipped rather than folded in half.
+        let keyword = div()
+            .w(px(chip_col_px(KEYWORD_CHARS, zoom)))
+            .mr_1()
+            .flex_none()
+            .whitespace_nowrap()
+            .overflow_hidden();
         line = line.child(if let Some(todo) = &row.todo {
             keyword
                 .px_1()
                 .rounded_sm()
                 .text_color(rgb(todo_col))
-                .text_size(sz_at(11.0, zoom))
+                .text_size(sz_at(CHIP_TEXT, zoom))
                 .cursor_pointer()
                 .hover(move |s| s.bg(rgb(co.hover)))
                 .on_mouse_down(MouseButton::Left, act("toggle-todo"))
@@ -3754,11 +3791,16 @@ impl GpuiView {
         // same reason the keyword's is: painted only when a row has one,
         // the titles of a mixed list start at two x positions and the
         // column appears to shuffle as the selection moves down it.
-        let cookie = div().w(px(PRIORITY_COL_W)).mr_1().flex_none();
+        let cookie = div()
+            .w(px(chip_col_px(COOKIE_CHARS, zoom)))
+            .mr_1()
+            .flex_none()
+            .whitespace_nowrap()
+            .overflow_hidden();
         line = line.child(if let Some(letter) = row.priority {
             cookie
                 .text_color(rgb(priority_color(co, letter)))
-                .text_size(sz_at(11.0, zoom))
+                .text_size(sz_at(CHIP_TEXT, zoom))
                 .cursor_pointer()
                 .hover(move |s| s.bg(rgb(co.hover)))
                 .on_mouse_down(MouseButton::Left, act("cycle-priority"))
@@ -7999,13 +8041,10 @@ const INDENT_STEP: f32 = 16.0;
 /// replaced. Half reads as a hairline without competing with the text.
 const GUIDE_MIX: u32 = 0x88;
 
-/// Width of the priority column, in pixels at zoom 1.
-///
-/// `[#A]` is four characters and never more, so the column is fixed:
-/// sized to its content, a list where only some rows carry a cookie
-/// starts its titles at two different places.
+/// Characters reserved for the priority cookie: `[#A]` is four and
+/// never more, plus a half for the gap after it.
 #[cfg(feature = "gpui")]
-const PRIORITY_COL_W: f32 = 30.0;
+const COOKIE_CHARS: f32 = 4.5;
 
 /// The colour of a priority cookie — org's `org-priority-faces`.
 ///
