@@ -102,7 +102,7 @@ fn alt_backspace_kills_a_word_in_the_one_line_fields_too() {
     // cannot silently split their behaviour.
     let (_d, mut sh) = shell();
     let mut app = ModalApp::new(InputMode::Doom);
-    app.run(&mut sh, "capture-start");
+    app.run(&mut sh, "capture");
     for c in "hello brave world".chars() {
         app.on_key(&mut sh, &c.to_string(), false, false, Some(c));
     }

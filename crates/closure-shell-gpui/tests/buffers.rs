@@ -35,7 +35,7 @@ fn the_buffer_list_paints_what_the_session_has_open(cx: &mut gpui::TestAppContex
             view.run_command("browse", cx);
             view.press("j", false, false, cx);
             view.run_command("edit-body", cx);
-            view.run_command("buffer-list", cx);
+            view.run_command("list-buffers", cx);
             assert_eq!(view.surface(), ModalSurface::Buffers);
             assert_eq!(view.buffer_row_count(), 2, "both notes are buffers");
         })

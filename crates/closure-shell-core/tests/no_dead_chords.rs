@@ -129,7 +129,7 @@ fn every_command_leaves_the_app_navigable() {
 fn headline_list_shows_every_headline_in_the_file() {
     let (_d, mut shell, mut app) = fixture();
     app.select(0, &shell);
-    app.run(&mut shell, "headline-list");
+    app.run(&mut shell, "list-headlines");
     assert_eq!(app.surface(), ModalSurface::Headlines);
     let rows = app.headline_rows(&shell);
     assert_eq!(rows.len(), 2, "both headlines: {rows:?}");

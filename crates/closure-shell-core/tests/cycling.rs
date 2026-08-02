@@ -216,13 +216,13 @@ fn v5_a_checkbox_toggles_under_the_cursor() {
     assert!(app.select_by_id(&shell, "01HQCYCLE0000000000000005"));
     app.run(&mut shell, "edit-body");
     // The cursor opens on the first line: `- [ ] socks`.
-    app.run(&mut shell, "checkbox-toggle");
+    app.run(&mut shell, "toggle-checkbox");
     assert!(
         app.body_buffer().starts_with("- [X] socks"),
         "buffer: {}",
         app.body_buffer()
     );
-    app.run(&mut shell, "checkbox-toggle");
+    app.run(&mut shell, "toggle-checkbox");
     assert!(app.body_buffer().starts_with("- [ ] socks"));
 }
 
@@ -231,7 +231,7 @@ fn v5_the_cookie_counts_what_is_ticked() {
     let (dir, mut shell, mut app) = list_fixture();
     assert!(app.select_by_id(&shell, "01HQCYCLE0000000000000005"));
     app.run(&mut shell, "edit-body");
-    app.run(&mut shell, "checkbox-toggle");
+    app.run(&mut shell, "toggle-checkbox");
     app.run(&mut shell, "save-buffer");
 
     let src = fs::read_to_string(dir.path().join("notes.org")).expect("read");
@@ -248,7 +248,7 @@ fn v5_a_line_that_is_not_a_checkbox_is_left_alone() {
     app.on_key(&mut shell, "G", false, false, Some('G'));
     app.on_key(&mut shell, "o", false, false, Some('o'));
     app.on_key(&mut shell, "escape", false, false, None);
-    app.run(&mut shell, "checkbox-toggle");
+    app.run(&mut shell, "toggle-checkbox");
     assert!(
         app.body_buffer()
             .starts_with(before.lines().next().unwrap()),

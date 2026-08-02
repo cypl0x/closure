@@ -53,7 +53,7 @@ fn app() -> (TempDir, Shell, ModalApp) {
 }
 
 fn type_query(app: &mut ModalApp, sh: &mut Shell, q: &str) {
-    app.run(sh, "search-start");
+    app.run(sh, "search");
     for c in q.chars() {
         app.on_key(sh, "x", false, false, Some(c));
     }
@@ -288,7 +288,7 @@ fn search_from_inside_the_editor_searches_the_buffer() {
     let (_d, mut sh, mut app) = app();
     app.select_by_id(&sh, "01HQNAV000000000000000003");
     app.run(&mut sh, "edit-body");
-    app.run(&mut sh, "search-start");
+    app.run(&mut sh, "search");
     assert_eq!(
         app.surface(),
         ModalSurface::EditBody,
@@ -305,7 +305,7 @@ fn a_buffer_search_finds_a_line_in_it() {
     let (_d, mut sh, mut app) = app();
     app.select_by_id(&sh, "01HQNAV000000000000000003");
     app.run(&mut sh, "edit-body");
-    app.run(&mut sh, "search-start");
+    app.run(&mut sh, "search");
     for c in "body".chars() {
         app.on_key(&mut sh, &c.to_string(), false, false, Some(c));
     }
@@ -320,6 +320,6 @@ fn a_buffer_search_finds_a_line_in_it() {
 #[test]
 fn search_from_the_outline_still_searches_the_vault() {
     let (_d, mut sh, mut app) = app();
-    app.run(&mut sh, "search-start");
+    app.run(&mut sh, "search");
     assert_eq!(app.surface(), ModalSurface::Search);
 }

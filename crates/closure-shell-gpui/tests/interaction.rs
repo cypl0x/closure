@@ -237,7 +237,7 @@ fn groups() -> Vec<(String, Vec<(String, String)>)> {
         ),
         (
             "Capture".to_owned(),
-            vec![("C-c c".to_owned(), "capture-start".to_owned())],
+            vec![("C-c c".to_owned(), "capture".to_owned())],
         ),
     ]
 }

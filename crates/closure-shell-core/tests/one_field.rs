@@ -75,7 +75,7 @@ fn press(app: &mut ModalApp, shell: &mut Shell, key: &str, ctrl: bool, alt: bool
 /// Every surface that has a one-line field, and the command that opens
 /// it. Kept in one place so a new field cannot quietly skip the rules.
 const FIELDS: &[&str] = &[
-    "capture-start",
+    "capture",
     "rename",
     "add-sibling",
     "edit-tags",
@@ -84,9 +84,9 @@ const FIELDS: &[&str] = &[
     "sync",
     "llm",
     "palette",
-    "search-start",
+    "search",
     "body-search",
-    "buffer-list",
+    "list-buffers",
     "recent-files",
     "tag-picker",
     "refile",
@@ -96,7 +96,7 @@ const FIELDS: &[&str] = &[
 /// the tag under the cursor — tags are one word, so the key is free
 /// there and it is how a new tag gets into a vault at all.
 const WORD_FIELDS: &[&str] = &[
-    "capture-start",
+    "capture",
     "rename",
     "add-sibling",
     "edit-tags",
@@ -105,9 +105,9 @@ const WORD_FIELDS: &[&str] = &[
     "sync",
     "llm",
     "palette",
-    "search-start",
+    "search",
     "body-search",
-    "buffer-list",
+    "list-buffers",
     "recent-files",
     "refile",
 ];
@@ -221,7 +221,7 @@ fn a_lone_field_kills_and_yanks() {
 fn a_field_beside_a_list_leaves_the_list_its_chords() {
     // `C-n` in a filter means "next result" and always has; the field
     // takes everything the list does not.
-    for cmd in ["search-start", "buffer-list", "recent-files"] {
+    for cmd in ["search", "list-buffers", "recent-files"] {
         let (_d, mut shell, mut app) = open(cmd);
         type_in(&mut app, &mut shell, "alpha");
         press(&mut app, &mut shell, "n", true, false);

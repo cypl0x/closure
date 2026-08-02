@@ -587,11 +587,11 @@ fn the_chords_are_the_active_modes_own() {
     // follow the mode, which is the whole point of the report.
     use closure_config::InputMode;
     assert_eq!(
-        closure_input::chord_for_command(InputMode::Doom, "capture-start"),
+        closure_input::chord_for_command(InputMode::Doom, "capture"),
         Some("c")
     );
     assert_eq!(
-        closure_input::chord_for_command(InputMode::Emacs, "capture-start"),
+        closure_input::chord_for_command(InputMode::Emacs, "capture"),
         Some("C-c c")
     );
 }

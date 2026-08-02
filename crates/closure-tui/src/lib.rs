@@ -2046,11 +2046,11 @@ impl App {
             "todo-back" => self.cycle_todo(-1),
             "priority-up" => self.step_priority(-1),
             "priority-down" => self.step_priority(1),
-            "checkbox-toggle" => self.toggle_checkbox(),
+            "toggle-checkbox" => self.toggle_checkbox(),
             // Buffers and the jumplist (Q1). A "buffer" in the terminal
             // shell is a file it has been in — the same list the gpui
             // shell keeps, over the only thing this shell opens.
-            "buffer-list" => {
+            "list-buffers" => {
                 self.mode = AppMode::Buffers;
                 self.result_cursor = 0;
             }
@@ -2058,9 +2058,9 @@ impl App {
                 self.mode = AppMode::Files;
                 self.result_cursor = 0;
             }
-            "buffer-next" => self.cycle_buffer(1),
-            "buffer-prev" => self.cycle_buffer(-1),
-            "buffer-alternate" => {
+            "next-buffer" => self.cycle_buffer(1),
+            "prev-buffer" => self.cycle_buffer(-1),
+            "alternate-buffer" => {
                 let mut by_recency: Vec<&(PathBuf, u64)> = self.visited.iter().collect();
                 by_recency.sort_by_key(|e| std::cmp::Reverse(e.1));
                 if let Some(target) = by_recency.get(1).map(|(p, _)| p.clone()) {
@@ -2069,7 +2069,7 @@ impl App {
                     "no other buffer to switch to".clone_into(&mut self.status);
                 }
             }
-            "buffer-close" | "buffer-close-force" => {
+            "close-buffer" | "close-buffer-force" => {
                 let current = self.current_buffer();
                 if let Some(path) = current {
                     self.visited.retain(|(p, _)| *p != path);
@@ -2761,11 +2761,11 @@ impl App {
     /// The rest of the command table — the list and navigation verbs.
     fn apply_list_command(&mut self, cmd: &str) {
         match cmd {
-            "search-start" => {
+            "search" => {
                 self.mode = AppMode::Search;
                 self.query.clear();
             }
-            "search-headline-start" => {
+            "search-headlines" => {
                 self.mode = AppMode::SearchHeadlines;
                 self.query.clear();
             }
@@ -2773,11 +2773,11 @@ impl App {
                 self.mode = AppMode::Backlinks;
                 self.result_cursor = 0;
             }
-            "capture-start" => {
+            "capture" => {
                 self.mode = AppMode::Capture;
                 self.query.clear();
             }
-            "headline-list" => {
+            "list-headlines" => {
                 self.mode = AppMode::Headlines;
                 self.result_cursor = 0;
             }
@@ -2798,7 +2798,7 @@ impl App {
                 self.mode = AppMode::DbView;
                 self.result_cursor = 0;
             }
-            "block-list" => {
+            "list-blocks" => {
                 self.mode = AppMode::Blocks;
                 self.result_cursor = 0;
             }
@@ -2956,7 +2956,7 @@ impl App {
     /// holds. Split from [`Self::apply_headline_command`] for length.
     fn apply_pane_command(&mut self, cmd: &str) {
         match cmd {
-            "eval-block" => {
+            "execute-block" => {
                 let target = self
                     .selected_path()
                     .filter(|_| !self.block_results().is_empty())

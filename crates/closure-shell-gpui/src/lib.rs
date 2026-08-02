@@ -3377,7 +3377,7 @@ impl GpuiView {
             (
                 "This vault is empty",
                 "Capture your first note, or point closure at a directory of .org files.",
-                Some("capture-start"),
+                Some("capture"),
             )
         };
         let mut column = div()
@@ -4908,12 +4908,12 @@ impl GpuiView {
                         .on_mouse_down(
                             MouseButton::Left,
                             cx.listener(|this: &mut Self, _ev, _w, cx| {
-                                this.click("eval-block", cx);
+                                this.click("execute-block", cx);
                             }),
                         )
                         .child("▶ run"),
                 )
-                .children(self.app.chord_for("eval-block").map(|chord| {
+                .children(self.app.chord_for("execute-block").map(|chord| {
                     div()
                         .text_size(self.sz(10.0))
                         .text_color(rgb(co.accent))
@@ -6861,7 +6861,7 @@ impl GpuiView {
                     )),
             )
             .child(div().flex_grow())
-            .child(button("＋ capture".to_owned(), co.success, "capture-start"))
+            .child(button("＋ capture".to_owned(), co.success, "capture"))
             .child(button("❯ palette".to_owned(), co.accent, "palette"))
     }
 

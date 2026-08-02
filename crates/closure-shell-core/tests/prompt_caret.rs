@@ -81,7 +81,7 @@ fn alt_backspace_kills_a_word_in_the_rename_prompt() {
 #[test]
 fn the_capture_prompt_says_where_its_cursor_is() {
     let (_d, mut sh, mut app) = fixture();
-    app.run(&mut sh, "capture-start");
+    app.run(&mut sh, "capture");
     assert_eq!(app.surface(), ModalSurface::Capture);
     type_into(&mut app, &mut sh, "hello");
     assert_eq!(app.capture_cursor(), 5);
@@ -97,7 +97,7 @@ fn the_cursor_is_a_byte_offset_on_a_character_boundary() {
     // be somewhere `str` can be cut — a two-byte `é` is one Left, not
     // two.
     let (_d, mut sh, mut app) = fixture();
-    app.run(&mut sh, "capture-start");
+    app.run(&mut sh, "capture");
     type_into(&mut app, &mut sh, "café");
     assert_eq!(app.capture_cursor(), 5, "four chars, five bytes");
     app.on_key(&mut sh, "left", false, false, None);

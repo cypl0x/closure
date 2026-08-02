@@ -62,7 +62,9 @@ fn every_command_resolves_to_an_action_in_every_mode() {
 /// are HTML-safe in every mode (no `<>&`), so one raw substring check works
 /// for the TUI and web outputs alike.
 const SHARED: [&str; 6] = [
-    "capture-start",
+    // Renamed from `capture-start` on 2026-08-02 with the rest of the
+    // command vocabulary: verb first, and a bare noun opens a pane.
+    "capture",
     "add-sibling",
     "rename",
     "delete",

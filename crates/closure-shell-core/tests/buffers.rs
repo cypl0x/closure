@@ -110,10 +110,10 @@ fn b2_alternate_toggles_between_the_last_two_buffers() {
     open(&mut app, &mut shell, "01HQBUF000000000000000001");
     open(&mut app, &mut shell, "01HQBUF000000000000000002");
 
-    app.run(&mut shell, "buffer-alternate");
+    app.run(&mut shell, "alternate-buffer");
     assert_eq!(app.buffer_rows(&shell)[0].name, "Alpha");
     assert_eq!(app.surface(), ModalSurface::EditBody);
-    app.run(&mut shell, "buffer-alternate");
+    app.run(&mut shell, "alternate-buffer");
     assert_eq!(app.buffer_rows(&shell)[0].name, "Beta");
 }
 
@@ -121,7 +121,7 @@ fn b2_alternate_toggles_between_the_last_two_buffers() {
 fn b2_alternate_with_one_buffer_is_a_no_op_that_says_why() {
     let (_d, mut shell, mut app) = fixture();
     open(&mut app, &mut shell, "01HQBUF000000000000000001");
-    app.run(&mut shell, "buffer-alternate");
+    app.run(&mut shell, "alternate-buffer");
     assert_eq!(app.buffer_rows(&shell)[0].name, "Alpha");
     assert!(
         app.status().contains("no other buffer"),
@@ -138,13 +138,13 @@ fn b1_buffer_next_and_prev_walk_the_open_order_and_wrap() {
     open(&mut app, &mut shell, "01HQBUF000000000000000003"); // Gamma
 
     // Open order is Alpha, Beta, Gamma; we are on Gamma.
-    app.run(&mut shell, "buffer-next");
+    app.run(&mut shell, "next-buffer");
     assert_eq!(app.buffer_rows(&shell)[0].name, "Alpha", "wraps to the top");
-    app.run(&mut shell, "buffer-next");
+    app.run(&mut shell, "next-buffer");
     assert_eq!(app.buffer_rows(&shell)[0].name, "Beta");
-    app.run(&mut shell, "buffer-prev");
+    app.run(&mut shell, "prev-buffer");
     assert_eq!(app.buffer_rows(&shell)[0].name, "Alpha");
-    app.run(&mut shell, "buffer-prev");
+    app.run(&mut shell, "prev-buffer");
     assert_eq!(app.buffer_rows(&shell)[0].name, "Gamma", "wraps back round");
 }
 
@@ -154,7 +154,7 @@ fn b1_closing_a_buffer_opens_the_next_most_recent() {
     open(&mut app, &mut shell, "01HQBUF000000000000000001");
     open(&mut app, &mut shell, "01HQBUF000000000000000002");
 
-    app.run(&mut shell, "buffer-close");
+    app.run(&mut shell, "close-buffer");
     assert_eq!(names(&app, &shell), vec!["Alpha"]);
     assert_eq!(app.surface(), ModalSurface::EditBody);
 }
@@ -163,7 +163,7 @@ fn b1_closing_a_buffer_opens_the_next_most_recent() {
 fn b1_closing_the_last_buffer_returns_to_the_outline() {
     let (_d, mut shell, mut app) = fixture();
     open(&mut app, &mut shell, "01HQBUF000000000000000001");
-    app.run(&mut shell, "buffer-close");
+    app.run(&mut shell, "close-buffer");
     assert!(app.buffer_rows(&shell).is_empty());
     assert_eq!(app.surface(), ModalSurface::Browse);
 }
@@ -175,14 +175,14 @@ fn b1_a_dirty_buffer_is_not_closed_without_being_told_twice() {
     app.on_key(&mut shell, "i", false, false, Some('i'));
     app.on_key(&mut shell, "x", false, false, Some('x'));
 
-    app.run(&mut shell, "buffer-close");
+    app.run(&mut shell, "close-buffer");
     assert_eq!(
         names(&app, &shell),
         vec!["Alpha"],
         "unsaved text is not thrown away by one chord"
     );
     assert!(app.status().contains("unsaved"), "status: {}", app.status());
-    app.run(&mut shell, "buffer-close-force");
+    app.run(&mut shell, "close-buffer-force");
     assert!(app.buffer_rows(&shell).is_empty());
 }
 
@@ -192,7 +192,7 @@ fn b1_the_buffer_list_is_a_picker() {
     open(&mut app, &mut shell, "01HQBUF000000000000000001");
     open(&mut app, &mut shell, "01HQBUF000000000000000002");
 
-    app.run(&mut shell, "buffer-list");
+    app.run(&mut shell, "list-buffers");
     assert_eq!(app.surface(), ModalSurface::Buffers);
     // Typing filters the list; Enter opens what is left.
     app.on_key(&mut shell, "a", false, false, Some('a'));

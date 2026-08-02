@@ -79,7 +79,7 @@ fn the_body_menu_is_about_editing_not_structure() {
     let menu = context_menu(ContextTarget::Body, InputMode::Doom);
     let commands: Vec<&str> = menu.iter().map(|i| i.action.command()).collect();
     assert!(commands.contains(&"edit-body"), "{commands:?}");
-    assert!(commands.contains(&"block-list"), "{commands:?}");
+    assert!(commands.contains(&"list-blocks"), "{commands:?}");
     assert!(
         !commands.contains(&"delete"),
         "deleting a subtree is not a body action: {commands:?}"

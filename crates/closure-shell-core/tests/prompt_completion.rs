@@ -62,7 +62,7 @@ fn tab(app: &mut ModalApp, shell: &mut Shell) {
 #[test]
 fn c_n_completes_the_word_being_typed_in_the_capture_prompt() {
     let (_d, mut shell, mut app) = fixture();
-    app.run(&mut shell, "capture-start");
+    app.run(&mut shell, "capture");
     type_in(&mut app, &mut shell, "Refa");
     next(&mut app, &mut shell);
 
@@ -76,7 +76,7 @@ fn c_n_completes_the_word_being_typed_in_the_capture_prompt() {
 #[test]
 fn only_the_last_word_is_replaced() {
     let (_d, mut shell, mut app) = fixture();
-    app.run(&mut shell, "capture-start");
+    app.run(&mut shell, "capture");
     type_in(&mut app, &mut shell, "finish Refa");
     next(&mut app, &mut shell);
 
@@ -86,7 +86,7 @@ fn only_the_last_word_is_replaced() {
 #[test]
 fn c_n_and_c_p_walk_the_candidates_both_ways() {
     let (_d, mut shell, mut app) = fixture();
-    app.run(&mut shell, "capture-start");
+    app.run(&mut shell, "capture");
     type_in(&mut app, &mut shell, "Ref");
     next(&mut app, &mut shell);
     let first = app.capture_buffer().to_owned();
@@ -102,7 +102,7 @@ fn the_shell_can_paint_the_candidates() {
     // The popup beside the caret is the same one the editor gets: a
     // cycle you cannot see is a cycle you have to count.
     let (_d, mut shell, mut app) = fixture();
-    app.run(&mut shell, "capture-start");
+    app.run(&mut shell, "capture");
     type_in(&mut app, &mut shell, "Ref");
     assert!(app.prompt_completion_items().is_empty(), "nothing yet");
 
@@ -122,7 +122,7 @@ fn tab_completes_when_nothing_is_cycling_yet() {
     // TAB means "complete this" everywhere else on the desktop, and a
     // one-line title prompt has no indentation for it to mean instead.
     let (_d, mut shell, mut app) = fixture();
-    app.run(&mut shell, "capture-start");
+    app.run(&mut shell, "capture");
     type_in(&mut app, &mut shell, "Refa");
     tab(&mut app, &mut shell);
 
@@ -132,7 +132,7 @@ fn tab_completes_when_nothing_is_cycling_yet() {
 #[test]
 fn tab_accepts_the_candidate_a_cycle_is_showing() {
     let (_d, mut shell, mut app) = fixture();
-    app.run(&mut shell, "capture-start");
+    app.run(&mut shell, "capture");
     type_in(&mut app, &mut shell, "Refa");
     next(&mut app, &mut shell);
     tab(&mut app, &mut shell);
@@ -147,7 +147,7 @@ fn tab_accepts_the_candidate_a_cycle_is_showing() {
 #[test]
 fn typing_ends_the_cycle() {
     let (_d, mut shell, mut app) = fixture();
-    app.run(&mut shell, "capture-start");
+    app.run(&mut shell, "capture");
     type_in(&mut app, &mut shell, "Refa");
     next(&mut app, &mut shell);
     type_in(&mut app, &mut shell, "!");
@@ -159,7 +159,7 @@ fn typing_ends_the_cycle() {
 #[test]
 fn a_prompt_on_a_word_boundary_has_nothing_to_complete() {
     let (_d, mut shell, mut app) = fixture();
-    app.run(&mut shell, "capture-start");
+    app.run(&mut shell, "capture");
     type_in(&mut app, &mut shell, "Refa ");
     next(&mut app, &mut shell);
 
@@ -197,13 +197,13 @@ fn a_todo_keyword_is_offered_but_the_structural_ones_are_not() {
     // `:PROPERTIES:`, which the body editor offers because a body is
     // where drawers live.
     let (_d, mut shell, mut app) = fixture();
-    app.run(&mut shell, "capture-start");
+    app.run(&mut shell, "capture");
     type_in(&mut app, &mut shell, "TOD");
     next(&mut app, &mut shell);
     assert_eq!(app.capture_buffer(), "TODO");
 
     let (_d2, mut shell2, mut app2) = fixture();
-    app2.run(&mut shell2, "capture-start");
+    app2.run(&mut shell2, "capture");
     type_in(&mut app2, &mut shell2, "PROP");
     next(&mut app2, &mut shell2);
     assert!(
@@ -219,7 +219,7 @@ fn a_candidate_can_be_picked_by_index() {
     // chords do — the shells click a row rather than synthesising the
     // right number of `C-n`s.
     let (_d, mut shell, mut app) = fixture();
-    app.run(&mut shell, "capture-start");
+    app.run(&mut shell, "capture");
     type_in(&mut app, &mut shell, "Ref");
     next(&mut app, &mut shell);
     let items: Vec<String> = app.prompt_completion_items().to_vec();
@@ -236,7 +236,7 @@ fn a_candidate_can_be_picked_by_index() {
 #[test]
 fn picking_past_the_end_does_nothing() {
     let (_d, mut shell, mut app) = fixture();
-    app.run(&mut shell, "capture-start");
+    app.run(&mut shell, "capture");
     type_in(&mut app, &mut shell, "Ref");
     next(&mut app, &mut shell);
     let before = app.capture_buffer().to_owned();

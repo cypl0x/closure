@@ -1098,7 +1098,7 @@ fn palette_lists_every_command_with_chord() {
         rows.iter()
             .any(|(c, k)| c == "quit" && (k == "q" || k == "ESC"))
     );
-    assert!(rows.iter().any(|(c, _)| c == "capture-start"));
+    assert!(rows.iter().any(|(c, _)| c == "capture"));
     let mut names: Vec<&str> = rows.iter().map(|(c, _)| c.as_str()).collect();
     names.dedup();
     assert_eq!(names.len(), rows.len(), "one row per command");
@@ -1113,7 +1113,7 @@ fn palette_filters_fuzzy() {
     app.handle_stroke("p");
     let rows = app.palette_results();
     assert!(rows.iter().all(|(c, _)| c.contains('c')));
-    assert_eq!(rows.first().map(|(c, _)| c.as_str()), Some("capture-start"));
+    assert_eq!(rows.first().map(|(c, _)| c.as_str()), Some("capture"));
 }
 
 #[test]
@@ -1513,7 +1513,7 @@ fn notion_palette_lists_insert_commands() {
     app.handle_stroke("/");
     let rows = app.palette_results();
     assert!(
-        rows.iter().any(|(c, _)| c == "capture-start"),
+        rows.iter().any(|(c, _)| c == "capture"),
         "insert-ish commands reachable"
     );
 }

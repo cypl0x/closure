@@ -159,7 +159,7 @@ fn the_capture_prompt_is_a_prompt_like_the_others() {
     // exactly the sort of place a chord goes missing.
     let (_d, mut sh) = shell();
     let mut app = ModalApp::new(InputMode::Doom);
-    app.run(&mut sh, "capture-start");
+    app.run(&mut sh, "capture");
     for c in "alpha beta".chars() {
         app.on_key(&mut sh, &c.to_string(), false, false, Some(c));
     }

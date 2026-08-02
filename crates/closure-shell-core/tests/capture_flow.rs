@@ -45,7 +45,7 @@ fn shell() -> (TempDir, Shell) {
 
 /// Type `title` into the capture overlay and accept it.
 fn capture(app: &mut ModalApp, sh: &mut Shell, title: &str) {
-    app.run(sh, "capture-start");
+    app.run(sh, "capture");
     assert_eq!(app.surface(), ModalSurface::Capture);
     for c in title.chars() {
         app.on_key(sh, "x", false, false, Some(c));
@@ -303,7 +303,7 @@ fn capturing_into_a_folded_headline_opens_it() {
 fn the_capture_field_answers_to_the_readline_chords() {
     let (_d, mut sh) = shell();
     let mut app = ModalApp::new(InputMode::Doom);
-    app.run(&mut sh, "capture-start");
+    app.run(&mut sh, "capture");
     for c in "Call Leon tomorrow".chars() {
         app.on_key(&mut sh, "x", false, false, Some(c));
     }
@@ -323,7 +323,7 @@ fn the_capture_field_answers_to_the_readline_chords() {
 fn a_full_stop_in_a_capture_is_just_a_full_stop() {
     let (_d, mut sh) = shell();
     let mut app = ModalApp::new(InputMode::Doom);
-    app.run(&mut sh, "capture-start");
+    app.run(&mut sh, "capture");
     for c in "Ring Leon. Then rest".chars() {
         app.on_key(&mut sh, "x", false, false, Some(c));
     }
@@ -336,7 +336,7 @@ fn ctrl_j_and_k_move_through_search_results() {
     // modal app is the wrong way round.
     let (_d, mut sh) = shell();
     let mut app = ModalApp::new(InputMode::Doom);
-    app.run(&mut sh, "search-start");
+    app.run(&mut sh, "search");
     let start = app.selected();
     app.on_key(&mut sh, "j", true, false, Some('j'));
     assert_eq!(app.selected(), start + 1, "C-j moves down");
@@ -353,7 +353,7 @@ fn shift_enter_starts_a_second_line_in_a_capture() {
     // a captured thought had to be one line or be re-opened afterwards.
     let (_d, mut sh) = shell();
     let mut app = ModalApp::new(InputMode::Doom);
-    app.run(&mut sh, "capture-start");
+    app.run(&mut sh, "capture");
     for c in "Ring Leon".chars() {
         app.on_key(&mut sh, "x", false, false, Some(c));
     }
@@ -369,7 +369,7 @@ fn shift_enter_starts_a_second_line_in_a_capture() {
 fn the_first_line_is_the_headline_and_the_rest_is_the_body() {
     let (_d, mut sh) = shell();
     let mut app = ModalApp::new(InputMode::Doom);
-    app.run(&mut sh, "capture-start");
+    app.run(&mut sh, "capture");
     for c in "Ring Leon".chars() {
         app.on_key(&mut sh, "x", false, false, Some(c));
     }
@@ -454,7 +454,7 @@ fn the_arrows_walk_back_through_previous_captures() {
     capture(&mut app, &mut sh, "first thought");
     capture(&mut app, &mut sh, "second thought");
 
-    app.run(&mut sh, "capture-start");
+    app.run(&mut sh, "capture");
     app.on_key(&mut sh, "up", false, false, None);
     assert_eq!(app.capture_buffer(), "second thought", "newest first");
     app.on_key(&mut sh, "up", false, false, None);
@@ -469,13 +469,13 @@ fn a_discarded_capture_is_remembered_too() {
     // text you most often want back.
     let (_d, mut sh) = shell();
     let mut app = ModalApp::new(InputMode::Doom);
-    app.run(&mut sh, "capture-start");
+    app.run(&mut sh, "capture");
     for c in "abandoned".chars() {
         app.on_key(&mut sh, "x", false, false, Some(c));
     }
     app.on_key(&mut sh, "escape", false, false, None);
 
-    app.run(&mut sh, "capture-start");
+    app.run(&mut sh, "capture");
     app.on_key(&mut sh, "up", false, false, None);
     assert_eq!(app.capture_buffer(), "abandoned");
 }
@@ -486,7 +486,7 @@ fn the_chords_walk_the_history_in_a_modal_mode() {
     let mut app = ModalApp::new(InputMode::Doom);
     capture(&mut app, &mut sh, "older");
     capture(&mut app, &mut sh, "newer");
-    app.run(&mut sh, "capture-start");
+    app.run(&mut sh, "capture");
     app.on_key(&mut sh, "k", true, false, Some('k'));
     assert_eq!(app.capture_buffer(), "newer");
     app.on_key(&mut sh, "k", true, false, Some('k'));
@@ -500,7 +500,7 @@ fn walking_past_the_newest_leaves_an_empty_line() {
     let (_d, mut sh) = shell();
     let mut app = ModalApp::new(InputMode::Doom);
     capture(&mut app, &mut sh, "only one");
-    app.run(&mut sh, "capture-start");
+    app.run(&mut sh, "capture");
     app.on_key(&mut sh, "up", false, false, None);
     assert_eq!(app.capture_buffer(), "only one");
     app.on_key(&mut sh, "down", false, false, None);
@@ -524,7 +524,7 @@ fn the_capture_prompt_names_the_subtree_it_files_into() {
     let (_d, mut sh) = shell();
     let mut app = ModalApp::new(InputMode::Doom);
     app.select_by_id(&sh, "01HQCAP000000000000000001");
-    app.run(&mut sh, "capture-start");
+    app.run(&mut sh, "capture");
     let label = app.capture_target_label(&sh);
     assert!(
         label.contains("Project"),
@@ -543,7 +543,7 @@ fn with_nothing_selected_the_prompt_names_the_capture_file() {
     let mut app = ModalApp::new(InputMode::Doom);
     app.select_by_id(&sh, "01HQCAP000000000000000001");
     app.on_key(&mut sh, "escape", false, false, None);
-    app.run(&mut sh, "capture-start");
+    app.run(&mut sh, "capture");
     let label = app.capture_target_label(&sh);
     assert!(
         label.contains("inbox.org"),
@@ -562,7 +562,7 @@ fn the_named_target_is_the_one_the_capture_uses() {
     let (_d, mut sh) = shell();
     let mut app = ModalApp::new(InputMode::Doom);
     app.select_by_id(&sh, "01HQCAP000000000000000003");
-    app.run(&mut sh, "capture-start");
+    app.run(&mut sh, "capture");
     assert!(app.capture_target_label(&sh).contains("Other"));
     for c in "Filed here".chars() {
         app.on_key(&mut sh, "x", false, false, Some(c));
@@ -608,7 +608,7 @@ fn the_crumbs_are_the_whole_path_down_to_the_target() {
     let (_d, mut sh) = shell();
     let mut app = ModalApp::new(InputMode::Doom);
     app.select_by_id(&sh, "01HQCAP000000000000000002");
-    app.run(&mut sh, "capture-start");
+    app.run(&mut sh, "capture");
     assert_eq!(
         crumb_labels(&app, &sh),
         vec![
@@ -633,7 +633,7 @@ fn picking_a_crumb_moves_the_capture_up_the_path() {
     let (_d, mut sh) = shell();
     let mut app = ModalApp::new(InputMode::Doom);
     app.select_by_id(&sh, "01HQCAP000000000000000002");
-    app.run(&mut sh, "capture-start");
+    app.run(&mut sh, "capture");
     app.pick_capture_crumb(&sh, 1);
     assert_eq!(active_crumb(&app, &sh), "Project");
     assert!(
@@ -663,7 +663,7 @@ fn picking_the_file_crumb_files_at_the_top_of_that_file() {
     let (_d, mut sh) = shell();
     let mut app = ModalApp::new(InputMode::Doom);
     app.select_by_id(&sh, "01HQCAP000000000000000002");
-    app.run(&mut sh, "capture-start");
+    app.run(&mut sh, "capture");
     app.pick_capture_crumb(&sh, 0);
     assert!(
         app.capture_target_label(&sh).contains("notes.org"),
@@ -696,12 +696,12 @@ fn the_next_capture_starts_from_the_selection_again() {
     let (_d, mut sh) = shell();
     let mut app = ModalApp::new(InputMode::Doom);
     app.select_by_id(&sh, "01HQCAP000000000000000002");
-    app.run(&mut sh, "capture-start");
+    app.run(&mut sh, "capture");
     app.pick_capture_crumb(&sh, 0);
     app.on_key(&mut sh, "escape", false, false, None);
 
     app.select_by_id(&sh, "01HQCAP000000000000000002");
-    app.run(&mut sh, "capture-start");
+    app.run(&mut sh, "capture");
     assert_eq!(active_crumb(&app, &sh), "Existing child");
 }
 
@@ -711,7 +711,7 @@ fn with_nothing_selected_there_is_one_crumb_and_it_is_the_inbox() {
     let mut app = ModalApp::new(InputMode::Doom);
     app.select_by_id(&sh, "01HQCAP000000000000000001");
     app.on_key(&mut sh, "escape", false, false, None);
-    app.run(&mut sh, "capture-start");
+    app.run(&mut sh, "capture");
     let crumbs = app.capture_crumbs(&sh);
     assert_eq!(crumb_labels(&app, &sh), vec!["inbox.org".to_owned()]);
     assert!(crumbs[0].active && crumbs[0].id.is_none());
@@ -735,7 +735,7 @@ fn the_file_crumb_files_into_the_file_it_came_from_not_its_namesake() {
     let mut app = ModalApp::new(InputMode::Doom);
 
     app.select_by_id(&sh, "01HQCAP000000000000000009");
-    app.run(&mut sh, "capture-start");
+    app.run(&mut sh, "capture");
     assert_eq!(
         app.capture_crumbs(&sh).first().expect("file crumb").label,
         "notes.org",
@@ -812,7 +812,7 @@ fn picking_a_crumb_moves_the_outline_selection_to_it() {
     let (_d, mut sh) = shell();
     let mut app = ModalApp::new(InputMode::Doom);
     app.select_by_id(&sh, "01HQCAP000000000000000002"); // Existing child
-    app.run(&mut sh, "capture-start");
+    app.run(&mut sh, "capture");
     app.pick_capture_crumb(&sh, 1); // Project
 
     let rows = app.rows(&sh);
@@ -832,7 +832,7 @@ fn the_path_survives_the_selection_moving_with_it() {
     let (_d, mut sh) = shell();
     let mut app = ModalApp::new(InputMode::Doom);
     app.select_by_id(&sh, "01HQCAP000000000000000002");
-    app.run(&mut sh, "capture-start");
+    app.run(&mut sh, "capture");
     app.pick_capture_crumb(&sh, 1);
     assert_eq!(
         crumb_labels(&app, &sh),
@@ -888,7 +888,7 @@ fn ctrl_enter_files_it_and_keeps_the_prompt_open() {
     let (_d, mut sh) = shell();
     let mut app = ModalApp::new(InputMode::Doom);
     app.select(0, &sh); // Project
-    app.run(&mut sh, "capture-start");
+    app.run(&mut sh, "capture");
     capture_more(&mut app, &mut sh, "First");
     assert_eq!(
         app.surface(),
@@ -904,7 +904,7 @@ fn the_selection_stays_on_the_parent() {
     let (_d, mut sh) = shell();
     let mut app = ModalApp::new(InputMode::Doom);
     app.select(0, &sh);
-    app.run(&mut sh, "capture-start");
+    app.run(&mut sh, "capture");
     capture_more(&mut app, &mut sh, "First");
     app.on_key(&mut sh, "escape", false, false, None);
     assert_eq!(
@@ -919,7 +919,7 @@ fn a_run_of_captures_all_land_under_the_same_parent() {
     let (_d, mut sh) = shell();
     let mut app = ModalApp::new(InputMode::Doom);
     app.select(0, &sh);
-    app.run(&mut sh, "capture-start");
+    app.run(&mut sh, "capture");
     for title in ["First", "Second", "Third"] {
         capture_more(&mut app, &mut sh, title);
     }
@@ -950,7 +950,7 @@ fn ctrl_enter_on_an_empty_line_does_not_file_a_blank() {
     let (_d, mut sh) = shell();
     let mut app = ModalApp::new(InputMode::Doom);
     app.select(0, &sh);
-    app.run(&mut sh, "capture-start");
+    app.run(&mut sh, "capture");
     let before = titles(&app, &sh).len();
     app.on_key(&mut sh, "enter", true, false, None);
     assert_eq!(titles(&app, &sh).len(), before, "nothing was filed");
@@ -972,7 +972,7 @@ fn capturing_onto_a_headline_says_child() {
     let (_d, mut sh) = shell();
     let mut app = ModalApp::new(InputMode::Doom);
     app.select(0, &sh); // Project
-    app.run(&mut sh, "capture-start");
+    app.run(&mut sh, "capture");
     assert_eq!(app.capture_placement(&sh), "child");
 }
 
@@ -985,7 +985,7 @@ fn capturing_with_no_selection_says_top_level() {
     // Escape in the outline is how you say "file this loose"; a fresh
     // app has not selected anything yet either.
     app.on_key(&mut sh, "escape", false, false, None);
-    app.run(&mut sh, "capture-start");
+    app.run(&mut sh, "capture");
     assert_eq!(app.capture_placement(&sh), "top level");
 }
 
@@ -995,7 +995,7 @@ fn it_agrees_with_where_the_capture_actually_lands() {
     let (_d, mut sh) = shell();
     let mut app = ModalApp::new(InputMode::Doom);
     app.select(0, &sh);
-    app.run(&mut sh, "capture-start");
+    app.run(&mut sh, "capture");
     let said = app.capture_placement(&sh);
     for c in "Filed".chars() {
         app.on_key(&mut sh, &c.to_string(), false, false, Some(c));

@@ -123,7 +123,7 @@ fn output_with_nothing_in_it_still_says_it_ran() {
 fn the_buffer_runs_the_block_the_cursor_is_in() {
     let (_d, mut shell, mut app) = fixture(NOTE);
     in_the_buffer(&mut app, &mut shell, 2);
-    app.run(&mut shell, "eval-block");
+    app.run(&mut shell, "execute-block");
     let buf = app.body_buffer();
     assert!(buf.contains("#+RESULTS:"), "{buf}");
     assert!(buf.contains(": first"), "{buf}");
@@ -134,8 +134,8 @@ fn the_buffer_runs_the_block_the_cursor_is_in() {
 fn running_it_twice_leaves_one_result() {
     let (_d, mut shell, mut app) = fixture(NOTE);
     in_the_buffer(&mut app, &mut shell, 2);
-    app.run(&mut shell, "eval-block");
-    app.run(&mut shell, "eval-block");
+    app.run(&mut shell, "execute-block");
+    app.run(&mut shell, "execute-block");
     assert_eq!(app.body_buffer().matches("#+RESULTS:").count(), 1);
 }
 
@@ -144,7 +144,7 @@ fn a_cursor_in_prose_refuses_rather_than_running_something_else() {
     let (_d, mut shell, mut app) = fixture(NOTE);
     in_the_buffer(&mut app, &mut shell, 0);
     let before = app.body_buffer().to_owned();
-    app.run(&mut shell, "eval-block");
+    app.run(&mut shell, "execute-block");
     assert_eq!(app.body_buffer(), before, "nothing was written");
     assert!(app.status().contains("no source block"), "{}", app.status());
 }
@@ -157,7 +157,7 @@ fn the_buffer_honours_the_trust_gate_too() {
     let (_d, mut shell, mut app) = fixture(note);
     in_the_buffer(&mut app, &mut shell, 2);
     let before = app.body_buffer().to_owned();
-    app.run(&mut shell, "eval-block");
+    app.run(&mut shell, "execute-block");
     assert_eq!(app.body_buffer(), before, "nothing ran");
     assert!(
         app.status().contains("trust") || app.status().contains("blocked"),
@@ -172,7 +172,7 @@ fn the_outline_does_not_run_a_block_it_never_showed_you() {
     // used as an index into the vault-wide block list.
     let (dir, mut shell, mut app) = fixture(NOTE);
     app.select(0, &shell);
-    app.run(&mut shell, "eval-block");
+    app.run(&mut shell, "execute-block");
     let src = fs::read_to_string(dir.path().join("a-notes.org")).expect("read");
     assert!(!src.contains("#+RESULTS:"), "nothing was run: {src}");
     assert!(

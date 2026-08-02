@@ -45,7 +45,7 @@ fn fixture() -> (tempfile::TempDir, Shell, ModalApp) {
 #[test]
 fn the_blocks_surface_lists_every_block_in_path_order() {
     let (_d, mut shell, mut app) = fixture();
-    app.run(&mut shell, "block-list");
+    app.run(&mut shell, "list-blocks");
     assert_eq!(app.surface(), ModalSurface::Blocks);
     let rows = app.block_rows(&shell);
     let langs: Vec<&str> = rows.iter().map(|(_, lang, _)| lang.as_str()).collect();
@@ -56,9 +56,9 @@ fn the_blocks_surface_lists_every_block_in_path_order() {
 #[test]
 fn running_the_selected_block_captures_its_output() {
     let (_d, mut shell, mut app) = fixture();
-    app.run(&mut shell, "block-list");
+    app.run(&mut shell, "list-blocks");
     assert_eq!(app.block_output(), None, "nothing run yet");
-    app.run(&mut shell, "eval-block");
+    app.run(&mut shell, "execute-block");
     let out = app.block_output().expect("output");
     assert!(out.contains("first"), "ran block 0: {out:?}");
     assert!(!out.contains("second"), "and only block 0: {out:?}");
@@ -70,9 +70,9 @@ fn the_cursor_chooses_which_block_runs() {
     // user asked for the list commands to behave like the palette, so
     // letters narrow the list and the arrows (and `C-n`/`C-j`) walk it.
     let (_d, mut shell, mut app) = fixture();
-    app.run(&mut shell, "block-list");
+    app.run(&mut shell, "list-blocks");
     app.on_key(&mut shell, "down", false, false, None);
-    app.run(&mut shell, "eval-block");
+    app.run(&mut shell, "execute-block");
     let out = app.block_output().expect("output");
     assert!(out.contains("second"), "ran block 1: {out:?}");
 }
@@ -94,8 +94,8 @@ fn an_untrusted_language_is_refused_not_run() {
     .expect("write");
     let vault = Vault::open(dir.path()).expect("open");
     let (mut shell, mut app) = (Shell::new(vault), ModalApp::new(InputMode::Doom));
-    app.run(&mut shell, "block-list");
-    app.run(&mut shell, "eval-block");
+    app.run(&mut shell, "list-blocks");
+    app.run(&mut shell, "execute-block");
     assert_eq!(app.block_output(), None, "nothing ran");
     assert!(
         app.status().contains("blocked") || app.status().contains("trust"),
@@ -110,7 +110,7 @@ fn running_with_no_blocks_says_so() {
     fs::write(dir.path().join("notes.org"), "* Just prose\n").expect("write");
     let vault = Vault::open(dir.path()).expect("open");
     let (mut shell, mut app) = (Shell::new(vault), ModalApp::new(InputMode::Doom));
-    app.run(&mut shell, "eval-block");
+    app.run(&mut shell, "execute-block");
     assert_eq!(app.block_output(), None);
     assert!(!app.status().is_empty(), "silence would look like a hang");
 }
@@ -119,8 +119,8 @@ fn running_with_no_blocks_says_so() {
 fn leaving_the_surface_clears_the_previous_output() {
     // Stale output next to a different block is a lie about what ran.
     let (_d, mut shell, mut app) = fixture();
-    app.run(&mut shell, "block-list");
-    app.run(&mut shell, "eval-block");
+    app.run(&mut shell, "list-blocks");
+    app.run(&mut shell, "execute-block");
     assert!(app.block_output().is_some());
     app.on_key(&mut shell, "escape", false, false, None);
     assert_eq!(app.surface(), ModalSurface::Browse);
@@ -130,8 +130,8 @@ fn leaving_the_surface_clears_the_previous_output() {
 #[test]
 fn moving_the_cursor_clears_the_previous_output() {
     let (_d, mut shell, mut app) = fixture();
-    app.run(&mut shell, "block-list");
-    app.run(&mut shell, "eval-block");
+    app.run(&mut shell, "list-blocks");
+    app.run(&mut shell, "execute-block");
     assert!(app.block_output().is_some());
     app.on_key(&mut shell, "down", false, false, None);
     assert_eq!(

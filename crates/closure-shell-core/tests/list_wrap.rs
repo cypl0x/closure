@@ -92,7 +92,7 @@ fn the_chords_wrap_too() {
 #[test]
 fn a_search_wraps_at_both_ends() {
     let (_d, mut shell, mut app) = fixture();
-    app.run(&mut shell, "search-start");
+    app.run(&mut shell, "search");
     for c in "a".chars() {
         app.on_key(&mut shell, &c.to_string(), false, false, Some(c));
     }

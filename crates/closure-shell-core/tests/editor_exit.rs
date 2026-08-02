@@ -291,7 +291,7 @@ fn closing_the_palette_returns_to_the_buffer_it_was_opened_from() {
 #[test]
 fn cancelling_a_capture_returns_to_the_buffer() {
     let (_d, mut sh, mut app) = file_view();
-    app.run(&mut sh, "capture-start");
+    app.run(&mut sh, "capture");
     assert_eq!(app.surface(), ModalSurface::Capture);
     app.on_key(&mut sh, "escape", false, false, None);
     assert_eq!(app.surface(), ModalSurface::EditFile);
@@ -300,7 +300,7 @@ fn cancelling_a_capture_returns_to_the_buffer() {
 #[test]
 fn completing_a_capture_returns_to_the_buffer() {
     let (_d, mut sh, mut app) = file_view();
-    app.run(&mut sh, "capture-start");
+    app.run(&mut sh, "capture");
     for c in "From the buffer".chars() {
         app.on_key(&mut sh, "x", false, false, Some(c));
     }
@@ -312,7 +312,7 @@ fn completing_a_capture_returns_to_the_buffer() {
 fn the_clickable_view_still_returns_to_the_outline() {
     let (_d, mut sh) = shell();
     let mut app = ModalApp::new(InputMode::Doom);
-    app.run(&mut sh, "capture-start");
+    app.run(&mut sh, "capture");
     app.on_key(&mut sh, "escape", false, false, None);
     assert_eq!(app.surface(), ModalSurface::Browse);
 }

@@ -136,7 +136,7 @@ fn fixture() -> (tempfile::TempDir, Shell, ModalApp) {
 #[test]
 fn edit_special_from_the_blocks_list_opens_the_block_alone() {
     let (_d, mut shell, mut app) = fixture();
-    app.run(&mut shell, "block-list");
+    app.run(&mut shell, "list-blocks");
     app.run(&mut shell, "edit-special");
     assert_eq!(app.surface(), ModalSurface::EditBlock);
     assert_eq!(
@@ -154,7 +154,7 @@ fn edit_special_from_the_blocks_list_opens_the_block_alone() {
 #[test]
 fn committing_writes_the_block_back_and_leaves_the_file_alone() {
     let (dir, mut shell, mut app) = fixture();
-    app.run(&mut shell, "block-list");
+    app.run(&mut shell, "list-blocks");
     app.run(&mut shell, "edit-special");
     // The block buffer opens in NORMAL (Doom opens buffers that way),
     // so typing starts with vim's own insert.
@@ -182,7 +182,7 @@ fn committing_writes_the_block_back_and_leaves_the_file_alone() {
 #[test]
 fn escaping_edit_special_discards_the_edit() {
     let (dir, mut shell, mut app) = fixture();
-    app.run(&mut shell, "block-list");
+    app.run(&mut shell, "list-blocks");
     app.run(&mut shell, "edit-special");
     // The block buffer opens in NORMAL (Doom opens buffers that way),
     // so typing starts with vim's own insert.

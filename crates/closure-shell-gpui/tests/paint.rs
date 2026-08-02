@@ -718,7 +718,7 @@ fn dragging_the_side_scrollbar_scrolls_the_pane(cx: &mut gpui::TestAppContext) {
     // so this is the bar that moves them.
     let long = numbered("* Row", 200);
     let (_dir, view, vcx) = visual_window(cx, &long);
-    view.update(vcx, |v, cx| v.run_command("headline-list", cx));
+    view.update(vcx, |v, cx| v.run_command("list-headlines", cx));
     vcx.run_until_parked();
     let viewport = vcx.update(|w, _cx| w.viewport_size());
     let track = vcx.debug_bounds("side-scrollbar").expect("painted");
@@ -747,7 +747,7 @@ fn a_scrollbar_works_on_the_frame_its_pane_appears(cx: &mut gpui::TestAppContext
     // immediately, with no repaint in between.
     let long = numbered("* Row", 200);
     let (_dir, view, vcx) = visual_window(cx, &long);
-    view.update(vcx, |v, cx| v.run_command("headline-list", cx));
+    view.update(vcx, |v, cx| v.run_command("list-headlines", cx));
     vcx.run_until_parked();
     let track = vcx.debug_bounds("side-scrollbar").expect("painted");
     let at = Point::new(track.center().x, track.origin.y + track.size.height * 0.75);
@@ -1186,7 +1186,7 @@ fn leaving_the_editor_brings_the_window_back(cx: &mut gpui::TestAppContext) {
 fn the_source_block_editor_takes_the_window_too(cx: &mut gpui::TestAppContext) {
     let (_dir, view, vcx) = visual_window(cx, VAULT);
     let rail = vcx.debug_bounds("rail").expect("painted");
-    for command in ["block-list", "edit-special"] {
+    for command in ["list-blocks", "edit-special"] {
         view.update(vcx, |v, cx| v.run_command(command, cx));
         vcx.run_until_parked();
     }

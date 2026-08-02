@@ -115,7 +115,7 @@ fn folding_changes_the_row_set() {
 fn the_search_query_is_part_of_the_key() {
     let (_d, mut shell, mut app) = fixture();
     assert_eq!(app.rows(&shell).len(), 3);
-    app.run(&mut shell, "search-start");
+    app.run(&mut shell, "search");
     // Each keystroke narrows the set; a memo keyed only on the vault
     // revision would freeze the list at "all three".
     for (c, expect) in [('B', 1usize), ('e', 1), ('t', 1)] {
@@ -129,7 +129,7 @@ fn the_search_query_is_part_of_the_key() {
 #[test]
 fn leaving_the_search_surface_restores_every_row() {
     let (_d, mut shell, mut app) = fixture();
-    app.run(&mut shell, "search-start");
+    app.run(&mut shell, "search");
     app.on_key(&mut shell, "b", false, false, Some('B'));
     assert_eq!(app.rows(&shell).len(), 1);
     app.on_key(&mut shell, "escape", false, false, None);

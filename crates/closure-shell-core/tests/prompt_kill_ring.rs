@@ -70,10 +70,10 @@ fn ctrl_k_in_the_capture_prompt_is_still_its_history() {
     // Capture has a history and `C-j`/`C-k` walk it — a use of the
     // chord that predates this and belongs to a field that has one.
     let (_d, mut sh, mut app) = fixture();
-    app.run(&mut sh, "capture-start");
+    app.run(&mut sh, "capture");
     type_into(&mut app, &mut sh, "first thought");
     app.on_key(&mut sh, "enter", false, false, None);
-    app.run(&mut sh, "capture-start");
+    app.run(&mut sh, "capture");
     app.on_key(&mut sh, "k", true, false, None);
     assert_eq!(app.capture_buffer(), "first thought", "history, not a kill");
 }
@@ -88,7 +88,7 @@ fn the_kill_survives_the_trip_to_another_prompt() {
     app.on_key(&mut sh, "a", true, false, None);
     app.on_key(&mut sh, "k", true, false, None);
     app.on_key(&mut sh, "escape", false, false, None);
-    app.run(&mut sh, "capture-start");
+    app.run(&mut sh, "capture");
     app.on_key(&mut sh, "y", true, false, None);
     assert_eq!(app.capture_buffer(), "carried across");
 }
@@ -107,7 +107,7 @@ fn ctrl_u_kills_too() {
 #[test]
 fn the_word_kill_is_a_kill_as_well() {
     let (_d, mut sh, mut app) = fixture();
-    app.run(&mut sh, "capture-start");
+    app.run(&mut sh, "capture");
     type_into(&mut app, &mut sh, "keep this");
     app.on_key(&mut sh, "w", true, false, None); // C-w
     assert_eq!(app.capture_buffer(), "keep ");
@@ -118,7 +118,7 @@ fn the_word_kill_is_a_kill_as_well() {
 #[test]
 fn yanking_lands_at_the_cursor_not_at_the_end() {
     let (_d, mut sh, mut app) = fixture();
-    app.run(&mut sh, "capture-start");
+    app.run(&mut sh, "capture");
     type_into(&mut app, &mut sh, "abc");
     app.on_key(&mut sh, "w", true, false, None); // kill "abc"
     type_into(&mut app, &mut sh, "xy");
@@ -130,7 +130,7 @@ fn yanking_lands_at_the_cursor_not_at_the_end() {
 #[test]
 fn a_yank_with_nothing_killed_changes_nothing() {
     let (_d, mut sh, mut app) = fixture();
-    app.run(&mut sh, "capture-start");
+    app.run(&mut sh, "capture");
     type_into(&mut app, &mut sh, "typed");
     app.on_key(&mut sh, "y", true, false, None);
     assert_eq!(app.capture_buffer(), "typed");

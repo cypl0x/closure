@@ -35,7 +35,7 @@ fn the_chords_are_the_ones_the_app_actually_dispatches() {
     // The whole point: no chord in the tutorial is typed by hand.
     for mode in [InputMode::Doom, InputMode::Vim, InputMode::Notion] {
         let text = tutorial_org(mode);
-        for command in ["capture-start", "palette", "search-start", "quit"] {
+        for command in ["capture", "palette", "search", "quit"] {
             let chord =
                 closure_input::chord_for_command(mode, command).expect("bound in every mode");
             assert!(

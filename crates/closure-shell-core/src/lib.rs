@@ -3058,7 +3058,7 @@ const PALETTE_COMMANDS: &[(&str, &str, &str, &str)] = &[
         "Go to the previous file",
     ),
     ("open", "open-file", "Navigate", "Open the selected file"),
-    ("capture", "capture-start", "Edit", "Capture a new entry"),
+    ("capture", "capture", "Edit", "Capture a new entry"),
     (
         "add-sibling",
         "add-sibling",
@@ -4325,6 +4325,50 @@ fn editor_which_key(mode: InputMode) -> Vec<(String, Vec<(String, String)>)> {
         .collect()
 }
 
+/// Command names that were spelled another way before 2026-08-02.
+///
+/// The schema is verb first, and a bare noun opens the pane of that
+/// name. Ninety-two commands had grown three shapes at once —
+/// `toggle-fold` beside `checkbox-toggle`, `add-sibling` beside
+/// `buffer-next`, `block-list` beside `move-subtree-up` — so guessing
+/// the name of a command you had not used yet was a coin toss, which is
+/// the whole of discoverability. "They should have sound names in a
+/// similiar schema."
+///
+/// org lends its own word where closure had invented one: nothing in
+/// org is called `eval-block`, and what it does is
+/// `org-babel-execute-src-block`.
+const COMMAND_ALIASES: &[(&str, &str)] = &[
+    ("checkbox-toggle", "toggle-checkbox"),
+    ("block-list", "list-blocks"),
+    ("headline-list", "list-headlines"),
+    ("buffer-list", "list-buffers"),
+    ("buffer-next", "next-buffer"),
+    ("buffer-prev", "prev-buffer"),
+    ("buffer-close", "close-buffer"),
+    ("buffer-close-force", "close-buffer-force"),
+    ("buffer-alternate", "alternate-buffer"),
+    ("eval-block", "execute-block"),
+    ("search-start", "search"),
+    ("search-headline-start", "search-headlines"),
+    ("capture-start", "capture"),
+];
+
+/// The name a command answers to now, given any name it has ever had.
+///
+/// Every former spelling still resolves: a rename that breaks the chord
+/// somebody typed yesterday, the `:` line in their muscle memory, or a
+/// tool call an LLM has already learned costs more than the tidiness it
+/// buys. An unknown name is returned unchanged, so this is safe to put
+/// in front of every dispatch.
+#[must_use]
+pub fn canonical_command(name: &str) -> &str {
+    COMMAND_ALIASES
+        .iter()
+        .find(|(was, _)| *was == name)
+        .map_or(name, |(_, now)| *now)
+}
+
 /// Drive one field with the session's shared kill ring.
 ///
 /// Every surface with a text field routes its unclaimed keys through
@@ -4521,11 +4565,11 @@ pub fn tutorial_org(mode: InputMode) -> String {
         leader = leader,
         next = chord(mode, "next-file"),
         prev = chord(mode, "prev-file"),
-        search = chord(mode, "search-start"),
+        search = chord(mode, "search"),
         open = chord(mode, "open-file"),
         palette = chord(mode, "palette"),
         quit = chord(mode, "quit"),
-        capture = chord(mode, "capture-start"),
+        capture = chord(mode, "capture"),
         new_notes = tutorial_new_notes(mode),
         registers = registers,
         reference = tutorial_reference(mode),
@@ -4556,7 +4600,7 @@ fn tutorial_new_notes(mode: InputMode) -> String {
          read\nback tomorrow. A headline you add by hand in another editor \
          has no id until\nclosure touches it: it appears in the outline \
          immediately, and is stamped the\nfirst time you edit it.\n",
-        capture = chord("capture-start"),
+        capture = chord("capture"),
         sibling = chord("add-sibling"),
     )
 }
@@ -5340,7 +5384,7 @@ pub struct Destination {
 const RAIL: &[(&str, &str, &str, &str, ModalSurface)] = &[
     ("outline", "⌂", "Outline", "browse", ModalSurface::Browse),
     ("agenda", "◷", "Agenda", "agenda", ModalSurface::Agenda),
-    ("blocks", "⌗", "Blocks", "block-list", ModalSurface::Blocks),
+    ("blocks", "⌗", "Blocks", "list-blocks", ModalSurface::Blocks),
     ("graph", "⁂", "Graph", "graph", ModalSurface::Graph),
     (
         "backlinks",
@@ -5436,7 +5480,7 @@ pub fn context_menu(
         ],
         ContextTarget::Body => &[
             ("Edit body", "edit-body"),
-            ("Source blocks", "block-list"),
+            ("Source blocks", "list-blocks"),
             ("Backlinks", "backlinks"),
             ("Undo", "undo"),
             ("Redo", "redo"),
@@ -10933,7 +10977,7 @@ impl ModalApp {
     /// (I8; no shell-private verbs). Key handling resolves chords to
     /// exactly this entry point.
     pub fn run(&mut self, shell: &mut Shell, command: &str) {
-        self.run_command(shell, command);
+        self.run_command(shell, canonical_command(command));
     }
 
     /// Which-key items for the active mode, as structured
@@ -12262,14 +12306,14 @@ impl ModalApp {
                 format!("⌂ {headlines}"),
                 format!("{headlines} headline(s) across {files} file(s)"),
                 IndicatorLevel::Idle,
-                Some("headline-list"),
+                Some("list-headlines"),
             ),
             item(
                 "blocks",
                 format!("⌗ {blocks}"),
                 format!("{blocks} source block(s) — run one with eval-block"),
                 IndicatorLevel::Idle,
-                Some("block-list"),
+                Some("list-blocks"),
             ),
             item(
                 "sniffer",
@@ -17544,7 +17588,7 @@ impl ModalApp {
                     "wrap off — long lines scroll sideways".to_owned()
                 });
             }
-            "capture-start" => {
+            "capture" => {
                 self.surface = ModalSurface::Capture;
                 self.capture_buf.clear();
                 // A pick belongs to the thought it was made for.
@@ -17555,7 +17599,7 @@ impl ModalApp {
                     .flatten();
                 self.say(format!("capture {}", self.capture_target_label(shell)));
             }
-            "search-start" | "search-headline-start" => {
+            "search" | "search-headlines" => {
                 // Doom's `SPC s s` is search-*buffer*: swiper over the
                 // thing you are looking at. Bound to the vault-wide
                 // headline search it threw you out of the buffer to look
@@ -17602,7 +17646,7 @@ impl ModalApp {
                 self.selected = 0;
                 self.surface = ModalSurface::Agenda;
             }
-            "block-list" => {
+            "list-blocks" => {
                 self.selected = 0;
                 self.surface = ModalSurface::Blocks;
             }
@@ -17633,7 +17677,7 @@ impl ModalApp {
             "cycle-priority" => self.cycle_priority(shell, 1),
             "priority-down" => self.step_priority(shell, 1),
             "priority-up" => self.step_priority(shell, -1),
-            "checkbox-toggle" => self.toggle_checkbox(),
+            "toggle-checkbox" => self.toggle_checkbox(),
             // A refused level change (promoting a level-1 headline: no
             // level 0 exists) used to be dropped on the floor, so the
             // key did nothing and said nothing — which is exactly what
@@ -17715,7 +17759,7 @@ impl ModalApp {
             "archive" => self.archive_selected(shell),
             "schedule" => self.open_date_pick(shell, PlanField::Scheduled),
             "deadline" => self.open_date_pick(shell, PlanField::Deadline),
-            "buffer-list" => {
+            "list-buffers" => {
                 self.surface = ModalSurface::Buffers;
                 self.query.clear();
                 self.selected = 0;
@@ -17727,17 +17771,17 @@ impl ModalApp {
                 self.selected = 0;
                 self.say("files — type to filter · RET opens · Esc back");
             }
-            "buffer-next" => self.cycle_buffer(shell, 1),
-            "buffer-prev" => self.cycle_buffer(shell, -1),
-            "buffer-alternate" => {
+            "next-buffer" => self.cycle_buffer(shell, 1),
+            "prev-buffer" => self.cycle_buffer(shell, -1),
+            "alternate-buffer" => {
                 if let Some(target) = self.alternate_buffer() {
                     self.open_buffer(shell, &target, true);
                 } else {
                     self.say("no other buffer to switch to");
                 }
             }
-            "buffer-close" => self.close_current_buffer(shell, false),
-            "buffer-close-force" => self.close_current_buffer(shell, true),
+            "close-buffer" => self.close_current_buffer(shell, false),
+            "close-buffer-force" => self.close_current_buffer(shell, true),
             "jump-back" => {
                 if self.jump_at == 0 && self.jumps.is_empty() {
                     self.say("no jumps yet");
@@ -17910,7 +17954,7 @@ impl ModalApp {
             // *outline's* selection as an index into the vault-wide
             // block list — pressing it on the third headline ran the
             // third block in the vault, whatever that was.
-            "eval-block" => {
+            "execute-block" => {
                 if self.surface.is_editor() {
                     self.eval_block_in_buffer(shell);
                 } else if self.surface == ModalSurface::Blocks {
@@ -17921,7 +17965,7 @@ impl ModalApp {
                     );
                 }
             }
-            "headline-list" => {
+            "list-headlines" => {
                 self.selected = 0;
                 self.surface = ModalSurface::Headlines;
                 self.say("headlines — type to filter · RET goes to it");

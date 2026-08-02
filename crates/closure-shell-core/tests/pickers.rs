@@ -62,9 +62,9 @@ fn type_in(app: &mut ModalApp, shell: &mut Shell, s: &str) {
 /// family and would have been the odd one out.
 const PICKERS: &[&str] = &[
     "palette",
-    "buffer-list",
-    "headline-list",
-    "block-list",
+    "list-buffers",
+    "list-headlines",
+    "list-blocks",
     "undo-history",
     "recent-files",
 ];
@@ -96,7 +96,7 @@ fn every_picker_has_a_field_to_filter_with() {
 #[test]
 fn the_headline_picker_narrows_as_you_type() {
     let (_d, mut shell, mut app) = fixture();
-    app.run(&mut shell, "headline-list");
+    app.run(&mut shell, "list-headlines");
     let all = app.picker_view(&shell).expect("picker").rows.len();
     assert!(all >= 3, "three headlines to start with: {all}");
 
@@ -109,7 +109,7 @@ fn the_headline_picker_narrows_as_you_type() {
 #[test]
 fn the_block_picker_narrows_as_you_type() {
     let (_d, mut shell, mut app) = fixture();
-    app.run(&mut shell, "block-list");
+    app.run(&mut shell, "list-blocks");
     assert_eq!(app.picker_view(&shell).expect("picker").rows.len(), 1);
 
     type_in(&mut app, &mut shell, "zzzz");
@@ -131,7 +131,7 @@ fn the_cursor_walks_the_rows_that_are_left() {
     // The filter and the cursor have to agree: a cursor pointing past
     // the narrowed list is how a picker opens the wrong thing.
     let (_d, mut shell, mut app) = fixture();
-    app.run(&mut shell, "headline-list");
+    app.run(&mut shell, "list-headlines");
     app.on_key(&mut shell, "down", false, false, None);
     app.on_key(&mut shell, "down", false, false, None);
     type_in(&mut app, &mut shell, "Beta");
@@ -148,7 +148,7 @@ fn the_cursor_walks_the_rows_that_are_left() {
 #[test]
 fn picking_a_headline_goes_to_it() {
     let (_d, mut shell, mut app) = fixture();
-    app.run(&mut shell, "headline-list");
+    app.run(&mut shell, "list-headlines");
     type_in(&mut app, &mut shell, "Gamma");
     app.on_key(&mut shell, "enter", false, false, None);
 
@@ -159,7 +159,7 @@ fn picking_a_headline_goes_to_it() {
 #[test]
 fn a_picker_marks_the_row_you_are_on() {
     let (_d, mut shell, mut app) = fixture();
-    app.run(&mut shell, "headline-list");
+    app.run(&mut shell, "list-headlines");
     let view = app.picker_view(&shell).expect("picker");
     assert!(
         view.rows[view.cursor].current,
@@ -174,7 +174,7 @@ fn a_picker_marks_what_the_filter_matched() {
     // the whole difference between a list of near-identical candidates
     // and a list you can read.
     let (_d, mut shell, mut app) = fixture();
-    app.run(&mut shell, "headline-list");
+    app.run(&mut shell, "list-headlines");
     type_in(&mut app, &mut shell, "gam");
 
     let view = app.picker_view(&shell).expect("picker");
@@ -186,7 +186,7 @@ fn a_picker_marks_what_the_filter_matched() {
 #[test]
 fn an_unfiltered_picker_marks_nothing() {
     let (_d, mut shell, mut app) = fixture();
-    app.run(&mut shell, "headline-list");
+    app.run(&mut shell, "list-headlines");
     let view = app.picker_view(&shell).expect("picker");
     assert!(view.rows.iter().all(|r| r.matches.is_empty()));
 }

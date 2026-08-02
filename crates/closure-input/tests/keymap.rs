@@ -37,8 +37,8 @@ fn every_mode_binds_toggle_llm_render() {
 fn every_mode_binds_the_same_command_set() {
     let reference = commands(InputMode::Doom);
     assert!(reference.contains("quit"));
-    assert!(reference.contains("capture-start"));
-    assert!(reference.contains("search-start"));
+    assert!(reference.contains("capture"));
+    assert!(reference.contains("search"));
     for mode in MODES {
         assert_eq!(
             commands(mode),
@@ -157,7 +157,7 @@ fn the_desktop_prefix_reaches_the_palette_and_a_capture() {
         );
         assert_eq!(
             command_for(mode, "C-k"),
-            Some("capture-start"),
+            Some("capture"),
             "{mode:?}: C-k starts a capture"
         );
     }
@@ -203,12 +203,12 @@ fn emacs_runs_a_block_on_org_s_own_chord() {
     // is in; it was bound to nothing at all.
     assert_eq!(
         command_for(InputMode::Emacs, "C-c C-c"),
-        Some("eval-block"),
+        Some("execute-block"),
         "Emacs: C-c C-c runs the block"
     );
     for mode in MODES {
         assert!(
-            closure_input::chord_for_command(mode, "eval-block").is_some(),
+            closure_input::chord_for_command(mode, "execute-block").is_some(),
             "{mode:?} can still reach it"
         );
     }
