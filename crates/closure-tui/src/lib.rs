@@ -2849,7 +2849,7 @@ impl App {
                 self.query.clear();
                 self.result_cursor = 0;
             }
-            "cycle-mode" => {
+            "next-input-mode" => {
                 use closure_config::InputMode as M;
                 let next = match self.input_mode {
                     M::Notion => M::Emacs,
@@ -3091,7 +3091,7 @@ impl App {
             // is editable; this one is the reader the terminal already
             // had, which is the same *choice* — file or list — without
             // claiming an editor it does not have here yet.
-            "toggle-view" => {
+            "toggle-file-view" => {
                 if self.mode == AppMode::FileView {
                     self.mode = AppMode::Browse;
                     self.scroll = 0;

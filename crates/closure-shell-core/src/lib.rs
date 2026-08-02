@@ -3947,10 +3947,10 @@ const PALETTE_COMMANDS: &[(&str, &str, &str, &str)] = &[
         "Write the open buffer without closing it",
     ),
     (
-        "toggle-view",
-        "toggle-view",
+        "toggle-file-view",
+        "toggle-file-view",
         "View",
-        "Switch between the outline and the whole file",
+        "Switch between the outline and the whole file as one buffer",
     ),
     (
         "toggle-tree",
@@ -4101,7 +4101,18 @@ const PALETTE_COMMANDS: &[(&str, &str, &str, &str)] = &[
         "Edit",
         "Cut the marked headlines, or the one under the cursor",
     ),
-    ("cycle-mode", "cycle-mode", "Mode", "Switch the input mode"),
+    (
+        "next-input-mode",
+        "next-input-mode",
+        "Mode",
+        "Switch the input mode",
+    ),
+    (
+        "set-input-mode",
+        "set-input-mode",
+        "Mode",
+        "Switch straight to a named keymap: `:set-input-mode vim`",
+    ),
     (
         "fold",
         "toggle-fold",
@@ -5446,6 +5457,11 @@ const COMMAND_ALIASES: &[(&str, &str)] = &[
     ("search-start", "search"),
     ("search-headline-start", "search-headlines"),
     ("capture-start", "capture"),
+    // "Which view?" — the outline, or the whole file as one buffer.
+    ("toggle-view", "toggle-file-view"),
+    // Which mode? The keymap, not the editor's vim mode, which is the
+    // other thing "mode" means three lines away in the status bar.
+    ("cycle-mode", "next-input-mode"),
 ];
 
 /// The name a command answers to now, given any name it has ever had.
@@ -11691,6 +11707,13 @@ pub struct ModalApp {
     /// that only kept what you accepted would forget exactly the case
     /// the report is about: three sentences into a capture, `Esc`.
     prompt_history: std::collections::BTreeMap<&'static str, Vec<String>>,
+    /// The argument the running command was given, if any.
+    ///
+    /// "We may have to reinvent the command/function system, because
+    /// currently there are [no] arguments/parameter." This is the
+    /// smallest honest version of that: the `:` line splits a name
+    /// from the rest, and a command that wants an argument reads it.
+    command_arg: Option<String>,
     /// A directory named on the `:` line, when one was.
     vault_switch_path: Option<String>,
     /// Bumped when something asks to change vaults; the window
@@ -12086,6 +12109,10 @@ struct RowMemo {
 impl ModalApp {
     /// New modal app in the given editing mode, Browse surface.
     #[must_use]
+    // One struct literal naming every field once. Splitting it to
+    // satisfy a line count would put half the app's initial state in a
+    // helper and hide which fields exist.
+    #[allow(clippy::too_many_lines)]
     pub fn new(mode: InputMode) -> Self {
         Self {
             key_overrides: Vec::new(),
@@ -12141,6 +12168,7 @@ impl ModalApp {
             prompt_history: std::collections::BTreeMap::new(),
             vault_switch_asked: 0,
             vault_switch_path: None,
+            command_arg: None,
             marks: std::collections::BTreeSet::new(),
             find_dir: std::path::PathBuf::new(),
             pane_return: None,
@@ -13154,7 +13182,15 @@ impl ModalApp {
         let cmd = cmd.as_str();
         if !matches!(
             cmd,
-            "save-buffer" | "toggle-which-key" | "reload-shell" | "toggle-wrap" | "toggle-fold"
+            "save-buffer"
+                | "toggle-which-key"
+                | "reload-shell"
+                | "toggle-wrap"
+                | "toggle-fold"
+                // Which keymap is in force is a property of the window,
+                // not of the text: "it isn't possible at all to
+                // cycle-mode via hotkey in the editor view".
+                | "next-input-mode"
         ) {
             return false;
         }
@@ -15722,10 +15758,22 @@ impl ModalApp {
                 // plenty of sessions have none — a command that only
                 // works on some desktops is a command you cannot rely
                 // on.
-                if let Some(dir) = other.strip_prefix("open-vault ") {
-                    self.vault_switch_path = Some(dir.trim().to_owned());
-                    self.vault_switch_asked = self.vault_switch_asked.wrapping_add(1);
-                    return;
+                // A line with a space in it is a command and its
+                // argument. General rather than a special case per
+                // command: "currently there are [no] arguments".
+                if let Some((name, arg)) = other.split_once(' ') {
+                    let name = canonical_command(name.trim());
+                    let known = self.keys.iter().any(|(_, cmd)| cmd == name)
+                        || palette_in_keymap("", &self.keys, &[])
+                            .iter()
+                            .flat_map(|s| &s.items)
+                            .any(|e| e.action.command() == name);
+                    if known {
+                        let name = name.to_owned();
+                        let arg = arg.trim().to_owned();
+                        self.run_with_arg(shell, &name, &arg);
+                        return;
+                    }
                 }
                 // Anything else is a command name. Resolve it against
                 // the registry the palette and the chords share (I4).
@@ -18083,6 +18131,36 @@ impl ModalApp {
         self.vault_switch_asked
     }
 
+    /// Put an open buffer into the editing mode the new keymap
+    /// implies.
+    ///
+    /// Notion and Emacs have no NORMAL, so a buffer left in one after
+    /// a switch is a text field that will not take text — the worst
+    /// thing the friendliest mode in the app could do.
+    fn settle_editor_mode(&mut self) {
+        if !self.surface.is_editor() {
+            return;
+        }
+        if self.modal_editing() {
+            self.body.to_normal();
+        } else {
+            self.body.to_insert();
+        }
+    }
+
+    /// Run `command` with `arg` — what the `:` line does when a line
+    /// has a space in it.
+    pub fn run_with_arg(&mut self, shell: &mut Shell, command: &str, arg: &str) {
+        self.command_arg = Some(arg.to_owned());
+        self.run(shell, command);
+        self.command_arg = None;
+    }
+
+    /// The argument the running command was given, if any.
+    fn arg(&self) -> Option<&str> {
+        self.command_arg.as_deref()
+    }
+
     /// The directory a `:open-vault <dir>` named, if the ask came that
     /// way rather than through the dialog.
     pub const fn take_vault_switch_path(&mut self) -> Option<String> {
@@ -19723,6 +19801,11 @@ impl ModalApp {
             // raise one — so this records the ask and the shell
             // answers it, the same shape as the clipboard mirror.
             "open-vault" => {
+                if let Some(dir) = self.arg().map(str::trim).filter(|d| !d.is_empty()) {
+                    self.vault_switch_path = Some(dir.to_owned());
+                    self.vault_switch_asked = self.vault_switch_asked.wrapping_add(1);
+                    return;
+                }
                 if self.can_switch_vault() {
                     self.vault_switch_asked = self.vault_switch_asked.wrapping_add(1);
                     self.say("choose a vault directory\u{2026}");
@@ -20009,7 +20092,27 @@ impl ModalApp {
                     self.say("no newer jump");
                 }
             }
-            "cycle-mode" => {
+            "set-input-mode" => {
+                let Some(name) = self.arg().map(str::trim).map(ToOwned::to_owned) else {
+                    self.say("set-input-mode: name one — emacs vim doom helix notion");
+                    return;
+                };
+                match name.to_ascii_lowercase().as_str() {
+                    "emacs" => self.mode = InputMode::Emacs,
+                    "vim" => self.mode = InputMode::Vim,
+                    "doom" => self.mode = InputMode::Doom,
+                    "helix" => self.mode = InputMode::Helix,
+                    "notion" => self.mode = InputMode::Notion,
+                    _ => {
+                        self.say(format!("{name}: no such input mode"));
+                        return;
+                    }
+                }
+                self.rebuild_keymap();
+                self.settle_editor_mode();
+                self.say(format!("input mode: {:?}", self.mode));
+            }
+            "next-input-mode" => {
                 self.mode = match self.mode {
                     InputMode::Notion => InputMode::Emacs,
                     InputMode::Emacs => InputMode::Vim,
@@ -20018,18 +20121,7 @@ impl ModalApp {
                     InputMode::Helix => InputMode::Notion,
                 };
                 self.rebuild_keymap();
-                // An open buffer follows the new mode. Notion and Emacs
-                // have no NORMAL, so a buffer left in one after the
-                // switch is a text field that will not take text —
-                // which is the worst thing the friendliest mode in the
-                // app could do.
-                if self.surface.is_editor() {
-                    if self.modal_editing() {
-                        self.body.to_normal();
-                    } else {
-                        self.body.to_insert();
-                    }
-                }
+                self.settle_editor_mode();
                 // The view deliberately does *not* follow. It used to:
                 // a mode with a NORMAL was assumed to want the file and
                 // one without it the rows. In practice that means
@@ -20244,7 +20336,7 @@ impl ModalApp {
             },
             // The switch between the two shapes of the shell: rows you
             // click, or the file itself in one buffer.
-            "toggle-view" => {
+            "toggle-file-view" => {
                 // Keyed off the surface rather than the stored view: a
                 // modal mode *starts* in the editor view without a
                 // buffer open yet (nothing has a shell to open one

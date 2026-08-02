@@ -68,7 +68,11 @@ const SHARED: [&str; 6] = [
     "add-sibling",
     "rename",
     "delete",
-    "cycle-mode",
+    // Renamed again on 2026-08-02 for "cycle-mode is not a sound
+    // name": which mode? The keymap, not the editor's vim mode, which
+    // is the other thing "mode" means in the status bar three inches
+    // away.
+    "next-input-mode",
     "quit",
 ];
 

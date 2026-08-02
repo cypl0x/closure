@@ -52,7 +52,7 @@ fn doom_binds_a_space_leader() {
         .map(|(_, cmd)| *cmd)
         .collect();
     assert!(bound.len() >= 6, "a leader map, not a token one: {bound:?}");
-    for expected in ["palette", "quit", "save-buffer", "toggle-view"] {
+    for expected in ["palette", "quit", "save-buffer", "toggle-file-view"] {
         assert!(bound.contains(&expected), "missing {expected}: {bound:?}");
     }
 }

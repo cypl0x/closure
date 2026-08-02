@@ -22,6 +22,7 @@ use thiserror::Error;
 
 /// Doom/default bindings: SPC-leader friendly, single-key navigation.
 const DOOM_KEYMAP: &[(&str, &str)] = &[
+    ("M-m", "next-input-mode"),
     ("SPC f v", "open-vault"),
     ("m", "toggle-mark"),
     ("U", "unmark-all"),
@@ -48,7 +49,7 @@ const DOOM_KEYMAP: &[(&str, &str)] = &[
     ("l", "list-headlines"),
     ("u", "undo"),
     ("C-r", "redo"),
-    ("M", "cycle-mode"),
+    ("M", "next-input-mode"),
     (":", "ex-command"),
     // The which-key panel had a button in the corner and no key,
     // which for a panel that exists to tell you what the keys are
@@ -87,7 +88,7 @@ const DOOM_KEYMAP: &[(&str, &str)] = &[
     ("g k", "cron"),
     ("g m", "conflicts"),
     ("g h", "browse"),
-    ("g v", "toggle-view"),
+    ("g v", "toggle-file-view"),
     // Long lines fold at the pane edge instead of scrolling sideways.
     // `g w` is the flow allow, so the shifted twin.
     ("g W", "toggle-wrap"),
@@ -213,10 +214,10 @@ const DOOM_KEYMAP: &[(&str, &str)] = &[
     ("SPC o l", "llm"),
     ("SPC o s", "sync"),
     ("SPC o n", "sniffer"),
-    ("SPC t v", "toggle-view"),
+    ("SPC t v", "toggle-file-view"),
     ("SPC t t", "toggle-tree"),
     ("SPC t w", "toggle-wrap"),
-    ("SPC t m", "cycle-mode"),
+    ("SPC t m", "next-input-mode"),
     ("SPC u", "undo-history"),
     // The prefix the rest of the desktop uses. Listed last so each
     // mode's own chord stays the one which-key and the tutorial show.
@@ -233,6 +234,7 @@ const DOOM_KEYMAP: &[(&str, &str)] = &[
 
 /// Emacs bindings: Ctrl/Meta chords, `C-x C-c` quits.
 const EMACS_KEYMAP: &[(&str, &str)] = &[
+    ("M-m", "next-input-mode"),
     ("C-c v", "open-vault"),
     ("C-c M", "toggle-mark"),
     ("C-c X", "unmark-all"),
@@ -257,7 +259,7 @@ const EMACS_KEYMAP: &[(&str, &str)] = &[
     ("C-c l", "list-headlines"),
     ("C-x u", "undo"),
     ("C-x r", "redo"),
-    ("C-c m", "cycle-mode"),
+    ("C-c m", "next-input-mode"),
     (":", "ex-command"),
     // The which-key panel had a button in the corner and no key,
     // which for a panel that exists to tell you what the keys are
@@ -296,7 +298,7 @@ const EMACS_KEYMAP: &[(&str, &str)] = &[
     ("g k", "cron"),
     ("g m", "conflicts"),
     ("g h", "browse"),
-    ("g v", "toggle-view"),
+    ("g v", "toggle-file-view"),
     // Long lines fold at the pane edge instead of scrolling sideways.
     // `g w` is the flow allow, so the shifted twin.
     ("g W", "toggle-wrap"),
@@ -386,6 +388,7 @@ const EMACS_KEYMAP: &[(&str, &str)] = &[
 
 /// Vim bindings: modal navigation keys.
 const VIM_KEYMAP: &[(&str, &str)] = &[
+    ("M-m", "next-input-mode"),
     ("g V", "open-vault"),
     ("m", "toggle-mark"),
     ("U", "unmark-all"),
@@ -411,7 +414,7 @@ const VIM_KEYMAP: &[(&str, &str)] = &[
     ("l", "list-headlines"),
     ("u", "undo"),
     ("C-r", "redo"),
-    ("M", "cycle-mode"),
+    ("M", "next-input-mode"),
     (":", "ex-command"),
     // The which-key panel had a button in the corner and no key,
     // which for a panel that exists to tell you what the keys are
@@ -450,7 +453,7 @@ const VIM_KEYMAP: &[(&str, &str)] = &[
     ("g k", "cron"),
     ("g m", "conflicts"),
     ("g h", "browse"),
-    ("g v", "toggle-view"),
+    ("g v", "toggle-file-view"),
     // Long lines fold at the pane edge instead of scrolling sideways.
     // `g w` is the flow allow, so the shifted twin.
     ("g W", "toggle-wrap"),
@@ -547,6 +550,7 @@ const VIM_KEYMAP: &[(&str, &str)] = &[
 
 /// Helix bindings: vim-like with `U` redo and `g e` for end.
 const HELIX_KEYMAP: &[(&str, &str)] = &[
+    ("M-m", "next-input-mode"),
     ("g V", "open-vault"),
     ("m", "toggle-mark"),
     ("X", "unmark-all"),
@@ -571,7 +575,7 @@ const HELIX_KEYMAP: &[(&str, &str)] = &[
     ("l", "list-headlines"),
     ("u", "undo"),
     ("U", "redo"),
-    ("M", "cycle-mode"),
+    ("M", "next-input-mode"),
     (":", "ex-command"),
     // The which-key panel had a button in the corner and no key,
     // which for a panel that exists to tell you what the keys are
@@ -610,7 +614,7 @@ const HELIX_KEYMAP: &[(&str, &str)] = &[
     ("g k", "cron"),
     ("g m", "conflicts"),
     ("g h", "browse"),
-    ("g v", "toggle-view"),
+    ("g v", "toggle-file-view"),
     // Long lines fold at the pane edge instead of scrolling sideways.
     // `g w` is the flow allow, so the shifted twin.
     ("g W", "toggle-wrap"),
@@ -707,6 +711,7 @@ const HELIX_KEYMAP: &[(&str, &str)] = &[
 
 /// Notion bindings: mouse + arrows + slash command, minimal chords.
 const NOTION_KEYMAP: &[(&str, &str)] = &[
+    ("M-m", "next-input-mode"),
     ("C-c v", "open-vault"),
     ("C-c M", "toggle-mark"),
     ("C-c X", "unmark-all"),
@@ -731,7 +736,7 @@ const NOTION_KEYMAP: &[(&str, &str)] = &[
     ("l", "list-headlines"),
     ("u", "undo"),
     ("C-r", "redo"),
-    ("M", "cycle-mode"),
+    ("M", "next-input-mode"),
     (":", "ex-command"),
     // The which-key panel had a button in the corner and no key,
     // which for a panel that exists to tell you what the keys are
@@ -769,7 +774,7 @@ const NOTION_KEYMAP: &[(&str, &str)] = &[
     ("g k", "cron"),
     ("g m", "conflicts"),
     ("g h", "browse"),
-    ("g v", "toggle-view"),
+    ("g v", "toggle-file-view"),
     // Long lines fold at the pane edge instead of scrolling sideways.
     // `g w` is the flow allow, so the shifted twin.
     ("g W", "toggle-wrap"),
