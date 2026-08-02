@@ -3895,6 +3895,13 @@ impl GpuiView {
                     .flex_1()
                     .min_w(px(0.0))
                     .overflow_hidden()
+                    // A flex *row*: the match runs are separate
+                    // children, and as block children they stacked
+                    // vertically and turned one headline into four
+                    // lines. The palette lays its own runs out the
+                    // same way.
+                    .flex()
+                    .flex_row()
                     .whitespace_nowrap()
                     .text_color(rgb(co.outline(row.level)))
                     // The same weight rule the buffer paints a headline
@@ -3906,7 +3913,10 @@ impl GpuiView {
                     .when(span_decoration(BodySpan::Headline(row.level)).italic, |d| {
                         d.italic()
                     })
-                    .child(row.title.clone()),
+                    // The palette's own painter, on the palette's own
+                    // spans: filtering the tree used to give a shorter
+                    // list and no reason for it.
+                    .children(match_runs(co, &row.title, &row.matches)),
             )
             .child(
                 div()

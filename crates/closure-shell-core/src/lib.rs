@@ -702,6 +702,15 @@ pub struct Row {
     pub level: u8,
     /// TODO keyword, if any.
     pub todo: Option<String>,
+    /// Byte ranges of [`Self::title`] the outline filter matched, for
+    /// the shell to paint.
+    ///
+    /// The palette has told you *why* a row is in its list since it
+    /// became a picker; the outline scored its rows with the same fuzzy
+    /// matcher and threw the positions away, so filtering the tree gave
+    /// you a shorter list and no reason for it. Empty when nothing is
+    /// being filtered — the whole document is not a list of candidates.
+    pub matches: Vec<(usize, usize)>,
     /// org's priority cookie letter (`[#A]` → `'A'`), if any.
     ///
     /// The one piece of a headline that says *do this first*, and the
@@ -1556,6 +1565,11 @@ fn outline_rows(shell: &Shell, filter: &str) -> Vec<Row> {
                         path: p.display().to_string(),
                         title: h.title().to_owned(),
                         level: h.level(),
+                        matches: if filter.is_empty() {
+                            Vec::new()
+                        } else {
+                            closure_query::match_spans(filter, h.title())
+                        },
                         todo: h.todo().map(ToOwned::to_owned),
                         priority: h.priority(),
                         folded,
