@@ -872,6 +872,70 @@ impl Detail {
     }
 }
 
+/// One cell of the which-key panel: a group heading, or a binding.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum WhichKeyCell {
+    /// The name of the group whose bindings follow.
+    Heading(String),
+    /// A chord and the command it runs.
+    Entry {
+        /// The keys to press.
+        chord: String,
+        /// What they do.
+        command: String,
+    },
+}
+
+/// Lay the which-key groups out as newspaper columns, each at most
+/// `height` cells tall.
+///
+/// A column per group is what made the panel scroll: six groups, six
+/// columns, and "Command" holds more bindings than the other five put
+/// together — so its column ran off the bottom of the window while the
+/// five beside it stood half empty. Doom flows one flat list into
+/// balanced columns, which is why nothing there scrolls.
+///
+/// The group headings survive, because they are what makes the panel
+/// skimmable and Doom's has none. That costs one rule: a heading may
+/// not be the last cell of a column, since a heading whose group is in
+/// the next column is worse than no heading.
+#[must_use]
+pub fn which_key_columns(
+    groups: &[(String, Vec<(String, String)>)],
+    height: usize,
+) -> Vec<Vec<WhichKeyCell>> {
+    let mut cols: Vec<Vec<WhichKeyCell>> = Vec::new();
+    let mut col: Vec<WhichKeyCell> = Vec::new();
+    // A panel too short for a heading and one binding under it is a
+    // panel, not a hang: nothing can be laid out, so nothing is.
+    if height < 2 {
+        return Vec::new();
+    }
+    for (name, entries) in groups {
+        if entries.is_empty() {
+            continue;
+        }
+        // A heading needs at least one of its own entries beside it.
+        if col.len() + 2 > height {
+            cols.push(std::mem::take(&mut col));
+        }
+        col.push(WhichKeyCell::Heading(name.clone()));
+        for (chord, command) in entries {
+            if col.len() == height {
+                cols.push(std::mem::take(&mut col));
+            }
+            col.push(WhichKeyCell::Entry {
+                chord: chord.clone(),
+                command: command.clone(),
+            });
+        }
+    }
+    if !col.is_empty() {
+        cols.push(col);
+    }
+    cols
+}
+
 /// Every command the palette knows, by canonical name.
 ///
 /// The registry as a list, so a property can be asserted over *all* of

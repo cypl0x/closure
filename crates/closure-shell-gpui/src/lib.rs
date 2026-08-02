@@ -6915,37 +6915,57 @@ impl GpuiView {
                     .text_size(self.sz(11.0))
                     .overflow_y_scroll()
                     .track_scroll(&self.which_key_scroll)
-                    .children(groups.into_iter().map(|(title, entries)| {
-                        let mut col = div()
-                            .flex()
-                            .flex_col()
-                            .px_2()
-                            .child(div().text_color(rgb(co.heading2)).child(title));
-                        for (chord, cmd) in entries {
-                            let run = cmd.clone();
-                            let selector = format!("wk-{cmd}");
-                            col = col.child(
-                                div()
-                                    .debug_selector(move || selector)
-                                    .flex()
-                                    .rounded_sm()
-                                    .cursor_pointer()
-                                    .hover(move |s| s.bg(rgb(co.hover)))
-                                    .on_mouse_down(
-                                        MouseButton::Left,
-                                        cx.listener(move |this: &mut Self, _ev, _w, cx| {
-                                            let cmd = run.clone();
-                                            this.click(&cmd, cx);
-                                        }),
-                                    )
-                                    .child(
-                                        div().w(px(56.0)).text_color(rgb(co.accent)).child(chord),
-                                    )
-                                    .child(div().text_color(rgb(co.muted)).child(cmd)),
-                            );
-                        }
-                        col
-                    })),
+                    // Newspaper columns, not a column per group: six
+                    // groups meant six columns, and "Command" holds
+                    // more bindings than the other five together, so
+                    // its column ran off the bottom while the five
+                    // beside it stood half empty.
+                    .children(
+                        closure_shell_core::which_key_columns(&groups, self.which_key_rows())
+                            .into_iter()
+                            .map(|cells| {
+                                let mut col = div().flex().flex_col().px_2();
+                                for cell in cells {
+                                    col = col.child(match cell {
+                                        closure_shell_core::WhichKeyCell::Heading(title) => {
+                                            div().text_color(rgb(co.heading2)).child(title)
+                                        }
+                                        closure_shell_core::WhichKeyCell::Entry {
+                                            chord,
+                                            command,
+                                        } => {
+                                            let run = command.clone();
+                                            let selector = format!("wk-{command}");
+                                            div()
+                                                .debug_selector(move || selector)
+                                                .flex()
+                                                .rounded_sm()
+                                                .cursor_pointer()
+                                                .hover(move |s| s.bg(rgb(co.hover)))
+                                                .on_mouse_down(
+                                                    MouseButton::Left,
+                                                    cx.listener(
+                                                        move |this: &mut Self, _ev, _w, cx| {
+                                                            let cmd = run.clone();
+                                                            this.click(&cmd, cx);
+                                                        },
+                                                    ),
+                                                )
+                                                .child(
+                                                    div()
+                                                        .w(px(56.0))
+                                                        .text_color(rgb(co.accent))
+                                                        .child(chord),
+                                                )
+                                                .child(
+                                                    div().text_color(rgb(co.muted)).child(command),
+                                                )
+                                        }
+                                    });
+                                }
+                                col
+                            }),
+                    ),
             )
             .child(scrollbar(
                 "which-key-scrollbar",
@@ -6953,6 +6973,29 @@ impl GpuiView {
                 &self.which_key_scroll.clone(),
                 cx,
             ))
+    }
+
+    /// How many cells tall a which-key column may be.
+    ///
+    /// Measured from the panel's own bounds rather than guessed: the
+    /// panel is a fixed fraction of the window, and a column longer
+    /// than it is what made the panel scroll.
+    fn which_key_rows(&self) -> usize {
+        let h = f32::from(self.which_key_scroll.bounds().size.height);
+        let row = body_row_h(self.app.zoom());
+        if h <= row {
+            // Before the first layout there are no bounds to measure.
+            // Twelve is what a default window fits, and the next frame
+            // corrects it.
+            return 12;
+        }
+        // A panel taller than a screen's worth of rows is not a panel,
+        // so the clamp is what makes the conversion total — the same
+        // shape `body_viewport_lines` uses for the same reason.
+        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+        {
+            (h / row).clamp(2.0, 200.0) as usize
+        }
     }
 
     /// The activity rail: the app's panes as a column of labelled
