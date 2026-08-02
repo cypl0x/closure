@@ -5958,7 +5958,13 @@ impl GpuiView {
         if body.is_empty() {
             return el.child("+ body".to_owned());
         }
+        // The preview shows a whole subtree now, which is long enough
+        // to lose your place in and to want to talk about by line — the
+        // editor beside it has had a gutter all along.
+        let gutter_w = px(scaled_text_px(28.0, self.app.zoom()));
+        let mut ln = 0usize;
         for spans in self.highlighted(body).iter() {
+            ln += 1;
             let text: String = spans.iter().map(|(_, s)| s.as_str()).collect();
             // The pictures this line points at, kept before `text` is
             // moved into the click handler below.
@@ -5982,25 +5988,45 @@ impl GpuiView {
                 }),
             );
             let layout = styled.layout().clone();
-            el = el.child(div().min_h(px(17.0)).child(styled).on_mouse_down(
-                MouseButton::Left,
-                cx.listener(move |this: &mut Self, ev: &gpui::MouseDownEvent, _w, cx| {
-                    if !ev.modifiers.control {
-                        return;
-                    }
-                    let byte = layout
-                        .index_for_position(ev.position)
-                        .unwrap_or_else(|i| i)
-                        .min(text.len());
-                    if let Some(link) = line_links(&text)
-                        .into_iter()
-                        .find(|l| l.range.contains(&byte))
-                    {
-                        this.follow_link(&link.target, cx);
-                        cx.stop_propagation();
-                    }
-                }),
-            ));
+            let gutter = div()
+                .flex_none()
+                .w(gutter_w)
+                .mr_2()
+                .flex()
+                .justify_end()
+                .text_color(rgb(co.muted))
+                .text_size(self.sz(11.0))
+                .child(ln.to_string());
+            el = el.child(
+                div().flex().flex_row().child(gutter).child(
+                    div()
+                        .flex_1()
+                        .min_w(px(0.0))
+                        .min_h(px(17.0))
+                        .child(styled)
+                        .on_mouse_down(
+                            MouseButton::Left,
+                            cx.listener(
+                                move |this: &mut Self, ev: &gpui::MouseDownEvent, _w, cx| {
+                                    if !ev.modifiers.control {
+                                        return;
+                                    }
+                                    let byte = layout
+                                        .index_for_position(ev.position)
+                                        .unwrap_or_else(|i| i)
+                                        .min(text.len());
+                                    if let Some(link) = line_links(&text)
+                                        .into_iter()
+                                        .find(|l| l.range.contains(&byte))
+                                    {
+                                        this.follow_link(&link.target, cx);
+                                        cx.stop_propagation();
+                                    }
+                                },
+                            ),
+                        ),
+                ),
+            );
             // …and the pictures the line points at, under it. The
             // editor's own lines are a fixed height — every viewport
             // measurement is derived from it — so this is where a note
