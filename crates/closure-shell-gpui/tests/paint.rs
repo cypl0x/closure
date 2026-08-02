@@ -1606,6 +1606,37 @@ fn a_note_with_an_image_link_paints_it(cx: &mut gpui::TestAppContext) {
 }
 
 #[gpui::test]
+fn a_capped_preview_says_what_it_is_holding_back(cx: &mut gpui::TestAppContext) {
+    // The other half of the level-1 microfreeze fix. Bounding the
+    // preview is only safe if it admits to being bounded — otherwise a
+    // subtree simply looks like it ends at line 200.
+    //
+    // Asserted here rather than on screen because reaching the bottom
+    // of a scrolling pane through xdotool proved unreliable, and a
+    // paint assertion is the stronger check anyway: it fails if the
+    // row is constructed but never laid out.
+    use std::fmt::Write as _;
+    let mut org =
+        String::from("* Top\n:PROPERTIES:\n:ID: 01HQBIGT00000000000000000\n:END:\nbody\n");
+    for i in 0..closure_shell_gpui::PREVIEW_LINES * 2 {
+        let _ = writeln!(org, "** Sub {i}\nline under {i}");
+    }
+    let (_dir, _view, vcx) = visual_window(cx, &org);
+    assert!(
+        vcx.debug_bounds("preview-more").is_some(),
+        "a preview that stops short has to say so"
+    );
+}
+
+#[gpui::test]
+fn a_preview_that_fits_says_nothing(cx: &mut gpui::TestAppContext) {
+    // And the note that was never truncated gets no footer — the row
+    // is information, not furniture.
+    let (_dir, _view, vcx) = visual_window(cx, VAULT);
+    assert!(vcx.debug_bounds("preview-more").is_none());
+}
+
+#[gpui::test]
 fn a_long_title_stays_inside_the_detail_pane(cx: &mut gpui::TestAppContext) {
     // "[#A] horizontal scroll for long titles detail preview".
     //

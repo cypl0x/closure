@@ -959,6 +959,58 @@ pub fn visible_window(cursor: usize, len: usize, cap: usize) -> std::ops::Range<
     start..(start + cap).min(len)
 }
 
+/// The most lines a detail preview will lay out.
+///
+/// "moving through level 1 (*) headline causes microfreezing … it
+/// usually freezes for a 1s or something … navigating through
+/// subheadings works smoothly." The report locates the cost exactly: a
+/// subheading's subtree is small, a level-1 headline's is the whole
+/// section, and the preview concatenated the body with *every* line
+/// under it and shaped one text run per line — every frame, for a pane
+/// you are glancing at on your way past.
+///
+/// Neither the vault read nor the highlighting is to blame; both
+/// measure well under a millisecond on a 600KB vault. Text layout is,
+/// and the only fix that scales is not to lay out what nobody can see.
+/// More than fills any window; the editor is where a subtree is read
+/// whole, and it virtualizes its own lines already.
+pub const PREVIEW_LINES: usize = 200;
+
+/// The text the detail pane previews: the note's body, then as much of
+/// its subtree as [`PREVIEW_LINES`] allows.
+///
+/// The body always leads and is never what gets cut — it is the
+/// children that make a top-level headline enormous, and what you
+/// wrote *here* is what you came to see.
+#[must_use]
+pub fn preview_text(d: &Detail) -> String {
+    let mut text = d.body.clone();
+    if d.children.is_empty() {
+        return text;
+    }
+    if !text.is_empty() && !text.ends_with('\n') {
+        text.push('\n');
+    }
+    let taken = text.lines().count();
+    for line in d.children.lines().take(PREVIEW_LINES.saturating_sub(taken)) {
+        text.push_str(line);
+        text.push('\n');
+    }
+    text
+}
+
+/// How many lines the preview is not showing.
+///
+/// Zero for anything that fits. Silently stopping at the cap would be
+/// worse than the lag it removes: a subtree would look like it ends
+/// there, so the pane says what it is holding back.
+#[must_use]
+pub fn preview_hidden(d: &Detail) -> usize {
+    let body = d.body.lines().count();
+    let total = body + d.children.lines().count();
+    total.saturating_sub(preview_text(d).lines().count())
+}
+
 /// How many columns of body text a pane `width` pixels wide can show.
 ///
 /// The gutter, its margin and the scrollbar come off the front; a
@@ -7037,6 +7089,26 @@ impl GpuiView {
             "edit-body",
             cx,
         ))
+        .children(self.preview_more_row(co, &d))
+    }
+
+    /// What the preview cap is holding back, if anything.
+    ///
+    /// Stopping silently would be worse than the lag it removes: a
+    /// subtree would simply look like it ends there.
+    fn preview_more_row(&self, co: Colors, d: &Detail) -> Option<gpui::Div> {
+        let hidden = preview_hidden(d);
+        (hidden > 0).then(|| {
+            div()
+                .debug_selector(|| "preview-more".to_owned())
+                .px_1()
+                .pt_1()
+                .text_size(self.sz(11.0))
+                .text_color(rgb(co.muted))
+                .child(format!(
+                    "… {hidden} more line(s) — open the editor to read them"
+                ))
+        })
     }
 
     /// What the preview pane paints: the headline's own prose, then
@@ -7048,15 +7120,7 @@ impl GpuiView {
     /// text, same highlighting as the editor gives it, which is what
     /// "just like in the body editor" asked for.
     fn preview_text(d: &Detail) -> String {
-        if d.children.is_empty() {
-            return d.body.clone();
-        }
-        let mut text = d.body.clone();
-        if !text.is_empty() && !text.ends_with('\n') {
-            text.push('\n');
-        }
-        text.push_str(&d.children);
-        text
+        preview_text(d)
     }
 
     /// The read-only body preview under the detail fields.
