@@ -2615,6 +2615,13 @@ impl GpuiView {
         let reloads_before = self.app.reloads();
         let asking = self.app.surface() == ModalSurface::Llm && key == "enter";
         let pairing = self.app.surface() == ModalSurface::Sync && key == "enter";
+        // Two-way mirror, both halves keyed off "did it change": `y`
+        // puts its text on the system clipboard and `p` takes what is
+        // there. The generation counter is what keeps them from taking
+        // turns clobbering each other on every keystroke. Here rather
+        // than in the keystroke handler so the test seam drives it too.
+        self.take_clipboard(cx);
+        let register_before = self.app.register_generation();
         self.app.on_key(&mut self.shell, key, ctrl, alt, text);
         self.relaunch_if_reloaded(reloads_before);
         self.note_prompt();
@@ -2626,6 +2633,9 @@ impl GpuiView {
         if let Some(text) = ring_to_mirror(killed_before.as_deref(), self.shell.ring_top()) {
             cx.write_to_clipboard(gpui::ClipboardItem::new_string(text));
         }
+        // And the editor's own register: `yy` in a buffer never touched
+        // the ring, so a yanked line stayed inside closure.
+        self.give_clipboard(register_before, cx);
         // Pasting a ticket is what makes a network-facing listener
         // willing to answer, so it is also what re-arms the accept the
         // guard refused.
@@ -2728,6 +2738,39 @@ impl GpuiView {
             });
         })
         .detach();
+    }
+
+    /// Put the system clipboard into the editor's register, if it
+    /// holds something the register does not.
+    ///
+    /// So that `p` pastes a URL copied in a browser: "having something
+    /// on the system clipboard and being able to use p in
+    /// Vim/helix/Doom mode to paste would be nice".
+    fn take_clipboard(&mut self, cx: &Context<Self>) {
+        if !self.app.surface().is_editor() {
+            return;
+        }
+        let Some(text) = cx.read_from_clipboard().and_then(|c| c.text()) else {
+            return;
+        };
+        self.app.set_register_from_clipboard(&text);
+    }
+
+    /// Put the editor's register on the system clipboard, if a yank or
+    /// a delete has moved it since the last key.
+    ///
+    /// The other half of "sync with system clipboard (two way)": a
+    /// line yanked with `yy` can be pasted into a browser without a
+    /// second gesture.
+    fn give_clipboard(&self, before: u64, cx: &Context<Self>) {
+        if self.app.register_generation() == before {
+            return;
+        }
+        let text = self.app.register_text().to_owned();
+        if text.is_empty() {
+            return;
+        }
+        cx.write_to_clipboard(gpui::ClipboardItem::new_string(text));
     }
 
     /// The desktop clipboard chords, which live in no keymap: `C-v` /

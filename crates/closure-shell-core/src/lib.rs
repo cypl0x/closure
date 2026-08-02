@@ -8234,6 +8234,9 @@ pub struct BodyEditor {
     /// The yank/kill register shared by vim (`y`/`d`/`p`) and the
     /// readline chords (`C-k`/`C-u`/`C-w`/`C-y`).
     register: String,
+    /// How many times [`Self::register`] has changed — the seam the
+    /// system-clipboard mirror watches.
+    register_gen: u64,
     /// Whether the register holds whole lines (`dd`/`yy` → `p` pastes
     /// below the current line).
     linewise: bool,
@@ -8322,6 +8325,7 @@ impl BodyEditor {
             mode: EditorMode::Insert,
             anchor: 0,
             register: String::new(),
+            register_gen: 0,
             linewise: false,
             pending: Pending::None,
             count: 0,
@@ -10943,8 +10947,51 @@ impl BodyEditor {
                 self.registers.insert(lower, (text.clone(), linewise));
             }
         }
+        // The seam the clipboard mirror watches. A shell cannot ask
+        // "did the register move?" without it, so it would have to
+        // write the system clipboard on every keystroke and fight
+        // whatever else owns it.
+        if self.register != text {
+            self.register_gen = self.register_gen.wrapping_add(1);
+        }
         self.register = text;
         self.linewise = linewise;
+    }
+
+    /// How many times the unnamed register has changed.
+    #[must_use]
+    pub const fn register_generation(&self) -> u64 {
+        self.register_gen
+    }
+
+    /// What a bare `p` would paste.
+    #[must_use]
+    pub fn register_text(&self) -> &str {
+        &self.register
+    }
+
+    /// Put the system clipboard into the unnamed register, so `p`
+    /// pastes it.
+    ///
+    /// The other half of "sync with system clipboard (two way)": `y`
+    /// and `p` used an internal register, so a URL copied in a browser
+    /// could not be pasted with the key a vim user's hands know.
+    ///
+    /// Text the register already holds is not a change — both
+    /// directions of the mirror run on every key, and without that
+    /// rule they would take turns clobbering each other. Nor is an
+    /// empty clipboard: losing a yank to it would be the worst kind of
+    /// surprise.
+    pub fn set_register_from_clipboard(&mut self, text: &str) {
+        if text.is_empty() || self.register == text {
+            return;
+        }
+        text.clone_into(&mut self.register);
+        // A clipboard has no notion of lines, so it pastes as
+        // characters — which is what every other application means by
+        // a paste.
+        self.linewise = false;
+        self.register_gen = self.register_gen.wrapping_add(1);
     }
 
     /// The text a paste takes, honouring a `"x` prefix.
@@ -17947,6 +17994,27 @@ impl ModalApp {
             tone,
             icon,
         })
+    }
+
+    /// How many times the editor's unnamed register has changed.
+    ///
+    /// What a shell watches to decide whether to write the system
+    /// clipboard: without it the mirror would write on every keystroke
+    /// and fight whatever else owns the selection.
+    #[must_use]
+    pub const fn register_generation(&self) -> u64 {
+        self.body.register_generation()
+    }
+
+    /// What a bare `p` would paste.
+    #[must_use]
+    pub fn register_text(&self) -> &str {
+        self.body.register_text()
+    }
+
+    /// Put the system clipboard into the register, so `p` pastes it.
+    pub fn set_register_from_clipboard(&mut self, text: &str) {
+        self.body.set_register_from_clipboard(text);
     }
 
     /// How many entries this prompt's history holds.
