@@ -6276,6 +6276,13 @@ impl GpuiView {
                     .items_center()
                     .pt(px(90.0))
                     .bg(gpui::rgba(0x0000_0059))
+                    // The scrim eats the mouse as well as dimming what
+                    // is behind it. Without this the panel occluded its
+                    // own rectangle and the rest of the window did not,
+                    // so the wheel went straight through to the outline
+                    // — "it scrolls both the command palette and the
+                    // headlines outline tree view".
+                    .occlude()
                     .on_mouse_down(
                         MouseButton::Left,
                         cx.listener(|this: &mut Self, _ev, _w, cx| {

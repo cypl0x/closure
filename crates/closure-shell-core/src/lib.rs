@@ -11721,8 +11721,34 @@ impl ModalApp {
             // the outline and the whole layout jumped ("everything is
             // shifting and I always get confused").
             ModalSurface::Ex => self.ex_return.unwrap_or_else(|| self.home_surface()),
+            // Every floating picker, not the two that were spelled out
+            // here. The other five told the pane to paint their own
+            // list, and then floated over it — so the same rows were
+            // drawn twice, the lower copy clipped by the panel edge.
+            // That is the "weird selection shadow": a row of the
+            // undo-history pane showing below the undo-history picker.
+            s if Self::is_floating_picker(s) => self.home_surface(),
             other => other,
         }
+    }
+
+    /// Is this surface drawn as a floating picker over whatever was
+    /// already there?
+    ///
+    /// The list that [`Self::picker_rows`] answers for. Kept beside
+    /// nothing else, because two places deciding which surfaces float
+    /// is how five of them came to paint themselves twice.
+    const fn is_floating_picker(surface: ModalSurface) -> bool {
+        matches!(
+            surface,
+            ModalSurface::Palette
+                | ModalSurface::Buffers
+                | ModalSurface::Files
+                | ModalSurface::Headlines
+                | ModalSurface::Blocks
+                | ModalSurface::Messages
+                | ModalSurface::UndoHistory
+        )
     }
 
     /// Mouse path for the palette: clicking row `i` runs that entry —
