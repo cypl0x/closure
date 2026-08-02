@@ -215,6 +215,10 @@ pub struct App {
     new_heading: closure_shell_core::NewHeading,
     delete_target: Option<String>,
     delete_request: Option<String>,
+    /// How many list rows the terminal last drew — what `C-d` / `C-u`
+    /// take half of. The draw loop reports it; a run that never does
+    /// gets a sane default rather than a motion that does nothing.
+    viewport_rows: usize,
     undo_request: bool,
     redo_request: bool,
     input_mode: closure_config::InputMode,
@@ -349,6 +353,7 @@ impl App {
             },
             delete_target: None,
             delete_request: None,
+            viewport_rows: 20,
             paste_request: None,
             undo_request: false,
             redo_request: false,
@@ -815,6 +820,16 @@ impl App {
 
     /// Consume the block id whose subtree deletion the user
     /// confirmed, if any. The shell performs the vault write.
+    /// Tell the app how many rows the terminal is drawing, so half a
+    /// screen means half of what is on it.
+    pub const fn set_viewport_rows(&mut self, rows: usize) {
+        if rows > 0 {
+            self.viewport_rows = rows;
+        }
+    }
+
+    /// Consume the block id whose subtree deletion the user confirmed,
+    /// if any. The shell performs the vault write.
     pub const fn take_delete_request(&mut self) -> Option<String> {
         self.delete_request.take()
     }
@@ -2602,6 +2617,21 @@ impl App {
         }
     }
 
+    /// Move the selection half a screen, clamped to the list.
+    ///
+    /// Half a screen is the step between one row at a time and jumping
+    /// to an end, and the one vim put on `C-d` / `C-u`.
+    fn half_page(&mut self, down: bool, last: Option<usize>) {
+        let step = (self.viewport_rows / 2).max(1);
+        if let (Some(i), Some(last)) = (self.selected, last) {
+            self.selected = Some(if down {
+                (i + step).min(last)
+            } else {
+                i.saturating_sub(step)
+            });
+        }
+    }
+
     fn apply_command(&mut self, cmd: &str) {
         let last = self.paths.len().checked_sub(1);
         match cmd {
@@ -2621,6 +2651,10 @@ impl App {
             "last-file" => {
                 self.selected = last;
             }
+            // Half a screen at a time. The terminal knows its own
+            // height, so the step is half the rows it is drawing.
+            "half-page-down" => self.half_page(true, last),
+            "half-page-up" => self.half_page(false, last),
             "quit" => self.quit = true,
             "search-start" => {
                 self.mode = AppMode::Search;

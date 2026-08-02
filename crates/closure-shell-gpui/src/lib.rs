@@ -7402,6 +7402,11 @@ impl Render for GpuiView {
         // this frame paints a stale number of lines, so one more frame
         // is asked for. It settles immediately: the measurement stops
         // moving once the layout does.
+        // The outline's row count, for the same reason and by the same
+        // split: `C-d` / `C-u` move half a screen and only the window
+        // knows how tall one is. The rows are the body's line height,
+        // so the measurement is the same arithmetic.
+        self.app.set_outline_viewport(self.body_view());
         if self.app.surface_beneath().is_editor() {
             let view = self.body_view();
             // The kernel decides where the viewport sits and only the

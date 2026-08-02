@@ -10054,6 +10054,10 @@ pub struct ModalApp {
     /// big it is, so the shell reports it ([`Self::set_body_viewport`])
     /// and the framing chords read it back.
     body_viewport: usize,
+    /// How many outline rows the shell last said it can paint — what
+    /// `C-d` / `C-u` take half of. Same split as the body's: the core
+    /// knows where the cursor is, the window knows how tall it is.
+    outline_viewport: usize,
     /// The first visible line as last resolved by [`Self::body_scroll_follow`],
     /// which is what "scroll by the minimum" is measured from.
     body_anchor: Option<usize>,
@@ -10400,6 +10404,7 @@ impl ModalApp {
             quit: false,
             scroll_override: None,
             body_viewport: BODY_VIEWPORT_DEFAULT,
+            outline_viewport: BODY_VIEWPORT_DEFAULT,
             body_anchor: None,
             recenter: None,
             pending_body: None,
@@ -13797,6 +13802,19 @@ impl ModalApp {
     /// is the middle of the screen", and only the shell knows how big
     /// the screen is. Called once per frame by the painter; a shell
     /// that never calls it gets [`BODY_VIEWPORT_DEFAULT`].
+    /// Tell the core how many outline rows fit on screen, so `C-d` and
+    /// `C-u` can move half of them. A shell that never calls it gets
+    /// [`BODY_VIEWPORT_DEFAULT`], because a motion that does nothing is
+    /// worse than one that moves by a guess.
+    pub const fn set_outline_viewport(&mut self, rows: usize) {
+        if rows > 0 {
+            self.outline_viewport = rows;
+        }
+    }
+
+    /// Tell the core how many body lines the shell can paint, so the
+    /// framing chords know what a screen is. A shell that never calls
+    /// it gets [`BODY_VIEWPORT_DEFAULT`].
     pub const fn set_body_viewport(&mut self, lines: usize) {
         if lines > 0 {
             self.body_viewport = lines;
@@ -16551,6 +16569,18 @@ impl ModalApp {
             }
             "palette" => self.open_palette(),
             "toggle-which-key" => self.which_key_open = !self.which_key_open,
+            // Half a screen: the step between one row at a time and
+            // jumping to an end, and the one vim put on these chords.
+            "half-page-down" | "half-page-up" => {
+                let step = (self.outline_viewport / 2).max(1);
+                let last = self.rows_shared(shell).len().saturating_sub(1);
+                self.selected = if cmd == "half-page-down" {
+                    (self.selected + step).min(last)
+                } else {
+                    self.selected.saturating_sub(step)
+                };
+                self.selection_active = true;
+            }
             "ex-command" => self.begin_ex(),
             "llm" => {
                 self.chat_buf.clear();

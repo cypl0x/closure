@@ -52,6 +52,12 @@ const DOOM_KEYMAP: &[(&str, &str)] = &[
     // that survives INSERT. Emacs reaches for `C-h` when it wants
     // help; the rest borrow it.
     ("C-h", "toggle-which-key"),
+    // Half a screen at a time, vim's own chords for it. In a
+    // buffer these stay readline's (`C-u` kills to the line
+    // start, `C-d` deletes forward) — the vim engine has its own
+    // scroll motions for NORMAL.
+    ("C-d", "half-page-down"),
+    ("C-u", "half-page-up"),
     ("M-x", "palette"),
     ("v", "db-view"),
     ("e", "block-list"),
@@ -223,6 +229,12 @@ const EMACS_KEYMAP: &[(&str, &str)] = &[
     // that survives INSERT. Emacs reaches for `C-h` when it wants
     // help; the rest borrow it.
     ("C-h", "toggle-which-key"),
+    // Half a screen at a time, vim's own chords for it. In a
+    // buffer these stay readline's (`C-u` kills to the line
+    // start, `C-d` deletes forward) — the vim engine has its own
+    // scroll motions for NORMAL.
+    ("C-d", "half-page-down"),
+    ("C-u", "half-page-up"),
     ("M-x", "palette"),
     ("v", "db-view"),
     ("e", "block-list"),
@@ -344,6 +356,12 @@ const VIM_KEYMAP: &[(&str, &str)] = &[
     // that survives INSERT. Emacs reaches for `C-h` when it wants
     // help; the rest borrow it.
     ("C-h", "toggle-which-key"),
+    // Half a screen at a time, vim's own chords for it. In a
+    // buffer these stay readline's (`C-u` kills to the line
+    // start, `C-d` deletes forward) — the vim engine has its own
+    // scroll motions for NORMAL.
+    ("C-d", "half-page-down"),
+    ("C-u", "half-page-up"),
     ("M-x", "palette"),
     ("v", "db-view"),
     ("e", "block-list"),
@@ -471,6 +489,12 @@ const HELIX_KEYMAP: &[(&str, &str)] = &[
     // that survives INSERT. Emacs reaches for `C-h` when it wants
     // help; the rest borrow it.
     ("C-h", "toggle-which-key"),
+    // Half a screen at a time, vim's own chords for it. In a
+    // buffer these stay readline's (`C-u` kills to the line
+    // start, `C-d` deletes forward) — the vim engine has its own
+    // scroll motions for NORMAL.
+    ("C-d", "half-page-down"),
+    ("C-u", "half-page-up"),
     ("M-x", "palette"),
     ("v", "db-view"),
     ("e", "block-list"),
@@ -598,6 +622,12 @@ const NOTION_KEYMAP: &[(&str, &str)] = &[
     // that survives INSERT. Emacs reaches for `C-h` when it wants
     // help; the rest borrow it.
     ("C-h", "toggle-which-key"),
+    // Half a screen at a time, vim's own chords for it. In a
+    // buffer these stay readline's (`C-u` kills to the line
+    // start, `C-d` deletes forward) — the vim engine has its own
+    // scroll motions for NORMAL.
+    ("C-d", "half-page-down"),
+    ("C-u", "half-page-up"),
     ("v", "db-view"),
     ("e", "block-list"),
     ("g x", "eval-block"),
