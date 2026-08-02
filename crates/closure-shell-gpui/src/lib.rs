@@ -2952,13 +2952,64 @@ impl GpuiView {
             .text_size(self.sz(12.0));
         // Capture draws its target as clickable breadcrumbs; every
         // other surface has one line to say and says it.
-        if self.app.surface() == ModalSurface::Capture {
-            row.child(self.capture_bar(co, self.app.zoom(), cx))
+        let line = if self.app.surface() == ModalSurface::Capture {
+            self.capture_bar(co, self.app.zoom(), cx)
         } else if let Some(prompt) = self.prompt_row(co, cx) {
-            row.child(prompt)
+            prompt
         } else {
-            row.child(self.context_line())
+            div().child(self.context_line())
+        };
+        let Some(strip) = self.prompt_completion_strip(co, cx) else {
+            return row.child(line);
+        };
+        // The candidates go *under* the field rather than over the
+        // outline: a one-line prompt has one line's worth of context to
+        // keep visible, and the strip is only there while cycling.
+        row.flex().flex_col().gap_1().child(line).child(strip)
+    }
+
+    /// The prompt's completion candidates, laid out along one line.
+    ///
+    /// The body editor's popup is a column beside the caret because a
+    /// body has room for one. A prompt is a single line in a strip at
+    /// the top of the window, so its candidates read along the same
+    /// axis — and each is clickable, because they are on screen anyway.
+    fn prompt_completion_strip(&self, co: Colors, cx: &Context<Self>) -> Option<gpui::Div> {
+        let items = self.app.prompt_completion_items();
+        if items.is_empty() {
+            return None;
         }
+        let ix = self.app.prompt_completion_ix().unwrap_or(0);
+        Some(
+            div()
+                .debug_selector(|| "prompt-completions".to_owned())
+                .flex()
+                .flex_row()
+                .flex_wrap()
+                .gap_1()
+                .text_size(self.sz(11.0))
+                .children(items.iter().enumerate().map(|(i, item)| {
+                    let pick = i;
+                    div()
+                        .px_1p5()
+                        .rounded_sm()
+                        .bg(rgb(if i == ix { co.selection } else { co.panel }))
+                        .text_color(rgb(if i == ix { co.fg } else { co.muted }))
+                        .child(item.clone())
+                        .on_mouse_down(
+                            MouseButton::Left,
+                            cx.listener(move |this: &mut Self, _ev, _w, cx| {
+                                this.app.pick_prompt_completion(pick);
+                                cx.notify();
+                            }),
+                        )
+                }))
+                .child(
+                    div()
+                        .text_color(rgb(co.muted))
+                        .child("C-n/C-p cycle · TAB accepts"),
+                ),
+        )
     }
 
     /// The line being typed into the capture bar, and the pair of

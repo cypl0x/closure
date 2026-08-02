@@ -4107,6 +4107,39 @@ impl LineInput {
             .map(|c| self.cursor + c.len_utf8())
     }
 
+    /// Where the word *being typed* starts — everything back to the
+    /// last whitespace, with no run of spaces skipped.
+    ///
+    /// Deliberately not [`Self::word_start`], which steps over trailing
+    /// whitespace because that is what deleting a word backwards has to
+    /// do. A completion asked for on a boundary has nothing to work
+    /// from, and stepping back over the space to find something would
+    /// complete the word before the one the cursor is on.
+    #[must_use]
+    pub fn prefix_start(&self) -> usize {
+        let head = &self.text[..self.cursor];
+        head.rfind(char::is_whitespace).map_or(0, |i| {
+            i + head[i..].chars().next().map_or(1, char::len_utf8)
+        })
+    }
+
+    /// The word being typed, empty on a boundary.
+    #[must_use]
+    pub fn word_prefix(&self) -> &str {
+        &self.text[self.prefix_start()..self.cursor]
+    }
+
+    /// Replace everything from `start` to the cursor with `text`, and
+    /// leave the cursor at its end — what applying a completion does.
+    pub fn replace_to_cursor(&mut self, start: usize, text: &str) {
+        let start = start.min(self.cursor);
+        if !self.text.is_char_boundary(start) {
+            return;
+        }
+        self.text.replace_range(start..self.cursor, text);
+        self.cursor = start + text.len();
+    }
+
     /// Where the word before the cursor starts: the run of whitespace
     /// immediately behind it, and then the word behind that.
     fn word_start(&self) -> usize {
@@ -9994,6 +10027,32 @@ pub fn body_completions(prefix: &str, vault: &closure_store::Vault) -> Vec<Strin
     body_completions_from(prefix, sources.iter().map(String::as_str))
 }
 
+/// The keywords a one-line prompt offers: the TODO axis and nothing
+/// structural.
+///
+/// A title can start with `TODO`. It cannot usefully start with
+/// `:PROPERTIES:` — that is offered in a body because a body is where
+/// drawers live.
+const PROMPT_COMPLETION_KEYWORDS: &[&str] = &["TODO", "DONE", "NEXT", "WAIT", "CANCELLED"];
+
+/// Completion candidates for a one-line prompt: the same vault dabbrev
+/// the body editor mines, over a shorter keyword list.
+#[must_use]
+pub fn prompt_completions(prefix: &str, vault: &closure_store::Vault) -> Vec<String> {
+    let sources: Vec<String> = vault.iter().map(|(_p, doc)| doc.source()).collect();
+    prompt_completions_from(prefix, sources.iter().map(String::as_str))
+}
+
+/// [`prompt_completions`] over raw sources, for a shell that holds text
+/// rather than a vault.
+#[must_use]
+pub fn prompt_completions_from<'a>(
+    prefix: &str,
+    sources: impl Iterator<Item = &'a str>,
+) -> Vec<String> {
+    completions_from(prefix, PROMPT_COMPLETION_KEYWORDS, sources)
+}
+
 /// [`body_completions`] over raw document sources, for a shell that
 /// holds text rather than a [`closure_store::Vault`] — the terminal
 /// shell keeps the vault in its driver, not in its app state.
@@ -10002,11 +10061,21 @@ pub fn body_completions_from<'a>(
     prefix: &str,
     sources: impl Iterator<Item = &'a str>,
 ) -> Vec<String> {
+    completions_from(prefix, ORG_COMPLETION_KEYWORDS, sources)
+}
+
+/// The ranking both completion sets share; only the keyword list
+/// differs between a body and a one-line prompt.
+fn completions_from<'a>(
+    prefix: &str,
+    keywords: &[&str],
+    sources: impl Iterator<Item = &'a str>,
+) -> Vec<String> {
     if prefix.is_empty() {
         return Vec::new();
     }
     let mut entries: Vec<(u32, bool, String)> = Vec::new();
-    for &k in ORG_COMPLETION_KEYWORDS {
+    for &k in keywords {
         if k != prefix
             && let Some(score) = closure_query::fuzzy_score(prefix, k)
         {
@@ -10093,6 +10162,12 @@ pub struct ModalApp {
     capture_path_root: Option<String>,
     body: BodyEditor,
     completion: Option<CompletionSession>,
+    /// The same cycle over whichever one-line prompt is open. Separate
+    /// from [`Self::completion`] because both can be alive at once —
+    /// the capture overlay opens over a buffer that may itself be
+    /// mid-completion, and neither should inherit the other's
+    /// candidates.
+    prompt_completion: Option<CompletionSession>,
     edit_target: Option<String>,
     /// Path of the file open in the editor view, when one is.
     file_target: Option<std::path::PathBuf>,
@@ -10480,6 +10555,7 @@ impl ModalApp {
             body: BodyEditor::new(),
             body_baseline: String::new(),
             completion: None,
+            prompt_completion: None,
             edit_target: None,
             file_target: None,
             // Every window opens on the outline: it is where the rail
@@ -13777,9 +13853,15 @@ impl ModalApp {
                 self.field_buf.clear();
                 self.go_home();
             }
+            // Completion, on the editor's own chords: `C-n`/`C-p`
+            // cycle, TAB accepts, anything else ends the session.
+            "n" if ctrl => self.cycle_prompt_completion(shell, true),
+            "p" if ctrl => self.cycle_prompt_completion(shell, false),
+            "tab" => self.accept_prompt_completion(shell),
             // The arrows and the readline chords are the field's, which
             // is why it is a field and not a `String` with `push` on it.
             _ => {
+                self.prompt_completion = None;
                 self.field_buf.set_kill(&self.line_kill);
                 self.field_buf.key(key, ctrl, alt, text);
                 self.line_kill = self.field_buf.kill().to_owned();
@@ -15251,6 +15333,108 @@ impl ModalApp {
         });
     }
 
+    /// Candidates of the live *prompt* completion cycle — the popup a
+    /// shell paints beside the prompt caret, empty when none.
+    #[must_use]
+    pub fn prompt_completion_items(&self) -> &[String] {
+        self.prompt_completion.as_ref().map_or(&[], |s| &s.items)
+    }
+
+    /// Index of the applied prompt candidate.
+    #[must_use]
+    pub fn prompt_completion_ix(&self) -> Option<usize> {
+        self.prompt_completion.as_ref().and_then(|s| s.ix)
+    }
+
+    /// The one-line field the open surface is typing into, if any.
+    ///
+    /// Capture has its own buffer and every other prompt shares
+    /// `field_buf`; completion does not care which, so it asks here
+    /// rather than matching on the surface twice.
+    const fn active_prompt(&mut self) -> Option<&mut LineInput> {
+        match self.surface {
+            ModalSurface::Capture => Some(&mut self.capture_buf),
+            ModalSurface::Rename
+            | ModalSurface::AddSibling
+            | ModalSurface::TagsEdit
+            | ModalSurface::PropertyEdit => Some(&mut self.field_buf),
+            _ => None,
+        }
+    }
+
+    /// `C-n`/`C-p` in a prompt: start or continue a completion cycle
+    /// over the word being typed — the body editor's gesture, over the
+    /// prompt instead ([`prompt_completions`]).
+    fn cycle_prompt_completion(&mut self, shell: &Shell, forward: bool) {
+        if let Some(s) = self.prompt_completion.clone() {
+            let n = s.items.len();
+            let ix = match (s.ix, forward) {
+                (Some(i), true) => (i + 1) % n,
+                (Some(i), false) => (i + n - 1) % n,
+                (None, true) => 0,
+                (None, false) => n - 1,
+            };
+            let text = s.items[ix].clone();
+            if let Some(field) = self.active_prompt() {
+                field.replace_to_cursor(s.start, &text);
+            }
+            if let Some(open) = self.prompt_completion.as_mut() {
+                open.ix = Some(ix);
+            }
+            return;
+        }
+        let Some(field) = self.active_prompt() else {
+            return;
+        };
+        let (start, prefix) = (field.prefix_start(), field.word_prefix().to_owned());
+        let mut items = prompt_completions(&prefix, &shell.vault);
+        items.truncate(8);
+        if items.is_empty() {
+            return;
+        }
+        // Backwards from nothing lands on the last candidate, the way
+        // the editor's cycle does.
+        let ix = if forward { 0 } else { items.len() - 1 };
+        let text = items[ix].clone();
+        if let Some(field) = self.active_prompt() {
+            field.replace_to_cursor(start, &text);
+        }
+        self.prompt_completion = Some(CompletionSession {
+            start,
+            items,
+            ix: Some(ix),
+        });
+    }
+
+    /// Apply candidate `ix` and end the cycle — what clicking one in
+    /// the strip does. Out of range is a no-op.
+    pub fn pick_prompt_completion(&mut self, ix: usize) {
+        let Some(session) = self.prompt_completion.take() else {
+            return;
+        };
+        let Some(text) = session.items.get(ix).cloned() else {
+            self.prompt_completion = Some(session);
+            return;
+        };
+        if let Some(field) = self.active_prompt() {
+            field.replace_to_cursor(session.start, &text);
+        }
+    }
+
+    /// TAB in a prompt: accept.
+    ///
+    /// With a cycle open the candidate on screen stands and the popup
+    /// closes; with none, TAB is what starts one and takes the first
+    /// candidate — which is what TAB means in every other text field on
+    /// the desktop, and a one-line title prompt has no indentation for
+    /// it to mean instead.
+    fn accept_prompt_completion(&mut self, shell: &Shell) {
+        if self.prompt_completion.take().is_none() {
+            self.cycle_prompt_completion(shell, true);
+            self.prompt_completion = None;
+        }
+    }
+
     /// Whether the GUI should auto-open the completion popup after its
     /// typing-idle delay: INSERT in the body editor, no session yet, a
     /// word prefix of at least 3 chars with candidates behind it.
@@ -15766,9 +15950,15 @@ impl ModalApp {
                 self.capture_buf.clear();
                 self.capture_path_root = None;
             }
+            // Completion, on the editor's own chords: `C-n`/`C-p`
+            // cycle, TAB accepts, anything else ends the session.
+            "n" if ctrl => self.cycle_prompt_completion(shell, true),
+            "p" if ctrl => self.cycle_prompt_completion(shell, false),
+            "tab" => self.accept_prompt_completion(shell),
             // Everything else is the field's: the readline chords, the
             // arrows, and the characters themselves.
             _ => {
+                self.prompt_completion = None;
                 self.capture_buf.set_kill(&self.line_kill);
                 self.capture_buf.key(key, ctrl, alt, text);
                 self.line_kill = self.capture_buf.kill().to_owned();
