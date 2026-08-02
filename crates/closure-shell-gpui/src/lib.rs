@@ -8916,7 +8916,8 @@ fn decorated(kind: BodySpan) -> gpui::HighlightStyle {
 /// calls it.
 #[must_use]
 pub fn vault_label(root: &Path, home: Option<&Path>) -> String {
-    home.and_then(|home| root.strip_prefix(home).ok())
+    let full = home
+        .and_then(|home| root.strip_prefix(home).ok())
         .map_or_else(
             || root.display().to_string(),
             |rest| {
@@ -8927,7 +8928,36 @@ pub fn vault_label(root: &Path, home: Option<&Path>) -> String {
                     format!("~/{rest}")
                 }
             },
-        )
+        );
+    shorten_middle(&full, VAULT_LABEL_MAX)
+}
+
+/// The most characters the header gives the vault before it starts
+/// dropping some.
+const VAULT_LABEL_MAX: usize = 34;
+
+/// Shorten `text` to `max` characters by losing its *middle*.
+///
+/// The header clips its children, and clipping takes the tail — so a
+/// long vault path showed `/tmp/claude-1000/-home-cypl0x-dev-clo…`:
+/// the part you already know, with the last component gone. The last
+/// component is the only part that tells two vaults apart, which is
+/// precisely what the old rendering threw away.
+///
+/// Both ends survive: where it is rooted, and what it is called.
+fn shorten_middle(text: &str, max: usize) -> String {
+    let chars: Vec<char> = text.chars().collect();
+    if chars.len() <= max || max < 3 {
+        return text.to_owned();
+    }
+    // The tail gets the larger share: a name is worth more than the
+    // directories above it.
+    let tail = (max - 1) * 2 / 3;
+    let head = max - 1 - tail;
+    let mut out: String = chars[..head].iter().collect();
+    out.push('…');
+    out.extend(&chars[chars.len() - tail..]);
+    out
 }
 
 /// Accept and cancel, for a one-line prompt.
