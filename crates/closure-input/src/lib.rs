@@ -864,7 +864,28 @@ pub fn command_for(mode: InputMode, chord: &str) -> Option<&'static str> {
         .map(|(_, cmd)| *cmd)
 }
 
+/// Every chord bound to `command` in `mode`, in keymap order.
+///
+/// A command may be reachable several ways — `C-s` and `SPC f s` both
+/// save, `SPC q q` and `C-q` and `ZZ` all quit — and the keymaps have
+/// carried those pairs since they were written. Anything that shows a
+/// command next to its key wants all of them: a second chord nothing
+/// mentions is a second chord nobody presses.
+///
+/// Empty when the command is unbound, rather than one empty string.
+#[must_use]
+pub fn chords_for_command(mode: InputMode, command: &str) -> Vec<&'static str> {
+    mode_keymap(mode)
+        .iter()
+        .filter(|(_, cmd)| *cmd == command)
+        .map(|(chord, _)| *chord)
+        .collect()
+}
+
 /// Reverse of [`command_for`]: the first chord bound to `command`.
+///
+/// The *primary* one, where there is room for exactly one — the first
+/// the keymap lists. [`chords_for_command`] gives the rest.
 ///
 /// Returns `None` if the command is unbound in `mode`. Lets a shell
 /// render the real keybinding next to a command (vision: every UI

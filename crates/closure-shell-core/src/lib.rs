@@ -803,6 +803,11 @@ pub fn starts_file(rows: &[Row], i: usize) -> bool {
 pub struct Action {
     command: String,
     chord: String,
+    /// Every chord that runs it, primary first. A command reachable two
+    /// ways whose second way is never shown is a command reachable one
+    /// way, so the affordance carries the whole list and the painter
+    /// decides how much room it has.
+    chords: Vec<String>,
 }
 
 impl Action {
@@ -811,10 +816,18 @@ impl Action {
     #[must_use]
     pub fn new(mode: closure_config::InputMode, command: impl Into<String>) -> Option<Self> {
         let command = command.into();
-        closure_input::chord_for_command(mode, &command).map(|chord| Self {
+        let chords = closure_input::chords_for_command(mode, &command);
+        chords.first().map(|chord| Self {
+            chord: (*chord).to_owned(),
+            chords: chords.iter().map(|c| (*c).to_owned()).collect(),
             command,
-            chord: chord.to_owned(),
         })
+    }
+
+    /// Every chord that runs it, primary first.
+    #[must_use]
+    pub fn chords(&self) -> &[String] {
+        &self.chords
     }
 
     /// The canonical command name.
@@ -4520,6 +4533,23 @@ pub fn wrap_body(body: &str, cols: usize) -> Vec<VisualLine> {
     out
 }
 
+/// Every chord for `command`, as org markup — or a plain statement
+/// that this mode does not bind it, never a guess.
+///
+/// A tutorial that teaches one of two keys teaches half a keymap, and
+/// the half it drops is the one the reader would have preferred.
+fn chord_list(mode: InputMode, command: &str) -> String {
+    let chords = closure_input::chords_for_command(mode, command);
+    if chords.is_empty() {
+        return "(unbound in this mode)".to_owned();
+    }
+    chords
+        .iter()
+        .map(|c| format!("={c}="))
+        .collect::<Vec<_>>()
+        .join(" or ")
+}
+
 /// The tutorial closure writes into a vault, for the given input mode.
 ///
 /// Every chord in it is looked up in the keymap the app dispatches
@@ -4531,12 +4561,7 @@ pub fn wrap_body(body: &str, cols: usize) -> Vec<VisualLine> {
 /// a note you can fold, search, edit and sync like any other.
 #[must_use]
 pub fn tutorial_org(mode: InputMode) -> String {
-    /// The chord for `command`, or a plain statement that this mode
-    /// does not bind it — never a guess.
-    fn chord(mode: InputMode, command: &str) -> String {
-        closure_input::chord_for_command(mode, command)
-            .map_or_else(|| "(unbound in this mode)".to_owned(), |c| format!("={c}="))
-    }
+    let chord = chord_list;
     let modal = matches!(mode, InputMode::Vim | InputMode::Doom | InputMode::Helix);
     let mode_name = match mode {
         InputMode::Emacs => "emacs",
@@ -4635,10 +4660,7 @@ pub fn tutorial_org(mode: InputMode) -> String {
 /// is still compatible with the P2P sync?"), and the honest answer is
 /// about the `:ID:` rather than about any of the three chords.
 fn tutorial_new_notes(mode: InputMode) -> String {
-    let chord = |command: &str| {
-        closure_input::chord_for_command(mode, command)
-            .map_or_else(|| "(unbound in this mode)".to_owned(), |c| format!("={c}="))
-    };
+    let chord = |command: &str| chord_list(mode, command);
     format!(
         "* Three ways to make a note, and why they are the same\n\
          - {capture} — a capture, filed under the selection\n\
@@ -4737,10 +4759,7 @@ const fn tutorial_registers(modal: bool) -> &'static str {
 /// The second half of the tutorial: the per-command reference, and what
 /// the files around it are.
 fn tutorial_reference(mode: InputMode) -> String {
-    fn chord(mode: InputMode, command: &str) -> String {
-        closure_input::chord_for_command(mode, command)
-            .map_or_else(|| "(unbound in this mode)".to_owned(), |c| format!("={c}="))
-    }
+    let chord = chord_list;
     format!(
         "* Tags, TODOs and properties\n\
          - {todo} — cycle the TODO keyword\n\
@@ -16265,7 +16284,11 @@ impl ModalApp {
                     .map(|e| PickRow {
                         label: e.label.clone(),
                         detail: e.description.clone(),
-                        trailing: e.action.chord().to_owned(),
+                        // Every key that runs it, not the first one the
+                        // keymap happens to list: the palette is where
+                        // you go when you do not know the key, so it is
+                        // the one place a second key is worth learning.
+                        trailing: e.action.chords().join("  ·  "),
                         matches: Vec::new(),
                         current: false,
                     })
@@ -18275,6 +18298,13 @@ impl ModalApp {
     #[must_use]
     pub fn chord_for(&self, command: &str) -> Option<&'static str> {
         closure_input::chord_for_command(self.mode, command)
+    }
+
+    /// Every chord bound to `command` in the active mode, primary
+    /// first — what a pane with room for more than one shows.
+    #[must_use]
+    pub fn chords_for(&self, command: &str) -> Vec<&'static str> {
+        closure_input::chords_for_command(self.mode, command)
     }
 
     /// Output of the last source block run, while the Blocks surface
