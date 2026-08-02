@@ -634,7 +634,7 @@ mod window {
                     .code_editor(),
             );
             ui.horizontal(|ui| {
-                if ui.button("💾 save (C-Enter)").clicked() {
+                if ui.button("💾 save (C-c C-c)").clicked() {
                     self.surface.commit_edit_body(&mut self.shell);
                 }
                 if ui.button("✕ cancel (Esc)").clicked() {

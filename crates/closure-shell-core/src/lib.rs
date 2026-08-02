@@ -4593,7 +4593,7 @@ pub fn tutorial_org(mode: InputMode) -> String {
          * Editing a body\n\
          {editing}\n\
          \n\
-         - =C-Enter= or =:w= writes the buffer; =:w= stays in it, =:wq= leaves\n\
+         - =C-c C-c= writes the buffer and closes it; =C-s= or =:w= writes and stays\n\
          - =:q= closes the buffer — the app is =:qa=, the way vim closes a \
          window\n  and quits only on the last one\n\
          - =Esc= is the mode key and never closes: it means NORMAL, and \
@@ -6193,7 +6193,7 @@ impl App {
             Mode::Rename => "rename — Enter: save   Esc: cancel",
             Mode::AddSibling => "add sibling — Enter: save   Esc: cancel",
             Mode::Palette => "command palette — type to filter   Enter: run   Esc: cancel",
-            Mode::EditBody => "edit body — C-Enter: save   Enter: newline   Esc: cancel",
+            Mode::EditBody => "edit body — C-c C-c: save & close   C-s: save   Esc: cancel",
             Mode::PropertyEdit => "property — fill key + value   Save: commit   Esc: cancel",
             Mode::TagsEdit => "tags — space-separated   Save: commit   Esc: cancel",
         };
@@ -12926,9 +12926,9 @@ impl ModalApp {
             // and the user did not do it just now.
             "unsaved edits restored — :w saves, :q! discards".to_owned()
         } else if self.modal_editing() {
-            "edit body — NORMAL, i to insert, C-Enter save, :q closes".to_owned()
+            "edit body — NORMAL, i to insert, C-s saves, :q closes".to_owned()
         } else {
-            "edit body — C-Enter save, Esc closes".to_owned()
+            "edit body — C-c C-c saves & closes, C-s saves".to_owned()
         });
     }
 
@@ -12964,9 +12964,9 @@ impl ModalApp {
         let shown = vault_relative(shell, path);
         self.remember_recent_file(&shown);
         self.say(if self.modal_editing() {
-            format!("{} — NORMAL, i to insert, C-Enter save", shown.display())
+            format!("{} — NORMAL, i to insert, C-s saves", shown.display())
         } else {
-            format!("{} — C-Enter save, Esc back", shown.display())
+            format!("{} — C-s saves, C-c C-c saves & closes", shown.display())
         });
     }
 
@@ -14036,7 +14036,7 @@ impl ModalApp {
         self.load_body(content);
         self.surface = ModalSurface::EditBlock;
         self.say(format!(
-            "edit-special [{}] — C-Enter write back, Esc discard",
+            "edit-special [{}] — C-c C-c writes back, C-s writes, Esc discards",
             self.special_language()
         ));
     }
@@ -14065,10 +14065,63 @@ impl ModalApp {
                 buffer.replace_range(range, &edited);
                 self.load_body(buffer);
                 self.body.set_cursor_byte(cursor);
-                self.say("block spliced — C-Enter again to save the body");
+                self.say("block spliced — C-c C-c again to save the body");
             }
         }
         self.surface = self.special_return.take().unwrap_or(ModalSurface::Browse);
+    }
+
+    /// Write the edited block back and *stay* in it — `C-s`, not
+    /// `C-c C-c`.
+    ///
+    /// A block reached from the Blocks list is its own thing in a file
+    /// and writes straight back. A block opened out of a body buffer
+    /// lives inside text the vault does not have yet, so writing it
+    /// means writing that body — and then finding the block again in
+    /// what was actually written, because the body write escapes,
+    /// files typed headlines and reads the note back. A range computed
+    /// before all that is a guess, and a wrong one splices the next
+    /// save into the middle of somebody's prose.
+    fn write_edit_special(&mut self, shell: &mut Shell) {
+        let edited = self.body.text().to_owned();
+        let block_cursor = self.body.cursor_byte();
+        let Some((origin, lang)) = self.special.take() else {
+            return;
+        };
+        match origin {
+            SpecialOrigin::File { path, index } => {
+                match shell.vault.set_block_content(&path, index, &edited) {
+                    Ok(()) => self.say("block written"),
+                    Err(e) => self.say(format!("edit-special failed: {e}")),
+                }
+                self.special = Some((SpecialOrigin::File { path, index }, lang));
+            }
+            SpecialOrigin::Body {
+                range,
+                buffer,
+                cursor,
+            } => {
+                let start = range.start;
+                let mut whole = buffer;
+                whole.replace_range(range, &edited);
+                self.load_body(whole);
+                self.write_body(shell);
+                let written = self.body.text().to_owned();
+                let range = enclosing_src_block(&written, start)
+                    .map_or(start..start + edited.len(), |(r, _)| r);
+                self.special = Some((
+                    SpecialOrigin::Body {
+                        range,
+                        buffer: written,
+                        cursor,
+                    },
+                    lang,
+                ));
+                self.load_body(edited);
+                self.body.set_cursor_byte(block_cursor);
+            }
+        }
+        self.body_baseline = self.body.text().to_owned();
     }
 
     /// Abandon the edit-special session, restoring what it replaced.
@@ -15751,7 +15804,7 @@ impl ModalApp {
                     && self.body.pending_count() == 0
                 {
                     if self.modal_editing() {
-                        self.say("NORMAL — :q closes, :w saves, C-Enter saves and closes");
+                        self.say("NORMAL — :q closes, :w saves, C-c C-c saves and closes");
                     } else {
                         self.escape_closes_buffer();
                     }
@@ -16488,7 +16541,7 @@ impl ModalApp {
     /// modified one and say what saves and what discards.
     fn escape_closes_buffer(&mut self) {
         if self.body_dirty() {
-            self.say("unsaved edit — C-Enter or :w saves · :q! discards");
+            self.say("unsaved edit — C-c C-c or :w saves · :q! discards");
         } else {
             self.remember_body_cursor();
             self.edit_target = None;
@@ -16715,7 +16768,13 @@ impl ModalApp {
     /// and warning about it would train them to ignore the warning.
     #[must_use]
     pub fn body_dirty(&self) -> bool {
-        self.edit_target.is_some() && self.body.text() != self.body_baseline
+        // Three kinds of buffer put text in `self.body`, and only one of
+        // them sets `edit_target`. Asking about that one alone is why a
+        // file you had typed a page into reported itself clean, and
+        // every guard that asks before closing let it go without a word.
+        let open =
+            self.edit_target.is_some() || self.file_target.is_some() || self.special.is_some();
+        open && self.body.text() != self.body_baseline
     }
 
     /// Put the open buffer aside against its headline, if it holds
@@ -18145,7 +18204,7 @@ impl ModalApp {
                 // did. Closing on save is what made a headline you had
                 // just typed go out of sight.
                 ModalSurface::EditBody => self.write_body(shell),
-                ModalSurface::EditBlock => self.commit_edit_special(shell),
+                ModalSurface::EditBlock => self.write_edit_special(shell),
                 _ => self.say("no buffer open — every edit is already written"),
             },
             // The switch between the two shapes of the shell: rows you
@@ -18158,9 +18217,16 @@ impl ModalApp {
                 // trusted the flag would close a buffer that was never
                 // opened.
                 if self.surface == ModalSurface::EditFile {
-                    self.view = ViewMode::Clickable;
-                    self.close_file_buffer();
-                    self.say("outline view");
+                    // The toggle is the most easily mistyped way out of
+                    // a file buffer, so it refuses like the deliberate
+                    // ones rather than dropping the file quietly.
+                    if self.body_dirty() {
+                        self.say("unsaved file — C-s writes it · C-c C-k discards");
+                    } else {
+                        self.view = ViewMode::Clickable;
+                        self.close_file_buffer();
+                        self.say("outline view");
+                    }
                 } else {
                     self.view = ViewMode::Editor;
                     self.open_file_buffer(shell);
