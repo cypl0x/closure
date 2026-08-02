@@ -16368,16 +16368,15 @@ impl ModalApp {
                         self.body.to_insert();
                     }
                 }
-                // How you type and what you are looking at are the same
-                // decision: a mode with a NORMAL wants the file, a mode
-                // without one wants the rows. Toggling the view back is
-                // one chord away for anyone who disagrees.
-                self.view = ViewMode::for_input(self.mode);
-                match (self.view, self.surface) {
-                    (ViewMode::Clickable, ModalSurface::EditFile) => self.close_file_buffer(),
-                    (ViewMode::Editor, ModalSurface::Browse) => self.open_file_buffer(shell),
-                    _ => {}
-                }
+                // The view deliberately does *not* follow. It used to:
+                // a mode with a NORMAL was assumed to want the file and
+                // one without it the rows. In practice that means
+                // clicking the mode chip to try Vim throws away the
+                // pane you were reading — a large surprise for a small
+                // chord, and `toggle-view` is right there for anyone
+                // who wants the other shape ("switching the mode in the
+                // top left corner will show the full view body editor.
+                // Disable this behavior").
             }
             "rename" => {
                 if let Some(row) = self.rows_shared(shell).get(self.selected).cloned() {

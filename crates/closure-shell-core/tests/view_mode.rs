@@ -79,21 +79,30 @@ fn a_config_can_ask_to_start_in_the_editor_view() {
 }
 
 #[test]
-fn switching_the_input_mode_switches_the_view_with_it() {
-    // `cycle-mode` walks Notion → Emacs → Vim → Doom → Helix → Notion.
+fn switching_the_input_mode_leaves_the_view_where_it_is() {
+    // Contract revised 2026-08-02 on the user's report: "switching the
+    // mode in the top left corner will show the full view body editor.
+    // Disable this behavior, because the full view editor should be
+    // toggled seperately by its own command."
+    //
+    // The view used to follow the mode — a mode with a NORMAL was taken
+    // to want the file, one without it the rows. Clicking the mode chip
+    // to try Vim then threw away the pane you were reading, which is a
+    // large surprise for a small chord. The initial view still comes
+    // from the configured mode ([`ViewMode::for_input`]); it is only
+    // *switching* that no longer drags it along.
     let (_d, mut shell, mut app) = fixture(InputMode::Notion);
     assert_eq!(app.view_mode(), ViewMode::Clickable);
-    app.run(&mut shell, "cycle-mode"); // Emacs
-    assert_eq!(app.view_mode(), ViewMode::Clickable);
-    app.run(&mut shell, "cycle-mode"); // Vim
-    assert_eq!(app.view_mode(), ViewMode::Editor, "vim edits files");
-    assert_eq!(
-        app.surface(),
-        ModalSurface::EditFile,
-        "and the file is open, not just the flag"
-    );
-    app.run(&mut shell, "cycle-mode"); // Doom
-    assert_eq!(app.view_mode(), ViewMode::Editor);
+    for _ in 0..5 {
+        app.run(&mut shell, "cycle-mode");
+        assert_eq!(
+            app.view_mode(),
+            ViewMode::Clickable,
+            "{:?}",
+            app.input_mode()
+        );
+        assert_eq!(app.surface(), ModalSurface::Browse);
+    }
 }
 
 // === the switch itself ===
