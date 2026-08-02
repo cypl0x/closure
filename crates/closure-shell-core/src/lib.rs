@@ -11087,13 +11087,14 @@ impl ModalApp {
     /// `C-Enter` writes and *stays* — a file you are editing is a file
     /// you keep editing, unlike a body, where the commit is the end of
     /// the errand. `Esc` out of NORMAL leaves without writing.
-    /// Saving is the window's business, not the buffer's.
+    /// The chords a buffer must not swallow.
     ///
-    /// `C-s` is bound to `save-buffer` in every mode, and inside a
-    /// buffer the editor took it along with every other modified chord
-    /// — so the one place saving means anything was the one place the
-    /// chord was dead. Reports whether it claimed the key.
-    fn save_chord(
+    /// A buffer takes every modified chord for itself, which is right
+    /// for the readline set and wrong for the ones that are about the
+    /// *window*: saving means most where a buffer is open, and the
+    /// which-key panel is the one thing you press when you cannot
+    /// remember what to press. Reports whether it claimed the key.
+    fn window_chord(
         &mut self,
         shell: &mut Shell,
         key: &str,
@@ -11107,11 +11108,14 @@ impl ModalApp {
         let Some(stroke) = modal_stroke(key, ctrl, alt, text) else {
             return false;
         };
-        if closure_input::command_for(self.mode, &stroke) != Some("save-buffer") {
+        let Some(cmd) = closure_input::command_for(self.mode, &stroke) else {
+            return false;
+        };
+        if !matches!(cmd, "save-buffer" | "toggle-which-key") {
             return false;
         }
         self.pending_body = None;
-        self.run_command(shell, "save-buffer");
+        self.run_command(shell, cmd);
         true
     }
 
@@ -11126,7 +11130,7 @@ impl ModalApp {
         if self.leader_key(shell, key, ctrl, alt, text) {
             return;
         }
-        if self.save_chord(shell, key, ctrl, alt, text) {
+        if self.window_chord(shell, key, ctrl, alt, text) {
             return;
         }
         if key == "enter" && ctrl {
@@ -14276,7 +14280,7 @@ impl ModalApp {
         if self.leader_key(shell, key, ctrl, alt, text) {
             return;
         }
-        if self.save_chord(shell, key, ctrl, alt, text) {
+        if self.window_chord(shell, key, ctrl, alt, text) {
             return;
         }
         if key == "enter" && ctrl {
@@ -14638,6 +14642,23 @@ impl ModalApp {
         }
     }
 
+    /// `?` in a NORMAL buffer opens the which-key panel.
+    ///
+    /// In NORMAL a bare key is a command, not a character, so the
+    /// outline's `?` reaches the panel from here too — it printed a
+    /// question mark instead, because a buffer resolves bare keys as
+    /// text and only consults the keymap for modified chords. In INSERT
+    /// it stays a question mark: prose has questions in it, which is
+    /// why that rule exists at all. `/`'s open search prompt owns its
+    /// own text.
+    fn which_key_key(&mut self, text: Option<char>) -> bool {
+        if text != Some('?') || self.body.search_prompt().is_some() {
+            return false;
+        }
+        self.which_key_open = !self.which_key_open;
+        true
+    }
+
     fn edit_body_key(
         &mut self,
         shell: &Shell,
@@ -14754,6 +14775,9 @@ impl ModalApp {
                 }
             },
             EditorMode::Normal | EditorMode::Visual | EditorMode::VisualLine => {
+                if self.which_key_key(text) {
+                    return;
+                }
                 if ctrl && key == "r" {
                     self.body.redo_local();
                     return;

@@ -47,6 +47,11 @@ const DOOM_KEYMAP: &[(&str, &str)] = &[
     // is what a TUI has meant by "show me the bindings" for
     // decades.
     ("?", "toggle-which-key"),
+    // `?` is a character inside a buffer — prose has questions in
+    // it — so a mode with no NORMAL to press it in needs a chord
+    // that survives INSERT. Emacs reaches for `C-h` when it wants
+    // help; the rest borrow it.
+    ("C-h", "toggle-which-key"),
     ("M-x", "palette"),
     ("v", "db-view"),
     ("e", "block-list"),
@@ -213,6 +218,11 @@ const EMACS_KEYMAP: &[(&str, &str)] = &[
     // is what a TUI has meant by "show me the bindings" for
     // decades.
     ("?", "toggle-which-key"),
+    // `?` is a character inside a buffer — prose has questions in
+    // it — so a mode with no NORMAL to press it in needs a chord
+    // that survives INSERT. Emacs reaches for `C-h` when it wants
+    // help; the rest borrow it.
+    ("C-h", "toggle-which-key"),
     ("M-x", "palette"),
     ("v", "db-view"),
     ("e", "block-list"),
@@ -237,7 +247,6 @@ const EMACS_KEYMAP: &[(&str, &str)] = &[
     ("C-c t", "toggle-todo"),
     ("C-c p", "cycle-priority"),
     ("C-y", "paste-subtree"),
-    ("C-h", "toggle-which-key"),
     ("C-c y", "edit-tags"),
     ("C-c o", "edit-property"),
     ("C-c g", "toggle-llm-render"),
@@ -330,6 +339,11 @@ const VIM_KEYMAP: &[(&str, &str)] = &[
     // is what a TUI has meant by "show me the bindings" for
     // decades.
     ("?", "toggle-which-key"),
+    // `?` is a character inside a buffer — prose has questions in
+    // it — so a mode with no NORMAL to press it in needs a chord
+    // that survives INSERT. Emacs reaches for `C-h` when it wants
+    // help; the rest borrow it.
+    ("C-h", "toggle-which-key"),
     ("M-x", "palette"),
     ("v", "db-view"),
     ("e", "block-list"),
@@ -452,6 +466,11 @@ const HELIX_KEYMAP: &[(&str, &str)] = &[
     // is what a TUI has meant by "show me the bindings" for
     // decades.
     ("?", "toggle-which-key"),
+    // `?` is a character inside a buffer — prose has questions in
+    // it — so a mode with no NORMAL to press it in needs a chord
+    // that survives INSERT. Emacs reaches for `C-h` when it wants
+    // help; the rest borrow it.
+    ("C-h", "toggle-which-key"),
     ("M-x", "palette"),
     ("v", "db-view"),
     ("e", "block-list"),
@@ -574,6 +593,11 @@ const NOTION_KEYMAP: &[(&str, &str)] = &[
     // is what a TUI has meant by "show me the bindings" for
     // decades.
     ("?", "toggle-which-key"),
+    // `?` is a character inside a buffer — prose has questions in
+    // it — so a mode with no NORMAL to press it in needs a chord
+    // that survives INSERT. Emacs reaches for `C-h` when it wants
+    // help; the rest borrow it.
+    ("C-h", "toggle-which-key"),
     ("v", "db-view"),
     ("e", "block-list"),
     ("g x", "eval-block"),
