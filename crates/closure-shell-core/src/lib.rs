@@ -4078,6 +4078,12 @@ const PALETTE_COMMANDS: &[(&str, &str, &str, &str)] = &[
         "Say which commit this binary was built from",
     ),
     (
+        "open-config",
+        "open-config",
+        "App",
+        "Open config.org, writing a default one if there is none",
+    ),
+    (
         "toggle-tree",
         "toggle-tree",
         "View",
@@ -15005,6 +15011,49 @@ impl ModalApp {
     /// given a headline and an id, because an empty file is not a note
     /// — the outline would have nothing to select and the editor
     /// nothing to open.
+    /// `open-config`: put config.org on screen, writing it first if
+    /// the vault has not got one.
+    ///
+    /// "command/function for jump to or generate config.org (if not
+    /// already existent)". Both verbs, because they are one intention:
+    /// you want to be looking at your configuration, and whether the
+    /// file exists yet is closure's problem rather than yours.
+    ///
+    /// The generated file is [`closure_config::Config::default_org`] —
+    /// every key rendered from the defaults, the ones without a default
+    /// commented out — so it cannot drift from the schema the way a
+    /// hand-written sample would.
+    fn open_config(&mut self, shell: &mut Shell) {
+        let relative = std::path::Path::new(closure_config::CONFIG_FILE);
+        let mut created = false;
+        if shell.vault.root().join(relative).is_file() {
+            // On disk but possibly not in the index — a config written
+            // by hand, or by another closure, while this one was
+            // running. Opening it has to work either way.
+            let _ = shell.vault.reload_incremental();
+        } else {
+            match shell
+                .vault
+                .create_file(relative, &closure_config::Config::default_org())
+            {
+                Ok(_) => created = true,
+                Err(e) => {
+                    self.say(format!("could not create {}: {e}", relative.display()));
+                    return;
+                }
+            }
+            self.invalidate_rows();
+        }
+        self.open_file_path(shell, relative);
+        if created {
+            // *After* opening: the editor sets its own status as it
+            // comes up, so saying this first says it to nobody. A file
+            // appearing is worth a word; opening one that was already
+            // there is not a surprise.
+            self.say(format!("created {}", relative.display()));
+        }
+    }
+
     fn create_and_open(&mut self, shell: &mut Shell, typed: &str) {
         // A vault is a directory, and a picker that can be talked into
         // writing above its root is a file manager with somebody's home
@@ -21143,6 +21192,7 @@ impl ModalApp {
             // buffer." Both: `closure_core::build_info()` is the
             // function, and this puts it where a bug report can copy
             // it from.
+            "open-config" => self.open_config(shell),
             "build-info" => {
                 let line = format!("closure {}", closure_core::build_info().describe());
                 self.say(line);

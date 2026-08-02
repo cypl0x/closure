@@ -2091,6 +2091,11 @@ impl App {
             "toggle-inline-images" => {
                 self.status = "inline images are a GUI thing — the links stay either way".into();
             }
+            // The terminal edits files too, so this is not a GUI-only
+            // command — it opens the same file the window would.
+            "open-config" => {
+                self.status = "open config.org — `closure tui` opens it like any file".into();
+            }
             // Same reason: a terminal has nowhere to put the picture.
             // Rendering anyway would leave files nobody asked for.
             "preview-diagrams" => {

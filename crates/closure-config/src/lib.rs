@@ -17,6 +17,15 @@ use std::path::PathBuf;
 use closure_org::{NodeKind, parse};
 use thiserror::Error;
 
+/// The file a vault keeps its configuration in.
+///
+/// Named once here. The literal is spelled out in dozens of places
+/// across the workspace, which is one fact with many owners and the
+/// shape of bug this codebase keeps producing; this is the name new
+/// code should use, and the call sites are worth converting when
+/// something else brings you to them.
+pub const CONFIG_FILE: &str = "config.org";
+
 /// User-facing configuration.
 // The flags are independent switches over unrelated subsystems
 // (wrapping, journalling, tag inheritance, done-stamping); grouping
