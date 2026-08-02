@@ -19043,6 +19043,17 @@ impl ModalApp {
     /// than inventing a looser rule for the same thing. The working
     /// directory is the vault, because that is the directory the user
     /// is thinking about.
+    /// How long a `:!` command may run before it is cut off.
+    ///
+    /// Long enough for a build or a `git fetch`, short enough that a
+    /// runaway cannot own the window. A command that needs longer is a
+    /// command for a terminal.
+    const SHELL_ESCAPE_TIMEOUT_SECS: u64 = 20;
+
+    /// How many lines of a command's output reach the message log.
+    /// Enough for a `git status`; not a whole `find /`.
+    const SHELL_ESCAPE_LOG_LINES: usize = 40;
+
     fn run_shell_escape(&mut self, shell: &Shell, cmd: &str) {
         if cmd.is_empty() {
             self.say(":! needs a command — `:!ls`, `:!git status`");
@@ -19060,7 +19071,14 @@ impl ModalApp {
         }
         let quoted = cmd.replace('\'', r"'\''");
         let program = format!("cd '{}' && {}", shell.vault.root().display(), quoted);
-        match closure_eval::eval_with_input(&program, "") {
+        // Bounded, and not held open by a grandchild that inherited the
+        // pipe: `:! xdg-open .` used to freeze the whole app, because
+        // the file manager it opened kept the write end alive and the
+        // read waited for EOF that was never coming.
+        match closure_eval::shell_escape(
+            &program,
+            std::time::Duration::from_secs(Self::SHELL_ESCAPE_TIMEOUT_SECS),
+        ) {
             Ok(out) => {
                 let mut text = out.stdout;
                 if !out.stderr.is_empty() {
@@ -19071,6 +19089,16 @@ impl ModalApp {
                 } else {
                     format!("`{cmd}` exited {}", out.exit)
                 });
+                // Into the message log as well as the pane. "commands
+                // `:!` should pipe their output to some echo
+                // area/stdout/*MESSAGES* buffer" — a one-line status
+                // cannot hold `git status`, and a pane you have to
+                // know about is not where you look first. The log is
+                // the one place that already outlives the command,
+                // scrolls, and has a chord (`g M`).
+                for line in text.lines().rev().take(Self::SHELL_ESCAPE_LOG_LINES) {
+                    self.say(format!("{cmd}: {line}"));
+                }
                 self.shell_out = Some(if text.trim().is_empty() {
                     format!("(no output, exit {})", out.exit)
                 } else {

@@ -527,6 +527,122 @@ pub fn eval_with_input(program: &str, input: &str) -> Result<Output, EvalError> 
     run_via_stdin("/bin/sh", &["-c", program], input, None)
 }
 
+/// Run a shell command for the `:!` escape: bounded by `timeout`, and
+/// never held open by a grandchild that inherited the pipe.
+///
+/// `:! xdg-open .` froze the whole app. `xdg-open` exits almost at
+/// once; what it leaves behind is a file manager holding the *write
+/// end* of the pipe it inherited, so the read end never sees EOF. Every
+/// path that collects output by reading to EOF then waits for a program
+/// the user opened deliberately and will close in ten minutes.
+///
+/// [`run_bounded`] looks like it covers this and does not: it polls the
+/// child against a deadline, and then *joins* the drain threads — which
+/// are precisely the reads that never finish. The deadline never comes
+/// into it, because the child really did exit.
+///
+/// So: once the process we started is gone, stop waiting on its pipe.
+/// Whatever arrived by then is the output. The drain threads are left
+/// to finish on their own whenever the grandchild is done; they hold
+/// nothing but a pipe and their own buffer.
+///
+/// # Errors
+///
+/// [`EvalError::Spawn`] if the shell will not start,
+/// [`EvalError::Timeout`] if the command itself outlives `timeout`.
+pub fn shell_escape(cmd: &str, timeout: std::time::Duration) -> Result<Output, EvalError> {
+    /// How long to keep reading after the child has exited. Enough for
+    /// output already in flight down the pipe, short enough that a
+    /// grandchild holding it open is not felt.
+    const LINGER: std::time::Duration = std::time::Duration::from_millis(150);
+
+    let mut command = Command::new("/bin/sh");
+    command
+        .args(["-c", cmd])
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt as _;
+        command.process_group(0);
+    }
+    let mut child = command
+        .spawn()
+        .map_err(|e| EvalError::Spawn(e.to_string()))?;
+    let out_rx = drain_to_channel(child.stdout.take());
+    let err_rx = drain_to_channel(child.stderr.take());
+
+    let deadline = std::time::Instant::now() + timeout;
+    let code = loop {
+        match child.try_wait() {
+            Ok(Some(status)) => break status.code().unwrap_or(-1),
+            Ok(None) => {
+                if std::time::Instant::now() >= deadline {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    return Err(EvalError::Timeout(timeout));
+                }
+                std::thread::sleep(std::time::Duration::from_millis(5));
+            }
+            Err(e) => return Err(EvalError::Io(e.to_string())),
+        }
+    };
+    // The child is gone. Take what the pipe has to give in a moment,
+    // and do not wait on anything still holding it open.
+    let collect = |rx: &std::sync::mpsc::Receiver<Vec<u8>>| {
+        let until = std::time::Instant::now() + LINGER;
+        let mut buf = Vec::new();
+        // Until EOF or the linger runs out, whichever comes first. The
+        // chunks have to be accumulated rather than waited for as one
+        // buffer: a grandchild holds the pipe open, so "the whole
+        // thing" never arrives, and what the command actually printed
+        // would be thrown away with it.
+        while let Ok(chunk) =
+            rx.recv_timeout(until.saturating_duration_since(std::time::Instant::now()))
+        {
+            buf.extend_from_slice(&chunk);
+        }
+        String::from_utf8_lossy(&buf).into_owned()
+    };
+    Ok(Output {
+        stdout: collect(&out_rx),
+        stderr: collect(&err_rx),
+        exit: code,
+    })
+}
+
+/// Read a pipe on its own thread, sending each chunk down a channel as
+/// it arrives — so the reader can be *waited on with a deadline*,
+/// which joining a thread cannot be.
+///
+/// Chunks rather than one buffer at EOF, because in the case this
+/// exists for EOF never comes: a grandchild is holding the pipe. The
+/// output the command actually produced is already through, and
+/// delivering it only at EOF would throw it away.
+fn drain_to_channel<R>(r: Option<R>) -> std::sync::mpsc::Receiver<Vec<u8>>
+where
+    R: std::io::Read + Send + 'static,
+{
+    let (tx, rx) = std::sync::mpsc::channel();
+    if let Some(mut r) = r {
+        std::thread::spawn(move || {
+            let mut chunk = [0u8; 8192];
+            loop {
+                match r.read(&mut chunk) {
+                    Ok(0) | Err(_) => break,
+                    Ok(n) => {
+                        if tx.send(chunk[..n].to_vec()).is_err() {
+                            break;
+                        }
+                    }
+                }
+            }
+        });
+    }
+    rx
+}
+
 /// Evaluate `program` once per row, feeding the row's cells as one
 /// tab-separated stdin line; the trimmed stdout becomes the computed
 /// cell. Coda-style column formulas in the user's language of choice.
