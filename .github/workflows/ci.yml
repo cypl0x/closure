@@ -9,26 +9,43 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# One gate, and it is the same one a developer runs.
+#
+# "whatever CI is running it never succeeded. Refactor CI."
+#
+# It had two jobs doing the same work twice, and the second one asked
+# for `--all-features` — which turns on gpui, wasmtime, pcap and the
+# webview shells at once, so a bare runner had to build Qt, GTK,
+# WebKit and a Vulkan stack before it could compile a line of closure.
+# That is the job that never went green.
+#
+# `nix flake check` now runs formatting, deadnix, statix, the whole
+# test suite and clippy with `-D warnings`, hermetically and from the
+# vendored lockfile. There is nothing left for a second job to add, and
+# a check that differs from the local one is a check that fails for
+# reasons nobody can reproduce.
 jobs:
-  flake-check:
+  check:
     name: nix flake check
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: DeterminateSystems/nix-installer-action@main
-      - uses: DeterminateSystems/magic-nix-cache-action@main
+      # The magic nix cache was retired in early 2025; leaving it in a
+      # workflow is a step that fails for a reason unrelated to the
+      # code. FlakeHub's cache is its replacement and is a no-op
+      # without credentials, so a fork still gets a green run.
+      - uses: DeterminateSystems/flakehub-cache-action@main
       - run: nix flake check --print-build-logs
 
-  cargo:
-    name: cargo (test + clippy)
+  package:
+    name: nix build
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: DeterminateSystems/nix-installer-action@main
-      - uses: DeterminateSystems/magic-nix-cache-action@main
-      - name: cargo test
-        run: nix develop --command cargo test --workspace --all-features
-      - name: cargo clippy
-        run: nix develop --command cargo clippy --workspace --all-targets --all-features -- -D warnings
-      - name: cargo fmt check
-        run: nix develop --command cargo fmt --all -- --check
+      - uses: DeterminateSystems/flakehub-cache-action@main
+      # The artefacts themselves, because a package that is never
+      # built is a package that does not work: `.#gpui` links a window
+      # stack the checks above never touch.
+      - run: nix build .#default .#gpui --print-build-logs
