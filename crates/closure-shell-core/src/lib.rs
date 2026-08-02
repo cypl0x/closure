@@ -13299,12 +13299,22 @@ impl ModalApp {
             return Some(path.display().to_string());
         }
         let detail = self.detail(shell)?;
+        // The id as well as the title: the title is what a person
+        // recognises the buffer by, and the id is what everything else
+        // addresses the block by — a link, a sync round, an undo entry,
+        // a bug report. The preview pane beside it had shown it all
+        // along, so the two panes disagreed about whether it mattered.
+        let id = self
+            .edit_target
+            .as_deref()
+            .map(|id| format!(" · {id}"))
+            .unwrap_or_default();
         Some(if self.surface == ModalSurface::EditBlock {
             let lang = self.special_language();
             let lang = if lang.is_empty() { "src" } else { lang };
-            format!("{lang} block — {} · {}", detail.title, detail.path)
+            format!("{lang} block — {} · {}{id}", detail.title, detail.path)
         } else {
-            format!("{} · {}", detail.title, detail.path)
+            format!("{} · {}{id}", detail.title, detail.path)
         })
     }
 
