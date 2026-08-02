@@ -115,8 +115,86 @@ impl KeywordHighlighter {
             "rust" | "rs" => Self::rust(),
             "python" | "py" => Self::python(),
             "shell" | "sh" | "bash" | "zsh" => Self::shell(),
+            // closure's own configuration language. "config.org syntax
+            // — It's just a src block. Which kind of syntax is this?"
+            // It is this one, and now something knows it.
+            "closure-config" | "closure_config" => Self::closure_config(),
             _ => Self { lang: "plain" },
         }
+    }
+
+    /// Highlighter for closure's own `closure-config` blocks.
+    #[must_use]
+    pub const fn closure_config() -> Self {
+        Self {
+            lang: "closure-config",
+        }
+    }
+
+    /// `closure-config` is line-oriented: a comment, or `key = value`.
+    ///
+    /// A pass of its own rather than more cases in the token scanner,
+    /// because the meaning here is positional — the same word is a key
+    /// before the `=` and part of a value after it, which a scanner
+    /// that classifies words in isolation cannot say.
+    fn highlight_config(source: &str) -> Vec<Highlight> {
+        let mut spans = Vec::new();
+        let mut at = 0usize;
+        for line in source.split_inclusive('\n') {
+            let end = at + line.len();
+            let trimmed = line.trim_start();
+            let indent = line.len() - trimmed.len();
+            if trimmed.starts_with('#') {
+                // Whole line, including a commented-out setting: the
+                // generated file comments out every key without a
+                // default, and painting those as live config would say
+                // the opposite of what they mean.
+                spans.push(Highlight {
+                    start: at,
+                    end,
+                    kind: HighlightKind::Comment,
+                });
+            } else if let Some(eq) = line.find('=') {
+                // The key is the word, not the word and the space
+                // before the `=`: a highlight that runs into the
+                // padding makes the column look ragged.
+                let key_end = line[..eq].trim_end().len();
+                spans.push(Highlight {
+                    start: at,
+                    end: at + indent,
+                    kind: HighlightKind::Plain,
+                });
+                spans.push(Highlight {
+                    start: at + indent,
+                    end: at + key_end,
+                    kind: HighlightKind::Keyword,
+                });
+                spans.push(Highlight {
+                    start: at + key_end,
+                    end: at + eq,
+                    kind: HighlightKind::Plain,
+                });
+                spans.push(Highlight {
+                    start: at + eq,
+                    end: at + eq + 1,
+                    kind: HighlightKind::Plain,
+                });
+                spans.push(Highlight {
+                    start: at + eq + 1,
+                    end,
+                    kind: HighlightKind::Literal,
+                });
+            } else {
+                spans.push(Highlight {
+                    start: at,
+                    end,
+                    kind: HighlightKind::Plain,
+                });
+            }
+            at = end;
+        }
+        spans.retain(|s| s.start < s.end);
+        spans
     }
 
     fn is_keyword(&self, word: &str) -> bool {
@@ -222,6 +300,9 @@ impl Highlighter for KeywordHighlighter {
     fn highlight(&self, source: &str) -> Vec<Highlight> {
         if source.is_empty() {
             return vec![];
+        }
+        if self.lang == "closure-config" {
+            return Self::highlight_config(source);
         }
 
         let bytes = source.as_bytes();
