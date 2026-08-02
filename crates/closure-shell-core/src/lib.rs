@@ -4019,12 +4019,62 @@ impl LineInput {
         self.cursor + at
     }
 
-    /// Delete the word before the cursor (`C-w`, ctrl+backspace).
+    /// Delete back to the previous whitespace (`C-w`, unix-word-rubout).
+    ///
+    /// The shell's rule, kept as the shell has it: this is the chord
+    /// you press when you want the whole of `~/dev/closure` gone.
     pub fn delete_word_back(&mut self) {
         let start = self.word_start();
         self.kill = self.text[start..self.cursor].to_owned();
         self.text.replace_range(start..self.cursor, "");
         self.cursor = start;
+    }
+
+    /// Delete back over one word (`M-DEL`, backward-kill-word, and the
+    /// desktop's ctrl+backspace).
+    ///
+    /// "impossible to delete/kill a . or /": with only the
+    /// whitespace rule, `~/dev/closure` was one word and the last
+    /// segment could not be removed on its own. A word here is a run of
+    /// alphanumerics, exactly as [`Self::word_end`] already had it
+    /// going forwards — the two directions disagreeing is what made it
+    /// feel arbitrary.
+    pub fn delete_word_back_readline(&mut self) {
+        let start = self.readline_word_start();
+        self.kill = self.text[start..self.cursor].to_owned();
+        self.text.replace_range(start..self.cursor, "");
+        self.cursor = start;
+    }
+
+    /// Start of the run before the cursor: whitespace skipped, then one
+    /// run of *the same kind* — letters, or punctuation.
+    ///
+    /// Strict readline would take `dev/` off `~/dev/` in one press,
+    /// which leaves the `/` undeletable by this chord and is exactly
+    /// what was reported. Taking a run at a time makes the separator
+    /// reachable, which is also what ctrl+backspace does in a browser
+    /// and in VS Code. Plain prose is unaffected: with no punctuation
+    /// the two rules agree.
+    fn readline_word_start(&self) -> usize {
+        let head = &self.text[..self.cursor];
+        let word = |c: char| c.is_alphanumeric() || c == '_';
+        let mut at = head.len();
+        for (i, c) in head.char_indices().rev() {
+            if !c.is_whitespace() {
+                break;
+            }
+            at = i;
+        }
+        let Some(kind) = head[..at].chars().next_back().map(word) else {
+            return at;
+        };
+        for (i, c) in head[..at].char_indices().rev() {
+            if c.is_whitespace() || word(c) != kind {
+                break;
+            }
+            at = i;
+        }
+        at
     }
 
     /// Delete from the cursor to the start of the line (`C-u`).
@@ -4079,7 +4129,7 @@ impl LineInput {
             "u" if ctrl => self.kill_to_start(),
             "w" if ctrl => self.delete_word_back(),
             "y" if ctrl => self.yank(),
-            "backspace" if ctrl || alt => self.delete_word_back(),
+            "backspace" if ctrl || alt => self.delete_word_back_readline(),
             "backspace" => self.backspace(),
             "delete" => self.delete(),
             // The desktop word ops, and readline's `M-d`. The body
@@ -4091,7 +4141,7 @@ impl LineInput {
             // readline's own word motions. The arrow spellings were
             // here and these were not, so the chord an Emacs hand
             // actually reaches for did nothing.
-            "b" if alt => self.word_backward(),
+            "b" if alt => self.cursor = self.readline_word_start(),
             "f" if alt => self.word_forward(),
             "d" if alt => self.delete_word_forward(),
             "left" => self.left(),
@@ -10031,13 +10081,24 @@ impl BodyEditor {
         }
     }
 
-    /// Delete from the start of the word before the cursor to the
-    /// cursor (`C-w`, ctrl+backspace, Alt+Backspace).
+    /// Delete from the start of the run before the cursor to the cursor
+    /// (`C-w`, ctrl+backspace, Alt+Backspace).
+    ///
+    /// Spaces first, then one run of *the same kind* — letters, or
+    /// punctuation. Trimming only the letters left a path's separators
+    /// undeletable by this chord: from `~/dev/` there was no run of
+    /// alphanumerics to take, so the press did nothing at all, which is
+    /// "impossible to delete/kill a . or /".
     pub fn delete_word_back(&mut self) {
         let line_start = self.line_start(self.cursor);
         let s = &self.buf[line_start..self.cursor];
+        let word_char = |c: char| c.is_alphanumeric() || c == '_';
         let trimmed = s.trim_end_matches(' ');
-        let word = trimmed.trim_end_matches(|c: char| c.is_alphanumeric() || c == '_');
+        let word = match trimmed.chars().next_back() {
+            Some(c) if word_char(c) => trimmed.trim_end_matches(word_char),
+            Some(_) => trimmed.trim_end_matches(|c: char| !word_char(c) && c != ' '),
+            None => trimmed,
+        };
         let start = line_start + word.len();
         if start < self.cursor {
             self.insert_guard();
