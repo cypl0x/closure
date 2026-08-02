@@ -5827,6 +5827,8 @@ const fn tutorial_registers(modal: bool) -> &'static str {
 
 /// The second half of the tutorial: the per-command reference, and what
 /// the files around it are.
+// One long format string, which is what a tutorial is.
+#[allow(clippy::too_many_lines)]
 fn tutorial_reference(mode: InputMode) -> String {
     let chord = chord_list;
     format!(
@@ -5851,6 +5853,29 @@ fn tutorial_reference(mode: InputMode) -> String {
          - =eval_trust= is default-deny. A vault is something people can send \
          you, so no\n  code block runs — and =:!cmd= is refused — until you \
          list a language here.\n\
+         \n\
+         ** Running a source block\n\
+         Put the cursor in a block and press =C-c C-c= — org's own \
+         =C-c C-c= in a\nbuffer, which runs the block under the cursor and \
+         writes what it printed back\ninto the note as =#+RESULTS:=. Press it \
+         anywhere that is /not/ a block and it\nsaves and closes instead, \
+         which is org's rule too.\n\
+         \n\
+         A block will not run until its language is trusted. This one is \
+         refused:\n\
+         \n\
+         #+BEGIN_SRC shell\n\
+         echo it works\n\
+         #+END_SRC\n\
+         \n\
+         …until =config.org= says so. Open it, find the =closure-config= \
+         block, and\nadd the language to =eval_trust=:\n\
+         \n\
+         : eval_trust = shell\n\
+         \n\
+         Several are a comma list — =eval_trust = shell, python= — and the \
+         names are\nthe ones you write after =#+BEGIN_SRC=. Then =g != \
+         reloads the config and the\nblock above runs.\n\
          - =llm_key_env= names an /environment variable/, never the key \
          itself, so this file\n  can be committed and synced without leaking \
          a credential.\n\
@@ -19836,6 +19861,17 @@ impl ModalApp {
             | "kill-line-back" | "kill-word-back" | "kill-word-forward" | "yank" => {
                 self.text_motion(cmd);
             }
+            // org's `C-c C-c` is context-sensitive, and a source block
+            // is the context it is most famous for: there it is
+            // `org-babel-execute-src-block`. Taking the chord
+            // unconditionally for "save and close" meant pressing it on
+            // a block said "body saved" and ran nothing.
+            "commit-edit"
+                if self.surface.is_editor()
+                    && code_block_at(self.body.text(), self.body.cursor_line_col().0).is_some() =>
+            {
+                self.eval_block_in_buffer(shell);
+            }
             "commit-edit" => match self.surface {
                 ModalSurface::EditBlock => self.commit_edit_special(shell),
                 ModalSurface::EditFile => self.commit_file_buffer(shell),
@@ -20642,9 +20678,13 @@ impl ModalApp {
             return;
         };
         if !closure_eval::eval_allowed(&shell.vault.eval_trust(), &block.lang) {
+            // Naming the concept is not naming the fix: the companion
+            // report is somebody who could not work out the remedy
+            // from a refusal that mentioned `eval_trust` and stopped.
             self.say(format!(
-                "`{}` is not in this vault's eval_trust — blocked",
-                block.lang
+                "`{lang}` is not trusted here — add `eval_trust = {lang}` \
+                 to config.org's closure-config block",
+                lang = block.lang
             ));
             return;
         }

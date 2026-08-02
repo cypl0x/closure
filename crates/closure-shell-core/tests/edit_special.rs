@@ -230,7 +230,13 @@ fn edit_special_from_the_body_editor_splices_back_into_the_buffer() {
     // Nothing on disk until the body itself is committed.
     let before = fs::read_to_string(dir.path().join("notes.org")).expect("read");
     assert!(!before.contains("echo spliced"), "not written yet");
-    app.run(&mut shell, "commit-edit");
+    // The splice leaves the caret inside the block, and `C-c C-c` on a
+    // block is `org-babel-execute-src-block` — which is org's rule and
+    // was not closure's until 2026-08-02 ("eval-block src … The
+    // example above do work in Emacs"). So the commit that writes the
+    // body is asked for off the block, the way org wants, or with
+    // `save-buffer`, which is `C-x C-s` there.
+    app.run(&mut shell, "save-buffer");
     let after = fs::read_to_string(dir.path().join("notes.org")).expect("read");
     assert!(after.contains("echo spliced"), "written on body commit");
 }
