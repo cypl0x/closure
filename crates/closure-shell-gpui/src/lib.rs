@@ -3165,12 +3165,14 @@ impl GpuiView {
             ),
             ModalSurface::Backlinks => "backlinks — Esc back".to_owned(),
             ModalSurface::Agenda => "agenda — RET jump, Esc back".to_owned(),
-            ModalSurface::Blocks => "src blocks — RET jump, Esc back".to_owned(),
+            // The three list panes are pickers now, so their line says
+            // what a picker takes: type to narrow, arrows to walk.
+            ModalSurface::Blocks => "src blocks — type to filter · RET jump".to_owned(),
             ModalSurface::UndoHistory => {
-                "undo history — j/k move · RET/click jump · Esc back".to_owned()
+                "undo history — type to filter · RET jumps there".to_owned()
             }
             ModalSurface::Headlines => {
-                format!("headlines — {n} in this file · Esc back")
+                format!("headlines — type to filter · {n} in this file")
             }
             ModalSurface::DbView => format!(
                 "database — {} row(s) · Esc back",
@@ -5714,9 +5716,7 @@ impl GpuiView {
     /// still visible behind. A click on the scrim dismisses it, which
     /// is the same "never mind" Escape is.
     fn palette_overlay(&self, co: Colors, cx: &Context<Self>) -> Option<gpui::Deferred> {
-        if self.app.surface() != ModalSurface::Palette {
-            return None;
-        }
+        let view = self.app.picker_view(&self.shell)?;
         let panel = div()
             .debug_selector(|| "palette-panel".to_owned())
             .flex()
@@ -5746,17 +5746,31 @@ impl GpuiView {
                     .child(div().text_color(rgb(co.accent)).child("\u{276f}"))
                     .child(div().flex_grow().text_color(rgb(co.fg)).child(caret_text(
                         co,
-                        self.app.field_buffer(),
-                        self.app.field_cursor(),
+                        self.app.prompt_text().unwrap_or_default(),
+                        self.app.prompt_cursor(),
                     )))
                     .child(
                         div()
                             .text_color(rgb(co.muted))
                             .text_size(self.sz(11.0))
-                            .child(format!("{} commands", self.app.palette_shared().len())),
+                            .child(format!("{} {}", view.rows.len(), view.title)),
                     ),
             )
-            .child(self.palette_list(co, cx))
+            .children(if view.rows.is_empty() {
+                // A blank highlighted strip is what an empty
+                // `uniform_list` looks like, and it reads as a row you
+                // could pick.
+                vec![
+                    div()
+                        .px_4()
+                        .py_2()
+                        .text_size(self.sz(12.0))
+                        .text_color(rgb(co.muted))
+                        .child("nothing matches"),
+                ]
+            } else {
+                vec![self.palette_list(co, &view, cx)]
+            })
             .child(
                 div()
                     .px_4()
@@ -5765,7 +5779,10 @@ impl GpuiView {
                     .border_color(rgb(co.border))
                     .text_color(rgb(co.muted))
                     .text_size(self.sz(10.0))
-                    .child("\u{2191}\u{2193} move  ·  RET run  ·  Esc dismiss"),
+                    .child(format!(
+                        "\u{2191}\u{2193} move  ·  {}  ·  Esc dismiss",
+                        view.hint
+                    )),
             );
         Some(
             gpui::deferred(
@@ -5799,8 +5816,13 @@ impl GpuiView {
     /// scroll. A `uniform_list` builds only what the viewport shows,
     /// and the entries themselves come from the memo rather than being
     /// rescored per frame.
-    fn palette_list(&self, co: Colors, cx: &Context<Self>) -> gpui::Div {
-        let count = self.app.palette_shared().len();
+    fn palette_list(
+        &self,
+        co: Colors,
+        view: &closure_shell_core::PickerView,
+        cx: &Context<Self>,
+    ) -> gpui::Div {
+        let count = view.rows.len();
         div()
             .flex()
             .flex_row()
@@ -5814,10 +5836,12 @@ impl GpuiView {
                     cx.processor(|this, range: std::ops::Range<usize>, _w, cx| {
                         let co = Colors::of(&this.theme);
                         let zoom = this.app.zoom();
-                        let entries = this.app.palette_shared();
-                        let cursor = this.app.palette_cursor();
+                        let Some(view) = this.app.picker_view(&this.shell) else {
+                            return Vec::new();
+                        };
+                        let cursor = view.cursor;
                         range
-                            .filter_map(|i| entries.get(i).map(|e| (i, e)))
+                            .filter_map(|i| view.rows.get(i).cloned().map(|e| (i, e)))
                             .map(|(i, e)| {
                                 let is_cur = i == cursor;
                                 div()
@@ -5830,9 +5854,17 @@ impl GpuiView {
                                     // and the chord column stopped in
                                     // the middle of nowhere.
                                     .w_full()
+                                    // Stated rather than grown: a row
+                                    // whose detail is a long path (the
+                                    // block picker's is a file name)
+                                    // used to grow taller than the
+                                    // budget `palette_list_height`
+                                    // reserves, and the last row was
+                                    // clipped by exactly the surplus.
+                                    .h(px(palette_row_height(zoom)))
+                                    .overflow_hidden()
                                     .items_center()
                                     .px_2()
-                                    .py_1()
                                     .rounded_sm()
                                     .cursor_pointer()
                                     // Stated so a row is the height
@@ -5848,7 +5880,7 @@ impl GpuiView {
                                     .on_mouse_down(
                                         MouseButton::Left,
                                         cx.listener(move |this: &mut Self, _ev, _w, cx| {
-                                            this.app.palette_click(&mut this.shell, i);
+                                            this.app.picker_click(&mut this.shell, i);
                                             if this.app.should_quit() {
                                                 cx.quit();
                                             }
@@ -5874,9 +5906,15 @@ impl GpuiView {
                                         div()
                                             .flex_grow()
                                             .overflow_hidden()
+                                            // One line: a detail long
+                                            // enough to wrap (a path)
+                                            // used to fold inside a row
+                                            // of fixed height and show
+                                            // its second half clipped.
+                                            .whitespace_nowrap()
                                             .text_color(rgb(co.muted))
                                             .text_size(sz_at(11.0, zoom))
-                                            .child(e.description.clone()),
+                                            .child(e.detail.clone()),
                                     )
                                     .child(
                                         div()
@@ -5886,7 +5924,7 @@ impl GpuiView {
                                             .justify_end()
                                             .text_color(rgb(co.accent))
                                             .text_size(sz_at(11.0, zoom))
-                                            .child(e.action.chord().to_owned()),
+                                            .child(e.trailing),
                                     )
                             })
                             .collect::<Vec<_>>()

@@ -2420,10 +2420,18 @@ fn undo_history_navigates_and_enter_jumps() {
     sh.rename_headline(&bid, "R1").expect("r1");
     sh.rename_headline(&bid, "R2").expect("r2");
     app.run(&mut sh, "undo-history");
-    app.on_key(&mut sh, "k", false, false, Some('k'));
+    // Walked with the arrows since 2026-08-02: the user asked for the
+    // list commands to behave like the palette, so a bare letter goes
+    // into the filter and the arrows walk the rows.
+    app.on_key(&mut sh, "up", false, false, None);
     assert_eq!(app.undo_history_cursor(), 0);
-    app.on_key(&mut sh, "k", false, false, Some('k'));
-    assert_eq!(app.undo_history_cursor(), 0, "clamped at the first row");
+    app.on_key(&mut sh, "up", false, false, None);
+    assert_eq!(
+        app.undo_history_cursor(),
+        1,
+        "and past the top it wraps, like every other picker"
+    );
+    app.on_key(&mut sh, "up", false, false, None);
     app.on_key(&mut sh, "enter", false, false, None);
     assert!(
         app.rows(&sh).iter().any(|r| r.title == "R1"),
@@ -2436,7 +2444,7 @@ fn undo_history_navigates_and_enter_jumps() {
 }
 
 #[test]
-fn undo_history_j_moves_down_and_dismiss_keeps_state() {
+fn undo_history_walks_down_and_dismiss_keeps_state() {
     let (_d, mut sh) = shell();
     let mut app = ModalApp::new(InputMode::Vim);
     let id = app.rows(&sh)[0].id.clone();
@@ -2444,12 +2452,16 @@ fn undo_history_j_moves_down_and_dismiss_keeps_state() {
     sh.rename_headline(&bid, "R1").expect("r1");
     sh.rename_headline(&bid, "R2").expect("r2");
     app.run(&mut sh, "undo-history");
-    app.on_key(&mut sh, "k", false, false, Some('k'));
-    app.on_key(&mut sh, "j", false, false, Some('j'));
+    app.on_key(&mut sh, "up", false, false, None);
+    app.on_key(&mut sh, "down", false, false, None);
     assert_eq!(app.undo_history_cursor(), 1);
-    app.on_key(&mut sh, "j", false, false, Some('j'));
-    assert_eq!(app.undo_history_cursor(), 1, "clamped at the last row");
-    app.on_key(&mut sh, "q", false, false, Some('q'));
+    app.on_key(&mut sh, "down", false, false, None);
+    assert_eq!(
+        app.undo_history_cursor(),
+        0,
+        "past the last row it wraps, like every other picker"
+    );
+    app.on_key(&mut sh, "escape", false, false, None);
     assert!(matches!(
         app.surface(),
         closure_shell_core::ModalSurface::Browse

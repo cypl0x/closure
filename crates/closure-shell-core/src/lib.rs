@@ -4170,6 +4170,20 @@ impl LineInput {
     }
 }
 
+/// Keep the rows whose text the filter matches, in order.
+///
+/// One rule for every picker: Doom's `orderless`, so `beta child`
+/// finds "Beta child" without the words being adjacent, and an empty
+/// filter keeps everything.
+fn filtered<T>(rows: Vec<T>, filter: &str, text: impl Fn(&T) -> String) -> Vec<T> {
+    if filter.trim().is_empty() {
+        return rows;
+    }
+    rows.into_iter()
+        .filter(|row| closure_query::orderless_score(filter, &text(row)).is_some())
+        .collect()
+}
+
 /// Drive one field with the session's shared kill ring.
 ///
 /// Every surface with a text field routes its unclaimed keys through
@@ -6630,7 +6644,6 @@ enum SpecialOrigin {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ListKind {
     Agenda,
-    Blocks,
 }
 
 /// Which of the two pickers a keystroke is going to (Q1).
@@ -10554,6 +10567,42 @@ struct PaletteMemo {
 /// One listed source block: `(file, language, first line)`.
 pub type BlockRow = (String, String, String);
 
+/// One row of a floating picker, whatever the picker is over.
+///
+/// Three columns because that is what a picker row is everywhere it is
+/// done well: the thing, a word about the thing, and how to reach it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PickRow {
+    /// What this row is — the command, the title, the file.
+    pub label: String,
+    /// A word about it: the description, the body preview, the path.
+    pub detail: String,
+    /// The right-hand column: a chord, a language, a marker.
+    pub trailing: String,
+    /// Whether the cursor is on it.
+    pub current: bool,
+}
+
+/// A floating picker: a filter and a list of things to pick.
+///
+/// "M-x list commands don't seem to use the 'new' command palette" —
+/// `buffer-list`, `block-list`, `undo-history`, `headline-list` each
+/// opened a pane with a bare `j`/`k` list in it, so there were five
+/// presentations of one idea and only one of them was the good one.
+/// The shells paint this instead, and the surface only has to say what
+/// its rows are.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PickerView {
+    /// What this picker is picking, shown beside the filter.
+    pub title: String,
+    /// What Enter will do, shown along the bottom.
+    pub hint: String,
+    /// The rows surviving the filter.
+    pub rows: Vec<PickRow>,
+    /// Which of them the cursor is on.
+    pub cursor: usize,
+}
+
 /// A filled outline-row memo together with the key it is valid under.
 #[derive(Debug, Clone)]
 struct RowMemo {
@@ -11272,7 +11321,6 @@ impl ModalApp {
             ModalSurface::EditBody => self.on_editbody_key(shell, key, ctrl, alt, text),
             ModalSurface::Backlinks => self.on_backlinks_key(shell, key),
             ModalSurface::Agenda => self.on_list_key(shell, key, ListKind::Agenda),
-            ModalSurface::Blocks => self.on_list_key(shell, key, ListKind::Blocks),
             ModalSurface::TagsEdit => {
                 self.on_field_key(shell, key, ctrl, alt, text, FieldKind::Tags);
             }
@@ -11286,23 +11334,8 @@ impl ModalApp {
                 self.on_field_key(shell, key, ctrl, alt, text, FieldKind::AddSibling);
             }
             ModalSurface::Palette => self.on_palette_key(shell, key, ctrl, alt, text),
-            ModalSurface::UndoHistory => match key {
-                // Navigable pane (Q2-U3): j/k walk, Enter jumps the
-                // undo tree to the cursor node, Esc/q dismiss.
-                "j" | "down" => {
-                    let last = self.undo_history_rows(shell).len().saturating_sub(1);
-                    self.hist_cursor = (self.hist_cursor + 1).min(last);
-                }
-                "k" | "up" => self.hist_cursor = self.hist_cursor.saturating_sub(1),
-                "enter" => {
-                    let target = self.hist_cursor;
-                    self.jump_undo_history(shell, target);
-                }
-                "escape" | "q" => self.surface = ModalSurface::Browse,
-                _ => {}
-            },
-            ModalSurface::Headlines => {
-                self.on_pane_key(key, self.headline_rows(shell).len());
+            ModalSurface::UndoHistory | ModalSurface::Headlines | ModalSurface::Blocks => {
+                self.on_picker_list_key(shell, key, ctrl, alt, text);
             }
             ModalSurface::DbView => {
                 self.on_pane_key(key, self.db_rows(shell).1.len());
@@ -12568,6 +12601,56 @@ impl ModalApp {
             }
             _ => {
                 self.filter_key(key, ctrl, alt, text, matches.len().saturating_sub(1));
+            }
+        }
+    }
+
+    /// Keys for the list pickers — headlines, source blocks, the undo
+    /// tree.
+    ///
+    /// They had a pane each with a bare `j`/`k` in it and no way to
+    /// narrow; they are pickers now, so they answer exactly what the
+    /// other pickers answer. The cursor a picker moves is its own
+    /// ([`Self::picker_cursor`]), which for the undo tree is not the
+    /// outline selection — that one still points at the file whose
+    /// history is being walked.
+    fn on_picker_list_key(
+        &mut self,
+        shell: &mut Shell,
+        key: &str,
+        ctrl: bool,
+        alt: bool,
+        text: Option<char>,
+    ) {
+        match key {
+            "escape" => {
+                self.query.clear();
+                self.block_out = None;
+                if self.surface != ModalSurface::UndoHistory {
+                    self.selected = 0;
+                }
+                self.go_home();
+            }
+            "enter" => self.pick_current(shell),
+            _ => {
+                // Output shown beside a block that did not produce it is
+                // a lie, and both moving the cursor and narrowing the
+                // list change which block that is.
+                self.block_out = None;
+                let len = self.picker_len(shell);
+                if self.surface == ModalSurface::UndoHistory {
+                    if let Some(step) = list_step(key, ctrl) {
+                        self.hist_cursor = step_wrapping(self.hist_cursor, len, step);
+                        return;
+                    }
+                    let before = self.query.text().to_owned();
+                    line_key(&mut self.query, &mut self.line_kill, key, ctrl, alt, text);
+                    if self.query.text() != before {
+                        self.hist_cursor = 0;
+                    }
+                    return;
+                }
+                self.filter_key(key, ctrl, alt, text, len.saturating_sub(1));
             }
         }
     }
@@ -13986,7 +14069,6 @@ impl ModalApp {
     fn on_list_key(&mut self, shell: &Shell, key: &str, kind: ListKind) {
         let len = match kind {
             ListKind::Agenda => self.agenda_rows(shell).len(),
-            ListKind::Blocks => self.block_rows(shell).len(),
         };
         match key {
             "escape" => {
@@ -15427,11 +15509,293 @@ impl ModalApp {
             | ModalSurface::Buffers
             | ModalSurface::Files
             | ModalSurface::TagPick
-            | ModalSurface::Refile => Some(&mut self.query),
+            | ModalSurface::Refile
+            // The list commands are pickers too — they narrow with the
+            // same field rather than each growing one.
+            | ModalSurface::Headlines
+            | ModalSurface::Blocks
+            | ModalSurface::UndoHistory => Some(&mut self.query),
             ModalSurface::Ex => Some(&mut self.ex_buf),
             ModalSurface::Sync => Some(&mut self.sync_buf),
             ModalSurface::Llm => Some(&mut self.chat_buf),
             _ => None,
+        }
+    }
+
+    /// The headlines of the selected file, narrowed by the filter.
+    fn filtered_headlines(&self, shell: &Shell) -> Vec<(String, String)> {
+        filtered(
+            self.headline_rows(shell),
+            self.prompt_text().unwrap_or_default(),
+            |(title, _)| title.clone(),
+        )
+    }
+
+    /// The vault's source blocks, narrowed by the filter.
+    fn filtered_blocks(&self, shell: &Shell) -> Vec<BlockRow> {
+        filtered(
+            self.block_rows(shell),
+            self.prompt_text().unwrap_or_default(),
+            |(file, lang, line)| format!("{file} {lang} {line}"),
+        )
+    }
+
+    /// The selected file's undo tree, narrowed by the filter.
+    fn filtered_history(&self, shell: &Shell) -> Vec<closure_core::HistoryRow> {
+        filtered(
+            self.undo_history_rows(shell),
+            self.prompt_text().unwrap_or_default(),
+            |r| r.label.clone(),
+        )
+    }
+
+    /// How many rows the open picker is showing — what its cursor wraps
+    /// around, and what a shell scrolls.
+    #[must_use]
+    pub fn picker_len(&self, shell: &Shell) -> usize {
+        self.picker_view(shell).map_or(0, |v| v.rows.len())
+    }
+
+    /// Click row `i` of the open picker: put the cursor there, then
+    /// pick it. The mouse path into every picker, so it agrees with
+    /// Enter by construction rather than by two implementations.
+    pub fn picker_click(&mut self, shell: &mut Shell, i: usize) {
+        if self.picker_view(shell).is_none_or(|v| i >= v.rows.len()) {
+            return;
+        }
+        match self.surface {
+            ModalSurface::Palette => self.palette_cursor = i,
+            ModalSurface::UndoHistory => self.hist_cursor = i,
+            _ => self.selected = i,
+        }
+        self.pick_current(shell);
+    }
+
+    /// Act on the row the cursor is on. What Enter does in a picker,
+    /// and what a click on a row does.
+    fn pick_current(&mut self, shell: &mut Shell) {
+        let at = self.picker_cursor();
+        match self.surface {
+            ModalSurface::Palette => self.commit_palette(shell),
+            ModalSurface::Buffers | ModalSurface::Files => {
+                // The rows on screen are the ones that survived the
+                // filter; the click paths address the underlying list.
+                let matches: Vec<usize> = if self.surface == ModalSurface::Buffers {
+                    self.buffer_rows(shell)
+                        .iter()
+                        .enumerate()
+                        .filter(|(_, r)| r.matches_filter)
+                        .map(|(i, _)| i)
+                        .collect()
+                } else {
+                    self.file_rows(shell)
+                        .iter()
+                        .enumerate()
+                        .filter(|(_, r)| r.matches_filter)
+                        .map(|(i, _)| i)
+                        .collect()
+                };
+                let Some(&row) = matches.get(at) else {
+                    return;
+                };
+                self.query.clear();
+                self.selected = 0;
+                if self.surface == ModalSurface::Buffers {
+                    self.buffer_click(shell, row);
+                } else {
+                    self.file_click(shell, row);
+                }
+            }
+            ModalSurface::Headlines => {
+                let Some((_, id)) = self.filtered_headlines(shell).get(at).cloned() else {
+                    return;
+                };
+                self.query.clear();
+                self.go_home();
+                self.select_by_id(shell, &id);
+            }
+            ModalSurface::Blocks => {
+                let Some((file, ..)) = self.filtered_blocks(shell).get(at).cloned() else {
+                    return;
+                };
+                self.query.clear();
+                self.block_out = None;
+                self.go_home();
+                let path = std::path::PathBuf::from(&file);
+                if let Some(idx) = self
+                    .rows_shared(shell)
+                    .iter()
+                    .position(|r| std::path::Path::new(&r.path) == path)
+                {
+                    self.selected = idx;
+                }
+            }
+            ModalSurface::UndoHistory => {
+                // The picker lists the tree in walk order and narrows
+                // it; the vault addresses history nodes by insertion
+                // order, so the row carries the one to send.
+                let Some(index) = self.filtered_history(shell).get(at).map(|r| r.index) else {
+                    return;
+                };
+                self.query.clear();
+                if let Some(row) = self.rows_shared(shell).get(self.selected).cloned() {
+                    let path = std::path::PathBuf::from(&row.path);
+                    match shell.vault.jump_history_in(&path, index) {
+                        Ok(()) => "jumped".clone_into(&mut self.status),
+                        Err(e) => self.status = format!("jump failed: {e}"),
+                    }
+                    self.selected = self
+                        .selected
+                        .min(self.rows_shared(shell).len().saturating_sub(1));
+                }
+                self.go_home();
+            }
+            _ => {}
+        }
+    }
+
+    /// The floating picker for the open surface, or `None` when the
+    /// surface is not one.
+    ///
+    /// Every list the user reaches for by name — the palette, the
+    /// buffers, the headlines of this file, its source blocks, its undo
+    /// tree, the recent files — is the same gesture: narrow, then pick.
+    /// Deriving them all here is what makes them behave the same
+    /// without each shell agreeing to (I7).
+    #[must_use]
+    pub fn picker_view(&self, shell: &Shell) -> Option<PickerView> {
+        let (title, hint, mut rows) = self.picker_rows(shell)?;
+        // A cursor pointing past the narrowed list is how a picker
+        // opens the wrong thing, so it is clamped where it is read
+        // rather than everywhere it is moved.
+        let cursor = self.picker_cursor().min(rows.len().saturating_sub(1));
+        if let Some(row) = rows.get_mut(cursor) {
+            row.current = true;
+        }
+        Some(PickerView {
+            title: title.to_owned(),
+            hint: hint.to_owned(),
+            rows,
+            cursor,
+        })
+    }
+
+    /// What the open surface is picking from: its title, what Enter
+    /// does, and the rows surviving the filter.
+    fn picker_rows(&self, shell: &Shell) -> Option<(&'static str, &'static str, Vec<PickRow>)> {
+        let (title, hint, rows) = match self.surface {
+            ModalSurface::Palette => (
+                "commands",
+                "RET runs",
+                self.palette_shared()
+                    .iter()
+                    .map(|e| PickRow {
+                        label: e.label.clone(),
+                        detail: e.description.clone(),
+                        trailing: e.action.chord().to_owned(),
+                        current: false,
+                    })
+                    .collect::<Vec<_>>(),
+            ),
+            ModalSurface::Buffers => (
+                "buffers",
+                "RET opens \u{b7} the one you are in is marked",
+                self.buffer_rows(shell)
+                    .into_iter()
+                    .filter(|r| r.matches_filter)
+                    .map(|r| PickRow {
+                        label: r.name,
+                        detail: if r.dirty {
+                            "unsaved".to_owned()
+                        } else {
+                            String::new()
+                        },
+                        trailing: if r.current {
+                            "\u{25cf}".to_owned()
+                        } else {
+                            String::new()
+                        },
+                        current: false,
+                    })
+                    .collect(),
+            ),
+            ModalSurface::Files => (
+                "files",
+                "RET opens",
+                self.file_rows(shell)
+                    .into_iter()
+                    .filter(|r| r.matches_filter)
+                    .map(|r| PickRow {
+                        label: r.name,
+                        detail: r.path.display().to_string(),
+                        trailing: String::new(),
+                        current: false,
+                    })
+                    .collect(),
+            ),
+            ModalSurface::Headlines => (
+                "headlines in this file",
+                "RET goes to it",
+                self.filtered_headlines(shell)
+                    .into_iter()
+                    .map(|(title, id)| PickRow {
+                        label: title,
+                        detail: String::new(),
+                        trailing: id,
+                        current: false,
+                    })
+                    .collect(),
+            ),
+            ModalSurface::Blocks => (
+                "source blocks",
+                "RET goes to the file it is in",
+                self.filtered_blocks(shell)
+                    .into_iter()
+                    .map(|(file, lang, line)| PickRow {
+                        label: line,
+                        // Vault-relative: the absolute path of every
+                        // file in the vault you are looking at is
+                        // mostly the same prefix, repeated down the
+                        // list and pushing the part that differs off
+                        // the end of the row.
+                        detail: std::path::Path::new(&file)
+                            .strip_prefix(shell.vault.root())
+                            .map_or_else(|_| file.clone(), |rel| rel.display().to_string()),
+                        trailing: lang,
+                        current: false,
+                    })
+                    .collect(),
+            ),
+            ModalSurface::UndoHistory => (
+                "undo history",
+                "RET jumps the document to that edit",
+                self.filtered_history(shell)
+                    .into_iter()
+                    .map(|r| PickRow {
+                        label: format!("{}{}", r.graph, r.label),
+                        detail: String::new(),
+                        trailing: if r.is_current {
+                            "now".to_owned()
+                        } else {
+                            String::new()
+                        },
+                        current: false,
+                    })
+                    .collect(),
+            ),
+            _ => return None,
+        };
+        Some((title, hint, rows))
+    }
+
+    /// Which row of the open picker the cursor is on. The palette and
+    /// the undo tree keep their own; everything else walks `selected`.
+    #[must_use]
+    pub const fn picker_cursor(&self) -> usize {
+        match self.surface {
+            ModalSurface::Palette => self.palette_cursor,
+            ModalSurface::UndoHistory => self.hist_cursor,
+            _ => self.selected,
         }
     }
 
@@ -15449,7 +15813,12 @@ impl ModalApp {
             | ModalSurface::Buffers
             | ModalSurface::Files
             | ModalSurface::TagPick
-            | ModalSurface::Refile => Some(&self.query),
+            | ModalSurface::Refile
+            // The list commands are pickers too — they narrow with the
+            // same field rather than each growing one.
+            | ModalSurface::Headlines
+            | ModalSurface::Blocks
+            | ModalSurface::UndoHistory => Some(&self.query),
             ModalSurface::Ex => Some(&self.ex_buf),
             ModalSurface::Sync => Some(&self.sync_buf),
             ModalSurface::Llm => Some(&self.chat_buf),
@@ -16819,7 +17188,7 @@ impl ModalApp {
                     .iter()
                     .position(|r| r.is_current)
                     .unwrap_or(0);
-                "undo history — j/k move · RET jump · Esc back".clone_into(&mut self.status);
+                "undo history — type to filter · RET jumps there".clone_into(&mut self.status);
             }
             "agenda" => {
                 self.selected = 0;
@@ -17147,7 +17516,7 @@ impl ModalApp {
             "headline-list" => {
                 self.selected = 0;
                 self.surface = ModalSurface::Headlines;
-                "headlines — RET jump, Esc back".clone_into(&mut self.status);
+                "headlines — type to filter · RET goes to it".clone_into(&mut self.status);
             }
             "db-view" => {
                 self.selected = 0;

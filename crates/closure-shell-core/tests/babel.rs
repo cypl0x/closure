@@ -66,9 +66,12 @@ fn running_the_selected_block_captures_its_output() {
 
 #[test]
 fn the_cursor_chooses_which_block_runs() {
+    // Walked with `down` rather than a bare `j` since 2026-08-02: the
+    // user asked for the list commands to behave like the palette, so
+    // letters narrow the list and the arrows (and `C-n`/`C-j`) walk it.
     let (_d, mut shell, mut app) = fixture();
     app.run(&mut shell, "block-list");
-    app.on_key(&mut shell, "j", false, false, Some('j'));
+    app.on_key(&mut shell, "down", false, false, None);
     app.run(&mut shell, "eval-block");
     let out = app.block_output().expect("output");
     assert!(out.contains("second"), "ran block 1: {out:?}");
@@ -130,7 +133,7 @@ fn moving_the_cursor_clears_the_previous_output() {
     app.run(&mut shell, "block-list");
     app.run(&mut shell, "eval-block");
     assert!(app.block_output().is_some());
-    app.on_key(&mut shell, "j", false, false, Some('j'));
+    app.on_key(&mut shell, "down", false, false, None);
     assert_eq!(
         app.block_output(),
         None,
