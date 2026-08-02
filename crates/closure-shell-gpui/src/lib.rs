@@ -3643,17 +3643,24 @@ impl GpuiView {
             .py_1()
             .text_size(self.sz(OUTLINE_TEXT))
             .cursor_pointer()
-            // The selection marker is on every row, transparent on the
-            // ones that are not selected. Added only to the selected
-            // row, its 2px pushed that row's whole content right — so
-            // moving the cursor down the list nudged each title
-            // sideways as it arrived and back as it left.
-            .border_l_2()
-            .border_color(if is_sel {
-                rgb(co.accent).into()
-            } else {
-                gpui::transparent_black()
-            })
+            // The selection marker is a *child*, not a border. The row
+            // also asks for a bottom border while it is a drop target,
+            // and gpui's `border_color` sets one colour for every side —
+            // so the amber insertion line repainted this marker amber
+            // on a row that was not even selected. That is the "yellow
+            // marker" nobody could explain.
+            //
+            // On every row, transparent where there is no selection:
+            // added only to the selected one, its 2px pushes that row's
+            // content right, so moving down the list nudges each title
+            // sideways as it arrives and back as it leaves.
+            .child(
+                div()
+                    .w(px(2.0))
+                    .flex_none()
+                    .h_full()
+                    .when(is_sel, |d| d.bg(rgb(co.accent))),
+            )
             .bg(rgb(if is_sel { co.selection } else { co.bg }))
             .hover(move |s| s.bg(rgb(if is_sel { co.selection } else { co.hover })))
             .on_mouse_down(
@@ -3695,9 +3702,13 @@ impl GpuiView {
                     cx.notify();
                 }),
             );
-        // The drop target under a live drag reads as an insertion line.
+        // The drop target under a live drag reads as an insertion line
+        // along the bottom — and only there, now that the selection
+        // marker beside it is an element rather than another border.
         if self.drag.target() == Some(i) && self.drag.source() != Some(i) {
-            line = line.border_b_2().border_color(rgb(co.warning));
+            line = line
+                .border_b_2()
+                .border_color(rgb(drop_line_color(&self.theme)));
         }
         Self::outline_cells(line, co, self.app.zoom(), self.keyword_chars(), i, &row, cx)
     }
@@ -8199,6 +8210,36 @@ const fn priority_color(co: Colors, letter: char) -> u32 {
         24 => co.success,
         _ => co.muted,
     }
+}
+
+/// The colour of an outline row's selection marker.
+///
+/// `0` — fully transparent — when the row is not selected. Present on
+/// every row rather than added to the selected one: a 2px bar that
+/// appears only where the cursor is pushes that row's content right,
+/// so moving down the list nudges each title sideways as it arrives
+/// and back as it leaves.
+#[must_use]
+pub fn selection_marker_color(theme: &closure_shell_core::Theme, selected: bool) -> u32 {
+    if selected {
+        color_u32(theme.color(closure_shell_core::ColorRole::Accent))
+    } else {
+        0
+    }
+}
+
+/// The colour of the drag-and-drop insertion line.
+///
+/// The warning colour, because it is a deliberate interruption:
+/// something is about to move. It used to be painted by asking for an
+/// amber *border* on the row — and gpui's `border_color` sets one
+/// colour for every side, so it repainted the selection marker on the
+/// left edge of a row that was not selected. That is the "yellow
+/// marker" in the report, and the insertion line it was meant to draw
+/// was the thing nobody noticed.
+#[must_use]
+pub fn drop_line_color(theme: &closure_shell_core::Theme) -> u32 {
+    color_u32(theme.color(closure_shell_core::ColorRole::Warning))
 }
 
 /// Theme colour for a body-editor span kind. Shared by the editor
