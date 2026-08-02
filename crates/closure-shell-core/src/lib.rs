@@ -4234,6 +4234,97 @@ fn filtered<T>(rows: Vec<T>, filter: &str, text: impl Fn(&T) -> String) -> Vec<T
         .collect()
 }
 
+/// What which-key lists inside a buffer, by mode.
+///
+/// The editor's vocabulary is not in `mode_keymap`: those chords are
+/// resolved by the vim engine and the readline set rather than
+/// dispatched as commands, so the keymap has nothing to say about them
+/// and which-key had nothing to show but the outline's. This is that
+/// vocabulary as data, which is also what the hint strip should be
+/// reading rather than carrying prose.
+///
+/// A mode with no NORMAL is offered no NORMAL: "only show the
+/// keybindings that are relevant to the corresponding mode".
+fn editor_which_key(mode: InputMode) -> Vec<(String, Vec<(String, String)>)> {
+    let modal = matches!(mode, InputMode::Vim | InputMode::Doom | InputMode::Helix);
+    let mut groups: Vec<(&str, Vec<(&str, &str)>)> = vec![(
+        "Edit",
+        vec![
+            ("C-a", "start of line"),
+            ("C-e", "end of line"),
+            ("C-b", "back one character"),
+            ("C-f", "forward one character"),
+            ("M-b", "back one word"),
+            ("M-f", "forward one word"),
+            ("M-DEL", "kill the word behind"),
+            ("C-w", "kill to the last space"),
+            ("C-k", "kill to end of line"),
+            ("C-u", "kill to start of line"),
+            ("C-y", "yank it back"),
+            ("C-n", "next completion"),
+            ("C-p", "previous completion"),
+            ("TAB", "expand a snippet, or accept"),
+            ("M-TAB", "fold or unfold"),
+            ("M-z", "wrap long lines"),
+        ],
+    )];
+    if modal {
+        groups.push((
+            "Normal",
+            vec![
+                ("w b e", "by word"),
+                ("f t %", "to a character, to a pair"),
+                ("d c y", "delete, change, yank"),
+                ("dd yy p", "whole lines"),
+                ("diw caw", "inside, around"),
+                ("g g", "first line"),
+                ("g u", "lowercase"),
+                ("g U", "uppercase"),
+                ("g q", "reflow"),
+                ("z a", "fold or unfold"),
+                ("z z", "centre the line"),
+                ("z t", "line to the top"),
+                ("z b", "line to the bottom"),
+                ("q a @a", "record and replay"),
+                ("m a `a", "mark and jump"),
+                ("/ n N", "search, next, previous"),
+                ("v V", "visual, visual line"),
+                ("u C-r", "undo, redo"),
+                (". ", "repeat"),
+                ("Esc", "back to NORMAL"),
+            ],
+        ));
+    }
+    groups.push((
+        "Buffer",
+        if modal {
+            vec![
+                ("C-s", "save and stay"),
+                ("C-\u{23ce}", "save and close"),
+                (":w :q :wq", "write, quit, both"),
+                (":q!", "discard"),
+            ]
+        } else {
+            vec![
+                ("C-x C-s", "save and stay"),
+                ("C-\u{23ce}", "save and close"),
+                ("Esc", "close a clean buffer"),
+            ]
+        },
+    ));
+    groups
+        .into_iter()
+        .map(|(title, rows)| {
+            (
+                title.to_owned(),
+                rows.into_iter()
+                    .map(|(chord, what)| (chord.to_owned(), what.to_owned()))
+                    .collect(),
+            )
+        })
+        .collect()
+}
+
 /// Drive one field with the session's shared kill ring.
 ///
 /// Every surface with a text field routes its unclaimed keys through
@@ -10844,11 +10935,72 @@ impl ModalApp {
             .collect()
     }
 
+    /// What which-key should be scoped to right now.
+    ///
+    /// The panel filters its rows by this. It used to read the
+    /// outline's pending strokes, which are empty in a buffer however
+    /// many prefix keys the editor is holding — so pressing `g` in a
+    /// note showed the whole map instead of the `g` map.
+    #[must_use]
+    pub fn which_key_pending(&self) -> String {
+        if self.surface.is_editor() {
+            let pending = self.body_pending_chord();
+            if !pending.is_empty() {
+                return pending;
+            }
+            // The `z` viewport prefix is the editor's other pending
+            // state, and it is held outside the vim engine.
+            if self.pending_body == Some(BodyPrefix::Viewport) {
+                return "z".to_owned();
+            }
+            return String::new();
+        }
+        self.pending_chord()
+    }
+
+    /// The three things a person wants from an open buffer, as
+    /// `(label, command, chord)` — the chord being `None` where this
+    /// mode has none and the button is the only way.
+    ///
+    /// The discard button said `:q!` in every mode, including the two
+    /// where `:` types a colon and the ex line cannot be opened from
+    /// inside a buffer at all: "only show the keybindings that are
+    /// relevant to the corresponding mode".
+    #[must_use]
+    pub fn buffer_actions(&self) -> Vec<(&'static str, &'static str, Option<&'static str>)> {
+        let modal = matches!(
+            self.mode,
+            InputMode::Vim | InputMode::Doom | InputMode::Helix
+        );
+        vec![
+            (
+                "\u{2713} save",
+                "save-buffer",
+                closure_input::chord_for_command(self.mode, "save-buffer"),
+            ),
+            ("\u{2713} save & close", "commit-edit", Some("C-\u{23ce}")),
+            ("\u{2715} discard", "discard-edit", modal.then_some(":q!")),
+        ]
+    }
+
     /// Which-key data grouped for the Doom-style popup: every keymap
     /// pair once, grouped by its palette section ("Command" when
     /// uncurated), groups in section order, entries chord-sorted (I4).
+    ///
+    /// Scoped to the surface. Built from `mode_keymap` alone it listed
+    /// the *outline's* chords wherever you were, so a buffer was
+    /// offered `j:next-file` and `c:capture` — neither of which runs
+    /// there, one of which is a letter you were about to type.
     #[must_use]
     pub fn which_key_groups(&self) -> Vec<(String, Vec<(String, String)>)> {
+        if self.surface.is_editor() {
+            return editor_which_key(self.mode);
+        }
+        self.outline_which_key()
+    }
+
+    /// The outline's own keymap, grouped.
+    fn outline_which_key(&self) -> Vec<(String, Vec<(String, String)>)> {
         let section_of = |cmd: &str| -> &str {
             PALETTE_COMMANDS
                 .iter()
@@ -11139,9 +11291,24 @@ impl ModalApp {
         self.which_key_open
     }
 
-    /// The active mode's full chord→command listing (which-key).
+    /// The chords worth a line along the bottom, for the surface you
+    /// are on.
+    ///
+    /// It listed the outline's keymap wherever you were, so a buffer's
+    /// footer offered `j:next-file` and `q:quit` — one of which is a
+    /// letter you were about to type and neither of which runs there.
+    /// In a buffer it names the editor's own vocabulary instead, from
+    /// the same table which-key reads.
     #[must_use]
     pub fn key_hints(&self) -> String {
+        if self.surface.is_editor() {
+            return editor_which_key(self.mode)
+                .into_iter()
+                .flat_map(|(_, rows)| rows)
+                .map(|(chord, what)| format!("{chord}:{what}"))
+                .collect::<Vec<_>>()
+                .join("  ");
+        }
         closure_input::mode_keymap(self.mode)
             .iter()
             .map(|(c, cmd)| format!("{c}:{cmd}"))

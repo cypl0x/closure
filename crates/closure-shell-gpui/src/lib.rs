@@ -4028,34 +4028,31 @@ impl GpuiView {
         // the one you do twenty times an hour — had a chord and no
         // affordance, so the only visible way to keep your work was one
         // that also took the buffer away.
-        let save_chord =
-            closure_input::chord_for_command(self.app.input_mode(), "save-buffer").unwrap_or("C-s");
+        // The chords come from the core, which knows what this mode
+        // can actually run: the discard button said `:q!` in every
+        // mode, including the two where `:` types a colon and the ex
+        // line cannot be opened from inside a buffer at all. An action
+        // this mode has no chord for gets the button and no promise.
+        for (label, command, chord) in self.app.buffer_actions() {
+            let run = command.to_owned();
+            let tone = if command == "discard-edit" {
+                co.error
+            } else {
+                co.success
+            };
+            header = header.child(button(label, tone, chord.unwrap_or("")).on_mouse_down(
+                MouseButton::Left,
+                cx.listener(move |this: &mut Self, _ev, _w, cx| {
+                    match run.as_str() {
+                        "commit-edit" => this.app.commit_edit_body(&mut this.shell),
+                        "discard-edit" => this.app.run_ex_line(&mut this.shell, "q!"),
+                        other => this.app.run(&mut this.shell, other),
+                    }
+                    cx.notify();
+                }),
+            ));
+        }
         header
-            .child(button("✓ save", co.success, save_chord).on_mouse_down(
-                MouseButton::Left,
-                cx.listener(|this: &mut Self, _ev, _w, cx| {
-                    this.app.run(&mut this.shell, "save-buffer");
-                    cx.notify();
-                }),
-            ))
-            // "save" was a lie by omission: this button *commits* —
-            // writes and closes — while `save-buffer` writes and stays.
-            // Two different things, and the chord beside it belongs to
-            // this one.
-            .child(button("✓ save & close", co.success, "C-⏎").on_mouse_down(
-                MouseButton::Left,
-                cx.listener(|this: &mut Self, _ev, _w, cx| {
-                    this.app.commit_edit_body(&mut this.shell);
-                    cx.notify();
-                }),
-            ))
-            .child(button("✕ discard", co.error, ":q!").on_mouse_down(
-                MouseButton::Left,
-                cx.listener(|this: &mut Self, _ev, _w, cx| {
-                    this.app.run_ex_line(&mut this.shell, "q!");
-                    cx.notify();
-                }),
-            ))
     }
 
     /// How many body lines the last painted frame used — what
@@ -6452,7 +6449,7 @@ impl GpuiView {
     /// it ([`which_key_filter`]) — the whole keymap is exactly the wrong
     /// answer at the one moment the user has asked a specific question.
     fn which_key_panel(&self, co: Colors, cx: &Context<Self>) -> gpui::Div {
-        let groups = which_key_filter(self.app.which_key_groups(), &self.app.pending_chord());
+        let groups = which_key_filter(self.app.which_key_groups(), &self.app.which_key_pending());
         div()
             .flex()
             .flex_row()
@@ -7989,7 +7986,7 @@ impl Render for GpuiView {
 
         // The bindings panel opens on demand, and always while a chord
         // is in flight — that is the moment it is actually needed.
-        let show_keys = self.app.which_key_open() || !self.app.pending_chord().is_empty();
+        let show_keys = self.app.which_key_open() || !self.app.which_key_pending().is_empty();
 
         let mut root = div()
             .key_context("ClosureGpui")
