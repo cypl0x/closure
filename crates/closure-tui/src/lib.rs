@@ -2653,6 +2653,9 @@ impl App {
             }
             // Half a screen at a time. The terminal knows its own
             // height, so the step is half the rows it is drawing.
+            // The terminal's own notification surface is the status
+            // line; putting them away is clearing it.
+            "dismiss-notifications" => self.status.clear(),
             "half-page-down" => self.half_page(true, last),
             "half-page-up" => self.half_page(false, last),
             "quit" => self.quit = true,

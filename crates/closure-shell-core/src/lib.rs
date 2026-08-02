@@ -10109,6 +10109,11 @@ pub struct ModalApp {
     /// shows it too, but that one closes itself the moment the chord
     /// resolves; this is the one a person asked for.
     which_key_open: bool,
+    /// The notification log. It lived in the gpui window, which is
+    /// why it had no command and no chord — there was nothing for the
+    /// keymap to point at. Here it has both, and the terminal shell
+    /// reads the same log rather than growing a second one.
+    notifications: Feedback,
     /// The kill every one-line prompt shares, so `C-k` in one field and
     /// `C-y` in another mean what they do in a terminal.
     ///
@@ -10482,6 +10487,7 @@ impl ModalApp {
             history_gen: 0,
             which_key_open: false,
             line_kill: String::new(),
+            notifications: Feedback::default(),
             palette_cursor: 0,
             pending: Vec::new(),
             status: String::new(),
@@ -10815,6 +10821,17 @@ impl ModalApp {
     #[must_use]
     pub const fn should_quit(&self) -> bool {
         self.quit
+    }
+
+    /// The notification log — what a shell paints as toasts.
+    #[must_use]
+    pub const fn notifications(&self) -> &Feedback {
+        &self.notifications
+    }
+
+    /// Add a notification to the log.
+    pub fn notify(&mut self, level: ToastLevel, text: impl Into<String>) {
+        self.notifications.notify(level, text);
     }
 
     /// Whether the which-key panel is pinned open.
@@ -16690,6 +16707,7 @@ impl ModalApp {
             }
             "palette" => self.open_palette(),
             "toggle-which-key" => self.which_key_open = !self.which_key_open,
+            "dismiss-notifications" => self.notifications.clear(),
             // Half a screen: the step between one row at a time and
             // jumping to an end, and the one vim put on these chords.
             "half-page-down" | "half-page-up" => {

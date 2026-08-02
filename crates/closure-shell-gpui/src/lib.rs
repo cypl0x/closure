@@ -1803,9 +1803,6 @@ pub struct GpuiView {
     app: ModalApp,
     theme: Theme,
     focus_handle: FocusHandle,
-    /// The shared async-feedback queue (G7) this window renders as a
-    /// toast strip; fed by [`status_toast`] over the status line.
-    feedback: closure_shell_core::Feedback,
     /// Last absorbed status line (change detection for the toasts).
     last_status: String,
     /// Typing-idle generation for the completion auto-popup: each key
@@ -1933,7 +1930,6 @@ impl GpuiView {
             outline_drag: None,
             window_title: String::new(),
             focus_handle: cx.focus_handle(),
-            feedback: closure_shell_core::Feedback::default(),
             last_status: String::new(),
             popup_gen: 0,
             drag: closure_shell_core::DragReorder::default(),
@@ -2247,7 +2243,7 @@ impl GpuiView {
     /// How many toasts are on the strip.
     #[must_use]
     pub fn toast_count(&self) -> usize {
-        self.feedback.items().len()
+        self.app.notifications().items().len()
     }
 
     /// The first visible body line, for a test to assert the wheel
@@ -2457,7 +2453,7 @@ impl GpuiView {
         let status = self.app.status().to_owned();
         if status != self.last_status {
             if let Some((level, text)) = status_toast(&status) {
-                self.feedback.notify(level, text);
+                self.app.notify(level, text);
                 self.arm_toast_timer(cx);
             }
             self.last_status = status;
@@ -2480,7 +2476,7 @@ impl GpuiView {
             cx.background_executor().timer(TOAST_TTL).await;
             let _ = this.update(cx, |this, cx| {
                 if this.toast_gen == generation {
-                    this.feedback.clear();
+                    this.app.run(&mut this.shell, "dismiss-notifications");
                     cx.notify();
                 }
             });
@@ -6465,14 +6461,22 @@ impl GpuiView {
     /// — pushed the outline and the editor down and let them back up.
     /// `None` when there is nothing to say, so it costs no element.
     fn toast_overlay(&self, co: Colors) -> Option<gpui::Deferred> {
-        if self.feedback.items().is_empty() {
+        if self.app.notifications().items().is_empty() {
             return None;
         }
         Some(
             gpui::deferred(
                 gpui::anchored()
-                    .position(gpui::point(px(12.0), px(52.0)))
-                    .snap_to_window_with_margin(px(8.0))
+                    // Bottom right, where every desktop puts its
+                    // notifications — the top left is where the outline
+                    // is, and a message landing on top of the thing you
+                    // are reading is the complaint.
+                    // Past the far corner, then snapped back inside:
+                    // the window's size is not a thing this borrow can
+                    // ask for, and the snap is what puts it where it
+                    // belongs either way.
+                    .position(gpui::point(px(100_000.0), px(100_000.0)))
+                    .snap_to_window_with_margin(px(12.0))
                     .child(self.toast_strip(co)),
             )
             .with_priority(1),
@@ -6482,32 +6486,52 @@ impl GpuiView {
     /// The toasts themselves.
     fn toast_strip(&self, co: Colors) -> gpui::Div {
         use closure_shell_core::FeedbackKind as K;
+        let chord =
+            closure_input::chord_for_command(self.app.input_mode(), "dismiss-notifications");
         div()
             .debug_selector(|| "toast-strip".to_owned())
             .flex()
             .flex_col()
+            .items_end()
             .gap_1()
-            .children(self.feedback.items().iter().rev().take(3).map(|item| {
-                let col = match item.kind {
-                    K::Error => co.error,
-                    K::Warning => co.warning,
-                    K::Success => co.success,
-                    K::Info | K::Progress(_) => co.accent,
-                };
+            // The strip names the chord that puts it away, in the mode
+            // that is actually active — a component nobody can dismiss
+            // is a component that interrupts.
+            .child(
                 div()
-                    .px_2()
-                    .py_1()
-                    .rounded_md()
-                    // Opaque, not tinted: it floats over the panes now,
-                    // and a translucent toast over body text is a
-                    // smear rather than a message.
-                    .bg(rgb(mix_u32(co.panel, col, 48)))
-                    .border_1()
-                    .border_color(rgb(col))
-                    .text_color(rgb(col))
-                    .text_size(self.sz(11.0))
-                    .child(format!("⚑ {}", item.text))
-            }))
+                    .text_color(rgb(co.muted))
+                    .text_size(self.sz(10.0))
+                    .child(header_label("dismiss", chord)),
+            )
+            .children(
+                self.app
+                    .notifications()
+                    .items()
+                    .iter()
+                    .rev()
+                    .take(3)
+                    .map(|item| {
+                        let col = match item.kind {
+                            K::Error => co.error,
+                            K::Warning => co.warning,
+                            K::Success => co.success,
+                            K::Info | K::Progress(_) => co.accent,
+                        };
+                        div()
+                            .px_2()
+                            .py_1()
+                            .rounded_md()
+                            // Opaque, not tinted: it floats over the panes now,
+                            // and a translucent toast over body text is a
+                            // smear rather than a message.
+                            .bg(rgb(mix_u32(co.panel, col, 48)))
+                            .border_1()
+                            .border_color(rgb(col))
+                            .text_color(rgb(col))
+                            .text_size(self.sz(11.0))
+                            .child(format!("⚑ {}", item.text))
+                    }),
+            )
     }
 
     /// The window's top bar: title, the clickable mode chip, and the
