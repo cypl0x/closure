@@ -7953,7 +7953,7 @@ impl BodyEditor {
 
     /// Place the cursor at `line`/`col` (both clamped — a line past the
     /// end lands on the last line, the mouse-click rule).
-    fn goto_line_col(&mut self, line: usize, col: usize) {
+    pub(crate) fn goto_line_col(&mut self, line: usize, col: usize) {
         let starts: Vec<usize> = self
             .buf
             .split_inclusive('\n')
@@ -12053,6 +12053,14 @@ impl ModalApp {
             }
             return;
         }
+        // Every motion in an editor ends here, including the ones the
+        // vim engine resolves inside itself (`j`, `k`, `G`, a search)
+        // and the file buffer's own handler — none of which know about
+        // folds, because folds live on the app. So the rescue is one
+        // wrapper rather than a hook per motion: whatever the key did,
+        // the caret must not end on a line no shell will paint.
+        let before = self.body.cursor_line_col().0;
+        let editing = self.surface.is_editor();
         match self.surface {
             ModalSurface::Search => self.on_search_key(shell, key, ctrl, alt, text),
             ModalSurface::Capture => self.on_capture_key(shell, key, ctrl, alt, text),
@@ -12111,6 +12119,12 @@ impl ModalApp {
             ModalSurface::EditBlock => self.on_editblock_key(shell, key, ctrl, alt, text),
             ModalSurface::EditFile => self.on_editfile_key(shell, key, ctrl, alt, text),
             ModalSurface::Browse => self.on_browse_key(shell, key, ctrl, alt, text),
+        }
+        // Only while a buffer is still open, and only if it was open
+        // before: a key that *closed* one has no caret left to rescue.
+        if editing && self.surface.is_editor() {
+            let after = self.body.cursor_line_col().0;
+            self.leave_hidden_line(after > before);
         }
     }
 
@@ -16139,6 +16153,16 @@ impl ModalApp {
         match self.body.mode() {
             EditorMode::Insert => self.insert_key(shell, key, ctrl, alt, text),
             EditorMode::Normal | EditorMode::Visual | EditorMode::VisualLine => {
+                // org's `org-cycle`. Three reports were somebody
+                // pressing it: the drawers and the headings would not
+                // toggle, and the only keys that did were `z a` and
+                // `M-TAB`, neither of which is the one anybody tries.
+                // In INSERT it stays org-tempo and completion, which is
+                // what TAB is for while you are typing.
+                if key == "tab" {
+                    self.toggle_body_fold();
+                    return;
+                }
                 if self.which_key_key(text) {
                     return;
                 }
@@ -17669,6 +17693,31 @@ impl ModalApp {
     /// A note with three source blocks is mostly code you are not
     /// reading, and a file opened in the editor view is mostly
     /// headlines you are not editing. Org folds both.
+    /// Move the caret off a hidden line, if it is on one.
+    ///
+    /// A shell paints every line except the hidden ones, so a caret
+    /// inside a fold is a caret that is not drawn — it has not moved
+    /// and it still takes your typing, which is worse than losing it.
+    /// It surfaces at the fold's own first line, which is the line
+    /// that stands for what is inside it.
+    ///
+    /// `downwards` says which way the caret was travelling, so a
+    /// motion *through* a fold comes out the far side rather than
+    /// sticking to its head and refusing to move.
+    fn leave_hidden_line(&mut self, downwards: bool) {
+        let (line, col) = self.body.cursor_line_col();
+        let Some(&(start, end)) = self
+            .body_folds
+            .iter()
+            .find(|(s, e)| (*s + 1..=*e).contains(&line))
+        else {
+            return;
+        };
+        let target = if downwards { end + 1 } else { start };
+        let last = self.body.text().split('\n').count().saturating_sub(1);
+        self.body.goto_line_col(target.min(last), col);
+    }
+
     fn toggle_body_fold(&mut self) {
         let (line, _) = self.body.cursor_line_col();
         if let Some(i) = self
@@ -17680,11 +17729,15 @@ impl ModalApp {
             self.say(format!("unfolded line {}", start + 1));
             return;
         }
+        // Fold first, then rescue the caret: folding the range the
+        // caret is in is the common case, and leaving it inside is the
+        // "caret disappears" report.
         let text = self.body.text().to_owned();
         let lines: Vec<&str> = text.split('\n').collect();
         match fold_range(&lines, line) {
             Some((start, end)) => {
                 self.body_folds.push((start, end));
+                self.leave_hidden_line(false);
                 self.say(format!("folded {} line(s)", end - start));
             }
             None => {
