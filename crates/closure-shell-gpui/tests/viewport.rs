@@ -335,3 +335,65 @@ fn the_padding_does_not_grow_with_the_row_count() {
     };
     assert!((slack(1) - slack(9)).abs() < 0.001, "constant slack");
 }
+
+// === Outline indentation you can follow rather than guess at ===
+//
+// Reported 2026-08-02: "the outline indention is off. Please tabularize
+// (and/or colorize) it in order to show the hierachy clearly. Currently
+// it is more like guessing." And separately, "outline sometimes wrong
+// spacing".
+//
+// Two causes. The step was a flat 14px while every other cell in the
+// row scaled with the window zoom, so the hierarchy flattened as the
+// text grew. And there was nothing *in* the indent — just empty space,
+// which at one step per level is a width you have to measure by eye.
+// A guide rule per ancestor is what every outliner draws there.
+
+#[test]
+fn the_indent_step_scales_with_the_zoom() {
+    use closure_shell_gpui::indent_step;
+    assert!((indent_step(2.0) / indent_step(1.0) - 2.0).abs() < 0.001);
+    assert!(indent_step(1.0) > 0.0);
+}
+
+#[test]
+fn a_row_is_indented_once_per_ancestor() {
+    use closure_shell_gpui::indent_guides;
+    assert_eq!(indent_guides(1), 0, "a top-level row starts at the margin");
+    assert_eq!(indent_guides(2), 1);
+    assert_eq!(indent_guides(4), 3);
+}
+
+#[test]
+fn level_zero_is_treated_as_the_top() {
+    // Levels come from the parser and are 1-based; a 0 would underflow
+    // the subtraction and indent a row off the screen.
+    use closure_shell_gpui::indent_guides;
+    assert_eq!(indent_guides(0), 0);
+}
+
+#[test]
+fn a_guide_is_dimmer_than_the_text_it_leads_to() {
+    // It is a rule to follow, not a thing to read: as loud as the
+    // headline it belongs to, the column would compete with the titles.
+    use closure_shell_gpui::{color_u32, guide_tint};
+    let t = closure_shell_core::Theme::doom_vibrant();
+    let bg = color_u32(t.color(closure_shell_core::ColorRole::Bg));
+    let fg = color_u32(t.color(closure_shell_core::ColorRole::Accent));
+    let guide = guide_tint(&t, 1);
+    let lum = |v: u32| (v >> 16) + ((v >> 8) & 0xff) + (v & 0xff);
+    assert!(lum(guide) > lum(bg), "visible against the background");
+    assert!(lum(guide) < lum(fg), "and quieter than the headline");
+}
+
+#[test]
+fn each_depth_gets_its_own_guide_colour() {
+    // The rule leading to a level-3 headline is that level's colour,
+    // so the column says which depth it is taking you to.
+    use closure_shell_gpui::guide_tint;
+    let t = closure_shell_core::Theme::doom_vibrant();
+    let mut seen: Vec<u32> = (1..=5).map(|d| guide_tint(&t, d)).collect();
+    seen.sort_unstable();
+    seen.dedup();
+    assert_eq!(seen.len(), 5);
+}

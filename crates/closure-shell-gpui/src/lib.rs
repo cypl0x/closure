@@ -3326,7 +3326,7 @@ impl GpuiView {
         // The fold state rides on the row: asking the vault per row per
         // frame is the same answer at wheel speed.
         let folded = row.folded;
-        let indent = f32::from(row.level.saturating_sub(1)) * 14.0;
+        let step = indent_step(zoom);
         let (todo_col, glyph) = match row.todo.as_deref() {
             Some("DONE" | "CANCELLED" | "KILL") => (co.success, "●"),
             Some(_) => (co.error, "○"),
@@ -3345,8 +3345,26 @@ impl GpuiView {
         // default, so without it the indent, the arrow and the glyph
         // gave up width to a long title — the columns of a row moved
         // with the length of its headline.
+        // One guide rule per ancestor, in that ancestor's own outline
+        // colour, mixed most of the way back to the background. Empty
+        // space at one step per level is a width you have to measure by
+        // eye — "currently it is more like guessing" — and a rule is
+        // what every outliner puts there instead.
+        let mut line = line;
+        for depth in 1..row.level {
+            line = line.child(
+                div()
+                    .w(px(step))
+                    .flex_none()
+                    .text_color(rgb(guide_tint_of(co, depth)))
+                    // A glyph, not a bordered box. A flex child with no
+                    // height of its own collapses, and a border on
+                    // nothing paints nothing — which is exactly what
+                    // the first attempt did on a real screen.
+                    .child("\u{2502}"),
+            );
+        }
         let mut line = line
-            .child(div().w(px(indent)).flex_none())
             // The arrow is there only when there is a subtree under it.
             // Painted on every row, a leaf offered an affordance that
             // does nothing when clicked — which is most of what "the
@@ -7098,6 +7116,51 @@ fn decorated(kind: BodySpan) -> gpui::HighlightStyle {
         ..Default::default()
     }
 }
+
+/// One step of outline indentation, in pixels at this zoom.
+///
+/// It was a flat 14px while every other cell in the row scaled with the
+/// window, so the hierarchy flattened as the text grew — half of "the
+/// outline indention is off … currently it is more like guessing".
+#[must_use]
+pub fn indent_step(zoom: f32) -> f32 {
+    scaled_text_px(INDENT_STEP, zoom)
+}
+
+/// How many guide rules a row at this outline `level` draws: one per
+/// ancestor.
+///
+/// Levels are 1-based, and a 0 from anywhere would underflow into an
+/// indent the width of the screen.
+#[must_use]
+pub const fn indent_guides(level: u8) -> usize {
+    level.saturating_sub(1) as usize
+}
+
+/// The colour of the guide rule leading to depth `depth`.
+///
+/// That depth's own outline colour, mixed most of the way back to the
+/// background: the column says which level it is taking you to without
+/// competing with the titles beside it. Empty space was what made the
+/// depth something to measure by eye.
+#[must_use]
+pub fn guide_tint(theme: &closure_shell_core::Theme, depth: u8) -> u32 {
+    guide_tint_of(Colors::of(theme), depth)
+}
+
+/// [`guide_tint`] over already-resolved colours, for the render path.
+fn guide_tint_of(co: Colors, depth: u8) -> u32 {
+    mix_u32(co.bg, co.outline(depth), GUIDE_MIX)
+}
+
+/// One outline indent step, before zoom.
+const INDENT_STEP: f32 = 16.0;
+/// How much of the level's colour a guide rule keeps (0-255).
+///
+/// A quarter was invisible against the panel on a real screen: the rule
+/// has to be findable at a glance or it is the same empty space it
+/// replaced. Half reads as a hairline without competing with the text.
+const GUIDE_MIX: u32 = 0x88;
 
 /// Theme colour for a body-editor span kind. Shared by the editor
 /// pane and the read-only detail preview so both read identically.
