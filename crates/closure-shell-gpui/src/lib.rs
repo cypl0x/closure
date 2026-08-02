@@ -3766,53 +3766,22 @@ impl GpuiView {
         // default, so without it the indent, the arrow and the glyph
         // gave up width to a long title — the columns of a row moved
         // with the length of its headline.
-        // One guide rule per ancestor, in that ancestor's own outline
-        // colour, mixed most of the way back to the background. Empty
-        // space at one step per level is a width you have to measure by
-        // eye — "currently it is more like guessing" — and a rule is
-        // what every outliner puts there instead.
-        let mut line = line;
-        for depth in 1..row.level {
-            line = line.child(
-                div()
-                    .w(px(step))
-                    .flex_none()
-                    .text_color(rgb(guide_tint_of(co, depth)))
-                    // A glyph, not a bordered box. A flex child with no
-                    // height of its own collapses, and a border on
-                    // nothing paints nothing — which is exactly what
-                    // the first attempt did on a real screen.
-                    .child("\u{2502}"),
-            );
-        }
-        let mut line = line
-            // The arrow is there only when there is a subtree under it.
-            // Painted on every row, a leaf offered an affordance that
-            // does nothing when clicked — which is most of what "the
-            // collapse isn't working" looks like from the outside. The
-            // column stays either way, so the titles still line up.
-            .child(if row.has_children {
-                div()
-                    .debug_selector(|| format!("fold-{i}"))
-                    .w(px(18.0))
-                    .flex_none()
-                    .text_color(rgb(if folded { co.accent } else { co.muted }))
-                    .cursor_pointer()
-                    .on_mouse_down(MouseButton::Left, act("toggle-fold"))
-                    .child(if folded { "▸" } else { "▾" })
-            } else {
-                div().w(px(18.0)).flex_none()
-            })
-            .child(
-                div()
-                    .debug_selector(|| format!("todo-{i}"))
-                    .w(px(18.0))
-                    .flex_none()
-                    .text_color(rgb(todo_col))
-                    .cursor_pointer()
-                    .on_mouse_down(MouseButton::Left, act("toggle-todo"))
-                    .child(glyph),
-            );
+        // The status gutter, at the row's left edge and the same width
+        // on every row. It used to come *after* the indent, so the dot
+        // and the two chips moved right with the depth: six rows at
+        // four levels put their `TODO` at four different x, and the one
+        // question the outline exists to answer — what is still open —
+        // could not be answered by running an eye down a column.
+        let mut line = line.child(
+            div()
+                .debug_selector(|| format!("todo-{i}"))
+                .w(px(scaled_text_px(GLYPH_COL, zoom)))
+                .flex_none()
+                .text_color(rgb(todo_col))
+                .cursor_pointer()
+                .on_mouse_down(MouseButton::Left, act("toggle-todo"))
+                .child(glyph),
+        );
         // The keyword column is always there, whether or not this row
         // has a keyword. Painted only when there is one, the titles of
         // a mixed list started at two different x positions and the
@@ -3859,6 +3828,39 @@ impl GpuiView {
                 .child(closure_shell_core::priority_cookie(letter))
         } else {
             cookie
+        });
+        // Depth reads from here on: the guide rules and the fold arrow
+        // travel with the title, which is where the tree is.
+        let mut line = line;
+        for depth in 1..row.level {
+            line = line.child(
+                div()
+                    .w(px(step))
+                    .flex_none()
+                    .text_color(rgb(guide_tint_of(co, depth)))
+                    // A glyph, not a bordered box. A flex child with no
+                    // height of its own collapses, and a border on
+                    // nothing paints nothing — which is exactly what
+                    // the first attempt did on a real screen.
+                    .child("\u{2502}"),
+            );
+        }
+        // The arrow is there only when there is a subtree under it.
+        // Painted on every row, a leaf offered an affordance that does
+        // nothing when clicked — which is most of what "the collapse
+        // isn't working" looks like from the outside. The column stays
+        // either way, so the titles still line up.
+        let line = line.child(if row.has_children {
+            div()
+                .debug_selector(|| format!("fold-{i}"))
+                .w(px(18.0))
+                .flex_none()
+                .text_color(rgb(if folded { co.accent } else { co.muted }))
+                .cursor_pointer()
+                .on_mouse_down(MouseButton::Left, act("toggle-fold"))
+                .child(if folded { "▸" } else { "▾" })
+        } else {
+            div().w(px(18.0)).flex_none()
         });
         Self::outline_title_cells(line, co, zoom, i, row)
     }
@@ -8102,6 +8104,37 @@ pub fn indent_step(zoom: f32) -> f32 {
     scaled_text_px(INDENT_STEP, zoom)
 }
 
+/// The width of the row's status gutter: the dot, the keyword and the
+/// priority cookie, at `zoom`.
+///
+/// Level-independent by construction, which is the point. The indent
+/// used to come first in the row, so these three moved right with the
+/// depth and six rows at four levels put their `TODO` chips at four
+/// different x — and the one question the outline exists to answer,
+/// "what is still open", could not be answered by running an eye down
+/// a column.
+#[must_use]
+pub fn gutter_px(kw_chars: f32, zoom: f32) -> f32 {
+    // The dot's own column, then the two chips and the gaps after them.
+    scaled_text_px(GLYPH_COL, zoom) + chip_col_px(kw_chars, zoom) + chip_col_px(COOKIE_CHARS, zoom)
+}
+
+/// How far a row's title is indented for its `level`, at `zoom`.
+///
+/// Applies to the title alone now: depth reads from the guide rules
+/// and the fold arrow beside it, and the status cells before it stay
+/// in one column.
+#[must_use]
+pub fn title_indent_px(level: u8, zoom: f32) -> f32 {
+    // One guide per ancestor, and an outline deeper than a `u16` is
+    // not an outline — the clamp is what keeps the cast honest.
+    let guides = u16::try_from(indent_guides(level)).unwrap_or(u16::MAX);
+    f32::from(guides) * indent_step(zoom)
+}
+
+/// Width of the status-dot column, unzoomed.
+const GLYPH_COL: f32 = 14.0;
+
 /// How many guide rules a row at this outline `level` draws: one per
 /// ancestor.
 ///
@@ -8139,7 +8172,6 @@ const GUIDE_MIX: u32 = 0x88;
 
 /// Characters reserved for the priority cookie: `[#A]` is four and
 /// never more, plus a half for the gap after it.
-#[cfg(feature = "gpui")]
 const COOKIE_CHARS: f32 = 4.5;
 
 /// The colour of a priority cookie — org's `org-priority-faces`.
