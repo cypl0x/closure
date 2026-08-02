@@ -846,12 +846,34 @@ impl Vault {
     /// [`VaultError::Command`] for an empty ring, an unknown target,
     /// or a result that fails to parse; [`VaultError::Io`] on write.
     pub fn paste(&mut self, path: &Path, after: &BlockId) -> Result<(), VaultError> {
-        self.refresh_all_stale();
         let source = self
             .kill_ring
             .last()
             .cloned()
             .ok_or_else(|| VaultError::Command("kill ring is empty".into()))?;
+        self.paste_text(path, after, &source)
+    }
+
+    /// Splice arbitrary org `text` in as the sibling after `after`.
+    ///
+    /// What [`Self::paste`] does once it has decided *what* to paste —
+    /// separated so the shells can paste something that never went
+    /// through the kill ring, such as a subtree copied out of another
+    /// application.
+    ///
+    /// # Errors
+    ///
+    /// [`VaultError::UnknownId`] for an unknown file,
+    /// [`VaultError::Command`] when `after` is not in it or the splice
+    /// will not parse.
+    pub fn paste_text(
+        &mut self,
+        path: &Path,
+        after: &BlockId,
+        text: &str,
+    ) -> Result<(), VaultError> {
+        self.refresh_all_stale();
+        let source = text.to_owned();
         let doc = self
             .documents
             .get(path)

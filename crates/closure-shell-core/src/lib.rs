@@ -577,6 +577,31 @@ impl Shell {
         self.vault.paste(&path, after)
     }
 
+    /// Paste arbitrary org `text` as the sibling after `after`.
+    ///
+    /// [`Self::paste_subtree`] can only replay what closure itself
+    /// cut. This is the door for everything else — a subtree copied
+    /// out of a browser, another window, another editor — which is the
+    /// inward half of "sync with system clipboard (two way)" for the
+    /// outline.
+    ///
+    /// # Errors
+    ///
+    /// [`closure_store::VaultError::UnknownId`] when nothing has that
+    /// id; otherwise the [`closure_store::Vault::paste_text`] contract.
+    pub fn paste_org_after(
+        &mut self,
+        after: &closure_core::BlockId,
+        text: &str,
+    ) -> Result<(), closure_store::VaultError> {
+        let path = self
+            .vault
+            .find_by_id(after)
+            .map(|(_, p)| p.to_path_buf())
+            .ok_or_else(|| closure_store::VaultError::UnknownId(after.as_str().to_owned()))?;
+        self.vault.paste_text(&path, after, text)
+    }
+
     /// The top of the kill ring, if anything has been cut or copied.
     #[must_use]
     pub fn ring_top(&self) -> Option<&str> {
@@ -12474,6 +12499,48 @@ impl ModalApp {
         self.run_command(shell, canonical_command(command));
     }
 
+    /// Paste whatever is on the clipboard into the outline as a
+    /// headline after `after`.
+    ///
+    /// The fallback when closure's own ring is empty. Text that is
+    /// already org lands as it is; text that is not gets a headline of
+    /// its first line, because "nothing happened" is the outcome the
+    /// report is about and a browser selection is rarely a `*`.
+    fn paste_clipboard_subtree(
+        &mut self,
+        shell: &mut Shell,
+        after: &closure_core::BlockId,
+        title: &str,
+    ) {
+        let text = self.register_text().trim_end().to_owned();
+        if text.is_empty() {
+            self.say("nothing to paste — the ring and the clipboard are both empty");
+            return;
+        }
+        let org = if text.trim_start().starts_with('*') {
+            // A trailing newline, always. Without it the splice runs
+            // the pasted body straight into the headline that follows
+            // — `with a body line* Beta` — and that headline stops
+            // being one. Caught on screen and in the file on disk; the
+            // outline showed two rows where there had been three.
+            format!("{text}\n")
+        } else {
+            // The first line names it; the rest becomes its body.
+            let mut lines = text.lines();
+            let head = lines.next().unwrap_or_default();
+            let rest: Vec<&str> = lines.collect();
+            if rest.is_empty() {
+                format!("* {head}\n")
+            } else {
+                format!("* {head}\n{}\n", rest.join("\n"))
+            }
+        };
+        match shell.paste_org_after(after, &org) {
+            Ok(()) => self.status = format!("pasted the clipboard after {title}"),
+            Err(e) => self.status = format!("paste failed: {e}"),
+        }
+    }
+
     /// The file `u` and `C-r` speak to.
     ///
     /// The last file a command actually changed, and only the selected
@@ -20823,7 +20890,19 @@ impl ModalApp {
                 if let Some(row) = self.rows_shared(shell).get(self.selected).cloned() {
                     let bid = closure_core::BlockId::from_existing(&row.id);
                     match shell.cut_subtree(&bid) {
-                        Ok(()) => self.status = format!("cut: {} — p pastes it", row.title),
+                        Ok(()) => {
+                            // Onto the register too, so the window's
+                            // existing watcher offers it to the system
+                            // clipboard: "sync with system clipboard
+                            // (two way)" was one way only outside a
+                            // buffer, and a headline you cut could not
+                            // be pasted anywhere else.
+                            if let Some(text) = shell.ring_top() {
+                                let text = text.to_owned();
+                                self.set_register_from_clipboard(&text);
+                            }
+                            self.status = format!("cut: {} — p pastes it", row.title);
+                        }
                         Err(e) => self.status = format!("delete failed: {e}"),
                     }
                     self.selected = self
@@ -20836,7 +20915,13 @@ impl ModalApp {
                     let bid = closure_core::BlockId::from_existing(&row.id);
                     match shell.paste_subtree(&bid) {
                         Ok(()) => self.status = format!("pasted after {}", row.title),
-                        Err(e) => self.status = format!("paste failed: {e}"),
+                        // Nothing was cut here, but something may be on
+                        // the clipboard — org copied from a browser, a
+                        // subtree from another window. The ring wins
+                        // when it has anything, so cut-and-paste inside
+                        // the outline never starts pasting whatever an
+                        // unrelated application last held.
+                        Err(_) => self.paste_clipboard_subtree(shell, &bid, &row.title),
                     }
                 } else {
                     self.say("nothing selected — put the cursor where it should land");

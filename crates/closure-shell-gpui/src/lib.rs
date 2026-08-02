@@ -2911,9 +2911,17 @@ impl GpuiView {
     /// on the system clipboard and being able to use p in
     /// Vim/helix/Doom mode to paste would be nice".
     fn take_clipboard(&mut self, cx: &Context<Self>) {
-        if !self.app.surface().is_editor() {
-            return;
-        }
+        // Every surface, not only a buffer. Gated on `is_editor` the
+        // outline could never see what another application had copied,
+        // so "sync with system clipboard (two way)" was one way and one
+        // surface: `p` on a headline reported an empty kill ring while
+        // a subtree sat on the clipboard.
+        //
+        // And no watcher — the answer to "shall we build a clipboard
+        // watcher?". A watcher is a timer, a thread and a stale answer
+        // between ticks. This reads the clipboard on the keypress that
+        // is about to need it, which is exact and costs nothing while
+        // nobody is typing.
         let Some(text) = cx.read_from_clipboard().and_then(|c| c.text()) else {
             return;
         };
