@@ -37,9 +37,16 @@ fn main() {
         (!text.is_empty()).then_some(text)
     };
 
-    if let Some(commit) = git(&["rev-parse", "--short=12", "HEAD"]) {
+    // A nix build has no `.git` to ask, but the flake knows the
+    // revision and passes it in. Whatever is already set wins: it came
+    // from something that could see the repository, and this could
+    // not.
+    if std::env::var_os("CLOSURE_GIT_COMMIT").is_none()
+        && let Some(commit) = git(&["rev-parse", "--short=12", "HEAD"])
+    {
         println!("cargo::rustc-env=CLOSURE_GIT_COMMIT={commit}");
     }
+    println!("cargo::rerun-if-env-changed=CLOSURE_GIT_COMMIT");
     if let Some(count) = git(&["rev-list", "--count", "HEAD"]) {
         println!("cargo::rustc-env=CLOSURE_GIT_COMMITS={count}");
     }

@@ -1,13 +1,15 @@
-{...}: {
+_: {
   projectRootFile = "flake.nix";
 
-  programs.rustfmt.enable = true;
-  programs.alejandra.enable = true;
-  programs.prettier = {
-    enable = true;
-    includes = ["*.md" "*.yml" "*.yaml" "*.json"];
+  programs = {
+    rustfmt.enable = true;
+    alejandra.enable = true;
+    prettier = {
+      enable = true;
+      includes = ["*.md" "*.yml" "*.yaml" "*.json"];
+    };
+    taplo.enable = true;
   };
-  programs.taplo.enable = true;
 
   settings.global.excludes = [
     "LICENSE*"

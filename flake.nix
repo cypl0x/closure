@@ -31,6 +31,24 @@
 
     treefmtEval = eachSystem ({pkgs, ...}: treefmt-nix.lib.evalModule pkgs ./treefmt.nix);
 
+    # The libraries gpui needs to link against and to find at run time.
+    # Named once: the devShell puts them on `LD_LIBRARY_PATH` and the
+    # packaged binary is wrapped with them, and those two lists
+    # disagreeing is how a build that works in the shell fails as an
+    # artefact.
+    gpuiBuildInputs = pkgs:
+      with pkgs; [
+        vulkan-loader
+        libxkbcommon
+        wayland
+        libxcb
+        libx11
+        libxext
+        fontconfig
+        freetype
+        libGL
+      ];
+
     rustToolchain = eachSystem ({fenixPkgs, ...}:
       fenixPkgs.fromToolchainFile {
         file = ./rust-toolchain.toml;
@@ -38,6 +56,74 @@
       });
   in {
     formatter = eachSystem ({system, ...}: treefmtEval.${system}.config.build.wrapper);
+
+    # A closure you can `nix build` and run, rather than a devShell you
+    # have to be inside: "Currently we don't have any outputs or build
+    # steps that create like a self contained app."
+    #
+    # Crates are vendored from `Cargo.lock` by `buildRustPackage`, so
+    # the build is hermetic — which is also what lets the cargo gates
+    # below run as real flake checks. Without a lockfile-driven vendor
+    # they cannot, because the sandbox has no network; that was the
+    # reason `nix flake check` had only formatting in it.
+    packages = eachSystem ({
+      system,
+      pkgs,
+      ...
+    }: let
+      rust = rustToolchain.${system};
+      platform = pkgs.makeRustPlatform {
+        cargo = rust;
+        rustc = rust;
+      };
+      # The parts every variant shares. `buildRustPackage` needs a
+      # single source of truth for these or the two packages drift.
+      common = {
+        pname = "closure";
+        version = "0.0.0";
+        src = self;
+        cargoLock = {
+          lockFile = ./Cargo.lock;
+          allowBuiltinFetchGit = true;
+        };
+        # The workspace has a crate per shell; only the CLI produces a
+        # binary anyone runs.
+        cargoBuildFlags = ["-p" "closure-cli"];
+        doCheck = false;
+        # A nix source has no `.git`, so the build script cannot find
+        # the revision and honestly reports "unknown commit". The flake
+        # knows it, though, so it hands it over — and `dirtyShortRev`
+        # is what a build from an uncommitted tree gets, which keeps
+        # the claim as honest as the git path does.
+        CLOSURE_GIT_COMMIT = self.shortRev or self.dirtyShortRev or null;
+        meta = {
+          description = "local-first plain-text PKM kernel";
+          mainProgram = "closure";
+        };
+      };
+    in {
+      default = platform.buildRustPackage common;
+
+      # The windowed build, self-contained: gpui needs its libraries
+      # found at *run* time, not only at link time, so the binary is
+      # wrapped with them rather than left to a devShell's
+      # LD_LIBRARY_PATH. That is the difference between an executable
+      # and an executable you can copy somewhere.
+      gpui = platform.buildRustPackage (common
+        // {
+          pname = "closure-gpui";
+          buildFeatures = ["gpui"];
+          nativeBuildInputs = [pkgs.pkg-config pkgs.makeWrapper];
+          buildInputs = gpuiBuildInputs pkgs;
+          # The bundled font, resolved at build time exactly as the
+          # devShell does it.
+          CLOSURE_FONT_DIR = "${pkgs.maple-mono.NF}/share/fonts/truetype";
+          postInstall = ''
+            wrapProgram $out/bin/closure \
+              --prefix LD_LIBRARY_PATH : ${pkgs.lib.makeLibraryPath (gpuiBuildInputs pkgs)}
+          '';
+        });
+    });
 
     devShells = eachSystem ({
         system,
@@ -156,21 +242,55 @@
         };
       });
 
-    # `nix flake check` runs hermetic checks only: formatting + dead-nix
-    # analysis. Cargo-based checks (test, clippy) require network for crate
-    # fetch and run via `nix develop -c cargo ...` locally and in CI.
+    # `nix flake check` runs the real gates: "Include all of the tests,
+    # linter etc. Even add more linters like deadnix, alejandra etc.
+    # Clippy has to be run from there too."
+    #
+    # It used to be formatting and dead-nix alone, on the reasoning that
+    # the sandbox has no network so cargo cannot fetch crates. True of
+    # a bare `cargo build`; not true once the lockfile is vendored,
+    # which `packages` above now does. The cargo gates are derivations
+    # built from that same vendored source, so they are as hermetic as
+    # anything else here.
     checks = eachSystem ({
       system,
       pkgs,
       ...
-    }: {
-      # Only truly hermetic checks live here. The nix build sandbox has
-      # no network, so cargo can't fetch crates.io deps inside a check
-      # derivation — the cargo-based gates (clippy, nextest, coverage
-      # threshold, wasm target, fuzz/replay) therefore run via
-      # `nix develop -c just <recipe>` (see the justfile), where the
-      # registry is reachable. `just check` is the one-command gate;
-      # `just coverage` enforces the line-coverage floor.
+    }: let
+      rust = rustToolchain.${system};
+      platform = pkgs.makeRustPlatform {
+        cargo = rust;
+        rustc = rust;
+      };
+      cargoGate = name: args:
+        platform.buildRustPackage {
+          pname = "closure-${name}";
+          version = "0.0.0";
+          src = self;
+          cargoLock = {
+            lockFile = ./Cargo.lock;
+            allowBuiltinFetchGit = true;
+          };
+          # `git` because the vault's git widgets are tested against a
+          # real repository, and the sandbox has no tools it is not
+          # given. `HOME` because git refuses to run without one.
+          nativeBuildInputs = [pkgs.pkg-config pkgs.git];
+          HOME = "/build";
+          buildInputs = gpuiBuildInputs pkgs;
+          # The same font directory the devShell and the packaged
+          # binary use. Without it `bundled_fonts` compiles to a
+          # different body, and the first run of this check found a
+          # clippy warning the local gates cannot see — three
+          # environments disagreeing about what is being compiled is
+          # the bug, not the lint.
+          CLOSURE_FONT_DIR = "${pkgs.maple-mono.NF}/share/fonts/truetype";
+          buildPhase = "cargo ${args}";
+          # The gate *is* the build; there is nothing to install and
+          # nothing to check afterwards.
+          doCheck = false;
+          installPhase = "touch $out";
+        };
+    in {
       formatting = treefmtEval.${system}.config.build.check self;
       deadnix =
         pkgs.runCommand "deadnix-check" {
@@ -180,6 +300,19 @@
           deadnix --fail .
           touch $out
         '';
+      # `statix` looks for nix antipatterns the formatter does not —
+      # alejandra is already the formatter (via treefmt), so adding it
+      # again as a linter would only run the same check twice.
+      statix =
+        pkgs.runCommand "statix-check" {
+          nativeBuildInputs = [pkgs.statix];
+        } ''
+          cp -r ${self}/. .
+          statix check .
+          touch $out
+        '';
+      tests = cargoGate "tests" "test --workspace --locked";
+      clippy = cargoGate "clippy" "clippy --workspace --all-targets --locked -- -D warnings";
     });
   };
 }
