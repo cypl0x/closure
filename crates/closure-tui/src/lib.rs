@@ -709,7 +709,7 @@ impl App {
             Some((_, items, ix)) if *ix != usize::MAX => {
                 format!("completion {}/{}  C-n/C-p cycle", ix + 1, items.len())
             }
-            _ => closure_shell_core::editor_hint(self.body.mode()).to_owned(),
+            _ => closure_shell_core::editor_hint(self.body.mode(), self.input_mode).to_owned(),
         };
         let (line, col) = self.body.cursor_line_col();
         format!(

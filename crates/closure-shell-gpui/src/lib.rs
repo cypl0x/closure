@@ -3808,7 +3808,7 @@ impl GpuiView {
             div()
                 .text_color(rgb(co.muted))
                 .text_size(self.sz(11.0))
-                .child(closure_shell_core::editor_hint(mode)),
+                .child(closure_shell_core::editor_hint(mode, self.app.input_mode())),
         );
         // Saving and discarding were chords and nothing else: `C-Enter`
         // if you knew, and an Esc that used to throw the buffer away if
@@ -3827,7 +3827,11 @@ impl GpuiView {
                 .child(format!("{label}  {chord}"))
         };
         header
-            .child(button("✓ save", co.success, "C-⏎").on_mouse_down(
+            // "save" was a lie by omission: the button *commits* —
+            // writes and closes — while `save-buffer` writes and stays.
+            // Two different things, and the chord beside it belongs to
+            // this one.
+            .child(button("✓ save & close", co.success, "C-⏎").on_mouse_down(
                 MouseButton::Left,
                 cx.listener(|this: &mut Self, _ev, _w, cx| {
                     this.app.commit_edit_body(&mut this.shell);

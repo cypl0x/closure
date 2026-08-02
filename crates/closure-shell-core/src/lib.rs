@@ -6785,20 +6785,41 @@ const PAGE_LINES: usize = 20;
 /// chord named here works in both (I4). Keep it in step with
 /// [`BodyEditor::modal_key`] — a hint that outlives its command is the
 /// same lie as a dead chord.
+///
+/// It takes the *input* mode too, because half the vocabulary does not
+/// exist in all of them: Notion and Emacs open a buffer straight into
+/// INSERT and have no NORMAL to drop into, so "Esc → NORMAL" there is
+/// an instruction that does something else entirely ("vim :q! and other
+/// bindings are shown in the editor even if I am in Notion or Emacs
+/// mode … hide irrelevant ones").
 #[must_use]
-pub const fn editor_hint(mode: EditorMode) -> &'static str {
+pub const fn editor_hint(mode: EditorMode, input: closure_config::InputMode) -> &'static str {
+    let modal = matches!(
+        input,
+        closure_config::InputMode::Vim
+            | closure_config::InputMode::Doom
+            | closure_config::InputMode::Helix
+    );
     match mode {
-        EditorMode::Insert => {
+        EditorMode::Insert if modal => {
             "type · TAB tempo (<s…) · C-n complete · C-a/e/k/y readline · Esc → NORMAL"
         }
-        EditorMode::Normal => {
+        // No NORMAL to be sent to, and `Esc` closes a clean buffer here
+        // rather than changing mode.
+        EditorMode::Insert => {
+            "type · TAB tempo (<s…) · C-n complete · C-a/e/k/y readline · Esc closes"
+        }
+        EditorMode::Normal if modal => {
             "w b e f t % move · diw caw dis dt, gUiw operate · . repeat · dd yy Y p · \
              \"a reg · ma `a mark · qa @a macro · /pat n N * # · C-a/C-x · C-d/C-u/C-f/C-b · \
              A I O R J r gv gi · v V · Esc"
         }
-        EditorMode::Visual | EditorMode::VisualLine => {
+        EditorMode::Visual | EditorMode::VisualLine if modal => {
             "motions + iw aw i( a\" extend · d c y > < operate · o swap ends · Esc → NORMAL"
         }
+        // Unreachable in a non-modal mode; naming its vocabulary would
+        // advertise chords that mode cannot run.
+        _ => "type · C-a/e/k/y readline · C-s saves · Esc closes",
     }
 }
 
