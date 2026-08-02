@@ -285,6 +285,15 @@ pub enum BodySpan {
     /// The content of a `#+BEGIN_EXAMPLE` / `EXPORT` / `COMMENT`
     /// block: verbatim, and not to be read as org syntax.
     Example,
+    /// A list item's marker: `-`, `+`, or an indented `*`, with the
+    /// space after it. Structure rather than content, so it takes a
+    /// face of its own and the words after it stay prose — a list whose
+    /// *text* changed colour is a list you cannot skim.
+    Bullet,
+    /// An ordered item's marker, `1.` or `1)`.
+    Number,
+    /// A checkbox, `[ ]` / `[X]` / `[-]`.
+    Checkbox,
     /// A headline's stars and title, carrying its nesting level — org's
     /// outline faces cycle by level, so the level is the colour.
     Headline(u8),
@@ -491,13 +500,35 @@ fn is_table_line(line: &str) -> bool {
 fn prose_spans(line: &str) -> Vec<(BodySpan, String)> {
     let links = line_links(line);
     let mut out = Vec::with_capacity(links.len() * 2 + 1);
-    let mut at = 0usize;
+    // The two marks that make a list a list. They were prose, so the
+    // shape of a list was carried entirely by its indentation.
+    let mut at = list_marker(line).map_or(0, |marker| {
+        let indent = line.len() - line.trim_start().len();
+        if indent > 0 {
+            out.push((BodySpan::Plain, line[..indent].to_owned()));
+        }
+        let cut = indent + marker_len(&line[indent..]);
+        out.push((marker, line[indent..cut].to_owned()));
+        cut
+    });
     for link in links {
         if at < link.range.start {
             push_markup_spans(&mut out, &line[at..link.range.start]);
         }
         out.push((BodySpan::Link, line[link.range.clone()].to_owned()));
         at = link.range.end;
+    }
+    // `- [X] thing` is a bullet, a checkbox and prose. The checkbox is
+    // the one you are looking for, so it is not left inside the words.
+    if at < line.len()
+        && matches!(
+            out.last().map(|(k, _)| *k),
+            Some(BodySpan::Bullet | BodySpan::Number)
+        )
+        && let Some(len) = checkbox_len(&line[at..])
+    {
+        out.push((BodySpan::Checkbox, line[at..at + len].to_owned()));
+        at += len;
     }
     if at < line.len() {
         push_markup_spans(&mut out, &line[at..]);
@@ -506,6 +537,51 @@ fn prose_spans(line: &str) -> Vec<(BodySpan, String)> {
         out.push((BodySpan::Plain, line.to_owned()));
     }
     out
+}
+
+/// Length of the checkbox `text` opens with, if it opens with one.
+fn checkbox_len(text: &str) -> Option<usize> {
+    let b = text.as_bytes();
+    (b.len() >= 3 && b[0] == b'[' && matches!(b[1], b' ' | b'X' | b'x' | b'-') && b[2] == b']')
+        .then_some(3)
+}
+
+/// The list marker a line opens with, if it opens with one.
+///
+/// org's own rule, and its one ambiguity: `-` and `+` are always
+/// bullets, `*` is a bullet only when it is indented, because at
+/// column zero it is a headline. Getting that backwards would repaint
+/// every headline in a file as a list item.
+fn list_marker(line: &str) -> Option<BodySpan> {
+    let t = line.trim_start();
+    let indented = line.len() != t.len();
+    let mut chars = t.chars();
+    match chars.next()? {
+        // `*` only when indented: at column zero it is a headline.
+        c if c == '-' || c == '+' || (c == '*' && indented) => chars
+            .next()
+            .is_some_and(|c| c == ' ')
+            .then_some(BodySpan::Bullet),
+        c if c.is_ascii_digit() => {
+            // `1.` and `1)` are counters; `1984 was a year` and `3.14`
+            // are sentences, and a classifier that recoloured those
+            // would repaint a paragraph on its first word.
+            let digits = t.len() - t.trim_start_matches(|c: char| c.is_ascii_digit()).len();
+            let rest = &t[digits..];
+            let closer = rest.starts_with('.') || rest.starts_with(')');
+            (closer && rest[1..].starts_with(' ')).then_some(BodySpan::Number)
+        }
+        _ => None,
+    }
+}
+
+/// How many bytes of `text` the marker itself occupies, its trailing
+/// space included — `"- "`, `"12. "`.
+fn marker_len(text: &str) -> usize {
+    let digits = text.len() - text.trim_start_matches(|c: char| c.is_ascii_digit()).len();
+    // One symbol, or a run of digits and its closer; then the space.
+    let head = if digits > 0 { digits + 1 } else { 1 };
+    head + 1
 }
 
 /// Append `text` to `out`, split into `Plain` and emphasis runs.
@@ -7829,12 +7905,18 @@ const fn span_color(co: Colors, kind: BodySpan) -> u32 {
         // bookkeeping, and since the editor started showing every
         // child's drawer, the loudest thing on the screen.
         BodySpan::Todo => co.error,
-        BodySpan::Keyword | BodySpan::Link => co.accent,
+        // A bullet joins them: structure the eye follows rather than
+        // reads, and quieter than the words it introduces.
+        BodySpan::Keyword | BodySpan::Link | BodySpan::Bullet => co.accent,
         // Literals and finished work read as settled.
-        BodySpan::Literal | BodySpan::Done => co.success,
+        // A ticked box is finished work too, and reads as the same
+        // settled green.
+        BodySpan::Literal | BodySpan::Done | BodySpan::Checkbox => co.success,
         BodySpan::Table => co.heading2,
         BodySpan::InlineCode | BodySpan::Verbatim | BodySpan::Example => co.code,
-        BodySpan::Quote => co.heading3,
+        // A counter takes the violet beside the bullet's blue, so a
+        // numbered list reads as a different shape at a glance.
+        BodySpan::Quote | BodySpan::Number => co.heading3,
         // Org cycles its outline faces by level. Three colours meant
         // depth 4 read exactly like depth 1; doom-themes goes to eight,
         // repeating blue and magenta lighter each time. Five is where a
