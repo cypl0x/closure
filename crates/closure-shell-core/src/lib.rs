@@ -4073,6 +4073,11 @@ impl LineInput {
             // prompt makes it feel unsatisfying".
             "left" if ctrl || alt => self.word_backward(),
             "right" if ctrl || alt => self.word_forward(),
+            // readline's own word motions. The arrow spellings were
+            // here and these were not, so the chord an Emacs hand
+            // actually reaches for did nothing.
+            "b" if alt => self.word_backward(),
+            "f" if alt => self.word_forward(),
             "d" if alt => self.delete_word_forward(),
             "left" => self.left(),
             "right" => self.right(),
@@ -4148,6 +4153,28 @@ impl LineInput {
         let without_word = trimmed.trim_end_matches(|c: char| !c.is_whitespace());
         without_word.len()
     }
+}
+
+/// Drive one field with the session's shared kill ring.
+///
+/// Every surface with a text field routes its unclaimed keys through
+/// here. That is what makes `C-a`, `M-b`, the arrows and `C-k`/`C-y`
+/// mean the same thing in all of them — "not for every new input field
+/// the same keybinding problems" — and what lets a kill in one prompt
+/// be yanked in the next. Reports whether the field took the key.
+fn line_key(
+    field: &mut LineInput,
+    kill: &mut String,
+    key: &str,
+    ctrl: bool,
+    alt: bool,
+    text: Option<char>,
+) -> bool {
+    field.set_kill(kill);
+    let claimed = field.key(key, ctrl, alt, text);
+    kill.clear();
+    kill.push_str(field.kill());
+    claimed
 }
 
 /// Body lines a shell is assumed to be able to paint until it says
@@ -10132,7 +10159,11 @@ pub struct ModalApp {
     mode: InputMode,
     surface: ModalSurface,
     selected: usize,
-    query: String,
+    /// The filter every list surface types into — search, body search,
+    /// and the buffer/file/tag/refile pickers. One field rather than
+    /// one per surface, so the readline chords cannot be right in some
+    /// of them and missing in the rest.
+    query: LineInput,
     /// Folded body ranges as `(first visible line, last hidden line)`.
     body_folds: Vec<(usize, usize)>,
     /// Whether the headline tree is pinned beside the full-window
@@ -10280,7 +10311,7 @@ pub struct ModalApp {
     /// cursor row. `None` when closed.
     slash: Option<(String, usize)>,
     /// The `:` command line's buffer while it is open.
-    ex_buf: String,
+    ex_buf: LineInput,
     /// Surface the `:` line was opened from, so Escape returns there.
     ex_return: Option<ModalSurface>,
     /// The live org-edit-special session: where it came from and the
@@ -10302,11 +10333,11 @@ pub struct ModalApp {
     sync_bind: std::net::SocketAddr,
     sync_advertise: Option<std::net::IpAddr>,
     /// The ticket-entry field on the Sync surface.
-    sync_buf: String,
+    sync_buf: LineInput,
     /// The assistant transcript, oldest first.
     chat: Vec<ChatTurn>,
     /// The question field on the assistant surface.
-    chat_buf: String,
+    chat_buf: LineInput,
     /// Whether a question is in flight, so the pane can say so rather
     /// than looking asleep.
     chat_busy: bool,
@@ -10526,7 +10557,7 @@ impl ModalApp {
     pub fn new(mode: InputMode) -> Self {
         Self {
             slash: None,
-            ex_buf: String::new(),
+            ex_buf: LineInput::default(),
             ex_return: None,
             special: None,
             special_return: None,
@@ -10534,9 +10565,9 @@ impl ModalApp {
             sync: None,
             sync_bind: DEFAULT_SYNC_BIND,
             sync_advertise: None,
-            sync_buf: String::new(),
+            sync_buf: LineInput::default(),
             chat: Vec::new(),
-            chat_buf: String::new(),
+            chat_buf: LineInput::default(),
             chat_busy: false,
             sniffer: SnifferApp::new(),
             conflicts: ConflictApp::new(Vec::new(), mode),
@@ -10544,7 +10575,7 @@ impl ModalApp {
             mode,
             surface: ModalSurface::Browse,
             selected: 0,
-            query: String::new(),
+            query: LineInput::default(),
             tree_open: false,
             body_folds: Vec::new(),
             capture_history: Vec::new(),
@@ -10767,16 +10798,23 @@ impl ModalApp {
                 self.palette_cursor = 0;
                 self.close_palette();
             }
-            "backspace" => {
-                self.field_buf.backspace();
-                self.palette_cursor = 0;
-            }
             "enter" => self.commit_palette(shell),
+            // Everything the list did not claim is the field's — the
+            // same field, and so the same chords, as every other
+            // prompt. A key that changed the text puts the cursor back
+            // on the first match, because the old index belonged to the
+            // old list.
             _ => {
-                // A modified letter is a chord nobody bound, not a
-                // character to filter by: `C-j` used to type a `j`.
-                if let Some(c) = text.filter(|_| !ctrl && !alt) {
-                    self.field_buf.insert_char(c);
+                let before = self.field_buf.text().to_owned();
+                line_key(
+                    &mut self.field_buf,
+                    &mut self.line_kill,
+                    key,
+                    ctrl,
+                    alt,
+                    text,
+                );
+                if self.field_buf.text() != before {
                     self.palette_cursor = 0;
                 }
             }
@@ -10881,7 +10919,7 @@ impl ModalApp {
     /// Search filter (only meaningful on the Search surface).
     #[must_use]
     pub fn query(&self) -> &str {
-        &self.query
+        self.query.text()
     }
     /// The Search overlay context line: search glyph, live query, caret
     /// bar, and the live match count, pluralized.
@@ -10997,7 +11035,7 @@ impl ModalApp {
     #[must_use]
     pub fn rows_shared(&self, shell: &Shell) -> std::sync::Arc<Vec<Row>> {
         let filter = if self.surface == ModalSurface::Search {
-            self.query.as_str()
+            self.query.text()
         } else {
             ""
         };
@@ -11036,7 +11074,7 @@ impl ModalApp {
     #[must_use]
     pub fn rows_uncached(&self, shell: &Shell) -> Vec<Row> {
         let filter = if self.surface == ModalSurface::Search {
-            self.query.as_str()
+            self.query.text()
         } else {
             ""
         };
@@ -11257,12 +11295,12 @@ impl ModalApp {
             ModalSurface::DbView => {
                 self.on_pane_key(key, self.db_rows(shell).1.len());
             }
-            ModalSurface::BodySearch => self.on_body_search_key(shell, key, text),
+            ModalSurface::BodySearch => self.on_body_search_key(shell, key, ctrl, alt, text),
             ModalSurface::Sniffer => self.on_sniffer_key(shell, key),
             ModalSurface::Conflicts => self.on_conflicts_key(shell, key),
-            ModalSurface::Ex => self.on_ex_key(shell, key, text),
-            ModalSurface::Sync => self.on_sync_key(shell, key, text),
-            ModalSurface::Llm => self.on_llm_key(key, text),
+            ModalSurface::Ex => self.on_ex_key(shell, key, ctrl, alt, text),
+            ModalSurface::Sync => self.on_sync_key(shell, key, ctrl, alt, text),
+            ModalSurface::Llm => self.on_llm_key(key, ctrl, alt, text),
             ModalSurface::Graph => {
                 let len = self.hub_rows(shell).len() + self.orphan_rows(shell).len();
                 self.on_pane_key(key, len);
@@ -11276,10 +11314,14 @@ impl ModalApp {
                 self.on_pane_key(key, len);
             }
             ModalSurface::DatePick => self.on_datepick_key(shell, key, text),
-            ModalSurface::Refile => self.on_refile_key(shell, key, text),
-            ModalSurface::TagPick => self.on_tagpick_key(shell, key, text),
-            ModalSurface::Buffers => self.on_picker_key(shell, key, text, PickerKind::Buffers),
-            ModalSurface::Files => self.on_picker_key(shell, key, text, PickerKind::Files),
+            ModalSurface::Refile => self.on_refile_key(shell, key, ctrl, alt, text),
+            ModalSurface::TagPick => self.on_tagpick_key(shell, key, ctrl, alt, text),
+            ModalSurface::Buffers => {
+                self.on_picker_key(shell, key, ctrl, alt, text, PickerKind::Buffers);
+            }
+            ModalSurface::Files => {
+                self.on_picker_key(shell, key, ctrl, alt, text, PickerKind::Files);
+            }
             ModalSurface::EditBlock => self.on_editblock_key(shell, key, ctrl, alt, text),
             ModalSurface::EditFile => self.on_editfile_key(shell, key, ctrl, alt, text),
             ModalSurface::Browse => self.on_browse_key(shell, key, ctrl, alt, text),
@@ -11289,7 +11331,7 @@ impl ModalApp {
     /// The `:` command line's buffer while it is open.
     #[must_use]
     pub fn ex_buffer(&self) -> &str {
-        &self.ex_buf
+        self.ex_buf.text()
     }
 
     /// Keys for the org-edit-special session.
@@ -11578,7 +11620,7 @@ impl ModalApp {
     /// The ticket-entry field on the Sync surface.
     #[must_use]
     pub fn sync_buffer(&self) -> &str {
-        &self.sync_buf
+        self.sync_buf.text()
     }
 
     /// The assistant transcript, oldest first.
@@ -11590,7 +11632,7 @@ impl ModalApp {
     /// The question field on the assistant surface.
     #[must_use]
     pub fn chat_buffer(&self) -> &str {
-        &self.chat_buf
+        self.chat_buf.text()
     }
 
     /// Whether a question is waiting on the provider.
@@ -11619,25 +11661,27 @@ impl ModalApp {
 
     /// Keys for the assistant: typing edits the question, Enter sends
     /// it, Escape leaves.
-    fn on_llm_key(&mut self, key: &str, text: Option<char>) {
+    fn on_llm_key(&mut self, key: &str, ctrl: bool, alt: bool, text: Option<char>) {
         match key {
             "escape" => {
                 self.go_home();
             }
-            "backspace" => {
-                self.chat_buf.pop();
-            }
             "enter" => {
-                let question = std::mem::take(&mut self.chat_buf);
+                let question = self.chat_buf.take();
                 let question = question.trim();
                 if !question.is_empty() {
                     self.chat_ask(question.to_owned());
                 }
             }
             _ => {
-                if let Some(c) = text {
-                    self.chat_buf.push(c);
-                }
+                line_key(
+                    &mut self.chat_buf,
+                    &mut self.line_kill,
+                    key,
+                    ctrl,
+                    alt,
+                    text,
+                );
             }
         }
     }
@@ -11728,17 +11772,14 @@ impl ModalApp {
 
     /// Keys for the Sync surface: typing edits the ticket field, Enter
     /// adds the peer, Escape leaves.
-    fn on_sync_key(&mut self, shell: &Shell, key: &str, text: Option<char>) {
+    fn on_sync_key(&mut self, shell: &Shell, key: &str, ctrl: bool, alt: bool, text: Option<char>) {
         match key {
             "escape" => {
                 self.sync_buf.clear();
                 self.go_home();
             }
-            "backspace" => {
-                self.sync_buf.pop();
-            }
             "enter" => {
-                let ticket = std::mem::take(&mut self.sync_buf);
+                let ticket = self.sync_buf.take();
                 match self.sync_mut().add_peer(ticket.trim()) {
                     Ok(()) => {
                         let n = self.sync_mut().peers().len();
@@ -11749,15 +11790,20 @@ impl ModalApp {
                     Err(e) => {
                         // Keep the text so it can be corrected rather
                         // than retyped.
-                        self.sync_buf = ticket;
+                        self.sync_buf.set_text(&ticket);
                         self.status = format!("bad ticket: {e}");
                     }
                 }
             }
             _ => {
-                if let Some(c) = text {
-                    self.sync_buf.push(c);
-                }
+                line_key(
+                    &mut self.sync_buf,
+                    &mut self.line_kill,
+                    key,
+                    ctrl,
+                    alt,
+                    text,
+                );
             }
         }
     }
@@ -12159,9 +12205,9 @@ impl ModalApp {
 
     /// The live filter the two pickers share, empty everywhere else so
     /// a stale query can never filter the outline.
-    const fn picker_filter(&self) -> &str {
+    fn picker_filter(&self) -> &str {
         if matches!(self.surface, ModalSurface::Buffers | ModalSurface::Files) {
-            self.query.as_str()
+            self.query.text()
         } else {
             ""
         }
@@ -12465,7 +12511,15 @@ impl ModalApp {
     ///
     /// One handler for both because they are the same interaction over
     /// different rows — a second copy would be a second set of bugs.
-    fn on_picker_key(&mut self, shell: &Shell, key: &str, text: Option<char>, kind: PickerKind) {
+    fn on_picker_key(
+        &mut self,
+        shell: &Shell,
+        key: &str,
+        ctrl: bool,
+        alt: bool,
+        text: Option<char>,
+        kind: PickerKind,
+    ) {
         let matches: Vec<usize> = match kind {
             PickerKind::Buffers => self
                 .buffer_rows(shell)
@@ -12488,12 +12542,6 @@ impl ModalApp {
                 self.selected = 0;
                 self.go_home();
             }
-            "down" => self.selected = (self.selected + 1).min(matches.len().saturating_sub(1)),
-            "up" => self.selected = self.selected.saturating_sub(1),
-            "backspace" => {
-                self.query.pop();
-                self.selected = 0;
-            }
             "enter" => {
                 let Some(&row) = matches.get(self.selected) else {
                     "nothing matches".clone_into(&mut self.status);
@@ -12507,10 +12555,29 @@ impl ModalApp {
                 }
             }
             _ => {
-                if let Some(c) = text
-                    && !c.is_control()
-                {
-                    self.query.push(c);
+                self.filter_key(key, ctrl, alt, text, matches.len().saturating_sub(1));
+            }
+        }
+    }
+
+    /// The keys a list filter and its field share.
+    ///
+    /// The arrows and `C-n`/`C-p`/`C-j`/`C-k` walk the results — in a
+    /// filter those have meant "next match" for as long as filters have
+    /// existed — and everything the list does not claim goes to the
+    /// field, which is the same [`LineInput`] every other prompt uses.
+    /// A key that changed the text puts the cursor back on the first
+    /// result, because the old index belonged to the old list.
+    fn filter_key(&mut self, key: &str, ctrl: bool, alt: bool, text: Option<char>, last: usize) {
+        match key {
+            "down" => self.selected = (self.selected + 1).min(last),
+            "up" => self.selected = self.selected.saturating_sub(1),
+            "n" | "j" if ctrl => self.selected = (self.selected + 1).min(last),
+            "p" | "k" if ctrl => self.selected = self.selected.saturating_sub(1),
+            _ => {
+                let before = self.query.text().to_owned();
+                line_key(&mut self.query, &mut self.line_kill, key, ctrl, alt, text);
+                if self.query.text() != before {
                     self.selected = 0;
                 }
             }
@@ -12528,7 +12595,7 @@ impl ModalApp {
     #[must_use]
     pub fn tag_rows(&self, shell: &Shell) -> Vec<TagRow> {
         let filter = if self.surface == ModalSurface::TagPick {
-            self.query.as_str()
+            self.query.text()
         } else {
             ""
         };
@@ -12616,7 +12683,14 @@ impl ModalApp {
     }
 
     /// The tag picker's keys.
-    fn on_tagpick_key(&mut self, shell: &mut Shell, key: &str, text: Option<char>) {
+    fn on_tagpick_key(
+        &mut self,
+        shell: &mut Shell,
+        key: &str,
+        ctrl: bool,
+        alt: bool,
+        text: Option<char>,
+    ) {
         let matches: Vec<String> = self
             .tag_rows(shell)
             .into_iter()
@@ -12632,19 +12706,13 @@ impl ModalApp {
                 self.go_home();
                 "tags left as they were".clone_into(&mut self.status);
             }
-            "down" => self.selected = (self.selected + 1).min(matches.len().saturating_sub(1)),
-            "up" => self.selected = self.selected.saturating_sub(1),
-            "backspace" => {
-                self.query.pop();
-                self.selected = 0;
-            }
             "enter" => self.commit_tag_picker(shell),
             " " | "space" => {
                 // Space ticks what the cursor is on; with nothing
                 // matching, it ticks what was typed — that is how a new
                 // tag gets into a vault at all.
                 let target = matches.get(self.selected).cloned().or_else(|| {
-                    let typed = self.query.trim().to_owned();
+                    let typed = self.query.text().trim().to_owned();
                     (!typed.is_empty()).then_some(typed)
                 });
                 if let Some(name) = target {
@@ -12654,13 +12722,7 @@ impl ModalApp {
                 }
             }
             _ => {
-                if let Some(c) = text
-                    && !c.is_control()
-                    && c != ' '
-                {
-                    self.query.push(c);
-                    self.selected = 0;
-                }
+                self.filter_key(key, ctrl, alt, text, matches.len().saturating_sub(1));
             }
         }
     }
@@ -12767,7 +12829,7 @@ impl ModalApp {
     pub fn refile_rows(&self, shell: &Shell) -> Vec<RefileRow> {
         let moving = self.refile_source.clone();
         let filter = if self.surface == ModalSurface::Refile {
-            self.query.as_str()
+            self.query.text()
         } else {
             ""
         };
@@ -12893,7 +12955,14 @@ impl ModalApp {
 
     /// The refile picker's keys — the same interaction as the other
     /// pickers, over targets.
-    fn on_refile_key(&mut self, shell: &mut Shell, key: &str, text: Option<char>) {
+    fn on_refile_key(
+        &mut self,
+        shell: &mut Shell,
+        key: &str,
+        ctrl: bool,
+        alt: bool,
+        text: Option<char>,
+    ) {
         let matches: Vec<usize> = self
             .refile_rows(shell)
             .iter()
@@ -12909,12 +12978,6 @@ impl ModalApp {
                 self.go_home();
                 "left where it was".clone_into(&mut self.status);
             }
-            "down" => self.selected = (self.selected + 1).min(matches.len().saturating_sub(1)),
-            "up" => self.selected = self.selected.saturating_sub(1),
-            "backspace" => {
-                self.query.pop();
-                self.selected = 0;
-            }
             "enter" => {
                 let Some(&row) = matches.get(self.selected) else {
                     "nothing matches".clone_into(&mut self.status);
@@ -12923,12 +12986,7 @@ impl ModalApp {
                 self.refile_click(shell, row);
             }
             _ => {
-                if let Some(c) = text
-                    && !c.is_control()
-                {
-                    self.query.push(c);
-                    self.selected = 0;
-                }
+                self.filter_key(key, ctrl, alt, text, matches.len().saturating_sub(1));
             }
         }
     }
@@ -13525,22 +13583,25 @@ impl ModalApp {
     /// Keys for the `:` line: typing edits it, Enter runs it, Escape
     /// abandons it, and backspacing past the start closes it (the same
     /// rule as the `/` menu — deleting the trigger dismisses it).
-    fn on_ex_key(&mut self, shell: &mut Shell, key: &str, text: Option<char>) {
+    fn on_ex_key(
+        &mut self,
+        shell: &mut Shell,
+        key: &str,
+        ctrl: bool,
+        alt: bool,
+        text: Option<char>,
+    ) {
         match key {
             "escape" => self.close_ex(),
-            "backspace" => {
-                if self.ex_buf.pop().is_none() {
-                    self.close_ex();
-                }
-            }
+            // Backspace on an empty line is the way out; anywhere else
+            // it is the field's, like every other editing key here.
+            "backspace" if self.ex_buf.is_empty() => self.close_ex(),
             "enter" => {
-                let line = std::mem::take(&mut self.ex_buf);
+                let line = self.ex_buf.take();
                 self.run_ex(shell, line.trim());
             }
             _ => {
-                if let Some(c) = text {
-                    self.ex_buf.push(c);
-                }
+                line_key(&mut self.ex_buf, &mut self.line_kill, key, ctrl, alt, text);
             }
         }
     }
@@ -13706,24 +13767,19 @@ impl ModalApp {
 
     /// The body-search overlay: typing narrows, Enter jumps to the hit,
     /// Escape leaves and clears.
-    fn on_body_search_key(&mut self, shell: &Shell, key: &str, text: Option<char>) {
+    fn on_body_search_key(
+        &mut self,
+        shell: &Shell,
+        key: &str,
+        ctrl: bool,
+        alt: bool,
+        text: Option<char>,
+    ) {
         match key {
             "escape" => {
                 self.query.clear();
                 self.selected = 0;
                 self.go_home();
-            }
-            "backspace" => {
-                self.query.pop();
-                self.selected = 0;
-            }
-            "down" | "up" => {
-                let last = self.body_search_rows(shell).len().saturating_sub(1);
-                if key == "down" {
-                    self.selected = (self.selected + 1).min(last);
-                } else {
-                    self.selected = self.selected.saturating_sub(1);
-                }
             }
             "enter" => {
                 if let Some((id, _)) = self.body_search_rows(shell).get(self.selected).cloned() {
@@ -13733,10 +13789,8 @@ impl ModalApp {
                 }
             }
             _ => {
-                if let Some(c) = text {
-                    self.query.push(c);
-                    self.selected = 0;
-                }
+                let last = self.body_search_rows(shell).len().saturating_sub(1);
+                self.filter_key(key, ctrl, alt, text, last);
             }
         }
     }
@@ -15348,17 +15402,67 @@ impl ModalApp {
 
     /// The one-line field the open surface is typing into, if any.
     ///
-    /// Capture has its own buffer and every other prompt shares
-    /// `field_buf`; completion does not care which, so it asks here
-    /// rather than matching on the surface twice.
+    /// Five buffers back fourteen surfaces — capture, the shared prompt
+    /// field, the list filter, the `:` line, the ticket box and the
+    /// assistant's question — and nothing that reads a field should
+    /// have to know which. This is the one place that mapping lives.
     const fn active_prompt(&mut self) -> Option<&mut LineInput> {
         match self.surface {
             ModalSurface::Capture => Some(&mut self.capture_buf),
             ModalSurface::Rename
             | ModalSurface::AddSibling
             | ModalSurface::TagsEdit
-            | ModalSurface::PropertyEdit => Some(&mut self.field_buf),
+            | ModalSurface::PropertyEdit
+            | ModalSurface::Palette => Some(&mut self.field_buf),
+            ModalSurface::Search
+            | ModalSurface::BodySearch
+            | ModalSurface::Buffers
+            | ModalSurface::Files
+            | ModalSurface::TagPick
+            | ModalSurface::Refile => Some(&mut self.query),
+            ModalSurface::Ex => Some(&mut self.ex_buf),
+            ModalSurface::Sync => Some(&mut self.sync_buf),
+            ModalSurface::Llm => Some(&mut self.chat_buf),
             _ => None,
+        }
+    }
+
+    /// [`Self::active_prompt`] without the borrow, for the shells.
+    const fn prompt(&self) -> Option<&LineInput> {
+        match self.surface {
+            ModalSurface::Capture => Some(&self.capture_buf),
+            ModalSurface::Rename
+            | ModalSurface::AddSibling
+            | ModalSurface::TagsEdit
+            | ModalSurface::PropertyEdit
+            | ModalSurface::Palette => Some(&self.field_buf),
+            ModalSurface::Search
+            | ModalSurface::BodySearch
+            | ModalSurface::Buffers
+            | ModalSurface::Files
+            | ModalSurface::TagPick
+            | ModalSurface::Refile => Some(&self.query),
+            ModalSurface::Ex => Some(&self.ex_buf),
+            ModalSurface::Sync => Some(&self.sync_buf),
+            ModalSurface::Llm => Some(&self.chat_buf),
+            _ => None,
+        }
+    }
+
+    /// The text in whichever field is open, or `None` on a surface with
+    /// no field. What a shell paints and what a test asserts on, so
+    /// neither has to name a buffer per surface.
+    #[must_use]
+    pub fn prompt_text(&self) -> Option<&str> {
+        self.prompt().map(LineInput::text)
+    }
+
+    /// The caret's byte offset in that field; zero when there is none.
+    #[must_use]
+    pub const fn prompt_cursor(&self) -> usize {
+        match self.prompt() {
+            Some(field) => field.cursor(),
+            None => 0,
         }
     }
 
@@ -15862,38 +15966,13 @@ impl ModalApp {
                 }
                 self.go_home();
             }
-            "backspace" => {
-                self.query.pop();
-                self.selected = 0;
-            }
-            "down" => {
-                let last = self.rows_shared(shell).len().saturating_sub(1);
-                self.selected = (self.selected + 1).min(last);
-            }
-            "up" => self.selected = self.selected.saturating_sub(1),
-            // The arrows moved the result cursor and the chords every
-            // modal user reaches for did not, which is the one thing a
-            // search overlay must not get wrong.
-            "j" | "n" if ctrl => {
-                let last = self.rows_shared(shell).len().saturating_sub(1);
-                self.selected = (self.selected + 1).min(last);
-            }
-            "k" | "p" if ctrl => self.selected = self.selected.saturating_sub(1),
-            "w" if ctrl => {
-                let kept = self.query.trim_end();
-                let cut = kept.trim_end_matches(|c: char| !c.is_whitespace());
-                self.query.truncate(cut.len());
-                self.selected = 0;
-            }
-            "u" if ctrl => {
-                self.query.clear();
-                self.selected = 0;
-            }
+            // The arrows and the chords every modal user reaches for
+            // walk the results; everything else is the field's, which
+            // is where `C-w` and `C-u` come from now — they were
+            // hand-rolled here and nowhere else.
             _ => {
-                if let Some(c) = text.filter(|_| !ctrl && !alt) {
-                    self.query.push(c);
-                    self.selected = 0;
-                }
+                let last = self.rows_shared(shell).len().saturating_sub(1);
+                self.filter_key(key, ctrl, alt, text, last);
             }
         }
     }
@@ -15926,6 +16005,12 @@ impl ModalApp {
             "down" => self.walk_capture_history(-1),
             "k" if ctrl => self.walk_capture_history(1),
             "j" if ctrl => self.walk_capture_history(-1),
+            // What a minibuffer with a history has always answered to.
+            // `C-j`/`C-k` above are the modal spelling and stay; these
+            // are the ones an Emacs hand reaches for, and their absence
+            // is why `C-k` had to be the history at all.
+            "p" if alt => self.walk_capture_history(1),
+            "n" if alt => self.walk_capture_history(-1),
             // Files it and *stays*: same target, empty line, ready for
             // the next one. Filing several thoughts under one headline
             // used to mean reopening the prompt and re-aiming it
@@ -17334,7 +17419,7 @@ impl ModalApp {
         if self.query.is_empty() {
             return Vec::new();
         }
-        let needle = self.query.to_lowercase();
+        let needle = self.query.text().to_lowercase();
         let mut out = Vec::new();
         for (_, doc) in shell.vault.iter() {
             for h in doc.all_headlines() {

@@ -3034,16 +3034,21 @@ impl GpuiView {
         out
     }
 
-    /// The prompt surfaces paint a label and a live field with a block
-    /// caret in it; everything else has one line to say and says it
-    /// ([`Self::context_line`]).
+    /// Every surface with a one-line field paints the same row: a label
+    /// saying which field this is, the live text with a real caret in
+    /// it, what the field will do, and the accept/cancel pair.
+    ///
+    /// The filter surfaces used to be strings in [`Self::context_line`]
+    /// with a bar glued to the end of the text, which is why their
+    /// caret never moved however far `C-a` was pressed. One field in the
+    /// core means one row here — and the text and the cursor now come
+    /// from the same two calls whatever surface is open.
     fn prompt_row(&self, co: Colors, cx: &Context<Self>) -> Option<gpui::Div> {
-        let (label, text, cursor) = match self.app.surface() {
-            ModalSurface::Rename => (
-                "\u{270e} rename: ",
-                self.app.field_buffer(),
-                self.app.field_cursor(),
-            ),
+        let text = self.app.prompt_text()?;
+        let cursor = self.app.prompt_cursor();
+        let rows = self.app.rows_shared(&self.shell).len();
+        let (label, hint): (&str, String) = match self.app.surface() {
+            ModalSurface::Rename => ("\u{270e} rename: ", String::new()),
             // Not just "add": one prompt serves all four new-headline
             // chords, so it has to say which one opened it.
             ModalSurface::AddSibling => (
@@ -3053,18 +3058,31 @@ impl GpuiView {
                     "child TODO" => "\u{ff0b} new child TODO: ",
                     _ => "\u{ff0b} new sibling: ",
                 },
-                self.app.field_buffer(),
-                self.app.field_cursor(),
+                String::new(),
             ),
-            ModalSurface::TagsEdit => (
-                "\u{270e} tags: ",
-                self.app.field_buffer(),
-                self.app.field_cursor(),
+            ModalSurface::TagsEdit => ("\u{270e} tags: ", String::new()),
+            ModalSurface::PropertyEdit => ("\u{270e} prop: ", String::new()),
+            ModalSurface::Ex => (":", ":w :q :wq :x, or any command name".to_owned()),
+            ModalSurface::Search => ("\u{2315} ", format!("{rows} match(es)")),
+            ModalSurface::BodySearch => (
+                "\u{2315} body: ",
+                format!("{} line(s)", self.app.body_search_rows(&self.shell).len()),
             ),
-            ModalSurface::PropertyEdit => (
-                "\u{270e} prop: ",
-                self.app.field_buffer(),
-                self.app.field_cursor(),
+            ModalSurface::Refile => ("refile to: ", "RET files it here".to_owned()),
+            ModalSurface::TagPick => ("tags: ", "SPC toggles \u{b7} RET writes".to_owned()),
+            ModalSurface::Buffers => (
+                "buffers: ",
+                format!(
+                    "{} open \u{b7} RET opens",
+                    self.app.buffer_rows(&self.shell).len()
+                ),
+            ),
+            ModalSurface::Files => (
+                "files: ",
+                format!(
+                    "{} in this vault \u{b7} RET opens",
+                    self.app.file_rows(&self.shell).len()
+                ),
             ),
             _ => return None,
         };
@@ -3082,6 +3100,16 @@ impl GpuiView {
                         .overflow_hidden()
                         .child(caret_text(co, text, cursor)),
                 )
+                // What this field will do, in the field's own row. It
+                // was in the status line at the bottom of the window,
+                // which is the wrong end of the screen from the caret.
+                .children((!hint.is_empty()).then(|| {
+                    div()
+                        .flex_none()
+                        .text_size(self.sz(10.0))
+                        .text_color(rgb(co.muted))
+                        .child(hint)
+                }))
                 .children(prompt_buttons(co, self.sz(11.0), cx)),
         )
     }
@@ -4947,7 +4975,14 @@ impl GpuiView {
                 .border_color(rgb(if status.ready { co.accent } else { co.border }))
                 .text_size(self.sz(12.0))
                 .text_color(rgb(co.fg))
-                .child(format!("{}▏", self.app.chat_buffer())),
+                // The question box is a field like every other one now,
+                // so it gets the field's caret rather than a bar welded
+                // to the end of the text.
+                .child(caret_text(
+                    co,
+                    self.app.chat_buffer(),
+                    self.app.prompt_cursor(),
+                )),
         )
     }
 
@@ -5260,7 +5295,7 @@ impl GpuiView {
                     .border_color(rgb(co.accent))
                     .text_size(self.sz(11.0))
                     .text_color(rgb(co.fg))
-                    .child(format!("{typed}▏")),
+                    .child(caret_text(co, &typed, self.app.prompt_cursor())),
             )
             .child(
                 div()
