@@ -191,3 +191,48 @@ fn all_four_chords_reach_the_prompt_in_every_mode() {
         }
     }
 }
+
+// === `A` is `a` with a TODO on it ===
+//
+// Reported 2026-08-02: "add sibling with shift+a (aka A) to add sibling
+// as TODO item". The outline's own `a` opens the sibling prompt; the
+// plain-vs-TODO axis already exists on the `M-RET` family, and shift is
+// how org spells it there too.
+
+#[test]
+fn shift_a_adds_the_sibling_as_a_todo() {
+    let (_d, mut sh, mut app) = fixture(InputMode::Doom);
+    app.select(0, &sh);
+    app.on_key(&mut sh, "A", false, false, Some('A'));
+    assert_eq!(app.surface(), ModalSurface::AddSibling, "same prompt");
+    for c in "Gamma".chars() {
+        app.on_key(&mut sh, &c.to_string(), false, false, Some(c));
+    }
+    app.on_key(&mut sh, "enter", false, false, None);
+    let r = row(&app, &sh, "Gamma");
+    assert_eq!(r.level, 1, "a sibling, like `a`");
+    assert_eq!(r.todo.as_deref(), Some("TODO"), "but a TODO one");
+}
+
+#[test]
+fn lowercase_a_still_adds_a_plain_sibling() {
+    let (_d, mut sh, mut app) = fixture(InputMode::Doom);
+    app.select(0, &sh);
+    app.on_key(&mut sh, "a", false, false, Some('a'));
+    for c in "Delta".chars() {
+        app.on_key(&mut sh, &c.to_string(), false, false, Some(c));
+    }
+    app.on_key(&mut sh, "enter", false, false, None);
+    assert_eq!(row(&app, &sh, "Delta").todo, None);
+}
+
+#[test]
+fn every_modal_mode_gets_the_shifted_one() {
+    for mode in [InputMode::Doom, InputMode::Vim, InputMode::Helix] {
+        assert_eq!(
+            closure_input::command_for(mode, "A"),
+            Some("add-todo-heading"),
+            "{mode:?}"
+        );
+    }
+}

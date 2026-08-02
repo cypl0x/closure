@@ -65,6 +65,10 @@ const DOOM_KEYMAP: &[(&str, &str)] = &[
     ("g a", "agenda"),
     ("S", "body-search"),
     ("a", "add-sibling"),
+    // Shift is the TODO axis here as it is on `M-RET`: `a` opens
+    // the sibling prompt, `A` opens the same prompt for one that
+    // arrives as a task.
+    ("A", "add-todo-heading"),
     ("r", "rename"),
     ("d", "delete"),
     ("i", "edit-body"),
@@ -344,6 +348,10 @@ const VIM_KEYMAP: &[(&str, &str)] = &[
     ("g a", "agenda"),
     ("S", "body-search"),
     ("a", "add-sibling"),
+    // Shift is the TODO axis here as it is on `M-RET`: `a` opens
+    // the sibling prompt, `A` opens the same prompt for one that
+    // arrives as a task.
+    ("A", "add-todo-heading"),
     ("r", "rename"),
     ("d", "delete"),
     ("i", "edit-body"),
@@ -462,6 +470,10 @@ const HELIX_KEYMAP: &[(&str, &str)] = &[
     ("g a", "agenda"),
     ("S", "body-search"),
     ("a", "add-sibling"),
+    // Shift is the TODO axis here as it is on `M-RET`: `a` opens
+    // the sibling prompt, `A` opens the same prompt for one that
+    // arrives as a task.
+    ("A", "add-todo-heading"),
     ("r", "rename"),
     ("d", "delete"),
     ("i", "edit-body"),
@@ -579,6 +591,10 @@ const NOTION_KEYMAP: &[(&str, &str)] = &[
     ("g a", "agenda"),
     ("S", "body-search"),
     ("a", "add-sibling"),
+    // Shift is the TODO axis here as it is on `M-RET`: `a` opens
+    // the sibling prompt, `A` opens the same prompt for one that
+    // arrives as a task.
+    ("A", "add-todo-heading"),
     ("r", "rename"),
     ("d", "delete"),
     ("i", "edit-body"),
