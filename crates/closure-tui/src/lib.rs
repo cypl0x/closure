@@ -225,6 +225,10 @@ pub struct App {
     /// driver owns the vault, so the terminal asks for the re-read the
     /// way it asks for every other write.
     reload_request: bool,
+    /// Whether long lines wrap in the file view instead of being cut
+    /// at the pane edge. The window has the same switch; the chord is
+    /// the same one (I4).
+    wrap: bool,
     input_mode: closure_config::InputMode,
     view_rows: Vec<(String, Vec<String>)>,
     cell_target: Option<String>,
@@ -362,6 +366,7 @@ impl App {
             undo_request: false,
             redo_request: false,
             reload_request: false,
+            wrap: false,
             input_mode: closure_config::InputMode::Doom,
             view_rows: Vec::new(),
             cell_target: None,
@@ -823,6 +828,22 @@ impl App {
         self.result_cursor = 0;
         self.scroll = 0;
         "reloaded — vault re-read from disk".clone_into(&mut self.status);
+    }
+
+    /// Fold long lines at the pane edge, or cut them there.
+    fn toggle_wrap(&mut self) {
+        self.wrap = !self.wrap;
+        self.status = if self.wrap {
+            "wrap on — long lines fold at the pane edge".to_owned()
+        } else {
+            "wrap off — long lines are cut at the edge".to_owned()
+        };
+    }
+
+    /// Whether long lines wrap in the file view.
+    #[must_use]
+    pub const fn wrap(&self) -> bool {
+        self.wrap
     }
 
     /// Consume the pending reload request, true at most once per
@@ -2690,6 +2711,7 @@ impl App {
             "half-page-up" => self.half_page(false, last),
             "quit" => self.quit = true,
             "reload-shell" => self.start_over(),
+            "toggle-wrap" => self.toggle_wrap(),
             "search-start" => {
                 self.mode = AppMode::Search;
                 self.query.clear();

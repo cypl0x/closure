@@ -10394,6 +10394,14 @@ pub struct ModalApp {
     /// Where the cursor was left in each body, by block id, so opening
     /// a note again resumes rather than restarting at byte zero.
     body_cursors: std::collections::HashMap<String, usize>,
+    /// Whether long body lines wrap instead of scrolling sideways.
+    ///
+    /// Kernel state rather than a field in the window: it is a view
+    /// toggle like the tree and the images, the terminal shell wants
+    /// the same switch, and read from `config.org` into the window it
+    /// had no command and so no chord — there was no way to change your
+    /// mind about the paragraph in front of you.
+    wrap: bool,
     /// Whether image links are painted as pictures (org's
     /// `org-toggle-inline-images`). Shown to begin with: a note with a
     /// screenshot in it is a note you want to look at.
@@ -10782,6 +10790,7 @@ impl ModalApp {
             zoom_steps: 0,
             search_return: None,
             body_cursors: std::collections::HashMap::new(),
+            wrap: false,
             images_shown: true,
             last_edited: None,
             body_stash: std::collections::HashMap::new(),
@@ -11571,7 +11580,10 @@ impl ModalApp {
         let Some(cmd) = closure_input::command_for(self.mode, &stroke) else {
             return false;
         };
-        if !matches!(cmd, "save-buffer" | "toggle-which-key" | "reload-shell") {
+        if !matches!(
+            cmd,
+            "save-buffer" | "toggle-which-key" | "reload-shell" | "toggle-wrap"
+        ) {
             return false;
         }
         self.pending_body = None;
@@ -17079,6 +17091,17 @@ impl ModalApp {
         }
     }
 
+    /// Whether long body lines wrap instead of scrolling sideways.
+    #[must_use]
+    pub const fn wrap(&self) -> bool {
+        self.wrap
+    }
+
+    /// Set wrapping — what `config.org`'s `wrap` key does at launch.
+    pub const fn set_wrap(&mut self, wrap: bool) {
+        self.wrap = wrap;
+    }
+
     /// How many times this session has started over — what a window
     /// watches to redo the parts of a launch only it can do.
     #[must_use]
@@ -17136,6 +17159,8 @@ impl ModalApp {
         self.outline_viewport = outline_rows;
         self.today = today;
         self.now = now;
+        self.wrap = closure_config::Config::from_path(&shell.vault.root().join("config.org"))
+            .is_ok_and(|c| c.wrap);
         self.configure_sync(bind, advertise);
         self.load_peers(shell);
         self.restore_last_place(shell);
@@ -17272,6 +17297,14 @@ impl ModalApp {
                 }
             }
             "reload-shell" => self.reload_session(shell),
+            "toggle-wrap" => {
+                self.wrap = !self.wrap;
+                self.status = if self.wrap {
+                    "wrap on — long lines fold at the pane edge".to_owned()
+                } else {
+                    "wrap off — long lines scroll sideways".to_owned()
+                };
+            }
             "capture-start" => {
                 self.surface = ModalSurface::Capture;
                 self.capture_buf.clear();

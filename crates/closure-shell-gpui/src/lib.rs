@@ -1884,9 +1884,6 @@ pub struct GpuiView {
     /// pointer and the column edge, so the column does not jump to the
     /// cursor on the first pixel of movement.
     outline_drag: Option<f32>,
-    /// Whether long body lines soft-wrap (`wrap = true` in config.org)
-    /// rather than scrolling sideways.
-    wrap: bool,
     /// The vault's directory name, for the window title.
     vault_name: String,
     /// The title last written to the window manager, so a frame that
@@ -1972,7 +1969,6 @@ impl GpuiView {
             app,
             theme,
             vault_name,
-            wrap: false,
 
             outline_w: OUTLINE_W_DEFAULT,
             outline_drag: None,
@@ -2135,13 +2131,13 @@ impl GpuiView {
     /// Soft-wrap long body lines instead of scrolling sideways
     /// (`wrap = true` in config.org).
     pub const fn set_wrap(&mut self, wrap: bool) {
-        self.wrap = wrap;
+        self.app.set_wrap(wrap);
     }
 
     /// Whether the editor is wrapping.
     #[must_use]
     pub const fn wraps(&self) -> bool {
-        self.wrap
+        self.app.wrap()
     }
 
     /// The activity rail's destinations — what [`Self::rail`] paints.
@@ -4151,7 +4147,7 @@ impl GpuiView {
         // are cut by [`closure_shell_core::wrap_body`], which hands back
         // an exact byte partition, and each one is painted through the
         // same path with its own column window.
-        let wrap_cols = self.wrap.then(|| self.body_cols());
+        let wrap_cols = self.app.wrap().then(|| self.body_cols());
         let hidden = self.app.body_hidden_lines();
         let mut line_start = 0usize;
         for (ln, spans) in self.highlighted(self.app.body_buffer()).iter().enumerate() {

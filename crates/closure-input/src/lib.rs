@@ -81,6 +81,14 @@ const DOOM_KEYMAP: &[(&str, &str)] = &[
     ("g m", "conflicts"),
     ("g h", "browse"),
     ("g v", "toggle-view"),
+    // Long lines fold at the pane edge instead of scrolling sideways.
+    // `g w` is the flow allow, so the shifted twin.
+    ("g W", "toggle-wrap"),
+    // …and a modified spelling, because the chord is wanted most from
+    // inside the buffer whose lines are running off the edge, where a
+    // bare `g` belongs to the editor. `M-z` is what the rest of the
+    // desktop toggles wrapping with.
+    ("M-z", "toggle-wrap"),
     ("g y", "toggle-tree"),
     ("g a", "agenda"),
     ("S", "body-search"),
@@ -195,6 +203,7 @@ const DOOM_KEYMAP: &[(&str, &str)] = &[
     ("SPC o n", "sniffer"),
     ("SPC t v", "toggle-view"),
     ("SPC t t", "toggle-tree"),
+    ("SPC t w", "toggle-wrap"),
     ("SPC t m", "cycle-mode"),
     ("SPC u", "undo-history"),
     // The prefix the rest of the desktop uses. Listed last so each
@@ -269,6 +278,14 @@ const EMACS_KEYMAP: &[(&str, &str)] = &[
     ("g m", "conflicts"),
     ("g h", "browse"),
     ("g v", "toggle-view"),
+    // Long lines fold at the pane edge instead of scrolling sideways.
+    // `g w` is the flow allow, so the shifted twin.
+    ("g W", "toggle-wrap"),
+    // …and a modified spelling, because the chord is wanted most from
+    // inside the buffer whose lines are running off the edge, where a
+    // bare `g` belongs to the editor. `M-z` is what the rest of the
+    // desktop toggles wrapping with.
+    ("M-z", "toggle-wrap"),
     ("g y", "toggle-tree"),
     ("g a", "agenda"),
     ("S", "body-search"),
@@ -404,6 +421,14 @@ const VIM_KEYMAP: &[(&str, &str)] = &[
     ("g m", "conflicts"),
     ("g h", "browse"),
     ("g v", "toggle-view"),
+    // Long lines fold at the pane edge instead of scrolling sideways.
+    // `g w` is the flow allow, so the shifted twin.
+    ("g W", "toggle-wrap"),
+    // …and a modified spelling, because the chord is wanted most from
+    // inside the buffer whose lines are running off the edge, where a
+    // bare `g` belongs to the editor. `M-z` is what the rest of the
+    // desktop toggles wrapping with.
+    ("M-z", "toggle-wrap"),
     ("g y", "toggle-tree"),
     ("g a", "agenda"),
     ("S", "body-search"),
@@ -544,6 +569,14 @@ const HELIX_KEYMAP: &[(&str, &str)] = &[
     ("g m", "conflicts"),
     ("g h", "browse"),
     ("g v", "toggle-view"),
+    // Long lines fold at the pane edge instead of scrolling sideways.
+    // `g w` is the flow allow, so the shifted twin.
+    ("g W", "toggle-wrap"),
+    // …and a modified spelling, because the chord is wanted most from
+    // inside the buffer whose lines are running off the edge, where a
+    // bare `g` belongs to the editor. `M-z` is what the rest of the
+    // desktop toggles wrapping with.
+    ("M-z", "toggle-wrap"),
     ("g y", "toggle-tree"),
     ("g a", "agenda"),
     ("S", "body-search"),
@@ -683,6 +716,14 @@ const NOTION_KEYMAP: &[(&str, &str)] = &[
     ("g m", "conflicts"),
     ("g h", "browse"),
     ("g v", "toggle-view"),
+    // Long lines fold at the pane edge instead of scrolling sideways.
+    // `g w` is the flow allow, so the shifted twin.
+    ("g W", "toggle-wrap"),
+    // …and a modified spelling, because the chord is wanted most from
+    // inside the buffer whose lines are running off the edge, where a
+    // bare `g` belongs to the editor. `M-z` is what the rest of the
+    // desktop toggles wrapping with.
+    ("M-z", "toggle-wrap"),
     ("g y", "toggle-tree"),
     ("g a", "agenda"),
     ("S", "body-search"),
