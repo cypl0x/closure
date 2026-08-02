@@ -19,8 +19,18 @@ default = []
 # tier — wasm modules run with NO host imports.
 wasmtime = ["dep:wasmtime"]
 
+[dev-dependencies]
+tempfile = "3"
+
 [dependencies]
 thiserror.workspace = true
+# Content-addressing for rendered diagrams: the same source names the
+# same file, so a note full of them renders once and never again. The
+# same hash the sync and plugin crates already use.
+blake3 = "1"
+# A renderer is handed a file, not a pipe: `mmdc` and `latex` both
+# insist on one, and both write siblings next to it.
+tempfile = "3"
 wasmtime = { version = "45", optional = true, default-features = false, features = [
   "cranelift",
   "runtime",

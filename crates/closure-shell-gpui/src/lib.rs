@@ -4723,23 +4723,29 @@ impl GpuiView {
         }
     }
 
-    fn editor_pane(&self, co: Colors, cx: &Context<Self>) -> gpui::Div {
+    /// doom spaceline colours: insert green, normal blue, visual
+    /// grey-violet, and replace in the warning colour because typing
+    /// over what is there deserves a different signal from typing
+    /// between it.
+    const fn editor_mode_color(&self, co: Colors) -> u32 {
         use closure_shell_core::EditorMode;
+        match self.app.body_mode() {
+            EditorMode::Insert if self.app.body_replacing() => co.warning,
+            EditorMode::Insert => co.success,
+            EditorMode::Normal => co.accent,
+            EditorMode::Visual => co.heading3,
+            EditorMode::VisualLine => co.heading2,
+        }
+    }
+
+    fn editor_pane(&self, co: Colors, cx: &Context<Self>) -> gpui::Div {
         let view = self.body_view();
         let scroll_start = self.app.body_scroll_start(view);
         let (cur_line, cur_col) = self.app.body_cursor();
         // Lines are clipped rather than wrapped, so a cursor past the
         // right edge pulls the whole pane sideways with it.
         let h_start = h_scroll_start(cur_col, self.body_cols());
-        // doom spaceline colours: insert green, normal blue, visual grey-violet.
-        let mode_col = match self.app.body_mode() {
-            EditorMode::Insert if self.app.body_replacing() => co.warning,
-            EditorMode::Insert => co.success,
-            EditorMode::Normal => co.accent,
-            EditorMode::Visual => co.heading3,
-            EditorMode::VisualLine => co.heading2,
-        };
-        let header = self.editor_header(co, mode_col, cx);
+        let header = self.editor_header(co, self.editor_mode_color(co), cx);
         let mut body = with_menu(
             div()
                 .id("body-text")
@@ -4768,6 +4774,10 @@ impl GpuiView {
         // same path with its own column window.
         let wrap_cols = self.app.wrap().then(|| self.body_cols());
         let hidden = self.app.body_hidden_lines();
+        // Gathered once per frame rather than per line: the lookup
+        // parses the buffer, and doing that inside the line loop would
+        // make painting quadratic in the length of the note.
+        let diagrams = self.app.diagram_previews(&self.shell);
         let mut line_start = 0usize;
         for (ln, spans) in self.highlighted(self.app.body_buffer()).iter().enumerate() {
             let line_len: usize = spans.iter().map(|(_, s)| s.len()).sum();
@@ -4818,6 +4828,13 @@ impl GpuiView {
             }
             for picture in self.inline_pictures(&text) {
                 body = body.child(picture);
+            }
+            // A drawn mermaid or LaTeX block, under the fence that
+            // closes it. Looked up, never rendered: `preview-diagrams`
+            // does the rendering, so painting a note full of diagrams
+            // costs a `stat` and not a process.
+            for (_, path) in diagrams.iter().filter(|(at, _)| *at == ln) {
+                body = body.child(self.picture_block(path.clone()));
             }
             line_start += line_len + 1;
         }
@@ -7017,22 +7034,26 @@ impl GpuiView {
     /// The arithmetic stays exact, and the caret cannot drift off the
     /// bottom of a note full of screenshots.
     fn inline_pictures(&self, line: &str) -> Vec<gpui::Div> {
-        let h = px(body_row_h(self.app.zoom()) * IMAGE_ROWS);
         self.line_images(line)
             .into_iter()
-            .map(|path| {
-                div()
-                    .h(h)
-                    // Starting where the line's own text starts, past
-                    // the gutter: a picture flush against the window
-                    // edge reads as chrome rather than as part of the
-                    // note that links it.
-                    .ml(px(GUTTER_W + GUTTER_GAP))
-                    .flex()
-                    .items_center()
-                    .child(gpui::img(path).max_h(h).rounded_md())
-            })
+            .map(|path| self.picture_block(path))
             .collect()
+    }
+
+    /// One picture between the buffer's lines — a linked image or a
+    /// drawn diagram, which get the same block because they are the
+    /// same thing to look at.
+    fn picture_block(&self, path: std::path::PathBuf) -> gpui::Div {
+        let h = px(body_row_h(self.app.zoom()) * IMAGE_ROWS);
+        div()
+            .h(h)
+            // Starting where the line's own text starts, past the
+            // gutter: a picture flush against the window edge reads as
+            // chrome rather than as part of the note it belongs to.
+            .ml(px(GUTTER_W + GUTTER_GAP))
+            .flex()
+            .items_center()
+            .child(gpui::img(path).max_h(h).rounded_md())
     }
 
     /// Resolve an image link's target to a file that is actually there.
@@ -9029,6 +9050,11 @@ impl Render for GpuiView {
             // scrolling by the minimum is measured from where the
             // viewport already was.
             self.app.set_body_viewport(view);
+            // The same handover for colour: a diagram is drawn in the
+            // ink this window writes in, so switching theme draws a
+            // new picture rather than reusing one meant for the old
+            // background.
+            self.app.set_ink(co.fg);
             self.app.body_scroll_follow(view);
             if self.painted_view.replace(view) != view {
                 // `cx.notify()` inside a render is not another frame —

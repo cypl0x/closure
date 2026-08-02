@@ -389,6 +389,24 @@ impl Vault {
             .unwrap_or_default()
     }
 
+    /// The program config.org names for rendering `lang` diagrams, if
+    /// it names one. Unset means the language's own default.
+    #[must_use]
+    pub fn diagram_tool(&self, lang: &str) -> Option<String> {
+        let cfg_path = self.root.join("config.org");
+        if !cfg_path.exists() {
+            return None;
+        }
+        closure_config::Config::from_path(&cfg_path)
+            .ok()?
+            .diagram_tools
+            .into_iter()
+            .find(|(l, _)| {
+                closure_eval::canonical_language(l) == closure_eval::canonical_language(lang)
+            })
+            .map(|(_, prog)| prog)
+    }
+
     /// The configured TODO keywords, in order.
     ///
     /// Reads `config.org`'s `todo_keywords`; falls back to the

@@ -276,6 +276,11 @@ pub fn canonical_language(lang: &str) -> String {
         "python" | "py" => "python".to_owned(),
         "javascript" | "js" | "node" => "javascript".to_owned(),
         "ruby" | "rb" => "ruby".to_owned(),
+        // A diagram runs a program on your machine, so it is trusted
+        // by language like everything else, and `tex` in the allowlist
+        // has to trust a `latex` block for the same reason `py` trusts
+        // `python`.
+        "latex" | "tex" => "latex".to_owned(),
         other => other.to_owned(),
     }
 }
@@ -600,4 +605,306 @@ pub fn var_prelude(language: &str, vars: &[(String, String)]) -> String {
         }
     }
     out
+}
+
+// === Diagrams: blocks whose output is a picture ===
+//
+// "mermaid diagrams (plugin)" and "(inline) LaTeX preview (plugin)".
+//
+// Both are the shape org has had for LaTeX since forever: a block of
+// text is handed to an external program and what comes back is looked
+// at rather than read. Nothing here is a new subsystem — a diagram is
+// a src block whose result is an image, so it is gated by the same
+// eval-trust allowlist as any other block that runs a program, and it
+// is painted by the inline-picture path that already exists.
+//
+// closure ships neither `mmdc` nor `latex`, exactly as org ships
+// neither: you point it at what you have. The only unacceptable
+// outcome is silence, so a missing tool names itself and says where to
+// get it.
+
+/// A block language whose output is a picture rather than text.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Diagram {
+    /// `#+begin_src mermaid` — rendered by mermaid-cli.
+    Mermaid,
+    /// `#+begin_src latex` — rendered by a TeX installation.
+    Latex,
+}
+
+impl Diagram {
+    /// The program that renders this language, by default.
+    ///
+    /// `mmdc` is mermaid-cli's binary and what every org mermaid setup
+    /// shells out to; `latex` is where
+    /// `org-preview-latex-process-alist` starts.
+    #[must_use]
+    pub const fn tool(self) -> &'static str {
+        match self {
+            Self::Mermaid => "mmdc",
+            Self::Latex => "latex",
+        }
+    }
+
+    /// The canonical org language name.
+    #[must_use]
+    pub const fn language(self) -> &'static str {
+        match self {
+            Self::Mermaid => "mermaid",
+            Self::Latex => "latex",
+        }
+    }
+
+    /// Where to get the tool, for the message a user actually reads.
+    #[must_use]
+    pub const fn hint(self) -> &'static str {
+        match self {
+            Self::Mermaid => "install mermaid-cli (nix shell nixpkgs#mermaid-cli)",
+            Self::Latex => {
+                // The real attribute names, both halves: `dvipng` is
+                // not a top-level nixpkgs package and no TeX scheme
+                // carries it, so a hint saying "a TeX distribution"
+                // sends you somewhere that does not have it.
+                "install TeX and dvipng (nix shell nixpkgs#texliveSmall \
+                            nixpkgs#texlivePackages.dvipng)"
+            }
+        }
+    }
+}
+
+/// The diagram language `lang` names, if it is one.
+///
+/// `tex` is an alias for `latex` because that is what people type.
+/// Everything else — `shell`, `python` — still produces text, and
+/// `#+RESULTS:` remains the contract for those.
+#[must_use]
+pub fn diagram_for(lang: &str) -> Option<Diagram> {
+    match lang.to_ascii_lowercase().as_str() {
+        "mermaid" => Some(Diagram::Mermaid),
+        "latex" | "tex" => Some(Diagram::Latex),
+        _ => None,
+    }
+}
+
+/// Where the picture for this source lives.
+///
+/// Named for the hash of what produced it, so the same source always
+/// names the same file and an edit names a different one. This is what
+/// makes rendering affordable at all: a note full of diagrams renders
+/// once, ever, and reopening it renders nothing.
+#[must_use]
+pub fn diagram_path(
+    cache: &std::path::Path,
+    kind: Diagram,
+    src: &str,
+    ink: u32,
+) -> std::path::PathBuf {
+    let mut hasher = blake3::Hasher::new();
+    // The language goes into the hash, not just the filename: the same
+    // bytes rendered by two different programs are two different
+    // pictures.
+    hasher.update(kind.language().as_bytes());
+    hasher.update(b"\0");
+    // …and so does the ink, because a picture drawn for a dark theme
+    // is the wrong picture for a light one. A cache that ignored the
+    // colour would hand the old one over after a theme switch.
+    hasher.update(&ink.to_le_bytes());
+    hasher.update(b"\0");
+    hasher.update(src.as_bytes());
+    let hex = hasher.finalize().to_hex();
+    cache.join(format!("{}-{}.png", kind.language(), &hex[..32]))
+}
+
+/// A diagram failed to become a picture.
+#[derive(Debug, Error)]
+pub enum RenderError {
+    /// The renderer is not installed. Named, with somewhere to get it:
+    /// this is the failure that must never be silent.
+    #[error("{tool} is not installed — {hint}")]
+    ToolMissing {
+        /// The program that could not be found.
+        tool: String,
+        /// Where to get it.
+        hint: &'static str,
+    },
+    /// The renderer ran and refused the source.
+    #[error("{0}")]
+    Failed(String),
+    /// Reading or writing the cache failed.
+    #[error("io: {0}")]
+    Io(String),
+}
+
+/// Render `src` to a picture, or hand back the one already rendered.
+///
+/// `tool` is the program to run — the language's default
+/// ([`Diagram::tool`]) unless config.org names another, so a user with
+/// a wrapper script or a pinned version is not arguing with us.
+///
+/// A cache hit runs nothing at all, which is deliberate and is what
+/// the "already rendered" test pins: opening a note must not shell out
+/// once per diagram per frame.
+pub fn render_diagram(
+    kind: Diagram,
+    src: &str,
+    cache: &std::path::Path,
+    tool: &str,
+    ink: u32,
+) -> Result<std::path::PathBuf, RenderError> {
+    let out = diagram_path(cache, kind, src, ink);
+    if out.is_file() {
+        return Ok(out);
+    }
+    std::fs::create_dir_all(cache).map_err(|e| RenderError::Io(e.to_string()))?;
+    match kind {
+        Diagram::Mermaid => render_mermaid(src, &out, tool)?,
+        Diagram::Latex => render_latex(src, &out, tool, ink)?,
+    }
+    if out.is_file() {
+        Ok(out)
+    } else {
+        Err(RenderError::Failed(format!(
+            "{tool} produced no picture for the {} block",
+            kind.language()
+        )))
+    }
+}
+
+/// Distinguish "no such program" from "the program said no".
+///
+/// The two need completely different messages — one is a thing to
+/// install, the other is a thing to fix in the block — and
+/// `io::ErrorKind::NotFound` from a spawn is the only reliable way to
+/// tell them apart.
+fn spawn_err(kind: Diagram, tool: &str, e: &std::io::Error) -> RenderError {
+    if e.kind() == std::io::ErrorKind::NotFound {
+        RenderError::ToolMissing {
+            tool: tool.to_owned(),
+            hint: kind.hint(),
+        }
+    } else {
+        RenderError::Failed(format!("{tool}: {e}"))
+    }
+}
+
+/// mermaid-cli reads a `.mmd` file and writes the picture.
+fn render_mermaid(src: &str, out: &std::path::Path, tool: &str) -> Result<(), RenderError> {
+    let dir = tempfile::tempdir().map_err(|e| RenderError::Io(e.to_string()))?;
+    let input = dir.path().join("diagram.mmd");
+    std::fs::write(&input, src).map_err(|e| RenderError::Io(e.to_string()))?;
+    let done = Command::new(tool)
+        .arg("-i")
+        .arg(&input)
+        .arg("-o")
+        .arg(out)
+        // A diagram is drawn to be read on a dark editor background as
+        // often as a light one, and mermaid's default white card on a
+        // dark note is a torch in the face.
+        .arg("-b")
+        .arg("transparent")
+        .output()
+        .map_err(|e| spawn_err(Diagram::Mermaid, tool, &e))?;
+    if done.status.success() {
+        Ok(())
+    } else {
+        Err(RenderError::Failed(tail_of(&done.stderr, tool)))
+    }
+}
+
+/// An `0x00RRGGBB` colour as dvipng spells one.
+///
+/// dvipng wants `rgb r g b` with components in 0..1, not a hex triple,
+/// and a wrong spelling here is not an error — it is silently black
+/// again, which is the bug this exists to prevent.
+#[must_use]
+pub fn dvipng_fg(ink: u32) -> String {
+    // The truncation is the point: each shift selects one byte.
+    let part = |shift: u32| f32::from(u8::try_from((ink >> shift) & 0xff).unwrap_or(0)) / 255.0;
+    format!("rgb {:.3} {:.3} {:.3}", part(16), part(8), part(0))
+}
+
+/// The smallest document that will hold a fragment, so a note writes
+/// `\frac{a}{b}` and not a preamble.
+///
+/// `article`, with the cropping left to `dvipng -T tight` — which is
+/// exactly what org's own dvipng entry in
+/// `org-preview-latex-process-alist` does, and for the same reason.
+/// This wrapped fragments in `standalone` first, a nicer class that is
+/// in no small TeX: on a `texliveSmall` the run stopped to ask where
+/// `standalone.cls` was and the note showed "No pages of output". A
+/// preview that needs a full TeX installation is a preview most people
+/// cannot have.
+#[must_use]
+pub fn latex_document(src: &str) -> String {
+    format!(
+        "\\documentclass{{article}}\n\
+         \\usepackage{{amsmath,amssymb}}\n\
+         \\pagestyle{{empty}}\n\
+         \\begin{{document}}\n{src}\n\\end{{document}}\n"
+    )
+}
+
+/// A LaTeX fragment becomes a picture the way org does it: `latex` to
+/// a DVI, then `dvipng` to the image. The fragment is wrapped in the
+/// smallest document that will hold it, so a note writes `\frac{a}{b}`
+/// and not a preamble.
+fn render_latex(src: &str, out: &std::path::Path, tool: &str, ink: u32) -> Result<(), RenderError> {
+    let dir = tempfile::tempdir().map_err(|e| RenderError::Io(e.to_string()))?;
+    let tex = dir.path().join("fragment.tex");
+    let doc = latex_document(src);
+    std::fs::write(&tex, doc).map_err(|e| RenderError::Io(e.to_string()))?;
+    let done = Command::new(tool)
+        .arg("-interaction=nonstopmode")
+        .arg("-halt-on-error")
+        .arg("-output-directory")
+        .arg(dir.path())
+        .arg(&tex)
+        .output()
+        .map_err(|e| spawn_err(Diagram::Latex, tool, &e))?;
+    if !done.status.success() {
+        // TeX writes its complaint to stdout, not stderr.
+        return Err(RenderError::Failed(tail_of(&done.stdout, tool)));
+    }
+    let dvi = dir.path().join("fragment.dvi");
+    let done = Command::new("dvipng")
+        .arg("-D")
+        .arg("150")
+        .arg("-T")
+        .arg("tight")
+        .arg("-bg")
+        .arg("Transparent")
+        // The theme's own foreground. dvipng inks in black unless told
+        // otherwise, which made the first working preview correct and
+        // invisible: black maths on a dark editor.
+        .arg("-fg")
+        .arg(dvipng_fg(ink))
+        .arg("-o")
+        .arg(out)
+        .arg(&dvi)
+        .output()
+        .map_err(|e| spawn_err(Diagram::Latex, "dvipng", &e))?;
+    if done.status.success() {
+        Ok(())
+    } else {
+        Err(RenderError::Failed(tail_of(&done.stderr, "dvipng")))
+    }
+}
+
+/// The last few lines of a renderer's complaint.
+///
+/// TeX in particular writes hundreds of lines and puts the actual
+/// error near the end; a status bar can hold about one.
+fn tail_of(bytes: &[u8], tool: &str) -> String {
+    let text = String::from_utf8_lossy(bytes);
+    let last: Vec<&str> = text
+        .lines()
+        .filter(|l| !l.trim().is_empty())
+        .rev()
+        .take(3)
+        .collect();
+    if last.is_empty() {
+        format!("{tool} failed")
+    } else {
+        last.into_iter().rev().collect::<Vec<_>>().join(" · ")
+    }
 }

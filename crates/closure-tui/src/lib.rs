@@ -2086,6 +2086,11 @@ impl App {
             "toggle-inline-images" => {
                 self.status = "inline images are a GUI thing — the links stay either way".into();
             }
+            // Same reason: a terminal has nowhere to put the picture.
+            // Rendering anyway would leave files nobody asked for.
+            "preview-diagrams" => {
+                self.status = "diagrams are drawn in the GUI — the blocks stay either way".into();
+            }
             "open-vault" => {
                 self.status =
                     "open-vault — pass a directory to `closure tui`, or use the GUI".into();

@@ -128,6 +128,61 @@ pub fn code_block_at(text: &str, line: usize) -> Option<BufferBlock> {
     None
 }
 
+/// A src block whose result is a picture rather than text.
+///
+/// "mermaid diagrams" and "(inline) LaTeX preview": both are org's
+/// oldest trick — hand a block to an external program and look at what
+/// comes back. The picture belongs under the block that produced it,
+/// which is why the closing fence's line is carried here.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DiagramBlock {
+    /// The `#+END_SRC` line the picture is painted under.
+    pub line: usize,
+    /// The canonical diagram language (`mermaid`, `latex`).
+    pub lang: String,
+    /// The block's source, fences excluded.
+    pub src: String,
+}
+
+/// Every diagram block in `text`, in order.
+///
+/// Only the languages that make pictures ([`closure_eval::diagram_for`]).
+/// A `shell` block still produces text and `#+RESULTS:` is still the
+/// contract for those — nothing here changes that.
+#[must_use]
+pub fn diagram_blocks(text: &str) -> Vec<DiagramBlock> {
+    let lines: Vec<&str> = text.lines().collect();
+    let mut out = Vec::new();
+    let mut begin: Option<usize> = None;
+    for (i, raw) in lines.iter().enumerate() {
+        let head = raw.trim_start().to_ascii_uppercase();
+        if begin.is_none() && head.starts_with("#+BEGIN_SRC") {
+            begin = Some(i);
+        } else if begin.is_some() && head.starts_with("#+END_SRC") {
+            // `begin` is cleared *here* and not in the pattern: taking
+            // it while matching would clear it on every ordinary line
+            // inside the block, so no block ever reached its fence.
+            let start = begin.take().unwrap_or(i);
+            let header = lines[start].trim_start();
+            let rest = header[header.find(' ').unwrap_or(header.len())..].trim_start();
+            let lang = rest.split_whitespace().next().unwrap_or("");
+            if let Some(kind) = closure_eval::diagram_for(lang) {
+                let mut src = String::new();
+                for body_line in &lines[start + 1..i] {
+                    src.push_str(body_line);
+                    src.push('\n');
+                }
+                out.push(DiagramBlock {
+                    line: i,
+                    lang: kind.language().to_owned(),
+                    src,
+                });
+            }
+        }
+    }
+    out
+}
+
 /// `text` with `results` attached as a `#+RESULTS:` block directly
 /// after line `after` (a block's `#+END_SRC`), replacing the one
 /// already there.
@@ -3957,6 +4012,12 @@ const PALETTE_COMMANDS: &[(&str, &str, &str, &str)] = &[
         "toggle-inline-images",
         "View",
         "Show or hide the pictures a note links to",
+    ),
+    (
+        "preview-diagrams",
+        "preview-diagrams",
+        "View",
+        "Draw the mermaid and LaTeX blocks in this buffer",
     ),
     (
         "toggle-tree",
@@ -11834,6 +11895,10 @@ pub struct ModalApp {
     /// `org-toggle-inline-images`). Shown to begin with: a note with a
     /// screenshot in it is a note you want to look at.
     images_shown: bool,
+    /// The colour diagrams are drawn in: the shell's foreground,
+    /// reported the way the viewport is. Defaults to the dark
+    /// theme's, so a shell that never says still gets readable ink.
+    ink: u32,
     /// The headline this session last opened a body on — what
     /// [`Self::save_last_place`] remembers in preference to whatever
     /// the cursor happens to be resting on.
@@ -12237,6 +12302,7 @@ impl ModalApp {
             body_cursors: std::collections::HashMap::new(),
             wrap: false,
             images_shown: true,
+            ink: 0x00cd_d6f4,
             last_edited: None,
             body_stash: std::collections::HashMap::new(),
             buffers: Vec::new(),
@@ -18331,6 +18397,116 @@ impl ModalApp {
         self.image_view.as_deref()
     }
 
+    /// The colour a diagram is drawn in — the shell's own
+    /// foreground, reported the way the viewport is
+    /// ([`Self::set_ink`]). A renderer that picked its own would
+    /// draw black maths on a dark editor, which is what it did.
+    #[must_use]
+    pub const fn ink(&self) -> u32 {
+        self.ink
+    }
+
+    /// Tell the core what colour this shell writes in.
+    pub const fn set_ink(&mut self, ink: u32) {
+        self.ink = ink;
+    }
+
+    /// Where rendered diagrams are kept.
+    ///
+    /// Under the vault's own dot-directory, not beside the notes: a
+    /// rendered picture is a build artefact, and dropping derived
+    /// files among the org files puts them into the thing the user
+    /// syncs, greps and reads.
+    #[must_use]
+    pub fn diagram_cache(&self, shell: &Shell) -> std::path::PathBuf {
+        shell.vault.root().join(".closure").join("diagrams")
+    }
+
+    /// The rendered pictures for the open buffer: `(line, file)`, one
+    /// per diagram block that has already been rendered.
+    ///
+    /// Deliberately a *lookup* and never a render. The painter calls
+    /// this, and a painter that shelled out would run `mmdc` once per
+    /// diagram per frame. Nothing is returned while the picture toggle
+    /// is off, for the same reason inline images vanish: one toggle
+    /// for everything painted between the lines.
+    #[must_use]
+    pub fn diagram_previews(&self, shell: &Shell) -> Vec<(usize, std::path::PathBuf)> {
+        if !self.images_shown {
+            return Vec::new();
+        }
+        let cache = self.diagram_cache(shell);
+        diagram_blocks(self.body.text())
+            .into_iter()
+            .filter_map(|b| {
+                let kind = closure_eval::diagram_for(&b.lang)?;
+                let path = closure_eval::diagram_path(&cache, kind, &b.src, self.ink);
+                path.is_file().then_some((b.line, path))
+            })
+            .collect()
+    }
+
+    /// `preview-diagrams`: render every diagram block in the buffer.
+    ///
+    /// org's `C-c C-x C-l` — you ask for the pictures, they appear.
+    /// Rendering runs a program, so it goes through the *same*
+    /// eval-trust allowlist as `C-c C-c` and is default-deny like it:
+    /// a picture is not a reason to skip the gate. A refusal names the
+    /// language and the fix, because a refusal that names only the
+    /// concept has already been reported once.
+    fn preview_diagrams(&mut self, shell: &Shell) {
+        let blocks = diagram_blocks(self.body.text());
+        if blocks.is_empty() {
+            self.say("no mermaid or latex blocks in this buffer");
+            return;
+        }
+        let cache = self.diagram_cache(shell);
+        let trust = shell.vault.eval_trust();
+        let (mut drawn, mut cached) = (0usize, 0usize);
+        for block in blocks {
+            let Some(kind) = closure_eval::diagram_for(&block.lang) else {
+                continue;
+            };
+            if !closure_eval::eval_allowed(&trust, &block.lang) {
+                self.say(format!(
+                    "`{lang}` is not trusted here — add `eval_trust = {lang}` \
+                     to config.org's closure-config block",
+                    lang = block.lang
+                ));
+                return;
+            }
+            if closure_eval::diagram_path(&cache, kind, &block.src, self.ink).is_file() {
+                cached += 1;
+                continue;
+            }
+            let tool = Self::diagram_tool(shell, kind);
+            match closure_eval::render_diagram(kind, &block.src, &cache, &tool, self.ink) {
+                Ok(_) => drawn += 1,
+                // Named, with somewhere to get it. Silence here is the
+                // one outcome that leaves nothing to act on.
+                Err(e) => {
+                    self.status = format!("{e}");
+                    return;
+                }
+            }
+        }
+        self.say(match (drawn, cached) {
+            (0, n) => format!("{n} diagram(s) already drawn"),
+            (n, 0) => format!("drew {n} diagram(s)"),
+            (n, c) => format!("drew {n}, {c} already drawn"),
+        });
+    }
+
+    /// The program that renders `kind` — config.org's override, or the
+    /// language's default. A user with a wrapper script or a pinned
+    /// version is not arguing with us about it.
+    fn diagram_tool(shell: &Shell, kind: closure_eval::Diagram) -> String {
+        shell
+            .vault
+            .diagram_tool(kind.language())
+            .unwrap_or_else(|| kind.tool().to_owned())
+    }
+
     /// Show `path` as large as the window will make it.
     pub fn show_image(&mut self, path: std::path::PathBuf) {
         self.image_return = Some(self.surface);
@@ -19409,14 +19585,38 @@ impl ModalApp {
         let (line, _) = self.body.cursor_line_col();
         let text = self.body.text();
         let raw = text.split('\n').nth(line)?;
-        let first = image_links(raw).into_iter().next()?;
-        let candidate = std::path::Path::new(&first.path);
-        let full = if candidate.is_absolute() {
-            candidate.to_path_buf()
-        } else {
-            shell.vault.root().join(candidate)
-        };
-        full.is_file().then_some(full)
+        if let Some(first) = image_links(raw).into_iter().next() {
+            let candidate = std::path::Path::new(&first.path);
+            let full = if candidate.is_absolute() {
+                candidate.to_path_buf()
+            } else {
+                shell.vault.root().join(candidate)
+            };
+            return full.is_file().then_some(full);
+        }
+        // …or the picture a drawn diagram block made. One gesture for
+        // "show me that picture" is worth more than the distinction
+        // between a picture a note links and one it generates, and a
+        // mermaid chart is the thing most worth enlarging: the inline
+        // copy is a fixed eight rows on purpose.
+        self.diagram_at_line(shell, line)
+    }
+
+    /// The rendered picture of the diagram block enclosing `line`, if
+    /// there is one and it has been drawn.
+    fn diagram_at_line(&self, shell: &Shell, line: usize) -> Option<std::path::PathBuf> {
+        let cache = self.diagram_cache(shell);
+        diagram_blocks(self.body.text()).into_iter().find_map(|b| {
+            // A block spans from its opening fence to `b.line`; the
+            // source lines are what the caret is realistically on.
+            let starts_at = b.line.checked_sub(b.src.lines().count() + 1)?;
+            if !(starts_at..=b.line).contains(&line) {
+                return None;
+            }
+            let kind = closure_eval::diagram_for(&b.lang)?;
+            let path = closure_eval::diagram_path(&cache, kind, &b.src, self.ink);
+            path.is_file().then_some(path)
+        })
     }
 
     /// A newline that carries the list on, org's way.
@@ -20394,6 +20594,7 @@ impl ModalApp {
                 self.surface = ModalSurface::Sync;
                 self.say("sync — hand over your ticket, paste theirs, Esc back");
             }
+            "preview-diagrams" => self.preview_diagrams(shell),
             "toggle-inline-images" => {
                 self.images_shown = !self.images_shown;
                 self.say(if self.images_shown {

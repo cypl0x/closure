@@ -104,6 +104,14 @@ pub struct Config {
     /// (default `assets`). Relative to the vault root, because a link
     /// in an org file is relative to the file.
     pub assets_dir: Option<PathBuf>,
+    /// Programs that turn a diagram block into a picture, by language
+    /// — `mermaid = my-mmdc-wrapper`, `latex = lualatex`.
+    ///
+    /// closure ships neither renderer, exactly as org ships no TeX:
+    /// you point it at what you have. Unset means the language's
+    /// default (`mmdc`, `latex`), so the common case configures
+    /// nothing.
+    pub diagram_tools: Vec<(String, String)>,
     /// A folder both machines can see — a Syncthing share, a Dropbox, a
     /// mounted drive, a USB stick — where `sync-export` leaves a signed
     /// bundle and `sync-import` picks up the peers'.
@@ -209,6 +217,7 @@ impl Default for Config {
             sync_bind: None,
             sync_advertise: None,
             assets_dir: None,
+            diagram_tools: Vec::new(),
             sync_dir: None,
             last_place: None,
             log_done: false,
@@ -624,6 +633,16 @@ impl Config {
                         .filter(|s| !s.is_empty())
                         .map(PathBuf::from)
                         .collect();
+                }
+                // `diagram_tool_mermaid = …`, `diagram_tool_latex = …`
+                // — one key per language rather than one packed list,
+                // so a typo names the language it belongs to.
+                k if k.starts_with("diagram_tool_") => {
+                    let lang = k.trim_start_matches("diagram_tool_").to_owned();
+                    let prog = value.trim().to_owned();
+                    if !lang.is_empty() && !prog.is_empty() {
+                        cfg.diagram_tools.push((lang, prog));
+                    }
                 }
                 "assets_dir" => {
                     cfg.assets_dir =

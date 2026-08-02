@@ -1375,6 +1375,8 @@ dependencies = [
 name = "closure-eval"
 version = "0.0.0"
 dependencies = [
+ "blake3",
+ "tempfile",
  "thiserror 2.0.18",
  "wasmtime",
 ]

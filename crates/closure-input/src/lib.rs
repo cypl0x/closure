@@ -22,6 +22,7 @@ use thiserror::Error;
 
 /// Doom/default bindings: SPC-leader friendly, single-key navigation.
 const DOOM_KEYMAP: &[(&str, &str)] = &[
+    ("SPC t D", "preview-diagrams"),
     ("SPC t i", "toggle-inline-images"),
     ("M-m", "next-input-mode"),
     ("SPC f v", "open-vault"),
@@ -235,6 +236,7 @@ const DOOM_KEYMAP: &[(&str, &str)] = &[
 
 /// Emacs bindings: Ctrl/Meta chords, `C-x C-c` quits.
 const EMACS_KEYMAP: &[(&str, &str)] = &[
+    ("C-c C-x C-l", "preview-diagrams"),
     ("C-c i", "toggle-inline-images"),
     ("M-m", "next-input-mode"),
     ("C-c v", "open-vault"),
@@ -390,6 +392,7 @@ const EMACS_KEYMAP: &[(&str, &str)] = &[
 
 /// Vim bindings: modal navigation keys.
 const VIM_KEYMAP: &[(&str, &str)] = &[
+    ("g L", "preview-diagrams"),
     ("g P", "toggle-inline-images"),
     ("M-m", "next-input-mode"),
     ("g V", "open-vault"),
@@ -553,6 +556,7 @@ const VIM_KEYMAP: &[(&str, &str)] = &[
 
 /// Helix bindings: vim-like with `U` redo and `g e` for end.
 const HELIX_KEYMAP: &[(&str, &str)] = &[
+    ("g L", "preview-diagrams"),
     ("g P", "toggle-inline-images"),
     ("M-m", "next-input-mode"),
     ("g V", "open-vault"),
@@ -715,6 +719,7 @@ const HELIX_KEYMAP: &[(&str, &str)] = &[
 
 /// Notion bindings: mouse + arrows + slash command, minimal chords.
 const NOTION_KEYMAP: &[(&str, &str)] = &[
+    ("C-c C-x C-l", "preview-diagrams"),
     ("C-c i", "toggle-inline-images"),
     ("M-m", "next-input-mode"),
     ("C-c v", "open-vault"),
