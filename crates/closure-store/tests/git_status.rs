@@ -163,3 +163,87 @@ fn it_does_not_wander_up_into_an_unrelated_repository() {
     // repository should. `Path::new("/")` has neither.
     assert!(git_status(Path::new("/")).is_none());
 }
+
+// === diff fringes ===
+//
+// "git (diff) fringes in the editor". Per *line*, for one file: which
+// lines are new since the last commit, which changed, and where a
+// deletion happened. The gutter has room for one mark; the mark has to
+// mean something exact.
+
+use closure_store::{LineChange, file_diff};
+
+#[test]
+fn a_file_with_no_changes_has_no_fringes() {
+    let dir = repo();
+    assert_eq!(file_diff(dir.path(), Path::new("notes.org")), Vec::new());
+}
+
+#[test]
+fn an_added_line_is_marked_added() {
+    let dir = repo();
+    fs::write(dir.path().join("notes.org"), "* Alpha\n* Beta\n").expect("write");
+    let marks = file_diff(dir.path(), Path::new("notes.org"));
+    assert!(
+        marks.contains(&(1, LineChange::Added)),
+        "line 2 is new: {marks:?}"
+    );
+}
+
+#[test]
+fn a_changed_line_is_marked_changed() {
+    let dir = repo();
+    fs::write(dir.path().join("notes.org"), "* Renamed\n").expect("write");
+    let marks = file_diff(dir.path(), Path::new("notes.org"));
+    assert!(
+        marks.contains(&(0, LineChange::Changed)),
+        "line 1 differs: {marks:?}"
+    );
+}
+
+#[test]
+fn a_deletion_marks_the_line_it_happened_at() {
+    // Nothing is on screen where a deleted line was, so the mark goes
+    // on the line that now sits there — which is what every editor
+    // does and the only place a reader can look.
+    let dir = repo();
+    fs::write(dir.path().join("notes.org"), "* Alpha\n* Beta\n* Gamma\n").expect("write");
+    Command::new("git")
+        .args(["commit", "-am", "three"])
+        .current_dir(dir.path())
+        .output()
+        .expect("git");
+    fs::write(dir.path().join("notes.org"), "* Alpha\n* Gamma\n").expect("write");
+    let marks = file_diff(dir.path(), Path::new("notes.org"));
+    assert!(
+        marks.iter().any(|(_, k)| *k == LineChange::Removed),
+        "a deletion left no mark: {marks:?}"
+    );
+}
+
+#[test]
+fn an_untracked_file_is_all_new() {
+    // A note captured since the last commit is entirely new, and
+    // saying so is more useful than saying nothing.
+    let dir = repo();
+    fs::write(dir.path().join("new.org"), "* One\n* Two\n").expect("write");
+    let marks = file_diff(dir.path(), Path::new("new.org"));
+    assert_eq!(marks.len(), 2, "{marks:?}");
+    assert!(marks.iter().all(|(_, k)| *k == LineChange::Added));
+}
+
+#[test]
+fn a_file_outside_a_repository_has_no_fringes() {
+    let dir = tempfile::tempdir().expect("tmp");
+    fs::write(dir.path().join("a.org"), "* A\n").expect("write");
+    assert_eq!(file_diff(dir.path(), Path::new("a.org")), Vec::new());
+}
+
+#[test]
+fn the_marks_are_in_line_order() {
+    // A painter walks them alongside the lines it is drawing.
+    let dir = repo();
+    fs::write(dir.path().join("notes.org"), "* Alpha\n* B\n* C\n* D\n").expect("write");
+    let marks = file_diff(dir.path(), Path::new("notes.org"));
+    assert!(marks.windows(2).all(|w| w[0].0 <= w[1].0), "{marks:?}");
+}

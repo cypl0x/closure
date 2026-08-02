@@ -858,6 +858,15 @@ pub struct AgendaRow {
     pub is_overdue: bool,
 }
 
+/// The per-line git marks of one file, and what they were read for:
+/// the vault revision and the path. Both have to match for a cached
+/// answer to still be the right answer.
+type FringeMemo = (
+    u64,
+    std::path::PathBuf,
+    Vec<(usize, closure_store::LineChange)>,
+);
+
 /// Full preview of the selected headline for the detail pane.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Detail {
@@ -11948,6 +11957,9 @@ pub struct ModalApp {
     /// How many times git has actually been run. What a test asserts
     /// on instead of timing it.
     git_reads: std::cell::Cell<u64>,
+    /// Per-line git marks for the open buffer, memoised against the
+    /// revision and the path they were read for.
+    fringe_memo: std::cell::RefCell<Option<FringeMemo>>,
     /// The notification log. It lived in the gpui window, which is
     /// why it had no command and no chord — there was nothing for the
     /// keymap to point at. Here it has both, and the terminal shell
@@ -12462,6 +12474,7 @@ impl ModalApp {
             last_edited_file: None,
             git_memo: std::cell::RefCell::new(None),
             git_reads: std::cell::Cell::new(0),
+            fringe_memo: std::cell::RefCell::new(None),
             notifications: Feedback::default(),
             palette_cursor: 0,
             pending: Vec::new(),
@@ -14103,6 +14116,53 @@ impl ModalApp {
     #[must_use]
     pub const fn git_reads(&self) -> u64 {
         self.git_reads.get()
+    }
+
+    /// Per-line git marks for the file the editor is showing.
+    ///
+    /// "git (diff) fringes in the editor". Empty when nothing is open,
+    /// the vault is not a repository, or the file is unchanged — all
+    /// ordinary. Memoised against the vault revision like the vault
+    /// widget, and for the same reason: a painter asks this every
+    /// frame, and `git diff` per frame would be the microfreeze again.
+    #[must_use]
+    pub fn body_fringes(&self, shell: &Shell) -> Vec<(usize, closure_store::LineChange)> {
+        let Some(path) = self.editing_file(shell) else {
+            return Vec::new();
+        };
+        let revision = shell.vault.revision();
+        {
+            let memo = self.fringe_memo.borrow();
+            if let Some((at, for_path, marks)) = memo.as_ref()
+                && *at == revision
+                && *for_path == path
+            {
+                return marks.clone();
+            }
+        }
+        let marks = closure_store::file_diff(shell.vault.root(), &path);
+        *self.fringe_memo.borrow_mut() = Some((revision, path, marks.clone()));
+        marks
+    }
+
+    /// The vault-relative path of whatever the editor has open.
+    fn editing_file(&self, shell: &Shell) -> Option<std::path::PathBuf> {
+        if !self.surface.is_editor() {
+            return None;
+        }
+        // The whole-file editor knows its path outright; the body
+        // editor knows the headline, whose detail carries one.
+        let absolute = if let Some(path) = self.file_target.clone() {
+            path
+        } else {
+            std::path::PathBuf::from(&self.detail(shell)?.path)
+        };
+        // Relative to the vault, because that is how git names a file.
+        Some(
+            absolute
+                .strip_prefix(shell.vault.root())
+                .map_or_else(|_| absolute.clone(), std::path::Path::to_path_buf),
+        )
     }
 
     /// The status bar's own row of state.

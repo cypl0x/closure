@@ -4905,8 +4905,37 @@ impl GpuiView {
     ///
     /// A continuation row carries no number — the gutter says which
     /// *logical* line this is, once.
-    fn line_gutter(&self, co: Colors, ln: usize, first: bool, current: bool) -> gpui::Div {
-        let gutter = div().w(px(GUTTER_W)).mr(px(GUTTER_GAP));
+    fn line_gutter(
+        &self,
+        co: Colors,
+        ln: usize,
+        first: bool,
+        current: bool,
+        fringe: Option<closure_store::LineChange>,
+    ) -> gpui::Div {
+        // "git (diff) fringes in the editor": a two-pixel bar at the
+        // outer edge of the gutter, in the colour the rest of the app
+        // already uses for added / changed / gone. Inside the gutter's
+        // own width, so it costs the text nothing — the same lesson as
+        // the INSERT caret, which used to shove every line sideways.
+        let bar = fringe.map(|kind| {
+            div()
+                .absolute()
+                .left_0()
+                .top_0()
+                .bottom_0()
+                .w(px(2.0))
+                .bg(rgb(match kind {
+                    closure_store::LineChange::Added => co.success,
+                    closure_store::LineChange::Changed => co.accent,
+                    closure_store::LineChange::Removed => co.error,
+                }))
+        });
+        let gutter = div()
+            .relative()
+            .w(px(GUTTER_W))
+            .mr(px(GUTTER_GAP))
+            .children(bar);
         if first {
             gutter
                 .text_size(self.sz(11.0))
@@ -4932,15 +4961,9 @@ impl GpuiView {
         }
     }
 
-    fn editor_pane(&self, co: Colors, cx: &Context<Self>) -> gpui::Div {
-        let view = self.body_view();
-        let scroll_start = self.app.body_scroll_start(view);
-        let (cur_line, cur_col) = self.app.body_cursor();
-        // Lines are clipped rather than wrapped, so a cursor past the
-        // right edge pulls the whole pane sideways with it.
-        let h_start = h_scroll_start(cur_col, self.body_cols());
-        let header = self.editor_header(co, self.editor_mode_color(co), cx);
-        let mut body = with_menu(
+    /// The scrolling element the editor's rows are children of.
+    fn editor_body_pane(&self, co: Colors, cx: &Context<Self>) -> gpui::Stateful<gpui::Div> {
+        with_menu(
             div()
                 .id("body-text")
                 .flex()
@@ -4959,7 +4982,18 @@ impl GpuiView {
                 .on_scroll_wheel(cx.listener(Self::on_body_scroll)),
             closure_shell_core::ContextTarget::Body,
             cx,
-        );
+        )
+    }
+
+    fn editor_pane(&self, co: Colors, cx: &Context<Self>) -> gpui::Div {
+        let view = self.body_view();
+        let scroll_start = self.app.body_scroll_start(view);
+        let (cur_line, cur_col) = self.app.body_cursor();
+        // Lines are clipped rather than wrapped, so a cursor past the
+        // right edge pulls the whole pane sideways with it.
+        let h_start = h_scroll_start(cur_col, self.body_cols());
+        let header = self.editor_header(co, self.editor_mode_color(co), cx);
+        let mut body = self.editor_body_pane(co, cx);
         // `wrap = true` in config.org: a long line becomes several rows
         // instead of scrolling sideways. The two are alternatives — a
         // wrapped row has no horizontal offset to have — so the rows
@@ -4968,10 +5002,14 @@ impl GpuiView {
         // same path with its own column window.
         let wrap_cols = self.app.wrap().then(|| self.body_cols());
         let hidden = self.app.body_hidden_lines();
-        // Gathered once per frame rather than per line: the lookup
-        // parses the buffer, and doing that inside the line loop would
-        // make painting quadratic in the length of the note.
+        // Both gathered once per frame rather than per line: each
+        // lookup walks the buffer, and doing either inside the line
+        // loop would make painting quadratic in the length of a note.
+        // The fringes are memoised in the core against the vault
+        // revision on top of that — `git diff` per frame would be the
+        // level-1 microfreeze in a new place.
         let diagrams = self.app.diagram_previews(&self.shell);
+        let fringes = self.app.body_fringes(&self.shell);
         let mut line_start = 0usize;
         // Rows *painted*, which is what `view` counts — not indices
         // stepped over. A folded line used to consume a slot of the
@@ -5003,7 +5041,13 @@ impl GpuiView {
                 .into_iter()
                 .enumerate()
             {
-                let gutter = self.line_gutter(co, ln, i == 0, ln == cur_line);
+                let gutter = self.line_gutter(
+                    co,
+                    ln,
+                    i == 0,
+                    ln == cur_line,
+                    fringes.iter().find(|(at, _)| *at == ln).map(|(_, k)| *k),
+                );
                 let mut row = div()
                     .flex()
                     // Stated rather than a minimum, and the same number

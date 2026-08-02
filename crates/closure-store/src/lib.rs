@@ -12788,3 +12788,102 @@ pub fn git_status(root: &Path) -> Option<GitStatus> {
     }
     Some(status)
 }
+
+/// What happened to one line since the last commit.
+///
+/// "git (diff) fringes in the editor". The gutter has room for one
+/// mark per line, so the mark has to mean something exact.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LineChange {
+    /// The line is not in the committed file.
+    Added,
+    /// The line is there but reads differently.
+    Changed,
+    /// Something was deleted at this line. Nothing is on screen where
+    /// a deleted line used to be, so the mark goes on the line that
+    /// now sits in its place — which is what every editor does and the
+    /// only place a reader can look for it.
+    Removed,
+}
+
+/// Per-line changes in `file` (relative to the vault `root`) since the
+/// last commit.
+///
+/// Empty when the file is unchanged, or the vault is not a repository
+/// — both ordinary, neither an error. An untracked file is entirely
+/// new, which is more useful to say than nothing at all: a note
+/// captured since the last commit really is all new.
+///
+/// Line numbers are zero-based, to match everything that will paint
+/// them, and ascending, so a painter can walk them beside the lines it
+/// is drawing.
+#[must_use]
+pub fn file_diff(root: &Path, file: &Path) -> Vec<(usize, LineChange)> {
+    file_diff_inner(root, file).unwrap_or_default()
+}
+
+fn file_diff_inner(root: &Path, file: &Path) -> Option<Vec<(usize, LineChange)>> {
+    let run = |args: &[&str]| -> Option<String> {
+        let out = std::process::Command::new("git")
+            .args(args)
+            .current_dir(root)
+            .output()
+            .ok()?;
+        out.status
+            .success()
+            .then(|| String::from_utf8_lossy(&out.stdout).into_owned())
+    };
+    run(&["rev-parse", "--is-inside-work-tree"])?;
+    let name = file.to_str()?;
+
+    // An untracked file has nothing to diff against.
+    let tracked = run(&["ls-files", "--error-unmatch", name]).is_some();
+    if !tracked {
+        let text = std::fs::read_to_string(root.join(file)).ok()?;
+        return Some(
+            text.lines()
+                .enumerate()
+                .map(|(i, _)| (i, LineChange::Added))
+                .collect(),
+        );
+    }
+
+    // `-U0`: no context lines, so every hunk header describes exactly
+    // the lines that differ and nothing has to be filtered back out.
+    let diff = run(&["diff", "--no-color", "-U0", "--", name])?;
+    let mut out = Vec::new();
+    for line in diff.lines() {
+        let Some(rest) = line.strip_prefix("@@ ") else {
+            continue;
+        };
+        // `@@ -old,oldn +new,newn @@`
+        let Some((old, new)) = rest.split_once(" +") else {
+            continue;
+        };
+        let count = |s: &str| -> usize {
+            s.trim_start_matches('-')
+                .split_once(',')
+                .map_or(1, |(_, n)| n.trim_end_matches(" @@").parse().unwrap_or(1))
+        };
+        let new_part = new.split(" @@").next().unwrap_or(new);
+        let start: usize = new_part
+            .split(',')
+            .next()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(1);
+        let removed = count(old);
+        let added = count(new_part);
+        // git counts from one; everything that paints these counts
+        // from zero.
+        let at = start.saturating_sub(1);
+        match (removed, added) {
+            // Pure deletion: no new lines to mark, so the mark lands
+            // on whatever now occupies the position.
+            (_, 0) => out.push((at, LineChange::Removed)),
+            (0, n) => out.extend((0..n).map(|i| (at + i, LineChange::Added))),
+            (_, n) => out.extend((0..n).map(|i| (at + i, LineChange::Changed))),
+        }
+    }
+    out.sort_by_key(|(line, _)| *line);
+    Some(out)
+}
