@@ -157,3 +157,38 @@ fn it_tracks_an_edit_without_being_reopened() {
         app.detail(&sh).expect("detail").children
     );
 }
+
+// === Escape empties the pane it stopped pointing at ===
+//
+// Reported: "pressing escape to remove the selection in the tree view
+// should dismiss the right side of the selected headline view."
+//
+// Verified working on 2026-08-02 — `selected_detail` gates on the
+// selection, so the pane already went empty. Pinned here because
+// nothing else did: the detail is memoised against the vault revision
+// and the selected id, neither of which changes when Escape drops the
+// selection, so a future cache key that forgot this would put a
+// headline back on screen that the outline is no longer pointing at.
+
+#[test]
+fn escape_leaves_the_detail_pane_with_nothing_to_show() {
+    let (_d, mut sh, mut app) = fixture();
+    on(&mut app, &sh, "Parent");
+    assert!(app.selected_detail(&sh).is_some(), "a selection, a detail");
+    app.on_key(&mut sh, "escape", false, false, None);
+    assert!(
+        app.selected_detail(&sh).is_none(),
+        "the pane has nothing to paint"
+    );
+}
+
+#[test]
+fn moving_again_brings_it_back() {
+    // Escape means "I am looking at nothing", not "the pane is closed
+    // forever" — the next motion is how you say you are looking again.
+    let (_d, mut sh, mut app) = fixture();
+    on(&mut app, &sh, "Parent");
+    app.on_key(&mut sh, "escape", false, false, None);
+    app.on_key(&mut sh, "j", false, false, Some('j'));
+    assert!(app.selected_detail(&sh).is_some());
+}
