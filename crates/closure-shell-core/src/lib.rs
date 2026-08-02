@@ -11807,6 +11807,30 @@ impl ModalApp {
         alt: bool,
         text: Option<char>,
     ) {
+        // What the config wrote down beats what the surface would have
+        // done. The readline chords inside a buffer and inside every
+        // prompt are resolved by those handlers rather than through the
+        // keymap, so without this a `bind C-b = …` landed everywhere
+        // except the twenty keys a writer spends the day pressing.
+        //
+        // Modified chords only: `bind j = next-file` is an outline
+        // binding, and a pre-empt that took bare letters too would move
+        // the selection every time you typed a `j` into a note.
+        if (ctrl || alt)
+            && let Some(stroke) = modal_stroke(key, ctrl, alt, text)
+            && let Some(cmd) = self
+                .key_overrides
+                .iter()
+                .find(|(chord, _)| *chord == stroke)
+                .map(|(_, cmd)| cmd.clone())
+        {
+            // An unbind is a chord that does nothing, everywhere —
+            // which is what taking a key away has to mean.
+            if !cmd.is_empty() {
+                self.run_command(shell, &cmd);
+            }
+            return;
+        }
         match self.surface {
             ModalSurface::Search => self.on_search_key(shell, key, ctrl, alt, text),
             ModalSurface::Capture => self.on_capture_key(shell, key, ctrl, alt, text),
@@ -17846,6 +17870,16 @@ impl ModalApp {
             // block writes back to where it came from, a file buffer
             // writes the file, a body commits the headline. org's
             // `C-c C-c` is context-sensitive in exactly this way.
+            // The readline set, with names, so `bind` can reach it.
+            // They act on whatever is taking text: the buffer when one
+            // is open, otherwise the prompt's field — the same rule the
+            // keys themselves follow, and the reason one binding is
+            // enough for both.
+            "line-start" | "line-end" | "char-left" | "char-right" | "char-up" | "char-down"
+            | "word-left" | "word-right" | "delete-char" | "delete-char-back" | "kill-line"
+            | "kill-line-back" | "kill-word-back" | "kill-word-forward" | "yank" => {
+                self.text_motion(cmd);
+            }
             "commit-edit" => match self.surface {
                 ModalSurface::EditBlock => self.commit_edit_special(shell),
                 ModalSurface::EditFile => self.commit_file_buffer(shell),
@@ -18449,6 +18483,93 @@ impl ModalApp {
                 "config.org: no such command — {}",
                 unknown.join(", ")
             ));
+        }
+    }
+
+    /// Run one of the named readline motions against whatever is
+    /// taking text right now.
+    ///
+    /// A buffer if one is open, otherwise the prompt's own field. When
+    /// neither is, the command says so: a chord you can press anywhere
+    /// has to answer where it means nothing.
+    fn text_motion(&mut self, command: &str) {
+        if self.surface.is_editor() {
+            match command {
+                "line-start" => self.body.line_home(),
+                "line-end" => self.body.line_end_motion(),
+                "char-left" => self.body.left(),
+                "char-right" => self.body.right(),
+                "char-up" => self.body.up(),
+                "char-down" => self.body.down(),
+                "word-left" => self.body.word_backward(),
+                "word-right" => self.body.word_end_forward(),
+                "delete-char" => self.body.delete_at(),
+                "delete-char-back" => self.body.backspace(),
+                "kill-line" => self.body.kill_rest_of_line(),
+                "kill-line-back" => self.body.kill_to_line_start(),
+                "kill-word-back" => self.kill_word(false),
+                "kill-word-forward" => self.kill_word(true),
+                "yank" => self.body.yank_insert(),
+                _ => {}
+            }
+            return;
+        }
+        // The prompts share one readline implementation, so the motion
+        // is spelled as the stroke it stands for and handed to it —
+        // rather than a second copy of the same fifteen answers.
+        let stroke: (&str, bool, bool) = match command {
+            "line-start" => ("a", true, false),
+            "line-end" => ("e", true, false),
+            "char-left" => ("b", true, false),
+            "char-right" => ("f", true, false),
+            "char-up" => ("up", false, false),
+            "char-down" => ("down", false, false),
+            "word-left" => ("left", false, true),
+            "word-right" => ("right", false, true),
+            "delete-char" => ("d", true, false),
+            "delete-char-back" => ("backspace", false, false),
+            "kill-line" => ("k", true, false),
+            "kill-line-back" => ("u", true, false),
+            "kill-word-back" => ("w", true, false),
+            "kill-word-forward" => ("d", false, true),
+            "yank" => ("y", true, false),
+            _ => return,
+        };
+        let mut kill = std::mem::take(&mut self.line_kill);
+        let field = match self.surface {
+            ModalSurface::Search | ModalSurface::BodySearch => Some(&mut self.query),
+            ModalSurface::Capture => Some(&mut self.capture_buf),
+            ModalSurface::Ex => Some(&mut self.ex_buf),
+            ModalSurface::Llm => Some(&mut self.chat_buf),
+            ModalSurface::Sync => Some(&mut self.sync_buf),
+            // Every picker and every one-line prompt types into the
+            // same field, which is why they all answer to the same
+            // chords in the first place.
+            ModalSurface::Palette
+            | ModalSurface::TagsEdit
+            | ModalSurface::PropertyEdit
+            | ModalSurface::Rename
+            | ModalSurface::AddSibling
+            | ModalSurface::Headlines
+            | ModalSurface::Blocks
+            | ModalSurface::Messages
+            | ModalSurface::UndoHistory
+            | ModalSurface::Files
+            | ModalSurface::Buffers => Some(&mut self.field_buf),
+            // A list you only walk, or the outline itself: there is no
+            // caret here for a motion to move, and saying so beats
+            // moving one you cannot see.
+            _ => None,
+        };
+        let Some(field) = field else {
+            self.line_kill = kill;
+            self.say(format!("{command}: nothing here is taking text"));
+            return;
+        };
+        let claimed = line_key(field, &mut kill, stroke.0, stroke.1, stroke.2, None);
+        self.line_kill = kill;
+        if !claimed {
+            self.say(format!("{command}: that key does nothing here"));
         }
     }
 
