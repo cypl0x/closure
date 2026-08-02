@@ -980,6 +980,133 @@ pub fn which_key_columns(
     cols
 }
 
+/// The marker that opens the next item of the list `line` belongs to,
+/// or `None` when there is no list to continue.
+///
+/// org's rules, which Doom inherits. The indentation comes with it, so
+/// a nested list survives being typed; a counter counts up; a checkbox
+/// starts unticked, because a new item is not done whatever the one
+/// above it says.
+///
+/// `None` for an *empty* item, which is what ends a list: without that
+/// every list finishes with a stray bullet to go back and delete.
+#[must_use]
+pub fn list_continuation(line: &str) -> Option<String> {
+    let indent: String = line.chars().take_while(|c| c.is_whitespace()).collect();
+    let rest = &line[indent.len()..];
+    let (marker, after) = split_list_marker(rest)?;
+    // What follows the marker, checkbox included: an item with nothing
+    // in it is the end of the list.
+    let content = after
+        .strip_prefix("[ ] ")
+        .or_else(|| after.strip_prefix("[X] "))
+        .or_else(|| after.strip_prefix("[x] "))
+        .or_else(|| after.strip_prefix("[-] "))
+        .unwrap_or(after);
+    if content.trim().is_empty() {
+        return None;
+    }
+    let box_part = if after.starts_with("[ ] ")
+        || after.starts_with("[X] ")
+        || after.starts_with("[x] ")
+        || after.starts_with("[-] ")
+    {
+        "[ ] "
+    } else {
+        ""
+    };
+    // A counter counts; a bullet repeats.
+    let digits: String = marker.chars().take_while(char::is_ascii_digit).collect();
+    if digits.is_empty() {
+        return Some(format!("{indent}{marker}{box_part}"));
+    }
+    let sep = marker.chars().nth(digits.len()).unwrap_or('.');
+    let n: usize = digits.parse().ok()?;
+    Some(format!("{indent}{}{sep} {box_part}", n + 1))
+}
+
+/// Split `rest` into its list marker (with the trailing space) and
+/// what follows, or `None` when it does not open a list item.
+fn split_list_marker(rest: &str) -> Option<(String, &str)> {
+    let mut chars = rest.chars();
+    let first = chars.next()?;
+    if matches!(first, '-' | '+') && chars.next() == Some(' ') {
+        return Some((rest[..2].to_owned(), &rest[2..]));
+    }
+    if first.is_ascii_digit() {
+        let digits = rest.len() - rest.trim_start_matches(|c: char| c.is_ascii_digit()).len();
+        let after = &rest[digits..];
+        if (after.starts_with('.') || after.starts_with(')')) && after[1..].starts_with(' ') {
+            return Some((rest[..digits + 2].to_owned(), &rest[digits + 2..]));
+        }
+    }
+    None
+}
+
+/// Renumber the ordered list containing `line`, in place.
+///
+/// Counting is per depth: a nested list is a different list, so it
+/// starts at one and the outer one does not skip because of it. The
+/// separator the list already uses is kept — `1)` and `1.` are both
+/// org, and a list does not change style halfway down because
+/// something was inserted into it.
+#[must_use]
+pub fn renumber_list(text: &str, line: usize) -> String {
+    let lines: Vec<&str> = text.split('\n').collect();
+    let Some(start) = lines.get(line) else {
+        return text.to_owned();
+    };
+    let indent_of = |l: &str| l.len() - l.trim_start().len();
+    let depth = indent_of(start);
+    if split_list_marker(start.trim_start())
+        .is_none_or(|(m, _)| !m.starts_with(|c: char| c.is_ascii_digit()))
+    {
+        return text.to_owned();
+    }
+    // The run of items at this depth around `line`, and every nested
+    // list inside it, counted separately.
+    let mut counters: std::collections::BTreeMap<usize, usize> = std::collections::BTreeMap::new();
+    let mut out: Vec<String> = Vec::with_capacity(lines.len());
+    let mut inside = false;
+    for (i, raw) in lines.iter().enumerate() {
+        let ind = indent_of(raw);
+        let marker = split_list_marker(raw.trim_start());
+        let numbered = marker
+            .as_ref()
+            .is_some_and(|(m, _)| m.starts_with(|c: char| c.is_ascii_digit()));
+        if !numbered && !raw.trim().is_empty() && ind <= depth {
+            // Out of the list: prose at or above its depth ends it.
+            if inside && i > line {
+                out.extend(lines[i..].iter().map(|l| (*l).to_owned()));
+                return out.join("\n");
+            }
+            counters.clear();
+            inside = false;
+            out.push((*raw).to_owned());
+            continue;
+        }
+        if !numbered {
+            out.push((*raw).to_owned());
+            continue;
+        }
+        inside = true;
+        let Some((m, after)) = marker else {
+            out.push((*raw).to_owned());
+            continue;
+        };
+        let digits = m.len() - 2;
+        let sep = m.chars().nth(digits).unwrap_or('.');
+        // A deeper list restarts once its parent moves on, so the
+        // counters below this depth are dropped before this one steps.
+        counters.retain(|k, _| *k <= ind);
+        let n = counters.entry(ind).or_insert(0);
+        *n += 1;
+        let n = *n;
+        out.push(format!("{}{n}{sep} {after}", &raw[..ind]));
+    }
+    out.join("\n")
+}
+
 /// Every palette entry as `(label, canonical, section, description)`.
 #[must_use]
 pub fn palette_entries_raw() -> Vec<(&'static str, &'static str, &'static str, &'static str)> {
@@ -16922,7 +17049,7 @@ impl ModalApp {
             }
             "enter" => {
                 self.completion = None;
-                self.body.insert_char('\n');
+                self.newline_continuing_list();
             }
             "backspace" => {
                 self.completion = None;
@@ -18835,6 +18962,54 @@ impl ModalApp {
     /// A note with three source blocks is mostly code you are not
     /// reading, and a file opened in the editor view is mostly
     /// headlines you are not editing. Org folds both.
+    /// A newline that carries the list on, org's way.
+    ///
+    /// `RET` at the end of `- milk` opens `- `; at the end of `1.
+    /// first` it opens `2. ` and renumbers what follows, so inserting
+    /// into the middle of a list does not leave two `3.`s. On an
+    /// *empty* item it ends the list instead of making another empty
+    /// one — without that rule every list finishes with a stray bullet
+    /// to go back and delete, which is what made the other rules not
+    /// worth having.
+    fn newline_continuing_list(&mut self) {
+        let (line, col) = self.body.cursor_line_col();
+        let text = self.body.text().to_owned();
+        let current = text.split('\n').nth(line).unwrap_or_default().to_owned();
+        // Only at the end of the line: splitting an item in the middle
+        // is splitting a sentence, and org does not put a bullet there.
+        let at_end = col >= current.chars().count();
+        let Some(marker) = (if at_end {
+            list_continuation(&current)
+        } else {
+            None
+        }) else {
+            // An empty item ends the list: the marker goes, and the
+            // caret is left on the blank line it leaves behind.
+            if at_end && split_list_marker(current.trim_start()).is_some() {
+                let indent = current.len() - current.trim_start().len();
+                self.body.goto_line_col(line, 0);
+                for _ in 0..current.chars().count() - indent {
+                    self.body.delete_at();
+                }
+            }
+            self.body.insert_char('\n');
+            return;
+        };
+        self.body.insert_char('\n');
+        for c in marker.chars() {
+            self.body.insert_char(c);
+        }
+        // Counting only matters for a counter, and `renumber_list`
+        // leaves everything else alone.
+        let after = self.body.text().to_owned();
+        let renumbered = renumber_list(&after, line + 1);
+        if renumbered != after {
+            let (l, c) = self.body.cursor_line_col();
+            self.load_body(renumbered);
+            self.body.goto_line_col(l, c);
+        }
+    }
+
     /// Move the caret off a hidden line, if it is on one.
     ///
     /// A shell paints every line except the hidden ones, so a caret
