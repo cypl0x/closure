@@ -969,14 +969,41 @@ pub fn visible_window(cursor: usize, len: usize, cap: usize) -> std::ops::Range<
 /// scrolling every one of them.
 #[must_use]
 pub fn body_columns(width: f32, zoom: f32) -> usize {
-    /// Advance of one monospace glyph at the editor's text size.
-    const COL_W: f32 = 7.2;
-    /// The line-number gutter plus its margin, and the scrollbar.
-    const CHROME: f32 = 34.0 + 8.0 + 10.0;
+    body_columns_at(width, FALLBACK_COL_W * zoom)
+}
+
+/// The glyph advance assumed before the font has been measured.
+///
+/// A guess, and it was the whole of "with long lines I still can type
+/// in the dark": at 13px the bundled Maple Mono is nearer 7.8px than
+/// this, so every pane claimed about eight percent more columns than
+/// it had. A caret that the arithmetic believes is still on screen
+/// never asks anything to scroll, so the last stretch of a long line —
+/// and the caret in it — sat past the right edge with the view
+/// motionless. Used only until [`GpuiView::measured_col_w`] has a real
+/// number.
+const FALLBACK_COL_W: f32 = 7.2;
+
+/// How many columns fit in `width` pixels at a glyph advance of
+/// `col_w`.
+///
+/// Split out from [`body_columns`] so the advance can be *measured*
+/// rather than assumed — the count is only ever as honest as that one
+/// number, and a count that promises more than fits is indistinguishable
+/// from a horizontal scroll that does not work.
+#[must_use]
+pub fn body_columns_at(width: f32, col_w: f32) -> usize {
+    /// Everything in the pane that is not a glyph: the line-number
+    /// gutter and its margin, the pane's own padding on *both* sides,
+    /// and the scrollbar.
+    ///
+    /// The padding was missing, which is another ~2 columns of the
+    /// same bug the advance caused — the count has to describe the
+    /// space text can actually occupy, not the pane's outer width.
+    const CHROME: f32 = GUTTER_W + GUTTER_GAP + PANE_PAD * 2.0 + SCROLLBAR_W;
     /// Below this the pane cannot show a word.
     const MIN: usize = 8;
     let usable = width - CHROME;
-    let col_w = COL_W * zoom;
     if !usable.is_finite() || col_w <= 0.0 || usable < col_w {
         return BODY_COLS_DEFAULT;
     }
@@ -1981,12 +2008,16 @@ const IMAGE_ROWS: f32 = 8.0;
 /// text. Named because a picture painted under a line has to start
 /// where that line's text starts, and two literals that agree today do
 /// not stay agreeing.
-#[cfg(feature = "gpui")]
 const GUTTER_W: f32 = 34.0;
 
 /// The gap after the line-number column.
-#[cfg(feature = "gpui")]
 const GUTTER_GAP: f32 = 8.0;
+
+/// The editor pane's own padding, per side (`p_2`).
+const PANE_PAD: f32 = 8.0;
+
+/// The width the scrollbar takes off the right of the pane.
+const SCROLLBAR_W: f32 = 10.0;
 
 /// Characters reserved for the TODO keyword in an outline row, painted
 /// or not — a column that appears only on some rows moves every title
@@ -2158,6 +2189,14 @@ pub struct GpuiView {
     /// unrelated keystroke repainted. Comparing this against the fresh
     /// measurement is how the pane knows to ask for one more frame.
     painted_view: std::cell::Cell<usize>,
+    /// The measured advance of one monospace glyph at the editor's
+    /// text size, once the window has been able to ask its own font.
+    ///
+    /// A `Cell` for the same reason `painted_view` is one: the
+    /// measurement becomes available during a render, which only has
+    /// the view by reference. Zero means "not measured yet", and the
+    /// guess stands until it is.
+    measured_col_w: std::cell::Cell<f32>,
 }
 
 #[cfg(feature = "gpui")]
@@ -2217,6 +2256,7 @@ impl GpuiView {
             flash_gen: 0,
             reload_gen: 0,
             painted_view: std::cell::Cell::new(0),
+            measured_col_w: std::cell::Cell::new(0.0),
         }
     }
 
@@ -3284,10 +3324,47 @@ impl GpuiView {
         // don't have the option to view where I am typing". The pane's
         // own handle is the one that clips, and the one `body_view`
         // already trusts for the height.
-        body_columns(
+        body_columns_at(
             f32::from(self.side_scroll.bounds().size.width),
-            self.app.zoom(),
+            self.col_w(),
         )
+    }
+
+    /// The advance of one monospace glyph at the editor's text size —
+    /// measured if the window has managed to ask its own font, and the
+    /// old guess until then.
+    ///
+    /// This is the number the whole horizontal scroll rests on. It was
+    /// a constant, and being ~8% under the bundled font's real advance
+    /// was the entirety of "with long lines I still can type in the
+    /// dark": a pane that thinks it has more columns than it has
+    /// believes the caret is still on screen, and never scrolls.
+    /// Measure one monospace glyph in the font this window actually
+    /// renders with, at the editor's text size and the current zoom.
+    ///
+    /// `M` rather than a space: in a monospace face every advance is
+    /// the same, and a face that turns out not to be monospace should
+    /// be measured by a glyph that is really there. A failure leaves
+    /// the cell alone, so the guess keeps standing rather than a zero
+    /// making every line scroll.
+    fn measure_col_w(&self, window: &Window, font: &gpui::Font) {
+        let size = px(self.sz(BODY_TEXT).into());
+        let font_id = window.text_system().resolve_font(font);
+        if let Ok(advance) = window.text_system().advance(font_id, size, 'M') {
+            let w = f32::from(advance.width);
+            if w > 0.0 {
+                self.measured_col_w.set(w);
+            }
+        }
+    }
+
+    fn col_w(&self) -> f32 {
+        let measured = self.measured_col_w.get();
+        if measured > 0.0 {
+            measured
+        } else {
+            FALLBACK_COL_W * self.app.zoom()
+        }
     }
 
     /// Context line describing the active surface (with the live input
@@ -9023,6 +9100,11 @@ impl Render for GpuiView {
         // Every path that sets a status reaches the toast strip through
         // here, once per frame.
         self.absorb_status(cx);
+        // Ask the font how wide a character actually is, rather than
+        // assuming. Everything the horizontal scroll does is downstream
+        // of this one number, and the assumption was ~8% under the
+        // bundled font: "with long lines I still can type in the dark".
+        self.measure_col_w(window, &font);
         // A clock entry is stamped with the minute it was started, so
         // the window keeps the core's idea of now up to date.
         self.app.set_now(&closure_shell_core::now_local());
