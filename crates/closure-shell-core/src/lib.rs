@@ -872,6 +872,16 @@ impl Detail {
     }
 }
 
+/// Every command the palette knows, by canonical name.
+///
+/// The registry as a list, so a property can be asserted over *all* of
+/// them rather than over the three that happened to be reported —
+/// "Do I have to experience this for every new command?"
+#[must_use]
+pub fn palette_command_names() -> Vec<&'static str> {
+    PALETTE_COMMANDS.iter().map(|(_, c, ..)| *c).collect()
+}
+
 /// The UTC day a ULID was minted, `YYYY-MM-DD`, or `None` if `id` is
 /// not one.
 ///
@@ -10890,6 +10900,13 @@ pub struct ModalApp {
     /// that only kept what you accepted would forget exactly the case
     /// the report is about: three sentences into a capture, `Esc`.
     prompt_history: std::collections::BTreeMap<&'static str, Vec<String>>,
+    /// The buffer a pane was opened over, to come back to.
+    ///
+    /// "This is like the =n=th time. Do I have to experience this for
+    /// every new command?" — no: every command that opens a pane over
+    /// an editor records the way back here, so a command written
+    /// tomorrow is right without anybody having to remember.
+    pane_return: Option<ModalSurface>,
     /// Where a history walk has got to, and the line it interrupted.
     ///
     /// The draft is held so that walking past the newest entry gives it
@@ -11312,6 +11329,7 @@ impl ModalApp {
             },
             palette_history: Vec::new(),
             prompt_history: std::collections::BTreeMap::new(),
+            pane_return: None,
             history_walk: None,
             history_gen: 0,
             which_key_open: false,
@@ -11372,6 +11390,31 @@ impl ModalApp {
     /// exactly this entry point.
     pub fn run(&mut self, shell: &mut Shell, command: &str) {
         self.run_command(shell, canonical_command(command));
+    }
+
+    /// Record the buffer a command just left, so the pane it opened
+    /// knows the way back.
+    ///
+    /// One place rather than one per command: the three reports were
+    /// three commands with the same omission, and a fourth was only a
+    /// matter of time.
+    fn note_pane_return(&mut self, from: ModalSurface) {
+        // Browse is *home*, not a pane: `reload-shell` and the other
+        // commands that deliberately return to the outline are asking
+        // to leave the buffer, and offering to put it back would undo
+        // what was asked for.
+        let opened_a_pane = !self.surface.is_editor() && self.surface != ModalSurface::Browse;
+        if from.is_editor() && opened_a_pane {
+            // Only the first: panes stack, and the buffer under the
+            // bottom one is the buffer to come back to.
+            if self.pane_return.is_none() {
+                self.pane_return = Some(from);
+            }
+        } else if !opened_a_pane {
+            // Back in a buffer, or back at the outline: whatever was
+            // remembered has been used or is no longer wanted.
+            self.pane_return = None;
+        }
     }
 
     /// Which-key items for the active mode, as structured
@@ -12949,6 +12992,8 @@ impl ModalApp {
 
     /// Leave the file buffer without writing it.
     fn close_file_buffer(&mut self) {
+        // The buffer is gone; a pane must not offer to put it back.
+        self.pane_return = None;
         self.file_target = None;
         self.body.clear();
         self.body_baseline.clear();
@@ -17068,6 +17113,8 @@ impl ModalApp {
     /// Commit the body buffer to the target headline through the kernel
     /// command (I8), then return to Browse. No-op if not editing.
     pub fn commit_edit_body(&mut self, shell: &mut Shell) {
+        // The buffer is gone; a pane must not offer to put it back.
+        self.pane_return = None;
         self.write_body(shell);
         self.remember_body_cursor();
         self.edit_target = None;
@@ -17096,6 +17143,8 @@ impl ModalApp {
     /// in practice the stash is empty here; it is taken anyway because
     /// "close without losing text" is the rule, not a special case.
     fn close_editor(&mut self) {
+        // The buffer is gone; a pane must not offer to put it back.
+        self.pane_return = None;
         self.remember_body_cursor();
         self.stash_body();
         self.edit_target = None;
@@ -17107,6 +17156,8 @@ impl ModalApp {
     /// Throw the buffer away — `:q!`. The stash goes with it, or the
     /// next visit would restore exactly what was just discarded.
     fn discard_editor(&mut self) {
+        // The buffer is gone; a pane must not offer to put it back.
+        self.pane_return = None;
         self.drop_stash();
         self.remember_body_cursor();
         self.edit_target = None;
@@ -17810,6 +17861,14 @@ impl ModalApp {
     /// from a full-window buffer dropped you back into the row list —
     /// a different shape of the app than the one you were using.
     const fn home_surface(&self) -> ModalSurface {
+        // A pane opened over a buffer goes back to that buffer. Without
+        // this the answer was "the outline" for anyone whose view is
+        // the clickable one, so the note you were writing vanished from
+        // the screen while still being open — reported three times, for
+        // three different commands, which is what made it one bug.
+        if let Some(back) = self.pane_return {
+            return back;
+        }
         match self.view {
             ViewMode::Editor => ModalSurface::EditFile,
             ViewMode::Clickable => ModalSurface::Browse,
@@ -18243,10 +18302,21 @@ impl ModalApp {
         }
     }
 
+    fn run_command(&mut self, shell: &mut Shell, cmd: &str) {
+        // Every door into a command comes through here — the mouse via
+        // `run`, a chord, and the `:` line — which is why the way back
+        // to a buffer is recorded here rather than in any one of them.
+        // Hooked on `run` alone it worked for the tests and not on
+        // screen, because `:messages` never touches `run`.
+        let from = self.surface;
+        self.run_command_inner(shell, cmd);
+        self.note_pane_return(from);
+    }
+
     // A flat one-arm-per-command dispatch reads clearest as one match;
     // the same precedent as `view_to_json` / `qml_item`.
     #[allow(clippy::too_many_lines)]
-    fn run_command(&mut self, shell: &mut Shell, cmd: &str) {
+    fn run_command_inner(&mut self, shell: &mut Shell, cmd: &str) {
         let last = self.rows_shared(shell).len().saturating_sub(1);
         // Moving the cursor *is* selecting: Escape drops the selection
         // so a capture goes to the top level, and the next motion is
