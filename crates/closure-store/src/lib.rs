@@ -12655,3 +12655,136 @@ fn form_decode(s: &str) -> String {
     }
     String::from_utf8_lossy(&out).into_owned()
 }
+
+// === What git makes of the vault ===
+
+/// A vault's git state, as numbers a widget can draw.
+///
+/// "git status in the UI — Just some lightweight read only (for now)
+/// widgets that indicate the vault or files git status … put the vault
+/// git status icons + number".
+///
+/// Deliberately *not* `git status`'s own output: a terminal prints
+/// that better than any pane could, and the user said plainly that is
+/// not what they meant. What a corner of a window can use is the
+/// state — which branch, how many files differ — and that is what this
+/// is.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct GitStatus {
+    /// Branch name, or a short hash when the head is detached. `None`
+    /// only for a repository with no commits yet.
+    pub branch: Option<String>,
+    /// Files with changes staged for the next commit.
+    pub staged: usize,
+    /// Files changed in the working tree but not staged.
+    pub modified: usize,
+    /// Files git has never been told about — a freshly captured note,
+    /// most often.
+    pub untracked: usize,
+}
+
+impl GitStatus {
+    /// Nothing to report but the branch.
+    #[must_use]
+    pub const fn is_clean(&self) -> bool {
+        self.staged == 0 && self.modified == 0 && self.untracked == 0
+    }
+
+    /// One short line for a corner of the window.
+    #[must_use]
+    pub fn summary(&self) -> String {
+        let branch = self.branch.as_deref().unwrap_or("no commits");
+        if self.is_clean() {
+            return branch.to_owned();
+        }
+        let mut out = String::from(branch);
+        // Staged, then changed, then new — the order they happen in.
+        for (n, mark) in [
+            (self.staged, '\u{25cf}'),
+            (self.modified, '\u{25cb}'),
+            (self.untracked, '\u{002b}'),
+        ] {
+            if n > 0 {
+                out.push(' ');
+                out.push(mark);
+                out.push_str(&n.to_string());
+            }
+        }
+        out
+    }
+}
+
+/// What git makes of the vault at `root`, or `None` when it is not in
+/// a repository.
+///
+/// Shells out rather than linking a git library: the answer is wanted
+/// rarely — when the vault changes, not when a frame is painted — and
+/// a dependency the size of libgit2 to count three numbers would be a
+/// poor trade. A caller that asked this per frame would rebuild the
+/// level-1 microfreeze in a new place, so callers ask on change.
+///
+/// Not a repository is the ordinary case, not an error: most vaults
+/// are a directory of org files and nothing more.
+#[must_use]
+pub fn git_status(root: &Path) -> Option<GitStatus> {
+    let git = |args: &[&str]| -> Option<String> {
+        let out = std::process::Command::new("git")
+            .args(args)
+            .current_dir(root)
+            .output()
+            .ok()?;
+        out.status
+            .success()
+            .then(|| String::from_utf8_lossy(&out.stdout).into_owned())
+    };
+    // Ask git itself whether this is a repository — walking up looking
+    // for `.git` would miss worktrees and submodules.
+    git(&["rev-parse", "--is-inside-work-tree"])?;
+
+    let branch = git(&["rev-parse", "--abbrev-ref", "HEAD"])
+        .map(|s| s.trim().to_owned())
+        .filter(|s| !s.is_empty())
+        .and_then(|name| {
+            if name == "HEAD" {
+                // Detached: name the commit instead, so the widget
+                // still says something true.
+                git(&["rev-parse", "--short", "HEAD"]).map(|s| s.trim().to_owned())
+            } else {
+                Some(name)
+            }
+        });
+
+    let mut status = GitStatus {
+        branch,
+        ..GitStatus::default()
+    };
+    // `-z` rather than lines: a path with a space in it is quoted in
+    // the default format, and a vault is full of prose filenames.
+    let porcelain = git(&["status", "--porcelain=v1", "-z"])?;
+    let mut fields = porcelain.split('\0');
+    while let Some(entry) = fields.next() {
+        if entry.len() < 3 {
+            continue;
+        }
+        let code = &entry[..2];
+        if code == "??" {
+            status.untracked += 1;
+            continue;
+        }
+        let mut bytes = code.bytes();
+        let index = bytes.next().unwrap_or(b' ');
+        let tree = bytes.next().unwrap_or(b' ');
+        if index != b' ' {
+            status.staged += 1;
+        }
+        if tree != b' ' {
+            status.modified += 1;
+        }
+        // A rename carries its old path as a second NUL-separated
+        // field; skipping it keeps the count one per file.
+        if index == b'R' || tree == b'R' {
+            let _ = fields.next();
+        }
+    }
+    Some(status)
+}

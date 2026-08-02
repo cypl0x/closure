@@ -180,3 +180,38 @@ fn it_is_reachable_from_the_palette() {
         "build-info"
     );
 }
+
+// === the vault's git state, as a widget can use it ===
+//
+// "git status in the UI — Just some lightweight read only (for now)
+// widgets that indicate the vault or files git status … put the vault
+// git status icons + number". Not the tool's output: the state.
+
+#[test]
+fn a_vault_that_is_not_a_repository_shows_no_git_indicator() {
+    // A plain directory of org files is the ordinary case. A widget
+    // reading "not a repository" would be noise in every vault that
+    // is not one.
+    let (_d, shell, app) = fixture();
+    assert!(
+        app.indicators(&shell).iter().all(|i| i.id != "git"),
+        "a non-repository grew a git widget"
+    );
+}
+
+#[test]
+fn the_status_is_only_read_when_the_vault_changes() {
+    // The discipline that keeps this from becoming the level-1
+    // microfreeze in a new place: shelling out to git per frame would
+    // cost tens of milliseconds every time anything repainted.
+    let (_d, shell, app) = fixture();
+    let before = app.git_reads();
+    for _ in 0..20 {
+        let _ = app.git_state(&shell);
+    }
+    assert_eq!(
+        app.git_reads(),
+        before + 1,
+        "git was run more than once for one unchanged vault"
+    );
+}

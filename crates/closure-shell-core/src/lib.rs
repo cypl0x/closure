@@ -11937,6 +11937,17 @@ pub struct ModalApp {
     /// than the cursor, because the commands most worth undoing are
     /// the ones that move the cursor off what they changed.
     last_edited_file: Option<std::path::PathBuf>,
+    /// The vault's git state, memoised against the revision it was
+    /// read at.
+    ///
+    /// Shelling out to git costs tens of milliseconds on a large
+    /// repository. Asked once per change rather than once per frame,
+    /// for the reason the detail is memoised: the same mistake in a
+    /// new place would be the level-1 microfreeze again.
+    git_memo: std::cell::RefCell<Option<(u64, Option<closure_store::GitStatus>)>>,
+    /// How many times git has actually been run. What a test asserts
+    /// on instead of timing it.
+    git_reads: std::cell::Cell<u64>,
     /// The notification log. It lived in the gpui window, which is
     /// why it had no command and no chord — there was nothing for the
     /// keymap to point at. Here it has both, and the terminal shell
@@ -12449,6 +12460,8 @@ impl ModalApp {
             messages: Vec::new(),
             tracing: false,
             last_edited_file: None,
+            git_memo: std::cell::RefCell::new(None),
+            git_reads: std::cell::Cell::new(0),
             notifications: Feedback::default(),
             palette_cursor: 0,
             pending: Vec::new(),
@@ -14065,6 +14078,39 @@ impl ModalApp {
     /// every shell shows the same set — and so "is the LLM allowed to
     /// read my screen?" has an answer you can see rather than one
     /// buried in a config file.
+    /// The vault's git state, read at most once per vault revision.
+    ///
+    /// `None` when the vault is not in a repository, which is the
+    /// ordinary case and not an error.
+    #[must_use]
+    pub fn git_state(&self, shell: &Shell) -> Option<closure_store::GitStatus> {
+        let revision = shell.vault.revision();
+        {
+            let memo = self.git_memo.borrow();
+            if let Some((at, state)) = memo.as_ref()
+                && *at == revision
+            {
+                return state.clone();
+            }
+        }
+        let state = closure_store::git_status(shell.vault.root());
+        self.git_reads.set(self.git_reads.get() + 1);
+        *self.git_memo.borrow_mut() = Some((revision, state.clone()));
+        state
+    }
+
+    /// How many times git has actually been run for the widget.
+    #[must_use]
+    pub const fn git_reads(&self) -> u64 {
+        self.git_reads.get()
+    }
+
+    /// The status bar's own row of state.
+    ///
+    /// Derived here rather than assembled in a render function, so
+    /// every shell shows the same set — and so "is the LLM allowed to
+    /// read my screen?" has an answer you can see rather than one
+    /// buried in a config file.
     #[must_use]
     pub fn indicators(&self, shell: &Shell) -> Vec<Indicator> {
         let item =
@@ -14087,7 +14133,7 @@ impl ModalApp {
             .count();
         let conflicts = self.conflicts.conflicts().len();
         let blocks = self.block_rows(shell).len();
-        vec![
+        let mut out = vec![
             item(
                 "vault",
                 format!("⌂ {headlines}"),
@@ -14153,7 +14199,41 @@ impl ModalApp {
                 },
                 Some("conflicts"),
             ),
-        ]
+        ];
+        out.extend(self.git_indicator(shell));
+        out
+    }
+
+    /// The vault's git state as one status-bar item, or nothing when
+    /// the vault is not in a repository.
+    ///
+    /// Most vaults are a directory of org files and nothing more; a
+    /// widget reading "not a repository" in every one of them would be
+    /// noise where the item asked for information.
+    fn git_indicator(&self, shell: &Shell) -> Option<Indicator> {
+        let git = self.git_state(shell)?;
+        Some(Indicator {
+            id: "git",
+            label: format!("\u{2387} {}", git.summary()),
+            tooltip: if git.is_clean() {
+                format!("git: {} — nothing to commit", git.summary())
+            } else {
+                format!(
+                    "git: {} staged, {} changed, {} untracked",
+                    git.staged, git.modified, git.untracked
+                )
+            },
+            level: if git.is_clean() {
+                IndicatorLevel::Idle
+            } else {
+                IndicatorLevel::Active
+            },
+            // Read-only "for now", as the item says: there is nothing
+            // to run yet, and a widget that looked clickable and did
+            // nothing would be worse than one that does not.
+            command: None,
+            chord: None,
+        })
     }
 
     /// Language of the live org-edit-special session (empty when the
