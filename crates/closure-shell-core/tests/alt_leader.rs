@@ -64,7 +64,12 @@ fn the_alt_leader_reaches_a_leader_chord_from_insert() {
 
     assert_eq!(
         app.surface(),
-        ModalSurface::Files,
+        // `SPC f f` was `recent-files` when this was written.
+        // Rewritten 2026-08-02 for "I do like the =SPC f f= behavior
+        // from Doom Emacs … =SPC f f= maps to =find-file=": the chord
+        // is find-file now and `SPC f r` is the recent list. What this
+        // test is about is that the leader was reached at all.
+        ModalSurface::FindFile,
         "SPC f f is recent-files"
     );
     assert_eq!(app.body_buffer(), before, "and nothing was typed");
@@ -78,7 +83,7 @@ fn dooms_own_alt_leader_key_works_too() {
     key(&mut app, &mut shell, "space", false, true);
     key(&mut app, &mut shell, "f", false, false);
     key(&mut app, &mut shell, "f", false, false);
-    assert_eq!(app.surface(), ModalSurface::Files);
+    assert_eq!(app.surface(), ModalSurface::FindFile);
 }
 
 #[test]
@@ -141,7 +146,7 @@ fn it_works_in_a_file_buffer_too() {
     key(&mut app, &mut shell, "space", true, false);
     key(&mut app, &mut shell, "f", false, false);
     key(&mut app, &mut shell, "f", false, false);
-    assert_eq!(app.surface(), ModalSurface::Files);
+    assert_eq!(app.surface(), ModalSurface::FindFile);
 }
 
 #[test]

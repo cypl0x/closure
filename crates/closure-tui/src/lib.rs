@@ -2006,6 +2006,9 @@ impl App {
         self.running_clock.as_deref()
     }
 
+    // A flat one-arm-per-command dispatch reads clearest as one match,
+    // the same precedent as the core's `run_command`.
+    #[allow(clippy::too_many_lines)]
     fn apply_buffer_command(&mut self, cmd: &str) -> bool {
         match cmd {
             "clock-in" | "clock-out" | "clock-cancel" | "clock-goto" => {
@@ -2057,6 +2060,16 @@ impl App {
             "recent-files" => {
                 self.mode = AppMode::Files;
                 self.result_cursor = 0;
+            }
+            // The terminal shell has no directory walker of its own, so
+            // find-file opens the file list it does have. Making a file
+            // is the gpui shell's gesture; what matters here is that a
+            // bound chord does something rather than reporting itself
+            // unimplemented (`no_dead_chords`).
+            "find-file" => {
+                self.mode = AppMode::Files;
+                self.result_cursor = 0;
+                self.status = "find-file — the file list; new files are made in the GUI".into();
             }
             "next-buffer" => self.cycle_buffer(1),
             "prev-buffer" => self.cycle_buffer(-1),

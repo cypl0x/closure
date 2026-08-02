@@ -3564,6 +3564,12 @@ const PALETTE_COMMANDS: &[(&str, &str, &str, &str)] = &[
         "Open a file you had open lately",
     ),
     (
+        "find-file",
+        "find-file",
+        "Navigate",
+        "Open a file by name, or make one that is not there yet",
+    ),
+    (
         "list-buffers",
         "list-buffers",
         "Navigate",
@@ -7647,6 +7653,9 @@ pub enum ModalSurface {
     /// The file picker: the files this vault has, the ones recent
     /// sessions were in first (Q1-B4).
     Files,
+    /// Doom's `find-file`: walk the vault's directories, and make what
+    /// is not there yet.
+    FindFile,
     /// The date picker: a month grid over `SCHEDULED:` or `DEADLINE:`
     /// (Q3-V4).
     DatePick,
@@ -11458,6 +11467,12 @@ pub struct ModalApp {
     /// that only kept what you accepted would forget exactly the case
     /// the report is about: three sentences into a capture, `Esc`.
     prompt_history: std::collections::BTreeMap<&'static str, Vec<String>>,
+    /// Which directory `find-file` is looking at, vault-relative.
+    ///
+    /// Relative rather than absolute so that it cannot express a path
+    /// outside the vault: a picker that walks above the root is a file
+    /// manager with somebody's home directory in reach.
+    find_dir: std::path::PathBuf,
     /// The buffer a pane was opened over, to come back to.
     ///
     /// "This is like the =n=th time. Do I have to experience this for
@@ -11887,6 +11902,7 @@ impl ModalApp {
             },
             palette_history: Vec::new(),
             prompt_history: std::collections::BTreeMap::new(),
+            find_dir: std::path::PathBuf::new(),
             pane_return: None,
             history_walk: None,
             history_gen: 0,
@@ -12743,6 +12759,9 @@ impl ModalApp {
             | ModalSurface::Messages => {
                 self.on_picker_list_key(shell, key, ctrl, alt, text);
             }
+            // The same picker, with its own Enter: a directory is
+            // walked into, a name that is not there yet is made.
+            ModalSurface::FindFile => self.on_find_file_key(shell, key, ctrl, alt, text),
             ModalSurface::BodySearch => self.on_body_search_key(shell, key, ctrl, alt, text),
             ModalSurface::Sniffer => self.on_sniffer_key(shell, key),
             ModalSurface::Conflicts => self.on_conflicts_key(shell, key),
@@ -14060,6 +14079,149 @@ impl ModalApp {
     /// ([`Self::picker_cursor`]), which for the undo tree is not the
     /// outline selection — that one still points at the file whose
     /// history is being walked.
+    /// The rows of the directory `find-file` is looking at.
+    ///
+    /// Directories first: you are usually narrowing *towards* one, and
+    /// a list that mixes them is a list you have to read rather than
+    /// skim. `..` is a row rather than a chord, because a picker whose
+    /// only way back is a key you have to know is a picker you get
+    /// stuck in.
+    fn find_file_rows(&self, shell: &Shell) -> Vec<PickRow> {
+        let here = shell.vault.root().join(&self.find_dir);
+        let mut dirs: Vec<PickRow> = Vec::new();
+        let mut files: Vec<PickRow> = Vec::new();
+        if self.find_dir.components().next().is_some() {
+            dirs.push(PickRow {
+                label: "../".to_owned(),
+                detail: self.find_dir.display().to_string(),
+                trailing: "up".to_owned(),
+                matches: Vec::new(),
+                current: false,
+            });
+        }
+        if let Ok(entries) = std::fs::read_dir(&here) {
+            for entry in entries.flatten() {
+                let name = entry.file_name().to_string_lossy().into_owned();
+                // A dotfile in a vault is somebody's `.git`, not a note.
+                if name.starts_with('.') {
+                    continue;
+                }
+                let is_dir = entry.file_type().is_ok_and(|t| t.is_dir());
+                if is_dir {
+                    dirs.push(PickRow {
+                        label: format!("{name}/"),
+                        detail: String::new(),
+                        trailing: "dir".to_owned(),
+                        matches: Vec::new(),
+                        current: false,
+                    });
+                } else if std::path::Path::new(&name)
+                    .extension()
+                    .is_some_and(|e| e.eq_ignore_ascii_case("org"))
+                {
+                    files.push(PickRow {
+                        label: name,
+                        detail: String::new(),
+                        trailing: "org".to_owned(),
+                        matches: Vec::new(),
+                        current: false,
+                    });
+                }
+            }
+        }
+        dirs.sort_by(|a, b| a.label.cmp(&b.label));
+        files.sort_by(|a, b| a.label.cmp(&b.label));
+        dirs.extend(files);
+        Self::narrow(self.prompt_text().unwrap_or_default(), dirs)
+    }
+
+    /// `find-file`'s Enter: walk in, open, or make.
+    fn on_find_file_key(
+        &mut self,
+        shell: &mut Shell,
+        key: &str,
+        ctrl: bool,
+        alt: bool,
+        text: Option<char>,
+    ) {
+        if key != "enter" {
+            self.on_picker_list_key(shell, key, ctrl, alt, text);
+            return;
+        }
+        let typed = self.query.text().trim().to_owned();
+        let rows = self.find_file_rows(shell);
+        let picked = rows.get(self.selected.min(rows.len().saturating_sub(1)));
+        // A row under the cursor wins over the text: the text is how
+        // you narrowed to it. Only when nothing matches is the text a
+        // name for something new.
+        match picked {
+            Some(row) if row.trailing == "up" => {
+                self.find_dir.pop();
+                self.query.clear();
+                self.selected = 0;
+            }
+            Some(row) if row.trailing == "dir" => {
+                self.find_dir.push(row.label.trim_end_matches('/'));
+                self.query.clear();
+                self.selected = 0;
+            }
+            Some(row) => {
+                let path = self.find_dir.join(&row.label);
+                self.query.clear();
+                self.open_file_path(shell, &path);
+            }
+            None if !typed.is_empty() => self.create_and_open(shell, &typed),
+            None => self.say("nothing here — type a name to make one"),
+        }
+    }
+
+    /// Make the file `typed` names, with the directories it needs, and
+    /// open it.
+    ///
+    /// One gesture, the way Doom's `find-file` is: typing
+    /// `notes/2026/q3.org` should not take three steps. A new file is
+    /// given a headline and an id, because an empty file is not a note
+    /// — the outline would have nothing to select and the editor
+    /// nothing to open.
+    fn create_and_open(&mut self, shell: &mut Shell, typed: &str) {
+        // A vault is a directory, and a picker that can be talked into
+        // writing above its root is a file manager with somebody's home
+        // in reach. `..` and an absolute path are the two ways to ask.
+        let asked = std::path::Path::new(typed);
+        let escapes = asked.is_absolute()
+            || asked.components().any(|c| {
+                matches!(
+                    c,
+                    std::path::Component::ParentDir | std::path::Component::RootDir
+                )
+            });
+        if escapes {
+            self.say(format!("{typed}: a note lives inside the vault"));
+            return;
+        }
+        let mut relative = self.find_dir.join(typed);
+        if relative.extension().is_none() {
+            relative.set_extension("org");
+        }
+        let title = relative.file_stem().map_or_else(
+            || "Untitled".to_owned(),
+            |s| s.to_string_lossy().into_owned(),
+        );
+        let source = format!(
+            "* {title}\n:PROPERTIES:\n:ID: {}\n:END:\n",
+            closure_core::BlockId::fresh()
+        );
+        match shell.vault.create_file(&relative, &source) {
+            Ok(_) => {
+                self.query.clear();
+                self.invalidate_rows();
+                self.say(format!("created {}", relative.display()));
+                self.open_file_path(shell, &relative);
+            }
+            Err(e) => self.say(format!("could not create {}: {e}", relative.display())),
+        }
+    }
+
     fn on_picker_list_key(
         &mut self,
         shell: &mut Shell,
@@ -17085,6 +17247,7 @@ impl ModalApp {
             | ModalSurface::UndoHistory
             | ModalSurface::DbView
             | ModalSurface::Graph
+            | ModalSurface::FindFile
             | ModalSurface::Messages => Some(&mut self.query),
             ModalSurface::Ex => Some(&mut self.ex_buf),
             ModalSurface::Sync => Some(&mut self.sync_buf),
@@ -17459,6 +17622,11 @@ impl ModalApp {
             // so both are pickers like every other list of them — one
             // filter, one set of chords, one look.
             ModalSurface::DbView => ("db", "RET jumps to it", self.db_pick_rows(shell)),
+            ModalSurface::FindFile => (
+                "find file",
+                "RET opens, or makes what is not there",
+                self.find_file_rows(shell),
+            ),
             ModalSurface::Graph => ("graph", "RET jumps to it", self.graph_pick_rows(shell)),
             ModalSurface::UndoHistory => (
                 "undo history",
@@ -17536,6 +17704,7 @@ impl ModalApp {
             | ModalSurface::UndoHistory
             | ModalSurface::DbView
             | ModalSurface::Graph
+            | ModalSurface::FindFile
             | ModalSurface::Messages => Some(&mut self.query),
             ModalSurface::Ex => Some(&mut self.ex_buf),
             ModalSurface::Sync => Some(&mut self.sync_buf),
@@ -17609,6 +17778,12 @@ impl ModalApp {
                 format!("{} line(s)", self.body_search_rows(shell).len()),
                 T::Filter,
                 "\u{f002}",
+            ),
+            ModalSurface::FindFile => (
+                "find file".to_owned(),
+                "RET opens \u{b7} a new name makes it".to_owned(),
+                T::Target,
+                "\u{f07b}",
             ),
             ModalSurface::Refile => (
                 "refile to".to_owned(),
@@ -17724,6 +17899,7 @@ impl ModalApp {
             | ModalSurface::UndoHistory
             | ModalSurface::DbView
             | ModalSurface::Graph
+            | ModalSurface::FindFile
             | ModalSurface::Messages => Some(&self.query),
             ModalSurface::Ex => Some(&self.ex_buf),
             ModalSurface::Sync => Some(&self.sync_buf),
@@ -19144,6 +19320,12 @@ impl ModalApp {
                 } else {
                     self.discard_editor();
                 }
+            }
+            "find-file" => {
+                self.query.clear();
+                self.selected = 0;
+                self.find_dir = std::path::PathBuf::new();
+                self.surface = ModalSurface::FindFile;
             }
             "messages" => {
                 self.query.clear();

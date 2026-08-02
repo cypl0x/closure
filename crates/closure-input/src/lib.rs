@@ -147,6 +147,7 @@ const DOOM_KEYMAP: &[(&str, &str)] = &[
     ("C-^", "alternate-buffer"),
     ("g B", "list-buffers"),
     ("g f", "recent-files"),
+    ("g F", "find-file"),
     ("g c", "close-buffer"),
     ("g C", "close-buffer-force"),
     // Planning (Q3-V4): org's own `C-c C-s` / `C-c C-d` idea, in each
@@ -173,7 +174,7 @@ const DOOM_KEYMAP: &[(&str, &str)] = &[
     ("SPC .", "recent-files"),
     ("SPC ,", "list-buffers"),
     ("SPC f s", "save-buffer"),
-    ("SPC f f", "recent-files"),
+    ("SPC f f", "find-file"),
     ("SPC f r", "recent-files"),
     ("SPC s i", "list-headlines"),
     ("SPC b b", "list-buffers"),
@@ -342,7 +343,7 @@ const EMACS_KEYMAP: &[(&str, &str)] = &[
     ("C-x <left>", "prev-buffer"),
     ("C-x k", "close-buffer"),
     ("C-x K", "close-buffer-force"),
-    ("C-x C-f", "recent-files"),
+    ("C-x C-f", "find-file"),
     ("C-x C-r", "recent-files"),
     ("C-c ,", "alternate-buffer"),
     ("M-,", "jump-back"),
@@ -501,6 +502,7 @@ const VIM_KEYMAP: &[(&str, &str)] = &[
     ("C-^", "alternate-buffer"),
     ("g B", "list-buffers"),
     ("g f", "recent-files"),
+    ("g F", "find-file"),
     ("g c", "close-buffer"),
     ("g C", "close-buffer-force"),
     // Planning (Q3-V4): org's own `C-c C-s` / `C-c C-d` idea, in each
@@ -656,6 +658,7 @@ const HELIX_KEYMAP: &[(&str, &str)] = &[
     ("C-^", "alternate-buffer"),
     ("g B", "list-buffers"),
     ("g f", "recent-files"),
+    ("g F", "find-file"),
     ("g c", "close-buffer"),
     ("g C", "close-buffer-force"),
     // Planning (Q3-V4): org's own `C-c C-s` / `C-c C-d` idea, in each
@@ -810,6 +813,7 @@ const NOTION_KEYMAP: &[(&str, &str)] = &[
     ("C-^", "alternate-buffer"),
     ("g B", "list-buffers"),
     ("g f", "recent-files"),
+    ("g F", "find-file"),
     ("g c", "close-buffer"),
     ("g C", "close-buffer-force"),
     // Planning (Q3-V4): org's own `C-c C-s` / `C-c C-d` idea, in each

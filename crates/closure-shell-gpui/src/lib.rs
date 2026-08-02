@@ -1415,6 +1415,7 @@ pub const fn accepts_paste(surface: ModalSurface, insert: bool) -> bool {
         | ModalSurface::Rename
         | ModalSurface::AddSibling
         | ModalSurface::TagsEdit
+        | ModalSurface::FindFile
         | ModalSurface::PropertyEdit
         | ModalSurface::Palette
         | ModalSurface::BodySearch
@@ -3433,6 +3434,7 @@ impl GpuiView {
         let n = self.app.rows(&self.shell).len();
         match self.app.surface() {
             ModalSurface::Browse => format!("{n} headline(s)"),
+            ModalSurface::FindFile => format!("find file — {}\u{258f}", self.app.query()),
             ModalSurface::Messages => {
                 format!(
                     "messages — {} kept · type to filter",

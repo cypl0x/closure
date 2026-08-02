@@ -120,6 +120,7 @@ pub const fn opening_route(surface: crate::ModalSurface) -> &'static [&'static s
         S::UndoHistory => &["undo-history"],
         S::Headlines => &["list-headlines"],
         S::DbView => &["db-view"],
+        S::FindFile => &["find-file"],
         S::BodySearch => &["body-search"],
         S::Sniffer => &["sniffer"],
         S::Conflicts => &["conflicts"],
