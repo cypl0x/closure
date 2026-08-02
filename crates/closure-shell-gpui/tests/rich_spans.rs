@@ -17,7 +17,7 @@
 
 #![allow(clippy::unwrap_used, clippy::expect_used, missing_docs)]
 
-use closure_shell_gpui::{BodySpan, highlight_body, line_links};
+use closure_shell_gpui::{BodySpan, highlight_body, line_links, span_color_of};
 
 /// Spans must reconstruct the line exactly, whatever they classify.
 fn assert_verbatim(body: &str) {
@@ -335,4 +335,70 @@ fn an_unclosed_block_still_classifies_its_content() {
     // Half-typed is the normal state while writing one.
     let lines = highlight_body("#+BEGIN_QUOTE\nstill quoted");
     assert_eq!(lines[1][0].0, BodySpan::Quote);
+}
+
+// === Drawers are bookkeeping, not alarms ===
+//
+// Reported 2026-08-02: "in the body editor the property ID (and maybe
+// all properties) will [be] shown in red. Why use such a alert color
+// for something that is not so relevant for the user."
+//
+// A drawer shared the error colour with an open TODO, on the theory
+// that both are "unfinished business the eye should catch first". True
+// of a TODO; false of an id. Now that the body editor shows every
+// child's `:PROPERTIES:` drawer, it was also the loudest thing on the
+// screen.
+
+#[test]
+fn a_drawer_is_not_painted_like_an_error() {
+    let t = closure_shell_core::Theme::doom_vibrant();
+    assert_ne!(
+        span_color_of(&t, BodySpan::Drawer),
+        closure_shell_gpui::color_u32(t.color(closure_shell_core::ColorRole::Error)),
+        "an id is not an alarm"
+    );
+}
+
+#[test]
+fn a_drawer_reads_like_the_other_bookkeeping() {
+    let t = closure_shell_core::Theme::doom_vibrant();
+    assert_eq!(
+        span_color_of(&t, BodySpan::Drawer),
+        span_color_of(&t, BodySpan::Meta),
+        "same weight of attention as a meta line"
+    );
+}
+
+#[test]
+fn an_open_todo_still_catches_the_eye() {
+    let t = closure_shell_core::Theme::doom_vibrant();
+    assert_eq!(
+        span_color_of(&t, BodySpan::Todo),
+        closure_shell_gpui::color_u32(t.color(closure_shell_core::ColorRole::Error)),
+        "that part of the rule was right"
+    );
+}
+
+#[test]
+fn five_levels_of_headline_are_five_colours() {
+    // "Please use multiple colors for each level." Three meant depth 4
+    // read exactly like depth 1.
+    let t = closure_shell_core::Theme::doom_vibrant();
+    let mut seen: Vec<u32> = (1..=5)
+        .map(|l| span_color_of(&t, BodySpan::Headline(l)))
+        .collect();
+    seen.sort_unstable();
+    seen.dedup();
+    assert_eq!(seen.len(), 5);
+}
+
+#[test]
+fn the_sixth_level_starts_the_cycle_again() {
+    // Org runs out of faces too; repeating beats inventing colours
+    // nobody can tell apart.
+    let t = closure_shell_core::Theme::doom_vibrant();
+    assert_eq!(
+        span_color_of(&t, BodySpan::Headline(6)),
+        span_color_of(&t, BodySpan::Headline(1)),
+    );
 }

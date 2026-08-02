@@ -1099,6 +1099,12 @@ pub enum ColorRole {
     Heading2,
     /// Third-level heading (doom-vibrant outline-3 violet).
     Heading3,
+    /// Fourth-level heading. doom-themes derives outline-4 by
+    /// lightening blue, which is what keeps the hue order readable once
+    /// the cycle repeats.
+    Heading4,
+    /// Fifth-level heading (lightened magenta, doom's outline-5).
+    Heading5,
     /// Inline/source code (doom-vibrant org-code orange).
     Code,
 }
@@ -1126,6 +1132,10 @@ pub struct Palette {
     pub heading2: Color,
     /// Third-level heading colour.
     pub heading3: Color,
+    /// Fourth-level heading colour.
+    pub heading4: Color,
+    /// Fifth-level heading colour.
+    pub heading5: Color,
     /// Inline/source code colour.
     pub code: Color,
 }
@@ -1201,6 +1211,8 @@ impl Theme {
                 success: Color("#a6e3a1"),
                 heading2: Color("#cba6f7"),
                 heading3: Color("#b4befe"),
+                heading4: Color("#a6c8fa"),
+                heading5: Color("#ddc4fb"),
                 code: Color("#fab387"),
             },
             spacing: Spacing {
@@ -1231,6 +1243,8 @@ impl Theme {
                 success: Color("#40a02b"),
                 heading2: Color("#8839ef"),
                 heading3: Color("#7287fd"),
+                heading4: Color("#3b7fd4"),
+                heading5: Color("#a86ef4"),
                 code: Color("#fe640b"),
             },
             spacing: Spacing {
@@ -1261,6 +1275,8 @@ impl Theme {
                 success: Color("#00ff00"),
                 heading2: Color("#ff00ff"),
                 heading3: Color("#00ffff"),
+                heading4: Color("#7fbfff"),
+                heading5: Color("#ff7fff"),
                 code: Color("#ffa500"),
             },
             spacing: Spacing {
@@ -1294,6 +1310,13 @@ impl Theme {
                 success: Color("#7bc275"),
                 heading2: Color("#c57bdb"),
                 heading3: Color("#a991f1"),
+                // doom-themes' outline-4 and outline-5 are
+                // `(doom-lighten blue 0.25)` and
+                // `(doom-lighten magenta 0.25)` — the same hues coming
+                // round again, lighter, so depth stays legible past
+                // three. Blended toward white by a quarter.
+                heading4: Color("#7cc3f3"),
+                heading5: Color("#d39ce4"),
                 code: Color("#e69055"),
             },
             spacing: Spacing {
@@ -1339,6 +1362,8 @@ impl Theme {
             ColorRole::Success => self.palette.success,
             ColorRole::Heading2 => self.palette.heading2,
             ColorRole::Heading3 => self.palette.heading3,
+            ColorRole::Heading4 => self.palette.heading4,
+            ColorRole::Heading5 => self.palette.heading5,
             ColorRole::Code => self.palette.code,
         }
     }

@@ -1666,7 +1666,17 @@ pub fn run(vault_path: &Path) -> Result<(), String> {
 }
 
 /// Theme colours packed for gpui, derived once per frame.
-#[cfg(feature = "gpui")]
+///
+/// Not gated on the `gpui` feature: it is a struct of packed `u32`s and
+/// the span mapping over it ([`span_color`]) is a pure match, so both
+/// stay checkable without a window. Most of the slots are only read by
+/// the render path, which is gated, so the hermetic build sees them as
+/// dead — they are the theme's, not this struct's, and dropping them
+/// would make the two builds disagree about what a theme has.
+#[cfg_attr(
+    not(feature = "gpui"),
+    expect(dead_code, reason = "read by the gated render path")
+)]
 #[derive(Clone, Copy)]
 struct Colors {
     bg: u32,
@@ -1685,10 +1695,11 @@ struct Colors {
     border: u32,
     heading2: u32,
     heading3: u32,
+    heading4: u32,
+    heading5: u32,
     code: u32,
 }
 
-#[cfg(feature = "gpui")]
 impl Colors {
     fn of(theme: &Theme) -> Self {
         use closure_shell_core::ColorRole as R;
@@ -1711,17 +1722,27 @@ impl Colors {
             border: mix_u32(bg, fg, 32),
             heading2: c(R::Heading2),
             heading3: c(R::Heading3),
+            heading4: c(R::Heading4),
+            heading5: c(R::Heading5),
             code: c(R::Code),
         }
     }
 
     /// doom-vibrant outline colour for a headline `level` (outline-1
-    /// blue, outline-2 magenta, outline-3 violet, cycling).
+    /// blue, outline-2 magenta, outline-3 violet, then those two
+    /// lightened, cycling).
+    ///
+    /// Three colours meant depth 4 read exactly like depth 1 — "the
+    /// outline indention is off … currently it is more like guessing".
+    /// doom-themes goes to eight by repeating blue and magenta lighter
+    /// each time; five is where a reader stops telling them apart.
     const fn outline(self, level: u8) -> u32 {
-        match (level.saturating_sub(1)) % 3 {
+        match (level.saturating_sub(1)) % 5 {
             0 => self.accent,
             1 => self.heading2,
-            _ => self.heading3,
+            2 => self.heading3,
+            3 => self.heading4,
+            _ => self.heading5,
         }
     }
 }
@@ -7080,7 +7101,6 @@ fn decorated(kind: BodySpan) -> gpui::HighlightStyle {
 
 /// Theme colour for a body-editor span kind. Shared by the editor
 /// pane and the read-only detail preview so both read identically.
-#[cfg(feature = "gpui")]
 const fn span_color(co: Colors, kind: BodySpan) -> u32 {
     match kind {
         // Emphasis is weight and slant first (see [`span_decoration`]);
@@ -7089,26 +7109,44 @@ const fn span_color(co: Colors, kind: BodySpan) -> u32 {
         BodySpan::Plain | BodySpan::Bold | BodySpan::Italic | BodySpan::Underline => co.fg,
         // A tag run is de-emphasised for the same reason meta lines are:
         // it is bookkeeping beside the sentence, not the sentence.
-        BodySpan::Meta | BodySpan::Comment | BodySpan::Strike | BodySpan::Tags => co.muted,
-        // A drawer and an open TODO are both "unfinished business the
-        // eye should catch first".
-        BodySpan::Drawer | BodySpan::Todo => co.error,
+        BodySpan::Meta
+        | BodySpan::Comment
+        | BodySpan::Strike
+        | BodySpan::Tags
+        | BodySpan::Drawer => co.muted,
+        // An open TODO is unfinished business the eye should catch
+        // first. A drawer used to share that colour on the same
+        // reasoning, which is true of the TODO and false of an `:ID:` —
+        // bookkeeping, and since the editor started showing every
+        // child's drawer, the loudest thing on the screen.
+        BodySpan::Todo => co.error,
         BodySpan::Keyword | BodySpan::Link => co.accent,
         // Literals and finished work read as settled.
         BodySpan::Literal | BodySpan::Done => co.success,
         BodySpan::Table => co.heading2,
         BodySpan::InlineCode | BodySpan::Verbatim | BodySpan::Example => co.code,
         BodySpan::Quote => co.heading3,
-        // Org cycles its outline faces by level; the palette has three
-        // heading colours, so depth 4 reads like depth 1 — which is
-        // what org does too once it runs out of faces.
-        BodySpan::Headline(level) => match level % 3 {
-            1 => co.accent,
-            2 => co.heading2,
-            _ => co.heading3,
-        },
+        // Org cycles its outline faces by level. Three colours meant
+        // depth 4 read exactly like depth 1; doom-themes goes to eight,
+        // repeating blue and magenta lighter each time. Five is where a
+        // reader stops telling them apart, so five it is, and the sixth
+        // starts again — which is what org does once it runs out too.
+        // One cycle for the outline rows and the body text, so a
+        // headline is the same colour in the tree and in the buffer.
+        BodySpan::Headline(level) => co.outline(level),
         BodySpan::Priority => co.warning,
     }
+}
+
+/// The colour a span kind is painted in, for a given theme.
+///
+/// The test seam over [`span_color`]: the mapping is the thing worth
+/// pinning — an `:ID:` drawer must not read as an alarm, and five
+/// outline levels must be five colours — and neither should need a
+/// window to check.
+#[must_use]
+pub fn span_color_of(theme: &closure_shell_core::Theme, kind: BodySpan) -> u32 {
+    span_color(Colors::of(theme), kind)
 }
 
 /// Resolve a window-space mouse position to a char column in `text`
