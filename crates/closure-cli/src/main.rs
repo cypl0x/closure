@@ -2332,7 +2332,30 @@ fn cmd_build() -> Result<(), String> {
     println!("name:    {}", env!("CARGO_PKG_NAME"));
     println!("version: {}", env!("CARGO_PKG_VERSION"));
     println!("authors: {}", env!("CARGO_PKG_AUTHORS"));
+    // What was built, and what was in it. No timestamp: the values are
+    // properties of the source and the flags, so two builds of one
+    // tree stay one binary.
+    println!("build:   {}", closure_core::build_info().describe());
+    println!("features: {}", compiled_features().join(", "));
     Ok(())
+}
+
+/// The optional features this binary was compiled with.
+///
+/// "the `system-configuration-features` variable lists features
+/// enabled at compile time". Captured in this crate's build script
+/// rather than the kernel's, because cargo features are per crate and
+/// `closure-core` has none of its own — the flags that vary are the
+/// ones declared here.
+fn compiled_features() -> Vec<&'static str> {
+    let list = env!("CLOSURE_FEATURES");
+    let mut out: Vec<&'static str> = list.split(',').filter(|f| !f.is_empty()).collect();
+    if out.is_empty() {
+        // A default build really has none, and saying so beats an
+        // empty line that reads like a bug.
+        out.push("none (default build)");
+    }
+    out
 }
 
 /// Write `config.org` and `tutorial.org` into a vault.

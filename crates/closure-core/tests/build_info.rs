@@ -114,3 +114,26 @@ fn an_unknown_build_is_reported_rather_than_faked() {
         );
     }
 }
+
+// === which features were compiled in ===
+//
+// "Emacs like system-configuration-options? … Should we implement
+// this? Or does it compromise reproducability?"
+//
+// It does not, by exactly the argument that admits the commit hash: a
+// feature set is a property of *what* was built, not of when.
+//
+// It is not on `BuildInfo`, and the first version of this file was
+// wrong to put it there. Cargo features are per *crate*, and
+// `closure-core` has none of its own — so asking core what the binary
+// was built with answers "nothing", truthfully and uselessly. The
+// question belongs to `closure-cli`, which owns the flags that vary,
+// and that is where it is captured.
+
+#[test]
+fn the_core_does_not_pretend_to_know_the_binarys_features() {
+    // A guard against putting it back: whatever reports features, it
+    // cannot be this crate.
+    let d = build_info().describe();
+    assert!(!d.contains("features"), "{d}");
+}

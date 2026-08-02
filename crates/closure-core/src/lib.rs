@@ -2255,6 +2255,23 @@ impl BuildInfo {
         }
         out
     }
+
+    /// The build, plus the optional features `extra` names.
+    ///
+    /// The features are passed in rather than read here: cargo
+    /// features are per crate, and this crate has none of its own, so
+    /// anything it reported about the *binary* would be a confident
+    /// "nothing". `closure-cli` owns the flags that vary and hands
+    /// them over.
+    #[must_use]
+    pub fn describe_with(&self, extra: &[&str]) -> String {
+        let mut out = self.describe();
+        if !extra.is_empty() {
+            out.push_str(" · features: ");
+            out.push_str(&extra.join(", "));
+        }
+        out
+    }
 }
 
 /// What this binary was built from ([`BuildInfo`]).

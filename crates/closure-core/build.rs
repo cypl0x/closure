@@ -51,4 +51,10 @@ fn main() {
     if dirty {
         println!("cargo::rustc-env=CLOSURE_GIT_DIRTY=1");
     }
+
+    // The feature list is *not* captured here, though it looks like it
+    // belongs beside the hash. Cargo features are per crate, and
+    // `closure-core` has none of its own — asking it what the binary
+    // was built with can only ever answer "nothing". It is captured in
+    // `closure-cli`, which owns the flags that vary.
 }
