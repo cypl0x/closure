@@ -3811,6 +3811,16 @@ impl GpuiView {
         }
         header = header.child(
             div()
+                // The hint is reference text and the buttons are the
+                // affordance, so the hint is what yields when the row
+                // runs out: NORMAL's vocabulary is long enough to push
+                // save and discard clean off the window, which is
+                // exactly backwards. `flex_1` with basis zero — a flex
+                // item will not shrink below its content otherwise.
+                .flex_1()
+                .min_w(px(0.0))
+                .overflow_hidden()
+                .whitespace_nowrap()
                 .text_color(rgb(co.muted))
                 .text_size(self.sz(11.0))
                 .child(closure_shell_core::editor_hint(mode, self.app.input_mode())),
@@ -3818,8 +3828,9 @@ impl GpuiView {
         // Saving and discarding were chords and nothing else: `C-Enter`
         // if you knew, and an Esc that used to throw the buffer away if
         // you did not. Both are buttons now, and both say their chord.
-        let button = |label: &'static str, colour: u32, chord: &'static str| {
+        let button = |label: &'static str, colour: u32, chord: &str| {
             div()
+                .flex_none()
                 .px_2()
                 .rounded_md()
                 .bg(rgb(co.panel))
@@ -3831,8 +3842,22 @@ impl GpuiView {
                 .hover(move |s| s.bg(rgb(co.hover)))
                 .child(format!("{label}  {chord}"))
         };
+        // Three distinct things a person wants from an open buffer, and
+        // only two of them had a button: writing *and carrying on* —
+        // the one you do twenty times an hour — had a chord and no
+        // affordance, so the only visible way to keep your work was one
+        // that also took the buffer away.
+        let save_chord =
+            closure_input::chord_for_command(self.app.input_mode(), "save-buffer").unwrap_or("C-s");
         header
-            // "save" was a lie by omission: the button *commits* —
+            .child(button("✓ save", co.success, save_chord).on_mouse_down(
+                MouseButton::Left,
+                cx.listener(|this: &mut Self, _ev, _w, cx| {
+                    this.app.run(&mut this.shell, "save-buffer");
+                    cx.notify();
+                }),
+            ))
+            // "save" was a lie by omission: this button *commits* —
             // writes and closes — while `save-buffer` writes and stays.
             // Two different things, and the chord beside it belongs to
             // this one.
