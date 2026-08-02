@@ -73,17 +73,23 @@ fn ctrl_n_and_p_walk_the_palette_too() {
 }
 
 #[test]
-fn walking_the_palette_stops_at_the_ends() {
+fn walking_the_palette_wraps_at_the_ends() {
+    // Asserted the opposite until 2026-08-02, when the user asked for
+    // it: "when you are at the end or start and want to go beyond the
+    // limit it should overflow". Stopping dead made the entry one past
+    // the end cost the whole trip back.
     let (_d, mut sh) = shell();
     let mut app = ModalApp::new(InputMode::Doom);
     app.run(&mut sh, "palette");
-    app.on_key(&mut sh, "k", true, false, None);
-    assert_eq!(app.palette_cursor(), 0, "no wrap off the top");
     let last = app.palette_entries().len() - 1;
-    for _ in 0..=last + 3 {
-        app.on_key(&mut sh, "j", true, false, None);
-    }
-    assert_eq!(app.palette_cursor(), last, "and none off the bottom");
+    app.on_key(&mut sh, "k", true, false, None);
+    assert_eq!(app.palette_cursor(), last, "up from the top is the bottom");
+    app.on_key(&mut sh, "j", true, false, None);
+    assert_eq!(
+        app.palette_cursor(),
+        0,
+        "and down from the bottom is the top"
+    );
 }
 
 #[test]

@@ -10800,11 +10800,8 @@ impl ModalApp {
         // It had only the arrows, which is a mouse-hand gesture on a
         // surface you reached from the home row.
         if let Some(step) = list_step(key, ctrl) {
-            let last = self.palette_entries().len().saturating_sub(1);
-            self.palette_cursor = match step {
-                ListStep::Next => (self.palette_cursor + 1).min(last),
-                ListStep::Prev => self.palette_cursor.saturating_sub(1),
-            };
+            let len = self.palette_entries().len();
+            self.palette_cursor = step_wrapping(self.palette_cursor, len, step);
             return;
         }
         match key {
@@ -12584,18 +12581,14 @@ impl ModalApp {
     /// A key that changed the text puts the cursor back on the first
     /// result, because the old index belonged to the old list.
     fn filter_key(&mut self, key: &str, ctrl: bool, alt: bool, text: Option<char>, last: usize) {
-        match key {
-            "down" => self.selected = (self.selected + 1).min(last),
-            "up" => self.selected = self.selected.saturating_sub(1),
-            "n" | "j" if ctrl => self.selected = (self.selected + 1).min(last),
-            "p" | "k" if ctrl => self.selected = self.selected.saturating_sub(1),
-            _ => {
-                let before = self.query.text().to_owned();
-                line_key(&mut self.query, &mut self.line_kill, key, ctrl, alt, text);
-                if self.query.text() != before {
-                    self.selected = 0;
-                }
-            }
+        if let Some(step) = list_step(key, ctrl) {
+            self.selected = step_wrapping(self.selected, last + 1, step);
+            return;
+        }
+        let before = self.query.text().to_owned();
+        line_key(&mut self.query, &mut self.line_kill, key, ctrl, alt, text);
+        if self.query.text() != before {
+            self.selected = 0;
         }
     }
 
@@ -17515,6 +17508,38 @@ fn list_step(key: &str, ctrl: bool) -> Option<ListStep> {
         "n" | "j" if ctrl => Some(ListStep::Next),
         "p" | "k" if ctrl => Some(ListStep::Prev),
         _ => None,
+    }
+}
+
+/// Move a popup cursor one place, wrapping at both ends.
+///
+/// "when you are at the end or start and want to go beyond the limit it
+/// should overflow". A list that stops dead makes the entry one past
+/// the end — the one you were reaching for — cost the whole trip back,
+/// and every completion popup worth using wraps instead.
+///
+/// Popups only. The outline is a document, not a candidate list, and a
+/// `j` at the last headline that jumped to the first would lose your
+/// place in what you are reading.
+const fn step_wrapping(cursor: usize, len: usize, step: ListStep) -> usize {
+    if len == 0 {
+        return 0;
+    }
+    match step {
+        ListStep::Next => {
+            if cursor + 1 >= len {
+                0
+            } else {
+                cursor + 1
+            }
+        }
+        ListStep::Prev => {
+            if cursor == 0 {
+                len - 1
+            } else {
+                cursor - 1
+            }
+        }
     }
 }
 
