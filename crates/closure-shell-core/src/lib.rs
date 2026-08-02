@@ -771,6 +771,27 @@ pub struct Detail {
     pub path: String,
 }
 
+/// Whether the row at `i` is the first one its file contributes to the
+/// outline.
+///
+/// The outline is every `*.org` under the vault in one flat list, and
+/// "it's quite hard to see where a file ends or starts, due to the flat
+/// hierachy". A rule above the row that starts a file is the one place
+/// a divider can go without a row of its own — the list is a uniform
+/// list whose indices *are* the selection, so an extra row would shift
+/// every chord that counts.
+///
+/// Colouring each file differently was the other suggestion, and the
+/// one to refuse: colour already carries outline depth, and a second
+/// meaning on the same channel leaves neither readable.
+#[must_use]
+pub fn starts_file(rows: &[Row], i: usize) -> bool {
+    let Some(row) = rows.get(i) else {
+        return false;
+    };
+    i == 0 || rows[i - 1].path != row.path
+}
+
 /// A keybinding-bearing action attached to an actionable view node.
 ///
 /// Constructing one *requires* a chord, so an actionable node can never

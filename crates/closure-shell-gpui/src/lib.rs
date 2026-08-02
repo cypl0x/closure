@@ -3236,6 +3236,13 @@ impl GpuiView {
         // has to stop looking selected when it does, or the outline is
         // claiming something the next capture will contradict.
         let is_sel = i == self.app.selected() && self.app.selection_active();
+        // Every `*.org` under the vault is one flat list, so a rule
+        // above the first row of each file is what says where one ends
+        // and the next begins. On the row rather than in a row of its
+        // own: the outline is a uniform list whose indices *are* the
+        // selection, and an inserted row would shift every chord that
+        // counts.
+        let divides = closure_shell_core::starts_file(&rows, i) && i > 0;
         let mut line = div()
             // A named element a test can find the painted bounds of, so
             // a click lands where the user's would rather than at a
@@ -3248,6 +3255,13 @@ impl GpuiView {
             // a 420px column, so the right half of every row in the
             // outline was dead space that looked exactly like the row.
             .w_full()
+            .when(divides, |d| {
+                // `border` is a panel-edge tone and vanished against
+                // the outline's own background — the same mistake the
+                // indent guides made one commit earlier. `muted` is the
+                // quietest colour that is still a line.
+                d.border_t_1().border_color(rgb(co.muted)).mt_1().pt_1()
+            })
             .overflow_hidden()
             .px_2()
             .py_1()
