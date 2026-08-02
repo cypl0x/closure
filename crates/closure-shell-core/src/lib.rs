@@ -18131,6 +18131,58 @@ impl ModalApp {
         self.vault_switch_asked
     }
 
+    /// The id of the headline the file buffer's caret is inside.
+    ///
+    /// Most of a file is body text, so a caret on prose means the
+    /// headline it belongs to — the nearest one at or above the line —
+    /// rather than nothing.
+    fn headline_at_caret(&self, shell: &Shell) -> Option<String> {
+        let path = self.file_target.clone()?;
+        let (line, _) = self.body.cursor_line_col();
+        let text = self.body.text();
+        let stars = text
+            .split('\n')
+            .take(line + 1)
+            .enumerate()
+            .filter(|(_, l)| l.starts_with('*'))
+            .map(|(i, _)| i)
+            .last()?;
+        // The nth headline of the file, by document order: the buffer
+        // holds exactly what is on disk, so counting stars is the same
+        // walk the parser does.
+        let nth = text
+            .split('\n')
+            .take(stars)
+            .filter(|l| l.starts_with('*'))
+            .count();
+        shell
+            .vault
+            .document(&path)?
+            .all_headlines()
+            .nth(nth)
+            .map(|h| h.id().to_string())
+    }
+
+    /// Put the file buffer's caret on the headline the outline had
+    /// selected.
+    fn caret_to_selected_headline(&mut self, shell: &Shell) {
+        let Some(row) = self.rows_shared(shell).get(self.selected).cloned() else {
+            return;
+        };
+        let text = self.body.text().to_owned();
+        // The headline's own line, found by its title on a star line:
+        // the buffer is the file, so the title is on exactly one of
+        // them unless a vault repeats a heading verbatim — in which
+        // case the first is as good an answer as any.
+        let Some(line) = text
+            .split('\n')
+            .position(|l| l.starts_with('*') && l.contains(&row.title))
+        else {
+            return;
+        };
+        self.body.goto_line_col(line, 0);
+    }
+
     /// Put an open buffer into the editing mode the new keymap
     /// implies.
     ///
@@ -20350,13 +20402,23 @@ impl ModalApp {
                     if self.body_dirty() {
                         self.say("unsaved file — C-s writes it · C-c C-k discards");
                     } else {
+                        // Two views of one document should agree about
+                        // where you are in it: leaving the buffer
+                        // selects the headline the caret was in.
+                        let landed = self.headline_at_caret(shell);
                         self.view = ViewMode::Clickable;
                         self.close_file_buffer();
+                        if let Some(id) = landed {
+                            self.select_by_id(shell, &id);
+                        }
                         self.say("outline view");
                     }
                 } else {
                     self.view = ViewMode::Editor;
                     self.open_file_buffer(shell);
+                    // …and entering it puts the caret on the headline
+                    // the outline was showing, rather than at line one.
+                    self.caret_to_selected_headline(shell);
                 }
             }
             // The tree beside a full-window buffer: writing *into* an
