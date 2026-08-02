@@ -1701,6 +1701,12 @@ fn plain_backspace_still_deletes_one_char() {
 
 #[test]
 fn ctrl_arrows_jump_words_in_insert() {
+    // Contract revised 2026-08-02: forward is Emacs' `forward-word` —
+    // the *end* of the word — not vim's `w`, which lands on the start
+    // of the next one. The same buffer has both, and the two
+    // disagreeing between the editor and the prompts is what the user
+    // reported ("the discrepancy between the editor and the prompt
+    // makes it feel unsatisfying"). `w` in NORMAL is untouched.
     let (_d, mut sh) = shell();
     let mut app = editor_with(&mut sh, "one two three");
     app.on_key(&mut sh, "left", true, false, None);
@@ -1708,9 +1714,9 @@ fn ctrl_arrows_jump_words_in_insert() {
     app.on_key(&mut sh, "left", true, false, None);
     assert_eq!(app.body_cursor(), (0, 4));
     app.on_key(&mut sh, "right", true, false, None);
-    assert_eq!(app.body_cursor(), (0, 8));
+    assert_eq!(app.body_cursor(), (0, 7), "the end of `two`");
     app.on_key(&mut sh, "X", false, false, Some('X'));
-    assert_eq!(app.body_buffer(), "one two Xthree");
+    assert_eq!(app.body_buffer(), "one twoX three");
 }
 
 #[test]
@@ -1722,7 +1728,7 @@ fn alt_arrows_jump_words_in_insert() {
     app.on_key(&mut sh, "left", false, true, None);
     assert_eq!(app.body_cursor(), (0, 3));
     app.on_key(&mut sh, "right", false, true, None);
-    assert_eq!(app.body_cursor(), (0, 6));
+    assert_eq!(app.body_cursor(), (0, 5), "the end of `bb`");
 }
 
 // === Q6-S1/S2/S3: structural editing from the outline. ===

@@ -3954,6 +3954,50 @@ impl LineInput {
         self.cursor = self.text.len();
     }
 
+    /// Move to the start of the word before the cursor.
+    pub fn word_backward(&mut self) {
+        self.cursor = self.word_start();
+    }
+
+    /// Move to the end of the word after the cursor.
+    pub fn word_forward(&mut self) {
+        self.cursor = self.word_end();
+    }
+
+    /// Delete from the cursor to the end of the word after it (`M-d`).
+    pub fn delete_word_forward(&mut self) {
+        let end = self.word_end();
+        if end > self.cursor {
+            self.kill = self.text[self.cursor..end].to_owned();
+            self.text.replace_range(self.cursor..end, "");
+        }
+    }
+
+    /// Byte offset of the end of the word after the cursor.
+    ///
+    /// Whitespace between point and the word is stepped over; the word
+    /// itself is where it stops. Emacs' `forward-word`, not vim's `w`,
+    /// which lands on the *next* word and would swallow the space that
+    /// lets you type a replacement in place.
+    fn word_end(&self) -> usize {
+        let rest = &self.text[self.cursor..];
+        let mut at = 0usize;
+        let word = |c: char| c.is_alphanumeric() || c == '_';
+        for c in rest.chars() {
+            if word(c) {
+                break;
+            }
+            at += c.len_utf8();
+        }
+        for c in rest[at..].chars() {
+            if !word(c) {
+                break;
+            }
+            at += c.len_utf8();
+        }
+        self.cursor + at
+    }
+
     /// Delete the word before the cursor (`C-w`, ctrl+backspace).
     pub fn delete_word_back(&mut self) {
         let start = self.word_start();
@@ -4017,6 +4061,13 @@ impl LineInput {
             "backspace" if ctrl || alt => self.delete_word_back(),
             "backspace" => self.backspace(),
             "delete" => self.delete(),
+            // The desktop word ops, and readline's `M-d`. The body
+            // editor has had these; a prompt had neither, which is
+            // most of "the discrepancy between the editor and the
+            // prompt makes it feel unsatisfying".
+            "left" if ctrl || alt => self.word_backward(),
+            "right" if ctrl || alt => self.word_forward(),
+            "d" if alt => self.delete_word_forward(),
             "left" => self.left(),
             "right" => self.right(),
             "home" => self.home(),
@@ -7260,25 +7311,6 @@ impl BodyEditor {
         }
     }
 
-    /// Move to the start of the next word (simple rule, not full vim).
-    fn word_forward(&mut self) {
-        let positions: Vec<(usize, char)> = self.buf.char_indices().collect();
-        let Some(mut i) = positions.iter().position(|&(off, _)| off == self.cursor) else {
-            return;
-        };
-        // Skip the current word (if the cursor sits on one), then the
-        // whitespace run (newlines included); clamp at the buffer end.
-        while i < positions.len() && !positions[i].1.is_whitespace() {
-            i += 1;
-        }
-        while i < positions.len() && positions[i].1.is_whitespace() {
-            i += 1;
-        }
-        if i < positions.len() {
-            self.cursor = positions[i].0;
-        }
-    }
-
     /// Move to the start of the previous word (simple rule).
     fn word_backward(&mut self) {
         let positions: Vec<(usize, char)> = self.buf.char_indices().collect();
@@ -9782,6 +9814,37 @@ impl BodyEditor {
 
     /// Readline `C-w`: delete the word (plus trailing spaces) before
     /// the cursor into the register.
+    /// Move to the end of the word after the cursor — the desktop's
+    /// ctrl/alt+right, and Emacs' `forward-word`.
+    ///
+    /// Not vim's `w`, which the same buffer also has: `w` lands on the
+    /// start of the *next* word, and the two disagreeing is exactly the
+    /// discrepancy between the editor and the prompts that this pair of
+    /// chords was reported for.
+    pub fn word_end_forward(&mut self) {
+        self.cursor = self.word_end_offset();
+    }
+
+    /// Byte offset [`Self::word_end_forward`] moves to.
+    fn word_end_offset(&self) -> usize {
+        let rest = &self.buf[self.cursor..];
+        let word = |c: char| c.is_alphanumeric() || c == '_';
+        let mut at = 0usize;
+        for c in rest.chars() {
+            if c == '\n' || word(c) {
+                break;
+            }
+            at += c.len_utf8();
+        }
+        for c in rest[at..].chars() {
+            if !word(c) {
+                break;
+            }
+            at += c.len_utf8();
+        }
+        self.cursor + at
+    }
+
     /// Delete from the cursor to the end of the word after it
     /// (`M-d` — readline's and Emacs' `kill-word`).
     ///
@@ -14803,7 +14866,7 @@ impl ModalApp {
                 // Desktop-standard word ops (Q5): ctrl/alt+arrows jump
                 // words, ctrl+backspace kills the word (same as C-w).
                 "left" if ctrl || alt => self.body.word_backward(),
-                "right" if ctrl || alt => self.body.word_forward(),
+                "right" if ctrl || alt => self.body.word_end_forward(),
                 // The named keys every other text field answers to.
                 "home" => self.body.line_home(),
                 "end" => self.body.line_end_motion(),
