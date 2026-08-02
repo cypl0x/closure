@@ -292,3 +292,47 @@ fn the_status_line_says_the_same_thing() {
         app.new_heading_label()
     );
 }
+
+// === Where the cursor goes after adding one ===
+//
+// Asked 2026-08-02: "should after adding a sibling (a) the selection be
+// on the new element or the sibling where it has been added?"
+//
+// Both, and the answer already exists: capture settled exactly this
+// question with `Enter` to go to the new item and `C-Enter` to stay put
+// and keep filing. A second prompt with a different rule would mean
+// remembering which prompt you are in, so this one follows.
+
+#[test]
+fn enter_puts_the_cursor_on_what_you_just_made() {
+    let (_d, mut sh, mut app) = fixture(InputMode::Doom);
+    new_heading(&mut app, &mut sh, "enter", false, true, "Gamma");
+    assert_eq!(app.detail(&sh).expect("detail").title, "Gamma");
+}
+
+#[test]
+fn ctrl_enter_leaves_it_where_it_was() {
+    let (_d, mut sh, mut app) = fixture(InputMode::Doom);
+    app.select(0, &sh);
+    app.on_key(&mut sh, "enter", false, true, None); // M-RET opens the prompt
+    for c in "Gamma".chars() {
+        app.on_key(&mut sh, &c.to_string(), false, false, Some(c));
+    }
+    app.on_key(&mut sh, "enter", true, false, None); // C-Enter accepts
+    assert_eq!(
+        app.detail(&sh).expect("detail").title,
+        "Alpha",
+        "still on the headline it was added under"
+    );
+    assert!(
+        app.rows(&sh).iter().any(|r| r.title == "Gamma"),
+        "and it was still added"
+    );
+}
+
+#[test]
+fn the_same_rule_holds_for_a_child() {
+    let (_d, mut sh, mut app) = fixture(InputMode::Doom);
+    new_heading(&mut app, &mut sh, "enter", true, false, "Kid");
+    assert_eq!(app.detail(&sh).expect("detail").title, "Kid");
+}

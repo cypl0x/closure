@@ -13704,6 +13704,7 @@ impl ModalApp {
                 self.go_home();
             }
             "enter" => {
+                let follow = !ctrl;
                 if let Some(id) = self.field_target.take() {
                     let bid = closure_core::BlockId::from_existing(&id);
                     match kind {
@@ -13742,6 +13743,18 @@ impl ModalApp {
                                 } else {
                                     let line = format!("{}{title}", new.prefix());
                                     let _ = shell.add_sibling(&bid, &line);
+                                }
+                                // "Should after adding a sibling the
+                                // selection be on the new element or
+                                // the one it was added to?" — both, on
+                                // the rule capture already settled:
+                                // Enter goes to what you made, C-Enter
+                                // stays put so you can add another. A
+                                // second prompt with a different answer
+                                // would mean remembering which prompt
+                                // you are in.
+                                if follow {
+                                    self.select_by_title(shell, &title);
                                 }
                             }
                         }
