@@ -83,3 +83,49 @@ fn peers_round_trip_as_a_list() {
     let cfg = Config::from_org_source(&out).expect("parses");
     assert_eq!(cfg.sync_peers, vec!["one", "two", "three"]);
 }
+
+// The other direction: what does the file actually *say*?
+//
+// [`Config`] answers with a fully-defaulted struct, so it cannot tell a
+// key the file sets from one it leaves alone — and "leaves alone" is
+// exactly what a reload has to honour, or it would reset the editing
+// mode a session had switched to whenever config.org happened not to
+// mention one.
+
+#[test]
+fn a_key_the_block_sets_reads_back() {
+    assert_eq!(closure_config::config_key(FILE, "input_mode"), Some("vim"));
+    assert_eq!(
+        closure_config::config_key(FILE, "theme"),
+        Some("doom-vibrant")
+    );
+}
+
+#[test]
+fn a_key_the_block_does_not_set_is_absent() {
+    assert_eq!(closure_config::config_key(FILE, "view"), None);
+}
+
+#[test]
+fn a_key_outside_the_block_does_not_count() {
+    let file = "view = editor\n\n#+BEGIN_SRC closure-config\ntheme = light\n#+END_SRC\n";
+    assert_eq!(closure_config::config_key(file, "view"), None);
+    assert_eq!(closure_config::config_key(file, "theme"), Some("light"));
+}
+
+#[test]
+fn a_commented_out_key_does_not_count() {
+    let file = "#+BEGIN_SRC closure-config\n# theme = light\n#+END_SRC\n";
+    assert_eq!(closure_config::config_key(file, "theme"), None);
+}
+
+#[test]
+fn a_quoted_value_comes_back_bare() {
+    // `from_kv_block` trims quotes, so reading a key must too, or the
+    // two disagree about the same line.
+    let file = "#+BEGIN_SRC closure-config\ndefault_vault = \"/home/me/vault\"\n#+END_SRC\n";
+    assert_eq!(
+        closure_config::config_key(file, "default_vault"),
+        Some("/home/me/vault")
+    );
+}

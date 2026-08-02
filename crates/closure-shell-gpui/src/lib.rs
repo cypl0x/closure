@@ -2369,9 +2369,11 @@ impl GpuiView {
         cx: &mut Context<Self>,
     ) {
         let killed_before = self.shell.ring_top().map(ToOwned::to_owned);
+        let reloads_before = self.app.reloads();
         let asking = self.app.surface() == ModalSurface::Llm && key == "enter";
         let pairing = self.app.surface() == ModalSurface::Sync && key == "enter";
         self.app.on_key(&mut self.shell, key, ctrl, alt, text);
+        self.relaunch_if_reloaded(reloads_before);
         // Anything that killed something puts it on the desktop's
         // clipboard too, so a subtree cut here can be pasted anywhere
         // else. Keyed off the ring rather than off a list of commands:
@@ -2691,7 +2693,9 @@ impl GpuiView {
     /// Run a command from a mouse affordance (which-key chip, detail
     /// field, header button) — the same dispatch the chords use (I8).
     fn click(&mut self, command: &str, cx: &mut Context<Self>) {
+        let reloads_before = self.app.reloads();
         self.app.run(&mut self.shell, command);
+        self.relaunch_if_reloaded(reloads_before);
         if self.app.should_quit() {
             cx.quit();
         }
@@ -6904,6 +6908,29 @@ impl GpuiView {
             }
         })
         .detach();
+    }
+
+    /// The window's half of a fresh start.
+    ///
+    /// `reload-shell` re-reads the vault and rebuilds the session, but
+    /// the theme, the shape the window opens in and whether prose wraps
+    /// are the window's — a launch reads them out of `config.org` and
+    /// so does this, which is what makes editing the config in another
+    /// window and pressing one chord enough.
+    ///
+    /// Keyed off the counter rather than off the command that ran,
+    /// like the clipboard mirror is keyed off the kill ring: a chord, a
+    /// palette entry and a `:` line all arrive here the same way.
+    fn relaunch_if_reloaded(&mut self, before: u64) {
+        if self.app.reloads() == before {
+            return;
+        }
+        let root = self.shell.vault.root().to_owned();
+        self.theme = resolve_theme(&root);
+        self.set_view(resolve_view(&root));
+        self.set_wrap(
+            closure_config::Config::from_path(&root.join("config.org")).is_ok_and(|c| c.wrap),
+        );
     }
 
     /// One reload pass: reparse what changed on disk, then re-read the

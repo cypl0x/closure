@@ -221,6 +221,10 @@ pub struct App {
     viewport_rows: usize,
     undo_request: bool,
     redo_request: bool,
+    /// Whether the user asked to start over (`reload-shell`): the
+    /// driver owns the vault, so the terminal asks for the re-read the
+    /// way it asks for every other write.
+    reload_request: bool,
     input_mode: closure_config::InputMode,
     view_rows: Vec<(String, Vec<String>)>,
     cell_target: Option<String>,
@@ -357,6 +361,7 @@ impl App {
             paste_request: None,
             undo_request: false,
             redo_request: false,
+            reload_request: false,
             input_mode: closure_config::InputMode::Doom,
             view_rows: Vec::new(),
             cell_target: None,
@@ -800,6 +805,31 @@ impl App {
     pub const fn take_undo_request(&mut self) -> bool {
         let r = self.undo_request;
         self.undo_request = false;
+        r
+    }
+
+    /// Start over without leaving (`reload-shell`).
+    ///
+    /// The terminal's session is the pane it is in and the row it is
+    /// on, so a fresh start is those cleared plus the vault re-read —
+    /// and the re-read is asked for rather than done, because the
+    /// driver is what holds the vault.
+    fn start_over(&mut self) {
+        self.reload_request = true;
+        self.mode = AppMode::Browse;
+        self.query.clear();
+        self.pending.clear();
+        self.popup = None;
+        self.result_cursor = 0;
+        self.scroll = 0;
+        "reloaded — vault re-read from disk".clone_into(&mut self.status);
+    }
+
+    /// Consume the pending reload request, true at most once per
+    /// `reload-shell`.
+    pub const fn take_reload_request(&mut self) -> bool {
+        let r = self.reload_request;
+        self.reload_request = false;
         r
     }
 
@@ -2659,6 +2689,7 @@ impl App {
             "half-page-down" => self.half_page(true, last),
             "half-page-up" => self.half_page(false, last),
             "quit" => self.quit = true,
+            "reload-shell" => self.start_over(),
             "search-start" => {
                 self.mode = AppMode::Search;
                 self.query.clear();
@@ -3601,6 +3632,12 @@ fn apply_structure_requests(
     }
     if let Some((path, index)) = app.take_eval_request() {
         let r = vault.eval_block(&path, index).map(|_| ());
+        run(r, app, vault)?;
+    }
+    // The full walk, not the incremental poll: this is the command
+    // pressed because what is on screen looks wrong.
+    if app.take_reload_request() {
+        let r = vault.reload();
         run(r, app, vault)?;
     }
     if app.take_undo_request()

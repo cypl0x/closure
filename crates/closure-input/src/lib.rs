@@ -30,6 +30,11 @@ const DOOM_KEYMAP: &[(&str, &str)] = &[
     ("G", "last-file"),
     ("q", "quit"),
     ("ESC", "quit"),
+    // Start over without leaving: save, re-read the vault and
+    // `config.org`, come up the way a launch does. `!` is the sigil
+    // vim spells `:e!` with — re-read, drop what the session
+    // accumulated.
+    ("g !", "reload-shell"),
     ("/", "search-start"),
     ("C-s", "save-buffer"),
     ("s", "search-headline-start"),
@@ -177,6 +182,9 @@ const DOOM_KEYMAP: &[(&str, &str)] = &[
     ("SPC m g", "clock-goto"),
     ("SPC m T", "tag-picker"),
     ("SPC q q", "quit"),
+    // Doom's own `SPC q r` is restart-emacs, which is what this is
+    // minus the process dying.
+    ("SPC q r", "reload-shell"),
     ("SPC s s", "search-start"),
     ("SPC s p", "body-search"),
     ("SPC X", "capture-start"),
@@ -211,6 +219,10 @@ const EMACS_KEYMAP: &[(&str, &str)] = &[
     ("M-<", "first-file"),
     ("M->", "last-file"),
     ("C-x C-c", "quit"),
+    // Start over without leaving — `revert-buffer`'s idea, one
+    // level up. `C-c g` would have been dired's spelling of it, and
+    // is already the render toggle here.
+    ("C-c C-r", "reload-shell"),
     ("C-x C-s", "save-buffer"),
     ("C-s", "search-start"),
     ("C-c s", "search-headline-start"),
@@ -342,6 +354,10 @@ const VIM_KEYMAP: &[(&str, &str)] = &[
     ("G", "last-file"),
     ("Z Z", "quit"),
     ("q", "quit"),
+    // Start over without leaving: save, re-read the vault and
+    // `config.org`, come up the way a launch does. `!` is the sigil
+    // vim spells `:e!` with.
+    ("g !", "reload-shell"),
     ("/", "search-start"),
     ("C-s", "save-buffer"),
     ("s", "search-headline-start"),
@@ -479,6 +495,9 @@ const HELIX_KEYMAP: &[(&str, &str)] = &[
     ("g e", "last-file"),
     ("q", "quit"),
     ("ESC", "quit"),
+    // Start over without leaving: save, re-read the vault and
+    // `config.org`, come up the way a launch does.
+    ("g !", "reload-shell"),
     ("/", "search-start"),
     ("C-s", "save-buffer"),
     ("s", "search-headline-start"),
@@ -614,6 +633,9 @@ const NOTION_KEYMAP: &[(&str, &str)] = &[
     ("G", "last-file"),
     ("ESC", "quit"),
     ("q", "quit"),
+    // Start over without leaving: save, re-read the vault and
+    // `config.org`, come up the way a launch does.
+    ("g !", "reload-shell"),
     ("/", "palette"),
     ("M-x", "palette"),
     ("s", "search-headline-start"),

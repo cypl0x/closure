@@ -3112,6 +3112,12 @@ const PALETTE_COMMANDS: &[(&str, &str, &str, &str)] = &[
         "Scale the text down one step",
     ),
     ("zoom-reset", "zoom-reset", "View", "Back to 100%"),
+    (
+        "reload",
+        "reload-shell",
+        "App",
+        "Start over: re-read the vault and config.org from disk",
+    ),
     ("quit", "quit", "App", "Quit closure"),
 ];
 
@@ -10292,6 +10298,13 @@ pub struct ModalApp {
     tag_target: Option<String>,
     /// The tags ticked so far, before they are written.
     tag_draft: Vec<String>,
+    /// How many times this session has started over
+    /// ([`ModalApp::reload_session`]). A window holds parts of a launch
+    /// the kernel does not — the theme, the shape it opens in — so it
+    /// needs to notice a reload; watching a counter covers whatever ran
+    /// it, chord or palette or `:` line, the way the clipboard mirror
+    /// watches the kill ring rather than a list of commands.
+    reloads: u64,
     /// Memoised source-block list — see [`ModalApp::block_rows`].
     block_memo: std::cell::RefCell<Option<(u64, std::sync::Arc<Vec<BlockRow>>)>>,
     /// Derivations paid for; the render budget's fourth number.
@@ -10529,6 +10542,7 @@ impl ModalApp {
             detail_recomputes: std::cell::Cell::new(0),
             palette_memo: std::cell::RefCell::new(None),
             palette_recomputes: std::cell::Cell::new(0),
+            reloads: 0,
             block_memo: std::cell::RefCell::new(None),
             block_recomputes: std::cell::Cell::new(0),
         }
@@ -11298,7 +11312,7 @@ impl ModalApp {
         let Some(cmd) = closure_input::command_for(self.mode, &stroke) else {
             return false;
         };
-        if !matches!(cmd, "save-buffer" | "toggle-which-key") {
+        if !matches!(cmd, "save-buffer" | "toggle-which-key" | "reload-shell") {
             return false;
         }
         self.pending_body = None;
@@ -16277,6 +16291,70 @@ impl ModalApp {
         }
     }
 
+    /// How many times this session has started over — what a window
+    /// watches to redo the parts of a launch only it can do.
+    #[must_use]
+    pub const fn reloads(&self) -> u64 {
+        self.reloads
+    }
+
+    /// Start over without quitting: the whole of a close, then the
+    /// whole of a launch, with no process dying in between.
+    ///
+    /// Saves what the window closing saves, re-reads the vault, and
+    /// then drops the session — buffers, stashes, jumps, whichever
+    /// surface was open — coming back the way a launch does, out of
+    /// `config.org`. That last part is the point of having the command
+    /// at all: a keymap or a theme edited in another window takes
+    /// effect here without a restart.
+    ///
+    /// The re-read is the full walk rather than the incremental poll.
+    /// This is the command pressed *because* what is on screen looks
+    /// wrong, and an mtime is exactly the thing that would then be
+    /// trusted wrongly.
+    pub fn reload_session(&mut self, shell: &mut Shell) {
+        self.save_pending_edit(shell);
+        self.save_last_place(shell);
+        if let Err(e) = shell.vault.reload() {
+            self.status = format!("reload failed: {e}");
+            self.notify(ToastLevel::Error, format!("reload failed: {e}"));
+            return;
+        }
+        // `config.org` picks the editing mode at launch, so it picks it
+        // here — but only when it actually names one. `Config` hands
+        // back a fully-defaulted struct, and taking the mode from that
+        // would quietly drop a session into Doom every time the file
+        // said nothing about it, which is a worse answer than the mode
+        // already on screen.
+        let cfg =
+            std::fs::read_to_string(shell.vault.root().join("config.org")).unwrap_or_default();
+        let mode = closure_config::config_key(&cfg, "input_mode")
+            .and_then(|_| closure_config::Config::from_org_source(&cfg).ok())
+            .map_or(self.mode, |c| c.input_mode);
+        // The window's measurements are not session state — nothing
+        // reports them again until the next frame, and a viewport of
+        // zero rows leaves every framing chord a no-op until then. The
+        // clock is the shell's too, for the same reason.
+        let (body_rows, outline_rows) = (self.body_viewport, self.outline_viewport);
+        let (today, now) = (
+            std::mem::take(&mut self.today),
+            std::mem::take(&mut self.now),
+        );
+        let (bind, advertise) = (self.sync_bind, self.sync_advertise);
+        let reloads = self.reloads;
+        *self = Self::new(mode);
+        self.reloads = reloads.wrapping_add(1);
+        self.body_viewport = body_rows;
+        self.outline_viewport = outline_rows;
+        self.today = today;
+        self.now = now;
+        self.configure_sync(bind, advertise);
+        self.load_peers(shell);
+        self.restore_last_place(shell);
+        "reloaded — vault and config re-read from disk".clone_into(&mut self.status);
+        self.notify(ToastLevel::Success, "reloaded");
+    }
+
     /// Write the current peer set back to `config.org`.
     fn save_peers(&mut self, shell: &Shell) {
         let Some(sync) = self.sync.as_ref() else {
@@ -16405,6 +16483,7 @@ impl ModalApp {
                     self.quit = true;
                 }
             }
+            "reload-shell" => self.reload_session(shell),
             "capture-start" => {
                 self.surface = ModalSurface::Capture;
                 self.capture_buf.clear();

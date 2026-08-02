@@ -311,6 +311,42 @@ pub fn set_config_key(source: &str, key: &str, value: &str) -> Result<String, Co
     Ok(out)
 }
 
+/// Read one key back out of a `config.org`, or `None` when the block
+/// does not set it.
+///
+/// [`Config`] answers with a fully-defaulted struct, so it cannot tell
+/// a key the file sets from one it says nothing about — and that is the
+/// distinction a reload lives on: an editing mode switched at runtime
+/// has to survive re-reading a config that never named one.
+///
+/// Same rules as [`set_config_key`], so the two agree about the same
+/// line: only inside the `closure-config` block, comments skipped, and
+/// the value trimmed of the quotes [`Config::from_kv_block`] trims.
+#[must_use]
+pub fn config_key<'a>(source: &'a str, key: &str) -> Option<&'a str> {
+    let mut in_block = false;
+    for raw in source.lines() {
+        let line = raw.trim();
+        if line.eq_ignore_ascii_case("#+BEGIN_SRC closure-config") {
+            in_block = true;
+            continue;
+        }
+        if in_block && line.eq_ignore_ascii_case("#+END_SRC") {
+            in_block = false;
+            continue;
+        }
+        if !in_block || line.starts_with('#') {
+            continue;
+        }
+        if let Some((k, v)) = line.split_once('=')
+            && k.trim() == key
+        {
+            return Some(v.trim().trim_matches('"'));
+        }
+    }
+    None
+}
+
 /// Parse an org-config boolean (`true`/`yes`/`1` or `false`/`no`/`0`).
 fn parse_bool(key: &str, value: &str) -> Result<bool, ConfigError> {
     match value {
