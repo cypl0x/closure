@@ -11077,6 +11077,14 @@ impl ModalApp {
     #[must_use]
     pub fn which_key_pending(&self) -> String {
         if self.surface.is_editor() {
+            // The alt leader is the app's chord, not the buffer's, and
+            // it is the one moment a buffer is open and the *app* is
+            // mid-chord. Asking the buffer alone is how `C-SPC` opened a
+            // silent prefix — which is a worse leader than no leader.
+            let app_pending = self.pending_chord();
+            if !app_pending.is_empty() {
+                return app_pending;
+            }
             let pending = self.body_pending_chord();
             if !pending.is_empty() {
                 return pending;
@@ -11130,7 +11138,12 @@ impl ModalApp {
     /// there, one of which is a letter you were about to type.
     #[must_use]
     pub fn which_key_groups(&self) -> Vec<(String, Vec<(String, String)>)> {
-        if self.surface.is_editor() {
+        // Whose chord is pending decides whose keys these are. With the
+        // alt leader open inside a buffer, the panel that listed the
+        // buffer's keys filtered them by `SPC` and found none — the
+        // pending chord and the list it filters have to come from the
+        // same keymap or the panel goes blank exactly when it is needed.
+        if self.surface.is_editor() && self.pending_chord().is_empty() {
             return editor_which_key(self.mode);
         }
         self.outline_which_key()
@@ -11841,7 +11854,7 @@ impl ModalApp {
         alt: bool,
         text: Option<char>,
     ) -> bool {
-        if self.mode != InputMode::Doom || self.body.mode() == EditorMode::Insert {
+        if self.mode != InputMode::Doom {
             return false;
         }
         if self.pending.is_empty() {
@@ -11851,6 +11864,18 @@ impl ModalApp {
             if key != "space" || editor_busy {
                 return false;
             }
+            // In INSERT a bare `SPC` is a space — that is what INSERT is
+            // for — so the forty-two leader chords went away for as long
+            // as you were typing. `C-SPC` and `M-SPC` (Doom's own
+            // `doom-leader-alt-key`) open the leader instead, and open
+            // the *same* one: a second door is worth having only if the
+            // room behind it is the same room.
+            if self.body.mode() == EditorMode::Insert && !(ctrl || alt) {
+                return false;
+            }
+            // Whichever key opened it, what the dispatcher sees is `SPC`.
+            self.on_browse_key(shell, "space", false, false, Some(' '));
+            return true;
         }
         // Opening a chord, or continuing one: the keymap dispatcher owns
         // the strokes until the chord resolves or dies.
