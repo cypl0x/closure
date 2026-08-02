@@ -2249,6 +2249,12 @@ pub struct GpuiView {
     /// the view by reference. Zero means "not measured yet", and the
     /// guess stands until it is.
     measured_col_w: std::cell::Cell<f32>,
+    /// How many body rows the last frame actually painted.
+    ///
+    /// The seam the "doesn't render to the correct extent" report is
+    /// asserted on: what the pane *shows*, as opposed to what the
+    /// viewport arithmetic believes it asked for.
+    painted_rows: std::cell::Cell<usize>,
 }
 
 #[cfg(feature = "gpui")]
@@ -2309,6 +2315,7 @@ impl GpuiView {
             reload_gen: 0,
             painted_view: std::cell::Cell::new(0),
             measured_col_w: std::cell::Cell::new(0.0),
+            painted_rows: std::cell::Cell::new(0),
         }
     }
 
@@ -4836,6 +4843,12 @@ impl GpuiView {
         self.painted_view.get()
     }
 
+    /// How many body rows the last frame actually painted.
+    #[must_use]
+    pub const fn painted_rows(&self) -> usize {
+        self.painted_rows.get()
+    }
+
     /// The column windows one logical line is painted in: exactly one
     /// when clipping (from the horizontal scroll offset to the end of
     /// the line), one per wrapped row when wrapping.
@@ -4931,16 +4944,27 @@ impl GpuiView {
         // make painting quadratic in the length of the note.
         let diagrams = self.app.diagram_previews(&self.shell);
         let mut line_start = 0usize;
+        // Rows *painted*, which is what `view` counts — not indices
+        // stepped over. A folded line used to consume a slot of the
+        // window and paint nothing, so a note whose children each
+        // carry a property drawer spent most of its viewport on
+        // invisible lines and left the bottom of the pane empty:
+        // "editor buffer doesn't render the scrollable text to the
+        // correct extent", with a 269-line buffer stopping a third of
+        // the way up the window.
+        let mut drawn = 0usize;
         for (ln, spans) in self.highlighted(self.app.body_buffer()).iter().enumerate() {
             let line_len: usize = spans.iter().map(|(_, s)| s.len()).sum();
             // G5: only the wheel-scrolled window of lines is painted;
             // byte offsets still accumulate for the skipped lines.
-            if !(scroll_start..scroll_start + view).contains(&ln) {
+            if ln < scroll_start || drawn >= view {
                 line_start += line_len + 1;
                 continue;
             }
             // Folded lines are painted by nobody: the kernel decides
-            // which ones, so every shell hides the same text.
+            // which ones, so every shell hides the same text. They
+            // cost nothing from the budget, because the budget is
+            // rows on screen.
             if hidden.binary_search(&ln).is_ok() {
                 line_start += line_len + 1;
                 continue;
@@ -4976,6 +5000,9 @@ impl GpuiView {
                 if ln == cur_line {
                     row = row.bg(rgb(mix_u32(co.panel, co.selection, 96)));
                 }
+                // Each wrapped row of a long line is a row of the pane
+                // too, so it spends the budget like any other.
+                drawn += 1;
                 body = body.child(row);
             }
             for picture in self.inline_pictures(&text) {
@@ -4990,6 +5017,7 @@ impl GpuiView {
             }
             line_start += line_len + 1;
         }
+        self.painted_rows.set(drawn);
         // The editor virtualizes its own lines, so the pane it sits in
         // never overflows and the shared scrollbar had nothing to
         // measure: a 500-line body scrolled by wheel with no
