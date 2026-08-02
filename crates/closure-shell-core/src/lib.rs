@@ -11748,6 +11748,8 @@ impl ModalApp {
                 | ModalSurface::Blocks
                 | ModalSurface::Messages
                 | ModalSurface::UndoHistory
+                | ModalSurface::DbView
+                | ModalSurface::Graph
         )
     }
 
@@ -12178,11 +12180,10 @@ impl ModalApp {
             ModalSurface::UndoHistory
             | ModalSurface::Headlines
             | ModalSurface::Blocks
+            | ModalSurface::DbView
+            | ModalSurface::Graph
             | ModalSurface::Messages => {
                 self.on_picker_list_key(shell, key, ctrl, alt, text);
-            }
-            ModalSurface::DbView => {
-                self.on_pane_key(key, self.db_rows(shell).1.len());
             }
             ModalSurface::BodySearch => self.on_body_search_key(shell, key, ctrl, alt, text),
             ModalSurface::Sniffer => self.on_sniffer_key(shell, key),
@@ -12190,10 +12191,6 @@ impl ModalApp {
             ModalSurface::Ex => self.on_ex_key(shell, key, ctrl, alt, text),
             ModalSurface::Sync => self.on_sync_key(shell, key, ctrl, alt, text),
             ModalSurface::Llm => self.on_llm_key(key, ctrl, alt, text),
-            ModalSurface::Graph => {
-                let len = self.hub_rows(shell).len() + self.orphan_rows(shell).len();
-                self.on_pane_key(key, len);
-            }
             ModalSurface::Journal => {
                 let len = self.journal_rows(shell).len();
                 self.on_pane_key(key, len);
@@ -16520,6 +16517,8 @@ impl ModalApp {
             | ModalSurface::Headlines
             | ModalSurface::Blocks
             | ModalSurface::UndoHistory
+            | ModalSurface::DbView
+            | ModalSurface::Graph
             | ModalSurface::Messages => Some(&mut self.query),
             ModalSurface::Ex => Some(&mut self.ex_buf),
             ModalSurface::Sync => Some(&mut self.sync_buf),
@@ -16695,6 +16694,80 @@ impl ModalApp {
         })
     }
 
+    /// Every headline in the vault, as picker rows.
+    ///
+    /// The db-view's four columns become the picker's three fields:
+    /// the title is what you are looking for, the keyword marks it,
+    /// and the priority and tags say the rest.
+    fn db_pick_rows(&self, shell: &Shell) -> Vec<PickRow> {
+        use std::fmt::Write as _;
+        let rows = shell
+            .vault
+            .iter()
+            .flat_map(|(_, doc)| doc.all_headlines())
+            .map(|h| {
+                let mut detail = String::new();
+                if let Some(p) = h.priority() {
+                    detail.push_str(&priority_cookie(p));
+                }
+                if !h.tags().is_empty() {
+                    if !detail.is_empty() {
+                        detail.push(' ');
+                    }
+                    let _ = write!(detail, ":{}:", h.tags().join(":"));
+                }
+                PickRow {
+                    label: h.title().to_owned(),
+                    detail,
+                    trailing: h.todo().unwrap_or_default().to_owned(),
+                    matches: Vec::new(),
+                    current: false,
+                }
+            })
+            .collect();
+        Self::narrow(self.prompt_text().unwrap_or_default(), rows)
+    }
+
+    /// The link graph as picker rows.
+    ///
+    /// The old pane's three labelled sections survive as the trailing
+    /// field: a flat list that lost them would be a worse pane, not a
+    /// better one.
+    fn graph_pick_rows(&self, shell: &Shell) -> Vec<PickRow> {
+        let row = |label: String, detail: String, kind: &str| PickRow {
+            label,
+            detail,
+            trailing: kind.to_owned(),
+            matches: Vec::new(),
+            current: false,
+        };
+        let mut rows: Vec<PickRow> = Vec::new();
+        for (_, title, n) in self.hub_rows(shell) {
+            rows.push(row(title, format!("{n} link(s) in"), "hub"));
+        }
+        for (_, title) in self.orphan_rows(shell) {
+            rows.push(row(title, "nothing links here".to_owned(), "orphan"));
+        }
+        for text in self.dead_link_rows(shell) {
+            rows.push(row(text, "points at nothing".to_owned(), "dead link"));
+        }
+        Self::narrow(self.prompt_text().unwrap_or_default(), rows)
+    }
+
+    /// Keep the rows whose label the filter matches.
+    ///
+    /// Each picker's rows-builder narrows its own list, which is why
+    /// two of them shipped without narrowing at all: the db-view and
+    /// the graph came from panes that had no filter to forget.
+    fn narrow(filter: &str, rows: Vec<PickRow>) -> Vec<PickRow> {
+        if filter.trim().is_empty() {
+            return rows;
+        }
+        rows.into_iter()
+            .filter(|r| closure_query::fuzzy_score(filter, &r.label).is_some())
+            .collect()
+    }
+
     /// The open buffers as picker rows; dirty ones say so and the one
     /// on screen carries a dot.
     fn buffer_pick_rows(&self, shell: &Shell) -> Vec<PickRow> {
@@ -16815,6 +16888,12 @@ impl ModalApp {
                 })
                 .collect(),
             ),
+            // The last two surfaces painting a list of their own
+            // design. A db-view is headlines and a graph is headlines,
+            // so both are pickers like every other list of them — one
+            // filter, one set of chords, one look.
+            ModalSurface::DbView => ("db", "RET jumps to it", self.db_pick_rows(shell)),
+            ModalSurface::Graph => ("graph", "RET jumps to it", self.graph_pick_rows(shell)),
             ModalSurface::UndoHistory => (
                 "undo history",
                 "RET jumps the document to that edit",
@@ -16889,6 +16968,8 @@ impl ModalApp {
             | ModalSurface::Headlines
             | ModalSurface::Blocks
             | ModalSurface::UndoHistory
+            | ModalSurface::DbView
+            | ModalSurface::Graph
             | ModalSurface::Messages => Some(&mut self.query),
             ModalSurface::Ex => Some(&mut self.ex_buf),
             ModalSurface::Sync => Some(&mut self.sync_buf),
@@ -16994,6 +17075,8 @@ impl ModalApp {
             | ModalSurface::Headlines
             | ModalSurface::Blocks
             | ModalSurface::UndoHistory
+            | ModalSurface::DbView
+            | ModalSurface::Graph
             | ModalSurface::Messages => Some(&self.query),
             ModalSurface::Ex => Some(&self.ex_buf),
             ModalSurface::Sync => Some(&self.sync_buf),
