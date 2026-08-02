@@ -6511,7 +6511,9 @@ impl GpuiView {
     /// The window's top bar: title, the clickable mode chip, and the
     /// Notion-style capture and palette buttons.
     fn header_bar(&self, co: Colors, cx: &Context<Self>) -> gpui::Div {
+        let mode = self.app.input_mode();
         let button = |label: String, colour: u32, command: &'static str| {
+            let label = header_label(&label, closure_input::chord_for_command(mode, command));
             div()
                 .debug_selector(move || format!("header-{command}"))
                 .px_2()
@@ -6535,11 +6537,25 @@ impl GpuiView {
             .py_1()
             .gap_2()
             .child(div().text_color(rgb(co.accent)).text_lg().child("closure"))
-            .child(button(
-                format!("{:?}", self.app.input_mode()),
-                co.warning,
-                "cycle-mode",
-            ))
+            .child(button(format!("{mode:?}"), co.warning, "cycle-mode"))
+            // Which vault is open. The window never said, and with more
+            // than one of them on a machine the only way to tell was to
+            // open a note and read the path under it.
+            .child(
+                div()
+                    .flex_none()
+                    .max_w(px(scaled_text_px(280.0, self.app.zoom())))
+                    .overflow_hidden()
+                    .whitespace_nowrap()
+                    .text_color(rgb(co.muted))
+                    .text_size(self.sz(11.0))
+                    .child(vault_label(
+                        self.shell.vault.root(),
+                        std::env::var_os("HOME")
+                            .map(std::path::PathBuf::from)
+                            .as_deref(),
+                    )),
+            )
             .child(div().flex_grow())
             .child(button("＋ capture".to_owned(), co.success, "capture-start"))
             .child(button("❯ palette".to_owned(), co.accent, "palette"))
@@ -7191,6 +7207,48 @@ fn decorated(kind: BodySpan) -> gpui::HighlightStyle {
         }),
         ..Default::default()
     }
+}
+
+/// The vault's name for the header: its directory, with `$HOME`
+/// shortened the way a shell prompt does.
+///
+/// The whole path would push the buttons off the row and is mostly the
+/// part you already know; the last component is what distinguishes two
+/// vaults, and the tail before it is what tells you *which* `notes`
+/// this is.
+///
+/// `home` is passed in rather than read here: the workspace forbids
+/// `unsafe`, so a test cannot set `$HOME`, and a helper that reads the
+/// environment is a helper that can only be checked by the shell that
+/// calls it.
+#[must_use]
+pub fn vault_label(root: &Path, home: Option<&Path>) -> String {
+    home.and_then(|home| root.strip_prefix(home).ok())
+        .map_or_else(
+            || root.display().to_string(),
+            |rest| {
+                let rest = rest.display().to_string();
+                if rest.is_empty() {
+                    "~".to_owned()
+                } else {
+                    format!("~/{rest}")
+                }
+            },
+        )
+}
+
+/// A header button's label with the chord that runs it, when the
+/// active mode has one.
+///
+/// The three header buttons ran real commands and said nothing about
+/// how to reach them from the keyboard — in a shell whose premise is
+/// that every element shows its binding, the three most-clicked things
+/// in the window were the exception. A mode with no chord for the
+/// command gets a bare label: better that than a chord that does
+/// nothing when pressed.
+#[must_use]
+pub fn header_label(text: &str, chord: Option<&str>) -> String {
+    chord.map_or_else(|| text.to_owned(), |c| format!("{text}  {c}"))
 }
 
 /// What to put on the system clipboard after a keystroke, given the

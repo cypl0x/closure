@@ -556,3 +556,86 @@ fn replacing_the_top_mirrors_the_new_one() {
         Some("second".to_owned())
     );
 }
+
+// === The header buttons name their chord ===
+//
+// Reported 2026-08-02: "capture palette (right) and the keybinding mode
+// switcher should show the current keybinding of the mode."
+//
+// The three header buttons ran real commands and said nothing about how
+// to run them from the keyboard — in a shell whose premise is that
+// every element shows its binding, the three most-clicked things in the
+// window were the exception. The chord comes from the active mode's
+// keymap, so it is right in all five rather than a vim label everywhere.
+
+#[test]
+fn a_button_shows_the_chord_beside_its_name() {
+    use closure_shell_gpui::header_label;
+    assert_eq!(header_label("＋ capture", Some("c")), "＋ capture  c");
+}
+
+#[test]
+fn a_command_this_mode_cannot_reach_shows_no_chord() {
+    // Better a bare label than a chord that does nothing when pressed.
+    use closure_shell_gpui::header_label;
+    assert_eq!(header_label("❯ palette", None), "❯ palette");
+}
+
+#[test]
+fn the_chords_are_the_active_modes_own() {
+    // Doom captures with `c`, Emacs with `C-c c` — the label has to
+    // follow the mode, which is the whole point of the report.
+    use closure_config::InputMode;
+    assert_eq!(
+        closure_input::chord_for_command(InputMode::Doom, "capture-start"),
+        Some("c")
+    );
+    assert_eq!(
+        closure_input::chord_for_command(InputMode::Emacs, "capture-start"),
+        Some("C-c c")
+    );
+}
+
+// === The header says which vault is open ===
+//
+// Reported 2026-08-02: "show vault (path somewhere) in the top left."
+// The window never said, and with more than one vault on a machine the
+// only way to tell was to open a note and read the path under it.
+
+#[test]
+fn a_vault_under_home_is_shown_the_way_a_shell_prompt_does() {
+    use closure_shell_gpui::vault_label;
+    let home = std::path::Path::new("/home/someone");
+    assert_eq!(
+        vault_label(std::path::Path::new("/home/someone/vault"), Some(home)),
+        "~/vault"
+    );
+}
+
+#[test]
+fn home_itself_is_just_the_tilde() {
+    use closure_shell_gpui::vault_label;
+    let home = std::path::Path::new("/home/someone");
+    assert_eq!(vault_label(home, Some(home)), "~");
+}
+
+#[test]
+fn a_vault_outside_home_keeps_its_whole_path() {
+    // Shortening what is not under `$HOME` would be a lie about where
+    // the file is.
+    use closure_shell_gpui::vault_label;
+    let home = std::path::Path::new("/home/someone");
+    assert_eq!(
+        vault_label(std::path::Path::new("/srv/shared/notes"), Some(home)),
+        "/srv/shared/notes"
+    );
+}
+
+#[test]
+fn no_home_at_all_is_not_a_reason_to_hide_the_path() {
+    use closure_shell_gpui::vault_label;
+    assert_eq!(
+        vault_label(std::path::Path::new("/home/someone/vault"), None),
+        "/home/someone/vault"
+    );
+}
