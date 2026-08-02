@@ -2081,6 +2081,11 @@ impl App {
             // A terminal has no native directory dialog, so the
             // terminal shell says where the switch lives rather than
             // reporting the chord unimplemented (`no_dead_chords`).
+            // A terminal cannot paint a picture, so it says so rather
+            // than reporting the chord unimplemented (`no_dead_chords`).
+            "toggle-inline-images" => {
+                self.status = "inline images are a GUI thing — the links stay either way".into();
+            }
             "open-vault" => {
                 self.status =
                     "open-vault — pass a directory to `closure tui`, or use the GUI".into();

@@ -3953,6 +3953,12 @@ const PALETTE_COMMANDS: &[(&str, &str, &str, &str)] = &[
         "Switch between the outline and the whole file as one buffer",
     ),
     (
+        "toggle-inline-images",
+        "toggle-inline-images",
+        "View",
+        "Show or hide the pictures a note links to",
+    ),
+    (
         "toggle-tree",
         "toggle-tree",
         "View",
@@ -7874,6 +7880,8 @@ pub enum ModalSurface {
     /// Doom's `find-file`: walk the vault's directories, and make what
     /// is not there yet.
     FindFile,
+    /// One picture, as large as the window will make it.
+    ImageView,
     /// The date picker: a month grid over `SCHEDULED:` or `DEADLINE:`
     /// (Q3-V4).
     DatePick,
@@ -11739,6 +11747,14 @@ pub struct ModalApp {
     /// smallest honest version of that: the `:` line splits a name
     /// from the rest, and a command that wants an argument reads it.
     command_arg: Option<String>,
+    /// Where the full-size view was opened from.
+    image_return: Option<ModalSurface>,
+    /// The picture the full-size view is showing.
+    ///
+    /// An inline preview is deliberately small — it sits under the
+    /// line that links it — and a picture worth opening is worth the
+    /// window.
+    image_view: Option<std::path::PathBuf>,
     /// A directory named on the `:` line, when one was.
     vault_switch_path: Option<String>,
     /// Bumped when something asks to change vaults; the window
@@ -12193,6 +12209,8 @@ impl ModalApp {
             prompt_history: std::collections::BTreeMap::new(),
             vault_switch_asked: 0,
             vault_switch_path: None,
+            image_view: None,
+            image_return: None,
             command_arg: None,
             marks: std::collections::BTreeSet::new(),
             find_dir: std::path::PathBuf::new(),
@@ -12588,6 +12606,13 @@ impl ModalApp {
             // the outline and the whole layout jumped ("everything is
             // shifting and I always get confused").
             ModalSurface::Ex => self.ex_return.unwrap_or_else(|| self.home_surface()),
+            // A picture is a light box over your work, and the work is
+            // usually the note that links it. Without this it fell
+            // through to `other`, the window had no pane to paint for a
+            // picture, and the outline appeared behind the image — so
+            // opening a photo from a buffer looked like the buffer had
+            // closed.
+            ModalSurface::ImageView => self.image_return.unwrap_or_else(|| self.home_surface()),
             // Every floating picker, not the two that were spelled out
             // here. The other five told the pane to paint their own
             // list, and then floated over it — so the same rows were
@@ -13055,6 +13080,15 @@ impl ModalApp {
             // The same picker, with its own Enter: a directory is
             // walked into, a name that is not there yet is made.
             ModalSurface::FindFile => self.on_find_file_key(shell, key, ctrl, alt, text),
+            // One picture and one way out: anything that is not a way
+            // out leaves it open, because a viewer that closes on a
+            // stray key is a viewer you cannot read from.
+            ModalSurface::ImageView => {
+                if matches!(key, "escape" | "enter" | "q") {
+                    self.image_view = None;
+                    self.surface = self.image_return.take().unwrap_or(ModalSurface::Browse);
+                }
+            }
             ModalSurface::BodySearch => self.on_body_search_key(shell, key, ctrl, alt, text),
             ModalSurface::Sniffer => self.on_sniffer_key(shell, key),
             ModalSurface::Conflicts => self.on_conflicts_key(shell, key),
@@ -16753,6 +16787,19 @@ impl ModalApp {
         if self.org_accept_chord(shell, key, ctrl, alt) {
             return;
         }
+        // `RET` on a line that links a picture opens it as large as the
+        // window will make it. Not in INSERT — there you are writing,
+        // and Enter is a newline — and only where the file is really
+        // there, so a broken link still behaves like text.
+        if key == "enter"
+            && !ctrl
+            && !alt
+            && self.body.mode() != EditorMode::Insert
+            && let Some(path) = self.image_on_caret_line(shell)
+        {
+            self.show_image(path);
+            return;
+        }
         if self.leader_key(shell, key, ctrl, alt, text) {
             return;
         }
@@ -18278,6 +18325,19 @@ impl ModalApp {
         self.surface = ModalSurface::Browse;
     }
 
+    /// The picture the full-size view is showing, if it is open.
+    #[must_use]
+    pub fn image_shown(&self) -> Option<&std::path::Path> {
+        self.image_view.as_deref()
+    }
+
+    /// Show `path` as large as the window will make it.
+    pub fn show_image(&mut self, path: std::path::PathBuf) {
+        self.image_return = Some(self.surface);
+        self.image_view = Some(path);
+        self.surface = ModalSurface::ImageView;
+    }
+
     /// Is this headline marked for a bulk action?
     #[must_use]
     pub fn is_marked(&self, id: &str) -> bool {
@@ -19340,6 +19400,25 @@ impl ModalApp {
     /// A note with three source blocks is mostly code you are not
     /// reading, and a file opened in the editor view is mostly
     /// headlines you are not editing. Org folds both.
+    /// The image the caret's line links to, if it links to one.
+    ///
+    /// An inline preview is deliberately small; a picture worth
+    /// opening is worth the window, and `RET` is the key org uses for
+    /// "do the thing this link means".
+    fn image_on_caret_line(&self, shell: &Shell) -> Option<std::path::PathBuf> {
+        let (line, _) = self.body.cursor_line_col();
+        let text = self.body.text();
+        let raw = text.split('\n').nth(line)?;
+        let first = image_links(raw).into_iter().next()?;
+        let candidate = std::path::Path::new(&first.path);
+        let full = if candidate.is_absolute() {
+            candidate.to_path_buf()
+        } else {
+            shell.vault.root().join(candidate)
+        };
+        full.is_file().then_some(full)
+    }
+
     /// A newline that carries the list on, org's way.
     ///
     /// `RET` at the end of `- milk` opens `- `; at the end of `1.

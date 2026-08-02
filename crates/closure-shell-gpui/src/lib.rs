@@ -1447,7 +1447,9 @@ pub const fn accepts_paste(surface: ModalSurface, insert: bool) -> bool {
         | ModalSurface::Cron
         // The date picker takes single keys (h/l/j/k, digits); a
         // pasted blob of text is not a date.
-        | ModalSurface::DatePick => false,
+        | ModalSurface::DatePick
+        // A picture is not a text field.
+        | ModalSurface::ImageView => false,
     }
 }
 
@@ -1962,6 +1964,29 @@ const BODY_LINE_H: f32 = 18.0;
 pub fn body_row_h(zoom: f32) -> f32 {
     BODY_LINE_H * zoom
 }
+
+/// How many editor rows an inline picture is given.
+///
+/// Whole rows, and stated here rather than let the image ask for its
+/// own size: everything the editor knows about where it is — the
+/// viewport count, the caret, the scrollbar — is `body_row_h` times a
+/// line number, and a block of arbitrary height in the middle of that
+/// column makes all three wrong at once. Eight rows is big enough to
+/// recognise a screenshot in and small enough that a note of them is
+/// still a note; `RET` on the link opens the real thing.
+#[cfg(feature = "gpui")]
+const IMAGE_ROWS: f32 = 8.0;
+
+/// The editor's line-number column, and the gap between it and the
+/// text. Named because a picture painted under a line has to start
+/// where that line's text starts, and two literals that agree today do
+/// not stay agreeing.
+#[cfg(feature = "gpui")]
+const GUTTER_W: f32 = 34.0;
+
+/// The gap after the line-number column.
+#[cfg(feature = "gpui")]
+const GUTTER_GAP: f32 = 8.0;
 
 /// Characters reserved for the TODO keyword in an outline row, painted
 /// or not — a column that appears only on some rows moves every title
@@ -2786,6 +2811,56 @@ impl GpuiView {
         cx.write_to_clipboard(gpui::ClipboardItem::new_string(text));
     }
 
+    /// One picture, as large as the window will make it.
+    ///
+    /// "in editor view pressing enter on an image link should show the
+    /// image in full size": the inline preview is deliberately small —
+    /// it sits under the line that links it — and a picture worth
+    /// opening is worth the window.
+    fn image_overlay(&self, co: Colors, cx: &Context<Self>) -> Option<gpui::Deferred> {
+        let path = self.app.image_shown()?.to_path_buf();
+        let name = path
+            .file_name()
+            .map_or_else(String::new, |n| n.to_string_lossy().into_owned());
+        Some(
+            gpui::deferred(
+                div()
+                    .debug_selector(|| "image-overlay".to_owned())
+                    .absolute()
+                    .inset_0()
+                    .flex()
+                    .flex_col()
+                    .items_center()
+                    .justify_center()
+                    .gap_2()
+                    .bg(gpui::rgba(0x0000_00d0))
+                    // The scrim takes the mouse as well as dimming, the
+                    // same reason the picker's does.
+                    .occlude()
+                    .on_mouse_down(
+                        MouseButton::Left,
+                        cx.listener(|this: &mut Self, _ev, _w, cx| {
+                            this.app
+                                .on_key(&mut this.shell, "escape", false, false, None);
+                            cx.notify();
+                        }),
+                    )
+                    .child(
+                        gpui::img(path)
+                            .max_w(gpui::relative(0.92))
+                            .max_h(gpui::relative(0.86)),
+                    )
+                    .child(
+                        div()
+                            .text_size(px(chrome_px(&self.theme, self.app.zoom())))
+                            .text_color(rgb(co.muted))
+                            .child(format!("{name}  ·  Esc closes")),
+                    ),
+            )
+            .with_priority(3),
+        )
+    }
+
     /// Raise the directory dialog and open whatever comes back.
     ///
     /// "Pressing on the previously … should open the system file
@@ -3584,6 +3659,10 @@ impl GpuiView {
         match self.app.surface() {
             ModalSurface::Browse => format!("{n} headline(s)"),
             ModalSurface::FindFile => format!("find file — {}\u{258f}", self.app.query()),
+            ModalSurface::ImageView => self
+                .app
+                .image_shown()
+                .map_or_else(String::new, |p| format!("{} — Esc closes", p.display())),
             ModalSurface::Messages => {
                 format!(
                     "messages — {} kept · type to filter",
@@ -4633,7 +4712,7 @@ impl GpuiView {
     /// A continuation row carries no number — the gutter says which
     /// *logical* line this is, once.
     fn line_gutter(&self, co: Colors, ln: usize, first: bool, current: bool) -> gpui::Div {
-        let gutter = div().w(px(34.0)).mr_2();
+        let gutter = div().w(px(GUTTER_W)).mr(px(GUTTER_GAP));
         if first {
             gutter
                 .text_size(self.sz(11.0))
@@ -4736,6 +4815,9 @@ impl GpuiView {
                     row = row.bg(rgb(mix_u32(co.panel, co.selection, 96)));
                 }
                 body = body.child(row);
+            }
+            for picture in self.inline_pictures(&text) {
+                body = body.child(picture);
             }
             line_start += line_len + 1;
         }
@@ -6882,21 +6964,75 @@ impl GpuiView {
         self.app.images_shown()
     }
 
-    /// How many images the selected note would paint — every link whose
-    /// file resolves, or none while the toggle is off. What a test
-    /// asserts on instead of hunting for a texture.
+    /// How many images the pane would paint — every link whose file
+    /// resolves, or none while the toggle is off. What a test asserts
+    /// on instead of hunting for a texture.
+    ///
+    /// Whichever text is on screen: the open buffer when there is one,
+    /// and the selected note's preview otherwise. Asking the *detail*
+    /// while an editor is open would answer for a pane nobody is
+    /// looking at, and the two texts diverge the moment you type.
     #[must_use]
     pub fn painted_images(&self) -> usize {
         if !self.app.images_shown() {
             return 0;
         }
-        let Some(detail) = self.app.selected_detail(&self.shell) else {
-            return 0;
+        let text = if self.app.surface().is_editor() {
+            self.app.body_buffer().to_owned()
+        } else {
+            self.app
+                .selected_detail(&self.shell)
+                .map(|d| d.body.clone())
+                .unwrap_or_default()
         };
-        closure_shell_core::image_links(&detail.body)
+        closure_shell_core::image_links(&text)
             .into_iter()
             .filter(|link| self.image_path(&link.path).is_some())
             .count()
+    }
+
+    /// The pictures a single line points at, resolved to files that
+    /// exist, or nothing at all while the toggle is off.
+    ///
+    /// Both painters ask this one question — the preview and the
+    /// editor. They had two copies of it for as long as only the
+    /// preview painted anything, which is how the editor came to ignore
+    /// `toggle-inline-images` entirely.
+    fn line_images(&self, line: &str) -> Vec<std::path::PathBuf> {
+        if !self.app.images_shown() {
+            return Vec::new();
+        }
+        closure_shell_core::image_links(line)
+            .into_iter()
+            .filter_map(|link| self.image_path(&link.path))
+            .collect()
+    }
+
+    /// The pictures one editor line shows beneath itself.
+    ///
+    /// An editor row is a *stated* height, because the viewport count,
+    /// the caret and the scrollbar are all `body_row_h` times a line
+    /// number — so a picture is given a whole number of rows
+    /// ([`IMAGE_ROWS`]) rather than whatever size it happens to be.
+    /// The arithmetic stays exact, and the caret cannot drift off the
+    /// bottom of a note full of screenshots.
+    fn inline_pictures(&self, line: &str) -> Vec<gpui::Div> {
+        let h = px(body_row_h(self.app.zoom()) * IMAGE_ROWS);
+        self.line_images(line)
+            .into_iter()
+            .map(|path| {
+                div()
+                    .h(h)
+                    // Starting where the line's own text starts, past
+                    // the gutter: a picture flush against the window
+                    // edge reads as chrome rather than as part of the
+                    // note that links it.
+                    .ml(px(GUTTER_W + GUTTER_GAP))
+                    .flex()
+                    .items_center()
+                    .child(gpui::img(path).max_h(h).rounded_md())
+            })
+            .collect()
     }
 
     /// Resolve an image link's target to a file that is actually there.
@@ -6946,14 +7082,7 @@ impl GpuiView {
             let text: String = spans.iter().map(|(_, s)| s.as_str()).collect();
             // The pictures this line points at, kept before `text` is
             // moved into the click handler below.
-            let images: Vec<std::path::PathBuf> = if self.app.images_shown() {
-                closure_shell_core::image_links(&text)
-                    .into_iter()
-                    .filter_map(|link| self.image_path(&link.path))
-                    .collect()
-            } else {
-                Vec::new()
-            };
+            let images = self.line_images(&text);
             let styled = gpui::StyledText::new(text.clone()).with_highlights(
                 span_ranges(spans).into_iter().map(|(range, kind)| {
                     (
@@ -7522,8 +7651,14 @@ impl GpuiView {
         let chrome = chrome_px(&self.theme, self.app.zoom());
         let button = |label: String, colour: u32, command: &'static str| {
             let label = header_label(&label, self.app.chord_for(command));
+            // Named for the command it *runs*, not for the spelling this
+            // call site happens to use: the chips pass a mix of current
+            // and former names (both resolve — that is what the alias
+            // table is for), so building the selector from the raw
+            // string gave one chip a name nothing else in the tree knew.
+            let selector = closure_shell_core::canonical_command(command);
             div()
-                .debug_selector(move || format!("header-{command}"))
+                .debug_selector(move || format!("header-{selector}"))
                 .px_2()
                 .rounded_md()
                 .bg(rgb(co.panel))
@@ -9015,6 +9150,9 @@ impl Render for GpuiView {
         }
         if let Some(menu) = self.context_menu_overlay(co, cx) {
             root = root.child(menu);
+        }
+        if let Some(picture) = self.image_overlay(co, cx) {
+            root = root.child(picture);
         }
         if let Some(palette) = self.palette_overlay(co, cx) {
             root = root.child(palette);

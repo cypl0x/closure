@@ -21,12 +21,20 @@ use gpui::{Modifiers, MouseButton, Point, px, size};
 
 /// A vault with enough shape to fill every pane: TODOs, a body, tags,
 /// properties, a source block, a link and a schedule.
+/// A vault in valid org.
+///
+/// The `SCHEDULED:` line sits between the headline and its drawer,
+/// which is where org puts a planning line and the only place the
+/// parser looks for one. It used to be written *below* the drawer here,
+/// so Alpha had no scheduled date at all — and the detail pane's
+/// planning field, which only appears when there is one, was never
+/// painted for any test that asked about it.
 const VAULT: &str = "\
 * TODO Alpha :work:
+SCHEDULED: <2026-07-27 Mon>
 :PROPERTIES:
 :ID: 01HQXALPHA0000000000000000
 :END:
-SCHEDULED: <2026-07-27 Mon>
 The first body, with [[id:01HQXBETA00000000000000000][a link]] in it.
 #+BEGIN_SRC sh
 echo alpha
@@ -43,6 +51,19 @@ Delta's body.
 ";
 
 /// `n` numbered lines of `prefix`, as one string.
+/// `n` scheduled TODOs, as one org file.
+///
+/// What it takes to fill the right-hand pane with rows: the agenda
+/// lists dated entries, so an undated headline puts nothing in it.
+fn scheduled(n: usize) -> String {
+    use std::fmt::Write as _;
+    (0..n).fold(String::new(), |mut s, i| {
+        let day = i % 28 + 1;
+        let _ = writeln!(s, "* TODO Row {i}\nSCHEDULED: <2026-07-{day:02}>");
+        s
+    })
+}
+
 fn numbered(prefix: &str, n: usize) -> String {
     use std::fmt::Write as _;
     (0..n).fold(String::new(), |mut s, i| {
@@ -92,8 +113,10 @@ const TARGETS: &[(&str, &[&str])] = &[
     ("outline-scrollbar", &[]),
     ("which-key-toggle", &[]),
     ("header-palette", &[]),
-    ("header-capture-start", &[]),
-    ("header-cycle-mode", &[]),
+    // Canonical names: the chips are named for the command they run,
+    // so a rename moves the selector with it rather than leaving one.
+    ("header-capture", &[]),
+    ("header-next-input-mode", &[]),
     ("field-rename", &[]),
     ("field-edit-tags", &[]),
     ("field-edit-property", &[]),
@@ -716,9 +739,16 @@ fn dragging_the_body_scrollbar_scrolls_the_editor(cx: &mut gpui::TestAppContext)
 fn dragging_the_side_scrollbar_scrolls_the_pane(cx: &mut gpui::TestAppContext) {
     // The list surfaces put their rows straight in the scrolling pane,
     // so this is the bar that moves them.
-    let long = numbered("* Row", 200);
+    //
+    // It used to drive `list-headlines`. That became a *floating*
+    // picker when the user reported the "weird selection shadow in
+    // command palette" on 2026-08-01 — a picker floats and the pane
+    // beneath it shows home, so a headline list has no rows in this
+    // pane to drag any more. Rewritten in place against the agenda,
+    // which is still a pane list; the bar under test is unchanged.
+    let long = scheduled(200);
     let (_dir, view, vcx) = visual_window(cx, &long);
-    view.update(vcx, |v, cx| v.run_command("list-headlines", cx));
+    view.update(vcx, |v, cx| v.run_command("agenda", cx));
     vcx.run_until_parked();
     let viewport = vcx.update(|w, _cx| w.viewport_size());
     let track = vcx.debug_bounds("side-scrollbar").expect("painted");
@@ -745,9 +775,11 @@ fn a_scrollbar_works_on_the_frame_its_pane_appears(cx: &mut gpui::TestAppContext
     // the previous surface, so the first grab after opening a list did
     // nothing, and only an unrelated repaint armed it. One click,
     // immediately, with no repaint in between.
-    let long = numbered("* Row", 200);
+    // Against the agenda for the same reason as the test above: a
+    // headline list floats now, and this is about the pane's bar.
+    let long = scheduled(200);
     let (_dir, view, vcx) = visual_window(cx, &long);
-    view.update(vcx, |v, cx| v.run_command("list-headlines", cx));
+    view.update(vcx, |v, cx| v.run_command("agenda", cx));
     vcx.run_until_parked();
     let track = vcx.debug_bounds("side-scrollbar").expect("painted");
     let at = Point::new(track.center().x, track.origin.y + track.size.height * 0.75);
@@ -1569,6 +1601,37 @@ fn a_note_with_an_image_link_paints_it(cx: &mut gpui::TestAppContext) {
         v.run_command("toggle-inline-images", cx);
         assert!(!v.images_shown());
         assert_eq!(v.painted_images(), 0, "and none once toggled off");
+    });
+    vcx.run_until_parked();
+}
+
+#[gpui::test]
+fn the_editor_shows_the_pictures_too(cx: &mut gpui::TestAppContext) {
+    // "editor view inline image toggle". The preview painted images
+    // from the first day and the editor never did — so writing a note
+    // about a picture meant looking at `[[file:…]]` while the pane
+    // beside you showed the thing itself. Found on screen: the item
+    // reads as a request for a toggle, and the toggle was the half that
+    // already worked.
+    const PNG: &[u8] = &[
+        0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44,
+        0x52, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x06, 0x00, 0x00, 0x00, 0x1f,
+        0x15, 0xc4, 0x89, 0x00, 0x00, 0x00, 0x0a, 0x49, 0x44, 0x41, 0x54, 0x78, 0x9c, 0x63, 0x00,
+        0x01, 0x00, 0x00, 0x05, 0x00, 0x01, 0x0d, 0x0a, 0x2d, 0xb4, 0x00, 0x00, 0x00, 0x00, 0x49,
+        0x45, 0x4e, 0x44, 0xae, 0x42, 0x60, 0x82,
+    ];
+    let (dir, view, vcx) = visual_window(cx, "* Shot\n[[file:assets/x.png]]\n[[file:gone.png]]\n");
+    std::fs::create_dir_all(dir.path().join("assets")).expect("mkdir");
+    std::fs::write(dir.path().join("assets/x.png"), PNG).expect("write");
+    view.update(vcx, |v, cx| {
+        v.run_command("edit-body", cx);
+        assert_eq!(
+            v.painted_images(),
+            1,
+            "the editor paints the one that is there"
+        );
+        v.run_command("toggle-inline-images", cx);
+        assert_eq!(v.painted_images(), 0, "and the toggle reaches the editor");
     });
     vcx.run_until_parked();
 }

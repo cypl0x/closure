@@ -104,7 +104,10 @@ pub fn visual_window<'a>(
 pub const fn opening_route(surface: crate::ModalSurface) -> &'static [&'static str] {
     use crate::ModalSurface as S;
     match surface {
-        S::Browse => &[],
+        // Browse is where you start, and the picture viewer is opened
+        // by `RET` on an image link rather than by a command — neither
+        // has a route a test can drive it through.
+        S::Browse | S::ImageView => &[],
         S::Search => &["search"],
         S::Capture => &["capture"],
         S::EditBody => &["edit-body"],
