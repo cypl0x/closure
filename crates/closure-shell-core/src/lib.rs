@@ -3370,10 +3370,20 @@ pub fn align_table(table: &str) -> String {
             .map_or(t, |s| s.strip_suffix('|').unwrap_or(s));
         inner.split('|').map(str::trim).collect()
     }
-    let is_rule = |line: &str| {
-        let t = line.trim();
-        t.starts_with('|') && t.chars().all(|c| matches!(c, '|' | '-' | '+' | ' '))
-    };
+    /// Does this cell read as a number? org's `%g`-ish test: a figure,
+    /// with the punctuation figures come with.
+    fn numeric(cell: &str) -> bool {
+        let c = cell.trim();
+        !c.is_empty()
+            && c.chars().any(|c| c.is_ascii_digit())
+            && c.chars()
+                .all(|c| c.is_ascii_digit() || matches!(c, '.' | ',' | '-' | '+' | '%' | 'e' | 'E'))
+    }
+    // One definition of a rule, shared with the table verbs: a second
+    // copy here is how an empty row — all pipes and spaces — was
+    // redrawn as a horizontal line by the realign that runs after
+    // every edit, so inserting a row appeared to insert a rule.
+    let is_rule = is_rule_row;
     let rows: Vec<&str> = table.lines().collect();
     if rows.is_empty() {
         return table.to_owned();
@@ -3391,6 +3401,27 @@ pub fn align_table(table: &str) -> String {
             }
         }
     }
+    // org right-aligns a column of figures so it lines up on its last
+    // digit. The header is prose in every table anybody writes, and an
+    // empty cell says nothing, so neither gets a vote — the question is
+    // whether the cells that *have* content are numbers.
+    let body_start = usize::from(rows.first().is_some_and(|r| !is_rule(r)));
+    let right: Vec<bool> = widths
+        .iter()
+        .enumerate()
+        .map(|(i, _)| {
+            let mut seen = 0_usize;
+            let mut nums = 0_usize;
+            for row in rows.iter().skip(body_start).filter(|r| !is_rule(r)) {
+                let cell = cells(row).get(i).copied().unwrap_or("").trim().to_owned();
+                if !cell.is_empty() {
+                    seen += 1;
+                    nums += usize::from(numeric(&cell));
+                }
+            }
+            seen > 0 && nums * 2 > seen
+        })
+        .collect();
     let mut out = String::with_capacity(table.len());
     for row in rows {
         if is_rule(row) {
@@ -3409,10 +3440,18 @@ pub fn align_table(table: &str) -> String {
             out.push('|');
             for (i, w) in widths.iter().enumerate() {
                 let cell = row_cells.get(i).copied().unwrap_or("");
+                let pad = w.saturating_sub(cell.chars().count());
                 out.push(' ');
+                if right.get(i).copied().unwrap_or(false) {
+                    for _ in 0..pad {
+                        out.push(' ');
+                    }
+                }
                 out.push_str(cell);
-                for _ in 0..w.saturating_sub(cell.chars().count()) {
-                    out.push(' ');
+                if !right.get(i).copied().unwrap_or(false) {
+                    for _ in 0..pad {
+                        out.push(' ');
+                    }
                 }
                 out.push_str(" |");
             }
@@ -3581,14 +3620,25 @@ fn row_cells(line: &str) -> Vec<String> {
     let inner = t
         .strip_prefix('|')
         .map_or(t, |s| s.strip_suffix('|').unwrap_or(s));
-    inner.split('|').map(|c| c.trim().to_owned()).collect()
+    // A rule separates its columns with `+`, not `|`. Splitting one on
+    // `|` alone reported a three-column table as having one column, so
+    // every column verb rebuilt the rule at the wrong width: inserting
+    // a column left `|---+---|` under a four-column table, and on
+    // screen the rule stopped lining up with the rows it ruled.
+    let sep = if is_rule_row(line) { '+' } else { '|' };
+    inner.split(sep).map(|c| c.trim().to_owned()).collect()
 }
 
 /// Whether the line is an org table rule (`|---+---|`) rather than a
 /// row of content.
 fn is_rule_row(line: &str) -> bool {
     let t = line.trim();
-    t.starts_with('|') && t.chars().all(|c| matches!(c, '|' | '-' | '+' | ' '))
+    // A rule has to *have* a dash. Without that clause an empty row —
+    // `|  |  |  |`, which is exactly what inserting a row makes — is
+    // all pipes and spaces and so passed for a rule, and the realign
+    // then redrew it as one: `M-S-<down>` appeared to insert a second
+    // horizontal line instead of the line you were about to type in.
+    t.starts_with('|') && t.contains('-') && t.chars().all(|c| matches!(c, '|' | '-' | '+' | ' '))
 }
 
 /// Rebuild `text` with the table containing `line` replaced by `rows`,
@@ -3718,7 +3768,9 @@ pub fn table_insert_row(text: &str, line: usize) -> Option<String> {
     let all: Vec<&str> = text.lines().collect();
     let width = row_cells(all[span.start]).len().max(1);
     let mut rows: Vec<String> = all[span.clone()].iter().map(|l| (*l).to_owned()).collect();
-    rows.insert(line - span.start, format!("|{}|", " |".repeat(width)));
+    // `" |".repeat(n)` already ends in a pipe, so the closing one made
+    // an empty row one column wider than the table it went into.
+    rows.insert(line - span.start, format!("|{}", " |".repeat(width)));
     Some(splice_table(text, line, &rows))
 }
 
