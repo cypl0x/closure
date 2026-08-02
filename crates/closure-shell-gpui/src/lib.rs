@@ -2740,7 +2740,16 @@ impl GpuiView {
         self.take_clipboard(cx);
         let register_before = self.app.register_generation();
         let vault_asked = self.app.vault_switch_asked();
+        // The stopwatch `toggle-trace` arms. It wraps the core's own
+        // work — the selection change, the detail derivation — which
+        // is where the reported microfreeze would have to live if it
+        // is not in the paint. `Instant::now` twice per keypress is
+        // not worth gating on the flag; recording is.
+        let started = std::time::Instant::now();
         self.app.on_key(&mut self.shell, key, ctrl, alt, text);
+        let took = started.elapsed();
+        let shell = &self.shell;
+        self.app.note_slow_key(key, took, shell);
         self.relaunch_if_reloaded(reloads_before);
         self.note_prompt();
         // Anything that killed something puts it on the desktop's

@@ -4020,6 +4020,12 @@ const PALETTE_COMMANDS: &[(&str, &str, &str, &str)] = &[
         "Draw the mermaid and LaTeX blocks in this buffer",
     ),
     (
+        "toggle-trace",
+        "toggle-trace",
+        "View",
+        "Time every keypress and log the slow ones",
+    ),
+    (
         "toggle-tree",
         "toggle-tree",
         "View",
@@ -11875,6 +11881,11 @@ pub struct ModalApp {
     /// before you had finished reading it. Emacs keeps a `*Messages*`
     /// buffer for exactly this reason.
     messages: Vec<String>,
+    /// Whether every keypress is being timed (`toggle-trace`).
+    ///
+    /// Off by default and free when off: a measurement that costs
+    /// something to collect changes the thing it is measuring.
+    tracing: bool,
     /// The notification log. It lived in the gpui window, which is
     /// why it had no command and no chord — there was nothing for the
     /// keymap to point at. Here it has both, and the terminal shell
@@ -12385,6 +12396,7 @@ impl ModalApp {
             which_key_open: false,
             line_kill: String::new(),
             messages: Vec::new(),
+            tracing: false,
             notifications: Feedback::default(),
             palette_cursor: 0,
             pending: Vec::new(),
@@ -13842,6 +13854,45 @@ impl ModalApp {
     #[must_use]
     pub fn messages(&self) -> &[String] {
         &self.messages
+    }
+
+    /// Whether every keypress is being timed.
+    #[must_use]
+    pub const fn tracing(&self) -> bool {
+        self.tracing
+    }
+
+    /// Record a keypress that took longer than a frame.
+    ///
+    /// The seam a shell calls with a real measurement, and the answer
+    /// to "how can I get logs in order to help with debugging?". The
+    /// microfreeze on a level-1 headline does not reproduce here — on
+    /// a vault shaped like the report every step of the selection
+    /// costs the same few milliseconds — so this exists to be read on
+    /// the machine where it does.
+    ///
+    /// The reading names what the step was doing, not just how long it
+    /// took: a number with nowhere to go is not evidence. In
+    /// particular it says whether the detail had to be derived again,
+    /// because a memo that never hits would make every frame pay for
+    /// the whole subtree of whatever is selected.
+    pub fn note_slow_key(&mut self, key: &str, took: std::time::Duration, shell: &Shell) {
+        /// Anything under a frame is not a freeze, and logging it
+        /// would bury the one step that is.
+        const FRAME: std::time::Duration = std::time::Duration::from_millis(16);
+        if !self.tracing || took < FRAME {
+            return;
+        }
+        let before = self.detail_recomputes();
+        let level = self
+            .detail(shell)
+            .map_or_else(|| "-".to_owned(), |d| d.level.to_string());
+        let derived = self.detail_recomputes() - before;
+        self.say(format!(
+            "trace: `{key}` took {}ms · {:?} · level {level} · detail derived {derived}x",
+            took.as_millis(),
+            self.surface,
+        ));
     }
 
     /// The activity rail: every pane of the shell as a clickable
@@ -20738,6 +20789,14 @@ impl ModalApp {
                 self.say("sync — hand over your ticket, paste theirs, Esc back");
             }
             "preview-diagrams" => self.preview_diagrams(shell),
+            "toggle-trace" => {
+                self.tracing = !self.tracing;
+                self.say(if self.tracing {
+                    "tracing on — slow keys land in the message log (g M, or :messages)"
+                } else {
+                    "tracing off"
+                });
+            }
             "toggle-inline-images" => {
                 self.images_shown = !self.images_shown;
                 self.say(if self.images_shown {

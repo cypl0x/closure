@@ -221,6 +221,10 @@ pub struct App {
     /// The rest of a confirmed bulk delete, for the driver to work
     /// through after the first.
     pending_deletes: Vec<String>,
+    /// Whether keypresses are being timed. The terminal keeps the
+    /// toggle so the chord is not dead here, though a terminal frame
+    /// is not where the reported freeze lives.
+    tracing: bool,
     delete_request: Option<String>,
     /// How many list rows the terminal last drew — what `C-d` / `C-u`
     /// take half of. The draw loop reports it; a run that never does
@@ -340,6 +344,7 @@ impl App {
         Self {
             marks: std::collections::BTreeSet::new(),
             pending_deletes: Vec::new(),
+            tracing: false,
             paths,
             selected,
             bindings: bindings
@@ -2090,6 +2095,14 @@ impl App {
             // Rendering anyway would leave files nobody asked for.
             "preview-diagrams" => {
                 self.status = "diagrams are drawn in the GUI — the blocks stay either way".into();
+            }
+            "toggle-trace" => {
+                self.tracing = !self.tracing;
+                self.status = if self.tracing {
+                    "tracing on — slow keys land in the message log".into()
+                } else {
+                    "tracing off".to_owned()
+                };
             }
             "open-vault" => {
                 self.status =
