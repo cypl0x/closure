@@ -181,6 +181,145 @@ fn the_footer_strip_follows_the_surface_too() {
     );
 }
 
+// === and every other surface, not just the buffer ===
+//
+// The editor got an arm of its own; nothing else did, so a prompt, a
+// floating picker and the full-size image viewer all still answered
+// with the outline's keymap. It is plain in any screenshot of the
+// image viewer: a strip of six chords along the bottom —
+// `m:toggle-mark`, `D:delete-marked`, `SPC f v:open-vault` — under a
+// picture that answers to exactly one key.
+//
+// Same rule as above, applied everywhere it was not: a surface
+// advertises what *it* answers to.
+
+/// Commands that belong to the outline and nowhere else.
+const OUTLINE_ONLY: [&str; 4] = ["toggle-mark", "delete-marked", "unmark-all", "open-vault"];
+
+/// Every chord *and* label the panel would list.
+fn labels(app: &ModalApp) -> Vec<String> {
+    app.which_key_groups()
+        .into_iter()
+        .flat_map(|(_, rows)| {
+            rows.into_iter()
+                .map(|(chord, label)| format!("{chord} {label}"))
+        })
+        .collect()
+}
+
+/// A fixture parked on `surface` by running `command`.
+fn on_surface(command: &str) -> (TempDir, Shell, ModalApp) {
+    let dir = tempfile::tempdir().expect("tmp");
+    fs::write(
+        dir.path().join("notes.org"),
+        "* Alpha\n:PROPERTIES:\n:ID: 01HQWK0000000000000001\n:END:\nbody\n",
+    )
+    .expect("write");
+    let vault = Vault::open(dir.path()).expect("open");
+    let mut shell = Shell::new(vault);
+    let mut app = ModalApp::new(InputMode::Doom);
+    assert!(app.select_by_id(&shell, "01HQWK0000000000000001"));
+    app.run(&mut shell, command);
+    (dir, shell, app)
+}
+
+#[test]
+fn a_picture_offers_none_of_the_outlines_verbs() {
+    let (_d, _sh, mut app) = on_surface("messages");
+    app.show_image(std::path::PathBuf::from("/tmp/nothing.png"));
+    let ads = labels(&app);
+    for dead in OUTLINE_ONLY {
+        assert!(
+            !ads.iter().any(|a| a.contains(dead)),
+            "`{dead}` does nothing under a picture: {ads:?}"
+        );
+    }
+}
+
+#[test]
+fn a_picture_still_says_how_to_leave() {
+    // Quiet is not the goal, honest is. A blank strip would read as a
+    // broken panel rather than an empty keymap.
+    let (_d, _sh, mut app) = on_surface("messages");
+    app.show_image(std::path::PathBuf::from("/tmp/nothing.png"));
+    let ads = labels(&app);
+    assert!(
+        ads.iter().any(|a| a.to_lowercase().contains("esc")),
+        "{ads:?}"
+    );
+}
+
+#[test]
+fn a_prompt_is_a_text_field_and_says_so() {
+    // The outline's single-letter verbs are not merely unbound while
+    // you type a capture — they are the letters you are typing.
+    let (_d, _sh, app) = on_surface("capture");
+    let ads = labels(&app);
+    for dead in OUTLINE_ONLY {
+        assert!(
+            !ads.iter().any(|a| a.contains(dead)),
+            "`{dead}` is a letter you are typing here: {ads:?}"
+        );
+    }
+    assert!(ads.iter().any(|a| a.contains("C-a")), "{ads:?}");
+}
+
+#[test]
+fn a_floating_picker_advertises_walking_its_list() {
+    let (_d, _sh, app) = on_surface("palette");
+    let ads = labels(&app);
+    for dead in OUTLINE_ONLY {
+        assert!(
+            !ads.iter().any(|a| a.contains(dead)),
+            "`{dead}` does nothing in a picker: {ads:?}"
+        );
+    }
+    assert!(
+        ads.iter().any(|a| a.contains("C-n") || a.contains("C-p")),
+        "a picker walks its list: {ads:?}"
+    );
+}
+
+#[test]
+fn the_footer_strip_is_the_same_answer_as_the_panel() {
+    // Two owners of one fact, which is how the panel got fixed for the
+    // editor and the strip along the bottom did not. `key_hints` kept
+    // its own copy of the branch and its own fallback to the outline's
+    // map, so a picture with an honest which-key panel still carried
+    // `m:toggle-mark` across the footer.
+    for command in ["capture", "palette", "messages", "edit-body"] {
+        let (_d, _sh, app) = on_surface(command);
+        let hints = app.key_hints();
+        for dead in OUTLINE_ONLY {
+            assert!(
+                !hints.contains(dead),
+                "`{command}` footer still advertises `{dead}`: {hints}"
+            );
+        }
+    }
+}
+
+#[test]
+fn the_picture_footer_is_honest_too() {
+    let (_d, _sh, mut app) = on_surface("messages");
+    app.show_image(std::path::PathBuf::from("/tmp/nothing.png"));
+    let hints = app.key_hints();
+    for dead in OUTLINE_ONLY {
+        assert!(!hints.contains(dead), "{hints}");
+    }
+    assert!(hints.to_lowercase().contains("esc"), "{hints}");
+}
+
+#[test]
+fn no_surface_is_left_with_nothing_to_say() {
+    for command in [
+        "capture", "search", "palette", "messages", "graph", "agenda",
+    ] {
+        let (_d, _sh, app) = on_surface(command);
+        assert!(!labels(&app).is_empty(), "`{command}` left the panel blank");
+    }
+}
+
 #[test]
 fn the_outlines_footer_is_unchanged() {
     let dir = tempfile::tempdir().expect("tmp");

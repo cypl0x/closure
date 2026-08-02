@@ -5416,6 +5416,102 @@ fn filtered<T>(rows: Vec<T>, filter: &str, text: impl Fn(&T) -> String) -> Vec<T
 ///
 /// A mode with no NORMAL is offered no NORMAL: "only show the
 /// keybindings that are relevant to the corresponding mode".
+/// Build a which-key group list from static pairs.
+fn which_key_of(groups: &[(&str, &[(&str, &str)])]) -> Vec<(String, Vec<(String, String)>)> {
+    groups
+        .iter()
+        .map(|(title, rows)| {
+            (
+                (*title).to_owned(),
+                rows.iter()
+                    .map(|(chord, label)| ((*chord).to_owned(), (*label).to_owned()))
+                    .collect(),
+            )
+        })
+        .collect()
+}
+
+/// A one-line prompt: the readline set, and the two keys that end it.
+///
+/// The outline's single-letter verbs are not merely unbound here —
+/// `m`, `d`, `r` are the letters you are typing.
+fn prompt_which_key() -> Vec<(String, Vec<(String, String)>)> {
+    which_key_of(&[
+        (
+            "Edit",
+            &[
+                ("C-a", "start of line"),
+                ("C-e", "end of line"),
+                ("C-b", "back one character"),
+                ("C-f", "forward one character"),
+                ("M-b", "back one word"),
+                ("M-f", "forward one word"),
+                ("M-DEL", "kill the word behind"),
+                ("C-k", "kill to end of line"),
+                ("C-u", "kill to start of line"),
+                ("C-y", "yank it back"),
+            ],
+        ),
+        (
+            "Prompt",
+            &[
+                ("M-p", "previous entry"),
+                ("M-n", "next entry"),
+                ("TAB", "complete"),
+                ("RET", "accept"),
+                ("ESC", "cancel"),
+            ],
+        ),
+    ])
+}
+
+/// A floating picker: type to narrow it, walk it, run one, leave.
+fn picker_which_key() -> Vec<(String, Vec<(String, String)>)> {
+    which_key_of(&[
+        (
+            "Pick",
+            &[
+                ("type", "narrow the list"),
+                ("C-n", "next"),
+                ("C-p", "previous"),
+                ("<down>", "next"),
+                ("<up>", "previous"),
+                ("RET", "run it"),
+                ("ESC", "close"),
+            ],
+        ),
+        (
+            "Edit",
+            &[
+                ("C-a", "start of line"),
+                ("C-e", "end of line"),
+                ("M-DEL", "kill the word behind"),
+                ("C-u", "kill to start of line"),
+            ],
+        ),
+    ])
+}
+
+/// A picture, full size. One key, and saying so is the whole job.
+fn image_which_key() -> Vec<(String, Vec<(String, String)>)> {
+    which_key_of(&[("Picture", &[("ESC", "close")])])
+}
+
+/// The date picker's own arrows.
+fn date_which_key() -> Vec<(String, Vec<(String, String)>)> {
+    which_key_of(&[(
+        "Date",
+        &[
+            ("h/l", "a day back or on"),
+            ("k/j", "a week back or on"),
+            ("<left>/<right>", "a day"),
+            ("<up>/<down>", "a week"),
+            ("RET", "take it"),
+            ("ESC", "cancel"),
+        ],
+    )])
+}
+
 fn editor_which_key(mode: InputMode) -> Vec<(String, Vec<(String, String)>)> {
     let modal = matches!(mode, InputMode::Vim | InputMode::Doom | InputMode::Helix);
     let mut groups: Vec<(&str, Vec<(&str, &str)>)> = vec![(
@@ -5432,8 +5528,12 @@ fn editor_which_key(mode: InputMode) -> Vec<(String, Vec<(String, String)>)> {
             ("C-k", "kill to end of line"),
             ("C-u", "kill to start of line"),
             ("C-y", "yank it back"),
-            ("C-n", "next completion"),
-            ("C-p", "previous completion"),
+            ("C-n", "complete, then next candidate"),
+            // Honest about both jobs, because it has two now: it walks
+            // the popup while there is one and is `previous-line` the
+            // rest of the time. Labelling it "previous completion"
+            // would advertise the half you use less.
+            ("C-p", "previous candidate, else up a line"),
             ("TAB", "expand a snippet, or accept"),
             ("M-TAB", "fold or unfold"),
             ("M-z", "wrap long lines"),
@@ -12463,7 +12563,28 @@ impl ModalApp {
         if self.surface.is_editor() && self.pending_chord().is_empty() {
             return editor_which_key(self.mode);
         }
-        self.outline_which_key()
+        // …and the same courtesy for every other surface that is not
+        // the outline. The editor got an arm of its own and nothing
+        // else did, so a prompt, a floating picker and the full-size
+        // image viewer all answered with the outline's hundred and
+        // forty chords — plainest in a screenshot of the viewer, where
+        // `m:toggle-mark` and `D:delete-marked` sat under a picture
+        // that answers to exactly one key.
+        //
+        // Classified from what the surface *has* rather than from a
+        // new list beside the other lists: a picker is one because
+        // `is_floating_picker` says so, and a prompt is one because it
+        // has a line to type into.
+        match self.surface {
+            ModalSurface::ImageView => image_which_key(),
+            ModalSurface::DatePick => date_which_key(),
+            s if Self::is_floating_picker(s) => picker_which_key(),
+            _ if self.prompt().is_some() => prompt_which_key(),
+            // Browse and the pane lists — Agenda, Backlinks, Journal,
+            // Conflicts — are the outline's own keymap: `j`/`k` move,
+            // `RET` opens. They were right all along.
+            _ => self.outline_which_key(),
+        }
     }
 
     /// The outline's own keymap, grouped.
@@ -12803,17 +12924,16 @@ impl ModalApp {
     /// the same table which-key reads.
     #[must_use]
     pub fn key_hints(&self) -> String {
-        if self.surface.is_editor() {
-            return editor_which_key(self.mode)
-                .into_iter()
-                .flat_map(|(_, rows)| rows)
-                .map(|(chord, what)| format!("{chord}:{what}"))
-                .collect::<Vec<_>>()
-                .join("  ");
-        }
-        self.keys
-            .iter()
-            .map(|(c, cmd)| format!("{c}:{cmd}"))
+        // The panel's answer, flattened — not a second copy of the
+        // question. This held its own `is_editor` branch and its own
+        // fallback to the outline's map, which is why fixing the panel
+        // for a surface left the strip along the bottom of the same
+        // window still advertising `m:toggle-mark` under a picture.
+        // One place decides what a surface answers to.
+        self.which_key_groups()
+            .into_iter()
+            .flat_map(|(_, rows)| rows)
+            .map(|(chord, what)| format!("{chord}:{what}"))
             .collect::<Vec<_>>()
             .join("  ")
     }
