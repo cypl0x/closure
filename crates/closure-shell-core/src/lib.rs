@@ -15173,6 +15173,120 @@ impl ModalApp {
         true
     }
 
+    /// INSERT in the body editor: the readline set, the desktop word
+    /// ops, the completion cycle, and the keys every other text field
+    /// answers to.
+    fn insert_key(&mut self, shell: &Shell, key: &str, ctrl: bool, alt: bool, text: Option<char>) {
+        match key {
+            // G4: the first buffer-changing edit checkpoints the
+            // burst (BodyEditor::insert_guard), so Esc+u undoes it.
+            "n" if ctrl => self.cycle_completion(shell, true),
+            "p" if ctrl => self.cycle_completion(shell, false),
+            // Doom's company map: while the popup is showing,
+            // `C-j`/`C-k` walk it too. Only while it is — with no
+            // popup up, `C-k` below is still readline's
+            // kill-to-end-of-line, and taking that away to gain a
+            // second spelling of `C-n` would be a bad trade.
+            "j" if ctrl && self.completion.is_some() => self.cycle_completion(shell, true),
+            "k" if ctrl && self.completion.is_some() => self.cycle_completion(shell, false),
+            // Readline chords (the "normal input field" set).
+            "a" if ctrl => self.body.line_home(),
+            "e" if ctrl => self.body.line_end_motion(),
+            "b" if ctrl => self.body.left(),
+            "f" if ctrl => self.body.right(),
+            "d" if ctrl => self.body.delete_at(),
+            // Desktop-standard word ops (Q5): ctrl/alt+arrows jump
+            // words, ctrl+backspace kills the word (same as C-w).
+            "left" if ctrl || alt => self.body.word_backward(),
+            "right" if ctrl || alt => self.body.word_end_forward(),
+            // The arrows themselves. Only the modified spellings
+            // were bound, so a bare arrow fell through to the
+            // branch that inserts characters and did nothing at
+            // all. Doom, Vim and Helix hid that behind Esc and
+            // NORMAL's motions; Notion and Emacs have no NORMAL to
+            // escape to, which left the mouse as the only way to
+            // reach the line above the one you were typing on.
+            "left" => self.body.left(),
+            "right" => self.body.right(),
+            "up" => self.body.up(),
+            "down" => self.body.down(),
+            // The named keys every other text field answers to.
+            "home" => self.body.line_home(),
+            "end" => self.body.line_end_motion(),
+            "delete" => self.body.delete_at(),
+            "pageup" => self.body.page(false, 20),
+            "pagedown" => self.body.page(true, 20),
+            "k" if ctrl => {
+                self.completion = None;
+                self.body.kill_rest_of_line();
+            }
+            "u" if ctrl => {
+                self.completion = None;
+                self.body.kill_to_line_start();
+            }
+            // `C-w`, the desktop's ctrl+backspace and readline's
+            // Alt+Backspace are one kill. The body editor took
+            // Ctrl alone, so Alt+Backspace fell through to plain
+            // backspace and ate exactly one character — which
+            // reads as a broken chord rather than an unbound one,
+            // because something did happen.
+            "w" if ctrl => self.kill_word(false),
+            "backspace" if ctrl || alt => self.kill_word(false),
+            // `M-d` is `kill-word` in readline and in Emacs: the
+            // twin of the kill above, forwards.
+            "d" if alt => self.kill_word(true),
+            "y" if ctrl => {
+                self.completion = None;
+                self.body.yank_insert();
+            }
+            "escape" => {
+                self.completion = None;
+                if self.modal_editing() {
+                    self.body.to_normal();
+                } else {
+                    // Notion and Emacs have no NORMAL to drop into
+                    // — a buffer left in one is a text field that
+                    // will not take text — so there Esc is what
+                    // closes, and it still will not take a modified
+                    // buffer with it.
+                    self.escape_closes_buffer();
+                }
+            }
+            "enter" => {
+                self.completion = None;
+                self.body.insert_char('\n');
+            }
+            "backspace" => {
+                self.completion = None;
+                self.body.backspace();
+            }
+            "tab" => {
+                // An active completion session wins over org-tempo:
+                // TAB accepts — the applied candidate stays; an
+                // unapplied popup applies its first candidate.
+                match self.completion.take() {
+                    Some(s) if s.ix.is_none() => {
+                        if let Some(first) = s.items.first() {
+                            self.body.replace_to_cursor(s.start, first);
+                        }
+                    }
+                    Some(_) => {}
+                    // Inside a table TAB does the org thing —
+                    // realign, then step to the next cell — and
+                    // everywhere else it keeps its old job.
+                    None if self.table_tab() => {}
+                    None => self.body.tempo_expand_or_indent(),
+                }
+            }
+            _ => {
+                if let Some(c) = text.filter(|_| !ctrl) {
+                    self.completion = None;
+                    self.body.insert_char(c);
+                }
+            }
+        }
+    }
+
     fn edit_body_key(
         &mut self,
         shell: &Shell,
@@ -15191,103 +15305,7 @@ impl ModalApp {
             return;
         }
         match self.body.mode() {
-            EditorMode::Insert => match key {
-                // G4: the first buffer-changing edit checkpoints the
-                // burst (BodyEditor::insert_guard), so Esc+u undoes it.
-                "n" if ctrl => self.cycle_completion(shell, true),
-                "p" if ctrl => self.cycle_completion(shell, false),
-                // Doom's company map: while the popup is showing,
-                // `C-j`/`C-k` walk it too. Only while it is — with no
-                // popup up, `C-k` below is still readline's
-                // kill-to-end-of-line, and taking that away to gain a
-                // second spelling of `C-n` would be a bad trade.
-                "j" if ctrl && self.completion.is_some() => self.cycle_completion(shell, true),
-                "k" if ctrl && self.completion.is_some() => self.cycle_completion(shell, false),
-                // Readline chords (the "normal input field" set).
-                "a" if ctrl => self.body.line_home(),
-                "e" if ctrl => self.body.line_end_motion(),
-                "b" if ctrl => self.body.left(),
-                "f" if ctrl => self.body.right(),
-                "d" if ctrl => self.body.delete_at(),
-                // Desktop-standard word ops (Q5): ctrl/alt+arrows jump
-                // words, ctrl+backspace kills the word (same as C-w).
-                "left" if ctrl || alt => self.body.word_backward(),
-                "right" if ctrl || alt => self.body.word_end_forward(),
-                // The named keys every other text field answers to.
-                "home" => self.body.line_home(),
-                "end" => self.body.line_end_motion(),
-                "delete" => self.body.delete_at(),
-                "pageup" => self.body.page(false, 20),
-                "pagedown" => self.body.page(true, 20),
-                "k" if ctrl => {
-                    self.completion = None;
-                    self.body.kill_rest_of_line();
-                }
-                "u" if ctrl => {
-                    self.completion = None;
-                    self.body.kill_to_line_start();
-                }
-                // `C-w`, the desktop's ctrl+backspace and readline's
-                // Alt+Backspace are one kill. The body editor took
-                // Ctrl alone, so Alt+Backspace fell through to plain
-                // backspace and ate exactly one character — which
-                // reads as a broken chord rather than an unbound one,
-                // because something did happen.
-                "w" if ctrl => self.kill_word(false),
-                "backspace" if ctrl || alt => self.kill_word(false),
-                // `M-d` is `kill-word` in readline and in Emacs: the
-                // twin of the kill above, forwards.
-                "d" if alt => self.kill_word(true),
-                "y" if ctrl => {
-                    self.completion = None;
-                    self.body.yank_insert();
-                }
-                "escape" => {
-                    self.completion = None;
-                    if self.modal_editing() {
-                        self.body.to_normal();
-                    } else {
-                        // Notion and Emacs have no NORMAL to drop into
-                        // — a buffer left in one is a text field that
-                        // will not take text — so there Esc is what
-                        // closes, and it still will not take a modified
-                        // buffer with it.
-                        self.escape_closes_buffer();
-                    }
-                }
-                "enter" => {
-                    self.completion = None;
-                    self.body.insert_char('\n');
-                }
-                "backspace" => {
-                    self.completion = None;
-                    self.body.backspace();
-                }
-                "tab" => {
-                    // An active completion session wins over org-tempo:
-                    // TAB accepts — the applied candidate stays; an
-                    // unapplied popup applies its first candidate.
-                    match self.completion.take() {
-                        Some(s) if s.ix.is_none() => {
-                            if let Some(first) = s.items.first() {
-                                self.body.replace_to_cursor(s.start, first);
-                            }
-                        }
-                        Some(_) => {}
-                        // Inside a table TAB does the org thing —
-                        // realign, then step to the next cell — and
-                        // everywhere else it keeps its old job.
-                        None if self.table_tab() => {}
-                        None => self.body.tempo_expand_or_indent(),
-                    }
-                }
-                _ => {
-                    if let Some(c) = text.filter(|_| !ctrl) {
-                        self.completion = None;
-                        self.body.insert_char(c);
-                    }
-                }
-            },
+            EditorMode::Insert => self.insert_key(shell, key, ctrl, alt, text),
             EditorMode::Normal | EditorMode::Visual | EditorMode::VisualLine => {
                 if self.which_key_key(text) {
                     return;
