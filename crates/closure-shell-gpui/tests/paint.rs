@@ -1606,6 +1606,45 @@ fn a_note_with_an_image_link_paints_it(cx: &mut gpui::TestAppContext) {
 }
 
 #[gpui::test]
+fn the_insert_caret_does_not_shove_the_line_sideways(cx: &mut gpui::TestAppContext) {
+    // "slightly word wiggle if caret is at the beginning of word/line",
+    // with two screenshots of the same line two pixels apart.
+    //
+    // The INSERT caret was a 2px flex child *between* the two halves of
+    // the line, so it took 2px of layout: with the caret at column 0 it
+    // displaced the whole line, and moving off the line let it snap
+    // back. A caret marks a boundary; it must not occupy one.
+    const ORG: &str = "* Wiggle\n:PROPERTIES:\n:ID: 01HQWIGL00000000000000000\n:END:\n\
+                       alpha beta\nsecond line\n";
+    let (_dir, view, vcx) = visual_window(cx, ORG);
+
+    // In INSERT with the caret on line 0, so line 1 carries no caret.
+    view.update(vcx, |v, cx| v.run_command("edit-body", cx));
+    vcx.simulate_keystrokes("i");
+    vcx.run_until_parked();
+    let without = vcx
+        .debug_bounds("body-line-1")
+        .expect("line painted")
+        .origin
+        .x;
+
+    // Down one line, to its very start: the caret now sits before the
+    // first glyph of the line we just measured.
+    vcx.simulate_keystrokes("down home");
+    vcx.run_until_parked();
+    let with = vcx
+        .debug_bounds("body-line-1")
+        .expect("line painted")
+        .origin
+        .x;
+
+    assert_eq!(
+        with, without,
+        "the caret moved the text it sits before: {with:?} vs {without:?}"
+    );
+}
+
+#[gpui::test]
 fn a_capped_preview_says_what_it_is_holding_back(cx: &mut gpui::TestAppContext) {
     // The other half of the level-1 microfreeze fix. Bounding the
     // preview is only safe if it admits to being bounded — otherwise a

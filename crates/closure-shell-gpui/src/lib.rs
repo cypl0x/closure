@@ -4649,21 +4649,22 @@ impl GpuiView {
         if on_cursor_line && insert {
             let at = byte_for_col(&text, cur_col);
             let (head, tail) = split_runs(&runs, at);
-            row = row
-                .child(editor_segment(
+            // An empty half is not painted at all. With the caret at
+            // column 0 the head is the empty string, and an empty
+            // segment is an element that exists only to be measured.
+            if at > 0 {
+                row = row.child(editor_segment(
                     co,
                     ln,
                     h_start,
                     text[..at].to_owned(),
                     head,
                     cx,
-                ))
-                // INSERT draws a bar between the glyphs, in the accent
-                // colour. Its height is the row's — a flex child with no
-                // height of its own stretches — rather than a hardcoded
-                // 18px that is only right at one font size.
-                .child(div().w(px(2.0)).bg(rgb(co.accent)))
-                .child(editor_segment(
+                ));
+            }
+            row = row.child(insert_caret(co));
+            if at < text.len() {
+                row = row.child(editor_segment(
                     co,
                     ln,
                     h_start + cur_col,
@@ -4671,6 +4672,7 @@ impl GpuiView {
                     tail,
                     cx,
                 ));
+            }
         } else {
             // The cursor — block or none — is already in the runs, over
             // a real cell, so the whole line is one laid-out segment.
@@ -8425,6 +8427,33 @@ fn caret_text_kind(co: Colors, text: &str, cursor: usize, headline: bool) -> gpu
         .child(div().flex_none().w(px(2.0)).bg(rgb(co.accent)))
         .child(div().flex_none().child(tail.to_owned()))
 }
+
+/// The INSERT caret: a bar drawn *between* two glyphs.
+///
+/// Zero width in the layout, and that is the whole point. It used to
+/// be a plain 2px flex child, so it pushed everything after it 2px to
+/// the right — with the caret at column 0 that displaced the entire
+/// line, and moving off the line let it snap back. "slightly word
+/// wiggle if caret is at the beginning of word/line", with two
+/// screenshots two pixels apart.
+///
+/// The negative margins cancel the width, so the bar straddles the
+/// boundary it marks instead of occupying it. Its height is the row's
+/// — a flex child with no height of its own stretches — rather than a
+/// hardcoded 18px that is only right at one font size.
+#[cfg(feature = "gpui")]
+fn insert_caret(co: Colors) -> gpui::Div {
+    div()
+        .w(px(CARET_W))
+        .ml(px(-CARET_W / 2.0))
+        .mr(px(-CARET_W / 2.0))
+        .flex_none()
+        .bg(rgb(co.accent))
+}
+
+/// Width of the INSERT caret bar.
+#[cfg(feature = "gpui")]
+const CARET_W: f32 = 2.0;
 
 /// One hit-testable run of body text. `col_offset` is the char column
 /// `text` starts at, so a segment painted after the INSERT caret still
