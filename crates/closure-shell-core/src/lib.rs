@@ -13748,13 +13748,23 @@ impl ModalApp {
         self.field_target = Some(row.id);
         self.field_buf.clear();
         self.surface = ModalSurface::AddSibling;
-        let what = match (self.new_heading.child, self.new_heading.todo) {
+        self.status = format!("new {} — Enter save, Esc cancel", self.new_heading_label());
+    }
+
+    /// What the open title prompt is about to make: `sibling`,
+    /// `sibling TODO`, `child` or `child TODO`.
+    ///
+    /// One prompt serves all four new-headline chords plus `a`, and it
+    /// said "add" for every one — so having pressed `A` rather than
+    /// `a`, there was nothing on screen to confirm which you got.
+    #[must_use]
+    pub const fn new_heading_label(&self) -> &'static str {
+        match (self.new_heading.child, self.new_heading.todo) {
             (false, false) => "sibling",
             (false, true) => "sibling TODO",
             (true, false) => "child",
             (true, true) => "child TODO",
-        };
-        self.status = format!("new {what} — Enter save, Esc cancel");
+        }
     }
 
     /// The single-line field-edit buffer (tags/property).

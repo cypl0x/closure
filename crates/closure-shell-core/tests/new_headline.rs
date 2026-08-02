@@ -236,3 +236,59 @@ fn every_modal_mode_gets_the_shifted_one() {
         );
     }
 }
+
+// === The prompt says what it is about to make ===
+//
+// Reported 2026-08-02: "shift+a or A: prompt should indicate that a
+// TODO item will be added as a sibling."
+//
+// One prompt serves all four chords plus `a`, and it said "add" for
+// every one of them — so having pressed `A` rather than `a`, or `C-RET`
+// rather than `M-RET`, there was nothing on screen to confirm it.
+
+#[test]
+fn the_prompt_names_a_plain_sibling() {
+    let (_d, mut sh, mut app) = fixture(InputMode::Doom);
+    app.select(0, &sh);
+    app.on_key(&mut sh, "a", false, false, Some('a'));
+    assert_eq!(app.new_heading_label(), "sibling");
+}
+
+#[test]
+fn the_prompt_says_todo_for_the_shifted_chord() {
+    let (_d, mut sh, mut app) = fixture(InputMode::Doom);
+    app.select(0, &sh);
+    app.on_key(&mut sh, "A", false, false, Some('A'));
+    assert_eq!(app.new_heading_label(), "sibling TODO");
+}
+
+#[test]
+fn it_says_child_for_the_ctrl_chords() {
+    let (_d, mut sh, mut app) = fixture(InputMode::Doom);
+    app.select(0, &sh);
+    app.on_key(&mut sh, "enter", true, false, None);
+    assert_eq!(app.new_heading_label(), "child");
+}
+
+#[test]
+fn and_child_todo_for_both_modifiers() {
+    let (_d, mut sh, mut app) = fixture(InputMode::Doom);
+    app.select(0, &sh);
+    app.on_key(&mut sh, "shift-enter", true, false, None);
+    assert_eq!(app.new_heading_label(), "child TODO");
+}
+
+#[test]
+fn the_status_line_says_the_same_thing() {
+    // The status already said it; the label is the same answer where
+    // the eye actually is, next to what you are typing.
+    let (_d, mut sh, mut app) = fixture(InputMode::Doom);
+    app.select(0, &sh);
+    app.on_key(&mut sh, "A", false, false, Some('A'));
+    assert!(
+        app.status().contains(app.new_heading_label()),
+        "{} vs {}",
+        app.status(),
+        app.new_heading_label()
+    );
+}

@@ -2974,8 +2974,15 @@ impl GpuiView {
                 self.app.field_buffer(),
                 self.app.field_cursor(),
             ),
+            // Not just "add": one prompt serves all four new-headline
+            // chords, so it has to say which one opened it.
             ModalSurface::AddSibling => (
-                "\u{ff0b} add: ",
+                match self.app.new_heading_label() {
+                    "sibling TODO" => "\u{ff0b} new sibling TODO: ",
+                    "child" => "\u{ff0b} new child: ",
+                    "child TODO" => "\u{ff0b} new child TODO: ",
+                    _ => "\u{ff0b} new sibling: ",
+                },
                 self.app.field_buffer(),
                 self.app.field_cursor(),
             ),
