@@ -3501,6 +3501,12 @@ impl GpuiView {
             .flex()
             .flex_col()
             .flex_grow()
+            // A flex item will not shrink below its content, so the
+            // pane grew to fit its longest line and the text ran off
+            // the window instead of wrapping — "horizontal scroll for
+            // long titles detail preview". Basis zero is what lets a
+            // long line wrap inside the pane it is in.
+            .min_w(px(0.0))
             // This is the element whose bounds [`Self::body_view`]
             // measures, so how tall it is decides how much of a body
             // the editor paints. It is kept honest by the `min_h` on
@@ -5868,7 +5874,12 @@ impl GpuiView {
         .child(clickable(
             co,
             div()
-                .text_color(rgb(co.error))
+                // The other half of "the property ID … shown in red.
+                // Why use such a alert color for something that is not
+                // so relevant for the user": the editor's drawer spans
+                // were one render path, this field is another, and both
+                // painted bookkeeping as an alarm.
+                .text_color(rgb(co.muted))
                 .text_size(self.sz(11.0))
                 .child(props),
             "edit-property",
@@ -5967,6 +5978,11 @@ impl GpuiView {
             .flex_grow()
             .flex()
             .flex_col()
+            // A long line ran off the right edge with nothing to bring
+            // it back: the editor scrolls sideways with its cursor, and
+            // a read-only pane has no cursor to follow. So it wraps —
+            // everything is on screen, and nothing has to be driven.
+            .overflow_hidden()
             .text_color(rgb(co.fg))
             .text_size(self.sz(13.0));
         if body.is_empty() {
@@ -6012,7 +6028,7 @@ impl GpuiView {
                 .text_size(self.sz(11.0))
                 .child(ln.to_string());
             el = el.child(
-                div().flex().flex_row().child(gutter).child(
+                div().flex().flex_row().items_start().child(gutter).child(
                     div()
                         .flex_1()
                         .min_w(px(0.0))
