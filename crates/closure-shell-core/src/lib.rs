@@ -980,6 +980,36 @@ pub fn which_key_columns(
     cols
 }
 
+/// Every palette entry as `(label, canonical, section, description)`.
+#[must_use]
+pub fn palette_entries_raw() -> Vec<(&'static str, &'static str, &'static str, &'static str)> {
+    PALETTE_COMMANDS.to_vec()
+}
+
+/// Every palette entry as `(label, description)`.
+#[must_use]
+pub fn palette_descriptions() -> Vec<(&'static str, &'static str)> {
+    PALETTE_COMMANDS
+        .iter()
+        .map(|(label, _, _, desc)| (*label, *desc))
+        .collect()
+}
+
+/// Every palette entry as `(label, section)`.
+#[must_use]
+pub fn palette_sections_of() -> Vec<(&'static str, &'static str)> {
+    PALETTE_COMMANDS
+        .iter()
+        .map(|(label, _, section, _)| (*label, *section))
+        .collect()
+}
+
+/// The palette's section names, in order.
+#[must_use]
+pub fn palette_section_names() -> Vec<&'static str> {
+    PALETTE_SECTIONS.to_vec()
+}
+
 /// Every command the palette knows, by canonical name.
 ///
 /// The registry as a list, so a property can be asserted over *all* of
@@ -1110,10 +1140,30 @@ impl Action {
         })
     }
 
-    /// Every chord that runs it, primary first.
+    /// Every chord that runs it, primary first. Empty when this mode
+    /// binds none.
     #[must_use]
     pub fn chords(&self) -> &[String] {
         &self.chords
+    }
+
+    /// An action for a command this mode has no chord for.
+    ///
+    /// The original contract was that an `Action` always carries a
+    /// chord, "so a command-without-chord cannot be represented". That
+    /// is backwards for the palette, which is precisely where you go
+    /// for a command you have no chord for — and it was silently
+    /// dropping every such command from the list. Rewritten 2026-08-02
+    /// after "command palette issues": `sync-export` and its
+    /// neighbours were unreachable by name in the one surface built
+    /// for reaching things by name.
+    #[must_use]
+    pub fn unbound(command: impl Into<String>) -> Self {
+        Self {
+            command: command.into(),
+            chord: String::new(),
+            chords: Vec::new(),
+        }
     }
 
     /// The canonical command name.
@@ -3446,6 +3496,393 @@ pub enum Mode {
 /// `section` groups them in the command palette; `description` is the
 /// human one-liner shown beside the chord.
 const PALETTE_COMMANDS: &[(&str, &str, &str, &str)] = &[
+    (
+        "first-file",
+        "first-file",
+        "Navigate",
+        "Jump to the first headline",
+    ),
+    (
+        "last-file",
+        "last-file",
+        "Navigate",
+        "Jump to the last headline",
+    ),
+    (
+        "half-page-down",
+        "half-page-down",
+        "Navigate",
+        "Scroll down half a screen",
+    ),
+    (
+        "half-page-up",
+        "half-page-up",
+        "Navigate",
+        "Scroll up half a screen",
+    ),
+    (
+        "jump-back",
+        "jump-back",
+        "Navigate",
+        "Go back to where you were",
+    ),
+    (
+        "jump-forward",
+        "jump-forward",
+        "Navigate",
+        "Go forward again after jumping back",
+    ),
+    (
+        "search",
+        "search",
+        "Navigate",
+        "Filter the outline by headline title",
+    ),
+    (
+        "search-headlines",
+        "search-headlines",
+        "Navigate",
+        "Start a headline search from the outline",
+    ),
+    (
+        "body-search",
+        "body-search",
+        "Navigate",
+        "Find text inside the open note",
+    ),
+    (
+        "backlinks",
+        "backlinks",
+        "Navigate",
+        "Show what links to this headline",
+    ),
+    ("browse", "browse", "Navigate", "Go back to the outline"),
+    (
+        "recent-files",
+        "recent-files",
+        "Navigate",
+        "Open a file you had open lately",
+    ),
+    (
+        "list-buffers",
+        "list-buffers",
+        "Navigate",
+        "Switch between open buffers",
+    ),
+    (
+        "next-buffer",
+        "next-buffer",
+        "Navigate",
+        "Go to the next open buffer",
+    ),
+    (
+        "prev-buffer",
+        "prev-buffer",
+        "Navigate",
+        "Go to the previous open buffer",
+    ),
+    (
+        "alternate-buffer",
+        "alternate-buffer",
+        "Navigate",
+        "Swap back to the buffer before this one",
+    ),
+    (
+        "close-buffer",
+        "close-buffer",
+        "Navigate",
+        "Close this buffer, keeping unsaved text",
+    ),
+    (
+        "close-buffer-force",
+        "close-buffer-force",
+        "Navigate",
+        "Close this buffer and discard its edits",
+    ),
+    (
+        "list-headlines",
+        "list-headlines",
+        "Navigate",
+        "Pick a headline from anywhere in the vault",
+    ),
+    (
+        "list-blocks",
+        "list-blocks",
+        "Navigate",
+        "Pick a source block from anywhere in the vault",
+    ),
+    (
+        "refile",
+        "refile",
+        "Edit",
+        "Move this subtree under another headline",
+    ),
+    (
+        "edit-body",
+        "edit-body",
+        "Edit",
+        "Open this headline's body in the editor",
+    ),
+    (
+        "edit-special",
+        "edit-special",
+        "Edit",
+        "Open the source block under the cursor on its own",
+    ),
+    (
+        "execute-block",
+        "execute-block",
+        "Edit",
+        "Run the source block and keep its output",
+    ),
+    (
+        "add-heading",
+        "add-heading",
+        "Edit",
+        "Add a headline at the current level",
+    ),
+    (
+        "promote",
+        "promote",
+        "Edit",
+        "Move this headline one level out",
+    ),
+    (
+        "demote",
+        "demote",
+        "Edit",
+        "Move this headline one level in",
+    ),
+    (
+        "move-subtree-up",
+        "move-subtree-up",
+        "Edit",
+        "Move this subtree above its sibling",
+    ),
+    (
+        "move-subtree-down",
+        "move-subtree-down",
+        "Edit",
+        "Move this subtree below its sibling",
+    ),
+    (
+        "archive",
+        "archive",
+        "Edit",
+        "File this subtree away under the archive",
+    ),
+    (
+        "paste-subtree",
+        "paste-subtree",
+        "Edit",
+        "Paste the subtree you cut or copied",
+    ),
+    (
+        "toggle-todo",
+        "toggle-todo",
+        "Edit",
+        "Cycle this headline's TODO keyword forward",
+    ),
+    (
+        "todo-back",
+        "todo-back",
+        "Edit",
+        "Cycle this headline's TODO keyword backward",
+    ),
+    (
+        "cycle-priority",
+        "cycle-priority",
+        "Edit",
+        "Cycle this headline's priority cookie",
+    ),
+    (
+        "priority-up",
+        "priority-up",
+        "Edit",
+        "Raise this headline's priority one letter",
+    ),
+    (
+        "priority-down",
+        "priority-down",
+        "Edit",
+        "Lower this headline's priority one letter",
+    ),
+    (
+        "toggle-checkbox",
+        "toggle-checkbox",
+        "Edit",
+        "Tick or untick the checkbox on this line",
+    ),
+    (
+        "edit-tags",
+        "edit-tags",
+        "Edit",
+        "Edit this headline's tags",
+    ),
+    (
+        "tag-picker",
+        "tag-picker",
+        "Edit",
+        "Choose tags from the ones the vault already uses",
+    ),
+    (
+        "edit-property",
+        "edit-property",
+        "Edit",
+        "Add or change a property on this headline",
+    ),
+    (
+        "schedule",
+        "schedule",
+        "Edit",
+        "Set when you plan to start this",
+    ),
+    (
+        "deadline",
+        "deadline",
+        "Edit",
+        "Set when this has to be done",
+    ),
+    (
+        "clock-in",
+        "clock-in",
+        "Edit",
+        "Start counting time against this headline",
+    ),
+    ("clock-out", "clock-out", "Edit", "Stop counting time"),
+    (
+        "clock-goto",
+        "clock-goto",
+        "Edit",
+        "Jump to the headline the clock is running on",
+    ),
+    (
+        "clock-cancel",
+        "clock-cancel",
+        "Edit",
+        "Throw away the running clock",
+    ),
+    ("undo", "undo", "Edit", "Undo the last change"),
+    ("redo", "redo", "Edit", "Redo the change you just undid"),
+    (
+        "undo-history",
+        "undo-history",
+        "Edit",
+        "Pick a point in this note's history to jump to",
+    ),
+    (
+        "save-buffer",
+        "save-buffer",
+        "Edit",
+        "Write the open buffer without closing it",
+    ),
+    (
+        "toggle-view",
+        "toggle-view",
+        "View",
+        "Switch between the outline and the whole file",
+    ),
+    (
+        "toggle-tree",
+        "toggle-tree",
+        "View",
+        "Show or hide the headline tree beside the editor",
+    ),
+    (
+        "toggle-wrap",
+        "toggle-wrap",
+        "View",
+        "Fold long lines at the pane edge, or scroll them",
+    ),
+    (
+        "toggle-which-key",
+        "toggle-which-key",
+        "View",
+        "Show or hide the keybinding panel",
+    ),
+    (
+        "agenda",
+        "agenda",
+        "View",
+        "Everything scheduled or due, by date",
+    ),
+    ("journal", "journal", "View", "The vault's journal entries"),
+    (
+        "graph",
+        "graph",
+        "View",
+        "Hubs, orphans and dead links in the vault",
+    ),
+    (
+        "db-view",
+        "db-view",
+        "View",
+        "Every headline in the vault as one list",
+    ),
+    (
+        "messages",
+        "messages",
+        "View",
+        "The log of everything the shell has said",
+    ),
+    (
+        "dismiss-notifications",
+        "dismiss-notifications",
+        "View",
+        "Clear the notifications on screen",
+    ),
+    ("palette", "palette", "App", "Run any command by name"),
+    (
+        "ex-command",
+        "ex-command",
+        "App",
+        "Open the `:` command line",
+    ),
+    ("llm", "llm", "App", "Ask the assistant about this vault"),
+    (
+        "toggle-llm-render",
+        "toggle-llm-render",
+        "App",
+        "Show the assistant's replies as org or as plain text",
+    ),
+    (
+        "sniffer",
+        "sniffer",
+        "App",
+        "Watch what the app talks to over the network",
+    ),
+    ("cron", "cron", "App", "Jobs the vault runs on a schedule"),
+    (
+        "sync",
+        "sync",
+        "Sync",
+        "Pair with a peer and exchange changes",
+    ),
+    (
+        "conflicts",
+        "conflicts",
+        "Sync",
+        "Headlines two peers changed at once",
+    ),
+    (
+        "resolve-ours",
+        "resolve-ours",
+        "Sync",
+        "Keep this side's version of the conflict",
+    ),
+    (
+        "resolve-theirs",
+        "resolve-theirs",
+        "Sync",
+        "Keep the peer's version of the conflict",
+    ),
+    (
+        "allow-flow",
+        "allow-flow",
+        "App",
+        "Let this network flow through",
+    ),
+    ("block-flow", "block-flow", "App", "Stop this network flow"),
     ("next-file", "next-file", "Navigate", "Go to the next file"),
     (
         "prev-file",
@@ -3597,12 +4034,19 @@ pub fn palette_in_keymap(
                     // Doom's `orderless`: `add sibling` finds
                     // `add-sibling` without you having to know where
                     // the hyphen goes.
+                    // The label *or* the canonical name: a curated
+                    // entry reads as "toggle wrap" and is called
+                    // `toggle-wrap`, and somebody who knows the command
+                    // name — a person with muscle memory, or an LLM
+                    // calling it as a tool — types the name.
                     let score = if query.is_empty() {
                         Some(0)
                     } else {
                         closure_query::orderless_score(query, label)
+                            .max(closure_query::orderless_score(query, canonical))
                     }?;
-                    let action = Action::in_keymap(keys, *canonical)?;
+                    let action = Action::in_keymap(keys, *canonical)
+                        .unwrap_or_else(|| Action::unbound(*canonical));
                     Some((
                         score,
                         PaletteEntry {
@@ -3664,7 +4108,13 @@ pub fn palette_in_keymap(
     let suggestions: Vec<PaletteEntry> = recent
         .iter()
         .filter(|cmd| query.is_empty() || closure_query::orderless_score(query, cmd).is_some())
-        .filter_map(|cmd| palette_entry_for(cmd, keys))
+        // A command with no chord in this mode still belongs in the
+        // palette — that is what the palette is for. A name that is
+        // not a command at all does not: history is written by what
+        // ran, but a vault carried between versions can hold a name
+        // this build no longer has.
+        .filter(|cmd| command_exists(cmd))
+        .map(|cmd| palette_entry_for(cmd, keys))
         .collect();
     if !suggestions.is_empty() {
         // Promotion *moves* a command. Adding the section without
@@ -3696,12 +4146,12 @@ pub fn palette_in_keymap(
 /// The palette entry for one canonical command: its curated label and
 /// description when it has them, its own name otherwise. `None` when
 /// this mode cannot run it.
-fn palette_entry_for(cmd: &str, keys: &[(String, String)]) -> Option<PaletteEntry> {
-    let action = Action::in_keymap(keys, cmd)?;
+fn palette_entry_for(cmd: &str, keys: &[(String, String)]) -> PaletteEntry {
+    let action = Action::in_keymap(keys, cmd).unwrap_or_else(|| Action::unbound(cmd));
     let curated = PALETTE_COMMANDS
         .iter()
         .find(|(_, canonical, ..)| *canonical == cmd);
-    Some(match curated {
+    match curated {
         Some((label, _, _, desc)) => PaletteEntry {
             label: (*label).to_owned(),
             description: (*desc).to_owned(),
@@ -3712,7 +4162,7 @@ fn palette_entry_for(cmd: &str, keys: &[(String, String)]) -> Option<PaletteEntr
             description: format!("Run {cmd}"),
             action,
         },
-    })
+    }
 }
 
 /// Serialise a [`command_palette`] to a deterministic text snapshot (G6) —
@@ -14488,7 +14938,10 @@ impl ModalApp {
         match key {
             "escape" => {
                 self.date_pick = None;
-                self.surface = ModalSurface::Browse;
+                // Back to whatever this was opened over, buffer
+                // included — `schedule` from inside a note is the
+                // ordinary way to reach it.
+                self.go_home();
                 self.say("left as it was");
             }
             "enter" => self.commit_date_pick(shell),
@@ -15732,7 +16185,12 @@ impl ModalApp {
             "escape" => {
                 self.link_target = None;
                 self.selected = 0;
-                self.surface = ModalSurface::Browse;
+                // `go_home`, not `Browse`: a pane opened over a buffer
+                // goes back to that buffer, and this one was written
+                // before that rule existed. The registry-wide test
+                // caught it the moment `backlinks` gained a palette
+                // entry and came into the property's reach.
+                self.go_home();
             }
             "down" | "j" => {
                 let last = self.backlink_rows(shell).len().saturating_sub(1);

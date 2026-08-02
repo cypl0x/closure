@@ -1907,7 +1907,12 @@ fn which_key_groups_place_known_commands() {
             .find_map(|(t, v)| v.iter().any(|(_, c)| c == cmd).then(|| t.clone()))
     };
     assert_eq!(find("toggle-fold"), Some("Navigate".to_owned()));
-    assert_eq!(find("promote"), Some("Command".to_owned()));
+    // `promote` used to land in the uncurated "Command" bucket, which
+    // is what this asserted. Rewritten 2026-08-02 for "command palette
+    // issues": every bound command has a description and a section of
+    // its own now, so the fallback bucket is empty and `promote` sits
+    // where it belongs.
+    assert_eq!(find("promote"), Some("Edit".to_owned()));
     assert_eq!(find("rename"), Some("Edit".to_owned()));
 }
 

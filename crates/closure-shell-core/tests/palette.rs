@@ -10,7 +10,11 @@ use closure_shell_core::{command_palette, command_palette_with_history, serializ
 
 #[test]
 fn palette_groups_commands_into_sections_with_descriptions_and_chords() {
-    let sections = command_palette("", InputMode::Notion);
+    // One mode for the palette and for the chord lookup below: a first
+    // version of that check asked Doom about a Notion palette, and the
+    // two disagree about `search`.
+    let mode = InputMode::Notion;
+    let sections = command_palette("", mode);
     let titles: Vec<&str> = sections.iter().map(|s| s.title.as_str()).collect();
     assert!(titles.contains(&"Edit"), "has an Edit section: {titles:?}");
     assert!(
@@ -21,7 +25,15 @@ fn palette_groups_commands_into_sections_with_descriptions_and_chords() {
         assert!(!s.items.is_empty(), "no empty sections surface");
         for e in &s.items {
             assert!(!e.description.is_empty(), "{} has a description", e.label);
-            assert!(!e.action.chord().is_empty(), "{} shows its chord", e.label);
+            // Every entry used to be required to carry a chord, which
+            // is why a command with none was dropped from the palette
+            // altogether — in the one surface built for reaching things
+            // you have no chord for. Rewritten 2026-08-02 for "command
+            // palette issues": an entry shows its chord *when the mode
+            // binds one*.
+            if let Some(bound) = closure_input::chord_for_command(mode, e.action.command()) {
+                assert_eq!(e.action.chord(), bound, "{} shows its chord", e.label);
+            }
         }
     }
 }
