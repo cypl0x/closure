@@ -864,6 +864,31 @@ pub fn command_for(mode: InputMode, chord: &str) -> Option<&'static str> {
         .map(|(_, cmd)| *cmd)
 }
 
+/// `mode`'s keymap with the user's `overrides` applied, in file order.
+///
+/// An override is `(chord, command)`; an empty command takes the chord
+/// away. Applying one drops whatever the chord was bound to before, so
+/// a chord still resolves to exactly one command — the property the
+/// dispatcher and every which-key panel are built on.
+///
+/// Adding a key is not moving a key: the command's other chords are
+/// untouched, because a config that silently unbound them would make
+/// `bind` mean two things at once.
+#[must_use]
+pub fn keymap_with(mode: InputMode, overrides: &[(String, String)]) -> Vec<(String, String)> {
+    let mut out: Vec<(String, String)> = mode_keymap(mode)
+        .iter()
+        .map(|(c, cmd)| ((*c).to_owned(), (*cmd).to_owned()))
+        .collect();
+    for (chord, command) in overrides {
+        out.retain(|(c, _)| c != chord);
+        if !command.is_empty() {
+            out.push((chord.clone(), command.clone()));
+        }
+    }
+    out
+}
+
 /// Every chord bound to `command` in `mode`, in keymap order.
 ///
 /// A command may be reachable several ways — `C-s` and `SPC f s` both

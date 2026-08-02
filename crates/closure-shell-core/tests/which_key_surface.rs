@@ -131,7 +131,7 @@ fn the_buffers_affordances_name_chords_this_mode_can_run() {
         let (_d, _sh, app) = editing(mode);
         for (label, _, chord) in app.buffer_actions() {
             assert!(
-                chord != Some(":q!"),
+                chord.as_deref() != Some(":q!"),
                 "{mode:?} is told to press :q! for {label}"
             );
         }
@@ -151,7 +151,7 @@ fn every_mode_gets_the_same_discard_chord() {
             .into_iter()
             .find(|(label, ..)| label.contains("discard"))
             .expect("a discard action");
-        assert_eq!(discard.2, Some("C-c C-k"), "{mode:?}");
+        assert_eq!(discard.2.as_deref(), Some("C-c C-k"), "{mode:?}");
     }
 }
 

@@ -26,6 +26,18 @@ use thiserror::Error;
 pub struct Config {
     /// Default vault directory, if the user pinned one.
     pub default_vault: Option<PathBuf>,
+    /// Chord overrides, as `(chord, command)` in file order.
+    ///
+    /// `bind g z = toggle-wrap` puts a chord on a command;
+    /// `bind g z =`, with nothing after it, takes the chord away. They
+    /// apply on top of [`Self::input_mode`], so the keymap you get is
+    /// the one you chose plus what you said about it.
+    ///
+    /// The command name is not checked here — this crate does not know
+    /// what commands exist, and inventing a list would be a second one
+    /// to keep in step. The shell reports an override it cannot
+    /// resolve.
+    pub key_bindings: Vec<(String, String)>,
     /// Input mode (`emacs`, `vim`, `doom`, `helix`, `notion`).
     pub input_mode: InputMode,
     /// Theme name.
@@ -159,7 +171,14 @@ const OPTIONAL_KEYS_DOC: &str = "\
 # llm_tools = read, search, capture\n\
 \n\
 # Network sniffer blocklist (`*` wildcards).\n\
-# sniffer_blocklist = *.doubleclick.net, telemetry.*\n";
+# sniffer_blocklist = *.doubleclick.net, telemetry.*\n\
+\n\
+# Keys. `bind <chord> = <command>` puts a chord on a command; `bind\n\
+# <chord> =`, with nothing after it, takes the chord away. They apply on\n\
+# top of `input_mode`, in the order written, so the keymap you get is the\n\
+# one you chose plus what you say here. `M-x` lists every command by name.\n\
+# bind g z = toggle-wrap\n\
+# bind g W =\n";
 
 impl Default for Config {
     fn default() -> Self {
@@ -186,6 +205,7 @@ impl Default for Config {
             eval_trust: Vec::new(),
             sync_peers: Vec::new(),
             wrap: false,
+            key_bindings: Vec::new(),
             sync_bind: None,
             sync_advertise: None,
             assets_dir: None,
@@ -505,6 +525,23 @@ impl Config {
             let value = value.trim().trim_matches('"');
             let line_info = format!("line {}", line_no + 1);
             match key {
+                // `bind <chord> = <command>`: the chord is part of the
+                // key because chords have spaces in them, and a value
+                // that had to hold both would need an escape rule for
+                // the separator.
+                k if k == "bind" || k.starts_with("bind ") => {
+                    let chord = k.strip_prefix("bind").unwrap_or("").trim();
+                    if chord.is_empty() {
+                        return Err(ConfigError::BadValue {
+                            key: key.into(),
+                            reason: format!(
+                                "{line_info}: `bind` needs a chord —                                  `bind g z = toggle-wrap`, or `bind g z =` to unbind"
+                            ),
+                        });
+                    }
+                    cfg.key_bindings
+                        .push((chord.to_owned(), value.trim().to_owned()));
+                }
                 "default_vault" => {
                     cfg.default_vault = Some(PathBuf::from(value));
                 }

@@ -154,8 +154,8 @@ fn the_buttons_name_the_new_chords() {
             .iter()
             .find(|(_, cmd, _)| *cmd == "discard-edit")
             .expect("a discard action");
-        assert_eq!(accept.2, Some("C-c C-c"), "{mode:?}");
-        assert_eq!(discard.2, Some("C-c C-k"), "{mode:?}");
+        assert_eq!(accept.2.as_deref(), Some("C-c C-c"), "{mode:?}");
+        assert_eq!(discard.2.as_deref(), Some("C-c C-k"), "{mode:?}");
     }
 }
 

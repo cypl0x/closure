@@ -1599,8 +1599,12 @@ pub fn run(vault_path: &Path) -> Result<(), String> {
     let input_mode = resolve_input_mode(vault_path);
     let view = resolve_view(vault_path);
     let (sync_bind, sync_advertise) = resolve_sync_addrs(vault_path);
-    let wrap =
-        closure_config::Config::from_path(&vault_path.join("config.org")).is_ok_and(|c| c.wrap);
+    let cfg = closure_config::Config::from_path(&vault_path.join("config.org"));
+    let wrap = cfg.as_ref().is_ok_and(|c| c.wrap);
+    // `bind` lines, read before the first frame: a keymap that only
+    // picks up the user's rebinds on the first reload is a keymap that
+    // does not have them when they press the key.
+    let key_overrides = cfg.map(|c| c.key_bindings).unwrap_or_default();
     // The window manager needs a name for the title bar, the task
     // switcher and the Wayland app id — an untitled window is the one
     // the user cannot find again. The vault is what distinguishes two
@@ -1643,6 +1647,7 @@ pub fn run(vault_path: &Path) -> Result<(), String> {
                     // window the user asked for is the one they get.
                     view.set_view(view_pref);
                     view.set_wrap(wrap);
+                    view.app.set_key_overrides(key_overrides.clone());
                     // Pairing has to know where it listens before the
                     // user opens the surface: the ticket shown there is
                     // what gets pasted into the other machine.
@@ -4049,17 +4054,19 @@ impl GpuiView {
             } else {
                 co.success
             };
-            header = header.child(button(label, tone, chord.unwrap_or("")).on_mouse_down(
-                MouseButton::Left,
-                cx.listener(move |this: &mut Self, _ev, _w, cx| {
-                    match run.as_str() {
-                        "commit-edit" => this.app.commit_edit_body(&mut this.shell),
-                        "discard-edit" => this.app.run_ex_line(&mut this.shell, "q!"),
-                        other => this.app.run(&mut this.shell, other),
-                    }
-                    cx.notify();
-                }),
-            ));
+            header = header.child(
+                button(label, tone, &chord.unwrap_or_default()).on_mouse_down(
+                    MouseButton::Left,
+                    cx.listener(move |this: &mut Self, _ev, _w, cx| {
+                        match run.as_str() {
+                            "commit-edit" => this.app.commit_edit_body(&mut this.shell),
+                            "discard-edit" => this.app.run_ex_line(&mut this.shell, "q!"),
+                            other => this.app.run(&mut this.shell, other),
+                        }
+                        cx.notify();
+                    }),
+                ),
+            );
         }
         header
     }
@@ -4913,12 +4920,17 @@ impl GpuiView {
                         )
                         .child("▶ run"),
                 )
-                .children(self.app.chord_for("execute-block").map(|chord| {
-                    div()
-                        .text_size(self.sz(10.0))
-                        .text_color(rgb(co.accent))
-                        .child(chord)
-                })),
+                .children(
+                    self.app
+                        .chord_for("execute-block")
+                        .map(ToOwned::to_owned)
+                        .map(|chord| {
+                            div()
+                                .text_size(self.sz(10.0))
+                                .text_color(rgb(co.accent))
+                                .child(chord)
+                        }),
+                ),
         );
         pane = pane.children(
             self.app
@@ -6574,7 +6586,7 @@ impl GpuiView {
         cx: &Context<Self>,
     ) -> gpui::Stateful<gpui::Div> {
         let command = dest.command;
-        let tooltip = dest.chord.map_or_else(
+        let tooltip = dest.chord.as_ref().map_or_else(
             || dest.label.to_owned(),
             |chord| format!("{}  [{chord}]", dest.label),
         );
@@ -6636,7 +6648,7 @@ impl GpuiView {
                 div()
                     .text_size(sz_at(9.0, zoom))
                     .text_color(rgb(co.muted))
-                    .child(chord.to_owned()),
+                    .child(chord),
             );
         }
         button
@@ -6764,8 +6776,7 @@ impl GpuiView {
     /// The toasts themselves.
     fn toast_strip(&self, co: Colors) -> gpui::Div {
         use closure_shell_core::FeedbackKind as K;
-        let chord =
-            closure_input::chord_for_command(self.app.input_mode(), "dismiss-notifications");
+        let chord = self.app.chord_for("dismiss-notifications");
         div()
             .debug_selector(|| "toast-strip".to_owned())
             .flex()
@@ -6815,9 +6826,8 @@ impl GpuiView {
     /// The window's top bar: title, the clickable mode chip, and the
     /// Notion-style capture and palette buttons.
     fn header_bar(&self, co: Colors, cx: &Context<Self>) -> gpui::Div {
-        let mode = self.app.input_mode();
         let button = |label: String, colour: u32, command: &'static str| {
-            let label = header_label(&label, closure_input::chord_for_command(mode, command));
+            let label = header_label(&label, self.app.chord_for(command));
             div()
                 .debug_selector(move || format!("header-{command}"))
                 .px_2()
@@ -6841,7 +6851,11 @@ impl GpuiView {
             .py_1()
             .gap_2()
             .child(div().text_color(rgb(co.accent)).text_lg().child("closure"))
-            .child(button(format!("{mode:?}"), co.warning, "cycle-mode"))
+            .child(button(
+                format!("{:?}", self.app.input_mode()),
+                co.warning,
+                "cycle-mode",
+            ))
             // Which vault is open. The window never said, and with more
             // than one of them on a machine the only way to tell was to
             // open a note and read the path under it.
@@ -7159,9 +7173,13 @@ impl GpuiView {
         let root = self.shell.vault.root().to_owned();
         self.theme = resolve_theme(&root);
         self.set_view(resolve_view(&root));
-        self.set_wrap(
-            closure_config::Config::from_path(&root.join("config.org")).is_ok_and(|c| c.wrap),
-        );
+        let cfg = closure_config::Config::from_path(&root.join("config.org"));
+        self.set_wrap(cfg.as_ref().is_ok_and(|c| c.wrap));
+        // `bind` lines: the keymap in force is the mode plus whatever
+        // the file says about it, reapplied on every reload so `g !`
+        // picks up a rebind without a restart.
+        self.app
+            .set_key_overrides(cfg.map(|c| c.key_bindings).unwrap_or_default());
     }
 
     /// One reload pass: reparse what changed on disk, then re-read the

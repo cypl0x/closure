@@ -816,10 +816,26 @@ impl Action {
     #[must_use]
     pub fn new(mode: closure_config::InputMode, command: impl Into<String>) -> Option<Self> {
         let command = command.into();
-        let chords = closure_input::chords_for_command(mode, &command);
+        Self::in_keymap(&closure_input::keymap_with(mode, &[]), command)
+    }
+
+    /// The same, against an explicit keymap — the mode's plus whatever
+    /// `config.org` said about it.
+    ///
+    /// The palette went through [`Self::new`] and so showed the chord
+    /// the *table* carries, which after a rebind is the one key that no
+    /// longer works.
+    #[must_use]
+    pub fn in_keymap(keys: &[(String, String)], command: impl Into<String>) -> Option<Self> {
+        let command = command.into();
+        let chords: Vec<String> = keys
+            .iter()
+            .filter(|(_, cmd)| *cmd == command)
+            .map(|(chord, _)| chord.clone())
+            .collect();
         chords.first().map(|chord| Self {
-            chord: (*chord).to_owned(),
-            chords: chords.iter().map(|c| (*c).to_owned()).collect(),
+            chord: chord.clone(),
+            chords: chords.clone(),
             command,
         })
     }
@@ -3192,6 +3208,18 @@ pub fn command_palette_with_history(
     mode: closure_config::InputMode,
     recent: &[String],
 ) -> Vec<PaletteSection> {
+    palette_in_keymap(query, &closure_input::keymap_with(mode, &[]), recent)
+}
+
+/// The palette built against an explicit keymap — what the app calls,
+/// so a rebound chord shows up here the moment it shows up under your
+/// fingers.
+#[must_use]
+pub fn palette_in_keymap(
+    query: &str,
+    keys: &[(String, String)],
+    recent: &[String],
+) -> Vec<PaletteSection> {
     let mut sections: Vec<PaletteSection> = PALETTE_SECTIONS
         .iter()
         .filter_map(|section| {
@@ -3207,7 +3235,7 @@ pub fn command_palette_with_history(
                     } else {
                         closure_query::orderless_score(query, label)
                     }?;
-                    let action = Action::new(mode, *canonical)?;
+                    let action = Action::in_keymap(keys, *canonical)?;
                     Some((
                         score,
                         PaletteEntry {
@@ -3230,9 +3258,9 @@ pub fn command_palette_with_history(
         .collect();
     let curated: std::collections::BTreeSet<&str> =
         PALETTE_COMMANDS.iter().map(|(_, c, ..)| *c).collect();
-    let mut rest: std::collections::BTreeSet<&str> = closure_input::mode_keymap(mode)
+    let mut rest: std::collections::BTreeSet<&str> = keys
         .iter()
-        .map(|(_, cmd)| *cmd)
+        .map(|(_, cmd)| cmd.as_str())
         .filter(|cmd| !curated.contains(cmd))
         .collect();
     let mut scored: Vec<(u32, PaletteEntry)> = Vec::new();
@@ -3243,7 +3271,7 @@ pub fn command_palette_with_history(
             closure_query::orderless_score(query, cmd)
         };
         if let Some(score) = score
-            && let Some(action) = Action::new(mode, cmd)
+            && let Some(action) = Action::in_keymap(keys, cmd)
         {
             scored.push((
                 score,
@@ -3269,7 +3297,7 @@ pub fn command_palette_with_history(
     let suggestions: Vec<PaletteEntry> = recent
         .iter()
         .filter(|cmd| query.is_empty() || closure_query::orderless_score(query, cmd).is_some())
-        .filter_map(|cmd| palette_entry_for(cmd, mode))
+        .filter_map(|cmd| palette_entry_for(cmd, keys))
         .collect();
     if !suggestions.is_empty() {
         // Promotion *moves* a command. Adding the section without
@@ -3301,8 +3329,8 @@ pub fn command_palette_with_history(
 /// The palette entry for one canonical command: its curated label and
 /// description when it has them, its own name otherwise. `None` when
 /// this mode cannot run it.
-fn palette_entry_for(cmd: &str, mode: closure_config::InputMode) -> Option<PaletteEntry> {
-    let action = Action::new(mode, cmd)?;
+fn palette_entry_for(cmd: &str, keys: &[(String, String)]) -> Option<PaletteEntry> {
+    let action = Action::in_keymap(keys, cmd)?;
     let curated = PALETTE_COMMANDS
         .iter()
         .find(|(_, canonical, ..)| *canonical == cmd);
@@ -4533,6 +4561,31 @@ pub fn wrap_body(body: &str, cols: usize) -> Vec<VisualLine> {
     out
 }
 
+/// Does this shell have a command by that name?
+///
+/// Approximate on purpose and erring towards yes: the true set is the
+/// `match` in `run_command`, which is not enumerable, so the question
+/// is asked of the two lists that *are* — the palette's registry and
+/// the five keymaps. It exists to catch a typo in `config.org`, not to
+/// gatekeep.
+fn command_exists(command: &str) -> bool {
+    let name = canonical_command(command);
+    PALETTE_COMMANDS.iter().any(|(_, c, ..)| *c == name)
+        || [
+            InputMode::Doom,
+            InputMode::Vim,
+            InputMode::Emacs,
+            InputMode::Helix,
+            InputMode::Notion,
+        ]
+        .iter()
+        .any(|m| {
+            closure_input::mode_keymap(*m)
+                .iter()
+                .any(|(_, c)| *c == name)
+        })
+}
+
 /// Every chord for `command`, as org markup — or a plain statement
 /// that this mode does not bind it, never a guess.
 ///
@@ -5437,7 +5490,7 @@ pub struct Destination {
     pub command: &'static str,
     /// Chord bound to that command in the active mode — `None` only if
     /// the mode binds none, which `rail.rs` forbids.
-    pub chord: Option<&'static str>,
+    pub chord: Option<String>,
     /// Surface the command opens, so the rail can mark the current one.
     pub surface: ModalSurface,
     /// Live count, when there is something to count. `None` renders no
@@ -5510,7 +5563,7 @@ pub struct Indicator {
     /// Command a click runs, when there is one.
     pub command: Option<&'static str>,
     /// Chord bound to that command in the active mode.
-    pub chord: Option<&'static str>,
+    pub chord: Option<String>,
 }
 
 /// What a right-click landed on, selecting which context menu to show.
@@ -10492,6 +10545,15 @@ struct CompletionSession {
 #[derive(Debug)]
 pub struct ModalApp {
     mode: InputMode,
+    /// What `config.org` said about the keymap, in file order.
+    key_overrides: Vec<(String, String)>,
+    /// [`Self::mode`]'s keymap with [`Self::key_overrides`] applied —
+    /// the one every lookup in the app reads.
+    ///
+    /// Resolved once per change rather than per lookup: the palette and
+    /// the which-key panel both walk the whole map, and both are on the
+    /// render path.
+    keys: Vec<(String, String)>,
     surface: ModalSurface,
     selected: usize,
     /// The filter every list surface types into — search, body search,
@@ -10947,6 +11009,8 @@ impl ModalApp {
     #[must_use]
     pub fn new(mode: InputMode) -> Self {
         Self {
+            key_overrides: Vec::new(),
+            keys: closure_input::keymap_with(mode, &[]),
             slash: None,
             ex_buf: LineInput::default(),
             ex_return: None,
@@ -11062,10 +11126,7 @@ impl ModalApp {
     /// hand-maintained list.
     #[must_use]
     pub fn hint_items(&self) -> Vec<(String, String)> {
-        closure_input::mode_keymap(self.mode)
-            .iter()
-            .map(|(c, cmd)| ((*c).to_owned(), (*cmd).to_owned()))
-            .collect()
+        self.keys.clone()
     }
 
     /// What which-key should be scoped to right now.
@@ -11111,20 +11172,28 @@ impl ModalApp {
     /// inside a buffer at all: "only show the keybindings that are
     /// relevant to the corresponding mode".
     #[must_use]
-    pub fn buffer_actions(&self) -> Vec<(&'static str, &'static str, Option<&'static str>)> {
+    pub fn buffer_actions(&self) -> Vec<(&'static str, &'static str, Option<String>)> {
         vec![
             (
                 "\u{2713} save",
                 "save-buffer",
-                closure_input::chord_for_command(self.mode, "save-buffer"),
+                self.chord_for("save-buffer").map(ToOwned::to_owned),
             ),
             // org-edit-special's own pair. Not in the outline keymap:
             // `C-c C-c` there is org's "do the thing at point", which
             // for a source block is running it. One chord, two
             // meanings by surface — which is org's own rule, and only
             // the surface can tell them apart.
-            ("\u{2713} save & close", "commit-edit", Some("C-c C-c")),
-            ("\u{2715} discard", "discard-edit", Some("C-c C-k")),
+            (
+                "\u{2713} save & close",
+                "commit-edit",
+                Some("C-c C-c".to_owned()),
+            ),
+            (
+                "\u{2715} discard",
+                "discard-edit",
+                Some("C-c C-k".to_owned()),
+            ),
         ]
     }
 
@@ -11162,10 +11231,10 @@ impl ModalApp {
             .chain(std::iter::once(&"Command"))
             .map(|s| ((*s).to_owned(), Vec::new()))
             .collect();
-        for (chord, cmd) in closure_input::mode_keymap(self.mode) {
+        for (chord, cmd) in &self.keys {
             let sec = section_of(cmd);
             if let Some((_, v)) = groups.iter_mut().find(|(t, _)| t == sec) {
-                v.push(((*chord).to_owned(), (*cmd).to_owned()));
+                v.push((chord.clone(), cmd.clone()));
             }
         }
         groups.retain(|(_, v)| !v.is_empty());
@@ -11222,7 +11291,7 @@ impl ModalApp {
     /// the memo. What [`Self::palette_shared`] must always agree with.
     #[must_use]
     pub fn palette_entries_uncached(&self) -> Vec<PaletteEntry> {
-        command_palette_with_history(self.field_buf.text(), self.mode, &self.palette_history)
+        palette_in_keymap(self.field_buf.text(), &self.keys, &self.palette_history)
             .into_iter()
             .flat_map(|s| s.items)
             .collect()
@@ -11459,7 +11528,7 @@ impl ModalApp {
                 .collect::<Vec<_>>()
                 .join("  ");
         }
-        closure_input::mode_keymap(self.mode)
+        self.keys
             .iter()
             .map(|(c, cmd)| format!("{c}:{cmd}"))
             .collect::<Vec<_>>()
@@ -11484,12 +11553,13 @@ impl ModalApp {
             return Vec::new();
         }
         let prefix = format!("{} ", self.pending.join(" "));
-        let mut out: Vec<(String, String)> = closure_input::mode_keymap(self.mode)
+        let mut out: Vec<(String, String)> = self
+            .keys
             .iter()
             .filter_map(|(chord, cmd)| {
                 chord
                     .strip_prefix(&prefix)
-                    .map(|rest| (rest.to_owned(), (*cmd).to_owned()))
+                    .map(|rest| (rest.to_owned(), cmd.clone()))
             })
             .collect();
         out.sort();
@@ -11909,9 +11979,10 @@ impl ModalApp {
         let Some(stroke) = modal_stroke(key, ctrl, alt, text) else {
             return false;
         };
-        let Some(cmd) = closure_input::command_for(self.mode, &stroke) else {
+        let Some(cmd) = self.command_for(&stroke).map(ToOwned::to_owned) else {
             return false;
         };
+        let cmd = cmd.as_str();
         if !matches!(
             cmd,
             "save-buffer" | "toggle-which-key" | "reload-shell" | "toggle-wrap" | "toggle-fold"
@@ -12340,7 +12411,7 @@ impl ModalApp {
                 icon,
                 label,
                 command,
-                chord: self.chord_for(command),
+                chord: self.chord_for(command).map(ToOwned::to_owned),
                 surface,
                 badge: self.rail_badge(shell, id).map(|n| n.to_string()),
                 urgent: self.rail_urgent(id),
@@ -12392,7 +12463,7 @@ impl ModalApp {
                 tooltip,
                 level,
                 command,
-                chord: command.and_then(|c| self.chord_for(c)),
+                chord: command.and_then(|c| self.chord_for(c).map(ToOwned::to_owned)),
             };
         let headlines = self.rows_shared(shell).len();
         let files = shell.vault.iter().count();
@@ -14331,10 +14402,8 @@ impl ModalApp {
             other => {
                 // Anything else is a command name. Resolve it against
                 // the registry the palette and the chords share (I4).
-                let known = closure_input::mode_keymap(self.mode)
-                    .iter()
-                    .any(|(_, cmd)| *cmd == other)
-                    || command_palette("", self.mode)
+                let known = self.keys.iter().any(|(_, cmd)| cmd == other)
+                    || palette_in_keymap("", &self.keys, &[])
                         .iter()
                         .flat_map(|s| &s.items)
                         .any(|e| e.action.command() == other);
@@ -15607,8 +15676,9 @@ impl ModalApp {
         // the palette show the same chord this path answers to (I4).
         if (ctrl || alt)
             && let Some(stroke) = modal_stroke(key, ctrl, alt, text)
-            && let Some(cmd) = closure_input::command_for(self.mode, &stroke)
+            && let Some(cmd) = self.command_for(&stroke).map(ToOwned::to_owned)
         {
+            let cmd = cmd.as_str();
             if self.zoom_command(cmd) {
                 return true;
             }
@@ -17709,12 +17779,14 @@ impl ModalApp {
         };
         self.pending.push(stroke);
         let chord = self.pending.join(" ");
-        let km = closure_input::mode_keymap(self.mode);
-        if let Some((_, cmd)) = km.iter().find(|(c, _)| *c == chord) {
+        if let Some(cmd) = self.command_for(&chord).map(ToOwned::to_owned) {
             self.pending.clear();
-            let cmd = *cmd;
-            self.run_command(shell, cmd);
-        } else if km.iter().any(|(c, _)| c.starts_with(&format!("{chord} "))) {
+            self.run_command(shell, &cmd);
+        } else if self
+            .keys
+            .iter()
+            .any(|(c, _)| c.starts_with(&format!("{chord} ")))
+        {
             // Valid prefix — keep the pending strokes.
         } else {
             self.pending.clear();
@@ -18031,6 +18103,7 @@ impl ModalApp {
                     InputMode::Doom => InputMode::Helix,
                     InputMode::Helix => InputMode::Notion,
                 };
+                self.rebuild_keymap();
                 // An open buffer follows the new mode. Notion and Emacs
                 // have no NORMAL, so a buffer left in one after the
                 // switch is a text field that will not take text —
@@ -18321,15 +18394,67 @@ impl ModalApp {
     /// so that they all change together when the mode does. Sourced
     /// from [`closure_input::chord_for_command`] (I4).
     #[must_use]
-    pub fn chord_for(&self, command: &str) -> Option<&'static str> {
-        closure_input::chord_for_command(self.mode, command)
+    pub fn chord_for(&self, command: &str) -> Option<&str> {
+        self.chords_for(command).first().copied()
     }
 
     /// Every chord bound to `command` in the active mode, primary
     /// first — what a pane with room for more than one shows.
     #[must_use]
-    pub fn chords_for(&self, command: &str) -> Vec<&'static str> {
-        closure_input::chords_for_command(self.mode, command)
+    pub fn chords_for(&self, command: &str) -> Vec<&str> {
+        self.keys
+            .iter()
+            .filter(|(_, cmd)| cmd == command)
+            .map(|(chord, _)| chord.as_str())
+            .collect()
+    }
+
+    /// The command `chord` runs in the active keymap, if any.
+    #[must_use]
+    pub fn command_for(&self, chord: &str) -> Option<&str> {
+        self.keys
+            .iter()
+            .find(|(c, _)| c == chord)
+            .map(|(_, cmd)| cmd.as_str())
+    }
+
+    /// The keymap in force: the chosen mode plus whatever `config.org`
+    /// said about it.
+    #[must_use]
+    pub fn keymap(&self) -> &[(String, String)] {
+        &self.keys
+    }
+
+    /// Apply `config.org`'s `bind` lines on top of the current mode.
+    ///
+    /// Kept as the overrides rather than as the result, because
+    /// `cycle-mode` has to reapply them to the next keymap: a rebind
+    /// the user wrote down is about their fingers, not about whichever
+    /// of the five schemes they are looking at.
+    pub fn set_key_overrides(&mut self, overrides: Vec<(String, String)>) {
+        self.key_overrides = overrides;
+        self.rebuild_keymap();
+        // A command name this shell does not have cannot be caught when
+        // the file is parsed — closure-config does not know the command
+        // list — so it is said out loud here rather than binding a key
+        // to nothing and leaving it to be found by pressing it.
+        let unknown: Vec<String> = self
+            .key_overrides
+            .iter()
+            .filter(|(_, cmd)| !cmd.is_empty() && !command_exists(cmd))
+            .map(|(chord, cmd)| format!("{chord} → {cmd}"))
+            .collect();
+        if !unknown.is_empty() {
+            self.say(format!(
+                "config.org: no such command — {}",
+                unknown.join(", ")
+            ));
+        }
+    }
+
+    /// Rebuild [`Self::keys`] from the mode and the overrides.
+    fn rebuild_keymap(&mut self) {
+        self.keys = closure_input::keymap_with(self.mode, &self.key_overrides);
     }
 
     /// Output of the last source block run, while the Blocks surface

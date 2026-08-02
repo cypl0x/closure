@@ -118,7 +118,7 @@ fn every_destination_shows_the_keymaps_chord_in_every_mode() {
         for dest in app.destinations(&shell) {
             assert_eq!(
                 dest.chord,
-                app.chord_for(dest.command),
+                app.chord_for(dest.command).map(ToOwned::to_owned),
                 "{} must show {mode:?}'s chord for {}",
                 dest.id,
                 dest.command

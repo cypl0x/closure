@@ -55,7 +55,7 @@ fn every_indicator_is_clickable_and_shows_its_chord() {
         if let Some(command) = item.command {
             assert_eq!(
                 app.chord_for(command),
-                item.chord,
+                item.chord.as_deref(),
                 "{} must show the keymap's chord for {command}",
                 item.id
             );
