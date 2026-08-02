@@ -17284,15 +17284,38 @@ impl ModalApp {
         match key {
             // G4: the first buffer-changing edit checkpoints the
             // burst (BodyEditor::insert_guard), so Esc+u undoes it.
+            // `C-n`/`C-p` walk the completion *while there is one*,
+            // and are `next-line`/`previous-line` the rest of the time
+            // — the same trade made for `C-j`/`C-k` just below, for
+            // the same reason. They used to be the popup's keys
+            // unconditionally, so with no popup up they did nothing at
+            // all: "ctlr+p isn't working in editor view". Two of the
+            // most worn keys in Emacs, silent, next to a footer
+            // advertising the readline set they belong to.
+            // `C-n` summons the completion and walks it — the footer
+            // says so ("C-n complete") and a suite of tests pins it.
             "n" if ctrl => self.cycle_completion(shell, true),
-            "p" if ctrl => self.cycle_completion(shell, false),
-            // Doom's company map: while the popup is showing,
-            // `C-j`/`C-k` walk it too. Only while it is — with no
-            // popup up, `C-k` below is still readline's
+            // `C-p` walks it *while it is up*, and is `previous-line`
+            // the rest of the time. It used to be the popup's key
+            // unconditionally, which meant it did nothing whenever
+            // there was no popup — "ctlr+p isn't working in editor
+            // view", one of the most worn keys in Emacs, silent.
+            //
+            // Only `C-p` moves, deliberately. `C-n` has a job of its
+            // own to do first, and there is no version of "C-p goes
+            // back" that summons anything: a popup that is not there
+            // cannot be stepped backwards through. Same shape as the
+            // `C-j`/`C-k` gate below.
+            //
+            // `C-k` rides along here: Doom's company map walks the
+            // popup with `C-j`/`C-k` too, and only while it is up —
+            // with no popup, `C-k` below is still readline's
             // kill-to-end-of-line, and taking that away to gain a
-            // second spelling of `C-n` would be a bad trade.
+            // second spelling of `C-n` would be a bad trade. The two
+            // back-steps are one arm because they are one behaviour.
+            "p" | "k" if ctrl && self.completion.is_some() => self.cycle_completion(shell, false),
             "j" if ctrl && self.completion.is_some() => self.cycle_completion(shell, true),
-            "k" if ctrl && self.completion.is_some() => self.cycle_completion(shell, false),
+            "p" if ctrl => self.body.up(),
             // Readline chords (the "normal input field" set).
             "a" if ctrl => self.body.line_home(),
             "e" if ctrl => self.body.line_end_motion(),
