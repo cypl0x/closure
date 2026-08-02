@@ -2933,12 +2933,7 @@ impl GpuiView {
             }
             row = row.child(chip);
         }
-        row.child(sep("·"))
-            .child(div().flex_grow().text_color(rgb(co.fg)).child(caret_text(
-                co,
-                self.app.capture_buffer(),
-                self.app.capture_cursor(),
-            )))
+        row.child(sep("·")).children(self.capture_field(co, cx))
     }
 
     /// The row under the header: breadcrumbs while capturing, a live
@@ -2955,17 +2950,39 @@ impl GpuiView {
         // other surface has one line to say and says it.
         if self.app.surface() == ModalSurface::Capture {
             row.child(self.capture_bar(co, self.app.zoom(), cx))
-        } else if let Some(prompt) = self.prompt_row(co) {
+        } else if let Some(prompt) = self.prompt_row(co, cx) {
             row.child(prompt)
         } else {
             row.child(self.context_line())
         }
     }
 
+    /// The line being typed into the capture bar, and the pair of
+    /// buttons beside it.
+    ///
+    /// Capture is the prompt people reach for most and it had the least
+    /// on screen — Enter and Escape, neither of them said anywhere.
+    fn capture_field(&self, co: Colors, cx: &Context<Self>) -> Vec<gpui::Div> {
+        let mut out = vec![
+            div()
+                .flex_1()
+                .min_w(px(0.0))
+                .overflow_hidden()
+                .text_color(rgb(co.fg))
+                .child(caret_text(
+                    co,
+                    self.app.capture_buffer(),
+                    self.app.capture_cursor(),
+                )),
+        ];
+        out.extend(prompt_buttons(co, self.sz(11.0), cx));
+        out
+    }
+
     /// The prompt surfaces paint a label and a live field with a block
     /// caret in it; everything else has one line to say and says it
     /// ([`Self::context_line`]).
-    fn prompt_row(&self, co: Colors) -> Option<gpui::Div> {
+    fn prompt_row(&self, co: Colors, cx: &Context<Self>) -> Option<gpui::Div> {
         let (label, text, cursor) = match self.app.surface() {
             ModalSurface::Rename => (
                 "\u{270e} rename: ",
@@ -3001,8 +3018,16 @@ impl GpuiView {
                 .flex()
                 .flex_row()
                 .items_center()
+                .gap_2()
                 .child(div().flex_none().child(label))
-                .child(div().flex_grow().child(caret_text(co, text, cursor))),
+                .child(
+                    div()
+                        .flex_1()
+                        .min_w(px(0.0))
+                        .overflow_hidden()
+                        .child(caret_text(co, text, cursor)),
+                )
+                .children(prompt_buttons(co, self.sz(11.0), cx)),
         )
     }
 
@@ -7286,6 +7311,42 @@ pub fn vault_label(root: &Path, home: Option<&Path>) -> String {
                 }
             },
         )
+}
+
+/// Accept and cancel, for a one-line prompt.
+///
+/// The prompts took Enter and Escape and showed neither ("add confirm
+/// buttons for the capture/rename/etc. prompts") — a dialog with no
+/// visible way out teaches nothing and strands anyone who arrived with
+/// the mouse. Both run the key they name through the ordinary key path,
+/// so the button and the chord cannot come apart.
+#[cfg(feature = "gpui")]
+fn prompt_buttons(co: Colors, size: gpui::Pixels, cx: &Context<GpuiView>) -> Vec<gpui::Div> {
+    let make = |label: &'static str, colour: u32, key: &'static str| {
+        div()
+            .debug_selector(move || format!("prompt-{key}"))
+            .flex_none()
+            .px_2()
+            .rounded_md()
+            .border_1()
+            .border_color(rgb(colour))
+            .text_color(rgb(colour))
+            .text_size(size)
+            .cursor_pointer()
+            .hover(move |s| s.bg(rgb(co.hover)))
+            .on_mouse_down(
+                MouseButton::Left,
+                cx.listener(move |this: &mut GpuiView, _ev, _w, cx| {
+                    this.dispatch_key(key, false, false, None, cx);
+                    cx.notify();
+                }),
+            )
+            .child(label)
+    };
+    vec![
+        make("✓ accept  RET", co.success, "enter"),
+        make("✕ cancel  Esc", co.error, "escape"),
+    ]
 }
 
 /// A header button's label with the chord that runs it, when the
