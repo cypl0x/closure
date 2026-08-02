@@ -2622,6 +2622,7 @@ impl GpuiView {
         // than in the keystroke handler so the test seam drives it too.
         self.take_clipboard(cx);
         let register_before = self.app.register_generation();
+        let vault_asked = self.app.vault_switch_asked();
         self.app.on_key(&mut self.shell, key, ctrl, alt, text);
         self.relaunch_if_reloaded(reloads_before);
         self.note_prompt();
@@ -2636,6 +2637,18 @@ impl GpuiView {
         // And the editor's own register: `yy` in a buffer never touched
         // the ring, so a yanked line stayed inside closure.
         self.give_clipboard(register_before, cx);
+        // A vault switch is a native dialog, which only the window can
+        // raise. Keyed off the counter so a chord, a palette entry and
+        // a click on the header path all arrive the same way.
+        if self.app.vault_switch_asked() != vault_asked {
+            // A path named on the `:` line skips the dialog, which is
+            // the fallback where no desktop portal exists.
+            if let Some(dir) = self.app.take_vault_switch_path() {
+                self.open_vault_dir(std::path::Path::new(&dir));
+            } else {
+                self.pick_vault(cx);
+            }
+        }
         // Pasting a ticket is what makes a network-facing listener
         // willing to answer, so it is also what re-arms the accept the
         // guard refused.
@@ -2771,6 +2784,99 @@ impl GpuiView {
             return;
         }
         cx.write_to_clipboard(gpui::ClipboardItem::new_string(text));
+    }
+
+    /// Raise the directory dialog and open whatever comes back.
+    ///
+    /// "Pressing on the previously … should open the system file
+    /// picker which lets the user select a different vault location".
+    /// The dialog is asynchronous, so the answer arrives on a task —
+    /// and by then the app may have moved on, which is why the guard
+    /// is checked again rather than trusted from before it opened.
+    // Takes `&self` only to sit with the rest of the window's methods:
+    // the dialog and the task belong to the context, not to the view.
+    #[allow(clippy::unused_self)]
+    fn pick_vault(&self, cx: &Context<Self>) {
+        let paths = cx.prompt_for_paths(gpui::PathPromptOptions {
+            files: false,
+            directories: true,
+            multiple: false,
+            prompt: Some("Open vault".into()),
+        });
+        cx.spawn(async move |this, cx| {
+            // Say what happened either way: the ask leaves "choose a
+            // vault directory…" on the status line, and a dialog that
+            // never opens — no desktop portal on this session — would
+            // leave that message standing as a lie.
+            let answer = paths.await;
+            let chosen = match answer {
+                Ok(Ok(Some(paths))) => paths.into_iter().next(),
+                Ok(Ok(None)) => {
+                    let _ = this.update(cx, |this: &mut Self, cx| {
+                        this.app.set_status("vault unchanged");
+                        cx.notify();
+                    });
+                    return;
+                }
+                Ok(Err(e)) => {
+                    let _ = this.update(cx, |this: &mut Self, cx| {
+                        this.app.set_status(format!(
+                            "no file dialog here ({e}) — try `:open-vault <dir>`"
+                        ));
+                        cx.notify();
+                    });
+                    return;
+                }
+                // The dialog's channel closed without an answer, which
+                // is what a missing desktop portal looks like from
+                // here.
+                Err(_) => {
+                    let _ = this.update(cx, |this: &mut Self, cx| {
+                        this.app
+                            .set_status("no file dialog here — try `:open-vault <dir>`");
+                        cx.notify();
+                    });
+                    return;
+                }
+            };
+            let Some(dir) = chosen else {
+                return;
+            };
+            let _ = this.update(cx, |this: &mut Self, cx| {
+                this.open_vault_dir(&dir);
+                cx.notify();
+            });
+        })
+        .detach();
+    }
+
+    /// Swap the shell over to the vault at `dir`.
+    fn open_vault_dir(&mut self, dir: &std::path::Path) {
+        if !closure_shell_core::looks_like_vault(dir) {
+            self.app
+                .set_status(format!("{}: no org files here", dir.display()));
+            return;
+        }
+        if !self.app.can_switch_vault() {
+            self.app.set_status("unsaved edit — C-c C-c saves it first");
+            return;
+        }
+        match Vault::open(dir) {
+            Ok(vault) => {
+                self.shell = Shell::new(vault);
+                // Everything the app holds names something in the old
+                // vault; carried over it points at nothing.
+                self.app.reset_for_vault();
+                self.theme = resolve_theme(dir);
+                self.set_view(resolve_view(dir));
+                let cfg = closure_config::Config::from_path(&dir.join("config.org"));
+                self.set_wrap(cfg.as_ref().is_ok_and(|c| c.wrap));
+                self.app
+                    .set_key_overrides(cfg.map(|c| c.key_bindings).unwrap_or_default());
+                self.app.set_status(format!("opened {}", dir.display()));
+            }
+            Err(e) => self.app.set_status(format!("{}: {e}", dir.display())),
+        }
     }
 
     /// The desktop clipboard chords, which live in no keymap: `C-v` /
@@ -7449,12 +7555,25 @@ impl GpuiView {
             // open a note and read the path under it.
             .child(
                 div()
+                    .debug_selector(|| "header-vault".to_owned())
                     .flex_none()
                     .max_w(px(scaled_text_px(280.0, self.app.zoom())))
                     .overflow_hidden()
                     .whitespace_nowrap()
                     .text_color(rgb(co.muted))
                     .text_size(self.sz(11.0))
+                    // "Pressing on the previously … should open the
+                    // system file picker": the path was a label, and a
+                    // label that names the one thing you might want to
+                    // change should be the way to change it.
+                    .cursor_pointer()
+                    .hover(move |st| st.text_color(rgb(co.accent)))
+                    .on_mouse_down(
+                        MouseButton::Left,
+                        cx.listener(|this: &mut Self, _ev, _w, cx| {
+                            this.click("open-vault", cx);
+                        }),
+                    )
                     .child(vault_label(
                         self.shell.vault.root(),
                         std::env::var_os("HOME")

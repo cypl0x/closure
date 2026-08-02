@@ -1107,6 +1107,37 @@ pub fn renumber_list(text: &str, line: usize) -> String {
     out.join("\n")
 }
 
+/// Does this directory hold a vault?
+///
+/// A vault is a directory of org files, usually a tree of them.
+/// Pointing closure at one that has none is a mistake worth naming
+/// rather than an empty window with no explanation in it.
+#[must_use]
+pub fn looks_like_vault(dir: &std::path::Path) -> bool {
+    fn any_org(dir: &std::path::Path, depth: usize) -> bool {
+        let Ok(entries) = std::fs::read_dir(dir) else {
+            return false;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_file()
+                && path
+                    .extension()
+                    .is_some_and(|e| e.eq_ignore_ascii_case("org"))
+            {
+                return true;
+            }
+            // A few levels is enough to recognise a vault; walking a
+            // whole home directory to answer a dialog is not.
+            if depth > 0 && path.is_dir() && any_org(&path, depth - 1) {
+                return true;
+            }
+        }
+        false
+    }
+    dir.is_dir() && any_org(dir, 3)
+}
+
 /// Every palette entry as `(label, canonical, section, description)`.
 #[must_use]
 pub fn palette_entries_raw() -> Vec<(&'static str, &'static str, &'static str, &'static str)> {
@@ -3695,6 +3726,12 @@ const PALETTE_COMMANDS: &[(&str, &str, &str, &str)] = &[
         "find-file",
         "Navigate",
         "Open a file by name, or make one that is not there yet",
+    ),
+    (
+        "open-vault",
+        "open-vault",
+        "App",
+        "Choose a different vault directory to work in",
     ),
     (
         "list-buffers",
@@ -11654,6 +11691,11 @@ pub struct ModalApp {
     /// that only kept what you accepted would forget exactly the case
     /// the report is about: three sentences into a capture, `Esc`.
     prompt_history: std::collections::BTreeMap<&'static str, Vec<String>>,
+    /// A directory named on the `:` line, when one was.
+    vault_switch_path: Option<String>,
+    /// Bumped when something asks to change vaults; the window
+    /// watches it and raises the directory dialog.
+    vault_switch_asked: u64,
     /// Headlines marked for a bulk action, by id.
     ///
     /// dired's marks. Held by id rather than by row index because the
@@ -12097,6 +12139,8 @@ impl ModalApp {
             },
             palette_history: Vec::new(),
             prompt_history: std::collections::BTreeMap::new(),
+            vault_switch_asked: 0,
+            vault_switch_path: None,
             marks: std::collections::BTreeSet::new(),
             find_dir: std::path::PathBuf::new(),
             pane_return: None,
@@ -15673,6 +15717,16 @@ impl ModalApp {
                 self.quit = true;
             }
             other => {
+                // `:open-vault <dir>` names its argument, because a
+                // native directory dialog needs a desktop portal and
+                // plenty of sessions have none — a command that only
+                // works on some desktops is a command you cannot rely
+                // on.
+                if let Some(dir) = other.strip_prefix("open-vault ") {
+                    self.vault_switch_path = Some(dir.trim().to_owned());
+                    self.vault_switch_asked = self.vault_switch_asked.wrapping_add(1);
+                    return;
+                }
                 // Anything else is a command name. Resolve it against
                 // the registry the palette and the chords share (I4).
                 let known = self.keys.iter().any(|(_, cmd)| cmd == other)
@@ -18018,6 +18072,57 @@ impl ModalApp {
         })
     }
 
+    /// How many times a vault switch has been asked for.
+    ///
+    /// The window watches this the way it watches the register's
+    /// generation: a chord, a palette entry and a click on the header
+    /// all arrive the same way, and none of them can raise a dialog
+    /// from in here.
+    #[must_use]
+    pub const fn vault_switch_asked(&self) -> u64 {
+        self.vault_switch_asked
+    }
+
+    /// The directory a `:open-vault <dir>` named, if the ask came that
+    /// way rather than through the dialog.
+    pub const fn take_vault_switch_path(&mut self) -> Option<String> {
+        self.vault_switch_path.take()
+    }
+
+    /// May the app change vaults right now?
+    ///
+    /// An unwritten buffer belongs to the vault being left, so
+    /// switching away from one is throwing it away — the one thing
+    /// this must not do quietly.
+    #[must_use]
+    pub fn can_switch_vault(&self) -> bool {
+        !self.body_dirty()
+    }
+
+    /// Drop everything that belonged to the vault being left.
+    ///
+    /// Ids, selections, marks and buffers all name things in one
+    /// vault; carried into another they point at nothing, or worse at
+    /// something else with the same index.
+    pub fn reset_for_vault(&mut self) {
+        self.marks.clear();
+        self.selected = 0;
+        self.query.clear();
+        self.field_buf.clear();
+        self.edit_target = None;
+        self.file_target = None;
+        self.special = None;
+        self.body.clear();
+        self.body_baseline.clear();
+        self.body_folds.clear();
+        self.body_stash.clear();
+        self.buffers.clear();
+        self.pane_return = None;
+        self.find_dir = std::path::PathBuf::new();
+        self.invalidate_rows();
+        self.surface = ModalSurface::Browse;
+    }
+
     /// Is this headline marked for a bulk action?
     #[must_use]
     pub fn is_marked(&self, id: &str) -> bool {
@@ -19612,6 +19717,17 @@ impl ModalApp {
                     self.view = ViewMode::Clickable;
                 } else {
                     self.discard_editor();
+                }
+            }
+            // The dialog is the window's — a dep-free core cannot
+            // raise one — so this records the ask and the shell
+            // answers it, the same shape as the clipboard mirror.
+            "open-vault" => {
+                if self.can_switch_vault() {
+                    self.vault_switch_asked = self.vault_switch_asked.wrapping_add(1);
+                    self.say("choose a vault directory\u{2026}");
+                } else {
+                    self.say("unsaved edit — C-c C-c saves it first");
                 }
             }
             "find-file" => {

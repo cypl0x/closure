@@ -2078,6 +2078,13 @@ impl App {
             // is the gpui shell's gesture; what matters here is that a
             // bound chord does something rather than reporting itself
             // unimplemented (`no_dead_chords`).
+            // A terminal has no native directory dialog, so the
+            // terminal shell says where the switch lives rather than
+            // reporting the chord unimplemented (`no_dead_chords`).
+            "open-vault" => {
+                self.status =
+                    "open-vault — pass a directory to `closure tui`, or use the GUI".into();
+            }
             "find-file" => {
                 self.mode = AppMode::Files;
                 self.result_cursor = 0;
