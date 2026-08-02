@@ -702,6 +702,13 @@ pub struct Row {
     pub level: u8,
     /// TODO keyword, if any.
     pub todo: Option<String>,
+    /// org's priority cookie letter (`[#A]` → `'A'`), if any.
+    ///
+    /// The one piece of a headline that says *do this first*, and the
+    /// outline is where you decide what to do first — so an urgent task
+    /// and an unprioritised one were the same row until the parser's
+    /// answer was carried here instead of dropped.
+    pub priority: Option<char>,
     /// Whether this headline's subtree is folded (`:VISIBILITY: folded`).
     ///
     /// Carried on the row because the outline needs it for every
@@ -716,6 +723,34 @@ pub struct Row {
     /// A fold arrow on a row with nothing under it is an affordance
     /// that does nothing when clicked.
     pub has_children: bool,
+}
+
+/// org's own spelling of a priority letter: `'A'` → `"[#A]"`.
+///
+/// One place, because it is what you would type to make one and what
+/// every surface should show — a cookie spelled two ways is two
+/// cookies to the reader.
+#[must_use]
+pub fn priority_cookie(letter: char) -> String {
+    format!("[#{letter}]")
+}
+
+/// How urgent a priority letter is, higher being louder.
+///
+/// `A` outranks `B` outranks `C`, and org's letters run past `C` for
+/// anyone who configures more of them, so the rank is the distance from
+/// the end of the alphabet rather than a table of three. Not an
+/// uppercase letter, not a priority: rank zero.
+///
+/// It lives here rather than in a shell so that every shell agrees
+/// about which of two tasks is the urgent one.
+#[must_use]
+pub const fn priority_rank(letter: char) -> u8 {
+    if letter.is_ascii_uppercase() {
+        b'Z' + 1 - (letter as u8)
+    } else {
+        0
+    }
 }
 
 /// One agenda row for the GUI agenda pane, flags precomputed
@@ -1486,6 +1521,7 @@ fn outline_rows(shell: &Shell, filter: &str) -> Vec<Row> {
                         title: h.title().to_owned(),
                         level: h.level(),
                         todo: h.todo().map(ToOwned::to_owned),
+                        priority: h.priority(),
                         folded,
                         // Document order is outline order, so the next
                         // headline is a child exactly when it is deeper.
@@ -1971,7 +2007,16 @@ pub fn browse_view(vault: &closure_store::Vault) -> Node {
                     h.todo().map(ToOwned::to_owned),
                 )
                 .with_icon(h.todo().map(|t| todo_glyph(t).to_owned()))
-                .with_badges(h.tags().iter().map(ToOwned::to_owned).collect())
+                // The cookie first: a shell painting badges left to
+                // right should put "do this first" before the tags,
+                // which is where org puts it on the line itself.
+                .with_badges(
+                    h.priority()
+                        .map(priority_cookie)
+                        .into_iter()
+                        .chain(h.tags().iter().map(ToOwned::to_owned))
+                        .collect(),
+                )
             })
         })
         .collect();

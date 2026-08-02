@@ -3633,6 +3633,22 @@ impl GpuiView {
         } else {
             keyword
         });
+        // org's priority cookie. Its own column, always present for the
+        // same reason the keyword's is: painted only when a row has one,
+        // the titles of a mixed list start at two x positions and the
+        // column appears to shuffle as the selection moves down it.
+        let cookie = div().w(px(PRIORITY_COL_W)).mr_1().flex_none();
+        line = line.child(if let Some(letter) = row.priority {
+            cookie
+                .text_color(rgb(priority_color(co, letter)))
+                .text_size(sz_at(11.0, zoom))
+                .cursor_pointer()
+                .hover(move |s| s.bg(rgb(co.hover)))
+                .on_mouse_down(MouseButton::Left, act("cycle-priority"))
+                .child(closure_shell_core::priority_cookie(letter))
+        } else {
+            cookie
+        });
         line
             // The title takes the slack and is clipped by it. Left to
             // size itself, a long title pushed the file name off the
@@ -7766,6 +7782,31 @@ const INDENT_STEP: f32 = 16.0;
 /// has to be findable at a glance or it is the same empty space it
 /// replaced. Half reads as a hairline without competing with the text.
 const GUIDE_MIX: u32 = 0x88;
+
+/// Width of the priority column, in pixels at zoom 1.
+///
+/// `[#A]` is four characters and never more, so the column is fixed:
+/// sized to its content, a list where only some rows carry a cookie
+/// starts its titles at two different places.
+#[cfg(feature = "gpui")]
+const PRIORITY_COL_W: f32 = 30.0;
+
+/// The colour of a priority cookie — org's `org-priority-faces`.
+///
+/// `A` is the one that says drop everything, and it takes the same red
+/// the open TODO beside it already takes, so a row does not argue with
+/// itself about how urgent it is. `B` is the warning amber, `C` the
+/// settled green of finished work, and anything past the three a user
+/// has configured is bookkeeping rather than urgency.
+#[cfg(feature = "gpui")]
+const fn priority_color(co: Colors, letter: char) -> u32 {
+    match closure_shell_core::priority_rank(letter) {
+        26 => co.error,
+        25 => co.warning,
+        24 => co.success,
+        _ => co.muted,
+    }
+}
 
 /// Theme colour for a body-editor span kind. Shared by the editor
 /// pane and the read-only detail preview so both read identically.
