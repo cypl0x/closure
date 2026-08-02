@@ -5173,6 +5173,76 @@ impl GpuiView {
             }))
     }
 
+    /// The header's metadata strip: where this note lives, how deep it
+    /// sits, how big it is, and when it was written.
+    ///
+    /// "nor ID or other helpful metadata for the currently editing
+    /// subtree of this headline — Like lines, words, indentation level,
+    /// mtime, created at", and "Don't just use this dimmed color".
+    /// Everything under the title used to be one grey, including the
+    /// things you look at most, so each field takes an icon and the
+    /// colour of what it means: the file is a link, the size is prose,
+    /// the dates are settled, the id is bookkeeping and stays quiet.
+    fn detail_meta_row(&self, co: Colors, d: &closure_shell_core::Detail) -> gpui::Div {
+        let small = px(chrome_px(&self.theme, self.app.zoom()));
+        let field = move |icon: &str, text: String, colour: u32| {
+            div()
+                .flex()
+                .flex_row()
+                .items_center()
+                .gap_1()
+                .flex_none()
+                .text_size(small)
+                .text_color(rgb(colour))
+                .child(icon.to_owned())
+                .child(text)
+        };
+        let mut row = div()
+            .debug_selector(|| "detail-meta".to_owned())
+            .flex()
+            .flex_row()
+            .flex_wrap()
+            .items_center()
+            .gap_3()
+            // A Nerd Font file glyph, and the vault-relative path: the
+            // whole path is mostly the part you already know.
+            .child(field(
+                "\u{f15c}",
+                // Vault-relative: the leading directories are the part
+                // you already know, and they pushed everything after
+                // them off the row.
+                std::path::Path::new(&d.path)
+                    .strip_prefix(self.shell.vault.root())
+                    .unwrap_or_else(|_| std::path::Path::new(&d.path))
+                    .display()
+                    .to_string(),
+                co.accent,
+            ))
+            .child(field("\u{f03a}", format!("level {}", d.level), co.heading3));
+        if d.lines > 0 {
+            row = row
+                .child(field(
+                    "\u{f0f6}",
+                    format!("{} line{}", d.lines, plural(d.lines)),
+                    co.fg,
+                ))
+                .child(field(
+                    "\u{f036}",
+                    format!("{} word{}", d.words, plural(d.words)),
+                    co.fg,
+                ));
+        }
+        if let Some(created) = &d.created {
+            row = row.child(field("\u{f017}", format!("created {created}"), co.success));
+        }
+        if let Some(modified) = &d.modified {
+            row = row.child(field("\u{f021}", format!("saved {modified}"), co.success));
+        }
+        // The id last and quietest: it is what everything above is
+        // *about*, and the thing you need least often.
+        row.child(field("\u{f292}", d.id.clone(), co.muted))
+    }
+
     /// Every `#+BEGIN_SRC` block in the vault, with a run button and
     /// the output of the last run (org-babel).
     ///
@@ -6423,9 +6493,13 @@ impl GpuiView {
                     .child("no selection — j/k to move, / to search"),
             );
         };
+        // `:ID:` is in the metadata strip below, with an icon and a
+        // colour that says "bookkeeping". Printing it here as well made
+        // the longest line in the header the one you need least.
         let props = d
             .properties
             .iter()
+            .filter(|(k, _)| !k.eq_ignore_ascii_case("ID"))
             .map(|(k, v)| format!(":{k}: {v}"))
             .collect::<Vec<_>>()
             .join("\n");
@@ -6440,21 +6514,48 @@ impl GpuiView {
         pane.child(clickable(
             co,
             div()
-                .text_color(rgb(co.accent))
-                .text_lg()
-                .child(d.title.clone()),
+                .flex()
+                .flex_row()
+                .items_center()
+                .gap_2()
+                // The keyword and the cookie belong *beside* the title,
+                // in the colours they carry everywhere else — they were
+                // in the grey line below it, which is where you look
+                // last for the thing you look at first.
+                .children(d.todo.as_ref().map(|k| {
+                    div()
+                        .flex_none()
+                        .text_color(rgb(span_color(co, keyword_span(k))))
+                        .font_weight(gpui::FontWeight::BOLD)
+                        .child(k.clone())
+                }))
+                .children(d.priority.map(|letter| {
+                    div()
+                        .flex_none()
+                        .text_color(rgb(priority_color(co, letter)))
+                        .child(closure_shell_core::priority_cookie(letter))
+                }))
+                .child(
+                    div()
+                        .text_color(rgb(co.accent))
+                        .text_lg()
+                        .font_weight(gpui::FontWeight::BOLD)
+                        .child(d.title.clone()),
+                ),
             "rename",
             cx,
         ))
-        .child(clickable(
-            co,
-            div()
-                .text_color(rgb(co.muted))
-                .text_size(self.sz(12.0))
-                .child(meta_line(&d)),
-            "toggle-todo",
-            cx,
-        ))
+        .children((!meta_line(&d).is_empty()).then(|| {
+            clickable(
+                co,
+                div()
+                    .text_color(rgb(co.muted))
+                    .text_size(self.sz(12.0))
+                    .child(meta_line(&d)),
+                "toggle-todo",
+                cx,
+            )
+        }))
         .child(clickable(
             co,
             div()
@@ -6478,12 +6579,7 @@ impl GpuiView {
             "edit-property",
             cx,
         ))
-        .child(
-            div()
-                .text_color(rgb(co.muted))
-                .text_size(self.sz(10.0))
-                .child(d.path.clone()),
-        )
+        .child(self.detail_meta_row(co, &d))
         .child(clickable(
             co,
             {
@@ -8242,6 +8338,12 @@ pub fn drop_line_color(theme: &closure_shell_core::Theme) -> u32 {
     color_u32(theme.color(closure_shell_core::ColorRole::Warning))
 }
 
+/// `"s"` when `n` is not one — so a count reads as English.
+#[cfg(feature = "gpui")]
+const fn plural(n: usize) -> &'static str {
+    if n == 1 { "" } else { "s" }
+}
+
 /// Theme colour for a body-editor span kind. Shared by the editor
 /// pane and the read-only detail preview so both read identically.
 const fn span_color(co: Colors, kind: BodySpan) -> u32 {
@@ -8410,21 +8512,15 @@ fn short_path(p: &str) -> String {
 #[cfg(feature = "gpui")]
 fn meta_line(d: &Detail) -> String {
     use std::fmt::Write as _;
+    // The keyword and the cookie moved up beside the title, in the
+    // colours they carry everywhere else. Repeating them here in grey
+    // said the same thing twice and said it worse the second time.
     let mut meta = String::new();
-    if let Some(t) = &d.todo {
-        let _ = write!(meta, "{t} ");
-    }
-    if let Some(p) = d.priority {
-        let _ = write!(meta, "[#{p}] ");
-    }
     if let Some(s) = &d.scheduled {
         let _ = write!(meta, "SCHEDULED {s} ");
     }
     if let Some(s) = &d.deadline {
         let _ = write!(meta, "DEADLINE {s} ");
-    }
-    if meta.is_empty() {
-        "+ todo".clone_into(&mut meta);
     }
     meta
 }

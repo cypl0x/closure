@@ -813,6 +813,114 @@ pub struct Detail {
     pub children: String,
     /// File the headline lives in (display path).
     pub path: String,
+    /// Stable block id (`:ID:`), so a header can show it as its own
+    /// field instead of as one line of a grey property drawer.
+    pub id: String,
+    /// Outline level (1-based) — "indentation level" in the report.
+    pub level: u8,
+    /// Non-empty lines of body, children included.
+    pub lines: usize,
+    /// Words of body, children included.
+    pub words: usize,
+    /// The day this note was created, `YYYY-MM-DD`, from its own id.
+    ///
+    /// Free: a closure id *is* a ULID and a ULID's first ten characters
+    /// are the millisecond it was minted, so this needs no new property
+    /// in anybody's file. `None` for an id that is not one.
+    pub created: Option<String>,
+    /// When the file was last written, `YYYY-MM-DD`.
+    pub modified: Option<String>,
+}
+
+impl Detail {
+    /// Build the detail for `h` in `path`, children included.
+    ///
+    /// One constructor, because there were two: the legacy pane and
+    /// the modal one each assembled a `Detail` by hand, so a field
+    /// added for one of them was a field the other did not have.
+    #[must_use]
+    pub fn of(h: &closure_core::DocHeadline, path: &std::path::Path, children: String) -> Self {
+        let body = closure_org::unescape_body(h.body_text());
+        // Counted from what the pane actually shows — the body and
+        // everything under it — rather than from the body alone, which
+        // would say "0 lines" for a headline whose content is its
+        // children, and most of them are.
+        let counted = format!("{body}\n{children}");
+        let id = h.id().to_string();
+        Self {
+            title: h.title().to_owned(),
+            todo: h.todo().map(ToOwned::to_owned),
+            priority: h.priority(),
+            tags: h.tags().to_vec(),
+            scheduled: h.scheduled().map(ToOwned::to_owned),
+            deadline: h.deadline().map(ToOwned::to_owned),
+            properties: h.properties().to_vec(),
+            lines: counted.lines().filter(|l| !l.trim().is_empty()).count(),
+            words: counted.split_whitespace().count(),
+            level: h.level(),
+            created: ulid_date(&id),
+            modified: std::fs::metadata(path)
+                .and_then(|m| m.modified())
+                .ok()
+                .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                .map(|d| civil_date(d.as_secs())),
+            id,
+            body,
+            children,
+            path: path.display().to_string(),
+        }
+    }
+}
+
+/// The UTC day a ULID was minted, `YYYY-MM-DD`, or `None` if `id` is
+/// not one.
+///
+/// The first ten characters are the millisecond since the epoch in
+/// Crockford base32, most significant first — which is the whole
+/// reason ULIDs sort by time, and the reason this costs nothing.
+#[must_use]
+pub fn ulid_date(id: &str) -> Option<String> {
+    if id.len() != 26 {
+        return None;
+    }
+    let mut ms: u64 = 0;
+    for c in id.chars().take(10) {
+        let v = crockford_value(c)?;
+        ms = ms.checked_mul(32)?.checked_add(u64::from(v))?;
+    }
+    Some(civil_date(ms / 1000))
+}
+
+/// One Crockford base32 digit, or `None` for a character that is not
+/// one. `I`, `L`, `O` and `U` are the ambiguous ones it excludes.
+fn crockford_value(c: char) -> Option<u8> {
+    const ALPHABET: &[u8; 32] = b"0123456789ABCDEFGHJKMNPQRSTVWXYZ";
+    let up = c.to_ascii_uppercase() as u8;
+    ALPHABET
+        .iter()
+        .position(|&a| a == up)
+        .and_then(|i| u8::try_from(i).ok())
+}
+
+/// `YYYY-MM-DD` for a count of seconds since the Unix epoch.
+///
+/// Howard Hinnant's civil-from-days, so a date does not pull in a
+/// calendar crate: the epoch is shifted to 0000-03-01 so that leap
+/// days land at the end of the cycle and February needs no special
+/// case.
+fn civil_date(secs: u64) -> String {
+    let days = i64::try_from(secs / 86_400).unwrap_or(i64::MAX);
+    let z = days + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z.rem_euclid(146_097);
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let y = yoe + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    let y = if m <= 2 { y + 1 } else { y };
+    format!("{y:04}-{m:02}-{d:02}")
 }
 
 /// Whether the row at `i` is the first one its file contributes to the
@@ -6464,18 +6572,7 @@ impl App {
         let row = rows.get(self.selected)?;
         let bid = closure_core::BlockId::from_existing(&row.id);
         let (h, path) = shell.vault.find_by_id(&bid)?;
-        Some(Detail {
-            title: h.title().to_owned(),
-            todo: h.todo().map(ToOwned::to_owned),
-            priority: h.priority(),
-            tags: h.tags().to_vec(),
-            scheduled: h.scheduled().map(ToOwned::to_owned),
-            deadline: h.deadline().map(ToOwned::to_owned),
-            properties: h.properties().to_vec(),
-            body: closure_org::unescape_body(h.body_text()),
-            children: String::new(),
-            path: path.display().to_string(),
-        })
+        Some(Detail::of(h, path, String::new()))
     }
 
     /// The declarative [`Node`] tree describing the current screen (V1).
@@ -11914,28 +12011,12 @@ impl ModalApp {
     fn derive_detail(shell: &Shell, id: Option<&str>) -> Option<Detail> {
         let bid = closure_core::BlockId::from_existing(id?);
         let (h, path) = shell.vault.find_by_id(&bid)?;
-        Some(Detail {
-            title: h.title().to_owned(),
-            todo: h.todo().map(ToOwned::to_owned),
-            priority: h.priority(),
-            tags: h.tags().to_vec(),
-            scheduled: h.scheduled().map(ToOwned::to_owned),
-            deadline: h.deadline().map(ToOwned::to_owned),
-            properties: h.properties().to_vec(),
-            // The body is shown and edited as the author wrote it; the
-            // comma escape that keeps a `* line` out of the outline is
-            // an on-disk spelling ([`closure_org::escape_body`]).
-            body: closure_org::unescape_body(h.body_text()),
-            // What is *under* the headline, for a pane that would
-            // otherwise show a blank preview for every headline whose
-            // content is its children.
-            children: shell
-                .vault
-                .children_source(&bid)
-                .map(|src| closure_org::strip_property_drawers(&src))
-                .unwrap_or_default(),
-            path: path.display().to_string(),
-        })
+        let children = shell
+            .vault
+            .children_source(&bid)
+            .map(|src| closure_org::strip_property_drawers(&src))
+            .unwrap_or_default();
+        Some(Detail::of(h, path, children))
     }
 
     /// Feed one key. `key` is the gpui/egui-style name; `ctrl`/`alt`
