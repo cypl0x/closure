@@ -167,3 +167,26 @@ fn a_picker_marks_the_row_you_are_on() {
         view.rows[view.cursor]
     );
 }
+
+#[test]
+fn a_picker_marks_what_the_filter_matched() {
+    // Vertico's highlighting: the row says *why* it survived, which is
+    // the whole difference between a list of near-identical candidates
+    // and a list you can read.
+    let (_d, mut shell, mut app) = fixture();
+    app.run(&mut shell, "headline-list");
+    type_in(&mut app, &mut shell, "gam");
+
+    let view = app.picker_view(&shell).expect("picker");
+    let row = &view.rows[0];
+    let marked: String = row.matches.iter().map(|&(s, e)| &row.label[s..e]).collect();
+    assert_eq!(marked, "Gam", "{:?}", row.matches);
+}
+
+#[test]
+fn an_unfiltered_picker_marks_nothing() {
+    let (_d, mut shell, mut app) = fixture();
+    app.run(&mut shell, "headline-list");
+    let view = app.picker_view(&shell).expect("picker");
+    assert!(view.rows.iter().all(|r| r.matches.is_empty()));
+}

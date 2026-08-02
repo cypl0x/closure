@@ -255,6 +255,60 @@ pub fn orderless_score(needle: &str, hay: &str) -> Option<u32> {
     u32::try_from(total / parts).ok()
 }
 
+/// The byte ranges of `hay` that `needle` matched, ascending and
+/// non-overlapping. Empty when it does not match at all.
+///
+/// "Can we implement in all of the filterable/searchable input fields
+/// with list items these kind of highlighting" — vertico paints the
+/// characters your query matched, which is what tells you why a row is
+/// in a list of near-identical ones. The scorers already walk those
+/// characters to decide whether the row survives; this is the same walk
+/// with the positions kept.
+///
+/// Byte ranges rather than character indices because that is what a
+/// shell slices the label with, and always on char boundaries: an
+/// accent is two bytes and a slice through the middle of one panics a
+/// repaint. Agrees with [`orderless_score`] about what a match is —
+/// a surviving row with nothing highlighted would read as a bug.
+#[must_use]
+pub fn match_spans(needle: &str, hay: &str) -> Vec<(usize, usize)> {
+    // Char index -> byte offset, so a component's positions can be
+    // turned back into slices of the original.
+    let offsets: Vec<usize> = hay.char_indices().map(|(i, _)| i).collect();
+    let lower: Vec<char> = hay.chars().flat_map(char::to_lowercase).collect();
+    let mut hits: Vec<usize> = Vec::new();
+    for component in needle.split_whitespace() {
+        let mut from = 0usize;
+        let mut found: Vec<usize> = Vec::new();
+        for nc in component.chars().flat_map(char::to_lowercase) {
+            let Some(rel) = lower[from..].iter().position(|&hc| hc == nc) else {
+                // One component missing is the whole query missing,
+                // exactly as `orderless_score` decides it.
+                return Vec::new();
+            };
+            found.push(from + rel);
+            from += rel + 1;
+        }
+        hits.extend(found);
+    }
+    hits.sort_unstable();
+    hits.dedup();
+    // Adjacent characters become one run: three one-character spans
+    // paint the same pixels and cost three elements to do it.
+    let mut spans: Vec<(usize, usize)> = Vec::new();
+    for at in hits {
+        let Some(&start) = offsets.get(at) else {
+            continue;
+        };
+        let end = offsets.get(at + 1).copied().unwrap_or(hay.len());
+        match spans.last_mut() {
+            Some(last) if last.1 == start => last.1 = end,
+            _ => spans.push((start, end)),
+        }
+    }
+    spans
+}
+
 /// Filter `items` by fuzzy-matching `needle`, best score first.
 /// Ties keep the input order (stable sort).
 #[must_use]

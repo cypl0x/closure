@@ -10579,6 +10579,10 @@ pub struct PickRow {
     pub detail: String,
     /// The right-hand column: a chord, a language, a marker.
     pub trailing: String,
+    /// Byte ranges of [`Self::label`] the filter matched, for the
+    /// shell to paint — vertico's highlighting, which is what tells you
+    /// why a row is in a list of near-identical ones.
+    pub matches: Vec<(usize, usize)>,
     /// Whether the cursor is on it.
     pub current: bool,
 }
@@ -15665,6 +15669,15 @@ impl ModalApp {
     #[must_use]
     pub fn picker_view(&self, shell: &Shell) -> Option<PickerView> {
         let (title, hint, mut rows) = self.picker_rows(shell)?;
+        // Which characters of each label the filter matched, marked
+        // once here rather than by each surface: every picker filters
+        // the same way, so every picker highlights the same way.
+        let filter = self.prompt_text().unwrap_or_default();
+        if !filter.trim().is_empty() {
+            for row in &mut rows {
+                row.matches = closure_query::match_spans(filter, &row.label);
+            }
+        }
         // A cursor pointing past the narrowed list is how a picker
         // opens the wrong thing, so it is clamped where it is read
         // rather than everywhere it is moved.
@@ -15680,6 +15693,45 @@ impl ModalApp {
         })
     }
 
+    /// The open buffers as picker rows; dirty ones say so and the one
+    /// on screen carries a dot.
+    fn buffer_pick_rows(&self, shell: &Shell) -> Vec<PickRow> {
+        self.buffer_rows(shell)
+            .into_iter()
+            .filter(|r| r.matches_filter)
+            .map(|r| PickRow {
+                label: r.name,
+                detail: if r.dirty {
+                    "unsaved".to_owned()
+                } else {
+                    String::new()
+                },
+                trailing: if r.current {
+                    "\u{25cf}".to_owned()
+                } else {
+                    String::new()
+                },
+                matches: Vec::new(),
+                current: false,
+            })
+            .collect()
+    }
+
+    /// The recent files as picker rows.
+    fn file_pick_rows(&self, shell: &Shell) -> Vec<PickRow> {
+        self.file_rows(shell)
+            .into_iter()
+            .filter(|r| r.matches_filter)
+            .map(|r| PickRow {
+                label: r.name,
+                detail: r.path.display().to_string(),
+                trailing: String::new(),
+                matches: Vec::new(),
+                current: false,
+            })
+            .collect()
+    }
+
     /// What the open surface is picking from: its title, what Enter
     /// does, and the rows surviving the filter.
     fn picker_rows(&self, shell: &Shell) -> Option<(&'static str, &'static str, Vec<PickRow>)> {
@@ -15693,6 +15745,7 @@ impl ModalApp {
                         label: e.label.clone(),
                         detail: e.description.clone(),
                         trailing: e.action.chord().to_owned(),
+                        matches: Vec::new(),
                         current: false,
                     })
                     .collect::<Vec<_>>(),
@@ -15700,39 +15753,9 @@ impl ModalApp {
             ModalSurface::Buffers => (
                 "buffers",
                 "RET opens \u{b7} the one you are in is marked",
-                self.buffer_rows(shell)
-                    .into_iter()
-                    .filter(|r| r.matches_filter)
-                    .map(|r| PickRow {
-                        label: r.name,
-                        detail: if r.dirty {
-                            "unsaved".to_owned()
-                        } else {
-                            String::new()
-                        },
-                        trailing: if r.current {
-                            "\u{25cf}".to_owned()
-                        } else {
-                            String::new()
-                        },
-                        current: false,
-                    })
-                    .collect(),
+                self.buffer_pick_rows(shell),
             ),
-            ModalSurface::Files => (
-                "files",
-                "RET opens",
-                self.file_rows(shell)
-                    .into_iter()
-                    .filter(|r| r.matches_filter)
-                    .map(|r| PickRow {
-                        label: r.name,
-                        detail: r.path.display().to_string(),
-                        trailing: String::new(),
-                        current: false,
-                    })
-                    .collect(),
-            ),
+            ModalSurface::Files => ("files", "RET opens", self.file_pick_rows(shell)),
             ModalSurface::Headlines => (
                 "headlines in this file",
                 "RET goes to it",
@@ -15742,6 +15765,7 @@ impl ModalApp {
                         label: title,
                         detail: String::new(),
                         trailing: id,
+                        matches: Vec::new(),
                         current: false,
                     })
                     .collect(),
@@ -15762,6 +15786,7 @@ impl ModalApp {
                             .strip_prefix(shell.vault.root())
                             .map_or_else(|_| file.clone(), |rel| rel.display().to_string()),
                         trailing: lang,
+                        matches: Vec::new(),
                         current: false,
                     })
                     .collect(),
@@ -15779,6 +15804,7 @@ impl ModalApp {
                         } else {
                             String::new()
                         },
+                        matches: Vec::new(),
                         current: false,
                     })
                     .collect(),

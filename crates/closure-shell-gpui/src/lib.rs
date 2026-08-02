@@ -5899,8 +5899,10 @@ impl GpuiView {
                                             .flex_none()
                                             .w(px(scaled_text_px(PALETTE_LABEL_W, zoom)))
                                             .overflow_hidden()
+                                            .flex()
+                                            .whitespace_nowrap()
                                             .text_color(rgb(co.fg))
-                                            .child(e.label.clone()),
+                                            .children(match_runs(co, &e.label, &e.matches)),
                                     )
                                     .child(
                                         div()
@@ -7078,6 +7080,40 @@ impl GpuiView {
             .set_status(format!("{reparsed} file(s) changed on disk — reloaded"));
         cx.notify();
     }
+}
+
+/// A label split into plain and matched runs, the matched ones in the
+/// accent colour.
+///
+/// Vertico paints the characters your query matched, and that is what
+/// makes a list of near-identical candidates readable: the row tells
+/// you why it is in the list. `spans` are byte ranges from
+/// [`closure_query::match_spans`], ascending and non-overlapping, so
+/// walking them is one pass with no sorting and no slicing backwards.
+#[cfg(any(feature = "gpui", feature = "gpui-test"))]
+fn match_runs(co: Colors, label: &str, spans: &[(usize, usize)]) -> Vec<gpui::Div> {
+    if spans.is_empty() {
+        return vec![div().child(label.to_owned())];
+    }
+    let mut out = Vec::with_capacity(spans.len() * 2 + 1);
+    let mut at = 0usize;
+    for &(start, end) in spans {
+        if start > at
+            && let Some(plain) = label.get(at..start)
+        {
+            out.push(div().child(plain.to_owned()));
+        }
+        if let Some(hit) = label.get(start..end) {
+            out.push(div().text_color(rgb(co.accent)).child(hit.to_owned()));
+        }
+        at = end.max(at);
+    }
+    if let Some(tail) = label.get(at..)
+        && !tail.is_empty()
+    {
+        out.push(div().child(tail.to_owned()));
+    }
+    out
 }
 
 /// UTF-16 code-unit offset for a byte offset into `text`.
