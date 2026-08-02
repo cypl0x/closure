@@ -85,3 +85,18 @@ fn the_columns_stay_modest_at_ordinary_zoom() {
         chip_col_px(4.0, 1.0)
     );
 }
+
+#[test]
+fn the_keyword_column_holds_the_longest_keyword_a_vault_declares() {
+    // `CANCELLED` is nine characters and org's `#+TODO:` line is how a
+    // vault asks for it. A column sized for `TODO` clipped it to
+    // `CANCEL` — visible on screen, and the first version of this fix
+    // shipped with a comment claiming six characters covered it.
+    for zoom in ZOOMS {
+        let text = scaled_text_px(CHIP_TEXT, zoom);
+        assert!(
+            chip_col_px(10.0, zoom) >= advance(text) * 9.0,
+            "CANCELLED at zoom {zoom}"
+        );
+    }
+}

@@ -706,6 +706,22 @@ pub fn highlight_body(body: &str) -> Vec<Vec<(BodySpan, String)>> {
     out
 }
 
+/// The span kind of a TODO keyword: finished work reads differently
+/// from work outstanding.
+///
+/// One predicate ([`closure_shell_core::keyword_is_done`]) rather than
+/// a match here, because a match here is what made `CANCELLED` a
+/// settled green dot in the outline and an alarm-red word in the
+/// buffer on the same headline.
+#[must_use]
+pub fn keyword_span(keyword: &str) -> BodySpan {
+    if closure_shell_core::keyword_is_done(keyword) {
+        BodySpan::Done
+    } else {
+        BodySpan::Todo
+    }
+}
+
 /// Classify one body line that is not inside a block.
 fn free_line_spans(line: &str) -> Vec<(BodySpan, String)> {
     if let Some(spans) = headline_spans(line) {
@@ -770,12 +786,7 @@ fn headline_spans(line: &str) -> Option<Vec<(BodySpan, String)>> {
     if let Some(keyword) = headline.todo()
         && line[at..].starts_with(keyword)
     {
-        let kind = if keyword == "DONE" {
-            BodySpan::Done
-        } else {
-            BodySpan::Todo
-        };
-        push(kind, keyword, &mut out);
+        push(keyword_span(keyword), keyword, &mut out);
         at += keyword.len();
     }
     if let Some(letter) = headline.priority() {
@@ -1926,10 +1937,12 @@ pub fn body_row_h(zoom: f32) -> f32 {
 /// or not — a column that appears only on some rows moves every title
 /// beside it.
 ///
-/// Six covers `CANCELLED` at the padding the chip carries; a longer
-/// keyword somebody configures is clipped rather than wrapped.
+/// The floor, not the answer: a vault that declares `CANCELLED` with
+/// org's own `#+TODO:` line needs nine, and a column sized for `TODO`
+/// clipped it to `CANCEL`. The painter takes the longest keyword
+/// actually on screen and falls back to this.
 #[cfg(feature = "gpui")]
-const KEYWORD_CHARS: f32 = 6.0;
+const KEYWORD_CHARS: f32 = 4.0;
 
 /// The size the row's chips are painted at, unzoomed — the keyword and
 /// the priority cookie.
@@ -3323,7 +3336,15 @@ impl GpuiView {
                         .flex_1()
                         .min_w(px(0.0))
                         .overflow_hidden()
-                        .child(caret_text(co, text, cursor)),
+                        .child(caret_text_kind(
+                            co,
+                            text,
+                            cursor,
+                            matches!(
+                                self.app.surface(),
+                                ModalSurface::Rename | ModalSurface::AddSibling
+                            ),
+                        )),
                 )
                 // What this field will do, in the field's own row. It
                 // was in the status line at the bottom of the window,
@@ -3678,7 +3699,30 @@ impl GpuiView {
         if self.drag.target() == Some(i) && self.drag.source() != Some(i) {
             line = line.border_b_2().border_color(rgb(co.warning));
         }
-        Self::outline_cells(line, co, self.app.zoom(), i, &row, cx)
+        Self::outline_cells(line, co, self.app.zoom(), self.keyword_chars(), i, &row, cx)
+    }
+
+    /// How many characters the keyword column has to hold.
+    ///
+    /// The longest keyword actually on screen, floored at
+    /// [`KEYWORD_CHARS`]. A fixed width sized for `TODO` clipped a
+    /// vault that declares `CANCELLED` with org's own `#+TODO:` line to
+    /// `CANCEL` — and a width sized for `CANCELLED` would push every
+    /// title right in the vaults that never use it.
+    fn keyword_chars(&self) -> f32 {
+        self.app
+            .rows_shared(&self.shell)
+            .iter()
+            .filter_map(|r| r.todo.as_ref())
+            // A keyword longer than a line of text is not a keyword,
+            // so the cast is bounded by the clamp rather than by hope.
+            .map(|k| u16::try_from(k.chars().count()).unwrap_or(u16::MAX))
+            .max()
+            .map_or(KEYWORD_CHARS, |n| {
+                // A character of air after the longest word, so the
+                // chip's own padding does not eat its last letter.
+                KEYWORD_CHARS.max(f32::from(n) + 1.0)
+            })
     }
 
     /// The cells of an outline row: indent, fold arrow, status glyph,
@@ -3688,6 +3732,7 @@ impl GpuiView {
         line: gpui::Div,
         co: Colors,
         zoom: f32,
+        kw_chars: f32,
         i: usize,
         row: &Row,
         cx: &Context<Self>,
@@ -3696,11 +3741,18 @@ impl GpuiView {
         // frame is the same answer at wheel speed.
         let folded = row.folded;
         let step = indent_step(zoom);
-        let (todo_col, glyph) = match row.todo.as_deref() {
-            Some("DONE" | "CANCELLED" | "KILL") => (co.success, "●"),
-            Some(_) => (co.error, "○"),
-            None => (co.muted, "·"),
-        };
+        // One predicate for "is this finished", shared with the body
+        // highlighter and the glyph: they used to be three lists and
+        // `CANCELLED` came out green here and alarm-red in the buffer.
+        let (todo_col, glyph) = row.todo.as_deref().map_or_else(
+            || (co.muted, closure_shell_core::todo_glyph_for("")),
+            |k| {
+                (
+                    span_color(co, keyword_span(k)),
+                    closure_shell_core::todo_glyph_for(k),
+                )
+            },
+        );
         // Both the fold arrow and the status glyph select their row
         // first, so a click acts on what it points at.
         let act = |command: &'static str| {
@@ -3769,7 +3821,7 @@ impl GpuiView {
         // whatever zoom this is — and never wrapping, so a keyword
         // nobody anticipated is clipped rather than folded in half.
         let keyword = div()
-            .w(px(chip_col_px(KEYWORD_CHARS, zoom)))
+            .w(px(chip_col_px(kw_chars, zoom)))
             .mr_1()
             .flex_none()
             .whitespace_nowrap()
@@ -5075,11 +5127,21 @@ impl GpuiView {
                             .zip(widths)
                             .enumerate()
                             .map(|(col, (text, w))| {
-                                // Title reads as content, the rest as metadata.
+                                // Title reads as content, the rest as
+                                // metadata — except the keyword and the
+                                // priority, which mean the same thing
+                                // here as in the tree and so look the
+                                // same. This column painted `CANCELLED`
+                                // in the open-work red while the same
+                                // headline was settled green two inches
+                                // to the left.
                                 let colour = match col {
                                     0 => co.fg,
-                                    1 => co.error,
-                                    2 => co.warning,
+                                    1 if !text.is_empty() => span_color(co, keyword_span(&text)),
+                                    2 => text
+                                        .chars()
+                                        .next()
+                                        .map_or(co.muted, |l| priority_color(co, l)),
                                     _ => co.muted,
                                 };
                                 cell(text, w, colour, 12.0)
@@ -7576,6 +7638,40 @@ impl Render for Hint {
 /// shape wherever it appears.
 #[cfg(feature = "gpui")]
 fn caret_text(co: Colors, text: &str, cursor: usize) -> gpui::Div {
+    caret_text_kind(co, text, cursor, false)
+}
+
+/// The same, optionally colouring a leading TODO keyword.
+///
+/// "In the prompt TODO is just white text": the field that names a new
+/// headline shows the keyword you are typing into it, and it showed it
+/// as prose while the same word two inches below was the outline's
+/// red. Only the surfaces where the text *is* a headline ask for it —
+/// a leading `TODO` in a search box is a word you are searching for.
+#[cfg(feature = "gpui")]
+fn caret_text_kind(co: Colors, text: &str, cursor: usize, headline: bool) -> gpui::Div {
+    if headline
+        && let Some((start, end)) = closure_shell_core::leading_keyword(text)
+        && cursor >= end
+    {
+        // The caret is past the keyword, so the keyword is a finished
+        // word and can be painted as one. While it is still being
+        // typed the caret sits inside it and splitting the run would
+        // put the bar in the middle of a coloured word.
+        let kind = keyword_span(&text[start..end]);
+        let d = span_decoration(kind);
+        return div()
+            .flex()
+            .flex_row()
+            .child(
+                div()
+                    .flex_none()
+                    .text_color(rgb(span_color(co, kind)))
+                    .when(d.bold, |x| x.font_weight(gpui::FontWeight::BOLD))
+                    .child(text[start..end].to_owned()),
+            )
+            .child(caret_text(co, &text[end..], cursor - end));
+    }
     let (head, tail) = caret_split(text, cursor);
     div()
         .flex()

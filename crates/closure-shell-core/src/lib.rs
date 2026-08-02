@@ -1949,11 +1949,57 @@ fn toggle_visibility(shell: &mut Shell, id: &closure_core::BlockId) -> Option<bo
 /// keywords get a filled marker, open ones a hollow marker, anything else
 /// a diamond.
 fn todo_glyph(keyword: &str) -> &'static str {
-    match keyword {
-        "DONE" | "CANCELLED" | "KILL" => "●",
-        "TODO" | "NEXT" | "WAIT" => "○",
-        _ => "◆",
+    todo_glyph_for(keyword)
+}
+
+/// Does this TODO keyword mean the work is finished?
+///
+/// Three places used to decide this independently, and they disagreed:
+/// the glyph and the outline row counted `CANCELLED` and `KILL` as
+/// finished, the body highlighter counted only `DONE`, so one headline
+/// was a settled green dot in the tree and an alarm-red word in the
+/// buffer. Which keywords mean finished is a property of org and of
+/// the user's `todo_keywords`, not of whichever painter is running.
+///
+/// An unrecognised keyword is *not* finished — the safe way round,
+/// because a task shown as open is one you look at again and a task
+/// shown as done is one you lose.
+#[must_use]
+pub fn keyword_is_done(keyword: &str) -> bool {
+    matches!(keyword, "DONE" | "CANCELLED" | "KILL")
+}
+
+/// The status glyph for a TODO keyword: filled when it is finished.
+///
+/// Derived from [`keyword_is_done`] rather than from a second list, so
+/// the dot and the colour cannot drift apart again.
+#[must_use]
+pub fn todo_glyph_for(keyword: &str) -> &'static str {
+    if keyword_is_done(keyword) {
+        "●"
+    } else if keyword.is_empty() {
+        "·"
+    } else {
+        "○"
     }
+}
+
+/// The byte range of the TODO keyword `text` opens with, if any.
+///
+/// "In the prompt TODO is just white text" — a field cannot colour
+/// what it cannot locate, and a headline being typed has no stars in
+/// front of it yet, so the body highlighter (which needs them) cannot
+/// answer. Only a leading, whole, uppercase word counts: `TODOS` is a
+/// plural and `buy milk TODO` is a sentence that ends in shouting.
+#[must_use]
+pub fn leading_keyword(text: &str) -> Option<(usize, usize)> {
+    let word = text.split_whitespace().next()?;
+    if !text.starts_with(word) {
+        return None;
+    }
+    let known = keyword_is_done(word)
+        || matches!(word, "TODO" | "NEXT" | "WAIT" | "HOLD" | "PROJ" | "STRT");
+    known.then_some((0, word.len()))
 }
 
 /// Overlay ephemeral peer presence onto rows (Q11-C3).
