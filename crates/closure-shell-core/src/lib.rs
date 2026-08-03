@@ -6683,6 +6683,15 @@ impl SyncApp {
         /// -digit milliseconds; short enough that hitting it is a
         /// stutter rather than a hang.
         const DIAL: std::time::Duration = std::time::Duration::from_millis(60);
+        /// How long to wait for a peer that *accepted* to say
+        /// something.
+        ///
+        /// Connecting is not the only way to stall: a host with some
+        /// other service on the port accepts instantly and then never
+        /// speaks our protocol, and the old five seconds of patience
+        /// were five seconds of frozen window. A peer that is really
+        /// closure answers in single-digit milliseconds on a LAN.
+        const READ_BUDGET: std::time::Duration = std::time::Duration::from_millis(200);
         if self
             .quiet_until
             .get(&addr)
@@ -6695,7 +6704,7 @@ impl SyncApp {
             e.to_string()
         })?;
         stream
-            .set_read_timeout(Some(std::time::Duration::from_secs(5)))
+            .set_read_timeout(Some(READ_BUDGET))
             .map_err(|e| e.to_string())?;
         closure_sync::TcpSyncTransport::stream_round_client(&mut stream, &mut self.session)
             .map_err(|e| e.to_string())?;
@@ -14423,6 +14432,20 @@ impl ModalApp {
     /// because a memo that never hits would make every frame pay for
     /// the whole subtree of whatever is selected.
     pub fn note_slow_key(&mut self, key: &str, took: std::time::Duration, shell: &Shell) {
+        self.note_slow_step(&format!("`{key}`"), took, shell);
+    }
+
+    /// Time any named step, not only a keystroke.
+    ///
+    /// "SPC t T doesn't do anything other than its activation message."
+    /// It was armed and honest: it timed *keystrokes*, and the stall
+    /// being chased happens on the reload timer, where the live session
+    /// dials its peers. So the instrument was watching the one place
+    /// the problem was not, and correctly reported nothing.
+    ///
+    /// A tracer that only sees the work you already suspect is not an
+    /// instrument, it is a confirmation.
+    pub fn note_slow_step(&mut self, step: &str, took: std::time::Duration, shell: &Shell) {
         /// Anything under a frame is not a freeze, and logging it
         /// would bury the one step that is.
         const FRAME: std::time::Duration = std::time::Duration::from_millis(16);
@@ -14435,7 +14458,7 @@ impl ModalApp {
             .map_or_else(|| "-".to_owned(), |d| d.level.to_string());
         let derived = self.detail_recomputes() - before;
         self.say(format!(
-            "trace: `{key}` took {}ms · {:?} · level {level} · detail derived {derived}x",
+            "trace: {step} took {}ms · {:?} · level {level} · detail derived {derived}x",
             took.as_millis(),
             self.surface,
         ));

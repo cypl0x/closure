@@ -8551,7 +8551,14 @@ impl GpuiView {
                         // the network instead of the disk, and two
                         // timers racing on one vault is how a merge
                         // lands on top of a reload.
-                        if this.app.session_tick(&this.shell) > 0 {
+                        let started = std::time::Instant::now();
+                        let rounds = this.app.session_tick(&this.shell);
+                        // The tick is where the stall actually was, and
+                        // the tracer could not see it: it timed
+                        // keystrokes, and this is not one.
+                        let took = started.elapsed();
+                        this.app.note_slow_step("session tick", took, &this.shell);
+                        if rounds > 0 {
                             // A replica that converged is half a sync;
                             // the vault is what gets opened in Emacs.
                             let applied = this.app.sync_mut().apply_to_vault(&mut this.shell);
