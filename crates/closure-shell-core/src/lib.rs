@@ -22100,3 +22100,136 @@ fn modal_stroke(key: &str, ctrl: bool, alt: bool, text: Option<char>) -> Option<
         Some(base)
     }
 }
+
+/// One row of the assistant's setup screen: a config key, what it is
+/// set to, and what the shell can tell the user about it.
+#[derive(Debug, Clone)]
+pub struct SettingField {
+    /// The `config.org` key this row writes.
+    pub key: &'static str,
+    /// Short human label.
+    pub label: &'static str,
+    /// One line on what the setting is for.
+    pub help: &'static str,
+    /// What it is set to now — empty when unset.
+    pub value: String,
+    /// Shown in place of an empty value, so "unset" and "set to
+    /// nothing" do not look the same.
+    pub placeholder: &'static str,
+    /// Live commentary: what the value *means* right now. Where a
+    /// request will really go; whether the named key variable actually
+    /// exists in the environment. Never the key itself.
+    pub detail: String,
+    /// The values worth offering, when the setting is a closed set.
+    pub choices: Vec<String>,
+}
+
+/// The assistant's settings, in the order they are worth filling in.
+///
+/// The key never appears here. `llm_key_env` names an *environment
+/// variable*, so this screen can be photographed without leaking
+/// anything — but it does say whether that variable is currently set,
+/// because "provider configured, key never exported" is the failure
+/// people actually hit and it is invisible from the config alone.
+#[must_use]
+pub fn assistant_settings(cfg: &closure_config::Config) -> Vec<SettingField> {
+    assistant_settings_with(cfg, &|name| std::env::var(name).ok())
+}
+
+/// The same, reading the environment through `lookup`.
+///
+/// The shell passes the real environment. Taking it as an argument is
+/// what lets "the named key variable is missing" be tested at all: the
+/// workspace forbids `unsafe`, and `set_var` is unsafe for good
+/// reasons — it is process-wide and racy against every other thread.
+#[must_use]
+pub fn assistant_settings_with(
+    cfg: &closure_config::Config,
+    lookup: &dyn Fn(&str) -> Option<String>,
+) -> Vec<SettingField> {
+    let provider = cfg.llm_provider.clone().unwrap_or_default();
+    let kind = closure_llm::provider_kind(cfg.llm_provider.as_deref());
+    let needs_key = matches!(
+        kind,
+        closure_llm::ProviderKind::OpenAi | closure_llm::ProviderKind::Anthropic
+    );
+
+    let key_detail = match cfg.llm_key_env.as_deref() {
+        _ if !needs_key => "this provider needs no key".to_owned(),
+        None | Some("") => "no variable named — required for this provider".to_owned(),
+        Some(var) => {
+            if lookup(var).is_some_and(|v| !v.is_empty()) {
+                format!("${var} is set")
+            } else {
+                format!("${var} is not set in this environment")
+            }
+        }
+    };
+
+    let endpoint_detail = cfg.llm_endpoint.as_deref().map_or_else(
+        || {
+            let default = match kind {
+                closure_llm::ProviderKind::OpenAi => closure_llm::OPENAI_URL,
+                closure_llm::ProviderKind::Anthropic => closure_llm::ANTHROPIC_URL,
+                closure_llm::ProviderKind::Ollama => "http://localhost:11434",
+                closure_llm::ProviderKind::Echo => "nowhere — echo never leaves the process",
+            };
+            format!("unset, so requests go to {default}")
+        },
+        |url| format!("requests go to {url}"),
+    );
+
+    vec![
+        SettingField {
+            key: "llm_provider",
+            label: "Provider",
+            help: "Which service answers. echo never leaves the process.",
+            value: provider,
+            placeholder: "unset — echo",
+            detail: String::new(),
+            choices: ["echo", "ollama", "openai", "anthropic"]
+                .iter()
+                .map(|s| (*s).to_owned())
+                .collect(),
+        },
+        SettingField {
+            key: "llm_model",
+            label: "Model",
+            help: "The model name, as the provider spells it.",
+            value: cfg.llm_model.clone().unwrap_or_default(),
+            placeholder: "unset — the provider's default",
+            detail: String::new(),
+            choices: Vec::new(),
+        },
+        SettingField {
+            key: "llm_key_env",
+            label: "Key variable",
+            help: "Names the environment variable holding the key. The key never lives in this file.",
+            value: cfg.llm_key_env.clone().unwrap_or_default(),
+            placeholder: "unset",
+            detail: key_detail,
+            choices: ["ANTHROPIC_API_KEY", "OPENAI_API_KEY"]
+                .iter()
+                .map(|s| (*s).to_owned())
+                .collect(),
+        },
+        SettingField {
+            key: "llm_endpoint",
+            label: "Endpoint",
+            help: "Point at any compatible server: llama.cpp, vLLM, LiteLLM, a gateway.",
+            value: cfg.llm_endpoint.clone().unwrap_or_default(),
+            placeholder: "unset — the provider's own",
+            detail: endpoint_detail,
+            choices: Vec::new(),
+        },
+        SettingField {
+            key: "llm_tools",
+            label: "Tools",
+            help: "Which vault commands the assistant may run. Empty allows every non-render tool.",
+            value: cfg.llm_tools.clone().unwrap_or_default().join(", "),
+            placeholder: "unset — all but render",
+            detail: String::new(),
+            choices: Vec::new(),
+        },
+    ]
+}
