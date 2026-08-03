@@ -82,19 +82,33 @@ fn the_widest_chord_sets_it_for_everyone() {
 }
 
 #[test]
-fn a_panel_of_short_chords_keeps_the_old_width() {
-    // The floor. Sizing to content must not slide the descriptions
-    // leftwards on a keymap that happens to be terse — 56px is what
-    // the panel has always looked like and it stays the minimum.
-    assert!((which_key_chord_w(&group(&["?", "g"]), ADVANCE) - 56.0).abs() < f32::EPSILON);
+fn a_panel_of_short_chords_pulls_its_descriptions_in() {
+    // Written first as "a terse keymap keeps the old 56px", on the
+    // theory that the previous look was worth preserving. The user
+    // asked for the opposite on 2026-08-03: on the `g` prefix, where
+    // the widest chord is three characters, 56px left every
+    // description marooned a third of the panel away from its key —
+    // "the alignment between the keybind and the command looks a bit
+    // off", and far enough that `g O`, `g l`, `g y` and `g r` read as
+    // unbound. They are all bound. There is no floor now, so this
+    // asserts the tight pairing instead of the old padding.
+    let width = which_key_chord_w(&group(&["g O", "g !"]), ADVANCE);
+    assert!(
+        width < 56.0,
+        "a three-character chord still reserves {width}px"
+    );
+    assert!(
+        width > 3.0 * ADVANCE,
+        "{width}px does not fit `g O` and a gap"
+    );
 }
 
 #[test]
-fn an_empty_panel_has_a_width_anyway() {
+fn an_empty_panel_still_has_a_gap() {
     // `which_key_filter` can narrow to nothing while a chord is
-    // pending; a width of zero would be a divide-by-nothing in the
-    // layout rather than an empty panel.
-    assert!(which_key_chord_w(&[], ADVANCE) >= 56.0);
+    // pending. Nothing is painted then, but a zero width would be a
+    // layout with no gap in it at all rather than an empty panel.
+    assert!(which_key_chord_w(&[], ADVANCE) > 0.0);
 }
 
 #[test]

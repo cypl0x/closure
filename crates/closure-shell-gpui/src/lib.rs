@@ -1757,13 +1757,25 @@ pub fn which_key_filter(
 }
 
 /// The width every chord cell in the which-key panel gets, in pixels:
-/// the widest chord on show, plus a gap, never below a floor.
+/// the widest chord on show, plus a gap.
 ///
-/// The panel used a constant 56px. A chord wider than that wrapped
-/// *inside its own box* while the description stayed beside the first
-/// line, so `C-c <down>` printed as `C-c` with `<down>` orphaned
-/// underneath — which reads as a binding that does not exist. One
-/// wrapping chord is a panel telling you the wrong key.
+/// The panel used a constant 56px, which was wrong in both directions.
+///
+/// Too narrow: a chord wider than 56px wrapped *inside its own box*
+/// while the description stayed beside the first line, so `C-c <down>`
+/// printed as `C-c` with `<down>` orphaned underneath — a binding that
+/// does not exist, for a command that lives elsewhere. A chord whose
+/// tail wrapped past the row lost the tail outright, which is how four
+/// different clock keys all came to advertise themselves as `C-c C-x`.
+///
+/// Too wide: on the `g` prefix, where the longest chord is three
+/// characters, every description sat 56px out from a chord a third
+/// that size. The user reported this as "the alignment between the
+/// keybind and the command looks a bit off" on 2026-08-03, and asked
+/// whether the far-flung entries (`g O`, `g l`, `g y`, `g r`) were
+/// unbound. They are all bound; the gap is what made them look
+/// orphaned. So there is no floor — the column hugs the widest chord
+/// it is actually showing.
 ///
 /// It is one width for all of them rather than one per cell because
 /// the descriptions form a column, and that column is what makes the
@@ -1772,9 +1784,6 @@ pub fn which_key_filter(
 /// either.
 #[must_use]
 pub fn which_key_chord_w(groups: &[(String, Vec<(String, String)>)], advance: f32) -> f32 {
-    /// Never narrower than the old constant: a panel of one-key chords
-    /// should not slide its descriptions leftwards into a ragged edge.
-    const FLOOR: f32 = 56.0;
     /// Room between the chord and what it does, so the two never touch
     /// the way `C-c <up>priority-up` did.
     const GAP: f32 = 10.0;
@@ -1788,8 +1797,7 @@ pub fn which_key_chord_w(groups: &[(String, Vec<(String, String)>)], advance: f3
         clippy::cast_precision_loss,
         reason = "a chord is a handful of characters"
     )]
-    let needed = (widest as f32).mul_add(advance, GAP);
-    needed.max(FLOOR)
+    (widest as f32).mul_add(advance, GAP)
 }
 
 /// Launch fallback when the `gpui` feature is disabled (the default,
