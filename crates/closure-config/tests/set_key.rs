@@ -146,3 +146,34 @@ fn an_empty_value_clears_the_setting_rather_than_writing_a_blank() {
     let cfg = closure_config::Config::from_org_source(&out).expect("parses");
     assert_eq!(cfg.theme, closure_config::Config::default().theme, "{out}");
 }
+
+#[test]
+fn a_lowercase_block_is_the_same_block() {
+    // Org keywords are case-insensitive and people write them
+    // lowercase. Matching only `#+BEGIN_SRC` meant the block was not
+    // found, a *second* one was appended, and the reader takes the
+    // first — so the setting silently did nothing. Caught on :1 by
+    // looking at config.org after the save, not by any test above.
+    let lower = "\
+#+begin_src closure-config
+llm_provider = openai
+llm_key_env = K
+#+end_src
+";
+    let out = set_key(lower, "llm_endpoint", "http://127.0.0.1:8080");
+    assert_eq!(
+        out.to_lowercase().matches("#+begin_src").count(),
+        1,
+        "a second block was appended:\n{out}"
+    );
+    let cfg = closure_config::Config::from_org_source(&out).expect("parses");
+    assert_eq!(cfg.llm_endpoint.as_deref(), Some("http://127.0.0.1:8080"));
+}
+
+#[test]
+fn a_lowercase_key_line_is_replaced_not_duplicated() {
+    let lower = "#+begin_src closure-config\nllm_model = old\n#+end_src\n";
+    let out = set_key(lower, "llm_model", "new");
+    assert_eq!(out.matches("llm_model").count(), 1, "{out}");
+    assert!(out.contains("llm_model = new"), "{out}");
+}

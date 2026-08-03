@@ -2096,6 +2096,42 @@ impl App {
             "open-config" => {
                 self.status = "open config.org — `closure tui` opens it like any file".into();
             }
+            // Not a GUI-only command either: the settings are text, so
+            // the terminal reports them rather than answering with an
+            // apology. Editing them is the window's job, but "what is
+            // the assistant set to, and is my key actually exported"
+            // is the question people have, and it is answerable here.
+            "assistant-setup" => {
+                // The driver owns the vault, so the config is found
+                // among the files this shell was given rather than off
+                // a root it does not hold. No config.org means every
+                // setting is unset, which is what the default says.
+                let cfg = self
+                    .paths
+                    .iter()
+                    .find(|p| {
+                        p.file_name()
+                            .is_some_and(|n| n == closure_config::CONFIG_FILE)
+                    })
+                    .and_then(|p| closure_config::Config::from_path(p).ok())
+                    .unwrap_or_default();
+                let summary: Vec<String> = closure_shell_core::assistant_settings(&cfg)
+                    .into_iter()
+                    .map(|f| {
+                        let value = if f.value.is_empty() {
+                            f.placeholder.to_owned()
+                        } else {
+                            f.value
+                        };
+                        if f.detail.is_empty() {
+                            format!("{}: {value}", f.label)
+                        } else {
+                            format!("{}: {value} ({})", f.label, f.detail)
+                        }
+                    })
+                    .collect();
+                self.status = summary.join(" · ");
+            }
             // Same reason: a terminal has nowhere to put the picture.
             // Rendering anyway would leave files nobody asked for.
             "preview-diagrams" => {

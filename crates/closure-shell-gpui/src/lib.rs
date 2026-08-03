@@ -1511,6 +1511,7 @@ pub const fn accepts_paste(surface: ModalSurface, insert: bool) -> bool {
         | ModalSurface::Capture
         | ModalSurface::Rename
         | ModalSurface::AddSibling
+        | ModalSurface::Setting
         | ModalSurface::TagsEdit
         | ModalSurface::FindFile
         | ModalSurface::PropertyEdit
@@ -1530,7 +1531,10 @@ pub const fn accepts_paste(surface: ModalSurface, insert: bool) -> bool {
         | ModalSurface::Messages
         | ModalSurface::Llm => true,
         ModalSurface::EditBody | ModalSurface::EditBlock | ModalSurface::EditFile => insert,
-        ModalSurface::Browse
+        // The settings list is a read-only pane; its value prompt
+        // (`Setting`) is the field, and that one takes a paste.
+        ModalSurface::Settings
+        | ModalSurface::Browse
         | ModalSurface::Backlinks
         | ModalSurface::Agenda
         | ModalSurface::Blocks
@@ -3513,6 +3517,90 @@ impl GpuiView {
         }
     }
 
+    /// The assistant's setup screen: every option, what it is set to,
+    /// and what that means right now.
+    ///
+    /// The value column shows the placeholder when a setting is unset,
+    /// because a blank row cannot distinguish "never configured" from
+    /// "set to nothing" and those behave differently. The detail line
+    /// is where the screen earns its keep — whether the named key
+    /// variable actually exists, and which URL an unset endpoint
+    /// resolves to.
+    fn settings_pane(&self, co: Colors) -> gpui::Div {
+        let rows = self.app.settings_rows(&self.shell);
+        let cursor = self.app.settings_cursor();
+        let mut list = div().flex().flex_col().gap_1().p_2();
+        for (i, field) in rows.iter().enumerate() {
+            list = list.child(self.setting_row(co, field, i == cursor));
+        }
+        list
+    }
+
+    /// One row of the setup screen: label, value, and the line that
+    /// says what the value means right now.
+    fn setting_row(
+        &self,
+        co: Colors,
+        field: &closure_shell_core::SettingField,
+        selected: bool,
+    ) -> gpui::Div {
+        {
+            let being_edited = self.app.editing_setting() == Some(field.key);
+            let shown = if being_edited {
+                format!("{}\u{258f}", self.app.field_text())
+            } else if field.value.is_empty() {
+                field.placeholder.to_owned()
+            } else {
+                field.value.clone()
+            };
+            let value_color = if being_edited {
+                co.accent
+            } else if field.value.is_empty() {
+                co.muted
+            } else {
+                co.fg
+            };
+            let mut row = div()
+                .debug_selector({
+                    let k = field.key;
+                    move || format!("setting-{k}")
+                })
+                .flex()
+                .flex_col()
+                .rounded_sm()
+                .px_2()
+                .py_1();
+            if selected {
+                row = row.bg(rgb(co.hover));
+            }
+            row = row.child(
+                div()
+                    .flex()
+                    .flex_row()
+                    .gap_2()
+                    .child(
+                        div()
+                            .w(px(140.0))
+                            .flex_none()
+                            .text_color(rgb(if selected { co.heading2 } else { co.fg }))
+                            .child(field.label),
+                    )
+                    .child(div().text_color(rgb(value_color)).child(shown)),
+            );
+            row = row.child(
+                div()
+                    .text_size(self.sz(11.0))
+                    .text_color(rgb(co.muted))
+                    .child(if field.detail.is_empty() {
+                        field.help.to_owned()
+                    } else {
+                        format!("{}  \u{2022}  {}", field.help, field.detail)
+                    }),
+            );
+            row
+        }
+    }
+
     /// Context line describing the active surface (with the live input
     /// buffer + caret for the typing surfaces).
     /// The capture overlay's context row: where this thought will be
@@ -3889,10 +3977,19 @@ impl GpuiView {
     /// caret is a *mark* over a cell rather than a character in the
     /// text; what is returned here for them is the same line without
     /// one, for anything reading the context row as a string.
+    /// The context line for the setup screen and its value prompt.
+    fn settings_context(&self) -> String {
+        self.app.editing_setting().map_or_else(
+            || "assistant setup — RET edits, Esc closes; saved to config.org".to_owned(),
+            |key| format!("{key}: {}\u{258f}", self.app.field_text()),
+        )
+    }
+
     fn context_line(&self) -> String {
         let n = self.app.rows(&self.shell).len();
         match self.app.surface() {
             ModalSurface::Browse => format!("{n} headline(s)"),
+            ModalSurface::Settings | ModalSurface::Setting => self.settings_context(),
             ModalSurface::FindFile => format!("find file — {}\u{258f}", self.app.query()),
             ModalSurface::ImageView => self
                 .app
@@ -4619,6 +4716,7 @@ impl GpuiView {
                     .collect(),
                 "no scheduled jobs — declare them in the vault with a :CRON: property",
             )),
+            ModalSurface::Settings | ModalSurface::Setting => pane.child(self.settings_pane(co)),
             ModalSurface::Sniffer => pane.child(self.sniffer_pane(co, cx)),
             ModalSurface::Conflicts => pane.child(self.conflicts_pane(co, cx)),
             ModalSurface::UndoHistory => pane.children(self.undo_history_pane(co, cx)),

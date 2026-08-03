@@ -804,13 +804,18 @@ pub fn set_key(source: &str, key: &str, value: &str) -> String {
 
     for line in source.lines() {
         let trimmed = line.trim();
-        if trimmed.starts_with("#+BEGIN_SRC") && trimmed.contains("closure-config") {
+        // Org keywords are case-insensitive and people write them
+        // lowercase. Matching only the upper case meant the block was
+        // not found, a *second* one was appended, and the reader takes
+        // the first — so the setting silently did nothing.
+        let upper = trimmed.to_ascii_uppercase();
+        if upper.starts_with("#+BEGIN_SRC") && trimmed.contains("closure-config") {
             in_block = true;
             saw_block = true;
             out.push(line.to_owned());
             continue;
         }
-        if in_block && trimmed.starts_with("#+END_SRC") {
+        if in_block && upper.starts_with("#+END_SRC") {
             if !written && !value.is_empty() {
                 out.push(live.clone());
                 written = true;

@@ -4208,6 +4208,12 @@ const PALETTE_COMMANDS: &[(&str, &str, &str, &str)] = &[
         "Open config.org, writing a default one if there is none",
     ),
     (
+        "assistant-setup",
+        "assistant-setup",
+        "App",
+        "Set up the assistant: provider, model, key variable, endpoint, tools",
+    ),
+    (
         "toggle-tree",
         "toggle-tree",
         "View",
@@ -8191,6 +8197,11 @@ pub enum ModalSurface {
     BodySearch,
     /// Captured network flows with their allow/block rules (X3).
     Sniffer,
+    /// The assistant's setup screen: every `llm_*` option with what it
+    /// is set to, edited here and written back into `config.org`.
+    Settings,
+    /// Typing the new value for one setting, prefilled with the old.
+    Setting,
     /// CRDT field conflicts awaiting an ours/theirs decision.
     Conflicts,
     /// The vim-style `:` command line.
@@ -12045,6 +12056,10 @@ pub struct ModalApp {
     /// surfaces (tags: space-separated; property: `key value`).
     field_target: Option<String>,
     field_buf: LineInput,
+    /// Which settings row the assistant screen has selected.
+    settings_cursor: usize,
+    /// The setting whose value prompt is open, if one is.
+    editing_setting: Option<&'static str>,
     /// Which of the four new-headline chords opened the title prompt.
     new_heading: NewHeading,
     /// Whether the which-key panel is pinned open. A pending chord
@@ -12580,6 +12595,8 @@ impl ModalApp {
             link_target: None,
             field_target: None,
             field_buf: LineInput::default(),
+            settings_cursor: 0,
+            editing_setting: None,
             new_heading: NewHeading {
                 child: false,
                 todo: false,
@@ -13568,6 +13585,17 @@ impl ModalApp {
                 let len = self.cron_rows(shell).len();
                 self.on_pane_key(key, len);
             }
+            ModalSurface::Settings => self.on_settings_key(shell, key),
+            ModalSurface::Setting => match key {
+                "escape" => {
+                    self.editing_setting = None;
+                    self.surface = ModalSurface::Settings;
+                }
+                "enter" => self.commit_setting(shell),
+                _ => {
+                    self.field_buf.key(key, ctrl, alt, text);
+                }
+            },
             ModalSurface::DatePick => self.on_datepick_key(shell, key, text),
             ModalSurface::Refile => self.on_refile_key(shell, key, ctrl, alt, text),
             ModalSurface::TagPick => self.on_tagpick_key(shell, key, ctrl, alt, text),
@@ -14160,6 +14188,114 @@ impl ModalApp {
             took.as_millis(),
             self.surface,
         ));
+    }
+
+    /// The assistant's settings, read fresh from `config.org`.
+    ///
+    /// Fresh rather than cached because this screen is the one place
+    /// whose whole job is to agree with that file — a stale copy here
+    /// would show the user their own edit not taking effect.
+    #[must_use]
+    pub fn settings_rows(&self, shell: &Shell) -> Vec<SettingField> {
+        assistant_settings(&Self::vault_config(shell))
+    }
+
+    /// The key whose value prompt is open, if one is.
+    #[must_use]
+    pub const fn editing_setting(&self) -> Option<&'static str> {
+        self.editing_setting
+    }
+
+    /// What is currently typed into the settings value prompt.
+    #[must_use]
+    pub fn field_text(&self) -> &str {
+        self.field_buf.text()
+    }
+
+    /// Which settings row is selected.
+    #[must_use]
+    pub const fn settings_cursor(&self) -> usize {
+        self.settings_cursor
+    }
+
+    /// Keys on the settings screen: move, edit, leave.
+    fn on_settings_key(&mut self, shell: &Shell, key: &str) {
+        let len = self.settings_rows(shell).len();
+        match key {
+            // `go_home` rather than Browse: a pane opened from inside
+            // a buffer has to give the buffer back, which is an
+            // invariant the pane-return test holds every pane to.
+            "escape" | "q" => self.go_home(),
+            "j" | "down" => {
+                self.settings_cursor = (self.settings_cursor + 1).min(len.saturating_sub(1));
+            }
+            "k" | "up" => self.settings_cursor = self.settings_cursor.saturating_sub(1),
+            "g" => self.settings_cursor = 0,
+            "G" => self.settings_cursor = len.saturating_sub(1),
+            "enter" | "i" => self.begin_setting_edit(shell),
+            _ => {}
+        }
+    }
+
+    /// Open the value prompt for the selected setting, prefilled with
+    /// what it is set to now.
+    fn begin_setting_edit(&mut self, shell: &Shell) {
+        let rows = self.settings_rows(shell);
+        let Some(field) = rows.get(self.settings_cursor) else {
+            return;
+        };
+        self.editing_setting = Some(field.key);
+        self.field_buf.set_text(&field.value);
+        self.surface = ModalSurface::Setting;
+    }
+
+    /// Write the edited setting into `config.org` and go back to the
+    /// list.
+    ///
+    /// The write is [`closure_config::set_key`], so everything else in
+    /// the file — comments, ordering, keys this build does not know —
+    /// comes back untouched.
+    fn commit_setting(&mut self, shell: &mut Shell) {
+        let Some(key) = self.editing_setting.take() else {
+            return;
+        };
+        let value = self.field_buf.text().trim().to_owned();
+        let relative = std::path::Path::new(closure_config::CONFIG_FILE);
+        let path = shell.vault.root().join(relative);
+        let before = std::fs::read_to_string(&path).unwrap_or_default();
+        let after = closure_config::set_key(&before, key, &value);
+        let wrote = if path.is_file() {
+            let _ = shell.vault.reload_incremental();
+            shell
+                .vault
+                .set_source(&path, &after)
+                .map_err(|e| e.to_string())
+        } else {
+            shell
+                .vault
+                .create_file(relative, &after)
+                .map(|_| ())
+                .map_err(|e| e.to_string())
+        };
+        self.surface = ModalSurface::Settings;
+        match wrote {
+            Ok(()) => {
+                self.invalidate_rows();
+                // Read it back rather than trusting the write: the
+                // loader refuses some combinations (a provider with no
+                // key variable), and a screen that said "saved" over a
+                // config.org that will not load is worse than an error.
+                match closure_config::Config::from_path(&path) {
+                    Ok(_) => self.say(if value.is_empty() {
+                        format!("{key} cleared")
+                    } else {
+                        format!("{key} = {value}")
+                    }),
+                    Err(e) => self.say(format!("saved, but config.org will not load: {e}")),
+                }
+            }
+            Err(e) => self.say(format!("could not write config.org: {e}")),
+        }
     }
 
     /// The activity rail: every pane of the shell as a clickable
@@ -21450,6 +21586,11 @@ impl ModalApp {
             // function, and this puts it where a bug report can copy
             // it from.
             "open-config" => self.open_config(shell),
+            "assistant-setup" => {
+                self.settings_cursor = 0;
+                self.editing_setting = None;
+                self.surface = ModalSurface::Settings;
+            }
             "build-info" => {
                 let line = format!("closure {}", closure_core::build_info().describe());
                 self.say(line);

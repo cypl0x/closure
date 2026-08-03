@@ -23,6 +23,7 @@ use thiserror::Error;
 /// Doom/default bindings: SPC-leader friendly, single-key navigation.
 const DOOM_KEYMAP: &[(&str, &str)] = &[
     ("SPC f c", "open-config"),
+    ("SPC f a", "assistant-setup"),
     ("SPC t T", "toggle-trace"),
     ("SPC t D", "preview-diagrams"),
     ("SPC t i", "toggle-inline-images"),
@@ -239,6 +240,7 @@ const DOOM_KEYMAP: &[(&str, &str)] = &[
 /// Emacs bindings: Ctrl/Meta chords, `C-x C-c` quits.
 const EMACS_KEYMAP: &[(&str, &str)] = &[
     ("C-c f c", "open-config"),
+    ("C-c f a", "assistant-setup"),
     ("C-c M-t", "toggle-trace"),
     ("C-c C-x C-l", "preview-diagrams"),
     ("C-c i", "toggle-inline-images"),
@@ -397,6 +399,7 @@ const EMACS_KEYMAP: &[(&str, &str)] = &[
 /// Vim bindings: modal navigation keys.
 const VIM_KEYMAP: &[(&str, &str)] = &[
     ("g C-c", "open-config"),
+    ("g C-a", "assistant-setup"),
     ("g Y", "toggle-trace"),
     ("g L", "preview-diagrams"),
     ("g P", "toggle-inline-images"),
@@ -563,6 +566,7 @@ const VIM_KEYMAP: &[(&str, &str)] = &[
 /// Helix bindings: vim-like with `U` redo and `g e` for end.
 const HELIX_KEYMAP: &[(&str, &str)] = &[
     ("g C-c", "open-config"),
+    ("g C-a", "assistant-setup"),
     ("g Y", "toggle-trace"),
     ("g L", "preview-diagrams"),
     ("g P", "toggle-inline-images"),
@@ -728,6 +732,7 @@ const HELIX_KEYMAP: &[(&str, &str)] = &[
 /// Notion bindings: mouse + arrows + slash command, minimal chords.
 const NOTION_KEYMAP: &[(&str, &str)] = &[
     ("C-c f c", "open-config"),
+    ("C-c f a", "assistant-setup"),
     ("C-c M-t", "toggle-trace"),
     ("C-c C-x C-l", "preview-diagrams"),
     ("C-c i", "toggle-inline-images"),
