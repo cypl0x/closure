@@ -29,6 +29,7 @@ closure-eval = { path = "../closure-eval" }
 closure-org = { path = "../closure-org" }
 notify.workspace = true
 thiserror.workspace = true
+gix = { version = "0.86.0", features = ["status", "dirwalk", "blob-diff"] }
 
 [dev-dependencies]
 tempfile = "3"

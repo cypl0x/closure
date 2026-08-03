@@ -12784,63 +12784,62 @@ impl GitStatus {
 /// are a directory of org files and nothing more.
 #[must_use]
 pub fn git_status(root: &Path) -> Option<GitStatus> {
-    let git = |args: &[&str]| -> Option<String> {
-        let out = std::process::Command::new("git")
-            .args(args)
-            .current_dir(root)
-            .output()
-            .ok()?;
-        out.status
-            .success()
-            .then(|| String::from_utf8_lossy(&out.stdout).into_owned())
-    };
-    // Ask git itself whether this is a repository — walking up looking
-    // for `.git` would miss worktrees and submodules.
-    git(&["rev-parse", "--is-inside-work-tree"])?;
-
-    let branch = git(&["rev-parse", "--abbrev-ref", "HEAD"])
-        .map(|s| s.trim().to_owned())
-        .filter(|s| !s.is_empty())
-        .and_then(|name| {
-            if name == "HEAD" {
-                // Detached: name the commit instead, so the widget
-                // still says something true.
-                git(&["rev-parse", "--short", "HEAD"]).map(|s| s.trim().to_owned())
-            } else {
-                Some(name)
-            }
-        });
+    // gitoxide, not a subprocess. "Since shelling out to git was quite
+    // expensive for just reading the porcelain values." It was: the
+    // widget cost 6.3ms an edit, nearly all of it spawning processes
+    // and reading pipes, which is why it had to be rate-limited to stay
+    // out of the way. In-process it is a read.
+    //
+    // It also drops a runtime dependency: the packaged binary carried
+    // a whole `git` so that a status line could count three numbers.
+    // `discover`, not `open`: a vault is often a subdirectory of a
+    // dotfiles repository, and `rev-parse --is-inside-work-tree` walked
+    // up to find it. `open` only succeeds at the root itself, which a
+    // shipped test caught the moment the engine changed.
+    let repo = gix::discover(root).ok()?;
+    let branch = repo.head_name().ok().flatten().map_or_else(
+        || {
+            // Detached: name the commit instead, so the widget still
+            // says something true.
+            repo.head_id().ok().map(|id| id.shorten_or_id().to_string())
+        },
+        |name| Some(name.shorten().to_string()),
+    );
 
     let mut status = GitStatus {
         branch,
         ..GitStatus::default()
     };
-    // `-z` rather than lines: a path with a space in it is quoted in
-    // the default format, and a vault is full of prose filenames.
-    let porcelain = git(&["status", "--porcelain=v1", "-z"])?;
-    let mut fields = porcelain.split('\0');
-    while let Some(entry) = fields.next() {
-        if entry.len() < 3 {
-            continue;
-        }
-        let code = &entry[..2];
-        if code == "??" {
-            status.untracked += 1;
-            continue;
-        }
-        let mut bytes = code.bytes();
-        let index = bytes.next().unwrap_or(b' ');
-        let tree = bytes.next().unwrap_or(b' ');
-        if index != b' ' {
-            status.staged += 1;
-        }
-        if tree != b' ' {
-            status.modified += 1;
-        }
-        // A rename carries its old path as a second NUL-separated
-        // field; skipping it keeps the count one per file.
-        if index == b'R' || tree == b'R' {
-            let _ = fields.next();
+    let iter = repo
+        .status(gix::progress::Discard)
+        .ok()?
+        // Untracked files are counted, so the walk has to see them —
+        // and a vault's `.git` and asset directories are exactly what
+        // the default ignore rules are for.
+        .index_worktree_options_mut(|opts| {
+            opts.dirwalk_options = opts.dirwalk_options.take().map(|o| {
+                // `CollapseDirectory`, because that is what `git
+                // status` counts: a directory git has never seen is
+                // one untracked entry, not one per file inside it. On
+                // a real vault the difference was 13 against 50 — the
+                // assets folder counted forty times over.
+                o.emit_untracked(gix::dir::walk::EmissionMode::CollapseDirectory)
+                    .emit_ignored(None)
+            });
+        })
+        .into_iter(None)
+        .ok()?;
+    for item in iter.flatten() {
+        use gix::status::Item;
+        match item {
+            Item::IndexWorktree(change) => {
+                use gix::status::index_worktree::Item as IwItem;
+                match change {
+                    IwItem::DirectoryContents { .. } => status.untracked += 1,
+                    IwItem::Modification { .. } | IwItem::Rewrite { .. } => status.modified += 1,
+                }
+            }
+            Item::TreeIndex(_) => status.staged += 1,
         }
     }
     Some(status)
@@ -12880,67 +12879,69 @@ pub fn file_diff(root: &Path, file: &Path) -> Vec<(usize, LineChange)> {
 }
 
 fn file_diff_inner(root: &Path, file: &Path) -> Option<Vec<(usize, LineChange)>> {
-    let run = |args: &[&str]| -> Option<String> {
-        let out = std::process::Command::new("git")
-            .args(args)
-            .current_dir(root)
-            .output()
-            .ok()?;
-        out.status
-            .success()
-            .then(|| String::from_utf8_lossy(&out.stdout).into_owned())
-    };
-    run(&["rev-parse", "--is-inside-work-tree"])?;
-    let name = file.to_str()?;
+    // gitoxide, like the status above: this ran three processes per
+    // call and the editor asks for it on every frame.
+    let repo = gix::discover(root).ok()?;
+    let on_disk = root.join(file);
+    let worktree = std::fs::read_to_string(&on_disk).ok()?;
+    // The tree is addressed from the repository root, which is not
+    // necessarily the vault root — `git` resolved that itself because
+    // it ran with the vault as its working directory.
+    let name = on_disk
+        .strip_prefix(repo.workdir()?)
+        .ok()?
+        .to_str()?
+        .to_owned();
+    let name = name.as_str();
 
-    // An untracked file has nothing to diff against.
-    let tracked = run(&["ls-files", "--error-unmatch", name]).is_some();
-    if !tracked {
-        let text = std::fs::read_to_string(root.join(file)).ok()?;
+    // What HEAD has for this path. Absent means git has never seen the
+    // file, and a file git has never seen is not unchanged — it is
+    // entirely new, and the fringe says so for every line, which is
+    // what a freshly captured note should look like.
+    let committed = repo
+        .head_commit()
+        .ok()
+        .and_then(|commit| commit.tree().ok())
+        .and_then(|mut tree| tree.peel_to_entry_by_path(name).ok().flatten())
+        .and_then(|entry| entry.object().ok())
+        .map(|obj| String::from_utf8_lossy(&obj.data).into_owned());
+    let Some(committed) = committed else {
         return Some(
-            text.lines()
+            worktree
+                .lines()
                 .enumerate()
                 .map(|(i, _)| (i, LineChange::Added))
                 .collect(),
         );
-    }
+    };
 
-    // `-U0`: no context lines, so every hunk header describes exactly
-    // the lines that differ and nothing has to be filtered back out.
-    let diff = run(&["diff", "--no-color", "-U0", "--", name])?;
-    let mut out = Vec::new();
-    for line in diff.lines() {
-        let Some(rest) = line.strip_prefix("@@ ") else {
-            continue;
-        };
-        // `@@ -old,oldn +new,newn @@`
-        let Some((old, new)) = rest.split_once(" +") else {
-            continue;
-        };
-        let count = |s: &str| -> usize {
-            s.trim_start_matches('-')
-                .split_once(',')
-                .map_or(1, |(_, n)| n.trim_end_matches(" @@").parse().unwrap_or(1))
-        };
-        let new_part = new.split(" @@").next().unwrap_or(new);
-        let start: usize = new_part
-            .split(',')
-            .next()
-            .and_then(|s| s.parse().ok())
-            .unwrap_or(1);
-        let removed = count(old);
-        let added = count(new_part);
-        // git counts from one; everything that paints these counts
-        // from zero.
-        let at = start.saturating_sub(1);
+    Some(line_changes(&committed, &worktree))
+}
+
+/// Per-line marks between two versions of a file.
+///
+/// Zero-based, because git counts hunks from one and every painter
+/// that consumes these counts from zero — the conversion belongs here
+/// rather than in each shell.
+///
+/// A hunk that both removes and adds is a change; one that only adds
+/// is an addition; one that only removes leaves nothing on screen to
+/// mark, so the mark lands on whatever now occupies the position,
+/// which is what every editor does and the only place a reader can
+/// look for it.
+fn line_changes(before: &str, after: &str) -> Vec<(usize, LineChange)> {
+    use gix::diff::blob::{Algorithm, Diff, InternedInput};
+    let input = InternedInput::new(before, after);
+    let mut out: Vec<(usize, LineChange)> = Vec::new();
+    for hunk in Diff::compute(Algorithm::Histogram, &input).hunks() {
+        let at = hunk.after.start as usize;
+        let removed = hunk.before.len();
+        let added = hunk.after.len();
         match (removed, added) {
-            // Pure deletion: no new lines to mark, so the mark lands
-            // on whatever now occupies the position.
             (_, 0) => out.push((at, LineChange::Removed)),
             (0, n) => out.extend((0..n).map(|i| (at + i, LineChange::Added))),
             (_, n) => out.extend((0..n).map(|i| (at + i, LineChange::Changed))),
         }
     }
-    out.sort_by_key(|(line, _)| *line);
-    Some(out)
+    out
 }
