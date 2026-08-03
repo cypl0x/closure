@@ -14445,6 +14445,21 @@ impl ModalApp {
         rounds
     }
 
+    /// The message for a save: which file was rewritten, and its size.
+    fn saved_message(shell: &Shell, id: &closure_core::BlockId) -> String {
+        shell.vault.find_by_id(id).map_or_else(
+            || "body saved".to_owned(),
+            |(_, path)| {
+                let name = path.file_name().map_or_else(
+                    || path.display().to_string(),
+                    |n| n.to_string_lossy().into_owned(),
+                );
+                let bytes = std::fs::metadata(path).map(|m| m.len()).unwrap_or_default();
+                save_report(&name, bytes)
+            },
+        )
+    }
+
     /// Record where a peer is (what a live round hands us).
     pub fn note_peer_presence(&mut self, peer: &str, block: &str, line: u32) {
         self.sync_mut().note_peer(peer, block, line);
@@ -20217,7 +20232,10 @@ impl ModalApp {
                 // checkboxes in its body, so saving the body is when the
                 // count changes (Q3-V5).
                 self.recount_headline_cookie(shell, &id);
-                self.say("body saved");
+                // Which file, and how big it now is. A body is written
+                // by rewriting the whole file it lives in, and "body
+                // saved" never said which file that was.
+                self.say(Self::saved_message(shell, &bid));
                 // Saved *is* the new baseline: `body_dirty` compares
                 // against what the vault holds, and after a write that
                 // is what is in the buffer.
@@ -22637,7 +22655,7 @@ pub fn assistant_settings_with(
         SettingField {
             key: "llm_provider",
             label: "Provider",
-            help: "Which service answers. echo never leaves the process.",
+            help: "Which service answers — echo, ollama, openai, anthropic. echo never leaves the process.",
             value: provider,
             placeholder: "unset — echo",
             detail: String::new(),
@@ -22649,7 +22667,7 @@ pub fn assistant_settings_with(
         SettingField {
             key: "llm_model",
             label: "Model",
-            help: "The model name, as the provider spells it.",
+            help: "The model name, as the provider spells it — e.g. claude-sonnet-4-5, gpt-4o, llama3.",
             value: cfg.llm_model.clone().unwrap_or_default(),
             placeholder: "unset — the provider's default",
             detail: String::new(),
@@ -22658,7 +22676,7 @@ pub fn assistant_settings_with(
         SettingField {
             key: "llm_key_env",
             label: "Key variable",
-            help: "Names the environment variable holding the key. The key never lives in this file.",
+            help: "Names the environment variable holding the key — e.g. ANTHROPIC_API_KEY. The key itself never lives in this file.",
             value: cfg.llm_key_env.clone().unwrap_or_default(),
             placeholder: "unset",
             detail: key_detail,
@@ -22670,7 +22688,7 @@ pub fn assistant_settings_with(
         SettingField {
             key: "llm_endpoint",
             label: "Endpoint",
-            help: "Point at any compatible server: llama.cpp, vLLM, LiteLLM, a gateway.",
+            help: "Point at any compatible server — e.g. http://localhost:11434 or http://localhost:8080/v1/chat/completions.",
             value: cfg.llm_endpoint.clone().unwrap_or_default(),
             placeholder: "unset — the provider's own",
             detail: endpoint_detail,
@@ -22679,11 +22697,53 @@ pub fn assistant_settings_with(
         SettingField {
             key: "llm_tools",
             label: "Tools",
-            help: "Which vault commands the assistant may run. Empty allows every non-render tool.",
+            help: "Which vault commands the assistant may run — e.g. read, search, capture. Empty allows every non-render tool.",
             value: cfg.llm_tools.clone().unwrap_or_default().join(", "),
             placeholder: "unset — all but render",
             detail: String::new(),
             choices: Vec::new(),
         },
     ]
+}
+
+/// A byte count as a person reads it: `B`, `KB`, `MB`, `GB`.
+///
+/// 1024 to the step rather than 1000, because every other tool the
+/// user has in front of them (`ls -h`, `du -h`) says KB for 1024 and a
+/// file manager that disagreed would just look wrong.
+#[must_use]
+pub fn human_bytes(bytes: u64) -> String {
+    const STEP: f64 = 1024.0;
+    if bytes < 1024 {
+        return format!("{bytes} B");
+    }
+    #[expect(
+        clippy::cast_precision_loss,
+        reason = "a display size, not an accounting figure"
+    )]
+    let mut size = bytes as f64;
+    for unit in ["KB", "MB", "GB"] {
+        size /= STEP;
+        // The last unit takes whatever is left rather than running out
+        // and printing a bare number with no unit at all.
+        if size < STEP || unit == "GB" {
+            return format!("{size:.1} {unit}");
+        }
+    }
+    unreachable!()
+}
+
+/// What the shell says after a save.
+///
+/// "Does the whole inbox.org file gets rewritten if I save a body?"
+/// Yes — every mutation writes the whole file from the in-memory
+/// document. `body saved` hid exactly that: a note lives in a file
+/// with other notes in it, and the message never said which file it
+/// had just rewritten, so there was no way to tell where the writing
+/// went.
+///
+/// The size is the *file's*, because the file is what was written.
+#[must_use]
+pub fn save_report(file: &str, bytes: u64) -> String {
+    format!("wrote {file} — {}", human_bytes(bytes))
 }

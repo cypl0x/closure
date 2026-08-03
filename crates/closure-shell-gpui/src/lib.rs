@@ -1804,6 +1804,31 @@ pub fn which_key_chord_w(groups: &[(String, Vec<(String, String)>)], advance: f3
     (widest as f32).mul_add(advance, GAP)
 }
 
+/// How much room the `L9:C1` chip reserves, in pixels.
+///
+/// It was `flex_none` with no width of its own, so it grew by a
+/// character at every power of ten — line 9 to line 10, column 99 to
+/// 100 — and shoved the dirty dot, the macro indicator and the chord
+/// echo sideways each time. A status line that twitches while you type
+/// is worse than one holding a little space it does not always use.
+///
+/// A floor rather than a clamp: a note long enough to need more room
+/// gets it, because clipping the number to protect the layout would be
+/// solving the wrong problem. `advance` is the measured monospace
+/// width, so the reserve tracks the font and the zoom.
+#[must_use]
+pub fn cursor_label_w(label: &str, advance: f32) -> f32 {
+    /// `L999:C999` — four digits of line and three of column cover the
+    /// notes people actually write, which is where the twitching was.
+    const RESERVED: f32 = 10.0;
+    #[expect(
+        clippy::cast_precision_loss,
+        reason = "a label is a handful of characters"
+    )]
+    let needed = label.chars().count() as f32;
+    needed.max(RESERVED) * advance
+}
+
 /// Launch fallback when the `gpui` feature is disabled (the default,
 /// hermetic build). The kernel-side [`Shell`] is always available; the
 /// GPU window requires `--features gpui` and the system GPU/X11 libs.
@@ -4965,6 +4990,7 @@ impl GpuiView {
             header = header.child(
                 div()
                     .flex_none()
+                    .w(px(cursor_label_w(&label, self.col_w())))
                     .text_color(rgb(co.muted))
                     .text_size(self.sz(11.0))
                     .child(label),
@@ -6184,12 +6210,31 @@ impl GpuiView {
                             "not configured"
                         }),
                 )
+                .child(div().flex_grow())
+                // "add a button to the Assistant UI (g i) which calls
+                // assistant setup if you press it." The pane is where
+                // you find out the assistant is not configured, so it
+                // is where the way to configure it belongs — running
+                // the same registry command the chord does (I8).
                 .child(
                     div()
-                        .flex_grow()
-                        .text_size(self.sz(11.0))
-                        .text_color(rgb(co.muted))
-                        .child(status.detail),
+                        .debug_selector(|| "llm-setup".to_owned())
+                        .flex_none()
+                        .px_2()
+                        .rounded_md()
+                        .cursor_pointer()
+                        .text_size(self.sz(10.0))
+                        .border_1()
+                        .border_color(rgb(co.border))
+                        .text_color(rgb(co.accent))
+                        .hover(move |d| d.bg(rgb(co.hover)))
+                        .on_mouse_down(
+                            MouseButton::Left,
+                            cx.listener(|this, _ev, _w, cx| {
+                                this.click("assistant-setup", cx);
+                            }),
+                        )
+                        .child("setup"),
                 )
                 // The render grant is louder than the rest: it lets
                 // a model read the screen, so it is stated here as
@@ -6215,6 +6260,16 @@ impl GpuiView {
                             "○ cannot read the screen"
                         }),
                 ),
+        );
+        // The detail on its own line, full width. In the chip row it
+        // either pushed the buttons off the right edge or, once it was
+        // allowed to shrink, wrapped into a tall narrow column beside
+        // them — a paragraph does not belong in a row of chips.
+        pane = pane.child(
+            div()
+                .text_size(self.sz(11.0))
+                .text_color(rgb(co.muted))
+                .child(status.detail),
         );
         pane = pane.children(self.chat_transcript(co));
         if self.app.chat_busy() {
