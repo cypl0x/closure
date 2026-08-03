@@ -37,6 +37,8 @@ pub struct Vault {
     kill_ring: Vec<String>,
     /// Monotone change token — see [`Vault::revision`].
     revision: u64,
+    /// Files read from disk since open — see [`Vault::disk_reads`].
+    disk_reads: std::cell::Cell<u64>,
 }
 
 /// An org-capture template: where a new entry lands and what it
@@ -488,7 +490,22 @@ impl Vault {
             backlinks,
             kill_ring: Vec::new(),
             revision: 0,
+            disk_reads: std::cell::Cell::new(0),
         })
+    }
+
+    /// How many files this vault has read back from disk since it was
+    /// opened.
+    ///
+    /// The staleness check before a mutation is a file read, and a
+    /// mutation that reads the whole vault is a freeze proportional to
+    /// how much you have written — the thing a note-taker accumulates.
+    /// Counting reads makes that testable without timing anything: a
+    /// budget in files is the same on every machine, and a budget in
+    /// milliseconds is not.
+    #[must_use]
+    pub const fn disk_reads(&self) -> u64 {
+        self.disk_reads.get()
     }
 
     /// Monotone change token for the loaded documents.
@@ -1766,7 +1783,23 @@ impl Vault {
         // the file is brought up to date before the edit lands on it —
         // otherwise the whole-file write puts our older copy back over
         // whatever was written under us.
-        self.refresh_all_stale();
+        //
+        // Only the file being written, though. This read the whole
+        // vault, which made every keystroke cost what you had already
+        // written: a fold measured 1.8ms over four files and 25ms over
+        // forty-eight, and a note-taker only ever adds files. The race
+        // is between our copy of *this* file and what is on disk at
+        // *this* path; the other forty-seven are not party to it.
+        if let Some(path) = self.by_id.get(id).cloned() {
+            self.refresh_if_stale(&path);
+        }
+        // The one thing the whole-vault read did cover: the index
+        // points at a file the headline has since left, because it was
+        // moved with an editor. Then — and only then — sweep, which is
+        // rare enough to be allowed to cost what it costs.
+        if !self.by_id.contains_key(id) {
+            self.refresh_all_stale();
+        }
         let path = self
             .by_id
             .get(id)
@@ -1799,6 +1832,7 @@ impl Vault {
     /// trusts — the parsed source's hash against the file's — so a file
     /// nobody touched costs one read and no reparse.
     fn refresh_if_stale(&mut self, path: &Path) {
+        self.disk_reads.set(self.disk_reads.get() + 1);
         let Ok(src) = fs::read_to_string(path) else {
             // Gone, or unreadable: the mutation will fail on its own
             // terms, and inventing an empty document here would be a

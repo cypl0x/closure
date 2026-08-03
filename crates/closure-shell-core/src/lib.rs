@@ -2189,6 +2189,11 @@ fn outline_rows(shell: &Shell, filter: &str) -> Vec<Row> {
     let mut scored: Vec<(u32, Row)> = Vec::new();
     for (p, doc) in shell.vault.iter() {
         let headlines: Vec<_> = doc.all_headlines().collect();
+        // One path per document, not one per headline: this ran
+        // `Display` formatting machinery for every row in the vault to
+        // rebuild a string that is the same for all of a file's
+        // headlines. Cloning it is a memcpy.
+        let path = p.display().to_string();
         let mut hide_below: Option<u8> = None;
         for (i, h) in headlines.iter().enumerate() {
             // The fold state is needed twice: to hide descendants here,
@@ -2216,7 +2221,7 @@ fn outline_rows(shell: &Shell, filter: &str) -> Vec<Row> {
                     sc,
                     Row {
                         id: h.id().to_string(),
-                        path: p.display().to_string(),
+                        path: path.clone(),
                         title: h.title().to_owned(),
                         level: h.level(),
                         matches: if filter.is_empty() {
