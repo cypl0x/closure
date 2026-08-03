@@ -6454,23 +6454,16 @@ impl GpuiView {
         let mut applied = 0usize;
         let ids: Vec<closure_core::BlockId> = snapshot.block_ids().cloned().collect();
         for id in ids {
-            let Some((headline, _)) = self.shell.vault.find_by_id(&id) else {
-                continue;
-            };
-            let current_title = headline.title().to_owned();
-            let current_body = headline.body_text().to_owned();
-            if let Some(title) = snapshot.title_of(&id)
-                && title != current_title
-                && self.shell.rename_headline(&id, title).is_ok()
-            {
-                applied += 1;
-            }
-            if let Some(body) = snapshot.body_of(&id)
-                && body != current_body
-                && self.shell.set_body(&id, &body).is_ok()
-            {
-                applied += 1;
-            }
+            // The merge itself lives in the kernel-facing layer rather
+            // than here. It used to skip any id `find_by_id` could not
+            // resolve — so a headline created on the peer never
+            // arrived — and the bug survived because a window is the
+            // one place a test could not reach it.
+            let title = snapshot.title_of(&id).map(ToOwned::to_owned);
+            let body = snapshot.body_of(&id);
+            applied += self
+                .shell
+                .apply_peer_block(id.as_str(), title.as_deref(), body.as_deref());
         }
         applied
     }

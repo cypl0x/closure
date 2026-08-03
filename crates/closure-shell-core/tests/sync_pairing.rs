@@ -330,10 +330,22 @@ fn applying_a_merge_that_changed_nothing_writes_nothing() {
 }
 
 #[test]
-fn a_block_the_peer_has_and_we_do_not_is_not_invented_locally() {
-    // Creating a headline out of a replica entry would need a file to
-    // put it in and a place in the tree; guessing either is worse than
-    // reporting it. Convergence of *known* blocks is the promise here.
+fn a_block_the_peer_has_and_we_do_not_arrives_in_the_capture_file() {
+    // This asserted the opposite until 2026-08-03, on the reasoning
+    // that "creating a headline out of a replica entry would need a
+    // file to put it in and a place in the tree; guessing either is
+    // worse than reporting it."
+    //
+    // The user filed the consequence as a defect: "`apply_sync_to_vault`
+    // skips ids `find_by_id` misses, so a peer's new headline never
+    // arrives." They are right — convergence of *known* blocks only is
+    // not a sync anybody would describe as working, and the failure was
+    // silent while the status line reported the edits it *had* applied.
+    //
+    // The old objection is answered rather than ignored: the file to
+    // put it in is the capture file, which is already where a thought
+    // with no home goes. That is an existing rule of the vault, not a
+    // guess invented for this.
     let (_da, mut shell_a) = vault_with("1", "Mine");
     let (_db, shell_b) = vault_with("2", "Theirs");
     let mut a = SyncApp::new("a", "127.0.0.1:7001".parse().expect("addr"));
@@ -348,8 +360,8 @@ fn a_block_the_peer_has_and_we_do_not_is_not_invented_locally() {
             .find_by_id(&closure_core::BlockId::from_existing(
                 "01HQSYNC000000000000002"
             ))
-            .is_none(),
-        "their block is in the replica, not conjured into our files"
+            .is_some(),
+        "their block converged in the replica and never reached the files"
     );
 }
 

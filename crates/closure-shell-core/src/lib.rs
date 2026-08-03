@@ -577,6 +577,92 @@ impl Shell {
         self.vault.paste(&path, after)
     }
 
+    /// Merge one block of a peer's replica into the vault, returning
+    /// how many changes it made.
+    ///
+    /// The merge used to skip any id `find_by_id` could not resolve,
+    /// so edits to headlines both machines already shared arrived and
+    /// anything *created* on the peer was dropped in silence — the
+    /// half of syncing anybody notices first, made worse by the status
+    /// line then reporting the edits it *had* applied.
+    ///
+    /// An id we do not have is not an error and not a conflict: it is
+    /// a note somebody else wrote. It is created, keeping the peer's
+    /// id — the id is the identity, so minting a fresh one would make
+    /// the next round treat it as different again and write a second
+    /// copy.
+    ///
+    /// Applying what is already true costs nothing: a sync that
+    /// dirties every note on every round is a sync that fights git and
+    /// the file watcher.
+    pub fn apply_peer_block(&mut self, id: &str, title: Option<&str>, body: Option<&str>) -> usize {
+        let bid = closure_core::BlockId::from_existing(id);
+        let Some((headline, _)) = self.vault.find_by_id(&bid) else {
+            return usize::from(self.create_peer_block(&bid, title, body));
+        };
+        let (current_title, current_body) =
+            (headline.title().to_owned(), headline.body_text().to_owned());
+        let mut applied = 0usize;
+        if let Some(title) = title
+            && title != current_title
+            && self.rename_headline(&bid, title).is_ok()
+        {
+            applied += 1;
+        }
+        if let Some(body) = body
+            && body != current_body
+            && self.set_body(&bid, body).is_ok()
+        {
+            applied += 1;
+        }
+        applied
+    }
+
+    /// Write a headline the peer has and this vault does not.
+    ///
+    /// It lands in the capture file, which is already where a thought
+    /// with no home goes — a note arriving over the network has no
+    /// more of a parent than one you typed into the capture bar.
+    fn create_peer_block(
+        &mut self,
+        id: &closure_core::BlockId,
+        title: Option<&str>,
+        body: Option<&str>,
+    ) -> bool {
+        // Neither a title nor a body is not a note; a replica can
+        // carry an id that nothing has said anything about yet.
+        if title.is_none() && body.is_none() {
+            return false;
+        }
+        let title = title.unwrap_or("(untitled)");
+        let body = body.unwrap_or_default();
+        let entry = format!(
+            "* {title}\n:PROPERTIES:\n:ID: {}\n:END:\n{body}",
+            id.as_str()
+        );
+        let relative = std::path::Path::new(CAPTURE_FILE);
+        let full = self.vault.root().join(relative);
+        let result = if full.is_file() {
+            let mut text = std::fs::read_to_string(&full).unwrap_or_default();
+            if !text.is_empty() && !text.ends_with('\n') {
+                text.push('\n');
+            }
+            text.push_str(&entry);
+            std::fs::write(&full, text)
+                .map(|()| full.clone())
+                .map_err(closure_store::VaultError::Io)
+        } else {
+            self.vault.create_file(relative, &entry)
+        };
+        if result.is_ok() {
+            // The file changed underneath the index, so the next
+            // lookup has to see it — without this the same block
+            // arrives again on the next round and is written twice.
+            let _ = self.vault.reload_incremental();
+        }
+        result.is_ok()
+    }
+
     /// Paste arbitrary org `text` as the sibling after `after`.
     ///
     /// [`Self::paste_subtree`] can only replay what closure itself
@@ -6644,28 +6730,22 @@ impl SyncApp {
     /// (I8), and a field that already matches is skipped, so a
     /// repeated round is a no-op rather than a rewrite of every file.
     pub fn apply_to_vault(&self, shell: &mut Shell) -> usize {
-        let mut applied = 0usize;
-        let ids: Vec<closure_core::BlockId> = self.session.block_ids().cloned().collect();
-        for id in ids {
-            let Some((headline, _)) = shell.vault.find_by_id(&id) else {
-                continue;
-            };
-            let current_title = headline.title().to_owned();
-            let current_body = headline.body_text().to_owned();
-            if let Some(title) = self.session.title_of(&id)
-                && title != current_title
-                && shell.rename_headline(&id, title).is_ok()
-            {
-                applied += 1;
-            }
-            if let Some(body) = self.session.body_of(&id)
-                && body != current_body
-                && shell.set_body(&id, &body).is_ok()
-            {
-                applied += 1;
-            }
-        }
-        applied
+        // One merge, in `Shell`. This was a verbatim copy of the
+        // window's loop, carrying the same defect: an id `find_by_id`
+        // missed was skipped, so a headline created on the peer never
+        // arrived — over a shared folder as well as over a socket. Two
+        // copies of one rule is how a bug gets fixed once and survives.
+        self.session
+            .block_ids()
+            .cloned()
+            .collect::<Vec<_>>()
+            .into_iter()
+            .map(|id| {
+                let title = self.session.title_of(&id).map(ToOwned::to_owned);
+                let body = self.session.body_of(&id);
+                shell.apply_peer_block(id.as_str(), title.as_deref(), body.as_deref())
+            })
+            .sum()
     }
 
     /// Bind a listener so a peer can dial *in*.
