@@ -8,6 +8,9 @@
 
 #![forbid(unsafe_code)]
 
+/// Which files a build must watch to notice the commit moved.
+pub mod gitwatch;
+
 use std::collections::HashMap;
 use std::str::FromStr;
 use std::sync::Arc;

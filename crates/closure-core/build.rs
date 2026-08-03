@@ -17,13 +17,29 @@
 
 use std::process::Command;
 
+include!("src/gitwatch.rs");
+
 fn main() {
     // Re-run when the checked-out commit moves. Without this the
-    // values freeze at whatever the first build saw. Both paths are
-    // needed: `HEAD` for the ref, and the ref file itself for a commit
-    // on the same branch.
-    for path in [".git/HEAD", "../../.git/HEAD"] {
-        if std::path::Path::new(path).exists() {
+    // values freeze at whatever the first build saw — which is what
+    // made `build-info` report `89cf823` from a tree that was on
+    // `6403e51`, two days and forty commits later.
+    //
+    // Watching `HEAD` alone was the bug. On a branch it holds
+    // `ref: refs/heads/main` and does not change when a commit lands
+    // or a pull fast-forwards; only the ref file does. In this
+    // repository `HEAD` was last written two days before the ref it
+    // points at.
+    //
+    // The rule lives in `src/gitwatch.rs` and is `include!`d rather
+    // than copied: a build script cannot depend on its own crate, and
+    // a second copy of this parser is exactly how the two would drift.
+    for git_dir in [".git", "../../.git"] {
+        let head = std::path::Path::new(git_dir).join("HEAD");
+        let Ok(contents) = std::fs::read_to_string(&head) else {
+            continue;
+        };
+        for path in watch_paths(git_dir, &contents) {
             println!("cargo::rerun-if-changed={path}");
         }
     }

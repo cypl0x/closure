@@ -94,3 +94,41 @@ fn a_vault_with_no_peers_costs_nothing() {
     }
     assert!(start.elapsed() < std::time::Duration::from_millis(200));
 }
+
+#[test]
+fn the_cost_of_a_tick_does_not_grow_with_the_number_of_peers() {
+    // Dialling every peer on every tick made the worst case scale with
+    // how many people you have paired with: eight absent peers meant
+    // eight timeouts back to back, on the UI thread, every 1.5s. One
+    // per tick, round-robin — a peer waits a few seconds longer for its
+    // turn, which is nothing against a session that reconnects itself.
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("notes.org"), ORG).unwrap();
+    let peers: Vec<String> = (1..=8)
+        .map(|n| {
+            format!(
+                "closure-sync:192.0.2.{n}:7420|\
+                 6f09318c6edbe96521bcdb2f9ccee6bae79ee509e320b34eeb82dd20caf31d38"
+            )
+        })
+        .collect();
+    std::fs::write(
+        dir.path().join("config.org"),
+        format!(
+            "#+BEGIN_SRC closure-config\nsync_peers = {}\n#+END_SRC\n",
+            peers.join(", ")
+        ),
+    )
+    .unwrap();
+    let shell = Shell::new(Vault::open(dir.path()).unwrap());
+    let mut app = ModalApp::new(closure_config::InputMode::Doom);
+    app.load_peers(&shell);
+
+    let start = std::time::Instant::now();
+    app.session_tick(&shell);
+    let one_tick = start.elapsed();
+    assert!(
+        one_tick < std::time::Duration::from_millis(400),
+        "one tick with eight absent peers took {one_tick:?}"
+    );
+}

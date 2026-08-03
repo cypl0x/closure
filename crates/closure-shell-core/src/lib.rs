@@ -12306,6 +12306,8 @@ pub struct ModalApp {
     field_buf: LineInput,
     /// Which settings row the assistant screen has selected.
     settings_cursor: usize,
+    /// Which peer the next tick dials, so one tick dials one peer.
+    dial_next: usize,
     /// The setting whose value prompt is open, if one is.
     editing_setting: Option<&'static str>,
     /// Which of the four new-headline chords opened the title prompt.
@@ -12844,6 +12846,7 @@ impl ModalApp {
             field_target: None,
             field_buf: LineInput::default(),
             settings_cursor: 0,
+            dial_next: 0,
             editing_setting: None,
             new_heading: NewHeading {
                 child: false,
@@ -14471,9 +14474,18 @@ impl ModalApp {
             self.say(format!("could not open the sync socket: {e}"));
         }
         let mut rounds = self.sync_mut().serve_pending();
+        // One peer per tick, round-robin. Accepting is free; *dialling*
+        // costs its timeout whenever nobody answers, and doing every
+        // peer on every tick makes the worst case scale with how many
+        // people you have paired with. A peer waits a few seconds
+        // longer for its turn, which is nothing against a session that
+        // reconnects on its own.
         let addrs: Vec<std::net::SocketAddr> =
             self.sync_mut().peers().iter().map(|p| p.addr).collect();
-        for addr in addrs {
+        if !addrs.is_empty() {
+            let at = self.dial_next % addrs.len();
+            self.dial_next = self.dial_next.wrapping_add(1);
+            let addr = addrs[at];
             // A peer that is not up is the ordinary case, not an
             // error: this runs on a timer and must stay quiet.
             let outcome = self.sync_mut().sync_with(addr);
