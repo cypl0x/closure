@@ -8958,11 +8958,15 @@ fn caret_text_kind(co: Colors, text: &str, cursor: usize, headline: bool) -> gpu
         .flex()
         .flex_row()
         .child(div().flex_none().child(head.to_owned()))
-        // The bar takes the row's height by stretching, rather than a
-        // hardcoded pixel count that is only right at one font size —
-        // the same trick, and the same 2px and accent colour, as the
-        // editor's INSERT caret.
-        .child(div().flex_none().w(px(2.0)).bg(rgb(co.accent)))
+        // The editor's caret, not a second one beside it. This was a
+        // 2px flex child, so it *occupied* two pixels and shoved
+        // everything after it along: "Most input fields jiggle
+        // depending on the caret position … going through the line
+        // C-b/C-f makes everything behind the cursor jiggle on every
+        // movement". The editor had exactly this bug and it was fixed
+        // there with negative margins that cancel the width; the
+        // prompts kept the broken copy.
+        .child(insert_caret(co))
         .child(div().flex_none().child(tail.to_owned()))
 }
 
