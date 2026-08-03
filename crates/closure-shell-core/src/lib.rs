@@ -19289,7 +19289,38 @@ impl ModalApp {
         });
     }
 
-    /// The body editor cursor as `(line, column)` for the caret.
+    /// Where the caret is, one-based, or `None` outside a buffer.
+    ///
+    /// "show cursor position in editor view (like line and row)". The
+    /// buffer knew all along — the gutter is built from it — and
+    /// nothing said so, which made "which line am I on?" a question
+    /// you answered by counting.
+    ///
+    /// One-based to agree with the gutter two columns to its left. A
+    /// zero-based column printed beside a one-based line number is a
+    /// small lie told constantly.
+    #[must_use]
+    pub fn cursor_position(&self) -> Option<(usize, usize)> {
+        if !self.surface.is_editor() {
+            // The outline has a selection, not a caret. A line and
+            // column there would describe something not on screen.
+            return None;
+        }
+        let (line, col) = self.body_cursor();
+        Some((line + 1, col + 1))
+    }
+
+    /// The same, as the short label a status bar paints.
+    ///
+    /// A bare `3:5` among a row of counts is ambiguous, so the string
+    /// carries its own meaning and every shell paints the same one.
+    #[must_use]
+    pub fn cursor_position_label(&self) -> Option<String> {
+        let (line, col) = self.cursor_position()?;
+        Some(format!("L{line}:C{col}"))
+    }
+
+    /// The body editor cursor as zero-based `(line, column)`.
     #[must_use]
     pub fn body_cursor(&self) -> (usize, usize) {
         self.body.cursor_line_col()

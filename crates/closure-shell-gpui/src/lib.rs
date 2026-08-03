@@ -4770,6 +4770,19 @@ impl GpuiView {
             .items_center()
             .gap_2()
             .child(chip(mode_txt.to_owned(), mode_col).px_2());
+        // "show cursor position in editor view (like line and row)".
+        // Beside the mode, where a modal editor's status line puts it,
+        // and quiet: it is a thing you glance at, not a thing that
+        // should compete with the mode chip for your eye.
+        if let Some(label) = self.app.cursor_position_label() {
+            header = header.child(
+                div()
+                    .flex_none()
+                    .text_color(rgb(co.muted))
+                    .text_size(self.sz(11.0))
+                    .child(label),
+            );
+        }
         // Modified-and-unwritten, the way every editor marks it. The
         // shell had no dirty state at all, so an unsaved buffer looked
         // exactly like a saved one right up until it was lost.
