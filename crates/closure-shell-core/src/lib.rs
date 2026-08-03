@@ -6459,6 +6459,9 @@ pub struct SyncApp {
     /// peer — a position, not a log, so a peer that moves does not
     /// leave a ghost on the row it left.
     seen: Vec<PeerAt>,
+    /// When each address last failed to answer, so an absent peer is
+    /// not redialled on every frame.
+    quiet_until: std::collections::HashMap<std::net::SocketAddr, std::time::Instant>,
 }
 
 /// Where somebody is: which block, and which line inside it.
@@ -6566,6 +6569,7 @@ impl SyncApp {
             listener: None,
             local: None,
             seen: Vec::new(),
+            quiet_until: std::collections::HashMap::new(),
         }
     }
 
@@ -6666,13 +6670,50 @@ impl SyncApp {
     ///
     /// The connection, or a malformed frame.
     pub fn sync_with(&mut self, addr: std::net::SocketAddr) -> Result<(), String> {
-        let mut stream = std::net::TcpStream::connect(addr).map_err(|e| e.to_string())?;
+        /// How long to wait for a peer to accept.
+        ///
+        /// `TcpStream::connect` has *no* timeout, and this runs on the
+        /// frame timer. A peer that refuses costs a millisecond; a peer
+        /// that is merely absent, on a network that drops rather than
+        /// refuses, costs the OS default — about two minutes with the
+        /// window wedged. That is what "the app won't start with my
+        /// vault" turned out to be.
+        ///
+        /// Long enough for a LAN or a mesh VPN, which answer in single
+        /// -digit milliseconds; short enough that hitting it is a
+        /// stutter rather than a hang.
+        const DIAL: std::time::Duration = std::time::Duration::from_millis(250);
+        if self
+            .quiet_until
+            .get(&addr)
+            .is_some_and(|t| *t > std::time::Instant::now())
+        {
+            return Err("not answering — waiting before trying again".to_owned());
+        }
+        let mut stream = std::net::TcpStream::connect_timeout(&addr, DIAL).map_err(|e| {
+            self.mark_quiet(addr);
+            e.to_string()
+        })?;
         stream
             .set_read_timeout(Some(std::time::Duration::from_secs(5)))
             .map_err(|e| e.to_string())?;
         closure_sync::TcpSyncTransport::stream_round_client(&mut stream, &mut self.session)
             .map_err(|e| e.to_string())?;
         self.exchange_presence(&mut stream, true)
+    }
+
+    /// Back off from an address that did not answer.
+    ///
+    /// Even a bounded dial costs its budget every time it is tried, and
+    /// the frame timer fires every 1.5s — so without this an absent
+    /// peer stutters the window for as long as it is absent, which for
+    /// a laptop that is simply elsewhere is all day.
+    fn mark_quiet(&mut self, addr: std::net::SocketAddr) {
+        /// Long enough that an absent peer is free, short enough that
+        /// one coming back is picked up while you are still looking.
+        const QUIET: std::time::Duration = std::time::Duration::from_secs(20);
+        self.quiet_until
+            .insert(addr, std::time::Instant::now() + QUIET);
     }
 
     /// Serve the connections already waiting, without blocking on one
