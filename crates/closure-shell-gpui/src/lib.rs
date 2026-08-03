@@ -2692,6 +2692,13 @@ impl GpuiView {
         self.app.which_key_open()
     }
 
+    /// Where this window's vault lives — what a test needs to put a
+    /// file where the window will actually look for it.
+    #[must_use]
+    pub fn vault_root(&self) -> std::path::PathBuf {
+        self.shell.vault.root().to_path_buf()
+    }
+
     /// The chord waiting for its next key, if one is.
     #[must_use]
     pub fn pending_chord(&self) -> String {
@@ -5304,7 +5311,7 @@ impl GpuiView {
                 drawn += 1;
                 body = body.child(row);
             }
-            for picture in self.inline_pictures(&text) {
+            for picture in self.inline_pictures(&text, cx) {
                 body = body.child(picture);
             }
             // A drawn mermaid or LaTeX block, under the fence that
@@ -5312,7 +5319,7 @@ impl GpuiView {
             // does the rendering, so painting a note full of diagrams
             // costs a `stat` and not a process.
             for (_, path) in diagrams.iter().filter(|(at, _)| *at == ln) {
-                body = body.child(self.picture_block(path.clone()));
+                body = body.child(self.picture_block(path.clone(), cx));
             }
             line_start += line_len + 1;
         }
@@ -7556,19 +7563,27 @@ impl GpuiView {
     /// ([`IMAGE_ROWS`]) rather than whatever size it happens to be.
     /// The arithmetic stays exact, and the caret cannot drift off the
     /// bottom of a note full of screenshots.
-    fn inline_pictures(&self, line: &str) -> Vec<gpui::Div> {
+    fn inline_pictures(&self, line: &str, cx: &Context<Self>) -> Vec<gpui::Div> {
         self.line_images(line)
             .into_iter()
-            .map(|path| self.picture_block(path))
+            .map(|path| self.picture_block(path, cx))
             .collect()
     }
 
     /// One picture between the buffer's lines — a linked image or a
     /// drawn diagram, which get the same block because they are the
     /// same thing to look at.
-    fn picture_block(&self, path: std::path::PathBuf) -> gpui::Div {
+    fn picture_block(&self, path: std::path::PathBuf, cx: &Context<Self>) -> gpui::Div {
         let h = px(body_row_h(self.app.zoom()) * IMAGE_ROWS);
+        // Named by the file it shows, so a test can find the one it put
+        // there rather than an index into whatever is on screen.
+        let selector = path.file_name().map_or_else(
+            || path.display().to_string(),
+            |n| n.to_string_lossy().into_owned(),
+        );
+        let open = path.clone();
         div()
+            .debug_selector(move || format!("picture-{selector}"))
             .h(h)
             // Starting where the line's own text starts, past the
             // gutter: a picture flush against the window edge reads as
@@ -7576,6 +7591,18 @@ impl GpuiView {
             .ml(px(GUTTER_W + GUTTER_GAP))
             .flex()
             .items_center()
+            // "Clicking a on image should show this popup with the
+            // image in full size. Just like enter does." Everything the
+            // keyboard reaches the mouse should reach: this runs the
+            // same `show_image` the key does.
+            .cursor_pointer()
+            .on_mouse_down(
+                MouseButton::Left,
+                cx.listener(move |this: &mut Self, _ev, _w, cx| {
+                    this.app.show_image(open.clone());
+                    cx.notify();
+                }),
+            )
             .child(gpui::img(path).max_h(h).rounded_md())
     }
 
