@@ -546,7 +546,8 @@ impl Vault {
         template: &CaptureTemplate,
         title: &str,
     ) -> Result<BlockId, VaultError> {
-        self.refresh_all_stale();
+        // No refresh: the target is read from disk immediately
+        // below, which is the freshest copy there is.
         let target = self.root.join(&template.target);
         let existing = match fs::read_to_string(&target) {
             Ok(s) => s,
@@ -889,7 +890,7 @@ impl Vault {
         after: &BlockId,
         text: &str,
     ) -> Result<(), VaultError> {
-        self.refresh_all_stale();
+        self.refresh_if_stale(path);
         let source = text.to_owned();
         let doc = self
             .documents
@@ -1132,7 +1133,8 @@ impl Vault {
     /// [`VaultError::Command`] when the move would put a subtree inside
     /// itself — which would take the target with it.
     pub fn refile(&mut self, id: &BlockId, target: &BlockId) -> Result<(), VaultError> {
-        self.refresh_all_stale();
+        self.refresh_for_id(id);
+        self.refresh_for_id(target);
         if id == target {
             return Err(VaultError::Command(
                 "a headline cannot be filed under itself".into(),
@@ -1206,7 +1208,7 @@ impl Vault {
     /// [`VaultError::UnknownId`] when the headline is missing, plus the
     /// write/parse failures of the files involved.
     pub fn archive_subtree(&mut self, id: &BlockId, today: &str) -> Result<PathBuf, VaultError> {
-        self.refresh_all_stale();
+        self.refresh_for_id(id);
         let (_, source_path) = self
             .find_by_id(id)
             .ok_or_else(|| VaultError::UnknownId(id.as_str().to_owned()))?;
@@ -1464,7 +1466,7 @@ impl Vault {
     /// failures.
     pub fn eval_block(&mut self, path: &Path, index: usize) -> Result<String, VaultError> {
         use closure_eval::Backend as _;
-        self.refresh_all_stale();
+        self.refresh_if_stale(path);
         let trust = self.eval_trust();
         let doc = self
             .documents
@@ -1656,7 +1658,7 @@ impl Vault {
         index: usize,
         content: &str,
     ) -> Result<(), VaultError> {
-        self.refresh_all_stale();
+        self.refresh_if_stale(path);
         let doc = self
             .documents
             .get(path)
@@ -1680,7 +1682,7 @@ impl Vault {
     /// [`VaultError::UnknownId`] for unknown paths, [`VaultError::Undo`]
     /// when the history is empty, [`VaultError::Io`] on write failure.
     pub fn undo_in(&mut self, path: &Path) -> Result<(), VaultError> {
-        self.refresh_all_stale();
+        self.refresh_if_stale(path);
         let doc = self
             .documents
             .get_mut(path)
@@ -1745,7 +1747,7 @@ impl Vault {
     ///
     /// Same contract as [`Self::undo_in`].
     pub fn jump_history_in(&mut self, path: &Path, index: usize) -> Result<(), VaultError> {
-        self.refresh_all_stale();
+        self.refresh_if_stale(path);
         let doc = self
             .documents
             .get_mut(path)
@@ -1764,7 +1766,7 @@ impl Vault {
     ///
     /// Same contract as [`Self::undo_in`].
     pub fn redo_in(&mut self, path: &Path) -> Result<(), VaultError> {
-        self.refresh_all_stale();
+        self.refresh_if_stale(path);
         let doc = self
             .documents
             .get_mut(path)
@@ -1790,16 +1792,7 @@ impl Vault {
         // forty-eight, and a note-taker only ever adds files. The race
         // is between our copy of *this* file and what is on disk at
         // *this* path; the other forty-seven are not party to it.
-        if let Some(path) = self.by_id.get(id).cloned() {
-            self.refresh_if_stale(&path);
-        }
-        // The one thing the whole-vault read did cover: the index
-        // points at a file the headline has since left, because it was
-        // moved with an editor. Then — and only then — sweep, which is
-        // rare enough to be allowed to cost what it costs.
-        if !self.by_id.contains_key(id) {
-            self.refresh_all_stale();
-        }
+        self.refresh_for_id(id);
         let path = self
             .by_id
             .get(id)
@@ -1832,6 +1825,13 @@ impl Vault {
     /// trusts — the parsed source's hash against the file's — so a file
     /// nobody touched costs one read and no reparse.
     fn refresh_if_stale(&mut self, path: &Path) {
+        // Only files this vault has loaded. The sweep this replaced
+        // walked `documents` and so could never adopt a new path;
+        // picking one up here instead would quietly turn "no such
+        // file" into a successful write against a file nobody opened.
+        if !self.documents.contains_key(path) {
+            return;
+        }
         self.disk_reads.set(self.disk_reads.get() + 1);
         let Ok(src) = fs::read_to_string(path) else {
             // Gone, or unreadable: the mutation will fail on its own
@@ -1858,6 +1858,29 @@ impl Vault {
     /// A mutation addressed by `:ID:` does not know its file until it
     /// has looked the id up, and the lookup itself can be out of date —
     /// a headline written under us is in no index yet.
+    /// Bring the file that owns `id` up to date, and only that file.
+    ///
+    /// The staleness read exists so a whole-file write lands on top of
+    /// an external change rather than under it. That race is between
+    /// our copy of one file and what is on disk at one path, so this
+    /// is the whole of the defence — reading the rest of the vault
+    /// protected nothing and cost everything, which is what made every
+    /// keystroke scale with how much the user had written.
+    ///
+    /// The exception, and the reason [`Self::refresh_all_stale`]
+    /// survives: the index can name a file the headline has since been
+    /// moved out of by another editor. That shows up as the id going
+    /// missing after the narrow refresh, and only then is it worth
+    /// sweeping.
+    fn refresh_for_id(&mut self, id: &BlockId) {
+        if let Some(path) = self.by_id.get(id).cloned() {
+            self.refresh_if_stale(&path);
+        }
+        if !self.by_id.contains_key(id) {
+            self.refresh_all_stale();
+        }
+    }
+
     fn refresh_all_stale(&mut self) {
         let paths: Vec<PathBuf> = self.documents.keys().cloned().collect();
         for path in paths {
@@ -12459,7 +12482,7 @@ impl Vault {
     /// if the write fails; [`VaultError::Parse`] if `source` is not org
     /// this parser can round-trip.
     pub fn set_source(&mut self, path: &Path, source: &str) -> Result<(), VaultError> {
-        self.refresh_all_stale();
+        self.refresh_if_stale(path);
         if !self.documents.contains_key(path) {
             return Err(VaultError::Io(io::Error::new(
                 io::ErrorKind::NotFound,
@@ -12541,7 +12564,7 @@ impl Vault {
     /// vault root) with `source`. Refuses to overwrite an existing
     /// file. Returns the absolute path.
     pub fn create_file(&mut self, relative: &Path, source: &str) -> Result<PathBuf, VaultError> {
-        self.refresh_all_stale();
+        // Nothing to refresh: this path is required not to exist.
         let path = self.root.join(relative);
         if path.exists() {
             return Err(VaultError::Io(io::Error::new(

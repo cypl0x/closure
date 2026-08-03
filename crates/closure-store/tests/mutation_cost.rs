@@ -133,6 +133,94 @@ fn a_headline_moved_to_another_file_is_still_found() {
 }
 
 #[test]
+fn no_interactive_mutation_reads_the_whole_vault() {
+    // `apply_to_block` was one of twelve entry points that opened with
+    // the whole-vault sweep. Fixing the one the trace happened to
+    // catch would have left capture, refile, archive, undo, redo and
+    // eval each stuttering on their own, and "why is it slow" would
+    // have come back per command. The budget is a property of writing
+    // a file, so it is asserted over the whole set at once.
+    //
+    // The count itself is not the point — refile honestly touches two
+    // files — so each operation runs over a small vault and a large one
+    // and the two must agree. That is the property: what a command
+    // costs is what it writes, not what sits next to it.
+    let small = tempfile::tempdir().unwrap();
+    let large = tempfile::tempdir().unwrap();
+    let mut four = vault_of(small.path(), 4);
+    let mut eighty = vault_of(large.path(), 80);
+
+    let check = |label: &str, small: u64, large: u64| {
+        assert_eq!(
+            small, large,
+            "{label} read {small} files over 4 and {large} over 80"
+        );
+    };
+
+    let mut both = |op: &mut dyn FnMut(&mut Vault)| -> (u64, u64) {
+        let (before_four, before_eighty) = (four.disk_reads(), eighty.disk_reads());
+        op(&mut four);
+        op(&mut eighty);
+        (
+            four.disk_reads() - before_four,
+            eighty.disk_reads() - before_eighty,
+        )
+    };
+
+    let (small_reads, large_reads) = both(&mut |v| {
+        v.capture(
+            &closure_store::CaptureTemplate {
+                target: "inbox.org".into(),
+                headline_prefix: "TODO ".into(),
+                body: String::new(),
+            },
+            "a new thing",
+        )
+        .unwrap();
+    });
+    check("capture", small_reads, large_reads);
+
+    let (small_reads, large_reads) = both(&mut |v| {
+        let p = v.root().join("n002.org");
+        v.set_source(&p, "* Rewritten\n").unwrap();
+    });
+    check("set_source", small_reads, large_reads);
+
+    let (small_reads, large_reads) = both(&mut |v| {
+        let p = v.root().join("n002.org");
+        v.undo_in(&p).ok();
+    });
+    check("undo_in", small_reads, large_reads);
+
+    let (small_reads, large_reads) = both(&mut |v| {
+        let p = v.root().join("n002.org");
+        v.redo_in(&p).ok();
+    });
+    check("redo_in", small_reads, large_reads);
+
+    let (small_reads, large_reads) = both(&mut |v| {
+        v.create_file(std::path::Path::new("fresh.org"), "* New\n")
+            .unwrap();
+    });
+    check("create_file", small_reads, large_reads);
+
+    let (small_reads, large_reads) = both(&mut |v| {
+        v.refile(
+            &BlockId::from_existing("id-3-b"),
+            &BlockId::from_existing("id-1-a"),
+        )
+        .unwrap();
+    });
+    check("refile", small_reads, large_reads);
+
+    let (small_reads, large_reads) = both(&mut |v| {
+        v.archive_subtree(&BlockId::from_existing("id-0-a"), "2026-08-03")
+            .unwrap();
+    });
+    check("archive_subtree", small_reads, large_reads);
+}
+
+#[test]
 fn an_unknown_id_is_still_an_error() {
     let tmp = tempfile::tempdir().unwrap();
     let mut vault = vault_of(tmp.path(), 3);
