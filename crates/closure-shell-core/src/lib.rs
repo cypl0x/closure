@@ -19027,6 +19027,24 @@ impl ModalApp {
         let at = self.picker_cursor();
         match self.surface {
             ModalSurface::Palette => self.commit_palette(shell),
+            // "messages enter should copy the selected line to system
+            // clipboard an internal 'clipboard' (kill-ring?)"
+            //
+            // The log is where a trace reading, an error or a saved
+            // line ends up — all things you open it in order to paste
+            // somewhere else. It goes into the same register `y`, `d`
+            // and `C-k` use, which is the seam the system-clipboard
+            // mirror already watches: one assignment reaches both,
+            // rather than a second clipboard growing beside the first.
+            ModalSurface::Messages => {
+                let line = self
+                    .picker_rows(shell)
+                    .and_then(|(_, _, rows)| rows.get(at).map(|row| row.label.clone()));
+                if let Some(line) = line {
+                    self.set_register_from_clipboard(&line);
+                    self.say(format!("copied: {line}"));
+                }
+            }
             ModalSurface::Buffers | ModalSurface::Files => {
                 // The rows on screen are the ones that survived the
                 // filter; the click paths address the underlying list.
