@@ -6697,7 +6697,10 @@ impl SyncApp {
             .get(&addr)
             .is_some_and(|t| *t > std::time::Instant::now())
         {
-            return Err("not answering — waiting before trying again".to_owned());
+            // Short on purpose: this lands in a peer row beside the
+            // address, and a sentence there wraps the row into three
+            // ragged lines.
+            return Err("quiet".to_owned());
         }
         let mut stream = std::net::TcpStream::connect_timeout(&addr, DIAL).map_err(|e| {
             self.mark_quiet(addr);
@@ -6894,6 +6897,15 @@ impl SyncApp {
             state: PeerState::Known,
         });
         Ok(())
+    }
+
+    /// Drop the peer at `at`, returning its address.
+    pub fn forget_peer(&mut self, at: usize) -> Option<std::net::SocketAddr> {
+        (at < self.peers.len()).then(|| {
+            let peer = self.peers.remove(at);
+            self.quiet_until.remove(&peer.addr);
+            peer.addr
+        })
     }
 
     /// Record how the last round with `addr` went.
@@ -21362,6 +21374,45 @@ impl ModalApp {
         self.restore_last_place(shell);
         self.say("reloaded — vault and config re-read from disk");
         self.notify(ToastLevel::Success, "reloaded");
+    }
+
+    /// Forget the peer at `at`, in this session and in `config.org`.
+    ///
+    /// "Is the peer ticket input field append only to the config? We
+    /// may need some add/deactivate/delete UI component" — it was.
+    /// A ticket pasted by accident, or a machine that no longer
+    /// exists, stayed in the file forever and there was no way to see
+    /// or change that from the screen it was added on.
+    ///
+    /// Out of range is harmless: the pane and the list can disagree by
+    /// a frame, and a click landing on a row that has just gone is not
+    /// worth an error.
+    pub fn forget_peer(&mut self, at: usize, shell: &Shell) {
+        let gone = {
+            let sync = self.sync_mut();
+            if at >= sync.peers().len() {
+                return;
+            }
+            sync.forget_peer(at)
+        };
+        self.save_peers(shell);
+        if let Some(addr) = gone {
+            self.say(format!("forgot {addr}"));
+        }
+    }
+
+    /// Where this shell is accepting connections, if it is.
+    ///
+    /// "What does the listen button really do? It does something, but
+    /// what?" It binds a socket. Nothing said so and nothing said
+    /// whether it already had, so pressing it twice looked exactly
+    /// like never having pressed it.
+    #[must_use]
+    pub fn listening_on(&self) -> Option<std::net::SocketAddr> {
+        self.sync
+            .as_ref()
+            .and_then(SyncApp::listener)
+            .and_then(|l| l.local_addr().ok())
     }
 
     /// Write the current peer set back to `config.org`.

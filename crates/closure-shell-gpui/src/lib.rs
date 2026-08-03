@@ -6599,7 +6599,15 @@ impl GpuiView {
                                     this.start_listening(cx);
                                 }),
                             )
-                            .child("◎ listen"),
+                            // "What does the listen button really do?
+                            // It does something, but what?" It binds
+                            // the socket peers dial. Saying which one,
+                            // and that it is already bound, is the
+                            // difference between a verb and a state.
+                            .child(self.app.listening_on().map_or_else(
+                                || "◎ listen".to_owned(),
+                                |addr| format!("◉ listening on {addr}"),
+                            )),
                     ),
             )
             .child(self.sync_ticket_box(co, ticket, cx))
@@ -6629,7 +6637,8 @@ impl GpuiView {
             .children(
                 peers
                     .into_iter()
-                    .map(|peer| Self::peer_row(co, self.app.zoom(), &peer, cx)),
+                    .enumerate()
+                    .map(|(at, peer)| Self::peer_row(co, self.app.zoom(), at, &peer, cx)),
             )
     }
 
@@ -6638,6 +6647,7 @@ impl GpuiView {
     fn peer_row(
         co: Colors,
         zoom: f32,
+        at: usize,
         peer: &closure_shell_core::Peer,
         cx: &Context<Self>,
     ) -> gpui::Div {
@@ -6645,7 +6655,9 @@ impl GpuiView {
         let (colour, state) = match &peer.state {
             S::Known => (co.muted, "known".to_owned()),
             S::Synced { blocks } => (co.success, format!("synced · {blocks} blocks")),
-            S::Failed(e) => (co.error, format!("failed · {e}")),
+            // One line, and the reason first: the row is a table and a
+            // sentence in a cell wraps it into three ragged lines.
+            S::Failed(e) => (co.error, e.clone()),
         };
         let addr = peer.addr;
         div()
@@ -6681,9 +6693,35 @@ impl GpuiView {
             )
             .child(
                 div()
+                    .flex_grow()
+                    .min_w(px(0.0))
                     .text_size(sz_at(11.0, zoom))
                     .text_color(rgb(colour))
                     .child(state),
+            )
+            // "We may need some add/deactivate/delete UI component."
+            // Pairing was append-only: a ticket pasted by accident, or
+            // a machine that no longer exists, stayed in config.org
+            // forever with no way to see or change it from the screen
+            // it was added on.
+            .child(
+                div()
+                    .debug_selector(move || format!("peer-forget-{at}"))
+                    .flex_none()
+                    .px_2()
+                    .rounded_md()
+                    .text_size(sz_at(11.0, zoom))
+                    .text_color(rgb(co.muted))
+                    .cursor_pointer()
+                    .hover(move |s| s.bg(rgb(co.hover)).text_color(rgb(co.error)))
+                    .on_mouse_down(
+                        MouseButton::Left,
+                        cx.listener(move |this: &mut Self, _ev, _w, cx| {
+                            this.app.forget_peer(at, &this.shell);
+                            cx.notify();
+                        }),
+                    )
+                    .child("✕ forget"),
             )
     }
 
