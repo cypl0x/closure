@@ -12046,6 +12046,11 @@ pub struct ModalApp {
     /// Per-line git marks for the open buffer, memoised against the
     /// revision and the path they were read for.
     fringe_memo: std::cell::RefCell<Option<FringeMemo>>,
+    /// Where TAB has walked to in the `:` line's candidates.
+    ex_cycle: usize,
+    /// What was typed when TAB was first pressed. Cycling walks the
+    /// candidates of *this*, not of the line it keeps rewriting.
+    ex_stem: Option<String>,
     /// The notification log. It lived in the gpui window, which is
     /// why it had no command and no chord — there was nothing for the
     /// keymap to point at. Here it has both, and the terminal shell
@@ -12561,6 +12566,8 @@ impl ModalApp {
             git_memo: std::cell::RefCell::new(None),
             git_reads: std::cell::Cell::new(0),
             fringe_memo: std::cell::RefCell::new(None),
+            ex_cycle: 0,
+            ex_stem: None,
             notifications: Feedback::default(),
             palette_cursor: 0,
             pending: Vec::new(),
@@ -16304,14 +16311,115 @@ impl ModalApp {
             // Backspace on an empty line is the way out; anywhere else
             // it is the field's, like every other editing key here.
             "backspace" if self.ex_buf.is_empty() => self.close_ex(),
+            // TAB completes, as in every shell and in vim's own
+            // cmdline. It is not Enter: nothing runs.
+            "tab" => self.ex_complete(),
             "enter" => {
                 let line = self.ex_buf.take();
                 self.run_ex(shell, line.trim());
             }
             _ => {
+                // Typing is a new question: the cycle and the stem it
+                // walked both start over.
+                self.ex_cycle = 0;
+                self.ex_stem = None;
                 line_key(&mut self.ex_buf, &mut self.line_kill, key, ctrl, alt, text);
             }
         }
+    }
+
+    /// The vim lines the `:` prompt answers to that are not registry
+    /// commands.
+    ///
+    /// They are why people open the line at all, so a completion list
+    /// without them would be missing its most-used entries.
+    const EX_VIM_LINES: &'static [&'static str] = &[
+        "w", "write", "wq", "x", "q", "q!", "quit", "wq!", "x!", "messages",
+    ];
+
+    /// What the `:` line would complete the current input to.
+    ///
+    /// "ex mode autocompletion". The line took typing and Enter and
+    /// nothing else, so knowing a command's name exactly was the price
+    /// of using the one surface that is a superset of the palette.
+    ///
+    /// Drawn from the command registry rather than a second list: a
+    /// command added anywhere is completable here the same day, which
+    /// a hand-kept list stops being true of almost immediately.
+    #[must_use]
+    pub fn ex_completions(&self) -> Vec<String> {
+        Self::completions_for(self.ex_buf.text())
+    }
+
+    /// Everything the `:` line knows that starts with `typed`.
+    fn completions_for(typed: &str) -> Vec<String> {
+        let mut out: Vec<String> = Self::EX_VIM_LINES
+            .iter()
+            .map(|s| (*s).to_owned())
+            .chain(palette_command_names().into_iter().map(ToOwned::to_owned))
+            .filter(|name| name.starts_with(typed))
+            .collect();
+        out.sort_unstable();
+        out.dedup();
+        out
+    }
+
+    /// TAB on the `:` line: fill in what is certain, then cycle.
+    ///
+    /// The shell behaviour, and vim's own cmdline: complete to the
+    /// longest common prefix rather than guessing which candidate was
+    /// meant, and once there is nothing certain left to add, walk
+    /// them. A prefix that matches nothing leaves the line alone —
+    /// clearing what somebody typed would be worse than doing nothing.
+    fn ex_complete(&mut self) {
+        // Cycling walks the candidates of the *stem* — what was typed
+        // when TAB was first pressed — not of whatever the line now
+        // holds. Filling in a whole candidate narrows the line to
+        // matching only itself, so cycling against the live text gets
+        // stuck on the first thing it offered.
+        let stem = self
+            .ex_stem
+            .clone()
+            .unwrap_or_else(|| self.ex_buf.text().to_owned());
+        let candidates = Self::completions_for(&stem);
+        let Some(first) = candidates.first() else {
+            return;
+        };
+        let typed = self.ex_buf.text().to_owned();
+        let common = Self::common_prefix(&candidates);
+        if common.len() > typed.len() {
+            self.ex_buf.set_text(&common);
+            self.ex_stem = Some(stem);
+            self.ex_cycle = 0;
+            return;
+        }
+        // Nothing certain left to add: walk them. The index advances
+        // first, so a second TAB moves off what the first one put
+        // there.
+        self.ex_cycle = (self.ex_cycle + 1) % candidates.len();
+        let pick = candidates.get(self.ex_cycle).unwrap_or(first);
+        self.ex_buf.set_text(pick);
+        self.ex_stem = Some(stem);
+    }
+
+    /// The longest prefix every candidate shares.
+    fn common_prefix(candidates: &[String]) -> String {
+        let Some(first) = candidates.first() else {
+            return String::new();
+        };
+        let mut end = first.len();
+        for other in &candidates[1..] {
+            end = end.min(
+                first
+                    .char_indices()
+                    .zip(other.char_indices())
+                    .take_while(|((_, a), (_, b))| a == b)
+                    .map(|((i, c), _)| i + c.len_utf8())
+                    .last()
+                    .unwrap_or(0),
+            );
+        }
+        first[..end].to_owned()
     }
 
     /// Abandon the `:` line and return to where it was opened from.
