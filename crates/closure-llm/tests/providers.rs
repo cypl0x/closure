@@ -14,7 +14,7 @@ fn anthropic_builder_sets_url_and_key_header() {
     assert_eq!(p.url, "https://api.anthropic.com/v1/messages");
     assert!(p.headers.iter().any(|h| h == "x-api-key: sk-test"));
     assert!(p.headers.iter().any(|h| h.contains("anthropic-version")));
-    let body = (p.body)("hi");
+    let body = (p.body)("hi", false);
     assert!(body.contains("\"messages\""));
     assert!(body.contains("\"content\":\"hi\""));
 }
@@ -24,7 +24,7 @@ fn openai_builder_sets_bearer_and_body() {
     let p = openai("sk-oa", "gpt-4o");
     assert_eq!(p.url, "https://api.openai.com/v1/chat/completions");
     assert!(p.headers.iter().any(|h| h == "authorization: Bearer sk-oa"));
-    let body = (p.body)("yo");
+    let body = (p.body)("yo", false);
     assert!(body.contains("\"model\":\"gpt-4o\""));
     assert!(body.contains("\"content\":\"yo\""));
 }
@@ -38,7 +38,7 @@ fn ollama_builder_uses_host_and_no_auth() {
             .iter()
             .any(|h| h.to_lowercase().contains("authorization"))
     );
-    let body = (p.body)("q");
+    let body = (p.body)("q", false);
     assert!(body.contains("\"stream\":false"));
 }
 

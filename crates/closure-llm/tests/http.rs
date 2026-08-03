@@ -108,9 +108,9 @@ fn ollama_http_honours_the_model_parameter() {
 #[test]
 fn anthropic_and_openai_bodies_carry_the_model() {
     let a = closure_llm::anthropic("test-key", "claude-fable-5");
-    let body = (a.body)("hi");
+    let body = (a.body)("hi", false);
     assert!(body.contains("\"model\":\"claude-fable-5\""), "{body}");
     let o = closure_llm::openai("test-key", "gpt-5-mini");
-    let body = (o.body)("hi");
+    let body = (o.body)("hi", false);
     assert!(body.contains("\"model\":\"gpt-5-mini\""), "{body}");
 }

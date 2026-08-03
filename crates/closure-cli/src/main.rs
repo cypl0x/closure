@@ -3231,13 +3231,15 @@ const ASK_TOOLS_HELP: &str = "Vault tools (use via CALL): list-files | read <fil
      set-property <id> <key> <value> | view-state | view-render";
 
 fn cmd_ask(prompt: &str, model: &str, vault: Option<&Path>) -> Result<(), String> {
-    use closure_llm::Provider;
+    use std::io::Write as _;
     let Some(vault_dir) = vault else {
         let key = std::env::var("ANTHROPIC_API_KEY")
             .map_err(|_| "ANTHROPIC_API_KEY not set".to_owned())?;
         let provider = closure_llm::anthropic(&key, model);
-        let response = provider.complete(prompt).map_err(|e| format!("{e}"))?;
-        println!("{response}");
+        // Streamed: without a vault there are no tools to run, so the
+        // answer is the whole of the wait, and watching it arrive is
+        // the difference between a program thinking and one hung.
+        stream_to_stdout(&provider, prompt)?;
         return Ok(());
     };
     let mut v = Vault::open(vault_dir).map_err(|e| format!("{e}"))?;
@@ -3251,14 +3253,43 @@ fn cmd_ask(prompt: &str, model: &str, vault: Option<&Path>) -> Result<(), String
         closure_shell_core::Shell::new(Vault::open(vault_dir).map_err(|e| format!("{e}"))?)
             .assistant_context();
     let task = format!("{context}\n\n{prompt}\n\n{ASK_TOOLS_HELP}");
-    let answer = closure_llm::tool_loop(
+    // Streamed, including the `CALL` turns: a loop that spends four
+    // turns reading the vault should look like it is working rather
+    // than like it has stopped.
+    let mut out = std::io::stdout();
+    closure_llm::tool_loop_streaming(
         provider.as_ref(),
         |line| run_vault_tool(&mut v, &perms, line),
         &task,
         16,
+        &mut |token| {
+            print!("{token}");
+            let _ = out.flush();
+        },
     )
     .map_err(|e| format!("{e}"))?;
-    println!("{answer}");
+    println!();
+    Ok(())
+}
+
+/// Print a provider's answer as it is written, then end the line.
+///
+/// A provider that cannot stream hands over the whole answer in one
+/// call (the trait default), so this is correct for every provider —
+/// the slow ones simply arrive in one piece. Flushing per token is the
+/// point: stdout is block-buffered when it is not a terminal, and
+/// without the flush the tokens would queue up and land together,
+/// which is the behaviour being replaced.
+fn stream_to_stdout(provider: &dyn closure_llm::Provider, prompt: &str) -> Result<(), String> {
+    use std::io::Write as _;
+    let mut out = std::io::stdout();
+    provider
+        .stream(prompt, &mut |token| {
+            print!("{token}");
+            let _ = out.flush();
+        })
+        .map_err(|e| format!("{e}"))?;
+    println!();
     Ok(())
 }
 
@@ -3282,7 +3313,7 @@ fn read_chat_line(buf: &mut String) -> bool {
 /// turns), with the same BYOK config and `llm_tools` allowlist as
 /// [`cmd_ask`].
 fn cmd_chat(model: &str, vault: Option<&Path>) -> Result<(), String> {
-    use closure_llm::Provider;
+    use std::io::Write as _;
     println!("closure chat (multi-turn). /quit to exit.");
 
     let Some(vault_dir) = vault else {
@@ -3291,9 +3322,8 @@ fn cmd_chat(model: &str, vault: Option<&Path>) -> Result<(), String> {
         let provider = closure_llm::anthropic(&key, model);
         let mut line = String::new();
         while read_chat_line(&mut line) {
-            match provider.complete(line.trim()) {
-                Ok(r) => println!("{r}"),
-                Err(e) => eprintln!("error: {e}"),
+            if let Err(e) = stream_to_stdout(&provider, line.trim()) {
+                eprintln!("error: {e}");
             }
         }
         println!("chat ended.");
@@ -3307,14 +3337,19 @@ fn cmd_chat(model: &str, vault: Option<&Path>) -> Result<(), String> {
     let mut line = String::new();
     while read_chat_line(&mut line) {
         let task = format!("{}\n\n{ASK_TOOLS_HELP}", line.trim());
-        let answer = closure_llm::tool_loop(
+        let mut out = std::io::stdout();
+        closure_llm::tool_loop_streaming(
             provider.as_ref(),
             |l| run_vault_tool(&mut v, &perms, l),
             &task,
             8,
+            &mut |token| {
+                print!("{token}");
+                let _ = out.flush();
+            },
         )
         .map_err(|e| format!("{e}"))?;
-        println!("{answer}");
+        println!();
     }
     println!("chat ended.");
     Ok(())

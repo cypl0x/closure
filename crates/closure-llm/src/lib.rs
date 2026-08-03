@@ -91,6 +91,10 @@ impl LlmPermissions {
     }
 }
 
+/// Builds a request body from a prompt, told whether the caller wants
+/// the answer streamed. Boxed so a constructor can capture the model.
+pub type BodyFn = Box<dyn Fn(&str, bool) -> String + Send + Sync>;
+
 /// LLM provider trait.
 pub trait Provider {
     /// Send a prompt and receive a (possibly streamed) completion.
@@ -109,6 +113,27 @@ pub trait Provider {
     /// the dialling can be believed.
     fn endpoint(&self) -> Option<&str> {
         None
+    }
+
+    /// Send a prompt and receive the answer a token at a time,
+    /// returning the whole of it as well.
+    ///
+    /// `on_token` is called as text arrives, so a caller can paint a
+    /// reply while the model is still writing it rather than showing
+    /// nothing for the several seconds a local model takes.
+    ///
+    /// The default is honest rather than fake: a provider that cannot
+    /// stream completes normally and hands the whole answer over in one
+    /// call. Callers therefore never need to ask whether streaming is
+    /// available — the slow ones simply arrive in one piece.
+    ///
+    /// # Errors
+    ///
+    /// Whatever [`Self::complete`] would fail with.
+    fn stream(&self, prompt: &str, on_token: &mut dyn FnMut(&str)) -> Result<String, LlmError> {
+        let whole = self.complete(prompt)?;
+        on_token(&whole);
+        Ok(whole)
     }
 }
 
@@ -270,7 +295,7 @@ impl OpenAiWireProvider {
 impl Provider for OpenAiWireProvider {
     fn complete(&self, prompt: &str) -> Result<String, LlmError> {
         // 1. Encode the prompt as a real OpenAI chat-completions request.
-        *self.last_request.borrow_mut() = openai_body("gpt-4o", prompt);
+        *self.last_request.borrow_mut() = openai_body("gpt-4o", prompt, false);
         // 2. Take the next scripted assistant turn and wrap it in a
         //    canonical OpenAI response envelope.
         let content = self
@@ -310,12 +335,15 @@ pub struct CurlProvider {
     pub url: String,
     /// Extra headers (e.g. `Authorization: Bearer ...`).
     pub headers: Vec<String>,
-    /// Function that builds the JSON body from a prompt (boxed so a
-    /// constructor can capture the model, Q7-L1).
-    pub body: Box<dyn Fn(&str) -> String + Send + Sync>,
+    /// Builds the JSON body from a prompt — see [`BodyFn`].
+    pub body: BodyFn,
     /// Function that extracts the completion text from the response
     /// JSON. The default just returns the response verbatim.
     pub extract: fn(&str) -> Result<String, LlmError>,
+    /// Which wire format the endpoint speaks, so a streamed response
+    /// can be read frame by frame. `Echo` means "do not stream" — the
+    /// trait default then completes in one piece.
+    pub kind: ProviderKind,
 }
 
 impl CurlProvider {
@@ -326,8 +354,9 @@ impl CurlProvider {
         Self {
             url,
             headers: Vec::new(),
-            body: Box::new(|p| format!("{{\"prompt\": {}}}", json_string(p))),
+            body: Box::new(|p, _stream| format!("{{\"prompt\": {}}}", json_string(p))),
             extract: |s| Ok(s.to_owned()),
+            kind: ProviderKind::Echo,
         }
     }
 }
@@ -337,8 +366,68 @@ impl Provider for CurlProvider {
         Some(&self.url)
     }
 
+    /// Streams by asking the endpoint for a stream and reading curl's
+    /// stdout as it arrives.
+    ///
+    /// `-N` is the whole trick: without it curl buffers, and the
+    /// tokens land in one lump at the end, which looks exactly like no
+    /// streaming at all while costing the same work.
+    fn stream(&self, prompt: &str, on_token: &mut dyn FnMut(&str)) -> Result<String, LlmError> {
+        use std::io::BufRead as _;
+        if self.kind == ProviderKind::Echo {
+            let whole = self.complete(prompt)?;
+            on_token(&whole);
+            return Ok(whole);
+        }
+        let body = (self.body)(prompt, true);
+        let mut cmd = std::process::Command::new("curl");
+        cmd.arg("-sS")
+            .arg("-N")
+            .arg("-X")
+            .arg("POST")
+            .arg("-d")
+            .arg(&body);
+        for h in &self.headers {
+            cmd.arg("-H").arg(h);
+        }
+        cmd.arg(&self.url)
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped());
+        let mut child = cmd.spawn().map_err(|e| LlmError::Provider(e.to_string()))?;
+        let stdout = child
+            .stdout
+            .take()
+            .ok_or_else(|| LlmError::Provider("curl produced no stdout".into()))?;
+        let mut whole = String::new();
+        for line in std::io::BufReader::new(stdout).lines() {
+            let line = line.map_err(|e| LlmError::Provider(e.to_string()))?;
+            if let Some(token) = stream_delta(self.kind, &line) {
+                on_token(&token);
+                whole.push_str(&token);
+            }
+        }
+        let status = child
+            .wait()
+            .map_err(|e| LlmError::Provider(e.to_string()))?;
+        if !status.success() {
+            return Err(LlmError::Provider(format!(
+                "curl exit {}",
+                status.code().unwrap_or(-1)
+            )));
+        }
+        // A stream that yielded nothing is not an answer. Falling back
+        // rather than returning "" because an endpoint that ignored
+        // `"stream":true` has still sent a perfectly good reply.
+        if whole.is_empty() {
+            let whole = self.complete(prompt)?;
+            on_token(&whole);
+            return Ok(whole);
+        }
+        Ok(whole)
+    }
+
     fn complete(&self, prompt: &str) -> Result<String, LlmError> {
-        let body = (self.body)(prompt);
+        let body = (self.body)(prompt, false);
         let mut cmd = std::process::Command::new("curl");
         cmd.arg("-sS").arg("-X").arg("POST").arg("-d").arg(&body);
         for h in &self.headers {
@@ -372,8 +461,8 @@ pub struct HttpProvider {
     /// Extra request headers (`Name: value`).
     pub headers: Vec<String>,
     /// Builds the request body from a prompt (boxed - captures the
-    /// model, Q7-L1).
-    pub body: Box<dyn Fn(&str) -> String + Send + Sync>,
+    /// model, Q7-L1) — see [`BodyFn`].
+    pub body: BodyFn,
     /// Extracts the completion from the response body.
     pub extract: fn(&str) -> Result<String, LlmError>,
 }
@@ -385,7 +474,7 @@ impl HttpProvider {
         Self {
             url,
             headers: vec!["content-type: application/json".into()],
-            body: Box::new(|p| format!("{{\"prompt\": {}}}", json_string(p))),
+            body: Box::new(|p, _stream| format!("{{\"prompt\": {}}}", json_string(p))),
             extract: |s| Ok(s.to_owned()),
         }
     }
@@ -397,7 +486,7 @@ impl Provider for HttpProvider {
     }
 
     fn complete(&self, prompt: &str) -> Result<String, LlmError> {
-        let body = (self.body)(prompt);
+        let body = (self.body)(prompt, false);
         let resp = http_post(&self.url, &self.headers, &body)?;
         (self.extract)(&resp)
     }
@@ -478,10 +567,11 @@ pub fn anthropic_at(url: &str, api_key: &str, model: &str) -> CurlProvider {
             "anthropic-version: 2023-06-01".into(),
             format!("x-api-key: {api_key}"),
         ],
-        body: Box::new(move |p| anthropic_body(&model, p)),
+        body: Box::new(move |p, stream| anthropic_body(&model, p, stream)),
         extract: |s| {
             extract_anthropic_content(s).ok_or_else(|| LlmError::Provider("no content".into()))
         },
+        kind: ProviderKind::Anthropic,
     }
 }
 
@@ -519,10 +609,11 @@ pub fn openai_at(url: &str, api_key: &str, model: &str) -> CurlProvider {
             "content-type: application/json".into(),
             format!("authorization: Bearer {api_key}"),
         ],
-        body: Box::new(move |p| openai_body(&model, p)),
+        body: Box::new(move |p, stream| openai_body(&model, p, stream)),
         extract: |s| {
             extract_openai_content(s).ok_or_else(|| LlmError::Provider("no content".into()))
         },
+        kind: ProviderKind::OpenAi,
     }
 }
 
@@ -534,10 +625,11 @@ pub fn ollama(host: &str, model: &str) -> CurlProvider {
     CurlProvider {
         url: format!("{host}/api/generate"),
         headers: vec!["content-type: application/json".into()],
-        body: Box::new(move |p| ollama_body(&model, p)),
+        body: Box::new(move |p, stream| ollama_body(&model, p, stream)),
         extract: |s| {
             extract_ollama_response(s).ok_or_else(|| LlmError::Provider("no response".into()))
         },
+        kind: ProviderKind::Ollama,
     }
 }
 
@@ -553,32 +645,32 @@ pub fn ollama_http(host: &str, model: &str) -> HttpProvider {
     HttpProvider {
         url: format!("{host}/api/generate"),
         headers: vec!["content-type: application/json".into()],
-        body: Box::new(move |p| ollama_body(&model, p)),
+        body: Box::new(move |p, stream| ollama_body(&model, p, stream)),
         extract: |s| {
             extract_ollama_response(s).ok_or_else(|| LlmError::Provider("no response".into()))
         },
     }
 }
 
-fn anthropic_body(model: &str, p: &str) -> String {
+fn anthropic_body(model: &str, p: &str, stream: bool) -> String {
     format!(
-        "{{\"model\":{m},\"max_tokens\":1024,\"messages\":[{{\"role\":\"user\",\"content\":{prompt}}}]}}",
+        "{{\"model\":{m},\"max_tokens\":1024,\"stream\":{stream},\"messages\":[{{\"role\":\"user\",\"content\":{prompt}}}]}}",
         m = json_string(model),
         prompt = json_string(p),
     )
 }
 
-fn openai_body(model: &str, p: &str) -> String {
+fn openai_body(model: &str, p: &str, stream: bool) -> String {
     format!(
-        "{{\"model\":{m},\"messages\":[{{\"role\":\"user\",\"content\":{prompt}}}]}}",
+        "{{\"model\":{m},\"stream\":{stream},\"messages\":[{{\"role\":\"user\",\"content\":{prompt}}}]}}",
         m = json_string(model),
         prompt = json_string(p),
     )
 }
 
-fn ollama_body(model: &str, p: &str) -> String {
+fn ollama_body(model: &str, p: &str, stream: bool) -> String {
     format!(
-        "{{\"model\":{m},\"prompt\":{prompt},\"stream\":false}}",
+        "{{\"model\":{m},\"prompt\":{prompt},\"stream\":{stream}}}",
         m = json_string(model),
         prompt = json_string(p),
     )
@@ -606,6 +698,54 @@ pub fn extract_openai_content(body: &str) -> Option<String> {
 #[must_use]
 pub fn extract_ollama_response(body: &str) -> Option<String> {
     extract_json_string_after(body, "\"response\":")
+}
+
+/// One token out of one line of a streaming response body, or `None`
+/// when the line carries no text — which is most of them.
+///
+/// The three providers agree on nothing here, so this is parsed per
+/// wire format rather than guessed:
+///
+/// - OpenAI sends SSE, the text in `choices[0].delta.content`, and ends
+///   with a literal `data: [DONE]` that is not a token however much it
+///   looks like one.
+/// - Anthropic sends SSE with named events, and only
+///   `content_block_delta` carries text. `message_start` and `ping`
+///   arrive on every request and must not be mistaken for content.
+/// - Ollama does not send SSE at all — bare NDJSON, text in `response`.
+///
+/// A blank line is not an error: SSE separates its events with them.
+#[must_use]
+pub fn stream_delta(kind: ProviderKind, line: &str) -> Option<String> {
+    let line = line.trim();
+    if line.is_empty() || line.starts_with("event:") {
+        return None;
+    }
+    // Ollama's lines are bare JSON; the others are SSE `data:` frames.
+    let payload = match kind {
+        ProviderKind::Ollama => line,
+        _ => line.strip_prefix("data:")?.trim(),
+    };
+    if payload == "[DONE]" {
+        return None;
+    }
+    let text = match kind {
+        // Nothing leaves the process, so nothing arrives token by token.
+        ProviderKind::Echo => return None,
+        ProviderKind::Ollama => extract_json_string_after(payload, "\"response\":"),
+        ProviderKind::OpenAi => extract_json_string_after(payload, "\"content\":"),
+        // Gated on the event type rather than on the presence of a
+        // `"text"` key: other events carry text-shaped fields, and one
+        // of them leaking would put the model's own id into the answer.
+        ProviderKind::Anthropic => payload
+            .contains("\"content_block_delta\"")
+            .then(|| extract_json_string_after(payload, "\"text\":"))
+            .flatten(),
+    }?;
+    // A delta of `""` is a frame with no token in it (Ollama's final
+    // line is exactly this). A delta of `" "` is a real space, and
+    // dropping it runs every word into the next one.
+    (!text.is_empty()).then_some(text)
 }
 
 fn extract_json_string_after(body: &str, key: &str) -> Option<String> {
@@ -749,9 +889,30 @@ fn protocol_line(reply: &str) -> Option<Turn> {
 /// [`LlmError::Provider`].
 pub fn tool_loop(
     provider: &dyn Provider,
+    execute: impl FnMut(&str) -> String,
+    task: &str,
+    max_turns: usize,
+) -> Result<String, LlmError> {
+    tool_loop_streaming(provider, execute, task, max_turns, &mut |_| {})
+}
+
+/// The same loop, reporting each turn's text as the model writes it.
+///
+/// `on_token` sees every assistant turn, including the `CALL` lines —
+/// which is the honest thing to show, because a loop that spends four
+/// turns reading the vault should look like it is doing that rather
+/// than like it has stopped. A caller that wants only the answer can
+/// use [`tool_loop`], which passes a sink that discards.
+///
+/// # Errors
+///
+/// As [`tool_loop`].
+pub fn tool_loop_streaming(
+    provider: &dyn Provider,
     mut execute: impl FnMut(&str) -> String,
     task: &str,
     max_turns: usize,
+    on_token: &mut dyn FnMut(&str),
 ) -> Result<String, LlmError> {
     use std::fmt::Write as _;
     let mut transcript = format!(
@@ -761,7 +922,7 @@ pub fn tool_loop(
          DONE <answer>        — finish with your answer\n"
     );
     for _ in 0..max_turns {
-        let reply = provider.complete(&transcript)?;
+        let reply = provider.stream(&transcript, on_token)?;
         let reply = reply.trim();
         match protocol_line(reply) {
             Some(Turn::Call(cmd)) => {
