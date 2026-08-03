@@ -1756,6 +1756,42 @@ pub fn which_key_filter(
         .collect()
 }
 
+/// The width every chord cell in the which-key panel gets, in pixels:
+/// the widest chord on show, plus a gap, never below a floor.
+///
+/// The panel used a constant 56px. A chord wider than that wrapped
+/// *inside its own box* while the description stayed beside the first
+/// line, so `C-c <down>` printed as `C-c` with `<down>` orphaned
+/// underneath — which reads as a binding that does not exist. One
+/// wrapping chord is a panel telling you the wrong key.
+///
+/// It is one width for all of them rather than one per cell because
+/// the descriptions form a column, and that column is what makes the
+/// panel scannable. `advance` is the monospace glyph width the window
+/// measured, so this tracks the font and the zoom rather than assuming
+/// either.
+#[must_use]
+pub fn which_key_chord_w(groups: &[(String, Vec<(String, String)>)], advance: f32) -> f32 {
+    /// Never narrower than the old constant: a panel of one-key chords
+    /// should not slide its descriptions leftwards into a ragged edge.
+    const FLOOR: f32 = 56.0;
+    /// Room between the chord and what it does, so the two never touch
+    /// the way `C-c <up>priority-up` did.
+    const GAP: f32 = 10.0;
+    let widest = groups
+        .iter()
+        .flat_map(|(_, entries)| entries.iter())
+        .map(|(chord, _)| chord.chars().count())
+        .max()
+        .unwrap_or(0);
+    #[expect(
+        clippy::cast_precision_loss,
+        reason = "a chord is a handful of characters"
+    )]
+    let needed = (widest as f32).mul_add(advance, GAP);
+    needed.max(FLOOR)
+}
+
 /// Launch fallback when the `gpui` feature is disabled (the default,
 /// hermetic build). The kernel-side [`Shell`] is always available; the
 /// GPU window requires `--features gpui` and the system GPU/X11 libs.
@@ -2623,6 +2659,14 @@ impl GpuiView {
     #[must_use]
     pub fn pending_chord(&self) -> String {
         self.app.pending_chord()
+    }
+
+    /// The which-key entries, grouped, exactly as the panel paints
+    /// them — so a test can hold the panel to every chord it is
+    /// showing rather than to the one that was noticed.
+    #[must_use]
+    pub fn which_key_groups(&self) -> Vec<(String, Vec<(String, String)>)> {
+        self.app.which_key_groups()
     }
 
     /// How many toasts are on the strip.
@@ -7552,6 +7596,15 @@ impl GpuiView {
     /// answer at the one moment the user has asked a specific question.
     fn which_key_panel(&self, co: Colors, cx: &Context<Self>) -> gpui::Div {
         let groups = which_key_filter(self.app.which_key_groups(), &self.app.which_key_pending());
+        // One width for every chord cell, taken from the widest chord
+        // actually on show. A constant could not know whether the chord
+        // fits: at 56px `C-c <down>` wrapped inside its own box and read
+        // as `C-c` = priority-down — a different command — while
+        // `C-c <up>` filled it exactly and ran into its description.
+        // Sizing each cell to its own text would stop the wrap but
+        // ragged the descriptions out of a column; one measured width
+        // does both.
+        let chord_w = px(which_key_chord_w(&groups, self.col_w()));
         div()
             .flex()
             .flex_row()
@@ -7610,7 +7663,20 @@ impl GpuiView {
                                                 )
                                                 .child(
                                                     div()
-                                                        .w(px(56.0))
+                                                        .debug_selector({
+                                                            let c = command.clone();
+                                                            move || format!("wk-chord-{c}")
+                                                        })
+                                                        // Sized by the chord, with a floor so the
+                                                        // descriptions still line up. A constant
+                                                        // width cannot know whether the chord fits:
+                                                        // `C-c <down>` wrapped inside it and read
+                                                        // as `C-c` = priority-down, which is a
+                                                        // different command. `flex_none` keeps a
+                                                        // long chord from being squeezed by the
+                                                        // description beside it.
+                                                        .flex_none()
+                                                        .w(chord_w)
                                                         .text_color(rgb(co.accent))
                                                         .child(chord),
                                                 )
