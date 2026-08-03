@@ -66,16 +66,31 @@ fn ctrl_k_then_ctrl_y_puts_it_back() {
 }
 
 #[test]
-fn ctrl_k_in_the_capture_prompt_is_still_its_history() {
-    // Capture has a history and `C-j`/`C-k` walk it — a use of the
-    // chord that predates this and belongs to a field that has one.
+fn ctrl_k_in_the_capture_prompt_kills_like_every_other_field() {
+    // Written as "still its history": capture had a history and
+    // `C-j`/`C-k` walked it, so this asserted that `C-k` there was the
+    // one field where the chord did not kill.
+    //
+    // The user asked for the opposite on 2026-08-03 — "Input fields
+    // should work with the system clipboard just as the editor does.
+    // C-k should add to the system clipboard" — and one field
+    // disagreeing with every other field and with every minibuffer is
+    // the sort of exception nobody can hold in their head. History
+    // keeps the arrows, `C-j` and `M-p`/`M-n`.
     let (_d, mut sh, mut app) = fixture();
     app.run(&mut sh, "capture");
     type_into(&mut app, &mut sh, "first thought");
     app.on_key(&mut sh, "enter", false, false, None);
     app.run(&mut sh, "capture");
+    type_into(&mut app, &mut sh, "second");
+    app.on_key(&mut sh, "a", true, false, None);
     app.on_key(&mut sh, "k", true, false, None);
-    assert_eq!(app.capture_buffer(), "first thought", "history, not a kill");
+    assert_eq!(app.capture_buffer(), "", "a kill, not history");
+    assert_eq!(app.register_text(), "second");
+
+    // …and the history is still reachable, by the keys that keep it.
+    app.on_key(&mut sh, "up", false, false, None);
+    assert_eq!(app.capture_buffer(), "first thought");
 }
 
 #[test]

@@ -12387,7 +12387,6 @@ pub struct ModalApp {
     /// subtrees and is what `p` splices back into the outline, so a
     /// fragment of a title on it would paste prose where a headline
     /// belongs.
-    line_kill: String,
     /// Commands run *from the palette*, most recent first, deduped and
     /// capped. Chords are deliberately not in here: `j` and `k` are
     /// pressed hundreds of times a session and are never what you open
@@ -12886,7 +12885,6 @@ impl ModalApp {
             history_walk: None,
             history_gen: 0,
             which_key_open: false,
-            line_kill: String::new(),
             messages: Vec::new(),
             tracing: false,
             last_edited_file: None,
@@ -13280,14 +13278,9 @@ impl ModalApp {
             // old list.
             _ => {
                 let before = self.field_buf.text().to_owned();
-                line_key(
-                    &mut self.field_buf,
-                    &mut self.line_kill,
-                    key,
-                    ctrl,
-                    alt,
-                    text,
-                );
+                let mut kill = self.shared_kill();
+                line_key(&mut self.field_buf, &mut kill, key, ctrl, alt, text);
+                self.keep_shared_kill(&kill);
                 if self.field_buf.text() != before {
                     self.palette_cursor = 0;
                 }
@@ -14259,14 +14252,9 @@ impl ModalApp {
                 }
             }
             _ => {
-                line_key(
-                    &mut self.chat_buf,
-                    &mut self.line_kill,
-                    key,
-                    ctrl,
-                    alt,
-                    text,
-                );
+                let mut kill = self.shared_kill();
+                line_key(&mut self.chat_buf, &mut kill, key, ctrl, alt, text);
+                self.keep_shared_kill(&kill);
             }
         }
     }
@@ -14381,14 +14369,9 @@ impl ModalApp {
                 }
             }
             _ => {
-                line_key(
-                    &mut self.sync_buf,
-                    &mut self.line_kill,
-                    key,
-                    ctrl,
-                    alt,
-                    text,
-                );
+                let mut kill = self.shared_kill();
+                line_key(&mut self.sync_buf, &mut kill, key, ctrl, alt, text);
+                self.keep_shared_kill(&kill);
             }
         }
     }
@@ -14546,6 +14529,29 @@ impl ModalApp {
                 save_report(&name, bytes)
             },
         )
+    }
+
+    /// The kill a prompt starts from — the editor's register.
+    ///
+    /// "Input fields should work with the system clipboard just as the
+    /// editor does. C-k should add to the system clipboard." They had
+    /// their own `line_kill` beside the editor's register: two
+    /// clipboards in one program, and only one of them mirrored. Text
+    /// killed in the capture prompt went somewhere nothing else could
+    /// reach, including the buffer two inches below.
+    fn shared_kill(&self) -> String {
+        self.body.register_text().to_owned()
+    }
+
+    /// Put a prompt's kill back into the shared register.
+    ///
+    /// Empty is not a kill: `C-k` at the end of a line kills nothing,
+    /// and letting that overwrite the register would lose what you had
+    /// copied to one stray keypress.
+    fn keep_shared_kill(&mut self, kill: &str) {
+        if !kill.is_empty() && kill != self.body.register_text() {
+            self.set_register_from_clipboard(kill);
+        }
     }
 
     /// Record where a peer is (what a live round hands us).
@@ -15808,7 +15814,9 @@ impl ModalApp {
                         return;
                     }
                     let before = self.query.text().to_owned();
-                    line_key(&mut self.query, &mut self.line_kill, key, ctrl, alt, text);
+                    let mut kill = self.shared_kill();
+                    line_key(&mut self.query, &mut kill, key, ctrl, alt, text);
+                    self.keep_shared_kill(&kill);
                     if self.query.text() != before {
                         self.hist_cursor = 0;
                     }
@@ -15833,7 +15841,9 @@ impl ModalApp {
             return;
         }
         let before = self.query.text().to_owned();
-        line_key(&mut self.query, &mut self.line_kill, key, ctrl, alt, text);
+        let mut kill = self.shared_kill();
+        line_key(&mut self.query, &mut kill, key, ctrl, alt, text);
+        self.keep_shared_kill(&kill);
         if self.query.text() != before {
             self.selected = 0;
         }
@@ -16921,7 +16931,9 @@ impl ModalApp {
                 // walked both start over.
                 self.ex_cycle = 0;
                 self.ex_stem = None;
-                line_key(&mut self.ex_buf, &mut self.line_kill, key, ctrl, alt, text);
+                let mut kill = self.shared_kill();
+                line_key(&mut self.ex_buf, &mut kill, key, ctrl, alt, text);
+                self.keep_shared_kill(&kill);
             }
         }
     }
@@ -17349,9 +17361,11 @@ impl ModalApp {
             // is why it is a field and not a `String` with `push` on it.
             _ => {
                 self.prompt_completion = None;
-                self.field_buf.set_kill(&self.line_kill);
+                let kill = self.shared_kill();
+                self.field_buf.set_kill(&kill);
                 self.field_buf.key(key, ctrl, alt, text);
-                self.line_kill = self.field_buf.kill().to_owned();
+                let after = self.field_buf.kill().to_owned();
+                self.keep_shared_kill(&after);
             }
         }
     }
@@ -20598,7 +20612,12 @@ impl ModalApp {
             // shell-history gesture, and the chords for a modal mode.
             "up" => self.walk_capture_history(1),
             "down" => self.walk_capture_history(-1),
-            "k" if ctrl => self.walk_capture_history(1),
+            // `C-k` used to be the modal spelling of history-up here.
+            // The user asked on 2026-08-03 for "C-k should add to the
+            // system clipboard", which is kill-to-end-of-line — what
+            // every other field in the shell and every minibuffer does
+            // with it. History keeps the arrows, `C-j`, and `M-p`/
+            // `M-n`, so nothing is lost but the duplicate.
             "j" if ctrl => self.walk_capture_history(-1),
             // What a minibuffer with a history has always answered to.
             // `C-j`/`C-k` above are the modal spelling and stay; these
@@ -20639,9 +20658,11 @@ impl ModalApp {
             // arrows, and the characters themselves.
             _ => {
                 self.prompt_completion = None;
-                self.capture_buf.set_kill(&self.line_kill);
+                let kill = self.shared_kill();
+                self.capture_buf.set_kill(&kill);
                 self.capture_buf.key(key, ctrl, alt, text);
-                self.line_kill = self.capture_buf.kill().to_owned();
+                let after = self.capture_buf.kill().to_owned();
+                self.keep_shared_kill(&after);
             }
         }
     }
@@ -22388,7 +22409,7 @@ impl ModalApp {
             "yank" => ("y", true, false),
             _ => return,
         };
-        let mut kill = std::mem::take(&mut self.line_kill);
+        let mut kill = self.shared_kill();
         let field = match self.surface {
             ModalSurface::Search | ModalSurface::BodySearch => Some(&mut self.query),
             ModalSurface::Capture => Some(&mut self.capture_buf),
@@ -22415,12 +22436,12 @@ impl ModalApp {
             _ => None,
         };
         let Some(field) = field else {
-            self.line_kill = kill;
+            self.keep_shared_kill(&kill);
             self.say(format!("{command}: nothing here is taking text"));
             return;
         };
         let claimed = line_key(field, &mut kill, stroke.0, stroke.1, stroke.2, None);
-        self.line_kill = kill;
+        self.keep_shared_kill(&kill);
         if !claimed {
             self.say(format!("{command}: that key does nothing here"));
         }

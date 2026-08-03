@@ -482,17 +482,45 @@ fn a_discarded_capture_is_remembered_too() {
 
 #[test]
 fn the_chords_walk_the_history_in_a_modal_mode() {
+    // Written with `C-k` as history-up as well as `C-j` as
+    // history-down. The user asked on 2026-08-03 for "C-k should add
+    // to the system clipboard" — kill-to-end-of-line, which is what
+    // every other field in the shell and every minibuffer anywhere
+    // does with that chord. So `C-k` is the kill now and history keeps
+    // the arrows, `C-j`, and `M-p`/`M-n`: nothing was lost but the
+    // duplicate.
     let (_d, mut sh) = shell();
     let mut app = ModalApp::new(InputMode::Doom);
     capture(&mut app, &mut sh, "older");
     capture(&mut app, &mut sh, "newer");
     app.run(&mut sh, "capture");
-    app.on_key(&mut sh, "k", true, false, Some('k'));
+    app.on_key(&mut sh, "up", false, false, None);
     assert_eq!(app.capture_buffer(), "newer");
-    app.on_key(&mut sh, "k", true, false, Some('k'));
+    app.on_key(&mut sh, "up", false, false, None);
     assert_eq!(app.capture_buffer(), "older");
     app.on_key(&mut sh, "j", true, false, Some('j'));
     assert_eq!(app.capture_buffer(), "newer");
+}
+
+#[test]
+fn ctrl_k_in_the_capture_prompt_kills_rather_than_walking_history() {
+    // The other half of that change, so the new contract is asserted
+    // rather than merely no longer contradicted.
+    let (_d, mut sh) = shell();
+    let mut app = ModalApp::new(InputMode::Doom);
+    capture(&mut app, &mut sh, "older");
+    app.run(&mut sh, "capture");
+    for c in "keep this".chars() {
+        app.on_key(&mut sh, &c.to_string(), false, false, Some(c));
+    }
+    app.on_key(&mut sh, "a", true, false, None);
+    app.on_key(&mut sh, "k", true, false, None);
+    assert_eq!(app.capture_buffer(), "", "C-k did not kill the line");
+    assert_eq!(
+        app.register_text(),
+        "keep this",
+        "the kill did not reach the shared register"
+    );
 }
 
 #[test]
