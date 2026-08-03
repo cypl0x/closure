@@ -323,10 +323,22 @@ pub fn set_config_key(source: &str, key: &str, value: &str) -> Result<String, Co
             out.push_str(raw);
             continue;
         }
+        // A key the template ships commented out counts as this key:
+        // appending a live line below it would leave the file saying it
+        // twice, and the reader takes one of them.
         let is_this_key = in_block
             && trimmed
+                .trim_start_matches('#')
+                .trim_start()
                 .split_once('=')
                 .is_some_and(|(k, _)| k.trim() == key);
+        // An empty value clears the setting. `key = ` parses as a key
+        // whose value is empty, which is not the same as unset, and
+        // "unset" has to be reachable from a settings screen.
+        if is_this_key && value.is_empty() {
+            replaced = true;
+            continue;
+        }
         if is_this_key && !replaced {
             out.push_str(&line);
             out.push('\n');
@@ -335,7 +347,7 @@ pub fn set_config_key(source: &str, key: &str, value: &str) -> Result<String, Co
         }
         out.push_str(raw);
     }
-    if !replaced && !inserted {
+    if !replaced && !inserted && !value.is_empty() {
         if !out.is_empty() && !out.ends_with('\n') {
             out.push('\n');
         }
@@ -768,93 +780,4 @@ impl Config {
 
         Ok(cfg)
     }
-}
-
-/// Write `key = value` into a `config.org` source, returning the new
-/// text — a splice, never a re-render.
-///
-/// A settings screen has to save, and the save is the part that can
-/// lose work. `config.org` is a file people write by hand, with their
-/// comments, their ordering and their own keys in it; rebuilding the
-/// block from a parsed [`Config`] would silently drop every comment
-/// and every key this version does not know about. So everything not
-/// being set comes back byte for byte.
-///
-/// Four cases, in order:
-///
-/// - the key is already set — its line is replaced where it stands;
-/// - the key is present but commented out (the shipped template writes
-///   the optional ones that way) — that line becomes the live setting,
-///   rather than a second copy appearing further down;
-/// - the key is absent — it is appended inside the block, because a
-///   line after `#+END_SRC` is one the reader never looks at;
-/// - there is no block at all — one is added after the existing text,
-///   which is kept.
-///
-/// An empty `value` removes the setting rather than writing `key = `,
-/// since `key = ` parses as a key whose value is empty and that is not
-/// the same as unset.
-#[must_use]
-pub fn set_key(source: &str, key: &str, value: &str) -> String {
-    let live = format!("{key} = {value}");
-    let mut out: Vec<String> = Vec::new();
-    let mut written = false;
-    let mut in_block = false;
-    let mut saw_block = false;
-
-    for line in source.lines() {
-        let trimmed = line.trim();
-        // Org keywords are case-insensitive and people write them
-        // lowercase. Matching only the upper case meant the block was
-        // not found, a *second* one was appended, and the reader takes
-        // the first — so the setting silently did nothing.
-        let upper = trimmed.to_ascii_uppercase();
-        if upper.starts_with("#+BEGIN_SRC") && trimmed.contains("closure-config") {
-            in_block = true;
-            saw_block = true;
-            out.push(line.to_owned());
-            continue;
-        }
-        if in_block && upper.starts_with("#+END_SRC") {
-            if !written && !value.is_empty() {
-                out.push(live.clone());
-                written = true;
-            }
-            in_block = false;
-            out.push(line.to_owned());
-            continue;
-        }
-        // A line that sets this key, live or commented out.
-        let names_key = in_block && {
-            let bare = trimmed.trim_start_matches('#').trim_start();
-            bare.split('=')
-                .next()
-                .is_some_and(|name| name.trim() == key)
-        };
-        if names_key {
-            if written || value.is_empty() {
-                // Already handled, or being cleared: drop the line.
-                continue;
-            }
-            out.push(live.clone());
-            written = true;
-            continue;
-        }
-        out.push(line.to_owned());
-    }
-
-    if !saw_block && !value.is_empty() {
-        if !out.is_empty() && !out.last().is_some_and(|l| l.trim().is_empty()) {
-            out.push(String::new());
-        }
-        out.push("#+BEGIN_SRC closure-config".to_owned());
-        out.push(live);
-        out.push("#+END_SRC".to_owned());
-    }
-
-    let mut text = out.join("\n");
-    if !text.is_empty() {
-        text.push('\n');
-    }
-    text
 }

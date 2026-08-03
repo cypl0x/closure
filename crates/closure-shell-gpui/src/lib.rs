@@ -3985,6 +3985,11 @@ impl GpuiView {
         )
     }
 
+    // One arm per surface: this is a table of what each pane says
+    // about itself, and breaking it into helpers to satisfy a line
+    // count would scatter that table across the file — the same reason
+    // `outline_cells` carries the allow.
+    #[allow(clippy::too_many_lines)]
     fn context_line(&self) -> String {
         let n = self.app.rows(&self.shell).len();
         match self.app.surface() {
@@ -4335,7 +4340,7 @@ impl GpuiView {
                 .border_color(rgb(drop_line_color(&self.theme)));
         }
         let marked = self.app.is_marked(&row.id);
-        Self::outline_cells(
+        let cells = Self::outline_cells(
             line,
             marked,
             co,
@@ -4345,6 +4350,38 @@ impl GpuiView {
             i,
             &row,
             cx,
+        );
+        self.with_peer_badge(cells, co, &row.id)
+    }
+
+    /// Append "who else is on this row", when anyone is.
+    ///
+    /// After the cells rather than threaded through them: presence is
+    /// not part of the row, it is something true about the row right
+    /// now. The row list is memoised against the vault revision, which
+    /// a moving cursor does not change.
+    fn with_peer_badge(&self, row: gpui::Div, co: Colors, id: &str) -> gpui::Div {
+        let peers = self.app.peers_on(id);
+        if peers.is_empty() {
+            return row;
+        }
+        let who = peers
+            .iter()
+            .map(|p| p.peer.as_str())
+            .collect::<Vec<_>>()
+            .join(", ");
+        row.child(
+            div()
+                .debug_selector({
+                    let id = id.to_owned();
+                    move || format!("peer-{id}")
+                })
+                .flex_none()
+                .px_1()
+                .rounded_sm()
+                .text_size(self.sz(11.0))
+                .text_color(rgb(co.accent))
+                .child(format!("\u{25c9} {who}")),
         )
     }
 
@@ -8453,6 +8490,21 @@ impl GpuiView {
                             return false;
                         }
                         this.reload_vault(cx);
+                        // The live session rides the same timer rather
+                        // than starting a second one: it is the same
+                        // question ("has anything changed?") asked of
+                        // the network instead of the disk, and two
+                        // timers racing on one vault is how a merge
+                        // lands on top of a reload.
+                        if this.app.session_tick(&this.shell) > 0 {
+                            // A replica that converged is half a sync;
+                            // the vault is what gets opened in Emacs.
+                            let applied = this.app.sync_mut().apply_to_vault(&mut this.shell);
+                            if applied > 0 {
+                                this.app.invalidate_rows();
+                            }
+                            cx.notify();
+                        }
                         true
                     })
                     .unwrap_or(false);

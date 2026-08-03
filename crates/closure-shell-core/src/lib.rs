@@ -6453,6 +6453,27 @@ pub struct SyncApp {
     peers: Vec<Peer>,
     /// Bound listener, once a shell has asked to accept connections.
     listener: Option<std::sync::Arc<std::net::TcpListener>>,
+    /// Where *we* are, broadcast to peers each round.
+    local: Option<PeerAt>,
+    /// Where each peer was when we last heard from it, one entry per
+    /// peer — a position, not a log, so a peer that moves does not
+    /// leave a ghost on the row it left.
+    seen: Vec<PeerAt>,
+}
+
+/// Where somebody is: which block, and which line inside it.
+///
+/// The shell's view of [`closure_sync::Presence`]. Ephemeral by
+/// construction — never written to a file, never in the undo tree,
+/// never merged into a replica.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PeerAt {
+    /// Who.
+    pub peer: String,
+    /// Which block id.
+    pub block: String,
+    /// Which line inside that block's body.
+    pub line: u32,
 }
 
 /// Which of this host's addresses a peer should be told to dial.
@@ -6543,7 +6564,193 @@ impl SyncApp {
             session: closure_sync::SyncSession::new(name),
             peers: Vec::new(),
             listener: None,
+            local: None,
+            seen: Vec::new(),
         }
+    }
+
+    /// Name this peer, as other peers will see it.
+    ///
+    /// Every shell called itself "local", so two peers on one screen
+    /// were both `◉ local` — a badge that says somebody is here and
+    /// refuses to say who.
+    pub fn set_name(&mut self, name: &str) {
+        if !name.is_empty() {
+            name.clone_into(&mut self.name);
+            self.session = closure_sync::SyncSession::new(name);
+        }
+    }
+
+    /// Load this vault's signing identity, creating it on first use.
+    ///
+    /// Without this every launch minted a fresh key, which makes the
+    /// whole pairing story hold only until you close the window: the
+    /// ticket you handed someone stops matching you, `sync_peers` in
+    /// config.org is stale the first time either side reopens, and a
+    /// returning peer is not merely unrecognised but *refused*, since
+    /// frames are verified against the trusted key.
+    ///
+    /// It lives under `.closure/` so it is not a note: it does not
+    /// appear in the outline and is not committed as content. It
+    /// belongs to the vault rather than to the binary, so two vaults on
+    /// one machine cannot impersonate each other.
+    ///
+    /// A key file that will not parse is treated as no key — losing
+    /// pairings is recoverable, a shell that refuses to open is not.
+    pub fn load_identity(&mut self, vault_root: &std::path::Path) {
+        let dir = vault_root.join(".closure");
+        let path = dir.join("identity.key");
+        if let Ok(bytes) = std::fs::read(&path)
+            && let Ok(seed) = <[u8; 32]>::try_from(bytes.as_slice())
+        {
+            self.signing = closure_sync::SigningKey::from_bytes(&seed);
+            return;
+        }
+        if std::fs::create_dir_all(&dir).is_ok() {
+            let _ = std::fs::write(&path, self.signing.to_bytes());
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt as _;
+                // A signing key is a secret: readable by its owner and
+                // nobody else, the same as an ssh private key.
+                let _ = std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600));
+            }
+        }
+    }
+
+    /// Say where we are. Sent to every peer on the next round.
+    pub fn set_local_presence(&mut self, block: &str, line: u32) {
+        self.local = Some(PeerAt {
+            peer: self.name.clone(),
+            block: block.to_owned(),
+            line,
+        });
+    }
+
+    /// Record where a peer is. One entry per peer: presence is a
+    /// position, not a history, so this replaces rather than appends —
+    /// a peer that moves must not leave a ghost on the row it left.
+    pub fn note_peer(&mut self, peer: &str, block: &str, line: u32) {
+        let at = PeerAt {
+            peer: peer.to_owned(),
+            block: block.to_owned(),
+            line,
+        };
+        match self.seen.iter_mut().find(|p| p.peer == at.peer) {
+            Some(slot) => *slot = at,
+            None => self.seen.push(at),
+        }
+    }
+
+    /// Where every peer was when we last heard from it.
+    #[must_use]
+    pub fn peer_presence(&self) -> &[PeerAt] {
+        &self.seen
+    }
+
+    /// Our own position, if we have said one.
+    #[must_use]
+    pub const fn local_presence(&self) -> Option<&PeerAt> {
+        self.local.as_ref()
+    }
+
+    /// One live round against a peer: our document and our position
+    /// out, theirs back, merged.
+    ///
+    /// This is the piece that did not exist. Pairing, the transport
+    /// and the CRDT merge were all real and tested, and nothing ever
+    /// dialled — the running shell only wrote bundle files into a
+    /// shared folder when a key was pressed.
+    ///
+    /// # Errors
+    ///
+    /// The connection, or a malformed frame.
+    pub fn sync_with(&mut self, addr: std::net::SocketAddr) -> Result<(), String> {
+        let mut stream = std::net::TcpStream::connect(addr).map_err(|e| e.to_string())?;
+        stream
+            .set_read_timeout(Some(std::time::Duration::from_secs(5)))
+            .map_err(|e| e.to_string())?;
+        closure_sync::TcpSyncTransport::stream_round_client(&mut stream, &mut self.session)
+            .map_err(|e| e.to_string())?;
+        self.exchange_presence(&mut stream, true)
+    }
+
+    /// Serve the connections already waiting, without blocking on one
+    /// that never comes. Returns how many rounds it served.
+    ///
+    /// Non-blocking so a shell can call it from its frame loop and a
+    /// quiet network costs nothing.
+    pub fn serve_pending(&mut self) -> usize {
+        let Some(listener) = self.listener.clone() else {
+            return 0;
+        };
+        if listener.set_nonblocking(true).is_err() {
+            return 0;
+        }
+        let mut served = 0;
+        while let Ok((mut stream, _)) = listener.accept() {
+            let ok = stream.set_nonblocking(false).is_ok()
+                && closure_sync::TcpSyncTransport::stream_round_server(
+                    &mut stream,
+                    &mut self.session,
+                )
+                .is_ok()
+                && self.exchange_presence(&mut stream, false).is_ok();
+            if ok {
+                served += 1;
+            }
+        }
+        let _ = listener.set_nonblocking(false);
+        served
+    }
+
+    /// Swap presence frames over an already-synced stream.
+    ///
+    /// Ordered by role, like the document round, so the two sides do
+    /// not sit waiting on each other.
+    fn exchange_presence(
+        &mut self,
+        stream: &mut std::net::TcpStream,
+        we_speak_first: bool,
+    ) -> Result<(), String> {
+        use std::io::{Read as _, Write as _};
+        fn send(stream: &mut std::net::TcpStream, frame: &[u8]) -> Result<(), String> {
+            let len = u32::try_from(frame.len()).unwrap_or(0);
+            stream
+                .write_all(&len.to_le_bytes())
+                .map_err(|e| e.to_string())?;
+            stream.write_all(frame).map_err(|e| e.to_string())
+        }
+        fn recv(stream: &mut std::net::TcpStream) -> Result<Vec<u8>, String> {
+            let mut len = [0u8; 4];
+            stream.read_exact(&mut len).map_err(|e| e.to_string())?;
+            let n = u32::from_le_bytes(len) as usize;
+            let mut buf = vec![0u8; n];
+            if n > 0 {
+                stream.read_exact(&mut buf).map_err(|e| e.to_string())?;
+            }
+            Ok(buf)
+        }
+        let mine = self.local.as_ref().map_or_else(Vec::new, |at| {
+            closure_sync::Presence {
+                peer: at.peer.clone(),
+                block: at.block.clone(),
+                line: at.line,
+            }
+            .encode()
+        });
+        let theirs = if we_speak_first {
+            send(stream, &mine)?;
+            recv(stream)?
+        } else {
+            let theirs = recv(stream)?;
+            send(stream, &mine)?;
+            theirs
+        };
+        if let Ok(p) = closure_sync::Presence::decode(&theirs) {
+            self.note_peer(&p.peer, &p.block, p.line);
+        }
+        Ok(())
     }
 
     /// Point the (not yet opened) socket somewhere else.
@@ -14190,6 +14397,97 @@ impl ModalApp {
         ));
     }
 
+    /// One turn of the live session, called from the shell's frame
+    /// loop: tell peers where we are, serve whoever is calling, and
+    /// dial each paired peer in turn.
+    ///
+    /// This is what makes the stack a session rather than a command.
+    /// It was manual before — and more manual than it looked: the
+    /// running shell never opened a connection at all, it wrote bundle
+    /// files into a shared folder when you pressed a key.
+    ///
+    /// Returns how many rounds actually completed, so a caller can
+    /// tell "nobody is there" from "we did nothing".
+    pub fn session_tick(&mut self, shell: &Shell) -> usize {
+        if self.sync.is_none() {
+            return 0;
+        }
+        if let Some(here) = self.local_presence(shell) {
+            self.sync_mut().set_local_presence(&here.block, here.line);
+        }
+        // Open the socket ourselves when it is allowed. A session that
+        // only accepts after someone clicks "listen" is not continuous
+        // — it is a button you have to find again every launch, and
+        // the peer that dialled while you were finding it got
+        // "connection refused". `inbound_ready` is the consent rule and
+        // it is unchanged: loopback, or at least one trusted peer.
+        if self.sync_mut().listener().is_none()
+            && self.sync_mut().inbound_ready().is_ok()
+            && let Err(e) = self.sync_mut().listen()
+        {
+            // Reported once rather than every 1.5 seconds: a port in
+            // use is a thing to fix, not a thing to shout about.
+            self.say(format!("could not open the sync socket: {e}"));
+        }
+        let mut rounds = self.sync_mut().serve_pending();
+        let addrs: Vec<std::net::SocketAddr> =
+            self.sync_mut().peers().iter().map(|p| p.addr).collect();
+        for addr in addrs {
+            // A peer that is not up is the ordinary case, not an
+            // error: this runs on a timer and must stay quiet.
+            let outcome = self.sync_mut().sync_with(addr);
+            let ok = outcome.is_ok();
+            self.sync_mut().record_outcome(addr, outcome.map(|()| 0));
+            if ok {
+                rounds += 1;
+            }
+        }
+        rounds
+    }
+
+    /// Record where a peer is (what a live round hands us).
+    pub fn note_peer_presence(&mut self, peer: &str, block: &str, line: u32) {
+        self.sync_mut().note_peer(peer, block, line);
+    }
+
+    /// Where every peer is, as of the last round.
+    #[must_use]
+    pub fn peer_presence(&self) -> &[PeerAt] {
+        self.sync.as_ref().map_or(&[], SyncApp::peer_presence)
+    }
+
+    /// The peers sitting on one block.
+    ///
+    /// Asked per row rather than folded into the row list: that list
+    /// is memoised against the vault revision, and presence changes
+    /// many times a second without the vault changing at all. Baking
+    /// it in would either defeat the memo or make every twitch of
+    /// somebody else's cursor rebuild every row in the vault.
+    #[must_use]
+    pub fn peers_on(&self, block: &str) -> Vec<&PeerAt> {
+        self.peer_presence()
+            .iter()
+            .filter(|p| p.block == block)
+            .collect()
+    }
+
+    /// Where *we* are, for broadcast: the selected row and the line
+    /// the caret is on inside it.
+    ///
+    /// Position only. Presence is session chatter and must never carry
+    /// document text — that is what keeps it out of the replica and
+    /// out of the undo tree.
+    #[must_use]
+    pub fn local_presence(&self, shell: &Shell) -> Option<PeerAt> {
+        let rows = self.rows_shared(shell);
+        let row = rows.get(self.selected)?;
+        Some(PeerAt {
+            peer: self.sync.as_ref().map_or("local", SyncApp::name).to_owned(),
+            block: row.id.clone(),
+            line: u32::try_from(self.body.cursor_line_col().0).unwrap_or(0),
+        })
+    }
+
     /// The assistant's settings, read fresh from `config.org`.
     ///
     /// Fresh rather than cached because this screen is the one place
@@ -14263,7 +14561,11 @@ impl ModalApp {
         let relative = std::path::Path::new(closure_config::CONFIG_FILE);
         let path = shell.vault.root().join(relative);
         let before = std::fs::read_to_string(&path).unwrap_or_default();
-        let after = closure_config::set_key(&before, key, &value);
+        let Ok(after) = closure_config::set_config_key(&before, key, &value) else {
+            self.surface = ModalSurface::Settings;
+            self.say("config.org could not be rewritten — it is not org this parser reads");
+            return;
+        };
         let wrote = if path.is_file() {
             let _ = shell.vault.reload_incremental();
             shell
@@ -20766,8 +21068,19 @@ impl ModalApp {
     /// the tickets live in `config.org` — a ticket is an address and a
     /// public key, nothing secret, and the vault is plain files (I1).
     pub fn load_peers(&mut self, shell: &Shell) {
-        let Ok(cfg) = closure_config::Config::from_path(&shell.vault.root().join("config.org"))
-        else {
+        // Our own identity first. The comment above was already true of
+        // the peer list and quietly false of us: the tickets survived a
+        // restart and the key that made ours meaningful did not, so a
+        // peer coming back was refused rather than merely unknown.
+        let root = shell.vault.root().to_path_buf();
+        // Named after the vault, which is what the other side has to
+        // recognise — "local" told a peer nothing, and told two peers
+        // the same nothing.
+        if let Some(name) = root.file_name().map(|n| n.to_string_lossy().into_owned()) {
+            self.sync_mut().set_name(&name);
+        }
+        self.sync_mut().load_identity(&root);
+        let Ok(cfg) = closure_config::Config::from_path(&root.join("config.org")) else {
             return;
         };
         for ticket in &cfg.sync_peers {

@@ -11,10 +11,24 @@
 //!
 //! So the write is a splice, not a render. Everything not being set is
 //! returned byte for byte.
+//!
+//! These exercise `set_config_key`, which already existed. I wrote a
+//! second one before finding it — the exact "one fact, two owners"
+//! shape this codebase keeps getting bitten by — and deleted mine. The
+//! two cases the settings screen needed that the shipped one lacked
+//! (a key the template ships commented out, and clearing a value) were
+//! added to it rather than kept in a rival.
 
 #![allow(clippy::unwrap_used, clippy::expect_used, missing_docs)]
 
-use closure_config::set_key;
+use closure_config::set_config_key;
+
+/// The shipped writer, unwrapped. It validates that what it wrote is
+/// still parseable org and returns the error if not; these tests are
+/// all about well-formed input, so they assert that separately.
+fn set_key(source: &str, key: &str, value: &str) -> String {
+    set_config_key(source, key, value).expect("the result is still org")
+}
 
 const BLOCK: &str = "\
 Some prose above the block.
