@@ -101,8 +101,23 @@
           mainProgram = "closure";
         };
       };
+      # closure shells out to `git` for the status fringes, the line
+      # diffs and `closure sync`. Left to `$PATH` that is a runtime
+      # dependency the package does not declare — it works on the
+      # machine that built it and silently does nothing on a machine
+      # without git, because a failed `git` reads the same as "not a
+      # repository". Prefixing rather than setting so a user who wants
+      # their own git still gets it.
+      wrapGit = ''
+        wrapProgram $out/bin/closure \
+          --prefix PATH : ${pkgs.git}/bin
+      '';
     in {
-      default = platform.buildRustPackage common;
+      default = platform.buildRustPackage (common
+        // {
+          nativeBuildInputs = [pkgs.makeWrapper];
+          postInstall = wrapGit;
+        });
 
       # The windowed build, self-contained: gpui needs its libraries
       # found at *run* time, not only at link time, so the binary is
@@ -120,7 +135,8 @@
           CLOSURE_FONT_DIR = "${pkgs.maple-mono.NF}/share/fonts/truetype";
           postInstall = ''
             wrapProgram $out/bin/closure \
-              --prefix LD_LIBRARY_PATH : ${pkgs.lib.makeLibraryPath (gpuiBuildInputs pkgs)}
+              --prefix LD_LIBRARY_PATH : ${pkgs.lib.makeLibraryPath (gpuiBuildInputs pkgs)} \
+              --prefix PATH : ${pkgs.git}/bin
           '';
         });
     });
@@ -292,6 +308,18 @@
         };
     in {
       formatting = treefmtEval.${system}.config.build.check self;
+      # The packaged binary has to carry the `git` it shells out to.
+      # Without this the status fringes, the line diffs and
+      # `closure sync` are all silently dead on a machine that has no
+      # git of its own — silently, because a `git` that will not run
+      # reads exactly like "this vault is not a repository".
+      packaging = pkgs.runCommand "closure-brings-its-own-git" {} ''
+        for pkg in ${self.packages.${system}.default} ${self.packages.${system}.gpui}; do
+          grep -q '${pkgs.git}/bin' $pkg/bin/closure \
+            || { echo "$pkg/bin/closure does not put git on PATH"; exit 1; }
+        done
+        touch $out
+      '';
       deadnix =
         pkgs.runCommand "deadnix-check" {
           nativeBuildInputs = [pkgs.deadnix];
