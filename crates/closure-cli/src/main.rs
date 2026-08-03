@@ -3244,7 +3244,13 @@ fn cmd_ask(prompt: &str, model: &str, vault: Option<&Path>) -> Result<(), String
     let cfg = closure_config::Config::from_path(&vault_dir.join("config.org")).unwrap_or_default();
     let provider = build_llm_provider(&cfg, model)?;
     let perms = closure_llm::LlmPermissions::from_config(cfg.llm_tools.clone().unwrap_or_default());
-    let task = format!("{prompt}\n\n{ASK_TOOLS_HELP}");
+    // What vault this is, before the task — the model's first turn
+    // used to go on asking something the process already knew. Shape
+    // only, never contents: notes are read through the gated tools.
+    let context =
+        closure_shell_core::Shell::new(Vault::open(vault_dir).map_err(|e| format!("{e}"))?)
+            .assistant_context();
+    let task = format!("{context}\n\n{prompt}\n\n{ASK_TOOLS_HELP}");
     let answer = closure_llm::tool_loop(
         provider.as_ref(),
         |line| run_vault_tool(&mut v, &perms, line),

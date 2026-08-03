@@ -672,12 +672,76 @@ pub fn json_string(s: &str) -> String {
     out
 }
 
+/// One turn of the loop's protocol, as found in a reply.
+enum Turn {
+    /// Run this command line.
+    Call(String),
+    /// Finish with this answer.
+    Done(String),
+}
+
+/// Find the protocol line in a model's reply.
+///
+/// It used to be `strip_prefix` on the whole reply, which meant the
+/// protocol had to be the very first thing said. Models do not answer
+/// that way: they open with "Sure — ", they fence the line in
+/// backticks, they leave a blank line first. Each of those ended the
+/// loop on turn one and returned the preamble as the result, so the
+/// tools were never reached and nothing said why.
+///
+/// Being strict about the protocol is right. Being strict about where
+/// on the page it begins was never the same requirement.
+///
+/// The *first* `CALL` or `DONE` wins: a model that says both has said
+/// the first one, and guessing otherwise would let a mention of `DONE`
+/// inside prose end a session early.
+fn protocol_line(reply: &str) -> Option<Turn> {
+    for raw in reply.lines() {
+        // Fences and list markers are decoration around the line, not
+        // part of it.
+        let line = raw
+            .trim()
+            .trim_start_matches("```")
+            .trim_start_matches("- ");
+        if let Some(cmd) = line.strip_prefix("CALL ") {
+            let cmd = cmd.trim().trim_end_matches("```").trim();
+            // `CALL` with nothing after it is not a command. Running it
+            // would make every executor defend against the empty
+            // string separately.
+            //
+            // Neither is a placeholder. The transcript *contains* the
+            // protocol description — `CALL <command line>` — so a
+            // model that quotes the instructions back sends the loop
+            // round executing angle brackets until it runs out of
+            // turns. No command name begins with `<`, so refusing them
+            // costs nothing and closes the hole.
+            if cmd.is_empty() || cmd.starts_with('<') {
+                continue;
+            }
+            return Some(Turn::Call(cmd.to_owned()));
+        }
+        if let Some(answer) = line.strip_prefix("DONE") {
+            let answer = answer.trim().trim_end_matches("```").trim();
+            // The template's own `DONE <answer>` is not an answer, for
+            // the same reason as the `CALL` placeholder above. A bare
+            // `DONE` still is: a model finishing with nothing to add
+            // has finished.
+            if answer.starts_with('<') {
+                continue;
+            }
+            return Some(Turn::Done(answer.to_owned()));
+        }
+    }
+    None
+}
+
 /// Drive a provider through a text tool-use protocol.
 ///
 /// Each turn the model replies either `CALL <command line>` —
 /// executed by `execute` (the command registry surface, I8) with the
 /// result fed back — or `DONE <answer>` / a bare answer, which ends
-/// the loop.
+/// the loop. The protocol line is found anywhere in the reply
+/// ([`protocol_line`]) rather than required at the very start.
 ///
 /// # Errors
 ///
@@ -699,13 +763,15 @@ pub fn tool_loop(
     for _ in 0..max_turns {
         let reply = provider.complete(&transcript)?;
         let reply = reply.trim();
-        if let Some(cmd) = reply.strip_prefix("CALL ") {
-            let observation = execute(cmd);
-            let _ = write!(transcript, "\nCALL {cmd}\nRESULT: {observation}\n");
-        } else if let Some(answer) = reply.strip_prefix("DONE") {
-            return Ok(answer.trim().to_owned());
-        } else {
-            return Ok(reply.to_owned());
+        match protocol_line(reply) {
+            Some(Turn::Call(cmd)) => {
+                let observation = execute(&cmd);
+                let _ = write!(transcript, "\nCALL {cmd}\nRESULT: {observation}\n");
+            }
+            Some(Turn::Done(answer)) => return Ok(answer),
+            // No protocol line at all: the model simply answered, and
+            // the loop has nothing to do. That is not an error.
+            None => return Ok(reply.to_owned()),
         }
     }
     Err(LlmError::Provider(format!(

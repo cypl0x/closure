@@ -577,6 +577,39 @@ impl Shell {
         self.vault.paste(&path, after)
     }
 
+    /// What the assistant is told about this vault before its task.
+    ///
+    /// The tool loop used to receive a bare instruction: no idea which
+    /// vault, how large, or what is in it. So the model's first turn
+    /// went on asking — a round trip and an API call to learn
+    /// something the process already knew.
+    ///
+    /// Shape only, never contents. The assistant reads notes through
+    /// tools, and those are gated by `llm_tools`; a preamble that
+    /// quietly pasted body text in would route around that gate
+    /// entirely, which is not a thing a convenience should be able to
+    /// do.
+    ///
+    /// Short on purpose: context that costs more than it saves is a
+    /// tax on every prompt.
+    #[must_use]
+    pub fn assistant_context(&self) -> String {
+        let files = self.vault.iter().count();
+        let headlines: usize = self
+            .vault
+            .iter()
+            .map(|(_, doc)| doc.all_headlines().count())
+            .sum();
+        let name = self.vault.root().file_name().map_or_else(
+            || self.vault.root().display().to_string(),
+            |n| n.to_string_lossy().into_owned(),
+        );
+        format!(
+            "VAULT: {name} — {files} file(s), {headlines} headline(s). \
+             Plain org files; read them with the tools below rather than guessing."
+        )
+    }
+
     /// Merge one block of a peer's replica into the vault, returning
     /// how many changes it made.
     ///
