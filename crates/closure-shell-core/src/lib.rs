@@ -6682,7 +6682,7 @@ impl SyncApp {
         /// Long enough for a LAN or a mesh VPN, which answer in single
         /// -digit milliseconds; short enough that hitting it is a
         /// stutter rather than a hang.
-        const DIAL: std::time::Duration = std::time::Duration::from_millis(250);
+        const DIAL: std::time::Duration = std::time::Duration::from_millis(60);
         if self
             .quiet_until
             .get(&addr)
@@ -12342,7 +12342,7 @@ pub struct ModalApp {
     /// repository. Asked once per change rather than once per frame,
     /// for the reason the detail is memoised: the same mistake in a
     /// new place would be the level-1 microfreeze again.
-    git_memo: std::cell::RefCell<Option<(u64, Option<closure_store::GitStatus>)>>,
+    git_memo: std::cell::RefCell<Option<GitMemo>>,
     /// How many times git has actually been run. What a test asserts
     /// on instead of timing it.
     git_reads: std::cell::Cell<u64>,
@@ -14734,18 +14734,37 @@ impl ModalApp {
     /// ordinary case and not an error.
     #[must_use]
     pub fn git_state(&self, shell: &Shell) -> Option<closure_store::GitStatus> {
+        /// The shortest gap between two `git` runs for the widget.
+        ///
+        /// The revision key alone is right for correctness and wrong
+        /// for cost: every mutation moves the revision, so every
+        /// keystroke that changed anything spawned `git rev-parse`,
+        /// `git status --porcelain` and friends on the UI thread —
+        /// 6.3ms measured on a real vault, against 0.35ms for the edit
+        /// itself.
+        ///
+        /// This widget is ambient: it says roughly where the working
+        /// tree stands, nobody acts on it within a second of typing,
+        /// and nothing else in the shell reads it. So it is allowed to
+        /// be a little behind, and the last answer stands until the
+        /// next run is due.
+        const MIN_GAP: std::time::Duration = std::time::Duration::from_secs(2);
         let revision = shell.vault.revision();
         {
             let memo = self.git_memo.borrow();
-            if let Some((at, state)) = memo.as_ref()
-                && *at == revision
+            if let Some(m) = memo.as_ref()
+                && (m.revision == revision || m.taken.elapsed() < MIN_GAP)
             {
-                return state.clone();
+                return m.state.clone();
             }
         }
         let state = closure_store::git_status(shell.vault.root());
         self.git_reads.set(self.git_reads.get() + 1);
-        *self.git_memo.borrow_mut() = Some((revision, state.clone()));
+        *self.git_memo.borrow_mut() = Some(GitMemo {
+            revision,
+            taken: std::time::Instant::now(),
+            state: state.clone(),
+        });
         state
     }
 
@@ -22624,6 +22643,17 @@ fn modal_stroke(key: &str, ctrl: bool, alt: bool, text: Option<char>) -> Option<
     } else {
         Some(base)
     }
+}
+
+/// The git widget's last answer, and when it was taken.
+#[derive(Debug, Clone)]
+struct GitMemo {
+    /// Vault revision the answer was taken at.
+    revision: u64,
+    /// When it was taken, for the rate limit.
+    taken: std::time::Instant,
+    /// The answer; `None` when the vault is not a repository.
+    state: Option<closure_store::GitStatus>,
 }
 
 /// One row of the assistant's setup screen: a config key, what it is
