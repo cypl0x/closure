@@ -95,6 +95,21 @@ impl LlmPermissions {
 pub trait Provider {
     /// Send a prompt and receive a (possibly streamed) completion.
     fn complete(&self, prompt: &str) -> Result<String, LlmError>;
+
+    /// Where this provider will actually send a prompt, if anywhere.
+    ///
+    /// `None` for one that never leaves the process — an echo or a
+    /// scripted double has no URL, and reporting an empty string as
+    /// though it were one is the sort of small lie a status line
+    /// repeats forever.
+    ///
+    /// It comes from the provider rather than from config because that
+    /// is exactly what this defect was: the config named an endpoint
+    /// and the code dialled somewhere else, so only the thing doing
+    /// the dialling can be believed.
+    fn endpoint(&self) -> Option<&str> {
+        None
+    }
 }
 
 /// Which provider a configured `llm_provider` name selects.
@@ -144,11 +159,54 @@ pub fn build_provider(
     ollama_host: &str,
     key: &str,
 ) -> Box<dyn Provider> {
+    build_provider_at(kind, model, Some(ollama_host), key)
+}
+
+/// The same, with `endpoint` reaching *every* provider that has a URL.
+///
+/// It used to reach only Ollama, so `llm_endpoint` was a config key
+/// the loader validated and the code ignored. `None` means each
+/// provider's own default, so a vault that names no endpoint behaves
+/// exactly as before.
+///
+/// This is also what makes the stack testable without a key: a local
+/// stub answering `/v1/chat/completions` exercises a whole provider
+/// round-trip with nothing secret in it.
+#[must_use]
+pub fn build_provider_at(
+    kind: ProviderKind,
+    model: &str,
+    endpoint: Option<&str>,
+    key: &str,
+) -> Box<dyn Provider> {
     match kind {
         ProviderKind::Echo => Box::new(EchoProvider),
-        ProviderKind::Ollama => Box::new(ollama_http(ollama_host, model)),
-        ProviderKind::OpenAi => Box::new(openai(key, model)),
-        ProviderKind::Anthropic => Box::new(anthropic(key, model)),
+        ProviderKind::Ollama => Box::new(ollama_http(
+            endpoint.unwrap_or("http://localhost:11434"),
+            model,
+        )),
+        ProviderKind::OpenAi => Box::new(openai_at(endpoint.unwrap_or(OPENAI_URL), key, model)),
+        ProviderKind::Anthropic => {
+            Box::new(anthropic_at(endpoint.unwrap_or(ANTHROPIC_URL), key, model))
+        }
+    }
+}
+
+/// A URL the user gave, completed to `path` when they gave only a host.
+///
+/// `http://localhost:8080` and the full URL are both common ways to
+/// write the same intention, and treating the first literally is a
+/// connection refused with no explanation attached.
+fn complete_url(url: &str, path: &str) -> String {
+    let trimmed = url.trim_end_matches('/');
+    // A URL with any path at all is taken as meant.
+    let has_path = trimmed
+        .split_once("://")
+        .is_some_and(|(_, rest)| rest.contains('/'));
+    if has_path {
+        trimmed.to_owned()
+    } else {
+        format!("{trimmed}{path}")
     }
 }
 
@@ -275,6 +333,10 @@ impl CurlProvider {
 }
 
 impl Provider for CurlProvider {
+    fn endpoint(&self) -> Option<&str> {
+        Some(&self.url)
+    }
+
     fn complete(&self, prompt: &str) -> Result<String, LlmError> {
         let body = (self.body)(prompt);
         let mut cmd = std::process::Command::new("curl");
@@ -330,6 +392,10 @@ impl HttpProvider {
 }
 
 impl Provider for HttpProvider {
+    fn endpoint(&self) -> Option<&str> {
+        Some(&self.url)
+    }
+
     fn complete(&self, prompt: &str) -> Result<String, LlmError> {
         let body = (self.body)(prompt);
         let resp = http_post(&self.url, &self.headers, &body)?;
@@ -397,9 +463,16 @@ fn http_post(url: &str, headers: &[String], body: &str) -> Result<String, LlmErr
 /// parameter). Extractor returns `content[0].text`.
 #[must_use]
 pub fn anthropic(api_key: &str, model: &str) -> CurlProvider {
+    anthropic_at(ANTHROPIC_URL, api_key, model)
+}
+
+/// The same, pointed at `url` — a gateway in front of Anthropic is the
+/// same need the openai case named.
+#[must_use]
+pub fn anthropic_at(url: &str, api_key: &str, model: &str) -> CurlProvider {
     let model = model.to_owned();
     CurlProvider {
-        url: "https://api.anthropic.com/v1/messages".into(),
+        url: complete_url(url, "/v1/messages"),
         headers: vec![
             "content-type: application/json".into(),
             "anthropic-version: 2023-06-01".into(),
@@ -416,9 +489,32 @@ pub fn anthropic(api_key: &str, model: &str) -> CurlProvider {
 /// `/v1/chat/completions` endpoint for the given model (Q7-L1).
 #[must_use]
 pub fn openai(api_key: &str, model: &str) -> CurlProvider {
+    openai_at(OPENAI_URL, api_key, model)
+}
+
+/// OpenAI's own endpoint — the default when config names none.
+pub const OPENAI_URL: &str = "https://api.openai.com/v1/chat/completions";
+
+/// Anthropic's own endpoint.
+pub const ANTHROPIC_URL: &str = "https://api.anthropic.com/v1/messages";
+
+/// The same, pointed at `url`.
+///
+/// "`closure_llm::openai()` hardcodes the URL; `llm_endpoint` is used
+/// only as the Ollama host." So `llm_endpoint` was validated and then
+/// ignored: `llm_provider = openai-compatible` makes the config loader
+/// insist on an endpoint, and nothing read it. llama.cpp, vLLM,
+/// LiteLLM and every corporate gateway speak this wire format, and
+/// closure talked to api.openai.com regardless.
+///
+/// A bare host is completed to the standard path, because people write
+/// `http://localhost:8080` at least as often as the full URL and
+/// guessing wrong there is a connection refused with no explanation.
+#[must_use]
+pub fn openai_at(url: &str, api_key: &str, model: &str) -> CurlProvider {
     let model = model.to_owned();
     CurlProvider {
-        url: "https://api.openai.com/v1/chat/completions".into(),
+        url: complete_url(url, "/v1/chat/completions"),
         headers: vec![
             "content-type: application/json".into(),
             format!("authorization: Bearer {api_key}"),

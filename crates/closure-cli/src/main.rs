@@ -3195,11 +3195,15 @@ fn build_llm_provider(
         }
         _ => String::new(),
     };
-    // Local Ollama uses the self-contained HTTP client (no TLS, no key).
-    Ok(closure_llm::build_provider(
+    // `llm_endpoint` reaches every provider now, not only Ollama. It
+    // was validated by the config loader and then thrown away here —
+    // this line passed a hardcoded Ollama host and never looked at the
+    // config at all, so `llm_provider = openai-compatible` insisted on
+    // an endpoint that nothing read.
+    Ok(closure_llm::build_provider_at(
         kind,
         &model,
-        "http://localhost:11434",
+        cfg.llm_endpoint.as_deref(),
         &key,
     ))
 }
