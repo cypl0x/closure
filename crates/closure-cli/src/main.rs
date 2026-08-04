@@ -3594,7 +3594,8 @@ fn cmd_spec() -> Result<(), String> {
         "I4  every command carries a keybinding (whichkey reads registry)",
         "I5  no panics in kernel crates (forbid unsafe, deny unwrap/expect, fuzz)",
         "I6  determinism for parse/print/queries",
-        "I7  shells consume closure-core only; spans pub(crate) firewall",
+        "I7  shells address content by id, never by byte offset; spans \
+         pub(crate) firewall",
         "I8  command-registry is the only side-effect surface",
         "I9  config validation at load, not at use (typed schema)",
         "I10 deterministic / hermetic / reproducible builds (nix flake check)",

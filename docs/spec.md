@@ -62,10 +62,23 @@ output. Property-tested.
 ### I7 — Kernel-agnostic shells
 
 Every shell (TUI, egui, gpui, web, Tauri, Flutter, GTK, Qt, Slint,
-self-contained HTML) consumes only the stable `closure-core` public API.
-Shells never import `closure-org` directly. Shells never address content by
-byte offset or line number. Enforced by a visibility boundary: byte
-offsets and source spans are `pub(crate)` inside parser crates only.
+self-contained HTML) addresses content by *identity* — block ids, not
+byte offsets and not line numbers. Enforced by a visibility boundary:
+byte offsets and source spans are `pub(crate)` inside the parser crates,
+so a shell cannot reach them even by accident. Shells mutate only
+through registered commands (I8); a shell never calls a `rewrite_*`.
+
+A shell may *read* org's public view types — `Headline`, `MarkupKind`,
+`markup_spans`, `block_delimiter_of`, `parse` — because rendering org
+means knowing what a headline and a markup run are.
+
+> Restated 2026-08-04. It used to read "consumes only the stable
+> `closure-core` public API. Shells never import `closure-org`
+> directly", which every shell's manifest refuted on the line below it,
+> and two of them contradicted in their own `description` field. The
+> half that was true is the half that was load-bearing, and it is now
+> pinned by `closure-cli/tests/i7_is_true.rs` rather than asserted in
+> prose.
 
 ### I8 — Command-registry as only side-effect surface
 

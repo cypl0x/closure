@@ -1,6 +1,6 @@
 [package]
 name = "closure-shell-web"
-description = "Self-contained HTML + localhost web shell (Layer 5). Consumes closure-core only (I7)."
+description = "Self-contained HTML + localhost web shell (Layer 5). Renders through closure-shell-core; never addresses content by byte offset (I7)."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

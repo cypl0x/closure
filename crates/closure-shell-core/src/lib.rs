@@ -3841,29 +3841,46 @@ pub fn missing_node_kinds(kinds: &[NodeKind]) -> Vec<NodeKind> {
 #[must_use]
 pub fn ui_matrix_table() -> String {
     use std::fmt::Write as _;
-    let shells: &[(&str, &[NodeKind])] = &[
-        ("MIN", MINIMAL_NODE_KINDS),
-        ("TUI", TUI_NODE_KINDS),
-        ("WEB", WEB_NODE_KINDS),
-        ("GTK", GTK_NODE_KINDS),
-        ("QT", QT_NODE_KINDS),
+    // `runs` is the column's honest status, not its completeness: GTK
+    // and Qt map every node kind and neither is a program you can
+    // start. A table of ticks with nothing to say so reads as though
+    // they were peers of the shell you use all day.
+    let shells: &[(&str, &[NodeKind], bool)] = &[
+        ("MIN", MINIMAL_NODE_KINDS, false),
+        ("TUI", TUI_NODE_KINDS, true),
+        ("WEB", WEB_NODE_KINDS, false),
+        ("GTK", GTK_NODE_KINDS, false),
+        ("QT", QT_NODE_KINDS, false),
     ];
     let mut out =
         String::from("UI node-kind matrix (which shells render which ViewTree nodes)\n\n");
     let _ = write!(out, "{:<9}", "NodeKind");
-    for (name, _) in shells {
+    for (name, _, _) in shells {
         let _ = write!(out, " | {name}");
     }
     out.push('\n');
     for kind in ALL_NODE_KINDS {
         let _ = write!(out, "{:<9}", format!("{kind:?}"));
-        for (_, set) in shells {
+        for (_, set, _) in shells {
             let mark = if set.contains(kind) { " X " } else { "   " };
             let _ = write!(out, " | {mark}");
         }
         out.push('\n');
     }
+    let mappings: Vec<&str> = shells
+        .iter()
+        .filter(|(name, _, runs)| !runs && *name != "MIN")
+        .map(|(name, ..)| *name)
+        .collect();
     out.push_str("\nLegend: X = renders this node kind. MIN = the floor (I7).\n");
+    let _ = writeln!(
+        out,
+        "The shells you can start: gpui (the reference one) and TUI.\n\
+         {} are a `ViewTree` mapping each — a function that returns a\n\
+         widget tree, behind a feature gate CI does not build. Real\n\
+         work, and not yet something you can run.",
+        mappings.join(", ")
+    );
     out
 }
 
