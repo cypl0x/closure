@@ -1988,7 +1988,12 @@ pub fn run(vault_path: &Path) -> Result<(), String> {
                     // this one starts.
                     view.app.restore_last_place(&view.shell);
                     if let Some(w) = view.app.outline_width() {
-                        view.outline_w = (w as f32).clamp(OUTLINE_W_MIN, OUTLINE_W_MAX);
+                        // A pane is a few hundred pixels wide; the
+                        // clamp bounds it long before f32 runs out of
+                        // mantissa.
+                        #[expect(clippy::cast_precision_loss, reason = "clamped to a pixel range")]
+                        let w = w as f32;
+                        view.outline_w = w.clamp(OUTLINE_W_MIN, OUTLINE_W_MAX);
                     }
                     view
                 })
