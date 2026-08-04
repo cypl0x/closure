@@ -1294,7 +1294,13 @@ fn editing_the_file_buffer_and_saving_it_reaches_the_vault(cx: &mut gpui::TestAp
     // NORMAL on entry (a modal mode); `A` appends at the end of line 1.
     vcx.simulate_keystrokes("shift-a");
     vcx.simulate_input("!");
-    vcx.simulate_keystrokes("ctrl-enter");
+    // `C-s`, not `C-Enter`. `C-RET` makes a headline in a buffer as of
+    // 2026-08-04 ("research the Doom Emacs keybindings for quick header
+    // creation in the editor"), which is what the user's own Doom binds
+    // it to. Saving is `C-s` and `C-c C-c`, which are the two the
+    // header advertises.
+    vcx.simulate_keystrokes("escape");
+    vcx.simulate_keystrokes("ctrl-s");
     vcx.run_until_parked();
     view.update(vcx, |v, _cx| {
         assert!(

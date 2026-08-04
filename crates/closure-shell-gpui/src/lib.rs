@@ -7950,6 +7950,67 @@ impl GpuiView {
     /// While a chord *is* pending the panel narrows to what can follow
     /// it ([`which_key_filter`]) — the whole keymap is exactly the wrong
     /// answer at the one moment the user has asked a specific question.
+    /// Everything that floats over the layout rather than sitting in
+    /// it: which-key, toasts, a context menu, a picture, the palette.
+    ///
+    /// None of them may take height out of the column — that is the
+    /// whole reason they are deferred, and the bug each one of them
+    /// had before it was.
+    fn overlays(
+        &self,
+        mut root: gpui::Div,
+        show_keys: bool,
+        co: Colors,
+        cx: &Context<Self>,
+    ) -> gpui::Div {
+        if show_keys {
+            root = root.child(self.which_key_overlay(co, cx));
+        }
+        if let Some(toasts) = self.toast_overlay(co) {
+            root = root.child(toasts);
+        }
+        if let Some(menu) = self.context_menu_overlay(co, cx) {
+            root = root.child(menu);
+        }
+        if let Some(picture) = self.image_overlay(co, cx) {
+            root = root.child(picture);
+        }
+        if let Some(palette) = self.palette_overlay(co, cx) {
+            root = root.child(palette);
+        }
+        root
+    }
+
+    /// The bindings panel, floating above the footer.
+    ///
+    /// Deferred and anchored rather than a row in the layout, for the
+    /// reason the toast strip already learned: as a flex child it took
+    /// its height out of the column, so the editor lost it — 27 lines
+    /// visible became 14 — and every chord that opened which-key moved
+    /// the text under the caret. "Moves the whole editor pane."
+    ///
+    /// which-key opens *mid-chord*, which is the worst possible moment
+    /// for the thing you are aiming at to move.
+    fn which_key_overlay(&self, co: Colors, cx: &Context<Self>) -> gpui::Deferred {
+        gpui::deferred(
+            gpui::anchored()
+                // Past the bottom-left corner, then snapped back
+                // inside: the window's size is not something this
+                // borrow can ask for, and the snap puts it where it
+                // belongs either way.
+                //
+                // It covers the footer while it is open, which is what
+                // Doom's which-key window does to the echo area — the
+                // footer's hint strip is the short form of exactly
+                // what the panel is showing, so there is nothing under
+                // there to miss.
+                .position(gpui::point(px(0.0), px(100_000.0)))
+                .snap_to_window_with_margin(px(0.0))
+                .child(self.which_key_panel(co, cx)),
+        )
+        .with_priority(1)
+    }
+
     fn which_key_panel(&self, co: Colors, cx: &Context<Self>) -> gpui::Div {
         let groups = which_key_filter(self.app.which_key_groups(), &self.app.which_key_pending());
         // One width for every chord cell, taken from the widest chord
@@ -7962,6 +8023,7 @@ impl GpuiView {
         // does both.
         let chord_w = px(which_key_chord_w(&groups, self.col_w()));
         div()
+            .debug_selector(|| "which-key-panel".to_owned())
             .flex()
             .flex_row()
             .max_h(px(280.0))
@@ -9926,6 +9988,7 @@ impl Render for GpuiView {
         let context = self.context_row(co, cx);
 
         let body = div()
+            .debug_selector(|| "body-pane".to_owned())
             .flex()
             .flex_row()
             .flex_grow()
@@ -10027,23 +10090,8 @@ impl Render for GpuiView {
             .children(self.tab_strip(co, cx))
             .child(body)
             .child(status);
-        if show_keys {
-            root = root.child(self.which_key_panel(co, cx));
-        }
         root = root.child(self.footer(co, cx));
-        if let Some(toasts) = self.toast_overlay(co) {
-            root = root.child(toasts);
-        }
-        if let Some(menu) = self.context_menu_overlay(co, cx) {
-            root = root.child(menu);
-        }
-        if let Some(picture) = self.image_overlay(co, cx) {
-            root = root.child(picture);
-        }
-        if let Some(palette) = self.palette_overlay(co, cx) {
-            root = root.child(palette);
-        }
-        root
+        self.overlays(root, show_keys, co, cx)
     }
 }
 
