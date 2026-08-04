@@ -3385,6 +3385,13 @@ impl App {
                 "zoom belongs to the terminal here — use its own font size"
                     .clone_into(&mut self.status);
             }
+            // Same shape: there is no rail to dock in a terminal, and
+            // the thing it docks *to* — one chord per pane — is what
+            // the terminal always had.
+            "toggle-rail" => {
+                "no rail in the terminal — the panes are one chord each (`g a`, `g k`, …)"
+                    .clone_into(&mut self.status);
+            }
             // A chord the keymap advertises but this shell cannot serve
             // must say so — silence reads as a broken keyboard (I4).
             other => self.status = format!("{other}: not available in the terminal shell"),

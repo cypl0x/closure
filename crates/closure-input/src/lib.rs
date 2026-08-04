@@ -97,6 +97,7 @@ const DOOM_KEYMAP: &[(&str, &str)] = &[
     // Long lines fold at the pane edge instead of scrolling sideways.
     // `g w` is the flow allow, so the shifted twin.
     ("g W", "toggle-wrap"),
+    ("g H", "toggle-rail"),
     // …and a modified spelling, because the chord is wanted most from
     // inside the buffer whose lines are running off the edge, where a
     // bare `g` belongs to the editor. `M-z` is what the rest of the
@@ -246,6 +247,7 @@ const DOOM_KEYMAP: &[(&str, &str)] = &[
     ("SPC t v", "toggle-file-view"),
     ("SPC t t", "toggle-tree"),
     ("SPC t w", "toggle-wrap"),
+    ("SPC t d", "toggle-rail"),
     ("SPC t m", "next-input-mode"),
     ("SPC u", "undo-history"),
     // The prefix the rest of the desktop uses. Listed last so each
@@ -336,6 +338,7 @@ const EMACS_KEYMAP: &[(&str, &str)] = &[
     // Long lines fold at the pane edge instead of scrolling sideways.
     // `g w` is the flow allow, so the shifted twin.
     ("g W", "toggle-wrap"),
+    ("g H", "toggle-rail"),
     // …and a modified spelling, because the chord is wanted most from
     // inside the buffer whose lines are running off the edge, where a
     // bare `g` belongs to the editor. `M-z` is what the rest of the
@@ -517,6 +520,7 @@ const VIM_KEYMAP: &[(&str, &str)] = &[
     // Long lines fold at the pane edge instead of scrolling sideways.
     // `g w` is the flow allow, so the shifted twin.
     ("g W", "toggle-wrap"),
+    ("g H", "toggle-rail"),
     // …and a modified spelling, because the chord is wanted most from
     // inside the buffer whose lines are running off the edge, where a
     // bare `g` belongs to the editor. `M-z` is what the rest of the
@@ -705,6 +709,7 @@ const HELIX_KEYMAP: &[(&str, &str)] = &[
     // Long lines fold at the pane edge instead of scrolling sideways.
     // `g w` is the flow allow, so the shifted twin.
     ("g W", "toggle-wrap"),
+    ("g H", "toggle-rail"),
     // …and a modified spelling, because the chord is wanted most from
     // inside the buffer whose lines are running off the edge, where a
     // bare `g` belongs to the editor. `M-z` is what the rest of the
@@ -892,6 +897,7 @@ const NOTION_KEYMAP: &[(&str, &str)] = &[
     // Long lines fold at the pane edge instead of scrolling sideways.
     // `g w` is the flow allow, so the shifted twin.
     ("g W", "toggle-wrap"),
+    ("g H", "toggle-rail"),
     // …and a modified spelling, because the chord is wanted most from
     // inside the buffer whose lines are running off the edge, where a
     // bare `g` belongs to the editor. `M-z` is what the rest of the

@@ -1990,7 +1990,7 @@ pub fn run(vault_path: &Path) -> Result<(), String> {
                     // …and the note the last session was in is where
                     // this one starts.
                     view.app.restore_last_place(&view.shell);
-                    view.restore_outline_width();
+                    view.restore_window_state();
                     view
                 })
             },
@@ -2700,6 +2700,21 @@ impl GpuiView {
     ///
     /// A pane is a few hundred pixels wide, so the clamp bounds it
     /// long before `f32` runs out of mantissa.
+    /// The window the way it was left: the outline's width, and
+    /// whether the rail was docked.
+    ///
+    /// "remember window configuration. For example how wide my outline
+    /// headline tree view should be" — and the note left on that item,
+    /// that the rail's collapsed state was the half still missing.
+    fn restore_window_state(&mut self) {
+        self.restore_outline_width();
+        self.app.set_rail_docked(
+            closure_config::Config::from_path(&self.shell.vault.root().join("config.org"))
+                .ok()
+                .and_then(|c| c.rail_docked),
+        );
+    }
+
     const fn restore_outline_width(&mut self) {
         let Some(w) = self.app.outline_width() else {
             return;
@@ -8162,12 +8177,18 @@ impl GpuiView {
             .flex_none()
             .py_2()
             .px_1()
-            .w(px(146.0))
+            // Docked, the rail is its icons and nothing else: "just
+            // the icons are visible and none of the text".
+            .w(px(if self.app.rail_docked() { 38.0 } else { 146.0 }))
             .h_full()
             .overflow_y_scroll()
             .bg(rgb(co.panel))
             .border_r_1()
             .border_color(rgb(co.border))
+            // The handle. A rail you can only dock from the keyboard
+            // is not a dockable rail — the people who want the icons
+            // back are the people reaching for the mouse.
+            .child(self.rail_handle(co, cx))
             .children(self.destinations().into_iter().map(|dest| {
                 // The rail is how you move between panes, so
                 // it is read as often as the prose and is sized
@@ -8177,6 +8198,7 @@ impl GpuiView {
                     co,
                     self.app.zoom(),
                     dest,
+                    self.app.rail_docked(),
                     cx,
                 )
             }))
@@ -8184,11 +8206,57 @@ impl GpuiView {
 
     /// One rail button: icon, name, live badge, and the chord that does
     /// the same thing from the keyboard.
+    /// The rail's own dock/undock handle, at the top of it.
+    fn rail_handle(&self, co: Colors, cx: &Context<Self>) -> gpui::Stateful<gpui::Div> {
+        let docked = self.app.rail_docked();
+        let chord = self.app.chord_for("toggle-rail");
+        let tip = chord.map_or_else(
+            || "dock the rail".to_owned(),
+            |c| {
+                format!(
+                    "{}  [{c}]",
+                    if docked {
+                        "open the rail"
+                    } else {
+                        "dock the rail"
+                    }
+                )
+            },
+        );
+        let zoom = self.app.zoom();
+        div()
+            .debug_selector(|| "rail-handle".to_owned())
+            .id("rail-handle")
+            .flex()
+            .items_center()
+            .justify_center()
+            .px_2()
+            .py_1()
+            .rounded_md()
+            .text_size(px(chrome_px(&self.theme, zoom)))
+            .text_color(rgb(co.muted))
+            .cursor_pointer()
+            .hover(move |st| st.bg(rgb(co.hover)))
+            .on_mouse_down(
+                MouseButton::Left,
+                cx.listener(|this: &mut Self, _ev, _w, cx| {
+                    this.click("toggle-rail", cx);
+                }),
+            )
+            .tooltip(move |_w, cx| {
+                let text = tip.clone();
+                cx.new(move |_| Hint { text, co, zoom }).into()
+            })
+            // Pointing the way it will move.
+            .child(if docked { "\u{00bb}" } else { "\u{00ab}" })
+    }
+
     fn rail_button(
         chrome: f32,
         co: Colors,
         zoom: f32,
         dest: closure_shell_core::Destination,
+        docked: bool,
         cx: &Context<Self>,
     ) -> gpui::Stateful<gpui::Div> {
         let command = dest.command;
@@ -8231,8 +8299,13 @@ impl GpuiView {
                     .rounded_sm()
                     .bg(rgb(if dest.active { co.accent } else { co.panel })),
             )
-            .child(div().text_size(px(chrome)).child(dest.icon))
-            .child(div().flex_grow().child(dest.label));
+            .child(div().text_size(px(chrome)).child(dest.icon));
+        // Docked: the icon carries it, and the tooltip already says
+        // both the label and the chord — so nothing is lost, it just
+        // costs a hover instead of a glance.
+        if !docked {
+            button = button.child(div().flex_grow().child(dest.label));
+        }
         if dest.active {
             button = button.bg(rgb(co.selection));
         }
@@ -8246,10 +8319,12 @@ impl GpuiView {
                     .text_color(rgb(if dest.urgent { co.bg } else { co.muted }))
                     .child(badge),
             );
-        } else if let Some(chord) = dest.chord {
+        } else if let Some(chord) = dest.chord.filter(|_| !docked) {
             // Every command shows its keybinding where the command is
             // (the vision's rule), so the rail reads as a keymap you
-            // can click.
+            // can click — except docked, where there is no room and
+            // the chord would be painted half-clipped against the
+            // outline. The tooltip still carries it.
             button = button.child(
                 div()
                     .text_size(sz_at(9.0, zoom))

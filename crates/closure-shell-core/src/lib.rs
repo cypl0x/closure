@@ -4373,6 +4373,12 @@ const PALETTE_COMMANDS: &[(&str, &str, &str, &str)] = &[
         "Add a sibling headline",
     ),
     (
+        "toggle-rail",
+        "toggle-rail",
+        "View",
+        "Collapse the left rail to its icons, or open it again",
+    ),
+    (
         "trust-language",
         "trust-language",
         "App",
@@ -12550,6 +12556,12 @@ pub struct ModalApp {
     prompt_from: Option<ModalSurface>,
     /// The last `gcc` the buffer reported having been asked for.
     comment_seen: u64,
+    /// The left rail collapsed to its icons, once something has said.
+    ///
+    /// `Option`, like [`Self::outline_width`], so that "never toggled"
+    /// and "toggled back on" are different things: only the second is
+    /// worth writing into `config.org`.
+    rail_docked: Option<bool>,
     /// Which settings row the assistant screen has selected.
     settings_cursor: usize,
     /// Which peer the next tick dials, so one tick dials one peer.
@@ -13155,6 +13167,7 @@ impl ModalApp {
             link_dest: None,
             prompt_from: None,
             comment_seen: 0,
+            rail_docked: None,
             settings_cursor: 0,
             dial_next: 0,
             outline_width: None,
@@ -14892,6 +14905,28 @@ impl ModalApp {
     #[must_use]
     pub const fn outline_width(&self) -> Option<u32> {
         self.outline_width
+    }
+
+    /// Whether the left rail is collapsed to its icons.
+    ///
+    /// "I would like to make it dockable, in order that just the icons
+    /// are visible and none of the text." Labels on until told
+    /// otherwise: the rail is how you learn where the panes are.
+    #[must_use]
+    pub const fn rail_docked(&self) -> bool {
+        matches!(self.rail_docked, Some(true))
+    }
+
+    /// The setting as it will be written — `None` while no session has
+    /// touched it, so an untouched config keeps no line about it.
+    #[must_use]
+    pub const fn rail_docked_setting(&self) -> Option<bool> {
+        self.rail_docked
+    }
+
+    /// What `config.org` said, at open.
+    pub const fn set_rail_docked(&mut self, docked: Option<bool>) {
+        self.rail_docked = docked;
     }
 
     /// Record where a peer is (what a live round hands us).
@@ -22104,6 +22139,17 @@ impl ModalApp {
                 }
             }
         }
+        // Likewise the rail: written only once a session has actually
+        // docked or undocked it.
+        if let Some(docked) = self.rail_docked {
+            match closure_config::set_config_key(&source, "rail_docked", &format!("{docked}")) {
+                Ok(updated) => source = updated,
+                Err(e) => {
+                    self.say(format!("could not remember the rail: {e}"));
+                    return;
+                }
+            }
+        }
         // The recent-files list is written even when the session ended
         // with no selection: which files you were in is true regardless
         // of where the cursor happened to rest (Q1-B4).
@@ -22670,6 +22716,15 @@ impl ModalApp {
             // name. All of them ask for a title: `M-RET` used to make a
             // headline called "untitled" without asking, so the only
             // chord that existed was also one you had to undo.
+            "toggle-rail" => {
+                let docked = !self.rail_docked();
+                self.rail_docked = Some(docked);
+                self.say(if docked {
+                    "rail docked — icons only, `M-x toggle-rail` brings the labels back"
+                } else {
+                    "rail expanded"
+                });
+            }
             "trust-language" => self.trust_language(shell),
             "toggle-line-comment" => self.toggle_line_comment(),
             "add-heading"

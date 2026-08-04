@@ -101,6 +101,12 @@ pub struct Config {
     /// window closes so the pane you sized is the pane you get back.
     /// `None` means never resized, and the shell's own default stands.
     pub outline_width: Option<u32>,
+    /// The left rail collapsed to its icons, with the labels hidden.
+    ///
+    /// `None` means never toggled, so the shell's own default (labels
+    /// on) stands — the same shape as `outline_width`, and for the
+    /// same reason: a first run should read rather than guess.
+    pub rail_docked: Option<bool>,
     /// Soft-wrap long body lines instead of scrolling sideways. Off by
     /// default: wrapping costs the one-number gutter and the fixed row
     /// height, and prose people want wrapped is not the only thing in
@@ -193,6 +199,12 @@ const OPTIONAL_KEYS_DOC: &str = "\
 # llm_endpoint = http://localhost:8080/v1/chat/completions\n\
 # llm_tools = read, search, capture\n\
 \n\
+# The left rail, collapsed to its icons. Written by `toggle-rail`;\n\
+# `outline_width` beside it is the outline pane's width, written when\n\
+# you drag its edge. Both are here so the window you arranged is the\n\
+# window you get back.\n\
+# rail_docked = false\n\
+\n\
 # Network sniffer blocklist (`*` wildcards).\n\
 # sniffer_blocklist = *.doubleclick.net, telemetry.*\n\
 \n\
@@ -228,6 +240,7 @@ impl Default for Config {
             eval_trust: Vec::new(),
             sync_peers: Vec::new(),
             outline_width: None,
+            rail_docked: None,
             wrap: false,
             key_bindings: Vec::new(),
             sync_bind: None,
@@ -680,6 +693,7 @@ impl Config {
                     cfg.sync_dir = (!value.trim().is_empty()).then(|| PathBuf::from(value.trim()));
                 }
                 "wrap" => cfg.wrap = parse_bool(key, value)?,
+                "rail_docked" => cfg.rail_docked = Some(parse_bool(key, value)?),
                 "outline_width" => {
                     // Hand-edited file: a width of zero or a negative
                     // one paints a pane you cannot see and cannot grab
