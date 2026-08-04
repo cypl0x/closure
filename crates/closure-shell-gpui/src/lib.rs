@@ -5335,10 +5335,20 @@ impl GpuiView {
                 );
                 let mut row = div()
                     .flex()
+                    .debug_selector(move || format!("body-row-{ln}"))
                     // Stated rather than a minimum, and the same number
                     // the viewport is counted in: a row that grows past
                     // it makes the count a lie and the last line a
                     // sliver with the caret in it.
+                    //
+                    // `flex_none` because a definite height is still
+                    // *shrinkable* — `flex-shrink` defaults to 1, so
+                    // once the content was taller than the pane every
+                    // row gave up a share of itself and the text was
+                    // squeezed out of its own box. That is the "halfed
+                    // lines" bug, and it depended on what was on screen
+                    // because the pictures are what pushed it over.
+                    .flex_none()
                     .h(px(body_row_h(self.app.zoom())))
                     .line_height(px(body_row_h(self.app.zoom())))
                     .overflow_hidden()
@@ -7664,6 +7674,10 @@ impl GpuiView {
     /// drawn diagram, which get the same block because they are the
     /// same thing to look at.
     fn picture_block(&self, path: std::path::PathBuf, cx: &Context<Self>) -> gpui::Div {
+        // A whole number of rows, and not shrinkable — the arithmetic
+        // that counts the viewport, places the caret and sizes the
+        // scrollbar is all in rows, and a picture that quietly gives up
+        // height puts every one of those out.
         let h = px(body_row_h(self.app.zoom()) * IMAGE_ROWS);
         // Named by the file it shows, so a test can find the one it put
         // there rather than an index into whatever is on screen.
@@ -7674,6 +7688,7 @@ impl GpuiView {
         let open = path.clone();
         div()
             .debug_selector(move || format!("picture-{selector}"))
+            .flex_none()
             .h(h)
             // Starting where the line's own text starts, past the
             // gutter: a picture flush against the window edge reads as
