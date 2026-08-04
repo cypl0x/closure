@@ -39,6 +39,15 @@ pub struct Vault {
     revision: u64,
     /// Files read from disk since open — see [`Vault::disk_reads`].
     disk_reads: std::cell::Cell<u64>,
+    /// Which trust store decides whether this vault may run code.
+    ///
+    /// A field rather than a lookup so that it can be *pointed*
+    /// somewhere: an embedder, a test, or a future `--trust-store`
+    /// flag all need a store that is not the ambient one, and none of
+    /// them should be reaching into the environment to get it. `None`
+    /// is a machine with no config directory at all, which trusts
+    /// nothing.
+    trust_store: Option<PathBuf>,
 }
 
 /// An org-capture template: where a new entry lands and what it
@@ -249,6 +258,123 @@ pub enum VaultError {
 /// Outline paths of every headline under `path`, depth first.
 ///
 /// Structural indices, not byte offsets, so they survive the rewrites
+/// Where the user's trust store lives: `$XDG_CONFIG_HOME/closure/
+/// trust.org`, falling back to `~/.config/closure/trust.org`.
+///
+/// Deliberately not in the vault. `eval_trust` used to be read from
+/// `<vault>/config.org`, which meant the policy arrived over the same
+/// channel as the code it authorised: `closure sync` is a `git pull`,
+/// the CRDT layer merges vault content, and an attacker who can put a
+/// file in your vault could ship the line that permits their own
+/// block. Reported 2026-08-04 with the exploit path run end to end.
+///
+/// Emacs' org-babel confirms per block; VS Code keeps workspace trust
+/// outside the workspace. This is the second shape: outside the data,
+/// keyed by the vault's path, written only by the user (or by
+/// [`grant_eval_trust`] on their behalf).
+#[must_use]
+pub fn trust_store_path() -> Option<std::path::PathBuf> {
+    let base = std::env::var_os("XDG_CONFIG_HOME")
+        .map(std::path::PathBuf::from)
+        .or_else(|| {
+            std::env::var_os("HOME").map(|h| std::path::PathBuf::from(h).join(".config"))
+        })?;
+    Some(base.join("closure").join("trust.org"))
+}
+
+/// The languages the store at `store` trusts for the vault at `vault`.
+///
+/// Fails closed on everything: no file, an unreadable file, a line it
+/// cannot parse, a path that is not this vault. The one file that
+/// decides whether code runs is the wrong place to be forgiving.
+#[must_use]
+pub fn trusted_languages_at(store: &Path, vault: &Path) -> Vec<String> {
+    let Ok(text) = std::fs::read_to_string(store) else {
+        return Vec::new();
+    };
+    let want = canonical_vault_path(vault);
+    text.lines()
+        .filter_map(|line| line.split_once('='))
+        .find(|(path, _)| canonical_vault_path(Path::new(path.trim())) == want)
+        .map(|(_, langs)| {
+            langs
+                .split(',')
+                .map(str::trim)
+                .filter(|l| !l.is_empty())
+                .map(str::to_owned)
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// Add `lang` to what the user trusts for the vault at `vault`, in the
+/// store at `store`.
+///
+/// A refusal that tells you to hand-write a file in a directory you
+/// have to guess is a refusal people work around by turning the check
+/// off, so granting is one call. Other vaults' grants are rewritten
+/// untouched, and granting twice is granting once.
+///
+/// # Errors
+///
+/// [`VaultError::Io`] if the store cannot be created or written.
+pub fn grant_eval_trust_at(store: &Path, vault: &Path, lang: &str) -> Result<(), VaultError> {
+    let want = canonical_vault_path(vault);
+    let text = std::fs::read_to_string(store).unwrap_or_default();
+    let mut langs = trusted_languages_at(store, vault);
+    let lang = lang.trim().to_owned();
+    if !lang.is_empty() && !langs.contains(&lang) {
+        langs.push(lang);
+    }
+    let mut out: Vec<String> = text
+        .lines()
+        .filter(|line| {
+            line.split_once('=')
+                .is_none_or(|(path, _)| canonical_vault_path(Path::new(path.trim())) != want)
+        })
+        .map(str::to_owned)
+        .collect();
+    // A comment at the top, once, so the file explains itself to
+    // whoever opens it next.
+    if out.iter().all(|l| l.trim().is_empty()) {
+        out.clear();
+        out.push("# closure trust store. Only this file grants code".to_owned());
+        out.push("# execution, and only for the vault named on the line.".to_owned());
+        out.push("# A vault cannot add itself here.".to_owned());
+    }
+    out.push(format!("{} = {}", want.display(), langs.join(", ")));
+    if let Some(parent) = store.parent() {
+        std::fs::create_dir_all(parent).map_err(VaultError::Io)?;
+    }
+    let mut text = out.join("\n");
+    text.push('\n');
+    std::fs::write(store, text).map_err(VaultError::Io)
+}
+
+/// Add `lang` to the user's trust store for `vault`.
+///
+/// # Errors
+///
+/// [`VaultError::Io`] if the store cannot be written, or
+/// [`VaultError::Command`] when there is no config directory to put it
+/// in — which is a machine with neither `XDG_CONFIG_HOME` nor `HOME`.
+pub fn grant_eval_trust(vault: &Path, lang: &str) -> Result<(), VaultError> {
+    let store = trust_store_path().ok_or_else(|| {
+        VaultError::Command("no config directory — set XDG_CONFIG_HOME or HOME".to_owned())
+    })?;
+    grant_eval_trust_at(&store, vault, lang)
+}
+
+/// The path a grant is keyed by: absolute where the filesystem can say
+/// so, and as given otherwise.
+///
+/// Canonicalising matters because `~/vault` and `/home/me/vault` and
+/// `./vault` are one vault, and a grant that only matched the spelling
+/// you happened to type is a grant you would give twice.
+fn canonical_vault_path(vault: &Path) -> std::path::PathBuf {
+    std::fs::canonicalize(vault).unwrap_or_else(|_| vault.to_path_buf())
+}
+
 /// applied to the headlines they name (a properties drawer inserted
 /// into one moves no path).
 fn descendant_paths(org: &closure_org::OrgDoc, path: &[usize]) -> Vec<Vec<usize>> {
@@ -382,13 +508,21 @@ impl Vault {
     /// evaluation must consult the same policy rather than invent one.
     #[must_use]
     pub fn eval_trust(&self) -> Vec<String> {
-        let cfg_path = self.root.join("config.org");
-        if !cfg_path.exists() {
-            return Vec::new();
-        }
-        closure_config::Config::from_path(&cfg_path)
-            .map(|c| c.eval_trust)
-            .unwrap_or_default()
+        self.trust_store
+            .as_ref()
+            .map_or_else(Vec::new, |store| trusted_languages_at(store, &self.root))
+    }
+
+    /// Point this vault at a different trust store.
+    ///
+    /// The store is the *user's*, so the ambient one is right almost
+    /// always. This is for the cases where "the user" is someone else:
+    /// a test saying what the user trusts, or an embedder with its own
+    /// config directory.
+    #[must_use]
+    pub fn with_trust_store(mut self, store: &Path) -> Self {
+        self.trust_store = Some(store.to_path_buf());
+        self
     }
 
     /// The program config.org names for rendering `lang` diagrams, if
@@ -491,6 +625,7 @@ impl Vault {
             kill_ring: Vec::new(),
             revision: 0,
             disk_reads: std::cell::Cell::new(0),
+            trust_store: trust_store_path(),
         })
     }
 

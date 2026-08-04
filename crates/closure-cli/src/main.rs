@@ -1031,6 +1031,18 @@ enum Cmd {
         /// Path to the vault directory.
         vault: PathBuf,
     },
+    /// Let one vault run one language, written to *your* config
+    /// (`$XDG_CONFIG_HOME/closure/trust.org`) and never to the vault.
+    ///
+    /// A vault is something people can send you; the file that decides
+    /// whether its code runs must not be a file they can send. With no
+    /// language, prints what this vault is currently trusted for.
+    Trust {
+        /// Path to the vault directory.
+        vault: PathBuf,
+        /// Language to allow, e.g. `shell`. Omit to list.
+        lang: Option<String>,
+    },
     /// Write closure's own documentation into a vault: `config.org`
     /// (the defaults, generated from the schema) and `tutorial.org`
     /// (generated from the live keymap). An existing `config.org` is
@@ -1487,6 +1499,7 @@ fn run(cmd: &Cmd) -> Result<(), String> {
         Cmd::Build => cmd_build(),
         Cmd::Gpui { vault } => cmd_gpui(vault),
         Cmd::InitVault { vault } => cmd_init_vault(vault),
+        Cmd::Trust { vault, lang } => cmd_trust(vault, lang.as_deref()),
         Cmd::Egui { vault } => cmd_egui(vault),
         Cmd::WhereIs { name } => cmd_where_is(name),
         Cmd::Doc { name } => cmd_doc(name),
@@ -3847,20 +3860,41 @@ fn cmd_whichkey(prefix: Option<&str>) -> Result<(), String> {
     Ok(())
 }
 
-/// Languages trusted to execute for a standalone file: read `eval_trust`
-/// from a `config.org` in the file's directory. Absent/invalid =>
-/// default-deny (empty), matching `Vault::eval_trust` (C1a).
+/// Languages trusted to execute for a standalone file.
+///
+/// The file's *directory* is the vault as far as the trust store is
+/// concerned, and the store is the user's — never a `config.org` next
+/// to the file, which would be the same file an attacker sends you
+/// (C1a, and the 2026-08-04 review's first finding).
 fn eval_trust_for(file: &Path) -> Vec<String> {
     let Some(dir) = file.parent() else {
         return Vec::new();
     };
-    let cfg = dir.join("config.org");
-    if !cfg.exists() {
-        return Vec::new();
+    closure_store::trust_store_path().map_or_else(Vec::new, |store| {
+        closure_store::trusted_languages_at(&store, dir)
+    })
+}
+
+/// `closure trust <vault> [lang]` — grant, or show what is granted.
+fn cmd_trust(vault: &Path, lang: Option<&str>) -> Result<(), String> {
+    let store = closure_store::trust_store_path()
+        .ok_or_else(|| "no config directory — set XDG_CONFIG_HOME or HOME".to_owned())?;
+    if let Some(lang) = lang {
+        closure_store::grant_eval_trust_at(&store, vault, lang).map_err(|e| e.to_string())?;
+        println!(
+            "`{lang}` may now run in {} — granted in {}, not in the vault",
+            vault.display(),
+            store.display()
+        );
+        return Ok(());
     }
-    closure_config::Config::from_path(&cfg)
-        .map(|c| c.eval_trust)
-        .unwrap_or_default()
+    let trusted = closure_store::trusted_languages_at(&store, vault);
+    if trusted.is_empty() {
+        println!("{} is trusted for nothing", vault.display());
+    } else {
+        println!("{}: {}", vault.display(), trusted.join(", "));
+    }
+    Ok(())
 }
 
 fn cmd_eval(path: &Path, write: bool, selector: Option<&str>) -> Result<(), String> {
@@ -3886,6 +3920,7 @@ fn cmd_eval(path: &Path, write: bool, selector: Option<&str>) -> Result<(), Stri
         }),
     };
     let mut ran = 0usize;
+    let mut refused = 0usize;
     let mut results: Vec<(usize, String)> = Vec::new();
     for (i, n) in blocks.iter().enumerate() {
         if only_block.is_some_and(|idx| idx != i) {
@@ -3897,9 +3932,11 @@ fn cmd_eval(path: &Path, write: bool, selector: Option<&str>) -> Result<(), Stri
         let lang = cb.language.unwrap_or("shell");
         if !closure_eval::eval_allowed(&trust, lang) {
             eprintln!(
-                "---- block #{i} blocked: `{lang}` not in eval_trust \
-                 (add it to config.org to allow) ----"
+                "---- block #{i} blocked: `{lang}` is not trusted for this \
+                 vault (`closure trust {lang}` grants it, in your own \
+                 config rather than the vault's) ----"
             );
+            refused += 1;
             continue;
         }
         let backend: Box<dyn Backend> = if let Some(lang) = cb.language {
@@ -3933,6 +3970,15 @@ fn cmd_eval(path: &Path, write: bool, selector: Option<&str>) -> Result<(), Stri
             results.push((i, out.stdout.clone()));
         }
         ran += 1;
+    }
+    if refused > 0 && ran == 0 {
+        // "A script can't tell 'ran' from 'refused'." A default-deny
+        // that reports success is a default-deny nobody notices they
+        // hit.
+        return Err(format!(
+            "refused {refused} block{}: not trusted for this vault",
+            if refused == 1 { "" } else { "s" }
+        ));
     }
     if ran == 0 {
         eprintln!("no code blocks found");

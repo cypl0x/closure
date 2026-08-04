@@ -42,21 +42,25 @@ echo hello-from-babel
 prose after
 ";
 
-/// A vault that trusts shell blocks, and an open body editor.
-fn editing() -> (TempDir, Shell, ModalApp) {
+/// A vault the user trusts for shell blocks, and an open body editor.
+///
+/// The grant lives in the user's config, not the vault's — a vault
+/// that could authorise its own code would make cloning one arbitrary
+/// code execution (the 2026-08-04 review's first finding).
+fn editing() -> (TempDir, TempDir, Shell, ModalApp) {
     let dir = tempfile::tempdir().expect("tmp");
+    let home = tempfile::tempdir().expect("tmp");
+    let store = home.path().join("trust.org");
+    closure_store::grant_eval_trust_at(&store, dir.path(), "shell").expect("grant");
     fs::write(dir.path().join("notes.org"), NOTES).expect("write");
-    fs::write(
-        dir.path().join("config.org"),
-        "#+TITLE: t\n\n#+BEGIN_SRC closure-config\neval_trust = shell\n#+END_SRC\n",
-    )
-    .expect("write");
-    let vault = Vault::open(dir.path()).expect("open");
+    let vault = Vault::open(dir.path())
+        .expect("open")
+        .with_trust_store(&store);
     let mut app = ModalApp::new(InputMode::Doom);
     let mut shell = Shell::new(vault);
     assert!(app.select_by_id(&shell, "01HQBABEL00000000000001"));
     app.run(&mut shell, "edit-body");
-    (dir, shell, app)
+    (dir, home, shell, app)
 }
 
 /// `C-c C-c`, one stroke at a time.
@@ -75,7 +79,7 @@ fn line_of(app: &ModalApp, needle: &str) -> usize {
 
 #[test]
 fn c_c_c_c_on_a_source_block_runs_it() {
-    let (_d, mut shell, mut app) = editing();
+    let (_d, _h, mut shell, mut app) = editing();
     let line = line_of(&app, "echo hello-from-babel");
     app.body_click(line, 0);
     accept(&mut app, &mut shell);
@@ -91,7 +95,7 @@ fn c_c_c_c_on_a_source_block_runs_it() {
 fn running_a_block_keeps_the_buffer_open() {
     // org runs the block and leaves you where you were; it does not
     // close the buffer, which is what "save and close" would do.
-    let (_d, mut shell, mut app) = editing();
+    let (_d, _h, mut shell, mut app) = editing();
     let line = line_of(&app, "echo hello-from-babel");
     app.body_click(line, 0);
     accept(&mut app, &mut shell);
@@ -102,7 +106,7 @@ fn running_a_block_keeps_the_buffer_open() {
 fn c_c_c_c_off_a_block_still_saves_and_closes() {
     // The other half of context-sensitive: everywhere that is not a
     // source block, the chord is still the accept.
-    let (_d, mut shell, mut app) = editing();
+    let (_d, _h, mut shell, mut app) = editing();
     let line = line_of(&app, "prose after");
     app.body_click(line, 0);
     accept(&mut app, &mut shell);
@@ -125,17 +129,23 @@ fn a_block_the_vault_does_not_trust_says_how_to_trust_it() {
     app.body_click(line, 0);
     accept(&mut app, &mut shell);
 
+    // Naming the concept is not naming the fix. The remedy moved on
+    // 2026-08-04 — the grant is the user's now — so the refusal names
+    // the command that writes it rather than a file to hand-edit.
     let msg = app.status().to_owned();
-    assert!(msg.contains("eval_trust"), "{msg}");
+    assert!(msg.contains("trust-language"), "the remedy: {msg}");
     assert!(msg.contains("shell"), "the language it wants: {msg}");
-    assert!(msg.contains("config.org"), "and where to put it: {msg}");
+    assert!(
+        !msg.contains("config.org"),
+        "it still sends the user to the vault's own config: {msg}"
+    );
 }
 
 #[test]
 fn the_results_replace_the_previous_run_rather_than_stacking() {
     // org replaces a `#+RESULTS:` block it already wrote; two runs
     // that appended would grow the file every time.
-    let (_d, mut shell, mut app) = editing();
+    let (_d, _h, mut shell, mut app) = editing();
     let line = line_of(&app, "echo hello-from-babel");
     app.body_click(line, 0);
     accept(&mut app, &mut shell);

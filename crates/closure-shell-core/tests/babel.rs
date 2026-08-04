@@ -19,16 +19,25 @@ use closure_config::InputMode;
 use closure_shell_core::{ModalApp, ModalSurface, Shell};
 use closure_store::Vault;
 
-/// A vault whose config trusts `sh`, with two blocks in one file.
+/// A vault the *user* trusts for `sh`, with two blocks in one file.
 ///
 /// The notes file is named to sort *before* `config.org`, so rows 0
 /// and 1 are the two `sh` blocks and the vault's own `closure-config`
 /// block — which is a source block like any other — is row 2.
-fn fixture() -> (tempfile::TempDir, Shell, ModalApp) {
+///
+/// The trust used to come out of the vault's own `config.org`. It
+/// cannot any more, and that is the point: the 2026-08-04 review's
+/// first finding was that a vault authorising its own code means
+/// cloning one is arbitrary code execution. The grant is the user's
+/// now, so the fixture makes one.
+fn fixture() -> (tempfile::TempDir, tempfile::TempDir, Shell, ModalApp) {
     let dir = tempfile::tempdir().expect("tmp");
+    let home = tempfile::tempdir().expect("tmp");
+    let store = home.path().join("trust.org");
+    closure_store::grant_eval_trust_at(&store, dir.path(), "sh").expect("grant");
     fs::write(
         dir.path().join("config.org"),
-        "#+BEGIN_SRC closure-config\neval_trust = sh\n#+END_SRC\n",
+        "#+BEGIN_SRC closure-config\ntitle = demo\n#+END_SRC\n",
     )
     .expect("config");
     fs::write(
@@ -38,13 +47,15 @@ fn fixture() -> (tempfile::TempDir, Shell, ModalApp) {
          #+BEGIN_SRC sh\necho second\n#+END_SRC\n",
     )
     .expect("write");
-    let vault = Vault::open(dir.path()).expect("open");
-    (dir, Shell::new(vault), ModalApp::new(InputMode::Doom))
+    let vault = Vault::open(dir.path())
+        .expect("open")
+        .with_trust_store(&store);
+    (dir, home, Shell::new(vault), ModalApp::new(InputMode::Doom))
 }
 
 #[test]
 fn the_blocks_surface_lists_every_block_in_path_order() {
-    let (_d, mut shell, mut app) = fixture();
+    let (_d, _h, mut shell, mut app) = fixture();
     app.run(&mut shell, "list-blocks");
     assert_eq!(app.surface(), ModalSurface::Blocks);
     let rows = app.block_rows(&shell);
@@ -55,7 +66,7 @@ fn the_blocks_surface_lists_every_block_in_path_order() {
 
 #[test]
 fn running_the_selected_block_captures_its_output() {
-    let (_d, mut shell, mut app) = fixture();
+    let (_d, _h, mut shell, mut app) = fixture();
     app.run(&mut shell, "list-blocks");
     assert_eq!(app.block_output(), None, "nothing run yet");
     app.run(&mut shell, "execute-block");
@@ -69,7 +80,7 @@ fn the_cursor_chooses_which_block_runs() {
     // Walked with `down` rather than a bare `j` since 2026-08-02: the
     // user asked for the list commands to behave like the palette, so
     // letters narrow the list and the arrows (and `C-n`/`C-j`) walk it.
-    let (_d, mut shell, mut app) = fixture();
+    let (_d, _h, mut shell, mut app) = fixture();
     app.run(&mut shell, "list-blocks");
     app.on_key(&mut shell, "down", false, false, None);
     app.run(&mut shell, "execute-block");
@@ -118,7 +129,7 @@ fn running_with_no_blocks_says_so() {
 #[test]
 fn leaving_the_surface_clears_the_previous_output() {
     // Stale output next to a different block is a lie about what ran.
-    let (_d, mut shell, mut app) = fixture();
+    let (_d, _h, mut shell, mut app) = fixture();
     app.run(&mut shell, "list-blocks");
     app.run(&mut shell, "execute-block");
     assert!(app.block_output().is_some());
@@ -129,7 +140,7 @@ fn leaving_the_surface_clears_the_previous_output() {
 
 #[test]
 fn moving_the_cursor_clears_the_previous_output() {
-    let (_d, mut shell, mut app) = fixture();
+    let (_d, _h, mut shell, mut app) = fixture();
     app.run(&mut shell, "list-blocks");
     app.run(&mut shell, "execute-block");
     assert!(app.block_output().is_some());

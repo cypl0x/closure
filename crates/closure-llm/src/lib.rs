@@ -346,6 +346,54 @@ pub struct CurlProvider {
     pub kind: ProviderKind,
 }
 
+/// One curl config file: the URL, the method, the headers and the
+/// body, in curl's own `key = "value"` format.
+///
+/// This exists so that none of it goes through `argv`. The API key was
+/// passed as `-H "x-api-key: sk-..."`, and `/proc/<pid>/cmdline` is
+/// world-readable on Linux — so any local user could read the key for
+/// as long as the request took, which for a streaming completion is
+/// the whole answer. The prompt went the same way via `-d`, which also
+/// hits `E2BIG` once the context is long enough. Reported 2026-08-04.
+///
+/// curl reads this from stdin with `--config -`, and stdin is not
+/// visible to other processes.
+#[must_use]
+pub fn curl_config(url: &str, headers: &[String], body: &str) -> String {
+    use std::fmt::Write as _;
+    let mut out = String::new();
+    let _ = writeln!(out, "url = {}", quote(url));
+    out.push_str("request = \"POST\"\n");
+    for h in headers {
+        let _ = writeln!(out, "header = {}", quote(h));
+    }
+    let _ = writeln!(out, "data = {}", quote(body));
+    out
+}
+
+/// A value in curl's config quoting.
+///
+/// Inside a quoted value curl unescapes `\\`, `\"`, `\t`, `\n` and
+/// `\r`, so those are the five that have to go in escaped. A raw
+/// newline would otherwise end the directive and turn the rest of the
+/// prompt into curl options.
+fn quote(value: &str) -> String {
+    let mut out = String::with_capacity(value.len() + 2);
+    out.push('"');
+    for c in value.chars() {
+        match c {
+            '\\' => out.push_str("\\\\"),
+            '"' => out.push_str("\\\""),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            other => out.push(other),
+        }
+    }
+    out.push('"');
+    out
+}
+
 impl CurlProvider {
     /// Construct a provider with sensible defaults: empty body /
     /// passthrough extractor. Replace fields per-API.
@@ -380,20 +428,26 @@ impl Provider for CurlProvider {
             return Ok(whole);
         }
         let body = (self.body)(prompt, true);
+        let config = curl_config(&self.url, &self.headers, &body);
         let mut cmd = std::process::Command::new("curl");
         cmd.arg("-sS")
             .arg("-N")
-            .arg("-X")
-            .arg("POST")
-            .arg("-d")
-            .arg(&body);
-        for h in &self.headers {
-            cmd.arg("-H").arg(h);
-        }
-        cmd.arg(&self.url)
+            .arg("--config")
+            .arg("-")
+            .stdin(std::process::Stdio::piped())
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped());
         let mut child = cmd.spawn().map_err(|e| LlmError::Provider(e.to_string()))?;
+        {
+            use std::io::Write as _;
+            let mut stdin = child
+                .stdin
+                .take()
+                .ok_or_else(|| LlmError::Provider("curl took no stdin".into()))?;
+            stdin
+                .write_all(config.as_bytes())
+                .map_err(|e| LlmError::Provider(e.to_string()))?;
+        }
         let stdout = child
             .stdout
             .take()
@@ -428,14 +482,28 @@ impl Provider for CurlProvider {
 
     fn complete(&self, prompt: &str) -> Result<String, LlmError> {
         let body = (self.body)(prompt, false);
-        let mut cmd = std::process::Command::new("curl");
-        cmd.arg("-sS").arg("-X").arg("POST").arg("-d").arg(&body);
-        for h in &self.headers {
-            cmd.arg("-H").arg(h);
+        let config = curl_config(&self.url, &self.headers, &body);
+        let mut child = std::process::Command::new("curl")
+            .arg("-sS")
+            .arg("--config")
+            .arg("-")
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+            .map_err(|e| LlmError::Provider(e.to_string()))?;
+        {
+            use std::io::Write as _;
+            let mut stdin = child
+                .stdin
+                .take()
+                .ok_or_else(|| LlmError::Provider("curl took no stdin".into()))?;
+            stdin
+                .write_all(config.as_bytes())
+                .map_err(|e| LlmError::Provider(e.to_string()))?;
         }
-        cmd.arg(&self.url);
-        let out = cmd
-            .output()
+        let out = child
+            .wait_with_output()
             .map_err(|e| LlmError::Provider(e.to_string()))?;
         if !out.status.success() {
             return Err(LlmError::Provider(format!(

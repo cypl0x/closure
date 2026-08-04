@@ -30,17 +30,18 @@ const NOTE: &str = "* Note\n\
                     #+END_SRC\n\
                     prose below\n";
 
-/// A vault whose config trusts `sh`.
-fn fixture(note: &str) -> (tempfile::TempDir, Shell, ModalApp) {
+/// A vault the *user* trusts for `sh` — the grant lives in their own
+/// config, never in the vault (the 2026-08-04 review's first finding).
+fn fixture(note: &str) -> (tempfile::TempDir, tempfile::TempDir, Shell, ModalApp) {
     let dir = tempfile::tempdir().expect("tmp");
-    fs::write(
-        dir.path().join("config.org"),
-        "#+BEGIN_SRC closure-config\neval_trust = sh\n#+END_SRC\n",
-    )
-    .expect("config");
+    let home = tempfile::tempdir().expect("tmp");
+    let store = home.path().join("trust.org");
+    closure_store::grant_eval_trust_at(&store, dir.path(), "sh").expect("grant");
     fs::write(dir.path().join("a-notes.org"), note).expect("write");
-    let vault = Vault::open(dir.path()).expect("open");
-    (dir, Shell::new(vault), ModalApp::new(InputMode::Doom))
+    let vault = Vault::open(dir.path())
+        .expect("open")
+        .with_trust_store(&store);
+    (dir, home, Shell::new(vault), ModalApp::new(InputMode::Doom))
 }
 
 /// Open the note's body and park the cursor on `line`.
@@ -121,7 +122,7 @@ fn output_with_nothing_in_it_still_says_it_ran() {
 
 #[test]
 fn the_buffer_runs_the_block_the_cursor_is_in() {
-    let (_d, mut shell, mut app) = fixture(NOTE);
+    let (_d, _h, mut shell, mut app) = fixture(NOTE);
     in_the_buffer(&mut app, &mut shell, 2);
     app.run(&mut shell, "execute-block");
     let buf = app.body_buffer();
@@ -132,7 +133,7 @@ fn the_buffer_runs_the_block_the_cursor_is_in() {
 
 #[test]
 fn running_it_twice_leaves_one_result() {
-    let (_d, mut shell, mut app) = fixture(NOTE);
+    let (_d, _h, mut shell, mut app) = fixture(NOTE);
     in_the_buffer(&mut app, &mut shell, 2);
     app.run(&mut shell, "execute-block");
     app.run(&mut shell, "execute-block");
@@ -141,7 +142,7 @@ fn running_it_twice_leaves_one_result() {
 
 #[test]
 fn a_cursor_in_prose_refuses_rather_than_running_something_else() {
-    let (_d, mut shell, mut app) = fixture(NOTE);
+    let (_d, _h, mut shell, mut app) = fixture(NOTE);
     in_the_buffer(&mut app, &mut shell, 0);
     let before = app.body_buffer().to_owned();
     app.run(&mut shell, "execute-block");
@@ -154,7 +155,7 @@ fn the_buffer_honours_the_trust_gate_too() {
     // The gate is why opening a file is safe; a second route to eval
     // must not be a way around it.
     let note = "* Note\n#+BEGIN_SRC python\nprint('nope')\n#+END_SRC\n";
-    let (_d, mut shell, mut app) = fixture(note);
+    let (_d, _h, mut shell, mut app) = fixture(note);
     in_the_buffer(&mut app, &mut shell, 2);
     let before = app.body_buffer().to_owned();
     app.run(&mut shell, "execute-block");
@@ -170,7 +171,7 @@ fn the_buffer_honours_the_trust_gate_too() {
 fn the_outline_does_not_run_a_block_it_never_showed_you() {
     // The bug: `self.selected` is an *outline* row there, and it was
     // used as an index into the vault-wide block list.
-    let (dir, mut shell, mut app) = fixture(NOTE);
+    let (dir, _h, mut shell, mut app) = fixture(NOTE);
     app.select(0, &shell);
     app.run(&mut shell, "execute-block");
     let src = fs::read_to_string(dir.path().join("a-notes.org")).expect("read");

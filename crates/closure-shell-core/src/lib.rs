@@ -1411,7 +1411,7 @@ pub fn palette_command_names() -> Vec<&'static str> {
     PALETTE_COMMANDS.iter().map(|(_, c, ..)| *c).collect()
 }
 
-/// The UTC day a ULID was minted, `YYYY-MM-DD`, or `None` if `id` is
+/// When a ULID was minted, `YYYY-MM-DD HH:MM:SS` UTC, or `None` if `id` is
 /// not one.
 ///
 /// The first ten characters are the millisecond since the epoch in
@@ -4354,6 +4354,12 @@ const PALETTE_COMMANDS: &[(&str, &str, &str, &str)] = &[
         "add-sibling",
         "Edit",
         "Add a sibling headline",
+    ),
+    (
+        "trust-language",
+        "trust-language",
+        "App",
+        "Let this vault run one language, in your config not the vault's",
     ),
     (
         "toggle-line-comment",
@@ -17956,6 +17962,27 @@ impl ModalApp {
         }
     }
 
+    /// Grant this vault permission to run one language, in the user's
+    /// own config.
+    ///
+    /// The grant cannot be written from inside the vault — that is the
+    /// whole point of where the store lives — so this is the door: you
+    /// are here, you typed it, and it is your config that changes.
+    fn trust_language(&mut self, shell: &Shell) {
+        let lang = self.arg().map(str::trim).unwrap_or_default().to_owned();
+        if lang.is_empty() {
+            self.say("trust-language needs a language — `M-x trust-language shell`");
+            return;
+        }
+        match closure_store::grant_eval_trust(shell.vault.root(), &lang) {
+            Ok(()) => self.say(format!(
+                "`{lang}` may now run in this vault — written to your own config, \
+                 not the vault's"
+            )),
+            Err(e) => self.say(format!("could not write the trust store: {e}")),
+        }
+    }
+
     /// `gcc` is a chord the buffer can recognise and cannot carry out:
     /// which comment to use is the enclosing source block's business.
     /// Same seam as the clipboard mirror — the editor counts the asks,
@@ -20544,8 +20571,8 @@ impl ModalApp {
             };
             if !closure_eval::eval_allowed(&trust, &block.lang) {
                 self.say(format!(
-                    "`{lang}` is not trusted here — add `eval_trust = {lang}` \
-                     to config.org's closure-config block",
+                    "`{lang}` is not trusted here — `M-x trust-language {lang}` \
+                     grants it, in your own config rather than the vault's",
                     lang = block.lang
                 ));
                 return;
@@ -20974,13 +21001,14 @@ impl ModalApp {
             self.say(":! needs a command — `:!ls`, `:!git status`");
             return;
         }
-        let trust = closure_config::Config::from_path(&shell.vault.root().join("config.org"))
-            .map(|c| c.eval_trust)
-            .unwrap_or_default();
+        // The vault's own answer, not a second read of a second file:
+        // `:!` is the same capability `#+BEGIN_SRC shell` is, so it
+        // answers to the same gate.
+        let trust = shell.vault.eval_trust();
         if !closure_eval::eval_allowed(&trust, "shell") {
             self.say(format!(
-                "refused to run `{cmd}` — add `eval_trust = shell` to the \
-                 closure-config block in config.org to allow it"
+                "refused to run `{cmd}` — `M-x trust-language shell` grants \
+                 it, in your own config rather than the vault's"
             ));
             return;
         }
@@ -22610,6 +22638,7 @@ impl ModalApp {
             // name. All of them ask for a title: `M-RET` used to make a
             // headline called "untitled" without asking, so the only
             // chord that existed was also one you had to undo.
+            "trust-language" => self.trust_language(shell),
             "toggle-line-comment" => self.toggle_line_comment(),
             "add-heading"
             | "add-heading-above"
@@ -23252,8 +23281,8 @@ impl ModalApp {
             // report is somebody who could not work out the remedy
             // from a refusal that mentioned `eval_trust` and stopped.
             self.say(format!(
-                "`{lang}` is not trusted here — add `eval_trust = {lang}` \
-                 to config.org's closure-config block",
+                "`{lang}` is not trusted here — `M-x trust-language {lang}` \
+                 grants it, in your own config rather than the vault's",
                 lang = block.lang
             ));
             return;

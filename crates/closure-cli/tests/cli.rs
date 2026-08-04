@@ -35,6 +35,16 @@ fn run(args: &[&str]) -> std::process::Output {
         .expect("spawn closure")
 }
 
+/// Run with a config home of our own, so a test can say what the
+/// *user* trusts without touching the machine's real trust store.
+fn run_with_config_home(args: &[&str], home: &std::path::Path) -> std::process::Output {
+    Command::new(BIN)
+        .args(args)
+        .env("XDG_CONFIG_HOME", home)
+        .output()
+        .expect("spawn closure")
+}
+
 fn ok(args: &[&str]) -> String {
     let out = run(args);
     assert!(
@@ -503,7 +513,14 @@ fn eval_is_default_deny_without_config() {
 }
 
 #[test]
-fn eval_runs_when_trusted_in_config() {
+fn a_config_beside_the_file_no_longer_grants_execution() {
+    // This test used to assert the opposite, and the thing it asserted
+    // was the exploit: a `config.org` next to the file said
+    // `eval_trust = shell` and the block ran. Rewritten 2026-08-04, at
+    // the user's ask ("Claude Opus 5 closure review. Fix all the issues
+    // and problems"), whose first finding was exactly this — the policy
+    // arriving over the same channel as the code it authorises.
+    let home = tempfile::tempdir().expect("tempdir");
     let d = tempfile::tempdir().expect("tempdir");
     fs::write(
         d.path().join("config.org"),
@@ -512,8 +529,34 @@ fn eval_runs_when_trusted_in_config() {
     .expect("config");
     let f = d.path().join("a.org");
     fs::write(&f, "#+BEGIN_SRC shell\necho ran-c1a\n#+END_SRC\n").expect("write");
-    let out = ok(&["eval", f.to_str().unwrap()]);
-    assert!(out.contains("ran-c1a"), "trusted block runs: {out}");
+    let out = run_with_config_home(&["eval", f.to_str().unwrap()], home.path());
+    let combined = format!(
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(
+        !combined.contains("ran-c1a"),
+        "a vault still authorised its own code: {combined}"
+    );
+}
+
+#[test]
+fn eval_runs_when_the_user_trusts_it() {
+    let home = tempfile::tempdir().expect("tempdir");
+    let d = tempfile::tempdir().expect("tempdir");
+    let f = d.path().join("a.org");
+    fs::write(&f, "#+BEGIN_SRC shell\necho ran-c1a\n#+END_SRC\n").expect("write");
+    let store = home.path().join("closure");
+    fs::create_dir_all(&store).expect("store dir");
+    fs::write(
+        store.join("trust.org"),
+        format!("{} = shell\n", d.path().display()),
+    )
+    .expect("store");
+    let out = run_with_config_home(&["eval", f.to_str().unwrap()], home.path());
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(stdout.contains("ran-c1a"), "trusted block runs: {stdout}");
 }
 
 #[test]
@@ -558,4 +601,40 @@ fn history_replay_reapplies_journal_commands() {
         after.find_by_title("Replayed title").is_some(),
         "replay applied"
     );
+}
+
+#[test]
+fn a_refused_block_is_a_failure_exit() {
+    // "closure eval on a blocked block prints the refusal to stderr and
+    // exits 0. A script can't tell 'ran' from 'refused'." — the Opus 5
+    // review, 2026-08-04. A default-deny that reports success is a
+    // default-deny nobody notices they hit.
+    let home = tempfile::tempdir().expect("tempdir");
+    let d = tempfile::tempdir().expect("tempdir");
+    let f = d.path().join("a.org");
+    fs::write(&f, "#+BEGIN_SRC shell\necho nope\n#+END_SRC\n").expect("write");
+    let out = run_with_config_home(&["eval", f.to_str().unwrap()], home.path());
+    assert!(
+        !out.status.success(),
+        "a refusal exited 0: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+}
+
+#[test]
+fn a_block_that_ran_is_still_a_success_exit() {
+    let home = tempfile::tempdir().expect("tempdir");
+    let d = tempfile::tempdir().expect("tempdir");
+    let f = d.path().join("a.org");
+    fs::write(&f, "#+BEGIN_SRC shell\necho yes-it-ran\n#+END_SRC\n").expect("write");
+    let store = home.path().join("closure");
+    fs::create_dir_all(&store).expect("store dir");
+    fs::write(
+        store.join("trust.org"),
+        format!("{} = shell\n", d.path().display()),
+    )
+    .expect("store");
+    let out = run_with_config_home(&["eval", f.to_str().unwrap()], home.path());
+    assert!(out.status.success(), "a trusted block failed");
+    assert!(String::from_utf8_lossy(&out.stdout).contains("yes-it-ran"));
 }
