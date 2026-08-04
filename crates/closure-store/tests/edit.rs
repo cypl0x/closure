@@ -243,12 +243,22 @@ fn demote_takes_the_children_with_it() {
 
 #[test]
 fn promote_takes_the_children_with_it() {
+    // Written asserting `* Top\n* Parent\n** Child\n** Other\n` — which
+    // says that `Other`, a sibling of `Parent` and a child of `Top`,
+    // silently becomes a child of `Parent` because `Parent` was raised
+    // above it. Org behaves that way too.
+    //
+    // The user called that "unexpected and almost unfixable creation of
+    // subtree" on 2026-08-04, and asked that "just this subheading gets
+    // promoted". So the promoted subtree steps out of the parent it is
+    // leaving and lands after it, and everything else keeps the shape
+    // it had: `Other` is still a child of `Top`.
     let td = write_vault(&[("a.org", "* Top\n** Parent\n*** Child\n** Other\n")]);
     let mut v = Vault::open(td.path()).expect("open");
     let id = id_of(&v, "Parent");
     v.promote(&id).expect("promote");
     let disk = fs::read_to_string(td.path().join("a.org")).expect("read");
-    assert_eq!(disk, "* Top\n* Parent\n** Child\n** Other\n");
+    assert_eq!(disk, "* Top\n** Other\n* Parent\n** Child\n");
 }
 
 #[test]

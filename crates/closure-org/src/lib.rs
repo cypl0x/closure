@@ -8799,6 +8799,18 @@ pub fn rewrite_attach_results_to_code_block(
     parse(&new_src).map_err(|_| RewriteError::Parse)
 }
 
+/// Verbatim source of the subtree at `path`.
+///
+/// The path-addressed counterpart of [`rewrite_remove_subtree`] and
+/// [`rewrite_splice_subtree_after`], so a caller that moves a subtree
+/// can take it, remove it and put it back down using one way of naming
+/// it. `OrgDoc::subtree_of` addresses by `:ID:`, which only works for a
+/// headline whose id is written in the file — a generated one is not.
+#[must_use]
+pub fn subtree_source_at<'a>(doc: &'a OrgDoc, path: &[usize]) -> Option<&'a str> {
+    navigate_headline(doc, path).map(Headline::subtree_source)
+}
+
 /// Splice a pre-formatted subtree source verbatim immediately after
 /// the subtree rooted at `after_path`. Used by move/cut/paste paths
 /// that already have a captured source string.

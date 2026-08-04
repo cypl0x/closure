@@ -1448,7 +1448,37 @@ impl Command for Promote {
 
     fn apply(&self, doc: &mut Document) -> Result<Edit, CommandError> {
         let path = doc.path_of(&self.id).ok_or(CommandError::BlockNotFound)?;
-        let org = rewrite_headline_promote(doc.org(), &path).map_err(|_| CommandError::Rewrite)?;
+        // Raising the stars is only half of it. Left where it is, the
+        // promoted headline sits *between* its former siblings, and
+        // every sibling below — which was a child of the same parent —
+        // silently becomes a child of it. Org does that too and it is
+        // defensible on the grounds that nothing moved, but it is
+        // expensive to undo: you must promote each stranded sibling in
+        // turn and hope you counted right.
+        //
+        // "The default case is that just this subheading gets
+        // promoted." So the subtree steps out of the parent it is
+        // leaving and lands after it, and the rest of the tree keeps
+        // the shape it had.
+        //
+        // Captured and dedented *before* anything moves: promoting
+        // first would change this headline's own path, and the removal
+        // would then address the wrong node.
+        let org = match path.split_last() {
+            Some((_, parent)) if !parent.is_empty() => {
+                let moved = closure_org::subtree_source_at(doc.org(), &path)
+                    .ok_or(CommandError::Rewrite)?;
+                let dedented = dedent_subtree(moved).ok_or(CommandError::Rewrite)?;
+                let parent = parent.to_vec();
+                let without = closure_org::rewrite_remove_subtree(doc.org(), &path)
+                    .map_err(|_| CommandError::Rewrite)?;
+                closure_org::rewrite_splice_subtree_after(&without, &parent, &dedented)
+                    .map_err(|_| CommandError::Rewrite)?
+            }
+            // No parent to step out of: a top-level headline has
+            // nowhere to be promoted to, which this refuses.
+            _ => rewrite_headline_promote(doc.org(), &path).map_err(|_| CommandError::Rewrite)?,
+        };
         doc.org = org;
         doc.rebuild_index();
         let edit = Edit::Promote {
@@ -1457,6 +1487,30 @@ impl Command for Promote {
         doc.push_history(edit.clone());
         Ok(edit)
     }
+}
+
+/// One star off every headline in a captured subtree.
+///
+/// `None` when the subtree's own root is already at level 1 — there is
+/// no level above it to promote into, and silently returning the text
+/// unchanged would report a move that did not happen.
+fn dedent_subtree(source: &str) -> Option<String> {
+    let root = source.lines().next()?;
+    let depth = root.chars().take_while(|c| *c == '*').count();
+    if depth <= 1 {
+        return None;
+    }
+    let mut out = String::with_capacity(source.len());
+    for line in source.split_inclusive('\n') {
+        // Only headlines carry stars in column zero; a body line that
+        // begins with `*` is emphasis and is left alone.
+        if line.starts_with("**") {
+            out.push_str(&line[1..]);
+        } else {
+            out.push_str(line);
+        }
+    }
+    Some(out)
 }
 
 /// Command: demote a headline (increase level by 1).
