@@ -15072,11 +15072,12 @@ impl ModalApp {
     /// file, so the session remembers which one.
     fn begin_special_from_list(&mut self, shell: &Shell) {
         let rows = self.block_rows(shell);
-        let Some((path, lang, _)) = rows.get(self.selected).cloned() else {
+        // The block list's own cursor — see [`Self::picker_cursor`].
+        let Some((path, lang, _)) = rows.get(self.pane_cursor).cloned() else {
             self.say("edit-special: no source blocks in this vault");
             return;
         };
-        let index = rows[..self.selected]
+        let index = rows[..self.pane_cursor]
             .iter()
             .filter(|(p, _, _)| *p == path)
             .count();
@@ -15823,7 +15824,9 @@ impl ModalApp {
             "escape" => {
                 self.query.clear();
                 self.block_out = None;
-                if self.surface != ModalSurface::UndoHistory {
+                if Self::picker_has_own_cursor(self.surface) {
+                    self.pane_cursor = 0;
+                } else if self.surface != ModalSurface::UndoHistory {
                     self.selected = 0;
                 }
                 self.go_home();
@@ -15863,7 +15866,13 @@ impl ModalApp {
     /// A key that changed the text puts the cursor back on the first
     /// result, because the old index belonged to the old list.
     fn filter_key(&mut self, key: &str, ctrl: bool, alt: bool, text: Option<char>, last: usize) {
+        // Whose cursor this list is walking — see [`Self::picker_cursor`].
+        let own = Self::picker_has_own_cursor(self.surface);
         if let Some(step) = list_step(key, ctrl) {
+            if own {
+                self.pane_cursor = step_wrapping(self.pane_cursor, last + 1, step);
+                return;
+            }
             self.selected = step_wrapping(self.selected, last + 1, step);
             return;
         }
@@ -15872,7 +15881,13 @@ impl ModalApp {
         line_key(&mut self.query, &mut kill, key, ctrl, alt, text);
         self.keep_shared_kill(&kill);
         if self.query.text() != before {
-            self.selected = 0;
+            // Narrowing restarts the list at the top — the list this
+            // surface is actually walking.
+            if own {
+                self.pane_cursor = 0;
+            } else {
+                self.selected = 0;
+            }
         }
     }
 
@@ -19463,15 +19478,38 @@ impl ModalApp {
         Some((title, hint, rows))
     }
 
-    /// Which row of the open picker the cursor is on. The palette and
-    /// the undo tree keep their own; everything else walks `selected`.
+    /// Which row of the open picker the cursor is on.
+    ///
+    /// The palette and the undo tree have always kept their own. The
+    /// rest fell through to `selected`, which is the *outline's*
+    /// selection — so walking the message log walked the notes behind
+    /// it: "scrolling messages scrolls the background outline tree view
+    /// as well".
+    ///
+    /// The test is whether the list is showing you the outline. Search
+    /// filters the outline and Enter opens the row, so its cursor *is*
+    /// the outline's and stays that way. A log, a block list or a table
+    /// is showing you something else.
     #[must_use]
     pub const fn picker_cursor(&self) -> usize {
         match self.surface {
             ModalSurface::Palette => self.palette_cursor,
             ModalSurface::UndoHistory => self.hist_cursor,
+            _ if Self::picker_has_own_cursor(self.surface) => self.pane_cursor,
             _ => self.selected,
         }
+    }
+
+    /// Whether this surface's list is something other than the outline.
+    const fn picker_has_own_cursor(surface: ModalSurface) -> bool {
+        matches!(
+            surface,
+            ModalSurface::Messages
+                | ModalSurface::Blocks
+                | ModalSurface::Headlines
+                | ModalSurface::DbView
+                | ModalSurface::Graph
+        )
     }
 
     /// [`Self::active_prompt`] without the borrow, for the shells.
@@ -21772,7 +21810,9 @@ impl ModalApp {
             }
             "messages" => {
                 self.query.clear();
-                self.selected = 0;
+                // The log's own cursor starts at the top. Opening a
+                // list is not an edit to where you were reading.
+                self.pane_cursor = 0;
                 self.surface = ModalSurface::Messages;
             }
             "toggle-wrap" => {
@@ -21842,7 +21882,8 @@ impl ModalApp {
                 self.surface = ModalSurface::Agenda;
             }
             "list-blocks" => {
-                self.selected = 0;
+                // The list's own cursor; the outline stays where it is.
+                self.pane_cursor = 0;
                 self.surface = ModalSurface::Blocks;
             }
             // In a buffer, folding is about the buffer: the block or
@@ -22218,7 +22259,8 @@ impl ModalApp {
                 }
             }
             "list-headlines" => {
-                self.selected = 0;
+                // The list's own cursor; the outline stays where it is.
+                self.pane_cursor = 0;
                 self.surface = ModalSurface::Headlines;
                 self.say("headlines — type to filter · RET goes to it");
             }
@@ -22590,13 +22632,21 @@ impl ModalApp {
     fn eval_selected_block(&mut self, shell: &mut Shell) {
         self.block_out = None;
         let rows = self.block_rows(shell);
-        let Some((path, _, _)) = rows.get(self.selected).cloned() else {
+        // The block list's own cursor, not the outline's — see
+        // [`Self::picker_cursor`]. They were the same field until the
+        // message log turned out to be scrolling the notes behind it.
+        //
+        // The field rather than `picker_cursor()`: that accessor asks
+        // which surface is open, and by the time a command runs the
+        // surface may already have been left. This is only ever reached
+        // from the block list, so the list's cursor is the answer.
+        let Some((path, _, _)) = rows.get(self.pane_cursor).cloned() else {
             self.say("no source blocks in this vault");
             return;
         };
         // `block_rows` is flat across files; `eval_block` counts within
         // one, so rebase the cursor onto the block's own file.
-        let index = rows[..self.selected]
+        let index = rows[..self.pane_cursor]
             .iter()
             .filter(|(p, _, _)| *p == path)
             .count();

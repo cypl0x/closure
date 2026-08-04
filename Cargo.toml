@@ -93,3 +93,11 @@ proptest = "1.11"
 
 # Error ergonomics
 thiserror = "2"
+
+# Debug info is the bulk of `target/debug`, and it grew past what this
+# machine can hold once gitoxide joined the tree: a full test build
+# filled a 468G disk and had to be cleared by hand three times in one
+# session. Line tables keep backtraces useful — file and line for every
+# frame — and cost a fraction of full DWARF.
+[profile.dev]
+debug = "line-tables-only"
