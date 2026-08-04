@@ -3804,7 +3804,7 @@ impl GpuiView {
         } else if let Some(prompt) = self.prompt_row(co, cx) {
             prompt
         } else {
-            div().child(self.context_line())
+            self.context_text(co)
         };
         let line = self.flashed(line, co);
         let Some(strip) = self.prompt_completion_strip(co, cx) else {
@@ -4029,6 +4029,44 @@ impl GpuiView {
             || "assistant setup — RET edits, Esc closes; saved to config.org".to_owned(),
             |key| format!("{key}: {}\u{258f}", self.app.field_text()),
         )
+    }
+
+    /// The context line, with a leading TODO keyword coloured the way
+    /// it is coloured everywhere else.
+    ///
+    /// The buffer header names the headline it is showing, and once
+    /// that includes the keyword it should not be the one place in the
+    /// shell where `TODO` is grey prose. Same `leading_keyword` and
+    /// `span_color` the prompt uses, so there is one answer to what a
+    /// keyword looks like.
+    fn context_text(&self, co: Colors) -> gpui::Div {
+        let line = self.context_line();
+        // The buffer's line opens with a `✎ ` marker, so the keyword is
+        // not at byte zero and `leading_keyword` — which means
+        // *leading* — would not see it. Look past a single leading
+        // marker glyph, and nothing else: a keyword further in is a
+        // word in a sentence, not a state.
+        let offset = line
+            .strip_prefix("✎ ")
+            .map_or(0, |_| line.len() - line.trim_start_matches("✎ ").len());
+        let Some((start, end)) = closure_shell_core::leading_keyword(&line[offset..]) else {
+            return div().child(line);
+        };
+        let (start, end) = (start + offset, end + offset);
+        let kind = keyword_span(&line[start..end]);
+        let decoration = span_decoration(kind);
+        div()
+            .flex()
+            .flex_row()
+            .child(div().flex_none().child(line[..start].to_owned()))
+            .child(
+                div()
+                    .flex_none()
+                    .text_color(rgb(span_color(co, kind)))
+                    .when(decoration.bold, |d| d.font_weight(gpui::FontWeight::BOLD))
+                    .child(line[start..end].to_owned()),
+            )
+            .child(div().child(line[end..].to_owned()))
     }
 
     // One arm per surface: this is a table of what each pane says

@@ -16771,12 +16771,27 @@ impl ModalApp {
             .as_deref()
             .map(|id| format!(" · {id}"))
             .unwrap_or_default();
+        // The keyword, when there is one. "header in editor doesn't
+        // show if current headline a TODO/DONE item" — the detail pane
+        // had shown it all along, so opening the same headline as a
+        // buffer dropped the state that makes it a task rather than a
+        // note. It belongs to the headline, not to one view of it.
+        //
+        // Nothing is added for an ordinary headline: most of them have
+        // no keyword, and a placeholder on every one of those is noise.
+        let state = detail
+            .todo
+            .as_deref()
+            .map_or_else(String::new, |kw| format!("{kw} "));
         Some(if self.surface == ModalSurface::EditBlock {
             let lang = self.special_language();
             let lang = if lang.is_empty() { "src" } else { lang };
-            format!("{lang} block — {} · {}{id}", detail.title, detail.path)
+            format!(
+                "{lang} block — {state}{} · {}{id}",
+                detail.title, detail.path
+            )
         } else {
-            format!("{} · {}{id}", detail.title, detail.path)
+            format!("{state}{} · {}{id}", detail.title, detail.path)
         })
     }
 
