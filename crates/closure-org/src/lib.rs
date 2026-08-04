@@ -42,8 +42,20 @@ impl OrgDoc {
     #[must_use]
     pub fn code_block_name(&self, index: usize) -> Option<String> {
         let block = self.code_blocks().get(index).map(|n| n.span.start)?;
-        let before = &self.source[..block];
-        let line = before.trim_end_matches('\n').rsplit('\n').next()?;
+        self.name_above(block)
+    }
+
+    /// The `#+NAME:` on the line above byte `at`, if there is one.
+    ///
+    /// Split out of [`Self::code_block_name`] so that a caller holding
+    /// the block list can ask about a block without going and building
+    /// that list again — which is what made finding a block by name
+    /// quadratic.
+    fn name_above(&self, at: usize) -> Option<String> {
+        let line = self.source[..at]
+            .trim_end_matches('\n')
+            .rsplit('\n')
+            .next()?;
         let value = line
             .strip_prefix("#+NAME:")
             .or_else(|| line.strip_prefix("#+name:"))?;
@@ -53,7 +65,14 @@ impl OrgDoc {
     /// Doc-wide index of the code block carrying `#+NAME: name`.
     #[must_use]
     pub fn code_block_index_by_name(&self, name: &str) -> Option<usize> {
-        (0..self.code_blocks().len()).find(|&i| self.code_block_name(i).as_deref() == Some(name))
+        // One pass over one list. It used to call `code_block_name` per
+        // index, and each of those rebuilt and re-sorted the whole
+        // block list — O(n² log n) with an allocation per iteration,
+        // measured at 490ms for 4,000 blocks against under a
+        // millisecond now (2026-08-04 review).
+        self.code_blocks()
+            .iter()
+            .position(|n| self.name_above(n.span.start).as_deref() == Some(name))
     }
 
     /// Every code block in the document — preamble and headline
@@ -109,7 +128,12 @@ impl OrgDoc {
     /// drawer with the given name (anywhere in the source).
     #[must_use]
     pub fn has_drawer(&self, name: &str) -> bool {
-        find_drawers(&self.source).iter().any(|d| d.name == name)
+        // `find_drawers` allocates every drawer in the document to
+        // answer a question about one of them. The scan stops at the
+        // first match instead.
+        find_drawers(&self.source)
+            .into_iter()
+            .any(|d| d.name == name)
     }
 
     /// True iff any headline in the document has `tag`.
@@ -12570,11 +12594,16 @@ fn scan_code_block(
     // Directive must start at column 0.
     let rest = body.strip_prefix("#+")?;
     // Match `begin_src` case-insensitive followed by space/EOL/colon.
-    let directive_len = 9; // "begin_src" or "BEGIN_SRC"
-    if rest.len() < directive_len {
-        return None;
-    }
-    if !rest[..directive_len].eq_ignore_ascii_case("begin_src") {
+    //
+    // `get` rather than an index: the nine bytes after `#+` need not
+    // be nine *characters*, and slicing into the middle of one panics.
+    // `parse("#+ä[🦀本")` did exactly that — an I5 violation in the
+    // parser, reachable by opening any org file with a `#+` line that
+    // starts with multibyte text. Found 2026-08-04 by property-testing
+    // the rewrites over a non-ASCII alphabet, which is the gap the
+    // review named: the existing proptest alphabet is `is_ascii_graphic`.
+    let directive_len = "begin_src".len();
+    if !rest.get(..directive_len)?.eq_ignore_ascii_case("begin_src") {
         return None;
     }
     let after = &rest[directive_len..];

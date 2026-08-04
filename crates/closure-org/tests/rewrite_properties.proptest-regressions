@@ -1,0 +1,12 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 93db172779dca99aaacd06d911f4600da2f38442150209d793cce4c9cede3c7d # shrinks to src = "\n* \n#+ä 🦀日\n** child\n", key = "", value = ""
+cc cd75d0a554957e6831cd9a96769ced36fa4bed61cc27f07dc2b281cb6398b21d # shrinks to src = "\n* \n#+    日日\n** child\n", todo = "", tag = ""
+cc 86c5001f8e5f9b2bed9b0dd2b6c589dee32c4cbffd6be2ca968986a9b66fecb4 # shrinks to src = "\n* \n#+  🦀 日\n** child\n", title = ""
+cc 60c59f7137fa3828f674dda907d13b7292edc767894daa39cfc524a50e1005fd # shrinks to src = "#+\u{301} 日 \u{200b}\n* \n\n** child\n", title = ""
+cc 89599f64d2efd3f257a80409738de4a6d0a3c76bbd478288e731270954c50f11 # shrinks to src = "#+日ä 🦀\n* \n\n** child\n", title = ""
+cc 7cedf1424f9d8437e1da2451be4695b0a627bb207b4202b2d38cc384dbfcc2f8 # shrinks to src = "\n* \n#+日\u{200b}🦀\n** child\n", body = ""
