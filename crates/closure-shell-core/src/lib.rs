@@ -18138,18 +18138,21 @@ impl ModalApp {
         };
         match key {
             "escape" => {
-                self.selected = 0;
+                // Not `self.selected = 0`: that is the outline's
+                // cursor, and leaving a pane is not a reason to lose
+                // your place in the vault.
+                self.pane_cursor = 0;
                 // Block output belongs to the pane that produced it.
                 self.block_out = None;
                 self.go_home();
             }
             "down" | "j" => {
                 self.block_out = None;
-                self.selected = (self.selected + 1).min(len.saturating_sub(1));
+                self.pane_cursor = (self.pane_cursor + 1).min(len.saturating_sub(1));
             }
             "up" | "k" => {
                 self.block_out = None;
-                self.selected = self.selected.saturating_sub(1);
+                self.pane_cursor = self.pane_cursor.saturating_sub(1);
             }
             "enter" => self.jump_list_row(shell, self.selected),
             _ => {}
@@ -18746,7 +18749,7 @@ impl ModalApp {
         match key {
             "escape" => {
                 self.link_target = None;
-                self.selected = 0;
+                self.pane_cursor = 0;
                 // `go_home`, not `Browse`: a pane opened over a buffer
                 // goes back to that buffer, and this one was written
                 // before that rule existed. The registry-wide test
@@ -18756,7 +18759,7 @@ impl ModalApp {
             }
             "down" | "j" => {
                 let last = self.backlink_rows(shell).len().saturating_sub(1);
-                self.selected = (self.selected + 1).min(last);
+                self.pane_cursor = (self.pane_cursor + 1).min(last);
             }
             "up" | "k" => self.selected = self.selected.saturating_sub(1),
             "enter" => self.jump_to_selected_backlink(shell),
@@ -20200,6 +20203,8 @@ impl ModalApp {
                 | ModalSurface::Headlines
                 | ModalSurface::DbView
                 | ModalSurface::Graph
+                | ModalSurface::Agenda
+                | ModalSurface::Backlinks
         )
     }
 
@@ -22560,7 +22565,12 @@ impl ModalApp {
             "backlinks" => {
                 if let Some(row) = self.rows_shared(shell).get(self.selected).cloned() {
                     self.link_target = Some(row.id);
-                    self.selected = 0;
+                    // The pane's own cursor. Writing the outline's here
+                    // is what "selection at top of outline headings list
+                    // when switching from any element to the Jobs panel
+                    // and back" was: a glance at another pane cost you
+                    // your place in the vault.
+                    self.pane_cursor = 0;
                     self.surface = ModalSurface::Backlinks;
                 }
             }
@@ -22575,7 +22585,12 @@ impl ModalApp {
                 self.say("undo history — type to filter · RET jumps there");
             }
             "agenda" => {
-                self.selected = 0;
+                // The pane's own cursor. Writing the outline's here
+                // is what "selection at top of outline headings list
+                // when switching from any element to the Jobs panel
+                // and back" was: a glance at another pane cost you
+                // your place in the vault.
+                self.pane_cursor = 0;
                 self.surface = ModalSurface::Agenda;
             }
             "list-blocks" => {
@@ -22966,7 +22981,7 @@ impl ModalApp {
                 self.say("headlines — type to filter · RET goes to it");
             }
             "db-view" => {
-                self.selected = 0;
+                self.pane_cursor = 0;
                 self.surface = ModalSurface::DbView;
                 self.say("database — RET jump, Esc back");
             }
@@ -22988,7 +23003,8 @@ impl ModalApp {
                 ));
             }
             "sniffer" => {
-                self.selected = 0;
+                // The sniffer keeps its own cursor (`sniffer_cursor`);
+                // this only ever moved the outline behind it.
                 self.surface = ModalSurface::Sniffer;
                 self.say("flows — a allow, b block, Esc back");
             }
@@ -23010,7 +23026,7 @@ impl ModalApp {
                 }
             }
             "conflicts" => {
-                self.selected = 0;
+                // Likewise: the resolver's cursor is its own.
                 self.surface = ModalSurface::Conflicts;
                 self.say("conflicts — o ours, t theirs, Esc back");
             }
