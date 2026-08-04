@@ -8843,6 +8843,35 @@ pub fn rewrite_add_sibling_after_with_id(
     parse(&src).map_err(|_| RewriteError::Parse)
 }
 
+/// Insert a new sibling headline *before* the one at `path`, carrying
+/// `id`.
+///
+/// The mirror of [`rewrite_add_sibling_after_with_id`], and the reason
+/// both exist: an outline is written in the order you think of things,
+/// and half the time the thing you think of goes above what you are
+/// looking at. Doom binds that to `C-S-RET`
+/// (`+org/insert-item-above`); without it, adding a heading above
+/// meant adding one below and moving it.
+///
+/// # Errors
+///
+/// [`RewriteError::NotFound`] when `path` names no headline, or
+/// [`RewriteError::Parse`] if the rewritten source no longer parses.
+pub fn rewrite_add_sibling_before_with_id(
+    doc: &OrgDoc,
+    path: &[usize],
+    title: &str,
+    id: &str,
+) -> Result<OrgDoc, RewriteError> {
+    let target = navigate_headline(doc, path).ok_or(RewriteError::NotFound)?;
+    let at = target.header_span.start;
+    let level = "*".repeat(usize::from(target.level));
+    let insert = format!("{level} {title}\n:PROPERTIES:\n:ID: {id}\n:END:\n");
+    let mut src = doc.source().to_owned();
+    src.insert_str(at, &insert);
+    parse(&src).map_err(|_| RewriteError::Parse)
+}
+
 /// Insert a new headline as the last *child* of the one at `path`,
 /// carrying `id`.
 ///

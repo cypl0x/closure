@@ -761,6 +761,19 @@ impl Shell {
         self.vault.add_sibling(after_id, title)
     }
 
+    /// Insert a new sibling headline above another (I8).
+    ///
+    /// # Errors
+    ///
+    /// Propagates [`closure_store::VaultError`].
+    pub fn add_sibling_before(
+        &mut self,
+        before_id: &closure_core::BlockId,
+        title: &str,
+    ) -> Result<(), closure_store::VaultError> {
+        self.vault.add_sibling_before(before_id, title)
+    }
+
     /// Promote a headline one level through the kernel command (I8).
     ///
     /// # Errors
@@ -4334,6 +4347,12 @@ const PALETTE_COMMANDS: &[(&str, &str, &str, &str)] = &[
         "add-sibling",
         "Edit",
         "Add a sibling headline",
+    ),
+    (
+        "add-sibling-above",
+        "add-heading-above",
+        "Edit",
+        "Add a sibling headline above this one",
     ),
     (
         "add-todo-sibling",
@@ -8704,6 +8723,9 @@ pub struct NewHeading {
     pub child: bool,
     /// It arrives carrying org's `TODO` keyword.
     pub todo: bool,
+    /// It goes above the selection rather than below it — Doom's
+    /// `+org/insert-item-above` on `C-S-RET`.
+    pub above: bool,
 }
 
 impl NewHeading {
@@ -8722,6 +8744,7 @@ impl NewHeading {
                 cmd.as_bytes(),
                 b"add-todo-heading" | b"add-todo-child-heading"
             ),
+            above: matches!(cmd.as_bytes(), b"add-heading-above"),
         }
     }
 
@@ -12344,9 +12367,14 @@ pub struct ModalApp {
     /// The destination of the pending link, once it has been typed —
     /// which is also what says the description is the step we are on.
     link_dest: Option<String>,
-    /// The buffer `insert-link` came from, and goes back to whether it
-    /// finishes or is abandoned.
-    link_from: ModalSurface,
+    /// The buffer a prompt was opened over, when it was opened over
+    /// one — where it goes back to, and what stays painted behind it
+    /// while it is up.
+    ///
+    /// `None` means the outline: a prompt reached from there has no
+    /// buffer to claim. One field for both prompts that need it, since
+    /// "which buffer am I on top of" is one fact.
+    prompt_from: Option<ModalSurface>,
     /// Which settings row the assistant screen has selected.
     settings_cursor: usize,
     /// Which peer the next tick dials, so one tick dials one peer.
@@ -12950,7 +12978,7 @@ impl ModalApp {
             field_buf: LineInput::default(),
             link_kind: None,
             link_dest: None,
-            link_from: ModalSurface::EditBody,
+            prompt_from: None,
             settings_cursor: 0,
             dial_next: 0,
             outline_width: None,
@@ -12959,6 +12987,7 @@ impl ModalApp {
             new_heading: NewHeading {
                 child: false,
                 todo: false,
+                above: false,
             },
             palette_history: Vec::new(),
             prompt_history: std::collections::BTreeMap::new(),
@@ -13438,7 +13467,12 @@ impl ModalApp {
             // `C-c C-l` floats over the buffer, because the whole
             // question it asks is "where in this text", and a menu that
             // replaced the text would take the answer away with it.
-            ModalSurface::InsertLink => self.link_from,
+            // Both prompts a buffer can open: the outline behind a
+            // title field is a different screen, and "everything is
+            // shifting and I always get confused" is what that costs.
+            ModalSurface::InsertLink | ModalSurface::AddSibling => {
+                self.prompt_from.unwrap_or_else(|| self.home_surface())
+            }
             // The `:` line is a bar at the bottom of whatever you are
             // in — vim's is, Emacs' minibuffer is, and the palette
             // above already is. It used to have nothing underneath it,
@@ -14105,6 +14139,19 @@ impl ModalApp {
                 // not of the text: "it isn't possible at all to
                 // cycle-mode via hotkey in the editor view".
                 | "next-input-mode"
+                // Doom binds the new-headline chords `:ni` in
+                // `evil-org-mode-map` — they are buffer chords first,
+                // and the buffer is where an org user is when they
+                // want another headline. `C-RET` used to commit the
+                // buffer here while the keymap said it made a
+                // headline; the keymap wins (I4), and the two chords
+                // the header actually advertises for saving — `C-s`
+                // and `C-c C-c` — are untouched.
+                | "add-heading"
+                | "add-heading-above"
+                | "add-todo-heading"
+                | "add-child-heading"
+                | "add-todo-child-heading"
         ) {
             return false;
         }
@@ -16475,7 +16522,7 @@ impl ModalApp {
             self.say("open a body first — a link goes into text");
             return;
         }
-        self.link_from = self.surface;
+        self.prompt_from = Some(self.surface);
         self.link_kind = None;
         self.link_dest = None;
         self.field_buf.clear();
@@ -16601,7 +16648,7 @@ impl ModalApp {
         let link = org_link(&kind, &dest, self.field_buf.text().trim());
         self.body.insert_str(&link);
         self.field_buf.clear();
-        self.surface = self.link_from;
+        self.surface = self.prompt_from.take().unwrap_or(ModalSurface::EditBody);
         self.say(format!("inserted {link}"));
     }
 
@@ -16610,7 +16657,7 @@ impl ModalApp {
         self.link_kind = None;
         self.link_dest = None;
         self.field_buf.clear();
-        self.surface = self.link_from;
+        self.surface = self.prompt_from.take().unwrap_or(ModalSurface::EditBody);
         self.say("no link");
     }
 
@@ -17712,7 +17759,11 @@ impl ModalApp {
                                     let _ = shell.add_child(&bid, new.prefix(), &title);
                                 } else {
                                     let line = format!("{}{title}", new.prefix());
-                                    let _ = shell.add_sibling(&bid, &line);
+                                    let _ = if new.above {
+                                        shell.add_sibling_before(&bid, &line)
+                                    } else {
+                                        shell.add_sibling(&bid, &line)
+                                    };
                                 }
                                 // "Should after adding a sibling the
                                 // selection be on the new element or
@@ -17758,12 +17809,27 @@ impl ModalApp {
     /// the title is typed. Which flavour of heading it will become is
     /// remembered until it is accepted.
     fn begin_new_heading(&mut self, shell: &Shell, cmd: &str) {
-        let Some(row) = self.rows_shared(shell).get(self.selected).cloned() else {
+        // In a buffer the caret says which headline you mean; the
+        // outline's `selected` is a different pane's idea of it, and
+        // using it here made `M-RET` in the editor add a heading
+        // somewhere you were not looking.
+        let target = if self.surface.is_editor() {
+            self.headline_at_caret(shell)
+        } else {
+            None
+        }
+        .or_else(|| {
+            self.rows_shared(shell)
+                .get(self.selected)
+                .map(|r| r.id.clone())
+        });
+        let Some(target) = target else {
             self.say("nothing selected — put the cursor on a headline first");
             return;
         };
         self.new_heading = NewHeading::for_command(cmd);
-        self.field_target = Some(row.id);
+        self.prompt_from = self.surface.is_editor().then_some(self.surface);
+        self.field_target = Some(target);
         self.field_buf.clear();
         self.surface = ModalSurface::AddSibling;
         self.say(format!(
@@ -17780,11 +17846,16 @@ impl ModalApp {
     /// `a`, there was nothing on screen to confirm which you got.
     #[must_use]
     pub const fn new_heading_label(&self) -> &'static str {
-        match (self.new_heading.child, self.new_heading.todo) {
-            (false, false) => "sibling",
-            (false, true) => "sibling TODO",
-            (true, false) => "child",
-            (true, true) => "child TODO",
+        match (
+            self.new_heading.child,
+            self.new_heading.todo,
+            self.new_heading.above,
+        ) {
+            (false, false, false) => "sibling",
+            (false, false, true) => "sibling above",
+            (false, true, _) => "sibling TODO",
+            (true, false, _) => "child",
+            (true, true, _) => "child TODO",
         }
     }
 
@@ -17796,6 +17867,8 @@ impl ModalApp {
     pub const fn new_heading_kind(&self) -> &'static str {
         if self.new_heading.child {
             "child"
+        } else if self.new_heading.above {
+            "sibling above"
         } else {
             "sibling"
         }
@@ -18514,6 +18587,9 @@ impl ModalApp {
         alt: bool,
         text: Option<char>,
     ) {
+        if self.window_chord(shell, key, ctrl, alt, text) {
+            return;
+        }
         if self.org_accept_chord(shell, key, ctrl, alt, text) {
             return;
         }
@@ -22339,6 +22415,7 @@ impl ModalApp {
             // headline called "untitled" without asking, so the only
             // chord that existed was also one you had to undo.
             "add-heading"
+            | "add-heading-above"
             | "add-todo-heading"
             | "add-child-heading"
             | "add-todo-child-heading"
@@ -23248,14 +23325,13 @@ fn modal_stroke(key: &str, ctrl: bool, alt: bool, text: Option<char>) -> Option<
             }
         }
     };
+    // Modifiers outermost, org's own order: `C-M-S-<return>`. Ctrl
+    // used to win outright and drop Alt, so no chord with both could
+    // ever be produced — `C-M-RET` (org-insert-subheading) resolved as
+    // plain `C-RET` and quietly ran the wrong command.
     let base = if shift { format!("S-{base}") } else { base };
-    if ctrl {
-        Some(format!("C-{base}"))
-    } else if alt {
-        Some(format!("M-{base}"))
-    } else {
-        Some(base)
-    }
+    let base = if alt { format!("M-{base}") } else { base };
+    Some(if ctrl { format!("C-{base}") } else { base })
 }
 
 /// The git widget's last answer, and when it was taken.

@@ -91,13 +91,33 @@ fn ctrl_enter_no_longer_closes_the_buffer() {
     // The whole point: `C-Enter` is org's own prefix for a dozen table
     // and structure commands, and a buffer that eats it is standing on
     // the chords the table work needs.
+    //
+    // Which is now literal rather than prospective. Asked for on
+    // 2026-08-04 ("research the Doom Emacs keybindings for quick header
+    // creation in the editor"), `C-RET` is `+org/insert-item-below` in
+    // the user's own Doom, so in a buffer it opens the new-headline
+    // prompt. The buffer is still there underneath — abandoning the
+    // prompt gives it back, with what you typed still in it — which is
+    // what this test was really asserting when the only alternative to
+    // "closed" was "unchanged".
     let (_d, mut shell, mut app) = editing(InputMode::Doom);
     type_in(&mut app, &mut shell, "still here");
     app.on_key(&mut shell, "enter", true, false, None);
+    assert_eq!(
+        app.surface(),
+        ModalSurface::AddSibling,
+        "C-Enter did not run the structure command the keymap binds it to"
+    );
+    app.on_key(&mut shell, "escape", false, false, None);
     assert!(
         app.surface().is_editor(),
-        "C-Enter closed the buffer: {:?}",
+        "the buffer did not come back: {:?}",
         app.surface()
+    );
+    assert!(
+        app.body_buffer().contains("still here"),
+        "the buffer lost what was typed into it: {:?}",
+        app.body_buffer()
     );
 }
 

@@ -132,15 +132,34 @@ const DOOM_KEYMAP: &[(&str, &str)] = &[
     ("M-l", "demote"),
     ("M-k", "move-subtree-up"),
     ("M-j", "move-subtree-down"),
-    // org's new-headline chords. `M-RET` is org-meta-return and
-    // Shift is org's TODO axis (`org-insert-todo-heading`). Ctrl
-    // means "one level down": in org it only distinguishes
-    // respect-content, which an outline with no point inside a
-    // subtree cannot mean, so it earns the child instead.
+    // org's new-headline chords, as the user's own Doom binds them
+    // (`modules/lang/org/config.el`, verified 2026-08-04):
+    //
+    //     "C-RET"   #'+org/insert-item-below
+    //     "C-S-RET" #'+org/insert-item-above
+    //     "C-M-RET" #'org-insert-subheading
+    //
+    // plus stock org for the meta layer — `M-RET` is org-meta-return
+    // and `M-S-RET` is org-insert-todo-heading. So Shift is the
+    // *direction* on the control layer and the *keyword* on the meta
+    // layer, and the child lives on `C-M-RET`.
+    //
+    // `C-RET` and `M-RET` land on the same command because for a
+    // headline they do the same thing: Doom sets
+    // `org-insert-heading-respect-content t`, and closure's
+    // `add-heading` already inserts after the whole subtree. Two names
+    // for one action would only give the palette two entries.
+    //
+    // Ctrl used to mean
+    // "one level down" here, which put the child on `C-RET` and the
+    // TODO child on `C-S-RET` — two chords that meant something else
+    // in the editor these bindings are copied from.
     ("M-RET", "add-heading"),
     ("M-S-RET", "add-todo-heading"),
-    ("C-RET", "add-child-heading"),
-    ("C-S-RET", "add-todo-child-heading"),
+    ("C-RET", "add-heading"),
+    ("C-S-RET", "add-heading-above"),
+    ("C-M-RET", "add-child-heading"),
+    ("C-M-S-RET", "add-todo-child-heading"),
     ("g u", "undo-history"),
     ("TAB", "toggle-fold"),
     // …and the spelling that survives a buffer, for the modes with no
@@ -341,15 +360,34 @@ const EMACS_KEYMAP: &[(&str, &str)] = &[
     ("M-<right>", "demote"),
     ("M-<up>", "move-subtree-up"),
     ("M-<down>", "move-subtree-down"),
-    // org's new-headline chords. `M-RET` is org-meta-return and
-    // Shift is org's TODO axis (`org-insert-todo-heading`). Ctrl
-    // means "one level down": in org it only distinguishes
-    // respect-content, which an outline with no point inside a
-    // subtree cannot mean, so it earns the child instead.
+    // org's new-headline chords, as the user's own Doom binds them
+    // (`modules/lang/org/config.el`, verified 2026-08-04):
+    //
+    //     "C-RET"   #'+org/insert-item-below
+    //     "C-S-RET" #'+org/insert-item-above
+    //     "C-M-RET" #'org-insert-subheading
+    //
+    // plus stock org for the meta layer — `M-RET` is org-meta-return
+    // and `M-S-RET` is org-insert-todo-heading. So Shift is the
+    // *direction* on the control layer and the *keyword* on the meta
+    // layer, and the child lives on `C-M-RET`.
+    //
+    // `C-RET` and `M-RET` land on the same command because for a
+    // headline they do the same thing: Doom sets
+    // `org-insert-heading-respect-content t`, and closure's
+    // `add-heading` already inserts after the whole subtree. Two names
+    // for one action would only give the palette two entries.
+    //
+    // Ctrl used to mean
+    // "one level down" here, which put the child on `C-RET` and the
+    // TODO child on `C-S-RET` — two chords that meant something else
+    // in the editor these bindings are copied from.
     ("M-RET", "add-heading"),
     ("M-S-RET", "add-todo-heading"),
-    ("C-RET", "add-child-heading"),
-    ("C-S-RET", "add-todo-child-heading"),
+    ("C-RET", "add-heading"),
+    ("C-S-RET", "add-heading-above"),
+    ("C-M-RET", "add-child-heading"),
+    ("C-M-S-RET", "add-todo-child-heading"),
     ("C-c u", "undo-history"),
     ("TAB", "toggle-fold"),
     // …and the spelling that survives a buffer, for the modes with no
@@ -510,15 +548,34 @@ const VIM_KEYMAP: &[(&str, &str)] = &[
     ("M-l", "demote"),
     ("M-k", "move-subtree-up"),
     ("M-j", "move-subtree-down"),
-    // org's new-headline chords. `M-RET` is org-meta-return and
-    // Shift is org's TODO axis (`org-insert-todo-heading`). Ctrl
-    // means "one level down": in org it only distinguishes
-    // respect-content, which an outline with no point inside a
-    // subtree cannot mean, so it earns the child instead.
+    // org's new-headline chords, as the user's own Doom binds them
+    // (`modules/lang/org/config.el`, verified 2026-08-04):
+    //
+    //     "C-RET"   #'+org/insert-item-below
+    //     "C-S-RET" #'+org/insert-item-above
+    //     "C-M-RET" #'org-insert-subheading
+    //
+    // plus stock org for the meta layer — `M-RET` is org-meta-return
+    // and `M-S-RET` is org-insert-todo-heading. So Shift is the
+    // *direction* on the control layer and the *keyword* on the meta
+    // layer, and the child lives on `C-M-RET`.
+    //
+    // `C-RET` and `M-RET` land on the same command because for a
+    // headline they do the same thing: Doom sets
+    // `org-insert-heading-respect-content t`, and closure's
+    // `add-heading` already inserts after the whole subtree. Two names
+    // for one action would only give the palette two entries.
+    //
+    // Ctrl used to mean
+    // "one level down" here, which put the child on `C-RET` and the
+    // TODO child on `C-S-RET` — two chords that meant something else
+    // in the editor these bindings are copied from.
     ("M-RET", "add-heading"),
     ("M-S-RET", "add-todo-heading"),
-    ("C-RET", "add-child-heading"),
-    ("C-S-RET", "add-todo-child-heading"),
+    ("C-RET", "add-heading"),
+    ("C-S-RET", "add-heading-above"),
+    ("C-M-RET", "add-child-heading"),
+    ("C-M-S-RET", "add-todo-child-heading"),
     ("g u", "undo-history"),
     ("TAB", "toggle-fold"),
     // …and the spelling that survives a buffer, for the modes with no
@@ -677,15 +734,34 @@ const HELIX_KEYMAP: &[(&str, &str)] = &[
     ("M-l", "demote"),
     ("M-k", "move-subtree-up"),
     ("M-j", "move-subtree-down"),
-    // org's new-headline chords. `M-RET` is org-meta-return and
-    // Shift is org's TODO axis (`org-insert-todo-heading`). Ctrl
-    // means "one level down": in org it only distinguishes
-    // respect-content, which an outline with no point inside a
-    // subtree cannot mean, so it earns the child instead.
+    // org's new-headline chords, as the user's own Doom binds them
+    // (`modules/lang/org/config.el`, verified 2026-08-04):
+    //
+    //     "C-RET"   #'+org/insert-item-below
+    //     "C-S-RET" #'+org/insert-item-above
+    //     "C-M-RET" #'org-insert-subheading
+    //
+    // plus stock org for the meta layer — `M-RET` is org-meta-return
+    // and `M-S-RET` is org-insert-todo-heading. So Shift is the
+    // *direction* on the control layer and the *keyword* on the meta
+    // layer, and the child lives on `C-M-RET`.
+    //
+    // `C-RET` and `M-RET` land on the same command because for a
+    // headline they do the same thing: Doom sets
+    // `org-insert-heading-respect-content t`, and closure's
+    // `add-heading` already inserts after the whole subtree. Two names
+    // for one action would only give the palette two entries.
+    //
+    // Ctrl used to mean
+    // "one level down" here, which put the child on `C-RET` and the
+    // TODO child on `C-S-RET` — two chords that meant something else
+    // in the editor these bindings are copied from.
     ("M-RET", "add-heading"),
     ("M-S-RET", "add-todo-heading"),
-    ("C-RET", "add-child-heading"),
-    ("C-S-RET", "add-todo-child-heading"),
+    ("C-RET", "add-heading"),
+    ("C-S-RET", "add-heading-above"),
+    ("C-M-RET", "add-child-heading"),
+    ("C-M-S-RET", "add-todo-child-heading"),
     ("g u", "undo-history"),
     ("TAB", "toggle-fold"),
     // …and the spelling that survives a buffer, for the modes with no
@@ -843,15 +919,34 @@ const NOTION_KEYMAP: &[(&str, &str)] = &[
     ("M-l", "demote"),
     ("M-k", "move-subtree-up"),
     ("M-j", "move-subtree-down"),
-    // org's new-headline chords. `M-RET` is org-meta-return and
-    // Shift is org's TODO axis (`org-insert-todo-heading`). Ctrl
-    // means "one level down": in org it only distinguishes
-    // respect-content, which an outline with no point inside a
-    // subtree cannot mean, so it earns the child instead.
+    // org's new-headline chords, as the user's own Doom binds them
+    // (`modules/lang/org/config.el`, verified 2026-08-04):
+    //
+    //     "C-RET"   #'+org/insert-item-below
+    //     "C-S-RET" #'+org/insert-item-above
+    //     "C-M-RET" #'org-insert-subheading
+    //
+    // plus stock org for the meta layer — `M-RET` is org-meta-return
+    // and `M-S-RET` is org-insert-todo-heading. So Shift is the
+    // *direction* on the control layer and the *keyword* on the meta
+    // layer, and the child lives on `C-M-RET`.
+    //
+    // `C-RET` and `M-RET` land on the same command because for a
+    // headline they do the same thing: Doom sets
+    // `org-insert-heading-respect-content t`, and closure's
+    // `add-heading` already inserts after the whole subtree. Two names
+    // for one action would only give the palette two entries.
+    //
+    // Ctrl used to mean
+    // "one level down" here, which put the child on `C-RET` and the
+    // TODO child on `C-S-RET` — two chords that meant something else
+    // in the editor these bindings are copied from.
     ("M-RET", "add-heading"),
     ("M-S-RET", "add-todo-heading"),
-    ("C-RET", "add-child-heading"),
-    ("C-S-RET", "add-todo-child-heading"),
+    ("C-RET", "add-heading"),
+    ("C-S-RET", "add-heading-above"),
+    ("C-M-RET", "add-child-heading"),
+    ("C-M-S-RET", "add-todo-child-heading"),
     ("g u", "undo-history"),
     ("TAB", "toggle-fold"),
     // …and the spelling that survives a buffer, for the modes with no

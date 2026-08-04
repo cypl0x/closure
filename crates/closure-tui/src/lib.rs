@@ -384,6 +384,7 @@ impl App {
             new_heading: closure_shell_core::NewHeading {
                 child: false,
                 todo: false,
+                above: false,
             },
             delete_target: None,
             delete_request: None,
@@ -3158,6 +3159,7 @@ impl App {
             // which is the plain-sibling one by another name. `M-RET`
             // used to make a headline called "untitled" without asking.
             "add-heading"
+            | "add-heading-above"
             | "add-todo-heading"
             | "add-child-heading"
             | "add-todo-child-heading"
@@ -3819,6 +3821,27 @@ fn apply_org_verb_requests(app: &mut App, vault: &mut Vault) -> Result<(), TuiEr
     Ok(())
 }
 
+/// Put one new headline where the chord asked for it.
+///
+/// org writes the keyword into the headline text itself, which is what
+/// the store's capture prefix is.
+fn add_heading(
+    vault: &mut Vault,
+    after: &str,
+    title: &str,
+    new: closure_shell_core::NewHeading,
+) -> Result<(), closure_store::VaultError> {
+    let bid = closure_core::BlockId::from_existing(after);
+    let line = format!("{}{title}", new.prefix());
+    if new.child {
+        return vault.capture_under(&bid, new.prefix(), title).map(|_| ());
+    }
+    if new.above {
+        return vault.add_sibling_before(&bid, &line);
+    }
+    vault.add_sibling(&bid, &line)
+}
+
 fn apply_requests(
     app: &mut App,
     vault: &mut Vault,
@@ -3841,19 +3864,7 @@ fn apply_requests(
         sync_app(app, vault);
     }
     if let Some((after, title, new)) = app.take_add_request() {
-        let bid = closure_core::BlockId::from_existing(&after);
-        // org writes the keyword into the headline text itself, which
-        // is what the store's capture prefix is.
-        if new.child {
-            vault
-                .capture_under(&bid, new.prefix(), &title)
-                .map(|_| ())
-                .map_err(vault_err)?;
-        } else {
-            vault
-                .add_sibling(&bid, &format!("{}{title}", new.prefix()))
-                .map_err(vault_err)?;
-        }
+        add_heading(vault, &after, &title, new).map_err(vault_err)?;
         sync_app(app, vault);
     }
     if let Some(id) = app.take_delete_request() {

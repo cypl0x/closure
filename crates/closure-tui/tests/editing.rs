@@ -207,25 +207,35 @@ fn meta_ret_adds_a_heading_after_the_cursor() {
             "Nu".to_owned(),
             closure_shell_core::NewHeading {
                 child: false,
-                todo: false
+                todo: false,
+                above: false
             }
         ))
     );
 }
 
 #[test]
-fn the_shift_and_ctrl_chords_pick_the_todo_and_the_child() {
+fn the_modifier_chords_pick_the_flavour() {
+    // Rewritten 2026-08-04 with the keymap: Shift is the *direction* on
+    // the Ctrl layer and the *keyword* on the Meta layer, and the child
+    // is `C-M-RET` — the user's own Doom, `+org/insert-item-below`,
+    // `+org/insert-item-above`, `org-insert-subheading`.
     for (stroke, want) in [
-        ("M-RET", (false, false)),
-        ("M-S-RET", (false, true)),
-        ("C-RET", (true, false)),
-        ("C-S-RET", (true, true)),
+        // (child, todo, above)
+        ("M-RET", (false, false, false)),
+        ("M-S-RET", (false, true, false)),
+        ("C-RET", (false, false, false)),
+        ("C-S-RET", (false, false, true)),
+        ("C-M-RET", (true, false, false)),
+        ("C-M-S-RET", (true, true, false)),
     ] {
         let mut app = app();
         app.handle_stroke(stroke);
         app.handle_stroke("N");
         app.handle_stroke("RET");
-        let got = app.take_add_request().map(|(_, _, n)| (n.child, n.todo));
+        let got = app
+            .take_add_request()
+            .map(|(_, _, n)| (n.child, n.todo, n.above));
         assert_eq!(got, Some(want), "{stroke}");
     }
 }

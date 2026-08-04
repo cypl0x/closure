@@ -815,6 +815,16 @@ impl Vault {
         self.apply_to_block(after, &cmd)
     }
 
+    /// Insert a new sibling headline *above* the given one.
+    ///
+    /// # Errors
+    ///
+    /// Propagates whatever [`Vault::apply_to_block`] reports.
+    pub fn add_sibling_before(&mut self, before: &BlockId, title: &str) -> Result<(), VaultError> {
+        let cmd = AddSibling::before(before.clone(), title.to_owned());
+        self.apply_to_block(before, &cmd)
+    }
+
     /// The most recently cut subtree source, if the kill ring is
     /// non-empty.
     #[must_use]

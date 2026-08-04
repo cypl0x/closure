@@ -5,17 +5,33 @@
 //! it made a headline called "untitled" without asking — so the one
 //! chord that existed was also the one you had to undo afterwards.
 //!
-//! The Ctrl axis is closure's. In org, `C-RET` differs from `M-RET`
-//! only by respecting content — a distinction that exists because org
-//! edits a *buffer* with a point somewhere inside a subtree. The
-//! outline has no point inside anything: a new sibling always lands
-//! after the selected subtree, so both chords would do the same thing.
-//! Rather than bind a synonym, Ctrl means "one level down" and the
-//! four chords cover the grid the request asked for:
+//! The Ctrl axis used to be closure's own: `C-RET` meant "one level
+//! down", because in org it differs from `M-RET` only by respecting
+//! content and the outline has no point inside a subtree to respect.
 //!
-//! |         | sibling   | child       |
-//! | plain   | `M-RET`   | `C-RET`     |
-//! | TODO    | `M-S-RET` | `C-S-RET`   |
+//! Rewritten 2026-08-04, at the user's ask ("research the Doom Emacs
+//! keybindings for quick header creation in the editor … ctrl+enter ->
+//! new sibling headline below, ctrl+shift+enter -> new sibling headline
+//! above"). Their Doom, `modules/lang/org/config.el`:
+//!
+//! ```elisp
+//! "C-RET"   #'+org/insert-item-below
+//! "C-S-RET" #'+org/insert-item-above
+//! "C-M-RET" #'org-insert-subheading
+//! ```
+//!
+//! So Shift is the *direction* on the Ctrl layer and the *keyword* on
+//! the Meta layer, and the child moves to `C-M-RET`:
+//!
+//! |         | below      | above       | child       |
+//! | plain   | `M-RET`    | `C-S-RET`   | `C-M-RET`   |
+//! | `C-RET` | (= `M-RET`)|             |             |
+//! | TODO    | `M-S-RET`  |             | `C-M-S-RET` |
+//!
+//! `C-RET` and `M-RET` are one command: Doom sets
+//! `org-insert-heading-respect-content t`, closure's `add-heading`
+//! already inserts after the whole subtree, and a synonym would only
+//! give the palette two entries for one action.
 
 #![allow(clippy::unwrap_used, clippy::expect_used, missing_docs)]
 
@@ -88,18 +104,18 @@ fn m_s_ret_makes_the_sibling_a_todo() {
 }
 
 #[test]
-fn c_ret_makes_a_plain_child() {
+fn c_m_ret_makes_a_plain_child() {
     let (_d, mut sh, mut app) = fixture(InputMode::Doom);
-    new_heading(&mut app, &mut sh, "enter", true, false, "Gamma");
+    new_heading(&mut app, &mut sh, "enter", true, true, "Gamma");
     let r = row(&app, &sh, "Gamma");
     assert_eq!(r.level, 2, "one level under Alpha");
     assert_eq!(r.todo, None);
 }
 
 #[test]
-fn c_s_ret_makes_a_todo_child() {
+fn c_m_s_ret_makes_a_todo_child() {
     let (_d, mut sh, mut app) = fixture(InputMode::Doom);
-    new_heading(&mut app, &mut sh, "shift-enter", true, false, "Gamma");
+    new_heading(&mut app, &mut sh, "shift-enter", true, true, "Gamma");
     let r = row(&app, &sh, "Gamma");
     assert_eq!(r.level, 2);
     assert_eq!(r.todo.as_deref(), Some("TODO"));
@@ -110,7 +126,7 @@ fn a_child_lands_under_the_selection_not_under_its_children() {
     // `Alpha` already has a child. The new one is Alpha's, not its
     // sibling's — "child" is measured from the cursor.
     let (_d, mut sh, mut app) = fixture(InputMode::Doom);
-    new_heading(&mut app, &mut sh, "enter", true, false, "Gamma");
+    new_heading(&mut app, &mut sh, "enter", true, true, "Gamma");
     assert_eq!(row(&app, &sh, "Gamma").level, 2);
     assert_eq!(row(&app, &sh, "Alpha child").level, 2, "unmoved");
 }
@@ -139,7 +155,27 @@ fn an_empty_title_makes_nothing() {
 }
 
 #[test]
-fn every_mode_binds_all_four() {
+fn c_s_ret_makes_a_sibling_above() {
+    // `+org/insert-item-above`, the half that did not exist: adding a
+    // heading above meant adding one below and moving it.
+    let (_d, mut sh, mut app) = fixture(InputMode::Doom);
+    app.select(1, &sh); // Alpha child
+    app.on_key(&mut sh, "shift-enter", true, false, None);
+    assert_eq!(app.surface(), ModalSurface::AddSibling);
+    for c in "Gamma".chars() {
+        app.on_key(&mut sh, &c.to_string(), false, false, Some(c));
+    }
+    app.on_key(&mut sh, "enter", false, false, None);
+    let src: String = sh.vault.iter().map(|(_, doc)| doc.source()).collect();
+    let made = src.find("** Gamma").expect("no heading made");
+    let child = src
+        .find("** Alpha child")
+        .expect("Alpha child went missing");
+    assert!(made < child, "it landed below, not above:\n{src}");
+}
+
+#[test]
+fn every_mode_binds_all_of_them() {
     // The keymap is the single source of truth the palette and
     // which-key render from (I4), so a chord that only works in Doom
     // is a chord three other users cannot discover.
@@ -153,8 +189,10 @@ fn every_mode_binds_all_four() {
         for (chord, want) in [
             ("M-RET", "add-heading"),
             ("M-S-RET", "add-todo-heading"),
-            ("C-RET", "add-child-heading"),
-            ("C-S-RET", "add-todo-child-heading"),
+            ("C-RET", "add-heading"),
+            ("C-S-RET", "add-heading-above"),
+            ("C-M-RET", "add-child-heading"),
+            ("C-M-S-RET", "add-todo-child-heading"),
         ] {
             assert_eq!(
                 closure_input::command_for(mode, chord),
@@ -166,7 +204,7 @@ fn every_mode_binds_all_four() {
 }
 
 #[test]
-fn all_four_chords_reach_the_prompt_in_every_mode() {
+fn every_chord_reaches_the_prompt_in_every_mode() {
     for mode in [
         InputMode::Doom,
         InputMode::Vim,
@@ -179,6 +217,8 @@ fn all_four_chords_reach_the_prompt_in_every_mode() {
             ("shift-enter", false, true),
             ("enter", true, false),
             ("shift-enter", true, false),
+            ("enter", true, true),
+            ("shift-enter", true, true),
         ] {
             let (_d, mut sh, mut app) = fixture(mode);
             app.select(0, &sh);
@@ -263,18 +303,28 @@ fn the_prompt_says_todo_for_the_shifted_chord() {
 }
 
 #[test]
-fn it_says_child_for_the_ctrl_chords() {
+fn it_says_child_for_the_ctrl_meta_chords() {
     let (_d, mut sh, mut app) = fixture(InputMode::Doom);
     app.select(0, &sh);
-    app.on_key(&mut sh, "enter", true, false, None); // C-RET: add a child
+    app.on_key(&mut sh, "enter", true, true, None); // C-M-RET
     assert_eq!(app.new_heading_label(), "child");
 }
 
 #[test]
-fn and_child_todo_for_both_modifiers() {
+fn and_above_for_the_shifted_ctrl_chord() {
+    // The prompt is the only thing on screen that says which of the
+    // six chords you pressed, so the direction has to reach it.
     let (_d, mut sh, mut app) = fixture(InputMode::Doom);
     app.select(0, &sh);
-    app.on_key(&mut sh, "shift-enter", true, false, None);
+    app.on_key(&mut sh, "shift-enter", true, false, None); // C-S-RET
+    assert_eq!(app.new_heading_label(), "sibling above");
+}
+
+#[test]
+fn and_child_todo_for_all_three_modifiers() {
+    let (_d, mut sh, mut app) = fixture(InputMode::Doom);
+    app.select(0, &sh);
+    app.on_key(&mut sh, "shift-enter", true, true, None); // C-M-S-RET
     assert_eq!(app.new_heading_label(), "child TODO");
 }
 

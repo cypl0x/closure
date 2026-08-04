@@ -16,12 +16,12 @@ use std::str::FromStr;
 use std::sync::Arc;
 
 use closure_org::{
-    Headline, OrgDoc, parse, rewrite_add_sibling_after_with_id, rewrite_headline_demote,
-    rewrite_headline_ensure_id, rewrite_headline_promote, rewrite_headline_set_body,
-    rewrite_headline_set_planning, rewrite_headline_set_priority, rewrite_headline_set_property,
-    rewrite_headline_set_tags, rewrite_headline_set_todo, rewrite_headline_title,
-    rewrite_headline_toggle_archive, rewrite_headline_toggle_comment, rewrite_remove_subtree,
-    rewrite_splice_subtree_after,
+    Headline, OrgDoc, parse, rewrite_add_sibling_after_with_id, rewrite_add_sibling_before_with_id,
+    rewrite_headline_demote, rewrite_headline_ensure_id, rewrite_headline_promote,
+    rewrite_headline_set_body, rewrite_headline_set_planning, rewrite_headline_set_priority,
+    rewrite_headline_set_property, rewrite_headline_set_tags, rewrite_headline_set_todo,
+    rewrite_headline_title, rewrite_headline_toggle_archive, rewrite_headline_toggle_comment,
+    rewrite_remove_subtree, rewrite_splice_subtree_after,
 };
 use closure_undo::{NodeId as UndoNodeId, UndoTree};
 use thiserror::Error;
@@ -2155,10 +2155,18 @@ fn subtree_end_offset(src: &str, h: &closure_org::Headline, begin: usize) -> usi
     cursor
 }
 
-/// Command: insert a new sibling headline after the given block.
+/// Command: insert a new sibling headline beside the given block.
+///
+/// Above or below is a flag rather than a second command: the two
+/// differ in one offset, and everything else — the id, the drawer, the
+/// history entry, the undo — is the same insertion. A second command
+/// would be a second owner of all of it.
 pub struct AddSibling {
     after_id: BlockId,
     title: String,
+    /// Insert before the target instead of after its subtree
+    /// (Doom's `+org/insert-item-above`).
+    before: bool,
     keys: Vec<KeyChord>,
 }
 
@@ -2169,7 +2177,19 @@ impl AddSibling {
         Self {
             after_id,
             title,
+            before: false,
             keys: vec![KeyChord::from_strokes(&["M-<return>"])],
+        }
+    }
+
+    /// Insert a new sibling *before* the headline with `before_id`.
+    #[must_use]
+    pub fn before(before_id: BlockId, title: String) -> Self {
+        Self {
+            after_id: before_id,
+            title,
+            before: true,
+            keys: vec![KeyChord::from_strokes(&["C-S-<return>"])],
         }
     }
 
@@ -2179,6 +2199,7 @@ impl AddSibling {
         Self {
             after_id: BlockId::from_existing(""),
             title: String::new(),
+            before: false,
             keys: vec![KeyChord::from_strokes(&["M-<return>"])],
         }
     }
@@ -2199,7 +2220,12 @@ impl Command for AddSibling {
             .path_of(&self.after_id)
             .ok_or(CommandError::BlockNotFound)?;
         let new_id = BlockId::fresh();
-        let org = rewrite_add_sibling_after_with_id(doc.org(), &path, &self.title, new_id.as_str())
+        let rewrite = if self.before {
+            rewrite_add_sibling_before_with_id
+        } else {
+            rewrite_add_sibling_after_with_id
+        };
+        let org = rewrite(doc.org(), &path, &self.title, new_id.as_str())
             .map_err(|_| CommandError::Rewrite)?;
         doc.org = org;
         doc.rebuild_index();
