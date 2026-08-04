@@ -45,7 +45,7 @@ fn an_external_headline_survives_a_mutation_in_the_same_file() {
     // The case that destroyed a capture on 2026-08-02.
     let (dir, mut v) = vault();
     external_append(
-        &dir.path().to_path_buf(),
+        dir.path(),
         "* From Emacs\n:PROPERTIES:\n:ID: disk-ext\n:END:\n",
     );
     v.set_todo(&BlockId::from_existing("disk-one"), Some("TODO"))
