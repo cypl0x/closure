@@ -10303,8 +10303,13 @@ pub fn markup_spans(text: &str) -> Vec<(std::ops::Range<usize>, MarkupKind)> {
             i += 1;
             continue;
         };
-        // Left boundary: start of string, or preceding char is non-word.
-        let left_ok = i == 0 || !is_word_byte(bytes[i - 1]);
+        // Left boundary, org's own: start of line, whitespace, or one
+        // of a short list of openers. "Any non-word byte" was too
+        // wide by exactly the characters URLs are made of — the second
+        // `/` of `https://` opened a run that closed at the `/` after
+        // `.org`, so `https://melpa.org/#/evil-ghostel` came out with
+        // `melpa.org` in italics.
+        let left_ok = i == 0 || is_pre_byte(bytes[i - 1]);
         if !left_ok {
             i += 1;
             continue;
@@ -10328,7 +10333,7 @@ pub fn markup_spans(text: &str) -> Vec<(std::ops::Range<usize>, MarkupKind)> {
             }
             if c == b && bytes[j - 1] != b' ' && bytes[j - 1] != b'\t' {
                 // Right boundary: next char is non-word (or end).
-                let right_ok = j + 1 >= bytes.len() || !is_word_byte(bytes[j + 1]);
+                let right_ok = j + 1 >= bytes.len() || is_post_byte(bytes[j + 1]);
                 if right_ok {
                     found = Some(j);
                     break;
@@ -10346,8 +10351,38 @@ pub fn markup_spans(text: &str) -> Vec<(std::ops::Range<usize>, MarkupKind)> {
     out
 }
 
-const fn is_word_byte(b: u8) -> bool {
-    b.is_ascii_alphanumeric() || b == b'_'
+/// What org allows in front of an opening emphasis marker —
+/// `org-emphasis-regexp-components`' first component, whose default is
+/// whitespace plus `-–—('"{`.
+const fn is_pre_byte(b: u8) -> bool {
+    matches!(
+        b,
+        b' ' | b'\t' | b'\n' | b'\r' | b'-' | b'(' | b'\'' | b'"' | b'{'
+    )
+}
+
+/// What org allows after a closing marker: whitespace plus
+/// `-–—.,:!?;'")}[`. Punctuation is in it because emphasis usually
+/// ends a clause.
+const fn is_post_byte(b: u8) -> bool {
+    matches!(
+        b,
+        b' ' | b'\t'
+            | b'\n'
+            | b'\r'
+            | b'-'
+            | b'.'
+            | b','
+            | b':'
+            | b'!'
+            | b'?'
+            | b';'
+            | b'\''
+            | b'"'
+            | b')'
+            | b'}'
+            | b'['
+    )
 }
 
 /// Scan `text` for inline `[[target][desc]]` / `[[target]]` links.
