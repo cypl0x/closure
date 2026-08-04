@@ -546,6 +546,18 @@ impl Vault {
         template: &CaptureTemplate,
         title: &str,
     ) -> Result<BlockId, VaultError> {
+        // An entry with no title is an entry you cannot see in the
+        // outline, cannot search for, and will not find again — which
+        // is how a vault ends up holding `** TODO (title lost in a
+        // capture race — please rename)`. The shells guard their own
+        // prompts; the store is the floor under all of them, including
+        // the CLI, the assistant's tools and a peer's replica.
+        if title.trim().is_empty() {
+            return Err(VaultError::Command(
+                "a capture needs a title — an untitled entry is one you cannot find again"
+                    .to_owned(),
+            ));
+        }
         // No refresh: the target is read from disk immediately
         // below, which is the freshest copy there is.
         let target = self.root.join(&template.target);
