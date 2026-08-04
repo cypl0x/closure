@@ -79,3 +79,49 @@ fn the_rail_has_a_handle_you_can_click(cx: &mut gpui::TestAppContext) {
         "no handle to grab"
     );
 }
+
+#[gpui::test]
+fn the_rail_has_a_grab_handle_on_its_edge(cx: &mut gpui::TestAppContext) {
+    // "dockable *and resizable* most left panel". Docking is two
+    // widths; the item asked for the range as well, and the outline
+    // column beside it has had a drag handle since the day it stopped
+    // being a fixed 420px.
+    let (_dir, _view, vcx) = visual_window(cx, NOTE);
+    vcx.run_until_parked();
+    assert!(vcx.debug_bounds("rail-resize").is_some(), "no edge to drag");
+}
+
+#[gpui::test]
+fn a_dragged_width_is_what_gets_painted(cx: &mut gpui::TestAppContext) {
+    let (_dir, view, vcx) = visual_window(cx, NOTE);
+    vcx.run_until_parked();
+    view.update(vcx, |v, cx| {
+        v.set_rail_width(240.0);
+        cx.notify();
+    });
+    vcx.run_until_parked();
+    // The column, not the whole rail: the 6px grab strip beside it is
+    // furniture, and a width the user set should be the width they see
+    // the buttons in.
+    let w = f32::from(
+        vcx.debug_bounds("rail-column")
+            .expect("rail column")
+            .size
+            .width,
+    );
+    assert!((w - 240.0).abs() < 1.0, "asked for 240px and got {w}px");
+}
+
+#[gpui::test]
+fn a_docked_rail_ignores_the_width(cx: &mut gpui::TestAppContext) {
+    // Docked is a state, not a width: dragging it wide and then
+    // docking must give the icons, not a wide column of icons.
+    let (_dir, view, vcx) = visual_window(cx, NOTE);
+    view.update(vcx, |v, cx| {
+        v.set_rail_width(300.0);
+        v.run_command("toggle-rail", cx);
+    });
+    vcx.run_until_parked();
+    let w = f32::from(vcx.debug_bounds("rail").expect("rail").size.width);
+    assert!(w < 60.0, "docked but {w}px wide");
+}

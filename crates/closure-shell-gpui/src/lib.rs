@@ -2218,6 +2218,19 @@ const OUTLINE_W_MIN: f32 = 220.0;
 #[cfg(feature = "gpui")]
 const OUTLINE_W_MAX: f32 = 900.0;
 
+/// How narrow the rail may be dragged before the labels stop fitting.
+#[cfg(feature = "gpui")]
+const RAIL_W_MIN: f32 = 110.0;
+/// And how wide before it is a pane rather than a rail.
+#[cfg(feature = "gpui")]
+const RAIL_W_MAX: f32 = 320.0;
+/// Its width with the labels on, before anyone drags it.
+#[cfg(feature = "gpui")]
+const RAIL_W_DEFAULT: f32 = 146.0;
+/// Docked: the icon column, and nothing that needs a width to read.
+#[cfg(feature = "gpui")]
+const RAIL_W_DOCKED: f32 = 38.0;
+
 /// The editor pane's own furniture above the text: the mode header and
 /// the pane padding, taken off the height before it is divided.
 pub const BODY_CHROME: f32 = 46.0;
@@ -2284,6 +2297,10 @@ pub struct GpuiView {
     /// pointer and the column edge, so the column does not jump to the
     /// cursor on the first pixel of movement.
     outline_drag: Option<f32>,
+    /// How wide the rail is, and the grab offset while it is dragged —
+    /// the same pair the outline column keeps, for the same reason.
+    rail_w: f32,
+    rail_drag: Option<f32>,
     /// The vault's directory name, for the window title.
     vault_name: String,
     /// The title last written to the window manager, so a frame that
@@ -2386,6 +2403,8 @@ impl GpuiView {
 
             outline_w: OUTLINE_W_DEFAULT,
             outline_drag: None,
+            rail_w: RAIL_W_DEFAULT,
+            rail_drag: None,
             window_title: String::new(),
             focus_handle: cx.focus_handle(),
             last_status: String::new(),
@@ -2722,6 +2741,12 @@ impl GpuiView {
         #[expect(clippy::cast_precision_loss, reason = "clamped to a pixel range")]
         let w = w as f32;
         self.outline_w = w.clamp(OUTLINE_W_MIN, OUTLINE_W_MAX);
+    }
+
+    /// The rail's width, clamped. "dockable *and resizable*": docking
+    /// is two widths, and the item asked for the range too.
+    pub const fn set_rail_width(&mut self, w: f32) {
+        self.rail_w = w.clamp(RAIL_W_MIN, RAIL_W_MAX);
     }
 
     /// Where this window's vault lives — what a test needs to put a
@@ -8167,9 +8192,40 @@ impl GpuiView {
     /// The list itself is [`closure_shell_core::Destination`] data, so
     /// the TUI and the web tier can grow the same rail without
     /// re-deciding what is in it (I4/G5a).
-    fn rail(&self, co: Colors, cx: &Context<Self>) -> gpui::Stateful<gpui::Div> {
+    fn rail(&self, co: Colors, cx: &Context<Self>) -> gpui::Div {
+        // The buttons in a column, with a grab strip down the outer
+        // edge — the shape the outline column already has, because the
+        // item asked for the same two things: dock it, and size it.
         div()
             .debug_selector(|| "rail".to_owned())
+            .flex()
+            .flex_row()
+            .flex_none()
+            .h_full()
+            .child(self.rail_column(co, cx))
+            .when(!self.app.rail_docked(), |d| {
+                d.child(
+                    div()
+                        .debug_selector(|| "rail-resize".to_owned())
+                        .w(px(6.0))
+                        .h_full()
+                        .cursor_col_resize()
+                        .hover(move |st| st.bg(rgb(co.accent)))
+                        .on_mouse_down(
+                            MouseButton::Left,
+                            cx.listener(|this: &mut Self, ev: &gpui::MouseDownEvent, _w, cx| {
+                                this.rail_drag = Some(f32::from(ev.position.x) - this.rail_w);
+                                cx.notify();
+                            }),
+                        ),
+                )
+            })
+    }
+
+    /// The buttons themselves.
+    fn rail_column(&self, co: Colors, cx: &Context<Self>) -> gpui::Stateful<gpui::Div> {
+        div()
+            .debug_selector(|| "rail-column".to_owned())
             .id("rail")
             .flex()
             .flex_col()
@@ -8179,7 +8235,12 @@ impl GpuiView {
             .px_1()
             // Docked, the rail is its icons and nothing else: "just
             // the icons are visible and none of the text".
-            .w(px(if self.app.rail_docked() { 38.0 } else { 146.0 }))
+            .w(px(if self.app.rail_docked() {
+                RAIL_W_DOCKED
+            } else {
+                self.rail_w
+            }))
+            .flex_none()
             .h_full()
             .overflow_y_scroll()
             .bg(rgb(co.panel))
@@ -10119,6 +10180,15 @@ impl Render for GpuiView {
             // instant it starts moving.
             .on_mouse_move(
                 cx.listener(|this: &mut Self, ev: &gpui::MouseMoveEvent, _w, cx| {
+                    if let Some(grab) = this.rail_drag {
+                        if !ev.dragging() {
+                            this.rail_drag = None;
+                            return;
+                        }
+                        this.set_rail_width(f32::from(ev.position.x) - grab);
+                        cx.notify();
+                        return;
+                    }
                     let Some(grab) = this.outline_drag else {
                         return;
                     };
@@ -10145,6 +10215,7 @@ impl Render for GpuiView {
                 MouseButton::Left,
                 cx.listener(|this: &mut Self, _ev, _w, cx| {
                     this.outline_drag = None;
+                    this.rail_drag = None;
                     if this.drag.source().is_some() {
                         this.drag.cancel();
                         cx.notify();
