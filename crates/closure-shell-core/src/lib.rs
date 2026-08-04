@@ -12329,6 +12329,8 @@ pub struct ModalApp {
     settings_cursor: usize,
     /// Which peer the next tick dials, so one tick dials one peer.
     dial_next: usize,
+    /// How wide the outline pane is, once something has said.
+    outline_width: Option<u32>,
     /// The setting whose value prompt is open, if one is.
     editing_setting: Option<&'static str>,
     /// Which of the four new-headline chords opened the title prompt.
@@ -12867,6 +12869,7 @@ impl ModalApp {
             field_buf: LineInput::default(),
             settings_cursor: 0,
             dial_next: 0,
+            outline_width: None,
             editing_setting: None,
             new_heading: NewHeading {
                 child: false,
@@ -14552,6 +14555,22 @@ impl ModalApp {
         if !kill.is_empty() && kill != self.body.register_text() {
             self.set_register_from_clipboard(kill);
         }
+    }
+
+    /// Remember how wide the outline pane has been dragged.
+    ///
+    /// "I do have to resize the outline headlines tree view EVERY time
+    /// I open closure." The pane was always resizable and the width
+    /// was never written down, so every session started at the default
+    /// and every session began with the same drag.
+    pub const fn set_outline_width(&mut self, width: Option<u32>) {
+        self.outline_width = width;
+    }
+
+    /// The remembered outline width, if a session has set one.
+    #[must_use]
+    pub const fn outline_width(&self) -> Option<u32> {
+        self.outline_width
     }
 
     /// Record where a peer is (what a live round hands us).
@@ -21268,6 +21287,7 @@ impl ModalApp {
         if let Some(id) = &cfg.last_place {
             self.select_by_id(shell, id);
         }
+        self.outline_width = cfg.outline_width;
         // The files recent sessions were in come back with it: the
         // picker's whole point is that the note you were in yesterday
         // is the first thing it offers (Q1-B4).
@@ -21294,6 +21314,19 @@ impl ModalApp {
                 Ok(updated) => source = updated,
                 Err(e) => {
                     self.say(format!("could not remember where you were: {e}"));
+                    return;
+                }
+            }
+        }
+        // The pane you sized is the pane you get back. Only when a
+        // session actually moved it: a key appearing the first time you
+        // close the window, holding the default, is noise in a file you
+        // read.
+        if let Some(width) = self.outline_width {
+            match closure_config::set_config_key(&source, "outline_width", &format!("{width}")) {
+                Ok(updated) => source = updated,
+                Err(e) => {
+                    self.say(format!("could not remember the pane width: {e}"));
                     return;
                 }
             }

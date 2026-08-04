@@ -95,6 +95,12 @@ pub struct Config {
     /// public key — nothing secret, and readable in the file like
     /// everything else.
     pub sync_peers: Vec<String>,
+    /// How wide the outline pane was left, in pixels.
+    ///
+    /// Session state, like [`Self::last_place`]: written when the
+    /// window closes so the pane you sized is the pane you get back.
+    /// `None` means never resized, and the shell's own default stands.
+    pub outline_width: Option<u32>,
     /// Soft-wrap long body lines instead of scrolling sideways. Off by
     /// default: wrapping costs the one-number gutter and the fixed row
     /// height, and prose people want wrapped is not the only thing in
@@ -221,6 +227,7 @@ impl Default for Config {
             sniffer_blocklist: None,
             eval_trust: Vec::new(),
             sync_peers: Vec::new(),
+            outline_width: None,
             wrap: false,
             key_bindings: Vec::new(),
             sync_bind: None,
@@ -673,6 +680,12 @@ impl Config {
                     cfg.sync_dir = (!value.trim().is_empty()).then(|| PathBuf::from(value.trim()));
                 }
                 "wrap" => cfg.wrap = parse_bool(key, value)?,
+                "outline_width" => {
+                    // Hand-edited file: a width of zero or a negative
+                    // one paints a pane you cannot see and cannot grab
+                    // to fix, so it is ignored rather than obeyed.
+                    cfg.outline_width = value.trim().parse::<u32>().ok().filter(|w| *w > 0);
+                }
                 "sync_peers" => {
                     cfg.sync_peers = value
                         .split(',')

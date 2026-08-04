@@ -1987,6 +1987,9 @@ pub fn run(vault_path: &Path) -> Result<(), String> {
                     // …and the note the last session was in is where
                     // this one starts.
                     view.app.restore_last_place(&view.shell);
+                    if let Some(w) = view.app.outline_width() {
+                        view.outline_w = (w as f32).clamp(OUTLINE_W_MIN, OUTLINE_W_MAX);
+                    }
                     view
                 })
             },
@@ -9897,6 +9900,16 @@ impl Render for GpuiView {
                     }
                     this.outline_w =
                         (f32::from(ev.position.x) - grab).clamp(OUTLINE_W_MIN, OUTLINE_W_MAX);
+                    // Remembered as it moves, written when the window
+                    // closes with the rest of the session state — so
+                    // the pane you sized is the pane you get back
+                    // instead of the same drag every morning.
+                    #[expect(
+                        clippy::cast_possible_truncation,
+                        clippy::cast_sign_loss,
+                        reason = "clamped to a positive pixel range"
+                    )]
+                    this.app.set_outline_width(Some(this.outline_w as u32));
                     cx.notify();
                 }),
             )
