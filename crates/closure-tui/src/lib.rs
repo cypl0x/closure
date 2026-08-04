@@ -3149,6 +3149,36 @@ impl App {
                     self.property_request = Some((id, "VISIBILITY".to_owned(), next.to_owned()));
                 }
             }
+            // The same chord and the same answer as the windowed shell,
+            // through the same function: `gcc` must not comment with a
+            // different token depending on which shell you are in.
+            "toggle-line-comment" => {
+                if self.mode == AppMode::EditBody {
+                    let (first, last) = self.body.selected_lines();
+                    let before = self.body.text().to_owned();
+                    if let Some((text, token, off)) =
+                        closure_shell_core::toggle_comment_lines(&before, first, last)
+                    {
+                        let cursor = self.body.cursor_byte().min(text.len());
+                        let visual = matches!(
+                            self.body.mode(),
+                            closure_shell_core::EditorMode::Visual
+                                | closure_shell_core::EditorMode::VisualLine
+                        );
+                        self.body.replace_all(text, cursor);
+                        if visual {
+                            self.body.to_normal();
+                        }
+                        self.status = if off {
+                            "comment off".to_owned()
+                        } else {
+                            format!("commented with {token}")
+                        };
+                    }
+                } else {
+                    "nothing to comment — open a body first".clone_into(&mut self.status);
+                }
+            }
             "promote" | "demote" => {
                 if let Some(id) = self.current_headline_id() {
                     self.struct_request = Some((cmd.to_owned(), id));

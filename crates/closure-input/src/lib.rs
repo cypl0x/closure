@@ -177,8 +177,11 @@ const DOOM_KEYMAP: &[(&str, &str)] = &[
     ("g B", "list-buffers"),
     ("g f", "recent-files"),
     ("g F", "find-file"),
-    ("g c", "close-buffer"),
-    ("g C", "close-buffer-force"),
+    // `g c` is free on purpose: it is evil-nerd-commenter's operator
+    // prefix, which is what `g c c` below needs. Doom does not bind
+    // `g c` to anything else either — killing a buffer is `SPC b k`,
+    // which this map already has.
+    ("g c c", "toggle-line-comment"),
     // Planning (Q3-V4): org's own `C-c C-s` / `C-c C-d` idea, in each
     // mode's spelling.
     ("g S", "schedule"),
@@ -401,6 +404,7 @@ const EMACS_KEYMAP: &[(&str, &str)] = &[
     ("C-x C-b", "list-buffers"),
     ("C-x <right>", "next-buffer"),
     ("C-x <left>", "prev-buffer"),
+    ("M-;", "toggle-line-comment"),
     ("C-x k", "close-buffer"),
     ("C-x K", "close-buffer-force"),
     ("C-x C-f", "find-file"),
@@ -593,8 +597,10 @@ const VIM_KEYMAP: &[(&str, &str)] = &[
     ("g B", "list-buffers"),
     ("g f", "recent-files"),
     ("g F", "find-file"),
-    ("g c", "close-buffer"),
+    // `:q`'s spelling, because `g c` is the comment operator's prefix.
+    ("g q", "close-buffer"),
     ("g C", "close-buffer-force"),
+    ("g c c", "toggle-line-comment"),
     // Planning (Q3-V4): org's own `C-c C-s` / `C-c C-d` idea, in each
     // mode's spelling.
     ("g S", "schedule"),
@@ -779,8 +785,10 @@ const HELIX_KEYMAP: &[(&str, &str)] = &[
     ("g B", "list-buffers"),
     ("g f", "recent-files"),
     ("g F", "find-file"),
-    ("g c", "close-buffer"),
+    // `:q`'s spelling, because `g c` is the comment operator's prefix.
+    ("g q", "close-buffer"),
     ("g C", "close-buffer-force"),
+    ("g c c", "toggle-line-comment"),
     // Planning (Q3-V4): org's own `C-c C-s` / `C-c C-d` idea, in each
     // mode's spelling.
     ("g S", "schedule"),
@@ -964,8 +972,10 @@ const NOTION_KEYMAP: &[(&str, &str)] = &[
     ("g B", "list-buffers"),
     ("g f", "recent-files"),
     ("g F", "find-file"),
-    ("g c", "close-buffer"),
+    // `:q`'s spelling, because `g c` is the comment operator's prefix.
+    ("g q", "close-buffer"),
     ("g C", "close-buffer-force"),
+    ("g c c", "toggle-line-comment"),
     // Planning (Q3-V4): org's own `C-c C-s` / `C-c C-d` idea, in each
     // mode's spelling.
     ("g S", "schedule"),

@@ -10,6 +10,35 @@
 #![forbid(unsafe_code)]
 
 /// Coarse highlight kind. Concrete grammars map their tokens to one
+/// How `lang` starts a line comment, if it starts one at all.
+///
+/// One table, because two places need the same answer and they were
+/// disagreeing: the highlighter knew `#` for shell and `//` for Rust
+/// and nothing else, so a `#+begin_src nix` block had no comments at
+/// all as far as the colours were concerned. `toggle-line-comment`
+/// needs the same fact to know what to put in front of the line.
+///
+/// `None` means "this build has no opinion", which the caller reads as
+/// org's own `#` — a source block whose language we do not know is
+/// still text in an org file.
+#[must_use]
+pub const fn line_comment(lang: &str) -> Option<&'static str> {
+    Some(match lang.as_bytes() {
+        b"rust" | b"javascript" | b"js" | b"typescript" | b"ts" | b"jsonc" | b"c" | b"cpp"
+        | b"c++" | b"java" | b"go" | b"scala" | b"kotlin" | b"swift" | b"zig" | b"dart"
+        | b"php" | b"css" | b"scss" | b"jq" => "//",
+        b"nix" | b"shell" | b"sh" | b"bash" | b"zsh" | b"fish" | b"python" | b"py" | b"ruby"
+        | b"rb" | b"perl" | b"r" | b"yaml" | b"yml" | b"toml" | b"ini" | b"conf" | b"make"
+        | b"makefile" | b"dockerfile" | b"awk" | b"tcl" | b"elixir" | b"julia" | b"org" => "#",
+        b"lisp" | b"emacs-lisp" | b"elisp" | b"clojure" | b"scheme" | b"racket" => ";;",
+        b"sql" | b"haskell" | b"hs" | b"lua" | b"elm" | b"ada" => "--",
+        b"vim" | b"vimscript" => "\"",
+        b"erlang" | b"latex" | b"tex" | b"matlab" => "%",
+        b"asm" | b"nasm" => ";",
+        _ => return None,
+    })
+}
+
 /// of these so shells can render with a small, stable palette.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum HighlightKind {
@@ -358,14 +387,11 @@ impl Highlighter for KeywordHighlighter {
             }
 
             // line comments (lang specific starters)
-            let starts_comment = match self.lang {
-                "shell" | "python" => b == b'#',
-                "rust" => {
-                    // support // comments (common even if not in every test)
-                    b == b'/' && i + 1 < bytes.len() && bytes[i + 1] == b'/'
-                }
-                _ => false,
-            };
+            // The same table `toggle-line-comment` uses: the two
+            // languages spelled out here were the only ones whose
+            // comments were ever coloured.
+            let starts_comment = line_comment(self.lang)
+                .is_some_and(|token| bytes[i..].starts_with(token.as_bytes()));
             if starts_comment {
                 in_comment = true;
                 continue;

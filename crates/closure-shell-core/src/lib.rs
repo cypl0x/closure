@@ -4349,6 +4349,12 @@ const PALETTE_COMMANDS: &[(&str, &str, &str, &str)] = &[
         "Add a sibling headline",
     ),
     (
+        "toggle-line-comment",
+        "toggle-line-comment",
+        "Edit",
+        "Comment or uncomment the line, or the selection",
+    ),
+    (
         "add-sibling-above",
         "add-heading-above",
         "Edit",
@@ -5167,6 +5173,84 @@ pub fn enclosing_src_block(text: &str, at: usize) -> Option<(std::ops::Range<usi
         offset += line.len();
     }
     None
+}
+
+/// Whether `line` already carries `token` as a line comment.
+fn is_commented(line: &str, token: &str) -> bool {
+    let body = line.trim_start();
+    // `#+begin_src` starts with `#` and is org *syntax*, not a comment.
+    // Counting it as one made the first `gcc` on a fence line take the
+    // `#` off and leave `+begin_src javascript` behind.
+    body.starts_with(token) && !(token == "#" && body.starts_with("#+"))
+}
+
+/// Comment lines `first..=last` of `text`, or uncomment them when all
+/// of them already carry the comment.
+///
+/// Returns the new text, the token used, and whether it came *off* —
+/// or `None` when the range names nothing. Pure and shell-agnostic,
+/// because both shells have the same chord and there is one right
+/// answer for a given buffer.
+///
+/// The token comes from the enclosing `#+begin_src` block's language,
+/// and from org itself outside one — which is the whole reason the
+/// chord beats typing `#` yourself: in an org file the right comment
+/// changes every few lines.
+#[must_use]
+pub fn toggle_comment_lines(text: &str, first: usize, last: usize) -> Option<(String, &str, bool)> {
+    let lines: Vec<&str> = text.split('\n').collect();
+    if first >= lines.len() {
+        return None;
+    }
+    let last = last.min(lines.len() - 1);
+    // Which language, asked at the first line rather than per line: a
+    // selection that straddles a fence is one comment style, and the
+    // one the user was looking at when they pressed it.
+    let start: usize = lines[..first].iter().map(|l| l.len() + 1).sum();
+    let token = enclosing_src_block(text, start)
+        // Strictly inside: `enclosing_src_block` counts the fences as
+        // part of the block, which is how `edit-special` is reached
+        // with the point on one — but `#+begin_src javascript` is
+        // org's own syntax, and `// #+begin_src` is neither language.
+        .filter(|(content, _)| content.contains(&start))
+        .and_then(|(_, lang)| closure_tree_sitter::line_comment(&lang))
+        // Org's own comment, which is also where an unknown language
+        // lands: it is still text in an org file.
+        .unwrap_or("#");
+
+    let body = &lines[first..=last];
+    let interesting: Vec<&&str> = body.iter().filter(|l| !l.trim().is_empty()).collect();
+    // Uncomment only when *every* line is commented — a selection with
+    // one bare line in it is one you meant to comment.
+    let off = !interesting.is_empty() && interesting.iter().all(|l| is_commented(l, token));
+    // The shallowest line decides the column, so the block keeps its
+    // shape instead of every line being flattened to the left.
+    let indent = interesting
+        .iter()
+        .map(|l| l.len() - l.trim_start().len())
+        .min()
+        .unwrap_or(0);
+
+    let mut out: Vec<String> = Vec::with_capacity(lines.len());
+    out.extend(lines[..first].iter().map(|l| (*l).to_owned()));
+    for line in body {
+        if line.trim().is_empty() {
+            out.push((*line).to_owned());
+        } else if off {
+            let cut = line.find(token).unwrap_or(0);
+            let rest = &line[cut + token.len()..];
+            out.push(format!(
+                "{}{}",
+                &line[..cut],
+                rest.strip_prefix(' ').unwrap_or(rest)
+            ));
+        } else {
+            let at = indent.min(line.len());
+            out.push(format!("{}{token} {}", &line[..at], &line[at..]));
+        }
+    }
+    out.extend(lines[last + 1..].iter().map(|l| (*l).to_owned()));
+    Some((out.join("\n"), token, off))
 }
 
 /// One entry of the Notion-style "/" block menu.
@@ -8869,6 +8953,10 @@ enum Pending {
     /// `ys{motion}` (or VISUAL `S`) resolved to a range; the next
     /// stroke names the pair to wrap it in.
     SurroundWith { lo: usize, hi: usize },
+    /// `g c` typed: evil-nerd-commenter's operator prefix, awaiting
+    /// its doubled `c` (`gcc`, the current line). In Visual the
+    /// selection is already the range, so `g c` acts at once.
+    Comment,
     /// `ds` typed; the next stroke names the pair to take away.
     SurroundDelete,
     /// `cs` typed; the next stroke names the pair to replace, and the
@@ -8888,6 +8976,7 @@ impl Pending {
             Self::None => None,
             Self::Op(c) => Some(c),
             Self::G(_) => Some('g'),
+            Self::Comment => Some('c'),
             Self::Obj { around: true, .. } => Some('a'),
             Self::Obj { around: false, .. } => Some('i'),
             Self::Find { kind, .. } => Some(kind),
@@ -8997,6 +9086,11 @@ pub struct BodyEditor {
     /// How many times [`Self::register`] has changed — the seam the
     /// system-clipboard mirror watches.
     register_gen: u64,
+    /// How many times `gcc` has been pressed. The buffer knows the
+    /// chord and cannot know the *comment*: which token to use comes
+    /// from the enclosing source block's language, which is org's
+    /// business and not the editor's. Same seam as the register.
+    comment_asked: u64,
     /// Whether the register holds whole lines (`dd`/`yy` → `p` pastes
     /// below the current line).
     linewise: bool,
@@ -9086,6 +9180,7 @@ impl BodyEditor {
             anchor: 0,
             register: String::new(),
             register_gen: 0,
+            comment_asked: 0,
             linewise: false,
             pending: Pending::None,
             count: 0,
@@ -9714,6 +9809,16 @@ impl BodyEditor {
             Pending::Mark => self.finish_mark(key),
             Pending::JumpMark { op, linewise } => self.finish_mark_jump(op, linewise, key),
             Pending::SurroundWith { lo, hi } => self.finish_surround(lo, hi, key),
+            Pending::Comment => {
+                // `gcc`, and nothing else: `gc` is an operator in
+                // evil-nerd-commenter, but every motion it could take
+                // resolves to a line range here, and a half-supported
+                // operator is worse than a chord that says no.
+                if key == "c" {
+                    self.comment_asked = self.comment_asked.wrapping_add(1);
+                }
+                self.pending = Pending::None;
+            }
             Pending::SurroundDelete => self.finish_surround_delete(key),
             Pending::SurroundChange(old) => self.finish_surround_change(old, key),
             Pending::RecordMacro => self.finish_record(key),
@@ -9731,6 +9836,24 @@ impl BodyEditor {
         {
             self.last_visual = Some(last);
         }
+    }
+
+    /// The inclusive line range an operator would act on: the visual
+    /// selection when there is one, the caret's line when there is not.
+    ///
+    /// This is what makes `gcc` and `gc` over a selection one command
+    /// rather than two — vim's own rule, where an operator in Visual
+    /// takes the selection and in Normal takes what the motion gives
+    /// it, and a bare `cc`-shaped double takes the line.
+    #[must_use]
+    pub fn selected_lines(&self) -> (usize, usize) {
+        let line_of = |byte: usize| self.buf[..byte.min(self.buf.len())].matches('\n').count();
+        let here = line_of(self.cursor);
+        if !matches!(self.mode, EditorMode::Visual | EditorMode::VisualLine) {
+            return (here, here);
+        }
+        let there = line_of(self.anchor);
+        (here.min(there), here.max(there))
     }
 
     /// Accumulate a count digit; `true` when the key was one. A leading
@@ -10107,6 +10230,16 @@ impl BodyEditor {
         // `gv` puts the last selection back; `gi` resumes typing where
         // INSERT was last left. Neither is a range, so neither can be
         // an operator target.
+        // `gc`: comment. In Visual the selection is the range and it
+        // fires now; in Normal it waits for the second `c`.
+        if op.is_none() && key == "c" {
+            if matches!(self.mode, EditorMode::Visual | EditorMode::VisualLine) {
+                self.comment_asked = self.comment_asked.wrapping_add(1);
+            } else {
+                self.pending = Pending::Comment;
+            }
+            return;
+        }
         if op.is_none() && key == "v" {
             if let Some((anchor, cursor, mode)) = self.last_visual {
                 self.anchor = anchor.min(self.buf.len());
@@ -11724,6 +11857,14 @@ impl BodyEditor {
         self.register_gen
     }
 
+    /// How many times `gcc` (or `gc` over a selection) has been asked
+    /// for — the shell answers it, because only the shell knows which
+    /// comment the enclosing source block wants.
+    #[must_use]
+    pub const fn comment_asked(&self) -> u64 {
+        self.comment_asked
+    }
+
     /// What a bare `p` would paste.
     #[must_use]
     pub fn register_text(&self) -> &str {
@@ -11809,6 +11950,7 @@ impl BodyEditor {
         }
         match self.pending {
             Pending::G(_) => out.push('g'),
+            Pending::Comment => out.push_str("gc"),
             Pending::Obj { around, .. } => out.push(if around { 'a' } else { 'i' }),
             Pending::Find { kind, .. } => out.push(kind),
             Pending::Replace => out.push('r'),
@@ -11842,6 +11984,7 @@ impl BodyEditor {
             Pending::Replace
             | Pending::Register
             | Pending::Mark
+            | Pending::Comment
             | Pending::RecordMacro
             | Pending::RunMacro
             | Pending::SurroundWith { .. }
@@ -12375,6 +12518,8 @@ pub struct ModalApp {
     /// buffer to claim. One field for both prompts that need it, since
     /// "which buffer am I on top of" is one fact.
     prompt_from: Option<ModalSurface>,
+    /// The last `gcc` the buffer reported having been asked for.
+    comment_seen: u64,
     /// Which settings row the assistant screen has selected.
     settings_cursor: usize,
     /// Which peer the next tick dials, so one tick dials one peer.
@@ -12979,6 +13124,7 @@ impl ModalApp {
             link_kind: None,
             link_dest: None,
             prompt_from: None,
+            comment_seen: 0,
             settings_cursor: 0,
             dial_next: 0,
             outline_width: None,
@@ -14002,6 +14148,7 @@ impl ModalApp {
             ModalSurface::EditFile => self.on_editfile_key(shell, key, ctrl, alt, text),
             ModalSurface::Browse => self.on_browse_key(shell, key, ctrl, alt, text),
         }
+        self.answer_comment_ask();
         // Only while a buffer is still open, and only if it was open
         // before: a key that *closed* one has no caret left to rescue.
         if editing && self.surface.is_editor() {
@@ -17800,6 +17947,48 @@ impl ModalApp {
                 self.keep_shared_kill(&after);
             }
         }
+    }
+
+    /// `gcc` is a chord the buffer can recognise and cannot carry out:
+    /// which comment to use is the enclosing source block's business.
+    /// Same seam as the clipboard mirror — the editor counts the asks,
+    /// and whoever knows the answer watches.
+    fn answer_comment_ask(&mut self) {
+        if self.body.comment_asked() == self.comment_seen {
+            return;
+        }
+        self.comment_seen = self.body.comment_asked();
+        self.toggle_line_comment();
+    }
+
+    /// `gcc` / `gc`: comment the lines the operator covers, or take
+    /// the comment back off when they all carry one already.
+    fn toggle_line_comment(&mut self) {
+        if !self.surface.is_editor() {
+            self.say("nothing to comment — open a buffer first");
+            return;
+        }
+        let (first, last) = self.body.selected_lines();
+        let before = self.body.text().to_owned();
+        let Some((text, token, off)) = toggle_comment_lines(&before, first, last) else {
+            return;
+        };
+        let token = token.to_owned();
+        let cursor = self.body.cursor_byte().min(text.len());
+        let visual = matches!(
+            self.body.mode(),
+            EditorMode::Visual | EditorMode::VisualLine
+        );
+        self.body.replace_all(text, cursor);
+        // An operator ends the selection, the way `gc` does in vim.
+        if visual {
+            self.body.to_normal();
+        }
+        self.say(if off {
+            "comment off".to_owned()
+        } else {
+            format!("commented with {token}")
+        });
     }
 
     /// Open the title prompt for one of the new-headline commands.
@@ -22414,6 +22603,7 @@ impl ModalApp {
             // name. All of them ask for a title: `M-RET` used to make a
             // headline called "untitled" without asking, so the only
             // chord that existed was also one you had to undo.
+            "toggle-line-comment" => self.toggle_line_comment(),
             "add-heading"
             | "add-heading-above"
             | "add-todo-heading"
