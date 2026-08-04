@@ -5,6 +5,25 @@
 # shell.) The nix flake check sandbox has no network, so these cargo-based
 # gates live here (registry reachable) rather than in flake `checks`.
 
+# Every gate a change has to pass, in one command.
+#
+# `check` mirrors CI, and CI does not build gpui — so a change to the
+# window can be green four times over and still ship a broken test. That
+# happened on 2026-08-04: a keymap change made `C-Enter` mean something
+# else, and the only test that noticed lives in `gpui-window`, which is
+# not part of `check` and which I was running by hand and forgot.
+#
+# The two clippy passes are both needed and are not the same run: code
+# behind `gpui` is not linted by the `gpui-test` build, and warnings have
+# shipped through that gap before.
+gates:
+    cargo test --workspace -j 4
+    cargo clippy --workspace --all-targets -j 4
+    cargo clippy -p closure-shell-gpui --features gpui-test --all-targets -j 4
+    cargo clippy -p closure-shell-gpui --features gpui --all-targets -j 4
+    cargo test -p closure-shell-gpui --features gpui-test -j 4
+    cargo fmt --all -- --check
+
 # One-command gate: lint + tests (mirrors CI).
 check:
     cargo clippy --workspace --tests -- -D warnings
