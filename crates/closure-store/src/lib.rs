@@ -1845,11 +1845,31 @@ impl Vault {
             return;
         }
         self.disk_reads.set(self.disk_reads.get() + 1);
-        let Ok(src) = fs::read_to_string(path) else {
-            // Gone, or unreadable: the mutation will fail on its own
-            // terms, and inventing an empty document here would be a
-            // worse answer than the error it gets.
-            return;
+        let src = match fs::read_to_string(path) {
+            Ok(src) => src,
+            Err(e) if e.kind() == io::ErrorKind::NotFound => {
+                // Deleted under us. Forgetting it is the whole point:
+                // the write that follows a mutation is the *whole
+                // file* from memory, so a vault that still held this
+                // document would put the file back — you delete a note
+                // in a terminal, toggle a TODO here, and it returns
+                // from the dead. Dropped from the index instead, and
+                // the mutation fails with an unknown id, which is what
+                // a block in a file that is not there actually is.
+                self.documents.remove(path);
+                self.by_id.retain(|_, p| p != path);
+                self.backlinks
+                    .values_mut()
+                    .for_each(|v| v.retain(|(p, _)| p != path));
+                self.backlinks.retain(|_, v| !v.is_empty());
+                self.revision = self.revision.wrapping_add(1);
+                return;
+            }
+            // Unreadable for some other reason — a permission, a device
+            // error. The mutation will fail on its own terms, and
+            // throwing the parsed copy away over a transient fault
+            // would lose more than it saves.
+            Err(_) => return,
         };
         if self
             .documents
