@@ -115,6 +115,9 @@ pub enum AppMode {
     Blocks,
     /// Editing a headline's body in a multi-line buffer.
     EditBody,
+    /// `C-c C-l`: which kind of link this is, then where it goes, then
+    /// what to call it.
+    InsertLink,
     /// Browsing the SCHEDULED/DEADLINE agenda with a cursor.
     Agenda,
     /// Typing a fuzzy query over body lines across the vault.
@@ -305,6 +308,12 @@ pub struct App {
     /// headline.
     plan_target: Option<(String, String)>,
     /// The subtree waiting for a refile target (Q3-V1).
+    /// The link type picked by `insert-link`, while the rest of the
+    /// link is still being typed.
+    link_kind: Option<String>,
+    /// The destination of the pending link, once it is typed — which
+    /// is also what says the description is the step we are on.
+    link_dest: Option<String>,
     refile_source: Option<String>,
     /// The `(subtree, target)` refile the driver should perform.
     refile_request: Option<(String, String)>,
@@ -416,6 +425,8 @@ impl App {
             conflicts: Vec::new(),
             planning_request: None,
             plan_target: None,
+            link_kind: None,
+            link_dest: None,
             refile_source: None,
             refile_request: None,
             archive_request: None,
@@ -1265,6 +1276,7 @@ impl App {
             AppMode::Files => return self.handle_buffer_pane_stroke(stroke, true),
             AppMode::PlanEdit => return self.handle_planedit_stroke(stroke),
             AppMode::RefileTarget => return self.handle_refile_stroke(stroke),
+            AppMode::InsertLink => return self.handle_insert_link_stroke(stroke),
             AppMode::EditBody => return self.handle_editbody_stroke(stroke),
             AppMode::Agenda => return self.handle_agenda_stroke(stroke),
             AppMode::BodySearch => return self.handle_bodysearch_stroke(stroke),
@@ -1949,6 +1961,147 @@ impl App {
         "refile to — type to filter · RET files it · ESC cancels".clone_into(&mut self.status);
     }
 
+    /// `C-c C-l` in the terminal: the same three steps the windowed
+    /// shell asks for, over the same list of link types and the same
+    /// link syntax ([`closure_shell_core::LINK_TYPES`],
+    /// [`closure_shell_core::org_link`]) — a chord must not mean two
+    /// different things depending on which shell you are in.
+    fn start_insert_link(&mut self) {
+        if self.mode != AppMode::EditBody {
+            "open a body first — a link goes into text".clone_into(&mut self.status);
+            return;
+        }
+        self.link_kind = None;
+        self.link_dest = None;
+        self.query.clear();
+        self.result_cursor = 0;
+        self.mode = AppMode::InsertLink;
+        "link type — type to filter · RET picks · ESC cancels".clone_into(&mut self.status);
+    }
+
+    /// The link types still matching what has been typed.
+    #[must_use]
+    pub fn link_type_results(&self) -> Vec<String> {
+        closure_shell_core::LINK_TYPES
+            .iter()
+            .filter(|t| {
+                self.query.is_empty() || closure_query::fuzzy_score(&self.query, t).is_some()
+            })
+            .map(|t| (*t).to_owned())
+            .collect()
+    }
+
+    /// The link type already picked, for the field's prompt.
+    #[must_use]
+    pub fn link_kind(&self) -> &str {
+        self.link_kind.as_deref().unwrap_or_default()
+    }
+
+    /// Whether the field is asking for the description rather than the
+    /// destination.
+    #[must_use]
+    pub const fn link_asks_description(&self) -> bool {
+        self.link_dest.is_some()
+    }
+
+    /// `C-c C-l`'s keys, whichever of its three steps is open.
+    fn handle_insert_link_stroke(&mut self, stroke: &str) {
+        if stroke == "ESC" {
+            self.abandon_link();
+            return;
+        }
+        if self.link_kind.is_none() {
+            self.handle_link_type_stroke(stroke);
+            return;
+        }
+        self.handle_link_field_stroke(stroke);
+    }
+
+    /// The link-type picker's keys.
+    fn handle_link_type_stroke(&mut self, stroke: &str) {
+        let rows = self.link_type_results();
+        match stroke {
+            "<down>" => {
+                self.result_cursor = (self.result_cursor + 1).min(rows.len().saturating_sub(1));
+            }
+            "<up>" => self.result_cursor = self.result_cursor.saturating_sub(1),
+            "RET" | "TAB" => {
+                let Some(kind) = rows.get(self.result_cursor).cloned() else {
+                    "no link type matches".clone_into(&mut self.status);
+                    return;
+                };
+                self.status = format!("{kind} — where does it go? · RET · ESC cancels");
+                self.link_kind = Some(kind);
+                self.query.clear();
+            }
+            "DEL" => {
+                self.query.pop();
+                self.result_cursor = 0;
+            }
+            s => {
+                let mut chars = s.chars();
+                if let (Some(c), None) = (chars.next(), chars.next()) {
+                    self.query.push(c);
+                    self.result_cursor = 0;
+                }
+            }
+        }
+    }
+
+    /// The destination and description keys.
+    fn handle_link_field_stroke(&mut self, stroke: &str) {
+        match stroke {
+            "RET" => {
+                if self.link_dest.is_some() {
+                    self.finish_link();
+                    return;
+                }
+                let dest = self.query.trim().to_owned();
+                if dest.is_empty() {
+                    "a link needs somewhere to go".clone_into(&mut self.status);
+                    return;
+                }
+                self.link_dest = Some(dest);
+                self.query.clear();
+                "what to call it — RET, or empty to show the link itself"
+                    .clone_into(&mut self.status);
+            }
+            "DEL" => {
+                self.query.pop();
+            }
+            "SPC" => self.query.push(' '),
+            s => {
+                let mut chars = s.chars();
+                if let (Some(c), None) = (chars.next(), chars.next()) {
+                    self.query.push(c);
+                }
+            }
+        }
+    }
+
+    /// Write the finished link into the body at the caret.
+    fn finish_link(&mut self) {
+        let (Some(kind), Some(dest)) = (self.link_kind.take(), self.link_dest.take()) else {
+            self.abandon_link();
+            return;
+        };
+        let link = closure_shell_core::org_link(&kind, &dest, self.query.trim());
+        self.body.insert_str(&link);
+        self.query.clear();
+        self.mode = AppMode::EditBody;
+        self.status = format!("inserted {link}");
+    }
+
+    /// Leave `C-c C-l` without writing anything.
+    fn abandon_link(&mut self) {
+        self.link_kind = None;
+        self.link_dest = None;
+        self.query.clear();
+        self.result_cursor = 0;
+        self.mode = AppMode::EditBody;
+        "no link".clone_into(&mut self.status);
+    }
+
     /// The refile picker's keys.
     fn handle_refile_stroke(&mut self, stroke: &str) {
         let rows = self.headline_results();
@@ -2054,6 +2207,7 @@ impl App {
                 }
             }
             "refile" => self.start_refile(),
+            "insert-link" => self.start_insert_link(),
             "archive" => {
                 if let Some(id) = self.current_headline_id() {
                     self.archive_request = Some(id);
@@ -4138,6 +4292,38 @@ fn finder_overlay(app: &App) -> Option<(String, Vec<String>)> {
     }
 }
 
+/// The refile picker's overlay: the filter, and the headlines that
+/// still match it.
+fn refile_overlay(app: &App) -> (String, Vec<String>) {
+    (
+        format!("refile to: {}▏", app.query()),
+        app.headline_results()
+            .iter()
+            .map(|(p, t)| format!("{t}    ({})", p.display()))
+            .collect(),
+    )
+}
+
+/// `C-c C-l`'s overlay: the list of link types until one is picked,
+/// then the field for the destination and the description.
+fn link_overlay(app: &App) -> (String, Vec<String>) {
+    if app.link_kind().is_empty() {
+        return (
+            format!("link type: {}▏", app.query()),
+            app.link_type_results(),
+        );
+    }
+    let step = if app.link_asks_description() {
+        " description"
+    } else {
+        ""
+    };
+    (
+        format!("{}{step}: {}▏", app.link_kind(), app.query()),
+        Vec::new(),
+    )
+}
+
 fn overlay_content(app: &App) -> Option<(String, Vec<String>)> {
     match app.mode() {
         AppMode::Search | AppMode::SearchHeadlines => finder_overlay(app),
@@ -4232,13 +4418,8 @@ fn overlay_content(app: &App) -> Option<(String, Vec<String>)> {
         )),
         AppMode::Buffers | AppMode::Files => buffer_overlay(app),
         AppMode::PlanEdit => Some((format!("date: {}▏", app.query()), Vec::new())),
-        AppMode::RefileTarget => Some((
-            format!("refile to: {}▏", app.query()),
-            app.headline_results()
-                .iter()
-                .map(|(p, t)| format!("{t}    ({})", p.display()))
-                .collect(),
-        )),
+        AppMode::RefileTarget => Some(refile_overlay(app)),
+        AppMode::InsertLink => Some(link_overlay(app)),
         AppMode::Browse | AppMode::FileView => None,
     }
 }

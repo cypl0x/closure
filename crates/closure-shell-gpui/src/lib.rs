@@ -1526,6 +1526,9 @@ pub const fn accepts_paste(surface: ModalSurface, insert: bool) -> bool {
         // The refile picker filters by typing, like the others.
         | ModalSurface::Refile
         | ModalSurface::TagPick
+        // Both halves of `C-c C-l` are fields: a pasted URL is the
+        // whole point of the destination step.
+        | ModalSurface::InsertLink
         // The message log filters by typing too, though nothing in it
         // can be edited.
         | ModalSurface::Messages
@@ -4115,6 +4118,26 @@ impl GpuiView {
                 format!("{} — {}", grid.field, grid.selected)
             }
             ModalSurface::Refile => format!("refile to — {}▏", self.app.query()),
+            ModalSurface::InsertLink => {
+                if self.app.link_kind().is_empty() {
+                    format!(
+                        "link type — {}▏ · TAB or RET picks · Esc cancels",
+                        self.app.query()
+                    )
+                } else if self.app.link_asks_description() {
+                    format!(
+                        "{} — what to call it: {}▏ · RET, or empty for the link itself",
+                        self.app.link_kind(),
+                        self.app.field_buffer()
+                    )
+                } else {
+                    format!(
+                        "{}{}▏ · TAB completes · RET · Esc cancels",
+                        self.app.link_kind(),
+                        self.app.field_buffer()
+                    )
+                }
+            }
             ModalSurface::TagPick => {
                 format!("tags — {}▏ · SPC toggles · RET writes", self.app.query())
             }
@@ -4815,6 +4838,9 @@ impl GpuiView {
             ),
             ModalSurface::DatePick => pane.child(self.date_pane(co, cx)),
             ModalSurface::Refile => pane.children(self.refile_pane(co, cx)),
+            // Never reached: `C-c C-l` floats over the buffer it
+            // writes into, so what is beneath it is that buffer.
+            ModalSurface::InsertLink => pane,
             ModalSurface::TagPick => pane.children(self.tag_pane(co, cx)),
             ModalSurface::Buffers => pane.children(self.buffer_pane(co, cx)),
             ModalSurface::Files => pane.children(self.file_pane(co, cx)),

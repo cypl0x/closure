@@ -28,7 +28,8 @@ use closure_shell_gpui::{body_row_h, visual_window};
 fn tall_note() -> String {
     let mut org = String::from("* Note\n:PROPERTIES:\n:ID: 01ROWH00000000000000000A\n:END:\n");
     for i in 0..60 {
-        org.push_str(&format!("line {i} of the body\n"));
+        use std::fmt::Write as _;
+        let _ = writeln!(org, "line {i} of the body");
     }
     org.push_str("[[file:assets/one.png]]\n");
     org.push_str("more text after the picture\n");

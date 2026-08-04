@@ -4013,6 +4013,12 @@ const PALETTE_COMMANDS: &[(&str, &str, &str, &str)] = &[
         "Move this subtree under another headline",
     ),
     (
+        "insert-link",
+        "insert-link",
+        "Edit",
+        "Insert an org link, picking its type and destination",
+    ),
+    (
         "edit-body",
         "edit-body",
         "Edit",
@@ -8516,6 +8522,12 @@ pub enum ModalSurface {
     /// The tag picker: every tag the vault uses, ticked where this
     /// headline carries it (Q3-V6).
     TagPick,
+    /// `C-c C-l`: which kind of link this is, then where it goes, then
+    /// what to call it. One surface rather than three, because the step
+    /// is already written down — the type picked, and the destination
+    /// settled — and a surface that repeats it would be a second owner
+    /// of the same fact.
+    InsertLink,
 }
 
 /// Which of the two shapes of the shell you are working in.
@@ -8579,6 +8591,7 @@ impl ModalSurface {
                 | Self::Ex
                 | Self::Sync
                 | Self::Llm
+                | Self::InsertLink
         )
     }
 
@@ -12325,6 +12338,15 @@ pub struct ModalApp {
     /// surfaces (tags: space-separated; property: `key value`).
     field_target: Option<String>,
     field_buf: LineInput,
+    /// The link type picked in `insert-link`, while the destination
+    /// and the description are still being typed.
+    link_kind: Option<String>,
+    /// The destination of the pending link, once it has been typed —
+    /// which is also what says the description is the step we are on.
+    link_dest: Option<String>,
+    /// The buffer `insert-link` came from, and goes back to whether it
+    /// finishes or is abandoned.
+    link_from: ModalSurface,
     /// Which settings row the assistant screen has selected.
     settings_cursor: usize,
     /// Which peer the next tick dials, so one tick dials one peer.
@@ -12686,6 +12708,58 @@ pub struct TagRow {
     pub matches_filter: bool,
 }
 
+/// Every kind of link `insert-link` can make.
+///
+/// Org's own `C-c C-l` menu is longer, but most of what pads it out is
+/// Emacs' furniture: `elisp:`, `help:`, `var:`, `face:` and `doom:`
+/// name things that exist inside a running Emacs and nowhere else.
+/// What is left is what a link can mean in a vault of plain files —
+/// another note, a file, something on the web, someone's mailbox — and
+/// offering only those keeps the list short enough to read at a glance.
+///
+/// Both shells offer the same list, from here, because a chord that
+/// means different things in the terminal and the window is worse than
+/// one that is missing from one of them.
+pub const LINK_TYPES: &[&str] = &[
+    "id:",
+    "file:",
+    "https:",
+    "http:",
+    "mailto:",
+    "attachment:",
+    "ftp:",
+    "news:",
+];
+
+/// One org link, written the way org writes it.
+///
+/// `[[dest][]]` is a link with an *empty* description, and org renders
+/// that as nothing at all — a link you cannot see and cannot click. So
+/// no description means the bare one-part form, not the two-part one
+/// with a hole in it.
+#[must_use]
+pub fn org_link(kind: &str, dest: &str, description: &str) -> String {
+    let description = description.trim();
+    if description.is_empty() {
+        format!("[[{kind}{dest}]]")
+    } else {
+        format!("[[{kind}{dest}][{description}]]")
+    }
+}
+
+/// One thing the destination field can be completed to.
+///
+/// The two halves are genuinely different facts and neither can be
+/// derived from the other: an `id:` link carries a ULID, and the only
+/// way to find the right one is by the title it belongs to.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LinkCompletion {
+    /// What goes into the link after the type.
+    pub value: String,
+    /// What to show while choosing it.
+    pub label: String,
+}
+
 /// One candidate refile target ([`ModalApp::refile_rows`]).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RefileRow {
@@ -12874,6 +12948,9 @@ impl ModalApp {
             link_target: None,
             field_target: None,
             field_buf: LineInput::default(),
+            link_kind: None,
+            link_dest: None,
+            link_from: ModalSurface::EditBody,
             settings_cursor: 0,
             dial_next: 0,
             outline_width: None,
@@ -13358,6 +13435,10 @@ impl ModalApp {
     pub fn surface_beneath(&self) -> ModalSurface {
         match self.surface {
             ModalSurface::Palette => self.palette_return.unwrap_or_else(|| self.home_surface()),
+            // `C-c C-l` floats over the buffer, because the whole
+            // question it asks is "where in this text", and a menu that
+            // replaced the text would take the answer away with it.
+            ModalSurface::InsertLink => self.link_from,
             // The `:` line is a bar at the bottom of whatever you are
             // in — vim's is, Emacs' minibuffer is, and the palette
             // above already is. It used to have nothing underneath it,
@@ -13401,6 +13482,7 @@ impl ModalApp {
                 | ModalSurface::UndoHistory
                 | ModalSurface::DbView
                 | ModalSurface::Graph
+                | ModalSurface::InsertLink
         )
     }
 
@@ -13872,6 +13954,7 @@ impl ModalApp {
                     self.field_buf.key(key, ctrl, alt, text);
                 }
             },
+            ModalSurface::InsertLink => self.on_insert_link_key(shell, key, ctrl, alt, text),
             ModalSurface::DatePick => self.on_datepick_key(shell, key, text),
             ModalSurface::Refile => self.on_refile_key(shell, key, ctrl, alt, text),
             ModalSurface::TagPick => self.on_tagpick_key(shell, key, ctrl, alt, text),
@@ -13915,6 +13998,9 @@ impl ModalApp {
         text: Option<char>,
     ) {
         if self.leader_key(shell, key, ctrl, alt, text) {
+            return;
+        }
+        if self.org_accept_chord(shell, key, ctrl, alt, text) {
             return;
         }
         if key == "enter" && ctrl {
@@ -14039,6 +14125,9 @@ impl ModalApp {
             return;
         }
         if self.window_chord(shell, key, ctrl, alt, text) {
+            return;
+        }
+        if self.org_accept_chord(shell, key, ctrl, alt, text) {
             return;
         }
         if key == "enter" && ctrl {
@@ -16300,6 +16389,231 @@ impl ModalApp {
         }
     }
 
+    // ---- C-c C-l: a link, the way org offers to make one -----------
+
+    /// The link types the picker is showing — every one of them until
+    /// something is typed, then the ones that match.
+    #[must_use]
+    pub fn link_types(&self) -> Vec<String> {
+        let filter = if self.link_kind.is_none() {
+            self.field_buf.text()
+        } else {
+            ""
+        };
+        LINK_TYPES
+            .iter()
+            .filter(|t| filter.is_empty() || closure_query::fuzzy_score(filter, t).is_some())
+            .map(|t| (*t).to_owned())
+            .collect()
+    }
+
+    /// What the destination field can be completed to, for the kinds
+    /// of link whose destinations live in this vault.
+    ///
+    /// This is the reason `id:` is worth offering at all: nobody
+    /// remembers a ULID, they remember what the note is called. `http:`
+    /// and the rest get nothing, because the vault has no opinion
+    /// about the web.
+    #[must_use]
+    pub fn link_completions(&self, shell: &Shell) -> Vec<LinkCompletion> {
+        let Some(kind) = self.link_kind.as_deref() else {
+            return Vec::new();
+        };
+        if self.link_dest.is_some() {
+            // Past the destination: the description is prose, and
+            // completing prose against filenames would be noise.
+            return Vec::new();
+        }
+        let all: Vec<LinkCompletion> = match kind {
+            "id:" => shell
+                .vault
+                .iter()
+                .flat_map(|(path, doc)| {
+                    let shown = vault_relative(shell, path).display().to_string();
+                    doc.all_headlines().map(move |h| LinkCompletion {
+                        value: h.id().to_string(),
+                        label: format!("{} — {shown}", h.title()),
+                    })
+                })
+                .collect(),
+            "file:" | "attachment:" => shell
+                .vault
+                .iter()
+                .map(|(path, _)| {
+                    let shown = vault_relative(shell, path).display().to_string();
+                    LinkCompletion {
+                        value: shown.clone(),
+                        label: shown,
+                    }
+                })
+                .collect(),
+            _ => Vec::new(),
+        };
+        let typed = self.field_buf.text();
+        all.into_iter()
+            .filter(|c| typed.is_empty() || closure_query::fuzzy_score(typed, &c.label).is_some())
+            .collect()
+    }
+
+    /// Which of the two things the link field is asking for.
+    #[must_use]
+    pub const fn link_asks_description(&self) -> bool {
+        self.link_dest.is_some()
+    }
+
+    /// The link type already picked, while the rest is being typed —
+    /// what a shell puts in front of the field so you can see what you
+    /// are completing.
+    #[must_use]
+    pub fn link_kind(&self) -> &str {
+        self.link_kind.as_deref().unwrap_or_default()
+    }
+
+    /// Start `C-c C-l`.
+    fn open_insert_link(&mut self) {
+        if !self.surface.is_editor() {
+            self.say("open a body first — a link goes into text");
+            return;
+        }
+        self.link_from = self.surface;
+        self.link_kind = None;
+        self.link_dest = None;
+        self.field_buf.clear();
+        self.selected = 0;
+        self.surface = ModalSurface::InsertLink;
+        self.say("link type — type to filter · RET picks · Esc cancels");
+    }
+
+    /// Keys for `C-c C-l`, whichever of its three steps is open.
+    fn on_insert_link_key(
+        &mut self,
+        shell: &Shell,
+        key: &str,
+        ctrl: bool,
+        alt: bool,
+        text: Option<char>,
+    ) {
+        if key == "escape" {
+            self.abandon_link();
+            return;
+        }
+        if self.link_kind.is_none() {
+            self.on_link_type_key(key, ctrl, alt, text);
+            return;
+        }
+        match key {
+            "tab" => {
+                let Some(pick) = self.link_completions(shell).into_iter().nth(self.selected) else {
+                    self.say("nothing here to complete");
+                    return;
+                };
+                self.field_buf.set_text(&pick.value);
+            }
+            "enter" => {
+                if self.link_dest.is_some() {
+                    self.finish_link();
+                    return;
+                }
+                // The highlighted candidate, where there is one: the
+                // list is the answer to the question `id:` asks, and
+                // Enter used to read the empty field beside it — so
+                // the one link type that needs the picker was the one
+                // you could not finish without knowing the ULID.
+                let dest = self
+                    .link_completions(shell)
+                    .into_iter()
+                    .nth(self.selected)
+                    .map_or_else(
+                        || self.field_buf.text().trim().to_owned(),
+                        |pick| pick.value,
+                    );
+                if dest.is_empty() {
+                    self.say("a link needs somewhere to go");
+                    return;
+                }
+                self.link_dest = Some(dest);
+                self.field_buf.clear();
+                self.selected = 0;
+                self.say("what to call it — RET, or empty to show the link itself");
+            }
+            _ => {
+                let last = self.link_completions(shell).len();
+                if let Some(step) = list_step(key, ctrl) {
+                    self.selected = step_wrapping(self.selected, last, step);
+                    return;
+                }
+                let before = self.field_buf.text().to_owned();
+                let mut kill = self.shared_kill();
+                line_key(&mut self.field_buf, &mut kill, key, ctrl, alt, text);
+                self.keep_shared_kill(&kill);
+                if self.field_buf.text() != before {
+                    self.selected = 0;
+                }
+            }
+        }
+    }
+
+    /// The first step: picking the type, which filters as you type.
+    fn on_link_type_key(&mut self, key: &str, ctrl: bool, alt: bool, text: Option<char>) {
+        let rows = self.link_types();
+        // TAB completes the type and RET picks it — org's own "Type TAB
+        // to complete link type, then RET to complete destination",
+        // where both land in the same place because there is only ever
+        // one thing to do here.
+        if key == "enter" || key == "tab" {
+            let Some(kind) = rows.get(self.selected).cloned() else {
+                self.say("no link type matches");
+                return;
+            };
+            self.field_buf.clear();
+            self.say(format!("{kind} — where does it go? · RET · Esc cancels"));
+            self.link_kind = Some(kind);
+            return;
+        }
+        if let Some(step) = list_step(key, ctrl) {
+            self.selected = step_wrapping(self.selected, rows.len(), step);
+            return;
+        }
+        let before = self.field_buf.text().to_owned();
+        let mut kill = self.shared_kill();
+        line_key(&mut self.field_buf, &mut kill, key, ctrl, alt, text);
+        self.keep_shared_kill(&kill);
+        if self.field_buf.text() != before {
+            self.selected = 0;
+        }
+    }
+
+    /// Pick the link type on row `i` — what a click on it does.
+    pub fn link_type_click(&mut self, i: usize) {
+        if self.surface != ModalSurface::InsertLink || self.link_kind.is_some() {
+            return;
+        }
+        self.selected = i;
+        self.on_link_type_key("enter", false, false, None);
+    }
+
+    /// Write the finished link into the buffer at the caret.
+    fn finish_link(&mut self) {
+        let (Some(kind), Some(dest)) = (self.link_kind.take(), self.link_dest.take()) else {
+            self.abandon_link();
+            return;
+        };
+        let link = org_link(&kind, &dest, self.field_buf.text().trim());
+        self.body.insert_str(&link);
+        self.field_buf.clear();
+        self.surface = self.link_from;
+        self.say(format!("inserted {link}"));
+    }
+
+    /// Leave without writing anything.
+    fn abandon_link(&mut self) {
+        self.link_kind = None;
+        self.link_dest = None;
+        self.field_buf.clear();
+        self.surface = self.link_from;
+        self.say("no link");
+    }
+
     // ---- Q3-V5: cycling keywords, priorities and checkboxes --------
 
     /// The vault's typed config, or the defaults when it has none.
@@ -18200,7 +18514,7 @@ impl ModalApp {
         alt: bool,
         text: Option<char>,
     ) {
-        if self.org_accept_chord(shell, key, ctrl, alt) {
+        if self.org_accept_chord(shell, key, ctrl, alt, text) {
             return;
         }
         // `RET` on a line that links a picture opens it as large as the
@@ -18504,13 +18818,34 @@ impl ModalApp {
     /// single stroke. `C-c` followed by anything nobody bound does
     /// nothing at all — swallowing the second key too would eat a
     /// keystroke for a chord that does not exist.
-    fn org_accept_chord(&mut self, shell: &mut Shell, key: &str, ctrl: bool, alt: bool) -> bool {
+    fn org_accept_chord(
+        &mut self,
+        shell: &mut Shell,
+        key: &str,
+        ctrl: bool,
+        alt: bool,
+        text: Option<char>,
+    ) -> bool {
         if self.pending_body == Some(BodyPrefix::OrgAccept) {
             self.pending_body = None;
             match (key, ctrl) {
                 ("c", true) => self.run_command(shell, "commit-edit"),
                 ("k", true) => self.run_command(shell, "discard-edit"),
-                _ => {}
+                // Anything else after `C-c` goes to the mode's keymap.
+                // `C-c` used to be a two-chord dead end that knew only
+                // its own two endings, so every other `C-c` chord the
+                // keymap advertises — `C-c C-l` first among them — was
+                // swallowed in the one place org users type it. What
+                // which-key shows is what the buffer answers to (I4).
+                _ => {
+                    if let Some(stroke) = modal_stroke(key, ctrl, alt, text)
+                        && let Some(cmd) = self
+                            .command_for(&format!("C-c {stroke}"))
+                            .map(ToOwned::to_owned)
+                    {
+                        self.run_command(shell, &cmd);
+                    }
+                }
             }
             return true;
         }
@@ -19042,7 +19377,8 @@ impl ModalApp {
             | ModalSurface::AddSibling
             | ModalSurface::TagsEdit
             | ModalSurface::PropertyEdit
-            | ModalSurface::Palette => Some(&mut self.field_buf),
+            | ModalSurface::Palette
+            | ModalSurface::InsertLink => Some(&mut self.field_buf),
             ModalSurface::Search
             | ModalSurface::BodySearch
             | ModalSurface::Buffers
@@ -19250,6 +19586,44 @@ impl ModalApp {
         })
     }
 
+    /// `C-c C-l`'s three steps as picker rows: the types, then what
+    /// the destination can be completed to, then nothing — a
+    /// description is prose and has no candidates.
+    fn link_pick_rows(&self, shell: &Shell) -> (&'static str, &'static str, Vec<PickRow>) {
+        let row = |label: String, trailing: String| PickRow {
+            label,
+            detail: String::new(),
+            trailing,
+            matches: Vec::new(),
+            current: false,
+        };
+        if self.link_kind.is_none() {
+            return (
+                "link type",
+                "TAB or RET picks \u{b7} Esc cancels",
+                self.link_types()
+                    .into_iter()
+                    .map(|kind| row(kind, String::new()))
+                    .collect(),
+            );
+        }
+        if self.link_dest.is_some() {
+            return (
+                "what to call it",
+                "RET \u{b7} empty shows the link itself",
+                Vec::new(),
+            );
+        }
+        (
+            "where it goes",
+            "TAB completes \u{b7} RET \u{b7} Esc cancels",
+            self.link_completions(shell)
+                .into_iter()
+                .map(|c| row(c.label, c.value))
+                .collect(),
+        )
+    }
+
     /// Every headline in the vault, as picker rows.
     ///
     /// The db-view's four columns become the picker's three fields:
@@ -19391,6 +19765,7 @@ impl ModalApp {
                 self.buffer_pick_rows(shell),
             ),
             ModalSurface::Files => ("files", "RET opens", self.file_pick_rows(shell)),
+            ModalSurface::InsertLink => self.link_pick_rows(shell),
             ModalSurface::Headlines => (
                 "headlines in this file",
                 "RET goes to it",
@@ -19530,6 +19905,7 @@ impl ModalApp {
             ModalSurface::Ex => "ex",
             ModalSurface::Llm => "llm",
             ModalSurface::Refile => "refile",
+            ModalSurface::InsertLink => "link",
             _ => return None,
         })
     }
@@ -19542,7 +19918,8 @@ impl ModalApp {
             | ModalSurface::AddSibling
             | ModalSurface::TagsEdit
             | ModalSurface::PropertyEdit
-            | ModalSurface::Palette => Some(&mut self.field_buf),
+            | ModalSurface::Palette
+            | ModalSurface::InsertLink => Some(&mut self.field_buf),
             ModalSurface::Search
             | ModalSurface::BodySearch
             | ModalSurface::Buffers
@@ -20052,7 +20429,10 @@ impl ModalApp {
             | ModalSurface::AddSibling
             | ModalSurface::TagsEdit
             | ModalSurface::PropertyEdit
-            | ModalSurface::Palette => Some(&self.field_buf),
+            | ModalSurface::Palette
+            // All three of `C-c C-l`'s steps type into one field: the
+            // step is which of them is open, not which buffer it uses.
+            | ModalSurface::InsertLink => Some(&self.field_buf),
             ModalSurface::Search
             | ModalSurface::BodySearch
             | ModalSurface::Buffers
@@ -21986,6 +22366,7 @@ impl ModalApp {
                 }
             }
             "refile" => self.open_refile(shell),
+            "insert-link" => self.open_insert_link(),
             "tag-picker" => self.open_tag_picker(shell),
             "zoom-in" | "zoom-out" | "zoom-reset" => {
                 self.zoom_command(cmd);
