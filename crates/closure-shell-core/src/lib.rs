@@ -18014,6 +18014,30 @@ impl ModalApp {
         }
     }
 
+    /// Why a language was refused, and what to do about it.
+    ///
+    /// One builder rather than three copies of the sentence: the two
+    /// block paths and `:!` all refuse for the same reason and should
+    /// not drift apart. It also carries the upgrade notice — a vault
+    /// whose own `config.org` still says `eval_trust = shell` is
+    /// somebody looking at a line that used to work, and the worst
+    /// answer is to let them edit it again.
+    fn trust_refusal(shell: &Shell, lang: &str) -> String {
+        let base = format!(
+            "`{lang}` is not trusted here — `M-x trust-language {lang}` grants it, \
+             in your own config rather than the vault's"
+        );
+        if closure_store::vault_claims_trust(shell.vault.root()) {
+            format!(
+                "{base}. This vault's own config.org still has `eval_trust`; \
+                 it no longer grants anything, because a vault you were sent \
+                 must not authorise its own code"
+            )
+        } else {
+            base
+        }
+    }
+
     /// Grant this vault permission to run one language, in the user's
     /// own config.
     ///
@@ -20627,11 +20651,7 @@ impl ModalApp {
                 continue;
             };
             if !closure_eval::eval_allowed(&trust, &block.lang) {
-                self.say(format!(
-                    "`{lang}` is not trusted here — `M-x trust-language {lang}` \
-                     grants it, in your own config rather than the vault's",
-                    lang = block.lang
-                ));
+                self.say(Self::trust_refusal(shell, &block.lang));
                 return;
             }
             if closure_eval::diagram_path(&cache, kind, &block.src, self.ink).is_file() {
@@ -21064,8 +21084,8 @@ impl ModalApp {
         let trust = shell.vault.eval_trust();
         if !closure_eval::eval_allowed(&trust, "shell") {
             self.say(format!(
-                "refused to run `{cmd}` — `M-x trust-language shell` grants \
-                 it, in your own config rather than the vault's"
+                "refused to run `{cmd}` — {}",
+                Self::trust_refusal(shell, "shell")
             ));
             return;
         }
@@ -23368,11 +23388,7 @@ impl ModalApp {
             // Naming the concept is not naming the fix: the companion
             // report is somebody who could not work out the remedy
             // from a refusal that mentioned `eval_trust` and stopped.
-            self.say(format!(
-                "`{lang}` is not trusted here — `M-x trust-language {lang}` \
-                 grants it, in your own config rather than the vault's",
-                lang = block.lang
-            ));
+            self.say(Self::trust_refusal(shell, &block.lang));
             return;
         }
         let Some(backend) = closure_eval::backend_for(&block.lang) else {

@@ -22,7 +22,7 @@ fn fixture() -> (tempfile::TempDir, tempfile::TempDir, Vault) {
     let dir = tempfile::tempdir().unwrap();
     std::fs::write(
         dir.path().join("config.org"),
-        "#+TITLE: config\n: eval_trust = shell, python\n",
+        "#+TITLE: config\n\n#+BEGIN_SRC closure-config\neval_trust = shell, python\n#+END_SRC\n",
     )
     .unwrap();
     std::fs::write(
@@ -140,4 +140,41 @@ fn the_vault_reads_the_store_and_not_its_own_config() {
         "Vault::eval_trust is still reading the vault: {:?}",
         vault.eval_trust()
     );
+}
+
+#[test]
+fn a_vault_that_still_has_the_old_key_is_worth_saying_so() {
+    // The upgrade path. Someone with `eval_trust = shell` in their
+    // vault's config.org, which used to work, now gets a refusal — and
+    // the honest thing is to say that the line they are looking at is
+    // the line that stopped counting, rather than let them edit it
+    // again and wonder.
+    let (_home, dir, _vault) = fixture();
+    assert!(
+        closure_store::vault_claims_trust(dir.path()),
+        "the leftover key was not noticed"
+    );
+}
+
+#[test]
+fn a_vault_with_no_such_line_says_nothing() {
+    let home = tempfile::tempdir().unwrap();
+    let dir = tempfile::tempdir().unwrap();
+    let _ = home;
+    std::fs::write(dir.path().join("config.org"), "#+TITLE: config\n").unwrap();
+    assert!(!closure_store::vault_claims_trust(dir.path()));
+}
+
+#[test]
+fn an_empty_eval_trust_is_not_a_claim() {
+    // The generated default config carries `eval_trust = ` with
+    // nothing after it. That is not somebody's setting going quiet; it
+    // is the file saying the same thing the new store says.
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(
+        dir.path().join("config.org"),
+        "#+BEGIN_SRC closure-config\neval_trust = \n#+END_SRC\n",
+    )
+    .unwrap();
+    assert!(!closure_store::vault_claims_trust(dir.path()));
 }

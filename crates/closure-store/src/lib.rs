@@ -351,6 +351,22 @@ pub fn grant_eval_trust_at(store: &Path, vault: &Path, lang: &str) -> Result<(),
     std::fs::write(store, text).map_err(VaultError::Io)
 }
 
+/// Whether this vault's own `config.org` still carries a non-empty
+/// `eval_trust`.
+///
+/// Not a permission — it grants nothing and never will. It is the
+/// upgrade path: that line used to work, and someone looking at it
+/// while a block is refused deserves to be told it is the line that
+/// stopped counting rather than edit it again and wonder.
+///
+/// An *empty* `eval_trust` is not a claim: the generated default
+/// config carries one, and it says the same thing the store says.
+#[must_use]
+pub fn vault_claims_trust(vault: &Path) -> bool {
+    let path = vault.join("config.org");
+    closure_config::Config::from_path(&path).is_ok_and(|c| !c.eval_trust.is_empty())
+}
+
 /// Add `lang` to the user's trust store for `vault`.
 ///
 /// # Errors

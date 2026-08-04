@@ -3920,6 +3920,11 @@ fn cmd_eval(path: &Path, write: bool, selector: Option<&str>) -> Result<(), Stri
                 .ok_or_else(|| format!("no code block named `{s}`"))?
         }),
     };
+    // Where the grant would be keyed, and whether the vault is still
+    // carrying the key that used to work — so the refusal can name the
+    // exact command and say what happened to the old line.
+    let dir = path.parent().unwrap_or_else(|| Path::new("."));
+    let leftover = closure_store::vault_claims_trust(dir);
     let mut ran = 0usize;
     let mut refused = 0usize;
     let mut results: Vec<(usize, String)> = Vec::new();
@@ -3934,9 +3939,16 @@ fn cmd_eval(path: &Path, write: bool, selector: Option<&str>) -> Result<(), Stri
         if !closure_eval::eval_allowed(&trust, lang) {
             eprintln!(
                 "---- block #{i} blocked: `{lang}` is not trusted for this \
-                 vault (`closure trust {lang}` grants it, in your own \
-                 config rather than the vault's) ----"
+                 vault (`closure trust {} {lang}` grants it, in your own \
+                 config rather than the vault's) ----",
+                dir.display()
             );
+            if leftover {
+                eprintln!(
+                    "     (this vault's own config.org still has `eval_trust`; \
+                     it no longer grants anything)"
+                );
+            }
             refused += 1;
             continue;
         }

@@ -156,3 +156,36 @@ fn the_results_replace_the_previous_run_rather_than_stacking() {
     let n = app.body_buffer().matches("#+RESULTS:").count();
     assert_eq!(n, 1, "{} results blocks: {:?}", n, app.body_buffer());
 }
+
+#[test]
+fn a_leftover_eval_trust_in_the_vault_is_named_as_leftover() {
+    // The upgrade path for the 2026-08-04 trust move: someone whose
+    // vault config still says `eval_trust = shell` is looking at a line
+    // that used to work. Telling them only "not trusted" invites them
+    // to edit it again.
+    let dir = tempfile::tempdir().expect("tmp");
+    let home = tempfile::tempdir().expect("tmp");
+    fs::write(dir.path().join("notes.org"), NOTES).expect("write");
+    fs::write(
+        dir.path().join("config.org"),
+        "#+BEGIN_SRC closure-config\neval_trust = shell\n#+END_SRC\n",
+    )
+    .expect("write");
+    let vault = Vault::open(dir.path())
+        .expect("open")
+        .with_trust_store(&home.path().join("trust.org"));
+    let mut app = ModalApp::new(InputMode::Doom);
+    let mut shell = Shell::new(vault);
+    assert!(app.select_by_id(&shell, "01HQBABEL00000000000001"));
+    app.run(&mut shell, "edit-body");
+    let line = line_of(&app, "echo hello-from-babel");
+    app.body_click(line, 0);
+    accept(&mut app, &mut shell);
+
+    let msg = app.status().to_owned();
+    assert!(msg.contains("trust-language"), "the remedy: {msg}");
+    assert!(
+        msg.contains("no longer grants"),
+        "it does not say the old line is dead: {msg}"
+    );
+}
