@@ -1987,14 +1987,7 @@ pub fn run(vault_path: &Path) -> Result<(), String> {
                     // …and the note the last session was in is where
                     // this one starts.
                     view.app.restore_last_place(&view.shell);
-                    if let Some(w) = view.app.outline_width() {
-                        // A pane is a few hundred pixels wide; the
-                        // clamp bounds it long before f32 runs out of
-                        // mantissa.
-                        #[expect(clippy::cast_precision_loss, reason = "clamped to a pixel range")]
-                        let w = w as f32;
-                        view.outline_w = w.clamp(OUTLINE_W_MIN, OUTLINE_W_MAX);
-                    }
+                    view.restore_outline_width();
                     view
                 })
             },
@@ -2698,6 +2691,19 @@ impl GpuiView {
     #[must_use]
     pub const fn which_key_open(&self) -> bool {
         self.app.which_key_open()
+    }
+
+    /// Put the outline pane back to the width the last session left.
+    ///
+    /// A pane is a few hundred pixels wide, so the clamp bounds it
+    /// long before `f32` runs out of mantissa.
+    const fn restore_outline_width(&mut self) {
+        let Some(w) = self.app.outline_width() else {
+            return;
+        };
+        #[expect(clippy::cast_precision_loss, reason = "clamped to a pixel range")]
+        let w = w as f32;
+        self.outline_w = w.clamp(OUTLINE_W_MIN, OUTLINE_W_MAX);
     }
 
     /// Where this window's vault lives — what a test needs to put a
