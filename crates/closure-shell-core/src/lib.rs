@@ -12331,6 +12331,13 @@ pub struct ModalApp {
     dial_next: usize,
     /// How wide the outline pane is, once something has said.
     outline_width: Option<u32>,
+    /// Where the read-only panes (Jobs, Journal, Agenda…) are looking.
+    ///
+    /// Their own, not the outline's. They used `selected`, so walking a
+    /// pane moved the outline underneath it and leaving reset the
+    /// outline to the top — "selection at top of outline headings list
+    /// when switching from any element to the Jobs panel and back".
+    pane_cursor: usize,
     /// The setting whose value prompt is open, if one is.
     editing_setting: Option<&'static str>,
     /// Which of the four new-headline chords opened the title prompt.
@@ -12870,6 +12877,7 @@ impl ModalApp {
             settings_cursor: 0,
             dial_next: 0,
             outline_width: None,
+            pane_cursor: 0,
             editing_setting: None,
             new_heading: NewHeading {
                 child: false,
@@ -17219,14 +17227,24 @@ impl ModalApp {
     /// what is actually painted.
     fn on_pane_key(&mut self, key: &str, len: usize) {
         match key {
-            "j" | "down" => self.selected = (self.selected + 1).min(len.saturating_sub(1)),
-            "k" | "up" => self.selected = self.selected.saturating_sub(1),
+            "j" | "down" => {
+                self.pane_cursor = (self.pane_cursor + 1).min(len.saturating_sub(1));
+            }
+            "k" | "up" => self.pane_cursor = self.pane_cursor.saturating_sub(1),
             "escape" | "q" => {
-                self.selected = 0;
+                // The pane's cursor is reset, not the outline's. Where
+                // you were in your notes is not the pane's to spend.
+                self.pane_cursor = 0;
                 self.go_home();
             }
             _ => {}
         }
+    }
+
+    /// Where the read-only panes are looking.
+    #[must_use]
+    pub const fn pane_cursor(&self) -> usize {
+        self.pane_cursor
     }
 
     /// The body-search overlay: typing narrows, Enter jumps to the hit,
@@ -22114,7 +22132,10 @@ impl ModalApp {
                 self.say("assistant — type a question, Enter sends, Esc back");
             }
             "graph" | "journal" | "cron" => {
-                self.selected = 0;
+                // The pane's cursor starts at the top; the outline's
+                // does not move. Opening a pane is not an edit to where
+                // you were reading.
+                self.pane_cursor = 0;
                 self.surface = match cmd {
                     "graph" => ModalSurface::Graph,
                     "journal" => ModalSurface::Journal,
