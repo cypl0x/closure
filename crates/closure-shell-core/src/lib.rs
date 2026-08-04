@@ -1441,12 +1441,17 @@ fn crockford_value(c: char) -> Option<u8> {
         .and_then(|i| u8::try_from(i).ok())
 }
 
-/// `YYYY-MM-DD` for a count of seconds since the Unix epoch.
+/// `YYYY-MM-DD HH:MM:SS` for a count of seconds since the Unix epoch.
 ///
 /// Howard Hinnant's civil-from-days, so a date does not pull in a
 /// calendar crate: the epoch is shifted to 0000-03-01 so that leap
 /// days land at the end of the cycle and February needs no special
 /// case.
+///
+/// The time of day is here rather than at the call sites because both
+/// callers wanted it and neither could add it: the days are what this
+/// divides away. "The panel currently just show the date in ISO8601
+/// format. Please add the time to both."
 fn civil_date(secs: u64) -> String {
     let days = i64::try_from(secs / 86_400).unwrap_or(i64::MAX);
     let z = days + 719_468;
@@ -1459,7 +1464,9 @@ fn civil_date(secs: u64) -> String {
     let d = doy - (153 * mp + 2) / 5 + 1;
     let m = if mp < 10 { mp + 3 } else { mp - 9 };
     let y = if m <= 2 { y + 1 } else { y };
-    format!("{y:04}-{m:02}-{d:02}")
+    let rest = secs % 86_400;
+    let (hh, mm, ss) = (rest / 3600, (rest % 3600) / 60, rest % 60);
+    format!("{y:04}-{m:02}-{d:02} {hh:02}:{mm:02}:{ss:02}")
 }
 
 /// Whether the row at `i` is the first one its file contributes to the

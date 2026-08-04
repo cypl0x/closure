@@ -96,23 +96,35 @@ fn created_at_comes_out_of_the_id_itself() {
     // A closure id is a ULID and a ULID carries the millisecond it was
     // minted, so "created at" costs nothing and needs no new property
     // in anybody's file.
+    //
+    // The time of day joined it on 2026-08-04, at the user's ask:
+    // "The panel currently just show the date in ISO8601 format.
+    // Please add the time to both." The millisecond was always in the
+    // id; only the formatting was throwing it away.
     let (_d, shell, app) = fixture();
     let d = app.selected_detail(&shell).expect("a detail");
-    assert_eq!(d.created.as_deref(), Some("2024-04-17"), "{:?}", d.created);
+    assert_eq!(
+        d.created.as_deref(),
+        Some("2024-04-17 23:00:02"),
+        "{:?}",
+        d.created
+    );
 }
 
 #[test]
 fn the_epoch_and_the_specs_own_example_decode() {
     // Two fixed points, so a wrong answer cannot look plausible: all
     // zeroes is the epoch, and `01BX5ZZKBK…` is the example in the
-    // ULID spec itself, minted 2017-10-24.
+    // ULID spec itself, minted 2017-10-24. Both carry a time of day
+    // since 2026-08-04 — the epoch's being exactly midnight is the
+    // one case where a dropped time looks like no bug at all.
     assert_eq!(
         closure_shell_core::ulid_date("00000000000000000000000000").as_deref(),
-        Some("1970-01-01")
+        Some("1970-01-01 00:00:00")
     );
     assert_eq!(
         closure_shell_core::ulid_date("01BX5ZZKBKACTAV9WEVGEMMVRZ").as_deref(),
-        Some("2017-10-24")
+        Some("2017-10-24 01:29:36")
     );
 }
 
