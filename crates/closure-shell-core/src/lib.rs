@@ -5243,16 +5243,22 @@ pub fn toggle_comment_lines(text: &str, first: usize, last: usize) -> Option<(St
     // selection that straddles a fence is one comment style, and the
     // one the user was looking at when they pressed it.
     let start: usize = lines[..first].iter().map(|l| l.len() + 1).sum();
-    let token = enclosing_src_block(text, start)
-        // Strictly inside: `enclosing_src_block` counts the fences as
-        // part of the block, which is how `edit-special` is reached
-        // with the point on one — but `#+begin_src javascript` is
-        // org's own syntax, and `// #+begin_src` is neither language.
-        .filter(|(content, _)| content.contains(&start))
-        .and_then(|(_, lang)| closure_tree_sitter::line_comment(&lang))
-        // Org's own comment, which is also where an unknown language
-        // lands: it is still text in an org file.
-        .unwrap_or("#");
+    // Strictly inside: `enclosing_src_block` counts the fences as part
+    // of the block, which is how `edit-special` is reached with the
+    // point on one — but `#+begin_src javascript` is org's own syntax,
+    // and `// #+begin_src` is neither language.
+    let inside = enclosing_src_block(text, start).filter(|(content, _)| content.contains(&start));
+    let token = match inside {
+        // Inside a block, the block's language decides — and a
+        // language with no line comment gets *no* comment. JSON, HTML
+        // and Markdown have no prefix that comments one line, and
+        // `# "key": 1,` is not commented JSON, it is broken JSON.
+        // Falling back to org's `#` there corrupted the block.
+        Some((_, lang)) => closure_tree_sitter::line_comment(&lang)?,
+        // Outside one, org's own — which is also where an unknown
+        // language lands, since it is still text in an org file.
+        None => "#",
+    };
 
     let body = &lines[first..=last];
     let interesting: Vec<&&str> = body.iter().filter(|l| !l.trim().is_empty()).collect();
@@ -18124,6 +18130,10 @@ impl ModalApp {
         let (first, last) = self.body.selected_lines();
         let before = self.body.text().to_owned();
         let Some((text, token, off)) = toggle_comment_lines(&before, first, last) else {
+            // The one case worth a word: a block whose language has no
+            // line comment at all. Silence there reads as a broken
+            // chord.
+            self.say("no line comment in this language — nothing to toggle");
             return;
         };
         let token = token.to_owned();

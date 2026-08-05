@@ -638,11 +638,15 @@ const fn markup_span(kind: closure_org::MarkupKind) -> BodySpan {
 #[must_use]
 pub fn highlight_body(body: &str) -> Vec<Vec<(BodySpan, String)>> {
     use closure_org::BlockDelimiter as D;
-    use closure_tree_sitter::{HighlightKind, Highlighter as _, KeywordHighlighter};
+    use closure_tree_sitter::HighlightKind;
     /// What the reader is inside of, if anything.
     enum Open {
         /// A `#+BEGIN_SRC`, with the language's highlighter.
-        Src(String, KeywordHighlighter),
+        ///
+        /// Boxed because which one it is depends on the build: a real
+        /// grammar where `closure-tree-sitter`'s feature is on and one
+        /// is bundled, the dep-free keyword tier otherwise.
+        Src(String, Box<dyn closure_tree_sitter::Highlighter>),
         /// Any other block: its name, and the kind its content takes.
         Other(String, BodySpan),
     }
@@ -663,7 +667,7 @@ pub fn highlight_body(body: &str) -> Vec<Vec<(BodySpan, String)>> {
                 open = Some(if name.eq_ignore_ascii_case("src") {
                     Open::Src(
                         name.to_owned(),
-                        KeywordHighlighter::for_language(args.unwrap_or_default().trim()),
+                        closure_tree_sitter::pick_highlighter(args.unwrap_or_default().trim()),
                     )
                 } else {
                     Open::Other(name.to_owned(), block_content_span(name))

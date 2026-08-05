@@ -16,6 +16,11 @@ path = "src/main.rs"
 workspace = true
 
 [features]
+# Real tree-sitter grammars inside `#+BEGIN_SRC` blocks. Off by
+# default for the same reason `closure-tree-sitter` has it off: twenty
+# C grammars are not a hermetic build. Forwarded so that the shell you
+# look at all day can actually get them — it could not before.
+tree-sitter = ["closure-tui/tree-sitter"]
 # `closure gpui` is a real GPU window only when built with this feature
 # (pulls Zed's stack + system libs). Default builds stay hermetic (I10);
 # the subcommand then returns an instructive error.

@@ -18,15 +18,18 @@
 /// all as far as the colours were concerned. `toggle-line-comment`
 /// needs the same fact to know what to put in front of the line.
 ///
-/// `None` means "this build has no opinion", which the caller reads as
-/// org's own `#` — a source block whose language we do not know is
-/// still text in an org file.
+/// `None` means one of two things, and the caller must treat them the
+/// same way: a language this build has no opinion about, or a language
+/// with no line comment at all. JSON, HTML and Markdown are the second
+/// kind — there is no prefix that comments one line of them — and
+/// putting org's `#` in front of a line of JSON does not comment it, it
+/// breaks it.
 #[must_use]
 pub const fn line_comment(lang: &str) -> Option<&'static str> {
     Some(match lang.as_bytes() {
-        b"rust" | b"javascript" | b"js" | b"typescript" | b"ts" | b"jsonc" | b"c" | b"cpp"
-        | b"c++" | b"java" | b"go" | b"scala" | b"kotlin" | b"swift" | b"zig" | b"dart"
-        | b"php" | b"css" | b"scss" | b"jq" => "//",
+        b"rust" | b"rs" | b"javascript" | b"js" | b"node" | b"typescript" | b"ts" | b"tsx"
+        | b"jsonc" | b"c" | b"cpp" | b"c++" | b"cxx" | b"java" | b"go" | b"golang" | b"scala"
+        | b"kotlin" | b"swift" | b"zig" | b"dart" | b"php" | b"css" | b"scss" | b"jq" => "//",
         b"nix" | b"shell" | b"sh" | b"bash" | b"zsh" | b"fish" | b"python" | b"py" | b"ruby"
         | b"rb" | b"perl" | b"r" | b"yaml" | b"yml" | b"toml" | b"ini" | b"conf" | b"make"
         | b"makefile" | b"dockerfile" | b"awk" | b"tcl" | b"elixir" | b"julia" | b"org" => "#",
@@ -524,15 +527,35 @@ pub struct TsHighlighter {
 #[cfg(feature = "tree-sitter")]
 impl TsHighlighter {
     /// A highlighter for `name`, or `None` if no grammar is bundled for
-    /// it. Bundled grammars (D5): `bash`/`sh`/`shell`, `rust`/`rs`,
-    /// `python`/`py`, `json`.
+    /// it.
+    ///
+    /// The aliases are the ones people actually write after
+    /// `#+BEGIN_SRC` — `sh` and `shell` for bash, `rs` for rust, `js`
+    /// for javascript — because a block that says `sh` and highlights
+    /// like plain text is the same bug as no grammar at all.
     #[must_use]
     pub fn for_language(name: &str) -> Option<Self> {
         let ts_language: tree_sitter::Language = match name {
-            "bash" | "sh" | "shell" => tree_sitter_bash::LANGUAGE.into(),
+            "bash" | "sh" | "shell" | "zsh" => tree_sitter_bash::LANGUAGE.into(),
             "rust" | "rs" => tree_sitter_rust::LANGUAGE.into(),
             "python" | "py" => tree_sitter_python::LANGUAGE.into(),
             "json" => tree_sitter_json::LANGUAGE.into(),
+            "nix" => tree_sitter_nix::LANGUAGE.into(),
+            "javascript" | "js" | "node" => tree_sitter_javascript::LANGUAGE.into(),
+            "typescript" | "ts" => tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into(),
+            "tsx" => tree_sitter_typescript::LANGUAGE_TSX.into(),
+            "c" => tree_sitter_c::LANGUAGE.into(),
+            "cpp" | "c++" | "cxx" => tree_sitter_cpp::LANGUAGE.into(),
+            "go" | "golang" => tree_sitter_go::LANGUAGE.into(),
+            "java" => tree_sitter_java::LANGUAGE.into(),
+            "haskell" | "hs" => tree_sitter_haskell::LANGUAGE.into(),
+            "ruby" | "rb" => tree_sitter_ruby::LANGUAGE.into(),
+            "lua" => tree_sitter_lua::LANGUAGE.into(),
+            "html" => tree_sitter_html::LANGUAGE.into(),
+            "css" => tree_sitter_css::LANGUAGE.into(),
+            "toml" => tree_sitter_toml_ng::LANGUAGE.into(),
+            "yaml" | "yml" => tree_sitter_yaml::LANGUAGE.into(),
+            "markdown" | "md" => tree_sitter_md::LANGUAGE.into(),
             _ => return None,
         };
         Some(Self {
@@ -540,6 +563,26 @@ impl TsHighlighter {
             ts_language,
         })
     }
+}
+
+/// The best highlighter this build has for `lang`.
+///
+/// A real grammar when one is bundled and the `tree-sitter` feature is
+/// on; the dep-free keyword tier otherwise, which is always the answer
+/// in the hermetic default build.
+///
+/// It lives here rather than in a shell because it is a fact about
+/// which grammars exist, and it existed twice: `closure-tui` had this
+/// function and the gpui shell — the one the user looks at all day —
+/// reached straight for `KeywordHighlighter`, so twenty grammars would
+/// have been compiled and never consulted.
+#[must_use]
+pub fn pick_highlighter(lang: &str) -> Box<dyn Highlighter> {
+    #[cfg(feature = "tree-sitter")]
+    if let Some(ts) = TsHighlighter::for_language(lang) {
+        return Box::new(ts);
+    }
+    Box::new(KeywordHighlighter::for_language(lang))
 }
 
 /// The whole-node highlight class for `kind` (comment / string / number),

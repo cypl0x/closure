@@ -238,3 +238,47 @@ fn an_org_keyword_line_is_not_already_a_comment() {
         app.body_buffer()
     );
 }
+
+#[test]
+fn a_language_with_no_line_comment_is_refused_rather_than_broken() {
+    // Found 2026-08-05 while widening the grammar registry: JSON, HTML
+    // and Markdown have no way to comment a single line, and `gcc`
+    // fell back to org's `#`. `# "key": 1,` is not a commented line of
+    // JSON, it is broken JSON — and the block stops parsing for
+    // everything downstream that reads it.
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(
+        dir.path().join("notes.org"),
+        "* Note\n:PROPERTIES:\n:ID: 01NOCOMMENTAAAAAAAAAAAAAAA\n:END:\n\
+         #+begin_src json\n{\"a\": 1}\n#+end_src\n",
+    )
+    .unwrap();
+    let shell = Shell::new(Vault::open(dir.path()).unwrap());
+    let mut app = ModalApp::new(closure_config::InputMode::Doom);
+    let mut shell = shell;
+    app.run(&mut shell, "toggle-view");
+    let line = app
+        .body_buffer()
+        .lines()
+        .position(|l| l.contains("\"a\": 1"))
+        .expect("the json line");
+    app.body_click(line, 0);
+    app.run(&mut shell, "toggle-line-comment");
+
+    let json = app
+        .body_buffer()
+        .lines()
+        .find(|l| l.contains("\"a\": 1"))
+        .unwrap_or_default()
+        .to_owned();
+    assert_eq!(
+        json, "{\"a\": 1}",
+        "the json line was altered — `#` in front of it is broken JSON, \
+         not commented JSON"
+    );
+    assert!(
+        app.status().to_lowercase().contains("comment"),
+        "and nothing said why: {}",
+        app.status()
+    );
+}

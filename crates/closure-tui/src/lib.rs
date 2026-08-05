@@ -4152,11 +4152,11 @@ fn draw(f: &mut ratatui::Frame<'_>, app: &App, vault: &Vault) {
 /// hermetic default build) the dep-free `KeywordHighlighter` is used.
 #[must_use]
 pub fn pick_highlighter(lang: &str) -> Box<dyn Highlighter> {
-    #[cfg(feature = "tree-sitter")]
-    if let Some(ts) = closure_tree_sitter::TsHighlighter::for_language(lang) {
-        return Box::new(ts);
-    }
-    Box::new(closure_tree_sitter::KeywordHighlighter::for_language(lang))
+    // Which grammars exist is `closure-tree-sitter`'s business, and
+    // this used to be the only place that knew — so the gpui shell,
+    // which does not depend on this crate, reached for the keyword
+    // tier directly and never saw a grammar at all.
+    closure_tree_sitter::pick_highlighter(lang)
 }
 
 /// Render helper: turn an org source into ratatui `Line`s with styled spans
