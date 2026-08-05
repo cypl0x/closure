@@ -118,6 +118,8 @@ pub enum AppMode {
     /// `C-c C-l`: which kind of link this is, then where it goes, then
     /// what to call it.
     InsertLink,
+    /// `C-h k`: waiting for the one key to describe.
+    DescribeKey,
     /// Browsing the SCHEDULED/DEADLINE agenda with a cursor.
     Agenda,
     /// Typing a fuzzy query over body lines across the vault.
@@ -1277,6 +1279,7 @@ impl App {
             AppMode::Files => return self.handle_buffer_pane_stroke(stroke, true),
             AppMode::PlanEdit => return self.handle_planedit_stroke(stroke),
             AppMode::RefileTarget => return self.handle_refile_stroke(stroke),
+            AppMode::DescribeKey => return self.handle_describe_key_stroke(stroke),
             AppMode::InsertLink => return self.handle_insert_link_stroke(stroke),
             AppMode::EditBody => return self.handle_editbody_stroke(stroke),
             AppMode::Agenda => return self.handle_agenda_stroke(stroke),
@@ -2003,6 +2006,39 @@ impl App {
     #[must_use]
     pub const fn link_asks_description(&self) -> bool {
         self.link_dest.is_some()
+    }
+
+    /// One stroke, then the answer — Emacs' `C-h k`, which waits for
+    /// exactly one key and then gets out of the way.
+    ///
+    /// The terminal reads whole strokes rather than key + modifiers,
+    /// so it can ask the keymap directly.
+    fn handle_describe_key_stroke(&mut self, stroke: &str) {
+        self.mode = AppMode::Browse;
+        if stroke == "ESC" {
+            "no key described".clone_into(&mut self.status);
+            return;
+        }
+        let keys = closure_input::mode_keymap(self.input_mode());
+        if let Some((_, command)) = keys.iter().find(|(c, _)| *c == stroke) {
+            let told = closure_shell_core::palette_descriptions()
+                .into_iter()
+                .find(|(label, _)| *label == *command)
+                .map(|(_, desc)| desc.to_owned());
+            self.status = told.map_or_else(
+                || format!("{stroke} runs {command}"),
+                |desc| format!("{stroke} runs {command} — {desc}"),
+            );
+            return;
+        }
+        if keys
+            .iter()
+            .any(|(c, _)| c.starts_with(&format!("{stroke} ")))
+        {
+            self.status = format!("{stroke} is a prefix — press the rest of the chord");
+            return;
+        }
+        self.status = format!("{stroke} is not bound");
     }
 
     /// `C-c C-l`'s keys, whichever of its three steps is open.
@@ -3388,6 +3424,10 @@ impl App {
             // Same shape: there is no rail to dock in a terminal, and
             // the thing it docks *to* — one chord per pane — is what
             // the terminal always had.
+            "describe-key" => {
+                self.mode = AppMode::DescribeKey;
+                "describe key — press one · ESC cancels".clone_into(&mut self.status);
+            }
             "toggle-rail" => {
                 "no rail in the terminal — the panes are one chord each (`g a`, `g k`, …)"
                     .clone_into(&mut self.status);
@@ -4468,7 +4508,10 @@ fn overlay_content(app: &App) -> Option<(String, Vec<String>)> {
         AppMode::PlanEdit => Some((format!("date: {}▏", app.query()), Vec::new())),
         AppMode::RefileTarget => Some(refile_overlay(app)),
         AppMode::InsertLink => Some(link_overlay(app)),
-        AppMode::Browse | AppMode::FileView => None,
+        // `C-h k` shows nothing of its own: it is waiting for a key,
+        // and the status line already says so. An overlay here would
+        // cover the very bindings you are asking about.
+        AppMode::DescribeKey | AppMode::Browse | AppMode::FileView => None,
     }
 }
 

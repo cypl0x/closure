@@ -4373,6 +4373,12 @@ const PALETTE_COMMANDS: &[(&str, &str, &str, &str)] = &[
         "Add a sibling headline",
     ),
     (
+        "describe-key",
+        "describe-key",
+        "App",
+        "Press a key and be told what it runs",
+    ),
+    (
         "toggle-rail",
         "toggle-rail",
         "View",
@@ -8710,6 +8716,12 @@ pub enum ModalSurface {
     /// The tag picker: every tag the vault uses, ticked where this
     /// headline carries it (Q3-V6).
     TagPick,
+    /// `C-h k`: waiting for the one key to describe.
+    ///
+    /// A surface rather than a prompt because it takes a *chord*, not
+    /// text — the next stroke is the answer, and it must not be
+    /// resolved as a command on the way.
+    DescribeKey,
     /// `C-c C-l`: which kind of link this is, then where it goes, then
     /// what to call it. One surface rather than three, because the step
     /// is already written down — the type picked, and the destination
@@ -13011,6 +13023,34 @@ pub fn org_link(kind: &str, dest: &str, description: &str) -> String {
     }
 }
 
+/// What a key does: Emacs' `C-h k`, answered from the running program.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct KeyDescription {
+    /// The chord asked about, as the keymap spells it.
+    pub chord: String,
+    /// The command it runs.
+    pub command: String,
+    /// What that command does, in the registry's own words.
+    pub description: String,
+    /// Which part of the palette it lives in.
+    pub section: String,
+}
+
+/// What a command is and how to reach it: `C-h f` and `where-is` in one
+/// answer, because those are two halves of the same question.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CommandDescription {
+    /// Its canonical name — what `M-x` and an LLM both call it.
+    pub command: String,
+    /// What it does.
+    pub description: String,
+    /// Which part of the palette it lives in.
+    pub section: String,
+    /// Every chord that reaches it in the mode in force. Empty is an
+    /// answer: some commands are palette-only.
+    pub chords: Vec<String>,
+}
+
 /// One thing the destination field can be completed to.
 ///
 /// The two halves are genuinely different facts and neither can be
@@ -14252,6 +14292,7 @@ impl ModalApp {
                     self.field_buf.key(key, ctrl, alt, text);
                 }
             },
+            ModalSurface::DescribeKey => self.on_describe_key(key, ctrl, alt, text),
             ModalSurface::InsertLink => self.on_insert_link_key(shell, key, ctrl, alt, text),
             ModalSurface::DatePick => self.on_datepick_key(shell, key, text),
             ModalSurface::Refile => self.on_refile_key(shell, key, ctrl, alt, text),
@@ -18114,6 +18155,46 @@ impl ModalApp {
         } else {
             base
         }
+    }
+
+    /// One stroke, then the answer.
+    ///
+    /// Emacs' `C-h k` shape: it waits for exactly one key, says what
+    /// that key does, and gets out of the way — the stroke after it is
+    /// an ordinary stroke again.
+    fn on_describe_key(&mut self, key: &str, ctrl: bool, alt: bool, text: Option<char>) {
+        self.surface = self
+            .prompt_from
+            .take()
+            .unwrap_or_else(|| self.home_surface());
+        if key == "escape" {
+            self.say("no key described");
+            return;
+        }
+        let Some(stroke) = modal_stroke(key, ctrl, alt, text) else {
+            self.say("that is not a key I can name");
+            return;
+        };
+        // A prefix is an answer too: `g` alone runs nothing, and saying
+        // so beats saying "undefined" about a key that is half a chord.
+        if let Some(told) = self.describe_key(&stroke) {
+            self.say(format!(
+                "{} runs {} — {} ({})",
+                told.chord, told.command, told.description, told.section
+            ));
+            return;
+        }
+        if self
+            .keymap()
+            .iter()
+            .any(|(c, _)| c.starts_with(&format!("{stroke} ")))
+        {
+            self.say(format!(
+                "{stroke} is a prefix — press the rest of the chord"
+            ));
+            return;
+        }
+        self.say(format!("{stroke} is not bound"));
     }
 
     /// Grant this vault permission to run one language, in the user's
@@ -22824,6 +22905,11 @@ impl ModalApp {
             // name. All of them ask for a title: `M-RET` used to make a
             // headline called "untitled" without asking, so the only
             // chord that existed was also one you had to undo.
+            "describe-key" => {
+                self.prompt_from = self.surface.is_editor().then_some(self.surface);
+                self.surface = ModalSurface::DescribeKey;
+                self.say("describe key — press one · Esc cancels");
+            }
             "toggle-rail" => {
                 let docked = !self.rail_docked();
                 self.rail_docked = Some(docked);
@@ -23295,6 +23381,50 @@ impl ModalApp {
     #[must_use]
     pub fn chord_for(&self, command: &str) -> Option<&str> {
         self.chords_for(command).first().copied()
+    }
+
+    /// What `chord` runs in the mode in force, or `None` when nothing
+    /// is bound to it.
+    ///
+    /// Emacs answers "M-# is undefined" rather than doing nothing, and
+    /// this is the same answer: silence reads as a broken keyboard.
+    #[must_use]
+    pub fn describe_key(&self, chord: &str) -> Option<KeyDescription> {
+        let command = self.command_for(chord)?.to_owned();
+        let (description, section) = Self::registry_entry(&command)?;
+        Some(KeyDescription {
+            chord: chord.to_owned(),
+            command,
+            description,
+            section,
+        })
+    }
+
+    /// What `command` is, and every chord that reaches it.
+    ///
+    /// Both halves at once because "what is this" and "how do I run it"
+    /// are the same question asked from either end.
+    #[must_use]
+    pub fn describe_command(&self, command: &str) -> Option<CommandDescription> {
+        let (description, section) = Self::registry_entry(command)?;
+        Some(CommandDescription {
+            command: command.to_owned(),
+            description,
+            section,
+            chords: self
+                .chords_for(command)
+                .into_iter()
+                .map(ToOwned::to_owned)
+                .collect(),
+        })
+    }
+
+    /// The registry's `(description, section)` for a canonical name.
+    fn registry_entry(command: &str) -> Option<(String, String)> {
+        PALETTE_COMMANDS
+            .iter()
+            .find(|(_, name, ..)| *name == command)
+            .map(|(_, _, section, desc)| ((*desc).to_owned(), (*section).to_owned()))
     }
 
     /// Every chord bound to `command` in the active mode, primary

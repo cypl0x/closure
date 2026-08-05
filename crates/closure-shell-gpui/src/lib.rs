@@ -1540,7 +1540,13 @@ pub const fn accepts_paste(surface: ModalSurface, insert: bool) -> bool {
         ModalSurface::EditBody | ModalSurface::EditBlock | ModalSurface::EditFile => insert,
         // The settings list is a read-only pane; its value prompt
         // (`Setting`) is the field, and that one takes a paste.
-        ModalSurface::Settings
+        //
+        // `DescribeKey` is here for a different reason: it is waiting
+        // for one *chord*, a pasted string is not one, and resolving
+        // its characters as keys would describe whichever of them
+        // happened to be bound.
+        ModalSurface::DescribeKey
+        | ModalSurface::Settings
         | ModalSurface::Browse
         | ModalSurface::Backlinks
         | ModalSurface::Agenda
@@ -4162,6 +4168,7 @@ impl GpuiView {
                 format!("{} — {}", grid.field, grid.selected)
             }
             ModalSurface::Refile => format!("refile to — {}▏", self.app.query()),
+            ModalSurface::DescribeKey => "describe key — press one · Esc cancels".to_owned(),
             ModalSurface::InsertLink => {
                 if self.app.link_kind().is_empty() {
                     format!(
