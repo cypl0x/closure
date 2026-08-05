@@ -4863,7 +4863,7 @@ impl GpuiView {
                     self.app
                         .headline_rows(&self.shell)
                         .into_iter()
-                        .map(|(title, id)| (format!("{title}    [{id}]"), id))
+                        .map(|r| (format!("{}    [{}]", r.title, r.id), r.id))
                         .collect(),
                     cx,
                 ),
@@ -6261,7 +6261,8 @@ impl GpuiView {
                 .block_rows(&self.shell)
                 .into_iter()
                 .enumerate()
-                .map(|(i, (path, lang, first))| {
+                .map(|(i, b)| {
+                    let (path, lang, first) = (b.file, b.lang, b.line);
                     list_row(
                         co,
                         self.app.zoom(),

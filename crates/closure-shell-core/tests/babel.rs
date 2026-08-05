@@ -59,7 +59,7 @@ fn the_blocks_surface_lists_every_block_in_path_order() {
     app.run(&mut shell, "list-blocks");
     assert_eq!(app.surface(), ModalSurface::Blocks);
     let rows = app.block_rows(&shell);
-    let langs: Vec<&str> = rows.iter().map(|(_, lang, _)| lang.as_str()).collect();
+    let langs: Vec<&str> = rows.iter().map(|b| b.lang.as_str()).collect();
     // `sh` is listed under its canonical name, `shell`.
     assert_eq!(langs, vec!["shell", "shell", "closure-config"], "{rows:?}");
 }

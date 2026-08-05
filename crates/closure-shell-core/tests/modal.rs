@@ -521,11 +521,11 @@ fn block_list_enumerates_code_blocks_with_language() {
     assert_eq!(rows.len(), 2, "{rows:?}");
     assert!(
         rows.iter()
-            .any(|(_, lang, first)| lang == "rust" && first.contains("fn main"))
+            .any(|b| b.lang == "rust" && b.line.contains("fn main"))
     );
     assert!(
         rows.iter()
-            .any(|(_, lang, first)| lang == "python" && first.contains("print(1)"))
+            .any(|b| b.lang == "python" && b.line.contains("print(1)"))
     );
 }
 

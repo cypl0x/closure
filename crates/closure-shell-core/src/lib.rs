@@ -13104,7 +13104,33 @@ struct PaletteMemo {
 }
 
 /// One listed source block: `(file, language, first line)`.
-pub type BlockRow = (String, String, String);
+/// One source block in the vault, as the Blocks picker shows it.
+///
+/// A named struct rather than `(String, String, String)`: three
+/// positional strings say nothing about which is the file and which
+/// the language, every caller destructures by position, and getting
+/// two of them the wrong way round compiles.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BlockRow {
+    /// Vault-relative file the block is in.
+    pub file: String,
+    /// Its language, canonicalised — `sh` is listed as `shell`.
+    pub lang: String,
+    /// Which line of the file it starts on, as shown.
+    pub line: String,
+}
+
+/// One headline, as the headline picker and the jump list show it.
+///
+/// Was `(String, String)`, which is a title and an id in an order you
+/// have to go and look up.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HeadlineRow {
+    /// What it is called.
+    pub title: String,
+    /// Its block id — what a jump addresses.
+    pub id: String,
+}
 
 /// One row of a floating picker, whatever the picker is over.
 ///
@@ -15470,13 +15496,16 @@ impl ModalApp {
     fn begin_special_from_list(&mut self, shell: &Shell) {
         let rows = self.block_rows(shell);
         // The block list's own cursor — see [`Self::picker_cursor`].
-        let Some((path, lang, _)) = rows.get(self.pane_cursor).cloned() else {
+        let Some(BlockRow {
+            file: path, lang, ..
+        }) = rows.get(self.pane_cursor).cloned()
+        else {
             self.say("edit-special: no source blocks in this vault");
             return;
         };
         let index = rows[..self.pane_cursor]
             .iter()
-            .filter(|(p, _, _)| *p == path)
+            .filter(|b| b.file == path)
             .count();
         let path = std::path::PathBuf::from(&path);
         let Some(content) = shell
@@ -18288,7 +18317,7 @@ impl ModalApp {
                 }
                 return;
             }
-            ModalSurface::Blocks => self.block_rows(shell).into_iter().nth(i).map(|(p, _, _)| p),
+            ModalSurface::Blocks => self.block_rows(shell).into_iter().nth(i).map(|b| b.file),
             _ => None,
         };
         self.surface = ModalSurface::Browse;
@@ -18837,7 +18866,11 @@ impl ModalApp {
             for seg in segment_body(&doc.source()) {
                 if let BodySegment::Code { lang, text } = seg {
                     let first = text.lines().next().unwrap_or("").trim().to_owned();
-                    out.push((path.display().to_string(), lang, first));
+                    out.push(BlockRow {
+                        file: path.display().to_string(),
+                        lang,
+                        line: first,
+                    });
                 }
             }
         }
@@ -19833,11 +19866,11 @@ impl ModalApp {
     }
 
     /// The headlines of the selected file, narrowed by the filter.
-    fn filtered_headlines(&self, shell: &Shell) -> Vec<(String, String)> {
+    fn filtered_headlines(&self, shell: &Shell) -> Vec<HeadlineRow> {
         filtered(
             self.headline_rows(shell),
             self.prompt_text().unwrap_or_default(),
-            |(title, _)| title.clone(),
+            |row| row.title.clone(),
         )
     }
 
@@ -19846,7 +19879,7 @@ impl ModalApp {
         filtered(
             self.block_rows(shell),
             self.prompt_text().unwrap_or_default(),
-            |(file, lang, line)| format!("{file} {lang} {line}"),
+            |b| format!("{} {} {}", b.file, b.lang, b.line),
         )
     }
 
@@ -19935,7 +19968,8 @@ impl ModalApp {
                 }
             }
             ModalSurface::Headlines => {
-                let Some((_, id)) = self.filtered_headlines(shell).get(at).cloned() else {
+                let Some(HeadlineRow { id, .. }) = self.filtered_headlines(shell).get(at).cloned()
+                else {
                     return;
                 };
                 self.query.clear();
@@ -19943,7 +19977,8 @@ impl ModalApp {
                 self.select_by_id(shell, &id);
             }
             ModalSurface::Blocks => {
-                let Some((file, ..)) = self.filtered_blocks(shell).get(at).cloned() else {
+                let Some(BlockRow { file, .. }) = self.filtered_blocks(shell).get(at).cloned()
+                else {
                     return;
                 };
                 self.query.clear();
@@ -20202,7 +20237,7 @@ impl ModalApp {
                 "RET goes to it",
                 self.filtered_headlines(shell)
                     .into_iter()
-                    .map(|(title, id)| PickRow {
+                    .map(|HeadlineRow { title, id }| PickRow {
                         label: title,
                         detail: String::new(),
                         trailing: id,
@@ -20216,7 +20251,7 @@ impl ModalApp {
                 "RET goes to the file it is in",
                 self.filtered_blocks(shell)
                     .into_iter()
-                    .map(|(file, lang, line)| PickRow {
+                    .map(|BlockRow { file, lang, line }| PickRow {
                         label: line,
                         // Vault-relative: the absolute path of every
                         // file in the vault you are looking at is
@@ -23481,7 +23516,7 @@ impl ModalApp {
         // which surface is open, and by the time a command runs the
         // surface may already have been left. This is only ever reached
         // from the block list, so the list's cursor is the answer.
-        let Some((path, _, _)) = rows.get(self.pane_cursor).cloned() else {
+        let Some(BlockRow { file: path, .. }) = rows.get(self.pane_cursor).cloned() else {
             self.say("no source blocks in this vault");
             return;
         };
@@ -23489,7 +23524,7 @@ impl ModalApp {
         // one, so rebase the cursor onto the block's own file.
         let index = rows[..self.pane_cursor]
             .iter()
-            .filter(|(p, _, _)| *p == path)
+            .filter(|b| b.file == path)
             .count();
         self.surface = ModalSurface::Blocks;
         match shell.vault.eval_block(std::path::Path::new(&path), index) {
@@ -23504,7 +23539,7 @@ impl ModalApp {
     /// Every headline in the selected row's file, as `(title, id)` —
     /// the flat per-file listing behind the Headlines surface.
     #[must_use]
-    pub fn headline_rows(&self, shell: &Shell) -> Vec<(String, String)> {
+    pub fn headline_rows(&self, shell: &Shell) -> Vec<HeadlineRow> {
         let rows = self.rows_shared(shell);
         let Some(row) = rows.get(self.selected.min(rows.len().saturating_sub(1))) else {
             return Vec::new();
@@ -23515,7 +23550,10 @@ impl ModalApp {
             .iter()
             .filter(|(p, _)| *p == path.as_path())
             .flat_map(|(_, doc)| doc.all_headlines())
-            .map(|h| (h.title().to_owned(), h.id().to_string()))
+            .map(|h| HeadlineRow {
+                title: h.title().to_owned(),
+                id: h.id().to_string(),
+            })
             .collect()
     }
 

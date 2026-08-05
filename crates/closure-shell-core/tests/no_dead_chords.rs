@@ -133,8 +133,8 @@ fn headline_list_shows_every_headline_in_the_file() {
     assert_eq!(app.surface(), ModalSurface::Headlines);
     let rows = app.headline_rows(&shell);
     assert_eq!(rows.len(), 2, "both headlines: {rows:?}");
-    assert!(rows.iter().any(|(t, _)| t.contains("Alpha")));
-    assert!(rows.iter().any(|(t, _)| t.contains("Beta")));
+    assert!(rows.iter().any(|r| r.title.contains("Alpha")));
+    assert!(rows.iter().any(|r| r.title.contains("Beta")));
 }
 
 #[test]
