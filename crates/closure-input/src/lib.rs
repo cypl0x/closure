@@ -99,6 +99,7 @@ const DOOM_KEYMAP: &[(&str, &str)] = &[
     ("g W", "toggle-wrap"),
     ("g H", "toggle-rail"),
     ("g ?", "describe-key"),
+    ("g K", "manual"),
     // …and a modified spelling, because the chord is wanted most from
     // inside the buffer whose lines are running off the edge, where a
     // bare `g` belongs to the editor. `M-z` is what the rest of the
@@ -251,6 +252,7 @@ const DOOM_KEYMAP: &[(&str, &str)] = &[
     ("SPC t d", "toggle-rail"),
     // Emacs' `C-h k`, in Doom's spelling.
     ("SPC h k", "describe-key"),
+    ("SPC h m", "manual"),
     ("SPC t m", "next-input-mode"),
     ("SPC u", "undo-history"),
     // The prefix the rest of the desktop uses. Listed last so each
@@ -343,6 +345,7 @@ const EMACS_KEYMAP: &[(&str, &str)] = &[
     ("g W", "toggle-wrap"),
     ("g H", "toggle-rail"),
     ("g ?", "describe-key"),
+    ("g K", "manual"),
     // …and a modified spelling, because the chord is wanted most from
     // inside the buffer whose lines are running off the edge, where a
     // bare `g` belongs to the editor. `M-z` is what the rest of the
@@ -412,6 +415,7 @@ const EMACS_KEYMAP: &[(&str, &str)] = &[
     ("C-x <right>", "next-buffer"),
     ("C-x <left>", "prev-buffer"),
     ("C-h k", "describe-key"),
+    ("C-h m", "manual"),
     ("M-;", "toggle-line-comment"),
     ("C-x k", "close-buffer"),
     ("C-x K", "close-buffer-force"),
@@ -527,6 +531,7 @@ const VIM_KEYMAP: &[(&str, &str)] = &[
     ("g W", "toggle-wrap"),
     ("g H", "toggle-rail"),
     ("g ?", "describe-key"),
+    ("g K", "manual"),
     // …and a modified spelling, because the chord is wanted most from
     // inside the buffer whose lines are running off the edge, where a
     // bare `g` belongs to the editor. `M-z` is what the rest of the
@@ -717,6 +722,7 @@ const HELIX_KEYMAP: &[(&str, &str)] = &[
     ("g W", "toggle-wrap"),
     ("g H", "toggle-rail"),
     ("g ?", "describe-key"),
+    ("g K", "manual"),
     // …and a modified spelling, because the chord is wanted most from
     // inside the buffer whose lines are running off the edge, where a
     // bare `g` belongs to the editor. `M-z` is what the rest of the
@@ -906,6 +912,7 @@ const NOTION_KEYMAP: &[(&str, &str)] = &[
     ("g W", "toggle-wrap"),
     ("g H", "toggle-rail"),
     ("g ?", "describe-key"),
+    ("g K", "manual"),
     // …and a modified spelling, because the chord is wanted most from
     // inside the buffer whose lines are running off the edge, where a
     // bare `g` belongs to the editor. `M-z` is what the rest of the

@@ -1546,6 +1546,7 @@ pub const fn accepts_paste(surface: ModalSurface, insert: bool) -> bool {
         // its characters as keys would describe whichever of them
         // happened to be bound.
         ModalSurface::DescribeKey
+        | ModalSurface::Manual
         | ModalSurface::Settings
         | ModalSurface::Browse
         | ModalSurface::Backlinks
@@ -4169,6 +4170,9 @@ impl GpuiView {
             }
             ModalSurface::Refile => format!("refile to — {}▏", self.app.query()),
             ModalSurface::DescribeKey => "describe key — press one · Esc cancels".to_owned(),
+            ModalSurface::Manual => {
+                "manual — generated from the keymap you are using · Esc back".to_owned()
+            }
             ModalSurface::InsertLink => {
                 if self.app.link_kind().is_empty() {
                     format!(
@@ -4898,6 +4902,12 @@ impl GpuiView {
             ModalSurface::Sync => pane.child(self.sync_pane(co, cx)),
             ModalSurface::Llm => pane.child(self.llm_pane(co, cx)),
             ModalSurface::Graph => pane.child(self.graph_pane(co, cx)),
+            ModalSurface::Manual => pane.children(Self::text_rows(
+                co,
+                self.app.zoom(),
+                self.app.manual_rows(),
+                "the manual generated nothing, which should not happen",
+            )),
             ModalSurface::Journal => pane.children(Self::text_rows(
                 co,
                 self.app.zoom(),

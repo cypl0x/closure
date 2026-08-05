@@ -1031,6 +1031,16 @@ enum Cmd {
         /// Path to the vault directory.
         vault: PathBuf,
     },
+    /// Print closure's manual: every command, its keys and what it
+    /// does, generated from the registry and the keymap in force.
+    ///
+    /// Not hand-written, so it cannot drift from the binary — which is
+    /// the only reason a manual is worth trusting.
+    Manual {
+        /// Vault to read `input_mode` from, so the keys are the ones
+        /// that machine has. Omit for the Doom defaults.
+        vault: Option<PathBuf>,
+    },
     /// Let one vault run one language, written to *your* config
     /// (`$XDG_CONFIG_HOME/closure/trust.org`) and never to the vault.
     ///
@@ -1500,6 +1510,7 @@ fn run(cmd: &Cmd) -> Result<(), String> {
         Cmd::Gpui { vault } => cmd_gpui(vault),
         Cmd::InitVault { vault } => cmd_init_vault(vault),
         Cmd::Trust { vault, lang } => cmd_trust(vault, lang.as_deref()),
+        Cmd::Manual { vault } => cmd_manual(vault.as_deref()),
         Cmd::Egui { vault } => cmd_egui(vault),
         Cmd::WhereIs { name } => cmd_where_is(name),
         Cmd::Doc { name } => cmd_doc(name),
@@ -3587,22 +3598,23 @@ fn cmd_default_config() -> Result<(), String> {
 
 #[allow(clippy::unnecessary_wraps)]
 fn cmd_spec() -> Result<(), String> {
-    let lines = [
-        "I1  byte-exact roundtrip on the golden corpus",
-        "I2  stable BlockId (ULID) survives parse/print/CRDT merges",
-        "I3  every mutation undoable via Edit + branching UndoTree",
-        "I4  every command carries a keybinding (whichkey reads registry)",
-        "I5  no panics in kernel crates (forbid unsafe, deny unwrap/expect, fuzz)",
-        "I6  determinism for parse/print/queries",
-        "I7  shells address content by id, never by byte offset; spans \
-         pub(crate) firewall",
-        "I8  command-registry is the only side-effect surface",
-        "I9  config validation at load, not at use (typed schema)",
-        "I10 deterministic / hermetic / reproducible builds (nix flake check)",
-    ];
-    for l in lines {
+    // One list, in `closure-shell-core`, so this and the manual cannot
+    // drift — they were the same ten sentences typed twice.
+    for l in closure_shell_core::INVARIANTS {
         println!("{l}");
     }
+    Ok(())
+}
+
+/// `closure manual` — the whole reference, generated.
+#[allow(clippy::unnecessary_wraps)]
+fn cmd_manual(vault: Option<&Path>) -> Result<(), String> {
+    // The mode the vault is configured for, so the keys printed are the
+    // keys that machine actually has.
+    let mode = vault
+        .and_then(|v| closure_config::Config::from_path(&v.join("config.org")).ok())
+        .map_or(closure_config::InputMode::Doom, |c| c.input_mode);
+    print!("{}", closure_shell_core::manual_org(mode));
     Ok(())
 }
 

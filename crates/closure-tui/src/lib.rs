@@ -120,6 +120,8 @@ pub enum AppMode {
     InsertLink,
     /// `C-h k`: waiting for the one key to describe.
     DescribeKey,
+    /// The manual, read-only, generated on the way in.
+    Manual,
     /// Browsing the SCHEDULED/DEADLINE agenda with a cursor.
     Agenda,
     /// Typing a fuzzy query over body lines across the vault.
@@ -1279,6 +1281,16 @@ impl App {
             AppMode::Files => return self.handle_buffer_pane_stroke(stroke, true),
             AppMode::PlanEdit => return self.handle_planedit_stroke(stroke),
             AppMode::RefileTarget => return self.handle_refile_stroke(stroke),
+            AppMode::Manual => {
+                if stroke == "ESC" || stroke == "q" {
+                    self.mode = AppMode::Browse;
+                } else if stroke == "<down>" || stroke == "j" {
+                    self.result_cursor += 1;
+                } else if stroke == "<up>" || stroke == "k" {
+                    self.result_cursor = self.result_cursor.saturating_sub(1);
+                }
+                return;
+            }
             AppMode::DescribeKey => return self.handle_describe_key_stroke(stroke),
             AppMode::InsertLink => return self.handle_insert_link_stroke(stroke),
             AppMode::EditBody => return self.handle_editbody_stroke(stroke),
@@ -2006,6 +2018,19 @@ impl App {
     #[must_use]
     pub const fn link_asks_description(&self) -> bool {
         self.link_dest.is_some()
+    }
+
+    /// The two help surfaces: the manual, and the one-key describe.
+    fn open_help(&mut self, cmd: &str) {
+        if cmd == "manual" {
+            self.mode = AppMode::Manual;
+            self.result_cursor = 0;
+            "manual — generated from the keymap you are using · ESC back"
+                .clone_into(&mut self.status);
+        } else {
+            self.mode = AppMode::DescribeKey;
+            "describe key — press one · ESC cancels".clone_into(&mut self.status);
+        }
     }
 
     /// One stroke, then the answer — Emacs' `C-h k`, which waits for
@@ -3424,10 +3449,7 @@ impl App {
             // Same shape: there is no rail to dock in a terminal, and
             // the thing it docks *to* — one chord per pane — is what
             // the terminal always had.
-            "describe-key" => {
-                self.mode = AppMode::DescribeKey;
-                "describe key — press one · ESC cancels".clone_into(&mut self.status);
-            }
+            "manual" | "describe-key" => self.open_help(cmd),
             "toggle-rail" => {
                 "no rail in the terminal — the panes are one chord each (`g a`, `g k`, …)"
                     .clone_into(&mut self.status);
@@ -4380,6 +4402,18 @@ fn finder_overlay(app: &App) -> Option<(String, Vec<String>)> {
     }
 }
 
+/// The manual's overlay: generated for the mode in force, so the keys
+/// it lists are the keys this terminal actually has.
+fn manual_overlay(app: &App) -> (String, Vec<String>) {
+    (
+        "manual".to_owned(),
+        closure_shell_core::manual_org(app.input_mode())
+            .lines()
+            .map(ToOwned::to_owned)
+            .collect(),
+    )
+}
+
 /// The refile picker's overlay: the filter, and the headlines that
 /// still match it.
 fn refile_overlay(app: &App) -> (String, Vec<String>) {
@@ -4511,6 +4545,7 @@ fn overlay_content(app: &App) -> Option<(String, Vec<String>)> {
         // `C-h k` shows nothing of its own: it is waiting for a key,
         // and the status line already says so. An overlay here would
         // cover the very bindings you are asking about.
+        AppMode::Manual => Some(manual_overlay(app)),
         AppMode::DescribeKey | AppMode::Browse | AppMode::FileView => None,
     }
 }

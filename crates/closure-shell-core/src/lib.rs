@@ -4373,6 +4373,12 @@ const PALETTE_COMMANDS: &[(&str, &str, &str, &str)] = &[
         "Add a sibling headline",
     ),
     (
+        "manual",
+        "manual",
+        "App",
+        "Every command and its keys, generated from the registry",
+    ),
+    (
         "describe-key",
         "describe-key",
         "App",
@@ -8716,6 +8722,8 @@ pub enum ModalSurface {
     /// The tag picker: every tag the vault uses, ticked where this
     /// headline carries it (Q3-V6).
     TagPick,
+    /// The manual, read-only, generated on the way in.
+    Manual,
     /// `C-h k`: waiting for the one key to describe.
     ///
     /// A surface rather than a prompt because it takes a *chord*, not
@@ -13023,6 +13031,119 @@ pub fn org_link(kind: &str, dest: &str, description: &str) -> String {
     }
 }
 
+/// The invariants the whole system is built to hold.
+///
+/// One list. `closure spec` prints it and the manual carries it, and
+/// before this they were the same ten sentences typed twice — which is
+/// exactly the drift the manual exists to prevent.
+pub const INVARIANTS: &[&str] = &[
+    "I1  byte-exact roundtrip on the golden corpus",
+    "I2  stable BlockId (ULID) survives parse/print/CRDT merges",
+    "I3  every mutation undoable via Edit + branching UndoTree",
+    "I4  every command carries a keybinding (whichkey reads registry)",
+    "I5  no panics in kernel crates (forbid unsafe, deny unwrap/expect, fuzz)",
+    "I6  determinism for parse/print/queries",
+    "I7  shells address content by id, never by byte offset; spans pub(crate) firewall",
+    "I8  command-registry is the only side-effect surface",
+    "I9  config validation at load, not at use (typed schema)",
+    "I10 deterministic / hermetic / reproducible builds (nix flake check)",
+];
+
+/// closure's manual, generated from the running program.
+///
+/// "Emacs like manual directly within closure (self documented) …
+/// Generate on the fly (or JIT) via LLM from the source repository?"
+///
+/// The doubts in that question are the argument against it: an LLM
+/// reading the source is a second thing that can be wrong, it costs
+/// money, and it is not there on a train. What makes Emacs' manual
+/// trustworthy is not the prose — it is that `C-h k` answers from the
+/// running program, so the documentation cannot drift from the binary.
+///
+/// So this is built from the same registry the palette and which-key
+/// read, and from the keymap of the mode in force. It cannot go stale,
+/// it costs nothing, and it works offline, which is the point of a
+/// local-first tool.
+///
+/// `tutorial.org` is a different document and stays: a tutorial teaches
+/// one path through, a manual is complete.
+#[must_use]
+pub fn manual_org(mode: InputMode) -> String {
+    use std::fmt::Write as _;
+    let keys = closure_input::mode_keymap(mode);
+    let chords_for = |command: &str| -> Vec<&str> {
+        keys.iter()
+            .filter(|(_, c)| *c == command)
+            .map(|(chord, _)| *chord)
+            .collect()
+    };
+    let mut out = String::new();
+    out.push_str("#+TITLE: closure manual\n");
+    let _ = writeln!(out, "#+SUBTITLE: {mode:?} keys");
+    out.push_str(
+        // One paragraph per line. A hard wrap here is a hard wrap in
+        // the pane too, where the width is not ours to guess — the
+        // shell wraps what it is given, and given pre-broken text it
+        // wraps twice.
+        "\nGenerated from the command registry and the keymap in force, every time \
+         it is asked for. Not hand-written and not worth hand-editing: an edit here \
+         is gone the next time you open it, and whatever you were correcting is in \
+         the code that generates it.\n\n\
+         This is the reference. =tutorial.org= is the other half — it teaches one \
+         path through; this lists everything.\n",
+    );
+
+    out.push_str(
+        "\n* Invariants\n\nWhat the system is built to hold. =closure spec= prints \
+         the same list.\n\n",
+    );
+    for line in INVARIANTS {
+        let _ = writeln!(out, "- {line}");
+    }
+
+    out.push_str(
+        "\n* Keys\n\nEvery command, by what it is for. A command with no chord in \
+         this mode is reached from the palette (=M-x=).\n",
+    );
+    for section in PALETTE_SECTIONS {
+        let _ = writeln!(out, "\n** {section}\n");
+        for (label, command, sect, desc) in PALETTE_COMMANDS {
+            if sect != section {
+                continue;
+            }
+            let chords = chords_for(command);
+            let keys = if chords.is_empty() {
+                "M-x".to_owned()
+            } else {
+                chords
+                    .iter()
+                    .map(|c| format!("={c}="))
+                    .collect::<Vec<_>>()
+                    .join(" or ")
+            };
+            // Both names. The label is what the palette shows; the
+            // canonical one is what `M-x`, `where-is` and an LLM
+            // calling a command all use, and they are not always the
+            // same word.
+            if label == command {
+                let _ = writeln!(out, "- ={label}= — {desc}. {keys}");
+            } else {
+                let _ = writeln!(out, "- ={label}= (={command}=) — {desc}. {keys}");
+            }
+        }
+    }
+
+    out.push_str(
+        "\n* Asking closure itself\n\n\
+         - =describe-key= takes one chord and says what it runs.\n\
+         - =M-x= lists every command by name, with its keys.\n\
+         - which-key opens mid-chord and shows what the next key would do.\n\
+         - =closure spec= prints the invariants above.\n\
+         - =closure where-is <command>= prints its keys.\n",
+    );
+    out
+}
+
 /// What a key does: Emacs' `C-h k`, answered from the running program.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct KeyDescription {
@@ -14273,14 +14394,9 @@ impl ModalApp {
             ModalSurface::Ex => self.on_ex_key(shell, key, ctrl, alt, text),
             ModalSurface::Sync => self.on_sync_key(shell, key, ctrl, alt, text),
             ModalSurface::Llm => self.on_llm_key(key, ctrl, alt, text),
-            ModalSurface::Journal => {
-                let len = self.journal_rows(shell).len();
-                self.on_pane_key(key, len);
-            }
-            ModalSurface::Cron => {
-                let len = self.cron_rows(shell).len();
-                self.on_pane_key(key, len);
-            }
+            // The read-only lists: nothing to type into, so they all
+            // walk the same way and differ only in how long they are.
+            ModalSurface::Journal | ModalSurface::Cron => self.on_list_pane_key(shell, key),
             ModalSurface::Settings => self.on_settings_key(shell, key),
             ModalSurface::Setting => match key {
                 "escape" => {
@@ -14292,6 +14408,7 @@ impl ModalApp {
                     self.field_buf.key(key, ctrl, alt, text);
                 }
             },
+            ModalSurface::Manual => self.on_manual_key(key),
             ModalSurface::DescribeKey => self.on_describe_key(key, ctrl, alt, text),
             ModalSurface::InsertLink => self.on_insert_link_key(shell, key, ctrl, alt, text),
             ModalSurface::DatePick => self.on_datepick_key(shell, key, text),
@@ -18155,6 +18272,45 @@ impl ModalApp {
         } else {
             base
         }
+    }
+
+    /// The read-only list panes, which differ only in their length.
+    fn on_list_pane_key(&mut self, shell: &Shell, key: &str) {
+        let len = match self.surface {
+            ModalSurface::Journal => self.journal_rows(shell).len(),
+            _ => self.cron_rows(shell).len(),
+        };
+        self.on_pane_key(key, len);
+    }
+
+    /// The manual pane's keys: it is a list, so it walks like one.
+    fn on_manual_key(&mut self, key: &str) {
+        let len = self.manual_rows().len();
+        self.on_pane_key(key, len);
+    }
+
+    /// The manual as lines, for a read-only pane.
+    ///
+    /// Generated each time it is asked for, from the keymap in force —
+    /// so it is right for the mode you are in and cannot go stale.
+    #[must_use]
+    pub fn manual_rows(&self) -> Vec<String> {
+        // The same document, laid out for a pane rather than a file.
+        // `#+TITLE:` and friends are how org carries a title and are
+        // furniture on screen, and a blank line costs a whole row here
+        // where in a file it costs nothing.
+        let text = manual_org(self.mode);
+        let mut out: Vec<String> = Vec::new();
+        for line in text.lines() {
+            if line.starts_with("#+") {
+                continue;
+            }
+            if line.is_empty() && out.last().is_none_or(String::is_empty) {
+                continue;
+            }
+            out.push(line.to_owned());
+        }
+        out
     }
 
     /// One stroke, then the answer.
@@ -22905,6 +23061,11 @@ impl ModalApp {
             // name. All of them ask for a title: `M-RET` used to make a
             // headline called "untitled" without asking, so the only
             // chord that existed was also one you had to undo.
+            "manual" => {
+                self.pane_cursor = 0;
+                self.surface = ModalSurface::Manual;
+                self.say("manual — generated from the keymap you are using · Esc back");
+            }
             "describe-key" => {
                 self.prompt_from = self.surface.is_editor().then_some(self.surface);
                 self.surface = ModalSurface::DescribeKey;
