@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <!-- closure's app icon, in Doom Emacs' doom-vibrant palette — the
+       same values the shell's own theme uses (Theme::doom_vibrant).
+
+       The mark is what the app is: an outline. Three rows at
+       increasing depth, in outline-1 / outline-2 / outline-3, with the
+       accent bar down the left edge that the rail already uses to say
+       "you are here". Nothing that needs to be read, so it survives
+       being 16px in an Alt-Tab strip. -->
+  <rect width="256" height="256" rx="56" fill="#242730"/>
+  <rect x="3" y="3" width="250" height="250" rx="53" fill="none"
+        stroke="#3d4451" stroke-width="6"/>
+
+  <!-- The active-pane rule, the one piece of chrome the shell repeats
+       everywhere. -->
+  <rect x="40" y="60" width="14" height="136" rx="7" fill="#51afef"/>
+
+  <!-- Three rows, each a level deeper. Widths fall the way a subtree
+       narrows; the colours are outline-1, outline-2, outline-3. -->
+  <rect x="78"  y="60"  width="138" height="26" rx="13" fill="#51afef"/>
+  <rect x="102" y="115" width="102" height="26" rx="13" fill="#c57bdb"/>
+  <rect x="126" y="170" width="66"  height="26" rx="13" fill="#a991f1"/>
+</svg>

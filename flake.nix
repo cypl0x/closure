@@ -76,6 +76,17 @@
         cargo = rust;
         rustc = rust;
       };
+      # The lavapipe manifest, named for the packaged build the same
+      # way the devShell names it. Without it, `nix build .#gpui`
+      # produced a binary that refused to open a window on any machine
+      # with no GPU driver — so "a closure you can `nix build` and run"
+      # was still untrue of the one case that most needs it. The
+      # preflight reaches for this only when the machine has no driver
+      # of its own.
+      softwareIcdPkg =
+        if pkgs.stdenv.hostPlatform.isLinux
+        then "${pkgs.mesa}/share/vulkan/icd.d/lvp_icd.${pkgs.stdenv.hostPlatform.parsed.cpu.name}.json"
+        else "";
       # The parts every variant shares. `buildRustPackage` needs a
       # single source of truth for these or the two packages drift.
       common = {
@@ -136,7 +147,23 @@
           postInstall = ''
             wrapProgram $out/bin/closure \
               --prefix LD_LIBRARY_PATH : ${pkgs.lib.makeLibraryPath (gpuiBuildInputs pkgs)} \
-              --prefix PATH : ${pkgs.git}/bin
+              --prefix PATH : ${pkgs.git}/bin \
+              --set-default CLOSURE_SOFTWARE_ICD ${softwareIcdPkg}
+
+            # Desktop integration. gpui takes no window-icon option, so
+            # the icon reaches Alt-Tab the way every other X11/Wayland
+            # app's does: the window reports `app_id`
+            # (`net.wolfhard.closure`, set in WindowOptions), the WM
+            # matches it against `StartupWMClass` in this file, and
+            # draws the `Icon=` it names.
+            install -Dm644 ${./assets/net.wolfhard.closure.desktop} \
+              $out/share/applications/net.wolfhard.closure.desktop
+            for size in 16 24 32 48 64 128 256 512; do
+              install -Dm644 ${./assets}/icons/''${size}x''${size}/closure.png \
+                $out/share/icons/hicolor/''${size}x''${size}/apps/net.wolfhard.closure.png
+            done
+            install -Dm644 ${./assets/closure.svg} \
+              $out/share/icons/hicolor/scalable/apps/net.wolfhard.closure.svg
           '';
         });
     });

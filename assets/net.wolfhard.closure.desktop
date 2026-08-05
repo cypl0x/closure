@@ -1,0 +1,16 @@
+[Desktop Entry]
+Type=Application
+Name=closure
+GenericName=Plain-text PKM
+Comment=Local-first plain-text knowledge base over org files
+Exec=closure gpui %f
+Icon=net.wolfhard.closure
+Terminal=false
+Categories=Office;Utility;TextEditor;
+Keywords=org;outline;notes;pkm;knowledge;
+MimeType=text/org;
+# The window's app_id, set in WindowOptions. X11 puts it in WM_CLASS and
+# Wayland reports it as the app id; either way this is the line that
+# lets a window manager match a running window to this file, and so to
+# the icon above. Without it Alt-Tab has nothing to draw.
+StartupWMClass=net.wolfhard.closure
