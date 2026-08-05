@@ -7,12 +7,22 @@
 use closure_llm::{LlmPermissions, RENDER_TOOL};
 
 #[test]
-fn render_is_off_by_default_other_tools_unrestricted() {
+fn render_is_off_by_default_and_so_is_writing() {
+    // Narrowed 2026-08-05, working "[#A] Finish and wire the LLM layer
+    // completely": with no allowlist the *reading* tools stay
+    // unrestricted, because an assistant that cannot read the vault
+    // you asked it about reads as broken rather than as safe. The
+    // writing ones do not, because the model reads your vault and a
+    // note in it can tell the model what to do.
     let p = LlmPermissions::from_config(vec![]);
     assert!(!p.allows(RENDER_TOOL), "render is opt-in");
     assert!(
         p.allows("read"),
-        "other tools unrestricted when no allowlist"
+        "reading tools unrestricted when no allowlist"
+    );
+    assert!(
+        !p.allows("rename"),
+        "an absent allowlist let the model rename headlines"
     );
 }
 

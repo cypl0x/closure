@@ -24,6 +24,12 @@ pub const VIEW_STATE_COMMAND: &str = "view-state";
 /// by [`LlmPermissions`] (V3b) — opt-in and revocable at runtime.
 pub const RENDER_TOOL: &str = "view-render";
 
+/// The tools that change the vault, as opposed to reading it.
+///
+/// Named here rather than guessed at from the verb, because "guessed
+/// at" is how a new write tool ends up granted by default.
+pub const WRITING_TOOLS: &[&str] = &["capture", "rename", "set-property"];
+
 /// The command that toggles render access live (bound in every input
 /// mode's keymap so it appears in which-key, I4).
 pub const TOGGLE_RENDER_COMMAND: &str = "toggle-llm-render";
@@ -59,13 +65,29 @@ impl LlmPermissions {
         }
     }
 
-    /// Whether `tool` may run. Render obeys the live opt-in bit; every
-    /// other tool obeys the `base` allowlist (matching by exact name,
-    /// `-`-prefix base, or prefix).
+    /// Whether `tool` may run.
+    ///
+    /// Render obeys the live opt-in bit; a tool that *writes* to the
+    /// vault must be named; everything else obeys the `base` allowlist
+    /// (exact name, `-`-prefix base, or prefix), with no allowlist
+    /// meaning no restriction.
+    ///
+    /// The write rule is the asymmetric one, deliberately.
+    /// `llm_tools` bounds a model you chose to invoke, so an absent
+    /// line letting it *read* the vault you asked it about is
+    /// reasonable — and an assistant that cannot read reads as broken
+    /// rather than as safe. But the model reads your vault, and a note
+    /// in it can tell the model what to do: that is the `eval_trust`
+    /// threat one step removed, content someone sent you deciding to
+    /// rename your headlines. Reading costs nothing; writing is asked
+    /// for by name.
     #[must_use]
     pub fn allows(&self, tool: &str) -> bool {
         if tool == RENDER_TOOL {
             return self.render_granted;
+        }
+        if WRITING_TOOLS.contains(&tool) && self.base.is_none() {
+            return false;
         }
         self.base.as_ref().is_none_or(|set| {
             let cmd_base = tool.split('-').next().unwrap_or(tool);
@@ -148,19 +170,41 @@ pub enum ProviderKind {
     OpenAi,
     /// Anthropic HTTPS (curl path, BYOK).
     Anthropic,
+    /// A name `config.org` gave that this build does not know.
+    ///
+    /// It used to fall through to Anthropic, so `llm_provider =
+    /// antropic` became a real provider that then failed on a missing
+    /// key — and the one thing the user was told was the one thing
+    /// that was not wrong.
+    Unknown,
 }
 
-/// Map an `llm_provider` config name to a [`ProviderKind`]. Unset and
-/// `echo` select [`ProviderKind::Echo`] (no key required); an unknown
-/// name falls back to [`ProviderKind::Anthropic`] (BYOK).
+/// Map an `llm_provider` config name to a [`ProviderKind`].
+///
+/// Unset and `echo` select [`ProviderKind::Echo`], which needs no key.
+/// A name this build does not know is [`ProviderKind::Unknown`] — a
+/// thing to report rather than a thing to guess at.
 #[must_use]
 pub fn provider_kind(name: Option<&str>) -> ProviderKind {
     match name {
         None | Some("echo") => ProviderKind::Echo,
         Some("ollama") => ProviderKind::Ollama,
-        Some("openai") => ProviderKind::OpenAi,
-        _ => ProviderKind::Anthropic,
+        // `openai-compatible` names a *wire format* at an endpoint the
+        // loader insists on — llama.cpp, vLLM, LM Studio, anything
+        // speaking `/v1/chat/completions`. It reached the catch-all
+        // arm and came out Anthropic, so a config the loader had
+        // validated sent Anthropic-shaped JSON to an OpenAI endpoint.
+        Some("openai" | "openai-compatible") => ProviderKind::OpenAi,
+        Some("anthropic") => ProviderKind::Anthropic,
+        _ => ProviderKind::Unknown,
     }
+}
+
+/// The provider names this build understands, for a message that has
+/// to list them.
+#[must_use]
+pub const fn known_providers() -> &'static [&'static str] {
+    &["anthropic", "openai", "openai-compatible", "ollama", "echo"]
 }
 
 /// Read an API key from the named environment variable. The key lives
@@ -205,7 +249,11 @@ pub fn build_provider_at(
     key: &str,
 ) -> Box<dyn Provider> {
     match kind {
-        ProviderKind::Echo => Box::new(EchoProvider),
+        // A name we do not know cannot be guessed into one that
+        // works, so it answers locally like `echo` — the shell reports
+        // the name through `LlmStatus`, and the loader refuses it
+        // outright before this is reached at all.
+        ProviderKind::Echo | ProviderKind::Unknown => Box::new(EchoProvider),
         ProviderKind::Ollama => Box::new(ollama_http(
             endpoint.unwrap_or("http://localhost:11434"),
             model,
@@ -799,7 +847,7 @@ pub fn stream_delta(kind: ProviderKind, line: &str) -> Option<String> {
     }
     let text = match kind {
         // Nothing leaves the process, so nothing arrives token by token.
-        ProviderKind::Echo => return None,
+        ProviderKind::Echo | ProviderKind::Unknown => return None,
         ProviderKind::Ollama => extract_json_string_after(payload, "\"response\":"),
         ProviderKind::OpenAi => extract_json_string_after(payload, "\"content\":"),
         // Gated on the event type rather than on the presence of a

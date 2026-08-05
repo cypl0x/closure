@@ -189,3 +189,50 @@ fn the_endpoint_field_says_where_requests_will_really_go() {
         endpoint.detail
     );
 }
+
+#[test]
+fn a_provider_name_this_build_does_not_know_is_a_config_error() {
+    // "[#A] Finish and wire the LLM layer completely" — `llm_provider
+    // = antropic` used to fall through to Anthropic and then fail on a
+    // missing key, so the only thing reported was the only thing that
+    // was not wrong. It is caught at load now, where the other typed
+    // cross-key constraints are (I9: error at load, not at first use).
+    let dir = tempfile::tempdir().expect("tmp");
+    std::fs::write(
+        dir.path().join("config.org"),
+        "#+BEGIN_SRC closure-config\nllm_provider = antropic\nllm_key_env = K\n#+END_SRC\n",
+    )
+    .expect("config");
+    let err = closure_config::Config::from_path(&dir.path().join("config.org"))
+        .expect_err("a typo is not a provider");
+    let text = format!("{err}");
+    assert!(
+        text.contains("antropic"),
+        "it does not name the typo: {text}"
+    );
+    assert!(
+        text.contains("anthropic") && text.contains("openai") && text.contains("ollama"),
+        "and it does not offer the names it knows: {text}"
+    );
+}
+
+#[test]
+fn every_name_it_offers_actually_loads() {
+    // The other half: a list in an error message that includes a name
+    // the loader rejects is worse than no list.
+    for name in ["anthropic", "openai", "openai-compatible", "ollama", "echo"] {
+        let dir = tempfile::tempdir().expect("tmp");
+        std::fs::write(
+            dir.path().join("config.org"),
+            format!(
+                "#+BEGIN_SRC closure-config\nllm_provider = {name}\nllm_key_env = K\n\
+                 llm_endpoint = http://localhost:8080/v1/chat/completions\n#+END_SRC\n"
+            ),
+        )
+        .expect("config");
+        assert!(
+            closure_config::Config::from_path(&dir.path().join("config.org")).is_ok(),
+            "`{name}` is offered and rejected"
+        );
+    }
+}

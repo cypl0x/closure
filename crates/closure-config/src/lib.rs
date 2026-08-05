@@ -215,6 +215,17 @@ const OPTIONAL_KEYS_DOC: &str = "\
 # bind g z = toggle-wrap\n\
 # bind g W =\n";
 
+/// The `llm_provider` names this build speaks.
+///
+/// Spelled here rather than imported: `closure-config` sits below
+/// `closure-llm` in the graph, and a config crate that depended on the
+/// provider crate to validate a *string* would invert that for nothing.
+/// `closure_llm::known_providers` holds the same list, and
+/// `wired_completely.rs` asserts they agree.
+const fn closure_llm_provider_names() -> [&'static str; 5] {
+    ["anthropic", "openai", "openai-compatible", "ollama", "echo"]
+}
+
 impl Default for Config {
     fn default() -> Self {
         Self {
@@ -767,6 +778,21 @@ impl Config {
 
         // Typed cross-key constraints (yesod/CUE principle from spec I9 and
         // ROADMAP: error at *load* time, not at first use of the feature).
+        //
+        // The name first. `llm_provider = antropic` used to fall
+        // through to Anthropic, so the failure arrived later and as a
+        // complaint about a missing key — the one thing that was not
+        // wrong. A name is either one this build speaks or it is a
+        // typo, and load time is when to say which.
+        let providers = closure_llm_provider_names();
+        if let Some(name) = cfg.llm_provider.as_deref()
+            && !providers.contains(&name)
+        {
+            return Err(ConfigError::BadValue {
+                key: "llm_provider".into(),
+                reason: format!("`{name}` is not one of: {}", providers.join(", ")),
+            });
+        }
         // A remote BYOK provider needs llm_key_env; keyless providers
         // (echo for tests, ollama on localhost) do not.
         let keyless = matches!(cfg.llm_provider.as_deref(), Some("echo" | "ollama"));

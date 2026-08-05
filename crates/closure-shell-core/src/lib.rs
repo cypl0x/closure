@@ -23790,6 +23790,9 @@ pub fn assistant_settings_with(
                 closure_llm::ProviderKind::Anthropic => closure_llm::ANTHROPIC_URL,
                 closure_llm::ProviderKind::Ollama => "http://localhost:11434",
                 closure_llm::ProviderKind::Echo => "nowhere — echo never leaves the process",
+                closure_llm::ProviderKind::Unknown => {
+                    "nowhere — the provider name is not one of these"
+                }
             };
             format!("unset, so requests go to {default}")
         },
