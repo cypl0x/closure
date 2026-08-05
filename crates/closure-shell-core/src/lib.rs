@@ -6607,6 +6607,17 @@ pub struct SyncApp {
     /// When each address last failed to answer, so an absent peer is
     /// not redialled on every frame.
     quiet_until: std::collections::HashMap<std::net::SocketAddr, std::time::Instant>,
+    /// Dials in flight, one per address.
+    ///
+    /// Connecting is the part that costs real time — 60ms of it,
+    /// measured, on the thread that draws the window — and it is also
+    /// the part that needs nothing from the CRDT session. So it waits
+    /// on a worker, and the round happens here once the socket is
+    /// already open, against a peer that has proved it is there.
+    dialing: std::collections::HashMap<
+        std::net::SocketAddr,
+        std::thread::JoinHandle<std::io::Result<std::net::TcpStream>>,
+    >,
 }
 
 /// Where somebody is: which block, and which line inside it.
@@ -6715,6 +6726,7 @@ impl SyncApp {
             local: None,
             seen: Vec::new(),
             quiet_until: std::collections::HashMap::new(),
+            dialing: std::collections::HashMap::new(),
         }
     }
 
@@ -6814,6 +6826,13 @@ impl SyncApp {
     /// # Errors
     ///
     /// The connection, or a malformed frame.
+    ///
+    /// *Advances* a round rather than performing one. The dial waits
+    /// on a worker — it cost 60.2ms on the drawing thread, measured,
+    /// and needs nothing from the CRDT session — so the first call
+    /// starts the connection and returns `Err("dialing")`, and a later
+    /// one finds the socket open and does the round. A frame loop gets
+    /// this for free; anything calling it once has to call it again.
     pub fn sync_with(&mut self, addr: std::net::SocketAddr) -> Result<(), String> {
         /// How long to wait for a peer to accept.
         ///
@@ -6847,10 +6866,34 @@ impl SyncApp {
             // ragged lines.
             return Err("quiet".to_owned());
         }
-        let mut stream = std::net::TcpStream::connect_timeout(&addr, DIAL).map_err(|e| {
-            self.mark_quiet(addr);
-            e.to_string()
-        })?;
+        // The dial is somebody else's problem. `connect_timeout`
+        // costs its whole budget whenever a peer is merely absent —
+        // measured at 60.2ms on the thread that draws the window,
+        // which is four dropped frames at 60Hz, repeated every time
+        // the quiet expires. Nothing about connecting needs the CRDT
+        // session, so it waits on a worker and this returns at once.
+        let Some(handle) = self.dialing.remove(&addr) else {
+            self.dialing.insert(
+                addr,
+                std::thread::spawn(move || std::net::TcpStream::connect_timeout(&addr, DIAL)),
+            );
+            // Not a failure: the answer is not in yet, and the next
+            // tick collects it. Short, because it lands in a peer row.
+            return Err("dialing".to_owned());
+        };
+        if !handle.is_finished() {
+            // Still out there. Put it back and come round again — a
+            // tick must never wait on one.
+            self.dialing.insert(addr, handle);
+            return Err("dialing".to_owned());
+        }
+        let mut stream = handle
+            .join()
+            .map_err(|_| "the dial thread panicked".to_owned())?
+            .map_err(|e| {
+                self.mark_quiet(addr);
+                e.to_string()
+            })?;
         stream
             .set_read_timeout(Some(READ_BUDGET))
             .map_err(|e| e.to_string())?;

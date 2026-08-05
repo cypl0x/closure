@@ -156,7 +156,25 @@ fn a_live_round_carries_presence_both_ways() {
         }
         server
     });
-    client.sync_with(bound).expect("a live round");
+    // `sync_with` advances a round rather than performing one: the
+    // dial waits on a worker so the frame timer never pays for it, so
+    // the first call starts the connection and a later one completes
+    // the round. The frame loop does this naturally; a test has to say
+    // it. (Changed 2026-08-05, "Move the P2P session off the UI
+    // thread" — the dial cost 60.2ms on the drawing thread.)
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    loop {
+        match client.sync_with(bound) {
+            Ok(()) => break,
+            Err(e) => {
+                assert!(
+                    std::time::Instant::now() < deadline,
+                    "no live round in ten seconds: {e}"
+                );
+                std::thread::sleep(std::time::Duration::from_millis(5));
+            }
+        }
+    }
     let server = handle.join().unwrap();
 
     let seen_by_client = client.peer_presence();
