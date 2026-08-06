@@ -3958,7 +3958,17 @@ impl GpuiView {
                     self.app.capture_cursor(),
                 )),
         ];
-        out.extend(prompt_buttons(co, self.sz(11.0), cx));
+        // One group that never shrinks, for the same reason the prompt
+        // row has one: at a narrow window the crumbs pushed these past
+        // the right edge and cancel went off screen.
+        out.push(
+            div()
+                .flex()
+                .flex_row()
+                .items_center()
+                .flex_none()
+                .children(prompt_buttons(co, self.sz(11.0), cx)),
+        );
         out
     }
 
@@ -3982,9 +3992,17 @@ impl GpuiView {
         let tone = prompt_tone_color(co, chrome.tone);
         Some(
             div()
+                .debug_selector(|| "prompt-row".to_owned())
                 .flex()
                 .flex_row()
                 .items_center()
+                // Bounded, or `flex_1` on the field resolves against
+                // nothing and the row grows past the window — which is
+                // how cancel ended up off screen at 580px however
+                // little else was in the bar.
+                .w_full()
+                .min_w(px(0.0))
+                .overflow_hidden()
                 .child(
                     div()
                         .flex()
@@ -4044,29 +4062,55 @@ impl GpuiView {
                 // What this field will do, in the field's own row. It
                 // was in the status line at the bottom of the window,
                 // which is the wrong end of the screen from the caret.
-                .children(self.history_hint(co))
-                .children((!chrome.hint.is_empty()).then(|| {
-                    // The right-hand segment, mirrored: its arrow points
-                    // back into the bar it sits at the end of.
+                // The decorations, in their own shrinkable, clipped
+                // group — the lesson the footer already learned: "a
+                // flex row that cannot shrink grows instead". At 580px
+                // the history hint and the label pushed the buttons
+                // past the right edge and *cancel was off screen*,
+                // which is a prompt you opened by accident and cannot
+                // click out of. These yield; the field and the two
+                // buttons do not.
+                .child(
+                    div()
+                        .flex()
+                        .flex_row()
+                        .items_center()
+                        .flex_shrink()
+                        .min_w(px(0.0))
+                        .overflow_hidden()
+                        .children(self.history_hint(co))
+                        .children((!chrome.hint.is_empty()).then(|| {
+                            // The right-hand segment, mirrored: its arrow points
+                            // back into the bar it sits at the end of.
+                            div()
+                                .flex()
+                                .flex_row()
+                                .items_center()
+                                .flex_none()
+                                .text_size(self.sz(10.0))
+                                // A shade off the bar it sits on, or the arrow
+                                // is painted in the background colour and the
+                                // segment reads as plain text with a gap.
+                                .child(div().text_color(rgb(co.selection)).child("\u{e0b2}"))
+                                .child(
+                                    div()
+                                        .px_2()
+                                        .bg(rgb(co.selection))
+                                        .text_color(rgb(co.fg))
+                                        .child(chrome.hint.clone()),
+                                )
+                        })),
+                )
+                // Never shrink, never wrap: whatever else goes, the way
+                // out stays clickable.
+                .child(
                     div()
                         .flex()
                         .flex_row()
                         .items_center()
                         .flex_none()
-                        .text_size(self.sz(10.0))
-                        // A shade off the bar it sits on, or the arrow
-                        // is painted in the background colour and the
-                        // segment reads as plain text with a gap.
-                        .child(div().text_color(rgb(co.selection)).child("\u{e0b2}"))
-                        .child(
-                            div()
-                                .px_2()
-                                .bg(rgb(co.selection))
-                                .text_color(rgb(co.fg))
-                                .child(chrome.hint.clone()),
-                        )
-                }))
-                .children(prompt_buttons(co, self.sz(11.0), cx)),
+                        .children(prompt_buttons(co, self.sz(11.0), cx)),
+                ),
         )
     }
 
