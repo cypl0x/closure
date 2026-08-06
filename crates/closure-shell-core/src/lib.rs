@@ -3121,6 +3121,31 @@ pub struct SniffEvent {
     pub candidate: String,
     /// The action a rule decided, if any.
     pub action: Option<closure_sniffer::Action>,
+    /// *Which* rule decided it. The action says a request was blocked;
+    /// this says by what, which is the question that follows.
+    pub rule: Option<closure_sniffer::Rule>,
+}
+
+/// One captured flow, taken apart.
+///
+/// "inspect" from the snitcher's feature list. A candidate is three
+/// facts wearing one string — a host, a port and a protocol — and a
+/// filter over that string cannot tell a port from a hostname with
+/// digits in it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FlowDetail {
+    /// The candidate exactly as captured.
+    pub candidate: String,
+    /// The host part, without the port.
+    pub host: String,
+    /// The port, when the candidate carried one.
+    pub port: Option<u16>,
+    /// The protocol word, or empty when there was none.
+    pub protocol: String,
+    /// What was decided.
+    pub action: Option<closure_sniffer::Action>,
+    /// And by which rule — `user-N` for one you added this session.
+    pub rule: Option<closure_sniffer::Rule>,
 }
 
 /// Headless state for the interactive sniffer surface (V7a).
@@ -3148,12 +3173,19 @@ impl SnifferApp {
     /// Capture `candidate`, deciding its action via `backend` (and any
     /// user rules already added). Appended to the event list.
     pub fn record(&mut self, candidate: &str, backend: &impl closure_sniffer::CaptureBackend) {
-        let action = self
-            .user_action(candidate)
+        // A rule you added this session wins over the backend's, and
+        // the *rule* is kept beside the action so the pane can say
+        // which one it was.
+        let user = closure_sniffer::match_first(candidate, &self.rules).cloned();
+        let rule = user.or_else(|| backend.match_rule(candidate));
+        let action = rule
+            .as_ref()
+            .map(|r| r.action)
             .or_else(|| backend.match_action(candidate));
         self.events.push(SniffEvent {
             candidate: candidate.to_owned(),
             action,
+            rule,
         });
     }
 
@@ -3213,15 +3245,19 @@ impl SnifferApp {
         else {
             return;
         };
-        self.rules.push(closure_sniffer::Rule {
+        let rule = closure_sniffer::Rule {
             id: format!("user-{}", self.rules.len()),
             pattern: candidate.clone(),
             action,
-        });
-        // Re-decide the matching events under the new user rule.
+        };
+        self.rules.push(rule.clone());
+        // Re-decide the matching events under the new user rule — and
+        // record *which* rule, or the pane goes on naming the backend
+        // rule you have just overridden.
         for e in &mut self.events {
             if e.candidate == candidate {
                 e.action = Some(action);
+                e.rule = Some(rule.clone());
             }
         }
     }
@@ -3235,6 +3271,33 @@ impl SnifferApp {
     /// backend block).
     pub fn allow_selected(&mut self) {
         self.rule_for_selected(closure_sniffer::Action::Allow);
+    }
+
+    /// One flow, taken apart: host, port, protocol, and the rule that
+    /// decided it.
+    ///
+    /// Indexes the *filtered* list, which is the list on screen — the
+    /// row you are looking at is the row you get.
+    #[must_use]
+    pub fn inspect(&self, i: usize) -> Option<FlowDetail> {
+        let event: SniffEvent = (*self.filtered().get(i)?).clone();
+        let (address, protocol) = event
+            .candidate
+            .split_once(' ')
+            .map_or((event.candidate.as_str(), ""), |(a, p)| (a, p.trim()));
+        // IPv6 wears its own brackets — `[::1]:443` — so the port is
+        // whatever follows the last colon *outside* them.
+        let (host, port) = address.rsplit_once(':').map_or((address, None), |(h, p)| {
+            p.parse::<u16>().map_or((address, None), |n| (h, Some(n)))
+        });
+        Some(FlowDetail {
+            candidate: event.candidate.clone(),
+            host: host.trim_matches(['[', ']']).to_owned(),
+            port,
+            protocol: protocol.to_owned(),
+            action: event.action,
+            rule: event.rule,
+        })
     }
 
     /// A description of the selected flow (candidate + action), or `None`.
@@ -3281,6 +3344,41 @@ impl SnifferApp {
                     .map_or_else(|| "(no rule)".to_owned(), |a| format!("{a:?}")),
                 action: None,
             });
+            // Inspect, in the tree both shells render from: the list
+            // says a flow was blocked and this says by what. Without
+            // it the question you actually have has no answer on
+            // screen in either shell.
+            if let Some(flow) = self.inspect(self.selected) {
+                fields.push(FieldView {
+                    label: "host".to_owned(),
+                    value: flow.host,
+                    action: None,
+                });
+                if let Some(port) = flow.port {
+                    fields.push(FieldView {
+                        label: "port".to_owned(),
+                        value: port.to_string(),
+                        action: None,
+                    });
+                }
+                if !flow.protocol.is_empty() {
+                    fields.push(FieldView {
+                        label: "protocol".to_owned(),
+                        value: flow.protocol,
+                        action: None,
+                    });
+                }
+                fields.push(FieldView {
+                    label: "decided by".to_owned(),
+                    value: flow.rule.map_or_else(
+                        // Not "no rule": nothing matched it, which is
+                        // *why* it is allowed.
+                        || "nothing matched it".to_owned(),
+                        |r| format!("{} ({})", r.id, r.pattern),
+                    ),
+                    action: None,
+                });
+            }
             fields.push(FieldView {
                 label: "block".to_owned(),
                 value: String::new(),

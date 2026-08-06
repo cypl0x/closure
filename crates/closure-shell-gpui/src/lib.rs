@@ -7186,6 +7186,63 @@ impl GpuiView {
                     )
                     .child(div().text_color(rgb(co.fg)).child(ev.candidate.clone()))
             }))
+            .children(self.flow_detail(co))
+    }
+
+    /// The selected flow, taken apart: "inspect" from the snitcher's
+    /// feature list.
+    ///
+    /// The list answers "was this blocked". This answers the question
+    /// that follows it — by what rule, and what did that rule match on
+    /// — which the list could never say because a flow was one string
+    /// with a verdict beside it.
+    fn flow_detail(&self, co: Colors) -> Option<gpui::Div> {
+        let flow = self.app.sniffer().inspect(self.app.sniffer_cursor())?;
+        let field = |label: &'static str, value: String| {
+            div()
+                .flex()
+                .gap_2()
+                .child(
+                    div()
+                        .w(px(72.0))
+                        .flex_none()
+                        .text_color(rgb(co.muted))
+                        .child(label),
+                )
+                .child(div().text_color(rgb(co.fg)).child(value))
+        };
+        let mut out = div()
+            .debug_selector(|| "flow-detail".to_owned())
+            .flex()
+            .flex_col()
+            .gap_1()
+            .mt_2()
+            .pt_2()
+            .border_t_1()
+            .border_color(rgb(co.border))
+            .text_size(self.sz(11.0))
+            .child(field("host", flow.host.clone()))
+            .child(field(
+                "port",
+                flow.port.map_or_else(|| "—".to_owned(), |p| p.to_string()),
+            ))
+            .child(field(
+                "protocol",
+                if flow.protocol.is_empty() {
+                    "—".to_owned()
+                } else {
+                    flow.protocol.clone()
+                },
+            ));
+        out = if let Some(rule) = flow.rule {
+            out.child(field("decided by", rule.id.clone()))
+                .child(field("matching", rule.pattern.clone()))
+        } else {
+            // Not "no rule": nothing matched, which is why it is
+            // allowed, and that is a different sentence.
+            out.child(field("decided by", "nothing matched it".to_owned()))
+        };
+        Some(out)
     }
 
     /// Outstanding CRDT field conflicts and the ours/theirs decision

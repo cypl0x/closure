@@ -83,6 +83,17 @@ fn glob_inner(pat: &[u8], cand: &[u8]) -> bool {
 pub trait CaptureBackend {
     /// Given a candidate (e.g. "host:port proto"), return the action if a rule matches.
     fn match_action(&self, candidate: &str) -> Option<Action>;
+
+    /// *Which* rule decided, not only what it decided.
+    ///
+    /// The action alone answers "is this blocked" and the question
+    /// anyone actually has in front of a blocked request is "by what".
+    /// Defaulted to `None` so a backend that cannot say is not forced
+    /// to lie; the ones built on a rule list all can.
+    fn match_rule(&self, candidate: &str) -> Option<Rule> {
+        let _ = candidate;
+        None
+    }
 }
 
 /// Mock backend for tests (uses in-memory rules + existing `glob/match_first`).
@@ -101,6 +112,10 @@ impl MockBackend {
 }
 
 impl CaptureBackend for MockBackend {
+    fn match_rule(&self, candidate: &str) -> Option<Rule> {
+        match_first(candidate, &self.rules).cloned()
+    }
+
     fn match_action(&self, candidate: &str) -> Option<Action> {
         match_first(candidate, &self.rules).map(|r| r.action)
     }
@@ -202,6 +217,10 @@ impl PcapBackend {
 
 #[cfg(feature = "pcap")]
 impl CaptureBackend for PcapBackend {
+    fn match_rule(&self, candidate: &str) -> Option<Rule> {
+        match_first(candidate, &self.rules).cloned()
+    }
+
     fn match_action(&self, candidate: &str) -> Option<Action> {
         match_first(candidate, &self.rules).map(|r| r.action)
     }
