@@ -7386,6 +7386,15 @@ impl SyncApp {
     /// Non-blocking so a shell can call it from its frame loop and a
     /// quiet network costs nothing.
     pub fn serve_pending(&mut self) -> usize {
+        /// How many callers one tick will serve.
+        ///
+        /// Each accepted connection costs up to `SERVE_BUDGET`, so
+        /// "all of them" means a crowd owns the thread that draws the
+        /// window: ten silent callers cost 2.08 seconds, measured, and
+        /// anyone able to reach the port can be the crowd. The rest
+        /// are not dropped — the listener still holds them, and the
+        /// next tick takes the next few.
+        const PER_TICK: usize = 4;
         /// How long to wait for a client that connected to say
         /// something. The dialling side's `READ_BUDGET`, from the
         /// other end of the same wire.
@@ -7397,7 +7406,9 @@ impl SyncApp {
             return 0;
         }
         let mut served = 0;
+        let mut taken = 0;
         while let Ok((mut stream, _)) = listener.accept() {
+            taken += 1;
             // The accepted socket had no read timeout at all, so a
             // client that connects and then says nothing blocked this
             // thread — the one that draws the window — for as long as
@@ -7414,6 +7425,9 @@ impl SyncApp {
                 && self.exchange_presence(&mut stream, false).is_ok();
             if ok {
                 served += 1;
+            }
+            if taken >= PER_TICK {
+                break;
             }
         }
         let _ = listener.set_nonblocking(false);
