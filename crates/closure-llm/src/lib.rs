@@ -24,6 +24,13 @@ pub const VIEW_STATE_COMMAND: &str = "view-state";
 /// by [`LlmPermissions`] (V3b) — opt-in and revocable at runtime.
 pub const RENDER_TOOL: &str = "view-render";
 
+/// What separates a server's name from its tool's: `files/read_file`.
+///
+/// A vault tool never contains it, which is what makes "is this
+/// someone else's tool" a question about the name rather than a second
+/// list to keep in step.
+pub const MCP_TOOL_SEP: char = '/';
+
 /// The tools that change the vault, as opposed to reading it.
 ///
 /// Named here rather than guessed at from the verb, because "guessed
@@ -68,9 +75,10 @@ impl LlmPermissions {
     /// Whether `tool` may run.
     ///
     /// Render obeys the live opt-in bit; a tool that *writes* to the
-    /// vault must be named; everything else obeys the `base` allowlist
-    /// (exact name, `-`-prefix base, or prefix), with no allowlist
-    /// meaning no restriction.
+    /// vault must be named; a tool from another server
+    /// (`<server>/<tool>`, [`MCP_TOOL_SEP`]) must be named; everything
+    /// else obeys the `base` allowlist (exact name, `-`-prefix base,
+    /// or prefix), with no allowlist meaning no restriction.
     ///
     /// The write rule is the asymmetric one, deliberately.
     /// `llm_tools` bounds a model you chose to invoke, so an absent
@@ -81,12 +89,19 @@ impl LlmPermissions {
     /// threat one step removed, content someone sent you deciding to
     /// rename your headlines. Reading costs nothing; writing is asked
     /// for by name.
+    ///
+    /// A tool from a configured MCP server is the same rule one step
+    /// further out. It is not your vault — it is a filesystem, a
+    /// browser, an issue tracker — and the model learned it exists
+    /// from a menu that a note in your vault can talk it into using.
+    /// `files/` allows a whole server; `files/read_file` allows one
+    /// tool of it.
     #[must_use]
     pub fn allows(&self, tool: &str) -> bool {
         if tool == RENDER_TOOL {
             return self.render_granted;
         }
-        if WRITING_TOOLS.contains(&tool) && self.base.is_none() {
+        if (WRITING_TOOLS.contains(&tool) || tool.contains(MCP_TOOL_SEP)) && self.base.is_none() {
             return false;
         }
         self.base.as_ref().is_none_or(|set| {

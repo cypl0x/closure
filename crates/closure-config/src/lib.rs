@@ -47,6 +47,16 @@ pub struct Config {
     /// to keep in step. The shell reports an override it cannot
     /// resolve.
     pub key_bindings: Vec<(String, String)>,
+    /// MCP servers to be a client of: `mcp <name> = <command line>`.
+    ///
+    /// The name is part of the key for the same reason a chord is:
+    /// the value is a command line, and a value holding both would
+    /// need an escape rule for the separator — command lines have
+    /// commas in them.
+    ///
+    /// The command is not checked here either. Whether it exists, and
+    /// whether it speaks MCP, is answered by running it.
+    pub mcp_servers: Vec<(String, String)>,
     /// Input mode (`emacs`, `vim`, `doom`, `helix`, `notion`).
     pub input_mode: InputMode,
     /// Theme name.
@@ -199,6 +209,10 @@ const OPTIONAL_KEYS_DOC: &str = "\
 # llm_endpoint = http://localhost:8080/v1/chat/completions\n\
 # llm_tools = read, search, capture\n\
 \n\
+# MCP servers to be a client of — their tools join the assistant's,\n\
+# named `<server>/<tool>`. Add each to llm_tools to allow it.\n\
+# mcp files = mcp-server-filesystem /tmp\n\
+\n\
 # The left rail, collapsed to its icons. Written by `toggle-rail`;\n\
 # `outline_width` beside it is the outline pane's width, written when\n\
 # you drag its edge. Both are here so the window you arranged is the\n\
@@ -254,6 +268,7 @@ impl Default for Config {
             rail_docked: None,
             wrap: false,
             key_bindings: Vec::new(),
+            mcp_servers: Vec::new(),
             sync_bind: None,
             sync_advertise: None,
             assets_dir: None,
@@ -602,6 +617,22 @@ impl Config {
                     }
                     cfg.key_bindings
                         .push((chord.to_owned(), value.trim().to_owned()));
+                }
+                // `mcp <name> = <command>`, the shape `bind` uses and
+                // for the same reason.
+                k if k == "mcp" || k.starts_with("mcp ") => {
+                    let name = k.strip_prefix("mcp").unwrap_or("").trim();
+                    if name.is_empty() {
+                        return Err(ConfigError::BadValue {
+                            key: key.into(),
+                            reason: format!(
+                                "{line_info}: `mcp` needs a name to call the server by — \
+                                 `mcp files = mcp-server-filesystem /tmp`"
+                            ),
+                        });
+                    }
+                    cfg.mcp_servers
+                        .push((name.to_owned(), value.trim().to_owned()));
                 }
                 "default_vault" => {
                     cfg.default_vault = Some(PathBuf::from(value));

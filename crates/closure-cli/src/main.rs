@@ -3236,10 +3236,22 @@ fn build_llm_provider(
 /// `llm_tools` allowlist, then route to the vault tool surface (which
 /// handles `view-state` as a real snapshot). Mutations stay behind
 /// kernel commands (I8).
-fn run_vault_tool(v: &mut Vault, perms: &closure_llm::LlmPermissions, line: &str) -> String {
+fn run_vault_tool(
+    v: &mut Vault,
+    servers: &mut closure_mcp::Servers,
+    perms: &closure_llm::LlmPermissions,
+    line: &str,
+) -> String {
     let cmd = line.split_whitespace().next().unwrap_or("");
     if !perms.allows(cmd) {
         return format!("error: tool '{cmd}' not allowed (llm_tools config / live permission)");
+    }
+    // Someone else's server, if the name says so — asked before the
+    // vault's own tools so that a server called `read` cannot be
+    // shadowed by one, and after the permission gate so that it is the
+    // same gate either way.
+    if let Some(out) = servers.call_line(line) {
+        return out;
     }
     // view-render (V3a): the LLM reads the rendered screen (the ViewTree),
     // not just the data — a serialised snapshot of the default browse
@@ -3248,6 +3260,24 @@ fn run_vault_tool(v: &mut Vault, perms: &closure_llm::LlmPermissions, line: &str
         return closure_shell_core::serialize_view(&closure_shell_core::browse_view(v));
     }
     v.run_tool(line)
+}
+
+/// The menu of tools from configured MCP servers, appended to
+/// [`ASK_TOOLS_HELP`] — empty when there are none, so a vault with no
+/// `mcp` line pays nothing for the feature.
+///
+/// Each line carries the arguments object the tool wants, because the
+/// caller has to fill it in and a name alone would be asking the model
+/// to guess at key names.
+fn remote_tools_help(servers: &mut closure_mcp::Servers) -> String {
+    if servers.is_empty() {
+        return String::new();
+    }
+    format!(
+        "\nTools from configured MCP servers (the argument is the JSON \
+         object shown): \n{}",
+        servers.menu()
+    )
 }
 
 const ASK_TOOLS_HELP: &str = "Vault tools (use via CALL): list-files | read <file> | \
@@ -3270,20 +3300,30 @@ fn cmd_ask(prompt: &str, model: &str, vault: Option<&Path>) -> Result<(), String
     let cfg = closure_config::Config::from_path(&vault_dir.join("config.org")).unwrap_or_default();
     let provider = build_llm_provider(&cfg, model)?;
     let perms = closure_llm::LlmPermissions::from_config(cfg.llm_tools.clone().unwrap_or_default());
+    // The servers this vault is configured to be a client of. Started
+    // here rather than at load: a vault that names four servers should
+    // not spawn four processes for someone who never asks a question.
+    let mut servers = closure_mcp::Servers::start(&cfg.mcp_servers);
+    for (_, said) in servers.failures() {
+        eprintln!("{said}");
+    }
     // What vault this is, before the task — the model's first turn
     // used to go on asking something the process already knew. Shape
     // only, never contents: notes are read through the gated tools.
     let context =
         closure_shell_core::Shell::new(Vault::open(vault_dir).map_err(|e| format!("{e}"))?)
             .assistant_context();
-    let task = format!("{context}\n\n{prompt}\n\n{ASK_TOOLS_HELP}");
+    let task = format!(
+        "{context}\n\n{prompt}\n\n{ASK_TOOLS_HELP}{}",
+        remote_tools_help(&mut servers)
+    );
     // Streamed, including the `CALL` turns: a loop that spends four
     // turns reading the vault should look like it is working rather
     // than like it has stopped.
     let mut out = std::io::stdout();
     closure_llm::tool_loop_streaming(
         provider.as_ref(),
-        |line| run_vault_tool(&mut v, &perms, line),
+        |line| run_vault_tool(&mut v, &mut servers, &perms, line),
         &task,
         16,
         &mut |token| {
@@ -3358,13 +3398,21 @@ fn cmd_chat(model: &str, vault: Option<&Path>) -> Result<(), String> {
     let cfg = closure_config::Config::from_path(&vault_dir.join("config.org")).unwrap_or_default();
     let provider = build_llm_provider(&cfg, model)?;
     let perms = closure_llm::LlmPermissions::from_config(cfg.llm_tools.clone().unwrap_or_default());
+    // The same servers `ask` gets — chat runs the same loop over the
+    // same tools, and a menu that differed between the two would be
+    // two answers to one question.
+    let mut servers = closure_mcp::Servers::start(&cfg.mcp_servers);
+    for (_, said) in servers.failures() {
+        eprintln!("{said}");
+    }
+    let remote = remote_tools_help(&mut servers);
     let mut line = String::new();
     while read_chat_line(&mut line) {
-        let task = format!("{}\n\n{ASK_TOOLS_HELP}", line.trim());
+        let task = format!("{}\n\n{ASK_TOOLS_HELP}{remote}", line.trim());
         let mut out = std::io::stdout();
         closure_llm::tool_loop_streaming(
             provider.as_ref(),
-            |l| run_vault_tool(&mut v, &perms, l),
+            |l| run_vault_tool(&mut v, &mut servers, &perms, l),
             &task,
             8,
             &mut |token| {
@@ -3517,7 +3565,12 @@ fn view_render_tool_returns_rendered_screen_when_granted() {
     let mut v = Vault::open(dir.path()).expect("open");
     // Render is opt-in; grant it via config.
     let perms = closure_llm::LlmPermissions::from_config(vec!["view-render".to_owned()]);
-    let out = run_vault_tool(&mut v, &perms, "view-render");
+    let out = run_vault_tool(
+        &mut v,
+        &mut closure_mcp::Servers::default(),
+        &perms,
+        "view-render",
+    );
     assert!(
         out.contains("ROWS") && out.contains("selected="),
         "screen: {out}"
@@ -3537,14 +3590,36 @@ fn view_render_is_opt_in_and_live_revocable() {
     // Off by default (opt-in).
     let mut perms = closure_llm::LlmPermissions::from_config(vec![]);
     assert!(
-        run_vault_tool(&mut v, &perms, "view-render").contains("not allowed"),
+        run_vault_tool(
+            &mut v,
+            &mut closure_mcp::Servers::default(),
+            &perms,
+            "view-render"
+        )
+        .contains("not allowed"),
         "render off by default"
     );
     // Live grant, then revoke.
     perms.grant_render();
-    assert!(run_vault_tool(&mut v, &perms, "view-render").contains("ROWS"));
+    assert!(
+        run_vault_tool(
+            &mut v,
+            &mut closure_mcp::Servers::default(),
+            &perms,
+            "view-render"
+        )
+        .contains("ROWS")
+    );
     perms.revoke_render();
-    assert!(run_vault_tool(&mut v, &perms, "view-render").contains("not allowed"));
+    assert!(
+        run_vault_tool(
+            &mut v,
+            &mut closure_mcp::Servers::default(),
+            &perms,
+            "view-render"
+        )
+        .contains("not allowed")
+    );
 }
 
 // TDD for self-documentation (Emacs-style describe-function, ROADMAP self-doc sub).

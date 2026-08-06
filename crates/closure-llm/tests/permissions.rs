@@ -59,3 +59,37 @@ fn explicit_grant_revoke() {
     p.grant_render();
     assert!(p.allows(RENDER_TOOL));
 }
+
+/// "Consume MCP Servers (?)" — a tool from someone else's server is
+/// asked for by name, the way a write is.
+///
+/// The reasoning is the one already written above for writes, one step
+/// further out: `llm_tools` bounds a model you chose to invoke, and an
+/// absent line letting it read *your vault* is reasonable. A tool from
+/// a server you configured is not your vault — it is a filesystem, a
+/// browser, an issue tracker, and the model learned it exists from a
+/// menu that a note in your vault can talk it into using.
+#[test]
+fn a_tool_from_another_server_is_named_or_it_does_not_run() {
+    let open = closure_llm::LlmPermissions::from_config(Vec::new());
+    assert!(
+        open.allows("search"),
+        "reading the vault still needs no line"
+    );
+    assert!(
+        !open.allows("files/read_file"),
+        "an unnamed external tool ran on an empty llm_tools"
+    );
+
+    let named = closure_llm::LlmPermissions::from_config(vec!["files/read_file".to_owned()]);
+    assert!(named.allows("files/read_file"));
+    assert!(
+        !named.allows("issues/close"),
+        "naming one external tool granted another"
+    );
+
+    // A whole server at once, which is the line most people will write.
+    let server = closure_llm::LlmPermissions::from_config(vec!["files/".to_owned()]);
+    assert!(server.allows("files/read_file"));
+    assert!(!server.allows("issues/close"));
+}
