@@ -4964,9 +4964,13 @@ impl GpuiView {
                 self.app
                     .cron_rows(&self.shell)
                     .into_iter()
-                    .map(|(spec, command)| format!("{spec}   {command}"))
+                    // The command first: it is what the row is about.
+                    // Then when it runs in words, and the expression
+                    // it came from — because the sentence is what you
+                    // check and the expression is what you edit.
+                    .map(|j| format!("{:20} {}   ({})", j.command, j.when, j.schedule))
                     .collect(),
-                "no scheduled jobs — declare them in the vault with a :CRON: property",
+                "no scheduled jobs — declare them in a `#+BEGIN_SRC cron` block",
             )),
             ModalSurface::Settings | ModalSurface::Setting => pane.child(self.settings_pane(co)),
             ModalSurface::Sniffer => pane.child(self.sniffer_pane(co, cx)),

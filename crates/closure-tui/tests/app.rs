@@ -1812,13 +1812,22 @@ fn journal_opens_and_lists_entries() {
 #[test]
 fn cron_opens_and_lists_jobs() {
     let mut app = App::new(paths());
-    app.set_cron(vec![("0 9 * * *".to_owned(), "capture Daily".to_owned())]);
+    app.set_cron(vec![closure_shell_core::JobRow {
+        schedule: "0 9 * * *".to_owned(),
+        when: "every day at 09:00".to_owned(),
+        command: "capture Daily".to_owned(),
+    }]);
     app.handle_stroke("g");
     app.handle_stroke("k");
     assert_eq!(app.mode(), AppMode::Cron);
     let rows = app.cron_rows();
     assert_eq!(rows.len(), 1);
     assert!(rows[0].contains("Daily"), "{rows:?}");
+    // And when it runs, in words — the row used to carry a Debug dump
+    // of the parsed spec, which is neither what was written nor
+    // readable.
+    assert!(rows[0].contains("every day at 09:00"), "{rows:?}");
+    assert!(rows[0].contains("0 9 * * *"), "{rows:?}");
 }
 
 #[test]

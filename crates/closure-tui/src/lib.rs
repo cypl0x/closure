@@ -213,7 +213,7 @@ pub struct App {
     /// Recorded journal entries.
     journal: Vec<String>,
     /// Scheduled jobs, `(spec, command)`.
-    cron: Vec<(String, String)>,
+    cron: Vec<closure_shell_core::JobRow>,
     backlinks: Vec<(PathBuf, PathBuf, String)>,
     capture_request: Option<String>,
     rename_target: Option<String>,
@@ -1184,7 +1184,7 @@ impl App {
     }
 
     /// Push in the scheduled jobs.
-    pub fn set_cron(&mut self, jobs: Vec<(String, String)>) {
+    pub fn set_cron(&mut self, jobs: Vec<closure_shell_core::JobRow>) {
         self.cron = jobs;
     }
 
@@ -1229,7 +1229,7 @@ impl App {
         }
         self.cron
             .iter()
-            .map(|(spec, command)| format!("{spec:16} {command}"))
+            .map(|j| format!("{:20} {}   ({})", j.command, j.when, j.schedule))
             .collect()
     }
 
@@ -3717,14 +3717,10 @@ fn sync_panes(app: &mut App, vault: &Vault) {
             .entries()
             .unwrap_or_default(),
     );
-    app.set_cron(
-        vault
-            .iter()
-            .filter_map(|(_, doc)| closure_cron::parse_jobs(&doc.source()).ok())
-            .flatten()
-            .map(|job| (format!("{:?}", job.spec), job.command))
-            .collect(),
-    );
+    // The shared reader, not a second copy of it: this one had the
+    // same whole-document parse the shell had, and the same empty pane
+    // as a result.
+    app.set_cron(closure_shell_core::job_rows(vault));
 }
 
 /// Refresh every vault-derived record in the app: paths, headline

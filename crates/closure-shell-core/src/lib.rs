@@ -3191,9 +3191,6 @@ impl SnifferApp {
 
     /// The action a user rule decides for `candidate`, if any (user rules
     /// take precedence over the backend).
-    fn user_action(&self, candidate: &str) -> Option<closure_sniffer::Action> {
-        closure_sniffer::match_first(candidate, &self.rules).map(|r| r.action)
-    }
 
     /// Every captured event, in capture order.
     #[must_use]
@@ -13283,6 +13280,66 @@ pub struct LinkCompletion {
     pub label: String,
 }
 
+/// Every scheduled job declared in the vault's `#+BEGIN_SRC cron`
+/// blocks.
+///
+/// A free function because both shells need it and both had their own
+/// copy — each reading the *whole document* as one cron listing, which
+/// an org file never is: it begins `* Something`, two fields is not a
+/// spec, the parse failed, and the `.ok()` on the end dropped every job
+/// in the file. The Jobs pane was empty in any vault with a headline in
+/// it, which is all of them.
+#[must_use]
+pub fn job_rows(vault: &closure_store::Vault) -> Vec<JobRow> {
+    // The `#+BEGIN_SRC cron` blocks, not the whole file. This read
+    // every document as one cron listing, and an org document
+    // begins `* Something` — two fields, not a spec — so the parse
+    // failed and this `.ok()` dropped every job in the file. The
+    // pane was empty in any vault with a headline in it.
+    vault
+        .iter()
+        .flat_map(|(_, doc)| {
+            segment_body(&doc.source())
+                .into_iter()
+                .filter_map(|seg| match seg {
+                    // Both spellings: the vaults in this repo write
+                    // `closure-cron`, and `cron` is what anyone typing
+                    // it fresh would reach for.
+                    BodySegment::Code { lang, text }
+                        if lang.eq_ignore_ascii_case("cron")
+                            || lang.eq_ignore_ascii_case("closure-cron") =>
+                    {
+                        closure_cron::parse_jobs(&text).ok()
+                    }
+                    _ => None,
+                })
+                .flatten()
+                .collect::<Vec<_>>()
+        })
+        .map(|job| JobRow {
+            schedule: closure_cron::expression(&job.spec),
+            when: closure_cron::describe(&job.spec),
+            command: job.command,
+        })
+        .collect()
+}
+
+/// One scheduled job, as the Jobs pane shows it.
+///
+/// The pane paired `format!("{:?}", job.spec)` with the command in a
+/// bare tuple: the parser's idea of the schedule rather than the
+/// user's, no word about when it next runs, and nothing in the type
+/// saying which string was which.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct JobRow {
+    /// The cron expression, spelled as it was written.
+    pub schedule: String,
+    /// The same thing in words, where there are words for it.
+    pub when: String,
+    /// The registry command it runs.
+    pub command: String,
+}
+
 /// One candidate refile target ([`ModalApp::refile_rows`]).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RefileRow {
@@ -14818,14 +14875,8 @@ impl ModalApp {
     /// A malformed block is skipped rather than fatal: a typo in one
     /// job must not make the pane unopenable.
     #[must_use]
-    pub fn cron_rows(&self, shell: &Shell) -> Vec<(String, String)> {
-        shell
-            .vault
-            .iter()
-            .filter_map(|(_, doc)| closure_cron::parse_jobs(&doc.source()).ok())
-            .flatten()
-            .map(|job| (format!("{:?}", job.spec), job.command))
-            .collect()
+    pub fn cron_rows(&self, shell: &Shell) -> Vec<JobRow> {
+        job_rows(&shell.vault)
     }
 
     /// Collaboration state, created on first use.

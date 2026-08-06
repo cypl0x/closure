@@ -25,6 +25,78 @@ pub struct CronSpec {
     pub command: String,
 }
 
+/// The five fields as the cron expression they were parsed from.
+///
+/// The Jobs pane printed `{:?}` of the spec — `CronSpec { minute:
+/// Exact(0), … }` — which is neither what the user wrote nor anything
+/// they would recognise. This is what they wrote.
+#[must_use]
+pub fn expression(spec: &CronSpec) -> String {
+    format!(
+        "{} {} {} {} {}",
+        field_str(&spec.minute),
+        field_str(&spec.hour),
+        field_str(&spec.dom),
+        field_str(&spec.month),
+        field_str(&spec.dow)
+    )
+}
+
+/// One field, back in cron's own spelling.
+fn field_str(f: &Field) -> String {
+    match f {
+        Field::Any => "*".to_owned(),
+        Field::Exact(n) => n.to_string(),
+        Field::List(v) => v
+            .iter()
+            .map(ToString::to_string)
+            .collect::<Vec<_>>()
+            .join(","),
+        Field::Range(a, b) => format!("{a}-{b}"),
+        Field::Step(n) => format!("*/{n}"),
+    }
+}
+
+/// When this fires, in a sentence — or the expression when there is no
+/// sentence for it.
+///
+/// Deliberately narrow. Only the shapes people actually write get
+/// words; everything else falls back to the expression, because a
+/// wrong sentence about when a job runs is worse than a cron line you
+/// have to read. "every day at 09:00" is what you check against what
+/// you meant.
+#[must_use]
+pub fn describe(spec: &CronSpec) -> String {
+    const DAYS: [&str; 7] = [
+        "Sunday",
+        "Monday",
+        "Tuesday",
+        "Wednesday",
+        "Thursday",
+        "Friday",
+        "Saturday",
+    ];
+    let daily = matches!(spec.dom, Field::Any) && matches!(spec.month, Field::Any);
+    match (&spec.minute, &spec.hour, &spec.dow) {
+        // `*/N * * * *`
+        (Field::Step(n), Field::Any, Field::Any) if daily => {
+            format!("every {n} minutes")
+        }
+        // `M H * * *`
+        (Field::Exact(m), Field::Exact(h), Field::Any) if daily => {
+            format!("every day at {h:02}:{m:02}")
+        }
+        // `M H * * D`
+        (Field::Exact(m), Field::Exact(h), Field::Exact(d)) if daily => {
+            DAYS.get(*d as usize).map_or_else(
+                || expression(spec),
+                |day| format!("every {day} at {h:02}:{m:02}"),
+            )
+        }
+        _ => expression(spec),
+    }
+}
+
 /// A cron field.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Field {

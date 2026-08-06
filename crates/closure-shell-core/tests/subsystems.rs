@@ -124,8 +124,12 @@ fn the_cron_surface_lists_the_jobs_in_the_vault() {
     assert_eq!(app.surface(), ModalSurface::Cron);
     let jobs = app.cron_rows(&shell);
     assert_eq!(jobs.len(), 1, "{jobs:?}");
-    assert!(jobs[0].1.contains("Daily review"), "{jobs:?}");
-    assert!(jobs[0].0.contains('9'), "the spec is shown too: {jobs:?}");
+    assert!(jobs[0].command.contains("Daily review"), "{jobs:?}");
+    assert_eq!(
+        jobs[0].schedule, "0 9 * * *",
+        "the spec as written: {jobs:?}"
+    );
+    assert_eq!(jobs[0].when, "every day at 09:00", "and in words: {jobs:?}");
 }
 
 #[test]
