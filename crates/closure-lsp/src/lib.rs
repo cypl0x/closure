@@ -48,9 +48,18 @@ fn read_frame<R: BufRead>(input: &mut R) -> Result<Option<String>, LspError> {
 }
 
 /// Write a JSON `body` as one LSP `Content-Length` frame.
+///
+/// Flushed, and that is not a detail. Rust's stdout is line-buffered
+/// and an LSP frame ends with the JSON body, which has no newline —
+/// so the header went out and the answer sat in the buffer until the
+/// process exited. Against a client that closes the pipe (a shell
+/// pipeline, a test) it looked perfect; against a client that keeps
+/// the connection open, which is every editor, the server answered
+/// nothing, ever.
 fn write_frame<W: std::io::Write>(out: &mut W, body: &str) -> Result<(), LspError> {
     write!(out, "Content-Length: {}\r\n\r\n{body}", body.len())
-        .map_err(|e| LspError::Transport(e.to_string()))
+        .map_err(|e| LspError::Transport(e.to_string()))?;
+    out.flush().map_err(|e| LspError::Transport(e.to_string()))
 }
 
 /// Serve LSP over Content-Length-framed JSON-RPC on `input`/`output`.
@@ -67,11 +76,34 @@ fn write_frame<W: std::io::Write>(out: &mut W, body: &str) -> Result<(), LspErro
 /// [`LspError::Transport`] on IO / framing failure.
 pub fn serve<R: BufRead, W: std::io::Write>(
     vault: &mut Vault,
+    input: R,
+    output: &mut W,
+) -> Result<(), LspError> {
+    serve_with(vault, &mut Embeddings::default(), input, output)
+}
+
+/// [`serve`], forwarding positions inside a `#+BEGIN_SRC` block to the
+/// language server configured for that block's language.
+///
+/// "org-edit-special on src blocks and then fiddle with the source
+/// code": inside `#+BEGIN_SRC rust` the thing that knows what the
+/// cursor is on is rust-analyzer, and the thing that knows where the
+/// block's line 12 lives in the file is this.
+///
+/// # Errors
+///
+/// [`LspError::Transport`] on IO / framing failure.
+pub fn serve_with<R: BufRead, W: std::io::Write>(
+    vault: &mut Vault,
+    embeddings: &mut Embeddings,
     mut input: R,
     output: &mut W,
 ) -> Result<(), LspError> {
+    let mut overlay = Overlay::default();
     while let Some(msg) = read_frame(&mut input)? {
-        if let Some(resp) = handle_message_mut(vault, &msg) {
+        if let Some(resp) = embedded_answer(vault, &overlay, embeddings, &msg) {
+            write_frame(output, &resp)?;
+        } else if let Some(resp) = handle_message_with(vault, &mut overlay, &msg) {
             write_frame(output, &resp)?;
         }
         if closure_jsonrpc::string_field(&msg, "method").as_deref() == Some("exit") {
@@ -79,6 +111,39 @@ pub fn serve<R: BufRead, W: std::io::Write>(
         }
     }
     Ok(())
+}
+
+/// The answer from a src block's own language server, when the request
+/// is a position inside one and a server is configured for it.
+///
+/// `None` means "not one of theirs", which is how the request falls
+/// through to closure's own answer rather than being swallowed.
+fn embedded_answer(
+    vault: &Vault,
+    overlay: &Overlay,
+    embeddings: &mut Embeddings,
+    msg: &str,
+) -> Option<String> {
+    if embeddings.is_empty() {
+        return None;
+    }
+    let method = closure_jsonrpc::string_field(msg, "method")?;
+    if !matches!(
+        method.as_str(),
+        "textDocument/hover" | "textDocument/definition" | "textDocument/completion"
+    ) {
+        return None;
+    }
+    let id = closure_jsonrpc::raw_field(msg, "id")?;
+    let (line, character) = req_position(msg);
+    let block = SrcBlock::at(&req_source(vault, overlay, msg), line)?;
+    // A server that fails has nothing to say about this position —
+    // better than an error the editor shows as a broken feature for
+    // the rest of the session.
+    embeddings
+        .ask(&method, &block, line, character)?
+        .ok()
+        .map(|result| closure_jsonrpc::response(&id, &result))
 }
 
 /// The capabilities `initialize` advertises.
@@ -93,13 +158,60 @@ const INITIALIZE_RESULT: &str = "{\"capabilities\":{\"documentSymbolProvider\":t
 
 /// The source text of the document the request's `uri` names (relative
 /// to the vault root); empty when absent.
-fn req_source(vault: &Vault, json: &str) -> String {
+fn req_source(vault: &Vault, overlay: &Overlay, json: &str) -> String {
     let uri = closure_jsonrpc::string_field(json, "uri").unwrap_or_default();
+    // What the editor has open wins over what is saved — that is the
+    // whole premise of the protocol, and the only answer available at
+    // all for a document with no path, like a src block handed over on
+    // its own.
+    if let Some(text) = overlay.get(&uri) {
+        return text.to_owned();
+    }
     let rel = uri.strip_prefix("file://").unwrap_or(&uri);
     vault
         .document_relative(std::path::Path::new(rel))
         .map(closure_core::Document::source)
         .unwrap_or_default()
+}
+
+/// The documents the client has open, by URI.
+///
+/// LSP's premise: the client owns the buffer and sends it, because the
+/// interesting state is the one not saved yet. A server that re-reads
+/// the path answers about a file that agrees with yours only between
+/// saves.
+#[derive(Debug, Default, Clone)]
+pub struct Overlay(std::collections::HashMap<String, String>);
+
+impl Overlay {
+    /// The text the client has for `uri`, if it has any.
+    #[must_use]
+    pub fn get(&self, uri: &str) -> Option<&str> {
+        self.0.get(uri).map(String::as_str)
+    }
+
+    /// Apply a `textDocument/did*` notification. `true` when it was one.
+    ///
+    /// `didChange` takes the last `text` in `contentChanges`, which is
+    /// the whole document: closure advertises no incremental sync, so
+    /// that is what a client sends.
+    pub fn absorb(&mut self, json: &str) -> bool {
+        let method = closure_jsonrpc::string_field(json, "method").unwrap_or_default();
+        let uri = closure_jsonrpc::string_field(json, "uri").unwrap_or_default();
+        match method.as_str() {
+            "textDocument/didOpen" | "textDocument/didChange" => {
+                if let Some(text) = closure_jsonrpc::string_field(json, "text") {
+                    self.0.insert(uri, text);
+                }
+                true
+            }
+            "textDocument/didClose" => {
+                self.0.remove(&uri);
+                true
+            }
+            _ => false,
+        }
+    }
 }
 
 /// The request's zero-based `(line, character)` position (defaults `0`).
@@ -113,8 +225,8 @@ fn req_position(json: &str) -> (u32, u32) {
 }
 
 /// `textDocument/hover` result fragment.
-fn hover_result(vault: &Vault, json: &str) -> String {
-    let src = req_source(vault, json);
+fn hover_result(vault: &Vault, overlay: &Overlay, json: &str) -> String {
+    let src = req_source(vault, overlay, json);
     let (line, ch) = req_position(json);
     hover(&src, vault, line, ch).map_or_else(
         || "null".to_owned(),
@@ -128,8 +240,8 @@ fn hover_result(vault: &Vault, json: &str) -> String {
 }
 
 /// `textDocument/completion` result fragment.
-fn completion_result(vault: &Vault, json: &str) -> String {
-    let src = req_source(vault, json);
+fn completion_result(vault: &Vault, overlay: &Overlay, json: &str) -> String {
+    let src = req_source(vault, overlay, json);
     let (line, ch) = req_position(json);
     let items: Vec<String> = completion(&src, vault, line, ch)
         .iter()
@@ -146,8 +258,8 @@ fn completion_result(vault: &Vault, json: &str) -> String {
 }
 
 /// `textDocument/diagnostic` full-report result fragment.
-fn diagnostic_result(vault: &Vault, json: &str) -> String {
-    let src = req_source(vault, json);
+fn diagnostic_result(vault: &Vault, overlay: &Overlay, json: &str) -> String {
+    let src = req_source(vault, overlay, json);
     let items: Vec<String> = diagnostics(&src, vault)
         .iter()
         .map(|d| {
@@ -179,8 +291,8 @@ fn diagnostic_result(vault: &Vault, json: &str) -> String {
 /// `null` rather than an empty list when the cursor is not on an id:
 /// LSP treats `[]` as "there is a definition and it is nowhere", and
 /// editors show that as a failed jump rather than as no jump.
-fn definition_result(vault: &Vault, json: &str) -> String {
-    let src = req_source(vault, json);
+fn definition_result(vault: &Vault, overlay: &Overlay, json: &str) -> String {
+    let src = req_source(vault, overlay, json);
     let (line, ch) = req_position(json);
     let Some(id) = id_at_position(&src, line, ch) else {
         return "null".to_owned();
@@ -213,8 +325,8 @@ fn definition_result(vault: &Vault, json: &str) -> String {
     )
 }
 
-fn references_result(vault: &Vault, json: &str) -> String {
-    let src = req_source(vault, json);
+fn references_result(vault: &Vault, overlay: &Overlay, json: &str) -> String {
+    let src = req_source(vault, overlay, json);
     let (line, ch) = req_position(json);
     let Some(id) = id_at_position(&src, line, ch) else {
         return "[]".to_owned();
@@ -236,8 +348,8 @@ fn references_result(vault: &Vault, json: &str) -> String {
 /// (mutations route through the registry + persist, I8), so the rename is
 /// applied here and the response is `null` rather than a client-applied
 /// `WorkspaceEdit` — see Decision (2026-06-20).
-fn rename_result(vault: &mut Vault, json: &str) -> String {
-    let src = req_source(vault, json);
+fn rename_result(vault: &mut Vault, overlay: &Overlay, json: &str) -> String {
+    let src = req_source(vault, overlay, json);
     let (line, ch) = req_position(json);
     let new_name = closure_jsonrpc::string_field(json, "newName").unwrap_or_default();
     if let Some(id) = id_at_position(&src, line, ch) {
@@ -247,8 +359,8 @@ fn rename_result(vault: &mut Vault, json: &str) -> String {
 }
 
 /// `textDocument/documentSymbol` result fragment.
-fn symbol_result(vault: &Vault, json: &str) -> String {
-    let src = req_source(vault, json);
+fn symbol_result(vault: &Vault, overlay: &Overlay, json: &str) -> String {
+    let src = req_source(vault, overlay, json);
     let items: Vec<String> = document_symbols(&src)
         .iter()
         .map(|s| {
@@ -269,17 +381,24 @@ fn symbol_result(vault: &Vault, json: &str) -> String {
 /// Handle one LSP JSON-RPC message; `None` for notifications (no `id`).
 #[must_use]
 pub fn handle_message(vault: &Vault, json: &str) -> Option<String> {
+    handle_message_over(vault, &Overlay::default(), json)
+}
+
+/// [`handle_message`], answering about the documents the client has
+/// open rather than about the files on disk.
+#[must_use]
+pub fn handle_message_over(vault: &Vault, overlay: &Overlay, json: &str) -> Option<String> {
     let id = closure_jsonrpc::raw_field(json, "id")?;
     let method = closure_jsonrpc::string_field(json, "method").unwrap_or_default();
     let result = match method.as_str() {
         "initialize" => INITIALIZE_RESULT.to_owned(),
         "shutdown" => "null".to_owned(),
-        "textDocument/hover" => hover_result(vault, json),
-        "textDocument/completion" => completion_result(vault, json),
-        "textDocument/diagnostic" => diagnostic_result(vault, json),
-        "textDocument/documentSymbol" => symbol_result(vault, json),
-        "textDocument/references" => references_result(vault, json),
-        "textDocument/definition" => definition_result(vault, json),
+        "textDocument/hover" => hover_result(vault, overlay, json),
+        "textDocument/completion" => completion_result(vault, overlay, json),
+        "textDocument/diagnostic" => diagnostic_result(vault, overlay, json),
+        "textDocument/documentSymbol" => symbol_result(vault, overlay, json),
+        "textDocument/references" => references_result(vault, overlay, json),
+        "textDocument/definition" => definition_result(vault, overlay, json),
         _ => return Some(closure_jsonrpc::method_not_found(&id)),
     };
     Some(closure_jsonrpc::response(&id, &result))
@@ -292,20 +411,48 @@ pub fn handle_message(vault: &Vault, json: &str) -> Option<String> {
 /// entry point the stdio loop uses; `None` for notifications.
 #[must_use]
 pub fn handle_message_mut(vault: &mut Vault, json: &str) -> Option<String> {
+    handle_message_with(vault, &mut Overlay::default(), json)
+}
+
+/// [`handle_message_mut`], keeping `overlay` up to date with the
+/// documents the client says it has open — the entry point the stdio
+/// loop uses.
+///
+/// A `did*` notification is absorbed and answered with `None`, which
+/// is what a notification gets.
+#[must_use]
+pub fn handle_message_with(vault: &mut Vault, overlay: &mut Overlay, json: &str) -> Option<String> {
+    if overlay.absorb(json) {
+        return None;
+    }
     let method = closure_jsonrpc::string_field(json, "method").unwrap_or_default();
     if method == "textDocument/rename" {
         let id = closure_jsonrpc::raw_field(json, "id")?;
-        let result = rename_result(vault, json);
+        let result = rename_result(vault, overlay, json);
         return Some(closure_jsonrpc::response(&id, &result));
     }
-    handle_message(vault, json)
+    handle_message_over(vault, overlay, json)
 }
 
-/// Run the LSP server on stdio against `vault`.
+/// Run the LSP server on stdio against `vault`, with the language
+/// servers `embeddings` names answering for what is inside src blocks.
 ///
 /// # Errors
 ///
 /// [`LspError::Transport`] on IO failure.
+pub fn serve_stdio_with(vault: &mut Vault, embeddings: &mut Embeddings) -> Result<(), LspError> {
+    let stdin = std::io::stdin();
+    let mut stdout = std::io::stdout();
+    let reader = BufReader::new(stdin.lock());
+    serve_with(vault, embeddings, reader, &mut stdout)
+}
+
+/// Run the LSP server on stdio against `vault`, with no src-block
+/// servers.
+///
+/// # Errors
+///
+/// [`LspError::Transport`] on IO / framing failure.
 pub fn serve_stdio(vault: &mut Vault) -> Result<(), LspError> {
     let stdin = std::io::stdin();
     let mut stdout = std::io::stdout();
@@ -1032,4 +1179,383 @@ pub fn definition_of(
         }
     }
     Some((path.to_path_buf(), 0))
+}
+
+/// One `#+BEGIN_SRC` block, seen as a document of its own.
+///
+/// An org file is mostly prose with islands of another language in it.
+/// Inside `#+BEGIN_SRC rust` the thing that knows what the cursor is on
+/// is rust-analyzer; the thing that knows where line 12 of the block
+/// lives in the file is closure. So the block is handed over as its own
+/// document and every line number that comes back is shifted home.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SrcBlock {
+    /// What `#+BEGIN_SRC` named — `rust`, `python`, `closure-config`.
+    pub language: String,
+    /// The file line its first *content* line sits on (0-based), which
+    /// is the line after `#+BEGIN_SRC`.
+    pub first_line: u32,
+    /// The block's content, as the language server should see it.
+    pub text: String,
+}
+
+impl SrcBlock {
+    /// The block containing file line `line`, if any.
+    ///
+    /// The `#+BEGIN_SRC` and `#+END_SRC` lines are org's, not the
+    /// language's: a cursor on them is in the org file, and an answer
+    /// from rust-analyzer about them would be an answer about a line
+    /// it was never shown.
+    #[must_use]
+    pub fn at(src: &str, line: u32) -> Option<Self> {
+        let mut open: Option<(String, u32)> = None;
+        for (i, raw) in src.lines().enumerate() {
+            let trimmed = raw.trim_start();
+            let lower = trimmed.to_lowercase();
+            #[allow(clippy::cast_possible_truncation)]
+            let i = i as u32;
+            if let Some(rest) = lower.strip_prefix("#+begin_src") {
+                let language = rest
+                    .split_whitespace()
+                    .next()
+                    .unwrap_or_default()
+                    .to_owned();
+                open = Some((language, i + 1));
+            } else if lower.starts_with("#+end_src")
+                && let Some((language, first_line)) = open.take()
+                && (first_line..i).contains(&line)
+            {
+                {
+                    let text = src
+                        .lines()
+                        .skip(first_line as usize)
+                        .take((i - first_line) as usize)
+                        .fold(String::new(), |mut acc, l| {
+                            acc.push_str(l);
+                            acc.push('\n');
+                            acc
+                        });
+                    return Some(Self {
+                        language,
+                        first_line,
+                        text,
+                    });
+                }
+            }
+        }
+        None
+    }
+
+    /// A file line in the block's own coordinates.
+    #[must_use]
+    pub const fn to_inner(&self, line: u32) -> u32 {
+        line.saturating_sub(self.first_line)
+    }
+
+    /// A block line back in the file's coordinates.
+    #[must_use]
+    pub const fn to_outer(&self, line: u32) -> u32 {
+        line + self.first_line
+    }
+
+    /// Every `"line":N` in a language server's reply, shifted home.
+    ///
+    /// Columns are left alone: a block's content is not indented into
+    /// the file, so character 4 of the block is character 4 of the
+    /// line. Only the JSON key is rewritten, so prose in a hover that
+    /// happens to contain the word `line` is untouched.
+    #[must_use]
+    pub fn shift_home(&self, reply: &str) -> String {
+        let mut out = String::with_capacity(reply.len());
+        let mut rest = reply;
+        while let Some(at) = rest.find("\"line\":") {
+            let (before, after) = rest.split_at(at);
+            out.push_str(before);
+            let digits = after["\"line\":".len()..]
+                .trim_start()
+                .chars()
+                .take_while(char::is_ascii_digit)
+                .collect::<String>();
+            if let Ok(n) = digits.parse::<u32>() {
+                use std::fmt::Write as _;
+                let _ = write!(out, "\"line\":{}", self.to_outer(n));
+                let tail = &after["\"line\":".len()..];
+                let consumed =
+                    "\"line\":".len() + (tail.len() - tail.trim_start().len()) + digits.len();
+                rest = &after[consumed..];
+            } else {
+                // Not a number after all — leave it exactly as it was.
+                out.push_str("\"line\":");
+                rest = &after["\"line\":".len()..];
+            }
+        }
+        out.push_str(rest);
+        out
+    }
+}
+
+/// A language server closure runs for what is *inside* a src block.
+///
+/// `lsp rust = rust-analyzer` in config.org, and a cursor inside
+/// `#+BEGIN_SRC rust` is answered by rust-analyzer rather than by
+/// closure guessing at a language it does not know. The block goes over
+/// as a document of its own and every answer comes back through
+/// [`SrcBlock::shift_home`].
+///
+/// The mirror of [`serve`]: closure speaks both halves of this
+/// protocol, and the framing is the same one in both directions.
+pub struct Embedded {
+    language: String,
+    child: std::process::Child,
+    stdin: std::process::ChildStdin,
+    stdout: BufReader<std::process::ChildStdout>,
+    next_id: u64,
+    /// Where the block is written for the server to read. Real
+    /// language servers key on the path: rust-analyzer will not answer
+    /// about a `closure-block://` URI at all, and several others
+    /// decide the language from the extension rather than from
+    /// `languageId`. Removed when the server goes.
+    scratch: Option<std::path::PathBuf>,
+}
+
+/// The file extension a language server expects for `language`.
+///
+/// Only the languages whose extension differs from their name need
+/// listing. Anything else is its own name — right for `org`, `sql`,
+/// `lua`, `c`, and the least surprising thing to hand a server for a
+/// language nobody here has heard of.
+fn extension_for(language: &str) -> &str {
+    match language {
+        "rust" => "rs",
+        "python" => "py",
+        "javascript" => "js",
+        "typescript" => "ts",
+        "haskell" => "hs",
+        "markdown" => "md",
+        "shell" | "bash" => "sh",
+        "yaml" => "yml",
+        other => other,
+    }
+}
+
+impl Embedded {
+    /// Start `command` and shake hands with it.
+    ///
+    /// Split on whitespace and run with no shell, for the reason a
+    /// config file should never reach one.
+    ///
+    /// # Errors
+    ///
+    /// [`LspError::Transport`] when the command cannot be started or
+    /// does not answer `initialize`.
+    pub fn start(language: &str, command: &str) -> Result<Self, LspError> {
+        let mut parts = command.split_whitespace();
+        let program = parts
+            .next()
+            .ok_or_else(|| LspError::Transport(format!("`lsp {language}` has no command")))?;
+        let mut child = std::process::Command::new(program)
+            .args(parts)
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
+            // Its own diagnostics are not protocol and must not be
+            // read as any.
+            .stderr(std::process::Stdio::inherit())
+            .spawn()
+            .map_err(|e| {
+                LspError::Transport(format!("{language}: cannot start `{program}`: {e}"))
+            })?;
+        let (Some(stdin), Some(stdout)) = (child.stdin.take(), child.stdout.take()) else {
+            return Err(LspError::Transport(format!("{language}: no pipes")));
+        };
+        let mut server = Self {
+            language: language.to_owned(),
+            child,
+            stdin,
+            stdout: BufReader::new(stdout),
+            next_id: 0,
+            scratch: None,
+        };
+        server.request("initialize", "{\"capabilities\":{}}")?;
+        server.notify("initialized", "{}")?;
+        Ok(server)
+    }
+
+    /// Which language this one is for.
+    #[must_use]
+    pub fn language(&self) -> &str {
+        &self.language
+    }
+
+    /// The symbols of `block`, in the org file's coordinates.
+    ///
+    /// # Errors
+    ///
+    /// As [`Self::start`].
+    pub fn document_symbols(&mut self, block: &SrcBlock) -> Result<String, LspError> {
+        let uri = self.open(block)?;
+        let reply = self.request(
+            "textDocument/documentSymbol",
+            &format!("{{\"textDocument\":{{\"uri\":\"{uri}\"}}}}"),
+        )?;
+        Ok(block.shift_home(&reply))
+    }
+
+    /// What the server says about `line`/`character` of the org file,
+    /// asked about the block that line is in.
+    ///
+    /// # Errors
+    ///
+    /// As [`Self::start`].
+    pub fn ask_at(
+        &mut self,
+        method: &str,
+        block: &SrcBlock,
+        line: u32,
+        character: u32,
+    ) -> Result<String, LspError> {
+        let uri = self.open(block)?;
+        let reply = self.request(
+            method,
+            &format!(
+                "{{\"textDocument\":{{\"uri\":\"{uri}\"}},\
+                 \"position\":{{\"line\":{},\"character\":{character}}}}}",
+                block.to_inner(line)
+            ),
+        )?;
+        Ok(block.shift_home(&reply))
+    }
+
+    /// Hand the block over as a document. The URI is the block's
+    /// identity to the server and nothing else — it never names a file
+    /// on disk, because the block is not one.
+    fn open(&mut self, block: &SrcBlock) -> Result<String, LspError> {
+        // A real path, with the extension the language server expects.
+        // rust-analyzer will not answer about a URI scheme it does not
+        // know, and several servers read the language off the
+        // extension rather than off `languageId`.
+        let path = std::env::temp_dir().join(format!(
+            "closure-block-{}-{}.{}",
+            std::process::id(),
+            block.first_line,
+            extension_for(&block.language)
+        ));
+        std::fs::write(&path, &block.text).map_err(|e| LspError::Transport(e.to_string()))?;
+        let uri = format!("file://{}", path.display());
+        self.scratch = Some(path);
+        self.notify(
+            "textDocument/didOpen",
+            &format!(
+                "{{\"textDocument\":{{\"uri\":\"{uri}\",\"languageId\":\"{}\",\
+                 \"version\":1,\"text\":\"{}\"}}}}",
+                block.language,
+                closure_jsonrpc::json_escape(&block.text)
+            ),
+        )?;
+        Ok(uri)
+    }
+
+    fn request(&mut self, method: &str, params: &str) -> Result<String, LspError> {
+        self.next_id += 1;
+        let body = closure_jsonrpc::request(self.next_id, method, params);
+        write_frame(&mut self.stdin, &body)?;
+        std::io::Write::flush(&mut self.stdin).map_err(|e| LspError::Transport(e.to_string()))?;
+        loop {
+            let Some(msg) = read_frame(&mut self.stdout)? else {
+                return Err(LspError::Transport(format!(
+                    "{}: closed the pipe without answering {method}",
+                    self.language
+                )));
+            };
+            // A server may send notifications (progress, diagnostics)
+            // between the request and its answer; the one with our id
+            // is the answer.
+            if closure_jsonrpc::raw_field(&msg, "id").is_none() {
+                continue;
+            }
+            if let Some(err) = closure_jsonrpc::raw_value(&msg, "error") {
+                let said = closure_jsonrpc::string_field(&err, "message").unwrap_or(err);
+                return Err(LspError::Transport(format!("{}: {said}", self.language)));
+            }
+            return closure_jsonrpc::raw_value(&msg, "result").ok_or_else(|| {
+                LspError::Transport(format!("{}: no result in {msg}", self.language))
+            });
+        }
+    }
+
+    fn notify(&mut self, method: &str, params: &str) -> Result<(), LspError> {
+        let body = closure_jsonrpc::notification(method, params);
+        write_frame(&mut self.stdin, &body)?;
+        std::io::Write::flush(&mut self.stdin).map_err(|e| LspError::Transport(e.to_string()))
+    }
+}
+
+impl Drop for Embedded {
+    fn drop(&mut self) {
+        let _ = self.child.kill();
+        let _ = self.child.wait();
+        if let Some(path) = self.scratch.take() {
+            let _ = std::fs::remove_file(path);
+        }
+    }
+}
+
+/// The language servers configured for src blocks, by language.
+///
+/// Started on first use rather than at startup: a config naming four
+/// of them should not spawn four language servers for someone who
+/// never puts the cursor in a block. One that will not start is
+/// remembered as having failed, so it is not retried on every
+/// keystroke.
+#[derive(Default)]
+pub struct Embeddings {
+    configured: Vec<(String, String)>,
+    running: std::collections::HashMap<String, Option<Embedded>>,
+}
+
+impl Embeddings {
+    /// From the `lsp <language> = <command>` lines of config.org.
+    #[must_use]
+    pub fn from_config(servers: &[(String, String)]) -> Self {
+        Self {
+            configured: servers.to_vec(),
+            running: std::collections::HashMap::new(),
+        }
+    }
+
+    /// Whether any language has a server.
+    #[must_use]
+    pub const fn is_empty(&self) -> bool {
+        self.configured.is_empty()
+    }
+
+    /// Ask the server for `block`'s language about a position in the
+    /// org file.
+    ///
+    /// `None` when no server is configured for that language, which
+    /// means "closure answers this one" — the difference between "not
+    /// mine" and "mine, and the answer is nothing" is the difference
+    /// between falling through and swallowing the request.
+    pub fn ask(
+        &mut self,
+        method: &str,
+        block: &SrcBlock,
+        line: u32,
+        character: u32,
+    ) -> Option<Result<String, LspError>> {
+        let command = self
+            .configured
+            .iter()
+            .find(|(lang, _)| *lang == block.language)
+            .map(|(_, command)| command.clone())?;
+        let server = self
+            .running
+            .entry(block.language.clone())
+            .or_insert_with(|| Embedded::start(&block.language, &command).ok());
+        let server = server.as_mut()?;
+        Some(if method == "textDocument/documentSymbol" {
+            server.document_symbols(block)
+        } else {
+            server.ask_at(method, block, line, character)
+        })
+    }
 }

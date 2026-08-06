@@ -57,6 +57,10 @@ pub struct Config {
     /// The command is not checked here either. Whether it exists, and
     /// whether it speaks MCP, is answered by running it.
     pub mcp_servers: Vec<(String, String)>,
+    /// Language servers for what is *inside* a src block:
+    /// `lsp rust = rust-analyzer`. Same shape as `mcp` and `bind`, for
+    /// the same reason — the value is a command line.
+    pub lsp_servers: Vec<(String, String)>,
     /// Input mode (`emacs`, `vim`, `doom`, `helix`, `notion`).
     pub input_mode: InputMode,
     /// Theme name.
@@ -213,6 +217,11 @@ const OPTIONAL_KEYS_DOC: &str = "\
 # named `<server>/<tool>`. Add each to llm_tools to allow it.\n\
 # mcp files = mcp-server-filesystem /tmp\n\
 \n\
+# Language servers for what is inside a src block: a cursor in\n\
+# #+BEGIN_SRC rust is answered by rust-analyzer, with the line\n\
+# numbers shifted back into this file.\n\
+# lsp rust = rust-analyzer\n\
+\n\
 # The left rail, collapsed to its icons. Written by `toggle-rail`;\n\
 # `outline_width` beside it is the outline pane's width, written when\n\
 # you drag its edge. Both are here so the window you arranged is the\n\
@@ -269,6 +278,7 @@ impl Default for Config {
             wrap: false,
             key_bindings: Vec::new(),
             mcp_servers: Vec::new(),
+            lsp_servers: Vec::new(),
             sync_bind: None,
             sync_advertise: None,
             assets_dir: None,
@@ -759,6 +769,22 @@ impl Config {
                     }
                     cfg.mcp_servers
                         .push((name.to_owned(), value.trim().to_owned()));
+                }
+                // `lsp <language> = <command>`: which language server
+                // answers for `#+BEGIN_SRC <language>`.
+                k if k == "lsp" || k.starts_with("lsp ") => {
+                    let lang = k.strip_prefix("lsp").unwrap_or("").trim();
+                    if lang.is_empty() {
+                        return Err(ConfigError::BadValue {
+                            key: key.into(),
+                            reason: format!(
+                                "{line_info}: `lsp` needs the language it answers for — \
+                                 `lsp rust = rust-analyzer`"
+                            ),
+                        });
+                    }
+                    cfg.lsp_servers
+                        .push((lang.to_owned(), value.trim().to_owned()));
                 }
                 "default_vault" => {
                     cfg.default_vault = Some(PathBuf::from(value));

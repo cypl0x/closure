@@ -1992,7 +1992,15 @@ fn cmd_a2a(vault: &Path) -> Result<(), String> {
 
 fn cmd_lsp(vault: &Path) -> Result<(), String> {
     let mut v = Vault::open(vault).map_err(|e| format!("{e}"))?;
-    closure_lsp::serve_stdio(&mut v).map_err(|e| format!("{e}"))
+    // `lsp rust = rust-analyzer` in config.org: a position inside a
+    // `#+BEGIN_SRC rust` block is answered by rust-analyzer, with the
+    // line numbers shifted back into the org file.
+    let (cfg, complaint) = closure_config::Config::load_reporting(&vault.join("config.org"));
+    if let Some(said) = complaint {
+        eprintln!("{said}");
+    }
+    let mut embeddings = closure_lsp::Embeddings::from_config(&cfg.lsp_servers);
+    closure_lsp::serve_stdio_with(&mut v, &mut embeddings).map_err(|e| format!("{e}"))
 }
 
 fn cmd_dead_links(vault: &Path) -> Result<(), String> {
