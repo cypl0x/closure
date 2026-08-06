@@ -121,6 +121,65 @@ impl TaskState {
     }
 }
 
+/// One thing closure will do for another agent.
+///
+/// The card used to advertise `task/delegate` as its single skill,
+/// which names the *transport*: an agent that read it learned it could
+/// delegate a task and not one thing about what a task may be. These
+/// are the tools, which is what it was asking.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Skill {
+    /// The word to send as the task line.
+    pub id: &'static str,
+    /// A short human name.
+    pub name: &'static str,
+    /// What it does, in a sentence.
+    pub description: &'static str,
+}
+
+/// Every skill the card advertises.
+///
+/// One list, and a test drives each of them through the delegate path —
+/// a skill another machine is promised and cannot get is worse than one
+/// that was never offered.
+pub const SKILLS: &[Skill] = &[
+    Skill {
+        id: "view-state",
+        name: "Vault overview",
+        description: "How many files and headlines there are, and which TODO keywords and tags are in use",
+    },
+    Skill {
+        id: "list-files",
+        name: "List files",
+        description: "Every org file in the vault, by path",
+    },
+    Skill {
+        id: "read",
+        name: "Read a file",
+        description: "The full org source of one file, given its path",
+    },
+    Skill {
+        id: "search",
+        name: "Search",
+        description: "Headlines and body lines matching a phrase, with the file each is in",
+    },
+    Skill {
+        id: "capture",
+        name: "Capture a note",
+        description: "File a new headline with the given title into the capture target",
+    },
+    Skill {
+        id: "rename",
+        name: "Rename a headline",
+        description: "Give the headline with this id a new title",
+    },
+    Skill {
+        id: "set-property",
+        name: "Set a property",
+        description: "Write a key and value into a headline's property drawer",
+    },
+];
+
 /// A delegated task + its lifecycle state, so a caller can poll progress
 /// (V8b).
 ///
@@ -179,7 +238,24 @@ pub fn handle_message(vault: &mut Vault, json: &str) -> Option<String> {
              \"serverInfo\":{\"name\":\"closure\",\"version\":\"0.0.0\"}}"
             .to_owned(),
         "agent/card" => {
-            "{\"name\":\"closure\",\"version\":\"0.0.0\",\"skills\":[\"task/delegate\"]}".to_owned()
+            let skills: Vec<String> = SKILLS
+                .iter()
+                .map(|s| {
+                    format!(
+                        "{{\"id\":\"{}\",\"name\":\"{}\",\"description\":\"{}\"}}",
+                        s.id,
+                        json_escape(s.name),
+                        json_escape(s.description)
+                    )
+                })
+                .collect();
+            format!(
+                "{{\"name\":\"closure\",\"description\":\"A local-first plain-text \
+                 knowledge base over org files. Tasks are delegated as one tool \
+                 name plus its argument.\",\"version\":\"0.0.0\",\
+                 \"capabilities\":{{\"tasks\":{{}}}},\"skills\":[{}]}}",
+                skills.join(",")
+            )
         }
         "task/delegate" => {
             let task_line = string_field(json, "task").unwrap_or_default();

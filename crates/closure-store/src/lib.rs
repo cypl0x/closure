@@ -1622,6 +1622,10 @@ impl Vault {
                     Err(e) => format!("ERROR {e}"),
                 }
             }
+            // A tool that exists and was called without its argument
+            // is not an unknown tool. Saying so sends the caller —
+            // often a model — looking for a tool that is right there.
+            "capture" => format!("ERROR `capture` needs a title; {HELP}"),
             _ => format!("ERROR unknown tool `{tool}`; {HELP}"),
         }
     }
