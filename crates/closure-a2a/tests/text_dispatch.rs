@@ -48,10 +48,21 @@ fn run_emits_ok_and_unknown_lines() {
 
 #[test]
 fn agent_card_lists_skills() {
+    // Rewritten 2026-08-06: this asserted the card advertised
+    // `task/delegate`, which is the *transport*. An agent reading that
+    // learned it could delegate a task and nothing about what a task
+    // may be. The skills are the tools now, which is what was being
+    // asked.
     let (_d, mut v) = vault();
     let resp = handle_message(&mut v, r#"{"jsonrpc":"2.0","id":1,"method":"agent/card"}"#)
         .expect("response");
-    assert!(resp.contains("task/delegate"), "card: {resp}");
+    for skill in closure_a2a::SKILLS {
+        assert!(
+            resp.contains(skill.id),
+            "{} missing from card: {resp}",
+            skill.id
+        );
+    }
 }
 
 #[test]
