@@ -373,7 +373,7 @@ mod window {
     pub fn run(path: &std::path::Path) -> Result<(), String> {
         let vault = Vault::open(path).map_err(|e| format!("{e}"))?;
         // Notion default; honour `<vault>/config.org` input_mode + theme.
-        let cfg = Config::from_path(&path.join("config.org")).ok();
+        let cfg = Config::from_path(&path.join(closure_config::CONFIG_FILE)).ok();
         let mode = cfg.as_ref().map_or(InputMode::Notion, |c| c.input_mode);
         let theme = cfg.map_or(closure_config::ThemeKind::Dark, |c| c.theme_kind());
         let app = EguiApp {

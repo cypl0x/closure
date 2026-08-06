@@ -3630,7 +3630,6 @@ pub fn headline_lines(doc: &Document) -> String {
 }
 
 /// Default capture target inside the vault for TUI captures.
-const CAPTURE_TARGET: &str = "inbox.org";
 /// Default headline prefix for TUI captures.
 const CAPTURE_PREFIX: &str = "TODO ";
 
@@ -3728,8 +3727,8 @@ fn sync_panes(app: &mut App, vault: &Vault) {
 fn sync_app(app: &mut App, vault: &Vault) {
     app.set_paths(vault.paths());
     // The cycles are the vault's, not the shell's (Q3-V5).
-    let cfg =
-        closure_config::Config::from_path(&vault.root().join("config.org")).unwrap_or_default();
+    let cfg = closure_config::Config::from_path(&vault.root().join(closure_config::CONFIG_FILE))
+        .unwrap_or_default();
     app.set_cycles(cfg.todo_keywords, cfg.priority_levels);
     app.set_running_clock(vault.running_clock().map(|(id, started)| {
         let bid = closure_core::BlockId::from_existing(&id);
@@ -3831,7 +3830,7 @@ fn run_loop(
     // too, so the vault's input mode and keywords reverted with no
     // word about why.
     let (cfg, config_complaint) =
-        closure_config::Config::load_reporting(&vault.root().join("config.org"));
+        closure_config::Config::load_reporting(&vault.root().join(closure_config::CONFIG_FILE));
     let mode = cfg.input_mode;
     let journal = closure_record::Journal::new(vault.root(), cfg.record_commands);
     let mut app = App::with_mode(Vec::new(), mode);
@@ -3949,7 +3948,7 @@ fn apply_requests(
     let vault_err = |e: closure_store::VaultError| TuiError::Vault(e.to_string());
     if let Some(title) = app.take_capture_request() {
         let template = closure_store::CaptureTemplate {
-            target: PathBuf::from(CAPTURE_TARGET),
+            target: PathBuf::from(closure_store::CAPTURE_FILE),
             headline_prefix: CAPTURE_PREFIX.to_owned(),
             body: String::new(),
         };

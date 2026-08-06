@@ -84,7 +84,7 @@ pub fn mix_u32(a: u32, b: u32, t: u32) -> u32 {
 /// a themeless vault).
 #[must_use]
 pub fn resolve_theme(vault_path: &Path) -> Theme {
-    let name = closure_config::Config::from_path(&vault_path.join("config.org"))
+    let name = closure_config::Config::from_path(&vault_path.join(closure_config::CONFIG_FILE))
         .map_or_else(|_| "default".to_owned(), |cfg| cfg.theme);
     match name.to_ascii_lowercase().as_str() {
         "light" => Theme::light(),
@@ -99,7 +99,7 @@ pub fn resolve_theme(vault_path: &Path) -> Theme {
 /// config default) when absent.
 #[must_use]
 pub fn resolve_input_mode(vault_path: &Path) -> closure_config::InputMode {
-    closure_config::Config::from_path(&vault_path.join("config.org"))
+    closure_config::Config::from_path(&vault_path.join(closure_config::CONFIG_FILE))
         .map_or(closure_config::InputMode::Doom, |cfg| cfg.input_mode)
 }
 
@@ -111,7 +111,7 @@ pub fn resolve_input_mode(vault_path: &Path) -> closure_config::InputMode {
 /// `view = editor` is how you ask; `g v` is how you change your mind.
 #[must_use]
 pub fn resolve_view(vault_path: &Path) -> closure_shell_core::ViewMode {
-    let name = closure_config::Config::from_path(&vault_path.join("config.org"))
+    let name = closure_config::Config::from_path(&vault_path.join(closure_config::CONFIG_FILE))
         .map_or_else(|_| "clickable".to_owned(), |cfg| cfg.view);
     if name == "editor" {
         closure_shell_core::ViewMode::Editor
@@ -236,7 +236,7 @@ pub fn vulkan_icd_dirs() -> Vec<std::path::PathBuf> {
 /// validates at load, and a vault with a bad address must still open.
 #[must_use]
 pub fn resolve_sync_addrs(vault_path: &Path) -> (std::net::SocketAddr, Option<std::net::IpAddr>) {
-    closure_config::Config::from_path(&vault_path.join("config.org")).map_or(
+    closure_config::Config::from_path(&vault_path.join(closure_config::CONFIG_FILE)).map_or(
         (closure_shell_core::DEFAULT_SYNC_BIND, None),
         |cfg| {
             (
@@ -1943,7 +1943,7 @@ pub fn run(vault_path: &Path) -> Result<(), String> {
     // so a single mistyped key silently reverted the whole config and
     // nothing said why. It reaches the status line now.
     let (cfg, config_complaint) =
-        closure_config::Config::load_reporting(&vault_path.join("config.org"));
+        closure_config::Config::load_reporting(&vault_path.join(closure_config::CONFIG_FILE));
     let wrap = cfg.wrap;
     // `bind` lines, read before the first frame: a keymap that only
     // picks up the user's rebinds on the first reload is a keymap that
@@ -2881,9 +2881,11 @@ impl GpuiView {
     fn restore_window_state(&mut self) {
         self.restore_outline_width();
         self.app.set_rail_docked(
-            closure_config::Config::from_path(&self.shell.vault.root().join("config.org"))
-                .ok()
-                .and_then(|c| c.rail_docked),
+            closure_config::Config::from_path(
+                &self.shell.vault.root().join(closure_config::CONFIG_FILE),
+            )
+            .ok()
+            .and_then(|c| c.rail_docked),
         );
     }
 
@@ -3376,7 +3378,7 @@ impl GpuiView {
                 self.app.reset_for_vault();
                 self.theme = resolve_theme(dir);
                 self.set_view(resolve_view(dir));
-                let cfg = closure_config::Config::from_path(&dir.join("config.org"));
+                let cfg = closure_config::Config::from_path(&dir.join(closure_config::CONFIG_FILE));
                 self.set_wrap(cfg.as_ref().is_ok_and(|c| c.wrap));
                 self.app
                     .set_key_overrides(cfg.map(|c| c.key_bindings).unwrap_or_default());
@@ -6735,11 +6737,13 @@ impl GpuiView {
         let provider_name = status.provider.clone();
         let model = status.model.clone().unwrap_or_default();
         let endpoint = status.endpoint;
-        let key = closure_config::Config::from_path(&self.shell.vault.root().join("config.org"))
-            .ok()
-            .and_then(|c| c.llm_key_env)
-            .and_then(|var| closure_llm::resolve_key(&var))
-            .unwrap_or_default();
+        let key = closure_config::Config::from_path(
+            &self.shell.vault.root().join(closure_config::CONFIG_FILE),
+        )
+        .ok()
+        .and_then(|c| c.llm_key_env)
+        .and_then(|var| closure_llm::resolve_key(&var))
+        .unwrap_or_default();
         cx.spawn(async move |this, cx| {
             let answer = cx
                 .background_executor()
@@ -9347,7 +9351,7 @@ impl GpuiView {
         let root = self.shell.vault.root().to_owned();
         self.theme = resolve_theme(&root);
         self.set_view(resolve_view(&root));
-        let cfg = closure_config::Config::from_path(&root.join("config.org"));
+        let cfg = closure_config::Config::from_path(&root.join(closure_config::CONFIG_FILE));
         self.set_wrap(cfg.as_ref().is_ok_and(|c| c.wrap));
         // `bind` lines: the keymap in force is the mode plus whatever
         // the file says about it, reapplied on every reload so `g !`

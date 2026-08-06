@@ -21,6 +21,14 @@ use closure_core::{
 };
 use notify::{EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use thiserror::Error;
+/// The file a capture goes into when nothing else is chosen: org's
+/// refile target, the one place a thought with no home goes.
+///
+/// Here, at the crate that owns the vault, because every shell files
+/// captures and each one had said the name itself — two constants and
+/// four literals, which is four chances for two shells to file your
+/// captures in different files.
+pub const CAPTURE_FILE: &str = "inbox.org";
 
 /// A loaded vault: every `*.org` file under a directory parsed into
 /// [`Document`]s with a shared block-id index plus a precomputed
@@ -363,7 +371,7 @@ pub fn grant_eval_trust_at(store: &Path, vault: &Path, lang: &str) -> Result<(),
 /// config carries one, and it says the same thing the store says.
 #[must_use]
 pub fn vault_claims_trust(vault: &Path) -> bool {
-    let path = vault.join("config.org");
+    let path = vault.join(closure_config::CONFIG_FILE);
     closure_config::Config::from_path(&path).is_ok_and(|c| !c.eval_trust.is_empty())
 }
 
@@ -505,7 +513,7 @@ impl Vault {
     /// If no `config.org` exists, this succeeds (consistent with
     /// optional config).
     pub fn revalidate_config(&self) -> Result<(), closure_config::ConfigError> {
-        let cfg_path = self.root.join("config.org");
+        let cfg_path = self.root.join(closure_config::CONFIG_FILE);
         if !cfg_path.exists() {
             return Ok(());
         }
@@ -545,7 +553,7 @@ impl Vault {
     /// it names one. Unset means the language's own default.
     #[must_use]
     pub fn diagram_tool(&self, lang: &str) -> Option<String> {
-        let cfg_path = self.root.join("config.org");
+        let cfg_path = self.root.join(closure_config::CONFIG_FILE);
         if !cfg_path.exists() {
             return None;
         }
@@ -567,7 +575,7 @@ impl Vault {
     /// completion) that offer the vault's keyword vocabulary.
     #[must_use]
     pub fn todo_keywords(&self) -> Vec<String> {
-        let cfg_path = self.root.join("config.org");
+        let cfg_path = self.root.join(closure_config::CONFIG_FILE);
         if !cfg_path.exists() {
             return closure_config::Config::default().todo_keywords;
         }
@@ -1593,7 +1601,7 @@ impl Vault {
             }
             "capture" if !rest.is_empty() => {
                 let template = CaptureTemplate {
-                    target: PathBuf::from("inbox.org"),
+                    target: PathBuf::from(CAPTURE_FILE),
                     headline_prefix: "TODO ".to_owned(),
                     body: String::new(),
                 };

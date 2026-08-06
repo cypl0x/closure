@@ -299,9 +299,10 @@ pub struct Shell {
 /// The file a capture lands in when nothing is selected — org's
 /// refile target, the one place a thought with no home goes.
 ///
-/// Named once, because the shells tell the user where their capture is
-/// going and a second spelling of it would be a second answer.
-pub const CAPTURE_FILE: &str = "inbox.org";
+/// Re-exported from [`closure_store`] rather than spelled again: the
+/// shells tell the user where their capture is going, and a second
+/// spelling of it would be a second answer.
+pub use closure_store::CAPTURE_FILE;
 
 /// One step on the path a capture will file into: the file at the
 /// head, then each headline down to the target.
@@ -3291,7 +3292,7 @@ impl SnifferApp {
         // was not consulted at all: the pane read four flows and said
         // "nothing matched it" beside a host the config blocks.
         let configured: Vec<closure_sniffer::Rule> =
-            closure_config::Config::load_reporting(&vault.root().join("config.org"))
+            closure_config::Config::load_reporting(&vault.root().join(closure_config::CONFIG_FILE))
                 .0
                 .sniffer_blocklist
                 .unwrap_or_default()
@@ -15387,7 +15388,10 @@ impl ModalApp {
     /// printed.
     #[must_use]
     pub fn llm_config_status(&self, shell: &Shell) -> LlmStatus {
-        let cfg = closure_config::Config::from_path(&shell.vault.root().join("config.org")).ok();
+        let cfg = closure_config::Config::from_path(
+            &shell.vault.root().join(closure_config::CONFIG_FILE),
+        )
+        .ok();
         let provider = cfg.as_ref().and_then(|c| c.llm_provider.clone());
         let model = cfg.as_ref().and_then(|c| c.llm_model.clone());
         let endpoint = cfg.as_ref().and_then(|c| c.llm_endpoint.clone());
@@ -17664,7 +17668,7 @@ impl ModalApp {
     /// verbs, not frame-rate ones, and a config the user has just
     /// edited in the other pane should take effect on the next press.
     fn vault_config(shell: &Shell) -> closure_config::Config {
-        closure_config::Config::from_path(&shell.vault.root().join("config.org"))
+        closure_config::Config::from_path(&shell.vault.root().join(closure_config::CONFIG_FILE))
             .unwrap_or_default()
     }
 
@@ -22925,7 +22929,7 @@ impl ModalApp {
             return None;
         }
         let root = shell.vault.root();
-        let dir = closure_config::Config::from_path(&root.join("config.org"))
+        let dir = closure_config::Config::from_path(&root.join(closure_config::CONFIG_FILE))
             .ok()
             .and_then(|c| c.assets_dir)
             .unwrap_or_else(|| std::path::PathBuf::from("assets"));
@@ -22954,7 +22958,7 @@ impl ModalApp {
     /// Where the disk-file courier drops and looks for bundles, from
     /// the vault's `config.org`.
     fn sync_dir(shell: &Shell) -> Option<std::path::PathBuf> {
-        closure_config::Config::from_path(&shell.vault.root().join("config.org"))
+        closure_config::Config::from_path(&shell.vault.root().join(closure_config::CONFIG_FILE))
             .ok()?
             .sync_dir
     }
@@ -23023,7 +23027,8 @@ impl ModalApp {
             self.sync_mut().set_name(&name);
         }
         self.sync_mut().load_identity(&root);
-        let Ok(cfg) = closure_config::Config::from_path(&root.join("config.org")) else {
+        let Ok(cfg) = closure_config::Config::from_path(&root.join(closure_config::CONFIG_FILE))
+        else {
             return;
         };
         for ticket in &cfg.sync_peers {
@@ -23040,8 +23045,9 @@ impl ModalApp {
     /// longer resolves leaves the cursor at the top: a vault is edited
     /// elsewhere too, and a missing note is not an error.
     pub fn restore_last_place(&mut self, shell: &Shell) {
-        let Ok(cfg) = closure_config::Config::from_path(&shell.vault.root().join("config.org"))
-        else {
+        let Ok(cfg) = closure_config::Config::from_path(
+            &shell.vault.root().join(closure_config::CONFIG_FILE),
+        ) else {
             return;
         };
         if let Some(id) = &cfg.last_place {
@@ -23067,7 +23073,7 @@ impl ModalApp {
             .last_edited
             .clone()
             .or_else(|| self.selection_active.then(|| self.selected_row_id(shell))?);
-        let path = shell.vault.root().join("config.org");
+        let path = shell.vault.root().join(closure_config::CONFIG_FILE);
         let mut source = std::fs::read_to_string(&path).unwrap_or_default();
         if let Some(place) = place {
             match closure_config::set_config_key(&source, "last_place", &place) {
@@ -23170,8 +23176,8 @@ impl ModalApp {
         // would quietly drop a session into Doom every time the file
         // said nothing about it, which is a worse answer than the mode
         // already on screen.
-        let cfg =
-            std::fs::read_to_string(shell.vault.root().join("config.org")).unwrap_or_default();
+        let cfg = std::fs::read_to_string(shell.vault.root().join(closure_config::CONFIG_FILE))
+            .unwrap_or_default();
         let mode = closure_config::config_key(&cfg, "input_mode")
             .and_then(|_| closure_config::Config::from_org_source(&cfg).ok())
             .map_or(self.mode, |c| c.input_mode);
@@ -23192,8 +23198,10 @@ impl ModalApp {
         self.outline_viewport = outline_rows;
         self.today = today;
         self.now = now;
-        self.wrap = closure_config::Config::from_path(&shell.vault.root().join("config.org"))
-            .is_ok_and(|c| c.wrap);
+        self.wrap = closure_config::Config::from_path(
+            &shell.vault.root().join(closure_config::CONFIG_FILE),
+        )
+        .is_ok_and(|c| c.wrap);
         self.configure_sync(bind, advertise);
         self.load_peers(shell);
         self.restore_last_place(shell);
@@ -23256,7 +23264,7 @@ impl ModalApp {
                 .encode()
             })
             .collect();
-        let path = shell.vault.root().join("config.org");
+        let path = shell.vault.root().join(closure_config::CONFIG_FILE);
         let source = std::fs::read_to_string(&path).unwrap_or_default();
         match closure_config::set_config_key(&source, "sync_peers", &tickets.join(", ")) {
             Ok(updated) => {

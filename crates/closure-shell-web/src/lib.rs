@@ -97,7 +97,7 @@ pub fn respond(vault: &mut Vault, method: &str, target: &str, body: &str) -> Res
                 return Response::html(400, "<p>title required</p>".to_owned());
             }
             let template = closure_store::CaptureTemplate {
-                target: std::path::PathBuf::from("inbox.org"),
+                target: std::path::PathBuf::from(closure_store::CAPTURE_FILE),
                 headline_prefix: "TODO ".to_owned(),
                 body: String::new(),
             };

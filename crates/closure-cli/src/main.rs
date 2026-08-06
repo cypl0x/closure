@@ -247,7 +247,7 @@ enum Cmd {
         /// Title of the new entry.
         title: String,
         /// Target file relative to the vault root.
-        #[arg(long, default_value = "inbox.org")]
+        #[arg(long, default_value = closure_store::CAPTURE_FILE)]
         target: PathBuf,
         /// Prefix between the stars and the title, e.g. "TODO ".
         #[arg(long, default_value = "TODO ")]
@@ -1693,7 +1693,7 @@ fn cmd_history(
         let result = match kind {
             "capture" => {
                 let template = closure_store::CaptureTemplate {
-                    target: PathBuf::from("inbox.org"),
+                    target: PathBuf::from(closure_store::CAPTURE_FILE),
                     headline_prefix: "TODO ".to_owned(),
                     body: String::new(),
                 };
@@ -1815,7 +1815,7 @@ fn cmd_capture(
 
 /// Build a command journal for `vault`, enabled per its config.org.
 fn journal_for(vault: &Path) -> closure_record::Journal {
-    let enabled = closure_config::Config::from_path(&vault.join("config.org"))
+    let enabled = closure_config::Config::from_path(&vault.join(closure_config::CONFIG_FILE))
         .is_ok_and(|c| c.record_commands);
     closure_record::Journal::new(vault, enabled)
 }
@@ -1995,7 +1995,8 @@ fn cmd_lsp(vault: &Path) -> Result<(), String> {
     // `lsp rust = rust-analyzer` in config.org: a position inside a
     // `#+BEGIN_SRC rust` block is answered by rust-analyzer, with the
     // line numbers shifted back into the org file.
-    let (cfg, complaint) = closure_config::Config::load_reporting(&vault.join("config.org"));
+    let (cfg, complaint) =
+        closure_config::Config::load_reporting(&vault.join(closure_config::CONFIG_FILE));
     if let Some(said) = complaint {
         eprintln!("{said}");
     }
@@ -2402,7 +2403,7 @@ fn compiled_features() -> Vec<&'static str> {
 /// possible trade.
 fn cmd_init_vault(vault: &Path) -> Result<(), String> {
     fs::create_dir_all(vault).map_err(|e| format!("create {}: {e}", vault.display()))?;
-    let config_path = vault.join("config.org");
+    let config_path = vault.join(closure_config::CONFIG_FILE);
     if config_path.exists() {
         println!("kept {} (already yours)", config_path.display());
     } else {
@@ -3307,7 +3308,7 @@ fn cmd_ask(prompt: &str, model: &str, vault: Option<&Path>) -> Result<(), String
     let mut v = Vault::open(vault_dir).map_err(|e| format!("{e}"))?;
     // A mistyped key used to throw the whole config away in silence.
     let (cfg, config_complaint) =
-        closure_config::Config::load_reporting(&vault_dir.join("config.org"));
+        closure_config::Config::load_reporting(&vault_dir.join(closure_config::CONFIG_FILE));
     if let Some(said) = config_complaint {
         eprintln!("{said}");
     }
@@ -3410,7 +3411,7 @@ fn cmd_chat(model: &str, vault: Option<&Path>) -> Result<(), String> {
     let mut v = Vault::open(vault_dir).map_err(|e| format!("{e}"))?;
     // A mistyped key used to throw the whole config away in silence.
     let (cfg, config_complaint) =
-        closure_config::Config::load_reporting(&vault_dir.join("config.org"));
+        closure_config::Config::load_reporting(&vault_dir.join(closure_config::CONFIG_FILE));
     if let Some(said) = config_complaint {
         eprintln!("{said}");
     }
@@ -3728,7 +3729,7 @@ fn cmd_manual(vault: Option<&Path>) -> Result<(), String> {
     // The mode the vault is configured for, so the keys printed are the
     // keys that machine actually has.
     let mode = vault
-        .and_then(|v| closure_config::Config::from_path(&v.join("config.org")).ok())
+        .and_then(|v| closure_config::Config::from_path(&v.join(closure_config::CONFIG_FILE)).ok())
         .map_or(closure_config::InputMode::Doom, |c| c.input_mode);
     print!("{}", closure_shell_core::manual_org(mode));
     Ok(())
@@ -3747,7 +3748,7 @@ fn cmd_config(path: &Path) -> Result<(), String> {
 
 #[allow(clippy::unnecessary_wraps)]
 fn cmd_search(vault: &Path, needle: &str) -> Result<(), String> {
-    let name = closure_config::Config::from_path(&vault.join("config.org"))
+    let name = closure_config::Config::from_path(&vault.join(closure_config::CONFIG_FILE))
         .ok()
         .and_then(|c| c.search_backend)
         .unwrap_or_else(|| "builtin".to_owned());
