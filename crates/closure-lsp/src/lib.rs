@@ -87,7 +87,8 @@ const INITIALIZE_RESULT: &str = "{\"capabilities\":{\"documentSymbolProvider\":t
      \"completionProvider\":{\"triggerCharacters\":[\":\"]},\
      \"diagnosticProvider\":{\"interFileDependencies\":true,\
      \"workspaceDiagnostics\":false},\
-     \"referencesProvider\":true,\"renameProvider\":true},\
+     \"referencesProvider\":true,\"renameProvider\":true,\
+     \"definitionProvider\":true},\
      \"serverInfo\":{\"name\":\"closure\",\"version\":\"0.0.0\"}}";
 
 /// The source text of the document the request's `uri` names (relative
@@ -168,6 +169,50 @@ fn diagnostic_result(vault: &Vault, json: &str) -> String {
 
 /// `textDocument/references` result fragment: an array of `Location`s
 /// for the id under the cursor.
+/// `textDocument/definition`: where the id under the cursor lives.
+///
+/// The one an org language server is actually for. `[[id:01…]]` names
+/// a headline that is usually in another file, and following it by
+/// hand means grepping a ULID — which is exactly the thing ids exist
+/// so you would not have to do.
+///
+/// `null` rather than an empty list when the cursor is not on an id:
+/// LSP treats `[]` as "there is a definition and it is nowhere", and
+/// editors show that as a failed jump rather than as no jump.
+fn definition_result(vault: &Vault, json: &str) -> String {
+    let src = req_source(vault, json);
+    let (line, ch) = req_position(json);
+    let Some(id) = id_at_position(&src, line, ch) else {
+        return "null".to_owned();
+    };
+    let bid = closure_core::BlockId::from_existing(&id);
+    let Some((headline, path)) = vault.find_by_id(&bid) else {
+        return "null".to_owned();
+    };
+    // Which line the headline starts on, counted the way the rest of
+    // this file counts: headlines in document order.
+    let want = headline.id().to_string();
+    let Some(doc) = vault.document(path) else {
+        return "null".to_owned();
+    };
+    let nth = doc
+        .all_headlines()
+        .position(|h| h.id().as_str() == want)
+        .unwrap_or_default();
+    let target = doc
+        .source()
+        .lines()
+        .enumerate()
+        .filter(|(_, l)| is_headline_line(l))
+        .nth(nth)
+        .map_or(0, |(n, _)| n);
+    format!(
+        "{{\"uri\":\"file://{}\",\"range\":{{\"start\":{{\"line\":{target},\"character\":0}},\
+         \"end\":{{\"line\":{target},\"character\":0}}}}}}",
+        closure_jsonrpc::json_escape(&path.display().to_string())
+    )
+}
+
 fn references_result(vault: &Vault, json: &str) -> String {
     let src = req_source(vault, json);
     let (line, ch) = req_position(json);
@@ -234,6 +279,7 @@ pub fn handle_message(vault: &Vault, json: &str) -> Option<String> {
         "textDocument/diagnostic" => diagnostic_result(vault, json),
         "textDocument/documentSymbol" => symbol_result(vault, json),
         "textDocument/references" => references_result(vault, json),
+        "textDocument/definition" => definition_result(vault, json),
         _ => return Some(closure_jsonrpc::method_not_found(&id)),
     };
     Some(closure_jsonrpc::response(&id, &result))
