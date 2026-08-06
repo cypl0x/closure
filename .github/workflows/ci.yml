@@ -24,18 +24,23 @@ concurrency:
 # vendored lockfile. There is nothing left for a second job to add, and
 # a check that differs from the local one is a check that fails for
 # reasons nobody can reproduce.
+# The actions are pinned to released tags rather than `@main`. A
+# moving reference is a dependency that changes without a commit here,
+# which is the one thing a hermetic build is supposed to rule out — and
+# an unpinned action is also the shape of failure that leaves no trace
+# in the diff when a green run turns red on its own.
 jobs:
   check:
     name: nix flake check
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: DeterminateSystems/nix-installer-action@main
+      - uses: DeterminateSystems/nix-installer-action@v22
       # The magic nix cache was retired in early 2025; leaving it in a
       # workflow is a step that fails for a reason unrelated to the
       # code. FlakeHub's cache is its replacement and is a no-op
       # without credentials, so a fork still gets a green run.
-      - uses: DeterminateSystems/flakehub-cache-action@main
+      - uses: DeterminateSystems/flakehub-cache-action@v3
       - run: nix flake check --print-build-logs
 
   package:
@@ -43,8 +48,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: DeterminateSystems/nix-installer-action@main
-      - uses: DeterminateSystems/flakehub-cache-action@main
+      - uses: DeterminateSystems/nix-installer-action@v22
+      - uses: DeterminateSystems/flakehub-cache-action@v3
       # The artefacts themselves, because a package that is never
       # built is a package that does not work: `.#gpui` links a window
       # stack the checks above never touch.
