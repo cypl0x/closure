@@ -36,7 +36,10 @@ fn missing_block_is_error() {
 fn unknown_key_is_rejected_at_load_time() {
     let src = "#+BEGIN_SRC closure-config\nnope = x\n#+END_SRC\n";
     let err = Config::from_org_source(src).unwrap_err();
-    assert!(matches!(err, ConfigError::UnknownKey(k) if k == "nope"));
+    // `UnknownKey` grew fields — which line, and the key you probably
+    // meant — for the "configuration language" item on 2026-08-06.
+    // What is asserted here is unchanged.
+    assert!(matches!(err, ConfigError::UnknownKey { key, .. } if key == "nope"));
 }
 
 #[test]
@@ -256,7 +259,10 @@ fn bad_value_reports_line_in_block() {
 fn unknown_key_reports_at_load_with_context() {
     let src = "#+BEGIN_SRC closure-config\nnope = x\n#+END_SRC\n";
     let err = Config::from_org_source(src).unwrap_err();
-    assert!(matches!(err, ConfigError::UnknownKey(k) if k == "nope"));
+    // `UnknownKey` grew fields — which line, and the key you probably
+    // meant — for the "configuration language" item on 2026-08-06.
+    // What is asserted here is unchanged.
+    assert!(matches!(err, ConfigError::UnknownKey { key, .. } if key == "nope"));
 }
 
 #[test]

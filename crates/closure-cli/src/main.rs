@@ -3297,7 +3297,12 @@ fn cmd_ask(prompt: &str, model: &str, vault: Option<&Path>) -> Result<(), String
         return Ok(());
     };
     let mut v = Vault::open(vault_dir).map_err(|e| format!("{e}"))?;
-    let cfg = closure_config::Config::from_path(&vault_dir.join("config.org")).unwrap_or_default();
+    // A mistyped key used to throw the whole config away in silence.
+    let (cfg, config_complaint) =
+        closure_config::Config::load_reporting(&vault_dir.join("config.org"));
+    if let Some(said) = config_complaint {
+        eprintln!("{said}");
+    }
     let provider = build_llm_provider(&cfg, model)?;
     let perms = closure_llm::LlmPermissions::from_config(cfg.llm_tools.clone().unwrap_or_default());
     // The servers this vault is configured to be a client of. Started
@@ -3395,7 +3400,12 @@ fn cmd_chat(model: &str, vault: Option<&Path>) -> Result<(), String> {
     };
 
     let mut v = Vault::open(vault_dir).map_err(|e| format!("{e}"))?;
-    let cfg = closure_config::Config::from_path(&vault_dir.join("config.org")).unwrap_or_default();
+    // A mistyped key used to throw the whole config away in silence.
+    let (cfg, config_complaint) =
+        closure_config::Config::load_reporting(&vault_dir.join("config.org"));
+    if let Some(said) = config_complaint {
+        eprintln!("{said}");
+    }
     let provider = build_llm_provider(&cfg, model)?;
     let perms = closure_llm::LlmPermissions::from_config(cfg.llm_tools.clone().unwrap_or_default());
     // The same servers `ask` gets — chat runs the same loop over the

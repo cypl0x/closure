@@ -3827,14 +3827,18 @@ fn run_loop(
     terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
     vault: &mut Vault,
 ) -> Result<(), TuiError> {
-    let cfg = closure_config::Config::from_path(&vault.root().join("config.org")).ok();
-    let mode = cfg
-        .as_ref()
-        .map_or(closure_config::InputMode::Doom, |c| c.input_mode);
-    let journal =
-        closure_record::Journal::new(vault.root(), cfg.is_some_and(|c| c.record_commands));
+    // A config that will not parse used to be dropped in silence here
+    // too, so the vault's input mode and keywords reverted with no
+    // word about why.
+    let (cfg, config_complaint) =
+        closure_config::Config::load_reporting(&vault.root().join("config.org"));
+    let mode = cfg.input_mode;
+    let journal = closure_record::Journal::new(vault.root(), cfg.record_commands);
     let mut app = App::with_mode(Vec::new(), mode);
     sync_app(&mut app, vault);
+    if let Some(said) = config_complaint {
+        app.set_status(said);
+    }
 
     loop {
         terminal.draw(|f| draw(f, &app, vault))?;

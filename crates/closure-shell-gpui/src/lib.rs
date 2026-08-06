@@ -1905,15 +1905,9 @@ fn rerun_on_software_rasteriser(icd: &Path) -> Result<(), String> {
     }
 }
 
-/// Launch the gpui desktop window against the vault at `vault_path`.
-/// Blocks until the window closes.
-///
-/// # Errors
-///
-/// Returns the vault open error as a string; window/runtime failures
-/// surface through gpui's own panics on the UI thread.
+/// Refuse to start rather than panic where there is nothing to draw on.
 #[cfg(feature = "gpui")]
-pub fn run(vault_path: &Path) -> Result<(), String> {
+fn check_the_gpu_first() -> Result<(), String> {
     // gpui `unwrap`s its GPU context, so without this the failure mode
     // on a machine with no Vulkan driver is a panic and a backtrace
     // through `blade_graphics` that names nothing you could install.
@@ -1924,21 +1918,37 @@ pub fn run(vault_path: &Path) -> Result<(), String> {
         std::env::var("VK_ICD_FILENAMES").ok().as_deref(),
         std::env::var("CLOSURE_SOFTWARE_ICD").ok().as_deref(),
     ) {
-        Preflight::Ready => {}
-        Preflight::Software(icd) => return rerun_on_software_rasteriser(&icd),
-        Preflight::Refused(why) => return Err(why),
+        Preflight::Ready => Ok(()),
+        Preflight::Software(icd) => rerun_on_software_rasteriser(&icd),
+        Preflight::Refused(why) => Err(why),
     }
+}
+
+/// Launch the gpui desktop window against the vault at `vault_path`.
+/// Blocks until the window closes.
+///
+/// # Errors
+///
+/// Returns the vault open error as a string; window/runtime failures
+/// surface through gpui's own panics on the UI thread.
+#[cfg(feature = "gpui")]
+pub fn run(vault_path: &Path) -> Result<(), String> {
+    check_the_gpu_first()?;
     let vault = Vault::open(vault_path).map_err(|e| format!("{e}"))?;
     let theme = resolve_theme(vault_path);
     let input_mode = resolve_input_mode(vault_path);
     let view = resolve_view(vault_path);
     let (sync_bind, sync_advertise) = resolve_sync_addrs(vault_path);
-    let cfg = closure_config::Config::from_path(&vault_path.join("config.org"));
-    let wrap = cfg.as_ref().is_ok_and(|c| c.wrap);
+    // Every reader of this file used to drop the error on the floor,
+    // so a single mistyped key silently reverted the whole config and
+    // nothing said why. It reaches the status line now.
+    let (cfg, config_complaint) =
+        closure_config::Config::load_reporting(&vault_path.join("config.org"));
+    let wrap = cfg.wrap;
     // `bind` lines, read before the first frame: a keymap that only
     // picks up the user's rebinds on the first reload is a keymap that
     // does not have them when they press the key.
-    let key_overrides = cfg.map(|c| c.key_bindings).unwrap_or_default();
+    let key_overrides = cfg.key_bindings;
     // The window manager needs a name for the title bar, the task
     // switcher and the Wayland app id — an untitled window is the one
     // the user cannot find again. The vault is what distinguishes two
@@ -2008,6 +2018,11 @@ pub fn run(vault_path: &Path) -> Result<(), String> {
                     // this one starts.
                     view.app.restore_last_place(&view.shell);
                     view.restore_window_state();
+                    // Said last, so it is the line still on screen
+                    // when the first frame lands.
+                    if let Some(said) = config_complaint.clone() {
+                        view.app.set_status(said);
+                    }
                     view
                 })
             },

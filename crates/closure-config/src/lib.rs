@@ -316,8 +316,22 @@ pub enum ConfigError {
     #[error("no #+BEGIN_SRC closure-config block found")]
     Missing,
     /// An unknown key was set.
-    #[error("unknown config key: {0}")]
-    UnknownKey(String),
+    ///
+    /// Fields rather than a formatted sentence: the line and the
+    /// suggestion are facts about the error, and a caller that wants
+    /// to underline the line in an editor should not have to parse
+    /// them back out of English.
+    #[error("line {line}: unknown config key: {key}{}",
+            .suggestion.as_ref().map_or(String::new(), |s| format!(" — did you mean `{s}`?")))]
+    UnknownKey {
+        /// The key as it was written.
+        key: String,
+        /// Which line of the *file* it is on.
+        line: usize,
+        /// The known key it most resembles, when one is close enough
+        /// to be worth saying.
+        suggestion: Option<String>,
+    },
     /// A value failed to parse for its type.
     #[error("invalid value for `{key}`: {reason}")]
     BadValue {
@@ -326,6 +340,49 @@ pub enum ConfigError {
         /// Human-readable reason.
         reason: String,
     },
+}
+
+/// The known key `unknown` most resembles, if any is close enough to
+/// be worth suggesting.
+///
+/// Levenshtein against the sample config's keys, with a threshold that
+/// scales with the length of what was typed: `themes` for `theme` is
+/// worth saying, and `refrigerator` resembles nothing here, so nothing
+/// is invented. A suggestion that is wrong is worse than none — it
+/// sends you to edit a line that was never the problem.
+#[must_use]
+pub fn nearest_key(unknown: &str) -> Option<String> {
+    let budget = match unknown.len() {
+        0..=3 => 1,
+        4..=8 => 2,
+        _ => 3,
+    };
+    Config::known_keys()
+        .into_iter()
+        .map(|k| {
+            let d = edit_distance(unknown, &k);
+            (d, k)
+        })
+        .filter(|(d, _)| *d <= budget)
+        .min_by_key(|(d, k)| (*d, k.len()))
+        .map(|(_, k)| k)
+}
+
+/// Levenshtein distance. Small inputs — config keys — so the simple
+/// two-row table is the whole of it.
+fn edit_distance(a: &str, b: &str) -> usize {
+    let (a, b): (Vec<char>, Vec<char>) = (a.chars().collect(), b.chars().collect());
+    let mut prev: Vec<usize> = (0..=b.len()).collect();
+    let mut cur = vec![0; b.len() + 1];
+    for (i, ca) in a.iter().enumerate() {
+        cur[0] = i + 1;
+        for (j, cb) in b.iter().enumerate() {
+            let cost = usize::from(ca != cb);
+            cur[j + 1] = (prev[j] + cost).min(prev[j + 1] + 1).min(cur[j] + 1);
+        }
+        std::mem::swap(&mut prev, &mut cur);
+    }
+    prev[b.len()]
 }
 
 /// Set one key in a `config.org`, leaving everything else exactly as it
@@ -558,6 +615,54 @@ impl Config {
         )
     }
 
+    /// Every key the sample config offers, live or commented out.
+    ///
+    /// Read from [`Self::default_org`] rather than kept beside it: the
+    /// sample is generated from the defaults and is the file people
+    /// actually edit, so a key that is not in it is a key nobody can
+    /// be pointed at anyway. That is asserted the only way round it
+    /// can be — every key the sample offers must parse.
+    #[must_use]
+    pub fn known_keys() -> Vec<String> {
+        Self::default_org()
+            .lines()
+            .filter_map(|line| {
+                let line = line.trim().trim_start_matches('#').trim();
+                let (key, _) = line.split_once('=')?;
+                let key = key.trim();
+                (!key.is_empty() && key.chars().all(|c| c.is_ascii_lowercase() || c == '_'))
+                    .then(|| key.to_owned())
+            })
+            .collect()
+    }
+
+    /// Load a config, and say what was wrong with it.
+    ///
+    /// The form every caller in the app should use. [`Self::from_path`]
+    /// returns a `Result`, and a `Result` that is inconvenient at a
+    /// startup path becomes `.unwrap_or_default()` — which is what
+    /// happened, at every one of them. One mistyped key silently threw
+    /// away the whole config, so the input mode, the theme and the
+    /// bindings all reverted and nothing said why. An error raised at
+    /// load time that nobody is shown is not an error at load time.
+    ///
+    /// A missing file and a file with no config block are both
+    /// silence, not complaints: most vaults have no `config.org`, and
+    /// a vault is allowed to have notes in a file of that name.
+    #[must_use]
+    pub fn load_reporting(path: &std::path::Path) -> (Self, Option<String>) {
+        match Self::from_path(path) {
+            Ok(cfg) => (cfg, None),
+            // Nothing to read, or nothing in it to read.
+            Err(ConfigError::Missing) => (Self::default(), None),
+            Err(ConfigError::ParseOrg(_)) if !path.exists() => (Self::default(), None),
+            Err(e) => (
+                Self::default(),
+                Some(format!("{}: {e} — using defaults", path.display())),
+            ),
+        }
+    }
+
     /// Load a config from a `*.org` file on disk.
     #[allow(clippy::missing_errors_doc)]
     pub fn from_path(path: &std::path::Path) -> Result<Self, ConfigError> {
@@ -575,7 +680,14 @@ impl Config {
                 && let Some(cb) = n.as_code_block()
                 && cb.language == Some("closure-config")
             {
-                return Self::from_kv_block(cb.content);
+                // Where the block's first line sits in the file, so
+                // "line 4" is the line you open the editor to rather
+                // than the fourth line of a block you now have to
+                // find and count from.
+                let first = src
+                    .find(cb.content)
+                    .map_or(1, |at| src[..at].lines().count() + 1);
+                return Self::from_kv_block_at(cb.content, first);
             }
         }
         Err(ConfigError::Missing)
@@ -583,10 +695,24 @@ impl Config {
 
     /// Parse `key = value` lines, returning a fully-typed [`Config`]
     /// with the default for any field the user didn't specified.
-    #[allow(clippy::too_many_lines)]
     pub fn from_kv_block(content: &str) -> Result<Self, ConfigError> {
+        Self::from_kv_block_at(content, 1)
+    }
+
+    /// As [`Self::from_kv_block`], with `first_line` saying where the
+    /// block starts in the file the user will open — every message
+    /// this raises names a line, and a line number that is right about
+    /// the block and wrong about the file is a line number you have to
+    /// check before you trust.
+    ///
+    /// # Errors
+    ///
+    /// As [`Self::from_kv_block`].
+    #[allow(clippy::too_many_lines)]
+    pub fn from_kv_block_at(content: &str, first_line: usize) -> Result<Self, ConfigError> {
         let mut cfg = Self::default();
-        for (line_no, raw) in content.lines().enumerate() {
+        for (offset, raw) in content.lines().enumerate() {
+            let line_no = offset + first_line - 1;
             let line = raw.trim();
             if line.is_empty() || line.starts_with('#') {
                 continue;
@@ -803,7 +929,13 @@ impl Config {
                 "llm_model" => cfg.llm_model = Some(value.into()),
                 "llm_key_env" => cfg.llm_key_env = Some(value.into()),
                 "llm_endpoint" => cfg.llm_endpoint = Some(value.into()),
-                other => return Err(ConfigError::UnknownKey(other.into())),
+                other => {
+                    return Err(ConfigError::UnknownKey {
+                        key: other.to_owned(),
+                        line: line_no + 1,
+                        suggestion: nearest_key(other),
+                    });
+                }
             }
         }
 

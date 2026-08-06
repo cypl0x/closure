@@ -113,8 +113,13 @@ fn the_key_itself_is_never_a_config_key() {
     // that gets committed, and a credential in it would be committed
     // with it.
     let err = parse("llm_api_key = sk-secret").expect_err("refused");
+    // `UnknownKey` grew fields — the line and the key you probably
+    // meant — for the "configuration language" item on 2026-08-06,
+    // which asked for errors you can act on rather than errors you
+    // have to go looking for. What this test is about is unchanged:
+    // the key itself is never a config key.
     assert!(
-        matches!(err, ConfigError::UnknownKey(ref k) if k == "llm_api_key"),
+        matches!(err, ConfigError::UnknownKey { ref key, .. } if key == "llm_api_key"),
         "{err:?}"
     );
 }
