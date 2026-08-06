@@ -7356,6 +7356,91 @@ impl GpuiView {
                     .child(div().text_color(rgb(co.fg)).child(ev.candidate.clone()))
             }))
             .children(self.flow_detail(co))
+            .children(self.flow_debug(co))
+            .children(self.flow_graph(co))
+    }
+
+    /// What was actually recorded about the selected flow: "debug"
+    /// from the snitcher's list, shown when `d` asks for it.
+    ///
+    /// A verdict that surprises you raises one question — what was
+    /// written down, and what was it matched against — and the pane
+    /// could answer neither, so the answer was `grep`.
+    fn flow_debug(&self, co: Colors) -> Option<gpui::Div> {
+        if !self.app.sniffer_debug() {
+            return None;
+        }
+        let lines = self.app.sniffer().debug(self.app.sniffer_cursor())?;
+        Some(
+            div()
+                .debug_selector(|| "flow-debug".to_owned())
+                .flex()
+                .flex_col()
+                .gap_1()
+                .mt_2()
+                .pt_2()
+                .border_t_1()
+                .border_color(rgb(co.border))
+                .text_size(self.sz(11.0))
+                .text_color(rgb(co.muted))
+                .children(lines.into_iter().map(|l| div().child(l))),
+        )
+    }
+
+    /// Who this machine talks to and how much: "network graph".
+    ///
+    /// The log records a host per flow and nothing else — no process,
+    /// no edge between two hosts — so what there is to draw is a
+    /// distribution. A bar per host, blocked share in the block
+    /// colour, busiest first.
+    fn flow_graph(&self, co: Colors) -> Option<gpui::Div> {
+        let rows = self.app.sniffer().graph();
+        let widest = rows.first()?.flows.max(1);
+        Some(
+            div()
+                .debug_selector(|| "flow-graph".to_owned())
+                .flex()
+                .flex_col()
+                .gap_1()
+                .mt_2()
+                .pt_2()
+                .border_t_1()
+                .border_color(rgb(co.border))
+                .text_size(self.sz(11.0))
+                .child(div().text_color(rgb(co.muted)).child("hosts"))
+                .children(rows.into_iter().map(|row| {
+                    #[allow(clippy::cast_precision_loss)]
+                    let full = 160.0 * (row.flows as f32) / (widest as f32);
+                    #[allow(clippy::cast_precision_loss)]
+                    let blocked = full * (row.blocked as f32) / (row.flows.max(1) as f32);
+                    div()
+                        .flex()
+                        .gap_2()
+                        .items_center()
+                        .child(
+                            div()
+                                .w(px(200.0))
+                                .flex_none()
+                                .overflow_hidden()
+                                .whitespace_nowrap()
+                                .text_color(rgb(co.fg))
+                                .child(row.host),
+                        )
+                        .child(
+                            div()
+                                .flex()
+                                .h(px(8.0))
+                                .w(px(full))
+                                .bg(rgb(co.accent))
+                                .child(div().h_full().w(px(blocked)).bg(rgb(co.error))),
+                        )
+                        .child(
+                            div()
+                                .text_color(rgb(co.muted))
+                                .child(format!("{}", row.flows)),
+                        )
+                })),
+        )
     }
 
     /// The selected flow, taken apart: "inspect" from the snitcher's

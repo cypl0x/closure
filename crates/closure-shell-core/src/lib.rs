@@ -3134,6 +3134,22 @@ pub struct SniffEvent {
     /// *Which* rule decided it. The action says a request was blocked;
     /// this says by what, which is the question that follows.
     pub rule: Option<closure_sniffer::Rule>,
+    /// `path:line` of the capture log entry it was read from — the
+    /// answer to "what was actually recorded", which a verdict you did
+    /// not expect always raises. `None` for a flow captured live,
+    /// which has not been written down yet.
+    pub source: Option<String>,
+}
+
+/// One host and how much of the traffic was to it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HostTraffic {
+    /// The host, without its port.
+    pub host: String,
+    /// How many flows went to it.
+    pub flows: usize,
+    /// How many of those a rule blocked.
+    pub blocked: usize,
 }
 
 /// One captured flow, taken apart.
@@ -3195,6 +3211,10 @@ pub struct SnifferApp {
     selected: usize,
     filter: String,
     rules: Vec<closure_sniffer::Rule>,
+    /// The vault's configured rules, as of the last [`Self::load`].
+    /// Kept so [`Self::debug`] can say what was tried when nothing
+    /// matched — "no rule matched" is only useful beside the rules.
+    considered: Vec<closure_sniffer::Rule>,
 }
 
 impl SnifferApp {
@@ -3220,6 +3240,7 @@ impl SnifferApp {
             candidate: candidate.to_owned(),
             action,
             rule,
+            source: None,
         });
     }
 
@@ -3248,13 +3269,20 @@ impl SnifferApp {
     pub fn load(&mut self, vault: &closure_store::Vault) -> usize {
         self.events.clear();
         self.selected = 0;
-        let rows: Vec<String> = vault
+        // Where each flow came from, kept beside it: when a verdict
+        // surprises you the question is what was actually recorded,
+        // and a pane that cannot answer it sends you to `grep`.
+        let rows: Vec<(String, String)> = vault
             .iter()
             .filter(|(path, _)| path.file_name().is_some_and(|n| n == "network.org"))
-            .flat_map(|(_, doc)| {
+            .flat_map(|(path, doc)| {
+                let where_from = path.display().to_string();
                 doc.source()
                     .lines()
-                    .filter_map(capture_candidate)
+                    .enumerate()
+                    .filter_map(|(i, line)| {
+                        Some((capture_candidate(line)?, format!("{where_from}:{}", i + 1)))
+                    })
                     .collect::<Vec<_>>()
             })
             .collect();
@@ -3274,7 +3302,7 @@ impl SnifferApp {
                     action: closure_sniffer::Action::Block,
                 })
                 .collect();
-        for candidate in rows {
+        for (candidate, source) in rows {
             let rule = closure_sniffer::match_first(&candidate, &self.rules)
                 .or_else(|| closure_sniffer::match_first(&candidate, &configured))
                 .cloned();
@@ -3283,9 +3311,83 @@ impl SnifferApp {
                 candidate,
                 action,
                 rule,
+                source: Some(source),
             });
         }
+        self.considered = configured;
         self.events.len()
+    }
+
+    /// Everything known about flow `i`, for when its verdict surprises
+    /// you: what was recorded, where, what it was matched against, and
+    /// which rule decided it — or, when none did, the rules that were
+    /// tried and did not.
+    ///
+    /// "no rule matched" is a different sentence from "allowed", and
+    /// the pane could say neither.
+    #[must_use]
+    pub fn debug(&self, i: usize) -> Option<Vec<String>> {
+        let event: SniffEvent = (*self.filtered().get(i)?).clone();
+        let mut out = vec![format!("candidate   {}", event.candidate)];
+        if let Some(source) = &event.source {
+            out.push(format!("recorded in {source}"));
+        }
+        if let Some(rule) = &event.rule {
+            out.push(format!("decided by  {} ({})", rule.id, rule.pattern));
+            out.push(format!("action      {:?}", rule.action));
+        } else {
+            out.push("decided by  no rule matched — allowed by default".to_owned());
+            let tried: Vec<&str> = self
+                .rules
+                .iter()
+                .chain(self.considered.iter())
+                .map(|r| r.pattern.as_str())
+                .collect();
+            out.push(if tried.is_empty() {
+                "tried       no rules are configured".to_owned()
+            } else {
+                format!("tried       {}", tried.join(", "))
+            });
+        }
+        Some(out)
+    }
+
+    /// Who this machine talks to and how much: one row per host,
+    /// busiest first.
+    ///
+    /// "network graph". The log records a host per flow and nothing
+    /// else — no process, no peer-to-peer edge — so what there is to
+    /// draw is a distribution rather than a topology. Drawing edges
+    /// that were never measured would be a picture of nothing.
+    #[must_use]
+    pub fn graph(&self) -> Vec<HostTraffic> {
+        let mut by_host: Vec<HostTraffic> = Vec::new();
+        for event in &self.events {
+            let host = event
+                .candidate
+                .split_whitespace()
+                .next()
+                .unwrap_or_default()
+                .rsplit_once(':')
+                .map_or(event.candidate.as_str(), |(h, _)| h)
+                .trim_matches(['[', ']'])
+                .to_owned();
+            let blocked = usize::from(event.action == Some(closure_sniffer::Action::Block));
+            if let Some(row) = by_host.iter_mut().find(|r| r.host == host) {
+                row.flows += 1;
+                row.blocked += blocked;
+            } else {
+                by_host.push(HostTraffic {
+                    host,
+                    flows: 1,
+                    blocked,
+                });
+            }
+        }
+        // Busiest first; ties by name so the list does not shuffle
+        // between frames.
+        by_host.sort_by(|a, b| b.flows.cmp(&a.flows).then_with(|| a.host.cmp(&b.host)));
+        by_host
     }
 
     /// The blocklist rules the toggles have added (for persistence to the
@@ -4542,6 +4644,12 @@ const PALETTE_COMMANDS: &[(&str, &str, &str, &str)] = &[
         "Let this network flow through",
     ),
     ("block-flow", "block-flow", "App", "Stop this network flow"),
+    (
+        "debug-flow",
+        "debug-flow",
+        "App",
+        "Show what was recorded about this flow and why it was decided",
+    ),
     (
         "reload-flows",
         "reload-flows",
@@ -13121,6 +13229,9 @@ pub struct ModalApp {
     chat_busy: bool,
     /// The sniffer surface's captured flows and rules (X3).
     sniffer: SnifferApp,
+    /// Whether the sniffer pane is showing the raw record behind the
+    /// selected flow ("debug"), rather than only what it made of it.
+    sniffer_debug: bool,
     /// The conflict surface's pending CRDT decisions.
     conflicts: ConflictApp,
     /// Whether the LLM may read the *rendered* view (V3b).
@@ -13673,6 +13784,7 @@ impl ModalApp {
             chat_buf: LineInput::default(),
             chat_busy: false,
             sniffer: SnifferApp::new(),
+            sniffer_debug: false,
             conflicts: ConflictApp::new(Vec::new(), mode),
             llm_render: false,
             mode,
@@ -18440,6 +18552,7 @@ impl ModalApp {
             "a" => self.run_command(shell, "allow-flow"),
             "b" => self.run_command(shell, "block-flow"),
             "r" => self.run_command(shell, "reload-flows"),
+            "d" => self.run_command(shell, "debug-flow"),
             "escape" | "q" => self.go_home(),
             _ => {}
         }
@@ -23861,6 +23974,15 @@ impl ModalApp {
                 let n = self.sniffer.load(&shell.vault);
                 self.say(format!("{n} flow(s) from network.org"));
             }
+            "debug-flow" => {
+                self.sniffer_debug = !self.sniffer_debug;
+                self.surface = ModalSurface::Sniffer;
+                self.say(if self.sniffer_debug {
+                    "debug — what was recorded, and what it was matched against"
+                } else {
+                    "debug off"
+                });
+            }
             "allow-flow" | "block-flow" => {
                 if self.sniffer.events().is_empty() {
                     self.say("no captured flows");
@@ -24358,6 +24480,13 @@ impl ModalApp {
     #[must_use]
     pub const fn llm_render_access(&self) -> bool {
         self.llm_render
+    }
+
+    /// Whether the sniffer pane is showing the raw record behind the
+    /// selected flow.
+    #[must_use]
+    pub const fn sniffer_debug(&self) -> bool {
+        self.sniffer_debug
     }
 
     /// The sniffer surface's state, for painting and for feeding
