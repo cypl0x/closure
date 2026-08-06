@@ -173,9 +173,20 @@ pub fn handle_message(vault: &mut closure_store::Vault, json: &str) -> Option<St
         }
         "resources/read" => {
             let uri = string_field(json, "uri").unwrap_or_default();
-            let rel = uri.strip_prefix("file://").unwrap_or(&uri);
+            // Both, in this order, because the listing hands out
+            // `file://` + the *absolute* path and this only tried the
+            // relative lookup — so every uri a client could have got
+            // from `resources/list` read back as an empty file. A
+            // silent empty answer, which is the worst kind: the model
+            // is told the note exists and is blank.
+            let path = uri
+                .strip_prefix("file://")
+                .or_else(|| uri.strip_prefix("closure://"))
+                .unwrap_or(&uri);
+            let path = std::path::Path::new(path);
             let text = vault
-                .document_relative(std::path::Path::new(rel))
+                .document(path)
+                .or_else(|| vault.document_relative(path))
                 .map(closure_core::Document::source)
                 .unwrap_or_default();
             format!(
@@ -184,6 +195,9 @@ pub fn handle_message(vault: &mut closure_store::Vault, json: &str) -> Option<St
                 json_escape(&text)
             )
         }
+        // Every client's "are you still there". Answering it is an
+        // empty object; not answering it is a server that looks dead.
+        "ping" => "{}".to_owned(),
         "prompts/list" => {
             let prompts: Vec<String> = PROMPTS
                 .iter()
@@ -225,8 +239,13 @@ pub fn handle_message(vault: &mut closure_store::Vault, json: &str) -> Option<St
                 format!("{name} {args}")
             };
             let text = vault.run_tool(&line);
+            // MCP has a place to say "this went wrong", and without it
+            // a client hands the failure to the model as an answer —
+            // so "ERROR no such file" becomes something the model
+            // believes about your vault.
+            let failed = text.starts_with("ERROR");
             format!(
-                "{{\"content\":[{{\"type\":\"text\",\"text\":\"{}\"}}]}}",
+                "{{\"content\":[{{\"type\":\"text\",\"text\":\"{}\"}}],\"isError\":{failed}}}",
                 json_escape(&text)
             )
         }
