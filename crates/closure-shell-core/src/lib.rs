@@ -6961,17 +6961,73 @@ pub struct SyncApp {
     /// When each address last failed to answer, so an absent peer is
     /// not redialled on every frame.
     quiet_until: std::collections::HashMap<std::net::SocketAddr, std::time::Instant>,
-    /// Dials in flight, one per address.
+    /// Rounds in flight, one per address.
     ///
-    /// Connecting is the part that costs real time — 60ms of it,
-    /// measured, on the thread that draws the window — and it is also
-    /// the part that needs nothing from the CRDT session. So it waits
-    /// on a worker, and the round happens here once the socket is
-    /// already open, against a peer that has proved it is there.
-    dialing: std::collections::HashMap<
-        std::net::SocketAddr,
-        std::thread::JoinHandle<std::io::Result<std::net::TcpStream>>,
-    >,
+    /// Both halves of a round are IO and neither needs the CRDT:
+    /// connecting cost 60.2ms on the thread that draws the window, and
+    /// the exchange after it cost 208ms against a host that accepts
+    /// and then never speaks the protocol. Both wait on a worker; what
+    /// stays here is the arithmetic that needs the session.
+    in_flight: std::collections::HashMap<std::net::SocketAddr, Round>,
+}
+
+/// What a finished wire round hands back: their sync message and
+/// their presence frame, or why neither arrived.
+type WireResult = Result<(Vec<u8>, Vec<u8>), String>;
+
+/// How far along a round with one peer is.
+///
+/// A tick advances it by one step and never waits: the frame loop gets
+/// that for free, and anything calling [`SyncApp::sync_with`] once has
+/// to call it again.
+enum Round {
+    /// Waiting for the peer to accept.
+    Dialing(std::thread::JoinHandle<std::io::Result<std::net::TcpStream>>),
+    /// Connected; our frame is out and theirs is being waited for.
+    /// Yields their sync message and their presence frame.
+    Exchanging(std::thread::JoinHandle<WireResult>),
+}
+
+impl std::fmt::Debug for Round {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Self::Dialing(_) => "Dialing",
+            Self::Exchanging(_) => "Exchanging",
+        })
+    }
+}
+
+/// One round on the wire: our frame out, theirs back, presence both
+/// ways. Runs on a worker and touches no shared state.
+///
+/// Length-prefixed the way [`closure_sync::TcpSyncTransport`] frames
+/// it, because it is the same wire — this is that round with the CRDT
+/// taken out of it, so that the part needing the session can stay on
+/// the thread that owns the session.
+fn wire_round(stream: &mut std::net::TcpStream, ours: &[u8], presence: &[u8]) -> WireResult {
+    use std::io::{Read as _, Write as _};
+    fn send(stream: &mut std::net::TcpStream, frame: &[u8]) -> Result<(), String> {
+        let len = u32::try_from(frame.len()).unwrap_or(0);
+        stream
+            .write_all(&len.to_le_bytes())
+            .map_err(|e| e.to_string())?;
+        stream.write_all(frame).map_err(|e| e.to_string())
+    }
+    fn recv(stream: &mut std::net::TcpStream) -> Result<Vec<u8>, String> {
+        let mut len = [0u8; 4];
+        stream.read_exact(&mut len).map_err(|e| e.to_string())?;
+        let n = u32::from_le_bytes(len) as usize;
+        let mut buf = vec![0u8; n];
+        if n > 0 {
+            stream.read_exact(&mut buf).map_err(|e| e.to_string())?;
+        }
+        Ok(buf)
+    }
+    send(stream, ours)?;
+    let theirs = recv(stream)?;
+    send(stream, presence)?;
+    let their_presence = recv(stream)?;
+    Ok((theirs, their_presence))
 }
 
 /// Where somebody is: which block, and which line inside it.
@@ -7080,7 +7136,7 @@ impl SyncApp {
             local: None,
             seen: Vec::new(),
             quiet_until: std::collections::HashMap::new(),
-            dialing: std::collections::HashMap::new(),
+            in_flight: std::collections::HashMap::new(),
         }
     }
 
@@ -7220,40 +7276,93 @@ impl SyncApp {
             // ragged lines.
             return Err("quiet".to_owned());
         }
-        // The dial is somebody else's problem. `connect_timeout`
-        // costs its whole budget whenever a peer is merely absent —
-        // measured at 60.2ms on the thread that draws the window,
-        // which is four dropped frames at 60Hz, repeated every time
-        // the quiet expires. Nothing about connecting needs the CRDT
-        // session, so it waits on a worker and this returns at once.
-        let Some(handle) = self.dialing.remove(&addr) else {
-            self.dialing.insert(
-                addr,
-                std::thread::spawn(move || std::net::TcpStream::connect_timeout(&addr, DIAL)),
-            );
-            // Not a failure: the answer is not in yet, and the next
-            // tick collects it. Short, because it lands in a peer row.
-            return Err("dialing".to_owned());
-        };
-        if !handle.is_finished() {
-            // Still out there. Put it back and come round again — a
-            // tick must never wait on one.
-            self.dialing.insert(addr, handle);
-            return Err("dialing".to_owned());
+        // Neither the dial nor the wire is this thread's business.
+        //
+        // `connect_timeout` costs its whole budget whenever a peer is
+        // merely absent — 60.2ms measured — and the round after it
+        // costs READ_BUDGET whenever a host accepts and then never
+        // speaks the protocol: 208ms measured, thirteen dropped
+        // frames. Both are IO and neither needs the CRDT.
+        //
+        // What does need the CRDT is only arithmetic: building our
+        // frame from the session, and applying theirs. So the session
+        // stays here and the socket goes to a worker.
+        match self.in_flight.remove(&addr) {
+            None => {
+                self.in_flight.insert(
+                    addr,
+                    Round::Dialing(std::thread::spawn(move || {
+                        std::net::TcpStream::connect_timeout(&addr, DIAL)
+                    })),
+                );
+                // Not a failure: the answer is not in yet, and the
+                // next tick collects it. Short, because it lands in a
+                // peer row beside the address.
+                Err("dialing".to_owned())
+            }
+            Some(Round::Dialing(handle)) => {
+                if !handle.is_finished() {
+                    self.in_flight.insert(addr, Round::Dialing(handle));
+                    return Err("dialing".to_owned());
+                }
+                let mut stream = handle
+                    .join()
+                    .map_err(|_| "the dial thread panicked".to_owned())?
+                    .map_err(|e| {
+                        self.mark_quiet(addr);
+                        e.to_string()
+                    })?;
+                stream
+                    .set_read_timeout(Some(READ_BUDGET))
+                    .map_err(|e| e.to_string())?;
+                // Our half of the round, built here where the session
+                // is, and handed over as bytes.
+                let ours = closure_sync::SyncMessage::from_session(&self.session).to_bytes();
+                let presence = self.presence_frame();
+                self.in_flight.insert(
+                    addr,
+                    Round::Exchanging(std::thread::spawn(move || {
+                        wire_round(&mut stream, &ours, &presence)
+                    })),
+                );
+                Err("syncing".to_owned())
+            }
+            Some(Round::Exchanging(handle)) => {
+                if !handle.is_finished() {
+                    self.in_flight.insert(addr, Round::Exchanging(handle));
+                    return Err("syncing".to_owned());
+                }
+                let (theirs, presence) = handle
+                    .join()
+                    .map_err(|_| "the sync thread panicked".to_owned())?
+                    .inspect_err(|_| self.mark_quiet(addr))?;
+                let message =
+                    closure_sync::SyncMessage::from_bytes(&theirs).map_err(|e| e.to_string())?;
+                self.session.apply_message(&message);
+                self.absorb_presence(&presence);
+                Ok(())
+            }
         }
-        let mut stream = handle
-            .join()
-            .map_err(|_| "the dial thread panicked".to_owned())?
-            .map_err(|e| {
-                self.mark_quiet(addr);
-                e.to_string()
-            })?;
-        stream
-            .set_read_timeout(Some(READ_BUDGET))
-            .map_err(|e| e.to_string())?;
-        closure_sync::TcpSyncTransport::stream_round_client(&mut stream, &mut self.session)
-            .map_err(|e| e.to_string())?;
-        self.exchange_presence(&mut stream, true)
+    }
+
+    /// Where we are, as a frame for a peer. Empty when we have not
+    /// said.
+    fn presence_frame(&self) -> Vec<u8> {
+        self.local.as_ref().map_or_else(Vec::new, |at| {
+            closure_sync::Presence {
+                peer: at.peer.clone(),
+                block: at.block.clone(),
+                line: at.line,
+            }
+            .encode()
+        })
+    }
+
+    /// Take note of where a peer said it was.
+    fn absorb_presence(&mut self, frame: &[u8]) {
+        if let Ok(p) = closure_sync::Presence::decode(frame) {
+            self.note_peer(&p.peer, &p.block, p.line);
+        }
     }
 
     /// Back off from an address that did not answer.
@@ -7276,6 +7385,10 @@ impl SyncApp {
     /// Non-blocking so a shell can call it from its frame loop and a
     /// quiet network costs nothing.
     pub fn serve_pending(&mut self) -> usize {
+        /// How long to wait for a client that connected to say
+        /// something. The dialling side's `READ_BUDGET`, from the
+        /// other end of the same wire.
+        const SERVE_BUDGET: std::time::Duration = std::time::Duration::from_millis(200);
         let Some(listener) = self.listener.clone() else {
             return 0;
         };
@@ -7284,7 +7397,14 @@ impl SyncApp {
         }
         let mut served = 0;
         while let Ok((mut stream, _)) = listener.accept() {
+            // The accepted socket had no read timeout at all, so a
+            // client that connects and then says nothing blocked this
+            // thread — the one that draws the window — for as long as
+            // it cared to. Anything able to reach the port could do
+            // it. The same budget the dialling side uses: a peer that
+            // is really closure answers in single-digit milliseconds.
             let ok = stream.set_nonblocking(false).is_ok()
+                && stream.set_read_timeout(Some(SERVE_BUDGET)).is_ok()
                 && closure_sync::TcpSyncTransport::stream_round_server(
                     &mut stream,
                     &mut self.session,
