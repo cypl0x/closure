@@ -495,7 +495,19 @@ const NOISE_MAX_PLAINTEXT: usize = 65535 - 16;
 /// the wire in plaintext. Transport-agnostic — wraps any byte stream.
 pub struct NoiseChannel {
     transport: snow::TransportState,
+    /// The Noise handshake hash: a value unique to *this* conversation
+    /// and known to both ends of it. What [`Self::authenticate`] signs,
+    /// and the reason a signature from another conversation is not a
+    /// proof here.
+    handshake_hash: Vec<u8>,
 }
+
+/// Domain separator for the channel-binding signature.
+///
+/// A signature is only meaningful against the thing it was meant to
+/// sign. Without this, a proof-of-channel could be replayed as a frame
+/// signature or the other way about.
+const CHANNEL_PROOF_DOMAIN: &[u8] = b"closure-sync channel proof v1\n";
 
 impl NoiseChannel {
     /// Perform an in-process NN handshake and return the
@@ -524,9 +536,22 @@ impl NoiseChannel {
         let n = resp.write_message(&[], &mut buf).map_err(noise_err)?;
         ini.read_message(&buf[..n], &mut scratch)
             .map_err(noise_err)?;
+        let (ini_h, resp_h) = (
+            ini.get_handshake_hash().to_vec(),
+            resp.get_handshake_hash().to_vec(),
+        );
         let ini_t = ini.into_transport_mode().map_err(noise_err)?;
         let resp_t = resp.into_transport_mode().map_err(noise_err)?;
-        Ok((Self { transport: ini_t }, Self { transport: resp_t }))
+        Ok((
+            Self {
+                transport: ini_t,
+                handshake_hash: ini_h,
+            },
+            Self {
+                transport: resp_t,
+                handshake_hash: resp_h,
+            },
+        ))
     }
 
     /// Encrypt `plaintext` into as many AEAD frames as it takes.
@@ -619,8 +644,10 @@ impl NoiseChannel {
         write_framed(stream, &buf[..n])?;
         let reply = read_framed(stream)?;
         hs.read_message(&reply, &mut scratch).map_err(noise_err)?;
+        let handshake_hash = hs.get_handshake_hash().to_vec();
         Ok(Self {
             transport: hs.into_transport_mode().map_err(noise_err)?,
+            handshake_hash,
         })
     }
 
@@ -642,9 +669,115 @@ impl NoiseChannel {
         hs.read_message(&msg1, &mut scratch).map_err(noise_err)?;
         let n = hs.write_message(&[], &mut buf).map_err(noise_err)?;
         write_framed(stream, &buf[..n])?;
+        let handshake_hash = hs.get_handshake_hash().to_vec();
         Ok(Self {
             transport: hs.into_transport_mode().map_err(noise_err)?,
+            handshake_hash,
         })
+    }
+}
+
+impl NoiseChannel {
+    /// This conversation's Noise handshake hash.
+    #[must_use]
+    pub fn handshake_hash(&self) -> &[u8] {
+        &self.handshake_hash
+    }
+
+    /// Prove to the peer that we hold `ours`, and check that it holds
+    /// `theirs` — over *this* channel.
+    ///
+    /// The gap this closes: `Noise_NN` agrees a key with whoever
+    /// answers, so it is confidentiality against a listener and
+    /// nothing against somebody in the path. An attacker there runs
+    /// one handshake with each side and holds two channels it can read
+    /// and rewrite. The frames inside are signed, which stops it
+    /// forging a replica — and does not stop it reading every one,
+    /// dropping the ones it dislikes, or replaying old ones. Signing
+    /// the payload says who wrote the bytes; it does not say who you
+    /// are talking to.
+    ///
+    /// So each side signs the handshake hash and sends the signature
+    /// *through* the encrypted channel. Somebody in the middle holds
+    /// two channels with two different hashes and cannot produce the
+    /// peer's signature over the one you are on.
+    ///
+    /// Chosen over `Noise_XX` with the ticket's key because that key is
+    /// ed25519 and XX wants X25519: reusing one key for both signing
+    /// and key agreement is a thing ed25519-dalek warns against in as
+    /// many words, and a separate static key would mean a new ticket
+    /// format and every paired peer re-pairing. This needs neither.
+    ///
+    /// `we_speak_first` orders the exchange; the two ends must
+    /// disagree about it, exactly as they do for the handshake itself.
+    ///
+    /// # Errors
+    ///
+    /// [`SyncError::Transport`] when the peer's proof is missing,
+    /// malformed, or not a signature by `theirs` over this channel —
+    /// which is what an attacker in the middle looks like from here.
+    pub fn authenticate<S: std::io::Read + std::io::Write>(
+        &mut self,
+        stream: &mut S,
+        ours: &SigningKey,
+        theirs: &VerifyingKey,
+        we_speak_first: bool,
+    ) -> Result<(), SyncError> {
+        self.authenticate_any(stream, ours, std::slice::from_ref(theirs), we_speak_first)
+            .map(|_| ())
+    }
+
+    /// [`Self::authenticate`] against a set, returning which of them
+    /// answered.
+    ///
+    /// The listening side needs this: it does not know who is dialling
+    /// in until they have proved it, and "one of the peers I have
+    /// paired with" is the honest question there. An empty set accepts
+    /// nobody — a listener that trusts no keys has nobody to sync
+    /// with, and accepting anyone would be the bug this change is
+    /// about.
+    ///
+    /// # Errors
+    ///
+    /// As [`Self::authenticate`].
+    pub fn authenticate_any<S: std::io::Read + std::io::Write>(
+        &mut self,
+        stream: &mut S,
+        ours: &SigningKey,
+        trusted: &[VerifyingKey],
+        we_speak_first: bool,
+    ) -> Result<VerifyingKey, SyncError> {
+        use ed25519_dalek::{Signer as _, Verifier as _};
+        let mut proof = CHANNEL_PROOF_DOMAIN.to_vec();
+        proof.extend_from_slice(&self.handshake_hash);
+        let ours_sig = ours.sign(&proof).to_bytes().to_vec();
+
+        let theirs_sig = if we_speak_first {
+            write_chunked(stream, &self.encrypt_chunks(&ours_sig)?)?;
+            self.decrypt_chunks(&read_chunked(stream)?)?
+        } else {
+            let theirs = self.decrypt_chunks(&read_chunked(stream)?)?;
+            write_chunked(stream, &self.encrypt_chunks(&ours_sig)?)?;
+            theirs
+        };
+
+        let bytes: [u8; 64] = theirs_sig
+            .as_slice()
+            .try_into()
+            .map_err(|_| SyncError::Transport("peer sent no usable proof of who it is".into()))?;
+        let signature = ed25519_dalek::Signature::from_bytes(&bytes);
+        trusted
+            .iter()
+            .find(|key| key.verify(&proof, &signature).is_ok())
+            .copied()
+            .ok_or_else(|| {
+                SyncError::Transport(
+                    "untrusted peer on this connection: not one this vault has paired \
+                     with — somebody is in the middle, or the address now answers to \
+                     somebody else"
+                        .into(),
+                )
+            })
     }
 }
 
@@ -881,6 +1014,11 @@ impl TcpSyncTransport {
         let mut stream =
             std::net::TcpStream::connect(addr).map_err(|e| SyncError::Io(e.to_string()))?;
         let mut chan = NoiseChannel::handshake_initiator(&mut stream)?;
+        // Before a byte of the vault goes over: prove who we are and
+        // check who they are, bound to *this* channel. Without it the
+        // handshake agrees a key with whoever answered, and a signed
+        // frame proves only who wrote it — not who is reading it.
+        chan.authenticate_any(&mut stream, signing_key, trusted, true)?;
         let frame = SyncMessage::from_session(session).to_signed_bytes(signing_key);
         write_chunked(&mut stream, &chan.encrypt_chunks(&frame)?)?;
         let ct = read_chunked(&mut stream)?;
@@ -905,6 +1043,7 @@ impl TcpSyncTransport {
             .accept()
             .map_err(|e| SyncError::Io(e.to_string()))?;
         let mut chan = NoiseChannel::handshake_responder(&mut stream)?;
+        chan.authenticate_any(&mut stream, signing_key, trusted, false)?;
         let ct = read_chunked(&mut stream)?;
         let theirs = SyncMessage::from_signed_bytes(&chan.decrypt_chunks(&ct)?, trusted)?;
         session.apply_message(&theirs);
