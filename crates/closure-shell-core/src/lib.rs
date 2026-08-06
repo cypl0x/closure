@@ -6092,6 +6092,43 @@ const COMMAND_ALIASES: &[(&str, &str)] = &[
     ("version", "build-info"),
 ];
 
+/// The commands that take an argument, and what the argument is.
+///
+/// A list rather than a guess. "Silently ignore the rest of the line"
+/// is how a cron entry runs for a week doing something other than what
+/// it says, and "hand it to whoever asks" is how a typo becomes a
+/// headline called `--force`.
+pub const COMMAND_ARGUMENTS: &[(&str, &str)] = &[
+    ("capture", "<title>"),
+    ("search", "<text>"),
+    ("search-headlines", "<text>"),
+    ("goto", "<id>"),
+    ("rename", "<new title>"),
+];
+
+/// Split a command line into its name and the rest.
+///
+/// The one place a command line becomes a name and an argument. A name
+/// with no space in it is unchanged, which is every chord: a chord *is*
+/// a name, and everything else that runs a command — a cron line, the
+/// `:` line, a key bound in config.org, an agent on the bridge — knows
+/// something a bare name has nowhere to put.
+#[must_use]
+pub fn split_command(line: &str) -> (&str, &str) {
+    let line = line.trim();
+    line.split_once(' ')
+        .map_or((line, ""), |(name, rest)| (name, rest.trim()))
+}
+
+/// What `name` calls its argument, if it takes one.
+#[must_use]
+pub fn command_argument(name: &str) -> Option<&'static str> {
+    COMMAND_ARGUMENTS
+        .iter()
+        .find(|(cmd, _)| *cmd == name)
+        .map(|(_, arg)| *arg)
+}
+
 /// The name a command answers to now, given any name it has ever had.
 ///
 /// Every former spelling still resolves: a rename that breaks the chord
@@ -12880,6 +12917,12 @@ pub struct ModalApp {
     /// Cursor into [`Self::palette_entries`] while the Palette is open.
     palette_cursor: usize,
     pending: Vec<String>,
+    /// The rest of the command line being run — set by
+    /// [`split_command`] at the one door every command comes through,
+    /// and taken by the arm that wants it. A field rather than a
+    /// parameter because the dispatch is one flat match of ~200 arms
+    /// and two of them care.
+    command_args: String,
     status: String,
     quit: bool,
     /// Explicit wheel-scroll viewport offset; None = follow selection.
@@ -13610,6 +13653,7 @@ impl ModalApp {
             notifications: Feedback::default(),
             palette_cursor: 0,
             pending: Vec::new(),
+            command_args: String::new(),
             status: String::new(),
             quit: false,
             scroll_override: None,
@@ -14004,6 +14048,22 @@ impl ModalApp {
 
     /// Run the palette entry under the cursor and close the palette.
     fn commit_palette(&mut self, shell: &mut Shell) {
+        // What was typed wins when it is a command line rather than a
+        // filter: `capture Weekly review` fuzzy-matched the `capture`
+        // entry and ran the bare form, so the argument vanished
+        // between the typing and the running. The list is still the
+        // list — this only fires when the first word is a command that
+        // takes an argument and there is one.
+        let typed = self.field_buf.text().to_owned();
+        let (name, args) = split_command(&typed);
+        if !args.is_empty() && command_argument(canonical_command(name)).is_some() {
+            self.field_buf.clear();
+            self.palette_cursor = 0;
+            self.close_palette();
+            self.remember_palette_command(name);
+            self.run_command(shell, &typed);
+            return;
+        }
         let pick = self
             .palette_entries()
             .get(self.palette_cursor)
@@ -22948,6 +23008,18 @@ impl ModalApp {
         // to a buffer is recorded here rather than in any one of them.
         // Hooked on `run` alone it worked for the tests and not on
         // screen, because `:messages` never touches `run`.
+        //
+        // And why the argument is split off here: a command line is a
+        // name and a rest, and every caller that has a rest — a cron
+        // entry, the `:` line, a key bound in config.org — comes
+        // through this door too.
+        let (cmd, args) = split_command(cmd);
+        if !args.is_empty() && command_argument(cmd).is_none() {
+            self.say(format!("{cmd}: takes no argument (got `{args}`)"));
+            return;
+        }
+        self.command_args.clear();
+        self.command_args.push_str(args);
         let from = self.surface;
         // Which file this command is about to touch, and whether it
         // touched anything. Undo has to follow the *edit*, not the
@@ -23140,6 +23212,13 @@ impl ModalApp {
                     "wrap off — long lines scroll sideways".to_owned()
                 });
             }
+            // `capture <title>` files it; bare `capture` opens the bar
+            // to type one into. The chord is the bare form and means
+            // exactly what it did.
+            "capture" if !self.command_args.is_empty() => {
+                let title = std::mem::take(&mut self.command_args);
+                self.commit_capture(shell, &title, false);
+            }
             "capture" => {
                 self.surface = ModalSurface::Capture;
                 self.capture_buf.clear();
@@ -23150,6 +23229,13 @@ impl ModalApp {
                     .then(|| self.selected_row_id(shell))
                     .flatten();
                 self.say(format!("capture {}", self.capture_target_label(shell)));
+            }
+            // `search <text>` runs it; bare `search` opens the prompt.
+            "search" | "search-headlines" if !self.command_args.is_empty() => {
+                self.surface = ModalSurface::Search;
+                self.search_return = Some(self.selected);
+                self.query.set_text(&std::mem::take(&mut self.command_args));
+                self.selected = 0;
             }
             "search" | "search-headlines" => {
                 // Doom's `SPC s s` is search-*buffer*: swiper over the
@@ -23437,12 +23523,41 @@ impl ModalApp {
                 // top left corner will show the full view body editor.
                 // Disable this behavior").
             }
+            // `rename <title>` renames the selected row; bare `rename`
+            // opens the field with the old title in it.
+            "rename" if !self.command_args.is_empty() => {
+                let title = std::mem::take(&mut self.command_args);
+                if let Some(row) = self.rows_shared(shell).get(self.selected).cloned() {
+                    let id = closure_core::BlockId::from_existing(&row.id);
+                    match shell.rename_headline(&id, &title) {
+                        Ok(()) => self.say(format!("renamed to {title}")),
+                        Err(e) => self.say(format!("rename: {e}")),
+                    }
+                } else {
+                    self.say("rename: nothing is selected");
+                }
+            }
             "rename" => {
                 if let Some(row) = self.rows_shared(shell).get(self.selected).cloned() {
                     self.field_target = Some(row.id);
                     self.field_buf.set_text(&row.title);
                     self.surface = ModalSurface::Rename;
                     self.say("rename — Enter save, Esc cancel");
+                }
+            }
+            // `goto <id>` — the one command that is only useful with an
+            // argument, which is why it did not exist until there was a
+            // way to give it one.
+            "goto" => {
+                let id = std::mem::take(&mut self.command_args);
+                if id.is_empty() {
+                    self.say("goto: which id?");
+                } else if let Some(i) = self.rows_shared(shell).iter().position(|r| r.id == id) {
+                    self.selected = i;
+                    self.selection_active = true;
+                    self.scroll_override = None;
+                } else {
+                    self.say(format!("goto: no headline with id {id}"));
                 }
             }
             // A delete is a *cut*: the subtree goes on the kill ring on
