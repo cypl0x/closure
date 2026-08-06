@@ -399,6 +399,38 @@ enum Cmd {
         #[arg(long)]
         level: Option<u8>,
     },
+    /// Rank a vault's files, or a file's headlines, by one metric.
+    ///
+    /// Replaces seventeen superlative subcommands — largest-file,
+    /// busiest-file, most-tagged, deepest-leaf and the rest — which
+    /// were each this with `--limit 1`. A directory ranks its files;
+    /// a file ranks its headlines.
+    Rank {
+        /// Vault directory (ranks files) or org file (ranks headlines).
+        path: PathBuf,
+        /// Files: headlines, bytes, todos, links, words.
+        /// Headlines: tags, properties, links, depth, words, priority.
+        #[arg(long, default_value = "headlines")]
+        by: String,
+        /// Print at most this many rows.
+        #[arg(long)]
+        limit: Option<usize>,
+        /// Smallest first (the default is largest first).
+        #[arg(long)]
+        asc: bool,
+    },
+    /// Print `id:` drawer ids of one kind from a file.
+    ///
+    /// Replaces all-ids, duplicate-ids, isolated-ids, hub-ids,
+    /// source-only-ids and sink-only-ids, which differed only in which
+    /// set they printed.
+    Ids {
+        /// Org file to read.
+        file: PathBuf,
+        /// all, duplicate, isolated, hub, source-only, sink-only.
+        #[arg(long, default_value = "all")]
+        kind: String,
+    },
     /// Print which-key bindings for the default registry.
     Whichkey {
         /// Optional prefix filter (e.g. `C-c`).
@@ -774,11 +806,6 @@ enum Cmd {
         /// Path to a `*.org` file.
         file: PathBuf,
     },
-    /// Print every block id in a file with its title.
-    Ids {
-        /// Path to a `*.org` file.
-        file: PathBuf,
-    },
     /// Print every headline whose `:ID:` property is set (drawer ID).
     DrawerIds {
         /// Path to a `*.org` file.
@@ -814,125 +841,10 @@ enum Cmd {
         /// Path to the vault directory.
         vault: PathBuf,
     },
-    /// Print the deepest leaf headline title in a file.
-    DeepestLeaf {
-        /// Path to a `*.org` file.
-        file: PathBuf,
-    },
-    /// Print the headline with the most descendants in a file.
-    LargestSubtree {
-        /// Path to a `*.org` file.
-        file: PathBuf,
-    },
-    /// Print the headline with the most body words in a file.
-    LongestBody {
-        /// Path to a `*.org` file.
-        file: PathBuf,
-    },
-    /// Print the most-tagged headline in a file.
-    MostTagged {
-        /// Path to a `*.org` file.
-        file: PathBuf,
-    },
-    /// Print the most-propertied headline in a file.
-    MostPropertied {
-        /// Path to a `*.org` file.
-        file: PathBuf,
-    },
-    /// Print the most-linked headline in a file.
-    MostLinked {
-        /// Path to a `*.org` file.
-        file: PathBuf,
-    },
-    /// Print the highest-priority headline in a file (`A < B < ...`).
-    HighestPriority {
-        /// Path to a `*.org` file.
-        file: PathBuf,
-    },
-    /// Print the largest file (path + byte count) in a vault.
-    LargestFile {
-        /// Path to the vault directory.
-        vault: PathBuf,
-    },
-    /// Print the file with the most headlines in a vault.
-    BusiestFile {
-        /// Path to the vault directory.
-        vault: PathBuf,
-    },
-    /// Print the smallest file (path + byte count) in a vault.
-    SmallestFile {
-        /// Path to the vault directory.
-        vault: PathBuf,
-    },
-    /// Print the quietest file (fewest headlines) in a vault.
-    QuietestFile {
-        /// Path to the vault directory.
-        vault: PathBuf,
-    },
-    /// Print empty files (no headlines) in a vault.
-    EmptyFiles {
-        /// Path to the vault directory.
-        vault: PathBuf,
-    },
-    /// Print files ranked by headline count (descending).
-    RankFiles {
-        /// Path to the vault directory.
-        vault: PathBuf,
-    },
-    /// Print files ranked by byte count (descending).
-    RankBytes {
-        /// Path to the vault directory.
-        vault: PathBuf,
-    },
-    /// Print files ranked by TODO count (descending).
-    RankTodos {
-        /// Path to the vault directory.
-        vault: PathBuf,
-    },
-    /// Print files ranked by link count (descending).
-    RankLinks {
-        /// Path to the vault directory.
-        vault: PathBuf,
-    },
-    /// Print files ranked by word count (descending).
-    RankWords {
-        /// Path to the vault directory.
-        vault: PathBuf,
-    },
     /// Print every `id:` edge as `source<TAB>target` per line.
     Edges {
         /// Path to the vault directory.
         vault: PathBuf,
-    },
-    /// Print drawer ids that appear more than once in the vault.
-    DuplicateIds {
-        /// Path to the vault directory.
-        vault: PathBuf,
-    },
-    /// Print every drawer id in a file (no value).
-    AllIds {
-        /// Path to a `*.org` file.
-        file: PathBuf,
-    },
-    /// Print isolated ids (no incoming/outgoing edges) in a file.
-    IsolatedIds {
-        /// Path to a `*.org` file.
-        file: PathBuf,
-    },
-    /// Print hub ids (both source and sink) in a file.
-    HubIds {
-        /// Path to a `*.org` file.
-        file: PathBuf,
-    },
-    /// Print source-only ids (outgoing without incoming) in a file.
-    SourceOnlyIds {
-        /// Path to a `*.org` file.
-        file: PathBuf,
-    },
-    /// Print sink-only ids (incoming without outgoing) in a file.
-    SinkOnlyIds {
-        /// Path to a `*.org` file.
-        file: PathBuf,
     },
     /// Run the MCP JSON-RPC server on stdio against a vault
     /// (initialize / tools/list / tools/call). Quits on EOF.
@@ -1363,6 +1275,13 @@ fn run(cmd: &Cmd) -> Result<(), String> {
             title.as_deref(),
             *level,
         ),
+        Cmd::Rank {
+            path,
+            by,
+            limit,
+            asc,
+        } => cmd_rank(path, by, *limit, *asc),
+        Cmd::Ids { file, kind } => cmd_ids(file, kind),
         Cmd::Whichkey { prefix } => cmd_whichkey(prefix.as_deref()),
         Cmd::Eval { file, write, block } => cmd_eval(file, *write, block.as_deref()),
         Cmd::Backlinks { vault, id } => cmd_backlinks(vault, id),
@@ -1444,7 +1363,6 @@ fn run(cmd: &Cmd) -> Result<(), String> {
         Cmd::Timestamps { file } => cmd_timestamps(file),
         Cmd::Cookies { file } => cmd_cookies(file),
         Cmd::Macros { file } => cmd_macros(file),
-        Cmd::Ids { file } => cmd_ids(file),
         Cmd::DrawerIds { file } => cmd_drawer_ids(file),
         Cmd::BlockArgs { file } => cmd_block_args(file),
         Cmd::Keywords { file } => cmd_keywords(file),
@@ -1452,30 +1370,7 @@ fn run(cmd: &Cmd) -> Result<(), String> {
         Cmd::Validate { file } => cmd_validate(file),
         Cmd::StatsFile { file } => cmd_stats_file(file),
         Cmd::VaultInfo { vault } => cmd_vault_info(vault),
-        Cmd::DeepestLeaf { file } => cmd_deepest_leaf(file),
-        Cmd::LargestSubtree { file } => cmd_largest_subtree(file),
-        Cmd::LongestBody { file } => cmd_longest_body(file),
-        Cmd::MostTagged { file } => cmd_most_tagged(file),
-        Cmd::MostPropertied { file } => cmd_most_propertied(file),
-        Cmd::MostLinked { file } => cmd_most_linked(file),
-        Cmd::HighestPriority { file } => cmd_highest_priority(file),
-        Cmd::LargestFile { vault } => cmd_largest_file(vault),
-        Cmd::BusiestFile { vault } => cmd_busiest_file(vault),
-        Cmd::SmallestFile { vault } => cmd_smallest_file(vault),
-        Cmd::QuietestFile { vault } => cmd_quietest_file(vault),
-        Cmd::EmptyFiles { vault } => cmd_empty_files(vault),
-        Cmd::RankFiles { vault } => cmd_rank_files(vault),
-        Cmd::RankBytes { vault } => cmd_rank_bytes(vault),
-        Cmd::RankTodos { vault } => cmd_rank_todos(vault),
-        Cmd::RankLinks { vault } => cmd_rank_links(vault),
-        Cmd::RankWords { vault } => cmd_rank_words(vault),
         Cmd::Edges { vault } => cmd_edges(vault),
-        Cmd::DuplicateIds { vault } => cmd_duplicate_ids(vault),
-        Cmd::AllIds { file } => cmd_all_ids(file),
-        Cmd::IsolatedIds { file } => cmd_isolated_ids(file),
-        Cmd::HubIds { file } => cmd_hub_ids(file),
-        Cmd::SourceOnlyIds { file } => cmd_source_only_ids(file),
-        Cmd::SinkOnlyIds { file } => cmd_sink_only_ids(file),
         Cmd::Mcp { vault } => cmd_mcp(vault),
         Cmd::Acp { vault } => cmd_acp(vault),
         Cmd::A2a { vault } => cmd_a2a(vault),
@@ -2502,206 +2397,10 @@ fn cmd_orphans(vault: &Path) -> Result<(), String> {
     Ok(())
 }
 
-fn cmd_deepest_leaf(path: &Path) -> Result<(), String> {
-    let src = fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))?;
-    let doc = closure_org::parse(&src).map_err(|e| format!("{e}"))?;
-    if let Some(h) = doc.deepest_leaf() {
-        println!("L{}\t{}", h.level(), h.title());
-    }
-    Ok(())
-}
-
-fn cmd_largest_subtree(path: &Path) -> Result<(), String> {
-    let src = fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))?;
-    let doc = closure_org::parse(&src).map_err(|e| format!("{e}"))?;
-    if let Some(h) = doc.largest_subtree() {
-        println!("{}\t{}", h.descendant_count(), h.title());
-    }
-    Ok(())
-}
-
-fn cmd_longest_body(path: &Path) -> Result<(), String> {
-    let src = fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))?;
-    let doc = closure_org::parse(&src).map_err(|e| format!("{e}"))?;
-    if let Some(h) = doc.longest_body() {
-        println!("{}\t{}", h.body_word_count(), h.title());
-    }
-    Ok(())
-}
-
-fn cmd_most_tagged(path: &Path) -> Result<(), String> {
-    let src = fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))?;
-    let doc = closure_org::parse(&src).map_err(|e| format!("{e}"))?;
-    if let Some(h) = doc.most_tagged() {
-        println!("{}\t{}", h.tag_count(), h.title());
-    }
-    Ok(())
-}
-
-fn cmd_most_propertied(path: &Path) -> Result<(), String> {
-    let src = fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))?;
-    let doc = closure_org::parse(&src).map_err(|e| format!("{e}"))?;
-    if let Some(h) = doc.most_propertied() {
-        println!("{}\t{}", h.property_count(), h.title());
-    }
-    Ok(())
-}
-
-fn cmd_most_linked(path: &Path) -> Result<(), String> {
-    let src = fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))?;
-    let doc = closure_org::parse(&src).map_err(|e| format!("{e}"))?;
-    if let Some(h) = doc.most_linked() {
-        println!("{}\t{}", h.link_count(), h.title());
-    }
-    Ok(())
-}
-
-fn cmd_largest_file(vault: &Path) -> Result<(), String> {
-    let v = Vault::open(vault).map_err(|e| format!("{e}"))?;
-    if let Some((p, n)) = v.largest_file() {
-        println!("{n}\t{}", p.display());
-    }
-    Ok(())
-}
-
-fn cmd_busiest_file(vault: &Path) -> Result<(), String> {
-    let v = Vault::open(vault).map_err(|e| format!("{e}"))?;
-    if let Some((p, n)) = v.busiest_file() {
-        println!("{n}\t{}", p.display());
-    }
-    Ok(())
-}
-
-fn cmd_smallest_file(vault: &Path) -> Result<(), String> {
-    let v = Vault::open(vault).map_err(|e| format!("{e}"))?;
-    if let Some((p, n)) = v.smallest_file() {
-        println!("{n}\t{}", p.display());
-    }
-    Ok(())
-}
-
-fn cmd_quietest_file(vault: &Path) -> Result<(), String> {
-    let v = Vault::open(vault).map_err(|e| format!("{e}"))?;
-    if let Some((p, n)) = v.quietest_file() {
-        println!("{n}\t{}", p.display());
-    }
-    Ok(())
-}
-
-fn cmd_empty_files(vault: &Path) -> Result<(), String> {
-    let v = Vault::open(vault).map_err(|e| format!("{e}"))?;
-    for p in v.empty_files() {
-        println!("{}", p.display());
-    }
-    Ok(())
-}
-
-fn cmd_rank_files(vault: &Path) -> Result<(), String> {
-    let v = Vault::open(vault).map_err(|e| format!("{e}"))?;
-    for (p, n) in v.files_by_headline_count() {
-        println!("{n}\t{}", p.display());
-    }
-    Ok(())
-}
-
-fn cmd_rank_bytes(vault: &Path) -> Result<(), String> {
-    let v = Vault::open(vault).map_err(|e| format!("{e}"))?;
-    for (p, n) in v.files_by_byte_count() {
-        println!("{n}\t{}", p.display());
-    }
-    Ok(())
-}
-
-fn cmd_rank_todos(vault: &Path) -> Result<(), String> {
-    let v = Vault::open(vault).map_err(|e| format!("{e}"))?;
-    for (p, n) in v.files_by_todo_count() {
-        println!("{n}\t{}", p.display());
-    }
-    Ok(())
-}
-
-fn cmd_rank_links(vault: &Path) -> Result<(), String> {
-    let v = Vault::open(vault).map_err(|e| format!("{e}"))?;
-    for (p, n) in v.files_by_link_count() {
-        println!("{n}\t{}", p.display());
-    }
-    Ok(())
-}
-
-fn cmd_rank_words(vault: &Path) -> Result<(), String> {
-    let v = Vault::open(vault).map_err(|e| format!("{e}"))?;
-    for (p, n) in v.files_by_word_count() {
-        println!("{n}\t{}", p.display());
-    }
-    Ok(())
-}
-
 fn cmd_edges(vault: &Path) -> Result<(), String> {
     let v = Vault::open(vault).map_err(|e| format!("{e}"))?;
     for (src, tgt) in v.id_edges() {
         println!("{src}\t{tgt}");
-    }
-    Ok(())
-}
-
-fn cmd_duplicate_ids(vault: &Path) -> Result<(), String> {
-    let v = Vault::open(vault).map_err(|e| format!("{e}"))?;
-    for id in v.duplicate_ids() {
-        println!("{id}");
-    }
-    Ok(())
-}
-
-fn cmd_all_ids(path: &Path) -> Result<(), String> {
-    let src = fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))?;
-    let doc = closure_org::parse(&src).map_err(|e| format!("{e}"))?;
-    for id in doc.all_ids() {
-        println!("{id}");
-    }
-    Ok(())
-}
-
-fn cmd_isolated_ids(path: &Path) -> Result<(), String> {
-    let src = fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))?;
-    let doc = closure_org::parse(&src).map_err(|e| format!("{e}"))?;
-    for id in doc.isolated_ids() {
-        println!("{id}");
-    }
-    Ok(())
-}
-
-fn cmd_hub_ids(path: &Path) -> Result<(), String> {
-    let src = fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))?;
-    let doc = closure_org::parse(&src).map_err(|e| format!("{e}"))?;
-    for id in doc.hub_ids() {
-        println!("{id}");
-    }
-    Ok(())
-}
-
-fn cmd_source_only_ids(path: &Path) -> Result<(), String> {
-    let src = fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))?;
-    let doc = closure_org::parse(&src).map_err(|e| format!("{e}"))?;
-    for id in doc.source_only_ids() {
-        println!("{id}");
-    }
-    Ok(())
-}
-
-fn cmd_sink_only_ids(path: &Path) -> Result<(), String> {
-    let src = fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))?;
-    let doc = closure_org::parse(&src).map_err(|e| format!("{e}"))?;
-    for id in doc.sink_only_ids() {
-        println!("{id}");
-    }
-    Ok(())
-}
-
-fn cmd_highest_priority(path: &Path) -> Result<(), String> {
-    let src = fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))?;
-    let doc = closure_org::parse(&src).map_err(|e| format!("{e}"))?;
-    if let Some(h) = doc.highest_priority() {
-        println!("[#{}]\t{}", h.priority().unwrap_or('?'), h.title());
     }
     Ok(())
 }
@@ -2838,15 +2537,6 @@ fn cmd_drawer_ids(path: &Path) -> Result<(), String> {
     let doc = closure_org::parse(&src).map_err(|e| format!("{e}"))?;
     for r in doc.roots() {
         walk_drawer_ids(r);
-    }
-    Ok(())
-}
-
-fn cmd_ids(path: &Path) -> Result<(), String> {
-    let src = fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))?;
-    let doc = Document::load_str(&src).map_err(|e| format!("{e}"))?;
-    for h in doc.all_headlines() {
-        println!("{}\t{}", h.id(), h.title());
     }
     Ok(())
 }
@@ -4183,6 +3873,131 @@ fn cmd_check(vault: &Path) -> Result<(), String> {
         return Err(format!("{failures} file(s) failed roundtrip"));
     }
     println!("OK: {} file(s) roundtripped", v.len());
+    Ok(())
+}
+
+/// One metric over a vault's files, or over a file's headlines.
+///
+/// The seventeen superlatives were each a sort with the head taken —
+/// `largest-file` is `--by bytes --limit 1` — and seventeen public
+/// commands is seventeen things to keep working for one idea.
+fn cmd_rank(path: &Path, by: &str, limit: Option<usize>, asc: bool) -> Result<(), String> {
+    /// Every headline in a document, roots and descendants.
+    fn walk<'a>(h: &'a closure_org::Headline, out: &mut Vec<&'a closure_org::Headline>) {
+        out.push(h);
+        for c in h.children() {
+            walk(c, out);
+        }
+    }
+
+    let mut rows: Vec<(usize, String)> = if path.is_dir() {
+        let v = Vault::open(path).map_err(|e| format!("{e}"))?;
+        let counted = match by {
+            "headlines" => v.files_by_headline_count(),
+            "bytes" => v.files_by_byte_count(),
+            "todos" => v.files_by_todo_count(),
+            "links" => v.files_by_link_count(),
+            "words" => v.files_by_word_count(),
+            other => {
+                return Err(format!(
+                    "a vault ranks by headlines, bytes, todos, links or words — not `{other}`"
+                ));
+            }
+        };
+        counted
+            .into_iter()
+            .map(|(p, n)| (n, p.display().to_string()))
+            .collect()
+    } else {
+        let src = fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))?;
+        let doc = closure_org::parse(&src).map_err(|e| format!("{e}"))?;
+        let mut all = Vec::new();
+        for r in doc.roots() {
+            walk(r, &mut all);
+        }
+        all.into_iter()
+            .map(|h| {
+                let n = match by {
+                    "tags" => h.tag_count(),
+                    "properties" => h.property_count(),
+                    "links" => h.link_count(),
+                    "depth" => usize::from(h.level()),
+                    "words" => h.body_word_count(),
+                    // A is the highest, and "highest first" has to
+                    // mean the same thing for every metric — so this
+                    // counts backwards from Z.
+                    "priority" => h
+                        .priority()
+                        .map_or(0, |c| usize::from(b'Z'.saturating_sub(c as u8)) + 1),
+                    _ => 0,
+                };
+                (n, h.title().to_owned())
+            })
+            .collect()
+    };
+    if !path.is_dir()
+        && !matches!(
+            by,
+            "tags" | "properties" | "links" | "depth" | "words" | "priority"
+        )
+    {
+        return Err(format!(
+            "a file ranks by tags, properties, links, depth, words or priority — not `{by}`"
+        ));
+    }
+    rows.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| a.1.cmp(&b.1)));
+    if asc {
+        rows.reverse();
+    }
+    for (n, what) in rows.into_iter().take(limit.unwrap_or(usize::MAX)) {
+        println!("{n}\t{what}");
+    }
+    Ok(())
+}
+
+/// The `id:` drawer ids of one kind.
+fn cmd_ids(file: &Path, kind: &str) -> Result<(), String> {
+    let src = fs::read_to_string(file).map_err(|e| format!("read {}: {e}", file.display()))?;
+    let doc = closure_org::parse(&src).map_err(|e| format!("{e}"))?;
+    let ids: Vec<String> = match kind {
+        "all" => doc.all_ids().into_iter().map(Into::into).collect(),
+        "hub" => doc.hub_ids().into_iter().map(Into::into).collect(),
+        "isolated" => doc.isolated_ids().into_iter().map(Into::into).collect(),
+        "source-only" => doc.source_only_ids().into_iter().map(Into::into).collect(),
+        "sink-only" => doc.sink_only_ids().into_iter().map(Into::into).collect(),
+        // Duplicates are the ones the file names more than once —
+        // which is a defect in the file, and the reason to ask.
+        "duplicate" => {
+            let all = doc.all_ids();
+            let mut seen: Vec<String> = Vec::new();
+            let mut twice: Vec<String> = Vec::new();
+            for id in all {
+                let id = id.to_string();
+                if seen.contains(&id) {
+                    if !twice.contains(&id) {
+                        twice.push(id);
+                    }
+                } else {
+                    seen.push(id);
+                }
+            }
+            twice
+        }
+        other => {
+            return Err(format!(
+                "kinds are all, duplicate, isolated, hub, source-only, sink-only — not `{other}`"
+            ));
+        }
+    };
+    // `id<TAB>title`, the shape the narrower `ids` printed before it
+    // grew a `--kind`: an id on its own is a ULID, and a ULID on its
+    // own tells you nothing about which note it is.
+    for id in ids {
+        let title = doc
+            .descendant_with_id(&id)
+            .map_or_else(String::new, |h| h.title().to_owned());
+        println!("{id}\t{title}");
+    }
     Ok(())
 }
 
