@@ -12982,6 +12982,53 @@ struct CompletionSession {
     /// candidates (auto-popup) and nothing replaced the prefix yet.
     ix: Option<usize>,
 }
+/// What the app has already computed, and how often it had to.
+///
+/// Eleven fields on [`ModalApp`] said one thing between them: a
+/// memoised value, the revision it was computed against, and a count
+/// of how often the memo missed. They are one thing here, so a new
+/// memo is a field of this rather than three more on a struct that had
+/// 118 of them.
+///
+/// Interior mutability throughout, because every one of these is
+/// filled in during a `&self` render.
+#[derive(Debug, Default)]
+struct Memos {
+    /// The vault's git state, memoised against the revision it was
+    /// read at.
+    ///
+    /// Shelling out to git costs tens of milliseconds on a large
+    /// repository. Asked once per change rather than once per frame,
+    /// for the reason the detail is memoised: the same mistake in a
+    /// new place would be the level-1 microfreeze again.
+    git_memo: std::cell::RefCell<Option<GitMemo>>,
+    /// How many times git has actually been run. What a test asserts
+    /// on instead of timing it.
+    git_reads: std::cell::Cell<u64>,
+    /// Per-line git marks for the open buffer, memoised against the
+    /// revision and the path they were read for.
+    fringe_memo: std::cell::RefCell<Option<FringeMemo>>,
+    /// Memoised outline rows — see [`ModalApp::rows`]. Interior
+    /// mutability because `rows` is a `&self` query on the render
+    /// path; the memo is exact, guarded by the vault revision and the
+    /// active filter, so it can never serve a stale list.
+    row_memo: std::cell::RefCell<Option<RowMemo>>,
+    /// How many full vault walks the memo has paid for. Observability
+    /// for the render budget (`rows_recomputes`), asserted in tests.
+    row_recomputes: std::cell::Cell<u64>,
+    /// Memoised detail for the selected row — see [`ModalApp::detail`].
+    detail_memo: std::cell::RefCell<Option<DetailMemo>>,
+    /// Derivations paid for; the render budget's second number.
+    detail_recomputes: std::cell::Cell<u64>,
+    /// Memoised palette entries — see [`ModalApp::palette_entries`].
+    palette_memo: std::cell::RefCell<Option<PaletteMemo>>,
+    /// Derivations paid for; the render budget's third number.
+    palette_recomputes: std::cell::Cell<u64>,
+    /// Memoised source-block list — see [`ModalApp::block_rows`].
+    block_memo: std::cell::RefCell<Option<(u64, std::sync::Arc<Vec<BlockRow>>)>>,
+    /// Derivations paid for; the render budget's fourth number.
+    block_recomputes: std::cell::Cell<u64>,
+}
 
 /// Modal command-surface launcher (the "modal GUI" experiment).
 ///
@@ -13137,20 +13184,6 @@ pub struct ModalApp {
     /// than the cursor, because the commands most worth undoing are
     /// the ones that move the cursor off what they changed.
     last_edited_file: Option<std::path::PathBuf>,
-    /// The vault's git state, memoised against the revision it was
-    /// read at.
-    ///
-    /// Shelling out to git costs tens of milliseconds on a large
-    /// repository. Asked once per change rather than once per frame,
-    /// for the reason the detail is memoised: the same mistake in a
-    /// new place would be the level-1 microfreeze again.
-    git_memo: std::cell::RefCell<Option<GitMemo>>,
-    /// How many times git has actually been run. What a test asserts
-    /// on instead of timing it.
-    git_reads: std::cell::Cell<u64>,
-    /// Per-line git marks for the open buffer, memoised against the
-    /// revision and the path they were read for.
-    fringe_memo: std::cell::RefCell<Option<FringeMemo>>,
     /// Where TAB has walked to in the `:` line's candidates.
     ex_cycle: usize,
     /// What was typed when TAB was first pressed. Cycling walks the
@@ -13363,22 +13396,6 @@ pub struct ModalApp {
     /// `closure_llm::LlmPermissions::toggle_render`; a session created
     /// from this app takes its render grant from here.
     llm_render: bool,
-    /// Memoised outline rows — see [`ModalApp::rows`]. Interior
-    /// mutability because `rows` is a `&self` query on the render
-    /// path; the memo is exact, guarded by the vault revision and the
-    /// active filter, so it can never serve a stale list.
-    row_memo: std::cell::RefCell<Option<RowMemo>>,
-    /// How many full vault walks the memo has paid for. Observability
-    /// for the render budget (`rows_recomputes`), asserted in tests.
-    row_recomputes: std::cell::Cell<u64>,
-    /// Memoised detail for the selected row — see [`ModalApp::detail`].
-    detail_memo: std::cell::RefCell<Option<DetailMemo>>,
-    /// Derivations paid for; the render budget's second number.
-    detail_recomputes: std::cell::Cell<u64>,
-    /// Memoised palette entries — see [`ModalApp::palette_entries`].
-    palette_memo: std::cell::RefCell<Option<PaletteMemo>>,
-    /// Derivations paid for; the render budget's third number.
-    palette_recomputes: std::cell::Cell<u64>,
     /// Every buffer this session has open, in the order they were
     /// opened (what `buffer-next` walks); the MRU order the picker
     /// shows is [`OpenBuffer::seq`].
@@ -13421,10 +13438,10 @@ pub struct ModalApp {
     /// it, chord or palette or `:` line, the way the clipboard mirror
     /// watches the kill ring rather than a list of commands.
     reloads: u64,
-    /// Memoised source-block list — see [`ModalApp::block_rows`].
-    block_memo: std::cell::RefCell<Option<(u64, std::sync::Arc<Vec<BlockRow>>)>>,
-    /// Derivations paid for; the render budget's fourth number.
-    block_recomputes: std::cell::Cell<u64>,
+    /// Everything this app remembers about work it has already done:
+    /// what was computed, against which revision, and how many times
+    /// it had to be computed again.
+    memos: Memos,
 }
 
 /// What an open buffer is: a headline's body, or a whole file.
@@ -13889,6 +13906,7 @@ impl ModalApp {
     #[allow(clippy::too_many_lines)]
     pub fn new(mode: InputMode) -> Self {
         Self {
+            memos: Memos::default(),
             key_overrides: Vec::new(),
             keys: closure_input::keymap_with(mode, &[]),
             slash: None,
@@ -13967,9 +13985,6 @@ impl ModalApp {
             messages: Vec::new(),
             tracing: false,
             last_edited_file: None,
-            git_memo: std::cell::RefCell::new(None),
-            git_reads: std::cell::Cell::new(0),
-            fringe_memo: std::cell::RefCell::new(None),
             ex_cycle: 0,
             ex_stem: None,
             notifications: Feedback::default(),
@@ -14011,15 +14026,7 @@ impl ModalApp {
             shell_out: None,
             body_scroll: None,
             hist_cursor: 0,
-            row_memo: std::cell::RefCell::new(None),
-            row_recomputes: std::cell::Cell::new(0),
-            detail_memo: std::cell::RefCell::new(None),
-            detail_recomputes: std::cell::Cell::new(0),
-            palette_memo: std::cell::RefCell::new(None),
-            palette_recomputes: std::cell::Cell::new(0),
             reloads: 0,
-            block_memo: std::cell::RefCell::new(None),
-            block_recomputes: std::cell::Cell::new(0),
         }
     }
 
@@ -14281,7 +14288,7 @@ impl ModalApp {
     #[must_use]
     pub fn palette_shared(&self) -> std::sync::Arc<Vec<PaletteEntry>> {
         {
-            let memo = self.palette_memo.borrow();
+            let memo = self.memos.palette_memo.borrow();
             if let Some(m) = memo.as_ref()
                 && m.query == self.field_buf.text()
                 && m.mode == self.mode
@@ -14291,9 +14298,10 @@ impl ModalApp {
             }
         }
         let entries = std::sync::Arc::new(self.palette_entries_uncached());
-        self.palette_recomputes
-            .set(self.palette_recomputes.get() + 1);
-        *self.palette_memo.borrow_mut() = Some(PaletteMemo {
+        self.memos
+            .palette_recomputes
+            .set(self.memos.palette_recomputes.get() + 1);
+        *self.memos.palette_memo.borrow_mut() = Some(PaletteMemo {
             query: self.field_buf.text().to_owned(),
             mode: self.mode,
             history_gen: self.history_gen,
@@ -14316,7 +14324,7 @@ impl ModalApp {
     /// render budget is one per query or mode change.
     #[must_use]
     pub const fn palette_recomputes(&self) -> u64 {
-        self.palette_recomputes.get()
+        self.memos.palette_recomputes.get()
     }
 
     /// Cursor into [`Self::palette_entries`].
@@ -14664,7 +14672,7 @@ impl ModalApp {
         };
         let revision = shell.vault.revision();
         {
-            let memo = self.row_memo.borrow();
+            let memo = self.memos.row_memo.borrow();
             if let Some(m) = memo.as_ref()
                 && m.revision == revision
                 && m.filter == filter
@@ -14673,8 +14681,10 @@ impl ModalApp {
             }
         }
         let rows = std::sync::Arc::new(Self::derive_rows(shell, filter));
-        self.row_recomputes.set(self.row_recomputes.get() + 1);
-        *self.row_memo.borrow_mut() = Some(RowMemo {
+        self.memos
+            .row_recomputes
+            .set(self.memos.row_recomputes.get() + 1);
+        *self.memos.row_memo.borrow_mut() = Some(RowMemo {
             revision,
             filter: filter.to_owned(),
             rows: std::sync::Arc::clone(&rows),
@@ -14687,7 +14697,7 @@ impl ModalApp {
     /// handles invalidation — but it lets a caller (or a test) demand
     /// ground truth.
     pub fn invalidate_rows(&mut self) {
-        *self.row_memo.borrow_mut() = None;
+        *self.memos.row_memo.borrow_mut() = None;
     }
 
     /// Ground truth: derive the outline rows without consulting or
@@ -14709,7 +14719,7 @@ impl ModalApp {
     /// per actual change", and the tests assert it.
     #[must_use]
     pub const fn rows_recomputes(&self) -> u64 {
-        self.row_recomputes.get()
+        self.memos.row_recomputes.get()
     }
 
     /// The uncached derivation behind [`Self::rows_shared`].
@@ -14814,7 +14824,7 @@ impl ModalApp {
             .get(self.selected)
             .map(|r| r.id.clone());
         {
-            let memo = self.detail_memo.borrow();
+            let memo = self.memos.detail_memo.borrow();
             if let Some(m) = memo.as_ref()
                 && m.revision == revision
                 && m.id == id
@@ -14823,8 +14833,10 @@ impl ModalApp {
             }
         }
         let detail = Self::derive_detail(shell, id.as_deref()).map(std::sync::Arc::new);
-        self.detail_recomputes.set(self.detail_recomputes.get() + 1);
-        *self.detail_memo.borrow_mut() = Some(DetailMemo {
+        self.memos
+            .detail_recomputes
+            .set(self.memos.detail_recomputes.get() + 1);
+        *self.memos.detail_memo.borrow_mut() = Some(DetailMemo {
             revision,
             id,
             detail: detail.clone(),
@@ -14836,7 +14848,7 @@ impl ModalApp {
     /// vault. The render budget is one per selection change.
     #[must_use]
     pub const fn detail_recomputes(&self) -> u64 {
-        self.detail_recomputes.get()
+        self.memos.detail_recomputes.get()
     }
 
     /// The uncached derivation behind [`Self::detail_shared`].
@@ -15951,7 +15963,7 @@ impl ModalApp {
         const MIN_GAP: std::time::Duration = std::time::Duration::from_secs(2);
         let revision = shell.vault.revision();
         {
-            let memo = self.git_memo.borrow();
+            let memo = self.memos.git_memo.borrow();
             if let Some(m) = memo.as_ref()
                 && (m.revision == revision || m.taken.elapsed() < MIN_GAP)
             {
@@ -15959,8 +15971,8 @@ impl ModalApp {
             }
         }
         let state = closure_store::git_status(shell.vault.root());
-        self.git_reads.set(self.git_reads.get() + 1);
-        *self.git_memo.borrow_mut() = Some(GitMemo {
+        self.memos.git_reads.set(self.memos.git_reads.get() + 1);
+        *self.memos.git_memo.borrow_mut() = Some(GitMemo {
             revision,
             taken: std::time::Instant::now(),
             state: state.clone(),
@@ -15971,7 +15983,7 @@ impl ModalApp {
     /// How many times git has actually been run for the widget.
     #[must_use]
     pub const fn git_reads(&self) -> u64 {
-        self.git_reads.get()
+        self.memos.git_reads.get()
     }
 
     /// Per-line git marks for the file the editor is showing.
@@ -15988,7 +16000,7 @@ impl ModalApp {
         };
         let revision = shell.vault.revision();
         {
-            let memo = self.fringe_memo.borrow();
+            let memo = self.memos.fringe_memo.borrow();
             if let Some((at, for_path, marks)) = memo.as_ref()
                 && *at == revision
                 && *for_path == path
@@ -15997,7 +16009,7 @@ impl ModalApp {
             }
         }
         let marks = closure_store::file_diff(shell.vault.root(), &path);
-        *self.fringe_memo.borrow_mut() = Some((revision, path, marks.clone()));
+        *self.memos.fringe_memo.borrow_mut() = Some((revision, path, marks.clone()));
         marks
     }
 
@@ -19700,7 +19712,7 @@ impl ModalApp {
     pub fn block_rows_shared(&self, shell: &Shell) -> std::sync::Arc<Vec<BlockRow>> {
         let revision = shell.vault.revision();
         {
-            let memo = self.block_memo.borrow();
+            let memo = self.memos.block_memo.borrow();
             if let Some((rev, rows)) = memo.as_ref()
                 && *rev == revision
             {
@@ -19723,8 +19735,10 @@ impl ModalApp {
             }
         }
         let rows = std::sync::Arc::new(out);
-        self.block_recomputes.set(self.block_recomputes.get() + 1);
-        *self.block_memo.borrow_mut() = Some((revision, std::sync::Arc::clone(&rows)));
+        self.memos
+            .block_recomputes
+            .set(self.memos.block_recomputes.get() + 1);
+        *self.memos.block_memo.borrow_mut() = Some((revision, std::sync::Arc::clone(&rows)));
         rows
     }
 
@@ -19733,7 +19747,7 @@ impl ModalApp {
     /// change, and the reason the status bar is affordable.
     #[must_use]
     pub const fn block_recomputes(&self) -> u64 {
-        self.block_recomputes.get()
+        self.memos.block_recomputes.get()
     }
 
     /// Backlinks list keys: up/down move, Enter jumps to the selected
