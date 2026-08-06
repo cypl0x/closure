@@ -9034,6 +9034,17 @@ impl GpuiView {
                         // the network instead of the disk, and two
                         // timers racing on one vault is how a merge
                         // lands on top of a reload.
+                        // And the scheduler, on the same timer for the
+                        // same reason: "is anything due?" is the same
+                        // question asked of the clock. It is cheap —
+                        // a job that already fired this minute is a
+                        // map lookup — and it is the only thing that
+                        // makes a `#+BEGIN_SRC cron` block more than a
+                        // list of intentions.
+                        let ran = this.app.cron_tick(&mut this.shell);
+                        if !ran.is_empty() {
+                            cx.notify();
+                        }
                         let started = std::time::Instant::now();
                         let rounds = this.app.session_tick(&this.shell);
                         // The tick is where the stall actually was, and

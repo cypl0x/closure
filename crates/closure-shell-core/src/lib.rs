@@ -1469,6 +1469,35 @@ fn civil_date(secs: u64) -> String {
     format!("{y:04}-{m:02}-{d:02} {hh:02}:{mm:02}:{ss:02}")
 }
 
+/// Seconds since the epoch as `(minute, hour, day, month, weekday)`,
+/// UTC.
+///
+/// Howard Hinnant's civil-from-days again, the same arithmetic
+/// [`civil_date`] uses — a calendar crate for five numbers would be a
+/// dependency in the kernel's dependency-free half. Weekday is `(days
+/// + 4) % 7` because 1970-01-01 was a Thursday, and cron counts Sunday
+/// as 0.
+fn civil_parts(secs: u64) -> (u8, u8, u8, u8, u8) {
+    let days = i64::try_from(secs / 86_400).unwrap_or(i64::MAX);
+    let rest = secs % 86_400;
+    let z = days + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z.rem_euclid(146_097);
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    let dow = (days + 4).rem_euclid(7);
+    (
+        u8::try_from(rest % 3600 / 60).unwrap_or(0),
+        u8::try_from(rest / 3600).unwrap_or(0),
+        u8::try_from(d).unwrap_or(1),
+        u8::try_from(m).unwrap_or(1),
+        u8::try_from(dow).unwrap_or(0),
+    )
+}
+
 /// Whether the row at `i` is the first one its file contributes to the
 /// outline.
 ///
@@ -12720,6 +12749,15 @@ pub struct ModalApp {
     prompt_from: Option<ModalSurface>,
     /// The last `gcc` the buffer reported having been asked for.
     comment_seen: u64,
+    /// The wall-clock minute each job last fired in, as
+    /// `(day, hour, minute)`, keyed by the command it runs.
+    ///
+    /// A scheduler needs memory, not only a predicate: the frame timer
+    /// asks many times a second and a minute is sixty seconds of
+    /// asking, so "does this job match now" fires it thousands of
+    /// times. The day is in the key so tomorrow's 09:00 is a different
+    /// minute from today's.
+    cron_fired: std::collections::HashMap<String, (u8, u8, u8)>,
     /// The left rail collapsed to its icons, once something has said.
     ///
     /// `Option`, like [`Self::outline_width`], so that "never toggled"
@@ -13558,6 +13596,7 @@ impl ModalApp {
             link_dest: None,
             prompt_from: None,
             comment_seen: 0,
+            cron_fired: std::collections::HashMap::new(),
             rail_docked: None,
             settings_cursor: 0,
             dial_next: 0,
@@ -18430,6 +18469,64 @@ impl ModalApp {
             _ => self.cron_rows(shell).len(),
         };
         self.on_pane_key(key, len);
+    }
+
+    /// Run whatever is due at this wall-clock minute, once.
+    ///
+    /// Jobs were parsed, listed and never run: `closure-cron`'s
+    /// `Scheduler` existed and nothing outside that crate referred to
+    /// it, so a `#+BEGIN_SRC cron` block was a list of intentions.
+    ///
+    /// Firing means running the *registry command* (I8) — a job cannot
+    /// reach anything a chord could not, which is what keeps a vault
+    /// someone sent you from being a way to run code. Returns what it
+    /// ran, so a caller can tell "nothing was due" from "nothing
+    /// happened".
+    pub fn cron_tick_at(
+        &mut self,
+        shell: &mut Shell,
+        minute: u8,
+        hour: u8,
+        dom: u8,
+        month: u8,
+        dow: u8,
+    ) -> Vec<String> {
+        let due: Vec<String> = job_rows(&shell.vault)
+            .into_iter()
+            .filter_map(|row| {
+                let spec =
+                    closure_cron::parse(&format!("{} {}", row.schedule, row.command)).ok()?;
+                closure_cron::matches_time(&spec, minute, hour, dom, month, dow)
+                    .then_some(row.command)
+            })
+            .collect();
+        let now = (dom, hour, minute);
+        let mut ran = Vec::new();
+        for command in due {
+            if self.cron_fired.get(&command) == Some(&now) {
+                continue;
+            }
+            self.cron_fired.insert(command.clone(), now);
+            self.run_command(shell, &command);
+            ran.push(command);
+        }
+        if !ran.is_empty() {
+            self.say(format!("cron: ran {}", ran.join(", ")));
+        }
+        ran
+    }
+
+    /// The same, at the machine's own clock.
+    ///
+    /// Split so the deciding is testable without waiting for a
+    /// Tuesday.
+    pub fn cron_tick(&mut self, shell: &mut Shell) -> Vec<String> {
+        let secs = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or_default();
+        let (minute, hour, dom, month, dow) = civil_parts(secs);
+        self.cron_tick_at(shell, minute, hour, dom, month, dow)
     }
 
     /// The manual pane's keys: it is a list, so it walks like one.
