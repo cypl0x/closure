@@ -1980,7 +1980,13 @@ pub fn run(vault_path: &Path) -> Result<(), String> {
                     ..Default::default()
                 }),
                 app_id: Some("net.wolfhard.closure".to_owned()),
-                window_min_size: Some(size(px(640.0), px(400.0))),
+                // As narrow as the last reflow step is built for
+                // ([`Reflow::Squeezed`]) — the floor used to be 640,
+                // which is *above* the width at which the panes
+                // started fighting, so the only window you could
+                // actually open was one where the detail pane was a
+                // sliver and there was no way to make it stop.
+                window_min_size: Some(size(px(RAIL_W_DOCKED + 240.0), px(400.0))),
                 ..Default::default()
             },
             |_, cx| {
@@ -2242,6 +2248,45 @@ const RAIL_W_DEFAULT: f32 = 146.0;
 #[cfg(feature = "gpui")]
 const RAIL_W_DOCKED: f32 = 38.0;
 
+/// The grab strip down the rail's outer edge. Part of what the rail
+/// costs the row, so the reflow arithmetic counts it.
+#[cfg(feature = "gpui")]
+const RAIL_GRIP_W: f32 = 6.0;
+
+/// The narrowest the detail pane can be and still be worth painting.
+///
+/// Below this it is not a preview of the selected row, it is a column
+/// of hyphenated fragments: measured, a 600px window left it 28px wide
+/// and a 500px one left it zero, painted at the very right edge.
+#[cfg(feature = "gpui")]
+const SIDE_W_MIN: f32 = 320.0;
+
+/// What the panes give up, in order, when the window is too narrow to
+/// hold all of them.
+///
+/// "Below roughly 600px the whole window overflows instead of
+/// reflowing." Measured, that is two things: below ~690px the detail
+/// pane is squeezed to a sliver, and below 366px — the rail's 146 plus
+/// the outline's 220 minimum — the row is wider than the window and
+/// what does not fit is clipped off the right edge.
+///
+/// Each step is taken only when the one before it was not enough, and
+/// the order is what each one costs you: the detail pane is a preview
+/// of the row the outline has selected, the rail's labels are names
+/// its icons carry anyway, and a narrow list of titles still lists.
+#[cfg(feature = "gpui")]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+enum Reflow {
+    /// Everything fits.
+    Full,
+    /// No detail pane.
+    NoSide,
+    /// No detail pane, and the rail is down to its icons.
+    DockedRail,
+    /// All of that, and the outline is below its own minimum.
+    Squeezed,
+}
+
 /// The editor pane's own furniture above the text: the mode header and
 /// the pane padding, taken off the height before it is divided.
 pub const BODY_CHROME: f32 = 46.0;
@@ -2312,6 +2357,11 @@ pub struct GpuiView {
     /// the same pair the outline column keeps, for the same reason.
     rail_w: f32,
     rail_drag: Option<f32>,
+    /// The window's own width, read once a frame so the layout can
+    /// answer to it ([`Reflow`]). Zero until the first frame, which
+    /// reads as "everything fits" — the window is opened at a size
+    /// that does.
+    window_w: f32,
     /// The vault's directory name, for the window title.
     vault_name: String,
     /// The title last written to the window manager, so a frame that
@@ -2415,6 +2465,7 @@ impl GpuiView {
             outline_w: OUTLINE_W_DEFAULT,
             outline_drag: None,
             rail_w: RAIL_W_DEFAULT,
+            window_w: 0.0,
             rail_drag: None,
             window_title: String::new(),
             focus_handle: cx.focus_handle(),
@@ -2546,18 +2597,94 @@ impl GpuiView {
     /// reading one, so `toggle-tree` brings the tree back beside the
     /// buffer without leaving it.
     fn panes(&self, body: gpui::Div, co: Colors, cx: &Context<Self>) -> gpui::Div {
+        // A window too narrow for all of them drops the detail pane
+        // first ([`Reflow`]). In the editor that is the other way
+        // round: the buffer *is* the detail pane, and the tree beside
+        // it is the preview, so the tree is what goes.
+        let room = self.reflow() == Reflow::Full;
         if !self.app.surface_beneath().is_editor() {
-            return body
-                .child(self.rail(co, cx))
-                .child(self.rows_pane(co, cx))
-                .child(self.side_pane(co, cx));
+            let body = body.child(self.rail(co, cx)).child(self.rows_pane(co, cx));
+            return if room {
+                body.child(self.side_pane(co, cx))
+            } else {
+                body
+            };
         }
-        if self.app.tree_open() {
+        if self.app.tree_open() && room {
             body.child(self.rows_pane(co, cx))
                 .child(self.side_pane(co, cx))
         } else {
             body.child(self.side_pane(co, cx))
         }
+    }
+
+    /// What the rail costs the row as the user has it — it is
+    /// draggable, so a rail dragged out to 320px reflows sooner than a
+    /// default one. The grab strip counts: it is only there undocked.
+    fn rail_cost(&self) -> f32 {
+        if self.app.rail_docked() {
+            RAIL_W_DOCKED
+        } else {
+            self.rail_w + RAIL_GRIP_W
+        }
+    }
+
+    /// How wide the outline column is painted.
+    ///
+    /// [`Self::outline_w`] is what the user dragged it to, and it is
+    /// kept whenever there is room. Above its minimum it is a
+    /// preference, though, and the detail pane beside it has no slack
+    /// at all — a basis of zero and whatever is left over. So in the
+    /// band between "everything fits" and "the detail pane goes" the
+    /// outline gives its extra back rather than leaving a 128px
+    /// preview: at 800px the pane was 228 wide, hyphenating every line.
+    ///
+    /// With no detail pane the outline has the row to itself, and this
+    /// says so — the number is what the row is asked how much room it
+    /// has, not only what the width is set to.
+    fn outline_width(&self) -> f32 {
+        if self.window_w <= 0.0 {
+            return self.outline_w;
+        }
+        let room = self.window_w - self.rail_cost();
+        if self.reflow() == Reflow::Full {
+            self.outline_w.min(room - SIDE_W_MIN).max(OUTLINE_W_MIN)
+        } else {
+            room.max(0.0)
+        }
+    }
+
+    /// How much of the layout this window's width can pay for.
+    ///
+    /// Read from the width the window reports rather than from the
+    /// bounds the panes were painted at last frame: the panes are the
+    /// thing being decided, so measuring them here would settle a
+    /// frame late and oscillate on the way.
+    fn reflow(&self) -> Reflow {
+        let w = self.window_w;
+        if w <= 0.0 {
+            return Reflow::Full;
+        }
+        let rail = self.rail_cost();
+        if w >= rail + OUTLINE_W_MIN + SIDE_W_MIN {
+            Reflow::Full
+        } else if w >= rail + OUTLINE_W_MIN {
+            Reflow::NoSide
+        } else if w >= RAIL_W_DOCKED + OUTLINE_W_MIN {
+            Reflow::DockedRail
+        } else {
+            Reflow::Squeezed
+        }
+    }
+
+    /// Whether the rail is showing its icons only — because the user
+    /// docked it, or because the window has no width for the labels.
+    ///
+    /// The handle still toggles the *setting*, which is what takes
+    /// effect when the window is wide again. Reflow is a response to
+    /// the width, never a write to what the user chose.
+    fn rail_docked_now(&self) -> bool {
+        self.app.rail_docked() || self.reflow() >= Reflow::DockedRail
     }
 
     /// Tell the window manager what this window is called, when that
@@ -4333,10 +4460,21 @@ impl GpuiView {
         .track_scroll(self.outline_scroll.clone())
         .flex_grow();
         div()
+            .debug_selector(|| "outline-pane".to_owned())
             .flex()
             .flex_row()
-            .w(px(self.outline_w))
-            .min_w(px(OUTLINE_W_MIN))
+            .w(px(self.outline_width()))
+            // With no detail pane beside it the outline is the row, so
+            // it takes the width that pane would have had rather than
+            // leaving an empty gutter down the right.
+            .when(self.reflow() != Reflow::Full, gpui::Div::flex_grow)
+            // Last resort: below this the column is narrower than a
+            // title, but a clipped list is worse than a cramped one.
+            .min_w(px(if self.reflow() == Reflow::Squeezed {
+                0.0
+            } else {
+                OUTLINE_W_MIN
+            }))
             .border_r_1()
             .border_color(rgb(co.border))
             .child(list)
@@ -4555,6 +4693,11 @@ impl GpuiView {
             self.keyword_chars(),
             i,
             &row,
+            // Which file a headline is in is worth a column when the
+            // column is spare width rather than the title's. Below
+            // this the titles came out as "Rec", "H", "F", "Int",
+            // "Son" beside five copies of the same file name.
+            self.outline_width() >= OUTLINE_W_MIN + PATH_COL_W,
             cx,
         );
         self.with_peer_badge(cells, co, &row.id)
@@ -4631,6 +4774,7 @@ impl GpuiView {
         kw_chars: f32,
         i: usize,
         row: &Row,
+        show_path: bool,
         cx: &Context<Self>,
     ) -> gpui::Div {
         // The fold state rides on the row: asking the vault per row per
@@ -4779,7 +4923,7 @@ impl GpuiView {
         } else {
             div().w(px(18.0)).flex_none()
         });
-        Self::outline_title_cells(line, co, zoom, i, row)
+        Self::outline_title_cells(line, co, zoom, i, row, show_path)
     }
 
     /// The title and the file name: the two cells that take the slack.
@@ -4794,6 +4938,7 @@ impl GpuiView {
         zoom: f32,
         i: usize,
         row: &Row,
+        show_path: bool,
     ) -> gpui::Div {
         line
             // The title takes the slack and is clipped by it. Left to
@@ -4838,23 +4983,26 @@ impl GpuiView {
                     // buffer.
                     .children(title_children(co, &row.title, &row.matches)),
             )
-            .child(
-                div()
-                    .flex_none()
-                    .ml_2()
-                    .max_w(px(PATH_COL_W))
-                    .overflow_hidden()
-                    .whitespace_nowrap()
-                    .text_color(rgb(co.muted))
-                    .text_size(sz_at(10.0, zoom))
-                    .child(short_path(&row.path)),
-            )
+            .when(show_path, |line| {
+                line.child(
+                    div()
+                        .flex_none()
+                        .ml_2()
+                        .max_w(px(PATH_COL_W))
+                        .overflow_hidden()
+                        .whitespace_nowrap()
+                        .text_color(rgb(co.muted))
+                        .text_size(sz_at(10.0, zoom))
+                        .child(short_path(&row.path)),
+                )
+            })
     }
 
     /// Right-hand pane: detail (clickable fields), palette, a list
     /// surface, or the body editor — driven by the active surface.
     fn side_pane(&self, co: Colors, cx: &Context<Self>) -> impl IntoElement {
         div()
+            .debug_selector(|| "side-pane".to_owned())
             .flex()
             .flex_row()
             // `flex_1` rather than `flex_grow`: the difference is the
@@ -7240,7 +7388,7 @@ impl GpuiView {
             ));
         out = if let Some(rule) = flow.rule {
             out.child(field("decided by", rule.id.clone()))
-                .child(field("matching", rule.pattern.clone()))
+                .child(field("matching", rule.pattern))
         } else {
             // Not "no rule": nothing matched, which is why it is
             // allowed, and that is a different sentence.
@@ -8330,11 +8478,11 @@ impl GpuiView {
             .flex_none()
             .h_full()
             .child(self.rail_column(co, cx))
-            .when(!self.app.rail_docked(), |d| {
+            .when(!self.rail_docked_now(), |d| {
                 d.child(
                     div()
                         .debug_selector(|| "rail-resize".to_owned())
-                        .w(px(6.0))
+                        .w(px(RAIL_GRIP_W))
                         .h_full()
                         .cursor_col_resize()
                         .hover(move |st| st.bg(rgb(co.accent)))
@@ -8362,7 +8510,7 @@ impl GpuiView {
             .px_1()
             // Docked, the rail is its icons and nothing else: "just
             // the icons are visible and none of the text".
-            .w(px(if self.app.rail_docked() {
+            .w(px(if self.rail_docked_now() {
                 RAIL_W_DOCKED
             } else {
                 self.rail_w
@@ -8386,7 +8534,7 @@ impl GpuiView {
                     co,
                     self.app.zoom(),
                     dest,
-                    self.app.rail_docked(),
+                    self.rail_docked_now(),
                     cx,
                 )
             }))
@@ -10209,6 +10357,8 @@ impl Render for GpuiView {
         // of this one number, and the assumption was ~8% under the
         // bundled font: "with long lines I still can type in the dark".
         self.measure_col_w(window, &font);
+        // What the panes are being asked to fit into, this frame.
+        self.window_w = f32::from(window.viewport_size().width);
         // A clock entry is stamped with the minute it was started, so
         // the window keeps the core's idea of now up to date.
         self.app.set_now(&closure_shell_core::now_local());
@@ -10285,6 +10435,7 @@ impl Render for GpuiView {
         let show_keys = self.app.which_key_open() || !self.app.which_key_pending().is_empty();
 
         let mut root = div()
+            .debug_selector(|| "closure-root".to_owned())
             .key_context("ClosureGpui")
             .track_focus(&self.focus_handle(cx))
             .on_key_down(cx.listener(Self::on_key))
