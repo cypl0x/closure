@@ -1,7 +1,7 @@
 //! "[#C] Language Server Protocol (support)" — finishing it.
 //!
 //! "This could be helpful if we want to support something like
-//! LanguageTool via LSP. Or even better org-edit-special on src blocks
+//! LanguageTool via LSP. Or even better `org-edit-special` on src blocks
 //! and then fiddle with the source code."
 //!
 //! Six capabilities are advertised and six answer. What had not been
