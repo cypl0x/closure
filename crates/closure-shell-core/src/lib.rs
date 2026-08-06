@@ -3158,6 +3158,30 @@ pub struct FlowDetail {
     pub rule: Option<closure_sniffer::Rule>,
 }
 
+/// The flow one line of `network.org` records, if it records one.
+///
+/// The log's shape is `* <ts> host=<host> proto=<proto>`, written by
+/// [`closure_sniffer::log_capture_to_org`]. Anything else in the file
+/// is somebody's note about their network, which is a thing a vault is
+/// allowed to contain.
+fn capture_candidate(line: &str) -> Option<String> {
+    let rest = line.trim().strip_prefix('*')?.trim_start();
+    let field = |key: &str| {
+        let at = rest.find(key)?;
+        rest[at + key.len()..]
+            .split_whitespace()
+            .next()
+            .filter(|v| !v.is_empty())
+    };
+    let host = field("host=")?;
+    // The candidate a rule matches against is `host:port protocol` —
+    // the same shape `record` is given live, so one flow reads the
+    // same whether it came off the wire or out of the log. The log
+    // said `proto=tcp` and the pane showed `protocol —`, because this
+    // dropped it.
+    Some(field("proto=").map_or_else(|| host.to_owned(), |proto| format!("{host} {proto}")))
+}
+
 /// Headless state for the interactive sniffer surface (V7a).
 ///
 /// A pure state machine over [`closure_sniffer::CaptureBackend`]: a live
@@ -3203,6 +3227,65 @@ impl SnifferApp {
     #[must_use]
     pub fn events(&self) -> &[SniffEvent] {
         &self.events
+    }
+
+    /// Read the flows out of the vault's `network.org`, replacing what
+    /// is in the pane. Returns how many there were.
+    ///
+    /// This is where the pane's contents come from. There was no
+    /// source at all before: nothing in either shell ever called
+    /// [`Self::record`], so the empty state told you to go and run
+    /// `closure sniff` — a screen whose first instruction is to use a
+    /// different program — while `log_capture_to_org` wrote an
+    /// org-native log that nobody read.
+    ///
+    /// Reading the vault rather than holding a socket is the point: it
+    /// needs no privileges, it survives a restart, and a flow you
+    /// captured is a headline you can search, tag and link like any
+    /// other. The verdict is not stored with it — it is whatever the
+    /// rules say now, so blocking a host re-decides the flows already
+    /// on screen.
+    pub fn load(&mut self, vault: &closure_store::Vault) -> usize {
+        self.events.clear();
+        self.selected = 0;
+        let rows: Vec<String> = vault
+            .iter()
+            .filter(|(path, _)| path.file_name().is_some_and(|n| n == "network.org"))
+            .flat_map(|(_, doc)| {
+                doc.source()
+                    .lines()
+                    .filter_map(capture_candidate)
+                    .collect::<Vec<_>>()
+            })
+            .collect();
+        // The vault's own `sniffer_blocklist`, which is what decides a
+        // flow unless you have overridden it by hand this session. It
+        // was not consulted at all: the pane read four flows and said
+        // "nothing matched it" beside a host the config blocks.
+        let configured: Vec<closure_sniffer::Rule> =
+            closure_config::Config::load_reporting(&vault.root().join("config.org"))
+                .0
+                .sniffer_blocklist
+                .unwrap_or_default()
+                .into_iter()
+                .map(|pattern| closure_sniffer::Rule {
+                    id: format!("block-{pattern}"),
+                    pattern,
+                    action: closure_sniffer::Action::Block,
+                })
+                .collect();
+        for candidate in rows {
+            let rule = closure_sniffer::match_first(&candidate, &self.rules)
+                .or_else(|| closure_sniffer::match_first(&candidate, &configured))
+                .cloned();
+            let action = rule.as_ref().map(|r| r.action);
+            self.events.push(SniffEvent {
+                candidate,
+                action,
+                rule,
+            });
+        }
+        self.events.len()
     }
 
     /// The blocklist rules the toggles have added (for persistence to the
@@ -4459,6 +4542,12 @@ const PALETTE_COMMANDS: &[(&str, &str, &str, &str)] = &[
         "Let this network flow through",
     ),
     ("block-flow", "block-flow", "App", "Stop this network flow"),
+    (
+        "reload-flows",
+        "reload-flows",
+        "App",
+        "Re-read the captured flows from network.org",
+    ),
     ("next-file", "next-file", "Navigate", "Go to the next file"),
     (
         "prev-file",
@@ -18350,6 +18439,7 @@ impl ModalApp {
             "k" | "up" => self.sniffer.select(self.sniffer_cursor().saturating_sub(1)),
             "a" => self.run_command(shell, "allow-flow"),
             "b" => self.run_command(shell, "block-flow"),
+            "r" => self.run_command(shell, "reload-flows"),
             "escape" | "q" => self.go_home(),
             _ => {}
         }
@@ -23755,7 +23845,21 @@ impl ModalApp {
                 // The sniffer keeps its own cursor (`sniffer_cursor`);
                 // this only ever moved the outline behind it.
                 self.surface = ModalSurface::Sniffer;
-                self.say("flows — a allow, b block, Esc back");
+                // Where the flows come from: the vault's own capture
+                // log. Read on open, so the pane shows what is there
+                // rather than telling you to go and run another
+                // program.
+                let n = self.sniffer.load(&shell.vault);
+                self.say(if n == 0 {
+                    "no flows in network.org yet — `closure sniff --live <iface>` writes it"
+                        .to_owned()
+                } else {
+                    format!("{n} flow(s) — a allow, b block, r reload, Esc back")
+                });
+            }
+            "reload-flows" => {
+                let n = self.sniffer.load(&shell.vault);
+                self.say(format!("{n} flow(s) from network.org"));
             }
             "allow-flow" | "block-flow" => {
                 if self.sniffer.events().is_empty() {

@@ -3462,6 +3462,27 @@ fn cmd_sniff(
         .and_then(|cfg| cfg.sniffer_blocklist)
         .unwrap_or_default();
 
+    // The vault this sniff is about: the directory its config lives
+    // in. Every capture is appended there as an org headline, which is
+    // the file the sniffer pane reads — before this, `sniff` printed a
+    // verdict and left no trace, and the pane had nothing to show but
+    // an instruction to run `sniff`.
+    let log = config
+        .and_then(std::path::Path::parent)
+        .map(|dir| dir.join("network.org"));
+    let remember = |candidate: &str| {
+        if let Some(path) = log.as_ref()
+            && let Err(e) = closure_sniffer::log_capture_to_org(
+                path,
+                candidate,
+                "tcp",
+                &closure_shell_core::now_local(),
+            )
+        {
+            eprintln!("could not write {}: {e}", path.display());
+        }
+    };
+
     // X3b: live capture (mock/string match stays the hermetic default).
     if let Some(iface) = live {
         return sniff_live(iface, &globs);
@@ -3482,6 +3503,7 @@ fn cmd_sniff(
             .collect();
         let backend = closure_sniffer::MockBackend::new(rules);
         let mut app = closure_shell_core::SnifferApp::new();
+        remember(candidate);
         app.record(candidate, &backend);
         app.select(0);
         for line in closure_tui::render_view(&app.view(closure_config::InputMode::Notion)) {
@@ -3489,6 +3511,7 @@ fn cmd_sniff(
         }
         return Ok(());
     }
+    remember(candidate);
     if globs.is_empty() {
         println!("no blocklist (or no config); default Allow for {candidate}");
         return Ok(());

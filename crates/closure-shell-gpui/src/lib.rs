@@ -7285,7 +7285,9 @@ impl GpuiView {
         let events = sniffer.events();
         if events.is_empty() {
             return div().text_color(rgb(co.muted)).child(
-                "no captured flows — run `closure sniff` or feed the mock backend".to_owned(),
+                "no flows yet — `closure sniff --config <vault>/config.org <host:port>` \
+                 writes them to network.org, and `r` re-reads it"
+                    .to_owned(),
             );
         }
         let button = |label: &'static str, colour: u32, command: &'static str| {
