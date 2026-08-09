@@ -16,6 +16,9 @@
 # The two clippy passes are both needed and are not the same run: code
 # behind `gpui` is not linted by the `gpui-test` build, and warnings have
 # shipped through that gap before.
+#
+# The last line is treefmt, because a gate that differs from CI is a
+# gate that lets CI fail for a reason nobody ran into locally.
 gates:
     cargo test --workspace -j 4
     cargo clippy --workspace --all-targets -j 4
@@ -23,6 +26,12 @@ gates:
     cargo clippy -p closure-shell-gpui --features gpui --all-targets -j 4
     cargo test -p closure-shell-gpui --features gpui-test -j 4
     cargo fmt --all -- --check
+    # …and the formatter CI actually runs. `cargo fmt` sees Rust;
+    # treefmt sees all 585 files, including the markdown in docs/. Two
+    # lines of it went unnoticed through ~200 commits and then failed
+    # `nix flake check` *before* the tests and clippy ran, so the whole
+    # push had no signal at all for the sake of an emphasis marker.
+    nix fmt -- --fail-on-change
 
 # One-command gate: lint + tests (mirrors CI).
 check:

@@ -62,13 +62,13 @@ output. Property-tested.
 ### I7 — Kernel-agnostic shells
 
 Every shell (TUI, egui, gpui, web, Tauri, Flutter, GTK, Qt, Slint,
-self-contained HTML) addresses content by *identity* — block ids, not
+self-contained HTML) addresses content by _identity_ — block ids, not
 byte offsets and not line numbers. Enforced by a visibility boundary:
 byte offsets and source spans are `pub(crate)` inside the parser crates,
 so a shell cannot reach them even by accident. Shells mutate only
 through registered commands (I8); a shell never calls a `rewrite_*`.
 
-A shell may *read* org's public view types — `Headline`, `MarkupKind`,
+A shell may _read_ org's public view types — `Headline`, `MarkupKind`,
 `markup_spans`, `block_delimiter_of`, `parse` — because rendering org
 means knowing what a headline and a markup run are.
 
