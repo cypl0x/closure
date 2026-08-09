@@ -13092,6 +13092,35 @@ struct ExLine {
     /// candidates of *this*, not of the line it keeps rewriting.
     stem: Option<String>,
 }
+/// The link `insert-link` is building, while it is being built.
+///
+/// Two fields with one invariant between them: the destination is only
+/// meaningful once a kind has been picked, and having it is what says
+/// the description is the step we are on. Apart on the parent struct
+/// that was a rule nothing enforced.
+#[derive(Debug, Default)]
+struct PendingLink {
+    /// The link type picked in `insert-link`, while the destination
+    /// and the description are still being typed.
+    kind: Option<String>,
+    /// The destination of the pending link, once it has been typed —
+    /// which is also what says the description is the step we are on.
+    dest: Option<String>,
+}
+
+/// The one-line field the `TagsEdit` and `PropertyEdit` surfaces type
+/// into, and the headline it will be written back to.
+///
+/// The buffer without the target is text with nowhere to go, and the
+/// target without the buffer is a headline nobody is editing. They are
+/// one thing.
+#[derive(Debug, Default)]
+struct FieldPrompt {
+    /// Target id + single-line buffer for the TagsEdit/PropertyEdit
+    /// surfaces (tags: space-separated; property: `key value`).
+    target: Option<String>,
+    buf: LineInput,
+}
 
 /// Modal command-surface launcher (the "modal GUI" experiment).
 ///
@@ -13151,16 +13180,6 @@ pub struct ModalApp {
     body_baseline: String,
     /// Headline id whose backlinks the Backlinks surface is showing.
     link_target: Option<String>,
-    /// Target id + single-line buffer for the TagsEdit/PropertyEdit
-    /// surfaces (tags: space-separated; property: `key value`).
-    field_target: Option<String>,
-    field_buf: LineInput,
-    /// The link type picked in `insert-link`, while the destination
-    /// and the description are still being typed.
-    link_kind: Option<String>,
-    /// The destination of the pending link, once it has been typed —
-    /// which is also what says the description is the step we are on.
-    link_dest: Option<String>,
     /// The buffer a prompt was opened over, when it was opened over
     /// one — where it goes back to, and what stays painted behind it
     /// while it is up.
@@ -13481,6 +13500,10 @@ pub struct ModalApp {
     /// The `:` line: what is typed, where Escape goes back to, and the
     /// completion walk in progress.
     ex: ExLine,
+    /// The link being built by `insert-link`, if one is.
+    pending_link: PendingLink,
+    /// The single-line field prompt: what is typed, and whose it is.
+    field: FieldPrompt,
 }
 
 /// What an open buffer is: a headline's body, or a whole file.
@@ -13945,6 +13968,8 @@ impl ModalApp {
     #[allow(clippy::too_many_lines)]
     pub fn new(mode: InputMode) -> Self {
         Self {
+            field: FieldPrompt::default(),
+            pending_link: PendingLink::default(),
             ex: ExLine::default(),
             capture: CaptureState::default(),
             memos: Memos::default(),
@@ -13985,10 +14010,6 @@ impl ModalApp {
             // `toggle-view` is how a keyboard does.
             view: ViewMode::Clickable,
             link_target: None,
-            field_target: None,
-            field_buf: LineInput::default(),
-            link_kind: None,
-            link_dest: None,
             prompt_from: None,
             comment_seen: 0,
             cron_fired: std::collections::HashMap::new(),
@@ -14322,7 +14343,7 @@ impl ModalApp {
         {
             let memo = self.memos.palette_memo.borrow();
             if let Some(m) = memo.as_ref()
-                && m.query == self.field_buf.text()
+                && m.query == self.field.buf.text()
                 && m.mode == self.mode
                 && m.history_gen == self.history_gen
             {
@@ -14334,7 +14355,7 @@ impl ModalApp {
             .palette_recomputes
             .set(self.memos.palette_recomputes.get() + 1);
         *self.memos.palette_memo.borrow_mut() = Some(PaletteMemo {
-            query: self.field_buf.text().to_owned(),
+            query: self.field.buf.text().to_owned(),
             mode: self.mode,
             history_gen: self.history_gen,
             entries: std::sync::Arc::clone(&entries),
@@ -14346,7 +14367,7 @@ impl ModalApp {
     /// the memo. What [`Self::palette_shared`] must always agree with.
     #[must_use]
     pub fn palette_entries_uncached(&self) -> Vec<PaletteEntry> {
-        palette_in_keymap(self.field_buf.text(), &self.keys, &self.palette_history)
+        palette_in_keymap(self.field.buf.text(), &self.keys, &self.palette_history)
             .into_iter()
             .flat_map(|s| s.items)
             .collect()
@@ -14386,7 +14407,7 @@ impl ModalApp {
         }
         match key {
             "escape" => {
-                self.field_buf.clear();
+                self.field.buf.clear();
                 self.palette_cursor = 0;
                 self.close_palette();
             }
@@ -14397,11 +14418,11 @@ impl ModalApp {
             // on the first match, because the old index belonged to the
             // old list.
             _ => {
-                let before = self.field_buf.text().to_owned();
+                let before = self.field.buf.text().to_owned();
                 let mut kill = self.shared_kill();
-                line_key(&mut self.field_buf, &mut kill, key, ctrl, alt, text);
+                line_key(&mut self.field.buf, &mut kill, key, ctrl, alt, text);
                 self.keep_shared_kill(&kill);
-                if self.field_buf.text() != before {
+                if self.field.buf.text() != before {
                     self.palette_cursor = 0;
                 }
             }
@@ -14416,10 +14437,10 @@ impl ModalApp {
         // between the typing and the running. The list is still the
         // list — this only fires when the first word is a command that
         // takes an argument and there is one.
-        let typed = self.field_buf.text().to_owned();
+        let typed = self.field.buf.text().to_owned();
         let (name, args) = split_command(&typed);
         if !args.is_empty() && command_argument(canonical_command(name)).is_some() {
-            self.field_buf.clear();
+            self.field.buf.clear();
             self.palette_cursor = 0;
             self.close_palette();
             self.remember_palette_command(name);
@@ -14430,7 +14451,7 @@ impl ModalApp {
             .palette_entries()
             .get(self.palette_cursor)
             .map(|e| e.action.command().to_owned());
-        self.field_buf.clear();
+        self.field.buf.clear();
         self.palette_cursor = 0;
         self.close_palette();
         if let Some(cmd) = pick {
@@ -14455,7 +14476,7 @@ impl ModalApp {
 
     /// Open the command palette over whatever is on screen.
     fn open_palette(&mut self) {
-        self.field_buf.clear();
+        self.field.buf.clear();
         self.palette_cursor = 0;
         // Opened over a buffer it is a floating bar, not a replacement:
         // closing it gives that buffer back ([`Self::close_palette`]).
@@ -15003,7 +15024,7 @@ impl ModalApp {
                 }
                 "enter" => self.commit_setting(shell),
                 _ => {
-                    self.field_buf.key(key, ctrl, alt, text);
+                    self.field.buf.key(key, ctrl, alt, text);
                 }
             },
             ModalSurface::Manual => self.on_manual_key(key),
@@ -15819,7 +15840,7 @@ impl ModalApp {
     /// What is currently typed into the settings value prompt.
     #[must_use]
     pub fn field_text(&self) -> &str {
-        self.field_buf.text()
+        self.field.buf.text()
     }
 
     /// Which settings row is selected.
@@ -15855,7 +15876,7 @@ impl ModalApp {
             return;
         };
         self.editing_setting = Some(field.key);
-        self.field_buf.set_text(&field.value);
+        self.field.buf.set_text(&field.value);
         self.surface = ModalSurface::Setting;
     }
 
@@ -15869,7 +15890,7 @@ impl ModalApp {
         let Some(key) = self.editing_setting.take() else {
             return;
         };
-        let value = self.field_buf.text().trim().to_owned();
+        let value = self.field.buf.text().trim().to_owned();
         let relative = std::path::Path::new(closure_config::CONFIG_FILE);
         let path = shell.vault.root().join(relative);
         let before = std::fs::read_to_string(&path).unwrap_or_default();
@@ -17485,8 +17506,8 @@ impl ModalApp {
     /// something is typed, then the ones that match.
     #[must_use]
     pub fn link_types(&self) -> Vec<String> {
-        let filter = if self.link_kind.is_none() {
-            self.field_buf.text()
+        let filter = if self.pending_link.kind.is_none() {
+            self.field.buf.text()
         } else {
             ""
         };
@@ -17506,10 +17527,10 @@ impl ModalApp {
     /// about the web.
     #[must_use]
     pub fn link_completions(&self, shell: &Shell) -> Vec<LinkCompletion> {
-        let Some(kind) = self.link_kind.as_deref() else {
+        let Some(kind) = self.pending_link.kind.as_deref() else {
             return Vec::new();
         };
-        if self.link_dest.is_some() {
+        if self.pending_link.dest.is_some() {
             // Past the destination: the description is prose, and
             // completing prose against filenames would be noise.
             return Vec::new();
@@ -17539,7 +17560,7 @@ impl ModalApp {
                 .collect(),
             _ => Vec::new(),
         };
-        let typed = self.field_buf.text();
+        let typed = self.field.buf.text();
         all.into_iter()
             .filter(|c| typed.is_empty() || closure_query::fuzzy_score(typed, &c.label).is_some())
             .collect()
@@ -17548,7 +17569,7 @@ impl ModalApp {
     /// Which of the two things the link field is asking for.
     #[must_use]
     pub const fn link_asks_description(&self) -> bool {
-        self.link_dest.is_some()
+        self.pending_link.dest.is_some()
     }
 
     /// The link type already picked, while the rest is being typed —
@@ -17556,7 +17577,7 @@ impl ModalApp {
     /// are completing.
     #[must_use]
     pub fn link_kind(&self) -> &str {
-        self.link_kind.as_deref().unwrap_or_default()
+        self.pending_link.kind.as_deref().unwrap_or_default()
     }
 
     /// Start `C-c C-l`.
@@ -17566,9 +17587,9 @@ impl ModalApp {
             return;
         }
         self.prompt_from = Some(self.surface);
-        self.link_kind = None;
-        self.link_dest = None;
-        self.field_buf.clear();
+        self.pending_link.kind = None;
+        self.pending_link.dest = None;
+        self.field.buf.clear();
         self.selected = 0;
         self.surface = ModalSurface::InsertLink;
         self.say("link type — type to filter · RET picks · Esc cancels");
@@ -17587,7 +17608,7 @@ impl ModalApp {
             self.abandon_link();
             return;
         }
-        if self.link_kind.is_none() {
+        if self.pending_link.kind.is_none() {
             self.on_link_type_key(key, ctrl, alt, text);
             return;
         }
@@ -17597,10 +17618,10 @@ impl ModalApp {
                     self.say("nothing here to complete");
                     return;
                 };
-                self.field_buf.set_text(&pick.value);
+                self.field.buf.set_text(&pick.value);
             }
             "enter" => {
-                if self.link_dest.is_some() {
+                if self.pending_link.dest.is_some() {
                     self.finish_link();
                     return;
                 }
@@ -17614,15 +17635,15 @@ impl ModalApp {
                     .into_iter()
                     .nth(self.selected)
                     .map_or_else(
-                        || self.field_buf.text().trim().to_owned(),
+                        || self.field.buf.text().trim().to_owned(),
                         |pick| pick.value,
                     );
                 if dest.is_empty() {
                     self.say("a link needs somewhere to go");
                     return;
                 }
-                self.link_dest = Some(dest);
-                self.field_buf.clear();
+                self.pending_link.dest = Some(dest);
+                self.field.buf.clear();
                 self.selected = 0;
                 self.say("what to call it — RET, or empty to show the link itself");
             }
@@ -17632,11 +17653,11 @@ impl ModalApp {
                     self.selected = step_wrapping(self.selected, last, step);
                     return;
                 }
-                let before = self.field_buf.text().to_owned();
+                let before = self.field.buf.text().to_owned();
                 let mut kill = self.shared_kill();
-                line_key(&mut self.field_buf, &mut kill, key, ctrl, alt, text);
+                line_key(&mut self.field.buf, &mut kill, key, ctrl, alt, text);
                 self.keep_shared_kill(&kill);
-                if self.field_buf.text() != before {
+                if self.field.buf.text() != before {
                     self.selected = 0;
                 }
             }
@@ -17655,27 +17676,27 @@ impl ModalApp {
                 self.say("no link type matches");
                 return;
             };
-            self.field_buf.clear();
+            self.field.buf.clear();
             self.say(format!("{kind} — where does it go? · RET · Esc cancels"));
-            self.link_kind = Some(kind);
+            self.pending_link.kind = Some(kind);
             return;
         }
         if let Some(step) = list_step(key, ctrl) {
             self.selected = step_wrapping(self.selected, rows.len(), step);
             return;
         }
-        let before = self.field_buf.text().to_owned();
+        let before = self.field.buf.text().to_owned();
         let mut kill = self.shared_kill();
-        line_key(&mut self.field_buf, &mut kill, key, ctrl, alt, text);
+        line_key(&mut self.field.buf, &mut kill, key, ctrl, alt, text);
         self.keep_shared_kill(&kill);
-        if self.field_buf.text() != before {
+        if self.field.buf.text() != before {
             self.selected = 0;
         }
     }
 
     /// Pick the link type on row `i` — what a click on it does.
     pub fn link_type_click(&mut self, i: usize) {
-        if self.surface != ModalSurface::InsertLink || self.link_kind.is_some() {
+        if self.surface != ModalSurface::InsertLink || self.pending_link.kind.is_some() {
             return;
         }
         self.selected = i;
@@ -17684,22 +17705,24 @@ impl ModalApp {
 
     /// Write the finished link into the buffer at the caret.
     fn finish_link(&mut self) {
-        let (Some(kind), Some(dest)) = (self.link_kind.take(), self.link_dest.take()) else {
+        let (Some(kind), Some(dest)) =
+            (self.pending_link.kind.take(), self.pending_link.dest.take())
+        else {
             self.abandon_link();
             return;
         };
-        let link = org_link(&kind, &dest, self.field_buf.text().trim());
+        let link = org_link(&kind, &dest, self.field.buf.text().trim());
         self.body.insert_str(&link);
-        self.field_buf.clear();
+        self.field.buf.clear();
         self.surface = self.prompt_from.take().unwrap_or(ModalSurface::EditBody);
         self.say(format!("inserted {link}"));
     }
 
     /// Leave without writing anything.
     fn abandon_link(&mut self) {
-        self.link_kind = None;
-        self.link_dest = None;
-        self.field_buf.clear();
+        self.pending_link.kind = None;
+        self.pending_link.dest = None;
+        self.field.buf.clear();
         self.surface = self.prompt_from.take().unwrap_or(ModalSurface::EditBody);
         self.say("no link");
     }
@@ -18762,18 +18785,19 @@ impl ModalApp {
     ) {
         match key {
             "escape" => {
-                self.field_target = None;
-                self.field_buf.clear();
+                self.field.target = None;
+                self.field.buf.clear();
                 self.go_home();
             }
             "enter" => {
                 let follow = !ctrl;
-                if let Some(id) = self.field_target.take() {
+                if let Some(id) = self.field.target.take() {
                     let bid = closure_core::BlockId::from_existing(&id);
                     match kind {
                         FieldKind::Tags => {
                             let tags: Vec<String> = self
-                                .field_buf
+                                .field
+                                .buf
                                 .text()
                                 .split_whitespace()
                                 .map(ToOwned::to_owned)
@@ -18781,7 +18805,7 @@ impl ModalApp {
                             let _ = shell.set_tags(&bid, &tags);
                         }
                         FieldKind::Property => {
-                            let entry = self.field_buf.text().to_owned();
+                            let entry = self.field.buf.text().to_owned();
                             if let Some((k, v)) = entry.split_once(' ') {
                                 let _ = shell.set_property(&bid, k.trim(), v.trim());
                             } else if !entry.trim().is_empty() {
@@ -18789,13 +18813,13 @@ impl ModalApp {
                             }
                         }
                         FieldKind::Rename => {
-                            let title = self.field_buf.text().trim().to_owned();
+                            let title = self.field.buf.text().trim().to_owned();
                             if !title.is_empty() {
                                 let _ = shell.rename_headline(&bid, &title);
                             }
                         }
                         FieldKind::AddSibling => {
-                            let title = self.field_buf.text().trim().to_owned();
+                            let title = self.field.buf.text().trim().to_owned();
                             if !title.is_empty() {
                                 let new = self.new_heading;
                                 // org writes the keyword into the
@@ -18827,7 +18851,7 @@ impl ModalApp {
                         }
                     }
                 }
-                self.field_buf.clear();
+                self.field.buf.clear();
                 self.go_home();
             }
             // Completion, on the editor's own chords: `C-n`/`C-p`
@@ -18840,9 +18864,9 @@ impl ModalApp {
             _ => {
                 self.prompt_completion = None;
                 let kill = self.shared_kill();
-                self.field_buf.set_kill(&kill);
-                self.field_buf.key(key, ctrl, alt, text);
-                let after = self.field_buf.kill().to_owned();
+                self.field.buf.set_kill(&kill);
+                self.field.buf.key(key, ctrl, alt, text);
+                let after = self.field.buf.kill().to_owned();
                 self.keep_shared_kill(&after);
             }
         }
@@ -19103,8 +19127,8 @@ impl ModalApp {
         };
         self.new_heading = NewHeading::for_command(cmd);
         self.prompt_from = self.surface.is_editor().then_some(self.surface);
-        self.field_target = Some(target);
-        self.field_buf.clear();
+        self.field.target = Some(target);
+        self.field.buf.clear();
         self.surface = ModalSurface::AddSibling;
         self.say(format!(
             "new {} — Enter save, Esc cancel",
@@ -19151,7 +19175,7 @@ impl ModalApp {
     /// The single-line field-edit buffer (tags/property).
     #[must_use]
     pub fn field_buffer(&self) -> &str {
-        self.field_buf.text()
+        self.field.buf.text()
     }
 
     /// Byte offset of the cursor in that field — the twin of
@@ -19161,7 +19185,7 @@ impl ModalApp {
     /// nothing.
     #[must_use]
     pub const fn field_cursor(&self) -> usize {
-        self.field_buf.cursor()
+        self.field.buf.cursor()
     }
 
     /// Generic up/down/Esc navigation for the read-only list surfaces
@@ -20737,7 +20761,7 @@ impl ModalApp {
             | ModalSurface::TagsEdit
             | ModalSurface::PropertyEdit
             | ModalSurface::Palette
-            | ModalSurface::InsertLink => Some(&mut self.field_buf),
+            | ModalSurface::InsertLink => Some(&mut self.field.buf),
             ModalSurface::Search
             | ModalSurface::BodySearch
             | ModalSurface::Buffers
@@ -20958,7 +20982,7 @@ impl ModalApp {
             matches: Vec::new(),
             current: false,
         };
-        if self.link_kind.is_none() {
+        if self.pending_link.kind.is_none() {
             return (
                 "link type",
                 "TAB or RET picks \u{b7} Esc cancels",
@@ -20968,7 +20992,7 @@ impl ModalApp {
                     .collect(),
             );
         }
-        if self.link_dest.is_some() {
+        if self.pending_link.dest.is_some() {
             return (
                 "what to call it",
                 "RET \u{b7} empty shows the link itself",
@@ -21282,7 +21306,7 @@ impl ModalApp {
             | ModalSurface::TagsEdit
             | ModalSurface::PropertyEdit
             | ModalSurface::Palette
-            | ModalSurface::InsertLink => Some(&mut self.field_buf),
+            | ModalSurface::InsertLink => Some(&mut self.field.buf),
             ModalSurface::Search
             | ModalSurface::BodySearch
             | ModalSurface::Buffers
@@ -21542,7 +21566,7 @@ impl ModalApp {
         self.marks.clear();
         self.selected = 0;
         self.query.clear();
-        self.field_buf.clear();
+        self.field.buf.clear();
         self.edit_target = None;
         self.file_target = None;
         self.special = None;
@@ -21791,7 +21815,7 @@ impl ModalApp {
             | ModalSurface::Palette
             // All three of `C-c C-l`'s steps type into one field: the
             // step is which of them is open, not which buffer it uses.
-            | ModalSurface::InsertLink => Some(&self.field_buf),
+            | ModalSurface::InsertLink => Some(&self.field.buf),
             ModalSurface::Search
             | ModalSurface::BodySearch
             | ModalSurface::Buffers
@@ -23781,15 +23805,15 @@ impl ModalApp {
             "edit-tags" => {
                 if let Some(row) = self.rows_shared(shell).get(self.selected).cloned() {
                     let tags = self.detail(shell).map(|d| d.tags).unwrap_or_default();
-                    self.field_target = Some(row.id);
-                    self.field_buf.set_text(&tags.join(" "));
+                    self.field.target = Some(row.id);
+                    self.field.buf.set_text(&tags.join(" "));
                     self.surface = ModalSurface::TagsEdit;
                 }
             }
             "edit-property" => {
                 if let Some(row) = self.rows_shared(shell).get(self.selected).cloned() {
-                    self.field_target = Some(row.id);
-                    self.field_buf.clear();
+                    self.field.target = Some(row.id);
+                    self.field.buf.clear();
                     self.surface = ModalSurface::PropertyEdit;
                 }
             }
@@ -23919,8 +23943,8 @@ impl ModalApp {
             }
             "rename" => {
                 if let Some(row) = self.rows_shared(shell).get(self.selected).cloned() {
-                    self.field_target = Some(row.id);
-                    self.field_buf.set_text(&row.title);
+                    self.field.target = Some(row.id);
+                    self.field.buf.set_text(&row.title);
                     self.surface = ModalSurface::Rename;
                     self.say("rename — Enter save, Esc cancel");
                 }
@@ -24453,7 +24477,7 @@ impl ModalApp {
             | ModalSurface::Messages
             | ModalSurface::UndoHistory
             | ModalSurface::Files
-            | ModalSurface::Buffers => Some(&mut self.field_buf),
+            | ModalSurface::Buffers => Some(&mut self.field.buf),
             // A list you only walk, or the outline itself: there is no
             // caret here for a motion to move, and saying so beats
             // moving one you cannot see.

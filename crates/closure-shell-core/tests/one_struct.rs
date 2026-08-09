@@ -46,11 +46,12 @@ fn field_count() -> (usize, Vec<String>) {
 ///
 /// The review counted 109; by the time this test was written it was
 /// 118, which is the argument for having the test. The memo cluster
-/// took it to 108, the capture bar's to 104, the `:` line's to 101.
+/// took it to 108, the capture bar's to 104, the `:` line's to 101, and the two
+/// prompt pairs to 99.
 /// Every cluster after them
 /// lowers this line, and nothing is allowed to raise it — a field that
 /// has nowhere to live but here is a cluster nobody has named yet.
-const CEILING: usize = 101;
+const CEILING: usize = 99;
 
 #[test]
 fn the_drawer_does_not_refill() {
@@ -61,6 +62,25 @@ fn the_drawer_does_not_refill() {
          New state belongs in a cluster of its own, not in the drawer:\n{}",
         fields.join(", ")
     );
+}
+
+#[test]
+fn the_two_prompt_pairs_are_one_field_each() {
+    // Small on purpose. `link_kind`/`link_dest` have an invariant
+    // between them (a destination means nothing before a kind is
+    // picked) and so do `field_target`/`field_buf` (text with nowhere
+    // to go, or a headline nobody is editing). Two pairs, not one
+    // cluster: `link_target` next to them is the Backlinks surface's
+    // subject and has nothing to do with either.
+    let (_, fields) = field_count();
+    for gone in ["link_kind", "link_dest", "field_target", "field_buf"] {
+        assert!(
+            !fields.iter().any(|f| f == gone),
+            "`{gone}` is still a field of its own"
+        );
+    }
+    assert!(fields.iter().any(|f| f == "pending_link"), "{fields:?}");
+    assert!(fields.iter().any(|f| f == "field"), "{fields:?}");
 }
 
 #[test]
