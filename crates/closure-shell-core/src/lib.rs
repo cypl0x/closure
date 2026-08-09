@@ -4623,6 +4623,12 @@ const PALETTE_COMMANDS: &[(&str, &str, &str, &str)] = &[
     ),
     ("cron", "cron", "App", "Jobs the vault runs on a schedule"),
     (
+        "bridges",
+        "bridges",
+        "App",
+        "MCP, LSP and the rest: what to paste into a client, and what this vault consumes",
+    ),
+    (
         "sync",
         "sync",
         "Sync",
@@ -7878,6 +7884,7 @@ const RAIL: &[(&str, &str, &str, &str, ModalSurface)] = &[
     ("cron", "⏱", "Jobs", "cron", ModalSurface::Cron),
     ("peers", "⇄", "Peers", "sync", ModalSurface::Sync),
     ("sniffer", "⇅", "Network", "sniffer", ModalSurface::Sniffer),
+    ("bridges", "⇌", "Bridges", "bridges", ModalSurface::Bridges),
     ("assistant", "✦", "Assistant", "llm", ModalSurface::Llm),
     (
         "conflicts",
@@ -9117,6 +9124,8 @@ impl App {
 pub enum ModalSurface {
     /// Keys are commands resolved against the active mode's keymap.
     Browse,
+    /// Every protocol bridge: what closure serves and what it consumes.
+    Bridges,
     /// A search overlay: typing filters, Enter picks, Esc cancels.
     Search,
     /// Typing the title of a new capture entry.
@@ -13129,6 +13138,26 @@ struct FieldPrompt {
     target: Option<String>,
     buf: LineInput,
 }
+/// Work the kernel cannot do, waiting for a shell that can.
+///
+/// The core has no idea there is a terminal or a desktop: it cannot
+/// print, and it cannot reach a clipboard. Both of these are the same
+/// arrangement — leave it here, and whoever has a window takes it on
+/// the next frame — which is why they are one thing rather than two
+/// fields that happen to be adjacent.
+#[derive(Debug, Default)]
+struct Handoff {
+    /// Output of the last `:!` shell escape, kept so a shell can show
+    /// more than the one line a status bar holds.
+    output: Option<String>,
+    /// Text the core has asked the shell to put on the system
+    /// clipboard, drained by whoever can reach one.
+    ///
+    /// The clipboard belongs to the window — the kernel has no idea
+    /// there is a desktop — so a command that wants to copy something
+    /// leaves it here and the shell takes it on the next frame.
+    clipboard: Option<String>,
+}
 
 /// Modal command-surface launcher (the "modal GUI" experiment).
 ///
@@ -13368,9 +13397,6 @@ pub struct ModalApp {
     recenter: Option<(u8, usize, usize)>,
     /// A body-editor prefix key waiting for the rest of its chord.
     pending_body: Option<BodyPrefix>,
-    /// Output of the last `:!` shell escape, kept so a shell can show
-    /// more than the one line a status bar holds.
-    shell_out: Option<String>,
     /// Where the cursor was left in each body, by block id, so opening
     /// a note again resumes rather than restarting at byte zero.
     body_cursors: std::collections::HashMap<String, usize>,
@@ -13520,6 +13546,8 @@ pub struct ModalApp {
     pending_link: PendingLink,
     /// The single-line field prompt: what is typed, and whose it is.
     field: FieldPrompt,
+    /// What the kernel wants the shell to do on its behalf.
+    handoff: Handoff,
 }
 
 /// What an open buffer is: a headline's body, or a whole file.
@@ -13753,6 +13781,76 @@ pub struct LinkCompletion {
     pub value: String,
     /// What to show while choosing it.
     pub label: String,
+}
+
+/// One protocol bridge: something closure serves, or something it is a
+/// client of.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BridgeRow {
+    /// `mcp`, `lsp`, `a2a` — or, for a server closure consumes, the
+    /// name you gave it in `config.org`.
+    pub name: String,
+    /// The command line. For a bridge closure serves, the one to paste
+    /// into the client that will spawn it, with this vault's path
+    /// already in it; for one it consumes, the line from `config.org`.
+    pub command: String,
+    /// What it is for, in a sentence.
+    pub detail: String,
+    /// True when closure is the server, false when it is the client.
+    pub serving: bool,
+}
+
+/// Every bridge, both directions.
+///
+/// "Add UI to start MCP server" — and there is nothing to start.
+/// `closure mcp` speaks JSON-RPC on stdin and stdout, which is what
+/// MCP clients expect: the client spawns the server, one process per
+/// session. A button here would launch a second one that nothing is
+/// connected to.
+///
+/// What you need in order to turn it on is the line to paste into the
+/// client, with this vault's path already in it. So that is what this
+/// gives you — for every bridge, not only MCP — together with the
+/// servers closure is itself a client of, since a pane about MCP that
+/// showed only the serving half would be half the picture.
+#[must_use]
+pub fn bridge_rows_for(vault: &closure_store::Vault) -> Vec<BridgeRow> {
+    let root = vault.root().display().to_string();
+    let serve = |name: &str, detail: &str| BridgeRow {
+        name: name.to_owned(),
+        command: format!("closure {name} {root}"),
+        detail: detail.to_owned(),
+        serving: true,
+    };
+    let mut rows = vec![
+        serve(
+            "mcp",
+            "Model Context Protocol: an agent reads and edits this vault through the command registry",
+        ),
+        serve(
+            "lsp",
+            "Language Server Protocol: org outline, hover, links and rename in any editor",
+        ),
+        serve("acp", "Agent Client Protocol"),
+        serve("a2a", "Agent-to-Agent: this vault as a skill card"),
+    ];
+    // …and the other direction, from `mcp <name> = <command>`.
+    let (cfg, _) =
+        closure_config::Config::load_reporting(&vault.root().join(closure_config::CONFIG_FILE));
+    rows.extend(cfg.mcp_servers.iter().map(|(name, command)| BridgeRow {
+        name: name.clone(),
+        command: command.clone(),
+        detail:
+            "an MCP server this vault is a client of — its tools join the assistant's".to_owned(),
+        serving: false,
+    }));
+    rows.extend(cfg.lsp_servers.iter().map(|(lang, command)| BridgeRow {
+        name: lang.clone(),
+        command: command.clone(),
+        detail: format!("answers for `#+BEGIN_SRC {lang}` blocks"),
+        serving: false,
+    }));
+    rows
 }
 
 /// What identifies a job: its schedule and its command together.
@@ -14084,6 +14182,7 @@ impl ModalApp {
     #[allow(clippy::too_many_lines)]
     pub fn new(mode: InputMode) -> Self {
         Self {
+            handoff: Handoff::default(),
             field: FieldPrompt::default(),
             pending_link: PendingLink::default(),
             ex: ExLine::default(),
@@ -14192,7 +14291,6 @@ impl ModalApp {
             palette_return: None,
             tag_target: None,
             tag_draft: Vec::new(),
-            shell_out: None,
             body_scroll: None,
             hist_cursor: 0,
             reloads: 0,
@@ -15164,6 +15262,11 @@ impl ModalApp {
             // The cron pane's Enter runs the job under the cursor; the
             // journal's rows are history and there is nothing to run.
             ModalSurface::Cron if key == "enter" => self.run_selected_job(shell),
+            ModalSurface::Bridges if key == "enter" => self.copy_bridge_command(shell),
+            ModalSurface::Bridges => {
+                let len = self.bridge_rows(shell).len();
+                self.on_pane_key(key, len);
+            }
             ModalSurface::Journal | ModalSurface::Cron => self.on_list_pane_key(shell, key),
             ModalSurface::Settings => self.on_settings_key(shell, key),
             ModalSurface::Setting => match key {
@@ -15490,6 +15593,13 @@ impl ModalApp {
     #[must_use]
     pub fn cron_rows(&self, shell: &Shell) -> Vec<JobRow> {
         self.cron_rows_at(shell, now_epoch_secs())
+    }
+
+    /// Every protocol bridge, both directions — see
+    /// [`bridge_rows_for`].
+    #[must_use]
+    pub fn bridge_rows(&self, shell: &Shell) -> Vec<BridgeRow> {
+        bridge_rows_for(&shell.vault)
     }
 
     /// [`Self::cron_rows`] as of a given instant, so the next-run
@@ -19088,6 +19198,19 @@ impl ModalApp {
         self.on_pane_key(key, len);
     }
 
+    /// Put the selected bridge's command line on the clipboard.
+    ///
+    /// The whole point of the pane: turning a bridge on means giving
+    /// this line to the client that will spawn it, and a line you have
+    /// to retype from a screenshot is a line you get wrong once.
+    fn copy_bridge_command(&mut self, shell: &Shell) {
+        let Some(row) = self.bridge_rows(shell).into_iter().nth(self.pane_cursor) else {
+            return;
+        };
+        self.say(format!("copied: {}", row.command));
+        self.handoff.clipboard = Some(row.command);
+    }
+
     /// Run the job under the cursor, now, without waiting for its
     /// minute.
     ///
@@ -22416,7 +22539,7 @@ impl ModalApp {
                 for line in text.lines().rev().take(Self::SHELL_ESCAPE_LOG_LINES) {
                     self.say(format!("{cmd}: {line}"));
                 }
-                self.shell_out = Some(if text.trim().is_empty() {
+                self.handoff.output = Some(if text.trim().is_empty() {
                     format!("(no output, exit {})", out.exit)
                 } else {
                     text
@@ -22424,15 +22547,24 @@ impl ModalApp {
             }
             Err(e) => {
                 self.say(format!("`{cmd}` failed: {e}"));
-                self.shell_out = None;
+                self.handoff.output = None;
             }
         }
     }
 
     /// Output of the last `:!` command, for a shell to show.
+    /// Take whatever the core asked to be copied, if anything.
+    ///
+    /// Draining: the shell puts it on the clipboard once, and a frame
+    /// that draws again does not copy it again.
+    pub const fn take_clipboard_request(&mut self) -> Option<String> {
+        self.handoff.clipboard.take()
+    }
+
+    /// The last command output the shell has not yet shown.
     #[must_use]
     pub fn shell_output(&self) -> Option<&str> {
-        self.shell_out.as_deref()
+        self.handoff.output.as_deref()
     }
 
     /// Note where the cursor was left in the body being closed, so the
@@ -24345,6 +24477,11 @@ impl ModalApp {
                 self.chat_buf.clear();
                 self.surface = ModalSurface::Llm;
                 self.say("assistant — type a question, Enter sends, Esc back");
+            }
+            "bridges" => {
+                self.pane_cursor = 0;
+                self.surface = ModalSurface::Bridges;
+                self.say("bridges — RET copies the command · Esc back");
             }
             "graph" | "journal" | "cron" => {
                 // The pane's cursor starts at the top; the outline's

@@ -108,6 +108,7 @@ pub const fn opening_route(surface: crate::ModalSurface) -> &'static [&'static s
         // by `RET` on an image link rather than by a command — neither
         // has a route a test can drive it through.
         S::Browse | S::ImageView => &[],
+        S::Bridges => &["bridges"],
         S::Settings => &["assistant-setup"],
         // The value prompt is reached from the list, not by a command
         // of its own — the door as well as the room, like edit-special.

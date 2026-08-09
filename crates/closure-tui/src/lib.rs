@@ -132,6 +132,8 @@ pub enum AppMode {
     Journal,
     /// Scheduled jobs declared in the vault.
     Cron,
+    /// Protocol bridges: what closure serves, and what it consumes.
+    Bridges,
     /// Typing the selected headline's tags, space-separated.
     EditTags,
     /// Observed network flows with their allow/block verdict.
@@ -214,6 +216,8 @@ pub struct App {
     journal: Vec<String>,
     /// Scheduled jobs, `(spec, command)`.
     cron: Vec<closure_shell_core::JobRow>,
+    /// Protocol bridges, both directions.
+    bridges: Vec<closure_shell_core::BridgeRow>,
     backlinks: Vec<(PathBuf, PathBuf, String)>,
     capture_request: Option<String>,
     rename_target: Option<String>,
@@ -379,6 +383,7 @@ impl App {
             graph: (Vec::new(), Vec::new(), Vec::new()),
             journal: Vec::new(),
             cron: Vec::new(),
+            bridges: Vec::new(),
             backlinks: Vec::new(),
             capture_request: None,
             rename_target: None,
@@ -1188,6 +1193,11 @@ impl App {
         self.cron = jobs;
     }
 
+    /// Push in the protocol bridges.
+    pub fn set_bridges(&mut self, bridges: Vec<closure_shell_core::BridgeRow>) {
+        self.bridges = bridges;
+    }
+
     /// The graph pane's lines: three labelled sections, because three
     /// lists in one pane are unreadable without saying which is which.
     #[must_use]
@@ -1219,6 +1229,22 @@ impl App {
             return vec!["no recorded commands (set record_commands = true)".to_owned()];
         }
         self.journal.clone()
+    }
+
+    /// Every protocol bridge as a line.
+    #[must_use]
+    pub fn bridge_rows(&self) -> Vec<String> {
+        self.bridges
+            .iter()
+            .map(|b| {
+                format!(
+                    "{:8} {:10} {}",
+                    if b.serving { "serves" } else { "consumes" },
+                    b.name,
+                    b.command
+                )
+            })
+            .collect()
     }
 
     /// The scheduled-jobs pane's lines.
@@ -1272,7 +1298,7 @@ impl App {
             AppMode::AddHeadline => return self.handle_add_stroke(stroke),
             AppMode::Palette => return self.handle_palette_stroke(stroke),
             AppMode::Ex => return self.handle_ex_stroke(stroke),
-            AppMode::Graph | AppMode::Journal | AppMode::Cron => {
+            AppMode::Graph | AppMode::Journal | AppMode::Cron | AppMode::Bridges => {
                 return self.handle_pane_stroke(stroke);
             }
             AppMode::DbView => return self.handle_dbview_stroke(stroke),
@@ -2522,6 +2548,7 @@ impl App {
         self.mode = match cmd {
             "graph" => AppMode::Graph,
             "journal" => AppMode::Journal,
+            "bridges" => AppMode::Bridges,
             _ => AppMode::Cron,
         };
         self.result_cursor = 0;
@@ -3111,7 +3138,7 @@ impl App {
                 self.query.clear();
                 self.status.clear();
             }
-            "graph" | "journal" | "cron" => self.open_pane(cmd),
+            "graph" | "journal" | "cron" | "bridges" => self.open_pane(cmd),
             "db-view" => {
                 self.mode = AppMode::DbView;
                 self.result_cursor = 0;
@@ -3720,6 +3747,7 @@ fn sync_panes(app: &mut App, vault: &Vault) {
     // same whole-document parse the shell had, and the same empty pane
     // as a result.
     app.set_cron(closure_shell_core::job_rows(vault));
+    app.set_bridges(closure_shell_core::bridge_rows_for(vault));
 }
 
 /// Refresh every vault-derived record in the app: paths, headline
@@ -4483,6 +4511,13 @@ fn overlay_content(app: &App) -> Option<(String, Vec<String>)> {
         AppMode::Graph => Some(("link graph".to_owned(), app.graph_rows())),
         AppMode::Journal => Some(("recorded commands".to_owned(), app.journal_rows())),
         AppMode::Cron => Some(("scheduled jobs".to_owned(), app.cron_rows())),
+        // One line per bridge: which way round it goes, its name, and
+        // the command — the terminal cannot copy for you, so the line
+        // has to be selectable text on the screen.
+        AppMode::Bridges => Some((
+            "bridges — the command to give a client".to_owned(),
+            app.bridge_rows(),
+        )),
         AppMode::Ex => Some((
             format!(":{}  — :w :q :wq :x, or any command name", app.query()),
             if app.status().is_empty() {

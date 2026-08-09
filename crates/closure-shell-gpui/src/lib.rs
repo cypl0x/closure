@@ -1560,6 +1560,9 @@ pub const fn accepts_paste(surface: ModalSurface, insert: bool) -> bool {
         | ModalSurface::Graph
         | ModalSurface::Journal
         | ModalSurface::Cron
+        // A list of commands to copy *out*; there is nothing to paste
+        // into it.
+        | ModalSurface::Bridges
         // The date picker takes single keys (h/l/j/k, digits); a
         // pasted blob of text is not a date.
         | ModalSurface::DatePick
@@ -2807,6 +2810,16 @@ impl GpuiView {
         self.click(command, cx);
     }
 
+    /// Put on the system clipboard whatever the core asked for.
+    ///
+    /// The kernel has no idea there is a desktop, so a command that
+    /// wants to copy something leaves it and the window takes it.
+    fn drain_clipboard(&mut self, cx: &Context<Self>) {
+        if let Some(text) = self.app.take_clipboard_request() {
+            cx.write_to_clipboard(gpui::ClipboardItem::new_string(text));
+        }
+    }
+
     /// How far the picker's list is scrolled, for a test to see that
     /// it followed the cursor.
     #[must_use]
@@ -3080,6 +3093,9 @@ impl GpuiView {
         let started = std::time::Instant::now();
         self.app.on_key(&mut self.shell, key, ctrl, alt, text);
         let took = started.elapsed();
+        // …and anything the core asked to be copied, which it cannot
+        // do itself.
+        self.drain_clipboard(cx);
         let shell = &self.shell;
         self.app.note_slow_key(key, took, shell);
         self.relaunch_if_reloaded(reloads_before);
@@ -4478,6 +4494,10 @@ impl GpuiView {
                 "scheduled jobs — {} declared in this vault · Esc back",
                 self.app.cron_rows(&self.shell).len()
             ),
+            ModalSurface::Bridges => format!(
+                "bridges — {} · RET copies the command · Esc back",
+                self.app.bridge_rows(&self.shell).len()
+            ),
             ModalSurface::Sync => format!(
                 "sync — {} peer(s) · Enter adds a pasted ticket · Esc back",
                 self.app.sync().map_or(0, |s| s.peers().len())
@@ -5162,6 +5182,7 @@ impl GpuiView {
                 "no commands recorded yet — the journal fills as you edit",
             )),
             ModalSurface::Cron => pane.child(self.jobs_pane(co, cx)),
+            ModalSurface::Bridges => pane.child(self.bridges_pane(co, cx)),
             ModalSurface::Settings | ModalSurface::Setting => pane.child(self.settings_pane(co)),
             ModalSurface::Sniffer => pane.child(self.sniffer_pane(co, cx)),
             ModalSurface::Conflicts => pane.child(self.conflicts_pane(co, cx)),
@@ -7470,6 +7491,93 @@ impl GpuiView {
                         )
                 })),
         )
+    }
+
+    /// Every protocol bridge: what closure serves, and what it
+    /// consumes.
+    ///
+    /// "Add UI to start MCP server" — there is nothing to start.
+    /// `closure mcp` speaks on stdin and stdout and the *client*
+    /// spawns it, so turning it on means giving that client this
+    /// line. The pane hands it over, with the vault's path already in
+    /// it, and `RET` puts it on the clipboard — a command you retype
+    /// off a screen is a command you get wrong once.
+    fn bridges_pane(&self, co: Colors, cx: &Context<Self>) -> gpui::Div {
+        let rows = self.app.bridge_rows(&self.shell);
+        let cursor = self.app.pane_cursor();
+        div()
+            .debug_selector(|| "bridges-pane".to_owned())
+            .flex()
+            .flex_col()
+            .children(rows.into_iter().enumerate().map(|(i, b)| {
+                let hot = i == cursor;
+                div()
+                    .id(gpui::SharedString::from(format!("bridge-{i}")))
+                    .debug_selector(move || format!("bridge-row-{i}"))
+                    .flex()
+                    .flex_col()
+                    .gap_1()
+                    .px_3()
+                    .py_2()
+                    .border_b_1()
+                    .border_color(rgb(co.border))
+                    .bg(rgb(if hot { co.selection } else { co.bg }))
+                    .hover(move |st| st.bg(rgb(if hot { co.selection } else { co.hover })))
+                    .cursor_pointer()
+                    .on_mouse_down(
+                        MouseButton::Left,
+                        cx.listener(move |this: &mut Self, _ev, _w, cx| {
+                            this.app.select_pane_row(i);
+                            cx.notify();
+                        }),
+                    )
+                    .child(
+                        div()
+                            .flex()
+                            .flex_row()
+                            .items_center()
+                            .gap_2()
+                            .child(
+                                // Which way round this one goes, said
+                                // in a word rather than left to be
+                                // inferred from the command.
+                                div()
+                                    .flex_none()
+                                    .px_2()
+                                    .rounded_md()
+                                    .text_size(self.sz(10.0))
+                                    .bg(rgb(if b.serving { co.accent } else { co.panel }))
+                                    .text_color(rgb(if b.serving { co.bg } else { co.muted }))
+                                    .child(if b.serving { "serves" } else { "consumes" }),
+                            )
+                            .child(
+                                div()
+                                    .text_color(rgb(co.fg))
+                                    .font_weight(gpui::FontWeight::BOLD)
+                                    .child(b.name),
+                            )
+                            .child(
+                                div()
+                                    .flex_1()
+                                    .min_w(px(0.0))
+                                    .overflow_hidden()
+                                    .whitespace_nowrap()
+                                    .text_size(self.sz(11.0))
+                                    .text_color(rgb(co.muted))
+                                    .child(b.detail),
+                            ),
+                    )
+                    .child(
+                        // The line itself, in the face code is written
+                        // in, because it is code.
+                        div()
+                            .overflow_hidden()
+                            .whitespace_nowrap()
+                            .text_size(self.sz(12.0))
+                            .text_color(rgb(span_color(co, BodySpan::InlineCode)))
+                            .child(b.command),
+                    )
+            }))
     }
 
     /// The scheduled jobs, as a schedule rather than as a listing of
