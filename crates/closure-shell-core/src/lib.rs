@@ -8183,10 +8183,10 @@ impl App {
     #[must_use]
     pub fn new() -> Self {
         Self {
+            capture_buf: String::new(),
             query: String::new(),
             selected: 0,
             mode: Mode::Browse,
-            capture_buf: String::new(),
             rename_target: None,
             add_target: None,
             edit_target: None,
@@ -13043,6 +13043,37 @@ struct Memos {
     /// Derivations paid for; the render budget's fourth number.
     block_recomputes: std::cell::Cell<u64>,
 }
+/// The capture bar's own state.
+///
+/// Five fields that were one thing between them — the text, the target
+/// it will be filed under, and the history behind it. Out of
+/// [`ModalApp`] because a struct where everything is in scope in every
+/// method is a struct where any two fields can quietly disagree, and
+/// these five have to agree: the crumb decides where the buffer goes.
+#[derive(Debug, Default)]
+struct CaptureState {
+    /// The capture overlay's one-line field (text + cursor).
+    buf: LineInput,
+    /// Capture lines typed before, newest last — the arrows and the
+    /// chords walk it, including ones that were cancelled.
+    history: Vec<String>,
+    /// Where in [`Self::capture_history`] the field currently is;
+    /// `None` is the fresh line at the end.
+    hist_at: Option<usize>,
+    /// Which step of [`Self::capture_crumbs`] this capture files into,
+    /// when the user has picked one; `None` is the selection itself.
+    ///
+    /// A pick belongs to the capture being typed, not to the app, so
+    /// it is cleared whenever the overlay opens.
+    crumb_pick: Option<usize>,
+    /// The headline the open capture's path was drawn from.
+    ///
+    /// Pinned when the overlay opens, because picking a crumb moves
+    /// the outline selection onto it — and a path re-derived from the
+    /// selection would truncate itself at every click, taking the way
+    /// back down with it.
+    path_root: Option<String>,
+}
 
 /// Modal command-surface launcher (the "modal GUI" experiment).
 ///
@@ -13082,27 +13113,6 @@ pub struct ModalApp {
     /// editor. The shells paint it; the flag lives here so every shell
     /// answers `toggle-tree` the same way (I7).
     tree_open: bool,
-    /// Capture lines typed before, newest last — the arrows and the
-    /// chords walk it, including ones that were cancelled.
-    capture_history: Vec<String>,
-    /// Where in [`Self::capture_history`] the field currently is;
-    /// `None` is the fresh line at the end.
-    capture_hist_at: Option<usize>,
-    /// The capture overlay's one-line field (text + cursor).
-    capture_buf: LineInput,
-    /// Which step of [`Self::capture_crumbs`] this capture files into,
-    /// when the user has picked one; `None` is the selection itself.
-    ///
-    /// A pick belongs to the capture being typed, not to the app, so
-    /// it is cleared whenever the overlay opens.
-    capture_crumb_pick: Option<usize>,
-    /// The headline the open capture's path was drawn from.
-    ///
-    /// Pinned when the overlay opens, because picking a crumb moves
-    /// the outline selection onto it — and a path re-derived from the
-    /// selection would truncate itself at every click, taking the way
-    /// back down with it.
-    capture_path_root: Option<String>,
     body: BodyEditor,
     completion: Option<CompletionSession>,
     /// The same cycle over whichever one-line prompt is open. Separate
@@ -13456,6 +13466,9 @@ pub struct ModalApp {
     /// what was computed, against which revision, and how many times
     /// it had to be computed again.
     memos: Memos,
+    /// The capture bar: what is being typed, where it will be filed,
+    /// and what was typed before it.
+    capture: CaptureState,
 }
 
 /// What an open buffer is: a headline's body, or a whole file.
@@ -13920,6 +13933,7 @@ impl ModalApp {
     #[allow(clippy::too_many_lines)]
     pub fn new(mode: InputMode) -> Self {
         Self {
+            capture: CaptureState::default(),
             memos: Memos::default(),
             key_overrides: Vec::new(),
             keys: closure_input::keymap_with(mode, &[]),
@@ -13946,11 +13960,6 @@ impl ModalApp {
             query: LineInput::default(),
             tree_open: false,
             body_folds: Vec::new(),
-            capture_history: Vec::new(),
-            capture_hist_at: None,
-            capture_buf: LineInput::default(),
-            capture_crumb_pick: None,
-            capture_path_root: None,
             body: BodyEditor::new(),
             body_baseline: String::new(),
             completion: None,
@@ -14562,13 +14571,13 @@ impl ModalApp {
     /// In-progress capture title.
     #[must_use]
     pub fn capture_buffer(&self) -> &str {
-        self.capture_buf.text()
+        self.capture.buf.text()
     }
     /// Byte offset of the cursor in the capture field, so a shell can
     /// draw the caret where the next character will actually go.
     #[must_use]
     pub const fn capture_cursor(&self) -> usize {
-        self.capture_buf.cursor()
+        self.capture.buf.cursor()
     }
     /// One-line status.
     #[must_use]
@@ -20712,7 +20721,7 @@ impl ModalApp {
     /// have to know which. This is the one place that mapping lives.
     const fn active_prompt(&mut self) -> Option<&mut LineInput> {
         match self.surface {
-            ModalSurface::Capture => Some(&mut self.capture_buf),
+            ModalSurface::Capture => Some(&mut self.capture.buf),
             ModalSurface::Rename
             | ModalSurface::AddSibling
             | ModalSurface::TagsEdit
@@ -21257,7 +21266,7 @@ impl ModalApp {
     /// The field a prompt types into, mutably.
     const fn prompt_mut(&mut self) -> Option<&mut LineInput> {
         match self.surface {
-            ModalSurface::Capture => Some(&mut self.capture_buf),
+            ModalSurface::Capture => Some(&mut self.capture.buf),
             ModalSurface::Rename
             | ModalSurface::AddSibling
             | ModalSurface::TagsEdit
@@ -21764,7 +21773,7 @@ impl ModalApp {
 
     const fn prompt(&self) -> Option<&LineInput> {
         match self.surface {
-            ModalSurface::Capture => Some(&self.capture_buf),
+            ModalSurface::Capture => Some(&self.capture.buf),
             ModalSurface::Rename
             | ModalSurface::AddSibling
             | ModalSurface::TagsEdit
@@ -22411,14 +22420,14 @@ impl ModalApp {
                 // want back, so a cancelled capture is remembered too.
                 self.remember_capture();
                 self.go_home();
-                self.capture_buf.clear();
-                self.capture_path_root = None;
+                self.capture.buf.clear();
+                self.capture.path_root = None;
             }
             // Enter files the item, so there was no way to type a
             // second line: a captured thought had to fit on one or be
             // reopened afterwards. Shift+Enter is the newline, the way
             // a chat box and a Notion block both do it.
-            "shift-enter" => self.capture_buf.insert_char('\n'),
+            "shift-enter" => self.capture.buf.insert_char('\n'),
             // Up and back through what you have captured before — the
             // shell-history gesture, and the chords for a modal mode.
             "up" => self.walk_capture_history(1),
@@ -22444,21 +22453,21 @@ impl ModalApp {
             // newline, so the spare modifier is Ctrl.
             "enter" if ctrl => {
                 self.remember_capture();
-                if !self.capture_buf.is_empty() {
-                    let text = self.capture_buf.take();
+                if !self.capture.buf.is_empty() {
+                    let text = self.capture.buf.take();
                     self.commit_capture(shell, &text, false);
                 }
-                self.capture_buf.clear();
+                self.capture.buf.clear();
             }
             "enter" => {
                 self.remember_capture();
-                if !self.capture_buf.is_empty() {
-                    let text = self.capture_buf.take();
+                if !self.capture.buf.is_empty() {
+                    let text = self.capture.buf.take();
                     self.commit_capture(shell, &text, true);
                 }
                 self.go_home();
-                self.capture_buf.clear();
-                self.capture_path_root = None;
+                self.capture.buf.clear();
+                self.capture.path_root = None;
             }
             // Completion, on the editor's own chords: `C-n`/`C-p`
             // cycle, TAB accepts, anything else ends the session.
@@ -22470,9 +22479,9 @@ impl ModalApp {
             _ => {
                 self.prompt_completion = None;
                 let kill = self.shared_kill();
-                self.capture_buf.set_kill(&kill);
-                self.capture_buf.key(key, ctrl, alt, text);
-                let after = self.capture_buf.kill().to_owned();
+                self.capture.buf.set_kill(&kill);
+                self.capture.buf.key(key, ctrl, alt, text);
+                let after = self.capture.buf.kill().to_owned();
                 self.keep_shared_kill(&after);
             }
         }
@@ -22489,17 +22498,18 @@ impl ModalApp {
     /// Keep what is in the capture field, so the arrows can bring it
     /// back. Consecutive duplicates are one entry.
     fn remember_capture(&mut self) {
-        let text = self.capture_buf.text().trim().to_owned();
-        self.capture_hist_at = None;
+        let text = self.capture.buf.text().trim().to_owned();
+        self.capture.hist_at = None;
         if text.is_empty()
             || self
-                .capture_history
+                .capture
+                .history
                 .last()
                 .is_some_and(|last| *last == text)
         {
             return;
         }
-        self.capture_history.push(text);
+        self.capture.history.push(text);
     }
 
     /// Step `by` entries back (positive) or forward (negative) through
@@ -22508,20 +22518,20 @@ impl ModalApp {
     /// Walking past the newest entry lands on the empty line you were
     /// typing on, which is where a shell's history leaves you too.
     fn walk_capture_history(&mut self, by: i32) {
-        if self.capture_history.is_empty() {
+        if self.capture.history.is_empty() {
             return;
         }
-        let last = self.capture_history.len() - 1;
-        let next = match (self.capture_hist_at, by.is_positive()) {
+        let last = self.capture.history.len() - 1;
+        let next = match (self.capture.hist_at, by.is_positive()) {
             (None, true) => Some(last),
             (None, false) => None,
             (Some(i), true) => Some(i.saturating_sub(1)),
             (Some(i), false) if i >= last => None,
             (Some(i), false) => Some(i + 1),
         };
-        self.capture_hist_at = next;
-        let text = next.map_or("", |i| self.capture_history[i].as_str());
-        self.capture_buf.set_text(text);
+        self.capture.hist_at = next;
+        let text = next.map_or("", |i| self.capture.history[i].as_str());
+        self.capture.buf.set_text(text);
     }
 
     /// The path a capture will file into: the file, then every
@@ -22539,7 +22549,7 @@ impl ModalApp {
     pub fn capture_crumbs(&self, shell: &Shell) -> Vec<CaptureCrumb> {
         // The pinned root while an overlay is open, the live selection
         // otherwise — the prompt has to be right before the pin exists.
-        let Some(id) = self.capture_path_root.clone().or_else(|| {
+        let Some(id) = self.capture.path_root.clone().or_else(|| {
             self.selection_active
                 .then(|| self.selected_row_id(shell))
                 .flatten()
@@ -22573,7 +22583,8 @@ impl ModalApp {
         // falls back to the same place rather than to none.
         let last = crumbs.len() - 1;
         let at = self
-            .capture_crumb_pick
+            .capture
+            .crumb_pick
             .filter(|i| *i <= last)
             .unwrap_or(last);
         crumbs[at].active = true;
@@ -22615,7 +22626,7 @@ impl ModalApp {
             self.say(format!("“{}” has no id to file under", crumbs[index].label));
             return;
         }
-        self.capture_crumb_pick = Some(index);
+        self.capture.crumb_pick = Some(index);
         // The tree follows the path: pointing the capture at a
         // headline and leaving the highlight on a different one makes
         // the screen disagree with itself about where you are. The
@@ -23580,10 +23591,10 @@ impl ModalApp {
             }
             "capture" => {
                 self.surface = ModalSurface::Capture;
-                self.capture_buf.clear();
+                self.capture.buf.clear();
                 // A pick belongs to the thought it was made for.
-                self.capture_crumb_pick = None;
-                self.capture_path_root = self
+                self.capture.crumb_pick = None;
+                self.capture.path_root = self
                     .selection_active
                     .then(|| self.selected_row_id(shell))
                     .flatten();
@@ -24415,7 +24426,7 @@ impl ModalApp {
         let mut kill = self.shared_kill();
         let field = match self.surface {
             ModalSurface::Search | ModalSurface::BodySearch => Some(&mut self.query),
-            ModalSurface::Capture => Some(&mut self.capture_buf),
+            ModalSurface::Capture => Some(&mut self.capture.buf),
             ModalSurface::Ex => Some(&mut self.ex_buf),
             ModalSurface::Llm => Some(&mut self.chat_buf),
             ModalSurface::Sync => Some(&mut self.sync_buf),

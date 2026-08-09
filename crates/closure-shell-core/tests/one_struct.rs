@@ -46,10 +46,10 @@ fn field_count() -> (usize, Vec<String>) {
 ///
 /// The review counted 109; by the time this test was written it was
 /// 118, which is the argument for having the test. The memo cluster
-/// took it to 108. Every cluster after it lowers this line, and
-/// nothing is allowed to raise it — a field that has nowhere to live
-/// but here is a cluster nobody has named yet.
-const CEILING: usize = 108;
+/// took it to 108, the capture bar's to 104. Every cluster after them
+/// lowers this line, and nothing is allowed to raise it — a field that
+/// has nowhere to live but here is a cluster nobody has named yet.
+const CEILING: usize = 104;
 
 #[test]
 fn the_drawer_does_not_refill() {
@@ -60,6 +60,24 @@ fn the_drawer_does_not_refill() {
          New state belongs in a cluster of its own, not in the drawer:\n{}",
         fields.join(", ")
     );
+}
+
+#[test]
+fn the_capture_cluster_is_one_field() {
+    let (_, fields) = field_count();
+    for gone in [
+        "capture_buf",
+        "capture_history",
+        "capture_hist_at",
+        "capture_crumb_pick",
+        "capture_path_root",
+    ] {
+        assert!(
+            !fields.iter().any(|f| f == gone),
+            "`{gone}` is still a field of its own"
+        );
+    }
+    assert!(fields.iter().any(|f| f == "capture"), "{fields:?}");
 }
 
 #[test]
