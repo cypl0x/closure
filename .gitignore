@@ -26,3 +26,9 @@
 
 # grok CLI session state
 .grok/
+
+# flatpak-builder's cache: a copy of the source tree plus every crate
+# it downloaded. Ignored so it is neither committed nor walked —
+# treefmt reformatted 9,310 vendored files inside it once, which took
+# five minutes and failed the gate.
+/.flatpak-builder/

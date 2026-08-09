@@ -1,0 +1,97 @@
+# A Flatpak of the gpui shell.
+#
+# "build flatpak GPUI artifact. There is a tool called flatpak-builder.
+# This may help."
+#
+# Build it with:
+#
+#     flatpak-builder --user --install --force-clean \
+#         build packaging/flatpak/net.wolfhard.closure.yml
+#
+# and run it with `flatpak run net.wolfhard.closure <vault>`.
+#
+# The build needs the network, because the crates are fetched by cargo
+# inside the sandbox rather than vendored beside the manifest. That is
+# deliberate for an artifact you build yourself and *not* acceptable
+# for Flathub, whose builders are offline: submitting this would mean
+# generating a `cargo-sources.json` with flatpak-builder-tools'
+# `flatpak-cargo-generator.py` and adding it below. Everything else
+# here is submission-shaped already.
+app-id: net.wolfhard.closure
+runtime: org.freedesktop.Platform
+runtime-version: "25.08"
+sdk: org.freedesktop.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+command: closure
+
+finish-args:
+  # A GPU window: Wayland where there is one, X11 where there is not,
+  # and the DRI device, because gpui draws through Vulkan.
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+  - --share=ipc
+  # A vault is a directory of org files somewhere in your home, and
+  # closure is the program you point at it. Narrower than `home` would
+  # mean guessing where you keep your notes.
+  - --filesystem=home
+  # Peer-to-peer sync dials and listens on a LAN address you pasted.
+  - --share=network
+
+modules:
+  - name: closure
+    buildsystem: simple
+    build-options:
+      append-path: /usr/lib/sdk/rust-stable/bin
+      build-args:
+        - --share=network
+      env:
+        CARGO_HOME: /run/build/closure/cargo
+        # The same font the nix package bundles, and for the same
+        # reason: the build script embeds these faces into the binary,
+        # and without them the shell falls back to whatever the runtime
+        # has — which has no Nerd Font glyphs, so every chip, icon and
+        # metadata marker in the window comes out blank. Seen exactly
+        # that way in the first sandboxed run.
+        CLOSURE_FONT_DIR: /run/build/closure/font
+    build-commands:
+      # The zip unpacks into the module root; the build script wants a
+      # directory of `MapleMono-NF-<Face>.ttf`.
+      - mkdir -p /run/build/closure/font
+      - cp MapleMono-NF-*.ttf /run/build/closure/font/
+      # The GPU window is behind a feature flag; without it this builds
+      # a binary whose `gpui` subcommand refuses to start.
+      - cargo build --release --locked -p closure-cli --features gpui
+      - install -Dm755 target/release/closure /app/bin/closure
+      - install -Dm644 assets/net.wolfhard.closure.desktop
+        /app/share/applications/net.wolfhard.closure.desktop
+      # No scalable icon here, and not for want of one: `assets/
+      # closure.svg` is what the nix package installs. `flatpak
+      # build-export` validates every icon with `flatpak-validate-icon`
+      # inside a sandbox of its own, which carries no librsvg loader on
+      # this host — "not a valid icon: Format not recognized" for a file
+      # that is perfectly good SVG. The eight PNG sizes below are a
+      # complete icon set for any desktop; the SVG is a nicety that is
+      # not worth an unexportable build.
+      - for s in 16 24 32 48 64 128 256 512; do
+        install -Dm644 "assets/icons/${s}x${s}/closure.png"
+        "/app/share/icons/hicolor/${s}x${s}/apps/net.wolfhard.closure.png";
+        done
+    sources:
+      - type: archive
+        url: https://github.com/subframe7536/Maple-font/releases/download/v7.9/MapleMono-NF.zip
+        sha256: 59098b87c895d871635d37680e88000ae2b2b25b55428195b228ec589e35fb89
+        strip-components: 0
+      - type: dir
+        path: ../..
+        # Everything but the build output. `target/` is tens of
+        # gigabytes on a working checkout and flatpak-builder copies
+        # the source tree into the sandbox verbatim — the first run of
+        # this manifest died with "No space left on device" on a disk
+        # with 34G free.
+        skip:
+          - target
+          - .flatpak-builder
+          - .git
+          - result
