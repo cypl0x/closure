@@ -7652,7 +7652,9 @@ impl GpuiView {
                         div()
                             .text_color(rgb(co.muted))
                             .text_size(self.sz(11.0))
-                            .child(format!("{} {}", view.rows.len(), view.title)),
+                            // `31/60 headlines in this file`: where you
+                            // are, then how many, then of what.
+                            .child(format!("{} {}", view.position(), view.title)),
                     ),
             )
             .children(if view.rows.is_empty() {

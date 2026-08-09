@@ -13947,6 +13947,26 @@ pub struct PickerView {
     pub cursor: usize,
 }
 
+impl PickerView {
+    /// Where you are in the list, over how many there are: `31/60`.
+    ///
+    /// vertico's, and asked for by name — "the current selected item
+    /// index next to the count". The count is what survived the
+    /// filter, because that is the list you are choosing from; the
+    /// index is one-based, because the first row is the first one.
+    ///
+    /// Here rather than in a shell: every popup is this view, and
+    /// "which of them am I on" is the same question in all of them.
+    #[must_use]
+    pub fn position(&self) -> String {
+        if self.rows.is_empty() {
+            // There is no first of nothing.
+            return "0/0".to_owned();
+        }
+        format!("{}/{}", self.cursor + 1, self.rows.len())
+    }
+}
+
 /// A filled outline-row memo together with the key it is valid under.
 #[derive(Debug, Clone)]
 struct RowMemo {
@@ -14388,6 +14408,31 @@ impl ModalApp {
 
     /// Palette keys: typing filters, Up/Down move, Enter runs the
     /// highlighted command through [`Self::run`], Esc cancels.
+    /// Put the row under the cursor into the filter field.
+    ///
+    /// "should autocomplete the current selection with the tab key" —
+    /// what vertico and readline both do: Tab does not choose, it
+    /// types for you, and leaves you looking at it able to keep going.
+    /// `true` when there was something to complete; an empty list
+    /// leaves what you typed alone, because throwing away the text is
+    /// not a completion.
+    fn complete_picker_selection(&mut self, shell: &Shell) -> bool {
+        let Some(view) = self.picker_view(shell) else {
+            return false;
+        };
+        let Some(row) = view.rows.get(view.cursor) else {
+            return false;
+        };
+        let label = row.label.clone();
+        // Whichever field this picker filters through.
+        if self.surface == ModalSurface::Palette {
+            self.field.buf.set_text(&label);
+        } else {
+            self.query.set_text(&label);
+        }
+        true
+    }
+
     fn on_palette_key(
         &mut self,
         shell: &mut Shell,
@@ -14412,6 +14457,11 @@ impl ModalApp {
                 self.close_palette();
             }
             "enter" => self.commit_palette(shell),
+            "tab" => {
+                if !self.complete_picker_selection(shell) {
+                    self.say("nothing here to complete");
+                }
+            }
             // Everything the list did not claim is the field's — the
             // same field, and so the same chords, as every other
             // prompt. A key that changed the text puts the cursor back
@@ -17032,6 +17082,11 @@ impl ModalApp {
                 self.go_home();
             }
             "enter" => self.pick_current(shell),
+            "tab" => {
+                if !self.complete_picker_selection(shell) {
+                    self.say("nothing here to complete");
+                }
+            }
             _ => {
                 // Output shown beside a block that did not produce it is
                 // a lie, and both moving the cursor and narrowing the
