@@ -13074,6 +13074,24 @@ struct CaptureState {
     /// back down with it.
     path_root: Option<String>,
 }
+/// The vim `:` line's own state.
+///
+/// The buffer, the surface Escape returns to, and where the Tab
+/// completion has walked to — four fields that only ever move
+/// together, since a completion cycle belongs to the text it is
+/// cycling and to nothing else.
+#[derive(Debug, Default)]
+struct ExLine {
+    /// The `:` command line's buffer while it is open.
+    buf: LineInput,
+    /// Surface the `:` line was opened from, so Escape returns there.
+    ret: Option<ModalSurface>,
+    /// Where TAB has walked to in the `:` line's candidates.
+    cycle: usize,
+    /// What was typed when TAB was first pressed. Cycling walks the
+    /// candidates of *this*, not of the line it keeps rewriting.
+    stem: Option<String>,
+}
 
 /// Modal command-surface launcher (the "modal GUI" experiment).
 ///
@@ -13208,11 +13226,6 @@ pub struct ModalApp {
     /// than the cursor, because the commands most worth undoing are
     /// the ones that move the cursor off what they changed.
     last_edited_file: Option<std::path::PathBuf>,
-    /// Where TAB has walked to in the `:` line's candidates.
-    ex_cycle: usize,
-    /// What was typed when TAB was first pressed. Cycling walks the
-    /// candidates of *this*, not of the line it keeps rewriting.
-    ex_stem: Option<String>,
     /// The notification log. It lived in the gpui window, which is
     /// why it had no command and no chord — there was nothing for the
     /// keymap to point at. Here it has both, and the terminal shell
@@ -13374,10 +13387,6 @@ pub struct ModalApp {
     /// The Notion "/" block menu's query while it is open, and its
     /// cursor row. `None` when closed.
     slash: Option<(String, usize)>,
-    /// The `:` command line's buffer while it is open.
-    ex_buf: LineInput,
-    /// Surface the `:` line was opened from, so Escape returns there.
-    ex_return: Option<ModalSurface>,
     /// The live org-edit-special session: where it came from and the
     /// language it is editing.
     special: Option<(SpecialOrigin, String)>,
@@ -13469,6 +13478,9 @@ pub struct ModalApp {
     /// The capture bar: what is being typed, where it will be filed,
     /// and what was typed before it.
     capture: CaptureState,
+    /// The `:` line: what is typed, where Escape goes back to, and the
+    /// completion walk in progress.
+    ex: ExLine,
 }
 
 /// What an open buffer is: a headline's body, or a whole file.
@@ -13933,13 +13945,12 @@ impl ModalApp {
     #[allow(clippy::too_many_lines)]
     pub fn new(mode: InputMode) -> Self {
         Self {
+            ex: ExLine::default(),
             capture: CaptureState::default(),
             memos: Memos::default(),
             key_overrides: Vec::new(),
             keys: closure_input::keymap_with(mode, &[]),
             slash: None,
-            ex_buf: LineInput::default(),
-            ex_return: None,
             special: None,
             special_return: None,
             block_out: None,
@@ -14008,8 +14019,6 @@ impl ModalApp {
             messages: Vec::new(),
             tracing: false,
             last_edited_file: None,
-            ex_cycle: 0,
-            ex_stem: None,
             notifications: Feedback::default(),
             palette_cursor: 0,
             pending: Vec::new(),
@@ -14489,7 +14498,7 @@ impl ModalApp {
             // so opening it in a buffer made the window fall back to
             // the outline and the whole layout jumped ("everything is
             // shifting and I always get confused").
-            ModalSurface::Ex => self.ex_return.unwrap_or_else(|| self.home_surface()),
+            ModalSurface::Ex => self.ex.ret.unwrap_or_else(|| self.home_surface()),
             // A picture is a light box over your work, and the work is
             // usually the note that links it. Without this it fell
             // through to `other`, the window had no pane to paint for a
@@ -15025,7 +15034,7 @@ impl ModalApp {
     /// The `:` command line's buffer while it is open.
     #[must_use]
     pub fn ex_buffer(&self) -> &str {
-        self.ex_buf.text()
+        self.ex.buf.text()
     }
 
     /// Keys for the org-edit-special session.
@@ -18349,8 +18358,8 @@ impl ModalApp {
 
     /// Open the `:` command line.
     fn begin_ex(&mut self) {
-        self.ex_buf.clear();
-        self.ex_return = Some(self.surface);
+        self.ex.buf.clear();
+        self.ex.ret = Some(self.surface);
         self.surface = ModalSurface::Ex;
         self.say(":");
     }
@@ -18370,21 +18379,21 @@ impl ModalApp {
             "escape" => self.close_ex(),
             // Backspace on an empty line is the way out; anywhere else
             // it is the field's, like every other editing key here.
-            "backspace" if self.ex_buf.is_empty() => self.close_ex(),
+            "backspace" if self.ex.buf.is_empty() => self.close_ex(),
             // TAB completes, as in every shell and in vim's own
             // cmdline. It is not Enter: nothing runs.
             "tab" => self.ex_complete(),
             "enter" => {
-                let line = self.ex_buf.take();
+                let line = self.ex.buf.take();
                 self.run_ex(shell, line.trim());
             }
             _ => {
                 // Typing is a new question: the cycle and the stem it
                 // walked both start over.
-                self.ex_cycle = 0;
-                self.ex_stem = None;
+                self.ex.cycle = 0;
+                self.ex.stem = None;
                 let mut kill = self.shared_kill();
-                line_key(&mut self.ex_buf, &mut kill, key, ctrl, alt, text);
+                line_key(&mut self.ex.buf, &mut kill, key, ctrl, alt, text);
                 self.keep_shared_kill(&kill);
             }
         }
@@ -18410,7 +18419,7 @@ impl ModalApp {
     /// a hand-kept list stops being true of almost immediately.
     #[must_use]
     pub fn ex_completions(&self) -> Vec<String> {
-        Self::completions_for(self.ex_buf.text())
+        Self::completions_for(self.ex.buf.text())
     }
 
     /// Everything the `:` line knows that starts with `typed`.
@@ -18440,28 +18449,29 @@ impl ModalApp {
         // matching only itself, so cycling against the live text gets
         // stuck on the first thing it offered.
         let stem = self
-            .ex_stem
+            .ex
+            .stem
             .clone()
-            .unwrap_or_else(|| self.ex_buf.text().to_owned());
+            .unwrap_or_else(|| self.ex.buf.text().to_owned());
         let candidates = Self::completions_for(&stem);
         let Some(first) = candidates.first() else {
             return;
         };
-        let typed = self.ex_buf.text().to_owned();
+        let typed = self.ex.buf.text().to_owned();
         let common = Self::common_prefix(&candidates);
         if common.len() > typed.len() {
-            self.ex_buf.set_text(&common);
-            self.ex_stem = Some(stem);
-            self.ex_cycle = 0;
+            self.ex.buf.set_text(&common);
+            self.ex.stem = Some(stem);
+            self.ex.cycle = 0;
             return;
         }
         // Nothing certain left to add: walk them. The index advances
         // first, so a second TAB moves off what the first one put
         // there.
-        self.ex_cycle = (self.ex_cycle + 1) % candidates.len();
-        let pick = candidates.get(self.ex_cycle).unwrap_or(first);
-        self.ex_buf.set_text(pick);
-        self.ex_stem = Some(stem);
+        self.ex.cycle = (self.ex.cycle + 1) % candidates.len();
+        let pick = candidates.get(self.ex.cycle).unwrap_or(first);
+        self.ex.buf.set_text(pick);
+        self.ex.stem = Some(stem);
     }
 
     /// The longest prefix every candidate shares.
@@ -18486,8 +18496,8 @@ impl ModalApp {
 
     /// Abandon the `:` line and return to where it was opened from.
     fn close_ex(&mut self) {
-        self.ex_buf.clear();
-        self.surface = self.ex_return.take().unwrap_or(ModalSurface::Browse);
+        self.ex.buf.clear();
+        self.surface = self.ex.ret.take().unwrap_or(ModalSurface::Browse);
     }
 
     /// Execute an ex command.
@@ -18496,7 +18506,7 @@ impl ModalApp {
     /// is a superset of the palette it replaced rather than a
     /// replacement for it.
     fn run_ex(&mut self, shell: &mut Shell, line: &str) {
-        let was = self.ex_return.take();
+        let was = self.ex.ret.take();
         let editing = was == Some(ModalSurface::EditBody);
         // The full-window editor is a buffer too, and `:w` in it means
         // the file, not the headline. Without this the one view that is
@@ -18504,7 +18514,7 @@ impl ModalApp {
         // on every edit — nothing to save", which is a lie about a
         // buffer that genuinely was not written yet.
         let editing_file = was == Some(ModalSurface::EditFile);
-        self.ex_buf.clear();
+        self.ex.buf.clear();
         // The `:` line hands back the surface it was opened over, the
         // way the palette does. It used to drop to Browse here and
         // leave every arm to climb back — so each line that did not
@@ -20743,7 +20753,7 @@ impl ModalApp {
             | ModalSurface::Graph
             | ModalSurface::FindFile
             | ModalSurface::Messages => Some(&mut self.query),
-            ModalSurface::Ex => Some(&mut self.ex_buf),
+            ModalSurface::Ex => Some(&mut self.ex.buf),
             ModalSurface::Sync => Some(&mut self.sync_buf),
             ModalSurface::Llm => Some(&mut self.chat_buf),
             _ => None,
@@ -21286,7 +21296,7 @@ impl ModalApp {
             | ModalSurface::Graph
             | ModalSurface::FindFile
             | ModalSurface::Messages => Some(&mut self.query),
-            ModalSurface::Ex => Some(&mut self.ex_buf),
+            ModalSurface::Ex => Some(&mut self.ex.buf),
             ModalSurface::Sync => Some(&mut self.sync_buf),
             ModalSurface::Llm => Some(&mut self.chat_buf),
             _ => None,
@@ -21797,7 +21807,7 @@ impl ModalApp {
             | ModalSurface::Graph
             | ModalSurface::FindFile
             | ModalSurface::Messages => Some(&self.query),
-            ModalSurface::Ex => Some(&self.ex_buf),
+            ModalSurface::Ex => Some(&self.ex.buf),
             ModalSurface::Sync => Some(&self.sync_buf),
             ModalSurface::Llm => Some(&self.chat_buf),
             _ => None,
@@ -22325,7 +22335,7 @@ impl ModalApp {
     /// Run one `:` line, for a shell (or a test) that has the text
     /// already rather than a keystroke at a time.
     pub fn run_ex_line(&mut self, shell: &mut Shell, line: &str) {
-        self.ex_return = Some(self.surface);
+        self.ex.ret = Some(self.surface);
         self.run_ex(shell, line);
     }
 
@@ -24427,7 +24437,7 @@ impl ModalApp {
         let field = match self.surface {
             ModalSurface::Search | ModalSurface::BodySearch => Some(&mut self.query),
             ModalSurface::Capture => Some(&mut self.capture.buf),
-            ModalSurface::Ex => Some(&mut self.ex_buf),
+            ModalSurface::Ex => Some(&mut self.ex.buf),
             ModalSurface::Llm => Some(&mut self.chat_buf),
             ModalSurface::Sync => Some(&mut self.sync_buf),
             // Every picker and every one-line prompt types into the
