@@ -2807,6 +2807,13 @@ impl GpuiView {
         self.click(command, cx);
     }
 
+    /// How far the picker's list is scrolled, for a test to see that
+    /// it followed the cursor.
+    #[must_use]
+    pub fn picker_scroll_offset(&self) -> f32 {
+        f32::from(self.palette_scroll.0.borrow().base_handle.offset().y)
+    }
+
     /// Run one `:` line, the way the ex overlay does — what the buffer
     /// is left by (`:q`, `:w`, `:wq`) since Esc became the mode key.
     pub fn run_ex_line(&mut self, line: &str, cx: &mut Context<Self>) {
@@ -3648,8 +3655,15 @@ impl GpuiView {
                 .scroll_to_item(selected, gpui::ScrollStrategy::Center);
             self.revealed = selected;
         }
-        if surface == ModalSurface::Palette {
-            let cursor = self.app.palette_cursor();
+        // Every filtering popup — the palette, the message log, blocks,
+        // headlines, buffers, files, refile, the tag picker — is the
+        // same overlay over the same `picker_view`, so following the
+        // cursor belongs to the picker rather than to one surface of
+        // it. It was written for the palette alone, which is why sixty
+        // messages scrolled to the top and stayed there while the
+        // selection walked off the bottom.
+        if self.app.picker_view(&self.shell).is_some() {
+            let cursor = self.app.picker_cursor();
             if cursor != self.palette_revealed {
                 self.palette_scroll
                     .scroll_to_item(cursor, gpui::ScrollStrategy::Center);
