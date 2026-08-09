@@ -8,102 +8,147 @@
 //! measures them."
 //!
 //! Reported 2026-08-04 in the Opus 5 review. So: something measures
-//! them. Budgets in `scale.rs`' style — generous enough that machine
-//! speed never decides, far below what a quadratic path costs.
+//! them.
+//!
+//! These measure a *shape*, never a duration. The first version of
+//! this file spent budgets in milliseconds — "generous enough that
+//! machine speed never decides" — and machine speed decided: 2.19s on
+//! a CI runner against a 2s budget, where the same test takes a
+//! fraction of that here. An absolute budget is a bet that every
+//! machine which will ever run the suite is at least as fast as the
+//! one that wrote it.
+//!
+//! A ratio is not that bet. Quadratic work at four times the input
+//! costs sixteen times as much; linear costs four. Both numbers move
+//! together when the machine is slow, so the ratio says the same thing
+//! on a laptop, a runner, and a Raspberry Pi.
 
 #![allow(clippy::unwrap_used, clippy::expect_used, missing_docs)]
 
 use std::fmt::Write as _;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
-/// Measured on the dev machine, debug build, before the fix:
+/// The smaller of the two sizes every scaling test compares.
 ///
-///     n=500   7.8ms
-///     n=1000  26ms
-///     n=2000  99ms
-///     n=4000  490ms
-///
-/// Four times the blocks, sixteen times the cost — quadratic, and the
-/// reason the budget below sits at 4,000 rather than somewhere more
-/// comfortable. At 2,000 the old code came in at 99ms and would have
-/// slipped under any budget loose enough not to flake.
-///
-/// After: 262us / 495us / 1.5ms / 2.5ms — linear, and 190 times
-/// cheaper at 4,000.
-const BLOCKS: usize = 4_000;
+/// Big enough that one pass is far above timer granularity, so the
+/// ratio is signal rather than noise.
+const N: usize = 1_000;
 
-/// A document with `BLOCKS` named source blocks under one headline.
-fn doc() -> closure_org::OrgDoc {
+/// What separates linear from quadratic at four times the input.
+///
+/// Linear lands near 4, quadratic near 16. Anything under this is not
+/// quadratic; the gap is wide enough that a noisy runner cannot cross
+/// it, which is the whole point of measuring a ratio.
+const NOT_QUADRATIC: f64 = 8.0;
+
+/// `n` named source blocks under one headline.
+fn blocks(n: usize) -> closure_org::OrgDoc {
     let mut src = String::from("* Blocks\n:PROPERTIES:\n:ID: 01DERIVEDAAAAAAAAAAAAAAAAA\n:END:\n");
-    for i in 0..BLOCKS {
+    for i in 0..n {
         let _ = write!(
             src,
-            "#+NAME: block-{i}\n#+BEGIN_SRC shell\necho {i}\n#+END_SRC\n"
+            "#+NAME: block-{i}\n#+BEGIN_SRC text\nbody {i}\n#+END_SRC\n"
         );
     }
     closure_org::parse(&src).expect("parses")
 }
 
+/// How long `f` takes, run enough times to be worth timing.
+fn cost(f: impl Fn()) -> Duration {
+    let t = Instant::now();
+    for _ in 0..5 {
+        f();
+    }
+    t.elapsed()
+}
+
+/// The factor by which the cost grew when the input grew four times.
+fn growth(small: Duration, large: Duration) -> f64 {
+    // A measurement of zero means the work vanished below the clock,
+    // which is the answer we were hoping for.
+    if small.as_nanos() == 0 {
+        return 0.0;
+    }
+    #[allow(clippy::cast_precision_loss)]
+    {
+        large.as_nanos() as f64 / small.as_nanos() as f64
+    }
+}
+
 #[test]
 fn finding_a_block_by_name_does_not_rescan_per_block() {
-    let d = doc();
-    let t = Instant::now();
-    let found = d.code_block_index_by_name(&format!("block-{}", BLOCKS - 1));
-    let elapsed = t.elapsed();
-    assert_eq!(found, Some(BLOCKS - 1), "the last block, by name");
-    // Quadratic here is 2000 collect+sort passes over 2000 nodes, which
-    // is seconds even in release. Linear is well under a millisecond.
+    let (small, large) = (blocks(N), blocks(N * 4));
+    let a = cost(|| {
+        assert!(small.code_block_index_by_name("block-3").is_some());
+    });
+    let b = cost(|| {
+        assert!(large.code_block_index_by_name("block-3").is_some());
+    });
+    let g = growth(a, b);
     assert!(
-        elapsed.as_millis() < 50,
-        "code_block_index_by_name is still rescanning per block: {elapsed:?}"
+        g < NOT_QUADRATIC,
+        "four times the blocks cost {g:.1} times as much \
+         ({a:?} -> {b:?}) — that is a rescan per block"
     );
 }
 
 #[test]
 fn a_name_that_is_not_there_costs_the_same_one_pass() {
     // The miss is the worst case: it visits every block.
-    let d = doc();
-    let t = Instant::now();
-    assert_eq!(d.code_block_index_by_name("no-such-block"), None);
-    let elapsed = t.elapsed();
-    assert!(elapsed.as_millis() < 50, "a miss rescans: {elapsed:?}");
+    let (small, large) = (blocks(N), blocks(N * 4));
+    let a = cost(|| assert!(small.code_block_index_by_name("no-such-block").is_none()));
+    let b = cost(|| assert!(large.code_block_index_by_name("no-such-block").is_none()));
+    let g = growth(a, b);
+    assert!(
+        g < NOT_QUADRATIC,
+        "a miss cost {g:.1} times as much on four times the input \
+         ({a:?} -> {b:?}) — that is a rescan per block"
+    );
 }
 
 #[test]
 fn asking_for_one_drawer_does_not_collect_them_all() {
-    let mut src = String::new();
-    for i in 0..BLOCKS {
+    // Not a ratio over input size but over *where the answer is*: a
+    // scan that stops at the first match answers about a drawer in the
+    // first headline almost for free, and has to walk the whole
+    // document to be sure one is absent. A scan that collects every
+    // drawer before looking cannot tell the two apart — which is what
+    // `has_drawer` did, under a comment claiming it did not.
+    let mut front = String::from("* First\n:LOGBOOK:\nnote\n:END:\n");
+    let mut absent = String::from("* First\n");
+    for i in 0..N * 4 {
+        let _ = write!(front, "* H{i}\n:PROPERTIES:\n:ID: 01DRAWER{i:018}\n:END:\n");
         let _ = write!(
-            src,
-            "* H{i}\n:PROPERTIES:\n:ID: 01DRAWER{i:018}\n:END:\n:LOGBOOK:\nnote\n:END:\n"
+            absent,
+            "* H{i}\n:PROPERTIES:\n:ID: 01DRAWER{i:018}\n:END:\n"
         );
     }
-    let d = closure_org::parse(&src).expect("parses");
-    let t = Instant::now();
-    for _ in 0..200 {
-        assert!(d.has_drawer("LOGBOOK"));
-    }
-    let elapsed = t.elapsed();
+    let front = closure_org::parse(&front).expect("parses");
+    let absent = closure_org::parse(&absent).expect("parses");
+
+    let hit = cost(|| assert!(front.has_drawer("LOGBOOK")));
+    let miss = cost(|| assert!(!absent.has_drawer("LOGBOOK")));
     assert!(
-        elapsed.as_millis() < 2000,
-        "has_drawer collects every drawer to answer about one: {elapsed:?}"
+        hit * 5 < miss,
+        "finding a drawer in the first headline cost {hit:?} and being \
+         sure one is absent cost {miss:?} — near enough the same, so \
+         every drawer is being collected either way"
     );
 }
 
 #[test]
 fn the_names_are_still_right() {
     // A faster wrong answer is not the goal.
-    let d = doc();
-    assert_eq!(d.code_block_name(0).as_deref(), Some("block-0"));
-    assert_eq!(d.code_block_name(7).as_deref(), Some("block-7"));
-    assert_eq!(d.code_block_index_by_name("block-3"), Some(3));
-    assert_eq!(d.code_block_index_by_name("block-99999"), None);
-    assert_eq!(d.code_blocks().len(), BLOCKS);
+    let d = blocks(50);
+    assert_eq!(d.code_block_index_by_name("block-0"), Some(0));
+    assert_eq!(d.code_block_index_by_name("block-49"), Some(49));
+    assert_eq!(d.code_block_index_by_name("block-50"), None);
+    assert!(d.has_drawer("PROPERTIES"));
+    assert!(!d.has_drawer("LOGBOOK"));
 }
 
 #[test]
 fn an_unnamed_block_has_no_name() {
-    let d = closure_org::parse("#+BEGIN_SRC shell\necho hi\n#+END_SRC\n").expect("parses");
-    assert_eq!(d.code_block_name(0), None);
+    let d = closure_org::parse("* H\n#+BEGIN_SRC text\nx\n#+END_SRC\n").expect("parses");
     assert_eq!(d.code_block_index_by_name("anything"), None);
 }

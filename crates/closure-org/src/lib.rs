@@ -129,11 +129,23 @@ impl OrgDoc {
     #[must_use]
     pub fn has_drawer(&self, name: &str) -> bool {
         // `find_drawers` allocates every drawer in the document to
-        // answer a question about one of them. The scan stops at the
-        // first match instead.
-        find_drawers(&self.source)
-            .into_iter()
-            .any(|d| d.name == name)
+        // answer a question about one of them. This walks the same
+        // scan and stops at the first match.
+        //
+        // It used to say exactly that in a comment above a call to
+        // `find_drawers(...).into_iter().any(...)`, which collects all
+        // of them and then looks. CI caught it on a slower machine
+        // than mine, two days after the comment was written.
+        let mut found = false;
+        scan_drawers(&self.source, |d| {
+            if d.name == name {
+                found = true;
+                std::ops::ControlFlow::Break(())
+            } else {
+                std::ops::ControlFlow::Continue(())
+            }
+        });
+        found
     }
 
     /// True iff any headline in the document has `tag`.
@@ -10028,6 +10040,24 @@ pub struct DrawerView<'a> {
 #[must_use]
 pub fn find_drawers(text: &str) -> Vec<DrawerView<'_>> {
     let mut out: Vec<DrawerView<'_>> = Vec::new();
+    scan_drawers(text, |d| {
+        out.push(d);
+        std::ops::ControlFlow::Continue(())
+    });
+    out
+}
+
+/// Walk the drawers in `text`, stopping as soon as `f` says to.
+///
+/// The scan itself, with no opinion about what to do with what it
+/// finds. [`find_drawers`] keeps all of them; a question about *one*
+/// drawer stops at it — which is the difference between answering
+/// `has_drawer` in a few bytes and allocating every drawer in the
+/// document first.
+fn scan_drawers<'a, F>(text: &'a str, mut f: F)
+where
+    F: FnMut(DrawerView<'a>) -> std::ops::ControlFlow<()>,
+{
     let mut cursor = 0usize;
     while cursor < text.len() {
         let Some(line_end) = text[cursor..].find('\n') else {
@@ -10041,7 +10071,9 @@ pub fn find_drawers(text: &str) -> Vec<DrawerView<'_>> {
         {
             let body_end = after_first + end_rel;
             let content = &text[after_first..body_end];
-            out.push(DrawerView { name, content });
+            if f(DrawerView { name, content }).is_break() {
+                return;
+            }
             let close_line_end = text[body_end..]
                 .find('\n')
                 .map_or(text.len(), |n| body_end + n + 1);
@@ -10050,7 +10082,6 @@ pub fn find_drawers(text: &str) -> Vec<DrawerView<'_>> {
         }
         cursor = after_first;
     }
-    out
 }
 
 fn drawer_name(line: &str) -> Option<&str> {
