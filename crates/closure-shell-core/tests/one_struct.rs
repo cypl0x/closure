@@ -46,12 +46,14 @@ fn field_count() -> (usize, Vec<String>) {
 ///
 /// The review counted 109; by the time this test was written it was
 /// 118, which is the argument for having the test. The memo cluster
-/// took it to 108, the capture bar's to 104, the `:` line's to 101, and the two
-/// prompt pairs to 99.
+/// took it to 108, the capture bar's to 104, the `:` line's to 101, the two
+/// prompt pairs to 99, and five more — the jumplist, the open
+/// buffers, the body's viewport, what is remembered about notes you
+/// have left, and how the buffer is drawn — to 90.
 /// Every cluster after them
 /// lowers this line, and nothing is allowed to raise it — a field that
 /// has nowhere to live but here is a cluster nobody has named yet.
-const CEILING: usize = 99;
+const CEILING: usize = 90;
 
 #[test]
 fn the_drawer_does_not_refill() {

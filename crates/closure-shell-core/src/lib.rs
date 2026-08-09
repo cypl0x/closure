@@ -13158,6 +13158,136 @@ struct Handoff {
     /// leaves it here and the shell takes it on the next frame.
     clipboard: Option<String>,
 }
+/// Where you have been, and where in that you are.
+///
+/// `at == points.len()` means the present, with nothing ahead to go
+/// forward to — an invariant between two fields that sat apart.
+#[derive(Debug, Default)]
+struct Jumplist {
+    /// The jumplist: every place a non-local move left, oldest first.
+    points: Vec<JumpPoint>,
+    /// Where in [`Self::jumps`] we are. Equal to the length means "at
+    /// the present" — nothing ahead to go forward to.
+    at: usize,
+}
+
+/// The buffers this session has open, and the visit counter that
+/// orders them.
+///
+/// The counter is only meaningful as the number the *next* buffer in
+/// the list will be stamped with, which is why it is not a number that
+/// lives somewhere else.
+#[derive(Debug, Default)]
+struct OpenBuffers {
+    /// Every buffer this session has open, in the order they were
+    /// opened (what `buffer-next` walks); the MRU order the picker
+    /// shows is [`OpenBuffer::seq`].
+    open: Vec<OpenBuffer>,
+    /// The visit counter handed to the buffer opened next.
+    next_seq: u64,
+}
+
+/// Where the editor's window onto the text is, and how big it is.
+///
+/// Four fields describing one rectangle: how many lines fit, what the
+/// scrolling is measured from, where it has been pushed to, and the
+/// `zz`/`zt`/`zb` cycle that moves it. Any of them alone says nothing.
+#[derive(Debug)]
+struct BodyView {
+    /// How many body lines the shell last said it can paint. The
+    /// kernel decides *where* the viewport sits and the shell knows how
+    /// big it is, so the shell reports it ([`Self::set_body_viewport`])
+    /// and the framing chords read it back.
+    height: usize,
+    /// The first visible line as last resolved by [`Self::body_scroll_follow`],
+    /// which is what "scroll by the minimum" is measured from.
+    anchor: Option<usize>,
+    /// Body-editor wheel viewport `(start, cursor_line_when_set)`; the
+    /// override self-clears when the cursor line changes (G5).
+    offset: Option<(usize, usize)>,
+    /// `C-l`'s place in the centre → top → bottom cycle, with the
+    /// framing it produced — a press that finds the viewport somewhere
+    /// else is a first press, not the next one.
+    recenter: Option<(u8, usize, usize)>,
+}
+
+/// What is remembered about notes you have left, by id.
+///
+/// Where the cursor was, and any edit that was still open. Both are
+/// "the state of a note you are not currently in", both are keyed the
+/// same way, and both are answered on the way back in.
+#[derive(Debug, Default)]
+struct NoteMemory {
+    /// Where the cursor was left in each body, by block id, so opening
+    /// a note again resumes rather than restarting at byte zero.
+    cursors: std::collections::HashMap<String, usize>,
+    /// Modified buffers for headlines that are not the one on screen,
+    /// by block id, with the text they were loaded from.
+    ///
+    /// The buffer used to be a single slot: opening another note
+    /// overwrote it and the paragraph in the old one was gone. Clicking
+    /// a row in the outline beside the buffer is the most ordinary
+    /// thing there is to do while editing, so it cannot be the gesture
+    /// that loses text. Nothing here is on disk — the vault is written
+    /// by `:w`, `C-Enter`, or the window closing.
+    stash: std::collections::HashMap<String, (String, String)>,
+}
+
+/// How the buffer is drawn: wrapping, pictures, ink, and scale.
+///
+/// Four preferences rather than four pieces of state — what they have
+/// in common is that changing any of them redraws the same text
+/// differently and none of them changes what it says.
+#[derive(Debug)]
+struct BodyStyle {
+    /// Whether long body lines wrap instead of scrolling sideways.
+    ///
+    /// Kernel state rather than a field in the window: it is a view
+    /// toggle like the tree and the images, the terminal shell wants
+    /// the same switch, and read from `config.org` into the window it
+    /// had no command and so no chord — there was no way to change your
+    /// mind about the paragraph in front of you.
+    wrap: bool,
+    /// Whether image links are painted as pictures (org's
+    /// `org-toggle-inline-images`). Shown to begin with: a note with a
+    /// screenshot in it is a note you want to look at.
+    images: bool,
+    /// The colour diagrams are drawn in: the shell's foreground,
+    /// reported the way the viewport is. Defaults to the dark
+    /// theme's, so a shell that never says still gets readable ink.
+    ink: u32,
+    /// Buffer text scale, in [`ZOOM_STEP`] powers.
+    zoom: i8,
+}
+
+impl Default for BodyView {
+    fn default() -> Self {
+        Self {
+            // Lines to assume before the pane has ever been laid out:
+            // its measured height is zero on the first frame, and a
+            // viewport of zero lines paints nothing at all.
+            height: BODY_VIEWPORT_DEFAULT,
+            anchor: None,
+            offset: None,
+            recenter: None,
+        }
+    }
+}
+
+impl Default for BodyStyle {
+    fn default() -> Self {
+        Self {
+            wrap: false,
+            // Pictures on: a note with a screenshot in it is a note
+            // you want to look at.
+            images: true,
+            // The theme's own foreground, so a shell that never says
+            // still renders diagrams in readable ink.
+            ink: 0x00cd_d6f4,
+            zoom: 0,
+        }
+    }
+}
 
 /// Modal command-surface launcher (the "modal GUI" experiment).
 ///
@@ -13379,70 +13509,24 @@ pub struct ModalApp {
     quit: bool,
     /// Explicit wheel-scroll viewport offset; None = follow selection.
     scroll_override: Option<usize>,
-    /// How many body lines the shell last said it can paint. The
-    /// kernel decides *where* the viewport sits and the shell knows how
-    /// big it is, so the shell reports it ([`Self::set_body_viewport`])
-    /// and the framing chords read it back.
-    body_viewport: usize,
     /// How many outline rows the shell last said it can paint — what
     /// `C-d` / `C-u` take half of. Same split as the body's: the core
     /// knows where the cursor is, the window knows how tall it is.
     outline_viewport: usize,
-    /// The first visible line as last resolved by [`Self::body_scroll_follow`],
-    /// which is what "scroll by the minimum" is measured from.
-    body_anchor: Option<usize>,
-    /// `C-l`'s place in the centre → top → bottom cycle, with the
-    /// framing it produced — a press that finds the viewport somewhere
-    /// else is a first press, not the next one.
-    recenter: Option<(u8, usize, usize)>,
     /// A body-editor prefix key waiting for the rest of its chord.
     pending_body: Option<BodyPrefix>,
-    /// Where the cursor was left in each body, by block id, so opening
-    /// a note again resumes rather than restarting at byte zero.
-    body_cursors: std::collections::HashMap<String, usize>,
-    /// Whether long body lines wrap instead of scrolling sideways.
-    ///
-    /// Kernel state rather than a field in the window: it is a view
-    /// toggle like the tree and the images, the terminal shell wants
-    /// the same switch, and read from `config.org` into the window it
-    /// had no command and so no chord — there was no way to change your
-    /// mind about the paragraph in front of you.
-    wrap: bool,
-    /// Whether image links are painted as pictures (org's
-    /// `org-toggle-inline-images`). Shown to begin with: a note with a
-    /// screenshot in it is a note you want to look at.
-    images_shown: bool,
-    /// The colour diagrams are drawn in: the shell's foreground,
-    /// reported the way the viewport is. Defaults to the dark
-    /// theme's, so a shell that never says still gets readable ink.
-    ink: u32,
     /// The headline this session last opened a body on — what
     /// [`Self::save_last_place`] remembers in preference to whatever
     /// the cursor happens to be resting on.
     last_edited: Option<String>,
-    /// Modified buffers for headlines that are not the one on screen,
-    /// by block id, with the text they were loaded from.
-    ///
-    /// The buffer used to be a single slot: opening another note
-    /// overwrote it and the paragraph in the old one was gone. Clicking
-    /// a row in the outline beside the buffer is the most ordinary
-    /// thing there is to do while editing, so it cannot be the gesture
-    /// that loses text. Nothing here is on disk — the vault is written
-    /// by `:w`, `C-Enter`, or the window closing.
-    body_stash: std::collections::HashMap<String, (String, String)>,
     /// The outline row the search overlay was opened from, so Esc can
     /// put the cursor back rather than leaving it on a result index.
     search_return: Option<usize>,
-    /// Buffer text scale, in [`ZOOM_STEP`] powers.
-    zoom_steps: i8,
     /// Whether a row is *actually* selected, as opposed to the cursor
     /// merely sitting somewhere. Escape in the outline clears it, which
     /// is how a capture is told "file this at the top level, not under
     /// whatever I happened to be looking at"; any motion selects again.
     selection_active: bool,
-    /// Body-editor wheel viewport `(start, cursor_line_when_set)`; the
-    /// override self-clears when the cursor line changes (G5).
-    body_scroll: Option<(usize, usize)>,
     /// Cursor row inside the `UndoHistory` pane (Q2-U3).
     hist_cursor: usize,
     /// The Notion "/" block menu's query while it is open, and its
@@ -13490,17 +13574,6 @@ pub struct ModalApp {
     /// `closure_llm::LlmPermissions::toggle_render`; a session created
     /// from this app takes its render grant from here.
     llm_render: bool,
-    /// Every buffer this session has open, in the order they were
-    /// opened (what `buffer-next` walks); the MRU order the picker
-    /// shows is [`OpenBuffer::seq`].
-    buffers: Vec<OpenBuffer>,
-    /// The visit counter handed to the buffer opened next.
-    buf_seq: u64,
-    /// The jumplist: every place a non-local move left, oldest first.
-    jumps: Vec<JumpPoint>,
-    /// Where in [`Self::jumps`] we are. Equal to the length means "at
-    /// the present" — nothing ahead to go forward to.
-    jump_at: usize,
     /// Files recent sessions opened, most recent first. Persisted to
     /// `config.org` with the rest of the durable view state.
     recent_files: Vec<std::path::PathBuf>,
@@ -13548,6 +13621,16 @@ pub struct ModalApp {
     field: FieldPrompt,
     /// What the kernel wants the shell to do on its behalf.
     handoff: Handoff,
+    /// The jumplist and the cursor into it.
+    jumplist: Jumplist,
+    /// Every open buffer, and what the next one will be stamped with.
+    buffers: OpenBuffers,
+    /// The body editor's viewport: its size, and where it sits.
+    body_view: BodyView,
+    /// Per-note memory: cursors, and edits left open.
+    note_memory: NoteMemory,
+    /// How the buffer is drawn.
+    body_style: BodyStyle,
 }
 
 /// What an open buffer is: a headline's body, or a whole file.
@@ -14182,6 +14265,11 @@ impl ModalApp {
     #[allow(clippy::too_many_lines)]
     pub fn new(mode: InputMode) -> Self {
         Self {
+            body_style: BodyStyle::default(),
+            note_memory: NoteMemory::default(),
+            body_view: BodyView::default(),
+            buffers: OpenBuffers::default(),
+            jumplist: Jumplist::default(),
             handoff: Handoff::default(),
             field: FieldPrompt::default(),
             pending_link: PendingLink::default(),
@@ -14262,24 +14350,11 @@ impl ModalApp {
             status: String::new(),
             quit: false,
             scroll_override: None,
-            body_viewport: BODY_VIEWPORT_DEFAULT,
             outline_viewport: BODY_VIEWPORT_DEFAULT,
-            body_anchor: None,
-            recenter: None,
             pending_body: None,
             selection_active: true,
-            zoom_steps: 0,
             search_return: None,
-            body_cursors: std::collections::HashMap::new(),
-            wrap: false,
-            images_shown: true,
-            ink: 0x00cd_d6f4,
             last_edited: None,
-            body_stash: std::collections::HashMap::new(),
-            buffers: Vec::new(),
-            buf_seq: 0,
-            jumps: Vec::new(),
-            jump_at: 0,
             recent_files: Vec::new(),
             // A vault opened before the shell says what day it is still
             // has to draw a calendar; this is the epoch, and every
@@ -14291,7 +14366,6 @@ impl ModalApp {
             palette_return: None,
             tag_target: None,
             tag_draft: Vec::new(),
-            body_scroll: None,
             hist_cursor: 0,
             reloads: 0,
         }
@@ -16660,7 +16734,7 @@ impl ModalApp {
     /// same comparison [`Self::body_dirty`] makes.
     #[must_use]
     pub fn buffer_rows(&self, shell: &Shell) -> Vec<BufferRow> {
-        let mut open: Vec<&OpenBuffer> = self.buffers.iter().collect();
+        let mut open: Vec<&OpenBuffer> = self.buffers.open.iter().collect();
         // Most recent first, and a stable tiebreak so two buffers that
         // somehow share a visit never swap between frames.
         open.sort_by_key(|b| std::cmp::Reverse(b.seq));
@@ -16774,7 +16848,7 @@ impl ModalApp {
                 if self.edit_target.as_ref() == Some(id) && self.surface == ModalSurface::EditBody {
                     self.body.text() != self.body_baseline
                 } else {
-                    self.body_stash.contains_key(id)
+                    self.note_memory.stash.contains_key(id)
                 }
             }
             BufferRef::File(path) => {
@@ -16788,12 +16862,12 @@ impl ModalApp {
     /// Put `target` at the top of the buffer list, adding it if this is
     /// the first visit.
     fn touch_buffer(&mut self, target: BufferRef) {
-        self.buf_seq += 1;
-        let seq = self.buf_seq;
-        if let Some(existing) = self.buffers.iter_mut().find(|b| b.target == target) {
+        self.buffers.next_seq += 1;
+        let seq = self.buffers.next_seq;
+        if let Some(existing) = self.buffers.open.iter_mut().find(|b| b.target == target) {
             existing.seq = seq;
         } else {
-            self.buffers.push(OpenBuffer { target, seq });
+            self.buffers.open.push(OpenBuffer { target, seq });
         }
     }
 
@@ -16801,6 +16875,7 @@ impl ModalApp {
     /// recently visited one.
     fn current_buffer(&self) -> Option<BufferRef> {
         self.buffers
+            .open
             .iter()
             .max_by_key(|b| b.seq)
             .map(|b| b.target.clone())
@@ -16808,7 +16883,7 @@ impl ModalApp {
 
     /// The one before it — what `C-^` toggles with.
     fn alternate_buffer(&self) -> Option<BufferRef> {
-        let mut by_recency: Vec<&OpenBuffer> = self.buffers.iter().collect();
+        let mut by_recency: Vec<&OpenBuffer> = self.buffers.open.iter().collect();
         by_recency.sort_by_key(|b| std::cmp::Reverse(b.seq));
         by_recency.get(1).map(|b| b.target.clone())
     }
@@ -16828,13 +16903,13 @@ impl ModalApp {
     /// in the list, because you cannot go forward to a future you just
     /// replaced. A repeat of the same place is not a jump.
     fn push_jump(&mut self, place: JumpPoint) {
-        self.jumps.truncate(self.jump_at);
-        if self.jumps.last() == Some(&place) {
-            self.jump_at = self.jumps.len();
+        self.jumplist.points.truncate(self.jumplist.at);
+        if self.jumplist.points.last() == Some(&place) {
+            self.jumplist.at = self.jumplist.points.len();
             return;
         }
-        self.jumps.push(place);
-        self.jump_at = self.jumps.len();
+        self.jumplist.points.push(place);
+        self.jumplist.at = self.jumplist.points.len();
     }
 
     /// Go to a recorded place without recording one.
@@ -16886,7 +16961,7 @@ impl ModalApp {
     /// `:bprev`, which walk the order buffers were *opened* in, not the
     /// order they were last looked at.
     fn cycle_buffer(&mut self, shell: &Shell, delta: isize) {
-        let len = self.buffers.len();
+        let len = self.buffers.open.len();
         if len == 0 {
             self.say("no buffers open — open a note first");
             return;
@@ -16894,12 +16969,12 @@ impl ModalApp {
         let current = self.current_buffer();
         let at = current
             .as_ref()
-            .and_then(|c| self.buffers.iter().position(|b| b.target == *c))
+            .and_then(|c| self.buffers.open.iter().position(|b| b.target == *c))
             .unwrap_or(0);
         let len_i = isize::try_from(len).unwrap_or(1);
         let at_i = isize::try_from(at).unwrap_or(0);
         let next = usize::try_from((at_i + delta).rem_euclid(len_i)).unwrap_or(0);
-        let target = self.buffers[next].target.clone();
+        let target = self.buffers.open[next].target.clone();
         self.open_buffer(shell, &target, true);
     }
 
@@ -16917,16 +16992,18 @@ impl ModalApp {
         }
         if force {
             if let BufferRef::Body(id) = &target {
-                self.body_stash.remove(id);
+                self.note_memory.stash.remove(id);
             }
         } else {
             self.leave_buffer();
         }
-        self.buffers.retain(|b| b.target != target);
+        self.buffers.open.retain(|b| b.target != target);
         // Jumping back into a buffer that is gone is worse than
         // forgetting it was ever there.
-        self.jumps.retain(|j| j.buffer.as_ref() != Some(&target));
-        self.jump_at = self.jumps.len();
+        self.jumplist
+            .points
+            .retain(|j| j.buffer.as_ref() != Some(&target));
+        self.jumplist.at = self.jumplist.points.len();
         if let Some(next) = self.current_buffer() {
             self.open_buffer(shell, &next, false);
         } else {
@@ -16973,8 +17050,8 @@ impl ModalApp {
         };
         let file = shell.vault.find_by_id(&bid).map(|(_, p)| p.to_path_buf());
         self.leave_buffer();
-        let resume = self.body_cursors.get(id).copied();
-        let restored = self.body_stash.remove(id);
+        let resume = self.note_memory.cursors.get(id).copied();
+        let restored = self.note_memory.stash.remove(id);
         let came_back = restored.is_some();
         self.last_edited = Some(id.to_owned());
         self.edit_target = Some(id.to_owned());
@@ -19702,7 +19779,7 @@ impl ModalApp {
     #[must_use]
     pub fn body_scroll_start(&self, viewport: usize) -> usize {
         let (cl, _) = self.body.cursor_line_col();
-        if let Some((start, at)) = self.body_scroll
+        if let Some((start, at)) = self.body_view.offset
             && at == cl
         {
             return start;
@@ -19731,14 +19808,14 @@ impl ModalApp {
     /// it gets [`BODY_VIEWPORT_DEFAULT`].
     pub const fn set_body_viewport(&mut self, lines: usize) {
         if lines > 0 {
-            self.body_viewport = lines;
+            self.body_view.height = lines;
         }
     }
 
     /// The viewport height the shell last reported.
     #[must_use]
     pub const fn body_viewport(&self) -> usize {
-        self.body_viewport
+        self.body_view.height
     }
 
     /// Put the body cursor at the start of `line`, clamped to the
@@ -19777,14 +19854,15 @@ impl ModalApp {
         let (cursor, _) = self.body.cursor_line_col();
         let lines = self.body.text().split('\n').count();
         let max = lines.saturating_sub(viewport);
-        if let Some((start, at)) = self.body_scroll
+        if let Some((start, at)) = self.body_view.offset
             && at == cursor
         {
-            self.body_anchor = Some(start);
+            self.body_view.anchor = Some(start);
             return start;
         }
         let previous = self
-            .body_anchor
+            .body_view
+            .anchor
             .unwrap_or_else(|| self.body_scroll_start(viewport));
         let start = if (previous..previous + viewport).contains(&cursor) {
             // Already on screen: Emacs does not move the window, and
@@ -19807,8 +19885,8 @@ impl ModalApp {
             }
         }
         .min(max);
-        self.body_anchor = Some(start);
-        self.body_scroll = Some((start, cursor));
+        self.body_view.anchor = Some(start);
+        self.body_view.offset = Some((start, cursor));
         start
     }
 
@@ -19819,10 +19897,10 @@ impl ModalApp {
     /// left it starts the cycle over — the cycle is about *this* line
     /// in *this* framing, and a motion invalidates both.
     pub fn body_recenter_cycle(&mut self) {
-        let viewport = self.body_viewport;
+        let viewport = self.body_view.height;
         let (cursor, _) = self.body.cursor_line_col();
         let current = self.body_scroll_start(viewport);
-        let step = match self.recenter {
+        let step = match self.body_view.recenter {
             Some((step, start, at)) if start == current && at == cursor => (step + 1) % 3,
             _ => 0,
         };
@@ -19832,7 +19910,7 @@ impl ModalApp {
             _ => BodyFraming::Bottom,
         };
         let start = self.frame_body(framing);
-        self.recenter = Some((step, start, cursor));
+        self.body_view.recenter = Some((step, start, cursor));
     }
 
     /// `zz` / `zt` / `zb`: put the cursor line in the middle, at the
@@ -19841,13 +19919,13 @@ impl ModalApp {
         let start = self.frame_body(framing);
         let (cursor, _) = self.body.cursor_line_col();
         // A framing chord is also a fresh starting point for `C-l`.
-        self.recenter = Some((0, start, cursor));
+        self.body_view.recenter = Some((0, start, cursor));
     }
 
     /// Park the viewport so the cursor line sits where `framing` says,
     /// returning the resolved first visible line.
     fn frame_body(&mut self, framing: BodyFraming) -> usize {
-        let viewport = self.body_viewport;
+        let viewport = self.body_view.height;
         let (cursor, _) = self.body.cursor_line_col();
         let lines = self.body.text().split('\n').count();
         let max = lines.saturating_sub(viewport);
@@ -19857,8 +19935,8 @@ impl ModalApp {
             BodyFraming::Bottom => (cursor + 1).saturating_sub(viewport),
         }
         .min(max);
-        self.body_scroll = Some((start, cursor));
-        self.body_anchor = Some(start);
+        self.body_view.offset = Some((start, cursor));
+        self.body_view.anchor = Some(start);
         start
     }
 
@@ -19874,7 +19952,7 @@ impl ModalApp {
             .saturating_add_signed(isize::try_from(delta).unwrap_or(0))
             .min(max);
         let (cl, _) = self.body.cursor_line_col();
-        self.body_scroll = Some((new, cl));
+        self.body_view.offset = Some((new, cl));
     }
 
     /// Complete a drag-and-drop row reorder (G3): move the row at
@@ -20996,26 +21074,26 @@ impl ModalApp {
     /// around it.
     #[must_use]
     pub fn zoom(&self) -> f32 {
-        ZOOM_STEP.powi(i32::from(self.zoom_steps))
+        ZOOM_STEP.powi(i32::from(self.body_style.zoom))
     }
 
     /// One step larger (`C-+` / `C-=`).
     pub const fn zoom_in(&mut self) {
-        if self.zoom_steps < ZOOM_MAX_STEPS {
-            self.zoom_steps += 1;
+        if self.body_style.zoom < ZOOM_MAX_STEPS {
+            self.body_style.zoom += 1;
         }
     }
 
     /// One step smaller (`C--`).
     pub const fn zoom_out(&mut self) {
-        if self.zoom_steps > ZOOM_MIN_STEPS {
-            self.zoom_steps -= 1;
+        if self.body_style.zoom > ZOOM_MIN_STEPS {
+            self.body_style.zoom -= 1;
         }
     }
 
     /// Back to unscaled (`C-0`).
     pub const fn zoom_reset(&mut self) {
-        self.zoom_steps = 0;
+        self.body_style.zoom = 0;
     }
 
     /// Run `cmd` if it is one of the three zoom commands, reporting the
@@ -21986,8 +22064,8 @@ impl ModalApp {
         self.body.clear();
         self.body_baseline.clear();
         self.body_folds.clear();
-        self.body_stash.clear();
-        self.buffers.clear();
+        self.note_memory.stash.clear();
+        self.buffers.open.clear();
         self.pane_return = None;
         self.find_dir = std::path::PathBuf::new();
         self.invalidate_rows();
@@ -22006,12 +22084,12 @@ impl ModalApp {
     /// draw black maths on a dark editor, which is what it did.
     #[must_use]
     pub const fn ink(&self) -> u32 {
-        self.ink
+        self.body_style.ink
     }
 
     /// Tell the core what colour this shell writes in.
     pub const fn set_ink(&mut self, ink: u32) {
-        self.ink = ink;
+        self.body_style.ink = ink;
     }
 
     /// Where rendered diagrams are kept.
@@ -22035,7 +22113,7 @@ impl ModalApp {
     /// for everything painted between the lines.
     #[must_use]
     pub fn diagram_previews(&self, shell: &Shell) -> Vec<(usize, std::path::PathBuf)> {
-        if !self.images_shown {
+        if !self.body_style.images {
             return Vec::new();
         }
         let cache = self.diagram_cache(shell);
@@ -22043,7 +22121,7 @@ impl ModalApp {
             .into_iter()
             .filter_map(|b| {
                 let kind = closure_eval::diagram_for(&b.lang)?;
-                let path = closure_eval::diagram_path(&cache, kind, &b.src, self.ink);
+                let path = closure_eval::diagram_path(&cache, kind, &b.src, self.body_style.ink);
                 path.is_file().then_some((b.line, path))
             })
             .collect()
@@ -22074,12 +22152,13 @@ impl ModalApp {
                 self.say(Self::trust_refusal(shell, &block.lang));
                 return;
             }
-            if closure_eval::diagram_path(&cache, kind, &block.src, self.ink).is_file() {
+            if closure_eval::diagram_path(&cache, kind, &block.src, self.body_style.ink).is_file() {
                 cached += 1;
                 continue;
             }
             let tool = Self::diagram_tool(shell, kind);
-            match closure_eval::render_diagram(kind, &block.src, &cache, &tool, self.ink) {
+            match closure_eval::render_diagram(kind, &block.src, &cache, &tool, self.body_style.ink)
+            {
                 Ok(_) => drawn += 1,
                 // Named, with somewhere to get it. Silence here is the
                 // one outcome that leaves nothing to act on.
@@ -22571,7 +22650,8 @@ impl ModalApp {
     /// next visit resumes there.
     fn remember_body_cursor(&mut self) {
         if let Some(id) = &self.edit_target {
-            self.body_cursors
+            self.note_memory
+                .cursors
                 .insert(id.clone(), self.body.cursor_byte());
         }
     }
@@ -22725,7 +22805,7 @@ impl ModalApp {
             return;
         }
         if let Some(id) = self.edit_target.clone() {
-            self.body_stash.insert(
+            self.note_memory.stash.insert(
                 id,
                 (self.body.text().to_owned(), self.body_baseline.clone()),
             );
@@ -22736,7 +22816,7 @@ impl ModalApp {
     /// write and an explicit discard both mean.
     fn drop_stash(&mut self) {
         if let Some(id) = &self.edit_target {
-            self.body_stash.remove(id);
+            self.note_memory.stash.remove(id);
         }
     }
 
@@ -22744,7 +22824,7 @@ impl ModalApp {
     /// included. Zero means the vault has everything.
     #[must_use]
     pub fn unsaved_bodies(&self) -> usize {
-        self.body_stash.len() + usize::from(self.body_dirty())
+        self.note_memory.stash.len() + usize::from(self.body_dirty())
     }
 
     /// Write out every body edit still in progress. `true` when
@@ -22762,7 +22842,9 @@ impl ModalApp {
             false
         };
         // Deterministic order, so a failure reports the same way twice.
-        let mut held: Vec<_> = std::mem::take(&mut self.body_stash).into_iter().collect();
+        let mut held: Vec<_> = std::mem::take(&mut self.note_memory.stash)
+            .into_iter()
+            .collect();
         held.sort_by(|(a, _), (b, _)| a.cmp(b));
         for (id, (text, _)) in held {
             let bid = closure_core::BlockId::from_existing(&id);
@@ -22818,7 +22900,7 @@ impl ModalApp {
         let lines = self.body.text().split('\n').count();
         let max = lines.saturating_sub(viewport);
         let (cl, _) = self.body.cursor_line_col();
-        self.body_scroll = Some((line.min(max), cl));
+        self.body_view.offset = Some((line.min(max), cl));
     }
 
     fn on_search_key(
@@ -23297,7 +23379,7 @@ impl ModalApp {
                 return None;
             }
             let kind = closure_eval::diagram_for(&b.lang)?;
-            let path = closure_eval::diagram_path(&cache, kind, &b.src, self.ink);
+            let path = closure_eval::diagram_path(&cache, kind, &b.src, self.body_style.ink);
             path.is_file().then_some(path)
         })
     }
@@ -23407,7 +23489,7 @@ impl ModalApp {
     /// before it loads any of them.
     #[must_use]
     pub const fn images_shown(&self) -> bool {
-        self.images_shown
+        self.body_style.images
     }
 
     /// File an image that arrived on the clipboard and put a link to it
@@ -23628,12 +23710,12 @@ impl ModalApp {
     /// Whether long body lines wrap instead of scrolling sideways.
     #[must_use]
     pub const fn wrap(&self) -> bool {
-        self.wrap
+        self.body_style.wrap
     }
 
     /// Set wrapping — what `config.org`'s `wrap` key does at launch.
     pub const fn set_wrap(&mut self, wrap: bool) {
-        self.wrap = wrap;
+        self.body_style.wrap = wrap;
     }
 
     /// How many times this session has started over — what a window
@@ -23680,7 +23762,7 @@ impl ModalApp {
         // reports them again until the next frame, and a viewport of
         // zero rows leaves every framing chord a no-op until then. The
         // clock is the shell's too, for the same reason.
-        let (body_rows, outline_rows) = (self.body_viewport, self.outline_viewport);
+        let (body_rows, outline_rows) = (self.body_view.height, self.outline_viewport);
         let (today, now) = (
             std::mem::take(&mut self.today),
             std::mem::take(&mut self.now),
@@ -23689,11 +23771,11 @@ impl ModalApp {
         let reloads = self.reloads;
         *self = Self::new(mode);
         self.reloads = reloads.wrapping_add(1);
-        self.body_viewport = body_rows;
+        self.body_view.height = body_rows;
         self.outline_viewport = outline_rows;
         self.today = today;
         self.now = now;
-        self.wrap = closure_config::Config::from_path(
+        self.body_style.wrap = closure_config::Config::from_path(
             &shell.vault.root().join(closure_config::CONFIG_FILE),
         )
         .is_ok_and(|c| c.wrap);
@@ -24031,8 +24113,8 @@ impl ModalApp {
                 self.surface = ModalSurface::Messages;
             }
             "toggle-wrap" => {
-                self.wrap = !self.wrap;
-                self.say(if self.wrap {
+                self.body_style.wrap = !self.body_style.wrap;
+                self.say(if self.body_style.wrap {
                     "wrap on — long lines fold at the pane edge".to_owned()
                 } else {
                     "wrap off — long lines scroll sideways".to_owned()
@@ -24281,29 +24363,29 @@ impl ModalApp {
             "close-buffer" => self.close_current_buffer(shell, false),
             "close-buffer-force" => self.close_current_buffer(shell, true),
             "jump-back" => {
-                if self.jump_at == 0 && self.jumps.is_empty() {
+                if self.jumplist.at == 0 && self.jumplist.points.is_empty() {
                     self.say("no jumps yet");
                 } else {
                     // Standing at the present, the present itself has to
                     // go on the list first, or there would be nothing to
                     // come forward to.
-                    if self.jump_at == self.jumps.len() {
+                    if self.jumplist.at == self.jumplist.points.len() {
                         let here = self.current_place(shell);
-                        self.jumps.push(here);
+                        self.jumplist.points.push(here);
                     }
-                    if self.jump_at == 0 {
+                    if self.jumplist.at == 0 {
                         self.say("no older jump");
                     } else {
-                        self.jump_at -= 1;
-                        let place = self.jumps[self.jump_at].clone();
+                        self.jumplist.at -= 1;
+                        let place = self.jumplist.points[self.jumplist.at].clone();
                         self.goto_place(shell, &place);
                     }
                 }
             }
             "jump-forward" => {
-                if self.jump_at + 1 < self.jumps.len() {
-                    self.jump_at += 1;
-                    let place = self.jumps[self.jump_at].clone();
+                if self.jumplist.at + 1 < self.jumplist.points.len() {
+                    self.jumplist.at += 1;
+                    let place = self.jumplist.points[self.jumplist.at].clone();
                     self.goto_place(shell, &place);
                 } else {
                     self.say("no newer jump");
@@ -24526,8 +24608,8 @@ impl ModalApp {
                 });
             }
             "toggle-inline-images" => {
-                self.images_shown = !self.images_shown;
-                self.say(if self.images_shown {
+                self.body_style.images = !self.body_style.images;
+                self.say(if self.body_style.images {
                     "inline images shown".to_owned()
                 } else {
                     "inline images hidden — the links stay".to_owned()
