@@ -92,31 +92,39 @@ fn ctrl_enter_no_longer_closes_the_buffer() {
     // and structure commands, and a buffer that eats it is standing on
     // the chords the table work needs.
     //
-    // Which is now literal rather than prospective. Asked for on
-    // 2026-08-04 ("research the Doom Emacs keybindings for quick header
-    // creation in the editor"), `C-RET` is `+org/insert-item-below` in
-    // the user's own Doom, so in a buffer it opens the new-headline
-    // prompt. The buffer is still there underneath — abandoning the
-    // prompt gives it back, with what you typed still in it — which is
-    // what this test was really asserting when the only alternative to
-    // "closed" was "unchanged".
+    // What it does instead has changed once. Asked for on 2026-08-04
+    // ("research the Doom Emacs keybindings for quick header creation
+    // in the editor"), it opened the new-headline prompt over the
+    // buffer. Asked for again on 2026-08-09 — "Org headline
+    // keybindings for headline in editor shouldn't trigger the
+    // 'capture' like input text. Instead should do the required action
+    // inline in the editor", with a screenshot of Doom putting `* ` on
+    // the next line and `-- INSERT --` along the bottom — it does that.
+    //
+    // Either way the buffer is still there, which is what this test
+    // guards. It is more true now than it was: there is no prompt to
+    // abandon, and what you typed never left the screen.
     let (_d, mut shell, mut app) = editing(InputMode::Doom);
     type_in(&mut app, &mut shell, "still here");
     app.on_key(&mut shell, "enter", true, false, None);
-    assert_eq!(
-        app.surface(),
-        ModalSurface::AddSibling,
-        "C-Enter did not run the structure command the keymap binds it to"
-    );
-    app.on_key(&mut shell, "escape", false, false, None);
     assert!(
         app.surface().is_editor(),
-        "the buffer did not come back: {:?}",
+        "C-Enter left the buffer: {:?}",
         app.surface()
+    );
+    assert_ne!(
+        app.surface(),
+        ModalSurface::AddSibling,
+        "C-Enter opened a field over the buffer instead of editing it"
     );
     assert!(
         app.body_buffer().contains("still here"),
         "the buffer lost what was typed into it: {:?}",
+        app.body_buffer()
+    );
+    assert!(
+        app.body_buffer().lines().any(|l| l.starts_with('*')),
+        "no headline was inserted into the buffer: {:?}",
         app.body_buffer()
     );
 }

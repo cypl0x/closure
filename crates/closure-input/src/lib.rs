@@ -163,6 +163,33 @@ const DOOM_KEYMAP: &[(&str, &str)] = &[
     ("C-S-RET", "add-heading-above"),
     ("C-M-RET", "add-child-heading"),
     ("C-M-S-RET", "add-todo-child-heading"),
+    // The arrow spelling of the `M-hjkl` layer above. evil-org gives
+    // Doom the letters; stock org gives everyone the arrows, and a
+    // hand that came from Emacs reaches for those.
+    ("M-<left>", "promote"),
+    ("M-<right>", "demote"),
+    ("M-<up>", "move-subtree-up"),
+    ("M-<down>", "move-subtree-down"),
+    // Org's shift layer, which is the half you use without thinking:
+    // `S-<left>`/`S-<right>` are org-shiftleft/right and walk the TODO
+    // keyword, `S-<up>`/`S-<down>` are org-shiftup/down and walk the
+    // priority. closure had the commands and no chord for the *forward*
+    // direction of either, so a keyword could only be cycled backwards.
+    //
+    // Doom and Emacs only. In Vim, Helix and Notion a shifted arrow
+    // extends a selection, and a chord that means two things is worse
+    // than a chord that means nothing.
+    ("S-<right>", "toggle-todo"),
+    ("S-<left>", "todo-back"),
+    ("S-<up>", "priority-up"),
+    ("S-<down>", "priority-down"),
+    // org distinguishes promoting a headline from promoting its
+    // subtree; closure's promote *is* the subtree one, and has been
+    // since "promote / demote => unexpected and almost unfixable
+    // creation of subtree". So both spellings reach it, for the reason
+    // `C-RET` and `M-RET` already do.
+    ("M-S-<left>", "promote"),
+    ("M-S-<right>", "demote"),
     ("g u", "undo-history"),
     ("TAB", "toggle-fold"),
     // …and the spelling that survives a buffer, for the modes with no
@@ -401,6 +428,26 @@ const EMACS_KEYMAP: &[(&str, &str)] = &[
     ("C-S-RET", "add-heading-above"),
     ("C-M-RET", "add-child-heading"),
     ("C-M-S-RET", "add-todo-child-heading"),
+    // Org's shift layer, which is the half you use without thinking:
+    // `S-<left>`/`S-<right>` are org-shiftleft/right and walk the TODO
+    // keyword, `S-<up>`/`S-<down>` are org-shiftup/down and walk the
+    // priority. closure had the commands and no chord for the *forward*
+    // direction of either, so a keyword could only be cycled backwards.
+    //
+    // Doom and Emacs only. In Vim, Helix and Notion a shifted arrow
+    // extends a selection, and a chord that means two things is worse
+    // than a chord that means nothing.
+    ("S-<right>", "toggle-todo"),
+    ("S-<left>", "todo-back"),
+    ("S-<up>", "priority-up"),
+    ("S-<down>", "priority-down"),
+    // org distinguishes promoting a headline from promoting its
+    // subtree; closure's promote *is* the subtree one, and has been
+    // since "promote / demote => unexpected and almost unfixable
+    // creation of subtree". So both spellings reach it, for the reason
+    // `C-RET` and `M-RET` already do.
+    ("M-S-<left>", "promote"),
+    ("M-S-<right>", "demote"),
     ("C-c u", "undo-history"),
     ("TAB", "toggle-fold"),
     // …and the spelling that survives a buffer, for the modes with no

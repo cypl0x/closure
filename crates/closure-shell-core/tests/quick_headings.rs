@@ -139,15 +139,37 @@ fn the_chords_work_in_the_file_buffer() {
     // "quick header creation *in the editor*": Doom binds these `:ni`
     // in `evil-org-mode-map`, so they are buffer chords first. The
     // outline is where they were wired.
+    //
+    // What they do there changed on 2026-08-09: "Org headline
+    // keybindings for headline in editor shouldn't trigger the
+    // 'capture' like input text. Instead should do the required action
+    // inline in the editor." So the assertion is no longer "a prompt
+    // opened" but "the buffer grew a headline".
     let (_d, mut shell, mut app) = app();
     app.run(&mut shell, "toggle-view");
     assert_eq!(app.surface(), ModalSurface::EditFile, "no file buffer");
+    let before = app
+        .body_buffer()
+        .lines()
+        .filter(|l| l.starts_with('*'))
+        .count();
     app.on_key(&mut shell, "enter", false, true, None); // M-RET
-    assert_eq!(
-        app.surface(),
-        ModalSurface::AddSibling,
-        "M-RET did nothing in the buffer (status: {})",
+    assert!(
+        app.surface().is_editor(),
+        "M-RET left the buffer (status: {})",
         app.status()
+    );
+    let after = app
+        .body_buffer()
+        .lines()
+        .filter(|l| l.starts_with('*'))
+        .count();
+    assert_eq!(
+        after,
+        before + 1,
+        "M-RET did not put a headline in the buffer (status: {}):\n{}",
+        app.status(),
+        app.body_buffer()
     );
 }
 
@@ -168,35 +190,45 @@ fn the_chip_says_which_direction_you_asked_for() {
 }
 
 #[test]
-fn the_title_prompt_keeps_the_buffer_behind_it() {
+fn the_buffer_never_leaves_the_screen() {
     // "everything is shifting and I always get confused": pressing a
-    // heading chord in the editor swapped the whole window back to the
-    // outline while you typed the title, and swapped it again when you
-    // accepted. The `:` line already learned this — a prompt opened
-    // over a buffer is a bar on that buffer, not a different screen.
+    // heading chord in the editor once swapped the whole window back to
+    // the outline while you typed the title, and swapped it again when
+    // you accepted. Then it opened a prompt over the buffer instead,
+    // which was better. Now (2026-08-09) it does not open anything —
+    // the headline goes into the buffer and you type the title there.
+    //
+    // Three answers to one complaint, and the complaint is what the
+    // test is about: nothing moves.
     let (_d, mut shell, mut app) = app();
     app.run(&mut shell, "toggle-view");
     assert_eq!(app.surface(), ModalSurface::EditFile);
     app.run(&mut shell, "add-heading");
-    assert_eq!(app.surface(), ModalSurface::AddSibling);
     assert_eq!(
-        app.surface_beneath(),
+        app.surface(),
         ModalSurface::EditFile,
-        "the buffer vanished while the title was being typed"
+        "the buffer was left behind"
     );
 }
 
 #[test]
-fn accepting_the_title_gives_the_buffer_back() {
+fn the_title_is_typed_where_the_headline_went() {
+    // The prompt used to take the title and hand the buffer back. Now
+    // the caret is already in the new headline, so the title is just
+    // text you type — which is the whole of what was asked for.
     let (_d, mut shell, mut app) = app();
     app.run(&mut shell, "toggle-view");
     app.run(&mut shell, "add-heading");
     type_in(&mut app, &mut shell, "Made here");
-    app.on_key(&mut shell, "enter", false, false, None);
     assert_eq!(
         app.surface(),
         ModalSurface::EditFile,
         "it dropped me back on the outline"
+    );
+    assert!(
+        app.body_buffer().contains("Made here"),
+        "the title went somewhere other than the buffer:\n{}",
+        app.body_buffer()
     );
 }
 

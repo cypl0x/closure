@@ -19106,7 +19106,94 @@ impl ModalApp {
     /// it; the outline has no line to type on, so the prompt is where
     /// the title is typed. Which flavour of heading it will become is
     /// remembered until it is accepted.
+    /// The level of the headline the caret is in, inside a body buffer.
+    ///
+    /// Nearest `*` line at or above the caret wins — a buffer holds a
+    /// note's body *and* its descendants, so the headline you are
+    /// "on" is often one of those rather than the note itself. With
+    /// none above the caret it is the note being edited, whose own
+    /// line is not in the buffer at all.
+    fn level_at_caret(&self, shell: &Shell) -> u8 {
+        let (line, _) = self.body.cursor_line_col();
+        let inside = self
+            .body
+            .text()
+            .split('\n')
+            .take(line + 1)
+            .filter(|l| l.starts_with('*'))
+            .last()
+            .map(|l| u8::try_from(l.bytes().take_while(|b| *b == b'*').count()).unwrap_or(1));
+        inside.unwrap_or_else(|| {
+            self.edit_target
+                .as_ref()
+                .and_then(|id| {
+                    self.rows_shared(shell)
+                        .iter()
+                        .find(|r| &r.id == id)
+                        .map(|r| r.level)
+                })
+                .unwrap_or(1)
+        })
+    }
+
+    /// Put a new headline into the buffer, where the caret is.
+    ///
+    /// "Org headline keybindings for headline in editor shouldn't
+    /// trigger the 'capture' like input text. Instead should do the
+    /// required action inline in the editor." Which is what org does:
+    /// the buffer is the input, and a headline is a line of text in
+    /// it. A field floating over a text editor is a second place to
+    /// type in a window that already had one.
+    ///
+    /// The line goes *after* the caret's line and the caret follows it,
+    /// sitting after the stars and the space with the title to type —
+    /// which is where Doom's `C-RET` leaves you.
+    fn insert_heading_inline(&mut self, shell: &Shell, cmd: &str) {
+        let want = NewHeading::for_command(cmd);
+        let level = self.level_at_caret(shell);
+        let level = if want.child {
+            level.saturating_add(1)
+        } else {
+            level.max(1)
+        };
+        let stars = "*".repeat(level as usize);
+        // The vault's own first keyword, not a literal `TODO`: a vault
+        // whose cycle starts at `NEXT` should get `NEXT`.
+        let keyword = if want.todo {
+            shell
+                .vault
+                .todo_keywords()
+                .first()
+                .map_or_else(|| "TODO ".to_owned(), |k| format!("{k} "))
+        } else {
+            String::new()
+        };
+        // Above or below the line the caret is on, and always on a line
+        // of its own: a headline sharing a line with body text is not a
+        // headline.
+        if want.above {
+            self.body.line_home();
+            self.body.insert_str(&format!("{stars} {keyword}\n"));
+            self.body.up();
+            self.body.line_end_motion();
+        } else {
+            self.body.line_end_motion();
+            self.body.insert_str(&format!("\n{stars} {keyword}"));
+        }
+        // Typing the title is the next thing you do, so INSERT is where
+        // this leaves you — which is what the screenshot on the item
+        // shows Doom doing, `-- INSERT --` along the bottom, from
+        // either mode.
+        self.body.to_insert();
+        self.say(format!("new level-{level} heading — type the title"));
+    }
+
     fn begin_new_heading(&mut self, shell: &Shell, cmd: &str) {
+        // In a buffer there is somewhere to type already.
+        if self.surface.is_editor() {
+            self.insert_heading_inline(shell, cmd);
+            return;
+        }
         // In a buffer the caret says which headline you mean; the
         // outline's `selected` is a different pane's idea of it, and
         // using it here made `M-RET` in the editor add a heading
