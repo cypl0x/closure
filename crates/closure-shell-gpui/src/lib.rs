@@ -5161,20 +5161,7 @@ impl GpuiView {
                 self.app.journal_rows(&self.shell),
                 "no commands recorded yet — the journal fills as you edit",
             )),
-            ModalSurface::Cron => pane.children(Self::text_rows(
-                co,
-                self.app.zoom(),
-                self.app
-                    .cron_rows(&self.shell)
-                    .into_iter()
-                    // The command first: it is what the row is about.
-                    // Then when it runs in words, and the expression
-                    // it came from — because the sentence is what you
-                    // check and the expression is what you edit.
-                    .map(|j| format!("{:20} {}   ({})", j.command, j.when, j.schedule))
-                    .collect(),
-                "no scheduled jobs — declare them in a `#+BEGIN_SRC cron` block",
-            )),
+            ModalSurface::Cron => pane.child(self.jobs_pane(co, cx)),
             ModalSurface::Settings | ModalSurface::Setting => pane.child(self.settings_pane(co)),
             ModalSurface::Sniffer => pane.child(self.sniffer_pane(co, cx)),
             ModalSurface::Conflicts => pane.child(self.conflicts_pane(co, cx)),
@@ -7483,6 +7470,119 @@ impl GpuiView {
                         )
                 })),
         )
+    }
+
+    /// The scheduled jobs, as a schedule rather than as a listing of
+    /// the block that declares them.
+    ///
+    /// The old pane printed the command, the sentence and the
+    /// expression — all three of which are in the file you wrote. What
+    /// a scheduler view is *for* is the two things the file cannot
+    /// tell you: when this next comes round, and whether it has run.
+    /// Plus the one failure a file hides completely — a command name
+    /// nothing answers to, which is valid cron firing forever into
+    /// nothing.
+    fn jobs_pane(&self, co: Colors, cx: &Context<Self>) -> gpui::Div {
+        let rows = self.app.cron_rows(&self.shell);
+        let cursor = self.app.pane_cursor();
+        if rows.is_empty() {
+            return div()
+                .debug_selector(|| "jobs-empty".to_owned())
+                .p_4()
+                .text_color(rgb(co.muted))
+                .child("no scheduled jobs — declare them in a `#+BEGIN_SRC cron` block");
+        }
+        // The first three columns are what the pane is for and hold
+        // their width; the sentence and the expression give theirs up
+        // when the pane is narrow, in that order. Same rule as the
+        // window's own reflow: the thing you are reading stays, the
+        // thing you can infer goes.
+        let cell = |w: f32, colour: u32, text: String| {
+            div()
+                .w(px(scaled_text_px(w, self.app.zoom())))
+                .flex_none()
+                .overflow_hidden()
+                .whitespace_nowrap()
+                .text_color(rgb(colour))
+                .child(text)
+        };
+        let soft = |w: f32, colour: u32, text: String| {
+            div()
+                .w(px(scaled_text_px(w, self.app.zoom())))
+                .flex_shrink()
+                .min_w(px(0.0))
+                .overflow_hidden()
+                .whitespace_nowrap()
+                .text_color(rgb(colour))
+                .child(text)
+        };
+        div()
+            .debug_selector(|| "jobs-pane".to_owned())
+            .flex()
+            .flex_col()
+            .child(
+                // A header, because five columns without one is a grid
+                // of unexplained strings.
+                div()
+                    .flex()
+                    .flex_row()
+                    .gap_3()
+                    .px_3()
+                    .py_1()
+                    .border_b_1()
+                    .border_color(rgb(co.border))
+                    .text_size(self.sz(10.0))
+                    .text_color(rgb(co.muted))
+                    .child(cell(150.0, co.muted, "next".to_owned()))
+                    .child(cell(90.0, co.muted, "last".to_owned()))
+                    .child(cell(220.0, co.muted, "command".to_owned()))
+                    .child(soft(240.0, co.muted, "when".to_owned()))
+                    .child(soft(120.0, co.muted, "cron".to_owned())),
+            )
+            .children(rows.into_iter().enumerate().map(|(i, job)| {
+                let hot = i == cursor;
+                // A job that cannot run is the one thing here worth a
+                // colour of its own.
+                let name_colour = if job.known { co.fg } else { co.error };
+                div()
+                    .id(gpui::SharedString::from(format!("job-{i}")))
+                    .debug_selector(move || format!("job-row-{i}"))
+                    .flex()
+                    .flex_row()
+                    .gap_3()
+                    .px_3()
+                    .py_1()
+                    .text_size(self.sz(12.0))
+                    .bg(rgb(if hot { co.selection } else { co.bg }))
+                    .hover(move |st| st.bg(rgb(if hot { co.selection } else { co.hover })))
+                    .cursor_pointer()
+                    .on_mouse_down(
+                        MouseButton::Left,
+                        cx.listener(move |this: &mut Self, _ev, _w, cx| {
+                            this.app.select_pane_row(i);
+                            cx.notify();
+                        }),
+                    )
+                    .child(cell(
+                        150.0,
+                        // The next run is the live fact on this screen,
+                        // so it is the one in the accent colour.
+                        if job.next.is_some() {
+                            co.accent
+                        } else {
+                            co.muted
+                        },
+                        job.next.clone().unwrap_or_else(|| "never".to_owned()),
+                    ))
+                    .child(cell(
+                        90.0,
+                        co.muted,
+                        job.last.clone().unwrap_or_else(|| "\u{2014}".to_owned()),
+                    ))
+                    .child(cell(220.0, name_colour, job.command.clone()))
+                    .child(soft(240.0, co.fg, job.when.clone()))
+                    .child(soft(120.0, co.muted, job.schedule))
+            }))
     }
 
     /// The selected flow, taken apart: "inspect" from the snitcher's

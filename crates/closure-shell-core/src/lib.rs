@@ -2391,6 +2391,14 @@ pub fn org_stamp(y: i64, m: u32, d: u32, tail: &str) -> String {
     }
 }
 
+/// Seconds since the epoch, from the system clock.
+#[must_use]
+pub fn now_epoch_secs() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs())
+}
+
 /// Now, from the system clock, as `YYYY-MM-DD HH:MM` (UTC) — what a
 /// shell without an injected clock stamps a `CLOCK:` entry with.
 #[must_use]
@@ -13198,6 +13206,14 @@ pub struct ModalApp {
     /// asking, so "does this job match now" fires it thousands of
     /// times. The day is in the key so tomorrow's 09:00 is a different
     /// minute from today's.
+    /// When each job last fired, keyed by the job — its schedule and
+    /// its command together, not the command alone.
+    ///
+    /// Two lines in a block are two jobs even when they say the same
+    /// words: keyed by command, a `*/15 next-file` that had just run
+    /// made an `0 9 31 2 * next-file` that can never run report a
+    /// last-run time, and the once-a-minute guard let only one of two
+    /// jobs due together fire.
     cron_fired: std::collections::HashMap<String, (u8, u8, u8)>,
     /// The left rail collapsed to its icons, once something has said.
     ///
@@ -13739,6 +13755,58 @@ pub struct LinkCompletion {
     pub label: String,
 }
 
+/// What identifies a job: its schedule and its command together.
+///
+/// Written once so the tick that records a firing and the pane that
+/// reads it cannot spell it differently — which is the shape of the
+/// bug this key was introduced to fix.
+fn job_key(schedule: &str, command: &str) -> String {
+    format!("{schedule}\t{command}")
+}
+
+/// The next second at or after `from` at which `spec` fires.
+///
+/// Steps a minute at a time and asks the same `matches_time` the
+/// scheduler asks, so the answer cannot disagree with what will
+/// actually happen — a next-run column computed by different
+/// arithmetic from the firing is a next-run column that is eventually
+/// a lie.
+///
+/// Bounded at 366 days: a spec that has not come round in a year is
+/// one that never will (`0 9 31 2 *`), and the bound is what turns
+/// "never" from a hang into a `None`.
+#[must_use]
+pub fn next_fire(spec: &closure_cron::CronSpec, from: u64) -> Option<u64> {
+    /// Minutes in 366 days.
+    const HORIZON: u64 = 366 * 24 * 60;
+    // From the start of the next minute: a job due this minute has
+    // either just run or is about to, and either way the *next* one is
+    // the question the pane is asking.
+    let start = from / 60 + 1;
+    (0..HORIZON).find_map(|i| {
+        let secs = (start + i) * 60;
+        let (minute, hour, day, month, weekday) = civil_parts(secs);
+        closure_cron::matches_time(spec, minute, hour, day, month, weekday).then_some(secs)
+    })
+}
+
+/// `14:30`, `tomorrow 09:00`, or `2026-09-01 09:00` when it is further
+/// off than that — the shortest thing that is still unambiguous.
+#[must_use]
+fn when_next(now: u64, at: u64) -> String {
+    let (minute, hour, ..) = civil_parts(at);
+    let clock = format!("{hour:02}:{minute:02}");
+    let today = now / 86_400;
+    match at / 86_400 - today {
+        0 => clock,
+        1 => format!("tomorrow {clock}"),
+        _ => {
+            let (y, m, d) = civil_from_days(i64::try_from(at / 86_400).unwrap_or(0));
+            format!("{y:04}-{m:02}-{d:02} {clock}")
+        }
+    }
+}
+
 /// Every scheduled job declared in the vault's `#+BEGIN_SRC cron`
 /// blocks.
 ///
@@ -13748,6 +13816,9 @@ pub struct LinkCompletion {
 /// spec, the parse failed, and the `.ok()` on the end dropped every job
 /// in the file. The Jobs pane was empty in any vault with a headline in
 /// it, which is all of them.
+///
+/// A malformed block is skipped rather than fatal: a typo in one job
+/// must not make the pane unopenable.
 #[must_use]
 pub fn job_rows(vault: &closure_store::Vault) -> Vec<JobRow> {
     // The `#+BEGIN_SRC cron` blocks, not the whole file. This read
@@ -13778,6 +13849,16 @@ pub fn job_rows(vault: &closure_store::Vault) -> Vec<JobRow> {
         .map(|job| JobRow {
             schedule: closure_cron::expression(&job.spec),
             when: closure_cron::describe(&job.spec),
+            // Whether the name resolves is asked once, here, against
+            // the same list the palette shows.
+            known: command_exists(
+                job.command
+                    .split_whitespace()
+                    .next()
+                    .unwrap_or(&job.command),
+            ),
+            next: None,
+            last: None,
             command: job.command,
         })
         .collect()
@@ -13797,6 +13878,21 @@ pub struct JobRow {
     pub when: String,
     /// The registry command it runs.
     pub command: String,
+    /// When it next comes round — `14:30`, `tomorrow 09:00`, or a date
+    /// when it is further off. `None` for a spec that can never match,
+    /// like the 31st of February: a confident time for a job that will
+    /// never run is worse than an admission.
+    pub next: Option<String>,
+    /// When it last ran *this session*, if it has. The vault does not
+    /// record job history, so this is what the running app knows and
+    /// nothing more — which is why it says nothing rather than
+    /// "never".
+    pub last: Option<String>,
+    /// Whether anything answers to [`Self::command`].
+    ///
+    /// The failure a file cannot show you: valid cron, a typo for a
+    /// name, and a job that fires forever into nothing.
+    pub known: bool,
 }
 
 /// One candidate refile target ([`ModalApp::refile_rows`]).
@@ -15065,6 +15161,9 @@ impl ModalApp {
             ModalSurface::Llm => self.on_llm_key(key, ctrl, alt, text),
             // The read-only lists: nothing to type into, so they all
             // walk the same way and differ only in how long they are.
+            // The cron pane's Enter runs the job under the cursor; the
+            // journal's rows are history and there is nothing to run.
+            ModalSurface::Cron if key == "enter" => self.run_selected_job(shell),
             ModalSurface::Journal | ModalSurface::Cron => self.on_list_pane_key(shell, key),
             ModalSurface::Settings => self.on_settings_key(shell, key),
             ModalSurface::Setting => match key {
@@ -15390,7 +15489,30 @@ impl ModalApp {
     /// job must not make the pane unopenable.
     #[must_use]
     pub fn cron_rows(&self, shell: &Shell) -> Vec<JobRow> {
+        self.cron_rows_at(shell, now_epoch_secs())
+    }
+
+    /// [`Self::cron_rows`] as of a given instant, so the next-run
+    /// column can be asserted rather than watched.
+    #[must_use]
+    pub fn cron_rows_at(&self, shell: &Shell, now: u64) -> Vec<JobRow> {
         job_rows(&shell.vault)
+            .into_iter()
+            .map(|mut row| {
+                // Re-parsed from the expression this row was built
+                // from, so the time shown and the time fired come from
+                // one spec.
+                if let Ok(spec) = closure_cron::parse(&format!("{} {}", row.schedule, row.command))
+                {
+                    row.next = next_fire(&spec, now).map(|at| when_next(now, at));
+                }
+                row.last = self
+                    .cron_fired
+                    .get(&job_key(&row.schedule, &row.command))
+                    .map(|(_, h, m)| format!("{h:02}:{m:02}"));
+                row
+            })
+            .collect()
     }
 
     /// Collaboration state, created on first use.
@@ -18755,6 +18877,12 @@ impl ModalApp {
     }
 
     /// Where the read-only panes are looking.
+    /// Put the pane's cursor on row `i` — what a click on a row does.
+    pub const fn select_pane_row(&mut self, i: usize) {
+        self.pane_cursor = i;
+    }
+
+    /// Which row of the current pane the cursor is on.
     #[must_use]
     pub const fn pane_cursor(&self) -> usize {
         self.pane_cursor
@@ -18960,6 +19088,26 @@ impl ModalApp {
         self.on_pane_key(key, len);
     }
 
+    /// Run the job under the cursor, now, without waiting for its
+    /// minute.
+    ///
+    /// The thing you want from a scheduler view the moment you have
+    /// written a job: does it do what I think it does. Waiting a
+    /// quarter of an hour to find out is how a job stays wrong.
+    fn run_selected_job(&mut self, shell: &mut Shell) {
+        let Some(row) = self.cron_rows(shell).into_iter().nth(self.pane_cursor) else {
+            self.say("no job here to run");
+            return;
+        };
+        if !row.known {
+            self.say(format!("`{}` is not a command", row.command));
+            return;
+        }
+        let command = row.command;
+        self.run_command(shell, &command);
+        self.say(format!("ran {command}"));
+    }
+
     /// Run whatever is due at this wall-clock minute, once.
     ///
     /// Jobs were parsed, listed and never run: `closure-cron`'s
@@ -18980,22 +19128,22 @@ impl ModalApp {
         month: u8,
         dow: u8,
     ) -> Vec<String> {
-        let due: Vec<String> = job_rows(&shell.vault)
+        let due: Vec<(String, String)> = job_rows(&shell.vault)
             .into_iter()
             .filter_map(|row| {
                 let spec =
                     closure_cron::parse(&format!("{} {}", row.schedule, row.command)).ok()?;
                 closure_cron::matches_time(&spec, minute, hour, dom, month, dow)
-                    .then_some(row.command)
+                    .then_some((job_key(&row.schedule, &row.command), row.command))
             })
             .collect();
         let now = (dom, hour, minute);
         let mut ran = Vec::new();
-        for command in due {
-            if self.cron_fired.get(&command) == Some(&now) {
+        for (key, command) in due {
+            if self.cron_fired.get(&key) == Some(&now) {
                 continue;
             }
-            self.cron_fired.insert(command.clone(), now);
+            self.cron_fired.insert(key, now);
             self.run_command(shell, &command);
             ran.push(command);
         }

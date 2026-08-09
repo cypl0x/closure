@@ -1816,6 +1816,12 @@ fn cron_opens_and_lists_jobs() {
         schedule: "0 9 * * *".to_owned(),
         when: "every day at 09:00".to_owned(),
         command: "capture Daily".to_owned(),
+        // The scheduler view's own three, added 2026-08-09 for
+        // "visual UI for scheduled jobs": when it next comes round,
+        // when it last ran, and whether anything answers to the name.
+        next: Some("tomorrow 09:00".to_owned()),
+        last: None,
+        known: true,
     }]);
     app.handle_stroke("g");
     app.handle_stroke("k");
