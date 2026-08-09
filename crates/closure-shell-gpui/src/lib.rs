@@ -225,6 +225,56 @@ pub fn vulkan_icd_dirs() -> Vec<std::path::PathBuf> {
     .collect()
 }
 
+/// What to do when the window will not open.
+///
+/// A surface that cannot be created is the display saying no, not the
+/// driver: `PlatformNotSupported` is what a headless X server without
+/// DRI3 answers, and what the flatpak hit on a machine whose runtime
+/// ships six perfectly good ICDs. Falling back to the software
+/// rasteriser is the same move the preflight makes when it finds no
+/// driver at all — it simply could not know in advance that this one
+/// would fail to present.
+#[cfg(feature = "gpui")]
+fn report_window_failure(e: &impl std::fmt::Display) {
+    if std::env::var_os("VK_ICD_FILENAMES").is_none()
+        && let Some(icd) = software_icd_in(&vulkan_icd_dirs())
+    {
+        eprintln!(
+            "closure: no usable surface ({e}) — starting again on the \
+             software rasteriser ({})",
+            icd.display()
+        );
+        let _ = rerun_on_software_rasteriser(&icd);
+        return;
+    }
+    eprintln!("closure: opening the gpui window failed: {e}");
+}
+
+/// The software rasteriser among the ICDs actually installed, if any.
+///
+/// A driver existing and a surface working are different questions,
+/// and only the first can be asked in advance. Inside a flatpak the
+/// runtime ships six ICDs, so the preflight says "there is a driver"
+/// and the window then fails to present because the display has no
+/// DRI3 — which is what a headless X server is. This is the answer to
+/// the second question, looked up after the failure rather than
+/// before it.
+///
+/// Mesa spells lavapipe both ways depending on the packaging.
+#[must_use]
+pub fn software_icd_in(dirs: &[std::path::PathBuf]) -> Option<std::path::PathBuf> {
+    dirs.iter()
+        .filter_map(|dir| std::fs::read_dir(dir).ok())
+        .flatten()
+        .flatten()
+        .map(|e| e.path())
+        .find(|p| {
+            p.file_name()
+                .and_then(|n| n.to_str())
+                .is_some_and(|n| n.contains("lvp") || n.contains("lavapipe"))
+        })
+}
+
 /// Where pairing listens, and which address its ticket hands out.
 ///
 /// `sync_bind` is the socket to open, `sync_advertise` the address a
@@ -2064,7 +2114,7 @@ pub fn run(vault_path: &Path) -> Result<(), String> {
             // A failed open used to be dropped on the floor, leaving a
             // running process with no window and no explanation.
             Err(e) => {
-                eprintln!("closure: opening the gpui window failed: {e}");
+                report_window_failure(&e);
                 cx.quit();
             }
         }
