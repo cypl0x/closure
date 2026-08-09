@@ -3877,6 +3877,9 @@ impl GpuiView {
             .flex_row()
             .items_center()
             .gap(px(1.0))
+            .flex_1()
+            .min_w(px(0.0))
+            .overflow_hidden()
             .child(
                 div()
                     .flex_none()
@@ -3997,8 +4000,16 @@ impl GpuiView {
                 .flex_row()
                 .items_center()
                 .gap_2()
+                // Bounded, for the reason the prompt row says in its
+                // own comment: `flex_1` on the field resolves against
+                // nothing unless the row it sits in has a width, and
+                // then the field is exactly as wide as the text — so
+                // the accept/cancel pair began where the text ended
+                // and slid right with every character. "It moves :)".
+                .w_full()
+                .min_w(px(0.0))
+                .overflow_hidden()
                 .child(self.capture_bar(co, self.app.zoom(), cx))
-                .children(self.history_hint(co))
         } else if let Some(prompt) = self.prompt_row(co, cx) {
             prompt
         } else {
@@ -4102,6 +4113,19 @@ impl GpuiView {
                     self.app.capture_cursor(),
                 )),
         ];
+        // "M-p 3 back", between the text and the buttons rather than
+        // after them: it belongs with the decorations, and it is the
+        // one thing here that may be dropped when the window is narrow.
+        out.push(
+            div()
+                .flex()
+                .flex_row()
+                .items_center()
+                .flex_shrink()
+                .min_w(px(0.0))
+                .overflow_hidden()
+                .children(self.history_hint(co)),
+        );
         // One group that never shrinks, for the same reason the prompt
         // row has one: at a narrow window the crumbs pushed these past
         // the right edge and cancel went off screen.
