@@ -37,6 +37,12 @@ fn detail_with(n: usize) -> Detail {
         title: "Top".to_owned(),
         body: "the body itself\n".to_owned(),
         children,
+        // How tall the subtree is, stated rather than measured from
+        // `children`: since 2026-08-09 the shell hands over only as
+        // much of a subtree as a preview can draw, so `children` is no
+        // longer the whole of it and counting it would report nothing
+        // hidden. One body line plus `n` under it.
+        subtree_lines: n + 1,
         ..Detail::default()
     }
 }

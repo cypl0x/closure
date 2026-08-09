@@ -811,6 +811,37 @@ impl Vault {
             .ok_or_else(|| VaultError::UnknownId(id.to_string()))
     }
 
+    /// The first `max_lines` lines of [`Self::children_source`], drawers
+    /// already stripped, without copying the rest of the subtree
+    /// ([`closure_org::children_source_preview`]).
+    ///
+    /// What a detail preview wants: it draws a few hundred lines and
+    /// says how many it is not drawing.
+    ///
+    /// # Errors
+    ///
+    /// [`VaultError::UnknownId`] when nothing has that id.
+    pub fn children_source_preview(
+        &self,
+        id: &BlockId,
+        max_lines: usize,
+    ) -> Result<String, VaultError> {
+        let path = self
+            .by_id
+            .get(id)
+            .cloned()
+            .ok_or_else(|| VaultError::UnknownId(id.to_string()))?;
+        let doc = self
+            .documents
+            .get(&path)
+            .ok_or_else(|| VaultError::UnknownId(id.to_string()))?;
+        let outline_path = doc
+            .path_of(id)
+            .ok_or_else(|| VaultError::UnknownId(id.to_string()))?;
+        closure_org::children_source_preview(doc.org(), &outline_path, max_lines)
+            .ok_or_else(|| VaultError::UnknownId(id.to_string()))
+    }
+
     /// Replace everything under `id` — body and children — with what a
     /// body editor showing the whole subtree now holds (I8).
     ///

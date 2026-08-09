@@ -1042,6 +1042,13 @@ pub struct Detail {
     pub level: u8,
     /// Non-empty lines of body, children included.
     pub lines: usize,
+    /// Every line under this headline, blank ones included — what a
+    /// preview needs to say how much it is not showing.
+    ///
+    /// Beside [`Self::lines`] rather than derived from
+    /// [`Self::children`], because that string is now capped to what
+    /// the preview will draw.
+    pub subtree_lines: usize,
     /// Words of body, children included.
     pub words: usize,
     /// The day this note was created, `YYYY-MM-DD`, from its own id.
@@ -1061,13 +1068,22 @@ impl Detail {
     /// the modal one each assembled a `Detail` by hand, so a field
     /// added for one of them was a field the other did not have.
     #[must_use]
-    pub fn of(h: &closure_core::DocHeadline, path: &std::path::Path, children: String) -> Self {
+    pub fn of(
+        h: &closure_core::DocHeadline,
+        path: &std::path::Path,
+        children: String,
+        counts: (usize, usize, usize),
+    ) -> Self {
         let body = closure_org::unescape_body(h.body_text());
-        // Counted from what the pane actually shows — the body and
-        // everything under it — rather than from the body alone, which
-        // would say "0 lines" for a headline whose content is its
-        // children, and most of them are.
-        let counted = format!("{body}\n{children}");
+        // Counted from what the pane shows — the body and everything
+        // under it — rather than from the body alone, which would say
+        // "0 lines" for a headline whose content is its children, and
+        // most of them are.
+        //
+        // Handed in rather than counted here: `children` is capped to
+        // what the preview will draw, and counting the whole subtree
+        // per selection is what made holding `j` stutter.
+        let (counted_lines, counted_words, subtree_lines) = counts;
         let id = h.id().to_string();
         Self {
             title: h.title().to_owned(),
@@ -1077,8 +1093,9 @@ impl Detail {
             scheduled: h.scheduled().map(ToOwned::to_owned),
             deadline: h.deadline().map(ToOwned::to_owned),
             properties: h.properties().to_vec(),
-            lines: counted.lines().filter(|l| !l.trim().is_empty()).count(),
-            words: counted.split_whitespace().count(),
+            lines: counted_lines,
+            words: counted_words,
+            subtree_lines,
             level: h.level(),
             created: ulid_date(&id),
             modified: std::fs::metadata(path)
@@ -3205,6 +3222,111 @@ fn capture_candidate(line: &str) -> Option<String> {
     // said `proto=tcp` and the pane showed `protocol —`, because this
     // dropped it.
     Some(field("proto=").map_or_else(|| host.to_owned(), |proto| format!("{host} {proto}")))
+}
+
+/// How much of a headline's subtree a detail preview ever shows.
+///
+/// Every shell that draws one caps it — gpui at `PREVIEW_LINES` — so
+/// materialising the whole subtree to hand over a few hundred lines
+/// was work nobody asked for. A little above the largest shell's cap,
+/// so the "and N more" arithmetic still has something to be about.
+const PREVIEW_CAP: usize = 256;
+
+/// Every headline's totals for itself *and everything under it*:
+/// non-empty lines, words, and lines including blank ones.
+///
+/// The detail pane wants these for whichever headline you are on, and
+/// getting them by reading that headline's subtree costs the subtree —
+/// per keystroke, on the thread that draws the window. Holding `j`
+/// through a chapter paid for the chapter at every step, which is the
+/// "freezes for some milliseconds, especially with headers that have
+/// quite a tree attached" in the report.
+///
+/// One pass over each document answers it for every headline at once.
+/// Headlines arrive in document order carrying their level, so a
+/// subtree is a contiguous run — from a headline to the next one at
+/// its level or above — and a prefix sum turns "sum this run" into a
+/// subtraction.
+#[derive(Debug, Default)]
+struct SubtreeCounts {
+    /// The vault revision these were computed against.
+    revision: u64,
+    /// id → (non-empty lines, words, all lines).
+    by_id: std::collections::HashMap<String, (usize, usize, usize)>,
+}
+
+/// Count one body the way the detail pane counts it.
+fn count_body(text: &str) -> (usize, usize, usize) {
+    (
+        text.lines().filter(|l| !l.trim().is_empty()).count(),
+        text.split_whitespace().count(),
+        text.lines().count(),
+    )
+}
+
+/// One document's subtree totals, into `by_id`.
+///
+/// Headlines arrive in document order carrying their level, so a
+/// subtree is a contiguous run — from a headline to the next one at
+/// its level or above — and a prefix sum turns "sum this run" into a
+/// subtraction. One pass answers every headline in the file at once,
+/// which is why landing on the first one pays for all of them and
+/// landing on the rest pays for none.
+fn document_counts(
+    doc: &closure_core::Document,
+    by_id: &mut std::collections::HashMap<String, (usize, usize, usize)>,
+) {
+    let heads: Vec<&closure_core::DocHeadline> = doc.all_headlines().collect();
+    // Each headline's own body, then a running total so any run of
+    // them is one subtraction.
+    let mut prefix = Vec::with_capacity(heads.len() + 1);
+    prefix.push((0usize, 0usize, 0usize));
+    for h in &heads {
+        // Counted on the raw body rather than the unescaped one: all
+        // unescaping does is drop a leading `,` from a line, which
+        // changes neither how many lines there are nor how many
+        // whitespace-separated words. A copy per headline is exactly
+        // what this pass exists to avoid.
+        let own = count_body(h.body_text());
+        // A descendant shows up in the pane as its own header line
+        // above its body, and the pane counted that line and its
+        // title along with everything else. So does this.
+        let head_words = 1 + h.title().split_whitespace().count();
+        let last = *prefix.last().unwrap_or(&(0, 0, 0));
+        prefix.push((
+            last.0 + own.0 + 1,
+            last.1 + own.1 + head_words,
+            last.2 + own.2 + 1,
+        ));
+    }
+    // Where each subtree ends: the next headline at this level or
+    // above. A monotonic stack answers all of them in one sweep.
+    let mut end = vec![heads.len(); heads.len()];
+    let mut stack: Vec<usize> = Vec::new();
+    for (i, h) in heads.iter().enumerate() {
+        while let Some(&top) = stack.last() {
+            if heads[top].level() >= h.level() {
+                end[top] = i;
+                stack.pop();
+            } else {
+                break;
+            }
+        }
+        stack.push(i);
+    }
+    for (i, h) in heads.iter().enumerate() {
+        // The run [i, end[i]) is this headline and its descendants;
+        // the pane counts the descendants beside the body, so both
+        // are in here.
+        // ...minus its own header line, which the pane does not
+        // show under itself.
+        let (a, b) = (prefix[i], prefix[end[i]]);
+        let head_words = 1 + h.title().split_whitespace().count();
+        by_id.insert(
+            h.id().to_string(),
+            (b.0 - a.0 - 1, b.1 - a.1 - head_words, b.2 - a.2 - 1),
+        );
+    }
 }
 
 /// Headless state for the interactive sniffer surface (V7a).
@@ -8682,7 +8804,10 @@ impl App {
         let row = rows.get(self.selected)?;
         let bid = closure_core::BlockId::from_existing(&row.id);
         let (h, path) = shell.vault.find_by_id(&bid)?;
-        Some(Detail::of(h, path, String::new()))
+        // The launcher's own pane shows the headline, not its subtree,
+        // so it counts the body it has rather than paying for a walk.
+        let own = count_body(&closure_org::unescape_body(h.body_text()));
+        Some(Detail::of(h, path, String::new(), own))
     }
 
     /// The declarative [`Node`] tree describing the current screen (V1).
@@ -13025,6 +13150,10 @@ struct CompletionSession {
 /// filled in during a `&self` render.
 #[derive(Debug, Default)]
 struct Memos {
+    /// Every headline's subtree totals, computed once per revision —
+    /// see [`subtree_counts`]. Without it the detail pane reads the
+    /// selected headline's whole subtree on every keystroke.
+    counts: std::cell::RefCell<SubtreeCounts>,
     /// The vault's git state, memoised against the revision it was
     /// read at.
     ///
@@ -15203,7 +15332,9 @@ impl ModalApp {
                 return m.detail.clone();
             }
         }
-        let detail = Self::derive_detail(shell, id.as_deref()).map(std::sync::Arc::new);
+        let detail = self
+            .derive_detail(shell, id.as_deref())
+            .map(std::sync::Arc::new);
         self.memos
             .detail_recomputes
             .set(self.memos.detail_recomputes.get() + 1);
@@ -15223,15 +15354,51 @@ impl ModalApp {
     }
 
     /// The uncached derivation behind [`Self::detail_shared`].
-    fn derive_detail(shell: &Shell, id: Option<&str>) -> Option<Detail> {
-        let bid = closure_core::BlockId::from_existing(id?);
+    /// This headline's subtree totals, from the per-revision pass.
+    fn counts_for(&self, shell: &Shell, id: &str, path: &std::path::Path) -> (usize, usize, usize) {
+        let revision = shell.vault.revision();
+        {
+            let memo = self.memos.counts.borrow();
+            if memo.revision == revision
+                && let Some(found) = memo.by_id.get(id)
+            {
+                return *found;
+            }
+        }
+        let mut memo = self.memos.counts.borrow_mut();
+        if memo.revision != revision {
+            *memo = SubtreeCounts {
+                revision,
+                by_id: std::collections::HashMap::new(),
+            };
+        }
+        // One file, not the whole vault. Counting everything would put
+        // the vault's whole size into the first keystroke after every
+        // edit, which is the same freeze wearing a different hat.
+        if let Some(doc) = shell.vault.document(path) {
+            document_counts(doc, &mut memo.by_id);
+        }
+        memo.by_id.get(id).copied().unwrap_or_default()
+    }
+
+    fn derive_detail(&self, shell: &Shell, id: Option<&str>) -> Option<Detail> {
+        let id = id?;
+        let bid = closure_core::BlockId::from_existing(id);
         let (h, path) = shell.vault.find_by_id(&bid)?;
+        // Only as much of the subtree as anything actually shows. The
+        // preview is capped at [`PREVIEW_CAP`] lines by every shell
+        // that draws it, and the counts — the one thing that needed
+        // all of it — come from the per-revision pass instead.
         let children = shell
             .vault
-            .children_source(&bid)
-            .map(|src| closure_org::strip_property_drawers(&src))
+            .children_source_preview(&bid, PREVIEW_CAP)
             .unwrap_or_default();
-        Some(Detail::of(h, path, children))
+        Some(Detail::of(
+            h,
+            path,
+            children,
+            self.counts_for(shell, id, path),
+        ))
     }
 
     /// Feed one key. `key` is the gpui/egui-style name; `ctrl`/`alt`

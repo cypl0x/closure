@@ -9704,6 +9704,48 @@ pub fn children_source(doc: &OrgDoc, path: &[usize]) -> Option<String> {
     Some(doc.source()[start..end].to_owned())
 }
 
+/// The first `max_lines` lines of [`children_source`], with property
+/// drawers already gone.
+///
+/// Same answer as `strip_property_drawers(&children_source(..))` cut to
+/// `max_lines`, without building the two whole strings on the way. A
+/// preview draws a few hundred lines of a subtree; a chapter's subtree
+/// is megabytes, and copying it per keystroke is what made holding `j`
+/// stutter on headlines with a big tree under them.
+///
+/// For the editor, which must be able to write back what it shows, use
+/// [`children_source`]: what this returns is missing both the drawers
+/// and the tail.
+#[must_use]
+pub fn children_source_preview(doc: &OrgDoc, path: &[usize], max_lines: usize) -> Option<String> {
+    let target = navigate_headline(doc, path)?;
+    let Some(first) = target.children.first() else {
+        return Some(String::new());
+    };
+    let src = &doc.source()[first.header_span.start..subtree_end(target)];
+    let mut out = String::new();
+    let mut kept = 0usize;
+    let mut in_drawer = false;
+    for line in src.lines() {
+        if kept == max_lines {
+            break;
+        }
+        let trimmed = line.trim();
+        if in_drawer {
+            in_drawer = !trimmed.eq_ignore_ascii_case(":END:");
+            continue;
+        }
+        if trimmed.eq_ignore_ascii_case(":PROPERTIES:") {
+            in_drawer = true;
+            continue;
+        }
+        out.push_str(line);
+        out.push('\n');
+        kept += 1;
+    }
+    out.into()
+}
+
 /// Replace everything under the headline at `path` — its body *and*
 /// its children — with `body` followed by `children_src`.
 ///

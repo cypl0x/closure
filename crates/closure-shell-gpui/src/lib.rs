@@ -1078,9 +1078,13 @@ pub fn preview_text(d: &Detail) -> String {
 /// there, so the pane says what it is holding back.
 #[must_use]
 pub fn preview_hidden(d: &Detail) -> usize {
-    let body = d.body.lines().count();
-    let total = body + d.children.lines().count();
-    total.saturating_sub(preview_text(d).lines().count())
+    // `children` is itself capped now — it stops at a few hundred lines
+    // so that landing on a headline does not cost its whole subtree —
+    // so counting it would say the preview is hiding nothing. The
+    // subtree's real height comes from the counting pass instead.
+    // The pass counts the body and everything under it together.
+    d.subtree_lines
+        .saturating_sub(preview_text(d).lines().count())
 }
 
 /// How many columns of body text a pane `width` pixels wide can show.
@@ -4421,7 +4425,7 @@ impl GpuiView {
     // `outline_cells` carries the allow.
     #[allow(clippy::too_many_lines)]
     fn context_line(&self) -> String {
-        let n = self.app.rows(&self.shell).len();
+        let n = self.app.rows_shared(&self.shell).len();
         match self.app.surface() {
             ModalSurface::Browse => format!("{n} headline(s)"),
             ModalSurface::Settings | ModalSurface::Setting => self.settings_context(),
