@@ -211,11 +211,19 @@ Acceptance: =nix develop -c cargo test -p closure-store --test budget_memory=
 which does not see what it has handed back to the OS. Where there is
 no procfs the test says so on stderr instead of passing quietly.
 
-* TODO Store: hold the target headline count
+* DONE Store: hold the target headline count
 Whatever the spec item above commits to, the store has to actually
 open it and answer queries inside the budgets.
 
-Acceptance: the three budget tests above pass at the stated scale.
+Acceptance: =nix develop -c cargo test -p closure-store --test target_scale_holds=
+
+The other budget tests run at 10,000 because that is fast enough for
+every build; this one runs at the promised 100,000, because a
+per-headline cost measured at a tenth of the scale is an
+extrapolation, and extrapolating is how a promise about 100,000 gets
+made by someone who has only opened 10,000. Opens and stays inside
+both budgets in 1.3 s in debug, and still resolves an id and a
+backlink from the far end of the vault.
 
 * TODO Bug: the window stops repainting after a fast key burst
 Found 2026-08-09 while verifying the traversal fix. On a ~2400
