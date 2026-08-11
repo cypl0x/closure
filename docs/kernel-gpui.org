@@ -320,11 +320,21 @@ Acceptance: =nix develop -c cargo test -p closure-org --test tblfm=
 * TODO Org: #+CALL and noweb references
 Acceptance: =nix develop -c cargo test -p closure-eval --test noweb=
 
-* TODO Databases: filters in the view definition
+* DONE Databases: filters in the view definition
 Acceptance: =nix develop -c cargo test -p closure-query --test view_filters=
 
-* TODO Databases: multi-key sorts
+Already built before this session, and tested — the item existed
+because the gap analysis that seeded this queue was wrong. Verified by
+running it rather than by reading: =view.rs= covers equality, not-equal, substring, numeric >, and several filters ANDed. No code was needed and
+none was written.
+
+* DONE Databases: multi-key sorts
 Acceptance: =nix develop -c cargo test -p closure-query --test view_sorts=
+
+Already built before this session, and tested — the item existed
+because the gap analysis that seeded this queue was wrong. Verified by
+running it rather than by reading: =view.rs= covers =:sort todo,title= and =:sort todo,-title=, plus numeric-not-lexical ordering. No code was needed and
+none was written.
 
 * TODO Databases: grouping
 Acceptance: =nix develop -c cargo test -p closure-query --test view_groups=
@@ -337,11 +347,16 @@ Acceptance: =nix develop -c cargo test -p closure-query --test relations=
 * TODO Databases: rollups over a relation
 Acceptance: =nix develop -c cargo test -p closure-query --test rollups=
 
-* TODO Databases: formula columns
+* DONE Databases: formula columns
 Coda-style, in the user's language, through closure-eval — not a
 custom expression syntax.
 
 Acceptance: =nix develop -c cargo test -p closure-query --test formula_columns=
+
+Already built before this session, and tested — the item existed
+because the gap analysis that seeded this queue was wrong. Verified by
+running it rather than by reading: =closure view --formula 'cut -f2 | awk "{print \$1*2}"'= computed a doubled column; covered by =closure-eval/tests/formula.rs=. No code was needed and
+none was written.
 
 * TODO gpui: render a database view
 Acceptance: =nix develop -c cargo test -p closure-shell-gpui --features gpui-test --test database_pane=
