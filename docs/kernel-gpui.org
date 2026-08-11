@@ -522,8 +522,13 @@ same registry, with its affordance shown.
 
 Acceptance: =nix develop -c cargo test -p closure-input --test mode_parity=
 
-* TODO Self-documenting: describe-key
-Acceptance: =nix develop -c cargo test -p closure-shell-core --test describe_key=
+* DONE Self-documenting: describe-key
+Acceptance: =nix develop -c cargo test -p closure-shell-core --test introspection=
+
+Already built and bound — =g ?= in the modal keymaps, =C-h k= in
+Emacs, =SPC h k= in Doom — with a surface of its own and tests in
+=introspection.rs=. The item existed because the gap analysis that
+seeded this queue did not check.
 
 * TODO Self-documenting: describe-command
 Acceptance: =nix develop -c cargo test -p closure-shell-core --test describe_command=
@@ -531,8 +536,13 @@ Acceptance: =nix develop -c cargo test -p closure-shell-core --test describe_com
 * TODO Self-documenting: jump to a command's source
 Acceptance: =nix develop -c cargo test -p closure-shell-core --test command_source=
 
-* TODO Self-documenting: live docstrings in the palette
-Acceptance: =nix develop -c cargo test -p closure-shell-gpui --features gpui-test --test palette_docs=
+* DONE Self-documenting: live docstrings in the palette
+Acceptance: =nix develop -c cargo test -p closure-shell-core --test palette_descriptions=
+
+Already built: every palette row carries its command's description,
+and =palette_descriptions.rs= exists because somebody had already
+noticed that 72 of 89 commands were falling back to "Run <name>" and
+fixed it. Verified rather than assumed.
 
 * DONE Bug: the manual pane does not scroll
 Found 2026-08-11 while confirming I12 in the window. =M-x manual=
