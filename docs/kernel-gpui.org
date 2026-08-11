@@ -81,11 +81,29 @@ being the right design, so the promise stops below it on purpose.
 =closure_store::TARGET_SCALE_HEADLINES= carries the same number and
 =closure-store/tests/target_scale.rs= fails if the two disagree.
 
-* TODO Widget: named parameters at the call site
+* DONE Widget: named parameters at the call site
 =({{name}})= substitution is =#define=, not composition. A call site
 must be able to pass values.
 
 Acceptance: =nix develop -c cargo test -p closure-query --test widget_params=
+
+A widget declares what it takes (=:inputs who,title=) and a reference
+carries arguments (={{card title=Today note="write the parser"}}=).
+Inside the body a parameter is read with the same ={{who}}= a widget
+reference uses, and an argument shadows a widget of the same name —
+locals beat globals, so a widget can be written without knowing every
+name in the vault.
+
+The declaration is not ceremony: a widget block is its own call site
+with no arguments, so ={{who}}= in an undeclared widget cannot be told
+apart from a reference to a widget nobody defined, and that has to
+stay an error. Declared and unbound expands to nothing; undeclared is
+still a widget lookup, so a typo is still an error.
+
+Verified in the window only as far as the window allows — it shows the
+template verbatim and never an expansion, which is I12 doing its job
+for the editor and a missing read view everywhere else. Written down
+as its own item.
 
 * TODO Widget: typed inputs validated at load
 I9 says config errors fail the load. A widget's declared inputs are
@@ -108,6 +126,19 @@ Acceptance: =nix develop -c cargo test -p closure-query --test widget_cycles=
 
 * TODO LSP: composition errors as diagnostics with precise ranges
 Acceptance: =nix develop -c cargo test -p closure-lsp --test diagnostics=
+
+* TODO gpui: render a composed widget where it is written
+Found 2026-08-11 while adding parameters. =widget_node= has no callers
+and nothing in either shell crate builds a =Node::Widget=: composition
+exists in closure-query and in the CLI, and the window shows the
+template verbatim and never the expansion. Showing the source is
+right for the editor (I12 — the file holds the template), so this is
+about the read view.
+
+Until this exists there is no way to see composition in the window at
+all, which blocks the visual half of every item under Composition.
+
+Acceptance: =nix develop -c cargo test -p closure-shell-gpui --features gpui-test --test widget_pane=
 
 * TODO gpui: show a widget's expansion error where the widget is
 A widget that fails to expand currently contributes nothing. The pane

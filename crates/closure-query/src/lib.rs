@@ -695,8 +695,24 @@ pub enum WidgetError {
     Unknown(String),
 }
 
-/// The `:name` of a `#+BEGIN: closure-widget` line, if this is one.
-fn widget_begin_name(line: &str) -> Option<String> {
+/// A widget: the template between its delimiters, and the names it
+/// declares it takes.
+///
+/// Declaring is what makes a name a parameter. A widget block is its
+/// own call site with no arguments, so `{{who}}` in a widget that
+/// declares nothing is indistinguishable from a reference to a widget
+/// called `who` that nobody defined — and that has to stay an error.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct WidgetDef {
+    /// The template, verbatim, as it sits between BEGIN and END.
+    pub body: String,
+    /// The parameter names from `:inputs a,b`, in declared order.
+    pub inputs: Vec<String>,
+}
+
+/// The `:name` and `:inputs` of a `#+BEGIN: closure-widget` line, if
+/// this is one.
+fn widget_begin_parts(line: &str) -> Option<(String, Vec<String>)> {
     let trimmed = line.trim_start();
     let lower = trimmed.to_ascii_lowercase();
     let rest = lower.strip_prefix("#+begin: closure-widget")?;
@@ -704,7 +720,23 @@ fn widget_begin_name(line: &str) -> Option<String> {
     let params = trimmed[trimmed.len() - rest.len()..].trim();
     let after = params.split_once(":name")?.1.trim_start();
     let name = after.split_whitespace().next()?;
-    Some(name.to_owned())
+    let inputs = params
+        .split_once(":inputs")
+        .and_then(|(_, a)| a.trim_start().split_whitespace().next())
+        .map(|list| {
+            list.split(',')
+                .map(str::trim)
+                .filter(|i| !i.is_empty())
+                .map(ToOwned::to_owned)
+                .collect()
+        })
+        .unwrap_or_default();
+    Some((name.to_owned(), inputs))
+}
+
+/// The `:name` of a `#+BEGIN: closure-widget` line, if this is one.
+fn widget_begin_name(line: &str) -> Option<String> {
+    widget_begin_parts(line).map(|(n, _)| n)
 }
 
 /// True for the dynamic-block terminator `#+END:`.
@@ -712,12 +744,12 @@ fn is_widget_end(line: &str) -> bool {
     line.trim_start().to_ascii_lowercase().starts_with("#+end:")
 }
 
-/// `name -> template body` for every widget definition in `src`.
-fn collect_widget_defs(src: &str) -> std::collections::HashMap<String, String> {
+/// `name -> definition` for every widget defined in `src`.
+fn collect_widget_defs(src: &str) -> std::collections::HashMap<String, WidgetDef> {
     let mut defs = std::collections::HashMap::new();
     let mut lines = src.split_inclusive('\n');
     while let Some(line) = lines.next() {
-        if let Some(name) = widget_begin_name(line) {
+        if let Some((name, inputs)) = widget_begin_parts(line) {
             let mut body = String::new();
             for l in lines.by_ref() {
                 if is_widget_end(l) {
@@ -725,45 +757,172 @@ fn collect_widget_defs(src: &str) -> std::collections::HashMap<String, String> {
                 }
                 body.push_str(l);
             }
-            defs.insert(name, body);
+            defs.insert(name, WidgetDef { body, inputs });
         }
     }
     defs
 }
 
-/// Fully expand widget `name`'s body, substituting `{{ref}}` references
-/// recursively; `stack` carries the active expansion chain for cycle
-/// detection.
+/// The text of one `{{…}}` reference and whatever follows it.
+///
+/// Depth-aware, because an argument's value can itself be a reference:
+/// `{{inner x={{x}}}}` is one reference with one argument, and a scan
+/// that stopped at the first `}}` would read it as a broken one.
+fn split_reference(after_open: &str) -> Option<(&str, &str)> {
+    let b = after_open.as_bytes();
+    let mut depth = 1usize;
+    let mut i = 0;
+    while i + 1 < b.len() {
+        if b[i] == b'{' && b[i + 1] == b'{' {
+            depth += 1;
+            i += 2;
+        } else if b[i] == b'}' && b[i + 1] == b'}' {
+            depth -= 1;
+            if depth == 0 {
+                return Some((&after_open[..i], &after_open[i + 2..]));
+            }
+            i += 2;
+        } else {
+            i += 1;
+        }
+    }
+    None
+}
+
+/// Split a reference's text into its name and its arguments.
+///
+/// `greet who=world`, `greet who="the whole world"`, `greet` — and an
+/// unquoted value may hold a nested reference, so the scan for the end
+/// of one counts braces rather than stopping at the first space.
+fn parse_reference(inner: &str) -> (String, Vec<(String, String)>) {
+    let inner = inner.trim();
+    let (name, mut rest) = inner
+        .split_once(char::is_whitespace)
+        .map_or((inner, ""), |(n, r)| (n, r));
+    let mut args = Vec::new();
+    loop {
+        rest = rest.trim_start();
+        if rest.is_empty() {
+            break;
+        }
+        let Some((key, after_eq)) = rest.split_once('=') else {
+            break;
+        };
+        // A key with a space in it is not a key; the reference is
+        // malformed and the rest is left alone rather than guessed at.
+        if key.trim().is_empty() || key.contains(char::is_whitespace) {
+            break;
+        }
+        let (value, tail) = if let Some(quoted) = after_eq.strip_prefix('"') {
+            match quoted.split_once('"') {
+                Some((v, t)) => (v, t),
+                None => (quoted, ""),
+            }
+        } else {
+            let b = after_eq.as_bytes();
+            let mut depth = 0usize;
+            let mut i = 0;
+            while i < b.len() {
+                if i + 1 < b.len() && b[i] == b'{' && b[i + 1] == b'{' {
+                    depth += 1;
+                    i += 2;
+                } else if i + 1 < b.len() && b[i] == b'}' && b[i + 1] == b'}' {
+                    depth = depth.saturating_sub(1);
+                    i += 2;
+                } else if depth == 0 && b[i].is_ascii_whitespace() {
+                    break;
+                } else {
+                    i += 1;
+                }
+            }
+            (&after_eq[..i], &after_eq[i..])
+        };
+        args.push((key.trim().to_owned(), value.to_owned()));
+        rest = tail;
+    }
+    (name.to_owned(), args)
+}
+
+/// Expand `text` in a scope: `args` are the arguments the enclosing
+/// widget was called with, `defs` every widget in reach.
+///
+/// An argument shadows a widget of the same name. Locals beat globals —
+/// the rule every language with both already uses, and the one that
+/// lets a widget be written without knowing every name in the vault.
+/// A reference that carries arguments of its own is always a widget
+/// call: `{{who}}` may be a parameter, `{{who x=1}}` cannot be.
+fn expand_text(
+    text: &str,
+    args: &[(String, String)],
+    defs: &std::collections::HashMap<String, WidgetDef>,
+    stack: &mut Vec<String>,
+) -> Result<String, WidgetError> {
+    let mut out = String::new();
+    let mut rest = text;
+    while let Some(start) = rest.find("{{") {
+        out.push_str(&rest[..start]);
+        let after = &rest[start + 2..];
+        let Some((inner, tail)) = split_reference(after) else {
+            out.push_str("{{");
+            rest = after;
+            continue;
+        };
+        let (name, call_args) = parse_reference(inner);
+        if call_args.is_empty()
+            && let Some((_, value)) = args.iter().find(|(k, _)| *k == name)
+        {
+            out.push_str(value);
+            rest = tail;
+            continue;
+        }
+        // The values are the caller's to work out, so they are expanded
+        // here, in this scope, before the callee ever sees them.
+        let mut bound = Vec::with_capacity(call_args.len());
+        for (k, v) in call_args {
+            bound.push((k, expand_text(&v, args, defs, stack)?));
+        }
+        let value = expand_widget_name(&name, &bound, defs, stack)?;
+        out.push_str(value.trim_end_matches('\n'));
+        rest = tail;
+    }
+    out.push_str(rest);
+    Ok(out)
+}
+
+/// Fully expand widget `name`, called with `args`; `stack` carries the
+/// active expansion chain for cycle detection.
 fn expand_widget_name(
     name: &str,
-    defs: &std::collections::HashMap<String, String>,
+    args: &[(String, String)],
+    defs: &std::collections::HashMap<String, WidgetDef>,
     stack: &mut Vec<String>,
 ) -> Result<String, WidgetError> {
     if stack.iter().any(|s| s == name) {
         return Err(WidgetError::Cycle(name.to_owned()));
     }
-    let body = defs
+    let def = defs
         .get(name)
         .ok_or_else(|| WidgetError::Unknown(name.to_owned()))?;
-    stack.push(name.to_owned());
-    let mut out = String::new();
-    let mut rest = body.as_str();
-    while let Some(start) = rest.find("{{") {
-        out.push_str(&rest[..start]);
-        let after = &rest[start + 2..];
-        if let Some(end) = after.find("}}") {
-            let reference = after[..end].trim();
-            let value = expand_widget_name(reference, defs, stack)?;
-            out.push_str(value.trim_end_matches('\n'));
-            rest = &after[end + 2..];
+    // Every declared input is in scope whether or not the call site
+    // bound it: a parameter nobody passed expands to nothing, because
+    // the block that defines a widget is also a call site with no
+    // arguments and showing a template is not an error.
+    let mut scope: Vec<(String, String)> = def
+        .inputs
+        .iter()
+        .map(|i| (i.clone(), String::new()))
+        .collect();
+    for (k, v) in args {
+        if let Some(slot) = scope.iter_mut().find(|(n, _)| n == k) {
+            slot.1 = v.clone();
         } else {
-            out.push_str("{{");
-            rest = after;
+            scope.push((k.clone(), v.clone()));
         }
     }
-    out.push_str(rest);
+    stack.push(name.to_owned());
+    let out = expand_text(&def.body, &scope, defs, stack);
     stack.pop();
-    Ok(out)
+    out
 }
 
 /// Expand every `#+BEGIN: closure-widget :name X` block in `src` in place
@@ -779,7 +938,7 @@ fn expand_widget_name(
 /// [`WidgetError::Cycle`] on a reference cycle, [`WidgetError::Unknown`]
 /// for a `{{ref}}` with no matching definition.
 pub fn expand_widgets(src: &str) -> Result<String, WidgetError> {
-    expand_widgets_with(src, &std::collections::HashMap::new())
+    expand_widgets_with(src, &std::collections::HashMap::<String, WidgetDef>::new())
 }
 
 /// The names of every widget defined in `src`, in document order (V2b).
@@ -805,9 +964,9 @@ pub fn widget_def_names(src: &str) -> Vec<String> {
 /// [`WidgetError::Cycle`] / [`WidgetError::Unknown`] as [`expand_widgets`].
 pub fn expand_widgets_with<S: std::hash::BuildHasher>(
     src: &str,
-    extra: &std::collections::HashMap<String, String, S>,
+    extra: &std::collections::HashMap<String, WidgetDef, S>,
 ) -> Result<String, WidgetError> {
-    let mut defs: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+    let mut defs: std::collections::HashMap<String, WidgetDef> = std::collections::HashMap::new();
     for (k, v) in extra {
         defs.insert(k.clone(), v.clone());
     }
@@ -830,7 +989,7 @@ pub fn expand_widgets_with<S: std::hash::BuildHasher>(
                 break;
             }
         }
-        let expanded = expand_widget_name(&name, &defs, &mut Vec::new())?;
+        let expanded = expand_widget_name(&name, &[], &defs, &mut Vec::new())?;
         out.push_str(&expanded);
         if !expanded.ends_with('\n') {
             out.push('\n');
@@ -842,15 +1001,15 @@ pub fn expand_widgets_with<S: std::hash::BuildHasher>(
     Ok(out)
 }
 
-/// Every widget definition across the vault, `name -> template body`
+/// Every widget definition across the vault, `name -> definition`
 /// (V2b). A name defined in more than one file resolves to the
 /// document-order-last definition (deterministic over `Vault::iter`).
 #[must_use]
-pub fn vault_widget_defs(vault: &Vault) -> std::collections::HashMap<String, String> {
+pub fn vault_widget_defs(vault: &Vault) -> std::collections::HashMap<String, WidgetDef> {
     let mut defs = std::collections::HashMap::new();
     for (_path, doc) in vault.iter() {
-        for (name, body) in collect_widget_defs(&doc.source()) {
-            defs.insert(name, body);
+        for (name, def) in collect_widget_defs(&doc.source()) {
+            defs.insert(name, def);
         }
     }
     defs
