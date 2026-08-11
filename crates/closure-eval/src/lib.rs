@@ -249,6 +249,139 @@ impl Backend for WasmBackend {
 }
 
 /// Pick a backend for a language identifier (case-insensitive). Returns
+/// Why a noweb reference could not be resolved.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum NowebError {
+    /// A block includes itself, directly or through others.
+    #[error("noweb cycle: {}", .0.join(" -> "))]
+    Cycle(Vec<String>),
+    /// `<<name>>` names a block that is not in the document.
+    #[error("no block named `{0}`")]
+    Unknown(String),
+    /// Nested deeper than [`NOWEB_DEPTH_LIMIT`] without repeating.
+    #[error("noweb nesting deeper than {0}")]
+    TooDeep(usize),
+}
+
+/// How deep noweb references may nest.
+///
+/// Same reasoning as the widget and include limits: a deep nest is not
+/// a cycle, and recursing it would end the process rather than the
+/// expansion (I5).
+pub const NOWEB_DEPTH_LIMIT: usize = 32;
+
+/// The body of the `#+NAME: name` source block in `doc`, if there is
+/// one.
+fn named_block(doc: &str, name: &str) -> Option<String> {
+    let mut lines = doc.lines().peekable();
+    while let Some(line) = lines.next() {
+        let t = line.trim_start();
+        let Some(rest) = t
+            .strip_prefix("#+NAME:")
+            .or_else(|| t.strip_prefix("#+name:"))
+        else {
+            continue;
+        };
+        if rest.trim() != name {
+            continue;
+        }
+        // The block itself is the next `#+BEGIN_SRC` … `#+END_SRC`.
+        let mut body = String::new();
+        let mut inside = false;
+        for l in lines.by_ref() {
+            let lt = l.trim_start().to_ascii_lowercase();
+            if !inside {
+                if lt.starts_with("#+begin_src") {
+                    inside = true;
+                }
+                continue;
+            }
+            if lt.starts_with("#+end_src") {
+                return Some(body);
+            }
+            body.push_str(l);
+            body.push('\n');
+        }
+        return Some(body);
+    }
+    None
+}
+
+/// Replace every `<<name>>` in `src` with the block it names, taken
+/// from `doc`.
+///
+/// Only a reference alone on its line — possibly indented — is one:
+/// `a << b` is a shift, and a parser that says otherwise finds
+/// references in arithmetic. The indentation at the reference is
+/// applied to every line that replaces it, because a block being
+/// pasted into Python or YAML is being pasted where indentation is
+/// syntax.
+///
+/// # Errors
+///
+/// [`NowebError::Unknown`] naming the reference, [`NowebError::Cycle`]
+/// carrying the ring, or [`NowebError::TooDeep`].
+pub fn expand_noweb(src: &str, doc: &str) -> Result<String, NowebError> {
+    let mut stack: Vec<String> = Vec::new();
+    expand_noweb_in(src, doc, &mut stack)
+}
+
+/// [`expand_noweb`], carrying the chain of blocks being expanded.
+fn expand_noweb_in(src: &str, doc: &str, stack: &mut Vec<String>) -> Result<String, NowebError> {
+    if !src.contains("<<") {
+        return Ok(src.to_owned());
+    }
+    if stack.len() >= NOWEB_DEPTH_LIMIT {
+        return Err(NowebError::TooDeep(NOWEB_DEPTH_LIMIT));
+    }
+    let mut out = String::with_capacity(src.len());
+    for line in src.split_inclusive('\n') {
+        let bare = line.trim_end_matches('\n');
+        let indent: String = bare.chars().take_while(|c| c.is_whitespace()).collect();
+        let trimmed = bare.trim();
+        let Some(name) = trimmed
+            .strip_prefix("<<")
+            .and_then(|r| r.strip_suffix(">>"))
+            .filter(|n| !n.is_empty() && !n.contains(char::is_whitespace))
+        else {
+            out.push_str(line);
+            continue;
+        };
+        if stack.iter().any(|s| s == name) {
+            let from = stack.iter().position(|s| s == name).unwrap_or(0);
+            let mut ring: Vec<String> = stack[from..].to_vec();
+            ring.push(name.to_owned());
+            return Err(NowebError::Cycle(ring));
+        }
+        let body = named_block(doc, name).ok_or_else(|| NowebError::Unknown(name.to_owned()))?;
+        stack.push(name.to_owned());
+        let expanded = expand_noweb_in(&body, doc, stack)?;
+        stack.pop();
+        for l in expanded.lines() {
+            out.push_str(&indent);
+            out.push_str(l);
+            out.push('\n');
+        }
+    }
+    Ok(out)
+}
+
+/// The block a `#+CALL: name(...)` line runs, if this is one.
+///
+/// The parentheses are org's and are required: `#+CALL: setup` without
+/// them is not a call, and guessing would make every keyword line a
+/// candidate.
+#[must_use]
+pub fn call_target(line: &str) -> Option<String> {
+    let t = line.trim_start();
+    let rest = t
+        .strip_prefix("#+CALL:")
+        .or_else(|| t.strip_prefix("#+call:"))?
+        .trim();
+    let name = rest.split_once('(')?.0.trim();
+    (!name.is_empty()).then(|| name.to_owned())
+}
+
 /// `None` if no backend is registered for the language.
 #[must_use]
 pub fn backend_for(lang: &str) -> Option<Box<dyn Backend>> {

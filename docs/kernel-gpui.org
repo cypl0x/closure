@@ -397,8 +397,27 @@ Edit the undo tree can reverse (I3/I8).
 
 Acceptance: =nix develop -c cargo test -p closure-core --test recompute_table=
 
-* TODO Org: #+CALL and noweb references
+* DONE Org: #+CALL and noweb references
 Acceptance: =nix develop -c cargo test -p closure-eval --test noweb=
+
+={{<<name>>}}= is what lets a literate document explain a program in
+the order a reader needs and assemble it in the order the compiler
+needs, which is the whole argument for writing one. Tangling wrote the
+reference out verbatim, so the assembled file had =<<setup>>= where
+the setup should have been.
+
+Resolved when tangling now, and a reference to nothing fails the
+tangle rather than writing it: a shell script containing =<<nosuch>>=
+fails later, somewhere else, with a worse message.
+
+Two details that needed deciding. Only a reference alone on its line
+is one — =$((1 << 2))= is a shift, and a parser that says otherwise
+finds references in arithmetic. And the indentation at the reference
+is applied to every line that replaces it, because a block being
+pasted into Python or YAML is being pasted where indentation is
+syntax.
+
+Conformance 85% -> 91%.
 
 * DONE Databases: filters in the view definition
 Acceptance: =nix develop -c cargo test -p closure-query --test view_filters=

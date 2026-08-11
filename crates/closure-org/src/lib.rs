@@ -9973,15 +9973,15 @@ pub const CONFORMANCE: &[Construct] = &[
     },
     Construct {
         name: "#+CALL",
-        support: Support::Preserved,
-        evidence: "",
-        missing: "named blocks are not callable",
+        support: Support::Understood,
+        evidence: "crates/closure-eval/tests/noweb.rs",
+        missing: "",
     },
     Construct {
         name: "noweb reference",
-        support: Support::Preserved,
-        evidence: "",
-        missing: "<<name>> is not substituted when tangling",
+        support: Support::Understood,
+        evidence: "crates/closure-eval/tests/noweb.rs",
+        missing: "",
     },
     Construct {
         name: "radio target",

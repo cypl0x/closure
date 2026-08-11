@@ -252,6 +252,13 @@ pub enum VaultError {
     /// Filesystem error.
     #[error("io: {0}")]
     Io(#[from] io::Error),
+    /// A noweb reference in a tangled block could not be resolved.
+    ///
+    /// Fails the tangle rather than writing the reference out: a shell
+    /// script containing `<<setup>>` fails later, somewhere else, with
+    /// a worse message than this one.
+    #[error("tangle: {0}")]
+    Noweb(String),
     /// A document failed to parse.
     #[error("parse error in {path}")]
     Parse {
@@ -1882,10 +1889,15 @@ impl Vault {
             let Some(target) = header.tangle else {
                 continue;
             };
+            // `<<name>>` is what lets a literate document explain a
+            // program in one order and assemble it in another, which
+            // is the whole argument for writing one.
+            let content = closure_eval::expand_noweb(cb.content, &doc.source())
+                .map_err(|e| VaultError::Noweb(e.to_string()))?;
             let abs = base.join(&target);
             match bytarget.iter_mut().find(|(p, _)| *p == abs) {
-                Some((_, acc)) => acc.push_str(cb.content),
-                None => bytarget.push((abs, cb.content.to_owned())),
+                Some((_, acc)) => acc.push_str(&content),
+                None => bytarget.push((abs, content)),
             }
         }
         let mut written = Vec::with_capacity(bytarget.len());
