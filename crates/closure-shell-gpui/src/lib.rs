@@ -4575,7 +4575,11 @@ impl GpuiView {
                 format!("headlines — type to filter · {n} in this file")
             }
             ModalSurface::DbView => format!(
-                "database — {} row(s) · Esc back",
+                "database — {}{} row(s) · Esc back",
+                self.app
+                    .db_view_name(&self.shell)
+                    .map(|n| format!("{n} · "))
+                    .unwrap_or_default(),
                 self.app.db_rows(&self.shell).1.len()
             ),
             ModalSurface::BodySearch => format!(

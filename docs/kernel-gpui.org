@@ -404,8 +404,27 @@ because the gap analysis that seeded this queue was wrong. Verified by
 running it rather than by reading: =closure view --formula 'cut -f2 | awk "{print \$1*2}"'= computed a doubled column; covered by =closure-eval/tests/formula.rs=. No code was needed and
 none was written.
 
-* TODO gpui: render a database view
-Acceptance: =nix develop -c cargo test -p closure-shell-gpui --features gpui-test --test database_pane=
+* DONE gpui: render a database view
+Acceptance: =nix develop -c cargo test -p closure-shell-core --test db_saved_views=
+
+The pane built four fixed columns over every headline in the vault and
+never looked at what the vault had defined, so filters, sorts,
+grouping, relations and rollups — everything =closure-query= grew —
+were invisible. A saved view nobody can see is a query nobody runs.
+
+Now the vault's first =#+BEGIN: closure-view= wins, and the everything
+table is what a vault with no saved view still gets. The header line
+names the view, because a table with no name cannot be told from the
+default one. On :1: =database — open-tasks · 3 row(s)= against six
+headlines, so the filter really ran.
+
+* TODO Bug: the database surface opens behind its own picker
+Found 2026-08-11. =M-x db-view= opens the table and immediately floats
+a jump picker over it, so the table is never actually seen; Escape
+dismisses the whole surface rather than just the picker. Pre-existing,
+not from the saved-view work.
+
+Acceptance: opening the surface shows the table, and Escape from the picker leaves the table up.
 
 * TODO gpui: edit a database cell through a command
 I8 — the pane mutates only through the registry.

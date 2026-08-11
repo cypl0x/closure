@@ -25399,6 +25399,18 @@ impl ModalApp {
     /// always has.
     #[must_use]
     pub fn db_rows(&self, shell: &Shell) -> (Vec<String>, Vec<Vec<String>>) {
+        // What the vault defined beats what this pane would have made
+        // up. A saved view carries the filters, sorts, grouping,
+        // relations and rollups somebody wrote down, and a view nobody
+        // can see is a query nobody runs.
+        if let Some((_, spec)) = Self::saved_view(shell) {
+            let rows = spec
+                .groups(&shell.vault)
+                .into_iter()
+                .flat_map(|(_, r)| r)
+                .collect();
+            return (spec.header(), rows);
+        }
         let header = ["title", "todo", "priority", "tags"]
             .iter()
             .map(|s| (*s).to_owned())
@@ -25417,6 +25429,25 @@ impl ModalApp {
             })
             .collect();
         (header, rows)
+    }
+
+    /// The vault's first saved `#+BEGIN: closure-view`, if it has one.
+    ///
+    /// First rather than a choice among them, for now: picking is a
+    /// surface of its own and this is the difference between the
+    /// vault's views being visible and being unreachable.
+    fn saved_view(shell: &Shell) -> Option<(String, closure_query::ViewSpec)> {
+        closure_query::views(&shell.vault)
+            .ok()
+            .and_then(|mut v| (!v.is_empty()).then(|| v.remove(0)))
+    }
+
+    /// The name of the saved view the database pane is showing, if it
+    /// is showing one. A table with no name cannot be told from the
+    /// default one.
+    #[must_use]
+    pub fn db_view_name(&self, shell: &Shell) -> Option<String> {
+        Self::saved_view(shell).map(|(n, _)| n)
     }
 
     /// Body-text hits for the current query, as `(id, "title — line")`.
