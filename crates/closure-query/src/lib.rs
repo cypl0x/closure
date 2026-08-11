@@ -372,12 +372,75 @@ pub enum Column {
     /// whole reason to have one instead of writing the name into a
     /// property by hand.
     Relation(String),
+    /// Aggregate a property over every headline whose relation points
+    /// at this row.
+    ///
+    /// A relation reads forwards — a task naming its project. This
+    /// reads the same edge backwards and does arithmetic on it, which
+    /// is the half of a database people stare at: a project's row
+    /// showing what its tasks add up to.
+    Rollup {
+        /// The relation property to follow back (`PROJECT`).
+        via: String,
+        /// The property to read on the rows that come back (`EFFORT`).
+        of: String,
+        /// What to do with them.
+        agg: Agg,
+    },
+}
+
+/// What a [`Column::Rollup`] does with the values it gathers.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Agg {
+    /// How many rows point here. Needs no property.
+    Count,
+    /// Total, skipping anything that is not a number.
+    Sum,
+    /// Smallest; blank when there are none, because the smallest of no
+    /// numbers is not zero.
+    Min,
+    /// Largest; blank when there are none.
+    Max,
+}
+
+impl Agg {
+    /// Parse the word after the last `:`. Anything unrecognised is
+    /// [`Self::Count`] — a name nobody implemented should not make a
+    /// document unreadable, the same rule an unknown column follows.
+    fn parse(s: &str) -> Self {
+        match s.trim() {
+            "sum" => Self::Sum,
+            "min" => Self::Min,
+            "max" => Self::Max,
+            _ => Self::Count,
+        }
+    }
+
+    /// The name it goes by in a header.
+    const fn name(self) -> &'static str {
+        match self {
+            Self::Count => "count",
+            Self::Sum => "sum",
+            Self::Min => "min",
+            Self::Max => "max",
+        }
+    }
 }
 
 impl Column {
     fn parse(s: &str) -> Self {
         if let Some(key) = s.strip_prefix("rel:") {
             return Self::Relation(key.to_owned());
+        }
+        if let Some(rest) = s.strip_prefix("rollup:")
+            && let Some((path, agg)) = rest.rsplit_once(':')
+            && let Some((via, of)) = path.split_once('.')
+        {
+            return Self::Rollup {
+                via: via.to_owned(),
+                of: of.to_owned(),
+                agg: Agg::parse(agg),
+            };
         }
         match s {
             "title" => Self::Title,
@@ -397,6 +460,7 @@ impl Column {
             Self::Level => "level".to_owned(),
             Self::Id => "id".to_owned(),
             Self::Property(k) | Self::Relation(k) => k.clone(),
+            Self::Rollup { of, agg, .. } => format!("{}({of})", agg.name()),
         }
     }
 
@@ -414,6 +478,9 @@ impl Column {
             // the id is all there is to give. Every path that renders a
             // view goes through `extract_in`, which has one.
             Self::Relation(k) => h.property(k).unwrap_or("").to_owned(),
+            // A rollup is about rows this headline knows nothing
+            // about, so without a vault there is no answer to give.
+            Self::Rollup { .. } => String::new(),
         }
     }
 
@@ -425,6 +492,40 @@ impl Column {
     /// to be able to tell it from "no project at all".
     #[must_use]
     pub fn extract_in(&self, h: &DocHeadline, vault: &Vault) -> String {
+        if let Self::Rollup { via, of, agg } = self {
+            let here = h.id().to_string();
+            let values: Vec<&str> = all_headlines(vault)
+                .into_iter()
+                .filter(|m| m.headline.property(via) == Some(here.as_str()))
+                .map(|m| m.headline.property(of).unwrap_or(""))
+                .collect();
+            if *agg == Agg::Count {
+                return values.len().to_string();
+            }
+            // Anything that is not a number is skipped rather than
+            // read as zero: a total poisoned by one typo is worse than
+            // a total that is quietly short.
+            let nums: Vec<f64> = values
+                .iter()
+                .filter_map(|v| v.trim().parse().ok())
+                .collect();
+            return match agg {
+                Agg::Sum => format_number(nums.iter().sum()),
+                Agg::Min => nums
+                    .iter()
+                    .copied()
+                    .reduce(f64::min)
+                    .map(format_number)
+                    .unwrap_or_default(),
+                Agg::Max => nums
+                    .iter()
+                    .copied()
+                    .reduce(f64::max)
+                    .map(format_number)
+                    .unwrap_or_default(),
+                Agg::Count => unreachable!("handled above"),
+            };
+        }
         let Self::Relation(key) = self else {
             return self.extract(h);
         };
@@ -739,6 +840,21 @@ impl ViewSpec {
                     .collect()
             }
         }
+    }
+}
+
+/// A number without a trailing `.0`, so a table of whole efforts reads
+/// like whole numbers.
+fn format_number(n: f64) -> String {
+    // Negative zero is a real f64 and `{:.0}` prints it as `-0`, which
+    // is not a total anybody wants to read.
+    if n == 0.0 {
+        return "0".to_owned();
+    }
+    if n.fract() == 0.0 && n.abs() < 1e15 {
+        format!("{n:.0}")
+    } else {
+        n.to_string()
     }
 }
 

@@ -372,8 +372,26 @@ to tell it from "no project at all". And the link survives a rename,
 which is the whole reason to have one instead of writing the name into
 a property by hand; there is a test for exactly that.
 
-* TODO Databases: rollups over a relation
+* DONE Databases: rollups over a relation
 Acceptance: =nix develop -c cargo test -p closure-query --test rollups=
+
+=rollup:PROJECT.EFFORT:sum= — the relation to follow back, the
+property to read on the rows that come back, and what to do with them.
+A relation reads forwards, a rollup reads the same edge backwards and
+does arithmetic on it, which is the half of a database people stare
+at.
+
+Four aggregates. Sum and count of nothing are zero, because a project
+with no tasks has an effort of zero and that is a statement; min and
+max of nothing are blank, because the smallest of no numbers is not
+zero and saying zero would be a wrong answer rather than a missing
+one. A value that is not a number is skipped rather than read as zero
+— a total poisoned by one typo is worse than one that is quietly
+short. An unrecognised aggregate falls back to count, the same rule an
+unknown column already follows.
+
+End to end: a table of projects with =count(EFFORT)= and =sum(EFFORT)=
+beside each, and a table of tasks grouped by =rel:PROJECT=.
 
 * DONE Databases: formula columns
 Coda-style, in the user's language, through closure-eval — not a
