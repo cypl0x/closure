@@ -128,11 +128,25 @@ arguments, and showing a template is not a mistake.
 Not visible in the window yet: nothing paints widget errors, or
 widgets. Both are items of their own.
 
-* TODO Widget: slots
+* DONE Widget: slots
 Content passed *into* a widget body, so a widget can wrap what it is
 given rather than only emit what it knows.
 
 Acceptance: =nix develop -c cargo test -p closure-query --test widget_slots=
+
+={{...}}= has nowhere to put a block, so the call site that carries
+content is a block itself: =#+BEGIN: closure-widget :call panel :with
+title=Notes=, body is the content, ={{slot}}= inside the widget is
+where it lands. =:name= defines, =:call= invokes — one keyword apart,
+and both are ordinary org dynamic blocks, so a file full of them still
+opens in Emacs.
+
+=slot= is always in scope, empty when there is none, so ={{slot}}= in
+a widget nobody passed content to is not mistaken for a widget nobody
+defined. The content is expanded in the caller's scope before the
+callee sees it, the same rule as an argument's value.
+
+Verified on :1: a panel wrapping two list items.
 
 * TODO Widget: cycle detection with a depth limit and a named path
 An expansion cycle must fail with the chain that caused it, not a

@@ -779,6 +779,55 @@ pub struct WidgetDef {
     pub inputs: Vec<(String, InputType)>,
 }
 
+/// What a `#+BEGIN: closure-widget` line says.
+///
+/// `:name` defines, `:call` invokes with the block's own content as
+/// the slot — one keyword apart, and both are ordinary org dynamic
+/// blocks, so a file full of them still opens in Emacs.
+enum WidgetBlock {
+    /// `:name panel :inputs title` — a definition.
+    Define {
+        /// The widget's name.
+        name: String,
+        /// What it declares it takes.
+        inputs: Vec<(String, InputType)>,
+    },
+    /// `:call panel :with title=Notes` — an invocation whose body is
+    /// the content to wrap.
+    Call {
+        /// The widget being called.
+        name: String,
+        /// The arguments from `:with`.
+        args: Vec<(String, String)>,
+    },
+}
+
+/// The name given to a call block's content inside the widget it calls.
+///
+/// Always in scope, empty when there is none — otherwise `{{slot}}` in
+/// a widget nobody passed content to would fall through to a widget
+/// lookup and fail as an unknown name.
+const SLOT: &str = "slot";
+
+/// Read a `#+BEGIN: closure-widget` line, if this is one.
+fn widget_block_of(line: &str) -> Option<WidgetBlock> {
+    let trimmed = line.trim_start();
+    let lower = trimmed.to_ascii_lowercase();
+    let rest = lower.strip_prefix("#+begin: closure-widget")?;
+    let params = trimmed[trimmed.len() - rest.len()..].trim();
+    if let Some((_, after)) = params.split_once(":call") {
+        let after = after.trim_start();
+        let name = after.split_whitespace().next()?.to_owned();
+        let args = params
+            .split_once(":with")
+            .map(|(_, w)| parse_reference(&format!("_ {}", w.trim())).1)
+            .unwrap_or_default();
+        return Some(WidgetBlock::Call { name, args });
+    }
+    let (name, inputs) = widget_begin_parts(line)?;
+    Some(WidgetBlock::Define { name, inputs })
+}
+
 /// The `:name` and `:inputs` of a `#+BEGIN: closure-widget` line, if
 /// this is one.
 fn widget_begin_parts(line: &str) -> Option<(String, Vec<(String, InputType)>)> {
@@ -823,7 +872,7 @@ fn collect_widget_defs(src: &str) -> std::collections::HashMap<String, WidgetDef
     let mut defs = std::collections::HashMap::new();
     let mut lines = src.split_inclusive('\n');
     while let Some(line) = lines.next() {
-        if let Some((name, inputs)) = widget_begin_parts(line) {
+        if let Some(block) = widget_block_of(line) {
             let mut body = String::new();
             for l in lines.by_ref() {
                 if is_widget_end(l) {
@@ -831,7 +880,11 @@ fn collect_widget_defs(src: &str) -> std::collections::HashMap<String, WidgetDef
                 }
                 body.push_str(l);
             }
-            defs.insert(name, WidgetDef { body, inputs });
+            // A call block's body is content, not a template: it
+            // defines nothing.
+            if let WidgetBlock::Define { name, inputs } = block {
+                defs.insert(name, WidgetDef { body, inputs });
+            }
         }
     }
     defs
@@ -986,6 +1039,10 @@ fn expand_widget_name(
         .iter()
         .map(|(n, _)| (n.clone(), String::new()))
         .collect();
+    // A slot is optional, like an argument nobody read, and is in
+    // scope either way so that `{{slot}}` is never mistaken for a
+    // widget nobody defined.
+    scope.push((SLOT.to_owned(), String::new()));
     for (k, v) in args {
         // Checked before anything is rendered, so a mistake arrives as
         // a message rather than as content (I9).
@@ -998,7 +1055,7 @@ fn expand_widget_name(
                     got: v.clone(),
                 });
             }
-        } else if !def.inputs.is_empty() {
+        } else if !def.inputs.is_empty() && k != SLOT {
             return Err(WidgetError::UnknownArgument {
                 widget: name.to_owned(),
                 argument: k.clone(),
@@ -1069,18 +1126,34 @@ pub fn expand_widgets_with<S: std::hash::BuildHasher>(
     let mut lines = src.split_inclusive('\n');
     while let Some(line) = lines.next() {
         out.push_str(line);
-        let Some(name) = widget_begin_name(line) else {
+        let Some(block) = widget_block_of(line) else {
             continue;
         };
-        // Drop the existing body lines, capturing the END terminator.
+        // Take the body, capturing the END terminator. A definition's
+        // body is a template and is replaced by what it means; a call
+        // block's body is content and becomes the callee's slot.
+        let mut body = String::new();
         let mut end = None;
         for l in lines.by_ref() {
             if is_widget_end(l) {
                 end = Some(l);
                 break;
             }
+            body.push_str(l);
         }
-        let expanded = expand_widget_name(&name, &[], &defs, &mut Vec::new())?;
+        let expanded = match block {
+            WidgetBlock::Define { name, .. } => {
+                expand_widget_name(&name, &[], &defs, &mut Vec::new())?
+            }
+            WidgetBlock::Call { name, mut args } => {
+                // The content is the caller's, so it is expanded here,
+                // in the caller's scope, before the callee sees it —
+                // the same rule as an argument's value.
+                let slot = expand_text(&body, &[], &defs, &mut Vec::new())?;
+                args.push((SLOT.to_owned(), slot.trim_end_matches('\n').to_owned()));
+                expand_widget_name(&name, &args, &defs, &mut Vec::new())?
+            }
+        };
         out.push_str(&expanded);
         if !expanded.ends_with('\n') {
             out.push('\n');
