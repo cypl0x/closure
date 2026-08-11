@@ -127,3 +127,28 @@ fn a_headline_without_a_widget_is_untouched() {
         d.body
     );
 }
+
+// === the delimiters stay (2026-08-11) ===
+//
+// Deferred when the preview learned to expand: the pane shows the
+// `#+BEGIN:` / `#+END:` lines around an expansion, and nobody had
+// decided whether it should. A read view showing syntax is a choice
+// worth making on purpose.
+//
+// They stay, for one reason: without them the pane shows content that
+// is nowhere in the file, and a reader who opens the editor to change
+// what they are looking at finds a template instead. The delimiters
+// are the seam — they say "this is composed rather than typed", which
+// is exactly what a reader needs to know before reaching for `i`.
+
+#[test]
+fn the_preview_keeps_the_blocks_delimiters() {
+    let (_d, shell, mut app) = app(VAULT);
+    let d = detail_of(&mut app, &shell, "Home");
+    assert!(
+        d.body.contains("#+BEGIN: closure-widget"),
+        "the seam is gone, so the pane looks like the file and is not: {}",
+        d.body
+    );
+    assert!(d.body.contains("#+END:"), "{}", d.body);
+}

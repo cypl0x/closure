@@ -158,6 +158,13 @@ Enforced by `closure-query/tests/composition_is_a_view.rs`: expanding a
 document leaves its bytes identical, the source still roundtrips
 afterwards, and the same vault expands to the same string every time (I6).
 
+A rendered composition keeps its `#+BEGIN:` / `#+END:` lines. Without
+them a read view shows content that appears nowhere in the file, and a
+reader who opens the editor to change what they are looking at finds a
+template instead. The delimiters are the seam: they say "this is
+composed rather than typed", which is what a reader needs to know
+before reaching for the editor.
+
 The consequence worth stating: composition reduces to `query`, one of the
 seven kernel primitives below. It adds no eighth.
 

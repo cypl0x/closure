@@ -208,13 +208,19 @@ it failed as unknown.
 Verified on :1: two ={{card ...}}= calls render as table rows with
 their arguments substituted and their typed values intact.
 
-* TODO Preview: decide whether a composition shows its delimiters
+* DONE Preview: decide whether a composition shows its delimiters
 The pane shows the =#+BEGIN:= / =#+END:= lines around an expansion.
 Arguable either way — they say "this is composed rather than typed" —
 but nobody decided it, and a read view showing syntax is a choice that
 should be made on purpose.
 
-Acceptance: whatever is decided, written into docs/spec.md beside I12 and held by a test.
+Acceptance: written into docs/spec.md beside I12 and held by =widget_preview.rs=.
+
+They stay. Without them the pane shows content that appears nowhere in
+the file, and a reader who opens the editor to change what they are
+looking at finds a template instead. The delimiters are the seam: they
+say "this is composed rather than typed", which is what a reader needs
+to know before reaching for =i=.
 
 * DONE gpui: show a widget's expansion error where the widget is
 A widget that fails to expand currently contributes nothing. The pane
