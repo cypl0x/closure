@@ -8394,7 +8394,27 @@ impl GpuiView {
             "edit-body",
             cx,
         ))
+        .children(self.widget_error_row(co, &d))
         .children(self.preview_more_row(co, &d))
+    }
+
+    /// Why a composition here could not be expanded, if one could not.
+    ///
+    /// Painted as a failure rather than as prose. It is the one line in
+    /// the pane that is about the document rather than in it, and a
+    /// composition that fails quietly reads as an empty page — the
+    /// worst of the things it could do, being wrong and silent about
+    /// being wrong at the same time.
+    fn widget_error_row(&self, co: Colors, d: &Detail) -> Option<gpui::Div> {
+        d.composition_error.as_ref().map(|why| {
+            div()
+                .debug_selector(|| "widget-error".to_owned())
+                .px_1()
+                .pt_1()
+                .text_size(self.sz(11.0))
+                .text_color(rgb(co.error))
+                .child(why.clone())
+        })
     }
 
     /// What the preview cap is holding back, if anything.

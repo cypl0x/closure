@@ -1049,6 +1049,13 @@ pub struct Detail {
     /// [`Self::children`], because that string is now capped to what
     /// the preview will draw.
     pub subtree_lines: usize,
+    /// Why a composition in this headline could not be expanded.
+    ///
+    /// Beside the text rather than inside it: a failure is the one
+    /// thing a pane shows that is *about* the document rather than in
+    /// it, and a shell that cannot tell the two apart paints an error
+    /// as prose.
+    pub composition_error: Option<String>,
     /// Words of body, children included.
     pub words: usize,
     /// The day this note was created, `YYYY-MM-DD`, from its own id.
@@ -1093,6 +1100,7 @@ impl Detail {
             scheduled: h.scheduled().map(ToOwned::to_owned),
             deadline: h.deadline().map(ToOwned::to_owned),
             properties: h.properties().to_vec(),
+            composition_error: None,
             lines: counted_lines,
             words: counted_words,
             subtree_lines,
@@ -15431,11 +15439,11 @@ impl ModalApp {
     /// A failed expansion is reported in place. A composition that
     /// silently rendered as nothing would read as an empty page, which
     /// is the worst of the three things it could do.
-    fn expanded_for_preview(&self, shell: &Shell, text: &str) -> String {
+    fn expanded_for_preview(&self, shell: &Shell, text: &str) -> (String, Option<String>) {
         // The common case is a headline with no composition in it, and
         // it costs one substring scan over text that is already capped.
         if !text.contains("closure-widget") {
-            return text.to_owned();
+            return (text.to_owned(), None);
         }
         let revision = shell.vault.revision();
         {
@@ -15449,7 +15457,7 @@ impl ModalApp {
         }
         let memo = self.memos.widgets.borrow();
         closure_query::expand_widgets_with(text, &memo.by_name)
-            .unwrap_or_else(|e| format!("{text}\n{e}"))
+            .map_or_else(|e| (text.to_owned(), Some(e.to_string())), |v| (v, None))
     }
 
     fn derive_detail(&self, shell: &Shell, id: Option<&str>) -> Option<Detail> {
@@ -15464,9 +15472,11 @@ impl ModalApp {
             .vault
             .children_source_preview(&bid, PREVIEW_CAP)
             .unwrap_or_default();
-        let children = self.expanded_for_preview(shell, &children);
+        let (children, child_err) = self.expanded_for_preview(shell, &children);
         let mut detail = Detail::of(h, path, children, self.counts_for(shell, id, path));
-        detail.body = self.expanded_for_preview(shell, &detail.body);
+        let (body, body_err) = self.expanded_for_preview(shell, &detail.body);
+        detail.body = body;
+        detail.composition_error = body_err.or(child_err);
         Some(detail)
     }
 

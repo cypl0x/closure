@@ -205,11 +205,21 @@ should be made on purpose.
 
 Acceptance: whatever is decided, written into docs/spec.md beside I12 and held by a test.
 
-* TODO gpui: show a widget's expansion error where the widget is
+* DONE gpui: show a widget's expansion error where the widget is
 A widget that fails to expand currently contributes nothing. The pane
 must say what failed and why, in place.
 
 Acceptance: =nix develop -c cargo test -p closure-shell-gpui --features gpui-test --test widget_errors=
+
+The reason travels beside the text rather than inside it
+(=Detail::composition_error=) and is painted in the error colour under
+the preview. A failure is the one thing a pane shows that is about the
+document rather than in it, and a shell that cannot tell those apart
+paints an error as prose. The template stays visible underneath, so
+there is something to fix.
+
+On :1: =widget cycle: page -> panel -> header -> page= in red, with
+the template above it.
 
 * TODO Org conformance: harness and pass-rate command
 A corpus of real org files and a command that reports what fraction

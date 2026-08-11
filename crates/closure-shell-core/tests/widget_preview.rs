@@ -77,15 +77,28 @@ fn the_preview_shows_what_the_composition_means() {
 #[test]
 fn a_composition_that_fails_says_so_where_it_is() {
     // A composition that cannot expand must not read as an empty page.
+    // The reason travels beside the text rather than inside it: a
+    // failure is the one thing a pane shows that is *about* the
+    // document rather than in it, and a shell that cannot tell those
+    // apart paints an error as prose.
     let src = "* Home\n:PROPERTIES:\n:ID: 01HQWPREV00000000000003\n:END:\n\
                #+BEGIN: closure-widget :name board\n{{nosuchwidget}}\n#+END:\n";
     let (_d, shell, mut app) = app(src);
     let d = detail_of(&mut app, &shell, "Home");
-    let shown = format!("{}\n{}", d.body, d.children);
-    assert!(
-        shown.contains("unknown widget"),
-        "the preview said nothing about the failure: {shown}"
-    );
+    let why = d
+        .composition_error
+        .as_deref()
+        .expect("the preview said nothing about the failure");
+    assert!(why.contains("nosuchwidget"), "{why}");
+    // And the template is still shown, so there is something to fix.
+    assert!(d.body.contains("{{nosuchwidget}}"), "{}", d.body);
+}
+
+#[test]
+fn a_working_composition_reports_no_failure() {
+    let (_d, shell, mut app) = app(VAULT);
+    let d = detail_of(&mut app, &shell, "Home");
+    assert!(d.composition_error.is_none(), "{:?}", d.composition_error);
 }
 
 #[test]
