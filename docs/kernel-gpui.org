@@ -148,11 +148,23 @@ callee sees it, the same rule as an argument's value.
 
 Verified on :1: a panel wrapping two list items.
 
-* TODO Widget: cycle detection with a depth limit and a named path
+* DONE Widget: cycle detection with a depth limit and a named path
 An expansion cycle must fail with the chain that caused it, not a
 stack overflow and not a silent stop.
 
 Acceptance: =nix develop -c cargo test -p closure-query --test widget_cycles=
+
+The error carries the whole ring, from where it closes rather than
+from where expansion began — the widgets before it are on the way in,
+not part of it. On :1: =widget cycle: page -> panel -> header -> page=
+in the pane where the widget is.
+
+Depth is a separate failure and now has its own error. A chain nesting
+5,000 deep without ever repeating a name is not a cycle, and recursing
+it would end the process — which I5 forbids more strongly than it
+forbids a panic, because a blown stack takes the window with it. The
+limit is 64: far past what a page needs, far below what this expander
+can survive.
 
 * TODO LSP: composition errors as diagnostics with precise ranges
 Acceptance: =nix develop -c cargo test -p closure-lsp --test diagnostics=

@@ -687,9 +687,27 @@ pub fn views(vault: &Vault) -> Result<Vec<(String, ViewSpec)>, ViewError> {
 /// An error expanding `#+BEGIN: closure-widget` composite blocks (V2a).
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum WidgetError {
-    /// A widget references itself transitively.
-    #[error("widget cycle through `{0}`")]
-    Cycle(String),
+    /// A widget references itself, directly or through others.
+    ///
+    /// Carries the whole ring rather than the name the expander
+    /// happened to be standing on: in a vault where `page` uses
+    /// `panel` uses `header` uses `page`, one name leaves the reader
+    /// to find the other two.
+    #[error("widget cycle: {}", .0.join(" -> "))]
+    Cycle(Vec<String>),
+    /// Composition nested deeper than [`DEPTH_LIMIT`] without
+    /// repeating a name.
+    ///
+    /// Not a cycle, and not a panic either: recursing it would end the
+    /// process, and I5 forbids that more strongly than it forbids a
+    /// panic — a blown stack takes the window with it.
+    #[error("widget nesting deeper than {limit}: {}", path.join(" -> "))]
+    TooDeep {
+        /// How deep composition may nest.
+        limit: usize,
+        /// The chain as far as it got.
+        path: Vec<String>,
+    },
     /// A `{{ref}}` names a widget that is not defined.
     #[error("unknown widget `{0}`")]
     Unknown(String),
@@ -801,6 +819,13 @@ enum WidgetBlock {
         args: Vec<(String, String)>,
     },
 }
+
+/// How deep composition may nest before it is called a runaway.
+///
+/// Well past what a page needs — a layout three or four widgets deep
+/// is already unusual — and far below what recursing this expander can
+/// survive.
+pub const DEPTH_LIMIT: usize = 64;
 
 /// The name given to a call block's content inside the widget it calls.
 ///
@@ -1025,7 +1050,18 @@ fn expand_widget_name(
     stack: &mut Vec<String>,
 ) -> Result<String, WidgetError> {
     if stack.iter().any(|s| s == name) {
-        return Err(WidgetError::Cycle(name.to_owned()));
+        // From where the ring closes, not from where expansion began:
+        // the widgets before it are on the way in, not part of it.
+        let from = stack.iter().position(|s| s == name).unwrap_or(0);
+        let mut ring: Vec<String> = stack[from..].to_vec();
+        ring.push(name.to_owned());
+        return Err(WidgetError::Cycle(ring));
+    }
+    if stack.len() >= DEPTH_LIMIT {
+        return Err(WidgetError::TooDeep {
+            limit: DEPTH_LIMIT,
+            path: stack.clone(),
+        });
     }
     let def = defs
         .get(name)
