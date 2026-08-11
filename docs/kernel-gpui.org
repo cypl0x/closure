@@ -461,13 +461,23 @@ find out which before changing either.
 
 Acceptance: =nix develop -c cargo test -p closure-shell-core --test manual= covers the spacing.
 
-* TODO Bug: the read-only panes clip long lines instead of wrapping
+* DONE Bug: the read-only panes clip long lines instead of wrapping
 Found 2026-08-11 in the same screenshot as the scroll fix. Manual
 rows run off the right edge mid-word — "Add a sibling headl" — so a
 command's keys, which are at the end of its line, are exactly what
 gets cut.
 
 Acceptance: =nix develop -c cargo test -p closure-shell-gpui --features gpui-test --test manual_scrolls= covers wrapping.
+
+The same flex shape as the detail pane's own long-title bug: a flex
+item will not shrink below its content, so the text pushed the row
+wider than the pane. Basis zero on the text, and a width on the row
+for it to resolve against — =flex_1= against nothing is nothing.
+
+Bounds cannot see this: the row stays inside the pane and the text
+overflows it. What a wrapped row does is get taller, so the test
+compares row heights and was checked both ways — without the fix every
+row is 27.5px.
 
 * DONE Perf: landing on a headline still walks its subtree once
 Found 2026-08-11 while writing the I11 keystroke budget. The five

@@ -98,3 +98,38 @@ fn the_row_under_the_cursor_is_marked(cx: &mut gpui::TestAppContext) {
         "nothing on screen says which row the pane is on"
     );
 }
+
+#[gpui::test]
+fn a_long_line_wraps_instead_of_running_off_the_edge(cx: &mut gpui::TestAppContext) {
+    // "Manual rows run off the right edge mid-word — and a command's
+    // keys are at the end of its line, so what gets cut is exactly what
+    // the manual exists to show."
+    //
+    // Bounds cannot see this directly: the row stays inside the pane
+    // and the *text* overflows it. What a wrapped row does do is get
+    // taller, so in a narrow window the long rows must be taller than
+    // the short ones — and in a wide one they need not be.
+    let (_dir, _view, vcx) = visual_window(cx, VAULT);
+    vcx.simulate_resize(gpui::size(gpui::px(760.0), gpui::px(720.0)));
+    vcx.run_until_parked();
+    vcx.simulate_keystrokes("g shift-k");
+    vcx.run_until_parked();
+    let mut heights: Vec<f32> = Vec::new();
+    for n in 0..20usize {
+        let sel: &'static str = Box::leak(format!("manual-row-{n}").into_boxed_str());
+        if let Some(b) = vcx.debug_bounds(sel) {
+            heights.push(f32::from(b.size.height));
+        }
+    }
+    assert!(
+        heights.len() > 5,
+        "too few rows painted to tell: {heights:?}"
+    );
+    let tallest = heights.iter().copied().fold(f32::MIN, f32::max);
+    let shortest = heights.iter().copied().fold(f32::MAX, f32::min);
+    assert!(
+        tallest > shortest * 1.5,
+        "every row is the same height in a 760px window, so nothing is \
+         wrapping and the long ones are being cut: {heights:?}"
+    );
+}

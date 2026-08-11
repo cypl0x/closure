@@ -6707,18 +6707,38 @@ impl GpuiView {
                 div()
                     .debug_selector(move || format!("{name}-row-{n}"))
                     .flex()
-                    .items_center()
+                    // The row has to have a width for the text's
+                    // `flex_1` to resolve against, or the basis-zero
+                    // below resolves against nothing and the line goes
+                    // back to pushing the row wider than the pane.
+                    .w_full()
+                    // Top, not centre: a row that wraps to three lines
+                    // would otherwise float its cursor bar in the
+                    // middle of them.
+                    .items_start()
                     .gap_2()
                     .when(hot, |d| d.bg(rgb(co.selection)))
                     .px_2()
                     .py_1()
                     .text_size(sz_at(12.0, zoom))
                     .text_color(rgb(co.fg))
-                    .child(div().w(px(2.0)).h(sz_at(12.0, zoom)).when(hot, |d| {
-                        d.debug_selector(move || format!("{name}-cursor"))
-                            .bg(rgb(co.accent))
-                    }))
-                    .child(line)
+                    .child(
+                        div()
+                            .flex_none()
+                            .w(px(2.0))
+                            .h(sz_at(12.0, zoom))
+                            .when(hot, |d| {
+                                d.debug_selector(move || format!("{name}-cursor"))
+                                    .bg(rgb(co.accent))
+                            }),
+                    )
+                    // A flex item will not shrink below its content, so
+                    // the text pushed the row wider than the pane and
+                    // was cut at the edge instead of wrapping — and a
+                    // command's keys are at the end of its line, so
+                    // what got cut was exactly what the manual exists
+                    // to show. Basis zero is what lets it wrap.
+                    .child(div().min_w(px(0.0)).flex_1().child(line))
             })
             .collect()
     }
