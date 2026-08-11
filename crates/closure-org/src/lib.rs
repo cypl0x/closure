@@ -9949,9 +9949,9 @@ pub const CONFORMANCE: &[Construct] = &[
     },
     Construct {
         name: "#+COLUMNS / column view",
-        support: Support::Preserved,
-        evidence: "",
-        missing: "no column format, no column display",
+        support: Support::Understood,
+        evidence: "crates/closure-org/tests/column_view.rs",
+        missing: "",
     },
     Construct {
         name: "#+TBLFM",
@@ -10246,6 +10246,103 @@ pub fn advance(ts: &str, today: &str) -> Option<String> {
     }
     out.push(close);
     Some(out)
+}
+
+/// What a column view summarises down a column.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Summary {
+    /// `{+}` — add them up.
+    Sum,
+    /// `{min}`
+    Min,
+    /// `{max}`
+    Max,
+    /// `{X}` — how many checkboxes are ticked.
+    CheckboxCount,
+}
+
+/// One column of an org `#+COLUMNS:` format.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ColumnSpec {
+    /// `%25ITEM` — how wide the file asks for it to be.
+    pub width: Option<usize>,
+    /// The property, or one of org's specials (`ITEM`, `TODO`, `TAGS`).
+    pub property: String,
+    /// `(Task)` — what to call it, when that is not the property name.
+    pub title: Option<String>,
+    /// `{+}` — what to show at the bottom of the column.
+    pub summary: Option<Summary>,
+}
+
+/// Parse an org `#+COLUMNS:` format string.
+///
+/// `None` when there are no columns in it at all: nothing declared and
+/// nothing to show are different states, and a caller wants to tell
+/// them apart.
+///
+/// An unrecognised summary is kept as no summary rather than refused.
+/// Org has a dozen and closure knows four; a format nobody here
+/// implemented should not make a document unreadable, which is the
+/// rule an unknown widget input type and an unknown rollup already
+/// follow.
+#[must_use]
+pub fn columns_format(spec: &str) -> Option<Vec<ColumnSpec>> {
+    let mut out: Vec<ColumnSpec> = Vec::new();
+    for token in spec.split_whitespace() {
+        let Some(rest) = token.strip_prefix('%') else {
+            continue;
+        };
+        let digits: String = rest.chars().take_while(char::is_ascii_digit).collect();
+        let rest = &rest[digits.len()..];
+        let width = digits.parse().ok();
+        // `{…}` first: a summary can follow a title, and cutting the
+        // title at `(` would leave the brace inside it.
+        let (rest, summary) = match rest.split_once('{') {
+            Some((head, tail)) => {
+                let word = tail.trim_end_matches('}');
+                let summary = match word {
+                    "+" => Some(Summary::Sum),
+                    "min" => Some(Summary::Min),
+                    "max" => Some(Summary::Max),
+                    "X" => Some(Summary::CheckboxCount),
+                    _ => None,
+                };
+                (head, summary)
+            }
+            None => (rest, None),
+        };
+        let (property, title) = match rest.split_once('(') {
+            Some((p, t)) => (p, Some(t.trim_end_matches(')').to_owned())),
+            None => (rest, None),
+        };
+        if property.is_empty() {
+            continue;
+        }
+        out.push(ColumnSpec {
+            width,
+            property: property.to_owned(),
+            title,
+            summary,
+        });
+    }
+    (!out.is_empty()).then_some(out)
+}
+
+/// The `#+COLUMNS:` a document declares for itself, if it does.
+///
+/// A file saying how it wants to be tabulated is the same idea a
+/// `closure-view` block expresses from the other end; this is the part
+/// that lets the file ask.
+#[must_use]
+pub fn document_columns(doc: &OrgDoc) -> Option<Vec<ColumnSpec>> {
+    doc.source()
+        .lines()
+        .find_map(|l| {
+            let t = l.trim_start();
+            t.strip_prefix("#+COLUMNS:")
+                .or_else(|| t.strip_prefix("#+columns:"))
+        })
+        .and_then(columns_format)
 }
 
 /// Why an `#+INCLUDE:` could not be resolved.

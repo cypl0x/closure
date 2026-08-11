@@ -353,8 +353,22 @@ turns deep outlines into asides.
 
 Conformance 76% -> 79%.
 
-* TODO Org: column view (#+COLUMNS)
+* DONE Org: column view (#+COLUMNS)
 Acceptance: =nix develop -c cargo test -p closure-org --test column_view=
+
+=%25ITEM(Task) %TODO %EFFORT{+}= — width, property, title, summary.
+A file saying how it wants to be tabulated is the same idea a
+=closure-view= block expresses from the other end; this is the part
+that lets the *file* ask.
+
+Braces are read before parentheses: a summary can follow a title, and
+cutting at =(= first would leave the brace inside the title. An
+unrecognised summary is kept as no summary rather than refused — org
+has a dozen and closure knows four, and a format nobody implemented
+should not make a document unreadable, the same rule an unknown widget
+input type and an unknown rollup already follow.
+
+Conformance 79% -> 82%.
 
 * TODO Org: #+TBLFM table formulas
 Acceptance: =nix develop -c cargo test -p closure-org --test tblfm=
