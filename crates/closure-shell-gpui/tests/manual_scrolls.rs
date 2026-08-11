@@ -133,3 +133,36 @@ fn a_long_line_wraps_instead_of_running_off_the_edge(cx: &mut gpui::TestAppConte
          wrapping and the long ones are being cut: {heights:?}"
     );
 }
+
+#[gpui::test]
+fn the_cursor_stays_on_screen_as_the_pane_pages(cx: &mut gpui::TestAppContext) {
+    // "The pane shows about half the text it has room for."
+    //
+    // The complaint was that the rows look double-spaced, and measuring
+    // it turned up something worse: `pane_view` counted the viewport in
+    // 18px lines while a row painted at 27.5, so a 720px window was
+    // handed 37 rows, could show about 24, and `C-d` paged past the
+    // difference — content skipped rather than merely spaced out.
+    //
+    // Rows wrap now, so their height is not a constant and no
+    // arithmetic can predict it. What can be held is the property that
+    // matters: wherever the cursor goes, it is somewhere you can see.
+    let (_dir, _view, vcx) = visual_window(cx, VAULT);
+    open_manual(vcx);
+    let viewport = vcx.update(|w, _cx| w.viewport_size());
+    for _ in 0..4 {
+        vcx.simulate_keystrokes("ctrl-d");
+        vcx.run_until_parked();
+        let at = vcx
+            .debug_bounds("manual-cursor")
+            .expect("the cursor is painted somewhere");
+        assert!(
+            at.top() >= gpui::px(0.0) && at.bottom() <= viewport.height,
+            "the cursor is at {:?}..{:?} in a {:?} window — paging moved it \
+             somewhere nobody can see, which is where the skipped rows went",
+            at.top(),
+            at.bottom(),
+            viewport.height
+        );
+    }
+}

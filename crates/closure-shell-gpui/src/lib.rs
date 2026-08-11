@@ -2214,6 +2214,43 @@ impl Colors {
 /// height into a line count ([`body_viewport_lines`]).
 const BODY_LINE_H: f32 = 18.0;
 
+/// The height of one row in a read-only pane, and the unit
+/// [`GpuiView::pane_view`] counts the viewport in.
+///
+/// One number for both, because they were two and disagreed. The page
+/// size counted in `BODY_LINE_H` — 18px — while a pane row painted at
+/// 27.5px with its padding, so a 720px window was handed 37 rows, could
+/// show about 24, and `C-d` paged straight past the difference. That is
+/// the "shows about half the text it has room for" report, and it was
+/// skipping content rather than merely spacing it out.
+///
+/// 19.5 is the line box gpui gives 12px text, measured; the rest is a
+/// pixel of padding above and below, which is enough to separate rows
+/// of a reference list without doubling their height.
+///
+/// It is a floor, not the truth: rows wrap now, so a row is one line
+/// tall or three depending on the width of the pane and the length of
+/// the line, and no arithmetic here can know which. That is what
+/// [`PANE_WRAP_GUESS`] is for.
+const PANE_ROW_H: f32 = 21.5;
+
+/// How many lines a pane row is assumed to take, for counting a page.
+///
+/// An estimate, and deliberately a pessimistic one. Overshooting hands
+/// the pane more rows than fit, which paints them below the fold and
+/// pages straight past them — content skipped. Undershooting means
+/// `C-d` moves less than a full screen, which is a smaller sin than
+/// losing lines, and one you can see and correct by pressing it again.
+///
+/// Replacing the estimate with a measurement means a list that lays
+/// rows out until the pane is full, which is a different piece of work
+/// and is written down as its own item.
+const PANE_WRAP_GUESS: f32 = 2.0;
+
+/// Padding above and below a read-only pane's row. Part of
+/// [`PANE_ROW_H`], and kept beside it so the two cannot drift.
+const PANE_ROW_PAD: f32 = 1.0;
+
 /// The height of one body row, and the unit the viewport is counted in.
 ///
 /// One number for both, because they were two: the count divided the
@@ -3803,7 +3840,11 @@ impl GpuiView {
         if self.viewport.1 <= 0.0 {
             return BODY_VIEW_DEFAULT;
         }
-        body_viewport_lines(self.viewport.1, body_row_h(self.app.zoom()), BODY_CHROME)
+        body_viewport_lines(
+            self.viewport.1,
+            PANE_ROW_H * PANE_WRAP_GUESS * self.app.zoom(),
+            BODY_CHROME,
+        )
     }
 
     /// How many columns of body text the editor pane can show.
@@ -6719,7 +6760,7 @@ impl GpuiView {
                     .gap_2()
                     .when(hot, |d| d.bg(rgb(co.selection)))
                     .px_2()
-                    .py_1()
+                    .py(px(PANE_ROW_PAD))
                     .text_size(sz_at(12.0, zoom))
                     .text_color(rgb(co.fg))
                     .child(

@@ -453,13 +453,36 @@ rows measured itself taller and painted more still. Fixed by
 half-page chords through the keymap when a read-only pane is open,
 and by measuring the viewport from the window. Verified on :1.
 
-* TODO Bug: the manual pane double-spaces every line
+* DONE Bug: the manual pane double-spaces every line
 Found 2026-08-11, same screenshot. Each generated line is followed by
 a blank one, so the pane shows about half the text it has room for.
 Either the generator emits the blank lines or the pane inserts them;
 find out which before changing either.
 
-Acceptance: =nix develop -c cargo test -p closure-shell-core --test manual= covers the spacing.
+Acceptance: =nix develop -c cargo test -p closure-shell-gpui --features gpui-test --test manual_scrolls=
+
+Neither: no blank lines anywhere. Each row carried =py_1=, so a 12px
+line painted 27.5px tall. Measuring that turned up something worse
+than airiness — =pane_view= counted the viewport in 18px lines, so a
+720px window was handed 37 rows, could show about 24, and =C-d= paged
+straight past the other thirteen. The report said "half the text it
+has room for" and the text was being skipped, not spaced.
+
+Padding down to a pixel, and the page counted in the same number the
+rows paint in. Rows wrap now, so their height is not a constant and no
+arithmetic here can predict it; the count errs small on purpose, and
+what the test holds is the property that matters — wherever the cursor
+goes, it is somewhere you can see.
+
+* TODO Panes: lay rows out until the pane is full, instead of guessing
+=PANE_WRAP_GUESS= assumes a pane row takes two lines, because rows
+wrap and nothing here can know how many. Overshooting skips content,
+so it errs small, which means =C-d= moves less than a screen when
+lines are short.
+
+A list that measures rows as it places them would need no estimate.
+
+Acceptance: =PANE_WRAP_GUESS= is gone and =manual_scrolls= still passes.
 
 * DONE Bug: the read-only panes clip long lines instead of wrapping
 Found 2026-08-11 in the same screenshot as the scroll fix. Manual
