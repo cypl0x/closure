@@ -418,13 +418,33 @@ names the view, because a table with no name cannot be told from the
 default one. On :1: =database — open-tasks · 3 row(s)= against six
 headlines, so the filter really ran.
 
-* TODO Bug: the database surface opens behind its own picker
-Found 2026-08-11. =M-x db-view= opens the table and immediately floats
-a jump picker over it, so the table is never actually seen; Escape
-dismisses the whole surface rather than just the picker. Pre-existing,
-not from the saved-view work.
+* DONE The database picker shows the default columns, not the view's
+Found 2026-08-11. =M-x db-view= floats a picker over the table, and
+the picker's three fields are the *default* table's columns — title,
+keyword, tags. A saved view's columns, including relations and
+rollups, are not among them, so the view is filtered and sorted
+correctly and then displayed as something else.
 
-Acceptance: opening the surface shows the table, and Escape from the picker leaves the table up.
+Written down first as "the surface opens behind its own picker", and
+that was wrong: the picker is deliberate and was asked for — "db-view
+doesn't render the results in command palette", with three tests
+holding it. Removing it was the wrong fix and was reverted. What is
+missing is that the picker does not know about saved views.
+
+Acceptance: =nix develop -c cargo test -p closure-shell-core --test db_graph_picker=
+
+The picker's first field is the view's first column and the rest go in
+the detail as =NAME: value=, so a relation resolved to a title and a
+rollup arrive with everything else. Titled after the view.
+
+On :1: =db · open-tasks=, three rows, each reading
+=PROJECT: Rewrite the parser · EFFORT: 3=.
+
+Worth remembering how this nearly went wrong. The first fix removed
+the picker, three shipped tests failed, and they turned out to be
+holding a behaviour the user had asked for by name. Reverted. Reading
+the tests for a surface before changing it would have cost a minute
+and saved the detour.
 
 * TODO gpui: edit a database cell through a command
 I8 — the pane mutates only through the registry.

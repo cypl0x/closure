@@ -21718,7 +21718,7 @@ impl ModalApp {
     /// `C-c C-l`'s three steps as picker rows: the types, then what
     /// the destination can be completed to, then nothing — a
     /// description is prose and has no candidates.
-    fn link_pick_rows(&self, shell: &Shell) -> (&'static str, &'static str, Vec<PickRow>) {
+    fn link_pick_rows(&self, shell: &Shell) -> (String, &'static str, Vec<PickRow>) {
         let row = |label: String, trailing: String| PickRow {
             label,
             detail: String::new(),
@@ -21728,7 +21728,7 @@ impl ModalApp {
         };
         if self.pending_link.kind.is_none() {
             return (
-                "link type",
+                "link type".to_owned(),
                 "TAB or RET picks \u{b7} Esc cancels",
                 self.link_types()
                     .into_iter()
@@ -21738,13 +21738,13 @@ impl ModalApp {
         }
         if self.pending_link.dest.is_some() {
             return (
-                "what to call it",
+                "what to call it".to_owned(),
                 "RET \u{b7} empty shows the link itself",
                 Vec::new(),
             );
         }
         (
-            "where it goes",
+            "where it goes".to_owned(),
             "TAB completes \u{b7} RET \u{b7} Esc cancels",
             self.link_completions(shell)
                 .into_iter()
@@ -21760,6 +21760,37 @@ impl ModalApp {
     /// and the priority and tags say the rest.
     fn db_pick_rows(&self, shell: &Shell) -> Vec<PickRow> {
         use std::fmt::Write as _;
+        // A saved view decides its own columns, and the picker's three
+        // fields carry them: the first is what you are looking for and
+        // the rest are what tells it apart. Without this the view was
+        // filtered and sorted correctly and then displayed as the
+        // default table, which is a different question answered well.
+        if let Some((_, spec)) = Self::saved_view(shell) {
+            let header = spec.header();
+            return spec
+                .groups(&shell.vault)
+                .into_iter()
+                .flat_map(|(_, rows)| rows)
+                .map(|cells| {
+                    let label = cells.first().cloned().unwrap_or_default();
+                    let detail = cells
+                        .iter()
+                        .zip(header.iter())
+                        .skip(1)
+                        .filter(|(v, _)| !v.is_empty())
+                        .map(|(v, h)| format!("{h}: {v}"))
+                        .collect::<Vec<_>>()
+                        .join(" · ");
+                    PickRow {
+                        label,
+                        detail,
+                        trailing: String::new(),
+                        matches: Vec::new(),
+                        current: false,
+                    }
+                })
+                .collect();
+        }
         let rows = shell
             .vault
             .iter()
@@ -21868,10 +21899,10 @@ impl ModalApp {
 
     /// What the open surface is picking from: its title, what Enter
     /// does, and the rows surviving the filter.
-    fn picker_rows(&self, shell: &Shell) -> Option<(&'static str, &'static str, Vec<PickRow>)> {
+    fn picker_rows(&self, shell: &Shell) -> Option<(String, &'static str, Vec<PickRow>)> {
         let (title, hint, rows) = match self.surface {
             ModalSurface::Palette => (
-                "commands",
+                "commands".to_owned(),
                 "RET runs",
                 self.palette_shared()
                     .iter()
@@ -21889,14 +21920,14 @@ impl ModalApp {
                     .collect::<Vec<_>>(),
             ),
             ModalSurface::Buffers => (
-                "buffers",
+                "buffers".to_owned(),
                 "RET opens \u{b7} the one you are in is marked",
                 self.buffer_pick_rows(shell),
             ),
-            ModalSurface::Files => ("files", "RET opens", self.file_pick_rows(shell)),
+            ModalSurface::Files => ("files".to_owned(), "RET opens", self.file_pick_rows(shell)),
             ModalSurface::InsertLink => self.link_pick_rows(shell),
             ModalSurface::Headlines => (
-                "headlines in this file",
+                "headlines in this file".to_owned(),
                 "RET goes to it",
                 self.filtered_headlines(shell)
                     .into_iter()
@@ -21910,7 +21941,7 @@ impl ModalApp {
                     .collect(),
             ),
             ModalSurface::Blocks => (
-                "source blocks",
+                "source blocks".to_owned(),
                 "RET goes to the file it is in",
                 self.filtered_blocks(shell)
                     .into_iter()
@@ -21931,7 +21962,7 @@ impl ModalApp {
                     .collect(),
             ),
             ModalSurface::Messages => (
-                "messages",
+                "messages".to_owned(),
                 "the newest is first",
                 filtered(
                     self.messages.clone(),
@@ -21952,15 +21983,26 @@ impl ModalApp {
             // design. A db-view is headlines and a graph is headlines,
             // so both are pickers like every other list of them — one
             // filter, one set of chords, one look.
-            ModalSurface::DbView => ("db", "RET jumps to it", self.db_pick_rows(shell)),
+            ModalSurface::DbView => (
+                // Named after the view when there is one, because a
+                // list with no name cannot be told from the default.
+                self.db_view_name(shell)
+                    .map_or_else(|| "db".to_owned(), |n| format!("db · {n}")),
+                "RET jumps to it",
+                self.db_pick_rows(shell),
+            ),
             ModalSurface::FindFile => (
-                "find file",
+                "find file".to_owned(),
                 "RET opens, or makes what is not there",
                 self.find_file_rows(shell),
             ),
-            ModalSurface::Graph => ("graph", "RET jumps to it", self.graph_pick_rows(shell)),
+            ModalSurface::Graph => (
+                "graph".to_owned(),
+                "RET jumps to it",
+                self.graph_pick_rows(shell),
+            ),
             ModalSurface::UndoHistory => (
-                "undo history",
+                "undo history".to_owned(),
                 "RET jumps the document to that edit",
                 self.filtered_history(shell)
                     .into_iter()

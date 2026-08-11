@@ -141,3 +141,79 @@ fn opening_one_from_a_buffer_comes_back_to_the_buffer() {
         assert_eq!(app.surface(), ModalSurface::EditBody, "{command}");
     }
 }
+
+// === a saved view's columns reach the picker (2026-08-11) ===
+//
+// The picker was right and stays: "db-view doesn't render the results
+// in command palette" asked for one filter and one set of chords, and
+// the three tests above hold it. What it did not know about was saved
+// views. A vault can now define `#+BEGIN: closure-view` with its own
+// columns — including relations and rollups — and the picker showed
+// the *default* table's title/keyword/tags instead, so the view was
+// filtered and sorted correctly and then displayed as something else.
+
+const WITH_VIEW: &str = "\
+* Rewrite the parser :project:
+:PROPERTIES:
+:ID: 01HQDBSV00000000000001
+:END:
+* TODO Read the spec :task:
+:PROPERTIES:
+:ID: 01HQDBSV00000000000002
+:PROJECT: 01HQDBSV00000000000001
+:EFFORT: 3
+:END:
+* DONE Old thing :task:
+:PROPERTIES:
+:ID: 01HQDBSV00000000000003
+:END:
+* Views
+:PROPERTIES:
+:ID: 01HQDBSV00000000000004
+:END:
+#+BEGIN: closure-view :name open :from tag:task :columns title,rel:PROJECT,EFFORT :filter todo=TODO
+#+END:
+";
+
+fn with_view() -> (TempDir, Shell, ModalApp) {
+    let dir = tempfile::tempdir().expect("tmp");
+    fs::write(dir.path().join("notes.org"), WITH_VIEW).expect("write");
+    let vault = Vault::open(dir.path()).expect("open");
+    (dir, Shell::new(vault), ModalApp::new(InputMode::Doom))
+}
+
+#[test]
+fn a_saved_views_rows_are_the_ones_offered() {
+    let (_d, mut shell, mut app) = with_view();
+    app.run(&mut shell, "db-view");
+    let view = app.picker_view(&shell).expect("picker");
+    let labels: Vec<&str> = view.rows.iter().map(|r| r.label.as_str()).collect();
+    assert_eq!(
+        labels,
+        vec!["Read the spec"],
+        "the saved view's source and filter were ignored: {labels:?}"
+    );
+}
+
+#[test]
+fn a_saved_views_other_columns_come_along() {
+    // A relation resolved to a title, and a property beside it — the
+    // things the default three fields have no room for.
+    let (_d, mut shell, mut app) = with_view();
+    app.run(&mut shell, "db-view");
+    let view = app.picker_view(&shell).expect("picker");
+    let row = &view.rows[0];
+    assert!(
+        row.detail.contains("Rewrite the parser"),
+        "the relation did not reach the picker: {row:?}"
+    );
+    assert!(row.detail.contains('3'), "the effort: {row:?}");
+}
+
+#[test]
+fn the_picker_says_which_view_it_is_offering() {
+    let (_d, mut shell, mut app) = with_view();
+    app.run(&mut shell, "db-view");
+    let view = app.picker_view(&shell).expect("picker");
+    assert!(view.title.contains("open"), "{}", view.title);
+}
