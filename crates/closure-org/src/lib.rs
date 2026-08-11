@@ -9878,15 +9878,15 @@ pub const CONFORMANCE: &[Construct] = &[
     },
     Construct {
         name: "LaTeX fragment",
-        support: Support::Preserved,
-        evidence: "",
-        missing: "not parsed as maths, not rendered",
+        support: Support::Understood,
+        evidence: "crates/closure-org/tests/entities.rs",
+        missing: "",
     },
     Construct {
         name: "entity (\\alpha)",
-        support: Support::Preserved,
-        evidence: "",
-        missing: "no entity table, so no character behind it",
+        support: Support::Understood,
+        evidence: "crates/closure-org/tests/entities.rs",
+        missing: "",
     },
     Construct {
         name: "inline task",
@@ -10193,6 +10193,212 @@ pub fn advance(ts: &str, today: &str) -> Option<String> {
     }
     out.push(close);
     Some(out)
+}
+
+/// What a [`Fragment`] is.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum FragmentKind {
+    /// `\alpha` — a named character. The name, without the backslash.
+    Entity(String),
+    /// `$x^2$`, `\(a\)`, `\[b\]` — maths. The body, without the
+    /// delimiters.
+    ///
+    /// Not evaluated, and org does not evaluate it either: a fragment
+    /// is something to render, not something to compute.
+    Latex(String),
+}
+
+/// A run of characters in a line that is maths or a named character
+/// rather than prose.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Fragment {
+    /// Byte range in the line, delimiters included.
+    pub range: std::ops::Range<usize>,
+    /// Which kind, and its contents.
+    pub kind: FragmentKind,
+}
+
+/// Whether `$` at `at` can open or close maths, by org's own rule.
+///
+/// The character just inside the delimiter may not be whitespace, and
+/// the one just outside may not be alphanumeric. That single rule is
+/// what tells `$x^2$` from "between $5 and $6" and from `a$b$c` — and
+/// without it a parser finds maths in every price and every URL.
+fn dollar_is_delimiter(line: &str, at: usize, opening: bool) -> bool {
+    let bytes = line.as_bytes();
+    let inside = if opening {
+        bytes.get(at + 1).copied()
+    } else {
+        at.checked_sub(1).and_then(|i| bytes.get(i).copied())
+    };
+    let outside = if opening {
+        at.checked_sub(1).and_then(|i| bytes.get(i).copied())
+    } else {
+        bytes.get(at + 1).copied()
+    };
+    // A digit just after the *opening* `$` is money, not maths — that
+    // is what separates "$5" from "$x^2$". A digit just before the
+    // closing one is ordinary: `$x^2$` ends in a 2.
+    let inside_ok =
+        inside.is_some_and(|c| !c.is_ascii_whitespace() && !(opening && c.is_ascii_digit()));
+    let outside_ok = outside.is_none_or(|c| !c.is_ascii_alphanumeric());
+    inside_ok && outside_ok
+}
+
+/// Every entity and LaTeX fragment in `line`, in order.
+///
+/// Reads; never rewrites. What a shell does with a fragment — draw the
+/// glyph, hand it to an exporter — is the shell's business; knowing
+/// where they are is the parser's.
+#[must_use]
+pub fn fragments(line: &str) -> Vec<Fragment> {
+    let mut out: Vec<Fragment> = Vec::new();
+    let bytes = line.as_bytes();
+    let mut i = 0usize;
+    while i < bytes.len() {
+        if bytes[i] == b'\\' {
+            // `\(`…`\)` and `\[`…`\]` before `\name`, because the
+            // opening of one is a backslash followed by punctuation
+            // and the other is a backslash followed by letters.
+            let (open, close) = match bytes.get(i + 1) {
+                Some(b'(') => (r"\(", r"\)"),
+                Some(b'[') => (r"\[", r"\]"),
+                _ => ("", ""),
+            };
+            if !open.is_empty() {
+                if let Some(rel) = line[i + 2..].find(close) {
+                    let end = i + 2 + rel + close.len();
+                    out.push(Fragment {
+                        range: i..end,
+                        kind: FragmentKind::Latex(line[i + 2..i + 2 + rel].to_owned()),
+                    });
+                    i = end;
+                    continue;
+                }
+                i += 2;
+                continue;
+            }
+            let name_len = line[i + 1..]
+                .find(|c: char| !c.is_ascii_alphabetic())
+                .unwrap_or(line.len() - i - 1);
+            if name_len > 0 {
+                let end = i + 1 + name_len;
+                out.push(Fragment {
+                    range: i..end,
+                    kind: FragmentKind::Entity(line[i + 1..end].to_owned()),
+                });
+                i = end;
+                continue;
+            }
+            i += 1;
+            continue;
+        }
+        if bytes[i] == b'$' && dollar_is_delimiter(line, i, true) {
+            let mut j = i + 1;
+            while j < bytes.len() {
+                if bytes[j] == b'$' && dollar_is_delimiter(line, j, false) {
+                    out.push(Fragment {
+                        range: i..j + 1,
+                        kind: FragmentKind::Latex(line[i + 1..j].to_owned()),
+                    });
+                    break;
+                }
+                j += 1;
+            }
+            if j < bytes.len() {
+                i = j + 1;
+                continue;
+            }
+        }
+        i += 1;
+    }
+    out
+}
+
+/// The character an org entity name stands for, if closure knows it.
+///
+/// A subset, deliberately: org has hundreds and this carries the ones
+/// that turn up in prose and in notes about maths. An unknown name is
+/// `None` rather than a guess — a shell that cannot draw the glyph
+/// should leave the source alone and say why, which is a better answer
+/// than a wrong character.
+#[must_use]
+pub fn entity_char(name: &str) -> Option<&'static str> {
+    Some(match name {
+        "alpha" => "α",
+        "beta" => "β",
+        "gamma" => "γ",
+        "delta" => "δ",
+        "epsilon" => "ε",
+        "zeta" => "ζ",
+        "eta" => "η",
+        "theta" => "θ",
+        "lambda" => "λ",
+        "mu" => "μ",
+        "pi" => "π",
+        "rho" => "ρ",
+        "sigma" => "σ",
+        "tau" => "τ",
+        "phi" => "φ",
+        "chi" => "χ",
+        "psi" => "ψ",
+        "omega" => "ω",
+        "Alpha" => "Α",
+        "Beta" => "Β",
+        "Gamma" => "Γ",
+        "Delta" => "Δ",
+        "Theta" => "Θ",
+        "Lambda" => "Λ",
+        "Pi" => "Π",
+        "Sigma" => "Σ",
+        "Phi" => "Φ",
+        "Psi" => "Ψ",
+        "Omega" => "Ω",
+        "hellip" => "…",
+        "ldots" => "…",
+        "ndash" => "–",
+        "mdash" => "—",
+        "rightarrow" | "to" => "→",
+        "leftarrow" => "←",
+        "Rightarrow" => "⇒",
+        "Leftarrow" => "⇐",
+        "times" => "×",
+        "div" => "÷",
+        "plusmn" => "±",
+        "leq" => "≤",
+        "geq" => "≥",
+        "neq" => "≠",
+        "approx" => "≈",
+        "infin" | "infty" => "∞",
+        "deg" => "°",
+        "bull" => "•",
+        "copy" => "©",
+        "reg" => "®",
+        "trade" => "™",
+        "euro" => "€",
+        "pound" => "£",
+        "yen" => "¥",
+        "sum" => "∑",
+        "prod" => "∏",
+        "radic" => "√",
+        "part" => "∂",
+        "nabla" => "∇",
+        "forall" => "∀",
+        "exist" => "∃",
+        "empty" => "∅",
+        "isin" => "∈",
+        "notin" => "∉",
+        "cap" => "∩",
+        "cup" => "∪",
+        "sub" => "⊂",
+        "sup" => "⊃",
+        "check" => "✓",
+        "star" => "⋆",
+        "dagger" => "†",
+        "sect" => "§",
+        "para" => "¶",
+        _ => return None,
+    })
 }
 
 /// `src` with every `:PROPERTIES:` … `:END:` drawer removed.

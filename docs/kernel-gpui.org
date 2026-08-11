@@ -305,8 +305,22 @@ moved 2026-08-11 to 2026-08-18 and left it TODO.
 * TODO Org: #+INCLUDE resolution
 Acceptance: =nix develop -c cargo test -p closure-org --test include=
 
-* TODO Org: entities and LaTeX fragments
+* DONE Org: entities and LaTeX fragments
 Acceptance: =nix develop -c cargo test -p closure-org --test entities=
+
+Two constructs in one commit because they are the same question asked
+twice: which run of characters in this line is maths or a named
+character rather than prose. =fragments()= answers it; =entity_char()=
+gives the glyph for the names closure knows, and =None= rather than a
+guess for the rest.
+
+The interesting rule is the dollar. A digit just after an opening =$=
+is money, which is what separates "$5" from "$x^2$" — and a digit just
+before the closing one is ordinary, because =$x^2$= ends in a 2. The
+first version applied the digit rule to both ends and rejected all
+maths; the test for =$x^2$= caught it immediately.
+
+Conformance 67% -> 73%.
 
 * TODO Org: inline tasks
 Acceptance: =nix develop -c cargo test -p closure-org --test inline_tasks=

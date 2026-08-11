@@ -20,8 +20,9 @@ use closure_org::{CONFORMANCE, Support, conformance_rate};
 
 /// The floor. Raise it when a construct moves up; never lower it.
 ///
-/// 2026-08-11: 61% (21 of 34), then 67% (23 of 34) with repeaters.
-const FLOOR: u32 = 67;
+/// 2026-08-11: 61% (21 of 34), 67% with repeaters, 73% (25 of 34)
+/// with entities and LaTeX fragments.
+const FLOOR: u32 = 73;
 
 #[test]
 fn the_rate_never_falls() {
