@@ -55,12 +55,20 @@ shapes.
 
 Acceptance: =grep -c "^### I11" docs/spec.md= prints 1.
 
-* TODO Spec: state the target scale
+* DONE Spec: state the target scale
 The store parses the whole vault into memory. That is a load-bearing
 decision made by accident. Say the number the kernel promises to
 hold.
 
 Acceptance: =grep -ci "target scale" docs/spec.md= is at least 1.
+
+100,000 headlines — about 15 MB of org. Measured on this machine,
+release: 10k headlines open in 32 ms for 27 MB resident, 100k in
+285 ms for 196 MB, both linear at ~2.9 us and ~2 KB each. A million
+would be ~3 s and ~2 GB, which is where parsing the whole vault stops
+being the right design, so the promise stops below it on purpose.
+=closure_store::TARGET_SCALE_HEADLINES= carries the same number and
+=closure-store/tests/target_scale.rs= fails if the two disagree.
 
 * TODO Widget: named parameters at the call site
 =({{name}})= substitution is =#define=, not composition. A call site

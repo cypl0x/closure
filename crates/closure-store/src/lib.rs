@@ -30,6 +30,24 @@ use thiserror::Error;
 /// captures in different files.
 pub const CAPTURE_FILE: &str = "inbox.org";
 
+/// How many headlines the kernel promises to hold well.
+///
+/// A vault is parsed whole into memory — every file, every headline,
+/// every span — which is what makes queries, backlinks and byte-exact
+/// printing simple and fast. It also means the promise is finite, and
+/// an unstated finite promise is one nobody can test against.
+///
+/// Measured on 2026-08-11, release build: 10,000 headlines (1.4 MB of
+/// org) open in 32 ms for 27 MB resident; 100,000 (14.2 MB) in 285 ms
+/// for 196 MB. Both linear — about 2.9 µs and 2 KB per headline. A
+/// million would be roughly 3 s and 2 GB, which is where parsing it
+/// all stops being the right design, so the promise stops below it on
+/// purpose rather than by accident.
+///
+/// The spec states the same number and
+/// `closure-store/tests/target_scale.rs` holds the two together.
+pub const TARGET_SCALE_HEADLINES: usize = 100_000;
+
 /// A loaded vault: every `*.org` file under a directory parsed into
 /// [`Document`]s with a shared block-id index plus a precomputed
 /// inverted backlink index.

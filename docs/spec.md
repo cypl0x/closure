@@ -121,6 +121,33 @@ afterwards, and the same vault expands to the same string every time (I6).
 The consequence worth stating: composition reduces to `query`, one of the
 seven kernel primitives below. It adds no eighth.
 
+## Target scale
+
+The kernel promises to hold **100,000 headlines** — roughly 15 MB of org
+across a few hundred files — and to stay inside the budgets in I11 at
+that size.
+
+The number matters because of how the store works: a vault is parsed
+whole into memory, every file and every span, which is what makes
+byte-exact printing, backlinks and queries simple and fast. That design
+has a ceiling, and an unstated ceiling is one nobody can test against.
+
+Measured 2026-08-11 on the reference machine, release build:
+
+| headlines | org     | cold open | resident |
+| --------- | ------- | --------- | -------- |
+| 10,000    | 1.4 MB  | 32 ms     | 27 MB    |
+| 100,000   | 14.2 MB | 285 ms    | 196 MB   |
+
+Both linear: about 2.9 µs and 2 KB per headline. A million headlines
+would be roughly 3 s and 2 GB, which is where parsing the whole vault
+stops being the right design — so the promise stops below it
+deliberately. Going further is a different store, and would be a spec
+revision rather than an optimisation.
+
+`closure_store::TARGET_SCALE_HEADLINES` is the same number in code, and
+`closure-store/tests/target_scale.rs` fails if these two disagree.
+
 ## What a block is
 
 The vision asks for Notion-style composable building blocks. Org offers a
