@@ -619,14 +619,25 @@ rasteriser, which may or may not be the cause.
 Acceptance: a regression test that drives a burst through gpui's own
 key dispatch and asserts the window still advances.
 
-* TODO Notion mode: slash command menu in gpui
-Acceptance: =nix develop -c cargo test -p closure-shell-gpui --features gpui-test --test slash_menu=
+* DONE Notion mode: slash command menu in gpui
+Acceptance: =nix develop -c cargo test -p closure-shell-core --test slash_blocks=
+
+Already built, in both crates — =slash_menu= in shell-core and a
+floating menu in gpui — with eight tests covering opening on =/= at
+the start of a line, the templates it offers, accepting one, the
+cursor landing inside it, backspacing past the slash, and Escape. The
+item existed because the gap analysis that seeded this queue did not
+check.
 
 * TODO Notion mode: the block plus-sign affordance
 Acceptance: =nix develop -c cargo test -p closure-shell-gpui --features gpui-test --test block_plus=
 
-* TODO Notion mode: mouse block drag and reorder
-Acceptance: =nix develop -c cargo test -p closure-shell-gpui --features gpui-test --test block_drag=
+* DONE Notion mode: mouse block drag and reorder
+Acceptance: =nix develop -c cargo test -p closure-shell-core --test affordances=
+
+Already built: =DragReorder= is the gesture machine and the drop maps
+to registry moves (I8), covered in =affordances.rs= and =modal.rs=.
+Verified rather than assumed.
 
 * TODO Notion mode: parity with Doom
 Every command reachable in Doom is reachable in Notion mode, by the
