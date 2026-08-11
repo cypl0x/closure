@@ -105,12 +105,28 @@ template verbatim and never an expansion, which is I12 doing its job
 for the editor and a missing read view everywhere else. Written down
 as its own item.
 
-* TODO Widget: typed inputs validated at load
+* DONE Widget: typed inputs validated at load
 I9 says config errors fail the load. A widget's declared inputs are
 config. A missing or wrong-typed argument is an error before render,
 not a hole in the output.
 
 Acceptance: =nix develop -c cargo test -p closure-query --test widget_types=
+
+=:inputs count:number,title,done:bool=. Three types, because a type
+system here earns its place catching the mistakes that are always
+mistakes and stops earning it the moment a template needs a grammar to
+describe its own arguments. Untyped stays text, which is what every
+input written before today is.
+
+Two errors, both carrying everything needed to fix them without
+opening another file: =UnknownArgument= for a call site naming an
+input that does not exist (the typo that used to render as silence),
+and =BadArgument= for a value the type cannot hold. Missing is
+deliberately not an error — a definition block is a call site with no
+arguments, and showing a template is not a mistake.
+
+Not visible in the window yet: nothing paints widget errors, or
+widgets. Both are items of their own.
 
 * TODO Widget: slots
 Content passed *into* a widget body, so a widget can wrap what it is

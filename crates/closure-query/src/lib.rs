@@ -693,6 +693,75 @@ pub enum WidgetError {
     /// A `{{ref}}` names a widget that is not defined.
     #[error("unknown widget `{0}`")]
     Unknown(String),
+    /// A call site named an input the widget does not declare — the
+    /// typo that used to render as silence.
+    #[error("widget `{widget}` has no input `{argument}`")]
+    UnknownArgument {
+        /// The widget called.
+        widget: String,
+        /// The argument name that matched none of its inputs.
+        argument: String,
+    },
+    /// A value that the input's declared type cannot hold.
+    #[error("widget `{widget}` input `{input}` expects {expected}, got `{got}`")]
+    BadArgument {
+        /// The widget called.
+        widget: String,
+        /// The input whose type was not satisfied.
+        input: String,
+        /// What that input is declared to hold.
+        expected: String,
+        /// The value as written at the call site.
+        got: String,
+    },
+}
+
+/// What an input is declared to hold.
+///
+/// Deliberately three. A type system here earns its place by catching
+/// the mistakes that are always mistakes — a word where a number
+/// belongs — and stops earning it the moment a template needs a
+/// grammar to describe its own arguments.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum InputType {
+    /// Anything, and what an undeclared type means.
+    #[default]
+    Text,
+    /// Parses as a number.
+    Number,
+    /// Exactly `true` or `false`.
+    Bool,
+}
+
+impl InputType {
+    /// The declared spelling, for the error message.
+    const fn name(self) -> &'static str {
+        match self {
+            Self::Text => "text",
+            Self::Number => "number",
+            Self::Bool => "bool",
+        }
+    }
+
+    /// Parse the part after `:` in `count:number`. An unknown word is
+    /// text rather than an error: a type nobody implemented should not
+    /// make a document unreadable.
+    fn of(word: &str) -> Self {
+        match word.trim() {
+            "number" => Self::Number,
+            "bool" => Self::Bool,
+            _ => Self::Text,
+        }
+    }
+
+    /// Whether `value` is one of these.
+    fn accepts(self, value: &str) -> bool {
+        match self {
+            Self::Text => true,
+            Self::Number => value.trim().parse::<f64>().is_ok(),
+            Self::Bool => matches!(value.trim(), "true" | "false"),
+        }
+    }
 }
 
 /// A widget: the template between its delimiters, and the names it
@@ -706,13 +775,13 @@ pub enum WidgetError {
 pub struct WidgetDef {
     /// The template, verbatim, as it sits between BEGIN and END.
     pub body: String,
-    /// The parameter names from `:inputs a,b`, in declared order.
-    pub inputs: Vec<String>,
+    /// The parameters from `:inputs a,b:number`, in declared order.
+    pub inputs: Vec<(String, InputType)>,
 }
 
 /// The `:name` and `:inputs` of a `#+BEGIN: closure-widget` line, if
 /// this is one.
-fn widget_begin_parts(line: &str) -> Option<(String, Vec<String>)> {
+fn widget_begin_parts(line: &str) -> Option<(String, Vec<(String, InputType)>)> {
     let trimmed = line.trim_start();
     let lower = trimmed.to_ascii_lowercase();
     let rest = lower.strip_prefix("#+begin: closure-widget")?;
@@ -727,7 +796,12 @@ fn widget_begin_parts(line: &str) -> Option<(String, Vec<String>)> {
             list.split(',')
                 .map(str::trim)
                 .filter(|i| !i.is_empty())
-                .map(ToOwned::to_owned)
+                .map(|i| {
+                    i.split_once(':').map_or_else(
+                        || (i.to_owned(), InputType::Text),
+                        |(n, t)| (n.trim().to_owned(), InputType::of(t)),
+                    )
+                })
                 .collect()
         })
         .unwrap_or_default();
@@ -910,9 +984,26 @@ fn expand_widget_name(
     let mut scope: Vec<(String, String)> = def
         .inputs
         .iter()
-        .map(|i| (i.clone(), String::new()))
+        .map(|(n, _)| (n.clone(), String::new()))
         .collect();
     for (k, v) in args {
+        // Checked before anything is rendered, so a mistake arrives as
+        // a message rather than as content (I9).
+        if let Some((_, ty)) = def.inputs.iter().find(|(n, _)| n == k) {
+            if !ty.accepts(v) {
+                return Err(WidgetError::BadArgument {
+                    widget: name.to_owned(),
+                    input: k.clone(),
+                    expected: ty.name().to_owned(),
+                    got: v.clone(),
+                });
+            }
+        } else if !def.inputs.is_empty() {
+            return Err(WidgetError::UnknownArgument {
+                widget: name.to_owned(),
+                argument: k.clone(),
+            });
+        }
         if let Some(slot) = scope.iter_mut().find(|(n, _)| n == k) {
             slot.1 = v.clone();
         } else {
