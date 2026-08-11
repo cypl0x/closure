@@ -1505,6 +1505,111 @@ fn today_civil() -> String {
     format!("{y:04}-{m:02}-{d:02}")
 }
 
+/// Command: recompute a headline's table from its `#+TBLFM:` line.
+///
+/// Org's `C-c C-c` on a formula line. `closure_org::eval_table_formulas`
+/// says what each cell should be; this is what puts it back, which
+/// makes it a mutation and so a command (I8) with an `Edit` the undo
+/// tree can reverse (I3).
+///
+/// One edit for the whole table, not one per cell: a half-recomputed
+/// table is a table that never existed, and `undo` has to be able to
+/// say so.
+pub struct RecomputeTable {
+    id: BlockId,
+    keys: Vec<KeyChord>,
+}
+
+impl RecomputeTable {
+    /// Recompute the table in the body of `id`.
+    #[must_use]
+    pub fn new(id: BlockId) -> Self {
+        Self {
+            id,
+            keys: vec![KeyChord::from_strokes(&["C-c", "C-c"])],
+        }
+    }
+
+    /// Placeholder for registry introspection.
+    #[must_use]
+    pub fn new_placeholder() -> Self {
+        Self::new(BlockId::from_existing(""))
+    }
+}
+
+impl Command for RecomputeTable {
+    #[allow(clippy::unnecessary_literal_bound)]
+    fn name(&self) -> &str {
+        "recompute-table"
+    }
+
+    fn keys(&self) -> &[KeyChord] {
+        &self.keys
+    }
+
+    fn apply(&self, doc: &mut Document) -> Result<Edit, CommandError> {
+        let path = doc.path_of(&self.id).ok_or(CommandError::BlockNotFound)?;
+        let body = doc
+            .headline_by_id(&self.id)
+            .ok_or(CommandError::BlockNotFound)?
+            .body_text()
+            .to_owned();
+        let formulas = body
+            .lines()
+            .find_map(closure_org::table_formulas)
+            .ok_or(CommandError::Rewrite)?;
+
+        // The table's data rows, cell by cell, with the separator and
+        // the header left where they are: a formula is about data, and
+        // computing over the header would put a number where the
+        // column's name goes.
+        let mut out = String::with_capacity(body.len());
+        let mut seen_header = false;
+        for line in body.lines() {
+            let trimmed = line.trim();
+            let is_row = trimmed.starts_with('|');
+            let is_separator = is_row && trimmed.contains("|-");
+            if !is_row || is_separator || !seen_header {
+                if is_row && !is_separator {
+                    seen_header = true;
+                }
+                out.push_str(line);
+                out.push('\n');
+                continue;
+            }
+            let cells: Vec<String> = trimmed
+                .trim_matches('|')
+                .split('|')
+                .map(|c| c.trim().to_owned())
+                .collect();
+            let computed = closure_org::eval_table_formulas(&[cells.clone()], &formulas);
+            let widths: Vec<usize> = trimmed.trim_matches('|').split('|').map(str::len).collect();
+            // Rebuilt at the widths the file already used, so a
+            // recompute is a change of values and not of layout.
+            use std::fmt::Write as _;
+            let mut rebuilt = String::from("|");
+            for (i, cell) in computed[0].iter().enumerate() {
+                let w = widths.get(i).copied().unwrap_or(cell.len() + 2);
+                let _ = write!(rebuilt, " {cell:<width$}|", width = w.saturating_sub(1));
+            }
+            out.push_str(&rebuilt);
+            out.push('\n');
+        }
+
+        let org = closure_org::rewrite_headline_set_body(doc.org(), &path, &out)
+            .map_err(|_| CommandError::Rewrite)?;
+        doc.org = org;
+        doc.rebuild_index();
+        let edit = Edit::SetBody {
+            id: self.id.clone(),
+            old: body,
+            new: out,
+        };
+        doc.push_history(edit.clone());
+        Ok(edit)
+    }
+}
+
 /// Command: set or clear the `[#X]` priority on a headline.
 pub struct SetPriority {
     id: BlockId,

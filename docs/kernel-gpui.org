@@ -395,13 +395,20 @@ what the author typed, and a formula is not a licence to do that.
 
 Conformance 82% -> 85%.
 
-* TODO Kernel: recomputing a table's formulas is a command
+* DONE Kernel: recomputing a table's formulas is a command
 =eval_table_formulas= says what the cells should be; nothing puts them
 back. In org that is =C-c C-c= on the formula line, and here it is a
 mutation — so it belongs in closure-core behind the registry, with an
 Edit the undo tree can reverse (I3/I8).
 
 Acceptance: =nix develop -c cargo test -p closure-core --test recompute_table=
+
+One edit for the whole table rather than one per cell: a
+half-recomputed table is a table that never existed, and undo has to
+be able to say so. The header and the separator are left alone — a
+formula is about data rows, and computing over the header would put a
+number where the column's name goes. Rows are rebuilt at the widths
+the file already used, so a recompute changes values and not layout.
 
 * DONE Org: #+CALL and noweb references
 Acceptance: =nix develop -c cargo test -p closure-eval --test noweb=
