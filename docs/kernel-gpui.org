@@ -660,8 +660,23 @@ On :1: typing "wrap" narrows to one row and Enter reports
 =g W · M-z · SPC t w=, every chord that reaches it rather than the
 first one the keymap lists.
 
-* TODO Self-documenting: jump to a command's source
+* DONE Self-documenting: jump to a command's source
 Acceptance: =nix develop -c cargo test -p closure-shell-core --test command_source=
+
+The file, not the line, and the doc comment says why rather than
+leaving it to be discovered: the commands are a =const= table of names
+matched in a dispatch, so there is no construction site to record and
+no runtime location to capture. Producing a line would mean a build
+script that greps its own source — a fragile answer to a question a
+grep already answers well. In a workspace of thirty-four crates the
+file is the expensive half of "where does this live".
+
+Held by three tests: every command in the palette names a file, every
+file it names exists, and the file it names actually mentions the
+command. A pointer into a file nobody has is worse than no pointer,
+because it reads as an answer.
+
+=describe-command= now ends with it.
 
 * DONE Self-documenting: live docstrings in the palette
 Acceptance: =nix develop -c cargo test -p closure-shell-core --test palette_descriptions=

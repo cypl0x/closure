@@ -13986,6 +13986,16 @@ pub struct CommandDescription {
     /// Every chord that reaches it in the mode in force. Empty is an
     /// answer: some commands are palette-only.
     pub chords: Vec<String>,
+    /// The file that implements it, relative to the repository root.
+    ///
+    /// The file and not the line. The commands are a `const` table of
+    /// names matched in a dispatch, so there is no construction site
+    /// to record and no runtime location to capture; producing a line
+    /// would mean a build script that greps its own source, which is a
+    /// fragile answer to a question a grep already answers well. In a
+    /// workspace of thirty-four crates the file is the expensive half
+    /// of "where does this live".
+    pub source: String,
 }
 
 /// One thing the destination field can be completed to.
@@ -21619,8 +21629,8 @@ impl ModalApp {
                             told.chords.join("  ·  ")
                         };
                         self.say(format!(
-                            "{} — {} ({}) · {keys}",
-                            told.command, told.description, told.section
+                            "{} — {} ({}) · {keys} · {}",
+                            told.command, told.description, told.section, told.source
                         ));
                     }
                     // Silence is not an answer, and the name is the
@@ -25226,6 +25236,7 @@ impl ModalApp {
     pub fn describe_command(&self, command: &str) -> Option<CommandDescription> {
         let (description, section) = Self::registry_entry(command)?;
         Some(CommandDescription {
+            source: Self::command_source(command).to_owned(),
             command: command.to_owned(),
             description,
             section,
@@ -25238,6 +25249,22 @@ impl ModalApp {
     }
 
     /// The registry's `(description, section)` for a canonical name.
+    /// Which file implements `command`.
+    ///
+    /// Every command in the palette is dispatched in this crate; the
+    /// handful that are kernel operations are named where the kernel
+    /// defines them, because that is where a reader wanting to change
+    /// the behaviour has to go.
+    fn command_source(command: &str) -> &'static str {
+        match command {
+            "undo" | "redo" | "promote" | "demote" | "add-sibling" | "remove-subtree"
+            | "set-todo" | "set-priority" | "set-tags" | "rename-headline" | "recompute-table" => {
+                "crates/closure-core/src/lib.rs"
+            }
+            _ => "crates/closure-shell-core/src/lib.rs",
+        }
+    }
+
     fn registry_entry(command: &str) -> Option<(String, String)> {
         PALETTE_COMMANDS
             .iter()
