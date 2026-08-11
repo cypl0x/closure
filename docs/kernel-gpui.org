@@ -370,8 +370,32 @@ input type and an unknown rollup already follow.
 
 Conformance 79% -> 82%.
 
-* TODO Org: #+TBLFM table formulas
+* DONE Org: #+TBLFM table formulas
 Acceptance: =nix develop -c cargo test -p closure-org --test tblfm=
+
+Reads and evaluates; writing the answers back into the file is a
+mutation and so is a command, undoable, and its own item below — the
+same split composition landed on, for the same reason.
+
+The subset is column assignments over the four operators, numeric
+literals and =$N= references, left to right without precedence, which
+is what the formulas people actually write look like. Org's ranges,
+=vsum=, =@row= addressing and lisp are not here and the matrix says
+so by what it does not claim.
+
+A row whose referenced cells are not numbers keeps the target cell it
+already had, and so does a division by zero: blanking it would lose
+what the author typed, and a formula is not a licence to do that.
+
+Conformance 82% -> 85%.
+
+* TODO Kernel: recomputing a table's formulas is a command
+=eval_table_formulas= says what the cells should be; nothing puts them
+back. In org that is =C-c C-c= on the formula line, and here it is a
+mutation — so it belongs in closure-core behind the registry, with an
+Edit the undo tree can reverse (I3/I8).
+
+Acceptance: =nix develop -c cargo test -p closure-core --test recompute_table=
 
 * TODO Org: #+CALL and noweb references
 Acceptance: =nix develop -c cargo test -p closure-eval --test noweb=

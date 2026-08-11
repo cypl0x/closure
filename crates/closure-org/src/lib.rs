@@ -9955,9 +9955,9 @@ pub const CONFORMANCE: &[Construct] = &[
     },
     Construct {
         name: "#+TBLFM",
-        support: Support::Preserved,
-        evidence: "",
-        missing: "formulas are never evaluated",
+        support: Support::Understood,
+        evidence: "crates/closure-org/tests/tblfm.rs",
+        missing: "",
     },
     Construct {
         name: "timestamp repeater (+1w)",
@@ -10246,6 +10246,129 @@ pub fn advance(ts: &str, today: &str) -> Option<String> {
     }
     out.push(close);
     Some(out)
+}
+
+/// One `#+TBLFM:` assignment: `$3=$1*$2`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Formula {
+    /// One-based column the result goes in.
+    pub target: usize,
+    /// The right-hand side, verbatim.
+    pub expression: String,
+}
+
+/// The formulas on a `#+TBLFM:` line, if this is one.
+///
+/// `None` for anything else, and for a `#+TBLFM:` with nothing after
+/// it: no formulas and not a formula line are different states.
+#[must_use]
+pub fn table_formulas(line: &str) -> Option<Vec<Formula>> {
+    let t = line.trim_start();
+    let rest = t
+        .strip_prefix("#+TBLFM:")
+        .or_else(|| t.strip_prefix("#+tblfm:"))?;
+    let out: Vec<Formula> = rest
+        .split("::")
+        .filter_map(|part| {
+            let (target, expression) = part.trim().split_once('=')?;
+            Some(Formula {
+                target: target.trim().strip_prefix('$')?.parse().ok()?,
+                expression: expression.trim().to_owned(),
+            })
+        })
+        .collect();
+    (!out.is_empty()).then_some(out)
+}
+
+/// Evaluate `expression` for one `row`, `$N` being its Nth cell.
+///
+/// Left to right, no precedence — which is what org's own simple
+/// formulas assume and what the expressions people write here look
+/// like. `None` when a referenced cell is not a number, when the
+/// expression is malformed, or on a division by zero.
+fn eval_expression(expression: &str, row: &[String]) -> Option<f64> {
+    let mut acc: Option<f64> = None;
+    let mut op = '+';
+    let mut token = String::new();
+    // A trailing separator flushes the last token without a special
+    // case at the bottom.
+    for c in expression.chars().chain(std::iter::once('+')) {
+        if matches!(c, '+' | '-' | '*' | '/') && !token.is_empty() {
+            let value = match token.strip_prefix('$') {
+                Some(n) => {
+                    let idx: usize = n.trim().parse().ok()?;
+                    row.get(idx.checked_sub(1)?)?.trim().parse().ok()?
+                }
+                None => token.trim().parse().ok()?,
+            };
+            acc = Some(match (acc, op) {
+                (None, _) => value,
+                (Some(a), '+') => a + value,
+                (Some(a), '-') => a - value,
+                (Some(a), '*') => a * value,
+                (Some(a), '/') => {
+                    if value == 0.0 {
+                        return None;
+                    }
+                    a / value
+                }
+                (Some(a), _) => a,
+            });
+            op = c;
+            token.clear();
+            continue;
+        }
+        if matches!(c, '+' | '-' | '*' | '/') {
+            op = c;
+            continue;
+        }
+        token.push(c);
+    }
+    acc
+}
+
+/// Apply `formulas` to `rows`, returning the table they describe.
+///
+/// Reads; never writes. Working out what a cell should say is
+/// arithmetic; putting it into the file is a mutation, so that is a
+/// command and undoable (I3/I8) — the same split composition landed on.
+///
+/// A row whose referenced cells are not numbers keeps the target cell
+/// it already had. Blanking it would lose what the author typed, and a
+/// formula is not a licence to do that.
+#[must_use]
+pub fn eval_table_formulas(rows: &[Vec<String>], formulas: &[Formula]) -> Vec<Vec<String>> {
+    let mut out = rows.to_vec();
+    for row in &mut out {
+        for f in formulas {
+            let Some(at) = f.target.checked_sub(1) else {
+                continue;
+            };
+            // A formula about a column the table does not have is a
+            // mistake in the file; widening every row to fit it would
+            // be a worse one.
+            if at >= row.len() {
+                continue;
+            }
+            if let Some(value) = eval_expression(&f.expression, row) {
+                row[at] = format_org_number(value);
+            }
+        }
+    }
+    out
+}
+
+/// A number without a trailing `.0`, so a column of whole counts reads
+/// like whole numbers.
+fn format_org_number(n: f64) -> String {
+    if n == 0.0 {
+        return "0".to_owned();
+    }
+    if n.fract() == 0.0 && n.abs() < 1e15 {
+        format!("{n:.0}")
+    } else {
+        n.to_string()
+    }
 }
 
 /// What a column view summarises down a column.
