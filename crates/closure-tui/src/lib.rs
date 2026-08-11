@@ -3809,6 +3809,7 @@ fn sync_app(app: &mut App, vault: &Vault) {
             sort: Vec::new(),
             filter: Vec::new(),
             name: None,
+            group: None,
         });
     let rows: Vec<(String, Vec<String>)> = spec
         .rows(vault)

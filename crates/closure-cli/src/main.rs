@@ -1677,7 +1677,10 @@ fn cmd_view(
     let v = Vault::open(vault).map_err(|e| format!("{e}"))?;
     let spec = closure_query::ViewSpec::parse(params).map_err(|e| format!("{e}"))?;
     let mut header = spec.header();
-    let mut cells = spec.cells(&v);
+    // Grouped when the view says so, and one group of everything when
+    // it does not — so this path has one shape rather than two.
+    let groups = spec.groups(&v);
+    let mut cells: Vec<Vec<String>> = groups.iter().flat_map(|(_, r)| r.iter().cloned()).collect();
     if let Some(program) = formula {
         let computed = closure_eval::formula_column(program, &cells).map_err(|e| format!("{e}"))?;
         header.push(formula_name.to_owned());
@@ -1685,7 +1688,15 @@ fn cmd_view(
             row.push(value);
         }
     }
-    print!("{}", closure_query::render_table(&header, &cells));
+    if formula.is_none() && spec.group.is_some() {
+        let regrouped: Vec<(String, Vec<Vec<String>>)> = groups;
+        print!(
+            "{}",
+            closure_query::render_grouped_table(&header, &regrouped)
+        );
+    } else {
+        print!("{}", closure_query::render_table(&header, &cells));
+    }
     Ok(())
 }
 

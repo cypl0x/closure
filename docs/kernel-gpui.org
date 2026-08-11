@@ -336,8 +336,21 @@ because the gap analysis that seeded this queue was wrong. Verified by
 running it rather than by reading: =view.rs= covers =:sort todo,title= and =:sort todo,-title=, plus numeric-not-lexical ordering. No code was needed and
 none was written.
 
-* TODO Databases: grouping
+* DONE Databases: grouping
 Acceptance: =nix develop -c cargo test -p closure-query --test view_groups=
+
+=:group todo= on a view. Rendered as one org table with a rule between
+groups rather than as several tables: it is one query with one set of
+columns, and a reader scanning down a column should not have to
+re-find it after every heading. =|---|= is an ordinary separator, so
+the result is still a table Emacs will align.
+
+Grouping by a column that is not displayed works — the value is
+extracted for the grouping and dropped again before rendering. A row
+whose group value is empty keeps its own group rather than vanishing,
+because hiding it would make the table disagree with the query that
+produced it. Without =:group= everything is one unnamed group, so the
+renderer has one shape to draw rather than two.
 
 * TODO Databases: relations between headlines
 The thing that makes a Notion database more than a saved search.

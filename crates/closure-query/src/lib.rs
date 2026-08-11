@@ -537,6 +537,11 @@ pub struct ViewSpec {
     pub filter: Vec<Filter>,
     /// Optional view name (`:name`), for picking among saved views.
     pub name: Option<String>,
+    /// Column whose value the rows are grouped by (`:group`).
+    ///
+    /// A database that cannot group is a saved search: grouping is what
+    /// turns "every task with this tag" into a board.
+    pub group: Option<Column>,
 }
 
 impl ViewSpec {
@@ -553,6 +558,7 @@ impl ViewSpec {
         let mut sort: Vec<SortKey> = Vec::new();
         let mut filter: Vec<Filter> = Vec::new();
         let mut name: Option<String> = None;
+        let mut group: Option<Column> = None;
         let mut tokens = params.split_whitespace();
         while let Some(tok) = tokens.next() {
             let value = tokens.next().unwrap_or("");
@@ -586,6 +592,7 @@ impl ViewSpec {
                 }
                 ":filter" => filter.push(Filter::parse(value)?),
                 ":name" => name = Some(value.to_owned()),
+                ":group" => group = Some(Column::parse(value)),
                 other => return Err(ViewError::UnknownDirective(other.to_owned())),
             }
         }
@@ -595,6 +602,7 @@ impl ViewSpec {
             sort,
             filter,
             name,
+            group,
         })
     }
 
@@ -649,6 +657,118 @@ impl ViewSpec {
             .map(|m| self.columns.iter().map(|c| c.extract(m.headline)).collect())
             .collect()
     }
+
+    /// [`Self::cells`], grouped by `:group`.
+    ///
+    /// Always at least one group, so a renderer has one shape to draw
+    /// rather than two: without `:group` everything is in a single
+    /// group with no name.
+    #[must_use]
+    pub fn groups(&self, vault: &Vault) -> Vec<(String, Vec<Vec<String>>)> {
+        let cells = self.cells(vault);
+        let Some(by) = &self.group else {
+            return vec![(String::new(), cells)];
+        };
+        // The grouping column need not be one of the shown columns, so
+        // it is extracted here rather than looked up by position.
+        let at = self.columns.iter().position(|c| c == by);
+        match at {
+            Some(i) => group_cells(cells, i),
+            None => {
+                let mut keyed: Vec<Vec<String>> = Vec::new();
+                for (row, m) in cells.into_iter().zip(self.rows(vault)) {
+                    let mut r = row;
+                    r.push(by.extract(m.headline));
+                    keyed.push(r);
+                }
+                let last = keyed.first().map_or(0, |r| r.len().saturating_sub(1));
+                group_cells(keyed, last)
+                    .into_iter()
+                    .map(|(k, rows)| {
+                        (
+                            k,
+                            rows.into_iter()
+                                .map(|mut r| {
+                                    r.pop();
+                                    r
+                                })
+                                .collect(),
+                        )
+                    })
+                    .collect()
+            }
+        }
+    }
+}
+
+/// Group `cells` by the value in column `at`, in order of value.
+///
+/// A row whose group value is empty keeps its own group rather than
+/// being dropped: hiding it would make the table disagree with the
+/// query that produced it.
+fn group_cells(cells: Vec<Vec<String>>, at: usize) -> Vec<(String, Vec<Vec<String>>)> {
+    let mut out: Vec<(String, Vec<Vec<String>>)> = Vec::new();
+    let mut keys: Vec<String> = cells
+        .iter()
+        .map(|r| r.get(at).cloned().unwrap_or_default())
+        .collect();
+    keys.sort();
+    keys.dedup();
+    for key in keys {
+        let rows: Vec<Vec<String>> = cells
+            .iter()
+            .filter(|r| r.get(at).map(String::as_str).unwrap_or("") == key)
+            .cloned()
+            .collect();
+        out.push((key, rows));
+    }
+    out
+}
+
+/// Render header + grouped rows as one org table with a rule between
+/// groups.
+///
+/// One table rather than several: it is one query with one set of
+/// columns, and a reader scanning down a column should not have to
+/// re-find it after every heading. `|---|` is an ordinary org
+/// separator, so what comes out is still a table Emacs will align.
+#[must_use]
+pub fn render_grouped_table(header: &[String], groups: &[(String, Vec<Vec<String>>)]) -> String {
+    let all: Vec<Vec<String>> = groups
+        .iter()
+        .flat_map(|(_, rows)| rows.iter().cloned())
+        .collect();
+    let full = render_table(header, &all);
+    if groups.len() < 2 {
+        return full;
+    }
+    // Re-insert a rule where each group after the first begins. The
+    // widths are already right because they were computed over every
+    // row at once.
+    let lines: Vec<&str> = full.lines().collect();
+    let rule = lines.get(1).copied().unwrap_or_default().to_owned();
+    let mut out = String::new();
+    let mut line = 0usize;
+    for (i, (_, rows)) in groups.iter().enumerate() {
+        if i > 0 {
+            out.push_str(&rule);
+            out.push('\n');
+        }
+        for _ in 0..rows.len() {
+            // Header and its rule come first, so data starts at 2.
+            if let Some(l) = lines.get(2 + line) {
+                out.push_str(l);
+                out.push('\n');
+            }
+            line += 1;
+        }
+    }
+    let head = lines
+        .iter()
+        .take(2)
+        .map(|l| format!("{l}\n"))
+        .collect::<String>();
+    format!("{head}{out}")
 }
 
 /// Enumerate the vault's saved database views.
