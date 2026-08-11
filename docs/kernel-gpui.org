@@ -280,13 +280,27 @@ closure-org on the way: it is arithmetic on org timestamps, and the
 layer that parses them is where it belongs. shell-core re-exports the
 names it was written against.
 
-* TODO Kernel: marking a repeating task DONE advances its date
+* DONE Kernel: marking a repeating task DONE advances its date
 Parsing a repeater is not the feature; the feature is that finishing
 the weekly review schedules the next one instead of closing it. That
 is a command, and I3 says every mutation is undoable, so it belongs in
 closure-core rather than in a shell.
 
 Acceptance: =nix develop -c cargo test -p closure-core --test repeat_on_done=
+
+Three changes that undo as one: the keyword goes back to TODO, the
+date moves on, and =:LAST_REPEAT:= records when this occurrence was
+finished. One undo getting the keyword back but keeping next week's
+date would leave a document that never existed, so it is a single
+=Edit::Repeat= rather than three edits.
+
+Needed =rewrite_headline_remove_property=, which did not exist: undo
+has to leave the drawer as it found it, and setting a property to an
+empty string leaves =:LAST_REPEAT: = behind. Removing the last entry
+takes the drawer with it, for the same reason.
+
+End to end: =closure set-todo tasks.org <id> DONE= on a =+1w= task
+moved 2026-08-11 to 2026-08-18 and left it TODO.
 
 * TODO Org: #+INCLUDE resolution
 Acceptance: =nix develop -c cargo test -p closure-org --test include=

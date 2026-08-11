@@ -591,6 +591,17 @@ fn edit_label(e: &Edit) -> String {
             old.as_deref().unwrap_or("∅"),
             new.as_deref().unwrap_or("∅")
         ),
+        Edit::Repeat {
+            todo, new_planning, ..
+        } => format!(
+            "repeat: {} → {}",
+            todo.0.as_deref().unwrap_or("∅"),
+            new_planning
+                .0
+                .as_deref()
+                .or(new_planning.1.as_deref())
+                .unwrap_or("∅")
+        ),
         Edit::SetPriority { old, new, .. } => format!(
             "priority: {} → {}",
             old.map_or("∅".to_owned(), |c| c.to_string()),
@@ -691,6 +702,27 @@ pub enum Edit {
         old: (Option<String>, Option<String>, Option<String>),
         /// New (scheduled, deadline, closed) timestamps.
         new: (Option<String>, Option<String>, Option<String>),
+    },
+    /// Finish one occurrence of a repeating task.
+    ///
+    /// Three changes that have to undo as one: the keyword went back to
+    /// not-done, the date moved on, and `:LAST_REPEAT:` recorded when
+    /// this occurrence was finished. Pressing undo once and getting the
+    /// keyword back but keeping next week's date would leave a document
+    /// that never existed.
+    Repeat {
+        /// Block that repeated.
+        id: BlockId,
+        /// Keyword before, and the not-done keyword it went back to.
+        todo: (Option<String>, Option<String>),
+        /// Planning before, as (scheduled, deadline, closed).
+        old_planning: (Option<String>, Option<String>, Option<String>),
+        /// Planning after.
+        new_planning: (Option<String>, Option<String>, Option<String>),
+        /// `:LAST_REPEAT:` before, if it had one.
+        old_last_repeat: Option<String>,
+        /// `:LAST_REPEAT:` after.
+        new_last_repeat: String,
     },
     /// Replace a headline's body wholesale.
     SetBody {
@@ -842,6 +874,47 @@ impl Edit {
                 doc.rebuild_index();
                 Ok(())
             }
+            Self::Repeat {
+                id,
+                todo,
+                old_planning,
+                old_last_repeat,
+                ..
+            } => {
+                let path = doc.path_of(id).ok_or(CommandError::BlockNotFound)?;
+                let org = rewrite_headline_set_todo(doc.org(), &path, todo.0.as_deref())
+                    .map_err(|_| CommandError::Rewrite)?;
+                doc.org = org;
+                let org = rewrite_headline_set_planning(
+                    doc.org(),
+                    &path,
+                    old_planning.0.as_deref(),
+                    old_planning.1.as_deref(),
+                    old_planning.2.as_deref(),
+                )
+                .map_err(|_| CommandError::Rewrite)?;
+                doc.org = org;
+                // A property that was not there before is cleared
+                // rather than set to an empty string, so undo leaves
+                // the drawer as it found it.
+                let org = match old_last_repeat {
+                    Some(v) => closure_org::rewrite_headline_set_property(
+                        doc.org(),
+                        &path,
+                        "LAST_REPEAT",
+                        v,
+                    ),
+                    None => closure_org::rewrite_headline_remove_property(
+                        doc.org(),
+                        &path,
+                        "LAST_REPEAT",
+                    ),
+                }
+                .map_err(|_| CommandError::Rewrite)?;
+                doc.org = org;
+                doc.rebuild_index();
+                Ok(())
+            }
             Self::ToggleArchive { id } => {
                 let path = doc.path_of(id).ok_or(CommandError::BlockNotFound)?;
                 let org = rewrite_headline_toggle_archive(doc.org(), &path)
@@ -971,6 +1044,37 @@ impl Edit {
                 let path = doc.path_of(id).ok_or(CommandError::BlockNotFound)?;
                 let org = rewrite_headline_set_body(doc.org(), &path, new)
                     .map_err(|_| CommandError::Rewrite)?;
+                doc.org = org;
+                doc.rebuild_index();
+                Ok(())
+            }
+            Self::Repeat {
+                id,
+                todo,
+                new_planning,
+                new_last_repeat,
+                ..
+            } => {
+                let path = doc.path_of(id).ok_or(CommandError::BlockNotFound)?;
+                let org = rewrite_headline_set_todo(doc.org(), &path, todo.1.as_deref())
+                    .map_err(|_| CommandError::Rewrite)?;
+                doc.org = org;
+                let org = rewrite_headline_set_planning(
+                    doc.org(),
+                    &path,
+                    new_planning.0.as_deref(),
+                    new_planning.1.as_deref(),
+                    new_planning.2.as_deref(),
+                )
+                .map_err(|_| CommandError::Rewrite)?;
+                doc.org = org;
+                let org = closure_org::rewrite_headline_set_property(
+                    doc.org(),
+                    &path,
+                    "LAST_REPEAT",
+                    new_last_repeat,
+                )
+                .map_err(|_| CommandError::Rewrite)?;
                 doc.org = org;
                 doc.rebuild_index();
                 Ok(())
@@ -1276,18 +1380,129 @@ impl Command for SetTodo {
             .ok_or(CommandError::BlockNotFound)?
             .todo()
             .map(str::to_owned);
-        let org = rewrite_headline_set_todo(doc.org(), &path, self.new.as_deref())
+        // A repeating task is never done, only done *this time*: org's
+        // rule, and the reason a repeater is worth reading at all. The
+        // date moves on, the keyword goes back to a not-done one, and
+        // `:LAST_REPEAT:` records when this one was finished.
+        let repeat = self
+            .new
+            .as_deref()
+            .filter(|k| DONE_KEYWORDS.contains(k))
+            .and_then(|_| repeat_of(doc, &self.id));
+        let effective = match &repeat {
+            Some(_) => Some(NOT_DONE.to_owned()),
+            None => self.new.clone(),
+        };
+        let org = rewrite_headline_set_todo(doc.org(), &path, effective.as_deref())
             .map_err(|_| CommandError::Rewrite)?;
         doc.org = org;
-        doc.rebuild_index();
-        let edit = Edit::SetTodo {
-            id: self.id.clone(),
-            old,
-            new: self.new.clone(),
+        let edit = if let Some(Repeat {
+            scheduled,
+            deadline,
+            today,
+            was,
+            last_repeat,
+        }) = repeat
+        {
+            let org = closure_org::rewrite_headline_set_planning(
+                doc.org(),
+                &path,
+                scheduled.as_deref(),
+                deadline.as_deref(),
+                None,
+            )
+            .map_err(|_| CommandError::Rewrite)?;
+            doc.org = org;
+            let org =
+                closure_org::rewrite_headline_set_property(doc.org(), &path, "LAST_REPEAT", &today)
+                    .map_err(|_| CommandError::Rewrite)?;
+            doc.org = org;
+            Edit::Repeat {
+                id: self.id.clone(),
+                todo: (old, effective),
+                old_planning: was,
+                new_planning: (scheduled, deadline, None),
+                old_last_repeat: last_repeat,
+                new_last_repeat: today,
+            }
+        } else {
+            Edit::SetTodo {
+                id: self.id.clone(),
+                old,
+                new: effective,
+            }
         };
+        doc.rebuild_index();
         doc.push_history(edit.clone());
         Ok(edit)
     }
+}
+
+/// Keywords that mean a task is finished.
+///
+/// Two, matching `closure-org`'s own list. A configurable set is a
+/// different feature and belongs beside the rest of the config (I9).
+const DONE_KEYWORDS: &[&str] = &["DONE"];
+
+/// Where a finished repeating task goes back to.
+const NOT_DONE: &str = "TODO";
+
+/// What a repeating headline's planning line becomes when this
+/// occurrence is finished.
+struct Repeat {
+    /// The advanced `SCHEDULED:`, if it had one that repeats.
+    scheduled: Option<String>,
+    /// The advanced `DEADLINE:`, if it had one that repeats.
+    deadline: Option<String>,
+    /// Today, `YYYY-MM-DD`, for `:LAST_REPEAT:`.
+    today: String,
+    /// The planning line as it was, so undo can put it back.
+    was: (Option<String>, Option<String>, Option<String>),
+    /// `:LAST_REPEAT:` as it was, if there was one.
+    last_repeat: Option<String>,
+}
+
+/// The advanced planning for the headline `id`, if either of its
+/// dates repeats.
+fn repeat_of(doc: &Document, id: &BlockId) -> Option<Repeat> {
+    let planning = doc.org().planning_of(&id.to_string())?;
+    let today = today_civil();
+    let scheduled = planning
+        .scheduled
+        .and_then(|ts| closure_org::advance(ts, &today));
+    let deadline = planning
+        .deadline
+        .and_then(|ts| closure_org::advance(ts, &today));
+    if scheduled.is_none() && deadline.is_none() {
+        return None;
+    }
+    Some(Repeat {
+        // Anything that did not repeat is kept as it was rather than
+        // dropped: `set_planning` writes what it is given.
+        scheduled: scheduled.or_else(|| planning.scheduled.map(ToOwned::to_owned)),
+        deadline: deadline.or_else(|| planning.deadline.map(ToOwned::to_owned)),
+        today,
+        was: (
+            planning.scheduled.map(ToOwned::to_owned),
+            planning.deadline.map(ToOwned::to_owned),
+            planning.closed.map(ToOwned::to_owned),
+        ),
+        last_repeat: doc
+            .org()
+            .properties_of(&id.to_string())
+            .and_then(|p| p.get("LAST_REPEAT").map(ToOwned::to_owned)),
+    })
+}
+
+/// Today as `YYYY-MM-DD`, from the system clock.
+fn today_civil() -> String {
+    let secs = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or_default();
+    #[allow(clippy::cast_possible_wrap)]
+    let (y, m, d) = closure_org::civil_from_days((secs / 86_400) as i64);
+    format!("{y:04}-{m:02}-{d:02}")
 }
 
 /// Command: set or clear the `[#X]` priority on a headline.

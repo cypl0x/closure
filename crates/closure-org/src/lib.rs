@@ -9034,6 +9034,56 @@ fn rewrite_stars(doc: &OrgDoc, target: &Headline, new_level: u8) -> Result<OrgDo
 /// entry, one is inserted at the top of the drawer. If the drawer
 /// already has a different `:ID:`, this is a no-op — existing ids are
 /// never replaced (I2).
+/// Remove a `:KEY:` entry from the headline's properties drawer.
+///
+/// A no-op when the key is not there, and when removing the last entry
+/// the drawer goes with it — an empty `:PROPERTIES:` / `:END:` pair is
+/// not what the file looked like before the property existed, and undo
+/// has to leave the drawer as it found it (I3).
+///
+/// # Errors
+///
+/// [`RewriteError::NotFound`] when `path` names no headline, or
+/// [`RewriteError::Parse`] if the result would not parse.
+pub fn rewrite_headline_remove_property(
+    doc: &OrgDoc,
+    path: &[usize],
+    key: &str,
+) -> Result<OrgDoc, RewriteError> {
+    let target = navigate_headline(doc, path).ok_or(RewriteError::NotFound)?;
+    let Some(p) = &target.properties else {
+        return parse(&doc.source().to_owned()).map_err(|_| RewriteError::Parse);
+    };
+    let src = doc.source().to_owned();
+    let Some(e) = p
+        .entries
+        .iter()
+        .find(|e| &src[e.key_span.start..e.key_span.end] == key)
+    else {
+        return parse(&src).map_err(|_| RewriteError::Parse);
+    };
+    // The whole line, newline included, so no blank one is left behind.
+    let line_start = src[..e.key_span.start].rfind('\n').map_or(0, |i| i + 1);
+    let line_end = src[e.value_span.end..]
+        .find('\n')
+        .map_or(src.len(), |i| e.value_span.end + i + 1);
+    let mut out = src.clone();
+    out.replace_range(line_start..line_end, "");
+    // If that was the only entry, the drawer itself is furniture.
+    if p.entries.len() == 1 {
+        let drawer_start = src[..p.drawer_span.start]
+            .rfind('\n')
+            .map_or(0, |i| i + 1)
+            .min(p.drawer_span.start);
+        let end = src[p.drawer_span.end..]
+            .find('\n')
+            .map_or(src.len(), |i| p.drawer_span.end + i + 1);
+        out = src.clone();
+        out.replace_range(drawer_start..end, "");
+    }
+    parse(&out).map_err(|_| RewriteError::Parse)
+}
+
 /// Set or replace a `:KEY: value` entry in the headline's properties
 /// drawer. Creates the drawer if absent. If `key` already exists, its
 /// value is overwritten in place; otherwise the entry is appended just
