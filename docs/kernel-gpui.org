@@ -143,7 +143,7 @@ Acceptance: =nix develop -c cargo test -p closure-query --test widget_cycles=
 * TODO LSP: composition errors as diagnostics with precise ranges
 Acceptance: =nix develop -c cargo test -p closure-lsp --test diagnostics=
 
-* TODO gpui: render a composed widget where it is written
+* DONE gpui: render a composed widget where it is written
 Found 2026-08-11 while adding parameters. =widget_node= has no callers
 and nothing in either shell crate builds a =Node::Widget=: composition
 exists in closure-query and in the CLI, and the window shows the
@@ -154,7 +154,30 @@ about the read view.
 Until this exists there is no way to see composition in the window at
 all, which blocks the visual half of every item under Composition.
 
-Acceptance: =nix develop -c cargo test -p closure-shell-gpui --features gpui-test --test widget_pane=
+Acceptance: =nix develop -c cargo test -p closure-shell-core --test widget_preview=
+
+The detail pane expands; the editor does not. That split is I12 rather
+than a preference: the editor writes back what it shows, so it shows
+the file, and what it cannot show it must not be able to destroy. The
+preview reads and never writes, so it shows what the template means.
+
+The defs are memoised per revision — collecting them walks every
+document, and landing on a headline must not (I11) — and the memo
+holds =Option<u64>= rather than a bare revision, because a fresh vault
+is at revision zero and so is a zeroed memo: the two agreed, the empty
+map looked like a vault defining no widgets, and every composition in
+it failed as unknown.
+
+Verified on :1: two ={{card ...}}= calls render as table rows with
+their arguments substituted and their typed values intact.
+
+* TODO Preview: decide whether a composition shows its delimiters
+The pane shows the =#+BEGIN:= / =#+END:= lines around an expansion.
+Arguable either way — they say "this is composed rather than typed" —
+but nobody decided it, and a read view showing syntax is a choice that
+should be made on purpose.
+
+Acceptance: whatever is decided, written into docs/spec.md beside I12 and held by a test.
 
 * TODO gpui: show a widget's expansion error where the widget is
 A widget that fails to expand currently contributes nothing. The pane

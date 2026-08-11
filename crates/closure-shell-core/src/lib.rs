@@ -3255,6 +3255,21 @@ struct SubtreeCounts {
     by_id: std::collections::HashMap<String, (usize, usize, usize)>,
 }
 
+/// Every widget definition in the vault, as of a revision.
+#[derive(Debug, Default)]
+struct WidgetDefs {
+    /// The vault revision these were collected at, or `None` before
+    /// anything has ever asked.
+    ///
+    /// An `Option` rather than a plain number because a fresh vault is
+    /// at revision zero and so is a zeroed memo: the two would agree,
+    /// and an empty map would look like a vault that defines no
+    /// widgets. Every composition in it would then fail as unknown.
+    revision: Option<u64>,
+    /// name -> definition.
+    by_name: std::collections::HashMap<String, closure_query::WidgetDef>,
+}
+
 /// Count one body the way the detail pane counts it.
 fn count_body(text: &str) -> (usize, usize, usize) {
     (
@@ -13154,6 +13169,11 @@ struct Memos {
     /// see [`subtree_counts`]. Without it the detail pane reads the
     /// selected headline's whole subtree on every keystroke.
     counts: std::cell::RefCell<SubtreeCounts>,
+    /// Every widget definition in the vault, for expanding a
+    /// composition in the detail pane. Per revision, because
+    /// collecting them walks every document and landing on a headline
+    /// must not (I11).
+    widgets: std::cell::RefCell<WidgetDefs>,
     /// The vault's git state, memoised against the revision it was
     /// read at.
     ///
@@ -15399,6 +15419,39 @@ impl ModalApp {
         memo.by_id.get(id).copied().unwrap_or_default()
     }
 
+    /// What a composition *means*, for a pane that reads and never
+    /// writes.
+    ///
+    /// I12 says an expansion is never written back, and that is why
+    /// this can differ from the file at all: the editor shows the
+    /// template because it writes what it shows, and the preview shows
+    /// the expansion because it does not. One invariant, opposite
+    /// answers, for the same reason.
+    ///
+    /// A failed expansion is reported in place. A composition that
+    /// silently rendered as nothing would read as an empty page, which
+    /// is the worst of the three things it could do.
+    fn expanded_for_preview(&self, shell: &Shell, text: &str) -> String {
+        // The common case is a headline with no composition in it, and
+        // it costs one substring scan over text that is already capped.
+        if !text.contains("closure-widget") {
+            return text.to_owned();
+        }
+        let revision = shell.vault.revision();
+        {
+            let mut memo = self.memos.widgets.borrow_mut();
+            if memo.revision != Some(revision) {
+                *memo = WidgetDefs {
+                    revision: Some(revision),
+                    by_name: closure_query::vault_widget_defs(&shell.vault),
+                };
+            }
+        }
+        let memo = self.memos.widgets.borrow();
+        closure_query::expand_widgets_with(text, &memo.by_name)
+            .unwrap_or_else(|e| format!("{text}\n{e}"))
+    }
+
     fn derive_detail(&self, shell: &Shell, id: Option<&str>) -> Option<Detail> {
         let id = id?;
         let bid = closure_core::BlockId::from_existing(id);
@@ -15411,12 +15464,10 @@ impl ModalApp {
             .vault
             .children_source_preview(&bid, PREVIEW_CAP)
             .unwrap_or_default();
-        Some(Detail::of(
-            h,
-            path,
-            children,
-            self.counts_for(shell, id, path),
-        ))
+        let children = self.expanded_for_preview(shell, &children);
+        let mut detail = Detail::of(h, path, children, self.counts_for(shell, id, path));
+        detail.body = self.expanded_for_preview(shell, &detail.body);
+        Some(detail)
     }
 
     /// Feed one key. `key` is the gpui/egui-style name; `ctrl`/`alt`
