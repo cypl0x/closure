@@ -4790,6 +4790,12 @@ const PALETTE_COMMANDS: &[(&str, &str, &str, &str)] = &[
         "Press a key and be told what it runs",
     ),
     (
+        "describe-command",
+        "describe-command",
+        "App",
+        "Pick a command and be told which keys reach it",
+    ),
+    (
         "toggle-rail",
         "toggle-rail",
         "View",
@@ -9312,6 +9318,14 @@ pub enum ModalSurface {
     /// text — the next stroke is the answer, and it must not be
     /// resolved as a command on the way.
     DescribeKey,
+    /// `C-h w`: which keys reach a command.
+    ///
+    /// A picker rather than a prompt, because the question is "which of
+    /// these" and every other list of commands in this program is one —
+    /// the palette narrows the same way, with the same chords.
+    /// Enter describes rather than runs, which is the only difference
+    /// between this and the palette.
+    DescribeCommand,
     /// `C-c C-l`: which kind of link this is, then where it goes, then
     /// what to call it. One surface rather than three, because the step
     /// is already written down — the type picked, and the destination
@@ -15513,7 +15527,8 @@ impl ModalApp {
                 self.on_field_key(shell, key, ctrl, alt, text, FieldKind::AddSibling);
             }
             ModalSurface::Palette => self.on_palette_key(shell, key, ctrl, alt, text),
-            ModalSurface::UndoHistory
+            ModalSurface::DescribeCommand
+            | ModalSurface::UndoHistory
             | ModalSurface::Headlines
             | ModalSurface::Blocks
             | ModalSurface::DbView
@@ -21517,6 +21532,7 @@ impl ModalApp {
             | ModalSurface::Headlines
             | ModalSurface::Blocks
             | ModalSurface::UndoHistory
+            | ModalSurface::DescribeCommand
             | ModalSurface::DbView
             | ModalSurface::Graph
             | ModalSurface::FindFile
@@ -21583,6 +21599,35 @@ impl ModalApp {
         let at = self.picker_cursor();
         match self.surface {
             ModalSurface::Palette => self.commit_palette(shell),
+            ModalSurface::DescribeCommand => {
+                // The row under the cursor, or — when the filter
+                // matched nothing — what was typed, because "not a
+                // command: " with nothing after it is not an answer.
+                let typed = self.prompt_text().unwrap_or_default().to_owned();
+                let name = self
+                    .picker_rows(shell)
+                    .and_then(|(_, _, rows)| rows.get(at).map(|r| r.label.clone()))
+                    .or_else(|| (!typed.is_empty()).then_some(typed));
+                self.query.clear();
+                self.selected = 0;
+                self.go_home();
+                match name.as_deref().and_then(|n| self.describe_command(n)) {
+                    Some(told) => {
+                        let keys = if told.chords.is_empty() {
+                            "no key — palette only".to_owned()
+                        } else {
+                            told.chords.join("  ·  ")
+                        };
+                        self.say(format!(
+                            "{} — {} ({}) · {keys}",
+                            told.command, told.description, told.section
+                        ));
+                    }
+                    // Silence is not an answer, and the name is the
+                    // part worth repeating back.
+                    None => self.say(format!("not a command: {}", name.unwrap_or_default())),
+                }
+            }
             // "messages enter should copy the selected line to system
             // clipboard an internal 'clipboard' (kill-ring?)"
             //
@@ -21901,6 +21946,26 @@ impl ModalApp {
     /// does, and the rows surviving the filter.
     fn picker_rows(&self, shell: &Shell) -> Option<(String, &'static str, Vec<PickRow>)> {
         let (title, hint, rows) = match self.surface {
+            ModalSurface::DescribeCommand => (
+                "describe command".to_owned(),
+                "RET says which keys reach it",
+                // Narrowed here, like every other picker: `picker_view`
+                // marks what matched, it does not decide what survives.
+                filtered(
+                    self.palette_shared()
+                        .iter()
+                        .map(|e| PickRow {
+                            label: e.label.clone(),
+                            detail: e.description.clone(),
+                            trailing: e.action.chords().join("  \u{b7}  "),
+                            matches: Vec::new(),
+                            current: false,
+                        })
+                        .collect::<Vec<_>>(),
+                    self.prompt_text().unwrap_or_default(),
+                    |r: &PickRow| r.label.clone(),
+                ),
+            ),
             ModalSurface::Palette => (
                 "commands".to_owned(),
                 "RET runs",
@@ -22102,6 +22167,7 @@ impl ModalApp {
             | ModalSurface::Headlines
             | ModalSurface::Blocks
             | ModalSurface::UndoHistory
+            | ModalSurface::DescribeCommand
             | ModalSurface::DbView
             | ModalSurface::Graph
             | ModalSurface::FindFile
@@ -22614,6 +22680,7 @@ impl ModalApp {
             | ModalSurface::Headlines
             | ModalSurface::Blocks
             | ModalSurface::UndoHistory
+            | ModalSurface::DescribeCommand
             | ModalSurface::DbView
             | ModalSurface::Graph
             | ModalSurface::FindFile
@@ -24578,6 +24645,12 @@ impl ModalApp {
                 self.pane_cursor = 0;
                 self.surface = ModalSurface::Manual;
                 self.say("manual — generated from the keymap you are using · Esc back");
+            }
+            "describe-command" => {
+                self.query.clear();
+                self.selected = 0;
+                self.surface = ModalSurface::DescribeCommand;
+                self.say("describe command — type to filter · RET tells you its keys");
             }
             "describe-key" => {
                 self.prompt_from = self.surface.is_editor().then_some(self.surface);

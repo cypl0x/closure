@@ -1600,6 +1600,7 @@ pub const fn accepts_paste(surface: ModalSurface, insert: bool) -> bool {
         // its characters as keys would describe whichever of them
         // happened to be bound.
         ModalSurface::DescribeKey
+        | ModalSurface::DescribeCommand
         | ModalSurface::Manual
         | ModalSurface::Settings
         | ModalSurface::Browse
@@ -4527,6 +4528,9 @@ impl GpuiView {
             }
             ModalSurface::Refile => format!("refile to — {}▏", self.app.query()),
             ModalSurface::DescribeKey => "describe key — press one · Esc cancels".to_owned(),
+            ModalSurface::DescribeCommand => {
+                "describe command — type to filter · RET says which keys reach it".to_owned()
+            }
             ModalSurface::Manual => {
                 "manual — generated from the keymap you are using · Esc back".to_owned()
             }

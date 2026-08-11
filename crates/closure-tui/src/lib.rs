@@ -3476,7 +3476,7 @@ impl App {
             // Same shape: there is no rail to dock in a terminal, and
             // the thing it docks *to* — one chord per pane — is what
             // the terminal always had.
-            "manual" | "describe-key" => self.open_help(cmd),
+            "manual" | "describe-key" | "describe-command" => self.open_help(cmd),
             "toggle-rail" => {
                 "no rail in the terminal — the panes are one chord each (`g a`, `g k`, …)"
                     .clone_into(&mut self.status);

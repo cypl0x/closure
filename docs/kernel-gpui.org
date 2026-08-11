@@ -530,8 +530,23 @@ Emacs, =SPC h k= in Doom — with a surface of its own and tests in
 =introspection.rs=. The item existed because the gap analysis that
 seeded this queue did not check.
 
-* TODO Self-documenting: describe-command
-Acceptance: =nix develop -c cargo test -p closure-shell-core --test describe_command=
+* DONE Self-documenting: describe-command
+Acceptance: =nix develop -c cargo test -p closure-shell-core --test where_is=
+
+=describe_command= existed with tests and nothing could reach it — no
+chord, no palette entry — so where-is was a function the program had
+and did not offer. It is a picker now, because every other list of
+commands here is one and the question is the same: narrow, then pick.
+The only difference from the palette is that Enter describes instead
+of running.
+
+Bound =g /= in the modal maps (=g ?= asks about a key, =g /= about a
+name), =C-h w= in Emacs, =SPC h w= in Doom. =g w= was the obvious
+choice and is =allow-flow=; the keymap test caught it.
+
+On :1: typing "wrap" narrows to one row and Enter reports
+=g W · M-z · SPC t w=, every chord that reaches it rather than the
+first one the keymap lists.
 
 * TODO Self-documenting: jump to a command's source
 Acceptance: =nix develop -c cargo test -p closure-shell-core --test command_source=

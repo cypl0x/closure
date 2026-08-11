@@ -149,6 +149,7 @@ pub const fn opening_route(surface: crate::ModalSurface) -> &'static [&'static s
         // buffer has to be open before `C-c C-l` means anything.
         S::InsertLink => &["edit-body", "insert-link"],
         S::DescribeKey => &["describe-key"],
+        S::DescribeCommand => &["describe-command"],
         S::Manual => &["manual"],
     }
 }
@@ -194,6 +195,7 @@ pub const ALL_SURFACES: &[crate::ModalSurface] = {
         S::TagPick,
         S::InsertLink,
         S::DescribeKey,
+        S::DescribeCommand,
         S::Manual,
     ]
 };
