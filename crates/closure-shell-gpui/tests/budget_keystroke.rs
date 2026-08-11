@@ -87,3 +87,42 @@ fn the_budget_holds_where_the_report_said_it_would_not() {
          budget is {KEYSTROKE_BUDGET_US} (I11)"
     );
 }
+
+#[allow(clippy::cast_precision_loss)]
+#[test]
+fn what_the_chapter_costs_does_not_grow_with_the_chapter() {
+    // Landing on a headline with a big subtree costs about ten times
+    // what landing on a leaf costs, and the interesting question is
+    // whether that ten is a constant or a walk. It is a constant: the
+    // preview materialises up to `PREVIEW_CAP` lines of the subtree and
+    // a leaf has two, which is the cap doing exactly its job.
+    //
+    // Measured 2026-08-11 at 110 µs, 95 µs and 96 µs for subtrees of
+    // 1,000, 5,000 and 20,000 sections. Twenty times the subtree, the
+    // same cost — so this holds the shape rather than the number.
+    let cost = |sections: usize| {
+        let (_dir, shell) = shell_with_a_chapter(sections);
+        let mut app = ModalApp::new(InputMode::Doom);
+        // Warm the file's counting pass, which is per edit, not per
+        // keystroke.
+        app.select(1, &shell);
+        let _ = app.selected_detail(&shell);
+        // Alternate on and off the chapter so the detail memo misses
+        // every time and each step really derives.
+        let t = Instant::now();
+        for i in 0..20 {
+            app.select(usize::from(i % 2 != 0), &shell);
+            let _ = app.selected_detail(&shell);
+        }
+        t.elapsed().as_micros() as f64 / 20.0
+    };
+    let small = cost(1_000);
+    let large = cost(20_000);
+    let growth = large / small.max(0.001);
+    assert!(
+        growth < 2.0,
+        "twenty times the subtree cost {growth:.1} times as much to land \
+         on ({small:.1} µs -> {large:.1} µs) — the preview is reading past \
+         its cap"
+    );
+}

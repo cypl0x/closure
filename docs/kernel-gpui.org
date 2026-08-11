@@ -290,7 +290,7 @@ gets cut.
 
 Acceptance: =nix develop -c cargo test -p closure-shell-gpui --features gpui-test --test manual_scrolls= covers wrapping.
 
-* TODO Perf: landing on a headline still walks its subtree once
+* DONE Perf: landing on a headline still walks its subtree once
 Found 2026-08-11 while writing the I11 keystroke budget. The five
 passes are gone, but =children_source_preview= calls =subtree_end=,
 which walks to the last descendant to find where the subtree ends —
@@ -300,7 +300,20 @@ which is the shape the traversal work set out to remove.
 
 The end of a subtree is a prefix-sum question like the counts were.
 
-Acceptance: =nix develop -c cargo test -p closure-shell-gpui --test budget_keystroke= with the chapter case within 3x of the leaf case.
+Acceptance: =nix develop -c cargo test -p closure-shell-gpui --test budget_keystroke=.
+
+The diagnosis above is wrong and the measurement disproves it.
+=subtree_end= recurses only into =children.last()=, so it is O(depth),
+not O(subtree). Landing on the chapter costs 110, 95 and 96 us for
+subtrees of 1,000, 5,000 and 20,000 sections — twenty times the
+subtree, the same cost. The ten-fold gap against a leaf is the preview
+materialising up to PREVIEW_CAP lines where a leaf has two, which is
+the cap doing its job.
+
+Closed by a test that holds what is actually true — the cost of
+landing does not grow with the subtree — rather than by a change that
+was not needed. The 211 us in the earlier note was a single cold
+measurement; repeated, it is 95.
 
 * TODO Coverage: raise the floor to the current measured value
 The floor is 84. Measure, raise it to what the workspace actually
