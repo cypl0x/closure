@@ -194,8 +194,13 @@ than four times as long, which is what an accidental quadratic trips
 over long before the ceiling does. Proven to bite by running it once
 at 1 us before setting the real number.
 
-* TODO Perf: memory ceiling at the stated scale
+* DONE Perf: memory ceiling at the stated scale
 Acceptance: =nix develop -c cargo test -p closure-store --test budget_memory=
+
+1 KB per headline measured against the 8 KB ceiling, read from
+/proc/self/statm — resident set, not the allocator's own accounting,
+which does not see what it has handed back to the OS. Where there is
+no procfs the test says so on stderr instead of passing quietly.
 
 * TODO Store: hold the target headline count
 Whatever the spec item above commits to, the store has to actually
