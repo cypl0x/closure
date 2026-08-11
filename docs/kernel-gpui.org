@@ -185,8 +185,14 @@ Machine-pinned, beside the portable shape test that already exists.
 
 Acceptance: =nix develop -c cargo test -p closure-shell-gpui --features gpui-test --test budget_keystroke=
 
-* TODO Perf: cold vault open budget
+* DONE Perf: cold vault open budget
 Acceptance: =nix develop -c cargo test -p closure-store --test budget_open=
+
+Measured 9.9 us per headline in debug at 10,000 against the 100 us
+ceiling, plus a shape test — four times the vault must not take more
+than four times as long, which is what an accidental quadratic trips
+over long before the ceiling does. Proven to bite by running it once
+at 1 us before setting the real number.
 
 * TODO Perf: memory ceiling at the stated scale
 Acceptance: =nix develop -c cargo test -p closure-store --test budget_memory=
@@ -269,6 +275,18 @@ command's keys, which are at the end of its line, are exactly what
 gets cut.
 
 Acceptance: =nix develop -c cargo test -p closure-shell-gpui --features gpui-test --test manual_scrolls= covers wrapping.
+
+* TODO Perf: landing on a headline still walks its subtree once
+Found 2026-08-11 while writing the I11 keystroke budget. The five
+passes are gone, but =children_source_preview= calls =subtree_end=,
+which walks to the last descendant to find where the subtree ends —
+so landing on a headline with 5,000 sections costs 211 us against 9.5
+us for a leaf. Inside the budget, and still O(subtree) per keystroke,
+which is the shape the traversal work set out to remove.
+
+The end of a subtree is a prefix-sum question like the counts were.
+
+Acceptance: =nix develop -c cargo test -p closure-shell-gpui --test budget_keystroke= with the chapter case within 3x of the leaf case.
 
 * TODO Coverage: raise the floor to the current measured value
 The floor is 84. Measure, raise it to what the workspace actually
