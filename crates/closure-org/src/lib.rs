@@ -9872,9 +9872,9 @@ pub const CONFORMANCE: &[Construct] = &[
     },
     Construct {
         name: "#+INCLUDE",
-        support: Support::Preserved,
-        evidence: "",
-        missing: "the referenced file is never read",
+        support: Support::Understood,
+        evidence: "crates/closure-org/tests/include.rs",
+        missing: "",
     },
     Construct {
         name: "LaTeX fragment",
@@ -10193,6 +10193,117 @@ pub fn advance(ts: &str, today: &str) -> Option<String> {
     }
     out.push(close);
     Some(out)
+}
+
+/// Why an `#+INCLUDE:` could not be resolved.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum IncludeError {
+    /// A file includes itself, directly or through others.
+    ///
+    /// Carries the ring, for the same reason a widget cycle does: one
+    /// name leaves the reader to find the others.
+    #[error("include cycle: {}", .0.join(" -> "))]
+    Cycle(Vec<String>),
+    /// The file named is not there.
+    #[error("cannot include `{0}`: no such file")]
+    Missing(String),
+    /// Nested deeper than [`INCLUDE_DEPTH_LIMIT`] without repeating a
+    /// file.
+    #[error("include nesting deeper than {0}")]
+    TooDeep(usize),
+}
+
+/// How deep `#+INCLUDE:` may nest.
+///
+/// Same reasoning as a widget's limit: a nest that is deep without
+/// being circular is not a cycle, and recursing it would end the
+/// process rather than the expansion (I5).
+pub const INCLUDE_DEPTH_LIMIT: usize = 16;
+
+/// The quoted file and optional `:lines "a-b"` of an `#+INCLUDE:`
+/// line, if this is one.
+fn include_of(line: &str) -> Option<(String, Option<(usize, usize)>)> {
+    let rest = line
+        .trim_start()
+        .strip_prefix("#+INCLUDE:")
+        .or_else(|| line.trim_start().strip_prefix("#+include:"))?;
+    let rest = rest.trim_start();
+    let file = if let Some(after) = rest.strip_prefix('"') {
+        after.split_once('"')?.0.to_owned()
+    } else {
+        rest.split_whitespace().next()?.to_owned()
+    };
+    let lines = rest.split_once(":lines").and_then(|(_, l)| {
+        let spec = l.trim().trim_matches('"');
+        let (a, b) = spec.split_once('-')?;
+        Some((a.trim().parse().ok()?, b.trim().parse().ok()?))
+    });
+    Some((file, lines))
+}
+
+/// Resolve every `#+INCLUDE:` in `src` against `root`, recursively.
+///
+/// The result is a *view*: the directive lines are replaced by what
+/// they name, and nothing is written back (I12). Showing both the
+/// directive and its result would tell the reader something the file
+/// does not say, so the line goes.
+///
+/// # Errors
+///
+/// [`IncludeError::Missing`] naming the file, [`IncludeError::Cycle`]
+/// carrying the ring, or [`IncludeError::TooDeep`].
+pub fn resolve_includes(src: &str, root: &std::path::Path) -> Result<String, IncludeError> {
+    let mut stack: Vec<String> = Vec::new();
+    resolve_includes_in(src, root, &mut stack)
+}
+
+/// [`resolve_includes`], carrying the chain of files being expanded.
+fn resolve_includes_in(
+    src: &str,
+    root: &std::path::Path,
+    stack: &mut Vec<String>,
+) -> Result<String, IncludeError> {
+    // The common case: nothing to do, and it costs one substring scan.
+    if !src.contains("#+INCLUDE:") && !src.contains("#+include:") {
+        return Ok(src.to_owned());
+    }
+    if stack.len() >= INCLUDE_DEPTH_LIMIT {
+        return Err(IncludeError::TooDeep(INCLUDE_DEPTH_LIMIT));
+    }
+    let mut out = String::with_capacity(src.len());
+    for line in src.split_inclusive('\n') {
+        let Some((file, lines)) = include_of(line) else {
+            out.push_str(line);
+            continue;
+        };
+        if stack.iter().any(|f| *f == file) {
+            let from = stack.iter().position(|f| *f == file).unwrap_or(0);
+            let mut ring: Vec<String> = stack[from..].to_vec();
+            ring.push(file);
+            return Err(IncludeError::Cycle(ring));
+        }
+        let body = std::fs::read_to_string(root.join(&file))
+            .map_err(|_| IncludeError::Missing(file.clone()))?;
+        // One-based and inclusive, the way org writes them and the way
+        // an editor numbers the lines you are reading them off.
+        let body = match lines {
+            Some((a, b)) => body
+                .lines()
+                .skip(a.saturating_sub(1))
+                .take(b.saturating_sub(a.saturating_sub(1)))
+                .map(|l| format!("{l}\n"))
+                .collect::<String>(),
+            None => body,
+        };
+        stack.push(file);
+        let expanded = resolve_includes_in(&body, root, stack)?;
+        stack.pop();
+        out.push_str(&expanded);
+        if !expanded.ends_with('\n') {
+            out.push('\n');
+        }
+    }
+    Ok(out)
 }
 
 /// What a [`Fragment`] is.

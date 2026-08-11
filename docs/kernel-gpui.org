@@ -302,8 +302,22 @@ takes the drawer with it, for the same reason.
 End to end: =closure set-todo tasks.org <id> DONE= on a =+1w= task
 moved 2026-08-11 to 2026-08-18 and left it TODO.
 
-* TODO Org: #+INCLUDE resolution
+* DONE Org: #+INCLUDE resolution
 Acceptance: =nix develop -c cargo test -p closure-org --test include=
+
+Composition by file, and it gets the composition rules already
+settled, which is the point of having settled them: the expansion is a
+view and is never written back (I12), a cycle names its ring rather
+than recursing until the stack goes, and a depth limit catches a nest
+that is deep without being circular (I5).
+
+The directive line is dropped from the view — showing both the
+directive and its result tells the reader something the file does not
+say. =:lines "2-3"= selects part of a file, one-based and inclusive,
+the way org writes them and the way an editor numbers the lines you
+are reading them off.
+
+Conformance 73% -> 76%.
 
 * DONE Org: entities and LaTeX fragments
 Acceptance: =nix develop -c cargo test -p closure-org --test entities=
