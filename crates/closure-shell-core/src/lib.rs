@@ -13857,6 +13857,7 @@ pub const INVARIANTS: &[&str] = &[
     "I8  command-registry is the only side-effect surface",
     "I9  config validation at load, not at use (typed schema)",
     "I10 deterministic / hermetic / reproducible builds (nix flake check)",
+    "I12 a composition is a view, never a write (expansion never reaches the file)",
 ];
 
 /// closure's manual, generated from the running program.

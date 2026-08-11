@@ -18,7 +18,7 @@ Rules for this file:
 - TODO -> DONE only after the commit lands, with the answer in the
   item's body.
 
-* TODO Spec: define what a block is
+* DONE Spec: define what a block is
 The first item in the vision is composability and it is the least
 built. Nothing under "Composition" below can be tested until this
 says what composes with what.
@@ -29,7 +29,23 @@ its identity under I2? What does composition mean for I1 roundtrip —
 does an expansion ever reach the file, or only the view?
 
 Acceptance: =grep -c "^### I12" docs/spec.md= prints 1, and
-=nix develop -c cargo test -p closure-cli --test spec_is_true= passes.
+=nix develop -c cargo test -p closure-shell-core --test what_a_block_is= passes.
+
+Three tiers: an *addressable block* is a headline and is the only
+thing with an identity (I2); a *content block* is an org element and
+is what a template is made of; a *composable block* is a named widget
+with declared inputs. A widget never contains a headline — a template
+that emitted one would either mint the same id at every call site or a
+new one on every render, breaking I2 or I6.
+
+The load-bearing half is I12: an expansion is never written back.
+Org's dynamic blocks work the other way round and closure cannot,
+because then a file's bytes would depend on when it was last
+refreshed. That keeps composition inside `query`, one of the seven
+kernel primitives, so it adds no eighth.
+
+(The acceptance line named a `spec_is_true` test that does not exist;
+the check it meant is the one above, which does.)
 
 * TODO Spec: I11 performance budgets, with numbers
 "Almost no input lag" cannot be tested. State p99 keystroke->frame,

@@ -100,6 +100,58 @@ all crates read config only through typed handles.
 within the devshell. Every shell produces a self-contained artifact for its
 target.
 
+### I12 — A composition is a view, never a write
+
+Expanding a composable block produces a value for a reader. It is never
+written back into the file that defined it, by any code path, including
+a refresh, a save, or a shell that has just rendered it.
+
+Org's own `#+BEGIN: … #+END:` dynamic blocks work the other way:
+`org-dblock-update` replaces the region with its output, so the source
+carries the expansion. closure cannot do that and keep I1 — the bytes of
+a file would then depend on when it was last refreshed and against which
+vault, which is exactly the kind of drift I1 exists to forbid.
+
+So the region between the delimiters is _authored content_ — a template
+someone wrote and can read back unchanged — and the expansion is derived.
+Enforced by `closure-query/tests/composition_is_a_view.rs`: expanding a
+document leaves its bytes identical, the source still roundtrips
+afterwards, and the same vault expands to the same string every time (I6).
+
+The consequence worth stating: composition reduces to `query`, one of the
+seven kernel primitives below. It adds no eighth.
+
+## What a block is
+
+The vision asks for Notion-style composable building blocks. Org offers a
+tree of headlines built from elements. Those are not the same unit, and
+closure uses three, deliberately distinguished:
+
+- **Addressable block** — a _headline_. The unit of identity: it carries
+  the `:ID:` ULID (I2), and it is what links, backlinks, commands, undo,
+  queries and merges address. Nothing finer than a headline has an
+  identity, because nothing finer can carry a property drawer without
+  making the file unreadable to a human or to Emacs.
+- **Content block** — an _org element_: paragraph, list item, table,
+  source block, drawer, dynamic block. The unit of content. Elements are
+  addressed by their position inside the headline that owns them, never
+  by a global id and never by byte offset from a shell (I7).
+- **Composable block** — a _named widget_: a
+  `#+BEGIN: closure-widget :name X … #+END:` whose body is a template.
+  It has a name that is unique across the vault, declared and typed
+  inputs, may accept slots, and expands only into a view (I12).
+
+What may appear inside a composable block is content blocks and
+references to other composable blocks. A widget never contains a
+headline: headlines carry identity, and a template that emitted one
+would mint the same id at every call site, or mint a new one on every
+render — the first breaks I2, the second breaks I6.
+
+Composition is therefore expansion-with-arguments over content, bounded
+by a depth limit, resolved against a vault-wide registry of names, and
+reported as a diagnostic when it fails rather than silently producing
+nothing.
+
 ## Layers
 
 The system partitions into six layers. Every crate belongs to exactly one
