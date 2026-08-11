@@ -652,9 +652,18 @@ landing does not grow with the subtree — rather than by a change that
 was not needed. The 211 us in the earlier note was a single cold
 measurement; repeated, it is 95.
 
-* TODO Coverage: raise the floor to the current measured value
+* DONE Coverage: raise the floor to the current measured value
 The floor is 84. Measure, raise it to what the workspace actually
 holds, and record the number here. A new item goes in whenever it
 drifts up again.
 
 Acceptance: =nix develop -c just coverage= passes at the raised floor.
+
+84 -> 86. Lines 86.08%, regions 83.37, functions 83.48. The justfile
+comment said there was "no integer headroom left to claim" at 84.33,
+which was true of the code as it stood and wrong as a prediction: this
+run added a few thousand lines of product code and every one of them
+arrived behind a failing test first, so the hermetic ceiling moved
+about two points rather than a fraction. The residual ~14% is the same
+non-hermetic set as before — the ratatui draw loop, the curl/HTTP
+paths, the GUI window and socket loops.

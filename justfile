@@ -55,8 +55,18 @@ check:
 # cannot raise the *hermetic* gate. No coverage exclusions, no
 # #[coverage(off)] (no gaming) — raising the integer would require exactly
 # that, or testing the display/network loops that cannot run hermetically.
+#
+# 2026-08-11: 84 → 86. Lines 86.07% (Regions 83.37, Functions 83.48).
+# The paragraph above was right about the ceiling *at the time* and
+# wrong as a prediction: the kernel+gpui run added widget parameters,
+# typed inputs, slots, cycle and depth errors, grouping, relations,
+# rollups, repeaters, repeat-on-done, the conformance matrix, where-is
+# and the pane fixes — every one of them driven by a test first, which
+# is why ~2 points arrived rather than a fraction. The residual is
+# still the same non-hermetic ~14%: the ratatui draw loop, the
+# curl/HTTP paths, the GUI window and socket loops.
 coverage:
-    cargo llvm-cov --workspace --fail-under-lines 84
+    cargo llvm-cov --workspace --fail-under-lines 86
 
 # Parser fuzz/replay + property gate (I1/I5/I6) on stable, for every
 # first-class format (org + markdown).
