@@ -639,11 +639,27 @@ Already built: =DragReorder= is the gesture machine and the drop maps
 to registry moves (I8), covered in =affordances.rs= and =modal.rs=.
 Verified rather than assumed.
 
-* TODO Notion mode: parity with Doom
+* DONE Notion mode: parity with Doom
 Every command reachable in Doom is reachable in Notion mode, by the
 same registry, with its affordance shown.
 
 Acceptance: =nix develop -c cargo test -p closure-input --test mode_parity=
+
+Parity cannot honestly mean "the same chords" — the modes differ on
+purpose, and that is what choosing one is for. Three rules that do
+mean something: every mode reaches a spelled-out floor (palette,
+capture, save, undo, search, manual, describe-key, describe-command);
+a command bound in every *other* mode is bound here too, which is the
+rule that catches a command added to four keymaps and forgotten in the
+fifth; and Notion is not a stub, since it is meant to be the default.
+
+Held already, so both rules were checked by breaking them: removing
+=describe-command= from the Notion map alone gives "Notion is the only
+mode that cannot reach: [describe-command]".
+
+The fourth rule — no mode binds a name nothing implements — is not in
+this file and could not be: closure-input sits below the crate that
+owns the registry. =no_dead_chords= enforces it from the other side.
 
 * DONE Self-documenting: describe-key
 Acceptance: =nix develop -c cargo test -p closure-shell-core --test introspection=
