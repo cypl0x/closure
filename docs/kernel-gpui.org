@@ -216,6 +216,41 @@ Acceptance: =nix develop -c cargo test -p closure-shell-core --test command_sour
 * TODO Self-documenting: live docstrings in the palette
 Acceptance: =nix develop -c cargo test -p closure-shell-gpui --features gpui-test --test palette_docs=
 
+* DONE Bug: the manual pane does not scroll
+Found 2026-08-11 while confirming I12 in the window. =M-x manual=
+opens, the pane paints a scrollbar, and =C-d= / =C-u= move nothing —
+so everything below the first screen of the manual is unreachable.
+The manual is the shell's answer to "self-documented like Emacs", and
+most of it cannot be read.
+
+Acceptance: =nix develop -c cargo test -p closure-shell-gpui --features gpui-test --test manual_scrolls=
+
+Three faults, not one. The cursor walked all along; nothing looked at
+it (every read-only pane painted all of its rows from row zero), the
+chords that move half a screen only ever moved the outline's
+selection, and the pane measured its own height with the scroll
+handle — which reports the *content*, so a pane that painted more
+rows measured itself taller and painted more still. Fixed by
+=ModalApp::pane_window= (the outline's rule, reused), by routing the
+half-page chords through the keymap when a read-only pane is open,
+and by measuring the viewport from the window. Verified on :1.
+
+* TODO Bug: the manual pane double-spaces every line
+Found 2026-08-11, same screenshot. Each generated line is followed by
+a blank one, so the pane shows about half the text it has room for.
+Either the generator emits the blank lines or the pane inserts them;
+find out which before changing either.
+
+Acceptance: =nix develop -c cargo test -p closure-shell-core --test manual= covers the spacing.
+
+* TODO Bug: the read-only panes clip long lines instead of wrapping
+Found 2026-08-11 in the same screenshot as the scroll fix. Manual
+rows run off the right edge mid-word — "Add a sibling headl" — so a
+command's keys, which are at the end of its line, are exactly what
+gets cut.
+
+Acceptance: =nix develop -c cargo test -p closure-shell-gpui --features gpui-test --test manual_scrolls= covers wrapping.
+
 * TODO Coverage: raise the floor to the current measured value
 The floor is 84. Measure, raise it to what the workspace actually
 holds, and record the number here. A new item goes in whenever it

@@ -8757,7 +8757,7 @@ impl App {
     /// [`closure_input::mode_keymap`] — the single keymap source of
     /// truth (I4). Shared shape with [`ModalApp::key_hints`].
     fn command_hints(&self) -> String {
-        closure_input::mode_keymap(self.input_mode)
+        closure_input::mode_keymap(self.input_mode())
             .iter()
             .map(|(chord, cmd)| format!("{chord}:{cmd}"))
             .collect::<Vec<_>>()
@@ -15436,6 +15436,22 @@ impl ModalApp {
             }
             return;
         }
+        // A read-only pane is a list too, and the chords that move half
+        // a screen belong to whichever list is open. The pane handlers
+        // resolve their own keys and never reach the keymap, so the two
+        // are looked up here rather than spelled out a second time
+        // inside the pane — I4 says the keymap is the only table.
+        if self.in_read_only_pane()
+            && let Some(stroke) = modal_stroke(key, ctrl, alt, text)
+            && let Some(cmd) = closure_input::mode_keymap(self.input_mode())
+                .iter()
+                .find(|(chord, _)| *chord == stroke)
+                .map(|(_, c)| *c)
+            && matches!(cmd, "half-page-down" | "half-page-up")
+        {
+            self.run_command(shell, cmd);
+            return;
+        }
         // Every motion in an editor ends here, including the ones the
         // vim engine resolves inside itself (`j`, `k`, `G`, a search)
         // and the file buffer's own handler — none of which know about
@@ -19231,6 +19247,44 @@ impl ModalApp {
         }
     }
 
+    /// The visible slice of a read-only pane's `rows` for a viewport of
+    /// `page` rows, plus its start offset, chosen so the pane's cursor
+    /// stays on screen.
+    ///
+    /// The same rule as [`Self::view_window`], and stateless for the
+    /// same reason: the offset is derived from the cursor on every
+    /// call, so there is no second place where "where this pane is
+    /// looking" can be recorded and go wrong.
+    ///
+    /// Every read-only pane used to paint all of its rows. For the
+    /// short ones — bridges, jobs — that is the whole list and nothing
+    /// was wrong. The manual is hundreds of rows long, so its cursor
+    /// walked away under a view that never followed it and everything
+    /// past the first screen was unreachable.
+    #[must_use]
+    pub fn pane_window<T: Clone>(&self, rows: Vec<T>, page: usize) -> (usize, Vec<T>) {
+        if page == 0 || rows.len() <= page {
+            return (0, rows);
+        }
+        let max_offset = rows.len() - page;
+        let offset = self.pane_cursor.saturating_sub(page - 1).min(max_offset);
+        let slice = rows[offset..offset + page].to_vec();
+        (offset, slice)
+    }
+
+    /// Whether a read-only pane is open — one whose keys
+    /// [`Self::on_pane_key`] serves, walking [`Self::pane_cursor`].
+    ///
+    /// Which is what `C-d` has to ask before deciding whose half-page
+    /// it is moving.
+    #[must_use]
+    pub const fn in_read_only_pane(&self) -> bool {
+        matches!(
+            self.surface,
+            ModalSurface::Manual | ModalSurface::Journal | ModalSurface::Cron
+        )
+    }
+
     /// Where the read-only panes are looking.
     /// Put the pane's cursor on row `i` — what a click on a row does.
     pub const fn select_pane_row(&mut self, i: usize) {
@@ -19436,11 +19490,18 @@ impl ModalApp {
 
     /// The read-only list panes, which differ only in their length.
     fn on_list_pane_key(&mut self, shell: &Shell, key: &str) {
-        let len = match self.surface {
+        let len = self.pane_rows_len(shell);
+        self.on_pane_key(key, len);
+    }
+
+    /// How many rows the open read-only pane has — what its cursor
+    /// clamps to, whether it is moved a row at a time or half a screen.
+    fn pane_rows_len(&self, shell: &Shell) -> usize {
+        match self.surface {
+            ModalSurface::Manual => self.manual_rows().len(),
             ModalSurface::Journal => self.journal_rows(shell).len(),
             _ => self.cron_rows(shell).len(),
-        };
-        self.on_pane_key(key, len);
+        }
     }
 
     /// Put the selected bridge's command line on the clipboard.
@@ -24714,8 +24775,22 @@ impl ModalApp {
             // jumping to an end, and the one vim put on these chords.
             "half-page-down" | "half-page-up" => {
                 let step = (self.outline_viewport / 2).max(1);
+                let down = cmd == "half-page-down";
+                // Whose half-page it is depends on what is open. These
+                // chords only ever moved the outline's selection, so in
+                // a read-only pane they scrolled a list nobody was
+                // looking at while the pane itself stood still.
+                if self.in_read_only_pane() {
+                    let last = self.pane_rows_len(shell).saturating_sub(1);
+                    self.pane_cursor = if down {
+                        (self.pane_cursor + step).min(last)
+                    } else {
+                        self.pane_cursor.saturating_sub(step)
+                    };
+                    return;
+                }
                 let last = self.rows_shared(shell).len().saturating_sub(1);
-                self.selected = if cmd == "half-page-down" {
+                self.selected = if down {
                     (self.selected + step).min(last)
                 } else {
                     self.selected.saturating_sub(step)

@@ -2429,11 +2429,16 @@ pub struct GpuiView {
     /// the same pair the outline column keeps, for the same reason.
     rail_w: f32,
     rail_drag: Option<f32>,
-    /// The window's own width, read once a frame so the layout can
+    /// The window's own size, read once a frame so the layout can
     /// answer to it ([`Reflow`]). Zero until the first frame, which
     /// reads as "everything fits" — the window is opened at a size
     /// that does.
-    window_w: f32,
+    ///
+    /// The height is here for the read-only panes, which cannot ask
+    /// the scroll handle how tall their viewport is: it reports the
+    /// bounds of the *content*, so a pane that painted more rows
+    /// measured itself as taller and painted more still.
+    viewport: (f32, f32),
     /// The vault's directory name, for the window title.
     vault_name: String,
     /// The title last written to the window manager, so a frame that
@@ -2537,7 +2542,7 @@ impl GpuiView {
             outline_w: OUTLINE_W_DEFAULT,
             outline_drag: None,
             rail_w: RAIL_W_DEFAULT,
-            window_w: 0.0,
+            viewport: (0.0, 0.0),
             rail_drag: None,
             window_title: String::new(),
             focus_handle: cx.focus_handle(),
@@ -2715,10 +2720,10 @@ impl GpuiView {
     /// says so — the number is what the row is asked how much room it
     /// has, not only what the width is set to.
     fn outline_width(&self) -> f32 {
-        if self.window_w <= 0.0 {
+        if self.viewport.0 <= 0.0 {
             return self.outline_w;
         }
-        let room = self.window_w - self.rail_cost();
+        let room = self.viewport.0 - self.rail_cost();
         if self.reflow() == Reflow::Full {
             self.outline_w.min(room - SIDE_W_MIN).max(OUTLINE_W_MIN)
         } else {
@@ -2733,7 +2738,7 @@ impl GpuiView {
     /// thing being decided, so measuring them here would settle a
     /// frame late and oscillate on the way.
     fn reflow(&self) -> Reflow {
-        let w = self.window_w;
+        let w = self.viewport.0;
         if w <= 0.0 {
             return Reflow::Full;
         }
@@ -3784,6 +3789,21 @@ impl GpuiView {
             return BODY_VIEW_DEFAULT;
         }
         body_viewport_lines(height, body_row_h(self.app.zoom()), BODY_CHROME)
+    }
+
+    /// How many rows a read-only pane can show.
+    ///
+    /// Measured from the window rather than from the pane's scroll
+    /// handle. `side_scroll.bounds()` is the scrollable *content*, so
+    /// asking it how tall the viewport is answered "as tall as what
+    /// you painted" — the manual grew its own page every time its
+    /// cursor moved, and so never scrolled at all. The same trap the
+    /// horizontal scroll fell into with `body_track`.
+    fn pane_view(&self) -> usize {
+        if self.viewport.1 <= 0.0 {
+            return BODY_VIEW_DEFAULT;
+        }
+        body_viewport_lines(self.viewport.1, body_row_h(self.app.zoom()), BODY_CHROME)
     }
 
     /// How many columns of body text the editor pane can show.
@@ -5223,18 +5243,37 @@ impl GpuiView {
             ModalSurface::Sync => pane.child(self.sync_pane(co, cx)),
             ModalSurface::Llm => pane.child(self.llm_pane(co, cx)),
             ModalSurface::Graph => pane.child(self.graph_pane(co, cx)),
-            ModalSurface::Manual => pane.children(Self::text_rows(
-                co,
-                self.app.zoom(),
-                self.app.manual_rows(),
-                "the manual generated nothing, which should not happen",
-            )),
-            ModalSurface::Journal => pane.children(Self::text_rows(
-                co,
-                self.app.zoom(),
-                self.app.journal_rows(&self.shell),
-                "no commands recorded yet — the journal fills as you edit",
-            )),
+            // Only what fits, and only because the window is the one
+            // that knows how much that is — measured from the window,
+            // not from the pane's own scroll handle.
+            ModalSurface::Manual => {
+                let (offset, rows) = self
+                    .app
+                    .pane_window(self.app.manual_rows(), self.pane_view());
+                pane.children(Self::text_rows(
+                    co,
+                    self.app.zoom(),
+                    rows,
+                    "the manual generated nothing, which should not happen",
+                    "manual",
+                    offset,
+                    self.app.pane_cursor(),
+                ))
+            }
+            ModalSurface::Journal => {
+                let (offset, rows) = self
+                    .app
+                    .pane_window(self.app.journal_rows(&self.shell), self.pane_view());
+                pane.children(Self::text_rows(
+                    co,
+                    self.app.zoom(),
+                    rows,
+                    "no commands recorded yet — the journal fills as you edit",
+                    "journal",
+                    offset,
+                    self.app.pane_cursor(),
+                ))
+            }
             ModalSurface::Cron => pane.child(self.jobs_pane(co, cx)),
             ModalSurface::Bridges => pane.child(self.bridges_pane(co, cx)),
             ModalSurface::Settings | ModalSurface::Setting => pane.child(self.settings_pane(co)),
@@ -6635,17 +6674,50 @@ impl GpuiView {
     ///
     /// `empty` names what is missing and how it gets filled: "nothing
     /// here yet" tells a reader nothing they cannot already see.
-    fn text_rows(co: Colors, zoom: f32, rows: Vec<String>, empty: &'static str) -> Vec<gpui::Div> {
+    /// A read-only pane's rows: the slice that fits, marked with where
+    /// the cursor is and with what each row's number actually is.
+    ///
+    /// `name` prefixes the selectors and `offset` is the absolute index
+    /// of the first row, so a row keeps its identity as the pane
+    /// scrolls under it — `manual-row-137` is the same line whatever is
+    /// above it, which is what makes "the pane moved" testable.
+    fn text_rows(
+        co: Colors,
+        zoom: f32,
+        rows: Vec<String>,
+        empty: &'static str,
+        name: &'static str,
+        offset: usize,
+        cursor: usize,
+    ) -> Vec<gpui::Div> {
         if rows.is_empty() {
             return vec![div().text_color(rgb(co.muted)).child(empty)];
         }
         rows.into_iter()
-            .map(|line| {
+            .enumerate()
+            .map(|(i, line)| {
+                let n = offset + i;
+                let hot = n == cursor;
+                // Two selectors on one div is one selector: the second
+                // call replaces the first, and the row loses the
+                // identity the scroll is measured by. So the cursor is
+                // a mark of its own — a bar down the left of the row,
+                // which is what a reader needs anyway to see where the
+                // pane is looking.
                 div()
+                    .debug_selector(move || format!("{name}-row-{n}"))
+                    .flex()
+                    .items_center()
+                    .gap_2()
+                    .when(hot, |d| d.bg(rgb(co.selection)))
                     .px_2()
                     .py_1()
                     .text_size(sz_at(12.0, zoom))
                     .text_color(rgb(co.fg))
+                    .child(div().w(px(2.0)).h(sz_at(12.0, zoom)).when(hot, |d| {
+                        d.debug_selector(move || format!("{name}-cursor"))
+                            .bg(rgb(co.accent))
+                    }))
                     .child(line)
             })
             .collect()
@@ -6967,6 +7039,11 @@ impl GpuiView {
                 self.app.zoom(),
                 dead,
                 "none — every link in the vault resolves",
+                "dead-link",
+                0,
+                // The graph's cursor is walking the jump targets above,
+                // not this list, so no row here is the one you are on.
+                usize::MAX,
             ))
     }
 
@@ -10766,7 +10843,10 @@ impl Render for GpuiView {
         // bundled font: "with long lines I still can type in the dark".
         self.measure_col_w(window, &font);
         // What the panes are being asked to fit into, this frame.
-        self.window_w = f32::from(window.viewport_size().width);
+        self.viewport = (
+            f32::from(window.viewport_size().width),
+            f32::from(window.viewport_size().height),
+        );
         // A clock entry is stamped with the minute it was started, so
         // the window keeps the core's idea of now up to date.
         self.app.set_now(&closure_shell_core::now_local());
