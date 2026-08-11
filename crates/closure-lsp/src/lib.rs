@@ -1066,26 +1066,16 @@ pub fn diagnostics(src: &str, vault: &Vault) -> Vec<Diagnostic> {
         });
     }
 
-    // closure-widget expansion errors (unknown / cyclic refs), resolved
-    // against widget definitions across the whole vault (V2b).
+    // closure-widget expansion errors, resolved against widget
+    // definitions across the whole vault (V2b), and pointed at the
+    // thing that went wrong rather than at the block it happened in.
     if let Err(e) =
         closure_query::expand_widgets_with(src, &closure_query::vault_widget_defs(vault))
     {
-        let line = src
-            .lines()
-            .position(|l| {
-                l.trim_start()
-                    .to_ascii_lowercase()
-                    .starts_with("#+begin: closure-widget")
-            })
-            .unwrap_or(0);
-        let end = src
-            .lines()
-            .nth(line)
-            .map_or(0, |l| u32::try_from(l.len()).unwrap_or(u32::MAX));
+        let (line, start, end) = widget_error_span(src, &e);
         out.push(Diagnostic {
-            line: u32::try_from(line).unwrap_or(u32::MAX),
-            start_char: 0,
+            line,
+            start_char: start,
             end_char: end,
             severity: Severity::Error,
             code: DiagnosticCode::Widget,
@@ -1094,6 +1084,65 @@ pub fn diagnostics(src: &str, vault: &Vault) -> Vec<Diagnostic> {
     }
 
     out
+}
+
+/// Where in `src` to underline a composition failure.
+///
+/// Every one of these used to be reported at the first
+/// `#+begin: closure-widget` line in the file, whatever had gone wrong
+/// and wherever it had happened — so an editor underlined a block
+/// header several lines above a reference that was perfectly visible.
+/// The error already knows which name, which argument or which value
+/// is at fault; this finds it.
+///
+/// Falls back to the block header when the text cannot be found, which
+/// is better than nothing and is what a depth failure gets: there is no
+/// single reference to blame for a nest that went too deep.
+fn widget_error_span(src: &str, e: &closure_query::WidgetError) -> (u32, u32, u32) {
+    use closure_query::WidgetError as W;
+    let needle = match e {
+        W::Unknown(name) => format!("{{{{{name}}}}}"),
+        W::UnknownArgument { argument, .. } => argument.clone(),
+        W::BadArgument { got, .. } => got.clone(),
+        W::Cycle(path) => path
+            .first()
+            .map(|n| format!("{{{{{n}}}}}"))
+            .unwrap_or_default(),
+        W::TooDeep { .. } => String::new(),
+    };
+    if !needle.is_empty() {
+        for (i, line) in src.lines().enumerate() {
+            // Not on the line that *defines* the widget — that is where
+            // the name is declared, not where it is used wrongly.
+            if line
+                .trim_start()
+                .to_ascii_lowercase()
+                .starts_with("#+begin:")
+            {
+                continue;
+            }
+            if let Some(at) = line.find(&needle) {
+                return (
+                    u32::try_from(i).unwrap_or(u32::MAX),
+                    u32::try_from(at).unwrap_or(u32::MAX),
+                    u32::try_from(at + needle.len()).unwrap_or(u32::MAX),
+                );
+            }
+        }
+    }
+    let line = src
+        .lines()
+        .position(|l| {
+            l.trim_start()
+                .to_ascii_lowercase()
+                .starts_with("#+begin: closure-widget")
+        })
+        .unwrap_or(0);
+    let end = src
+        .lines()
+        .nth(line)
+        .map_or(0, |l| u32::try_from(l.len()).unwrap_or(u32::MAX));
+    (u32::try_from(line).unwrap_or(u32::MAX), 0, end)
 }
 
 /// The id referred to at a zero-based `line`/`character` in `src`: the

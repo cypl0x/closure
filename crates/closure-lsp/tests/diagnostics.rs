@@ -163,3 +163,82 @@ fn defined_footnotes_are_clean() {
             .all(|d| d.code != closure_lsp::DiagnosticCode::Footnote)
     );
 }
+
+// === precise ranges (2026-08-11) ===
+//
+// A composition error used to be reported at the first
+// `#+begin: closure-widget` line in the file, whatever the error was
+// and wherever it happened. In an editor that underlines the wrong
+// text: the block's own header, several lines above a reference that
+// is perfectly visible. The error already knows which name, which
+// argument and which value went wrong, so the diagnostic points at it.
+
+#[test]
+fn an_unknown_reference_is_marked_at_the_reference() {
+    let src = "#+BEGIN: closure-widget :name p\nsome prose\nand then {{ghost}} here\n#+END:\n";
+    let (_d, v) = vault_with(&[("a.org", src)]);
+    let d = diagnostics(src, &v)
+        .into_iter()
+        .find(|d| d.code == DiagnosticCode::Widget)
+        .expect("widget error flagged");
+    assert_eq!(d.line, 2, "the line the reference is on");
+    let line = src.lines().nth(2).unwrap();
+    let at = line.find("{{ghost}}").unwrap();
+    assert_eq!(
+        d.start_char as usize, at,
+        "marked `{line}` at the wrong column"
+    );
+    assert_eq!(d.end_char as usize, at + "{{ghost}}".len());
+}
+
+#[test]
+fn a_bad_argument_is_marked_at_the_value() {
+    let src = "#+BEGIN: closure-widget :name card :inputs count:number\n[{{count}}]\n#+END:\n\
+               #+BEGIN: closure-widget :name page\n{{card count=banana}}\n#+END:\n";
+    let (_d, v) = vault_with(&[("a.org", src)]);
+    let d = diagnostics(src, &v)
+        .into_iter()
+        .find(|d| d.code == DiagnosticCode::Widget)
+        .expect("widget error flagged");
+    assert_eq!(d.line, 4, "the call site's line");
+    let line = src.lines().nth(4).unwrap();
+    let at = line.find("banana").unwrap();
+    assert_eq!(
+        d.start_char as usize, at,
+        "marked `{line}` at the wrong column"
+    );
+}
+
+#[test]
+fn an_unknown_argument_is_marked_at_the_argument() {
+    let src = "#+BEGIN: closure-widget :name card :inputs title\n[{{title}}]\n#+END:\n\
+               #+BEGIN: closure-widget :name page\n{{card titel=Today}}\n#+END:\n";
+    let (_d, v) = vault_with(&[("a.org", src)]);
+    let d = diagnostics(src, &v)
+        .into_iter()
+        .find(|d| d.code == DiagnosticCode::Widget)
+        .expect("widget error flagged");
+    assert_eq!(d.line, 4);
+    let line = src.lines().nth(4).unwrap();
+    assert_eq!(d.start_char as usize, line.find("titel").unwrap());
+}
+
+#[test]
+fn a_cycle_is_marked_at_a_reference_in_the_ring() {
+    let src = "#+BEGIN: closure-widget :name a\n{{b}}\n#+END:\n\
+               #+BEGIN: closure-widget :name b\n{{a}}\n#+END:\n";
+    let (_d, v) = vault_with(&[("a.org", src)]);
+    let d = diagnostics(src, &v)
+        .into_iter()
+        .find(|d| d.code == DiagnosticCode::Widget)
+        .expect("widget error flagged");
+    // Not the BEGIN line, which is where every one of these used to go.
+    let marked = src.lines().nth(d.line as usize).unwrap();
+    assert!(
+        !marked
+            .trim_start()
+            .to_ascii_lowercase()
+            .starts_with("#+begin:"),
+        "still pointing at the block header: {marked}"
+    );
+}

@@ -166,8 +166,19 @@ forbids a panic, because a blown stack takes the window with it. The
 limit is 64: far past what a page needs, far below what this expander
 can survive.
 
-* TODO LSP: composition errors as diagnostics with precise ranges
+* DONE LSP: composition errors as diagnostics with precise ranges
 Acceptance: =nix develop -c cargo test -p closure-lsp --test diagnostics=
+
+They were already diagnostics; they were all reported at the first
+=#+begin: closure-widget= line in the file, whatever had gone wrong
+and wherever it happened, so an editor underlined a block header
+several lines above a reference that was perfectly visible. The error
+already knows which name, which argument or which value is at fault,
+so the range points at it — and never at the line that *defines* the
+widget, which is where a name is declared rather than used wrongly.
+
+A depth failure still lands on the block header: there is no single
+reference to blame for a nest that went too deep.
 
 * DONE gpui: render a composed widget where it is written
 Found 2026-08-11 while adding parameters. =widget_node= has no callers
