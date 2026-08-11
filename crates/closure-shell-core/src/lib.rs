@@ -2316,65 +2316,11 @@ fn outline_rows(shell: &Shell, filter: &str) -> Vec<Row> {
 // reproducible, and a picker cannot drift between two frames of the
 // same second.
 
-/// Days since 1970-01-01 for a civil date (Howard Hinnant's
-/// `days_from_civil`, public domain; the same algorithm
-/// `closure_org`'s clock arithmetic uses).
-#[must_use]
-pub const fn days_from_civil(y: i64, m: i64, d: i64) -> i64 {
-    let y = if m <= 2 { y - 1 } else { y };
-    let era = if y >= 0 { y } else { y - 399 } / 400;
-    let yoe = y - era * 400;
-    let mp = (m + 9) % 12;
-    let doy = (153 * mp + 2) / 5 + d - 1;
-    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
-    era * 146_097 + doe - 719_468
-}
-
-/// The civil date `days` after 1970-01-01 — the inverse of
-/// [`days_from_civil`].
-#[must_use]
-pub const fn civil_from_days(days: i64) -> (i64, u32, u32) {
-    let z = days + 719_468;
-    let era = z.div_euclid(146_097);
-    let doe = z.rem_euclid(146_097);
-    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
-    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
-    let mp = (5 * doy + 2) / 153;
-    let d = doy - (153 * mp + 2) / 5 + 1;
-    let m = if mp < 10 { mp + 3 } else { mp - 9 };
-    let y = yoe + era * 400 + if m <= 2 { 1 } else { 0 };
-    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
-    (y, m as u32, d as u32)
-}
-
-/// How many days a month has, leap years included.
-#[must_use]
-pub const fn days_in_month(year: i64, month: u32) -> u32 {
-    match month {
-        1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
-        2 => {
-            if (year % 4 == 0 && year % 100 != 0) || year % 400 == 0 {
-                29
-            } else {
-                28
-            }
-        }
-        // April, June, September, November — and anything that is not
-        // a month at all, which a caller cannot produce from a parsed
-        // date but must not be a panic if one ever does (I5).
-        _ => 30,
-    }
-}
-
-/// Org's three-letter weekday for a civil date — what goes inside the
-/// stamp, in the same spelling org itself writes.
-#[must_use]
-pub fn weekday_name(y: i64, m: u32, d: u32) -> &'static str {
-    const NAMES: [&str; 7] = ["Thu", "Fri", "Sat", "Sun", "Mon", "Tue", "Wed"];
-    // 1970-01-01 was a Thursday, so the epoch day indexes NAMES.
-    let days = days_from_civil(y, i64::from(m), i64::from(d));
-    NAMES[usize::try_from(days.rem_euclid(7)).unwrap_or(0)]
-}
+// Civil-date arithmetic lives in `closure-org`: it is arithmetic on
+// org timestamps, and a layer that parses them is where it belongs.
+// Re-exported here because every calendar in this crate was written
+// against these names.
+pub use closure_org::{civil_from_days, days_from_civil, days_in_month, weekday_name};
 
 /// Monday-based weekday index (0 = Monday) for a civil date — the
 /// column a day sits in on a calendar that starts the week on Monday,

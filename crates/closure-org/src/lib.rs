@@ -9858,15 +9858,15 @@ pub const CONFORMANCE: &[Construct] = &[
     },
     Construct {
         name: "timestamp repeater (+1w)",
-        support: Support::Preserved,
-        evidence: "",
-        missing: "a repeat never advances a date",
+        support: Support::Understood,
+        evidence: "crates/closure-org/tests/repeaters.rs",
+        missing: "",
     },
     Construct {
         name: "habit (.+1d/++1m)",
-        support: Support::Preserved,
-        evidence: "",
-        missing: "same as the repeater, plus no habit view",
+        support: Support::Understood,
+        evidence: "crates/closure-org/tests/repeaters.rs",
+        missing: "",
     },
     Construct {
         name: "#+CALL",
@@ -9916,6 +9916,233 @@ pub fn conformance_rate() -> u32 {
     )
     .unwrap_or(0);
     understood * 100 / total
+}
+
+/// Days since 1970-01-01 for a civil date (Howard Hinnant's
+/// `days_from_civil`, public domain).
+#[must_use]
+pub const fn days_from_civil(y: i64, m: i64, d: i64) -> i64 {
+    let y = if m <= 2 { y - 1 } else { y };
+    let era = if y >= 0 { y } else { y - 399 } / 400;
+    let yoe = y - era * 400;
+    let mp = (m + 9) % 12;
+    let doy = (153 * mp + 2) / 5 + d - 1;
+    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    era * 146_097 + doe - 719_468
+}
+
+/// The civil date `days` after 1970-01-01 — the inverse of
+/// [`days_from_civil`].
+#[must_use]
+pub const fn civil_from_days(days: i64) -> (i64, u32, u32) {
+    let z = days + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z.rem_euclid(146_097);
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    let y = yoe + era * 400 + if m <= 2 { 1 } else { 0 };
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    (y, m as u32, d as u32)
+}
+
+/// How many days a month has, leap years included.
+#[must_use]
+pub const fn days_in_month(year: i64, month: u32) -> u32 {
+    match month {
+        1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
+        2 => {
+            if (year % 4 == 0 && year % 100 != 0) || year % 400 == 0 {
+                29
+            } else {
+                28
+            }
+        }
+        // April, June, September, November — and anything that is not
+        // a month at all, which a caller cannot produce from a parsed
+        // date but must not be a panic if one ever does (I5).
+        _ => 30,
+    }
+}
+
+/// Org's three-letter weekday for a civil date — what goes inside the
+/// stamp, in the same spelling org itself writes.
+#[must_use]
+pub fn weekday_name(y: i64, m: u32, d: u32) -> &'static str {
+    const NAMES: [&str; 7] = ["Thu", "Fri", "Sat", "Sun", "Mon", "Tue", "Wed"];
+    // 1970-01-01 was a Thursday, so the epoch day indexes NAMES.
+    let days = days_from_civil(y, i64::from(m), i64::from(d));
+    NAMES[usize::try_from(days.rem_euclid(7)).unwrap_or(0)]
+}
+
+/// Which of org's three repeaters a timestamp carries.
+///
+/// They differ only in what "next" means when you are late, which is
+/// the whole reason org has three.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RepeatKind {
+    /// `+1w` — count from the date written. A task done three weeks
+    /// late still lands on the next date in the original series.
+    FromWritten,
+    /// `++1w` — count from the date written, but keep going until the
+    /// result is in the future. Skips what was missed.
+    CatchUp,
+    /// `.+1w` — count from today. A task done three weeks late is next
+    /// due a week from now.
+    FromToday,
+}
+
+/// The unit a repeater counts in.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Unit {
+    /// `h`
+    Hour,
+    /// `d`
+    Day,
+    /// `w`
+    Week,
+    /// `m`
+    Month,
+    /// `y`
+    Year,
+}
+
+/// A parsed repeater: `++2w` is [`RepeatKind::CatchUp`], 2, weeks.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Repeater {
+    /// Which of the three.
+    pub kind: RepeatKind,
+    /// How many units.
+    pub count: i64,
+    /// The unit.
+    pub unit: Unit,
+}
+
+/// The repeater in an org timestamp, if it has one.
+///
+/// `-2d` is a *warning period* on a deadline, not a repeat, and is not
+/// one of these — the two live in the same brackets and mean opposite
+/// things.
+#[must_use]
+pub fn parse_repeater(ts: &str) -> Option<Repeater> {
+    for token in ts
+        .trim_matches(|c| c == '<' || c == '>' || c == '[' || c == ']')
+        .split_whitespace()
+    {
+        let (kind, rest) = if let Some(r) = token.strip_prefix("++") {
+            (RepeatKind::CatchUp, r)
+        } else if let Some(r) = token.strip_prefix(".+") {
+            (RepeatKind::FromToday, r)
+        } else if let Some(r) = token.strip_prefix('+') {
+            (RepeatKind::FromWritten, r)
+        } else {
+            continue;
+        };
+        let (digits, unit) = rest.split_at(rest.len().saturating_sub(1));
+        let unit = match unit {
+            "h" => Unit::Hour,
+            "d" => Unit::Day,
+            "w" => Unit::Week,
+            "m" => Unit::Month,
+            "y" => Unit::Year,
+            _ => continue,
+        };
+        let Ok(count) = digits.parse::<i64>() else {
+            continue;
+        };
+        return Some(Repeater { kind, count, unit });
+    }
+    None
+}
+
+/// The `YYYY-MM-DD` at the start of a timestamp's contents.
+fn date_of(ts: &str) -> Option<(i64, u32, u32)> {
+    let inner = ts.trim_matches(|c| c == '<' || c == '>' || c == '[' || c == ']');
+    let head = inner.split_whitespace().next()?;
+    let mut parts = head.split('-');
+    let y = parts.next()?.parse().ok()?;
+    let m = parts.next()?.parse().ok()?;
+    let d = parts.next()?.parse().ok()?;
+    Some((y, m, d))
+}
+
+/// Add one period of `r` to a civil date, clamping a day that the
+/// target month does not have.
+///
+/// The 29th of February plus a year is the 28th, not the 1st of March:
+/// a yearly task keeps its month.
+fn step(y: i64, m: u32, d: u32, r: Repeater) -> (i64, u32, u32) {
+    match r.unit {
+        Unit::Hour | Unit::Day => {
+            civil_from_days(days_from_civil(y, i64::from(m), i64::from(d)) + r.count)
+        }
+        Unit::Week => civil_from_days(days_from_civil(y, i64::from(m), i64::from(d)) + r.count * 7),
+        Unit::Month | Unit::Year => {
+            let months = if r.unit == Unit::Year {
+                r.count * 12
+            } else {
+                r.count
+            };
+            let total = (y * 12 + i64::from(m) - 1) + months;
+            let ny = total.div_euclid(12);
+            let nm = u32::try_from(total.rem_euclid(12) + 1).unwrap_or(1);
+            (ny, nm, d.min(days_in_month(ny, nm)))
+        }
+    }
+}
+
+/// The timestamp `ts` moved on by its repeater, as of `today`
+/// (`YYYY-MM-DD`).
+///
+/// `None` when there is no repeater: a one-off task does not move.
+/// The day name is recomputed, because a date that moves must not keep
+/// the name it had — an org file that says Tue on a Wednesday is one
+/// Emacs will quietly disagree with.
+#[must_use]
+pub fn advance(ts: &str, today: &str) -> Option<String> {
+    let r = parse_repeater(ts)?;
+    let (y, m, d) = date_of(ts)?;
+    let (ny, nm, nd) = match r.kind {
+        RepeatKind::FromWritten => step(y, m, d, r),
+        RepeatKind::CatchUp => {
+            let now = date_of(today).unwrap_or((y, m, d));
+            let target = days_from_civil(now.0, i64::from(now.1), i64::from(now.2));
+            let (mut cy, mut cm, mut cd) = (y, m, d);
+            // Bounded: a step is at least an hour's worth of a day, so
+            // this cannot spin, and the cap keeps a nonsense repeater
+            // from being a hang (I5).
+            for _ in 0..4_096 {
+                let (sy, sm, sd) = step(cy, cm, cd, r);
+                cy = sy;
+                cm = sm;
+                cd = sd;
+                if days_from_civil(cy, i64::from(cm), i64::from(cd)) > target {
+                    break;
+                }
+            }
+            (cy, cm, cd)
+        }
+        RepeatKind::FromToday => {
+            let (ty, tm, td) = date_of(today)?;
+            step(ty, tm, td, r)
+        }
+    };
+    let inner = ts.trim_matches(|c| c == '<' || c == '>' || c == '[' || c == ']');
+    let rest: Vec<&str> = inner.split_whitespace().skip(2).collect();
+    let (open, close) = if ts.starts_with('[') {
+        ('[', ']')
+    } else {
+        ('<', '>')
+    };
+    let mut out = format!("{open}{ny:04}-{nm:02}-{nd:02} {}", weekday_name(ny, nm, nd));
+    for part in rest {
+        out.push(' ');
+        out.push_str(part);
+    }
+    out.push(close);
+    Some(out)
 }
 
 /// `src` with every `:PROPERTIES:` … `:END:` drawer removed.

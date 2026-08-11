@@ -261,11 +261,32 @@ that no construct is listed twice, that the matrix is at least 30 rows
 something in it is still only preserved — a matrix where everything is
 understood is one that has stopped looking at what org has.
 
-* TODO Org: timestamp repeaters
+* DONE Org: timestamp repeaters
 =+1w=, =.+1d=, =++1m= on SCHEDULED/DEADLINE. A task tool without
 repeaters is not a task tool.
 
 Acceptance: =nix develop -c cargo test -p closure-org --test repeaters=
+
+All three kinds, all five units, parsed and advanced. They differ only
+in what "next" means when you are late, which is the whole reason org
+has three: =+1w= lands on the next date in the original series, =++1w=
+skips what was missed, =.+1w= counts from today. A warning period
+(=-2d=) is not a repeater and is not read as one.
+
+Conformance 61% -> 67%.
+
+Civil-date arithmetic moved from closure-shell-core down to
+closure-org on the way: it is arithmetic on org timestamps, and the
+layer that parses them is where it belongs. shell-core re-exports the
+names it was written against.
+
+* TODO Kernel: marking a repeating task DONE advances its date
+Parsing a repeater is not the feature; the feature is that finishing
+the weekly review schedules the next one instead of closing it. That
+is a command, and I3 says every mutation is undoable, so it belongs in
+closure-core rather than in a shell.
+
+Acceptance: =nix develop -c cargo test -p closure-core --test repeat_on_done=
 
 * TODO Org: #+INCLUDE resolution
 Acceptance: =nix develop -c cargo test -p closure-org --test include=
