@@ -9687,7 +9687,60 @@ pub fn split_body_headlines(body: &str) -> (String, String) {
 /// a space or nothing at all.
 fn is_headline_line(line: &str) -> bool {
     let rest = line.trim_start_matches('*');
-    rest.len() < line.len() && (rest.is_empty() || rest.starts_with([' ', '\t']))
+    let stars = line.len() - rest.len();
+    // Fifteen stars or more is org's inline task: a task attached to
+    // the paragraph it sits in rather than a section of the document.
+    // Reading it as a level-fifteen headline put a branch in the
+    // outline that is not one, and made the headline count wrong.
+    stars > 0 && stars < INLINE_TASK_STARS && (rest.is_empty() || rest.starts_with([' ', '\t']))
+}
+
+/// How many stars make a headline an inline task instead.
+///
+/// Org's own threshold. More than any real document nests, which is
+/// why it was available to mean something else.
+pub const INLINE_TASK_STARS: usize = 15;
+
+/// An org inline task: `*************** TODO ring the plumber`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct InlineTask {
+    /// Its TODO keyword, if it has one.
+    pub todo: Option<String>,
+    /// The rest of the line.
+    pub title: String,
+    /// Zero-based line in the document it was written on.
+    pub line: usize,
+}
+
+/// Every inline task in `doc`, in document order.
+///
+/// Not part of the outline is not the same as invisible: an agenda
+/// wants these, which is why anybody writes one.
+#[must_use]
+pub fn inline_tasks(doc: &OrgDoc) -> Vec<InlineTask> {
+    doc.source()
+        .lines()
+        .enumerate()
+        .filter_map(|(line, text)| {
+            let rest = text.trim_start_matches('*');
+            let stars = text.len() - rest.len();
+            if stars < INLINE_TASK_STARS {
+                return None;
+            }
+            let rest = rest.trim();
+            // `*************** END` closes one and is not another.
+            if rest.eq_ignore_ascii_case("END") {
+                return None;
+            }
+            let (todo, title) = match rest.split_once(char::is_whitespace) {
+                Some((first, tail)) if TODO_KEYWORDS.contains(&first) => {
+                    (Some(first.to_owned()), tail.trim().to_owned())
+                }
+                _ => (None, rest.to_owned()),
+            };
+            Some(InlineTask { todo, title, line })
+        })
+        .collect()
 }
 
 /// Replace a headline's body, and file `children_src` under it as real
@@ -9890,9 +9943,9 @@ pub const CONFORMANCE: &[Construct] = &[
     },
     Construct {
         name: "inline task",
-        support: Support::Preserved,
-        evidence: "",
-        missing: "read as an ordinary deep headline",
+        support: Support::Understood,
+        evidence: "crates/closure-org/tests/inline_tasks.rs",
+        missing: "",
     },
     Construct {
         name: "#+COLUMNS / column view",
@@ -13801,7 +13854,10 @@ fn flush_paragraph(source: &Arc<str>, paragraph: &mut Option<Span>, out: &mut Ve
 fn classify_heading(line: &str, span: Span, keywords: &[String]) -> Option<HeadInfo> {
     let body = line.strip_suffix('\n').unwrap_or(line);
     let stars = body.chars().take_while(|&c| c == '*').count();
-    if stars == 0 {
+    // Fifteen or more is an inline task, which is deliberately not
+    // outline structure: reading it as a level-fifteen headline put a
+    // branch in the tree that is not one and made the count wrong.
+    if stars == 0 || stars >= INLINE_TASK_STARS {
         return None;
     }
     let after = &body[stars..];

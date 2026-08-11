@@ -336,8 +336,22 @@ maths; the test for =$x^2$= caught it immediately.
 
 Conformance 67% -> 73%.
 
-* TODO Org: inline tasks
+* DONE Org: inline tasks
 Acceptance: =nix develop -c cargo test -p closure-org --test inline_tasks=
+
+Fifteen stars is org's inline task: a task attached to the paragraph
+it sits in rather than a section of the document. closure read it as
+an ordinary level-fifteen headline, so a note with one in it had a
+branch in the outline that is not one and a headline count that was
+wrong.
+
+The parser stops at fifteen and =inline_tasks()= finds them instead —
+not outline structure is not the same as invisible, since an agenda
+wants them, which is why anybody writes one. Fourteen stars is still
+an ordinary headline; the boundary is org's and a parser that guesses
+turns deep outlines into asides.
+
+Conformance 76% -> 79%.
 
 * TODO Org: column view (#+COLUMNS)
 Acceptance: =nix develop -c cargo test -p closure-org --test column_view=
