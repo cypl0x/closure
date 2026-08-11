@@ -13841,6 +13841,22 @@ pub fn org_link(kind: &str, dest: &str, description: &str) -> String {
     }
 }
 
+/// What one keystroke may cost the kernel, in microseconds (I11).
+///
+/// Not a frame budget: what a frame costs is the GPU's business and
+/// this machine has no Vulkan driver, so a number measured here would
+/// say more about lavapipe than about closure. This is the part the
+/// kernel owns — deriving what changed when the selection moved — and
+/// it is the part that was actually wrong: it used to read the whole
+/// subtree of whatever headline you landed on, which is why holding
+/// `j` through a chapter stuttered.
+///
+/// Measured at ~3 µs release once that was fixed, and flat in the size
+/// of the subtree. A millisecond is a very loose ceiling on purpose:
+/// crossing it means the work has changed kind, not that the machine
+/// is slow.
+pub const KEYSTROKE_BUDGET_US: u32 = 1000;
+
 /// The invariants the whole system is built to hold.
 ///
 /// One list. `closure spec` prints it and the manual carries it, and
@@ -13857,6 +13873,7 @@ pub const INVARIANTS: &[&str] = &[
     "I8  command-registry is the only side-effect surface",
     "I9  config validation at load, not at use (typed schema)",
     "I10 deterministic / hermetic / reproducible builds (nix flake check)",
+    "I11 performance budgets per headline, at a stated target scale",
     "I12 a composition is a view, never a write (expansion never reaches the file)",
 ];
 

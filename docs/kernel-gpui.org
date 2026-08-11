@@ -47,13 +47,24 @@ kernel primitives, so it adds no eighth.
 (The acceptance line named a `spec_is_true` test that does not exist;
 the check it meant is the one above, which does.)
 
-* TODO Spec: I11 performance budgets, with numbers
+* DONE Spec: I11 performance budgets, with numbers
 "Almost no input lag" cannot be tested. State p99 keystroke->frame,
 cold vault open, and a memory ceiling, each at a stated headline
 count, and say which are machine-pinned and which are portable
 shapes.
 
 Acceptance: =grep -c "^### I11" docs/spec.md= prints 1.
+
+Stated per *headline*, not per vault — which is what makes them
+portable and therefore worth failing a build over. 100 us/headline to
+open, 8 KB/headline resident, 1000 us to derive one keystroke;
+measured at 2.9 us, 2 KB and 3 us. Order-of-magnitude guards: they
+fail on an accidental quadratic, not on a slow laptop, and the shape
+tests remain the sensitive ones.
+
+No frame budget, deliberately: this machine has no Vulkan driver, so a
+frame time measured here would describe lavapipe rather than closure.
+The question the kernel owns is what a keystroke makes it derive.
 
 * DONE Spec: state the target scale
 The store parses the whole vault into memory. That is a load-bearing

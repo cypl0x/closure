@@ -48,6 +48,25 @@ pub const CAPTURE_FILE: &str = "inbox.org";
 /// `closure-store/tests/target_scale.rs` holds the two together.
 pub const TARGET_SCALE_HEADLINES: usize = 100_000;
 
+/// What opening a vault may cost, per headline (I11).
+///
+/// Per headline rather than per vault on purpose: a total is a hostage
+/// to the build profile and the machine — 100,000 headlines open in
+/// 300 ms release and 1.65 s debug here, and a CI runner is slower
+/// again — so any total loose enough to be portable catches nothing.
+/// The measured cost is ~2.9 µs release and ~17 µs debug, so this is
+/// an order-of-magnitude guard rather than a tight one: it fails on the
+/// accidental quadratic, not on a slower laptop.
+pub const OPEN_BUDGET_US_PER_HEADLINE: u32 = 100;
+
+/// What a loaded vault may cost in memory, per headline (I11).
+///
+/// Measured at ~2 KB per headline for org that averages ~150 bytes —
+/// the spans, the id index and the backlink index are most of it. Same
+/// reasoning as [`OPEN_BUDGET_US_PER_HEADLINE`]: a ceiling that catches
+/// a change of kind, not a change of degree.
+pub const RESIDENT_BUDGET_KB_PER_HEADLINE: u32 = 8;
+
 /// A loaded vault: every `*.org` file under a directory parsed into
 /// [`Document`]s with a shared block-id index plus a precomputed
 /// inverted backlink index.

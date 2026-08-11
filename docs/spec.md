@@ -100,6 +100,46 @@ all crates read config only through typed handles.
 within the devshell. Every shell produces a self-contained artifact for its
 target.
 
+### I11 — Performance budgets, per headline, at the target scale
+
+"Almost no input lag" is not testable. These are.
+
+Budgets, enforced in the gates. Each is a cost **per headline**, so it
+is the same number in debug, in release, and on a slower machine to
+within a small factor:
+
+| what                      | budget          | measured (release) |
+| ------------------------- | --------------- | ------------------ |
+| opening a vault           | 100 µs/headline | ~2.9 µs            |
+| resident memory once open | 8 KB/headline   | ~2 KB              |
+| deriving one keystroke    | 1000 µs         | ~3 µs              |
+
+Per headline rather than per vault deliberately. A total is a hostage to
+the build profile and the machine — 100,000 headlines open in 300 ms
+release and 1.65 s debug on the reference machine, and a CI runner is
+slower again — so any total loose enough to be portable catches nothing
+at all. These ceilings are order-of-magnitude guards: they fail on an
+accidental quadratic or a per-keystroke vault walk, not on a slow
+laptop. `TARGET_SCALE_HEADLINES`, `OPEN_BUDGET_US_PER_HEADLINE`,
+`RESIDENT_BUDGET_KB_PER_HEADLINE` and `KEYSTROKE_BUDGET_US` are the
+same numbers in code, held to these by
+`closure-shell-core/tests/budgets_are_stated.rs`.
+
+There is deliberately **no frame budget**. What a frame costs is the
+GPU's business, the reference machine has no Vulkan driver and falls
+back to a software rasteriser, and a number measured there would
+describe lavapipe rather than closure. What the kernel owns is what a
+keystroke makes it _derive_, and that is what is bounded here.
+
+Beside the budgets, and doing most of the real work, are the portable
+**shape** rules: four times the data must not cost four times as much.
+`closure-shell-core/tests/traversal_cost.rs`,
+`closure-shell-gpui/tests/frame_cost.rs` and
+`closure-org/tests/derived_cost.rs` hold these. A budget catches a
+change of kind; a shape catches a change of degree, and the shapes are
+the sensitive ones — they are what found the subtree walk behind
+"holding `j` freezes for some milliseconds".
+
 ### I12 — A composition is a view, never a write
 
 Expanding a composable block produces a value for a reader. It is never
