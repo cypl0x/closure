@@ -363,10 +363,22 @@ pub enum Column {
     Id,
     /// `:KEY:` property value (empty when absent).
     Property(String),
+    /// A property whose value is another headline's id: the column
+    /// shows that headline's *title*.
+    ///
+    /// A ULID is the one string in a vault a reader can do nothing
+    /// with. And because this is a link rather than a copy, it keeps
+    /// naming the right thing when the target is renamed — which is the
+    /// whole reason to have one instead of writing the name into a
+    /// property by hand.
+    Relation(String),
 }
 
 impl Column {
     fn parse(s: &str) -> Self {
+        if let Some(key) = s.strip_prefix("rel:") {
+            return Self::Relation(key.to_owned());
+        }
         match s {
             "title" => Self::Title,
             "todo" => Self::Todo,
@@ -384,7 +396,7 @@ impl Column {
             Self::Priority => "priority".to_owned(),
             Self::Level => "level".to_owned(),
             Self::Id => "id".to_owned(),
-            Self::Property(k) => k.clone(),
+            Self::Property(k) | Self::Relation(k) => k.clone(),
         }
     }
 
@@ -398,7 +410,31 @@ impl Column {
             Self::Level => h.level().to_string(),
             Self::Id => h.id().to_string(),
             Self::Property(k) => h.property(k).unwrap_or("").to_owned(),
+            // Without a vault there is nothing to resolve against, so
+            // the id is all there is to give. Every path that renders a
+            // view goes through `extract_in`, which has one.
+            Self::Relation(k) => h.property(k).unwrap_or("").to_owned(),
         }
+    }
+
+    /// [`Self::extract`], with the vault a [`Self::Relation`] needs to
+    /// resolve what it points at.
+    ///
+    /// A relation that points nowhere renders as `?<id>` rather than as
+    /// blank: a dangling id is a mistake in the vault, and a reader has
+    /// to be able to tell it from "no project at all".
+    #[must_use]
+    pub fn extract_in(&self, h: &DocHeadline, vault: &Vault) -> String {
+        let Self::Relation(key) = self else {
+            return self.extract(h);
+        };
+        let Some(id) = h.property(key).filter(|v| !v.is_empty()) else {
+            return String::new();
+        };
+        let bid = closure_core::BlockId::from_existing(id);
+        vault
+            .find_by_id(&bid)
+            .map_or_else(|| format!("?{id}"), |(target, _)| target.title().to_owned())
     }
 
     /// Typed sort key for `h`: numeric for [`Self::Level`], lexical for
@@ -654,7 +690,12 @@ impl ViewSpec {
             });
         }
         rows.iter()
-            .map(|m| self.columns.iter().map(|c| c.extract(m.headline)).collect())
+            .map(|m| {
+                self.columns
+                    .iter()
+                    .map(|c| c.extract_in(m.headline, vault))
+                    .collect()
+            })
             .collect()
     }
 
@@ -678,7 +719,7 @@ impl ViewSpec {
                 let mut keyed: Vec<Vec<String>> = Vec::new();
                 for (row, m) in cells.into_iter().zip(self.rows(vault)) {
                     let mut r = row;
-                    r.push(by.extract(m.headline));
+                    r.push(by.extract_in(m.headline, vault));
                     keyed.push(r);
                 }
                 let last = keyed.first().map_or(0, |r| r.len().saturating_sub(1));

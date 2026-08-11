@@ -352,10 +352,25 @@ because hiding it would make the table disagree with the query that
 produced it. Without =:group= everything is one unnamed group, so the
 renderer has one shape to draw rather than two.
 
-* TODO Databases: relations between headlines
+* DONE Databases: relations between headlines
 The thing that makes a Notion database more than a saved search.
 
 Acceptance: =nix develop -c cargo test -p closure-query --test relations=
+
+=rel:PROJECT= as a column: the property holds another headline's id
+and the column shows that headline's title. A ULID is the one string
+in a vault a reader can do nothing with.
+
+Spelled as a column rather than a new =:relation= directive, because
+=:columns= already answers "what does this name mean" and a second
+place to say it is how two places get out of step. It groups, so a
+board of tasks by project is =:group rel:PROJECT=.
+
+A relation that points nowhere renders =?<id>= rather than blank — a
+dangling id is a mistake in the vault, and the reader has to be able
+to tell it from "no project at all". And the link survives a rename,
+which is the whole reason to have one instead of writing the name into
+a property by hand; there is a test for exactly that.
 
 * TODO Databases: rollups over a relation
 Acceptance: =nix develop -c cargo test -p closure-query --test rollups=
