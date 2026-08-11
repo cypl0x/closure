@@ -1,0 +1,208 @@
+#+TITLE: closure — kernel + gpui work queue
+#+STARTUP: overview
+
+Scope is the kernel (closure-org, closure-core, closure-store,
+closure-query, closure-config, closure-input, closure-undo,
+closure-eval, closure-whichkey, closure-shell-core), the gpui shell,
+and closure-cli only where the window needs it. Every other crate is
+frozen: it keeps compiling and stays green, and gains no features.
+
+Rules for this file:
+
+- One =* TODO= per deliverable, small enough to finish in one commit.
+- Every item carries an =Acceptance:= line that is a runnable command.
+- Items may be ADDED at any time. Every bug found and every "we
+  should" gets written down here before it is acted on.
+- An item is never deleted, reworded, or merged to shrink the queue.
+  The count drops only by finishing work.
+- TODO -> DONE only after the commit lands, with the answer in the
+  item's body.
+
+* TODO Spec: define what a block is
+The first item in the vision is composability and it is the least
+built. Nothing under "Composition" below can be tested until this
+says what composes with what.
+
+Decide and write into =docs/spec.md=: is the unit a headline, an
+element, or both? What may appear inside a composed block? What is
+its identity under I2? What does composition mean for I1 roundtrip —
+does an expansion ever reach the file, or only the view?
+
+Acceptance: =grep -c "^### I12" docs/spec.md= prints 1, and
+=nix develop -c cargo test -p closure-cli --test spec_is_true= passes.
+
+* TODO Spec: I11 performance budgets, with numbers
+"Almost no input lag" cannot be tested. State p99 keystroke->frame,
+cold vault open, and a memory ceiling, each at a stated headline
+count, and say which are machine-pinned and which are portable
+shapes.
+
+Acceptance: =grep -c "^### I11" docs/spec.md= prints 1.
+
+* TODO Spec: state the target scale
+The store parses the whole vault into memory. That is a load-bearing
+decision made by accident. Say the number the kernel promises to
+hold.
+
+Acceptance: =grep -ci "target scale" docs/spec.md= is at least 1.
+
+* TODO Widget: named parameters at the call site
+=({{name}})= substitution is =#define=, not composition. A call site
+must be able to pass values.
+
+Acceptance: =nix develop -c cargo test -p closure-query --test widget_params=
+
+* TODO Widget: typed inputs validated at load
+I9 says config errors fail the load. A widget's declared inputs are
+config. A missing or wrong-typed argument is an error before render,
+not a hole in the output.
+
+Acceptance: =nix develop -c cargo test -p closure-query --test widget_types=
+
+* TODO Widget: slots
+Content passed *into* a widget body, so a widget can wrap what it is
+given rather than only emit what it knows.
+
+Acceptance: =nix develop -c cargo test -p closure-query --test widget_slots=
+
+* TODO Widget: cycle detection with a depth limit and a named path
+An expansion cycle must fail with the chain that caused it, not a
+stack overflow and not a silent stop.
+
+Acceptance: =nix develop -c cargo test -p closure-query --test widget_cycles=
+
+* TODO LSP: composition errors as diagnostics with precise ranges
+Acceptance: =nix develop -c cargo test -p closure-lsp --test diagnostics=
+
+* TODO gpui: show a widget's expansion error where the widget is
+A widget that fails to expand currently contributes nothing. The pane
+must say what failed and why, in place.
+
+Acceptance: =nix develop -c cargo test -p closure-shell-gpui --features gpui-test --test widget_errors=
+
+* TODO Org conformance: harness and pass-rate command
+A corpus of real org files and a command that reports what fraction
+roundtrip byte-exact. Publishing the number is what makes "org
+compatible subset" mean something.
+
+Acceptance: =nix develop -c ./target/debug/closure conformance= prints a percentage.
+
+* TODO Org conformance: enforce the rate as a ratchet
+Acceptance: =nix develop -c cargo test -p closure-org --test conformance_ratchet=
+
+* TODO Org: timestamp repeaters
+=+1w=, =.+1d=, =++1m= on SCHEDULED/DEADLINE. A task tool without
+repeaters is not a task tool.
+
+Acceptance: =nix develop -c cargo test -p closure-org --test repeaters=
+
+* TODO Org: #+INCLUDE resolution
+Acceptance: =nix develop -c cargo test -p closure-org --test include=
+
+* TODO Org: entities and LaTeX fragments
+Acceptance: =nix develop -c cargo test -p closure-org --test entities=
+
+* TODO Org: inline tasks
+Acceptance: =nix develop -c cargo test -p closure-org --test inline_tasks=
+
+* TODO Org: column view (#+COLUMNS)
+Acceptance: =nix develop -c cargo test -p closure-org --test column_view=
+
+* TODO Org: #+TBLFM table formulas
+Acceptance: =nix develop -c cargo test -p closure-org --test tblfm=
+
+* TODO Org: #+CALL and noweb references
+Acceptance: =nix develop -c cargo test -p closure-eval --test noweb=
+
+* TODO Databases: filters in the view definition
+Acceptance: =nix develop -c cargo test -p closure-query --test view_filters=
+
+* TODO Databases: multi-key sorts
+Acceptance: =nix develop -c cargo test -p closure-query --test view_sorts=
+
+* TODO Databases: grouping
+Acceptance: =nix develop -c cargo test -p closure-query --test view_groups=
+
+* TODO Databases: relations between headlines
+The thing that makes a Notion database more than a saved search.
+
+Acceptance: =nix develop -c cargo test -p closure-query --test relations=
+
+* TODO Databases: rollups over a relation
+Acceptance: =nix develop -c cargo test -p closure-query --test rollups=
+
+* TODO Databases: formula columns
+Coda-style, in the user's language, through closure-eval — not a
+custom expression syntax.
+
+Acceptance: =nix develop -c cargo test -p closure-query --test formula_columns=
+
+* TODO gpui: render a database view
+Acceptance: =nix develop -c cargo test -p closure-shell-gpui --features gpui-test --test database_pane=
+
+* TODO gpui: edit a database cell through a command
+I8 — the pane mutates only through the registry.
+
+Acceptance: =nix develop -c cargo test -p closure-shell-gpui --features gpui-test --test database_edit=
+
+* TODO Perf: keystroke->frame budget at the stated scale
+Machine-pinned, beside the portable shape test that already exists.
+
+Acceptance: =nix develop -c cargo test -p closure-shell-gpui --features gpui-test --test budget_keystroke=
+
+* TODO Perf: cold vault open budget
+Acceptance: =nix develop -c cargo test -p closure-store --test budget_open=
+
+* TODO Perf: memory ceiling at the stated scale
+Acceptance: =nix develop -c cargo test -p closure-store --test budget_memory=
+
+* TODO Store: hold the target headline count
+Whatever the spec item above commits to, the store has to actually
+open it and answer queries inside the budgets.
+
+Acceptance: the three budget tests above pass at the stated scale.
+
+* TODO Bug: the window stops repainting after a fast key burst
+Found 2026-08-09 while verifying the traversal fix. On a ~2400
+headline vault, after ~400 synthetic keypresses the window is
+focused and active per xdotool, sits at ~1% CPU, takes no further
+input, and does not repaint even on resize. A 3-headline vault
+survives the identical burst. Observed on the lavapipe software
+rasteriser, which may or may not be the cause.
+
+Acceptance: a regression test that drives a burst through gpui's own
+key dispatch and asserts the window still advances.
+
+* TODO Notion mode: slash command menu in gpui
+Acceptance: =nix develop -c cargo test -p closure-shell-gpui --features gpui-test --test slash_menu=
+
+* TODO Notion mode: the block plus-sign affordance
+Acceptance: =nix develop -c cargo test -p closure-shell-gpui --features gpui-test --test block_plus=
+
+* TODO Notion mode: mouse block drag and reorder
+Acceptance: =nix develop -c cargo test -p closure-shell-gpui --features gpui-test --test block_drag=
+
+* TODO Notion mode: parity with Doom
+Every command reachable in Doom is reachable in Notion mode, by the
+same registry, with its affordance shown.
+
+Acceptance: =nix develop -c cargo test -p closure-input --test mode_parity=
+
+* TODO Self-documenting: describe-key
+Acceptance: =nix develop -c cargo test -p closure-shell-core --test describe_key=
+
+* TODO Self-documenting: describe-command
+Acceptance: =nix develop -c cargo test -p closure-shell-core --test describe_command=
+
+* TODO Self-documenting: jump to a command's source
+Acceptance: =nix develop -c cargo test -p closure-shell-core --test command_source=
+
+* TODO Self-documenting: live docstrings in the palette
+Acceptance: =nix develop -c cargo test -p closure-shell-gpui --features gpui-test --test palette_docs=
+
+* TODO Coverage: raise the floor to the current measured value
+The floor is 84. Measure, raise it to what the workspace actually
+holds, and record the number here. A new item goes in whenever it
+drifts up again.
+
+Acceptance: =nix develop -c just coverage= passes at the raised floor.
