@@ -621,6 +621,9 @@ enum Cmd {
     UiMatrix,
     /// Print the 10 spec invariants closure enforces.
     Spec,
+    /// Print how much of org closure understands, construct by
+    /// construct, with the test behind each claim.
+    Conformance,
     /// Print a sample `#+BEGIN_SRC closure-config` block.
     DefaultConfig,
     /// Create a new `*.org` file under a vault with one headline.
@@ -1319,6 +1322,7 @@ fn run(cmd: &Cmd) -> Result<(), String> {
             Ok(())
         }
         Cmd::Spec => cmd_spec(),
+        Cmd::Conformance => cmd_conformance(),
         Cmd::DefaultConfig => cmd_default_config(),
         Cmd::New { vault, path, title } => cmd_new(vault, path, title),
         Cmd::Ask {
@@ -3409,6 +3413,32 @@ fn cmd_spec() -> Result<(), String> {
     // drift — they were the same ten sentences typed twice.
     for l in closure_shell_core::INVARIANTS {
         println!("{l}");
+    }
+    Ok(())
+}
+
+/// `closure conformance` — what closure understands of org.
+///
+/// "Org compatible subset" was a claim with no boundary, and the
+/// obvious way to measure it is the wrong one: the parser is
+/// span-preserving, so an unrecognised construct roundtrips byte-exact
+/// and a roundtrip rate would read near 100% while nothing understood
+/// it. This prints the fraction with semantics behind them, and names
+/// the test that backs every claim.
+#[allow(clippy::unnecessary_wraps)]
+fn cmd_conformance() -> Result<(), String> {
+    let rate = closure_org::conformance_rate();
+    println!("org conformance: {rate}%");
+    println!();
+    for c in closure_org::CONFORMANCE {
+        match c.support {
+            closure_org::Support::Understood => {
+                println!("understood  {:<38} {}", c.name, c.evidence);
+            }
+            closure_org::Support::Preserved => {
+                println!("preserved   {:<38} {}", c.name, c.missing);
+            }
+        }
     }
     Ok(())
 }

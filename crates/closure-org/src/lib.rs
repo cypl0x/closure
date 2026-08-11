@@ -9654,6 +9654,270 @@ fn is_headline_line(line: &str) -> bool {
 ///
 /// [`RewriteError::NotFound`] when `path` names no headline, or
 /// [`RewriteError::Parse`] if the result would not parse.
+/// How far closure understands one org construct.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Support {
+    /// There are semantics behind it: closure can act on it, and a
+    /// test says so.
+    Understood,
+    /// The bytes survive a parse and a print, and nothing more.
+    ///
+    /// This is the floor for everything, because the parser is
+    /// span-preserving — an unrecognised line becomes a paragraph and
+    /// comes back verbatim. Which is why a roundtrip rate is not a
+    /// conformance rate: a file carrying `#+TBLFM:`, a repeater, a
+    /// LaTeX fragment and an entity roundtrips byte-exact today while
+    /// none of the four does anything.
+    Preserved,
+}
+
+/// One row of the org conformance matrix.
+#[derive(Debug, Clone, Copy)]
+pub struct Construct {
+    /// The construct, spelled the way org spells it.
+    pub name: &'static str,
+    /// How far it is understood.
+    pub support: Support,
+    /// Repo-relative path of the test that proves it, for anything
+    /// claiming [`Support::Understood`]. Empty otherwise.
+    pub evidence: &'static str,
+    /// What is missing, for anything that is only preserved.
+    pub missing: &'static str,
+}
+
+/// What closure understands of org, and what it merely keeps.
+///
+/// The answer to "org compatible subset", which was a claim with no
+/// boundary: every construct here is either understood with a test
+/// behind it, or preserved with a sentence saying what is absent.
+/// `closure conformance` prints it; `conformance_ratchet.rs` holds the
+/// rate to a floor and checks that every claim names a test that
+/// exists.
+pub const CONFORMANCE: &[Construct] = &[
+    Construct {
+        name: "headline",
+        support: Support::Understood,
+        evidence: "crates/closure-org/tests/shape.rs",
+        missing: "",
+    },
+    Construct {
+        name: "TODO keyword",
+        support: Support::Understood,
+        evidence: "crates/closure-org/tests/todo_keywords.rs",
+        missing: "",
+    },
+    Construct {
+        name: "priority [#A]",
+        support: Support::Understood,
+        evidence: "crates/closure-org/tests/shape.rs",
+        missing: "",
+    },
+    Construct {
+        name: "tags",
+        support: Support::Understood,
+        evidence: "crates/closure-org/tests/shape.rs",
+        missing: "",
+    },
+    Construct {
+        name: "property drawer",
+        support: Support::Understood,
+        evidence: "crates/closure-org/tests/properties.rs",
+        missing: "",
+    },
+    Construct {
+        name: ":ID: property",
+        support: Support::Understood,
+        evidence: "crates/closure-org/tests/properties.rs",
+        missing: "",
+    },
+    Construct {
+        name: "SCHEDULED",
+        support: Support::Understood,
+        evidence: "crates/closure-org/tests/planning_drawer.rs",
+        missing: "",
+    },
+    Construct {
+        name: "DEADLINE",
+        support: Support::Understood,
+        evidence: "crates/closure-org/tests/planning_drawer.rs",
+        missing: "",
+    },
+    Construct {
+        name: "CLOSED",
+        support: Support::Understood,
+        evidence: "crates/closure-org/tests/planning_drawer.rs",
+        missing: "",
+    },
+    Construct {
+        name: "plain list",
+        support: Support::Understood,
+        evidence: "crates/closure-org/tests/shape.rs",
+        missing: "",
+    },
+    Construct {
+        name: "checkbox item",
+        support: Support::Understood,
+        evidence: "crates/closure-org/tests/shape.rs",
+        missing: "",
+    },
+    Construct {
+        name: "table row",
+        support: Support::Understood,
+        evidence: "crates/closure-org/tests/tables.rs",
+        missing: "",
+    },
+    Construct {
+        name: "#+BEGIN_SRC",
+        support: Support::Understood,
+        evidence: "crates/closure-org/tests/babel.rs",
+        missing: "",
+    },
+    Construct {
+        name: "greater block (quote/example/export)",
+        support: Support::Understood,
+        evidence: "crates/closure-org/tests/greater_blocks.rs",
+        missing: "",
+    },
+    Construct {
+        name: "#+KEYWORD line",
+        support: Support::Understood,
+        evidence: "crates/closure-org/tests/shape.rs",
+        missing: "",
+    },
+    Construct {
+        name: "comment line",
+        support: Support::Understood,
+        evidence: "crates/closure-org/tests/shape.rs",
+        missing: "",
+    },
+    Construct {
+        name: "emphasis markup",
+        support: Support::Understood,
+        evidence: "crates/closure-org/tests/markup_boundaries.rs",
+        missing: "",
+    },
+    Construct {
+        name: "link [[target][desc]]",
+        support: Support::Understood,
+        evidence: "crates/closure-org/tests/roundtrip.rs",
+        missing: "",
+    },
+    Construct {
+        name: "footnote reference",
+        support: Support::Understood,
+        evidence: "crates/closure-org/tests/roundtrip.rs",
+        missing: "",
+    },
+    Construct {
+        name: "generic drawer",
+        support: Support::Understood,
+        evidence: "crates/closure-org/tests/properties.rs",
+        missing: "",
+    },
+    Construct {
+        name: "body escaping (,*)",
+        support: Support::Understood,
+        evidence: "crates/closure-org/tests/body_escape.rs",
+        missing: "",
+    },
+    Construct {
+        name: "#+INCLUDE",
+        support: Support::Preserved,
+        evidence: "",
+        missing: "the referenced file is never read",
+    },
+    Construct {
+        name: "LaTeX fragment",
+        support: Support::Preserved,
+        evidence: "",
+        missing: "not parsed as maths, not rendered",
+    },
+    Construct {
+        name: "entity (\\alpha)",
+        support: Support::Preserved,
+        evidence: "",
+        missing: "no entity table, so no character behind it",
+    },
+    Construct {
+        name: "inline task",
+        support: Support::Preserved,
+        evidence: "",
+        missing: "read as an ordinary deep headline",
+    },
+    Construct {
+        name: "#+COLUMNS / column view",
+        support: Support::Preserved,
+        evidence: "",
+        missing: "no column format, no column display",
+    },
+    Construct {
+        name: "#+TBLFM",
+        support: Support::Preserved,
+        evidence: "",
+        missing: "formulas are never evaluated",
+    },
+    Construct {
+        name: "timestamp repeater (+1w)",
+        support: Support::Preserved,
+        evidence: "",
+        missing: "a repeat never advances a date",
+    },
+    Construct {
+        name: "habit (.+1d/++1m)",
+        support: Support::Preserved,
+        evidence: "",
+        missing: "same as the repeater, plus no habit view",
+    },
+    Construct {
+        name: "#+CALL",
+        support: Support::Preserved,
+        evidence: "",
+        missing: "named blocks are not callable",
+    },
+    Construct {
+        name: "noweb reference",
+        support: Support::Preserved,
+        evidence: "",
+        missing: "<<name>> is not substituted when tangling",
+    },
+    Construct {
+        name: "radio target",
+        support: Support::Preserved,
+        evidence: "",
+        missing: "no implicit linking of matching text",
+    },
+    Construct {
+        name: "macro {{{name}}}",
+        support: Support::Preserved,
+        evidence: "",
+        missing: "org's own macros are not expanded",
+    },
+    Construct {
+        name: "#+SETUPFILE",
+        support: Support::Preserved,
+        evidence: "",
+        missing: "the referenced file is never read",
+    },
+];
+
+/// What fraction of [`CONFORMANCE`] closure understands, as a
+/// percentage, rounded down.
+#[must_use]
+pub fn conformance_rate() -> u32 {
+    let total = u32::try_from(CONFORMANCE.len()).unwrap_or(u32::MAX);
+    if total == 0 {
+        return 0;
+    }
+    let understood = u32::try_from(
+        CONFORMANCE
+            .iter()
+            .filter(|c| c.support == Support::Understood)
+            .count(),
+    )
+    .unwrap_or(0);
+    understood * 100 / total
+}
+
 /// `src` with every `:PROPERTIES:` … `:END:` drawer removed.
 ///
 /// A read-only preview has no round trip to protect, so it has no

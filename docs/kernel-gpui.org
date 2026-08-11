@@ -232,15 +232,34 @@ there is something to fix.
 On :1: =widget cycle: page -> panel -> header -> page= in red, with
 the template above it.
 
-* TODO Org conformance: harness and pass-rate command
+* DONE Org conformance: harness and pass-rate command
 A corpus of real org files and a command that reports what fraction
 roundtrip byte-exact. Publishing the number is what makes "org
 compatible subset" mean something.
 
 Acceptance: =nix develop -c ./target/debug/closure conformance= prints a percentage.
 
-* TODO Org conformance: enforce the rate as a ratchet
+The measure in the item is the wrong one, and checking took two
+minutes: a file carrying =#+TBLFM:=, a repeater, a LaTeX fragment and
+an entity roundtrips byte-exact today, because the parser is
+span-preserving and anything it does not recognise comes back
+verbatim. A roundtrip rate over real org would read near 100% while
+none of those four did anything.
+
+So conformance is a matrix of 34 constructs and the rate is the
+fraction *understood* — semantics closure can act on, with a test
+behind the claim. 61% (21 of 34) as of today. Every "understood" row
+names a test file, and the ratchet fails if one of them stops
+existing, because a matrix nobody checks is a marketing document.
+
+* DONE Org conformance: enforce the rate as a ratchet
 Acceptance: =nix develop -c cargo test -p closure-org --test conformance_ratchet=
+
+Floor at 61%, raised by each of the seven org items below. Also holds
+that no construct is listed twice, that the matrix is at least 30 rows
+(small enough is the other way to get a flattering number), and that
+something in it is still only preserved — a matrix where everything is
+understood is one that has stopped looking at what org has.
 
 * TODO Org: timestamp repeaters
 =+1w=, =.+1d=, =++1m= on SCHEDULED/DEADLINE. A task tool without
