@@ -1089,6 +1089,40 @@ guard; written out instead, with the reason.
 
 Conformance 88% → 90% on both numbers, floors raised.
 
+* DONE Org: subscript and superscript are markup, not three characters
+=x^2= and =H_{2}O= were preserved and never read, which in a notebook
+that holds maths, chemistry or units is the difference between a
+formula and a typo.
+
+Acceptance: =nix develop -c cargo test -p closure-org --test scripts=
+
+The whole difficulty is in what is *not* one. =foo_bar= is a variable
+name and a vault is full of them — source blocks, file names, property
+keys — so a marker is a script only when what precedes it is
+alphanumeric and what follows is a brace group or an alphanumeric run
+starting with a digit. That is org's rule and it is also the only rule
+that leaves =snake_case= alone.
+
+One test premise of mine was wrong and the code was right: =H_2O=
+subscripts ="2O"=, not ="2"=, because org takes the whole word. That
+is why chemistry gets written =H_{2}O=. Copying my assumption into
+closure would have made the same file render two ways in two editors,
+so the test was corrected and the real rule written down beside it.
+
+Offered as Unicode where Unicode has a form, and all-or-nothing: a
+script with one unrenderable character keeps its source entirely. The
+screenshot shows all three rules on three consecutive lines — =a² + b²
+= c²= and =H₂O= rendered, =n^{th}= left alone because there is no
+superscript =t=, and =$x^2 + y^2$= left alone because it is maths.
+
+That last one was a bug the shipped =entity_preview= test caught: the
+first version rendered inside LaTeX and produced =$x²$=, which is
+neither the source nor maths. A fragment is something to render whole,
+not a string to substitute inside. Now stated as its own test rather
+than left as a thing that happens to hold.
+
+Conformance 90% → 92% on both numbers, floors raised.
+
 * TODO Bug: the gpui window stops presenting on the lavapipe rasteriser
 Diagnosed above and not fixed: the wedge is in the presentation path
 (blade/Vulkan on lavapipe), below anything this queue owns. Input is

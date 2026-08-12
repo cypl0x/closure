@@ -15544,6 +15544,57 @@ impl ModalApp {
     /// left alone: `$x^2$` needs a typesetter, and half-rendering a
     /// formula is worse than showing the source, which at least says
     /// what it is.
+    /// Render `_script` / `^script` in Unicode where Unicode has a
+    /// form for it, and leave the source where it does not.
+    ///
+    /// A view and never a write (I12). Markup whose whole purpose is to
+    /// be seen is not much use parsed and then shown as three
+    /// characters, which is what it was before.
+    fn scripts_for_preview(text: &str) -> String {
+        // The guard the other preview passes have, for the reason I11
+        // gives: landing on a headline must not walk what it does not
+        // need to.
+        if !text.contains('_') && !text.contains('^') {
+            return text.to_owned();
+        }
+        let mut out = String::with_capacity(text.len());
+        for (n, line) in text.lines().enumerate() {
+            if n > 0 {
+                out.push('\n');
+            }
+            // `$x^2$` is maths, and maths is left as the author wrote
+            // it — a fragment is something to render whole, not a
+            // string to substitute inside. Rendering the `^2` here
+            // produced `$x²$`, which a shipped test caught: it is not
+            // the source and it is not maths either.
+            let maths: Vec<std::ops::Range<usize>> = closure_org::fragments(line)
+                .into_iter()
+                .filter(|f| matches!(f.kind, closure_org::FragmentKind::Latex(_)))
+                .map(|f| f.range)
+                .collect();
+            let mut at = 0usize;
+            for sc in closure_org::scripts(line) {
+                if maths
+                    .iter()
+                    .any(|m| sc.range.start >= m.start && sc.range.start < m.end)
+                {
+                    continue;
+                }
+                let Some(rendered) = closure_org::script_text(&sc.text, sc.kind) else {
+                    continue;
+                };
+                out.push_str(&line[at..sc.range.start]);
+                out.push_str(&rendered);
+                at = sc.range.end;
+            }
+            out.push_str(&line[at..]);
+        }
+        if text.ends_with('\n') {
+            out.push('\n');
+        }
+        out
+    }
+
     fn entities_for_preview(text: &str) -> String {
         if !text.contains('\\') {
             return text.to_owned();
@@ -15654,7 +15705,7 @@ impl ModalApp {
             .children_source_preview(&bid, PREVIEW_CAP)
             .unwrap_or_default();
         let (children, child_err) = self.expanded_for_preview(shell, &children);
-        let children = Self::entities_for_preview(&children);
+        let children = Self::scripts_for_preview(&Self::entities_for_preview(&children));
         let mut detail = Detail::of(h, path, children, self.counts_for(shell, id, path));
         let (body, body_err) = self.expanded_for_preview(shell, &detail.body);
         let (body, include_err) = Self::included_for_preview(shell, &body);
@@ -15681,7 +15732,7 @@ impl ModalApp {
         } else {
             body
         };
-        detail.body = Self::entities_for_preview(&body);
+        detail.body = Self::scripts_for_preview(&Self::entities_for_preview(&body));
         detail.composition_error = body_err.or(include_err).or(child_err);
         Some(detail)
     }

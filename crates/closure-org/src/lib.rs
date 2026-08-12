@@ -10082,10 +10082,10 @@ pub const CONFORMANCE: &[Construct] = &[
     },
     Construct {
         name: "subscript / superscript",
-        support: Support::Preserved,
-        evidence: "",
-        missing: "a_1 and a^2 are plain text, not marked up",
-        offered: "",
+        support: Support::Understood,
+        evidence: "crates/closure-org/tests/scripts.rs",
+        missing: "",
+        offered: "crates/closure-shell-core/tests/script_preview.rs",
     },
     Construct {
         name: "table column groups",
@@ -11955,6 +11955,170 @@ fn is_timestamp_content(s: &str) -> bool {
         && b[7] == b'-'
         && b[8].is_ascii_digit()
         && b[9].is_ascii_digit()
+}
+
+/// The Unicode sub- or superscript form of `c`, if one exists.
+///
+/// Unicode has these for the digits, a handful of signs and a partial,
+/// inconsistent set of letters. Where it has none this returns `None`
+/// and the caller keeps the source: a script rendered half-way — some
+/// characters raised, some not — is harder to read than one not
+/// rendered at all, and a reader cannot tell a wrong rendering from
+/// the truth.
+#[must_use]
+pub fn script_char(c: char, kind: ScriptKind) -> Option<char> {
+    let table = match kind {
+        ScriptKind::Super => [
+            ('0', '\u{2070}'),
+            ('1', '\u{b9}'),
+            ('2', '\u{b2}'),
+            ('3', '\u{b3}'),
+            ('4', '\u{2074}'),
+            ('5', '\u{2075}'),
+            ('6', '\u{2076}'),
+            ('7', '\u{2077}'),
+            ('8', '\u{2078}'),
+            ('9', '\u{2079}'),
+            ('+', '\u{207a}'),
+            ('-', '\u{207b}'),
+            ('=', '\u{207c}'),
+            ('(', '\u{207d}'),
+            (')', '\u{207e}'),
+            ('n', '\u{207f}'),
+            ('i', '\u{2071}'),
+        ]
+        .as_slice(),
+        ScriptKind::Sub => [
+            ('0', '\u{2080}'),
+            ('1', '\u{2081}'),
+            ('2', '\u{2082}'),
+            ('3', '\u{2083}'),
+            ('4', '\u{2084}'),
+            ('5', '\u{2085}'),
+            ('6', '\u{2086}'),
+            ('7', '\u{2087}'),
+            ('8', '\u{2088}'),
+            ('9', '\u{2089}'),
+            ('+', '\u{208a}'),
+            ('-', '\u{208b}'),
+            ('=', '\u{208c}'),
+            ('(', '\u{208d}'),
+            (')', '\u{208e}'),
+            ('a', '\u{2090}'),
+            ('e', '\u{2091}'),
+            ('o', '\u{2092}'),
+            ('x', '\u{2093}'),
+            ('h', '\u{2095}'),
+            ('k', '\u{2096}'),
+            ('l', '\u{2097}'),
+            ('m', '\u{2098}'),
+            ('n', '\u{2099}'),
+            ('p', '\u{209a}'),
+            ('s', '\u{209b}'),
+            ('t', '\u{209c}'),
+        ]
+        .as_slice(),
+    };
+    table.iter().find(|(k, _)| *k == c).map(|(_, v)| *v)
+}
+
+/// A whole script in Unicode, or `None` if any character has no form.
+///
+/// All or nothing on purpose: see [`script_char`].
+#[must_use]
+pub fn script_text(text: &str, kind: ScriptKind) -> Option<String> {
+    text.chars().map(|c| script_char(c, kind)).collect()
+}
+
+/// Whether a script sits below the line or above it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ScriptKind {
+    /// `H_2O`.
+    Sub,
+    /// `x^2`.
+    Super,
+}
+
+/// One `_script` or `^script` in a line.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Script {
+    /// Byte range in the line, marker and braces included.
+    pub range: std::ops::Range<usize>,
+    /// Below or above.
+    pub kind: ScriptKind,
+    /// The script itself, without the marker or braces.
+    pub text: String,
+}
+
+/// Find every subscript and superscript in `line`.
+///
+/// The hard part is what is *not* one. `foo_bar` is a variable name,
+/// and a vault is full of them — in source blocks, in file names, in
+/// property keys — so a marker is only a script when what precedes it
+/// is alphanumeric and what follows is a brace group or a run of
+/// alphanumerics. That is org's rule and it is also the only rule that
+/// leaves `snake_case` alone.
+#[must_use]
+pub fn scripts(line: &str) -> Vec<Script> {
+    let mut out = Vec::new();
+    let b = line.as_bytes();
+    let mut i = 0usize;
+    while i < b.len() {
+        let kind = match b[i] {
+            b'_' => ScriptKind::Sub,
+            b'^' => ScriptKind::Super,
+            _ => {
+                i += 1;
+                continue;
+            }
+        };
+        // A script attaches to something: a marker starting a word is a
+        // leading underscore or a stray caret, not typography.
+        if i == 0 || !b[i - 1].is_ascii_alphanumeric() {
+            i += 1;
+            continue;
+        }
+        let after = i + 1;
+        let (text, end) = if b.get(after) == Some(&b'{') {
+            match line[after + 1..].find('}') {
+                // An unclosed brace is not a script (I5): running to
+                // the end of the line would swallow the rest of it.
+                None => {
+                    i += 1;
+                    continue;
+                }
+                Some(rel) => (
+                    line[after + 1..after + 1 + rel].to_owned(),
+                    after + 1 + rel + 1,
+                ),
+            }
+        } else {
+            let run = b[after..]
+                .iter()
+                .take_while(|c| c.is_ascii_alphanumeric())
+                .count();
+            if run == 0 {
+                i += 1;
+                continue;
+            }
+            (line[after..after + run].to_owned(), after + run)
+        };
+        // `foo_bar` — a marker between two words is a name. Only a
+        // *digit* run, or a braced group, survives an alphabetic tail,
+        // which is what keeps `H_2O` and drops `some_value`.
+        let alphabetic_tail = text.chars().next().is_some_and(char::is_alphabetic);
+        if alphabetic_tail && b.get(after) != Some(&b'{') {
+            i = end;
+            continue;
+        }
+        out.push(Script {
+            range: i..end,
+            kind,
+            text,
+        });
+        i = end;
+    }
+    out
 }
 
 /// How far a `#+BEGIN: clocktable` looks for clocked time.
