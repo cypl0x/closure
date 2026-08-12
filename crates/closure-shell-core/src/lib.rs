@@ -20082,6 +20082,64 @@ impl ModalApp {
             .collect()
     }
 
+    /// Every inline task in the vault, as `(context, title, path)`.
+    ///
+    /// An inline task is a task attached to the paragraph it sits in —
+    /// that is the whole reason to write one rather than a headline —
+    /// and the agenda is where tasks are read. `inline_tasks` has been
+    /// able to find them since the parser stopped mistaking them for
+    /// level-fifteen headlines, and nothing asked.
+    ///
+    /// `context` is the headline it hangs under, because "ring the
+    /// plumber" is only actionable beside "Kitchen".
+    ///
+    /// Finished ones are listed with the rest. Hiding them here would
+    /// stop a reader asking what was done today, and which to show is
+    /// the reader's decision rather than this function's.
+    ///
+    /// Not put back into the outline: the parser takes them out of the
+    /// tree on purpose, and being visible is not the same as being
+    /// structure.
+    #[must_use]
+    pub fn inline_task_rows(&self, shell: &Shell) -> Vec<(String, String, String)> {
+        let mut out = Vec::new();
+        for (path, doc) in shell.vault.iter() {
+            let tasks = closure_org::inline_tasks(doc.org());
+            if tasks.is_empty() {
+                continue;
+            }
+            // Which headline a task hangs under is whichever one starts
+            // above the line it is on.
+            // Any depth. The first version of this took lines starting
+            // with `*` but not `***`, which is right for a two-level
+            // file and wrong for every other one — a task under a
+            // level-four headline got the level-one headline above it.
+            let starts: Vec<(usize, String)> = doc
+                .source()
+                .lines()
+                .enumerate()
+                .filter_map(|(i, l)| {
+                    let rest = l.trim_start_matches('*');
+                    let stars = l.len() - rest.len();
+                    // Fifteen or more is another inline task, not a
+                    // headline one could hang under.
+                    (stars > 0 && stars < closure_org::INLINE_TASK_STARS && rest.starts_with(' '))
+                        .then(|| (i, rest.trim().to_owned()))
+                })
+                .collect();
+            for t in tasks {
+                let context = starts
+                    .iter()
+                    .rev()
+                    .find(|(line, _)| *line < t.line)
+                    .map(|(_, title)| title.clone())
+                    .unwrap_or_default();
+                out.push((context, t.title, path.display().to_string()));
+            }
+        }
+        out
+    }
+
     /// Mouse click into the body editor: place the cursor at
     /// `line`/`col` (clamped), keep the mode, end any completion
     /// session.

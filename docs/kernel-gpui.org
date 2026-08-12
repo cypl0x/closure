@@ -692,12 +692,27 @@ An entity closure has no character for is left exactly as written, and
 that is also what keeps =C:\notes= a path rather than a rendering
 accident. There is a test for the path.
 
-* TODO Inline tasks reach the agenda
+* DONE Inline tasks reach the agenda
 =inline_tasks()= finds them and nothing asks. An inline task is a task
 attached to a paragraph; the agenda is where tasks are read, and one
 that is invisible there is one nobody writes twice.
 
 Acceptance: =nix develop -c cargo test -p closure-shell-core --test inline_agenda=
+
+=inline_task_rows= gives =(context, title, path)= — the context being
+the headline it hangs under, because "ring the plumber" is only
+actionable beside "Kitchen". Finished ones are listed too: which to
+show is the reader's decision, and hiding them stops anyone asking
+what was done today.
+
+Visible without being structure: the parser takes inline tasks out of
+the tree on purpose and there is a test that this does not put them
+back.
+
+The first version found context by taking lines starting with =*= but
+not =***=, which is right for a two-level file and wrong for every
+other one — a task under a level-four headline got the level-one
+headline above it. Caught by adding the case rather than by noticing.
 
 * DONE #+INCLUDE resolves in the read view
 Same rule as a widget: the file keeps the directive, the preview shows
