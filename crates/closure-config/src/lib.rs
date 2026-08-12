@@ -245,6 +245,177 @@ const OPTIONAL_KEYS_DOC: &str = "\
 /// provider crate to validate a *string* would invert that for nothing.
 /// `closure_llm::known_providers` holds the same list, and
 /// `wired_completely.rs` asserts they agree.
+/// What shape a config value has to have.
+///
+/// The constraints used to be hand-written `if`s inside one long
+/// function, which is a fine way to check a value and a poor way to
+/// *know what is checked*. Nothing related a key to its rules, so a key
+/// added tomorrow was unconstrained by default and no test said so —
+/// and `outline_width` proved it, parsing with `.ok()` and silently
+/// keeping the default when somebody typed a word.
+///
+/// As data, the constraints can be enumerated, tested for completeness,
+/// and printed. That is the part of CUE worth having here; a constraint
+/// *language* would be a second thing to learn for a file that has
+/// twenty-eight keys.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ValueKind {
+    /// `true`/`false`/`yes`/`no`/`1`/`0`.
+    Bool,
+    /// A positive integer. Zero is rejected where it means "invisible".
+    PositiveInt,
+    /// One of a fixed set, listed so the error can say which.
+    OneOf(&'static [&'static str]),
+    /// An `http://` or `https://` URL.
+    Url,
+    /// `host:port`.
+    SocketAddr,
+    /// A bare IP address.
+    IpAddr,
+    /// A filesystem path, or a comma-separated list of them.
+    Path,
+    /// A comma-separated list of free values.
+    List,
+    /// Deliberately unconstrained, and the reason.
+    ///
+    /// The honest escape hatch. `theme` is one: the names live in
+    /// `closure-shell-core`, which is above this crate, and inverting
+    /// that dependency to validate a string is the wrong trade.
+    Free,
+}
+
+/// One config key and what it accepts.
+#[derive(Debug, Clone, Copy)]
+pub struct KeyRule {
+    /// The key, as written in `config.org`.
+    pub key: &'static str,
+    /// What its value has to look like.
+    pub kind: ValueKind,
+    /// Other keys that must also be set for this one to mean anything.
+    ///
+    /// `llm_endpoint` without `llm_provider` is a URL nothing speaks
+    /// to — a typo, not a setting.
+    pub requires: &'static [&'static str],
+}
+
+/// Every config key, and the constraint it is held to.
+///
+/// `every_key_is_constrained.rs` fails the build if a key is missing
+/// from here or a rule names a key that does not exist.
+pub const KEY_RULES: &[KeyRule] = &[
+    r("default_vault", ValueKind::Path),
+    r(
+        "input_mode",
+        ValueKind::OneOf(&["emacs", "vim", "doom", "helix", "notion"]),
+    ),
+    r(
+        "view",
+        ValueKind::OneOf(&["clickable", "outline", "editor", "file"]),
+    ),
+    r("theme", ValueKind::Free),
+    r("todo_keywords", ValueKind::List),
+    r("priority_levels", ValueKind::List),
+    r("tag_inheritance", ValueKind::Bool),
+    r("agenda_files", ValueKind::Path),
+    r("record_commands", ValueKind::Bool),
+    r("log_done", ValueKind::Bool),
+    r("wrap", ValueKind::Bool),
+    r("rail_docked", ValueKind::Bool),
+    r("outline_width", ValueKind::PositiveInt),
+    r("last_place", ValueKind::Free),
+    r("recent_files", ValueKind::Path),
+    r("assets_dir", ValueKind::Path),
+    r("sync_dir", ValueKind::Path),
+    r("sync_peers", ValueKind::List),
+    r("sync_bind", ValueKind::SocketAddr),
+    r("sync_advertise", ValueKind::IpAddr),
+    r("search_backend", ValueKind::Free),
+    r("llm_tools", ValueKind::List),
+    r("sniffer_blocklist", ValueKind::List),
+    r("eval_trust", ValueKind::List),
+    r("llm_model", ValueKind::Free),
+    r("llm_key_env", ValueKind::Free),
+    KeyRule {
+        key: "llm_provider",
+        kind: ValueKind::OneOf(&["anthropic", "openai", "openai-compatible", "ollama", "echo"]),
+        requires: &[],
+    },
+    KeyRule {
+        key: "llm_endpoint",
+        kind: ValueKind::Url,
+        requires: &["llm_provider"],
+    },
+];
+
+/// A rule with no cross-key requirement — most of them.
+const fn r(key: &'static str, kind: ValueKind) -> KeyRule {
+    KeyRule {
+        key,
+        kind,
+        requires: &[],
+    }
+}
+
+/// Check one key's value against its rule.
+///
+/// Runs before the parsing arm, so an arm may assume the shape it was
+/// promised. Keys with no rule — `bind <chord>`, `mcp <name>`,
+/// `lsp <lang>`, whose names carry an argument — are the caller's
+/// business.
+fn check_value(key: &str, value: &str, line_info: &str) -> Result<(), ConfigError> {
+    let Some(rule) = KEY_RULES.iter().find(|r| r.key == key) else {
+        return Ok(());
+    };
+    let bad = |reason: String| {
+        Err(ConfigError::BadValue {
+            key: key.to_owned(),
+            reason: format!("{line_info}: {reason}"),
+        })
+    };
+    let v = value.trim();
+    match rule.kind {
+        ValueKind::Bool => {
+            if !matches!(v, "true" | "false" | "yes" | "no" | "1" | "0" | "t" | "nil") {
+                return bad(format!("expected true or false, got `{v}`"));
+            }
+        }
+        ValueKind::PositiveInt => match v.parse::<u32>() {
+            Ok(0) | Err(_) => {
+                return bad(format!("expected a positive whole number, got `{v}`"));
+            }
+            Ok(_) => {}
+        },
+        ValueKind::OneOf(allowed) => {
+            if !allowed.contains(&v) {
+                return bad(format!("`{v}` is not one of: {}", allowed.join(", ")));
+            }
+        }
+        ValueKind::Url => {
+            // Plain http stays allowed: it is how every local runner
+            // ships, and refusing it would mean nobody can point this
+            // at llama.cpp.
+            if !(v.starts_with("http://") || v.starts_with("https://")) {
+                return bad(format!("expected an http:// or https:// URL, got `{v}`"));
+            }
+        }
+        ValueKind::SocketAddr => {
+            if v.parse::<SocketAddr>().is_err() {
+                return bad(format!("expected host:port, got `{v}`"));
+            }
+        }
+        ValueKind::IpAddr => {
+            if v.parse::<IpAddr>().is_err() {
+                return bad(format!(
+                    "expected a bare IP address (the port comes from the bound \
+                     socket), got `{v}`"
+                ));
+            }
+        }
+        ValueKind::Path | ValueKind::List | ValueKind::Free => {}
+    }
+    Ok(())
+}
+
 const fn closure_llm_provider_names() -> [&'static str; 5] {
     ["anthropic", "openai", "openai-compatible", "ollama", "echo"]
 }
@@ -588,6 +759,17 @@ impl Config {
              # Soft-wrap long body lines instead of scrolling sideways.\n\
              wrap = {wrap}\n\
              \n\
+             # Record a CLOSED: timestamp when a task is finished.\n\
+             # log_done = false\n\
+             \n\
+             # Starting width of the outline pane, in columns. The\n\
+             # divider is draggable; this is only where it begins.\n\
+             # outline_width = 32\n\
+             \n\
+             # Written back by the app, not meant to be hand-edited:\n\
+             # the files you last opened, most recent first.\n\
+             # recent_files = notes.org, work.org\n\
+             \n\
              # Full-text search engine. builtin | ripgrep | fd\n\
              # search_backend = ripgrep\n\
              \n\
@@ -721,6 +903,12 @@ impl Config {
     #[allow(clippy::too_many_lines)]
     pub fn from_kv_block_at(content: &str, first_line: usize) -> Result<Self, ConfigError> {
         let mut cfg = Self::default();
+        // Which keys the file actually mentioned, for the cross-key
+        // rules at the end. Presence rather than value: a user who
+        // wrote `llm_endpoint =` and left it blank has still said the
+        // word, and the rule they need to hear about is the missing
+        // `llm_provider`.
+        let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
         for (offset, raw) in content.lines().enumerate() {
             let line_no = offset + first_line - 1;
             let line = raw.trim();
@@ -736,6 +924,12 @@ impl Config {
             let key = key.trim();
             let value = value.trim().trim_matches('"');
             let line_info = format!("line {}", line_no + 1);
+            seen.insert(key.to_owned());
+            // The rule before the arm, so every key is held to the same
+            // stated constraint and an arm may assume the shape it was
+            // promised. This is what makes `KEY_RULES` the thing that
+            // runs rather than a second list agreeing by coincidence.
+            check_value(key, value, &line_info)?;
             match key {
                 // `bind <chord> = <command>`: the chord is part of the
                 // key because chords have spaces in them, and a value
@@ -992,12 +1186,27 @@ impl Config {
             });
         }
 
-        // An endpoint with nothing to use it is a typo, not a setting.
-        if cfg.llm_endpoint.is_some() && cfg.llm_provider.is_none() {
-            return Err(ConfigError::BadValue {
-                key: "llm_provider".into(),
-                reason: "llm_endpoint is set but no llm_provider says what speaks to it".into(),
-            });
+        // Cross-key requirements, from the table rather than from a
+        // hand-written pair. `llm_endpoint` needing `llm_provider` was
+        // the only one written down when this became data; the point is
+        // that the next one is a field in `KEY_RULES` and not another
+        // `if` somebody has to remember to add.
+        for rule in KEY_RULES {
+            if !seen.contains(rule.key) {
+                continue;
+            }
+            for needed in rule.requires {
+                if !seen.contains(*needed) {
+                    return Err(ConfigError::BadValue {
+                        key: (*needed).to_owned(),
+                        reason: format!(
+                            "`{}` is set but `{needed}` is not, and without it the \
+                             value says nothing",
+                            rule.key
+                        ),
+                    });
+                }
+            }
         }
         // …and naming a wire format says nothing about *where*.
         if cfg.llm_provider.as_deref() == Some("openai-compatible") && cfg.llm_endpoint.is_none() {

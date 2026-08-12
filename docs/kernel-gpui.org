@@ -1193,6 +1193,31 @@ satisfied, the tests I had written passed, and the screenshot I took at
 the time was of a single-file vault, which is the one shape where the
 bug is invisible.
 
+* TODO Org: the five constructs the honest matrix just admitted to
+Added to =CONFORMANCE= while declining the other two, because a matrix
+with nothing Preserved is a matrix that stopped looking. They are real
+and they are small:
+
+- =#+PROPERTY: header-args :tangle no= — a file-wide default that never
+  reaches the headlines under it. Property lookup already walks a
+  drawer; this is one more place to look before giving up.
+- =#+LINK: gh https://github.com/%s= — =[[gh:owner/repo]]= is not
+  expanded by its own template. Link resolution exists; this is a
+  rewrite before it.
+- description lists (=term :: definition=) — read as an ordinary item,
+  so the term is not a term and nothing can render it as one.
+- =[@3]= counter override — a list that says it starts at 3 is numbered
+  from 1.
+- timestamp delay (=-2d=) — =DEADLINE: <2026-08-20 Thu -2d>= warns on
+  the same day as one without, so the feature that says "do not nag me
+  until two days before" does nothing. =span_of= already skips past
+  delays to find the time; this reads them instead of skipping.
+
+Split into one item each if any turns out to be more than a commit.
+Each needs a shell to offer it before the matrix may claim it.
+
+Acceptance: =nix develop -c cargo test -p closure-org --test property_inheritance --test link_abbrev --test description_lists --test list_counter --test timestamp_delay=
+
 * TODO Coverage: the target and the freeze contradict each other
 Measured before splitting anything: 86.32% lines, 7,162 missed of
 52,370. The goal asks for 100. Where the missing lines actually live:
@@ -1340,7 +1365,7 @@ property is the thing that must survive whichever way this goes.
 
 Acceptance: =nix develop -c cargo test -p closure-a2a --test swarm=
 
-* TODO Config: a new key can arrive with no constraint and nothing notices
+* DONE Config: a new key can arrive with no constraint and nothing notices
 Correcting the seed again: config validation is *not* per-key
 =parse_bool=. =Config::load= already rejects unknown keys with a
 =nearest_key= suggestion and a line number, and enforces real cross-key
@@ -1361,6 +1386,62 @@ is the same shape as =one_struct= and the conformance matrix, both of
 which have earned their place this session.
 
 Acceptance: =nix develop -c cargo test -p closure-config --test every_key_is_constrained=
+
+=KEY_RULES= is the table: =(key, ValueKind, requires)=, one row per
+key, and =check_value= runs it *before* the parsing arm — so it is what
+executes rather than a second list agreeing by coincidence. Nine tests
+hold it: every key has a rule, every rule names a key, nothing twice,
+every =requires= names a real key, and =Free= stays a minority so the
+table keeps meaning something.
+
+Two real bugs fell out, neither of which was the thing I set out to fix.
+
+=outline_width = wide= was accepted in silence. The arm parsed with
+=.ok()= and kept the default, so a hand-typed width did nothing and
+said nothing — precisely the failure I9 exists to prevent, in the one
+key whose arm had no error path. It is =PositiveInt= now and says so
+with a line number.
+
+=log_done=, =outline_width= and =recent_files= worked and were absent
+from =known_keys()=, because that list is derived from the shipped
+default config and they were never written into it. =nearest_key= could
+not suggest them and no user could discover them. Three working
+settings nobody could find. They are documented now, which is also what
+made the ratchet pass rather than the other way round.
+
+The cross-key checks moved into the table's =requires=, so the next one
+is a field rather than another =if= somebody has to remember to add.
+The two that stayed hand-written are genuinely conditional — BYOK needs
+a key env *unless* the provider is keyless — and a table that could
+express that would be the constraint language this deliberately is not.
+
+Not CUE. A constraint *language* would be a second thing to learn for a
+file with twenty-eight keys. What CUE is actually for here is that
+constraints are data you can enumerate, test for completeness and
+print, and that is what this is.
+
+* TODO Bug: a config error never reaches the gpui window
+=load_reporting= returns the complaint, =run()= binds it, and the
+comment above the call says "Every reader of this file used to drop the
+error on the floor... It reaches the status line now."
+
+It does not. A vault whose =config.org= says =outline_width = wide=
+opens with no message anywhere in the window — checked at 3s and at 6s,
+whole window, not a crop. The setting is silently ignored and the
+reader is told nothing, which is the exact state that comment was
+written to end.
+
+Either =set_status= at construction is overwritten before the first
+frame absorbs it, or the toast expires unseen. A startup complaint
+should not be a toast at all: it is true until the file is fixed.
+
+The shipped =config_errors_reach_you.rs= does not catch this because it
+asserts on the error *string*, not on a shell showing it — the
+understood-versus-offered gap one layer up from org. Whatever fixes
+this needs a test that fails when no shell displays it.
+
+Acceptance: =nix develop -c cargo test -p closure-shell-gpui --features gpui-test --test config_complaint=
+
 
 * TODO UI: an invalid view should not compile, or say why it cannot
 The vision asks to apply Yesod's rule — runtime bugs into compile-time
