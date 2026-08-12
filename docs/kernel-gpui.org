@@ -1218,7 +1218,7 @@ Each needs a shell to offer it before the matrix may claim it.
 
 Acceptance: =nix develop -c cargo test -p closure-org --test property_inheritance --test link_abbrev --test description_lists --test list_counter --test timestamp_delay=
 
-* TODO Coverage: the target and the freeze contradict each other
+* DONE Coverage: the target and the freeze contradict each other
 Measured before splitting anything: 86.32% lines, 7,162 missed of
 52,370. The goal asks for 100. Where the missing lines actually live:
 

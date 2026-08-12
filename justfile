@@ -91,6 +91,34 @@ check:
 # is why ~2 points arrived rather than a fraction. The residual is
 # still the same non-hermetic ~14%: the ratatui draw loop, the
 # curl/HTTP paths, the GUI window and socket loops.
+# 2026-08-12: the target is 100, and the measurement that set it says
+# where the work is. 86.32% lines, 7,162 missed of 52,370:
+#
+#   1697  closure-cli/main.rs   (37.6% — the largest hole by far)
+#   1407  closure-shell-core    (of 14,985)
+#   1279  closure-tui           (of 3,316)
+#   1044  closure-org           (of 9,659)
+#    478  closure-store
+#    305  closure-core
+#    150  closure-lsp
+#    144  closure-eval
+#    135  closure-llm
+#    102  closure-shell-gpui
+#
+# Two things follow that the paragraphs above did not have to face.
+#
+# About 46% of the missing lines are in crates frozen for this run
+# (closure-tui, -lsp, and most of -cli). A test is not a feature: a
+# frozen crate may gain tests and no behaviour, so those lines are
+# reachable without breaking the freeze.
+#
+# And the standing "residual is non-hermetic by design" argument stops
+# being an argument at 100. No exclusions and no #[coverage(off)] means
+# a line that genuinely cannot be executed has to be deleted or
+# restructured, not annotated. That will shrink the CLI and the shell
+# `main.rs` files, and it should: a subcommand nobody can reach and
+# nobody tests is not a feature. The number below is the ratchet, not
+# the target — it rises as each queued coverage item lands.
 coverage:
     cargo llvm-cov --workspace --fail-under-lines 86
 
