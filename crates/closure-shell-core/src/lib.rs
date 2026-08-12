@@ -15544,6 +15544,79 @@ impl ModalApp {
     /// left alone: `$x^2$` needs a typesetter, and half-rendering a
     /// formula is worse than showing the source, which at least says
     /// what it is.
+    /// Re-lay a table that carries an org alignment row, and drop the
+    /// row.
+    ///
+    /// `|<r>|` is a directive shaped like a table row: the reader wants
+    /// the column aligned and does not want to read the instruction.
+    /// Showing it back is what closure did, which made the reader do
+    /// the parsing.
+    ///
+    /// A view and never a write (I12) — the file keeps both the row and
+    /// the author's own spacing.
+    fn tables_for_preview(text: &str) -> String {
+        // Same guard as the other passes (I11): the common body has no
+        // table in it and pays one substring scan.
+        if !text.contains("|<") {
+            return text.to_owned();
+        }
+        let mut out = String::new();
+        let mut block: Vec<&str> = Vec::new();
+        // A table ends at the first line that is not one. Flushing on
+        // that boundary is what keeps two tables in one body from being
+        // laid out as a single wider one.
+        let flush = |block: &mut Vec<&str>, out: &mut String| {
+            let aligns = block
+                .iter()
+                .find_map(|l| closure_org::column_alignments(l))
+                .unwrap_or_default();
+            if aligns.is_empty() {
+                for l in block.drain(..) {
+                    out.push_str(l);
+                    out.push('\n');
+                }
+                return;
+            }
+            let cells = |l: &str| -> Vec<String> {
+                l.trim()
+                    .trim_matches('|')
+                    .split('|')
+                    .map(|c| c.trim().to_owned())
+                    .collect()
+            };
+            let mut data = block
+                .iter()
+                .filter(|l| {
+                    closure_org::column_alignments(l).is_none() && !l.trim_start().starts_with("|-")
+                })
+                .map(|l| cells(l));
+            if let Some(header) = data.next() {
+                let rows: Vec<Vec<String>> = data.collect();
+                out.push_str(&closure_query::render_table_aligned(
+                    &header, &rows, &aligns,
+                ));
+            }
+            block.clear();
+        };
+        for line in text.lines() {
+            if line.trim_start().starts_with('|') {
+                block.push(line);
+                continue;
+            }
+            flush(&mut block, &mut out);
+            out.push_str(line);
+            out.push('\n');
+        }
+        flush(&mut block, &mut out);
+        // `lines()` drops a trailing newline and the body may not have
+        // had one; matching the input is what keeps the editor's view
+        // and the preview the same height.
+        if !text.ends_with('\n') {
+            let _ = out.pop();
+        }
+        out
+    }
+
     /// Render `_script` / `^script` in Unicode where Unicode has a
     /// form for it, and leave the source where it does not.
     ///
@@ -15705,7 +15778,9 @@ impl ModalApp {
             .children_source_preview(&bid, PREVIEW_CAP)
             .unwrap_or_default();
         let (children, child_err) = self.expanded_for_preview(shell, &children);
-        let children = Self::scripts_for_preview(&Self::entities_for_preview(&children));
+        let children = Self::tables_for_preview(&Self::scripts_for_preview(
+            &Self::entities_for_preview(&children),
+        ));
         let mut detail = Detail::of(h, path, children, self.counts_for(shell, id, path));
         let (body, body_err) = self.expanded_for_preview(shell, &detail.body);
         let (body, include_err) = Self::included_for_preview(shell, &body);
@@ -15732,7 +15807,9 @@ impl ModalApp {
         } else {
             body
         };
-        detail.body = Self::scripts_for_preview(&Self::entities_for_preview(&body));
+        detail.body = Self::tables_for_preview(&Self::scripts_for_preview(
+            &Self::entities_for_preview(&body),
+        ));
         detail.composition_error = body_err.or(include_err).or(child_err);
         Some(detail)
     }

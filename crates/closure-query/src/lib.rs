@@ -1600,6 +1600,25 @@ pub fn expand_doc_widgets(
 /// Render header + rows as an aligned org-mode table.
 #[must_use]
 pub fn render_table(header: &[String], rows: &[Vec<String>]) -> String {
+    render_table_aligned(header, rows, &[])
+}
+
+/// The same table, with each column aligned as `aligns` says.
+///
+/// A column with no entry — and every column when `aligns` is empty —
+/// is left-aligned, which is what this always did. That default is
+/// what lets every existing caller and every golden file keep its
+/// answer while a table that asked for `|<r>|` finally gets it.
+///
+/// Only the body is aligned. The header keeps its own left edge because
+/// a right-aligned heading over a right-aligned column of numbers reads
+/// as part of the numbers.
+#[must_use]
+pub fn render_table_aligned(
+    header: &[String],
+    rows: &[Vec<String>],
+    aligns: &[closure_org::Align],
+) -> String {
     let cols = header.len();
     let mut widths: Vec<usize> = header.iter().map(String::len).collect();
     for row in rows {
@@ -1610,15 +1629,30 @@ pub fn render_table(header: &[String], rows: &[Vec<String>]) -> String {
         }
     }
     let mut out = String::new();
-    let push_row = |cells: &[String], out: &mut String| {
+    let push_row = |cells: &[String], out: &mut String, align: bool| {
         out.push('|');
         for (i, w) in widths.iter().enumerate() {
             let cell = cells.get(i).map_or("", String::as_str);
-            let _ = write!(out, " {cell:<w$} |");
+            let a = if align {
+                aligns.get(i).copied().unwrap_or_default()
+            } else {
+                closure_org::Align::Left
+            };
+            match a {
+                closure_org::Align::Left => {
+                    let _ = write!(out, " {cell:<w$} |");
+                }
+                closure_org::Align::Right => {
+                    let _ = write!(out, " {cell:>w$} |");
+                }
+                closure_org::Align::Centre => {
+                    let _ = write!(out, " {cell:^w$} |");
+                }
+            }
         }
         out.push('\n');
     };
-    push_row(header, &mut out);
+    push_row(header, &mut out, false);
     out.push('|');
     for (i, w) in widths.iter().enumerate() {
         out.push_str(&"-".repeat(w + 2));
@@ -1626,7 +1660,7 @@ pub fn render_table(header: &[String], rows: &[Vec<String>]) -> String {
     }
     out.push('\n');
     for row in rows {
-        push_row(row, &mut out);
+        push_row(row, &mut out, true);
     }
     out
 }

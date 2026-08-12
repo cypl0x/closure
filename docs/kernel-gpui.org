@@ -1123,6 +1123,41 @@ than left as a thing that happens to hold.
 
 Conformance 90% → 92% on both numbers, floors raised.
 
+* DONE Org: |<r>| aligns a column
+Alignment rows were kept and never applied, so every table came out
+left-aligned whatever it asked for. In a column of durations or amounts
+that is the difference between something you can scan and a ragged wall
+of digits, which is the whole reason org has the row.
+
+Acceptance: =nix develop -c cargo test -p closure-org --test column_align=
+
+The row is a *directive shaped like a table row*, and the case that
+decides whether the feature is safe is the negative one: a data row read
+as a directive makes a table's first line vanish. A cell must be exactly
+=<r>=, =<l>= or =<c>=, optionally with org's width cookie, or empty —
+anything else and the whole row is data.
+
+The width is deliberately dropped. It is a hint for a fixed-width Emacs
+buffer, and a shell laying out its own columns has a better number than
+one somebody typed years ago.
+
+=render_table_aligned= takes the alignments and =render_table= is now it
+with none, so every existing caller and every golden file keeps its
+answer. The header stays left-aligned even over a right-aligned column:
+a right-aligned heading over right-aligned numbers reads as part of the
+numbers.
+
+Offered by re-laying the table in the preview and dropping the directive
+— it is an instruction, not data, and printing it back made the reader
+do the parsing. I checked partway through that a test in =closure-query=
+is not a shell offering anything, and moved the claim to the shell test
+rather than leave the matrix flattering itself.
+
+Conformance 92% → 95% on both numbers, floors raised. The two left —
+=#+ATTR_*= (export-only) and diary sexps (needs an elisp evaluator) —
+are the ones that should stay Preserved, and =the_matrix_is_worth_having=
+is there to fire if I ever call this finished.
+
 * TODO Bug: the gpui window stops presenting on the lavapipe rasteriser
 Diagnosed above and not fixed: the wedge is in the presentation path
 (blade/Vulkan on lavapipe), below anything this queue owns. Input is

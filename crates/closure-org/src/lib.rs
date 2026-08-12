@@ -10089,10 +10089,10 @@ pub const CONFORMANCE: &[Construct] = &[
     },
     Construct {
         name: "table column groups",
-        support: Support::Preserved,
-        evidence: "",
-        missing: "|<r>| alignment rows are kept and never applied",
-        offered: "",
+        support: Support::Understood,
+        evidence: "crates/closure-org/tests/column_align.rs",
+        missing: "",
+        offered: "crates/closure-shell-core/tests/table_align_preview.rs",
     },
     Construct {
         name: "radio target",
@@ -12028,6 +12028,59 @@ pub fn script_char(c: char, kind: ScriptKind) -> Option<char> {
 #[must_use]
 pub fn script_text(text: &str, kind: ScriptKind) -> Option<String> {
     text.chars().map(|c| script_char(c, kind)).collect()
+}
+
+/// How a table column is aligned.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Align {
+    /// The default, and what a column that says nothing gets.
+    #[default]
+    Left,
+    /// `<r>`.
+    Right,
+    /// `<c>`.
+    Centre,
+}
+
+/// Read an org column-alignment row — `|<r>|<l>|<c>|` — if that is
+/// what `line` is.
+///
+/// `None` for an ordinary row, which is the case that matters: a data
+/// row read as a directive would make a table's first line vanish. A
+/// cell must be exactly `<r>`, `<l>` or `<c>`, optionally with org's
+/// width cookie (`<r10>`), or empty; anything else and the whole row is
+/// data.
+///
+/// The width is deliberately dropped. It is a display hint for a
+/// fixed-width Emacs buffer, and a shell that lays out its own columns
+/// has a better number than the one somebody typed in 2014.
+#[must_use]
+pub fn column_alignments(line: &str) -> Option<Vec<Align>> {
+    let body = line.trim().strip_prefix('|')?.strip_suffix('|')?;
+    let mut out = Vec::new();
+    let mut saw_one = false;
+    for cell in body.split('|') {
+        let cell = cell.trim();
+        if cell.is_empty() {
+            out.push(Align::Left);
+            continue;
+        }
+        let inner = cell.strip_prefix('<')?.strip_suffix('>')?;
+        let (letter, width) = inner.split_at(inner.len().min(1));
+        // A width, when present, is digits. `<abc>` is not a cookie.
+        if !width.is_empty() && !width.bytes().all(|b| b.is_ascii_digit()) {
+            return None;
+        }
+        out.push(match letter {
+            "r" => Align::Right,
+            "l" => Align::Left,
+            "c" => Align::Centre,
+            _ => return None,
+        });
+        saw_one = true;
+    }
+    // A row of nothing but empty cells is `||`, not an alignment row.
+    saw_one.then_some(out)
 }
 
 /// Whether a script sits below the line or above it.
