@@ -10068,10 +10068,10 @@ pub const CONFORMANCE: &[Construct] = &[
     },
     Construct {
         name: "timestamp time range",
-        support: Support::Preserved,
-        evidence: "",
-        missing: "<2026-08-12 Wed 10:00-11:00> reads as a date, not a span",
-        offered: "",
+        support: Support::Understood,
+        evidence: "crates/closure-org/tests/time_range.rs",
+        missing: "",
+        offered: "crates/closure-shell-core/tests/agenda_times.rs",
     },
     Construct {
         name: "diary sexp timestamp",
@@ -11955,6 +11955,80 @@ fn is_timestamp_content(s: &str) -> bool {
         && b[7] == b'-'
         && b[8].is_ascii_digit()
         && b[9].is_ascii_digit()
+}
+
+/// What a timestamp says about when, read rather than stored.
+///
+/// `<2026-08-12 Wed 10:00-11:00>` is a span; `<2026-08-12 Wed 10:00>`
+/// is a start with no length; `<2026-08-12 Wed>` is a day. All three
+/// are the same syntax and only the third was ever read.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TimeSpan {
+    /// The `YYYY-MM-DD` head, verbatim.
+    pub date: String,
+    /// Minutes since midnight of the `HH:MM` it starts at, if it names
+    /// one.
+    pub start_minutes: Option<u64>,
+    /// Minutes since midnight of the `HH:MM` it ends at, if it is a
+    /// range.
+    pub end_minutes: Option<u64>,
+}
+
+impl TimeSpan {
+    /// How long it runs, when it says.
+    ///
+    /// `None` for a stamp that names no end, and also for one that ends
+    /// before it starts: org does not say what `11:00-10:00` means, and
+    /// a guess here — zero, or a wrap into tomorrow — would put a
+    /// made-up number into an agenda.
+    #[must_use]
+    pub fn minutes(&self) -> Option<u64> {
+        let (a, b) = (self.start_minutes?, self.end_minutes?);
+        b.checked_sub(a).filter(|d| *d > 0)
+    }
+}
+
+/// Read a timestamp's content — what [`TimestampView::content`] holds,
+/// without the brackets — as a [`TimeSpan`].
+///
+/// `None` when the content is not a timestamp at all. A stamp whose
+/// time is malformed is still a stamp: it comes back with a date and no
+/// minutes rather than as nothing, because the day is information the
+/// file really does carry and dropping it would lose more than the bad
+/// time did (I5).
+#[must_use]
+pub fn span_of(content: &str) -> Option<TimeSpan> {
+    if !is_timestamp_content(content) {
+        return None;
+    }
+    let date = content.get(..10)?.to_owned();
+    // The time is the one word containing a colon: after the date and
+    // the day name, before any repeater or delay. Scanning for it
+    // rather than counting fields is what keeps `+1w` out of the end
+    // time — a repeater sits exactly where a naive "last word" rule
+    // would look.
+    let word = content
+        .split_whitespace()
+        .skip(1)
+        .find(|w| w.contains(':'))
+        .unwrap_or("");
+    let (start, end) = word
+        .split_once('-')
+        .map_or((word, None), |(a, b)| (a, Some(b)));
+    Some(TimeSpan {
+        date,
+        start_minutes: clock_time_minutes(start),
+        end_minutes: end.and_then(clock_time_minutes),
+    })
+}
+
+/// Minutes since midnight for a bare `HH:MM`, or `None` if it is not
+/// one. Shares its rules with [`stamp_minutes`], which reads the same
+/// thing off the tail of a `CLOCK:` stamp.
+fn clock_time_minutes(time: &str) -> Option<u64> {
+    let (h, m) = time.split_once(':')?;
+    let (h, m): (u64, u64) = (h.parse().ok()?, m.parse().ok()?);
+    (h < 24 && m < 60).then_some(h * 60 + m)
 }
 
 /// Inline markup kind.

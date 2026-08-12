@@ -244,6 +244,16 @@ pub struct AgendaEntry {
     pub kind: AgendaKind,
     /// `YYYY-MM-DD` extracted from the org timestamp.
     pub date: String,
+    /// Minutes since midnight the entry starts at, when the stamp names
+    /// a time.
+    ///
+    /// `None` is not midnight: an entry with no time is one the file
+    /// made no claim about, and sorting it as 00:00 would put
+    /// "sometime Wednesday" ahead of a nine o'clock stand-up.
+    pub start_minutes: Option<u64>,
+    /// How long it runs, when the stamp is a range like
+    /// `<2026-08-12 Wed 10:00-11:00>`.
+    pub minutes: Option<u64>,
 }
 
 /// Errors while operating on a vault.
@@ -1794,18 +1804,37 @@ impl Vault {
                     (AgendaKind::Deadline, h.deadline()),
                 ] {
                     if let Some(date) = ts.and_then(agenda_date) {
+                        // The stamp's own reading of its time, from the
+                        // one place that knows the rules — including
+                        // that `+1w` is a repeater and not an end time.
+                        let span = ts
+                            .map(|t| t.trim_matches(['<', '>', '[', ']']))
+                            .and_then(closure_org::span_of);
                         out.push(AgendaEntry {
                             path: path.to_path_buf(),
                             id: h.id().to_string(),
                             title: h.title().to_owned(),
                             kind,
                             date,
+                            start_minutes: span.as_ref().and_then(|s| s.start_minutes),
+                            minutes: span.as_ref().and_then(closure_org::TimeSpan::minutes),
                         });
                     }
                 }
             }
         }
-        out.sort_by(|a, b| a.date.cmp(&b.date).then_with(|| a.title.cmp(&b.title)));
+        // Day, then time of day, then title. A timed entry sorts ahead
+        // of an untimed one on the same day — something at nine is a
+        // thing you have to be somewhere for, "sometime Wednesday" is
+        // not — which is why the key is `is_none()` rather than the
+        // `Option` itself, whose natural order puts `None` first.
+        out.sort_by(|a, b| {
+            a.date
+                .cmp(&b.date)
+                .then_with(|| a.start_minutes.is_none().cmp(&b.start_minutes.is_none()))
+                .then_with(|| a.start_minutes.cmp(&b.start_minutes))
+                .then_with(|| a.title.cmp(&b.title))
+        });
         out
     }
 

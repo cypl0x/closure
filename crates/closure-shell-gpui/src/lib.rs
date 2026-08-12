@@ -8480,6 +8480,22 @@ impl GpuiView {
                             .text_color(rgb(kind_color))
                             .child(row.kind),
                     )
+                    // A fixed column whether or not there is a time, so
+                    // the titles of a day line up instead of stepping
+                    // in and out by five characters depending on
+                    // whether each entry named an hour.
+                    .child(
+                        // Wide enough for `HH:MM` at this text size and
+                        // no narrower: at 44px the five glyphs wrapped
+                        // onto two lines, which made a nine o'clock
+                        // meeting twice as tall as an untimed one.
+                        div()
+                            .w(px(62.0))
+                            .flex_none()
+                            .whitespace_nowrap()
+                            .text_color(rgb(co.muted))
+                            .child(row.time.unwrap_or_default()),
+                    )
                     .child(div().text_color(rgb(title_color)).child(row.title)),
             );
         }

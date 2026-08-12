@@ -989,6 +989,13 @@ pub struct AgendaRow {
     pub is_today: bool,
     /// True when date lies before the injected today.
     pub is_overdue: bool,
+    /// `HH:MM` when the stamp named a time, else `None`.
+    ///
+    /// Not folded into `date`, unlike the string `agenda_rows` builds:
+    /// the pane paints the day as a heading over the entries that share
+    /// it, so a date carrying a time would start a new heading per
+    /// entry and the grouping would be gone.
+    pub time: Option<String>,
 }
 
 /// The per-line git marks of one file, and what they were read for:
@@ -20171,7 +20178,17 @@ impl ModalApp {
             .vault
             .agenda()
             .into_iter()
-            .map(|e| (e.date, e.title, e.path.display().to_string()))
+            .map(|e| {
+                // The day, and the time when the file named one. An
+                // untimed entry shows its day alone rather than
+                // `00:00` — the agenda must not invent a commitment
+                // the file never made.
+                let when = e.start_minutes.map_or_else(
+                    || e.date.clone(),
+                    |m| format!("{} {:02}:{:02}", e.date, m / 60, m % 60),
+                );
+                (when, e.title, e.path.display().to_string())
+            })
             .collect()
     }
 
@@ -20826,6 +20843,9 @@ impl ModalApp {
                     closure_store::AgendaKind::Scheduled => "SCHEDULED".to_owned(),
                     closure_store::AgendaKind::Deadline => "DEADLINE".to_owned(),
                 },
+                time: e
+                    .start_minutes
+                    .map(|m| format!("{:02}:{:02}", m / 60, m % 60)),
                 date: e.date,
                 title: e.title,
             })

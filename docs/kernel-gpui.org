@@ -995,6 +995,55 @@ names a thing that was already there and had not been said.
 
 The window was re-run after the refactor and paints identically.
 
+* DONE Org: a timestamp with a time range is a span, not a date
+=<2026-08-12 Wed 10:00-11:00>= is how org writes "this meeting runs
+from ten to eleven", and it is the single most common thing on a
+calendar. =find_timestamps= returns its content as a string and
+nothing reads the =-11:00=, so a one-hour meeting and an all-day
+"sometime Wednesday" are the same value to everything downstream: the
+agenda sorts them together, and no shell can say how long anything is.
+
+The parts are already here and unconnected. =stamp_minutes= turns an
+=HH:MM= tail into minutes since midnight, and =stamp_days= differences
+two dates; they were written for =CLOCK:= lines and know nothing about
+=TimestampView=. This wants the reading, not new arithmetic.
+
+Acceptance: =nix develop -c cargo test -p closure-org --test time_range=
+
+=span_of= reads a stamp's content into a =TimeSpan=: the date, the
+minute it starts, the minute it ends. =minutes()= is =None= for a
+stamp with no end *and* for =11:00-10:00= — org does not say what a
+backwards range means, and a guess (zero, or a wrap into tomorrow)
+would put a made-up number into an agenda.
+
+Two things the tests pinned that a looser reading would have got wrong.
+=<... 10:00-11:00 +1w>= is a weekly meeting, and a "last word" rule
+reads =+1w= as the end time; the time is found as the one word
+containing a colon instead. And a stamp with a *malformed* time still
+comes back with its date rather than as nothing: the day is information
+the file really carries, and dropping it loses more than the bad time
+did (I5).
+
+Offered by the agenda, and this is where looking paid again. The first
+version taught =agenda_rows=, the order in the window came out right —
+nine o'clock above four o'clock, where before it was alphabetical — and
+the pane showed no times at all, because the window paints from
+=agenda_context=, a second path to the same list. Both carry the time
+now and a test asserts they agree, since two paths to one list is the
+shape that lets them drift.
+
+Then the column was 44px and =09:00= wrapped onto two lines, making a
+timed entry twice as tall as an untimed one. 62px and =whitespace_nowrap=.
+Screenshot verified: SCHEDULED / 09:00 / Stand-up, then 16:00 / Review
+the queue, then a blank column for "Errand, sometime" — an entry with
+no time is shown with none rather than 00:00.
+
+Sorting is day, then whether it has a time at all, then the time, then
+title. A timed entry sorts ahead of an untimed one on the same day:
+something at nine is a thing you have to be somewhere for.
+
+Conformance 85% → 88% on both numbers, floors raised.
+
 * TODO Bug: the gpui window stops presenting on the lavapipe rasteriser
 Diagnosed above and not fixed: the wedge is in the presentation path
 (blade/Vulkan on lavapipe), below anything this queue owns. Input is
