@@ -1193,6 +1193,241 @@ satisfied, the tests I had written passed, and the screenshot I took at
 the time was of a single-file vault, which is the one shape where the
 bug is invisible.
 
+* TODO Coverage: the target and the freeze contradict each other
+Measured before splitting anything: 86.32% lines, 7,162 missed of
+52,370. The goal asks for 100. Where the missing lines actually live:
+
+| crate                   | missed |  total | in scope? |
+|-------------------------+--------+--------+-----------|
+| closure-cli/main.rs     |   1697 |   2721 | barely    |
+| closure-shell-core      |   1407 |  14985 | yes       |
+| closure-tui             |   1279 |   3316 | FROZEN    |
+| closure-org             |   1044 |   9659 | yes       |
+| closure-store           |    478 |   9602 | yes       |
+| closure-core            |    305 |   1640 | yes       |
+| closure-lsp             |    150 |   1034 | FROZEN    |
+| closure-eval            |    144 |    643 | yes       |
+| closure-llm             |    135 |    516 | yes       |
+| closure-shell-gpui      |    102 |   1010 | yes       |
+
+About 3,300 of the 7,162 — 46% — are in crates this goal freezes or
+all but freezes. So 100% is not reachable inside the stated scope, and
+saying that out loud is the item.
+
+The resolution, unless the reporter says otherwise: *a test is not a
+feature*. "Frozen — must keep compiling, gains no features" permits
+adding tests to a frozen crate and forbids adding behaviour. Every
+coverage item below works under that reading, and no frozen crate gains
+a single line of non-test code.
+
+The second half is harder and is why this item exists rather than just
+a number. The goal forbids exclusions, =#[coverage(off)]= and gaming.
+Some lines genuinely cannot be executed by a test — a =main()= that
+needs a display, an =Err= arm for a syscall that cannot fail in a
+sandbox. Under those rules the only honest move for such a line is to
+*delete or restructure it*, not annotate it. That will shrink the CLI
+and the shell =main.rs= files, and it should.
+
+Acceptance: this item's body records the decision, and =just coverage=
+names the target it is ratcheting toward.
+
+* TODO Coverage: closure-cli is 37.6% covered
+1,697 missed lines of 2,721 — the single largest hole in the workspace,
+and the lowest-covered file in it by a wide margin.
+
+=closure-cli/src/main.rs= is 5,684 regions and 497 functions in one
+file. It is a command surface: most of those lines are subcommand arms
+that no test ever runs. That is also why it is cheap to fix — an arm
+that takes a vault and prints is the easiest thing in the repo to test.
+
+Expect this to delete code as well as cover it. A subcommand nobody can
+reach and nobody tests is not a feature.
+
+Acceptance: =nix develop -c cargo llvm-cov -p closure-cli --fail-under-lines 95=
+
+* TODO Coverage: closure-shell-core, 1,407 missed
+Of 14,985 lines, so 90.6% — the absolute number is large because the
+crate is. Likely concentrated in surfaces the tests reach through
+=ModalApp= but never in their error arms.
+
+Acceptance: =nix develop -c cargo llvm-cov -p closure-shell-core --fail-under-lines 97=
+
+* TODO Coverage: closure-org, 1,044 missed
+Of 9,659, so 89.2%. This is the kernel's parser and the one crate where
+an uncovered line is most likely to be a real unreached branch rather
+than a plumbing arm — I5 says no panics here, and a branch no test
+enters is a branch nobody has checked cannot panic.
+
+Acceptance: =nix develop -c cargo llvm-cov -p closure-org --fail-under-lines 97=
+
+* TODO Coverage: closure-tui is frozen and holds 1,279 missed lines
+38.6% of the crate is untested. Under the reading in the parent item a
+test is not a feature, so this is allowed and is the largest frozen-
+crate hole.
+
+Worth doing before the smaller in-scope ones, because if the reading is
+wrong this is where it will show, and it is better to find that out
+against the biggest case than the smallest.
+
+Acceptance: =nix develop -c cargo llvm-cov -p closure-tui --fail-under-lines 90=
+
+* TODO Coverage: the tail — store, core, eval, llm, gpui, lsp
+478 + 305 + 144 + 135 + 102 + 150 = 1,314 missed across six crates,
+none individually large. Split further only if one of them turns out to
+be hiding something.
+
+Acceptance: each of the six passes
+=nix develop -c cargo llvm-cov -p <crate> --fail-under-lines 95=
+
+* TODO Coverage: raise the workspace gate to 100 and keep it there
+The last item of the group. =just coverage= currently reads
+=--fail-under-lines 86=; it becomes 100 when the crates above are done,
+and =just gates= gains the coverage line so a drop fails the same
+command everything else does.
+
+Acceptance: =nix develop -c just coverage= exits 0 at
+=--fail-under-lines 100=.
+
+* TODO Sync: IrohTransport is a Transport that always fails
+=impl Transport for IrohTransport= exists and both =push= and =pull=
+return =Err("iroh/ipfs push not implemented in stub")=. A type that
+satisfies a trait by erroring is worse than an absent one: it type-
+checks, it is constructible, it appears in the shells matrix, and it
+tells the caller nothing until runtime.
+
+The goal that seeded this said "iroh/IPFS is a comment". It is not — it
+is a lying implementation, which is the more expensive kind.
+
+Decide and do one: implement it over real iroh, or delete the type and
+say in =docs/spec.md= that P2P is out of scope for v1 and =Transport=
+has exactly the impls that work. Do not leave a third option where it
+keeps compiling and keeps failing.
+
+Acceptance: =grep -c "not implemented in stub" crates/closure-sync/src/lib.rs=
+prints 0.
+
+* TODO Sync: two peers that cannot already reach each other cannot sync
+Correcting my own assessment before acting on it: the wire protocol is
+real. =SyncMessage= framing, =SyncSession=, merge, and ed25519 signing
+all work, and =TcpSyncTransport= moves real bytes over a real socket
+with =connect_and_sync= / =serve_once=. It is not restricted to
+loopback — loopback is just where the tests run it, which is correct.
+
+So the gap is not "no transport". It is that one peer must already know
+a =SocketAddr= the other is listening on. No discovery, no NAT
+traversal, no relay. On two laptops behind different routers — the case
+"P2P sync" is *for* — there is no address to type.
+
+Acceptance: a test that two sessions converge knowing only a shared
+identifier, never a =SocketAddr=:
+=nix develop -c cargo test -p closure-sync --test discovery=
+
+* TODO A2A: swarm_drain is one worker in a trenchcoat
+=pub fn swarm_drain(vault, _num_workers: usize, task_ids)= — the
+underscore is the parameter that names the feature. The body is a
+=for= loop with a =HashSet= claim, and the doc says so honestly ("N is
+advisory (sim is sequential for hermetic test; real swarm uses threads
++ locking or CRDT claim)").
+
+Honest docs on a stub still leave =closure-a2a= claiming, in its own
+module header, that closure "participates in agent swarms as a
+first-class peer".
+
+Either make N real — threads, and the claim through the CRDT so two
+workers racing for one task is a merge and not a lock — or rename the
+function to what it is and correct the header. The exactly-once
+property is the thing that must survive whichever way this goes.
+
+Acceptance: =nix develop -c cargo test -p closure-a2a --test swarm=
+
+* TODO Config: a new key can arrive with no constraint and nothing notices
+Correcting the seed again: config validation is *not* per-key
+=parse_bool=. =Config::load= already rejects unknown keys with a
+=nearest_key= suggestion and a line number, and enforces real cross-key
+constraints — an =llm_endpoint= with no =llm_provider=, a BYOK provider
+with no =llm_key_env=, =openai-compatible= with nowhere to point. Those
+are good errors and they arrive at load (I9).
+
+The gap is that they are hand-written =if= statements in one long
+function. Nothing relates a key to its constraints, so a key added
+tomorrow is unconstrained by default and no test says so. CUE's actual
+value is that constraints are *data*: composable, enumerable,
+reportable.
+
+Make the constraints enumerable and add the ratchet: every field of
+=Config= either names a constraint or is explicitly marked
+unconstrained, and a new field that does neither fails the build. That
+is the same shape as =one_struct= and the conformance matrix, both of
+which have earned their place this session.
+
+Acceptance: =nix develop -c cargo test -p closure-config --test every_key_is_constrained=
+
+* TODO UI: an invalid view should not compile, or say why it cannot
+The vision asks to apply Yesod's rule — runtime bugs into compile-time
+errors — to everything, and names Slint. The gpui shell builds its
+element tree imperatively: nothing stops a pane from being built with a
+selector already used, a row painted outside its list, or a surface
+with no key to reach it.
+
+This is the vision item with the widest gap and the least obvious
+answer, so it is allowed to end in prose. Either make a class of
+invalid view unrepresentable, or write into =docs/spec.md= what gpui's
+element model makes impossible, and what closure does instead — the
+=debug_selector= convention and the paint tests are an answer, and if
+they are *the* answer that should be stated rather than assumed.
+
+Acceptance: =grep -c "^### Type-level views" docs/spec.md= prints 1.
+
+* TODO tree-sitter ships off, so the default build does not have it
+=tree-sitter= is opt-in because twenty C grammars are not a hermetic
+build (I10), and the default is =KeywordHighlighter=. The reasoning in
+the Cargo.toml is sound and the two goals genuinely conflict.
+
+What is not settled is whether anyone ever gets it. CI does not build
+it, so the feature is not exercised by any gate; a user on the default
+build has keyword highlighting and no way to know a better one exists.
+
+Resolve it as a decision with a test behind it: vendor the grammars so
+the hermetic build can have them, or keep it opt-in and add the gate
+that proves both paths highlight — and say in the window which one is
+running, the way the software-rasteriser notice does.
+
+Acceptance: =nix develop -c just tree-sitter= is part of =just gates=,
+or =docs/spec.md= carries the decision and =nix develop -c cargo test
+-p closure-shell-gpui --features gpui-test --test highlighter_is_named=
+passes.
+
+* TODO Sniffer: Block is a verdict nothing enforces
+=Action::Block= exists, rules match, and =PcapBackend::capture_once=
+opens a real raw socket and returns the matched action. Nothing acts on
+it. The sniffer is an observer with opinions: it can tell you a
+connection should not have happened, after it has.
+
+Little Snitch — named in the vision — asks first. That is the feature.
+
+Also =capture_once= reads exactly one frame, which is a test seam
+rather than a sniffer.
+
+Acceptance: =nix develop -c cargo test -p closure-sniffer --test enforce=
+
+* TODO Conformance: record why the last two constructs stay Preserved
+40 of 42 org constructs are understood and offered. The two left are
+=#+ATTR_*= (export-only attributes, applied to nothing closure renders)
+and diary sexp timestamps (=<%%(diary-float t 4 2)>=, which needs an
+elisp evaluator).
+
+Both should stay Preserved. But =missing:= currently reads like a
+to-do, so the matrix reports them as gaps rather than as decisions, and
+=the_matrix_is_worth_having= cannot tell "not built" from "deliberately
+not built".
+
+Give =Construct= a way to say "decided", with the reason, and make the
+rate count decided constructs as settled. 95% that means "40 built, 2
+declined, with reasons" is a truer number than 95% that means "2 to go".
+
+Acceptance: =nix develop -c cargo test -p closure-org --test conformance_ratchet=
+with a test that every non-Understood construct carries a reason.
+
 * TODO Bug: the gpui window stops presenting on the lavapipe rasteriser
 Diagnosed above and not fixed: the wedge is in the presentation path
 (blade/Vulkan on lavapipe), below anything this queue owns. Input is
