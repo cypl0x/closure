@@ -15397,6 +15397,24 @@ impl ModalApp {
         memo.by_id.get(id).copied().unwrap_or_default()
     }
 
+    /// `#+INCLUDE:` resolved, for a pane that reads and never writes.
+    ///
+    /// The third construct through this seam and the same rule as the
+    /// first two (I12). Relative to the vault root, because that is
+    /// what a directive in a vault file means.
+    ///
+    /// A failure is returned rather than swallowed: a directive that
+    /// resolves to nothing must not read as an empty note, which is
+    /// the same reasoning a composition that cannot expand already
+    /// follows.
+    fn included_for_preview(shell: &Shell, text: &str) -> (String, Option<String>) {
+        if !text.contains("#+INCLUDE:") && !text.contains("#+include:") {
+            return (text.to_owned(), None);
+        }
+        closure_org::resolve_includes(text, shell.vault.root())
+            .map_or_else(|e| (text.to_owned(), Some(e.to_string())), |v| (v, None))
+    }
+
     /// `\alpha` as α, for a pane that reads and never writes.
     ///
     /// The same rule as a composition and for the same reason (I12):
@@ -15482,8 +15500,9 @@ impl ModalApp {
         let children = Self::entities_for_preview(&children);
         let mut detail = Detail::of(h, path, children, self.counts_for(shell, id, path));
         let (body, body_err) = self.expanded_for_preview(shell, &detail.body);
+        let (body, include_err) = Self::included_for_preview(shell, &body);
         detail.body = Self::entities_for_preview(&body);
-        detail.composition_error = body_err.or(child_err);
+        detail.composition_error = body_err.or(include_err).or(child_err);
         Some(detail)
     }
 

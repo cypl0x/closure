@@ -699,11 +699,18 @@ that is invisible there is one nobody writes twice.
 
 Acceptance: =nix develop -c cargo test -p closure-shell-core --test inline_agenda=
 
-* TODO #+INCLUDE resolves in the read view
+* DONE #+INCLUDE resolves in the read view
 Same rule as a widget: the file keeps the directive, the preview shows
 what it names. =resolve_includes= exists and no shell calls it.
 
 Acceptance: =nix develop -c cargo test -p closure-shell-core --test include_preview=
+
+Third construct through the same seam, so the rule is worth stating as
+a rule rather than rediscovering each time: I12 splits every one of
+these the same way, and widgets, entities and includes are one
+decision applied three times. A file that is not there is reported
+where the composition errors are, because a directive resolving to
+nothing must not read as an empty note.
 
 * TODO #+COLUMNS drives a database view
 A file that declares how it wants to be tabulated should be tabulated
