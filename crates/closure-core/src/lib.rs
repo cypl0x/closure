@@ -794,6 +794,11 @@ impl Edit {
                 let org = rewrite_headline_set_todo(doc.org(), &path, old.as_deref())
                     .map_err(|_| CommandError::Rewrite)?;
                 doc.org = org;
+                // A cookie is derived, so restoring what it counts
+                // restores it — no old title to carry in the edit, and
+                // nothing that can go stale if the count changes for
+                // another reason first.
+                refresh_parent_cookie(doc, &path);
                 doc.rebuild_index();
                 Ok(())
             }
@@ -983,6 +988,7 @@ impl Edit {
                 let org = rewrite_headline_set_todo(doc.org(), &path, new.as_deref())
                     .map_err(|_| CommandError::Rewrite)?;
                 doc.org = org;
+                refresh_parent_cookie(doc, &path);
                 doc.rebuild_index();
                 Ok(())
             }
@@ -1396,6 +1402,13 @@ impl Command for SetTodo {
         let org = rewrite_headline_set_todo(doc.org(), &path, effective.as_deref())
             .map_err(|_| CommandError::Rewrite)?;
         doc.org = org;
+        // A parent's cookie changing *is* part of finishing the child:
+        // one edit, one undo. A separate command would let the two
+        // drift by exactly the amount somebody forgot to run it, and a
+        // `[1/3]` nobody updates is worse than no cookie — an absent
+        // count says nothing, a stale one says something false while
+        // looking maintained.
+        refresh_parent_cookie(doc, &path);
         let edit = if let Some(Repeat {
             scheduled,
             deadline,
@@ -1435,6 +1448,41 @@ impl Command for SetTodo {
         doc.rebuild_index();
         doc.push_history(edit.clone());
         Ok(edit)
+    }
+}
+
+/// Bring the cookie in the parent of `path` up to date, if it has one.
+///
+/// Silent when the parent has none: adding one nobody asked for would
+/// edit a title the author wrote.
+fn refresh_parent_cookie(doc: &mut Document, path: &[usize]) {
+    if path.len() < 2 {
+        return;
+    }
+    let parent_path = path[..path.len() - 1].to_vec();
+    let Some(parent) = closure_org::headline_at(doc.org(), &parent_path) else {
+        return;
+    };
+    let title = parent.title().to_owned();
+    let Some(kind) = closure_org::cookie_in(&title) else {
+        return;
+    };
+    let Some(id) = parent.id_property().map(ToOwned::to_owned) else {
+        return;
+    };
+    let Some((done, total)) = closure_org::statistics_for(doc.org(), &id) else {
+        return;
+    };
+    let fresh = closure_org::render_cookie(kind, done, total);
+    // Replace the cookie in place, leaving the rest of the title as the
+    // author wrote it.
+    let (Some(open), Some(close)) = (title.find('['), title.find(']')) else {
+        return;
+    };
+    let mut new_title = title.clone();
+    new_title.replace_range(open..=close, &fresh);
+    if let Ok(org) = closure_org::rewrite_headline_title(doc.org(), &parent_path, &new_title) {
+        doc.org = org;
     }
 }
 

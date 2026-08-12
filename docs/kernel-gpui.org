@@ -867,6 +867,34 @@ not handle went in — statistics cookies, =#+STARTUP:=, clocktables,
 export attributes, time ranges, diary sexps, sub/superscripts, column
 groups — and the honest rate over the longer list is 80%.
 
+* DONE Org: statistics cookies ([1/3] and [33%])
+=* Project [1/3]= counts the done children. A cookie is text today and
+nothing counts behind it, so the number is whatever somebody last
+typed — which is worse than absent, because it looks maintained.
+
+The counting is the easy half; keeping it true when a child changes is
+a command, and that is where I3 comes in.
+
+Acceptance: =nix develop -c cargo test -p closure-org --test statistics_cookies= and =-p closure-core --test cookie_updates=
+
+Counting in closure-org, staying true in closure-core. It rides on
+=set-todo= rather than being a command of its own: a parent's cookie
+changing *is* part of finishing the child, so it is one edit and one
+undo, and a separate command would let the two drift by exactly the
+amount somebody forgot to run it.
+
+Undo needs no stored title. A cookie is derived, so restoring what it
+counts restores it — recompute after the reverse and there is nothing
+that can go stale if the count changed for another reason first.
+
+Only children with a keyword count: a sub-heading that is not a task
+is structure, and counting it would make every project look behind. A
+parent with no cookie is left alone, because adding one nobody asked
+for edits a title the author wrote.
+
+End to end: =closure set-todo= on a child moved =[1/3]= to =[2/3]=.
+Conformance 80% -> 83%.
+
 * TODO Bug: the gpui window stops presenting on the lavapipe rasteriser
 Diagnosed above and not fixed: the wedge is in the presentation path
 (blade/Vulkan on lavapipe), below anything this queue owns. Input is

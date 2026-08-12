@@ -9157,6 +9157,16 @@ fn find_line_end(src: &str, from: usize) -> Option<usize> {
     Some(from + nl + 1)
 }
 
+/// The headline at `path`, walking children by index.
+///
+/// Public because a command that has a path needs the headline it
+/// names — `closure-core`'s cookie refresh walks from a child to its
+/// parent and there was no way to say that from outside.
+#[must_use]
+pub fn headline_at<'a>(doc: &'a OrgDoc, path: &[usize]) -> Option<&'a Headline> {
+    navigate_headline(doc, path)
+}
+
 fn navigate_headline<'a>(doc: &'a OrgDoc, path: &[usize]) -> Option<&'a Headline> {
     let first = *path.first()?;
     let mut cur = doc.roots.get(first)?;
@@ -10028,10 +10038,10 @@ pub const CONFORMANCE: &[Construct] = &[
     },
     Construct {
         name: "statistics cookie [1/3]",
-        support: Support::Preserved,
-        evidence: "",
-        missing: "a cookie is text; nothing counts the children behind it",
-        offered: "",
+        support: Support::Understood,
+        evidence: "crates/closure-org/tests/statistics_cookies.rs",
+        missing: "",
+        offered: "crates/closure-core/tests/cookie_updates.rs",
     },
     Construct {
         name: "#+STARTUP:",
@@ -10584,6 +10594,86 @@ pub fn document_columns(doc: &OrgDoc) -> Option<Vec<ColumnSpec>> {
                 .or_else(|| t.strip_prefix("#+columns:"))
         })
         .and_then(columns_format)
+}
+
+/// Which kind of statistics cookie a headline's title carries.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Cookie {
+    /// `[1/3]` — done over total.
+    Fraction,
+    /// `[33%]` — the same thing as a percentage.
+    Percent,
+}
+
+/// The statistics cookie in `title`, if it has one.
+///
+/// A priority is not a cookie and both live in square brackets, so the
+/// shape inside them is what tells them apart: digits and a slash, or
+/// digits and a percent sign.
+#[must_use]
+pub fn cookie_in(title: &str) -> Option<Cookie> {
+    let mut rest = title;
+    while let Some(open) = rest.find('[') {
+        let after = &rest[open + 1..];
+        let Some(close) = after.find(']') else {
+            break;
+        };
+        let inner = &after[..close];
+        if inner.ends_with('%') && inner[..inner.len() - 1].chars().all(|c| c.is_ascii_digit()) {
+            return Some(Cookie::Percent);
+        }
+        if let Some((a, b)) = inner.split_once('/')
+            && a.chars().all(|c| c.is_ascii_digit())
+            && b.chars().all(|c| c.is_ascii_digit())
+        {
+            return Some(Cookie::Fraction);
+        }
+        rest = &after[close + 1..];
+    }
+    None
+}
+
+/// `(done, total)` over the direct children of the headline `id`.
+///
+/// Direct children, which is org's default: a cookie says how much of
+/// *this* list is finished, not how much of everything under it.
+///
+/// Only children carrying a TODO keyword count. A sub-heading that is
+/// not a task is structure rather than a task nobody has done, and
+/// counting it would make every project look behind.
+#[must_use]
+pub fn statistics_for(doc: &OrgDoc, id: &str) -> Option<(usize, usize)> {
+    let h = doc.headline_by_id(id)?;
+    let mut done = 0usize;
+    let mut total = 0usize;
+    for child in h.children() {
+        let Some(keyword) = child.todo() else {
+            continue;
+        };
+        total += 1;
+        if DONE_KEYWORDS_ORG.contains(&keyword) {
+            done += 1;
+        }
+    }
+    Some((done, total))
+}
+
+/// Keywords that mean finished, for counting a cookie.
+const DONE_KEYWORDS_ORG: &[&str] = &["DONE"];
+
+/// A cookie of `kind` for `done` of `total`.
+///
+/// No children is not a division: org writes `[0%]` and `[0/0]` rather
+/// than nothing, so a cookie on an empty list still reads as a cookie.
+#[must_use]
+pub fn render_cookie(kind: Cookie, done: usize, total: usize) -> String {
+    match kind {
+        Cookie::Fraction => format!("[{done}/{total}]"),
+        Cookie::Percent => {
+            let pct = if total == 0 { 0 } else { done * 100 / total };
+            format!("[{pct}%]")
+        }
+    }
 }
 
 /// Every `<<<name>>>` radio target defined in `doc`.
