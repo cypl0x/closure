@@ -727,12 +727,24 @@ decision applied three times. A file that is not there is reported
 where the composition errors are, because a directive resolving to
 nothing must not read as an empty note.
 
-* TODO #+COLUMNS drives a database view
+* DONE #+COLUMNS drives a database view
 A file that declares how it wants to be tabulated should be tabulated
 that way. =document_columns= parses it; =ViewSpec= renders columns;
 nothing connects them.
 
 Acceptance: =nix develop -c cargo test -p closure-query --test columns_view=
+
+=ViewSpec::from_document_columns=. Org's column view and closure's
+database view turned out to be the same idea from opposite ends — one
+says "here is a table of the vault", the other "here is how *this
+file* should be read" — so the join is a constructor rather than a
+feature.
+
+Scoped to the file that declares it, because the directive is a
+statement about the document it sits in. =ITEM= maps to the title and
+everything else is a property, which is what =:columns= already means.
+=None= when a file declares nothing, since a caller wants to know
+whether to show a table at all.
 
 * TODO #+CALL runs the block it names
 =call_target= reads the line and nothing evaluates it. Half a feature

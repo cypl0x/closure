@@ -751,6 +751,45 @@ impl ViewSpec {
         self.columns.iter().map(Column::name).collect()
     }
 
+    /// The view a file's own `#+COLUMNS:` describes, if it declares
+    /// one.
+    ///
+    /// Org's column view and closure's database view are the same idea
+    /// from opposite ends: a `closure-view` block says "here is a table
+    /// of the vault", `#+COLUMNS:` says "here is how *this file* should
+    /// be read". Joining them is most of what makes an org file closure
+    /// opens feel like the file somebody wrote.
+    ///
+    /// Scoped to that file, because the directive is a statement about
+    /// the document it sits in. Org's specials map where closure has an
+    /// equivalent — `ITEM` is the title — and everything else is a
+    /// property, which is what `:columns` already means.
+    ///
+    /// `None` when the file declares nothing, or is not in the vault: a
+    /// caller wants to know whether to show a table at all.
+    #[must_use]
+    pub fn from_document_columns(vault: &Vault, relative: &std::path::Path) -> Option<Self> {
+        let doc = vault.document_relative(relative)?;
+        let declared = closure_org::document_columns(doc.org())?;
+        let columns = declared
+            .iter()
+            .map(|c| match c.property.as_str() {
+                "ITEM" => Column::Title,
+                "TODO" => Column::Todo,
+                "PRIORITY" => Column::Priority,
+                other => Column::parse(other),
+            })
+            .collect();
+        Some(Self {
+            from: Source::File(relative.display().to_string()),
+            columns,
+            sort: Vec::new(),
+            filter: Vec::new(),
+            name: None,
+            group: None,
+        })
+    }
+
     /// Rows matching [`Self::from`] (and `:filter`), in file order.
     #[must_use]
     pub fn rows<'a>(&self, vault: &'a Vault) -> Vec<Match<'a>> {
