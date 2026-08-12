@@ -1630,6 +1630,21 @@ which means it can break and stay green. Several are click targets —
 
 Lower the ceiling with each one covered. Split per pane if it helps.
 
+17 → 15: =peer-forget-{}= and =peer-{}= are covered. Started with the
+one that deletes something — a paired machine lives in =config.org=,
+and forgetting the wrong row unpairs a laptop somebody still uses with
+nothing failing. The test forgets the *middle* of three, because an
+off-by-one that takes a neighbour is the bug it exists for and either
+end would hide it.
+
+Two things that were in the way and are now not, for the next fifteen:
+=GpuiView::app= was private with no accessor, so arranging a case meant
+driving the whole UI by keystroke and nobody did — =app()=, =app_mut()=
+and =shell()= exist now, read-only by default because a test that wants
+the window to *change* should run the command or click the target.
+And the peers surface is reached by the command =sync=, not =peers=;
+=peers= is the rail id. That cost a red test to discover.
+
 Acceptance: =UNLOOKED_CEILING= in
 =crates/closure-shell-gpui/tests/selectors_are_real.rs= reaches 0.
 

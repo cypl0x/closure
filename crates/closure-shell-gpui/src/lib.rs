@@ -4932,6 +4932,34 @@ impl GpuiView {
         }
     }
 
+    /// The kernel state behind this window.
+    ///
+    /// Public so window tests can set up a case and then assert on what
+    /// was painted. They could not before, and that is a large part of
+    /// why seventeen affordances — including the one that deletes a
+    /// pairing — had no test: reaching them meant driving the whole UI
+    /// by keystroke, so nobody did.
+    ///
+    /// Read-only on purpose. A test that wants the window to *change*
+    /// should run the command or click the target, because that is the
+    /// path a user has and the one worth proving works.
+    #[must_use]
+    pub const fn app(&self) -> &closure_shell_core::ModalApp {
+        &self.app
+    }
+
+    /// The kernel state, mutably — for a test to arrange a situation
+    /// the UI cannot reach quickly, such as three paired peers.
+    pub const fn app_mut(&mut self) -> &mut closure_shell_core::ModalApp {
+        &mut self.app
+    }
+
+    /// The vault behind this window.
+    #[must_use]
+    pub const fn shell(&self) -> &closure_shell_core::Shell {
+        &self.shell
+    }
+
     /// The newest thing the assistant said, or an empty string.
     ///
     /// For tests: the send path is the one surface where "what did it
