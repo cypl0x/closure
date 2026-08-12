@@ -452,7 +452,9 @@ impl Column {
         }
     }
 
-    fn name(&self) -> String {
+    /// What this column goes by in a header.
+    #[must_use]
+    pub fn name(&self) -> String {
         match self {
             Self::Title => "title".to_owned(),
             Self::Todo => "todo".to_owned(),

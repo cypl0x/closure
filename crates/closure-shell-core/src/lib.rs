@@ -25584,6 +25584,91 @@ impl ModalApp {
             .and_then(|mut v| (!v.is_empty()).then(|| v.remove(0)))
     }
 
+    /// The block id of each row the database pane shows, in the order
+    /// it shows them.
+    ///
+    /// Asked for as an extra `Column::Id` on the same spec rather than
+    /// recomputed, so the ids cannot fall out of step with the rows: a
+    /// filter, a sort and a grouping all reorder, and two places
+    /// applying them is two places to get them wrong.
+    fn db_row_ids(shell: &Shell) -> Vec<String> {
+        let Some((_, mut spec)) = Self::saved_view(shell) else {
+            return shell
+                .vault
+                .iter()
+                .flat_map(|(_, doc)| doc.all_headlines())
+                .map(|h| h.id().to_string())
+                .collect();
+        };
+        spec.columns.push(closure_query::Column::Id);
+        let last = spec.columns.len() - 1;
+        spec.groups(&shell.vault)
+            .into_iter()
+            .flat_map(|(_, rows)| rows)
+            .filter_map(|r| r.get(last).cloned())
+            .collect()
+    }
+
+    /// Write `value` into the cell at `row`/`column` of the database
+    /// view.
+    ///
+    /// The addressing is the feature. After a filter, a sort and a
+    /// grouping, row 0 of the table is not row 0 of the vault, so the
+    /// row is resolved back to a block through the same spec that
+    /// produced it — writing by position into the file would edit
+    /// somebody else.
+    ///
+    /// The write itself is an ordinary command (I8) and is undoable
+    /// like any other (I3): a cell is a property, and the title column
+    /// is a rename.
+    ///
+    /// # Errors
+    ///
+    /// When the row or column is not there, when the column is one
+    /// nothing can be written to — a relation holds an id behind a
+    /// title, a rollup is arithmetic over other rows, and a value typed
+    /// into either is one the next render throws away — or when the
+    /// write fails.
+    pub fn set_db_cell(
+        &self,
+        shell: &mut Shell,
+        row: usize,
+        column: usize,
+        value: &str,
+    ) -> Result<(), String> {
+        let Some((_, spec)) = Self::saved_view(shell) else {
+            return Err("no saved view to edit".to_owned());
+        };
+        let Some(col) = spec.columns.get(column).cloned() else {
+            return Err(format!("no column {column}"));
+        };
+        let Some(id) = Self::db_row_ids(shell).get(row).cloned() else {
+            return Err(format!("no row {row}"));
+        };
+        let bid = closure_core::BlockId::from_existing(&id);
+        match col {
+            closure_query::Column::Title => shell
+                .rename_headline(&bid, value)
+                .map_err(|e| format!("{e}")),
+            closure_query::Column::Property(key) => shell
+                .set_property(&bid, &key, value)
+                .map_err(|e| format!("{e}")),
+            closure_query::Column::Todo => shell
+                .set_todo(&bid, Some(value))
+                .map_err(|e| format!("{e}")),
+            closure_query::Column::Relation(_) => Err(
+                "a relation column holds an id behind a title — edit the headline it points at"
+                    .to_owned(),
+            ),
+            closure_query::Column::Rollup { .. } => {
+                Err("a rollup is worked out from other rows; there is nothing to write".to_owned())
+            }
+            closure_query::Column::Priority
+            | closure_query::Column::Level
+            | closure_query::Column::Id => Err(format!("{} is not an editable column", col.name())),
+        }
+    }
+
     /// The name of the saved view the database pane is showing, if it
     /// is showing one. A table with no name cannot be told from the
     /// default one.

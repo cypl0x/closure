@@ -558,10 +558,23 @@ holding a behaviour the user had asked for by name. Reverted. Reading
 the tests for a surface before changing it would have cost a minute
 and saved the detour.
 
-* TODO gpui: edit a database cell through a command
+* DONE gpui: edit a database cell through a command
 I8 — the pane mutates only through the registry.
 
-Acceptance: =nix develop -c cargo test -p closure-shell-gpui --features gpui-test --test database_edit=
+Acceptance: =nix develop -c cargo test -p closure-shell-core --test db_edit=
+
+The addressing is the feature, not the writing. After a filter, a sort
+and a grouping, row 0 of the table is not row 0 of the vault, so the
+row is resolved back to a block through the same spec that produced it
+— an extra =Column::Id= on that spec rather than a second ordering
+somebody has to keep in step. Writing is then an ordinary command:
+=set-property=, or a rename for the title column, undoable like
+everything else.
+
+Which columns refuse is the other half. A relation shows a title and
+holds an id; a rollup is arithmetic over other rows. Typing into
+either writes a value the next render throws away, so both say why
+instead.
 
 * DONE Perf: keystroke->frame budget at the stated scale
 Machine-pinned, beside the portable shape test that already exists.
