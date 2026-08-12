@@ -67,13 +67,10 @@ fn a_command_bound_in_every_other_mode_is_bound_here_too() {
             .filter(|m| **m != mode)
             .map(|m| commands(*m))
             .collect();
-        let in_all_others: Vec<&str> = others[0]
+        let missing: Vec<&str> = others[0]
             .iter()
             .filter(|c| others[1..].iter().all(|o| o.contains(*c)))
             .copied()
-            .collect();
-        let missing: Vec<&str> = in_all_others
-            .into_iter()
             .filter(|c| !mine.contains(c))
             .collect();
         assert!(

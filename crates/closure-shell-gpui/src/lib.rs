@@ -2257,6 +2257,7 @@ const BODY_LINE_H: f32 = 18.0;
 /// tall or three depending on the width of the pane and the length of
 /// the line, and no arithmetic here can know which. That is what
 /// [`PANE_WRAP_GUESS`] is for.
+#[cfg(feature = "gpui")]
 const PANE_ROW_H: f32 = 21.5;
 
 /// How many lines a pane row is assumed to take, for counting a page.
@@ -2270,10 +2271,12 @@ const PANE_ROW_H: f32 = 21.5;
 /// Replacing the estimate with a measurement means a list that lays
 /// rows out until the pane is full, which is a different piece of work
 /// and is written down as its own item.
+#[cfg(feature = "gpui")]
 const PANE_WRAP_GUESS: f32 = 2.0;
 
 /// Padding above and below a read-only pane's row. Part of
 /// [`PANE_ROW_H`], and kept beside it so the two cannot drift.
+#[cfg(feature = "gpui")]
 const PANE_ROW_PAD: f32 = 1.0;
 
 /// The height of one body row, and the unit the viewport is counted in.
@@ -4798,6 +4801,139 @@ impl GpuiView {
     /// One outline row: the frame, the selection styling and the
     /// mouse gestures (select, drag-to-reorder, right-click menu); the
     /// cells inside come from [`Self::outline_cells`].
+    /// A read-only pane of `rows`, windowed to what fits and painted
+    /// with the pane cursor on it.
+    ///
+    /// The manual and the journal were the only two arms of
+    /// [`Self::side_content`] that spelled this out instead of naming a
+    /// pane, and they spelled out the same seven arguments — differing
+    /// in the rows, what to say when there are none, and the selector.
+    /// Those three are what this takes.
+    fn windowed_rows(
+        &self,
+        co: Colors,
+        rows: Vec<String>,
+        empty: &'static str,
+        name: &'static str,
+    ) -> Vec<gpui::Div> {
+        let (offset, rows) = self.app.pane_window(rows, self.pane_view());
+        Self::text_rows(
+            co,
+            self.app.zoom(),
+            rows,
+            empty,
+            name,
+            offset,
+            self.app.pane_cursor(),
+        )
+    }
+
+    /// The per-frame housekeeping that runs before anything is
+    /// built.
+    ///
+    /// Measuring the font, telling the core how tall the panes are,
+    /// stamping the clock, arming the reload watch: none of it paints,
+    /// all of it has to happen first, and together it was the top half
+    /// of `render`. Named, so what `render` reads as is the tree it
+    /// returns.
+    fn begin_frame(
+        &mut self,
+        co: Colors,
+        font: &gpui::Font,
+        window: &mut Window,
+        cx: &Context<Self>,
+    ) {
+        // Every path that sets a status reaches the toast strip through
+        // here, once per frame.
+        self.absorb_status(cx);
+        // Ask the font how wide a character actually is, rather than
+        // assuming. Everything the horizontal scroll does is downstream
+        // of this one number, and the assumption was ~8% under the
+        // bundled font: "with long lines I still can type in the dark".
+        self.measure_col_w(window, font);
+        // What the panes are being asked to fit into, this frame.
+        self.viewport = (
+            f32::from(window.viewport_size().width),
+            f32::from(window.viewport_size().height),
+        );
+        // A clock entry is stamped with the minute it was started, so
+        // the window keeps the core's idea of now up to date.
+        self.app.set_now(&closure_shell_core::now_local());
+        self.refresh_title(window);
+        self.reveal_cursors();
+        // The editor sizes itself from its own measured height, which
+        // is last frame's layout. When that moves — the buffer just
+        // opened, the rail stepped out of the way, the window resized —
+        // this frame paints a stale number of lines, so one more frame
+        // is asked for. It settles immediately: the measurement stops
+        // moving once the layout does.
+        // The outline's row count, for the same reason and by the same
+        // split: `C-d` / `C-u` move half a screen and only the window
+        // knows how tall one is. The rows are the body's line height,
+        // so the measurement is the same arithmetic.
+        self.app.set_outline_viewport(self.body_view());
+        if self.app.surface_beneath().is_editor() {
+            let view = self.body_view();
+            // The kernel decides where the viewport sits and only the
+            // window knows how tall it is, so the measurement is handed
+            // over before anything asks to be framed — `C-l` and
+            // `zz`/`zt`/`zb` need "the middle of the screen" to mean
+            // this screen. Resolving the scroll here rather than in the
+            // (borrow-only) paint is also what lets it be sticky:
+            // scrolling by the minimum is measured from where the
+            // viewport already was.
+            self.app.set_body_viewport(view);
+            // The same handover for colour: a diagram is drawn in the
+            // ink this window writes in, so switching theme draws a
+            // new picture rather than reusing one meant for the old
+            // background.
+            self.app.set_ink(co.fg);
+            self.app.body_scroll_follow(view);
+            if self.painted_view.replace(view) != view {
+                // `cx.notify()` inside a render is not another frame —
+                // the window is already drawing. This asks for the next
+                // one, which is when the new measurement exists.
+                window.request_animation_frame();
+            }
+        }
+        // The vault's files are the API, so something else writing them
+        // — an Emacs on the same directory, a `git pull`, an inbound
+        // sync round — has to reach the window. Armed once, from the
+        // first frame.
+        if self.reload_gen == 0 {
+            self.arm_reload(cx);
+        }
+    }
+
+    /// Notion's plus beside row `i`: a way to add a block without
+    /// knowing a chord, which is the whole premise of the mode.
+    ///
+    /// Only in Notion — a mouse affordance on every row of a modal mode
+    /// is noise for somebody who came for the keyboard — so the caller
+    /// decides whether to paint it and this only says what it is.
+    fn row_plus(co: Colors, i: usize, cx: &Context<Self>) -> gpui::Stateful<gpui::Div> {
+        div()
+            .id(gpui::SharedString::from(format!("row-plus-{i}")))
+            .debug_selector(move || format!("row-plus-{i}"))
+            .flex_none()
+            .w(px(14.0))
+            .text_color(rgb(co.muted))
+            .cursor_pointer()
+            .hover(|st| st.text_color(rgb(co.accent)))
+            .child("+")
+            .on_mouse_down(
+                MouseButton::Left,
+                cx.listener(move |this, _ev, _w, cx| {
+                    // Through the registry like every other affordance
+                    // (I8): the mouse is a way of naming a command, not
+                    // a second way of editing.
+                    this.app.select(i, &this.shell);
+                    this.click("add-sibling", cx);
+                    cx.stop_propagation();
+                }),
+            )
+    }
+
     fn outline_row(&self, co: Colors, i: usize, cx: &Context<Self>) -> gpui::Div {
         let rows = self.app.rows_shared(&self.shell);
         let Some(row) = rows.get(i).cloned() else {
@@ -4856,37 +4992,9 @@ impl GpuiView {
                     .h_full()
                     .when(is_sel, |d| d.bg(rgb(co.accent))),
             )
-            // Notion's plus: a way to add a block without knowing a
-            // chord, which is the whole premise of the mode. Only in
-            // Notion — a mouse affordance on every row of a modal mode
-            // is noise for somebody who came for the keyboard.
             .when(
                 self.app.input_mode() == closure_config::InputMode::Notion,
-                |d| {
-                    d.child(
-                        div()
-                            .id(gpui::SharedString::from(format!("row-plus-{i}")))
-                            .debug_selector(move || format!("row-plus-{i}"))
-                            .flex_none()
-                            .w(px(14.0))
-                            .text_color(rgb(co.muted))
-                            .cursor_pointer()
-                            .hover(|st| st.text_color(rgb(co.accent)))
-                            .child("+")
-                            .on_mouse_down(
-                                MouseButton::Left,
-                                cx.listener(move |this, _ev, _w, cx| {
-                                    // Through the registry like every
-                                    // other affordance (I8): the mouse
-                                    // is a way of naming a command, not
-                                    // a second way of editing.
-                                    this.app.select(i, &this.shell);
-                                    this.click("add-sibling", cx);
-                                    cx.stop_propagation();
-                                }),
-                            ),
-                    )
-                },
+                |d| d.child(Self::row_plus(co, i, cx)),
             )
             .bg(rgb(if is_sel { co.selection } else { co.bg }))
             .hover(move |s| s.bg(rgb(if is_sel { co.selection } else { co.hover })))
@@ -5351,34 +5459,18 @@ impl GpuiView {
             // Only what fits, and only because the window is the one
             // that knows how much that is — measured from the window,
             // not from the pane's own scroll handle.
-            ModalSurface::Manual => {
-                let (offset, rows) = self
-                    .app
-                    .pane_window(self.app.manual_rows(), self.pane_view());
-                pane.children(Self::text_rows(
-                    co,
-                    self.app.zoom(),
-                    rows,
-                    "the manual generated nothing, which should not happen",
-                    "manual",
-                    offset,
-                    self.app.pane_cursor(),
-                ))
-            }
-            ModalSurface::Journal => {
-                let (offset, rows) = self
-                    .app
-                    .pane_window(self.app.journal_rows(&self.shell), self.pane_view());
-                pane.children(Self::text_rows(
-                    co,
-                    self.app.zoom(),
-                    rows,
-                    "no commands recorded yet — the journal fills as you edit",
-                    "journal",
-                    offset,
-                    self.app.pane_cursor(),
-                ))
-            }
+            ModalSurface::Manual => pane.children(self.windowed_rows(
+                co,
+                self.app.manual_rows(),
+                "the manual generated nothing, which should not happen",
+                "manual",
+            )),
+            ModalSurface::Journal => pane.children(self.windowed_rows(
+                co,
+                self.app.journal_rows(&self.shell),
+                "no commands recorded yet — the journal fills as you edit",
+                "journal",
+            )),
             ModalSurface::Cron => pane.child(self.jobs_pane(co, cx)),
             ModalSurface::Bridges => pane.child(self.bridges_pane(co, cx)),
             ModalSurface::Settings | ModalSurface::Setting => pane.child(self.settings_pane(co)),
@@ -10979,67 +11071,7 @@ impl Render for GpuiView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let co = Colors::of(&self.theme);
         let font = app_font(self.theme);
-        // Every path that sets a status reaches the toast strip through
-        // here, once per frame.
-        self.absorb_status(cx);
-        // Ask the font how wide a character actually is, rather than
-        // assuming. Everything the horizontal scroll does is downstream
-        // of this one number, and the assumption was ~8% under the
-        // bundled font: "with long lines I still can type in the dark".
-        self.measure_col_w(window, &font);
-        // What the panes are being asked to fit into, this frame.
-        self.viewport = (
-            f32::from(window.viewport_size().width),
-            f32::from(window.viewport_size().height),
-        );
-        // A clock entry is stamped with the minute it was started, so
-        // the window keeps the core's idea of now up to date.
-        self.app.set_now(&closure_shell_core::now_local());
-        self.refresh_title(window);
-        self.reveal_cursors();
-        // The editor sizes itself from its own measured height, which
-        // is last frame's layout. When that moves — the buffer just
-        // opened, the rail stepped out of the way, the window resized —
-        // this frame paints a stale number of lines, so one more frame
-        // is asked for. It settles immediately: the measurement stops
-        // moving once the layout does.
-        // The outline's row count, for the same reason and by the same
-        // split: `C-d` / `C-u` move half a screen and only the window
-        // knows how tall one is. The rows are the body's line height,
-        // so the measurement is the same arithmetic.
-        self.app.set_outline_viewport(self.body_view());
-        if self.app.surface_beneath().is_editor() {
-            let view = self.body_view();
-            // The kernel decides where the viewport sits and only the
-            // window knows how tall it is, so the measurement is handed
-            // over before anything asks to be framed — `C-l` and
-            // `zz`/`zt`/`zb` need "the middle of the screen" to mean
-            // this screen. Resolving the scroll here rather than in the
-            // (borrow-only) paint is also what lets it be sticky:
-            // scrolling by the minimum is measured from where the
-            // viewport already was.
-            self.app.set_body_viewport(view);
-            // The same handover for colour: a diagram is drawn in the
-            // ink this window writes in, so switching theme draws a
-            // new picture rather than reusing one meant for the old
-            // background.
-            self.app.set_ink(co.fg);
-            self.app.body_scroll_follow(view);
-            if self.painted_view.replace(view) != view {
-                // `cx.notify()` inside a render is not another frame —
-                // the window is already drawing. This asks for the next
-                // one, which is when the new measurement exists.
-                window.request_animation_frame();
-            }
-        }
-        // The vault's files are the API, so something else writing them
-        // — an Emacs on the same directory, a `git pull`, an inbound
-        // sync round — has to reach the window. Armed once, from the
-        // first frame.
-        if self.reload_gen == 0 {
-            self.arm_reload(cx);
-        }
-
+        self.begin_frame(co, &font, window, cx);
         let header = self.header_bar(co, cx);
 
         let context = self.context_row(co, cx);

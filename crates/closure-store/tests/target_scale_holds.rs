@@ -44,7 +44,7 @@ fn vault_of(n: usize) -> tempfile::TempDir {
             // Every tenth headline points at its predecessor, so the
             // inverted index is doing work rather than staying empty.
             if k % 10 == 0 && k > 0 {
-                let _ = write!(src, "see [[id:01SCALE{:018}][the one before]]\n", k - 1);
+                let _ = writeln!(src, "see [[id:01SCALE{:018}][the one before]]", k - 1);
             }
         }
         std::fs::write(dir.path().join(format!("notes{f:03}.org")), src).unwrap();

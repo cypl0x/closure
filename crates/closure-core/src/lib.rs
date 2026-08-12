@@ -902,20 +902,26 @@ impl Edit {
                 // A property that was not there before is cleared
                 // rather than set to an empty string, so undo leaves
                 // the drawer as it found it.
-                let org = match old_last_repeat {
-                    Some(v) => closure_org::rewrite_headline_set_property(
-                        doc.org(),
-                        &path,
-                        "LAST_REPEAT",
-                        v,
-                    ),
-                    None => closure_org::rewrite_headline_remove_property(
-                        doc.org(),
-                        &path,
-                        "LAST_REPEAT",
-                    ),
-                }
-                .map_err(|_| CommandError::Rewrite)?;
+                let org = old_last_repeat
+                    .as_ref()
+                    .map_or_else(
+                        || {
+                            closure_org::rewrite_headline_remove_property(
+                                doc.org(),
+                                &path,
+                                "LAST_REPEAT",
+                            )
+                        },
+                        |v| {
+                            closure_org::rewrite_headline_set_property(
+                                doc.org(),
+                                &path,
+                                "LAST_REPEAT",
+                                v,
+                            )
+                        },
+                    )
+                    .map_err(|_| CommandError::Rewrite)?;
                 doc.org = org;
                 doc.rebuild_index();
                 Ok(())
@@ -1409,7 +1415,7 @@ impl Command for SetTodo {
         // count says nothing, a stale one says something false while
         // looking maintained.
         refresh_parent_cookie(doc, &path);
-        let edit = if let Some(Repeat {
+        let edit = if let Some(Advance {
             scheduled,
             deadline,
             today,
@@ -1479,7 +1485,7 @@ fn refresh_parent_cookie(doc: &mut Document, path: &[usize]) {
     let (Some(open), Some(close)) = (title.find('['), title.find(']')) else {
         return;
     };
-    let mut new_title = title.clone();
+    let mut new_title = title;
     new_title.replace_range(open..=close, &fresh);
     if let Ok(org) = closure_org::rewrite_headline_title(doc.org(), &parent_path, &new_title) {
         doc.org = org;
@@ -1497,7 +1503,7 @@ const NOT_DONE: &str = "TODO";
 
 /// What a repeating headline's planning line becomes when this
 /// occurrence is finished.
-struct Repeat {
+struct Advance {
     /// The advanced `SCHEDULED:`, if it had one that repeats.
     scheduled: Option<String>,
     /// The advanced `DEADLINE:`, if it had one that repeats.
@@ -1512,7 +1518,7 @@ struct Repeat {
 
 /// The advanced planning for the headline `id`, if either of its
 /// dates repeats.
-fn repeat_of(doc: &Document, id: &BlockId) -> Option<Repeat> {
+fn repeat_of(doc: &Document, id: &BlockId) -> Option<Advance> {
     let planning = doc.org().planning_of(&id.to_string())?;
     let today = today_civil();
     let scheduled = planning
@@ -1524,7 +1530,7 @@ fn repeat_of(doc: &Document, id: &BlockId) -> Option<Repeat> {
     if scheduled.is_none() && deadline.is_none() {
         return None;
     }
-    Some(Repeat {
+    Some(Advance {
         // Anything that did not repeat is kept as it was rather than
         // dropped: `set_planning` writes what it is given.
         scheduled: scheduled.or_else(|| planning.scheduled.map(ToOwned::to_owned)),
@@ -1596,6 +1602,9 @@ impl Command for RecomputeTable {
     }
 
     fn apply(&self, doc: &mut Document) -> Result<Edit, CommandError> {
+        // At the top of the scope, where it already applied: an import
+        // after a statement reads as if it were scoped to what follows.
+        use std::fmt::Write as _;
         let path = doc.path_of(&self.id).ok_or(CommandError::BlockNotFound)?;
         let body = doc
             .headline_by_id(&self.id)
@@ -1630,11 +1639,11 @@ impl Command for RecomputeTable {
                 .split('|')
                 .map(|c| c.trim().to_owned())
                 .collect();
-            let computed = closure_org::eval_table_formulas(&[cells.clone()], &formulas);
+            let computed =
+                closure_org::eval_table_formulas(std::slice::from_ref(&cells), &formulas);
             let widths: Vec<usize> = trimmed.trim_matches('|').split('|').map(str::len).collect();
             // Rebuilt at the widths the file already used, so a
             // recompute is a change of values and not of layout.
-            use std::fmt::Write as _;
             let mut rebuilt = String::from("|");
             for (i, cell) in computed[0].iter().enumerate() {
                 let w = widths.get(i).copied().unwrap_or(cell.len() + 2);

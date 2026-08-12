@@ -34,7 +34,9 @@ fn cited(text: &str) -> Vec<String> {
     for word in text.split(|c: char| c.is_whitespace() || c == '`' || c == '(' || c == ')') {
         let word = word.trim_matches(|c: char| matches!(c, ',' | '.' | ';' | ':' | '*' | '_'));
         if word.starts_with("closure-")
-            && word.ends_with(".rs")
+            && std::path::Path::new(word)
+                .extension()
+                .is_some_and(|e| e == "rs")
             && (word.contains("/tests/") || word.contains("/src/"))
         {
             out.push(word.to_owned());

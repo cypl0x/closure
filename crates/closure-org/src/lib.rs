@@ -9052,7 +9052,7 @@ pub fn rewrite_headline_remove_property(
 ) -> Result<OrgDoc, RewriteError> {
     let target = navigate_headline(doc, path).ok_or(RewriteError::NotFound)?;
     let Some(p) = &target.properties else {
-        return parse(&doc.source().to_owned()).map_err(|_| RewriteError::Parse);
+        return parse(doc.source()).map_err(|_| RewriteError::Parse);
     };
     let src = doc.source().to_owned();
     let Some(e) = p
@@ -9078,16 +9078,18 @@ pub fn rewrite_headline_remove_property(
         let end = src[p.drawer_span.end..]
             .find('\n')
             .map_or(src.len(), |i| p.drawer_span.end + i + 1);
-        out = src.clone();
+        out.clone_from(&src);
         out.replace_range(drawer_start..end, "");
     }
     parse(&out).map_err(|_| RewriteError::Parse)
 }
 
 /// Set or replace a `:KEY: value` entry in the headline's properties
-/// drawer. Creates the drawer if absent. If `key` already exists, its
-/// value is overwritten in place; otherwise the entry is appended just
-/// before `:END:`.
+/// drawer.
+///
+/// Creates the drawer if absent. If `key` already exists, its value is
+/// overwritten in place; otherwise the entry is appended just before
+/// `:END:`.
 pub fn rewrite_headline_set_property(
     doc: &OrgDoc,
     path: &[usize],
@@ -10728,7 +10730,7 @@ pub fn render_cookie(kind: Cookie, done: usize, total: usize) -> String {
     match kind {
         Cookie::Fraction => format!("[{done}/{total}]"),
         Cookie::Percent => {
-            let pct = if total == 0 { 0 } else { done * 100 / total };
+            let pct = (done * 100).checked_div(total).unwrap_or(0);
             format!("[{pct}%]")
         }
     }
@@ -10793,11 +10795,11 @@ pub fn radio_matches(text: &str, targets: &[String]) -> Vec<std::ops::Range<usiz
                 || !lower[..at]
                     .chars()
                     .next_back()
-                    .is_some_and(|c| c.is_alphanumeric());
+                    .is_some_and(char::is_alphanumeric);
             let after_ok = !lower[end..]
                 .chars()
                 .next()
-                .is_some_and(|c| c.is_alphanumeric());
+                .is_some_and(char::is_alphanumeric);
             // Inside a `<<<…>>>` is a definition, not a mention.
             let is_definition = at >= 3 && &lower[at - 3..at] == "<<<";
             if before_ok && after_ok && !is_definition {
@@ -11047,7 +11049,7 @@ fn resolve_includes_in(
             out.push_str(line);
             continue;
         };
-        if stack.iter().any(|f| *f == file) {
+        if stack.contains(&file) {
             let from = stack.iter().position(|f| *f == file).unwrap_or(0);
             let mut ring: Vec<String> = stack[from..].to_vec();
             ring.push(file);
@@ -11062,8 +11064,11 @@ fn resolve_includes_in(
                 .lines()
                 .skip(a.saturating_sub(1))
                 .take(b.saturating_sub(a.saturating_sub(1)))
-                .map(|l| format!("{l}\n"))
-                .collect::<String>(),
+                .fold(String::new(), |mut acc, l| {
+                    acc.push_str(l);
+                    acc.push('\n');
+                    acc
+                }),
             None => body,
         };
         stack.push(file);
@@ -11121,8 +11126,10 @@ fn dollar_is_delimiter(line: &str, at: usize, opening: bool) -> bool {
     // A digit just after the *opening* `$` is money, not maths — that
     // is what separates "$5" from "$x^2$". A digit just before the
     // closing one is ordinary: `$x^2$` ends in a 2.
-    let inside_ok =
-        inside.is_some_and(|c| !c.is_ascii_whitespace() && !(opening && c.is_ascii_digit()));
+    let inside_ok = inside.is_some_and(|c| {
+        let money = opening && c.is_ascii_digit();
+        !(c.is_ascii_whitespace() || money)
+    });
     let outside_ok = outside.is_none_or(|c| !c.is_ascii_alphanumeric());
     inside_ok && outside_ok
 }
@@ -11236,8 +11243,7 @@ pub fn entity_char(name: &str) -> Option<&'static str> {
         "Phi" => "Φ",
         "Psi" => "Ψ",
         "Omega" => "Ω",
-        "hellip" => "…",
-        "ldots" => "…",
+        "hellip" | "ldots" => "…",
         "ndash" => "–",
         "mdash" => "—",
         "rightarrow" | "to" => "→",

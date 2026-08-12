@@ -15646,44 +15646,7 @@ impl ModalApp {
         alt: bool,
         text: Option<char>,
     ) {
-        // What the config wrote down beats what the surface would have
-        // done. The readline chords inside a buffer and inside every
-        // prompt are resolved by those handlers rather than through the
-        // keymap, so without this a `bind C-b = …` landed everywhere
-        // except the twenty keys a writer spends the day pressing.
-        //
-        // Modified chords only: `bind j = next-file` is an outline
-        // binding, and a pre-empt that took bare letters too would move
-        // the selection every time you typed a `j` into a note.
-        if (ctrl || alt)
-            && let Some(stroke) = modal_stroke(key, ctrl, alt, text)
-            && let Some(cmd) = self
-                .key_overrides
-                .iter()
-                .find(|(chord, _)| *chord == stroke)
-                .map(|(_, cmd)| cmd.clone())
-        {
-            // An unbind is a chord that does nothing, everywhere —
-            // which is what taking a key away has to mean.
-            if !cmd.is_empty() {
-                self.run_command(shell, &cmd);
-            }
-            return;
-        }
-        // A read-only pane is a list too, and the chords that move half
-        // a screen belong to whichever list is open. The pane handlers
-        // resolve their own keys and never reach the keymap, so the two
-        // are looked up here rather than spelled out a second time
-        // inside the pane — I4 says the keymap is the only table.
-        if self.in_read_only_pane()
-            && let Some(stroke) = modal_stroke(key, ctrl, alt, text)
-            && let Some(cmd) = closure_input::mode_keymap(self.input_mode())
-                .iter()
-                .find(|(chord, _)| *chord == stroke)
-                .map(|(_, c)| *c)
-            && matches!(cmd, "half-page-down" | "half-page-up")
-        {
-            self.run_command(shell, cmd);
+        if self.preempt(shell, key, ctrl, alt, text) {
             return;
         }
         // Every motion in an editor ends here, including the ones the
@@ -22007,35 +21970,7 @@ impl ModalApp {
                     self.say(format!("copied: {line}"));
                 }
             }
-            ModalSurface::Buffers | ModalSurface::Files => {
-                // The rows on screen are the ones that survived the
-                // filter; the click paths address the underlying list.
-                let matches: Vec<usize> = if self.surface == ModalSurface::Buffers {
-                    self.buffer_rows(shell)
-                        .iter()
-                        .enumerate()
-                        .filter(|(_, r)| r.matches_filter)
-                        .map(|(i, _)| i)
-                        .collect()
-                } else {
-                    self.file_rows(shell)
-                        .iter()
-                        .enumerate()
-                        .filter(|(_, r)| r.matches_filter)
-                        .map(|(i, _)| i)
-                        .collect()
-                };
-                let Some(&row) = matches.get(at) else {
-                    return;
-                };
-                self.query.clear();
-                self.selected = 0;
-                if self.surface == ModalSurface::Buffers {
-                    self.buffer_click(shell, row);
-                } else {
-                    self.file_click(shell, row);
-                }
-            }
+            ModalSurface::Buffers | ModalSurface::Files => self.pick_listed(shell, at),
             ModalSurface::Headlines => {
                 let Some(HeadlineRow { id, .. }) = self.filtered_headlines(shell).get(at).cloned()
                 else {
@@ -22114,7 +22049,7 @@ impl ModalApp {
             row.current = true;
         }
         Some(PickerView {
-            title: title.to_owned(),
+            title,
             hint: hint.to_owned(),
             rows,
             cursor,
@@ -22305,6 +22240,147 @@ impl ModalApp {
 
     /// What the open surface is picking from: its title, what Enter
     /// does, and the rows surviving the filter.
+    /// The two lookups that run before the surface sees the key.
+    ///
+    /// Both are pre-empts in the sense the surface handlers cannot
+    /// provide for themselves: they resolve their own keys and never
+    /// reach the keymap, so a chord that has to work *everywhere* has
+    /// to be caught before them. Returns whether the key was consumed.
+    fn preempt(
+        &mut self,
+        shell: &mut Shell,
+        key: &str,
+        ctrl: bool,
+        alt: bool,
+        text: Option<char>,
+    ) -> bool {
+        // What the config wrote down beats what the surface would have
+        // done. The readline chords inside a buffer and inside every
+        // prompt are resolved by those handlers rather than through the
+        // keymap, so without this a `bind C-b = …` landed everywhere
+        // except the twenty keys a writer spends the day pressing.
+        //
+        // Modified chords only: `bind j = next-file` is an outline
+        // binding, and a pre-empt that took bare letters too would move
+        // the selection every time you typed a `j` into a note.
+        if (ctrl || alt)
+            && let Some(stroke) = modal_stroke(key, ctrl, alt, text)
+            && let Some(cmd) = self
+                .key_overrides
+                .iter()
+                .find(|(chord, _)| *chord == stroke)
+                .map(|(_, cmd)| cmd.clone())
+        {
+            // An unbind is a chord that does nothing, everywhere —
+            // which is what taking a key away has to mean.
+            if !cmd.is_empty() {
+                self.run_command(shell, &cmd);
+            }
+            return true;
+        }
+        // A read-only pane is a list too, and the chords that move half
+        // a screen belong to whichever list is open. The pane handlers
+        // resolve their own keys and never reach the keymap, so the two
+        // are looked up here rather than spelled out a second time
+        // inside the pane — I4 says the keymap is the only table.
+        if self.in_read_only_pane()
+            && let Some(stroke) = modal_stroke(key, ctrl, alt, text)
+            && let Some(cmd) = closure_input::mode_keymap(self.input_mode())
+                .iter()
+                .find(|(chord, _)| *chord == stroke)
+                .map(|(_, c)| *c)
+            && matches!(cmd, "half-page-down" | "half-page-up")
+        {
+            self.run_command(shell, cmd);
+            return true;
+        }
+        false
+    }
+
+    /// Open the `at`-th *visible* row of the buffers or files picker.
+    ///
+    /// The two surfaces differ only in which list they read and which
+    /// click they end in, and they share the thing worth stating once:
+    /// the rows on screen are the ones that survived the filter, while
+    /// the click paths address the underlying list. Off-by-one between
+    /// those two indices is the bug this arm exists to not have.
+    fn pick_listed(&mut self, shell: &Shell, at: usize) {
+        let matches: Vec<usize> = if self.surface == ModalSurface::Buffers {
+            self.buffer_rows(shell)
+                .iter()
+                .enumerate()
+                .filter(|(_, r)| r.matches_filter)
+                .map(|(i, _)| i)
+                .collect()
+        } else {
+            self.file_rows(shell)
+                .iter()
+                .enumerate()
+                .filter(|(_, r)| r.matches_filter)
+                .map(|(i, _)| i)
+                .collect()
+        };
+        let Some(&row) = matches.get(at) else {
+            return;
+        };
+        self.query.clear();
+        self.selected = 0;
+        if self.surface == ModalSurface::Buffers {
+            self.buffer_click(shell, row);
+        } else {
+            self.file_click(shell, row);
+        }
+    }
+
+    /// Every source block in the vault, as picker rows.
+    ///
+    /// Beside [`Self::file_pick_rows`] and [`Self::link_pick_rows`],
+    /// which is where the arms that are more than a title and a hint
+    /// already live.
+    fn block_pick_rows(&self, shell: &Shell) -> Vec<PickRow> {
+        self.filtered_blocks(shell)
+            .into_iter()
+            .map(|BlockRow { file, lang, line }| PickRow {
+                label: line,
+                // Vault-relative: the absolute path of every file in the
+                // vault you are looking at is mostly the same prefix,
+                // repeated down the list and pushing the part that
+                // differs off the end of the row.
+                detail: std::path::Path::new(&file)
+                    .strip_prefix(shell.vault.root())
+                    .map_or_else(|_| file.clone(), |rel| rel.display().to_string()),
+                trailing: lang,
+                matches: Vec::new(),
+                current: false,
+            })
+            .collect()
+    }
+
+    /// Every command in the palette, as picker rows.
+    ///
+    /// The palette and describe-command built this same list two arms
+    /// apart, one of them writing the separator escaped and the other
+    /// as the character — the shape of duplication that stays correct
+    /// right up until somebody changes one of them. They differ in
+    /// whether the list is narrowed, and that is all, so that is the
+    /// only thing left at the call sites.
+    fn command_pick_rows(&self) -> Vec<PickRow> {
+        self.palette_shared()
+            .iter()
+            .map(|e| PickRow {
+                label: e.label.clone(),
+                detail: e.description.clone(),
+                // Every key that runs it, not the first one the keymap
+                // happens to list: the palette is where you go when you
+                // do not know the key, so it is the one place a second
+                // key is worth learning.
+                trailing: e.action.chords().join("  ·  "),
+                matches: Vec::new(),
+                current: false,
+            })
+            .collect()
+    }
+
     fn picker_rows(&self, shell: &Shell) -> Option<(String, &'static str, Vec<PickRow>)> {
         let (title, hint, rows) = match self.surface {
             ModalSurface::DescribeCommand => (
@@ -22313,38 +22389,12 @@ impl ModalApp {
                 // Narrowed here, like every other picker: `picker_view`
                 // marks what matched, it does not decide what survives.
                 filtered(
-                    self.palette_shared()
-                        .iter()
-                        .map(|e| PickRow {
-                            label: e.label.clone(),
-                            detail: e.description.clone(),
-                            trailing: e.action.chords().join("  \u{b7}  "),
-                            matches: Vec::new(),
-                            current: false,
-                        })
-                        .collect::<Vec<_>>(),
+                    self.command_pick_rows(),
                     self.prompt_text().unwrap_or_default(),
                     |r: &PickRow| r.label.clone(),
                 ),
             ),
-            ModalSurface::Palette => (
-                "commands".to_owned(),
-                "RET runs",
-                self.palette_shared()
-                    .iter()
-                    .map(|e| PickRow {
-                        label: e.label.clone(),
-                        detail: e.description.clone(),
-                        // Every key that runs it, not the first one the
-                        // keymap happens to list: the palette is where
-                        // you go when you do not know the key, so it is
-                        // the one place a second key is worth learning.
-                        trailing: e.action.chords().join("  ·  "),
-                        matches: Vec::new(),
-                        current: false,
-                    })
-                    .collect::<Vec<_>>(),
-            ),
+            ModalSurface::Palette => ("commands".to_owned(), "RET runs", self.command_pick_rows()),
             ModalSurface::Buffers => (
                 "buffers".to_owned(),
                 "RET opens \u{b7} the one you are in is marked",
@@ -22369,23 +22419,7 @@ impl ModalApp {
             ModalSurface::Blocks => (
                 "source blocks".to_owned(),
                 "RET goes to the file it is in",
-                self.filtered_blocks(shell)
-                    .into_iter()
-                    .map(|BlockRow { file, lang, line }| PickRow {
-                        label: line,
-                        // Vault-relative: the absolute path of every
-                        // file in the vault you are looking at is
-                        // mostly the same prefix, repeated down the
-                        // list and pushing the part that differs off
-                        // the end of the row.
-                        detail: std::path::Path::new(&file)
-                            .strip_prefix(shell.vault.root())
-                            .map_or_else(|_| file.clone(), |rel| rel.display().to_string()),
-                        trailing: lang,
-                        matches: Vec::new(),
-                        current: false,
-                    })
-                    .collect(),
+                self.block_pick_rows(shell),
             ),
             ModalSurface::Messages => (
                 "messages".to_owned(),

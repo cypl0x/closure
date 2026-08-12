@@ -273,7 +273,7 @@ pub const NOWEB_DEPTH_LIMIT: usize = 32;
 /// The body of the `#+NAME: name` source block in `doc`, if there is
 /// one.
 fn named_block(doc: &str, name: &str) -> Option<String> {
-    let mut lines = doc.lines().peekable();
+    let mut lines = doc.lines();
     while let Some(line) = lines.next() {
         let t = line.trim_start();
         let Some(rest) = t
@@ -389,7 +389,7 @@ pub enum CallError {
 
 /// The language of the `#+NAME: name` source block in `doc`.
 fn named_block_language(doc: &str, name: &str) -> Option<String> {
-    let mut lines = doc.lines().peekable();
+    let mut lines = doc.lines();
     while let Some(line) = lines.next() {
         let t = line.trim_start();
         let Some(rest) = t

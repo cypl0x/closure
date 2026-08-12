@@ -469,6 +469,12 @@ impl Column {
     /// Cell value of this column for `h` (empty string when absent).
     #[must_use]
     pub fn extract(&self, h: &DocHeadline) -> String {
+        // `Property` and `Relation` read the same here and are not the
+        // same thing: a relation *is* stored as a property, and what
+        // makes it a relation is the vault it resolves against, which
+        // this signature does not have. Merged into one arm the
+        // distinction — and the comment explaining it — would be gone.
+        #[allow(clippy::match_same_arms)]
         match self {
             Self::Title => h.title().to_owned(),
             Self::Todo => h.todo().unwrap_or("").to_owned(),
@@ -855,31 +861,30 @@ impl ViewSpec {
         // The grouping column need not be one of the shown columns, so
         // it is extracted here rather than looked up by position.
         let at = self.columns.iter().position(|c| c == by);
-        match at {
-            Some(i) => group_cells(cells, i),
-            None => {
-                let mut keyed: Vec<Vec<String>> = Vec::new();
-                for (row, m) in cells.into_iter().zip(self.rows(vault)) {
-                    let mut r = row;
-                    r.push(by.extract_in(m.headline, vault));
-                    keyed.push(r);
-                }
-                let last = keyed.first().map_or(0, |r| r.len().saturating_sub(1));
-                group_cells(keyed, last)
-                    .into_iter()
-                    .map(|(k, rows)| {
-                        (
-                            k,
-                            rows.into_iter()
-                                .map(|mut r| {
-                                    r.pop();
-                                    r
-                                })
-                                .collect(),
-                        )
-                    })
-                    .collect()
+        if let Some(i) = at {
+            group_cells(&cells, i)
+        } else {
+            let mut keyed: Vec<Vec<String>> = Vec::new();
+            for (row, m) in cells.into_iter().zip(self.rows(vault)) {
+                let mut r = row;
+                r.push(by.extract_in(m.headline, vault));
+                keyed.push(r);
             }
+            let last = keyed.first().map_or(0, |r| r.len().saturating_sub(1));
+            group_cells(&keyed, last)
+                .into_iter()
+                .map(|(k, rows)| {
+                    (
+                        k,
+                        rows.into_iter()
+                            .map(|mut r| {
+                                r.pop();
+                                r
+                            })
+                            .collect(),
+                    )
+                })
+                .collect()
         }
     }
 }
@@ -904,7 +909,7 @@ fn format_number(n: f64) -> String {
 /// A row whose group value is empty keeps its own group rather than
 /// being dropped: hiding it would make the table disagree with the
 /// query that produced it.
-fn group_cells(cells: Vec<Vec<String>>, at: usize) -> Vec<(String, Vec<Vec<String>>)> {
+fn group_cells(cells: &[Vec<String>], at: usize) -> Vec<(String, Vec<Vec<String>>)> {
     let mut out: Vec<(String, Vec<Vec<String>>)> = Vec::new();
     let mut keys: Vec<String> = cells
         .iter()
@@ -915,7 +920,7 @@ fn group_cells(cells: Vec<Vec<String>>, at: usize) -> Vec<(String, Vec<Vec<Strin
     for key in keys {
         let rows: Vec<Vec<String>> = cells
             .iter()
-            .filter(|r| r.get(at).map(String::as_str).unwrap_or("") == key)
+            .filter(|r| r.get(at).map_or("", String::as_str) == key)
             .cloned()
             .collect();
         out.push((key, rows));
@@ -961,11 +966,11 @@ pub fn render_grouped_table(header: &[String], groups: &[(String, Vec<Vec<String
             line += 1;
         }
     }
-    let head = lines
-        .iter()
-        .take(2)
-        .map(|l| format!("{l}\n"))
-        .collect::<String>();
+    let head = lines.iter().take(2).fold(String::new(), |mut acc, l| {
+        acc.push_str(l);
+        acc.push('\n');
+        acc
+    });
     format!("{head}{out}")
 }
 
@@ -1183,7 +1188,7 @@ fn widget_begin_parts(line: &str) -> Option<(String, Vec<(String, InputType)>)> 
     let name = after.split_whitespace().next()?;
     let inputs = params
         .split_once(":inputs")
-        .and_then(|(_, a)| a.trim_start().split_whitespace().next())
+        .and_then(|(_, a)| a.split_whitespace().next())
         .map(|list| {
             list.split(',')
                 .map(str::trim)
@@ -1283,6 +1288,9 @@ fn parse_reference(inner: &str) -> (String, Vec<(String, String)>) {
         if key.trim().is_empty() || key.contains(char::is_whitespace) {
             break;
         }
+        // `map_or_else` here would put the twenty-line brace-counting
+        // scan below into a closure argument, which is not clearer.
+        #[allow(clippy::option_if_let_else)]
         let (value, tail) = if let Some(quoted) = after_eq.strip_prefix('"') {
             match quoted.split_once('"') {
                 Some((v, t)) => (v, t),
@@ -1416,7 +1424,7 @@ fn expand_widget_name(
             });
         }
         if let Some(slot) = scope.iter_mut().find(|(n, _)| n == k) {
-            slot.1 = v.clone();
+            slot.1.clone_from(v);
         } else {
             scope.push((k.clone(), v.clone()));
         }

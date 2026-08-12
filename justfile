@@ -37,11 +37,19 @@ reclaim:
 #
 # The last line is treefmt, because a gate that differs from CI is a
 # gate that lets CI fail for a reason nobody ran into locally.
+#
+# `-D warnings` on every clippy line for that same reason, and it was
+# missing for a long time. CI is `nix flake check` and nothing else, and
+# its clippy check has always been `-- -D warnings`; these three lines
+# only warned. So `just gates` exited 0 on a tree CI rejects, which is
+# the precise failure the paragraph above was written about — sitting
+# two lines under it. Forty warning sites had accumulated behind the
+# gap, including three dead constants.
 gates:
     cargo test --workspace -j 4
-    cargo clippy --workspace --all-targets -j 4
-    cargo clippy -p closure-shell-gpui --features gpui-test --all-targets -j 4
-    cargo clippy -p closure-shell-gpui --features gpui --all-targets -j 4
+    cargo clippy --workspace --all-targets -j 4 -- -D warnings
+    cargo clippy -p closure-shell-gpui --features gpui-test --all-targets -j 4 -- -D warnings
+    cargo clippy -p closure-shell-gpui --features gpui --all-targets -j 4 -- -D warnings
     cargo test -p closure-shell-gpui --features gpui-test -j 4
     cargo fmt --all -- --check
     # …and the formatter CI actually runs. `cargo fmt` sees Rust;

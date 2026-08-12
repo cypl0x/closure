@@ -35,7 +35,9 @@ fn a_command_says_which_file_implements_it() {
     let app = ModalApp::new(InputMode::Doom);
     let told = app.describe_command("toggle-wrap").expect("a real command");
     assert!(
-        told.source.ends_with(".rs"),
+        std::path::Path::new(&told.source)
+            .extension()
+            .is_some_and(|e| e == "rs"),
         "not a source file: {}",
         told.source
     );

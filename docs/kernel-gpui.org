@@ -941,6 +941,60 @@ the cluster, which is why it is not there.
 
 Conformance 83% → 85% on both numbers, floors raised.
 
+* DONE Gates: the local gate is weaker than CI, and CI is red
+=just gates= runs clippy three times and none of the three passes
+=-D warnings=. =nix flake check=, which is all CI runs, uses
+=clippy --workspace --all-targets --locked -- -D warnings=. So the
+command the loop treats as the gate exits 0 on a tree that CI rejects,
+and the justfile's own comment says exactly why that is not allowed:
+"a gate that differs from CI is a gate that lets CI fail for a reason
+nobody ran into locally".
+
+It is not hypothetical. Forty distinct warning sites are outstanding
+right now, every one of them in code written this session, including
+three constants — =PANE_ROW_H=, =PANE_ROW_PAD=, =PANE_WRAP_GUESS= —
+that are dead: leftovers from the pane-height attempt that no longer
+has a caller. Dead constants in the file that guesses at row heights
+are the worst possible thing to leave lying there, because the next
+person to open that item will read them as the current design.
+
+My own fault twice over: I have been grepping gate logs for
+=^warning: (unused|missing|unre|dead)= all session, which is a pattern
+narrow enough to miss most of clippy, and I never once checked what CI
+demanded that the local gate did not.
+
+Acceptance: =nix develop -c just gates= exits 0 with =-D warnings= on
+every clippy line, and =grep -c "^warning" = on its output prints 0.
+
+All three clippy lines carry =-D warnings= now, and the forty sites are
+gone. Thirty-odd were mechanical. Six were not:
+
+The three "dead" constants were not dead. =PANE_ROW_H=, =PANE_ROW_PAD=
+and =PANE_WRAP_GUESS= have callers; the callers sit behind
+=#[cfg(feature = "gpui")]= and the constants did not, so the *default*
+build saw them unused. Deleting them — which is what "never used" reads
+as, and what I was about to do — would have broken the window. They are
+gated like their callers now.
+
+Two clippy suggestions were refused with a reason in the source rather
+than applied: merging =Column::Property= and =Column::Relation= into one
+match arm (they read the same *without a vault*, which is the thing the
+comment beside them explains, and one arm has nowhere to put that), and
+=map_or_else= over a twenty-line brace-counting scan.
+
+Seven functions were over the hundred-line limit, and every one of them
+had a real seam rather than needing an allow: =command_pick_rows= (the
+palette and describe-command built the same rows two arms apart, one
+writing the separator escaped and the other as the character),
+=block_pick_rows=, =pick_listed=, =preempt= (the two lookups that run
+before any surface sees a key — a concept the comments already named),
+=row_plus=, =windowed_rows= (the manual and the journal spelled out the
+same seven arguments), and =begin_frame= (sixty lines of per-frame
+housekeeping that ran before anything was painted). Every one of those
+names a thing that was already there and had not been said.
+
+The window was re-run after the refactor and paints identically.
+
 * TODO Bug: the gpui window stops presenting on the lavapipe rasteriser
 Diagnosed above and not fixed: the wedge is in the presentation path
 (blade/Vulkan on lavapipe), below anything this queue owns. Input is
