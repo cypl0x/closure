@@ -6,25 +6,40 @@ break.
 ## Layer diagram
 
 ```
- ┌─────────────────────────────────────────────────────────────────────┐
- │ L6 Input modes      closure-input   closure-whichkey                │
- ├─────────────────────────────────────────────────────────────────────┤
- │ L5 Shells           closure-tui   closure-cli   closure-shell-egui  │
- │                     closure-shell-web  -gpui  -tauri  -flutter  -qt │
- ├─────────────────────────────────────────────────────────────────────┤
- │ L4 Adapters (I8)    closure-llm  closure-mcp  closure-lsp  -acp     │
- │                     closure-cron  closure-plugin-host  -sniffer     │
- ├─────────────────────────────────────────────────────────────────────┤
- │ L3 Evaluation       closure-eval   closure-crdt   closure-sync      │
- ├─────────────────────────────────────────────────────────────────────┤
- │ L2 Kernel           closure-core   closure-store   closure-query    │
- │                     closure-undo                                    │
- ├─────────────────────────────────────────────────────────────────────┤
- │ L1 Parsers          closure-org   closure-markdown  -tree-sitter    │
- ├─────────────────────────────────────────────────────────────────────┤
- │ L0 Foundation       closure-spec   closure-config   closure-util    │
- └─────────────────────────────────────────────────────────────────────┘
+ L6 Input modes    closure-input  closure-whichkey
+ ─────────────────────────────────────────────────────────────────────
+ L5 Shells         closure-shell-core   closure-tui   closure-cli
+                   closure-shell-gpui   closure-shell-egui
+                   closure-shell-web    closure-shell-tauri
+                   closure-shell-gtk    closure-shell-qt
+                   closure-shell-slint  closure-wasm
+ ─────────────────────────────────────────────────────────────────────
+ L4 Adapters (I8)  closure-llm   closure-mcp    closure-lsp
+                   closure-acp   closure-a2a    closure-cron
+                   closure-plugin-host   closure-sniffer
+                   closure-record        closure-jsonrpc
+ ─────────────────────────────────────────────────────────────────────
+ L3 Evaluation     closure-eval  closure-crdt   closure-sync
+ ─────────────────────────────────────────────────────────────────────
+ L2 Kernel         closure-core  closure-store  closure-query
+                   closure-undo
+ ─────────────────────────────────────────────────────────────────────
+ L1 Parsers        closure-org   closure-markdown   closure-tree-sitter
+ ─────────────────────────────────────────────────────────────────────
+ L0 Foundation     closure-config
 ```
+
+Every crate in `crates/` appears above and nothing appears that is not
+there, held by `closure-cli/tests/architecture_is_true.rs`. It used to
+name `closure-spec`, `closure-util` and `closure-flutter`, none of
+which exist, and omit `closure-shell-core`, which is the largest crate
+in the workspace and the thing every shell is built from — wrong in
+both directions at once, which is worse than no diagram, because this
+is the page somebody reads first.
+
+`closure-shell-core` is where the layer boundary actually is. Every
+shell above it is a renderer of the `ViewTree` it derives; that is what
+makes a shell replaceable and what I7 is about.
 
 Arrows point up: each layer depends only on the layers below it.
 
