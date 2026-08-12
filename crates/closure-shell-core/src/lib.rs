@@ -15578,10 +15578,15 @@ impl ModalApp {
     /// silently rendered as nothing would read as an empty page, which
     /// is the worst of the three things it could do.
     fn expanded_for_preview(&self, shell: &Shell, text: &str) -> (String, Option<String>) {
+        // A clocktable is a dynamic block like a widget and is answered
+        // from the vault rather than from a definition, so it is filled
+        // in first and the result goes through the widget expander like
+        // any other text.
+        let text = &Self::clocktables_for_preview(shell, text);
         // The common case is a headline with no composition in it, and
         // it costs one substring scan over text that is already capped.
         if !text.contains("closure-widget") {
-            return (text.to_owned(), None);
+            return (text.clone(), None);
         }
         let revision = shell.vault.revision();
         {
@@ -15595,7 +15600,45 @@ impl ModalApp {
         }
         let memo = self.memos.widgets.borrow();
         closure_query::expand_widgets_with(text, &memo.by_name)
-            .map_or_else(|e| (text.to_owned(), Some(e.to_string())), |v| (v, None))
+            .map_or_else(|e| (text.clone(), Some(e.to_string())), |v| (v, None))
+    }
+
+    /// Replace every `#+BEGIN: clocktable ... #+END:` block with the
+    /// time it reports.
+    ///
+    /// A view and never a write (I12). Org fills the block in by
+    /// rewriting the file, which makes a document's bytes depend on
+    /// when it was last refreshed — the one thing I1 exists to rule
+    /// out. The block keeps the two lines the author typed and the
+    /// reader gets the table.
+    fn clocktables_for_preview(shell: &Shell, text: &str) -> String {
+        // The scan is one substring check on text that is already
+        // capped, for the same reason the widget path guards itself:
+        // landing on a headline must not cost the vault (I11).
+        if !text.contains("#+BEGIN: clocktable") {
+            return text.to_owned();
+        }
+        let mut out = String::with_capacity(text.len());
+        let mut lines = text.lines();
+        while let Some(line) = lines.next() {
+            let Some(_params) = closure_org::clocktable_params(line) else {
+                out.push_str(line);
+                out.push('\n');
+                continue;
+            };
+            // The block's own body is whatever a previous refresh left
+            // there — in this file or in an Emacs — and is not an input
+            // to the answer. Skipped to `#+END:` and replaced.
+            for l in lines.by_ref() {
+                if l.trim().eq_ignore_ascii_case("#+END:") {
+                    break;
+                }
+            }
+            out.push_str(&closure_org::render_clocktable(
+                &shell.vault.clock_minutes(),
+            ));
+        }
+        out
     }
 
     fn derive_detail(&self, shell: &Shell, id: Option<&str>) -> Option<Detail> {

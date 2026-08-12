@@ -33,7 +33,7 @@ use closure_org::{CONFORMANCE, Support, conformance_rate, offered_rate};
 ///
 /// Which is the number worth ratcheting. 100% of a list somebody chose
 /// is a claim about the list.
-const FLOOR: u32 = 88;
+const FLOOR: u32 = 90;
 
 #[test]
 fn the_rate_never_falls() {
@@ -102,7 +102,7 @@ fn the_matrix_is_worth_having() {
 /// parsed and invisible. The gap is the point of two numbers: it was 91
 /// and 70 before the unwired parsers were wired up, and nothing about
 /// the first number would have shown that.
-const OFFERED_FLOOR: u32 = 88;
+const OFFERED_FLOOR: u32 = 90;
 
 #[test]
 fn what_a_shell_offers_never_falls_either() {

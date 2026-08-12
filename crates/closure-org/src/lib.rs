@@ -10054,10 +10054,10 @@ pub const CONFORMANCE: &[Construct] = &[
     },
     Construct {
         name: "clocktable dynamic block",
-        support: Support::Preserved,
-        evidence: "",
-        missing: "#+BEGIN: clocktable is never filled in",
-        offered: "",
+        support: Support::Understood,
+        evidence: "crates/closure-org/tests/clocktable.rs",
+        missing: "",
+        offered: "crates/closure-shell-core/tests/clocktable_preview.rs",
     },
     Construct {
         name: "#+ATTR_* export attributes",
@@ -11955,6 +11955,95 @@ fn is_timestamp_content(s: &str) -> bool {
         && b[7] == b'-'
         && b[8].is_ascii_digit()
         && b[9].is_ascii_digit()
+}
+
+/// How far a `#+BEGIN: clocktable` looks for clocked time.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Scope {
+    /// The file the block sits in. Org's default, and what someone
+    /// writing a weekly note means.
+    File,
+    /// Every file in the vault.
+    Vault,
+}
+
+/// What a `#+BEGIN: clocktable` block asks for.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Clocktable {
+    /// `:maxlevel N` — how deep to report, when it says.
+    pub maxlevel: Option<u8>,
+    /// `:scope file` (default) or `:scope vault`.
+    pub scope: Scope,
+}
+
+/// Read a `#+BEGIN: clocktable ...` line, if that is what it is.
+///
+/// `None` for any other dynamic block. `#+BEGIN: closure-widget` is one
+/// of these too, and reading it as a clocktable would replace somebody's
+/// template with a time report.
+#[must_use]
+pub fn clocktable_params(line: &str) -> Option<Clocktable> {
+    let rest = line.trim().strip_prefix("#+BEGIN:")?.trim_start();
+    let rest = rest.strip_prefix("clocktable")?;
+    // Guard the boundary: `clocktable-extra` is not this block.
+    if !rest.is_empty() && !rest.starts_with(char::is_whitespace) {
+        return None;
+    }
+    let mut words = rest.split_whitespace();
+    let mut out = Clocktable {
+        maxlevel: None,
+        scope: Scope::File,
+    };
+    while let Some(w) = words.next() {
+        match w {
+            ":maxlevel" => out.maxlevel = words.next().and_then(|v| v.parse().ok()),
+            // Not a match guard: a guard that consumes from `words`
+            // runs for its side effect and stops running the moment an
+            // arm above it matches, which is the kind of thing that
+            // works until somebody reorders the arms.
+            ":scope" => {
+                out.scope = if words.next() == Some("vault") {
+                    Scope::Vault
+                } else {
+                    Scope::File
+                };
+            }
+            _ => {}
+        }
+    }
+    Some(out)
+}
+
+/// `H:MM`, the way org's own clocktable writes a duration.
+///
+/// Not `65m` and not `1.08h`: a file read by both closure and Emacs has
+/// to agree about what the number means.
+#[must_use]
+pub fn render_clock_minutes(minutes: u64) -> String {
+    format!("{}:{:02}", minutes / 60, minutes % 60)
+}
+
+/// The clocked time in `rows` as an org table.
+///
+/// A view and never a write (I12). Org fills the block in by rewriting
+/// the file, which makes a document's bytes depend on when it was last
+/// refreshed — not something you can diff, sync or roundtrip (I1). This
+/// hands back the table for a shell to paint where the block sits.
+#[must_use]
+pub fn render_clocktable(rows: &[(String, u64)]) -> String {
+    use std::fmt::Write as _;
+    if rows.is_empty() {
+        // An empty table looks like a bug in the report. Saying so is
+        // an answer; two header rows and nothing under them is not.
+        return "no clocked time".to_owned();
+    }
+    let total: u64 = rows.iter().map(|(_, m)| m).sum();
+    let mut out = String::from("| Headline | Time |\n|----------+------|\n");
+    for (title, minutes) in rows {
+        let _ = writeln!(out, "| {title} | {} |", render_clock_minutes(*minutes));
+    }
+    let _ = writeln!(out, "| *Total time* | *{}* |", render_clock_minutes(total));
+    out
 }
 
 /// What a timestamp says about when, read rather than stored.

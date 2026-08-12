@@ -1044,6 +1044,51 @@ something at nine is a thing you have to be somewhere for.
 
 Conformance 85% → 88% on both numbers, floors raised.
 
+* DONE Org: #+BEGIN: clocktable reports the time you clocked
+=CLOCK:= lines are parsed, =Vault::clock_minutes= sums them per
+headline, and the CLI has =clock-report=. The one place a reader would
+look for the answer — a =#+BEGIN: clocktable= block in the file the
+work is written in — is empty. Every part exists and the block is not
+connected to any of them.
+
+The interesting question is what "filled in" means here. Org writes the
+table into the file, so a document's bytes depend on when it was last
+refreshed. closure cannot do that (I12, and I1 behind it): a clocktable
+is a *view*, rendered where the block sits and never written back. Same
+resolution as =#+BEGIN: closure-widget=, and worth stating in the item
+because "org does X" is the argument that would otherwise win.
+
+Acceptance: =nix develop -c cargo test -p closure-org --test clocktable=
+
+=clocktable_params= reads the block's options (=:maxlevel=, =:scope
+file|vault=) and =render_clocktable= turns the rows =Vault::clock_minutes=
+already produced into an org table. Durations are =H:MM= — org's own
+format, not =65m= and not =1.08h=, because a file read by closure and
+by Emacs has to agree what the number means. Nothing clocked reads "no
+clocked time" rather than a table with no rows under it, which looks
+like a broken report.
+
+The block's *existing body* is skipped and replaced rather than parsed.
+Whatever is between =#+BEGIN:= and =#+END:= is what some previous
+refresh left there — possibly an Emacs's — and is not an input to the
+answer.
+
+Rendered through the same preview seam as widgets, entities, includes
+and footnotes, and the screenshot is the clearest picture of I12 in the
+session: the detail pane shows six lines of table while the meta line
+above it says =2 lines=, because the file still holds exactly the
+=#+BEGIN:= / =#+END:= pair the author typed. Org fills a clocktable in
+by rewriting the document; a document whose bytes depend on when it was
+last refreshed is not one you can diff, sync or roundtrip.
+
+The gate caught three warnings in this code as it was written — a
+collapsible =if=, two =format!= appends and an unused =self= — which is
+the first time the =-D warnings= change paid for itself. Clippy's fix
+for the first would have put a side-effecting iterator call in a match
+guard; written out instead, with the reason.
+
+Conformance 88% → 90% on both numbers, floors raised.
+
 * TODO Bug: the gpui window stops presenting on the lavapipe rasteriser
 Diagnosed above and not fixed: the wedge is in the presentation path
 (blade/Vulkan on lavapipe), below anything this queue owns. Input is
