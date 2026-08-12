@@ -1645,6 +1645,15 @@ the window to *change* should run the command or click the target.
 And the peers surface is reached by the command =sync=, not =peers=;
 =peers= is the rail id. That cost a red test to discover.
 
+15 → 10: =jobs-pane=, =jobs-empty=, =job-row-{}=, =bridges-pane= and
+=bridge-row-{}=. The empty state is asserted *and* so is its absence
+when there are jobs — painting both would satisfy either test alone.
+That pairing is not hypothetical here: =job_rows= once read each whole
+document as a cron listing, the parse failed on the first =* Headline=,
+and =.ok()= dropped every job, so the pane was empty in any vault with
+a headline in it. Nothing caught it because nothing asserted that a
+vault *with* a job paints a row.
+
 Acceptance: =UNLOOKED_CEILING= in
 =crates/closure-shell-gpui/tests/selectors_are_real.rs= reaches 0.
 
