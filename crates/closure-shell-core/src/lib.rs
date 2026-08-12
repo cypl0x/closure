@@ -20378,6 +20378,45 @@ impl ModalApp {
             .collect()
     }
 
+    /// The selected headline's properties, with the file's
+    /// `#+PROPERTY:` defaults behind them.
+    ///
+    /// `(key, value, inherited)`. A default is *marked* rather than
+    /// mixed in silently, because a reader deciding whether to edit a
+    /// drawer needs to know whether the value is in it — "delete this
+    /// line to change it" and "change the line at the top of the file"
+    /// are different instructions.
+    ///
+    /// The headline's own drawer wins. If the file's value overrode it,
+    /// `#+PROPERTY:` would be a way to break every file that used one.
+    ///
+    /// A view and never a write (I12): the default stays where the
+    /// author put it.
+    #[must_use]
+    pub fn effective_properties(&self, shell: &Shell) -> Vec<(String, String, bool)> {
+        let Some(d) = self.detail_shared(shell) else {
+            return Vec::new();
+        };
+        let mut out: Vec<(String, String, bool)> = d
+            .properties
+            .iter()
+            .map(|(k, v)| (k.clone(), v.clone(), false))
+            .collect();
+        let Some(doc) = shell
+            .vault
+            .iter()
+            .find_map(|(p, doc)| (p.display().to_string() == d.path).then_some(doc))
+        else {
+            return out;
+        };
+        for (key, value) in closure_org::document_properties(&doc.source()) {
+            if !out.iter().any(|(k, _, _)| k.eq_ignore_ascii_case(&key)) {
+                out.push((key, value, true));
+            }
+        }
+        out
+    }
+
     /// Radio-target mentions in the selected headline's body, as
     /// `(word, target)`.
     ///

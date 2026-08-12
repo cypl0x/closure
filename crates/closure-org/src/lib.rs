@@ -10079,10 +10079,10 @@ pub const CONFORMANCE: &[Construct] = &[
     },
     Construct {
         name: "#+PROPERTY: file-wide defaults",
-        support: Support::Preserved,
-        evidence: "",
-        missing: "a file-level default never reaches the headlines under it",
-        offered: "",
+        support: Support::Understood,
+        evidence: "crates/closure-org/tests/property_inheritance.rs",
+        missing: "",
+        offered: "crates/closure-shell-core/tests/property_defaults.rs",
     },
     Construct {
         name: "#+LINK: abbreviations",
@@ -10682,6 +10682,59 @@ pub fn document_columns(doc: &OrgDoc) -> Option<Vec<ColumnSpec>> {
                 .or_else(|| t.strip_prefix("#+columns:"))
         })
         .and_then(columns_format)
+}
+
+/// Every `#+PROPERTY: key value` in `src`, keyed the way a drawer
+/// writes it.
+///
+/// Org's way of saying "unless a headline says otherwise" — usually
+/// `#+PROPERTY: header-args :tangle no` at the top of a literate file,
+/// so that every block inherits it and the one that wants tangling
+/// says so itself.
+///
+/// Keys come back upper-cased because that is how `:PROPERTIES:`
+/// drawers spell them and the keyword is conventionally lower-case. A
+/// lookup that did not agree on one of the two would find the default
+/// only for keys somebody happened to type the same way twice.
+///
+/// Reading, never rewriting (I1/I12): the default is not copied into
+/// anybody's drawer. Writing `:HEADER-ARGS:` onto forty headlines
+/// because one line said so would turn opening a file into a commit.
+#[must_use]
+pub fn document_properties(src: &str) -> std::collections::BTreeMap<String, String> {
+    let mut out = std::collections::BTreeMap::new();
+    let mut in_block = false;
+    for line in src.lines() {
+        let t = line.trim_start();
+        let lower = t.to_ascii_lowercase();
+        // An example block showing somebody how to write one is not a
+        // default for this file — the rule `#+STARTUP:` follows.
+        if lower.starts_with("#+begin_") {
+            in_block = true;
+            continue;
+        }
+        if lower.starts_with("#+end_") {
+            in_block = false;
+            continue;
+        }
+        if in_block {
+            continue;
+        }
+        let Some(rest) = t.get("#+PROPERTY:".len()..) else {
+            continue;
+        };
+        if !lower.starts_with("#+property:") {
+            continue;
+        }
+        let rest = rest.trim();
+        // The key is the first word; everything after it is the value,
+        // spaces and all — `:tangle no :results silent` is one value.
+        let Some((key, value)) = rest.split_once(char::is_whitespace) else {
+            continue;
+        };
+        out.insert(key.to_ascii_uppercase(), value.trim().to_owned());
+    }
+    out
 }
 
 /// How a document's `#+STARTUP:` asks to be met.

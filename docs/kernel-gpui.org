@@ -1198,9 +1198,16 @@ Added to =CONFORMANCE= while declining the other two, because a matrix
 with nothing Preserved is a matrix that stopped looking. They are real
 and they are small:
 
-- =#+PROPERTY: header-args :tangle no= — a file-wide default that never
-  reaches the headlines under it. Property lookup already walks a
-  drawer; this is one more place to look before giving up.
+- [X] =#+PROPERTY: header-args :tangle no= — done. =document_properties=
+  reads them, keys upper-cased so =#+PROPERTY: header-args= and
+  =:HEADER-ARGS:= are the same property; a directive quoted inside an
+  example block is not a default, the rule =#+STARTUP:= already
+  follows. =effective_properties= puts the drawer first and the file's
+  defaults behind it, and marks the inherited ones — "delete this line
+  to change it" and "change the line at the top of the file" are
+  different instructions. The window prints =(from #+PROPERTY:)= beside
+  them. Never written into a drawer (I12): opening a file must not be a
+  commit. Conformance 88% → 91%, understood floor 40 → 41.
 - =#+LINK: gh https://github.com/%s= — =[[gh:owner/repo]]= is not
   expanded by its own template. Link resolution exists; this is a
   rewrite before it.

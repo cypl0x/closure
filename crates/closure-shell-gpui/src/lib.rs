@@ -4932,6 +4932,33 @@ impl GpuiView {
         }
     }
 
+    /// The selected headline's drawer, with the file's `#+PROPERTY:`
+    /// defaults behind it, as the lines the detail pane prints.
+    ///
+    /// An inherited value is marked rather than mixed in silently:
+    /// "delete this line to change it" and "change the line at the top
+    /// of the file" are different instructions, and a reader about to
+    /// edit a drawer needs to know which one applies.
+    ///
+    /// `:ID:` is left out — it is in the metadata strip below with an
+    /// icon and a colour that says bookkeeping, and printing it here as
+    /// well made the longest line in the header the one you need least.
+    fn property_lines(&self) -> String {
+        self.app
+            .effective_properties(&self.shell)
+            .iter()
+            .filter(|(k, _, _)| !k.eq_ignore_ascii_case("ID"))
+            .map(|(k, v, inherited)| {
+                if *inherited {
+                    format!(":{k}: {v}   (from #+PROPERTY:)")
+                } else {
+                    format!(":{k}: {v}")
+                }
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
     /// Notion's plus beside row `i`: a way to add a block without
     /// knowing a chord, which is the whole premise of the mode.
     ///
@@ -8548,13 +8575,7 @@ impl GpuiView {
         // `:ID:` is in the metadata strip below, with an icon and a
         // colour that says "bookkeeping". Printing it here as well made
         // the longest line in the header the one you need least.
-        let props = d
-            .properties
-            .iter()
-            .filter(|(k, _)| !k.eq_ignore_ascii_case("ID"))
-            .map(|(k, v)| format!(":{k}: {v}"))
-            .collect::<Vec<_>>()
-            .join("\n");
+        let props = self.property_lines();
         let tags = if d.tags.is_empty() {
             "+ tags".to_owned()
         } else {

@@ -33,7 +33,7 @@ use closure_org::{CONFORMANCE, Support, conformance_rate, offered_rate};
 ///
 /// Which is the number worth ratcheting. 100% of a list somebody chose
 /// is a claim about the list.
-const FLOOR: u32 = 88;
+const FLOOR: u32 = 91;
 
 /// How many constructs are understood, as a count rather than a ratio.
 ///
@@ -51,7 +51,7 @@ const FLOOR: u32 = 88;
 /// growing the list never moves it. So the ratio floor may be lowered
 /// when — and only when — the list grows, and this number never falls
 /// for any reason at all.
-const UNDERSTOOD_FLOOR: usize = 40;
+const UNDERSTOOD_FLOOR: usize = 41;
 
 #[test]
 fn the_number_understood_never_falls() {
@@ -137,7 +137,7 @@ fn the_matrix_is_worth_having() {
 /// parsed and invisible. The gap is the point of two numbers: it was 91
 /// and 70 before the unwired parsers were wired up, and nothing about
 /// the first number would have shown that.
-const OFFERED_FLOOR: u32 = 88;
+const OFFERED_FLOOR: u32 = 91;
 
 #[test]
 fn what_a_shell_offers_never_falls_either() {
