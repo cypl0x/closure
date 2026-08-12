@@ -10027,11 +10027,67 @@ pub const CONFORMANCE: &[Construct] = &[
         offered: "crates/closure-store/tests/tangle_noweb.rs",
     },
     Construct {
-        name: "radio target",
+        name: "statistics cookie [1/3]",
         support: Support::Preserved,
         evidence: "",
-        missing: "no implicit linking of matching text",
+        missing: "a cookie is text; nothing counts the children behind it",
         offered: "",
+    },
+    Construct {
+        name: "#+STARTUP:",
+        support: Support::Preserved,
+        evidence: "",
+        missing: "a file's own fold and display preferences are ignored",
+        offered: "",
+    },
+    Construct {
+        name: "clocktable dynamic block",
+        support: Support::Preserved,
+        evidence: "",
+        missing: "#+BEGIN: clocktable is never filled in",
+        offered: "",
+    },
+    Construct {
+        name: "#+ATTR_* export attributes",
+        support: Support::Preserved,
+        evidence: "",
+        missing: "carried through, never applied to anything",
+        offered: "",
+    },
+    Construct {
+        name: "timestamp time range",
+        support: Support::Preserved,
+        evidence: "",
+        missing: "<2026-08-12 Wed 10:00-11:00> reads as a date, not a span",
+        offered: "",
+    },
+    Construct {
+        name: "diary sexp timestamp",
+        support: Support::Preserved,
+        evidence: "",
+        missing: "<%%(diary-float t 4 2)> is not evaluated",
+        offered: "",
+    },
+    Construct {
+        name: "subscript / superscript",
+        support: Support::Preserved,
+        evidence: "",
+        missing: "a_1 and a^2 are plain text, not marked up",
+        offered: "",
+    },
+    Construct {
+        name: "table column groups",
+        support: Support::Preserved,
+        evidence: "",
+        missing: "|<r>| alignment rows are kept and never applied",
+        offered: "",
+    },
+    Construct {
+        name: "radio target",
+        support: Support::Understood,
+        evidence: "crates/closure-org/tests/radio_targets.rs",
+        missing: "",
+        offered: "crates/closure-shell-core/tests/radio_preview.rs",
     },
     Construct {
         name: "macro {{{name}}}",
@@ -10528,6 +10584,90 @@ pub fn document_columns(doc: &OrgDoc) -> Option<Vec<ColumnSpec>> {
                 .or_else(|| t.strip_prefix("#+columns:"))
         })
         .and_then(columns_format)
+}
+
+/// Every `<<<name>>>` radio target defined in `doc`.
+///
+/// Lower-cased, because org matches them case-insensitively and the
+/// comparison should be done once here rather than per occurrence.
+#[must_use]
+pub fn radio_targets(doc: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut rest = doc;
+    while let Some(start) = rest.find("<<<") {
+        let after = &rest[start + 3..];
+        let Some(end) = after.find(">>>") else {
+            break;
+        };
+        let name = after[..end].trim();
+        if !name.is_empty() {
+            out.push(name.to_ascii_lowercase());
+        }
+        rest = &after[end + 3..];
+    }
+    out.sort();
+    out.dedup();
+    out
+}
+
+/// Where `targets` occur in `text`, as byte ranges.
+///
+/// Whole words only: "enclosure" contains "closure" and is a different
+/// word, and a substring match would link half a vault to the glossary.
+/// A target's own `<<<definition>>>` never matches — otherwise it links
+/// a word to the place it already is.
+///
+/// One pass over the text per call rather than one per target. This is
+/// the only construct whose work is per *word*, so a glossary that
+/// grows must not make every headline slower to read (I11): a naive
+/// scan-per-target is quadratic the moment somebody writes fifty of
+/// them.
+#[must_use]
+pub fn radio_matches(text: &str, targets: &[String]) -> Vec<std::ops::Range<usize>> {
+    if targets.is_empty() {
+        return Vec::new();
+    }
+    // Longest first, so "org mode" wins over a target that is only
+    // "org": the longer name is the more specific link.
+    let mut sorted: Vec<&String> = targets.iter().collect();
+    sorted.sort_by_key(|t| std::cmp::Reverse(t.len()));
+    let lower = text.to_ascii_lowercase();
+    let mut out: Vec<std::ops::Range<usize>> = Vec::new();
+    let mut at = 0usize;
+    while at < lower.len() {
+        let mut matched = None;
+        for t in &sorted {
+            if !lower[at..].starts_with(t.as_str()) {
+                continue;
+            }
+            let end = at + t.len();
+            let before_ok = at == 0
+                || !lower[..at]
+                    .chars()
+                    .next_back()
+                    .is_some_and(|c| c.is_alphanumeric());
+            let after_ok = !lower[end..]
+                .chars()
+                .next()
+                .is_some_and(|c| c.is_alphanumeric());
+            // Inside a `<<<…>>>` is a definition, not a mention.
+            let is_definition = at >= 3 && &lower[at - 3..at] == "<<<";
+            if before_ok && after_ok && !is_definition {
+                matched = Some(end);
+                break;
+            }
+        }
+        match matched {
+            Some(end) => {
+                out.push(at..end);
+                at = end;
+            }
+            None => {
+                at += lower[at..].chars().next().map_or(1, char::len_utf8);
+            }
+        }
+    }
+    out
 }
 
 /// How deep `#+SETUPFILE:` may chain.

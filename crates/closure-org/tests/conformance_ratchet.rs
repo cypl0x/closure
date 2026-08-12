@@ -20,9 +20,20 @@ use closure_org::{CONFORMANCE, Support, conformance_rate, offered_rate};
 
 /// The floor. Raise it when a construct moves up; never lower it.
 ///
-/// 2026-08-11: 61% (21 of 34), 67% with repeaters, 73% (25 of 34)
-/// with entities and LaTeX fragments, 76% with #+INCLUDE, 79% with inline tasks, 82% with column view, 85% with #+TBLFM, 91% (31 of 34) with noweb and #+CALL.
-const FLOOR: u32 = 97;
+/// 2026-08-11: 61% of 34 constructs. Then repeaters, entities, LaTeX,
+/// #+INCLUDE, inline tasks, column view, #+TBLFM, noweb and #+CALL took
+/// it to 91, and org macros, #+SETUPFILE and radio targets to 100.
+///
+/// At which point `the_matrix_is_worth_having` fired, exactly as it was
+/// written to: a matrix where everything is understood has stopped
+/// looking at what org has. Eight constructs closure genuinely does not
+/// handle went in — statistics cookies, #+STARTUP:, clocktables, export
+/// attributes, time ranges, diary sexps, sub/superscripts, column
+/// groups — and the honest number over the longer list is 80.
+///
+/// Which is the number worth ratcheting. 100% of a list somebody chose
+/// is a claim about the list.
+const FLOOR: u32 = 80;
 
 #[test]
 fn the_rate_never_falls() {
@@ -86,11 +97,12 @@ fn the_matrix_is_worth_having() {
 
 /// The floor for what a shell actually offers. Raise it the same way.
 ///
-/// 2026-08-12: 97% understood, 97% offered with #+SETUPFILE — nothing
+/// 2026-08-12: 100% of the listed constructs, understood and offered.
+/// Which makes the list the thing to grow now — nothing
 /// parsed and invisible. The gap is the point of two numbers: it was 91
 /// and 70 before the unwired parsers were wired up, and nothing about
 /// the first number would have shown that.
-const OFFERED_FLOOR: u32 = 97;
+const OFFERED_FLOOR: u32 = 80;
 
 #[test]
 fn what_a_shell_offers_never_falls_either() {

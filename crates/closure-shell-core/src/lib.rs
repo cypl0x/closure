@@ -13142,6 +13142,12 @@ struct Memos {
     /// collecting them walks every document and landing on a headline
     /// must not (I11).
     widgets: std::cell::RefCell<WidgetDefs>,
+    /// Every radio target in the vault, as of a revision.
+    ///
+    /// Collecting them reads every document, so it is memoised for the
+    /// same reason the widget definitions are: landing on a headline
+    /// must not cost the vault (I11).
+    radios: std::cell::RefCell<(Option<u64>, Vec<String>)>,
     /// The vault's git state, memoised against the revision it was
     /// read at.
     ///
@@ -20102,6 +20108,46 @@ impl ModalApp {
             .agenda()
             .into_iter()
             .map(|e| (e.date, e.title, e.path.display().to_string()))
+            .collect()
+    }
+
+    /// Radio-target mentions in the selected headline's body, as
+    /// `(word, target)`.
+    ///
+    /// `<<<closure>>>` in a glossary makes every later mention of the
+    /// word a link to it, which is org's one construct that turns
+    /// ordinary prose into navigation without the author marking it.
+    ///
+    /// The targets are collected per revision, not per keystroke:
+    /// finding them means reading every document, and landing on a
+    /// headline must not (I11). The same memo the widget definitions
+    /// use, for the same reason.
+    #[must_use]
+    pub fn radio_rows(&self, shell: &Shell) -> Vec<(String, String)> {
+        let Some(d) = self.detail_shared(shell) else {
+            return Vec::new();
+        };
+        let revision = shell.vault.revision();
+        {
+            let mut memo = self.memos.radios.borrow_mut();
+            if memo.0 != Some(revision) {
+                let mut all: Vec<String> = Vec::new();
+                for (_, doc) in shell.vault.iter() {
+                    all.extend(closure_org::radio_targets(&doc.source()));
+                }
+                all.sort();
+                all.dedup();
+                *memo = (Some(revision), all);
+            }
+        }
+        let memo = self.memos.radios.borrow();
+        closure_org::radio_matches(&d.body, &memo.1)
+            .into_iter()
+            .map(|r| {
+                let word = d.body[r].to_owned();
+                let target = word.to_ascii_lowercase();
+                (word, target)
+            })
             .collect()
     }
 

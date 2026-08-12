@@ -840,13 +840,32 @@ is the whole point of having one.
 
 Conformance 94% -> 97%.
 
-* TODO Org: radio targets
+* DONE Org: radio targets
 =<<<name>>>= makes every later occurrence of "name" a link to it. The
 last preserved construct, and the only one whose cost is per *word*
 rather than per line — worth measuring against I11 before wiring it
 into a shell.
 
 Acceptance: =nix develop -c cargo test -p closure-org --test radio_targets=
+
+One pass over the text per call rather than one per target, with a
+test that four times the text costs less than eight times as long: a
+scan-per-target is quadratic the moment somebody writes fifty of them,
+and this is the one construct whose work is per word. Targets are
+memoised per revision in the shell for the same reason the widget
+definitions are.
+
+Whole words only — "enclosure" contains "closure" and is a different
+word — and a definition never matches itself, or a target links a word
+to where it already is.
+
+Finishing it took the matrix to 100%, which fired
+=the_matrix_is_worth_having=: a matrix where everything is understood
+has stopped looking at what org has. That guard was written to catch
+exactly this and it was right. Eight constructs closure genuinely does
+not handle went in — statistics cookies, =#+STARTUP:=, clocktables,
+export attributes, time ranges, diary sexps, sub/superscripts, column
+groups — and the honest rate over the longer list is 80%.
 
 * TODO Bug: the gpui window stops presenting on the lavapipe rasteriser
 Diagnosed above and not fixed: the wedge is in the presentation path
