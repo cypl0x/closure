@@ -1571,7 +1571,7 @@ Verified on :1 — the window says the file, the key, the line, what was
 expected, what was got, and that defaults were used instead.
 
 
-* TODO UI: an invalid view should not compile, or say why it cannot
+* DONE UI: an invalid view should not compile, or say why it cannot
 The vision asks to apply Yesod's rule — runtime bugs into compile-time
 errors — to everything, and names Slint. The gpui shell builds its
 element tree imperatively: nothing stops a pane from being built with a
@@ -1586,6 +1586,53 @@ element model makes impossible, and what closure does instead — the
 they are *the* answer that should be stated rather than assumed.
 
 Acceptance: =grep -c "^### Type-level views" docs/spec.md= prints 1.
+
+Took the second option, and the argument is in =docs/spec.md= rather
+than here so it is where somebody reaching for Slint will find it.
+
+gpui builds its element tree at runtime: an outline with two rows and
+one with two thousand have the same type, and so does one whose
+selector is already used. Making an invalid view unrepresentable means
+a different element model, which means a different toolkit — and gpui
+is what makes the window fast. The vision asked for both.
+
+What closure has instead is the selector convention, and this item did
+find the hole in it: a test naming a selector nothing paints is
+vacuously green, the same shape as a parser with no caller.
+
+I tried to close that from the obvious direction — flag a test naming
+an unpainted selector — and it misfired on a third of the suite,
+because =assert!(debug_bounds(sel).is_some(), "…never painted")= puts
+the message where a scanner looks for the selector. A guard that cries
+wolf gets deleted, so it was not worth having in that shape. The sound
+direction needs no guessing: a selector the window *paints* and no test
+names is an affordance nobody checks. There are seventeen, ratcheted
+downward, listed in the failure message.
+
+The real answer to the vision's question is that closure buys its
+type-level safety in the kernel — =BlockId= not =String=, =Support= not
+a boolean, =ValueKind= not a parse per key, =Declined { reason }= not a
+comment. A view that is invalid *about the vault* is already
+unrepresentable before the window sees it. What is left is layout, and
+layout is what a screenshot is for.
+
+* TODO UI: the seventeen affordances no test looks at
+=selectors_are_real.rs= counts them and holds the number from rising:
+=bridge-row-{}=, =bridges-pane=, =detail-meta=, =flow-debug=,
+=flow-detail=, =flow-graph=, =header-vault=, =image-overlay=,
+=job-row-{}=, =jobs-empty=, =jobs-pane=, =palette-overlay=,
+=peer-forget-{}=, =peer-{}=, =prompt-completions=, =setting-{}=,
+=wk-chord-{}=.
+
+Each is something the window paints that no test has ever asserted on,
+which means it can break and stay green. Several are click targets —
+=peer-forget-{}= deletes a pairing.
+
+Lower the ceiling with each one covered. Split per pane if it helps.
+
+Acceptance: =UNLOOKED_CEILING= in
+=crates/closure-shell-gpui/tests/selectors_are_real.rs= reaches 0.
+
 
 * TODO tree-sitter ships off, so the default build does not have it
 =tree-sitter= is opt-in because twenty C grammars are not a hermetic

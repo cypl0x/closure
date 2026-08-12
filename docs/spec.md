@@ -943,6 +943,44 @@ The kernel stays CRDT-ready even before `closure-crdt` ships:
 A future `closure-crdt` crate wraps `Document` and reinterprets `Edit` as a
 CRDT op without changing shells or parsers.
 
+### Type-level views
+
+The vision asks to apply Yesod's rule — runtime bugs into compile-time
+errors — to everything, and names Slint. This section says what closure
+does instead in the window, and why.
+
+**gpui's element tree is built at runtime.** A view is assembled by
+calling `.child()` on a `Div`, and the result is a value, not a type: an
+outline with two rows and one with two thousand have the same type, and
+so does one whose rows were built in the wrong order or whose selector
+was already used. Making an invalid view unrepresentable would mean a
+different element model, which means a different toolkit. That is not a
+trade closure should make for this: gpui is what makes the window fast,
+and the vision asked for both.
+
+**What replaces it is a runtime convention with a compile-time-ish
+ratchet.** Every affordance carries a `debug_selector`, 61 of them, and
+window tests assert on those names rather than on pixels. This is
+weaker than a type in one specific way — a test naming a selector
+nothing paints is vacuously green, which is the same shape as a parser
+with no caller — and `selectors_are_real.rs` closes exactly that gap
+from the sound direction: a selector the window paints and no test names
+is an affordance nobody checks, counted and ratcheted downward.
+
+The direction that _cannot_ be checked soundly is the other one.
+`assert!(vcx.debug_bounds(sel).is_some(), "… was never painted")` puts
+the message where a scanner looks for the selector, so flagging "this
+test names a selector nothing paints" misfires on a third of the suite.
+A guard that cries wolf gets deleted, so it is not worth having.
+
+**Where closure does buy type-level safety, it is in the kernel**, and
+that is the right place: `BlockId` rather than `String`, `Support`
+rather than a boolean, `ValueKind` rather than a parse at each key,
+`Declined { reason }` rather than a comment. Those are the values the
+window renders, so a view that is invalid _about the vault_ is already
+unrepresentable before the window sees it. What remains
+runtime-checkable is layout, and layout is what a screenshot is for.
+
 ## Built-to-last kernel primitives (the "LISP-7" idea)
 
 The kernel is defined by a minimal set of primitives. Every feature (views,
