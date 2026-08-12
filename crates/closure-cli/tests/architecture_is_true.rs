@@ -87,3 +87,56 @@ fn every_crate_appears_somewhere_in_the_diagram() {
         "these crates exist and the layer diagram does not place them: {missing:?}"
     );
 }
+
+// === the phase table gates on invariants that exist (2026-08-12) ===
+//
+// `docs/phases.md` names, per milestone, which invariants must be green
+// at its boundary. The spec grew I11 and I12 and the table did not
+// learn about them, which is the same drift as the layer diagram: a
+// planning document that describes a system one release ago.
+//
+// The check is deliberately one-directional. Every invariant the table
+// names must exist — a phase gated on a rule nobody wrote is a gate
+// that passes for the wrong reason. The reverse is not required: an
+// invariant may be older than every phase boundary, or hold
+// continuously rather than at one.
+
+#[test]
+fn every_invariant_a_phase_gates_on_exists() {
+    let root = repo_root();
+    let phases = std::fs::read_to_string(root.join("docs/phases.md")).expect("phases.md");
+    let spec = std::fs::read_to_string(root.join("docs/spec.md")).expect("spec.md");
+    let mut named: Vec<String> = Vec::new();
+    for word in phases.split(|c: char| !c.is_ascii_alphanumeric()) {
+        if let Some(n) = word.strip_prefix('I')
+            && !n.is_empty()
+            && n.chars().all(|c| c.is_ascii_digit())
+        {
+            named.push(format!("I{n}"));
+        }
+    }
+    named.sort();
+    named.dedup();
+    assert!(named.len() >= 5, "the phase table names no invariants");
+    for i in named {
+        assert!(
+            spec.contains(&format!("### {i} ")),
+            "docs/phases.md gates a milestone on `{i}`, which docs/spec.md does not define"
+        );
+    }
+}
+
+#[test]
+fn the_newest_invariants_are_gated_somewhere() {
+    // The other direction, for the two this session added only. An
+    // invariant nobody's boundary checks is one that can rot between
+    // releases without anybody noticing.
+    let root = repo_root();
+    let phases = std::fs::read_to_string(root.join("docs/phases.md")).expect("phases.md");
+    for i in ["I11", "I12"] {
+        assert!(
+            phases.contains(i),
+            "no phase boundary checks `{i}` — it can rot without anybody noticing"
+        );
+    }
+}

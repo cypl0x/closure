@@ -18,6 +18,17 @@ hook that earlier phases didn't already define. Every invariant in
 | M9    | `closure-sync` P2P + collaboration.                                   | Two hosts sync without central server.                                        | I2, I3               |
 | M10+  | Remaining shells, `closure-sniffer`, `closure-plugin-host`, LSP/ACP.  | Each ships independently; kernel API unchanged.                               | I7, I8               |
 
+| M11 | Kernel + gpui depth: composition with arguments, databases that group and relate, org conformance published as a rate. | `closure conformance` reports its number; `just gates` green with no warnings. | I11, I12 |
+
 Spec freezes at the close of each phase. Breaking an earlier phase's
 acceptance forces either a fix or an explicit spec revision in the same
 commit.
+
+M11 is where I11 and I12 arrive, and they are of a different kind from
+the ten before them. I1–I10 were decided before there was code to hold
+them to; these two were decided because the code had grown a question
+nobody had answered — what a block is, and how slow is too slow. That
+is the honest order for an invariant that is about a system rather than
+about a plan, and `closure-cli/tests/architecture_is_true.rs` now
+checks that every invariant this table gates on is one the spec
+actually defines.
