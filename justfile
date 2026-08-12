@@ -5,6 +5,24 @@
 # shell.) The nix flake check sandbox has no network, so these cargo-based
 # gates live here (registry reachable) rather than in flake `checks`.
 
+# Reclaim disk without throwing away the build.
+#
+# `target/` reached 75G on 2026-08-12 and the root filesystem hit 98%,
+# at which point the session stopped: commands could not write their
+# output, the linker had nowhere to put temporaries, and a gpui link
+# failed with an error that looked real and was not.
+#
+# In order of what it costs to lose. `incremental` was 12G of the 75
+# and buys only a slower next build, so it goes first and almost always
+# suffices. The release profile is 3.6G and is rebuilt by one command.
+# `cargo clean` is last because rebuilding gpui from scratch is twenty
+# minutes, and it is what everybody reaches for first.
+reclaim:
+    @echo "before: $(df -h --output=avail / | tail -1) free"
+    rm -rf target/debug/incremental target/release/incremental
+    @echo "after:  $(df -h --output=avail / | tail -1) free"
+    @echo "still tight? \`rm -rf target/release\` (3.6G, one rebuild), then \`cargo clean\` (all of it)."
+
 # Every gate a change has to pass, in one command.
 #
 # `check` mirrors CI, and CI does not build gpui — so a change to the

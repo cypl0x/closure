@@ -829,7 +829,7 @@ arithmetic here can predict it; the count errs small on purpose, and
 what the test holds is the property that matters — wherever the cursor
 goes, it is somewhere you can see.
 
-* TODO Build: target/ grows until the disk stops the work
+* DONE Build: target/ grows until the disk stops the work
 Found 2026-08-12. =target/= reached 75G — 53G of it debug, 12G of
 that incremental — and the root filesystem hit 98%, at which point
 every command in the session failed before it ran and the linker's
@@ -840,8 +840,13 @@ Clearing =target/debug/incremental= bought 12G and costs only a slower
 next build, which makes it the obvious first move; it should not have
 taken a full disk to discover that.
 
-Acceptance: something in the repo — a =just= recipe, a note in the
-justfile — says what to delete first and why.
+Acceptance: =nix develop -c just reclaim=
+
+=just reclaim= drops the incremental caches, prints free space before
+and after, and names the next two steps in order of what they cost to
+lose. Run here: 9.6G -> 16G, and the 6.4G it removed had accumulated
+during this session alone, which is the argument for the recipe
+existing rather than a comment somewhere.
 
 * TODO Panes: lay rows out until the pane is full, instead of guessing
 =PANE_WRAP_GUESS= assumes a pane row takes two lines, because rows
