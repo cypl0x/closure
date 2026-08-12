@@ -1273,48 +1273,27 @@ impl SyncTicket {
     }
 }
 
-/// P2P transport via external binary (iroh or IPFS CLI).
+/// Why there is no P2P transport here.
 ///
-/// Decision (recorded per ROADMAP): use external binary (iroh/ipfs) so the core stays hermetic,
-/// no heavy deps, and the presence is gated (test skips or errors if binary not in PATH, like git tests).
-/// The binary is called for push/pull; for the stub, we check presence and error "not implemented / binary not found".
-#[derive(Debug, Clone)]
-pub struct IrohTransport {
-    /// Vault directory.
-    pub dir: PathBuf,
-}
-
-impl IrohTransport {
-    /// Build an Iroh (or IPFS) P2P transport rooted at `dir` (external binary gated).
-    #[must_use]
-    #[allow(clippy::missing_const_for_fn)]
-    pub fn new(dir: PathBuf) -> Self {
-        Self { dir }
-    }
-
-    #[allow(clippy::unused_self)]
-    fn binary_present(&self, name: &str) -> bool {
-        Command::new(name).arg("--version").output().is_ok()
-            || Command::new("which")
-                .arg(name)
-                .output()
-                .is_ok_and(|o| o.status.success())
-    }
-}
-
-impl Transport for IrohTransport {
-    fn push(&mut self) -> Result<(), SyncError> {
-        if !self.binary_present("iroh") && !self.binary_present("ipfs") {
-            return Err(SyncError::Transport("binary not found: iroh or ipfs (decision: external for P2P, gated on presence to keep core hermetic)".to_owned()));
-        }
-        // Stub: the real would shell `iroh send ...` or `ipfs add ...` etc with the vault state.
-        Err(SyncError::Transport("iroh/ipfs push not implemented in stub (binary present; real impl would do the P2P transfer)".to_owned()))
-    }
-
-    fn pull(&mut self) -> Result<(), SyncError> {
-        if !self.binary_present("iroh") && !self.binary_present("ipfs") {
-            return Err(SyncError::Transport("binary not found: iroh or ipfs (decision: external for P2P, gated on presence to keep core hermetic)".to_owned()));
-        }
-        Err(SyncError::Transport("iroh/ipfs pull not implemented in stub (binary present; real impl would fetch and apply deltas)".to_owned()))
-    }
-}
+/// There was an `IrohTransport` and it was an `impl Transport` whose
+/// `push` and `pull` both returned a `SyncError::Transport` saying the
+/// operation was unimplemented. A type that
+/// satisfies a trait by failing is worse than an absent one: it
+/// type-checks, it is constructible, it appears in every list of
+/// transports, and it tells the caller nothing until runtime. Its test
+/// asserted the error mentioned "iroh", which the stub's own message
+/// did, so the test could not fail either.
+///
+/// Removed 2026-08-12 rather than implemented, because implementing it
+/// is not the missing piece. [`TcpSyncTransport`] already moves real
+/// frames over a real socket to any `SocketAddr`, and the sessions,
+/// the merge and the ed25519 signing above it are real. What P2P adds
+/// is *discovery*: two laptops behind different routers have no address
+/// to type. That is a design question with two honest answers — an
+/// external `iroh` binary gated on presence, which keeps the build
+/// hermetic (I10), or a relay closure runs — and it is tracked as its
+/// own item rather than pre-answered by a type that does nothing.
+///
+/// `Transport` has exactly the impls that work: [`NoopTransport`] and
+/// [`GitTransport`].
+const _P2P_NOTE: () = ();

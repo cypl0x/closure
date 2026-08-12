@@ -1365,7 +1365,7 @@ command everything else does.
 Acceptance: =nix develop -c just coverage= exits 0 at
 =--fail-under-lines 100=.
 
-* TODO Sync: IrohTransport is a Transport that always fails
+* DONE Sync: IrohTransport is a Transport that always fails
 =impl Transport for IrohTransport= exists and both =push= and =pull=
 return =Err("iroh/ipfs push not implemented in stub")=. A type that
 satisfies a trait by erroring is worse than an absent one: it type-
@@ -1382,6 +1382,26 @@ keeps compiling and keeps failing.
 
 Acceptance: =grep -c "not implemented in stub" crates/closure-sync/src/lib.rs=
 prints 0.
+
+Took the second option: removed, not implemented. The reasoning is in
+the source where somebody reaching for a P2P transport will find it.
+
+Implementing it is not the missing piece. =TcpSyncTransport= already
+moves real frames over a real socket to any =SocketAddr=, and the
+sessions, the merge and the ed25519 signing above it are real. What P2P
+adds is *discovery* — two laptops behind different routers have no
+address to type — and that is the next item, where the design question
+belongs. Shipping a transport now would have answered it by accident.
+
+Its test could not fail either: it asserted the error mentioned "iroh",
+which the stub's own message did, so it passed whether or not the binary
+was present. Rewritten in place, dated, with the reason — what replaces
+it is the property that was actually worth holding: no type in this
+crate satisfies =Transport= by erroring.
+
+=Transport= now has exactly the impls that work, =NoopTransport= and
+=GitTransport=. The no-op is honest and says so in its name; that is a
+different thing from a type that claims a protocol and returns an error.
 
 * TODO Sync: two peers that cannot already reach each other cannot sync
 Correcting my own assessment before acting on it: the wire protocol is

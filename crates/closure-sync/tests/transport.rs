@@ -185,25 +185,35 @@ fn live_collab_over_localhost_tcp_stub() {
     // This is the 'live collaboration session: two processes on localhost exchange replica deltas over TCP, converge while both edit; conflict corpus reused'.
 }
 
-// TDD test written *first* for P2P transport behind Transport trait via external binary (iroh or IPFS CLI).
-// Decision: external binary (gated on presence in PATH to keep hermetic, no heavy deps in core).
-// Round-trip test gated (like git tests skip if no git).
+// Rewritten 2026-08-12. This asserted that `IrohTransport::push`
+// returned an error mentioning "iroh" — which the stub's own
+// "not implemented" message did, so the test passed whether or not the
+// binary existed and could not fail for the reason it was written.
+//
+// The type is gone. What replaces the test is the thing that was
+// actually true and worth holding: `Transport` has only impls that do
+// something, so a caller reaching for one cannot get a type that
+// compiles and always fails.
 #[test]
-fn p2p_external_transport_gated_on_binary_presence() {
-    use closure_sync::IrohTransport; // or Ipfs; will not exist yet.
+fn every_transport_does_something_when_it_can() {
+    // `NoopTransport` is the honest do-nothing and says so in its name.
+    // `GitTransport` shells out to git and fails only when git or the
+    // remote does. Neither is a type whose whole behaviour is to
+    // return an error, which is what the P2P stub was.
+    let mut noop = closure_sync::NoopTransport;
+    assert!(noop.push().is_ok(), "the no-op transport should no-op");
+    assert!(noop.pull().is_ok());
+}
 
-    // The stub checks for the binary (e.g. "iroh" or "ipfs" in PATH).
-    // If not present, push/pull return SyncError::Transport("binary not found: iroh").
-    // The test is 'gated' (always runs, but asserts the error when binary absent, which is the common case in CI without the binary).
-    let mut t = IrohTransport::new(std::path::PathBuf::from("/tmp/test-vault"));
-    let err = t.push().unwrap_err();
-    // The error mentions the binary (the gate/decision).
-    let msg = format!("{err}");
+#[test]
+fn p2p_is_absent_rather_than_pretending() {
+    // The source is the assertion here: no type in this crate satisfies
+    // `Transport` by failing. Checked as text because the alternative
+    // is compiling a type that should not exist in order to test that
+    // it does not exist.
+    let src = include_str!("../src/lib.rs");
     assert!(
-        msg.contains("binary")
-            || msg.contains("iroh")
-            || msg.contains("ipfs")
-            || msg.contains("not found"),
-        "gated error: {msg}"
+        !src.contains("not implemented in stub"),
+        "a transport is back to satisfying the trait by erroring"
     );
 }
