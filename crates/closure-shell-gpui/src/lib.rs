@@ -4932,6 +4932,22 @@ impl GpuiView {
         }
     }
 
+    /// The newest thing the assistant said, or an empty string.
+    ///
+    /// For tests: the send path is the one surface where "what did it
+    /// do" is not visible in a selector, and the reason the blocklist
+    /// went unenforced there for so long is that nothing could ask.
+    #[must_use]
+    pub fn chat_last(&self) -> String {
+        self.app
+            .chat_turns()
+            .iter()
+            .rev()
+            .find(|t| !t.from_user)
+            .map(|t| t.text.clone())
+            .unwrap_or_default()
+    }
+
     /// The selected headline's drawer, with the file's `#+PROPERTY:`
     /// defaults behind it, as the lines the detail pane prints.
     ///
@@ -7170,8 +7186,32 @@ impl GpuiView {
     /// executor and only the answer comes back — the window stays
     /// responsive while a model thinks. Tool calls are executed back on
     /// the UI thread, because they touch the vault.
-    fn ask_llm(&mut self, question: String, cx: &mut Context<Self>) {
+    pub fn ask_llm(&mut self, question: String, cx: &mut Context<Self>) {
         let status = self.app.llm_config_status(&self.shell);
+        // The blocklist is asked before the config is judged ready, and
+        // that order matters. A blocked host is refused whether or not
+        // a key is set; reporting "your key is missing" about a host
+        // closure would refuse anyway sends the reader to fix the wrong
+        // thing, and reveals that the key is what stopped it — which is
+        // not true.
+        //
+        // Before the request, not after it: the difference between
+        // enforcing a blocklist and logging that it was ignored. The
+        // assistant is the one outbound request closure originates by
+        // itself, so it is the one it can honestly refuse.
+        if closure_shell_core::outbound_verdict(
+            status.endpoint.as_deref(),
+            &self.app.sniffer().effective_rules(&self.shell.vault),
+        ) == Some(closure_shell_core::FlowAction::Block)
+        {
+            let where_to = status.endpoint.as_deref().unwrap_or("the provider");
+            self.app.chat_answer(format!(
+                "blocked: the sniffer blocklist refuses {where_to}, so nothing was sent. \
+                 Remove it from `sniffer_blocklist` in config.org to allow it."
+            ));
+            cx.notify();
+            return;
+        }
         if !status.ready {
             self.app.chat_answer(status.detail);
             cx.notify();

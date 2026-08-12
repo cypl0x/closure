@@ -1606,7 +1606,7 @@ or =docs/spec.md= carries the decision and =nix develop -c cargo test
 -p closure-shell-gpui --features gpui-test --test highlighter_is_named=
 passes.
 
-* TODO Sniffer: Block is a verdict nothing enforces
+* DONE Sniffer: Block is a verdict nothing enforces
 =Action::Block= exists, rules match, and =PcapBackend::capture_once=
 opens a real raw socket and returns the matched action. Nothing acts on
 it. The sniffer is an observer with opinions: it can tell you a
@@ -1617,7 +1617,43 @@ Little Snitch — named in the vision — asks first. That is the feature.
 Also =capture_once= reads exactly one frame, which is a test seam
 rather than a sniffer.
 
-Acceptance: =nix develop -c cargo test -p closure-sniffer --test enforce=
+(Landed as =closure-shell-core --test sniffer_enforces= and
+=closure-shell-gpui --test llm_blocklist=: the enforcement point is
+where the request is made, not in the crate that owns the rules.)
+
+Scoped to what closure can honestly enforce: its own outbound traffic.
+It is not a kernel module and not a proxy, so policing the machine is a
+different program. The assistant is the one request closure originates
+by itself, so it is the one it can refuse — before the request, which
+is the whole difference between enforcing a blocklist and logging that
+it was ignored.
+
+Two things turned up on the way.
+
+=sniffer().rules()= is only the rules toggled this session; the vault's
+=sniffer_blocklist= was being rebuilt inline in the one function that
+needed it. So the first working version passed a host the config
+blocks. =effective_rules= is session-then-config, in that order because
+=match_first= is first-match and a rule you just toggled should beat
+the file.
+
+The blocklist is asked *before* the config is judged ready. With the
+checks the other way round, a blocked host reported "$KEY is not set" —
+which sends the reader to fix the wrong thing and implies the key is
+what stopped it. A blocked host is refused whether or not a key exists.
+
+=ask_llm= was private and unreachable from a test, which is why nothing
+enforced anything there. Public now, with =chat_last()= to ask what it
+said — the send path is the one surface where "what did it do" is not
+visible in a selector.
+
+Verified on :1: the assistant answers =blocked: the sniffer blocklist
+refuses http://api.example.invalid/v1= while the config banner still
+says "not configured", which is the ordering above, visible.
+
+Machine-wide interception stays out. =capture_once= reading one frame
+is a test seam rather than a sniffer, and that is worth its own item if
+it is ever wanted.
 
 * DONE Conformance: record why the last two constructs stay Preserved
 40 of 42 org constructs are understood and offered. The two left are

@@ -2264,6 +2264,50 @@ fn headline_is_unfolded(h: &closure_core::DocHeadline) -> bool {
         .any(|(k, v)| k == "VISIBILITY" && v != "folded")
 }
 
+/// Whether the blocklist refuses an outbound request to `endpoint`.
+///
+/// `Some(Action::Block)` means do not send. Anything else means go
+/// ahead, including a rule that matched with `Allow` or `Log` — a
+/// blocklist that stopped a request because a *logging* rule matched
+/// would be a surprising way to lose an afternoon.
+///
+/// The sniffer had `Action::Block`, matching rules, a pcap backend and
+/// a pane listing verdicts, and nothing anywhere acted on one: it could
+/// say a connection should not have happened, after it had. What
+/// closure can honestly enforce is its own outbound traffic. It is not
+/// a kernel module and not a proxy, so policing the machine is a
+/// different program; refusing to send a prompt to a host the user
+/// blocked is this one.
+///
+/// Matched on the authority rather than the whole URL, because a
+/// blocklist is a list of hosts — if the path counted, blocking
+/// `api.openai.com` would miss every request carrying a query string.
+/// Something that does not parse as a URL is matched whole rather than
+/// waved through: failing open on unparseable input is how a blocklist
+/// gets bypassed by a typo.
+///
+/// `None` for a provider with no endpoint. An echo or a local double
+/// never leaves the process, and erroring on it would make an offline
+/// model unusable with any blocklist at all.
+#[must_use]
+pub fn outbound_verdict(
+    endpoint: Option<&str>,
+    rules: &[closure_sniffer::Rule],
+) -> Option<closure_sniffer::Action> {
+    let url = endpoint?;
+    let authority = url
+        .split_once("://")
+        .map_or(url, |(_, rest)| rest)
+        .split(['/', '?'])
+        .next()
+        .unwrap_or(url);
+    let candidate = if authority.is_empty() { url } else { authority };
+    match closure_sniffer::match_first(candidate, rules)?.action {
+        closure_sniffer::Action::Block => Some(closure_sniffer::Action::Block),
+        closure_sniffer::Action::Allow | closure_sniffer::Action::Log => None,
+    }
+}
+
 /// Whole days from `from` to `to`, both `YYYY-MM-DD`.
 ///
 /// Through `closure-org`'s civil-date pair rather than a third copy of
@@ -3549,6 +3593,36 @@ impl SnifferApp {
         // between frames.
         by_host.sort_by(|a, b| b.flows.cmp(&a.flows).then_with(|| a.host.cmp(&b.host)));
         by_host
+    }
+
+    /// Every rule in force: the ones toggled this session, then the
+    /// vault's own `sniffer_blocklist`.
+    ///
+    /// Session first, because `match_first` is first-match and a rule
+    /// you just added by hand should win over the file — that is what
+    /// makes the toggle feel like a toggle.
+    ///
+    /// [`Self::rules`] is only the session's, which is right for
+    /// persisting them back and wrong for deciding anything. Asking the
+    /// wrong one is why the assistant's blocklist check passed a host
+    /// the config blocks: the config rules were being rebuilt inline in
+    /// the one function that happened to need them.
+    #[must_use]
+    pub fn effective_rules(&self, vault: &closure_store::Vault) -> Vec<closure_sniffer::Rule> {
+        let mut out = self.rules.clone();
+        out.extend(
+            closure_config::Config::load_reporting(&vault.root().join(closure_config::CONFIG_FILE))
+                .0
+                .sniffer_blocklist
+                .unwrap_or_default()
+                .into_iter()
+                .map(|pattern| closure_sniffer::Rule {
+                    id: format!("block-{pattern}"),
+                    pattern,
+                    action: closure_sniffer::Action::Block,
+                }),
+        );
+        out
     }
 
     /// The blocklist rules the toggles have added (for persistence to the
