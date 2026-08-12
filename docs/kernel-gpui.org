@@ -1218,8 +1218,17 @@ and they are small:
   only the abbreviated ones: for a link that already says, repeating it
   is noise. Body keeps the short form (I12) — being able to write it is
   the point. Conformance 93% → 95%, understood floor 42 → 43.
-- description lists (=term :: definition=) — read as an ordinary item,
-  so the term is not a term and nothing can render it as one.
+- [X] description lists (=term :: definition=) — done. The spaces in
+  = :: = are the whole rule: =std::collections= and =foo::bar= are
+  everywhere in a vault that holds code notes, and a separator without
+  them would file half of those lines in a glossary. First separator
+  wins, so a term may contain =::= itself. A term with nothing after it
+  is not one — guessing an empty definition enters a word as meaning
+  nothing. Offered as =glossary_rows=: vault-wide and sorted, because a
+  glossary you can only see by standing on the note that defines the
+  word answers a question nobody has, and sorted is the difference
+  between a list you read and one you look something up in.
+  Conformance 95% → 97%, understood floor 43 → 44.
 - =[@3]= counter override — a list that says it starts at 3 is numbered
   from 1.
 - [X] timestamp delay (=-2d=) — done, and it was two features. There

@@ -10093,10 +10093,10 @@ pub const CONFORMANCE: &[Construct] = &[
     },
     Construct {
         name: "description list (term :: definition)",
-        support: Support::Preserved,
-        evidence: "",
-        missing: "reads as an ordinary list item; the term is not a term",
-        offered: "",
+        support: Support::Understood,
+        evidence: "crates/closure-org/tests/description_lists.rs",
+        missing: "",
+        offered: "crates/closure-shell-core/tests/glossary.rs",
     },
     Construct {
         name: "list counter override [@3]",
@@ -10752,6 +10752,52 @@ pub fn document_columns(doc: &OrgDoc) -> Option<Vec<ColumnSpec>> {
                 .or_else(|| t.strip_prefix("#+columns:"))
         })
         .and_then(columns_format)
+}
+
+/// What separates a term from its definition in an org description
+/// list.
+///
+/// The spaces are the whole rule. `std::collections` and `foo::bar` are
+/// everywhere in a vault that holds code notes, and a separator without
+/// them would put half of those lines in a glossary.
+const DESCRIPTION_SEP: &str = " :: ";
+
+/// Every `- term :: definition` in `text`, as `(term, definition)`.
+///
+/// Org's description list, which is the shape a glossary has — so
+/// reading these as ordinary items meant the term was not a term:
+/// nothing could render it as one, sort by it, or find a definition by
+/// its word.
+///
+/// The first ` :: ` wins, so a term may contain `::` itself
+/// (`std::vec :: the growable array`) and so may a definition. A term
+/// with nothing after the separator is not one: guessing an empty
+/// definition would enter a word in a glossary as meaning nothing.
+#[must_use]
+pub fn description_items(text: &str) -> Vec<(String, String)> {
+    let mut out = Vec::new();
+    for line in text.lines() {
+        let t = line.trim_start();
+        // Every bullet org allows. An ordered marker is deliberately
+        // not one: `1. term :: definition` is org's numbered list, and
+        // a description list is unordered by definition.
+        let Some(rest) = t
+            .strip_prefix("- ")
+            .or_else(|| t.strip_prefix("+ "))
+            .or_else(|| t.strip_prefix("* "))
+        else {
+            continue;
+        };
+        let Some((term, definition)) = rest.split_once(DESCRIPTION_SEP) else {
+            continue;
+        };
+        let (term, definition) = (term.trim(), definition.trim());
+        if term.is_empty() || definition.is_empty() {
+            continue;
+        }
+        out.push((term.to_owned(), definition.to_owned()));
+    }
+    out
 }
 
 /// Schemes closure and every browser already understand.

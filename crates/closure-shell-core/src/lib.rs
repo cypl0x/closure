@@ -20408,6 +20408,27 @@ impl ModalApp {
             .collect()
     }
 
+    /// Every `- term :: definition` in the vault, sorted by term.
+    ///
+    /// A description list is the shape a glossary has, so the offer is
+    /// the vault-wide view rather than a per-headline row: a glossary
+    /// you can only see by already standing on the note that defines
+    /// the word answers a question nobody has.
+    ///
+    /// Sorted, because that is the difference between a list you read
+    /// and a list you look something up in.
+    #[must_use]
+    pub fn glossary_rows(&self, shell: &Shell) -> Vec<(String, String)> {
+        let mut out: Vec<(String, String)> = shell
+            .vault
+            .iter()
+            .flat_map(|(_, doc)| doc.all_headlines())
+            .flat_map(|h| closure_org::description_items(h.body_text()))
+            .collect();
+        out.sort();
+        out
+    }
+
     /// Abbreviated links in the selected headline's body, as
     /// `(as written, where it goes)`.
     ///
