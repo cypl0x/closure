@@ -1616,7 +1616,7 @@ comment. A view that is invalid *about the vault* is already
 unrepresentable before the window sees it. What is left is layout, and
 layout is what a screenshot is for.
 
-* TODO UI: the seventeen affordances no test looks at
+* DONE UI: the seventeen affordances no test looks at
 =selectors_are_real.rs= counts them and holds the number from rising:
 =bridge-row-{}=, =bridges-pane=, =detail-meta=, =flow-debug=,
 =flow-detail=, =flow-graph=, =header-vault=, =image-overlay=,
@@ -1671,6 +1671,23 @@ the test exercises the file rather than a constructor no user reaches.
 The window has to be told to re-read the vault first: it read it on
 open, and a real session gets there by the file watcher, which a test
 does not run.
+
+5 → 0. =detail-meta=, =header-vault=, =palette-overlay=,
+=prompt-completions=, =image-overlay=. Four of the five are what a
+reader sees most often — the palette, the metadata strip, the vault
+name in the title bar — which is a fair measure of what "obviously it
+works" is worth as a reason not to test something.
+
+=prompt-completions= took three red runs and each one was my mistake,
+not the code's. It needs a prompt open, a typed prefix, *and* =C-n= —
+the cycle is the body editor's gesture over a prompt, not something
+that fires as you type — and the candidates are TODO keywords and words
+already in the vault, so my =#+= guess had none. =TO= does.
+
+The ceiling is gone: the assertion is now that every affordance the
+window paints has a test naming it, and anything new arrives with one.
+That was the property the ratchet existed to approach, and it is
+cheaper to hold than to regain.
 
 Acceptance: =UNLOOKED_CEILING= in
 =crates/closure-shell-gpui/tests/selectors_are_real.rs= reaches 0.

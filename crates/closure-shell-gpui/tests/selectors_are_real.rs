@@ -74,11 +74,10 @@ fn the_window_paints_selectors_at_all() {
 
 #[test]
 fn every_painted_selector_is_looked_at_by_some_test() {
-    // A ratchet rather than zero, because writing seventeen window
-    // tests is not this item and pretending otherwise would mean either
-    // a bad commit or a disabled guard. It only goes down — the same
-    // mechanism holding the org matrix and the field count.
-    const UNLOOKED_CEILING: usize = 5;
+    // Started as a ratchet at seventeen and reached zero, so the
+    // assertion is now the plain thing: every affordance the window
+    // paints has a test that names it. Anything new must arrive with
+    // one, which is the property the ceiling existed to approach.
 
     // The sound direction, and the more useful one.
     //
@@ -113,9 +112,7 @@ fn every_painted_selector_is_looked_at_by_some_test() {
         })
         .collect();
     assert!(
-        unlooked.len() <= UNLOOKED_CEILING,
-        "{} painted selectors have no test looking at them, ceiling is \
-         {UNLOOKED_CEILING}: {unlooked:?}",
-        unlooked.len()
+        unlooked.is_empty(),
+        "the window paints these and no test looks at them: {unlooked:?}"
     );
 }
