@@ -9940,7 +9940,7 @@ pub const CONFORMANCE: &[Construct] = &[
         support: Support::Understood,
         evidence: "crates/closure-org/tests/roundtrip.rs",
         missing: "",
-        offered: "",
+        offered: "crates/closure-shell-core/tests/footnote_preview.rs",
     },
     Construct {
         name: "generic drawer",

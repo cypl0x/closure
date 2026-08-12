@@ -20082,6 +20082,73 @@ impl ModalApp {
             .collect()
     }
 
+    /// The footnotes the selected headline cites, as `(name, text)`.
+    ///
+    /// `[fn:1]` sits in a sentence and its text sits somewhere else,
+    /// and nothing put the two together — so the pane showed a
+    /// reference to something the reader could not read. A footnote you
+    /// cannot follow is a pointer to nothing.
+    ///
+    /// The reference stays where the author put it: a marker is part of
+    /// the sentence, and replacing it with the note inline would change
+    /// what the sentence says. The text is gathered underneath, which
+    /// is where a footnote goes.
+    ///
+    /// A reference with no definition is listed with a `?`, because a
+    /// dangling footnote is a mistake in the file and showing nothing
+    /// hides it — the same call a dangling relation makes.
+    #[must_use]
+    pub fn footnote_rows(&self, shell: &Shell) -> Vec<(String, String)> {
+        let Some(d) = self.detail_shared(shell) else {
+            return Vec::new();
+        };
+        let cited: Vec<String> = closure_org::find_footnotes(&d.body)
+            .into_iter()
+            .filter(|f| f.definition.is_none())
+            .map(|f| f.name.to_owned())
+            .collect();
+        if cited.is_empty() {
+            return Vec::new();
+        }
+        // Definitions live anywhere in the file — usually below the
+        // headline that cites them, often below every headline.
+        let mut defined: std::collections::HashMap<String, String> =
+            std::collections::HashMap::new();
+        for (_, doc) in shell.vault.iter() {
+            for line in doc.source().lines() {
+                let t = line.trim_start();
+                let Some(rest) = t.strip_prefix("[fn:") else {
+                    continue;
+                };
+                let Some((name, body)) = rest.split_once(']') else {
+                    continue;
+                };
+                if !body.trim().is_empty() {
+                    defined.insert(name.to_owned(), body.trim().to_owned());
+                }
+            }
+            for f in closure_org::find_footnotes(&doc.source()) {
+                if let Some(body) = f.definition {
+                    defined
+                        .entry(f.name.to_owned())
+                        .or_insert_with(|| body.trim().to_owned());
+                }
+            }
+        }
+        let mut out: Vec<(String, String)> = Vec::new();
+        for name in cited {
+            if out.iter().any(|(n, _)| *n == name) {
+                continue;
+            }
+            let text = defined
+                .get(&name)
+                .cloned()
+                .unwrap_or_else(|| format!("?{name} — no definition in this vault"));
+            out.push((name, text));
+        }
+        out
+    }
+
     /// Every inline task in the vault, as `(context, title, path)`.
     ///
     /// An inline task is a task attached to the paragraph it sits in —

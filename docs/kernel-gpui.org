@@ -771,6 +771,30 @@ The block is assembled before it runs, so ={{<<setup>>}}= inside a
 called block means what it means anywhere else. Noweb assembles and
 =#+CALL= evaluates; between them that is what a reusable block is.
 
+* DONE Footnotes are readable where they are referenced
+The one construct =closure conformance= still calls "parsed only". A
+footnote you cannot read is a pointer to nothing: =[fn:1]= in the body
+and the text somewhere else in the file, or in another file, with no
+way to see them together.
+
+The read view already resolves compositions, entities and includes.
+This is the same seam and the same rule.
+
+Acceptance: =nix develop -c cargo test -p closure-shell-core --test footnote_preview=
+
+=footnote_rows= gives =(name, text)= for the notes the selected
+headline cites, gathered from wherever in the vault they are defined.
+The reference stays where the author put it — a marker is part of the
+sentence, and replacing it inline would change what the sentence says
+— and the text goes underneath, which is where a footnote goes.
+
+A reference with no definition is listed with a =?= rather than
+dropped: a dangling footnote is a mistake in the file, and showing
+nothing hides it. The same call the dangling relation made.
+
+Conformance is now 91% understood and 91% offered — nothing is parsed
+and invisible.
+
 * TODO Bug: the gpui window stops presenting on the lavapipe rasteriser
 Diagnosed above and not fixed: the wedge is in the presentation path
 (blade/Vulkan on lavapipe), below anything this queue owns. Input is

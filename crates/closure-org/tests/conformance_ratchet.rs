@@ -86,11 +86,11 @@ fn the_matrix_is_worth_having() {
 
 /// The floor for what a shell actually offers. Raise it the same way.
 ///
-/// 2026-08-12: 91% understood, 88% offered. The gap is the point of
-/// having two numbers — it was 91 and 70 before the unwired parsers
-/// were wired up, and nothing about the first number would have shown
-/// that.
-const OFFERED_FLOOR: u32 = 88;
+/// 2026-08-12: 91% understood, 91% offered — nothing parsed and
+/// invisible. The gap is the point of having two numbers: it was 91
+/// and 70 before the unwired parsers were wired up, and nothing about
+/// the first number would have shown that.
+const OFFERED_FLOOR: u32 = 91;
 
 #[test]
 fn what_a_shell_offers_never_falls_either() {
