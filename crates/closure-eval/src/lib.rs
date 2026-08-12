@@ -642,6 +642,48 @@ where
     })
 }
 
+/// Kill the child *and* anything it started.
+///
+/// The child is spawned into its own process group, so a negative pid
+/// reaches the whole group. Done by shelling out to `kill` rather than
+/// adding libc for one call: the dependency would be in the kernel's
+/// tree for a signal every unix has a program for, and a `kill` that is
+/// missing is a machine that cannot run a shell block anyway.
+///
+/// Falls back to killing just the child, which is what this did before
+/// and is better than nothing.
+fn kill_group(group: u32, child: &mut std::process::Child) {
+    #[cfg(unix)]
+    {
+        let _ = Command::new("kill")
+            .args(["-9", &format!("-{group}")])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status();
+    }
+    let _ = child.kill();
+}
+
+/// Take a drain thread's buffer if it has finished, or give up on it.
+///
+/// Whatever arrived by now is the output. A thread still blocked on a
+/// pipe some survivor holds open is left to end on its own; it holds
+/// nothing but that pipe and its own buffer. Same reasoning as
+/// [`shell_escape`], which found this first.
+fn join_or_give_up(handle: std::thread::JoinHandle<Vec<u8>>) -> Vec<u8> {
+    /// Long enough for output already in flight, short enough that a
+    /// survivor holding the pipe is not felt.
+    const LINGER: std::time::Duration = std::time::Duration::from_millis(200);
+    let until = std::time::Instant::now() + LINGER;
+    while !handle.is_finished() {
+        if std::time::Instant::now() >= until {
+            return Vec::new();
+        }
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    }
+    handle.join().unwrap_or_default()
+}
+
 /// Run `prog` with `src` on stdin under resource [`Bounds`] (C1b).
 ///
 /// The child runs in its own process group (unix) and stdout/stderr are
@@ -681,6 +723,13 @@ fn run_bounded(prog: &str, args: &[&str], src: &str, bounds: Bounds) -> Result<O
     let (tx, rx) = std::sync::mpsc::channel();
     let out_h = drain_capped(stdout, bounds.max_output, tx.clone());
     let err_h = drain_capped(stderr, bounds.max_output, tx);
+    // The group we put the child in at spawn. `child.kill()` reaches
+    // `/bin/sh` and nothing it started, so a block that runs `yes`
+    // leaves the grandchild writing into the pipe the drain thread is
+    // reading — and the join below then waits forever. The spawn
+    // comment already anticipated needing this ("lets a future
+    // group-kill reach its descendants"); it is no longer future.
+    let group = child.id();
 
     let deadline = std::time::Instant::now() + bounds.timeout;
     let mut code: Option<i32> = None;
@@ -694,13 +743,13 @@ fn run_bounded(prog: &str, args: &[&str], src: &str, bounds: Bounds) -> Result<O
             Ok(None) => {
                 if rx.try_recv().is_ok() {
                     // output cap exceeded: kill and keep the truncated buffer.
-                    let _ = child.kill();
+                    kill_group(group, &mut child);
                     code = child.wait().ok().and_then(|s| s.code());
                     break;
                 }
                 if std::time::Instant::now() >= deadline {
                     timed_out = true;
-                    let _ = child.kill();
+                    kill_group(group, &mut child);
                     let _ = child.wait();
                     break;
                 }
@@ -709,8 +758,12 @@ fn run_bounded(prog: &str, args: &[&str], src: &str, bounds: Bounds) -> Result<O
             Err(e) => return Err(EvalError::Io(e.to_string())),
         }
     }
-    let stdout = out_h.join().unwrap_or_default();
-    let stderr = err_h.join().unwrap_or_default();
+    // Joined only if they are ready to finish. A grandchild that
+    // survived the group kill still holds the write end, and waiting on
+    // it is the hang this function had: a `yes` in a block ran past its
+    // five-second bound until something else killed it.
+    let stdout = join_or_give_up(out_h);
+    let stderr = join_or_give_up(err_h);
     if timed_out {
         return Err(EvalError::Timeout(bounds.timeout));
     }

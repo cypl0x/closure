@@ -1397,6 +1397,28 @@ be hiding something.
 Acceptance: each of the six passes
 =nix develop -c cargo llvm-cov -p <crate> --fail-under-lines 95=
 
+closure-eval first, and writing the tests found a hang rather than a
+gap. =Bounds= is what stands between a vault and a =while true= in
+somebody's note, and =run_bounded= enforced neither half against a
+child that outran the reader: =child.kill()= reaches =/bin/sh= and
+nothing it started, so a block running =yes= left the grandchild
+writing into the pipe the drain thread was reading, and the =join=
+below waited forever. A five-second bound ran past ten minutes.
+
+The codebase already knew. The spawn sets =process_group(0)= "so a
+future group-kill can reach its descendants", and =shell_escape='s doc
+comment says outright that =run_bounded= "looks like it covers this and
+does not". Both halves were written down and neither was applied here.
+
+Fixed by killing the group rather than the child, and by giving up on a
+drain thread instead of joining it — the survivor holds nothing but a
+pipe and its own buffer. Ten tests, 0.2s, no stray processes.
+
+A note on measuring: =cargo llvm-cov -p <crate>= runs only that crate's
+tests, so its number is not the workspace number the parent item lists.
+Compare like with like or the ratchet will look like it moved when it
+did not.
+
 * TODO Coverage: raise the workspace gate to 100 and keep it there
 The last item of the group. =just coverage= currently reads
 =--fail-under-lines 86=; it becomes 100 when the crates above are done,
