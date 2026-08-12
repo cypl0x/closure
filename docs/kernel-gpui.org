@@ -1341,7 +1341,27 @@ headlines" live.
 Still short of 95. What remains is the commands that *write* — capture,
 rename, set-todo, promote, archive, move — which need a fixture per
 command and an assertion about the file afterwards, and the ones that
-need a network or a subprocess. Worth splitting when picked up again.
+need a network or a subprocess. 51.9% → 57.5% with the writing half. Each case holds three claims,
+because "exits 0" is a much weaker thing to say about a command whose
+job is to change a document: it succeeds, the file *changed*, and the
+vault still passes =check= — a rewrite closure cannot read back is the
+failure that loses notes rather than merely annoying somebody.
+
+The case that would catch a panic is the id that is not there, since
+every one of these looks an id up and a typo is the ordinary way to get
+one. It also asserts the file was left alone, which a non-zero exit does
+not promise.
+
+=toggle-checkbox= takes the Nth *preamble* list item, not one in a body.
+My fixture had the checkbox under a headline and the command said "no
+headline at the given path" — a true message about a question I was not
+asking.
+
+Still short of 95. What is left needs a network, a subprocess, or a
+terminal: =serve=, =sync=, =tui=, =gpui=, =egui=, =mcp=, =acp=, =lsp=,
+=plugin=, =pkg=. Those are the ones the coverage parent item says must
+be deleted or restructured rather than annotated if they cannot be
+reached — worth deciding one at a time rather than in a batch.
 
 * TODO Coverage: closure-shell-core, 1,407 missed
 Of 14,985 lines, so 90.6% — the absolute number is large because the
