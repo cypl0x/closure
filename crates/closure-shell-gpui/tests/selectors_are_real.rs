@@ -78,7 +78,7 @@ fn every_painted_selector_is_looked_at_by_some_test() {
     // tests is not this item and pretending otherwise would mean either
     // a bad commit or a disabled guard. It only goes down — the same
     // mechanism holding the org matrix and the field count.
-    const UNLOOKED_CEILING: usize = 10;
+    const UNLOOKED_CEILING: usize = 8;
 
     // The sound direction, and the more useful one.
     //

@@ -1654,6 +1654,14 @@ and =.ok()= dropped every job, so the pane was empty in any vault with
 a headline in it. Nothing caught it because nothing asserted that a
 vault *with* a job paints a row.
 
+10 → 8: =setting-{}= and =wk-chord-{}=. Both are click targets for
+somebody who does not know a chord yet, which is the reader closure
+says it is for. The which-key popup's whole job is to be what you look
+at when you have forgotten the key, so a popup that paints nothing
+fails silently — not knowing the chord is the state you were already
+in. Its selector carries the *command name* rather than the chord
+letter (=wk-chord-agenda=, not =wk-chord-a=), which cost a red test.
+
 Acceptance: =UNLOOKED_CEILING= in
 =crates/closure-shell-gpui/tests/selectors_are_real.rs= reaches 0.
 
