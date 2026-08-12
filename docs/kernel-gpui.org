@@ -1347,7 +1347,7 @@ Acceptance: a test that two sessions converge knowing only a shared
 identifier, never a =SocketAddr=:
 =nix develop -c cargo test -p closure-sync --test discovery=
 
-* TODO A2A: swarm_drain is one worker in a trenchcoat
+* DONE A2A: swarm_drain is one worker in a trenchcoat
 =pub fn swarm_drain(vault, _num_workers: usize, task_ids)= — the
 underscore is the parameter that names the feature. The body is a
 =for= loop with a =HashSet= claim, and the doc says so honestly ("N is
@@ -1364,6 +1364,31 @@ function to what it is and correct the header. The exactly-once
 property is the thing that must survive whichever way this goes.
 
 Acceptance: =nix develop -c cargo test -p closure-a2a --test swarm=
+
+Took the second option — correct the claim — because =closure-a2a= is
+frozen for this run and real concurrency is a feature. The reasoning is
+in the source, not just here.
+
+The bigger find was the test. It named "every task done exactly once"
+and asserted it with =prop_assert!(true)= after an empty =for= loop,
+under a comment admitting the cross-check was not done. Its only real
+assertion was =drained == unique.len()=, and =drained= is the function
+counting its own inserts — so the test could not have failed for the
+reason it existed. Rewritten in place, dated, with the reason.
+
+Exactly-once now means a claim about the *vault*: every id carries the
+mark, none twice, none missed — including an id the queue lists twice,
+which is two producers and one task. The property holds. That is worth
+saying plainly, because partway through I had it failing and wrote that
+the mark never lands; the mark lands, and my test was looking for
+=SWARM-STATE= where the drain writes =swarm-state=. My bug, not the
+product's.
+
+=the_worker_count_is_not_used= states the gap as a test rather than a
+doc comment, since the signature says otherwise and a reader is
+entitled to know. One worker and a hundred produce identical vaults.
+It is also the test that has to change on the day the drain becomes
+concurrent, and it will be obvious why.
 
 * DONE Config: a new key can arrive with no constraint and nothing notices
 Correcting the seed again: config validation is *not* per-key

@@ -1,8 +1,17 @@
 //! A2A (Agent-to-Agent) bridge.
 //!
-//! Lets closure participate in agent swarms as a first-class peer.
-//! Same text-mode protocol as [`closure_mcp`] / [`closure_acp`]: one
-//! command name per request, `OK` or `UNKNOWN` per response.
+//! Speaks the same text-mode protocol as [`closure_mcp`] /
+//! [`closure_acp`]: one command name per request, `OK` or `UNKNOWN` per
+//! response. Another agent can reach the vault through it, and a task
+//! queue in an org file can be drained through [`swarm_drain`].
+//!
+//! It does not run a swarm. This used to say closure "participates in
+//! agent swarms as a first-class peer", which reads as concurrency and
+//! is not what is here: the drain is one sequential loop that ignores
+//! the worker count it is given. Nothing was wrong with the drain — the
+//! exactly-once property holds and is checked against the vault — but
+//! the sentence promised a thing the code does not do, which is the
+//! most expensive kind of documentation.
 
 #![forbid(unsafe_code)]
 
@@ -323,10 +332,21 @@ pub fn serve_jsonrpc_stdio(vault: &mut Vault) -> Result<(), A2aError> {
 /// and records state via set-property (so the queue can be inspected).
 /// Returns the number of tasks drained.
 ///
-/// Property (enforced by callers/tests): for any input set of task ids,
-/// the number drained == |input|, and every task is processed exactly once
-/// (no duplicates, no losses). N is advisory (sim is sequential for hermetic
-/// test; real swarm uses threads + locking or CRDT claim).
+/// Exactly once, for any input: every id in `task_ids` ends up marked
+/// in the vault, none twice, none missed — including an id the queue
+/// lists more than once, which is two producers and one task. That is
+/// checked against the vault in `tests/swarm.rs` rather than against
+/// the return value, which is this function counting its own inserts.
+///
+/// `num_workers` is ignored, and the signature is the only thing that
+/// suggests otherwise. The drain is sequential; the claim set that
+/// makes it exactly-once is a `HashSet` and not a lock, so it says
+/// nothing about what would happen if two threads ran it. Making that
+/// real means threads and a claim through the CRDT — a merge rather
+/// than a lock — and `closure-a2a` is frozen for this run, so what is
+/// in scope is saying so rather than building it. `tests/swarm.rs`
+/// asserts the parameter is unused, which is the test that has to
+/// change on the day it stops being true.
 #[must_use]
 pub fn swarm_drain(vault: &mut Vault, _num_workers: usize, task_ids: &[BlockId]) -> usize {
     let mut done = 0usize;
