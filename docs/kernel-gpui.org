@@ -1215,10 +1215,21 @@ and they are small:
   so the term is not a term and nothing can render it as one.
 - =[@3]= counter override — a list that says it starts at 3 is numbered
   from 1.
-- timestamp delay (=-2d=) — =DEADLINE: <2026-08-20 Thu -2d>= warns on
-  the same day as one without, so the feature that says "do not nag me
-  until two days before" does nothing. =span_of= already skips past
-  delays to find the time; this reads them instead of skipping.
+- [X] timestamp delay (=-2d=) — done, and it was two features. There
+  was no warning period at all: =agenda_until= kept entries whose date
+  was =<= today=, so a DEADLINE surfaced on the day it was due and not
+  a moment before — the one moment a warning has stopped being useful.
+  The cooldown was not merely unread, it had nothing to narrow.
+  =DEADLINE_WARNING_DAYS= is 14, org's default, so a vault read by both
+  agrees about what is on today's list; =delay_of= narrows it per
+  timestamp. Kept apart from =parse_repeater= on purpose: both are a
+  sign and a unit in the same brackets and =<... +1w -2d>= is both at
+  once. The =:= guard is what keeps =10:00-11:00= from reading as an
+  eleven-unit warning. SCHEDULED is untouched — a plan appears on its
+  day, which is what makes it a plan. The agenda says =tomorrow= in the
+  warning colour and =in 8 days= muted, because otherwise listing
+  deadlines early only makes the agenda longer.
+  Conformance 91% → 93%, understood floor 41 → 42.
 
 Split into one item each if any turns out to be more than a commit.
 Each needs a shell to offer it before the matrix may claim it.

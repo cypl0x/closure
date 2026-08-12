@@ -15,6 +15,17 @@ use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{Receiver, Sender, channel};
 
+/// How many days before a deadline it starts being mentioned.
+///
+/// Org's `org-deadline-warning-days`, and the same default, because a
+/// vault read by both should agree about what is on today's list. A
+/// timestamp's own `-2d` cooldown overrides it for that one task.
+///
+/// Not applied to SCHEDULED: "I planned to start this Tuesday" is not
+/// something to be warned about a fortnight out — a plan appears on its
+/// day, which is what makes it a plan.
+pub const DEADLINE_WARNING_DAYS: i64 = 14;
+
 use closure_core::{
     AddSibling, BlockId, Command, Demote, Document, MoveSubtree, Promote, RemoveSubtree,
     RenameHeadline, SetBody, SetPriority, SetProperty, SetTags, SetTodo,
@@ -254,6 +265,14 @@ pub struct AgendaEntry {
     /// How long it runs, when the stamp is a range like
     /// `<2026-08-12 Wed 10:00-11:00>`.
     pub minutes: Option<u64>,
+    /// The first date this should be mentioned on, `YYYY-MM-DD`.
+    ///
+    /// Equal to `date` for anything that is not a deadline: a plan
+    /// appears on its day, because "I meant to start this Tuesday" is
+    /// not something to be warned about a fortnight out. For a deadline
+    /// it is [`DEADLINE_WARNING_DAYS`] earlier, or as much earlier as
+    /// the timestamp's own `-2d` cooldown asked for.
+    pub warn_from: String,
 }
 
 /// Errors while operating on a vault.
@@ -1810,12 +1829,36 @@ impl Vault {
                         let span = ts
                             .map(|t| t.trim_matches(['<', '>', '[', ']']))
                             .and_then(closure_org::span_of);
+                        // How long before it lands this starts being
+                        // mentioned. A deadline nobody hears about until
+                        // the day it is due is a deadline nobody can act
+                        // on, which is the state this was in.
+                        let warn_from = if kind == AgendaKind::Deadline {
+                            let days = ts.and_then(closure_org::delay_of).map_or(
+                                DEADLINE_WARNING_DAYS,
+                                |d| match d.unit {
+                                    closure_org::Unit::Hour => 0,
+                                    closure_org::Unit::Day => d.count,
+                                    closure_org::Unit::Week => d.count * 7,
+                                    // Approximate on purpose: a warning
+                                    // period is a rule of thumb, and a
+                                    // month that meant 28 in February
+                                    // would surprise somebody.
+                                    closure_org::Unit::Month => d.count * 30,
+                                    closure_org::Unit::Year => d.count * 365,
+                                },
+                            );
+                            closure_org::shift_date(&date, -days).unwrap_or_else(|| date.clone())
+                        } else {
+                            date.clone()
+                        };
                         out.push(AgendaEntry {
                             path: path.to_path_buf(),
                             id: h.id().to_string(),
                             title: h.title().to_owned(),
                             kind,
                             date,
+                            warn_from,
                             start_minutes: span.as_ref().and_then(|s| s.start_minutes),
                             minutes: span.as_ref().and_then(closure_org::TimeSpan::minutes),
                         });
@@ -1878,9 +1921,13 @@ impl Vault {
     /// Agenda entries on or before `date` (`YYYY-MM-DD`), sorted.
     #[must_use]
     pub fn agenda_until(&self, date: &str) -> Vec<AgendaEntry> {
+        // `warn_from`, not `date`: a deadline is due on its date and
+        // worth mentioning for a while before it. They are the same
+        // string for everything that is not a deadline, so this reads
+        // the same for a plan as it always did.
         self.agenda()
             .into_iter()
-            .filter(|e| e.date.as_str() <= date)
+            .filter(|e| e.warn_from.as_str() <= date)
             .collect()
     }
 

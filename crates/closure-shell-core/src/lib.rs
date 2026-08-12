@@ -989,6 +989,19 @@ pub struct AgendaRow {
     pub is_today: bool,
     /// True when date lies before the injected today.
     pub is_overdue: bool,
+    /// How many days until a deadline lands, when it has not yet.
+    ///
+    /// `None` for anything that is not a deadline — a scheduled date is
+    /// when you meant to start, not a countdown — and `None` once the
+    /// date is past, where `is_overdue` is the thing to say. A negative
+    /// count would read as "minus three days left", which is not how
+    /// anybody thinks about a missed deadline.
+    ///
+    /// Deadlines are listed before they land now, so without this a
+    /// deadline eleven days out and one due within the hour are the
+    /// same row: the warning period would make the agenda longer
+    /// without making it more useful.
+    pub days_left: Option<i64>,
     /// `HH:MM` when the stamp named a time, else `None`.
     ///
     /// Not folded into `date`, unlike the string `agenda_rows` builds:
@@ -2249,6 +2262,23 @@ fn headline_is_unfolded(h: &closure_core::DocHeadline) -> bool {
     h.properties()
         .iter()
         .any(|(k, v)| k == "VISIBILITY" && v != "folded")
+}
+
+/// Whole days from `from` to `to`, both `YYYY-MM-DD`.
+///
+/// Through `closure-org`'s civil-date pair rather than a third copy of
+/// the arithmetic: "how many days until the first of March" is exactly
+/// what a hand-rolled version gets wrong, and there are already two
+/// places that do it right.
+fn days_between(from: &str, to: &str) -> Option<i64> {
+    let parse = |d: &str| -> Option<i64> {
+        let mut it = d.split('-');
+        let y: i64 = it.next()?.parse().ok()?;
+        let m: i64 = it.next()?.parse().ok()?;
+        let day: i64 = it.next()?.parse().ok()?;
+        Some(closure_org::days_from_civil(y, m, day))
+    };
+    Some(parse(to)? - parse(from)?)
 }
 
 /// The outline, as rows: every headline in the vault, in document
@@ -21064,6 +21094,10 @@ impl ModalApp {
             .map(|e| AgendaRow {
                 is_today: e.date == today,
                 is_overdue: e.date.as_str() < today,
+                days_left: (e.kind == closure_store::AgendaKind::Deadline
+                    && e.date.as_str() >= today)
+                    .then(|| days_between(today, &e.date))
+                    .flatten(),
                 kind: match e.kind {
                     closure_store::AgendaKind::Scheduled => "SCHEDULED".to_owned(),
                     closure_store::AgendaKind::Deadline => "DEADLINE".to_owned(),

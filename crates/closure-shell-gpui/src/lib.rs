@@ -8550,7 +8550,23 @@ impl GpuiView {
                             .text_color(rgb(co.muted))
                             .child(row.time.unwrap_or_default()),
                     )
-                    .child(div().text_color(rgb(title_color)).child(row.title)),
+                    .child(div().text_color(rgb(title_color)).child(row.title))
+                    // How long there is. Without it a deadline eleven
+                    // days out and one due within the hour are the same
+                    // row, and listing deadlines early just makes the
+                    // agenda longer.
+                    .children(row.days_left.map(|d| {
+                        let text = match d {
+                            0 => "today".to_owned(),
+                            1 => "tomorrow".to_owned(),
+                            n => format!("in {n} days"),
+                        };
+                        div()
+                            .flex_none()
+                            .text_size(self.sz(10.0))
+                            .text_color(rgb(if d <= 1 { co.warning } else { co.muted }))
+                            .child(text)
+                    })),
             );
         }
         out

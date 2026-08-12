@@ -10107,10 +10107,10 @@ pub const CONFORMANCE: &[Construct] = &[
     },
     Construct {
         name: "timestamp delay (-2d)",
-        support: Support::Preserved,
-        evidence: "",
-        missing: "DEADLINE: <2026-08-20 Thu -2d> warns on the same day as one without",
-        offered: "",
+        support: Support::Understood,
+        evidence: "crates/closure-org/tests/timestamp_delay.rs",
+        missing: "",
+        offered: "crates/closure-shell-core/tests/deadline_notice.rs",
     },
     Construct {
         name: "#+ATTR_* export attributes",
@@ -10372,6 +10372,76 @@ pub fn parse_repeater(ts: &str) -> Option<Repeater> {
             continue;
         };
         return Some(Repeater { kind, count, unit });
+    }
+    None
+}
+
+/// `YYYY-MM-DD`, moved by `days` — negative for earlier.
+///
+/// Built on [`days_from_civil`] and [`civil_from_days`] rather than
+/// counting days by hand, because "two weeks before the first of March"
+/// is exactly the arithmetic a hand-rolled version gets wrong, and
+/// those two already exist for the repeater.
+///
+/// `None` if the input is not a date.
+#[must_use]
+pub fn shift_date(date: &str, days: i64) -> Option<String> {
+    let mut parts = date.split('-');
+    let y: i64 = parts.next()?.parse().ok()?;
+    let m: i64 = parts.next()?.parse().ok()?;
+    let d: i64 = parts.next()?.parse().ok()?;
+    let (y, m, d) = civil_from_days(days_from_civil(y, m, d) + days);
+    Some(format!("{y:04}-{m:02}-{d:02}"))
+}
+
+/// How long before a deadline it should start being mentioned.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Delay {
+    /// How many units.
+    pub count: i64,
+    /// The unit.
+    pub unit: Unit,
+}
+
+/// The `-2d` cooldown in an org timestamp, if it has one.
+///
+/// Org warns about a deadline for some days before it lands, and this
+/// narrows that for one task: "this one, only two days out". Kept apart
+/// from [`parse_repeater`] on purpose — both are a sign and a unit in
+/// the same brackets, and they mean different things. `+1w` says when
+/// the task comes back; `-2d` says when to mention it. A shared parser
+/// would let one quietly acquire the other's rules, and
+/// `<2026-08-20 Thu +1w -2d>` is both at once.
+///
+/// The token has to *start* the word, which is what keeps the `-11:00`
+/// of a time range out: a range is one word and its dash is inside it.
+#[must_use]
+pub fn delay_of(ts: &str) -> Option<Delay> {
+    for token in ts
+        .trim_matches(|c| c == '<' || c == '>' || c == '[' || c == ']')
+        .split_whitespace()
+    {
+        // A time range is one word with a dash in the middle, and its
+        // second half is a clock reading rather than a cooldown.
+        if token.contains(':') {
+            continue;
+        }
+        let Some(rest) = token.strip_prefix('-') else {
+            continue;
+        };
+        let (digits, unit) = rest.split_at(rest.len().saturating_sub(1));
+        let unit = match unit {
+            "h" => Unit::Hour,
+            "d" => Unit::Day,
+            "w" => Unit::Week,
+            "m" => Unit::Month,
+            "y" => Unit::Year,
+            _ => continue,
+        };
+        let Ok(count) = digits.parse::<i64>() else {
+            continue;
+        };
+        return Some(Delay { count, unit });
     }
     None
 }
