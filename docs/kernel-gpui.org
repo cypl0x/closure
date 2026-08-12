@@ -671,6 +671,12 @@ Fixing it means either a machine with a real Vulkan driver to confirm
 it is lavapipe-only, or reading blade's swapchain handling. Both are
 their own piece of work and neither is a kernel or shell change.
 
+Eliminated 2026-08-12: it is not a missing compositor. =_NET_WM_CM_S0=
+is unset on :1, which looked like a promising cause — an uncomposited
+X server can stall a swapchain present — but picom refuses to start
+with "another composite manager is already running", so one is there
+under a different selection and the wedge happens anyway.
+
 Acceptance: reproduced on a machine with a GPU (or shown not to happen there), then fixed or reported upstream.
 
 * DONE Notion mode: slash command menu in gpui
