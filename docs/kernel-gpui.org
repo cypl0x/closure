@@ -871,6 +871,31 @@ A list that measures rows as it places them would need no estimate.
 
 Acceptance: =PANE_WRAP_GUESS= is gone and =manual_scrolls= still passes.
 
+Attempted 2026-08-12 and reverted. The idea was sound and the
+measurement was not available.
+
+Average row height — the pane's content height divided by the rows
+painted last frame — is the right quantity, and specifically *not* the
+content height itself, which is the trap this pane already fell into
+once: painting more rows made it measure taller and ask for more rows.
+An average cannot run away, because painting more rows does not make a
+row taller.
+
+What is missing is a trustworthy content height. =side_scroll.bounds()=
+is the only handle on offer and it has now behaved two different ways
+in two investigations — content-shaped once, viewport-shaped once — so
+the derived page came out identical at 1600px and 700px wide, and the
+cursor-visibility guarantee broke. Shipping that would have traded a
+documented, conservative estimate for an undocumented wrong one.
+
+The test that would prove it, for whoever picks this up: paint the
+manual at 1600x720 and at 700x720, count the painted =manual-row-*=
+selectors, and require the narrow pane to fit fewer. It fails today at
+16 and 16.
+
+What it probably needs is gpui's own measured list rather than a
+height computed ahead of layout.
+
 * DONE Bug: the read-only panes clip long lines instead of wrapping
 Found 2026-08-11 in the same screenshot as the scroll fix. Manual
 rows run off the right edge mid-word — "Add a sibling headl" — so a
