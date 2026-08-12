@@ -15397,6 +15397,42 @@ impl ModalApp {
         memo.by_id.get(id).copied().unwrap_or_default()
     }
 
+    /// `\alpha` as α, for a pane that reads and never writes.
+    ///
+    /// The same rule as a composition and for the same reason (I12):
+    /// the editor shows the file because it writes back what it shows,
+    /// and the preview shows what the file means because it does not.
+    ///
+    /// Only entities closure knows a character for. An unknown name is
+    /// left exactly as written — a guess would be a wrong character,
+    /// which is worse than a backslash — and that is also what keeps
+    /// `C:\notes` a path rather than a rendering accident.
+    ///
+    /// LaTeX fragments are found by the same parser and deliberately
+    /// left alone: `$x^2$` needs a typesetter, and half-rendering a
+    /// formula is worse than showing the source, which at least says
+    /// what it is.
+    fn entities_for_preview(text: &str) -> String {
+        if !text.contains('\\') {
+            return text.to_owned();
+        }
+        let mut out = String::with_capacity(text.len());
+        let mut at = 0usize;
+        for f in closure_org::fragments(text) {
+            let closure_org::FragmentKind::Entity(name) = &f.kind else {
+                continue;
+            };
+            let Some(ch) = closure_org::entity_char(name) else {
+                continue;
+            };
+            out.push_str(&text[at..f.range.start]);
+            out.push_str(ch);
+            at = f.range.end;
+        }
+        out.push_str(&text[at..]);
+        out
+    }
+
     /// What a composition *means*, for a pane that reads and never
     /// writes.
     ///
@@ -15443,9 +15479,10 @@ impl ModalApp {
             .children_source_preview(&bid, PREVIEW_CAP)
             .unwrap_or_default();
         let (children, child_err) = self.expanded_for_preview(shell, &children);
+        let children = Self::entities_for_preview(&children);
         let mut detail = Detail::of(h, path, children, self.counts_for(shell, id, path));
         let (body, body_err) = self.expanded_for_preview(shell, &detail.body);
-        detail.body = body;
+        detail.body = Self::entities_for_preview(&body);
         detail.composition_error = body_err.or(child_err);
         Some(detail)
     }

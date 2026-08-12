@@ -659,6 +659,65 @@ reader watches the window stop and has no reason to connect the two.
 It now says the window may stop repainting, that closure is still
 reading keys, and to use =closure tui=.
 
+* TODO Conformance measures the parser, not what closure offers
+Found 2026-08-12 by grepping for callers. Seven of the nine org APIs
+this run added have none: =inline_tasks=, =document_columns=,
+=columns_format=, =fragments=, =entity_char=, =resolve_includes=,
+=call_target=. The matrix calls those constructs "understood" because
+there are semantics and a test, and that is true — and it is not the
+same as a reader being able to see them.
+
+=describe_command= was the same shape: a tested function nothing could
+reach. The rule was stated then and applies here.
+
+Each unwired API gets an item below. This one closes when the matrix
+distinguishes "the parser understands it" from "a shell offers it", so
+the number stops being able to drift away from the experience.
+
+Acceptance: =closure conformance= reports both, and the ratchet holds both.
+
+* DONE Entities and LaTeX render in the read view
+=\alpha= shows as a backslash and a word. The rule is already settled
+by I12 — the editor shows the file, the preview shows what it means —
+and this is the same split for a different construct.
+
+Acceptance: =nix develop -c cargo test -p closure-shell-core --test entity_preview=
+
+On :1: "the α particle decays to β -> γ", "20°", "± 2", "€ 5", "1– 10
+and …". LaTeX deliberately untouched — =$x^2 + y^2$= needs a
+typesetter and a half-rendered formula is worse than the source, which
+at least says what it is.
+
+An entity closure has no character for is left exactly as written, and
+that is also what keeps =C:\notes= a path rather than a rendering
+accident. There is a test for the path.
+
+* TODO Inline tasks reach the agenda
+=inline_tasks()= finds them and nothing asks. An inline task is a task
+attached to a paragraph; the agenda is where tasks are read, and one
+that is invisible there is one nobody writes twice.
+
+Acceptance: =nix develop -c cargo test -p closure-shell-core --test inline_agenda=
+
+* TODO #+INCLUDE resolves in the read view
+Same rule as a widget: the file keeps the directive, the preview shows
+what it names. =resolve_includes= exists and no shell calls it.
+
+Acceptance: =nix develop -c cargo test -p closure-shell-core --test include_preview=
+
+* TODO #+COLUMNS drives a database view
+A file that declares how it wants to be tabulated should be tabulated
+that way. =document_columns= parses it; =ViewSpec= renders columns;
+nothing connects them.
+
+Acceptance: =nix develop -c cargo test -p closure-query --test columns_view=
+
+* TODO #+CALL runs the block it names
+=call_target= reads the line and nothing evaluates it. Half a feature
+is the half that looks finished from the matrix.
+
+Acceptance: =nix develop -c cargo test -p closure-eval --test call_runs=
+
 * TODO Bug: the gpui window stops presenting on the lavapipe rasteriser
 Diagnosed above and not fixed: the wedge is in the presentation path
 (blade/Vulkan on lavapipe), below anything this queue owns. Input is
