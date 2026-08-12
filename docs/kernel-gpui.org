@@ -659,7 +659,7 @@ reader watches the window stop and has no reason to connect the two.
 It now says the window may stop repainting, that closure is still
 reading keys, and to use =closure tui=.
 
-* TODO Conformance measures the parser, not what closure offers
+* DONE Conformance measures the parser, not what closure offers
 Found 2026-08-12 by grepping for callers. Seven of the nine org APIs
 this run added have none: =inline_tasks=, =document_columns=,
 =columns_format=, =fragments=, =entity_char=, =resolve_includes=,
@@ -675,6 +675,16 @@ distinguishes "the parser understands it" from "a shell offers it", so
 the number stops being able to drift away from the experience.
 
 Acceptance: =closure conformance= reports both, and the ratchet holds both.
+
+91% understood, 88% offered. The gap is the entire point: before the
+unwired parsers were wired up it was 91 and 70, and nothing about the
+first number would have shown that. Both are ratcheted, an =offered=
+claim must name a test that exists — the guard caught three citations
+I had assumed rather than checked, on its first run — and nothing may
+claim to be offered without being understood.
+
+One construct is =parsed only= now: footnote references. Three are
+preserved: radio targets, org's own macros, =#+SETUPFILE=.
 
 * DONE Entities and LaTeX render in the read view
 =\alpha= shows as a backslash and a word. The rule is already settled

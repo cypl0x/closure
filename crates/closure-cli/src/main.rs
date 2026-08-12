@@ -3438,13 +3438,19 @@ fn cmd_spec() -> Result<(), String> {
 /// the test that backs every claim.
 #[allow(clippy::unnecessary_wraps)]
 fn cmd_conformance() -> Result<(), String> {
-    let rate = closure_org::conformance_rate();
-    println!("org conformance: {rate}%");
+    let understood = closure_org::conformance_rate();
+    let offered = closure_org::offered_rate();
+    println!("org conformance: {understood}% understood, {offered}% offered by a shell");
     println!();
     for c in closure_org::CONFORMANCE {
         match c.support {
+            closure_org::Support::Understood if c.offered.is_empty() => {
+                // The state worth naming: parsed, tested, and invisible
+                // to a reader. It is what a single number hides.
+                println!("parsed only {:<38} {}", c.name, c.evidence);
+            }
             closure_org::Support::Understood => {
-                println!("understood  {:<38} {}", c.name, c.evidence);
+                println!("offered     {:<38} {}", c.name, c.offered);
             }
             closure_org::Support::Preserved => {
                 println!("preserved   {:<38} {}", c.name, c.missing);

@@ -16,7 +16,7 @@
 
 #![allow(clippy::unwrap_used, clippy::expect_used, missing_docs)]
 
-use closure_org::{CONFORMANCE, Support, conformance_rate};
+use closure_org::{CONFORMANCE, Support, conformance_rate, offered_rate};
 
 /// The floor. Raise it when a construct moves up; never lower it.
 ///
@@ -82,4 +82,58 @@ fn the_matrix_is_worth_having() {
         "a matrix where everything is understood is a matrix that is \
          not looking at what org has"
     );
+}
+
+/// The floor for what a shell actually offers. Raise it the same way.
+///
+/// 2026-08-12: 91% understood, 88% offered. The gap is the point of
+/// having two numbers — it was 91 and 70 before the unwired parsers
+/// were wired up, and nothing about the first number would have shown
+/// that.
+const OFFERED_FLOOR: u32 = 88;
+
+#[test]
+fn what_a_shell_offers_never_falls_either() {
+    let rate = offered_rate();
+    assert!(
+        rate >= OFFERED_FLOOR,
+        "org constructs a shell offers fell to {rate}%, floor is {OFFERED_FLOOR}%"
+    );
+}
+
+#[test]
+fn nothing_claims_to_be_offered_by_a_test_that_does_not_exist() {
+    // The same rule the spec's citations follow: a pointer into a file
+    // nobody has reads as evidence and is not.
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .expect("crates/")
+        .parent()
+        .expect("repo root");
+    for c in CONFORMANCE {
+        if !c.offered.is_empty() {
+            assert!(
+                root.join(c.offered).exists(),
+                "`{}` claims to be offered by `{}`, which does not exist",
+                c.name,
+                c.offered
+            );
+        }
+    }
+}
+
+#[test]
+fn nothing_is_offered_that_is_not_understood() {
+    // A shell cannot show what the parser cannot read, so this
+    // combination means somebody wrote a row wrong.
+    for c in CONFORMANCE {
+        if !c.offered.is_empty() {
+            assert_eq!(
+                c.support,
+                Support::Understood,
+                "`{}` is offered and not understood",
+                c.name
+            );
+        }
+    }
 }

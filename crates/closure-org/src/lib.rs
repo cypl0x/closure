@@ -9786,6 +9786,18 @@ pub struct Construct {
     pub evidence: &'static str,
     /// What is missing, for anything that is only preserved.
     pub missing: &'static str,
+    /// The test showing a *shell* offers it, or empty when none does.
+    ///
+    /// Understanding and offering are different claims and the matrix
+    /// used to make only the first. Seven of the constructs this run
+    /// added had semantics, tests, and no caller anywhere — a reader
+    /// saw exactly what they saw before. `describe_command` was the
+    /// same shape one layer up: a tested function nothing could reach.
+    ///
+    /// A rate over the first number alone can drift away from the
+    /// experience without ever going down, which is the failure mode a
+    /// published number is supposed to prevent.
+    pub offered: &'static str,
 }
 
 /// What closure understands of org, and what it merely keeps.
@@ -9802,206 +9814,256 @@ pub const CONFORMANCE: &[Construct] = &[
         support: Support::Understood,
         evidence: "crates/closure-org/tests/shape.rs",
         missing: "",
+        offered: "crates/closure-shell-core/tests/app.rs",
     },
     Construct {
         name: "TODO keyword",
         support: Support::Understood,
         evidence: "crates/closure-org/tests/todo_keywords.rs",
         missing: "",
+        offered: "crates/closure-shell-core/tests/app.rs",
     },
     Construct {
         name: "priority [#A]",
         support: Support::Understood,
         evidence: "crates/closure-org/tests/shape.rs",
         missing: "",
+        offered: "crates/closure-shell-core/tests/detail_meta.rs",
     },
     Construct {
         name: "tags",
         support: Support::Understood,
         evidence: "crates/closure-org/tests/shape.rs",
         missing: "",
+        offered: "crates/closure-shell-core/tests/detail_meta.rs",
     },
     Construct {
         name: "property drawer",
         support: Support::Understood,
         evidence: "crates/closure-org/tests/properties.rs",
         missing: "",
+        offered: "crates/closure-shell-core/tests/detail_meta.rs",
     },
     Construct {
         name: ":ID: property",
         support: Support::Understood,
         evidence: "crates/closure-org/tests/properties.rs",
         missing: "",
+        offered: "crates/closure-shell-core/tests/detail_meta.rs",
     },
     Construct {
         name: "SCHEDULED",
         support: Support::Understood,
         evidence: "crates/closure-org/tests/planning_drawer.rs",
         missing: "",
+        offered: "crates/closure-shell-core/tests/app.rs",
     },
     Construct {
         name: "DEADLINE",
         support: Support::Understood,
         evidence: "crates/closure-org/tests/planning_drawer.rs",
         missing: "",
+        offered: "crates/closure-shell-core/tests/app.rs",
     },
     Construct {
         name: "CLOSED",
         support: Support::Understood,
         evidence: "crates/closure-org/tests/planning_drawer.rs",
         missing: "",
+        offered: "crates/closure-shell-core/tests/clock.rs",
     },
     Construct {
         name: "plain list",
         support: Support::Understood,
         evidence: "crates/closure-org/tests/shape.rs",
         missing: "",
+        offered: "crates/closure-shell-core/tests/detail_children.rs",
     },
     Construct {
         name: "checkbox item",
         support: Support::Understood,
         evidence: "crates/closure-org/tests/shape.rs",
         missing: "",
+        offered: "crates/closure-shell-core/tests/detail_children.rs",
     },
     Construct {
         name: "table row",
         support: Support::Understood,
         evidence: "crates/closure-org/tests/tables.rs",
         missing: "",
+        offered: "crates/closure-shell-core/tests/detail_children.rs",
     },
     Construct {
         name: "#+BEGIN_SRC",
         support: Support::Understood,
         evidence: "crates/closure-org/tests/babel.rs",
         missing: "",
+        offered: "crates/closure-shell-core/tests/babel.rs",
     },
     Construct {
         name: "greater block (quote/example/export)",
         support: Support::Understood,
         evidence: "crates/closure-org/tests/greater_blocks.rs",
         missing: "",
+        offered: "crates/closure-shell-core/tests/detail_children.rs",
     },
     Construct {
         name: "#+KEYWORD line",
         support: Support::Understood,
         evidence: "crates/closure-org/tests/shape.rs",
         missing: "",
+        offered: "crates/closure-shell-core/tests/detail_children.rs",
     },
     Construct {
         name: "comment line",
         support: Support::Understood,
         evidence: "crates/closure-org/tests/shape.rs",
         missing: "",
+        offered: "crates/closure-shell-core/tests/detail_children.rs",
     },
     Construct {
         name: "emphasis markup",
         support: Support::Understood,
         evidence: "crates/closure-org/tests/markup_boundaries.rs",
         missing: "",
+        offered: "crates/closure-shell-gpui/tests/paint.rs",
     },
     Construct {
         name: "link [[target][desc]]",
         support: Support::Understood,
         evidence: "crates/closure-org/tests/roundtrip.rs",
         missing: "",
+        offered: "crates/closure-shell-core/tests/pane_keeps_outline_selection.rs",
     },
     Construct {
         name: "footnote reference",
         support: Support::Understood,
         evidence: "crates/closure-org/tests/roundtrip.rs",
         missing: "",
+        offered: "",
     },
     Construct {
         name: "generic drawer",
         support: Support::Understood,
         evidence: "crates/closure-org/tests/properties.rs",
         missing: "",
+        offered: "crates/closure-shell-core/tests/detail_meta.rs",
     },
     Construct {
         name: "body escaping (,*)",
         support: Support::Understood,
         evidence: "crates/closure-org/tests/body_escape.rs",
         missing: "",
+        offered: "crates/closure-shell-core/tests/body_escape.rs",
     },
     Construct {
         name: "#+INCLUDE",
         support: Support::Understood,
         evidence: "crates/closure-org/tests/include.rs",
         missing: "",
+        offered: "crates/closure-shell-core/tests/include_preview.rs",
     },
     Construct {
         name: "LaTeX fragment",
         support: Support::Understood,
         evidence: "crates/closure-org/tests/entities.rs",
         missing: "",
+        offered: "crates/closure-shell-core/tests/entity_preview.rs",
     },
     Construct {
         name: "entity (\\alpha)",
         support: Support::Understood,
         evidence: "crates/closure-org/tests/entities.rs",
         missing: "",
+        offered: "crates/closure-shell-core/tests/entity_preview.rs",
     },
     Construct {
         name: "inline task",
         support: Support::Understood,
         evidence: "crates/closure-org/tests/inline_tasks.rs",
         missing: "",
+        offered: "crates/closure-shell-core/tests/inline_agenda.rs",
     },
     Construct {
         name: "#+COLUMNS / column view",
         support: Support::Understood,
         evidence: "crates/closure-org/tests/column_view.rs",
         missing: "",
+        offered: "crates/closure-query/tests/columns_view.rs",
     },
     Construct {
         name: "#+TBLFM",
         support: Support::Understood,
         evidence: "crates/closure-org/tests/tblfm.rs",
         missing: "",
+        offered: "crates/closure-core/tests/recompute_table.rs",
     },
     Construct {
         name: "timestamp repeater (+1w)",
         support: Support::Understood,
         evidence: "crates/closure-org/tests/repeaters.rs",
         missing: "",
+        offered: "crates/closure-core/tests/repeat_on_done.rs",
     },
     Construct {
         name: "habit (.+1d/++1m)",
         support: Support::Understood,
         evidence: "crates/closure-org/tests/repeaters.rs",
         missing: "",
+        offered: "crates/closure-core/tests/repeat_on_done.rs",
     },
     Construct {
         name: "#+CALL",
         support: Support::Understood,
         evidence: "crates/closure-eval/tests/noweb.rs",
         missing: "",
+        offered: "crates/closure-eval/tests/call_runs.rs",
     },
     Construct {
         name: "noweb reference",
         support: Support::Understood,
         evidence: "crates/closure-eval/tests/noweb.rs",
         missing: "",
+        offered: "crates/closure-store/tests/tangle_noweb.rs",
     },
     Construct {
         name: "radio target",
         support: Support::Preserved,
         evidence: "",
         missing: "no implicit linking of matching text",
+        offered: "",
     },
     Construct {
         name: "macro {{{name}}}",
         support: Support::Preserved,
         evidence: "",
         missing: "org's own macros are not expanded",
+        offered: "",
     },
     Construct {
         name: "#+SETUPFILE",
         support: Support::Preserved,
         evidence: "",
         missing: "the referenced file is never read",
+        offered: "",
     },
 ];
+
+/// What fraction of [`CONFORMANCE`] a *shell* offers, as a percentage.
+///
+/// The number that matches the experience. [`conformance_rate`] is
+/// what the parser understands, and the two are different claims: a
+/// construct can be parsed, tested and invisible.
+#[must_use]
+pub fn offered_rate() -> u32 {
+    let total = u32::try_from(CONFORMANCE.len()).unwrap_or(u32::MAX);
+    if total == 0 {
+        return 0;
+    }
+    let offered =
+        u32::try_from(CONFORMANCE.iter().filter(|c| !c.offered.is_empty()).count()).unwrap_or(0);
+    offered * 100 / total
+}
 
 /// What fraction of [`CONFORMANCE`] closure understands, as a
 /// percentage, rounded down.
