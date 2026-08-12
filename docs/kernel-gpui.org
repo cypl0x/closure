@@ -1389,6 +1389,29 @@ against the biggest case than the smallest.
 
 Acceptance: =nix develop -c cargo llvm-cov -p closure-tui --fail-under-lines 90=
 
+Every chord the keymap defines, in all five modes, against three shapes
+of vault — full, empty, and no files at all (=App::new(Vec::new())= is
+a shipped case with its own test, so every chord has to survive it).
+Plus every chord pressed *twice*, because the second press lands in
+whatever surface the first opened, which for most of them is the only
+visitor that mode will ever get.
+
+The reading holds: a test is not a feature, and closure-tui gained only
+tests.
+
+=escape_gets_back_out_of_every_surface= is the one with a claim in it —
+whatever a chord opened, Escape leaves — and it is the property that
+makes a modal shell usable rather than a thing you kill the terminal to
+escape.
+
+It also cost a red run for the right reason: this shell's stroke
+vocabulary is the terminal's (=RET=, =ESC=, =C-c=) and the gpui
+window's is gpui's (=enter=, =escape=). The chord *table* is shared
+between them, which is exactly what makes the difference easy to
+forget, so it is stated in the test now.
+
+Workspace coverage 86.32% → 87.62%; =just coverage= floor 86 → 87.
+
 * TODO Coverage: the tail — store, core, eval, llm, gpui, lsp
 478 + 305 + 144 + 135 + 102 + 150 = 1,314 missed across six crates,
 none individually large. Split further only if one of them turns out to
