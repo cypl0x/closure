@@ -15647,6 +15647,74 @@ impl ModalApp {
         out
     }
 
+    /// Renumber an ordered list from the `[@N]` counter it declares,
+    /// and drop the cookie.
+    ///
+    /// `1. [@3] add the stock` is what an author writes when a numbered
+    /// list was interrupted by prose or a block and picks up again.
+    /// Unread, the second half restarts at one and the third step is
+    /// labelled first, while the `[@3]` sits in the body as noise — so
+    /// it cost the reader twice.
+    ///
+    /// The items *after* it follow on. A counter that renumbered only
+    /// its own line would leave `3.` and then `2.`, which is worse than
+    /// not reading it at all. The run ends at the first line that is
+    /// not an ordered item, which is what keeps a later list from
+    /// inheriting a number it never asked for.
+    ///
+    /// A view and never a write (I12).
+    fn renumbered_for_preview(text: &str) -> String {
+        use std::fmt::Write as _;
+        if !text.contains("[@") {
+            return text.to_owned();
+        }
+        let mut out = String::with_capacity(text.len());
+        let mut next: Option<u32> = None;
+        for (n, line) in text.lines().enumerate() {
+            if n > 0 {
+                out.push('\n');
+            }
+            let indent = line.len() - line.trim_start().len();
+            let t = line.trim_start();
+            let digits = t.len() - t.trim_start_matches(|c: char| c.is_ascii_digit()).len();
+            let ordered = digits > 0
+                && t.get(digits..)
+                    .is_some_and(|r| r.starts_with('.') || r.starts_with(')'));
+            if !ordered {
+                // Prose, a block, a blank line: the run is over, and a
+                // list further down starts from its own marker.
+                next = None;
+                out.push_str(line);
+                continue;
+            }
+            if let Some(start) = closure_org::list_counter(line) {
+                next = Some(start);
+            }
+            let Some(number) = next else {
+                out.push_str(line);
+                continue;
+            };
+            let sep = t.get(digits..digits + 1).unwrap_or(".");
+            let rest = t
+                .get(digits + 1..)
+                .unwrap_or("")
+                .trim_start()
+                .split_once(']')
+                .filter(|_| closure_org::list_counter(line).is_some())
+                .map_or_else(
+                    || t.get(digits + 1..).unwrap_or("").trim_start().to_owned(),
+                    |(_, after)| after.trim_start().to_owned(),
+                );
+            out.push_str(&" ".repeat(indent));
+            let _ = write!(out, "{number}{sep} {rest}");
+            next = Some(number + 1);
+        }
+        if text.ends_with('\n') {
+            out.push('\n');
+        }
+        out
+    }
+
     /// Render `_script` / `^script` in Unicode where Unicode has a
     /// form for it, and leave the source where it does not.
     ///
@@ -15823,8 +15891,8 @@ impl ModalApp {
             .children_source_preview(&bid, PREVIEW_CAP)
             .unwrap_or_default();
         let (children, child_err) = self.expanded_for_preview(shell, &children, path);
-        let children = Self::tables_for_preview(&Self::scripts_for_preview(
-            &Self::entities_for_preview(&children),
+        let children = Self::renumbered_for_preview(&Self::tables_for_preview(
+            &Self::scripts_for_preview(&Self::entities_for_preview(&children)),
         ));
         let mut detail = Detail::of(h, path, children, self.counts_for(shell, id, path));
         let (body, body_err) = self.expanded_for_preview(shell, &detail.body, path);
@@ -15852,8 +15920,8 @@ impl ModalApp {
         } else {
             body
         };
-        detail.body = Self::tables_for_preview(&Self::scripts_for_preview(
-            &Self::entities_for_preview(&body),
+        detail.body = Self::renumbered_for_preview(&Self::tables_for_preview(
+            &Self::scripts_for_preview(&Self::entities_for_preview(&body)),
         ));
         detail.composition_error = body_err.or(include_err).or(child_err);
         Some(detail)

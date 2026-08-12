@@ -1193,7 +1193,7 @@ satisfied, the tests I had written passed, and the screenshot I took at
 the time was of a single-file vault, which is the one shape where the
 bug is invisible.
 
-* TODO Org: the five constructs the honest matrix just admitted to
+* DONE Org: the five constructs the honest matrix just admitted to
 Added to =CONFORMANCE= while declining the other two, because a matrix
 with nothing Preserved is a matrix that stopped looking. They are real
 and they are small:
@@ -1229,8 +1229,26 @@ and they are small:
   word answers a question nobody has, and sorted is the difference
   between a list you read and one you look something up in.
   Conformance 95% → 97%, understood floor 43 → 44.
-- =[@3]= counter override — a list that says it starts at 3 is numbered
-  from 1.
+- [X] =[@3]= counter override — done. =[ ]=, =[X]= and =[-]= sit in
+  exactly that position and a vault is full of them, so the =@= is what
+  tells a counter from a checkbox. The items *after* it follow on: a
+  counter that renumbered only its own line would leave "3." then "2.",
+  which is worse than not reading it at all. The run ends at the first
+  line that is not an ordered item, so a later list does not inherit a
+  number it never asked for. Window shows =3.= / =4.= with the cookie
+  gone; the file keeps =1. [@3]= (I12).
+
+All five done. The matrix then read 100% understood with nothing
+Preserved, and =the_matrix_is_worth_having= fired for the second time
+this run — correctly, because org has more than 47 constructs. Six more
+are listed now: =#+CAPTION:=, =[[*Headline]]= search links,
+=#+PRIORITIES:=, inline footnotes =[fn::text]=, LOGBOOK state-change
+notes, and =remote()= table references.
+
+That took the ratio 97% → 88% while the understood *count* went 40 → 45.
+Which is exactly the case the count floor was added for: the ratio fell
+because closure admitted to more of org, and the number that cannot be
+gamed by growing the list went up by five.
 - [X] timestamp delay (=-2d=) — done, and it was two features. There
   was no warning period at all: =agenda_until= kept entries whose date
   was =<= today=, so a DEADLINE surfaced on the day it was due and not

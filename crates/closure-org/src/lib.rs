@@ -10100,10 +10100,10 @@ pub const CONFORMANCE: &[Construct] = &[
     },
     Construct {
         name: "list counter override [@3]",
-        support: Support::Preserved,
-        evidence: "",
-        missing: "a list that says it starts at 3 is still numbered from 1",
-        offered: "",
+        support: Support::Understood,
+        evidence: "crates/closure-org/tests/list_counter.rs",
+        missing: "",
+        offered: "crates/closure-shell-core/tests/list_numbering.rs",
     },
     Construct {
         name: "timestamp delay (-2d)",
@@ -10111,6 +10111,48 @@ pub const CONFORMANCE: &[Construct] = &[
         evidence: "crates/closure-org/tests/timestamp_delay.rs",
         missing: "",
         offered: "crates/closure-shell-core/tests/deadline_notice.rs",
+    },
+    Construct {
+        name: "#+CAPTION: on a table or block",
+        support: Support::Preserved,
+        evidence: "",
+        missing: "a caption is kept but never shown beside the thing it names",
+        offered: "",
+    },
+    Construct {
+        name: "[[*Headline]] search links",
+        support: Support::Preserved,
+        evidence: "",
+        missing: "a link by headline text resolves to nothing; only id: links follow",
+        offered: "",
+    },
+    Construct {
+        name: "#+PRIORITIES: custom range",
+        support: Support::Preserved,
+        evidence: "",
+        missing: "a file that declares A-F still gets the built-in A/B/C",
+        offered: "",
+    },
+    Construct {
+        name: "inline footnote [fn::text]",
+        support: Support::Preserved,
+        evidence: "",
+        missing: "an inline definition is not read as one; only [fn:name] with a separate body",
+        offered: "",
+    },
+    Construct {
+        name: "LOGBOOK state-change notes",
+        support: Support::Preserved,
+        evidence: "",
+        missing: "`- State \"DONE\" from \"TODO\" [ts]` is text, so no history can be read from it",
+        offered: "",
+    },
+    Construct {
+        name: "remote() table references",
+        support: Support::Preserved,
+        evidence: "",
+        missing: "a #+TBLFM may not reach a table in another file or by name",
+        offered: "",
     },
     Construct {
         name: "#+ATTR_* export attributes",
@@ -10752,6 +10794,39 @@ pub fn document_columns(doc: &OrgDoc) -> Option<Vec<ColumnSpec>> {
                 .or_else(|| t.strip_prefix("#+columns:"))
         })
         .and_then(columns_format)
+}
+
+/// The `[@3]` counter an ordered list item claims to start at.
+///
+/// Org's counter override, for a numbered list interrupted by prose, a
+/// block or a table and resumed afterwards: without it the second half
+/// starts again at one and the author's third step is labelled first.
+///
+/// Only on an ordered marker. `[@3]` on a bullet is meaningless — there
+/// is no number to override — and reading it would invent an ordering
+/// nobody asked for.
+///
+/// A reading, not a renumbering (I1). Org does not rewrite the markers
+/// that follow and neither does this; it reports where a list says it
+/// begins.
+#[must_use]
+pub fn list_counter(line: &str) -> Option<u32> {
+    let t = line.trim_start();
+    // An ordered marker: digits, then `.` or `)`.
+    let digits = t.len() - t.trim_start_matches(|c: char| c.is_ascii_digit()).len();
+    if digits == 0 {
+        return None;
+    }
+    let after = t.get(digits..)?;
+    let rest = after
+        .strip_prefix('.')
+        .or_else(|| after.strip_prefix(')'))?;
+    let rest = rest.trim_start();
+    // `[ ]`, `[X]` and `[-]` sit in exactly this position and a vault is
+    // full of them, so the `@` is what tells a counter from a checkbox.
+    let inner = rest.strip_prefix("[@")?;
+    let (number, _) = inner.split_once(']')?;
+    number.parse().ok()
 }
 
 /// What separates a term from its definition in an org description
