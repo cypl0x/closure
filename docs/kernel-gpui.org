@@ -746,11 +746,20 @@ everything else is a property, which is what =:columns= already means.
 =None= when a file declares nothing, since a caller wants to know
 whether to show a table at all.
 
-* TODO #+CALL runs the block it names
+* DONE #+CALL runs the block it names
 =call_target= reads the line and nothing evaluates it. Half a feature
 is the half that looks finished from the matrix.
 
 Acceptance: =nix develop -c cargo test -p closure-eval --test call_runs=
+
+=run_call= goes through the same backend and the same trust check as
+any other block — a call that could run what an ordinary block may not
+would be a way around the check rather than a feature, and there is a
+test that an untrusted language is refused.
+
+The block is assembled before it runs, so ={{<<setup>>}}= inside a
+called block means what it means anywhere else. Noweb assembles and
+=#+CALL= evaluates; between them that is what a reusable block is.
 
 * TODO Bug: the gpui window stops presenting on the lavapipe rasteriser
 Diagnosed above and not fixed: the wedge is in the presentation path

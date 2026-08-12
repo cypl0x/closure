@@ -366,6 +366,78 @@ fn expand_noweb_in(src: &str, doc: &str, stack: &mut Vec<String>) -> Result<Stri
     Ok(out)
 }
 
+/// Why a `#+CALL:` could not be run.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum CallError {
+    /// The line is not a `#+CALL:` at all.
+    #[error("not a #+CALL: line")]
+    NotACall,
+    /// No block in the document carries that `#+NAME:`.
+    #[error("no block named `{0}`")]
+    Unknown(String),
+    /// The named block's language is not in the vault's trust list.
+    ///
+    /// Routed through the same check every other block uses: a call
+    /// that could run what an ordinary block may not would be a way
+    /// around the check rather than a feature.
+    #[error("`{0}` is not a trusted language in this vault")]
+    NotTrusted(String),
+    /// The block was assembled or run and failed.
+    #[error("{0}")]
+    Failed(String),
+}
+
+/// The language of the `#+NAME: name` source block in `doc`.
+fn named_block_language(doc: &str, name: &str) -> Option<String> {
+    let mut lines = doc.lines().peekable();
+    while let Some(line) = lines.next() {
+        let t = line.trim_start();
+        let Some(rest) = t
+            .strip_prefix("#+NAME:")
+            .or_else(|| t.strip_prefix("#+name:"))
+        else {
+            continue;
+        };
+        if rest.trim() != name {
+            continue;
+        }
+        for l in lines.by_ref() {
+            let lt = l.trim_start().to_ascii_lowercase();
+            if let Some(args) = lt.strip_prefix("#+begin_src") {
+                return Some(args.split_whitespace().next().unwrap_or("").to_owned());
+            }
+        }
+        return None;
+    }
+    None
+}
+
+/// Run the block a `#+CALL:` line names.
+///
+/// Noweb assembles a named block into another; this evaluates one from
+/// somewhere else, and between them that is what a reusable block is.
+/// The block is assembled first, so `<<setup>>` inside a called block
+/// means what it means anywhere else.
+///
+/// # Errors
+///
+/// [`CallError::NotACall`] for anything that is not one,
+/// [`CallError::Unknown`] naming the block, [`CallError::NotTrusted`]
+/// naming the language, or [`CallError::Failed`].
+pub fn run_call(line: &str, doc: &str, trust: &[String]) -> Result<Output, CallError> {
+    let name = call_target(line).ok_or(CallError::NotACall)?;
+    let body = named_block(doc, &name).ok_or_else(|| CallError::Unknown(name.clone()))?;
+    let lang = named_block_language(doc, &name).unwrap_or_default();
+    if !eval_allowed(trust, &lang) {
+        return Err(CallError::NotTrusted(lang));
+    }
+    let program = expand_noweb(&body, doc).map_err(|e| CallError::Failed(e.to_string()))?;
+    let backend = backend_for(&lang).ok_or_else(|| CallError::NotTrusted(lang.clone()))?;
+    backend
+        .eval(&program)
+        .map_err(|e| CallError::Failed(e.to_string()))
+}
+
 /// The block a `#+CALL: name(...)` line runs, if this is one.
 ///
 /// The parentheses are org's and are required: `#+CALL: setup` without
