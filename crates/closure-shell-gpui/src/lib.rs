@@ -35,7 +35,7 @@ pub const GPUI_SHELL: &str = "gpui";
 #[cfg(feature = "gpui-test")]
 mod testing;
 #[cfg(feature = "gpui-test")]
-pub use testing::{ALL_SURFACES, opening_route, test_window, visual_window};
+pub use testing::{ALL_SURFACES, mode_window, opening_route, test_window, visual_window};
 
 /// `text` cut to at most `max` characters, the last of them an
 /// ellipsis standing in for what was dropped.
@@ -4831,6 +4831,38 @@ impl GpuiView {
                     .flex_none()
                     .h_full()
                     .when(is_sel, |d| d.bg(rgb(co.accent))),
+            )
+            // Notion's plus: a way to add a block without knowing a
+            // chord, which is the whole premise of the mode. Only in
+            // Notion — a mouse affordance on every row of a modal mode
+            // is noise for somebody who came for the keyboard.
+            .when(
+                self.app.input_mode() == closure_config::InputMode::Notion,
+                |d| {
+                    d.child(
+                        div()
+                            .id(gpui::SharedString::from(format!("row-plus-{i}")))
+                            .debug_selector(move || format!("row-plus-{i}"))
+                            .flex_none()
+                            .w(px(14.0))
+                            .text_color(rgb(co.muted))
+                            .cursor_pointer()
+                            .hover(|st| st.text_color(rgb(co.accent)))
+                            .child("+")
+                            .on_mouse_down(
+                                MouseButton::Left,
+                                cx.listener(move |this, _ev, _w, cx| {
+                                    // Through the registry like every
+                                    // other affordance (I8): the mouse
+                                    // is a way of naming a command, not
+                                    // a second way of editing.
+                                    this.app.select(i, &this.shell);
+                                    this.click("add-sibling", cx);
+                                    cx.stop_propagation();
+                                }),
+                            ),
+                    )
+                },
             )
             .bg(rgb(if is_sel { co.selection } else { co.bg }))
             .hover(move |s| s.bg(rgb(if is_sel { co.selection } else { co.hover })))

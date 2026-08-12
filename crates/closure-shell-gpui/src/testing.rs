@@ -87,6 +87,34 @@ pub fn visual_window<'a>(
     (dir, view, vcx)
 }
 
+/// [`visual_window`], in a chosen input mode.
+///
+/// The mode decides more than the chords: Notion mode paints mouse
+/// affordances a modal mode deliberately does not, so a test about one
+/// of them has to be able to say which mode it is in.
+pub fn mode_window<'a>(
+    cx: &'a mut gpui::TestAppContext,
+    org: &str,
+    mode: closure_config::InputMode,
+) -> (
+    tempfile::TempDir,
+    gpui::Entity<GpuiView>,
+    &'a mut gpui::VisualTestContext,
+) {
+    let dir = tempfile::tempdir().expect("a temp vault");
+    std::fs::write(dir.path().join("notes.org"), org).expect("write the vault");
+    let vault = Vault::open(dir.path()).expect("open the vault");
+    let (view, vcx) = cx.add_window_view(|_w, cx| {
+        GpuiView::new(Shell::new(vault), mode, Theme::doom_vibrant(), cx)
+    });
+    vcx.update(|window, cx| {
+        let focus = gpui::Focusable::focus_handle(view.read(cx), cx);
+        window.focus(&focus);
+    });
+    vcx.run_until_parked();
+    (dir, view, vcx)
+}
+
 /// The commands that walk the window from Browse to `surface` —
 /// empty for the surface it already starts on.
 ///

@@ -629,8 +629,39 @@ cursor landing inside it, backspacing past the slash, and Escape. The
 item existed because the gap analysis that seeded this queue did not
 check.
 
-* TODO Notion mode: the block plus-sign affordance
+* DONE Notion mode: the block plus-sign affordance
 Acceptance: =nix develop -c cargo test -p closure-shell-gpui --features gpui-test --test block_plus=
+
+A =+= at the left of every outline row, in Notion mode only — a mouse
+affordance on every row of a modal mode is noise for somebody who came
+for the keyboard. It runs =add-sibling= through the registry (I8):
+the mouse is a way of *naming* a command, not a second way of editing,
+and a second path would mean a second set of rules about ids, undo and
+where the new row lands.
+
+It differs from Notion on purpose. Notion's plus makes the block
+immediately; closure's asks for a title first, because that is what
+=add-sibling= does everywhere else and the mouse should not invent a
+different answer.
+
+Verified on :1 — and that verification found a mistake that has been
+running through this whole session: =xdotool mousemove= takes *screen*
+coordinates and I had been passing window-relative ones read off
+screenshots. Every earlier "the click did nothing" was me missing the
+window. With the offset applied the plus selects its row and opens the
+"new sibling" prompt.
+
+* TODO Re-check the key-burst repaint bug with correct click coordinates
+The evidence for it was gathered with window-relative coordinates
+passed to =xdotool=, which takes screen coordinates — so "the window
+takes no input and does not repaint on resize" may have been me
+clicking on the desktop. The resize test used =xdotool windowsize=,
+which takes a window id and is unaffected, so part of the evidence
+stands and part does not.
+
+Re-run it properly before believing any of it.
+
+Acceptance: the item below is either reproduced with correct coordinates or closed as unreproducible.
 
 * DONE Notion mode: mouse block drag and reorder
 Acceptance: =nix develop -c cargo test -p closure-shell-core --test affordances=
@@ -752,6 +783,20 @@ rows paint in. Rows wrap now, so their height is not a constant and no
 arithmetic here can predict it; the count errs small on purpose, and
 what the test holds is the property that matters — wherever the cursor
 goes, it is somewhere you can see.
+
+* TODO Build: target/ grows until the disk stops the work
+Found 2026-08-12. =target/= reached 75G — 53G of it debug, 12G of
+that incremental — and the root filesystem hit 98%, at which point
+every command in the session failed before it ran and the linker's
+own temporaries had nowhere to go. A gpui link failure that looked
+like a real error was probably this.
+
+Clearing =target/debug/incremental= bought 12G and costs only a slower
+next build, which makes it the obvious first move; it should not have
+taken a full disk to discover that.
+
+Acceptance: something in the repo — a =just= recipe, a note in the
+justfile — says what to delete first and why.
 
 * TODO Panes: lay rows out until the pane is full, instead of guessing
 =PANE_WRAP_GUESS= assumes a pane row takes two lines, because rows
