@@ -1420,7 +1420,7 @@ file with twenty-eight keys. What CUE is actually for here is that
 constraints are data you can enumerate, test for completeness and
 print, and that is what this is.
 
-* TODO Bug: a config error never reaches the gpui window
+* DONE Bug: a config error never reaches the gpui window
 =load_reporting= returns the complaint, =run()= binds it, and the
 comment above the call says "Every reader of this file used to drop the
 error on the floor... It reaches the status line now."
@@ -1441,6 +1441,37 @@ understood-versus-offered gap one layer up from org. Whatever fixes
 this needs a test that fails when no shell displays it.
 
 Acceptance: =nix develop -c cargo test -p closure-shell-gpui --features gpui-test --test config_complaint=
+
+The title of this item is the symptom and it was not the bug. The
+window's status path was fine all along — =apply_config= sets it,
+=status()= returns it, the bar paints it, and a test proves all three.
+
+=from_org_source= searched =doc.preamble()=, the nodes *before the
+first headline*. My =config.org= put the block under =* Settings=, so
+it was never found, =from_org_source= returned =Missing=, and
+=load_reporting= reads =Missing= as "this vault has no config" — which
+is silence by design and correct for a vault that has none.
+
+So the whole file was ignored. Not just the error: every setting
+reverted to its default and nothing said anything. The one arrangement
+that worked was a bare block at the top with nothing above it, and that
+is not what anyone writes — =config.org= is an org file in a vault of
+org files, and giving it a heading is what everything else there does.
+
+Two things found this and both are rules already written down.
+
+The seam: no test could see it, because every window test builds
+=GpuiView::new= directly and the whole config path ran only in
+production. =run='s wiring is =apply_config= now, which =run= and the
+tests both call — one path, not a copy that agrees by coincidence.
+
+The shape: my first version of the failing test put the block at the
+top of the file and *passed*. Testing the shape a person writes rather
+than the shape that was convenient is what turned a missing toast into
+a config file nobody could use.
+
+Verified on :1 — the window says the file, the key, the line, what was
+expected, what was got, and that defaults were used instead.
 
 
 * TODO UI: an invalid view should not compile, or say why it cannot

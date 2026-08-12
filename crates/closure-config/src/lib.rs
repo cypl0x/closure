@@ -867,9 +867,27 @@ impl Config {
     /// `#+BEGIN_SRC closure-config` block with `key = value` lines.
     pub fn from_org_source(src: &str) -> Result<Self, ConfigError> {
         let doc = parse(src).map_err(|e| ConfigError::ParseOrg(e.to_string()))?;
-        for n in doc.preamble() {
-            if n.kind() == NodeKind::CodeBlock
-                && let Some(cb) = n.as_code_block()
+        // The preamble *and* every headline's body. This searched only
+        // the preamble, so a config block under `* Settings` was not
+        // found — and `Missing` reads to `load_reporting` as "this
+        // vault has no config", so the whole file was ignored in
+        // silence: every setting back to its default, no complaint.
+        //
+        // That is the arrangement a person writes. `config.org` is an
+        // org file in a vault of org files, and giving it a heading is
+        // what everything else there does; the one shape that worked
+        // was a bare block with nothing above it.
+        let blocks = doc
+            .preamble()
+            .iter()
+            .filter(|n| n.kind() == NodeKind::CodeBlock)
+            .chain(
+                doc.iter_headlines()
+                    .into_iter()
+                    .flat_map(|h| h.body_nodes_by_kind(NodeKind::CodeBlock)),
+            );
+        for n in blocks {
+            if let Some(cb) = n.as_code_block()
                 && cb.language == Some("closure-config")
             {
                 // Where the block's first line sits in the file, so

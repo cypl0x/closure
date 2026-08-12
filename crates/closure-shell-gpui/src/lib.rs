@@ -2084,27 +2084,14 @@ pub fn run(vault_path: &Path) -> Result<(), String> {
             |_, cx| {
                 cx.new(|cx| {
                     let mut view = GpuiView::new(Shell::new(vault), input_mode, theme, cx);
-                    // `view = editor` in the vault's config.org: open
-                    // the file buffer before the first frame, so the
-                    // window the user asked for is the one they get.
-                    view.set_view(view_pref);
-                    view.set_wrap(wrap);
-                    view.app.set_key_overrides(key_overrides.clone());
-                    // Pairing has to know where it listens before the
-                    // user opens the surface: the ticket shown there is
-                    // what gets pasted into the other machine.
-                    view.app.configure_sync(sync_bind, sync_advertise);
-                    // Peers paired with before are still peers.
-                    view.app.load_peers(&view.shell);
-                    // …and the note the last session was in is where
-                    // this one starts.
-                    view.app.restore_last_place(&view.shell);
-                    view.restore_window_state();
-                    // Said last, so it is the line still on screen
-                    // when the first frame lands.
-                    if let Some(said) = config_complaint.clone() {
-                        view.app.set_status(said);
-                    }
+                    view.apply_config(
+                        view_pref,
+                        wrap,
+                        &key_overrides,
+                        sync_bind,
+                        sync_advertise,
+                        config_complaint.clone(),
+                    );
                     view
                 })
             },
@@ -3316,6 +3303,46 @@ impl GpuiView {
     /// sets a status — a click, a chord, a finished sync, a followed
     /// link — then reaches the strip, instead of only the two that
     /// remembered to ask.
+    /// Everything a freshly built view takes from `config.org`.
+    ///
+    /// Lifted out of [`run`] so it can be tested. It could not be
+    /// before: every window test builds [`GpuiView::new`] directly, so
+    /// the whole config path — including whether a complaint about a
+    /// bad key ever reaches the screen — ran only in production. That
+    /// is how a config error nobody was shown survived a comment
+    /// saying it reaches the status line.
+    pub fn apply_config(
+        &mut self,
+        view_pref: closure_shell_core::ViewMode,
+        wrap: bool,
+        key_overrides: &[(String, String)],
+        sync_bind: std::net::SocketAddr,
+        sync_advertise: Option<std::net::IpAddr>,
+        complaint: Option<String>,
+    ) {
+        // `view = editor` in the vault's config.org: open the file
+        // buffer before the first frame, so the window the user asked
+        // for is the one they get.
+        self.set_view(view_pref);
+        self.set_wrap(wrap);
+        self.app.set_key_overrides(key_overrides.to_vec());
+        // Pairing has to know where it listens before the user opens
+        // the surface: the ticket shown there is what gets pasted into
+        // the other machine.
+        self.app.configure_sync(sync_bind, sync_advertise);
+        // Peers paired with before are still peers.
+        self.app.load_peers(&self.shell);
+        // …and the note the last session was in is where this one
+        // starts.
+        self.app.restore_last_place(&self.shell);
+        self.restore_window_state();
+        // Said last, so it is the line still on screen when the first
+        // frame lands.
+        if let Some(said) = complaint {
+            self.app.set_status(said);
+        }
+    }
+
     fn absorb_status(&mut self, cx: &Context<Self>) {
         let status = self.app.status().to_owned();
         if status != self.last_status {
