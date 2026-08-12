@@ -244,6 +244,11 @@ eval-wasm:
 tree-sitter:
     cargo test -p closure-tree-sitter --features tree-sitter
     cargo test -p closure-tui --features tree-sitter --test ts_highlight
+    # The kernel's own dispatch, which is what the window highlights
+    # through. It named `KeywordHighlighter` directly until 2026-08-12,
+    # so building with this feature compiled twenty C grammars and
+    # changed nothing on screen — the grammars were on and unreachable.
+    cargo test -p closure-shell-core --features tree-sitter --test highlighter_is_picked
 
 # X3 live packet sniffer (opt-in; pulls pnet). Default stays dep-light;
 # live capture needs CAP_NET_RAW at runtime (`closure sniff --live eth0`).

@@ -16,7 +16,10 @@ workspace = true
 # default for the same reason `closure-tree-sitter` has it off: twenty
 # C grammars are not a hermetic build. Forwarded so that the shell you
 # look at all day can actually get them — it could not before.
-tree-sitter = ["closure-tree-sitter/tree-sitter"]
+tree-sitter = [
+  "closure-tree-sitter/tree-sitter",
+  "closure-shell-core/tree-sitter",
+]
 # Off by default: gpui pulls ~570 transitive crates and needs system
 # GPU/X11/xkbcommon/freetype libs, which breaks the hermetic build and
 # the `cargo test --workspace` gate (I10). The kernel-side Shell model

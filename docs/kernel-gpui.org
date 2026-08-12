@@ -1693,7 +1693,7 @@ Acceptance: =UNLOOKED_CEILING= in
 =crates/closure-shell-gpui/tests/selectors_are_real.rs= reaches 0.
 
 
-* TODO tree-sitter ships off, so the default build does not have it
+* DONE tree-sitter ships off, so the default build does not have it
 =tree-sitter= is opt-in because twenty C grammars are not a hermetic
 build (I10), and the default is =KeywordHighlighter=. The reasoning in
 the Cargo.toml is sound and the two goals genuinely conflict.
@@ -1711,6 +1711,35 @@ Acceptance: =nix develop -c just tree-sitter= is part of =just gates=,
 or =docs/spec.md= carries the decision and =nix develop -c cargo test
 -p closure-shell-gpui --features gpui-test --test highlighter_is_named=
 passes.
+
+The tension was real and the answer stays opt-in — twenty C grammars
+are not a hermetic build, and I10 wins. But the item asked the wrong
+question, because the feature was not merely off: it did not work when
+turned on.
+
+=highlight_spans= in closure-shell-core named =KeywordHighlighter=
+directly. =pick_highlighter= exists for exactly this and its own doc
+comment describes the defect — "the gpui shell, the one the user looks
+at all day, reached straight for =KeywordHighlighter=, so twenty
+grammars would have been compiled and never consulted" — and the call
+site it was written for still reached past it. Building the window with
+=--features tree-sitter= compiled the grammars and changed nothing on
+screen.
+
+Also the feature stopped at the shell crate: closure-shell-core had no
+=[features]= at all, so the flag could not reach the kernel that does
+the highlighting. Forwarded now.
+
+=highlighter_name()= says which one answered, the same courtesy the
+software-rasteriser notice pays: a reader whose code blocks look
+plainer than expected can find out which build they have rather than
+concluding highlighting is broken.
+
+=just tree-sitter= now runs the kernel's dispatch test too, so the
+grammars-on path is exercised rather than assumed. The same suite
+passes both ways — a test that only ran under the opt-in would be a
+test nobody runs. Verified on :1 that the default build still colours a
+Rust block.
 
 * DONE Sniffer: Block is a verdict nothing enforces
 =Action::Block= exists, rules match, and =PcapBackend::capture_once=

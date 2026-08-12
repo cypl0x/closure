@@ -26,16 +26,37 @@ pub use closure_tree_sitter::HighlightKind;
 /// segments concatenate back to `source` exactly.
 #[must_use]
 pub fn highlight_spans(source: &str, lang: &str) -> Vec<(String, HighlightKind)> {
-    use closure_tree_sitter::{Highlighter as _, KeywordHighlighter};
     if source.is_empty() {
         return Vec::new();
     }
-    KeywordHighlighter::for_language(lang)
+    // Through `pick_highlighter`, which is the function written for
+    // exactly this and which this call site reached past. Naming
+    // `KeywordHighlighter` here meant building the window with
+    // `--features tree-sitter` compiled twenty C grammars and changed
+    // nothing on screen — the defect its own doc comment describes,
+    // still present at the one call site it was written for.
+    closure_tree_sitter::pick_highlighter(lang)
         .highlight(source)
         .into_iter()
         .filter(|h| h.start < h.end)
         .map(|h| (source[h.start..h.end].to_owned(), h.kind))
         .collect()
+}
+
+/// Which highlighter this build uses: `"tree-sitter"` or `"keyword"`.
+///
+/// The same courtesy the software-rasteriser notice pays. Grammars are
+/// opt-in because twenty C grammars are not a hermetic build (I10), so
+/// most builds highlight by keyword — and a reader whose code blocks
+/// look plainer than they expected should be able to find out which
+/// build they have, rather than concluding highlighting is broken.
+#[must_use]
+pub const fn highlighter_name() -> &'static str {
+    if cfg!(feature = "tree-sitter") {
+        "tree-sitter"
+    } else {
+        "keyword"
+    }
 }
 
 /// One segment of a headline body: free-form prose or a fenced code

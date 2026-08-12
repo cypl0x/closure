@@ -29,3 +29,10 @@ closure-llm = { path = "../closure-llm" }
 
 [dev-dependencies]
 tempfile = "3"
+
+[features]
+# Forwarded so `highlight_spans` can pick a real grammar and
+# `highlighter_name` can say which one answered. Without this the flag
+# stopped at the shell crate: the grammars were compiled and the kernel
+# still highlighted by keyword.
+tree-sitter = ["closure-tree-sitter/tree-sitter"]
