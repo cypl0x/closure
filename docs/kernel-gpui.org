@@ -1662,6 +1662,16 @@ fails silently — not knowing the chord is the state you were already
 in. Its selector carries the *command name* rather than the chord
 letter (=wk-chord-agenda=, not =wk-chord-a=), which cost a red test.
 
+8 → 5: =flow-detail=, =flow-graph= and =flow-debug=. All three are
+=Option=s that return =None= with nothing to show, so each has two
+states and asserting only the empty one is how a pane that never paints
+looks healthy — both are asserted. Flows come from a real
+=network.org= in the log format the sniffer's own writer produces, so
+the test exercises the file rather than a constructor no user reaches.
+The window has to be told to re-read the vault first: it read it on
+open, and a real session gets there by the file watcher, which a test
+does not run.
+
 Acceptance: =UNLOOKED_CEILING= in
 =crates/closure-shell-gpui/tests/selectors_are_real.rs= reaches 0.
 
