@@ -1322,6 +1322,27 @@ reach and nobody tests is not a feature.
 
 Acceptance: =nix develop -c cargo llvm-cov -p closure-cli --fail-under-lines 95=
 
+37.6% → 51.9% (1,311 missed, was 1,697) from one table-driven test over
+the read-only subcommands. The arithmetic was the whole story: 141
+subcommands against 41 tests, so most of those lines were arms nobody
+ever ran.
+
+What it asserts is deliberately weak and broad — exits without panicking
+— which is not a claim about *what* a command printed. That belongs in
+a test per command. It is the claim that the arm works at all, which
+nothing was making.
+
+Three passes, and the second and third are the ones that find things: a
+full vault, an *empty* one, and a vault directory that is not there.
+Queries written against content usually work; the same query against
+nothing is where =.first().unwrap()= and "divide by the number of
+headlines" live.
+
+Still short of 95. What remains is the commands that *write* — capture,
+rename, set-todo, promote, archive, move — which need a fixture per
+command and an assertion about the file afterwards, and the ones that
+need a network or a subprocess. Worth splitting when picked up again.
+
 * TODO Coverage: closure-shell-core, 1,407 missed
 Of 14,985 lines, so 90.6% — the absolute number is large because the
 crate is. Likely concentrated in surfaces the tests reach through
