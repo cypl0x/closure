@@ -1158,6 +1158,41 @@ Conformance 92% → 95% on both numbers, floors raised. The two left —
 are the ones that should stay Preserved, and =the_matrix_is_worth_having=
 is there to fire if I ever call this finished.
 
+* DONE Bug: a clocktable ignores its own :scope, and the default is wrong
+Written by me two commits ago. =clocktable_params= reads =:scope
+file|vault= and the preview binds it to =_params= — the underscore is
+the compiler being told to stop mentioning the one thing the feature
+needs — then reports =Vault::clock_minutes()=, which is the whole vault
+every time.
+
+So the *default* is wrong, not just the option: a block that says
+nothing means =:scope file= in org and in closure's own parser, and it
+reports the vault. A weekly note in a vault of fifty files shows fifty
+files' time under the heading "this week".
+
+Exactly the "parsed and never read" shape the conformance work spent
+the session removing, reintroduced by the person removing it. Worth
+having in the queue in its own words rather than quietly amended into
+the commit that caused it.
+
+Acceptance: =nix develop -c cargo test -p closure-shell-core --test clocktable_scope=
+
+=Vault::clock_minutes_in(Option<&Path>)= does the scoped sum and
+=clock_minutes()= is it with =None=, so nothing that already called it
+changes answer. The preview passes the file the headline is in, which
+was already sitting in a local two lines above the call — the
+information was there and the binding threw it away.
+
+Verified with a two-file vault on :1: the block in =notes.org= reports
+that file's 1:30 and 0:45 and not the 2:00 in =other.org=.
+
+The lesson is the underscore. =let Some(_params) = ...= compiles, reads
+as deliberate, and is the compiler being told to stop mentioning the
+one thing the feature needs. Nothing in the gate can see it — clippy is
+satisfied, the tests I had written passed, and the screenshot I took at
+the time was of a single-file vault, which is the one shape where the
+bug is invisible.
+
 * TODO Bug: the gpui window stops presenting on the lavapipe rasteriser
 Diagnosed above and not fixed: the wedge is in the presentation path
 (blade/Vulkan on lavapipe), below anything this queue owns. Input is

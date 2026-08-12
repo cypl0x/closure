@@ -15701,12 +15701,17 @@ impl ModalApp {
     /// A failed expansion is reported in place. A composition that
     /// silently rendered as nothing would read as an empty page, which
     /// is the worst of the three things it could do.
-    fn expanded_for_preview(&self, shell: &Shell, text: &str) -> (String, Option<String>) {
+    fn expanded_for_preview(
+        &self,
+        shell: &Shell,
+        text: &str,
+        here: &std::path::Path,
+    ) -> (String, Option<String>) {
         // A clocktable is a dynamic block like a widget and is answered
         // from the vault rather than from a definition, so it is filled
         // in first and the result goes through the widget expander like
         // any other text.
-        let text = &Self::clocktables_for_preview(shell, text);
+        let text = &Self::clocktables_for_preview(shell, text, here);
         // The common case is a headline with no composition in it, and
         // it costs one substring scan over text that is already capped.
         if !text.contains("closure-widget") {
@@ -15735,7 +15740,7 @@ impl ModalApp {
     /// when it was last refreshed — the one thing I1 exists to rule
     /// out. The block keeps the two lines the author typed and the
     /// reader gets the table.
-    fn clocktables_for_preview(shell: &Shell, text: &str) -> String {
+    fn clocktables_for_preview(shell: &Shell, text: &str, here: &std::path::Path) -> String {
         // The scan is one substring check on text that is already
         // capped, for the same reason the widget path guards itself:
         // landing on a headline must not cost the vault (I11).
@@ -15745,7 +15750,7 @@ impl ModalApp {
         let mut out = String::with_capacity(text.len());
         let mut lines = text.lines();
         while let Some(line) = lines.next() {
-            let Some(_params) = closure_org::clocktable_params(line) else {
+            let Some(params) = closure_org::clocktable_params(line) else {
                 out.push_str(line);
                 out.push('\n');
                 continue;
@@ -15758,8 +15763,18 @@ impl ModalApp {
                     break;
                 }
             }
+            // The scope the block asked for. The first version of
+            // this bound the params to `_params` and reported the whole
+            // vault however the block was written — so the *default*
+            // was wrong too, since a block that says nothing means the
+            // file it sits in, and a weekly note showed every file's
+            // time under "this week".
+            let only = match params.scope {
+                closure_org::Scope::File => Some(here),
+                closure_org::Scope::Vault => None,
+            };
             out.push_str(&closure_org::render_clocktable(
-                &shell.vault.clock_minutes(),
+                &shell.vault.clock_minutes_in(only),
             ));
         }
         out
@@ -15777,12 +15792,12 @@ impl ModalApp {
             .vault
             .children_source_preview(&bid, PREVIEW_CAP)
             .unwrap_or_default();
-        let (children, child_err) = self.expanded_for_preview(shell, &children);
+        let (children, child_err) = self.expanded_for_preview(shell, &children, path);
         let children = Self::tables_for_preview(&Self::scripts_for_preview(
             &Self::entities_for_preview(&children),
         ));
         let mut detail = Detail::of(h, path, children, self.counts_for(shell, id, path));
-        let (body, body_err) = self.expanded_for_preview(shell, &detail.body);
+        let (body, body_err) = self.expanded_for_preview(shell, &detail.body, path);
         let (body, include_err) = Self::included_for_preview(shell, &body);
         // Org's own macros, from the file that defines them. Fifth
         // construct through this seam and the same rule (I12).

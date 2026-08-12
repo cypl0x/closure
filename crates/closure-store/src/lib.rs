@@ -1845,8 +1845,22 @@ impl Vault {
     /// minutes-descending then by title (I6). Read-only.
     #[must_use]
     pub fn clock_minutes(&self) -> Vec<(String, u64)> {
+        self.clock_minutes_in(None)
+    }
+
+    /// The same, for one file — or for the whole vault when `only` is
+    /// `None`.
+    ///
+    /// A clocktable's default scope is the file it sits in, which is
+    /// the number a weekly note is asking for; without this the block
+    /// could only report the vault, and did.
+    #[must_use]
+    pub fn clock_minutes_in(&self, only: Option<&std::path::Path>) -> Vec<(String, u64)> {
         let mut out: Vec<(String, u64)> = Vec::new();
-        for (_, doc) in self.iter() {
+        for (path, doc) in self.iter() {
+            if only.is_some_and(|p| p != path) {
+                continue;
+            }
             for h in doc.all_headlines() {
                 let total: u64 = closure_org::clock_entries(h.body_text())
                     .iter()
