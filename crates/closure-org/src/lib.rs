@@ -10045,10 +10045,10 @@ pub const CONFORMANCE: &[Construct] = &[
     },
     Construct {
         name: "#+STARTUP:",
-        support: Support::Preserved,
-        evidence: "",
-        missing: "a file's own fold and display preferences are ignored",
-        offered: "",
+        support: Support::Understood,
+        evidence: "crates/closure-org/tests/startup.rs",
+        missing: "",
+        offered: "crates/closure-shell-core/tests/startup_fold.rs",
     },
     Construct {
         name: "clocktable dynamic block",
@@ -10594,6 +10594,64 @@ pub fn document_columns(doc: &OrgDoc) -> Option<Vec<ColumnSpec>> {
                 .or_else(|| t.strip_prefix("#+columns:"))
         })
         .and_then(columns_format)
+}
+
+/// How a document's `#+STARTUP:` asks to be met.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Startup {
+    /// Folded to top-level headlines.
+    Overview,
+    /// All headlines, no bodies.
+    Content,
+    /// Everything.
+    ShowAll,
+}
+
+/// The fold option a document's `#+STARTUP:` asks for, if it asks.
+///
+/// `None` when the file says nothing, which is different from
+/// `ShowAll`: a document with no preference should get whatever the
+/// reader's default is rather than have one imposed on it.
+///
+/// The first directive wins, as in org. Two that disagree is a mistake
+/// in the file, and taking the last would make the answer depend on
+/// where somebody appended.
+///
+/// Other options on the line — `indent`, `logdone` — are passed over
+/// rather than refused: a line closure only partly understands is
+/// still a line whose fold option it understands.
+#[must_use]
+pub fn startup_of(src: &str) -> Option<Startup> {
+    let mut in_block = false;
+    for line in src.lines() {
+        let t = line.trim_start();
+        let lower = t.to_ascii_lowercase();
+        // An example block showing somebody how to write one is not a
+        // request to fold this file.
+        if lower.starts_with("#+begin_") {
+            in_block = true;
+            continue;
+        }
+        if lower.starts_with("#+end_") {
+            in_block = false;
+            continue;
+        }
+        if in_block {
+            continue;
+        }
+        let Some(rest) = lower.strip_prefix("#+startup:") else {
+            continue;
+        };
+        for word in rest.split_whitespace() {
+            match word {
+                "overview" => return Some(Startup::Overview),
+                "content" => return Some(Startup::Content),
+                "showall" | "showeverything" => return Some(Startup::ShowAll),
+                _ => {}
+            }
+        }
+    }
+    None
 }
 
 /// Which kind of statistics cookie a headline's title carries.

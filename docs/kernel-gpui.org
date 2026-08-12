@@ -895,6 +895,52 @@ for edits a title the author wrote.
 End to end: =closure set-todo= on a child moved =[1/3]= to =[2/3]=.
 Conformance 80% -> 83%.
 
+* DONE Org: #+STARTUP: decides how a file opens
+=#+STARTUP: overview= / =content= / =showall= is how a document says
+which way it wants to be met. Ignored, so every file opens the same
+way whatever it asked for — and =docs/kernel-gpui.org= itself carries
+=#+STARTUP: overview=, which closure has been ignoring all session.
+
+Acceptance: =nix develop -c cargo test -p closure-org --test startup=
+
+It does now, and the item cost three things rather than one.
+
+=startup_of= reads the directive (first one wins, blocks skipped) and
+=overview= folds at level *one*, not two — folding a headline hides
+what is under it, so folding at two folds the children and still shows
+them. That was the first bug and the core test caught it.
+
+The second was only visible by looking. The core folded correctly and
+the real window still showed every child, because the first design was
+a =&mut apply_startup(&shell)= that each shell had to call, and the one
+shell anyone looks at did not call it. It is a memo on =&self= now,
+consulted by =rows_shared=, so opening a vault applies it whichever
+shell did the opening. Its test lives in =closure-shell-gpui= for that
+reason: the question was never "can the core fold" but "does opening a
+vault fold it". A feature wired to nothing but its own test is the
+shape of green that means least.
+
+The third was found by the test written to guard against the second
+being half-done: =toggle-fold= could not open a startup fold. It asked
+=:VISIBILITY:= whether the row was folded, and a row folded by a
+directive has no property — so the first press wrote =folded= onto
+something already folded and nothing moved. It takes =Row::folded=
+now, which is the state the reader can actually see.
+
+Never a write (I12). Recording =:VISIBILITY:= on every headline
+because a file said =overview= would turn opening a document into a
+commit, and that property answers a different question: what the
+reader last decided, which wins.
+
+Field ceiling: this needed one field to remember the depth, the
+=one_struct= ratchet refused it, and the refusal was right — the
+outline pane had never been given the cluster the body pane already
+had. =OutlineView= (height, wheel offset) came out; ceiling 90 → 89.
+The startup depth then turned out to belong in =Memos= rather than in
+the cluster, which is why it is not there.
+
+Conformance 83% → 85% on both numbers, floors raised.
+
 * TODO Bug: the gpui window stops presenting on the lavapipe rasteriser
 Diagnosed above and not fixed: the wedge is in the presentation path
 (blade/Vulkan on lavapipe), below anything this queue owns. Input is

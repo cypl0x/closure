@@ -49,11 +49,15 @@ fn field_count() -> (usize, Vec<String>) {
 /// took it to 108, the capture bar's to 104, the `:` line's to 101, the two
 /// prompt pairs to 99, and five more — the jumplist, the open
 /// buffers, the body's viewport, what is remembered about notes you
-/// have left, and how the buffer is drawn — to 90.
-/// Every cluster after them
+/// have left, and how the buffer is drawn — to 90, and the outline's
+/// own viewport to 89. That last one is the test doing its job rather
+/// than being satisfied: `#+STARTUP:` needed one field to remember the
+/// depth a file asked to fold below, this line said no, and the honest
+/// answer was that the outline pane had never been given the cluster
+/// the body pane already had. Every cluster after them
 /// lowers this line, and nothing is allowed to raise it — a field that
 /// has nowhere to live but here is a cluster nobody has named yet.
-const CEILING: usize = 90;
+const CEILING: usize = 89;
 
 #[test]
 fn the_drawer_does_not_refill() {

@@ -2230,6 +2230,20 @@ fn headline_is_folded(h: &closure_core::DocHeadline) -> bool {
         .any(|(k, v)| k == "VISIBILITY" && v == "folded")
 }
 
+/// The outline with no startup fold — what every caller but the first
+/// frame wants.
+fn outline_rows(shell: &Shell, filter: &str) -> Vec<Row> {
+    outline_rows_with(shell, filter, None)
+}
+
+/// Whether the reader has explicitly unfolded this headline, which a
+/// file's `#+STARTUP:` must not override.
+fn headline_is_unfolded(h: &closure_core::DocHeadline) -> bool {
+    h.properties()
+        .iter()
+        .any(|(k, v)| k == "VISIBILITY" && v != "folded")
+}
+
 /// The outline, as rows: every headline in the vault, in document
 /// order, minus the ones a fold is hiding.
 ///
@@ -2241,7 +2255,7 @@ fn headline_is_folded(h: &closure_core::DocHeadline) -> bool {
 /// One walk, two callers ([`App::rows`] and [`ModalApp::derive_rows`]):
 /// they were the same code twice, and a fold rule that differs between
 /// the launcher and the window is a fold rule nobody can reason about.
-fn outline_rows(shell: &Shell, filter: &str) -> Vec<Row> {
+fn outline_rows_with(shell: &Shell, filter: &str, startup: Option<u8>) -> Vec<Row> {
     let mut scored: Vec<(u32, Row)> = Vec::new();
     for (p, doc) in shell.vault.iter() {
         let headlines: Vec<_> = doc.all_headlines().collect();
@@ -2255,7 +2269,13 @@ fn outline_rows(shell: &Shell, filter: &str) -> Vec<Row> {
             // The fold state is needed twice: to hide descendants here,
             // and by the outline to draw the arrow. Compute it once and
             // carry it on the row.
-            let folded = headline_is_folded(h);
+            // `:VISIBILITY:` is what the reader last left this
+            // headline as and wins. `#+STARTUP:` is what the file asked
+            // for on the way in, and applies to everything the reader
+            // has not since decided about — a document's opinion must
+            // not undo a fold somebody set themselves.
+            let folded = headline_is_folded(h)
+                || startup.is_some_and(|depth| h.level() >= depth && !headline_is_unfolded(h));
             if filter.is_empty() {
                 if let Some(limit) = hide_below {
                     if h.level() > limit {
@@ -2616,11 +2636,15 @@ fn row_is_folded(shell: &Shell, id: &str) -> bool {
 /// Flip the `:VISIBILITY:` property on `id` between `folded` and `all`
 /// through the registry (I8, undoable I3). Returns the new folded state,
 /// or `None` when the write failed.
-fn toggle_visibility(shell: &mut Shell, id: &closure_core::BlockId) -> Option<bool> {
-    let folded = shell
-        .vault
-        .find_by_id(id)
-        .is_some_and(|(h, _)| headline_is_folded(h));
+///
+/// `folded` is what the row currently *looks* like, which the caller
+/// has on [`Row::folded`] and this function cannot work out for
+/// itself. It read the property instead, and a headline folded by a
+/// file's `#+STARTUP: overview` has no property — so the first press
+/// on it wrote `folded` onto something already folded and nothing
+/// moved. Two presses to open a row is the kind of thing a reader
+/// blames on the fold key rather than reporting.
+fn toggle_visibility(shell: &mut Shell, id: &closure_core::BlockId, folded: bool) -> Option<bool> {
     let next = if folded { "all" } else { "folded" };
     shell
         .set_property(id, "VISIBILITY", next)
@@ -8386,8 +8410,9 @@ impl App {
             return;
         };
         let title = row.title.clone();
+        let folded = row.folded;
         let bid = closure_core::BlockId::from_existing(&row.id);
-        match toggle_visibility(shell, &bid) {
+        match toggle_visibility(shell, &bid, folded) {
             Some(true) => self.set_status(&format!("folded: {title}")),
             Some(false) => self.set_status(&format!("unfolded: {title}")),
             None => self.set_status(&format!("fold failed: {title}")),
@@ -13142,6 +13167,20 @@ struct Memos {
     /// collecting them walks every document and landing on a headline
     /// must not (I11).
     widgets: std::cell::RefCell<WidgetDefs>,
+    /// The fold depth the vault's `#+STARTUP:` asked for, as of a
+    /// revision.
+    ///
+    /// A memo rather than a field somebody has to remember to fill:
+    /// the first version of this needed the shell to call
+    /// `apply_startup`, exactly one shell was ever going to remember
+    /// to, and the window showed every child of a file that had asked
+    /// to open folded. Reading it here means opening a vault applies
+    /// it, whichever shell did the opening.
+    ///
+    /// A view, never a write (I12): what the file asked for on the way
+    /// in is a different question from what the reader has since left
+    /// a headline as, and `:VISIBILITY:` answers the second.
+    startup: std::cell::RefCell<(Option<u64>, Option<u8>)>,
     /// Every radio target in the vault, as of a revision.
     ///
     /// Collecting them reads every document, so it is memoised for the
@@ -13334,6 +13373,24 @@ struct BodyView {
     recenter: Option<(u8, usize, usize)>,
 }
 
+/// Where the outline is looking, and how much of it is open.
+///
+/// The exact parallel of [`BodyView`] for the other pane, and named
+/// only once a third field wanted to join the two: how tall the pane
+/// is, where the wheel has dragged it, and the depth a file's
+/// `#+STARTUP:` asked it to fold below. All three answer "what part of
+/// the outline is on screen right now", none of them is anything the
+/// user typed, and none of them is ever written back to a file.
+#[derive(Debug, Default)]
+struct OutlineView {
+    /// How many outline rows the shell last said it can paint — what
+    /// `C-d` / `C-u` take half of. Same split as the body's: the core
+    /// knows where the cursor is, the window knows how tall it is.
+    height: usize,
+    /// Explicit wheel-scroll viewport offset; None = follow selection.
+    offset: Option<usize>,
+}
+
 /// What is remembered about notes you have left, by id.
 ///
 /// Where the cursor was, and any edit that was still open. Both are
@@ -13428,6 +13485,7 @@ impl Default for BodyStyle {
 #[derive(Debug)]
 pub struct ModalApp {
     mode: InputMode,
+    /// The depth a file's `#+STARTUP:` asked to fold below, if one did.
     /// What `config.org` said about the keymap, in file order.
     key_overrides: Vec<(String, String)>,
     /// [`Self::mode`]'s keymap with [`Self::key_overrides`] applied —
@@ -13630,12 +13688,8 @@ pub struct ModalApp {
     command_args: String,
     status: String,
     quit: bool,
-    /// Explicit wheel-scroll viewport offset; None = follow selection.
-    scroll_override: Option<usize>,
-    /// How many outline rows the shell last said it can paint — what
-    /// `C-d` / `C-u` take half of. Same split as the body's: the core
-    /// knows where the cursor is, the window knows how tall it is.
-    outline_viewport: usize,
+    /// Where the outline pane is looking; see [`OutlineView`].
+    outline_view: OutlineView,
     /// A body-editor prefix key waiting for the rest of its chord.
     pending_body: Option<BodyPrefix>,
     /// The headline this session last opened a body on — what
@@ -14500,8 +14554,10 @@ impl ModalApp {
             command_args: String::new(),
             status: String::new(),
             quit: false,
-            scroll_override: None,
-            outline_viewport: BODY_VIEWPORT_DEFAULT,
+            outline_view: OutlineView {
+                height: BODY_VIEWPORT_DEFAULT,
+                ..OutlineView::default()
+            },
             pending_body: None,
             selection_active: true,
             search_return: None,
@@ -15202,7 +15258,7 @@ impl ModalApp {
                 return std::sync::Arc::clone(&m.rows);
             }
         }
-        let rows = std::sync::Arc::new(Self::derive_rows(shell, filter));
+        let rows = std::sync::Arc::new(Self::derive_rows(shell, filter, self.startup_fold(shell)));
         self.memos
             .row_recomputes
             .set(self.memos.row_recomputes.get() + 1);
@@ -15217,6 +15273,50 @@ impl ModalApp {
     /// Drop the memo so the next [`Self::rows_shared`] pays for a full
     /// walk. Nothing in normal operation needs this — the revision key
     /// handles invalidation — but it lets a caller (or a test) demand
+    /// Apply what the vault's files asked for with `#+STARTUP:`.
+    ///
+    /// Once per revision, on the way in. A file saying `overview`
+    /// wants to be met folded to its top level, and until now every
+    /// file opened the same way whatever it asked for — including the
+    /// queue file that drove this whole session, which has carried
+    /// `#+STARTUP: overview` since the day it was written.
+    ///
+    /// A view and never a write. Recording `:VISIBILITY:` on every
+    /// headline because a file said `overview` would turn opening a
+    /// document into a commit, and that property means something else:
+    /// it is what the reader last decided, and it wins.
+    ///
+    /// `&self` and memoised, because the alternative — a `&mut` method
+    /// each shell calls after building its app — was written first,
+    /// and the gpui window, the only shell anyone was looking at, did
+    /// not call it. A thing you have to remember to do is a thing one
+    /// of the shells will not do.
+    fn startup_fold(&self, shell: &Shell) -> Option<u8> {
+        let revision = shell.vault.revision();
+        {
+            let memo = self.memos.startup.borrow();
+            if memo.0 == Some(revision) {
+                return memo.1;
+            }
+        }
+        let depth = shell
+            .vault
+            .iter()
+            .find_map(|(_, doc)| closure_org::startup_of(&doc.source()))
+            .and_then(|s| match s {
+                // Folding a headline hides what is *under* it, so
+                // "top-level headlines only" means folding at level
+                // one — not at two, which would fold the children and
+                // still show them.
+                closure_org::Startup::Overview => Some(1),
+                // Every headline and no bodies, which the outline
+                // already is — it lists headlines, not prose.
+                closure_org::Startup::Content | closure_org::Startup::ShowAll => None,
+            });
+        *self.memos.startup.borrow_mut() = (Some(revision), depth);
+        depth
+    }
+
     /// ground truth.
     pub fn invalidate_rows(&mut self) {
         *self.memos.row_memo.borrow_mut() = None;
@@ -15233,7 +15333,7 @@ impl ModalApp {
         } else {
             ""
         };
-        Self::derive_rows(shell, filter)
+        Self::derive_rows(shell, filter, self.startup_fold(shell))
     }
 
     /// How many full vault walks [`Self::rows_shared`] has paid for
@@ -15245,14 +15345,14 @@ impl ModalApp {
     }
 
     /// The uncached derivation behind [`Self::rows_shared`].
-    fn derive_rows(shell: &Shell, filter: &str) -> Vec<Row> {
-        outline_rows(shell, filter)
+    fn derive_rows(shell: &Shell, filter: &str, startup: Option<u8>) -> Vec<Row> {
+        outline_rows_with(shell, filter, startup)
     }
 
     /// Move the selection to row `i`, clamped to the current result
     /// set. Used by mouse clicks on a row (draw parity with [`App`]).
     pub fn select(&mut self, i: usize, shell: &Shell) {
-        self.scroll_override = None;
+        self.outline_view.offset = None;
         let last = self.rows_shared(shell).len().saturating_sub(1);
         self.selected = i.min(last);
         // Clicking a row is the least ambiguous way there is of saying
@@ -15270,7 +15370,8 @@ impl ModalApp {
         let page = page.max(1);
         let max_off = rows.saturating_sub(page);
         let base = self
-            .scroll_override
+            .outline_view
+            .offset
             .unwrap_or_else(|| self.selected.saturating_sub(page - 1).min(max_off));
         let step = usize::try_from(delta.unsigned_abs()).unwrap_or(usize::MAX);
         let new = if delta < 0 {
@@ -15278,7 +15379,7 @@ impl ModalApp {
         } else {
             base.saturating_add(step).min(max_off)
         };
-        self.scroll_override = Some(new);
+        self.outline_view.offset = Some(new);
     }
 
     /// The visible slice of rows for a viewport of `page` rows, plus its
@@ -15287,7 +15388,7 @@ impl ModalApp {
     /// [`App::view_window`].
     #[must_use]
     pub fn view_window(&self, shell: &Shell, page: usize) -> (usize, Vec<Row>) {
-        if let Some(o) = self.scroll_override {
+        if let Some(o) = self.outline_view.offset {
             let rows = self.rows_shared(shell);
             let page = page.max(1);
             if rows.len() > page {
@@ -20327,7 +20428,7 @@ impl ModalApp {
     /// worse than one that moves by a guess.
     pub const fn set_outline_viewport(&mut self, rows: usize) {
         if rows > 0 {
-            self.outline_viewport = rows;
+            self.outline_view.height = rows;
         }
     }
 
@@ -24384,7 +24485,7 @@ impl ModalApp {
         // reports them again until the next frame, and a viewport of
         // zero rows leaves every framing chord a no-op until then. The
         // clock is the shell's too, for the same reason.
-        let (body_rows, outline_rows) = (self.body_view.height, self.outline_viewport);
+        let (body_rows, outline_rows) = (self.body_view.height, self.outline_view.height);
         let (today, now) = (
             std::mem::take(&mut self.today),
             std::mem::take(&mut self.now),
@@ -24394,7 +24495,7 @@ impl ModalApp {
         *self = Self::new(mode);
         self.reloads = reloads.wrapping_add(1);
         self.body_view.height = body_rows;
-        self.outline_viewport = outline_rows;
+        self.outline_view.height = outline_rows;
         self.today = today;
         self.now = now;
         self.body_style.wrap = closure_config::Config::from_path(
@@ -24606,19 +24707,19 @@ impl ModalApp {
         }
         match cmd {
             "next-file" => {
-                self.scroll_override = None;
+                self.outline_view.offset = None;
                 self.selected = (self.selected + 1).min(last);
             }
             "prev-file" => {
-                self.scroll_override = None;
+                self.outline_view.offset = None;
                 self.selected = self.selected.saturating_sub(1);
             }
             "first-file" => {
-                self.scroll_override = None;
+                self.outline_view.offset = None;
                 self.selected = 0;
             }
             "last-file" => {
-                self.scroll_override = None;
+                self.outline_view.offset = None;
                 self.selected = last;
             }
             "quit" => {
@@ -24841,7 +24942,7 @@ impl ModalApp {
                     // nothing at all, which left the shells' toast
                     // rules for `folded:`/`unfolded:` matching a status
                     // no modal shell ever produced.
-                    self.say(match toggle_visibility(shell, &bid) {
+                    self.say(match toggle_visibility(shell, &bid, row.folded) {
                         Some(true) => format!("folded: {}", row.title),
                         Some(false) => format!("unfolded: {}", row.title),
                         None => format!("fold failed: {}", row.title),
@@ -25091,7 +25192,7 @@ impl ModalApp {
                 } else if let Some(i) = self.rows_shared(shell).iter().position(|r| r.id == id) {
                     self.selected = i;
                     self.selection_active = true;
-                    self.scroll_override = None;
+                    self.outline_view.offset = None;
                 } else {
                     self.say(format!("goto: no headline with id {id}"));
                 }
@@ -25173,7 +25274,7 @@ impl ModalApp {
             // Half a screen: the step between one row at a time and
             // jumping to an end, and the one vim put on these chords.
             "half-page-down" | "half-page-up" => {
-                let step = (self.outline_viewport / 2).max(1);
+                let step = (self.outline_view.height / 2).max(1);
                 let down = cmd == "half-page-down";
                 // Whose half-page it is depends on what is open. These
                 // chords only ever moved the outline's selection, so in
