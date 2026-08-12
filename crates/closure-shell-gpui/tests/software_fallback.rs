@@ -63,3 +63,41 @@ fn the_other_spelling_counts_too() {
 fn a_directory_that_is_not_there_is_not_an_error() {
     assert!(software_icd_in(&[std::path::PathBuf::from("/nonexistent/icd.d")]).is_none());
 }
+
+// === what the fallback warning has to say (2026-08-12) ===
+//
+// Measured on this machine, which has no Vulkan driver and falls back
+// to lavapipe: hold `j` in the window and the selection advances one
+// row, then the window never repaints again. Input keeps arriving —
+// forty keystrokes cost the process forty milliseconds of CPU while
+// the screen did not change by a single pixel — so closure's state is
+// advancing behind a frame that is stuck. The main thread sits in a
+// timer sleep at about one percent CPU and the swapchain threads wait
+// on futexes.
+//
+// Independent of everything closure controls: a three-headline vault
+// wedges like a 2,400-headline one, a 520x320 window like a maximized
+// one, and it happens at a real key-repeat rate rather than only under
+// a synthetic burst.
+//
+// "Frames are slow" therefore understates it to the point of being
+// wrong. Somebody reading that tries the window, sees it stop, and has
+// no reason to connect the two. The warning has to say that the window
+// may stop updating, or it is worse than no warning.
+
+#[test]
+fn the_warning_says_the_window_may_stop_updating() {
+    let text = closure_shell_gpui::software_rasteriser_notice("/nix/store/x/lvp_icd.json");
+    assert!(
+        text.contains("stop"),
+        "the warning still only promises slowness: {text}"
+    );
+    assert!(
+        text.contains("tui"),
+        "it does not point at the shell that works: {text}"
+    );
+    assert!(
+        text.contains("lvp_icd.json"),
+        "it does not say which driver it fell back to: {text}"
+    );
+}

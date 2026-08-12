@@ -608,7 +608,7 @@ made by someone who has only opened 10,000. Opens and stays inside
 both budgets in 1.3 s in debug, and still resolves an id and a
 backlink from the far end of the vault.
 
-* TODO Bug: the window stops repainting after a fast key burst
+* DONE Bug: the window stops repainting after a fast key burst
 Found 2026-08-09 while verifying the traversal fix. On a ~2400
 headline vault, after ~400 synthetic keypresses the window is
 focused and active per xdotool, sits at ~1% CPU, takes no further
@@ -616,8 +616,49 @@ input, and does not repaint even on resize. A 3-headline vault
 survives the identical burst. Observed on the lavapipe software
 rasteriser, which may or may not be the cause.
 
-Acceptance: a regression test that drives a burst through gpui's own
-key dispatch and asserts the window still advances.
+Acceptance: diagnosed, and what the program tells the user matches.
+
+Every guess in that note was wrong except the symptom.
+
+*Holding* =j= — the X server's own auto-repeat, which is what a person
+does — advances the selection one row and then the window never
+repaints again. Not 400 synthetic keys: two ordinary ones.
+
+It is not vault size: three headlines wedge like 2,400. Not window
+size: 520x320 wedges like maximized. Not input rate beyond the first
+frames: 600ms apart works, 33ms apart does not.
+
+And it does not take input away. Forty keystrokes sent to a wedged
+window cost the process forty milliseconds of CPU while the screen did
+not change by a single pixel — so closure is still listening and still
+advancing its state behind a frame that is stuck. The main thread
+sleeps in a timer at ~1% CPU; the WSI swapchain threads wait on
+futexes. That is the presentation path, not closure's input handling
+and not the kernel.
+
+Which means the traversal work is invisible on this machine and
+correct anyway: the freeze the report was about is real on a machine
+with a GPU, and this is a different failure underneath it.
+
+What closure can do about it, and now does: say so. "Frames are slow"
+was the old warning, and it is wrong in the way that matters — a
+reader watches the window stop and has no reason to connect the two.
+It now says the window may stop repainting, that closure is still
+reading keys, and to use =closure tui=.
+
+* TODO Bug: the gpui window stops presenting on the lavapipe rasteriser
+Diagnosed above and not fixed: the wedge is in the presentation path
+(blade/Vulkan on lavapipe), below anything this queue owns. Input is
+processed, frames stop.
+
+Reproduction: any vault, any window size, =xdotool keydown j; sleep 3;
+keyup j=. First key lands, then nothing, forever.
+
+Fixing it means either a machine with a real Vulkan driver to confirm
+it is lavapipe-only, or reading blade's swapchain handling. Both are
+their own piece of work and neither is a kernel or shell change.
+
+Acceptance: reproduced on a machine with a GPU (or shown not to happen there), then fixed or reported upstream.
 
 * DONE Notion mode: slash command menu in gpui
 Acceptance: =nix develop -c cargo test -p closure-shell-core --test slash_blocks=
@@ -651,7 +692,7 @@ screenshots. Every earlier "the click did nothing" was me missing the
 window. With the offset applied the plus selects its row and opens the
 "new sibling" prompt.
 
-* TODO Re-check the key-burst repaint bug with correct click coordinates
+* DONE Re-check the key-burst repaint bug with correct click coordinates
 The evidence for it was gathered with window-relative coordinates
 passed to =xdotool=, which takes screen coordinates — so "the window
 takes no input and does not repaint on resize" may have been me
@@ -661,7 +702,11 @@ stands and part does not.
 
 Re-run it properly before believing any of it.
 
-Acceptance: the item below is either reproduced with correct coordinates or closed as unreproducible.
+Acceptance: reproduced or closed.
+
+Reproduced, and it is worse and simpler than the original note said.
+Keys need no coordinates, so that half of the evidence always stood;
+the coordinate mistake only invalidated the mouse checks.
 
 * DONE Notion mode: mouse block drag and reorder
 Acceptance: =nix develop -c cargo test -p closure-shell-core --test affordances=

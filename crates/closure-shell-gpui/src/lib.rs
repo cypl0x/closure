@@ -1941,13 +1941,37 @@ use gpui::{
 ///
 /// The child cannot loop back here: it finds the override set, and an
 /// override is believed outright.
+/// What to say when there is no Vulkan driver and closure falls back
+/// to lavapipe.
+///
+/// "Frames are slow" is what this used to say, and it understates the
+/// problem to the point of being wrong. Measured on a machine with no
+/// Vulkan driver: hold `j` in the window and the selection advances one
+/// row, then the window never repaints again. Input keeps arriving —
+/// forty keystrokes cost forty milliseconds of CPU while the screen did
+/// not change by a pixel — so closure's state is advancing behind a
+/// frame that is stuck, which is the worst way for a program to fail:
+/// it looks like it stopped listening when it did not.
+///
+/// Nothing closure controls changes it. A three-headline vault wedges
+/// like a 2,400-headline one, a 520x320 window like a maximized one,
+/// and it happens at an ordinary key-repeat rate rather than only under
+/// a synthetic burst. Somebody told only that frames are slow will
+/// watch the window stop and have no reason to connect the two.
+#[must_use]
+pub fn software_rasteriser_notice(icd: &str) -> String {
+    format!(
+        "closure: no Vulkan driver on this machine — rendering on the lavapipe software \
+         rasteriser ({icd}).\n\
+         closure: on this renderer the window may stop repainting after the first \
+         keystrokes. It is still running and still reading your keys; only the picture \
+         is stuck. Use `closure tui`, which does not go through Vulkan at all."
+    )
+}
+
 #[cfg(feature = "gpui")]
 fn rerun_on_software_rasteriser(icd: &Path) -> Result<(), String> {
-    eprintln!(
-        "closure: no Vulkan driver on this machine — rendering on the lavapipe software \
-         rasteriser ({}). Frames are slow; `closure tui` is not.",
-        icd.display()
-    );
+    eprintln!("{}", software_rasteriser_notice(&icd.display().to_string()));
     let exe = std::env::current_exe()
         .map_err(|e| format!("cannot find closure's own path to re-run it: {e}"))?;
     let status = std::process::Command::new(exe)
