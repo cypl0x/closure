@@ -20408,6 +20408,42 @@ impl ModalApp {
             .collect()
     }
 
+    /// Abbreviated links in the selected headline's body, as
+    /// `(as written, where it goes)`.
+    ///
+    /// `[[gh:cypl0x/closure]]` is shorter to write and, unexpanded, is
+    /// a link to a scheme no browser has — so the abbreviation costs
+    /// the author exactly what it was meant to save.
+    ///
+    /// Only the abbreviated ones. For a link that already says where it
+    /// goes the answer is on screen, and repeating it is noise.
+    ///
+    /// The body keeps the short form (I12): being able to write it is
+    /// the whole point.
+    #[must_use]
+    pub fn abbreviated_link_rows(&self, shell: &Shell) -> Vec<(String, String)> {
+        let Some(d) = self.detail_shared(shell) else {
+            return Vec::new();
+        };
+        let Some(doc) = shell
+            .vault
+            .iter()
+            .find_map(|(p, doc)| (p.display().to_string() == d.path).then_some(doc))
+        else {
+            return Vec::new();
+        };
+        let abbrevs = closure_org::link_abbreviations(&doc.source());
+        if abbrevs.is_empty() {
+            return Vec::new();
+        }
+        closure_org::find_links(&d.body)
+            .into_iter()
+            .filter_map(|l| {
+                closure_org::expand_link(l.target, &abbrevs).map(|to| (l.target.to_owned(), to))
+            })
+            .collect()
+    }
+
     /// The selected headline's properties, with the file's
     /// `#+PROPERTY:` defaults behind them.
     ///

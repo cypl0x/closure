@@ -1208,9 +1208,16 @@ and they are small:
   different instructions. The window prints =(from #+PROPERTY:)= beside
   them. Never written into a drawer (I12): opening a file must not be a
   commit. Conformance 88% → 91%, understood floor 40 → 41.
-- =#+LINK: gh https://github.com/%s= — =[[gh:owner/repo]]= is not
-  expanded by its own template. Link resolution exists; this is a
-  rewrite before it.
+- [X] =#+LINK: gh https://github.com/%s= — done. Two substitution
+  forms, both org's: =%s= puts the tail where it is written, a template
+  without one gets it appended (the shape somebody writes first). The
+  case that decides whether this is safe to run on every link is the
+  negative one — =KNOWN_SCHEMES= means a file cannot break =https:= or
+  =id:= by declaring them, which is the one way the feature could do
+  harm. =abbreviated_link_rows= shows where each one goes and lists
+  only the abbreviated ones: for a link that already says, repeating it
+  is noise. Body keeps the short form (I12) — being able to write it is
+  the point. Conformance 93% → 95%, understood floor 42 → 43.
 - description lists (=term :: definition=) — read as an ordinary item,
   so the term is not a term and nothing can render it as one.
 - =[@3]= counter override — a list that says it starts at 3 is numbered

@@ -10086,10 +10086,10 @@ pub const CONFORMANCE: &[Construct] = &[
     },
     Construct {
         name: "#+LINK: abbreviations",
-        support: Support::Preserved,
-        evidence: "",
-        missing: "[[gh:owner/repo]] is not expanded by its #+LINK: template",
-        offered: "",
+        support: Support::Understood,
+        evidence: "crates/closure-org/tests/link_abbrev.rs",
+        missing: "",
+        offered: "crates/closure-shell-core/tests/link_abbrev_rows.rs",
     },
     Construct {
         name: "description list (term :: definition)",
@@ -10752,6 +10752,91 @@ pub fn document_columns(doc: &OrgDoc) -> Option<Vec<ColumnSpec>> {
                 .or_else(|| t.strip_prefix("#+columns:"))
         })
         .and_then(columns_format)
+}
+
+/// Schemes closure and every browser already understand.
+///
+/// A file that declared one of these as an abbreviation would otherwise
+/// rewrite links that already work, which is the one way this feature
+/// can do damage.
+const KNOWN_SCHEMES: &[&str] = &[
+    "http",
+    "https",
+    "file",
+    "id",
+    "mailto",
+    "ftp",
+    "news",
+    "shell",
+    "elisp",
+    "doi",
+    "attachment",
+];
+
+/// Every `#+LINK: prefix template` in `src`.
+///
+/// Org's way of not typing the same host forty times: declare `gh`
+/// once and write `[[gh:cypl0x/closure]]`.
+#[must_use]
+pub fn link_abbreviations(src: &str) -> std::collections::BTreeMap<String, String> {
+    let mut out = std::collections::BTreeMap::new();
+    let mut in_block = false;
+    for line in src.lines() {
+        let t = line.trim_start();
+        let lower = t.to_ascii_lowercase();
+        // A block showing somebody how to declare one is not a
+        // declaration — the rule `#+STARTUP:` and `#+PROPERTY:` follow.
+        if lower.starts_with("#+begin_") {
+            in_block = true;
+            continue;
+        }
+        if lower.starts_with("#+end_") {
+            in_block = false;
+            continue;
+        }
+        if in_block || !lower.starts_with("#+link:") {
+            continue;
+        }
+        let Some(rest) = t.get("#+LINK:".len()..) else {
+            continue;
+        };
+        let Some((prefix, template)) = rest.trim().split_once(char::is_whitespace) else {
+            continue;
+        };
+        out.insert(prefix.to_owned(), template.trim().to_owned());
+    }
+    out
+}
+
+/// Expand `target` through the declared abbreviations, or `None` if it
+/// is not one.
+///
+/// `%s` puts the tail where it is written; a template without one gets
+/// the tail appended, which is the shape somebody writes first
+/// (`#+LINK: gh https://github.com/`). The placeholder earns its place
+/// the moment the tail is not last.
+///
+/// A scheme closure already knows is never rewritten, however a file
+/// declares it: breaking `https:` because a document defined it would
+/// be the one way this feature can do harm.
+///
+/// A reading, never a rewrite (I1/I12): the file keeps `[[gh:...]]`,
+/// which is the whole point of writing it that way.
+#[must_use]
+pub fn expand_link(
+    target: &str,
+    abbreviations: &std::collections::BTreeMap<String, String>,
+) -> Option<String> {
+    let (prefix, tail) = target.split_once(':')?;
+    if KNOWN_SCHEMES.contains(&prefix) {
+        return None;
+    }
+    let template = abbreviations.get(prefix)?;
+    Some(if template.contains("%s") {
+        template.replace("%s", tail)
+    } else {
+        format!("{template}{tail}")
+    })
 }
 
 /// Every `#+PROPERTY: key value` in `src`, keyed the way a drawer
