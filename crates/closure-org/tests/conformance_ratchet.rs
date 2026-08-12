@@ -22,7 +22,7 @@ use closure_org::{CONFORMANCE, Support, conformance_rate, offered_rate};
 ///
 /// 2026-08-11: 61% (21 of 34), 67% with repeaters, 73% (25 of 34)
 /// with entities and LaTeX fragments, 76% with #+INCLUDE, 79% with inline tasks, 82% with column view, 85% with #+TBLFM, 91% (31 of 34) with noweb and #+CALL.
-const FLOOR: u32 = 91;
+const FLOOR: u32 = 94;
 
 #[test]
 fn the_rate_never_falls() {
@@ -86,11 +86,11 @@ fn the_matrix_is_worth_having() {
 
 /// The floor for what a shell actually offers. Raise it the same way.
 ///
-/// 2026-08-12: 91% understood, 91% offered — nothing parsed and
-/// invisible. The gap is the point of having two numbers: it was 91
+/// 2026-08-12: 94% understood, 94% offered with org macros — nothing
+/// parsed and invisible. The gap is the point of two numbers: it was 91
 /// and 70 before the unwired parsers were wired up, and nothing about
 /// the first number would have shown that.
-const OFFERED_FLOOR: u32 = 91;
+const OFFERED_FLOOR: u32 = 94;
 
 #[test]
 fn what_a_shell_offers_never_falls_either() {

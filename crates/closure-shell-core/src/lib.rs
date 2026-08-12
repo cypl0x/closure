@@ -15501,6 +15501,22 @@ impl ModalApp {
         let mut detail = Detail::of(h, path, children, self.counts_for(shell, id, path));
         let (body, body_err) = self.expanded_for_preview(shell, &detail.body);
         let (body, include_err) = Self::included_for_preview(shell, &body);
+        // Org's own macros, from the file that defines them. Fifth
+        // construct through this seam and the same rule (I12).
+        //
+        // The `contains` guard is not an optimisation, it is the
+        // difference between landing on a headline costing nothing and
+        // costing the whole file: `Document::source()` materialises it,
+        // and `traversal_cost.rs` caught this within a minute of it
+        // being written.
+        let body = if body.contains("{{{") {
+            shell.vault.document(path).map_or_else(
+                || body.clone(),
+                |d| closure_org::expand_org_macros(&body, &d.source()),
+            )
+        } else {
+            body
+        };
         detail.body = Self::entities_for_preview(&body);
         detail.composition_error = body_err.or(include_err).or(child_err);
         Some(detail)

@@ -118,3 +118,27 @@ fn the_file_on_disk_is_untouched() {
     let on_disk = std::fs::read_to_string(dir.path().join("notes.org")).unwrap();
     assert_eq!(on_disk, VAULT);
 }
+
+// === org's own macros, same seam (2026-08-12) ===
+
+#[test]
+fn an_org_macro_reads_as_its_text() {
+    let (_d, shell, mut app) = app(
+        "#+MACRO: project closure\n* Notes\n:PROPERTIES:\n:ID: 01ENTITY000000000000003\n:END:\n\
+         built with {{{project}}} today\n",
+    );
+    let d = detail_of(&mut app, &shell, "Notes");
+    assert!(d.body.contains("built with closure today"), "{}", d.body);
+}
+
+#[test]
+fn a_widget_reference_is_not_touched_by_the_macro_pass() {
+    // Two braces are closure's and three are org's, and the preview
+    // runs both expanders — so this is where confusing them would show.
+    let (_d, shell, mut app) = app(
+        "#+MACRO: project closure\n* Notes\n:PROPERTIES:\n:ID: 01ENTITY000000000000004\n:END:\n\
+         a {{card}} stays a widget reference\n",
+    );
+    let d = detail_of(&mut app, &shell, "Notes");
+    assert!(d.body.contains("{{card}}"), "{}", d.body);
+}

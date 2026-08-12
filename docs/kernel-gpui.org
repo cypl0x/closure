@@ -795,6 +795,43 @@ nothing hides it. The same call the dangling relation made.
 Conformance is now 91% understood and 91% offered — nothing is parsed
 and invisible.
 
+* DONE Org: macros ({{{name}}})
+=#+MACRO: name replacement= defines and ={{{name}}}= uses. Preserved
+and never expanded. No collision with closure's widgets: those are two
+braces and these are three, and the two ideas are close enough that
+sharing an expander is the obvious mistake to avoid.
+
+Acceptance: =nix develop -c cargo test -p closure-org --test macros=
+
+A separate expander from the widgets on purpose, with a test that
+={{card}}= survives the macro pass and ={{{project}}}= does not
+survive it. Sharing one would have given org's macros closure's rules
+or the reverse, and org's meaning is not closure's to change.
+
+Offered in the same pass as entities and includes, and =traversal_cost=
+caught the cost of doing it naively within a minute: reading the
+document's source per keystroke to find =#+MACRO:= lines put the whole
+file back into every landing. Guarded behind a =contains("{{{")=,
+which is not an optimisation but the difference between free and
+O(file).
+
+Conformance 91% -> 94%, understood and offered both.
+
+* TODO Org: #+SETUPFILE
+=#+SETUPFILE: "theme.org"= pulls another file's keywords in — the same
+shape as =#+INCLUDE=, and =resolve_includes= already exists, so this
+is about scoping to keywords rather than a second reader.
+
+Acceptance: =nix develop -c cargo test -p closure-org --test setupfile=
+
+* TODO Org: radio targets
+=<<<name>>>= makes every later occurrence of "name" a link to it. The
+last preserved construct, and the only one whose cost is per *word*
+rather than per line — worth measuring against I11 before wiring it
+into a shell.
+
+Acceptance: =nix develop -c cargo test -p closure-org --test radio_targets=
+
 * TODO Bug: the gpui window stops presenting on the lavapipe rasteriser
 Diagnosed above and not fixed: the wedge is in the presentation path
 (blade/Vulkan on lavapipe), below anything this queue owns. Input is

@@ -10035,10 +10035,10 @@ pub const CONFORMANCE: &[Construct] = &[
     },
     Construct {
         name: "macro {{{name}}}",
-        support: Support::Preserved,
-        evidence: "",
-        missing: "org's own macros are not expanded",
-        offered: "",
+        support: Support::Understood,
+        evidence: "crates/closure-org/tests/macros.rs",
+        missing: "",
+        offered: "crates/closure-shell-core/tests/entity_preview.rs",
     },
     Construct {
         name: "#+SETUPFILE",
@@ -10528,6 +10528,79 @@ pub fn document_columns(doc: &OrgDoc) -> Option<Vec<ColumnSpec>> {
                 .or_else(|| t.strip_prefix("#+columns:"))
         })
         .and_then(columns_format)
+}
+
+/// How many times a macro expansion may feed another.
+///
+/// Org expands macros once. A recursive definition has to end rather
+/// than spin — the same bound every other expander here carries, and
+/// for the same reason (I5).
+const MACRO_DEPTH_LIMIT: usize = 8;
+
+/// `name -> replacement` for every `#+MACRO:` line in `doc`.
+fn org_macros(doc: &str) -> std::collections::HashMap<String, String> {
+    let mut out = std::collections::HashMap::new();
+    for line in doc.lines() {
+        let t = line.trim_start();
+        let Some(rest) = t
+            .strip_prefix("#+MACRO:")
+            .or_else(|| t.strip_prefix("#+macro:"))
+        else {
+            continue;
+        };
+        if let Some((name, body)) = rest.trim().split_once(char::is_whitespace) {
+            out.insert(name.to_owned(), body.trim().to_owned());
+        }
+    }
+    out
+}
+
+/// Expand org's own `{{{name}}}` macros in `text`, defined by
+/// `#+MACRO:` lines in `doc`.
+///
+/// Deliberately not the expander closure's widgets use, which are
+/// `{{name}}` with two braces. A widget has typed inputs, slots and a
+/// vault-wide registry; an org macro is a keyword in one file taking
+/// positional `$1` arguments. Sharing an expander would give one of
+/// them the other's rules, and org's meaning is not closure's to
+/// change.
+///
+/// A macro nobody defined is left exactly as written — the same call
+/// an unknown entity makes, and for the same reason: a blank is a
+/// wrong answer that looks like an empty one.
+#[must_use]
+pub fn expand_org_macros(text: &str, doc: &str) -> String {
+    if !text.contains("{{{") {
+        return text.to_owned();
+    }
+    let defs = org_macros(doc);
+    let mut out = text.to_owned();
+    for _ in 0..MACRO_DEPTH_LIMIT {
+        let Some(start) = out.find("{{{") else {
+            break;
+        };
+        let Some(rel) = out[start..].find("}}}") else {
+            break;
+        };
+        let end = start + rel + 3;
+        let inner = out[start + 3..start + rel].to_owned();
+        let (name, args) = match inner.split_once('(') {
+            Some((n, a)) => (n.to_owned(), a.trim_end_matches(')').to_owned()),
+            None => (inner.clone(), String::new()),
+        };
+        let Some(body) = defs.get(name.trim()) else {
+            // Nothing to put here, and scanning on from the same place
+            // would spin. Everything from an unknown macro onward is
+            // left as it is, which is what "left alone" has to mean.
+            break;
+        };
+        let mut replacement = body.clone();
+        for (i, arg) in args.split(',').enumerate() {
+            replacement = replacement.replace(&format!("${}", i + 1), arg.trim());
+        }
+        out.replace_range(start..end, &replacement);
+    }
+    out
 }
 
 /// Why an `#+INCLUDE:` could not be resolved.
