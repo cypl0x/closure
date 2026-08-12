@@ -3455,6 +3455,14 @@ fn cmd_conformance() -> Result<(), String> {
             closure_org::Support::Preserved => {
                 println!("preserved   {:<38} {}", c.name, c.missing);
             }
+            // Printed differently from `preserved` because it is a
+            // different claim: not "closure has not got to this", but
+            // "closure will not, and here is the argument". A reader
+            // deciding whether their file will work needs to tell a
+            // decision from a backlog.
+            closure_org::Support::Declined { reason } => {
+                println!("declined    {:<38} {reason}", c.name);
+            }
         }
     }
     Ok(())

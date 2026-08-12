@@ -1410,7 +1410,7 @@ rather than a sniffer.
 
 Acceptance: =nix develop -c cargo test -p closure-sniffer --test enforce=
 
-* TODO Conformance: record why the last two constructs stay Preserved
+* DONE Conformance: record why the last two constructs stay Preserved
 40 of 42 org constructs are understood and offered. The two left are
 =#+ATTR_*= (export-only attributes, applied to nothing closure renders)
 and diary sexp timestamps (=<%%(diary-float t 4 2)>=, which needs an
@@ -1427,6 +1427,38 @@ declined, with reasons" is a truer number than 95% that means "2 to go".
 
 Acceptance: =nix develop -c cargo test -p closure-org --test conformance_ratchet=
 with a test that every non-Understood construct carries a reason.
+
+=Support::Declined { reason }= is the third state, and the reason must
+say what closure would have to *become* to do it — not that it is hard.
+Both reasons are arguments somebody can disagree with: adopting org's
+export layer would be a second renderer with its own idea of what a
+document looks like; an elisp evaluator would privilege one language
+inside timestamp syntax, in a notebook whose whole position is that the
+user picks the language.
+
+Declined constructs leave the denominator, so a decision neither
+flatters the rate nor drags it down forever.
+
+Then =the_matrix_is_worth_having= fired, exactly as expected: with the
+last two declined, the matrix claimed closure does all of org it
+intends to. That claim was false, and the fix was to look harder rather
+than to relax the guard. Five more constructs org has and closure does
+not: =#+PROPERTY:= file-wide defaults, =#+LINK:= abbreviations,
+description lists, =[@3]= counter overrides, timestamp delays (=-2d=).
+The guard's message now also says that declining must not become a way
+to empty the list.
+
+Being honest about those five moved the rate 95% → 88%, which exposed
+the real problem: *a ratio is the wrong ratchet*. It falls when you
+admit to more of org, which punishes the one behaviour this matrix
+exists to encourage. So =UNDERSTOOD_FLOOR= is an absolute count (40)
+that never falls for any reason, and the ratio floor may be lowered
+only when the list grows. A count cannot be gamed by shortening the
+list, and that is the property the percentage never had.
+
+The CLI prints =declined= on its own line rather than as =preserved=,
+because a reader deciding whether their file will work needs to tell a
+decision from a backlog.
 
 * TODO Bug: the gpui window stops presenting on the lavapipe rasteriser
 Diagnosed above and not fixed: the wedge is in the presentation path

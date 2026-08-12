@@ -33,7 +33,38 @@ use closure_org::{CONFORMANCE, Support, conformance_rate, offered_rate};
 ///
 /// Which is the number worth ratcheting. 100% of a list somebody chose
 /// is a claim about the list.
-const FLOOR: u32 = 95;
+const FLOOR: u32 = 88;
+
+/// How many constructs are understood, as a count rather than a ratio.
+///
+/// The ratio alone is the wrong ratchet and 2026-08-12 is when that
+/// showed. Declining `#+ATTR_*` and the diary sexp took the list to
+/// "everything closure attempts, it does", `the_matrix_is_worth_having`
+/// fired at exactly that, and looking harder at org turned up five more
+/// constructs it does not do — `#+PROPERTY:`, `#+LINK:`, description
+/// lists, `[@3]` counters, timestamp delays. Being honest about those
+/// pushed the ratio from 95% to 88%.
+///
+/// A ratio that falls when you admit to more of org punishes the one
+/// behaviour this matrix exists to encourage. A *count* cannot be
+/// gamed that way: it goes up only by making something work, and
+/// growing the list never moves it. So the ratio floor may be lowered
+/// when — and only when — the list grows, and this number never falls
+/// for any reason at all.
+const UNDERSTOOD_FLOOR: usize = 40;
+
+#[test]
+fn the_number_understood_never_falls() {
+    let n = CONFORMANCE
+        .iter()
+        .filter(|c| c.support == Support::Understood)
+        .count();
+    assert!(
+        n >= UNDERSTOOD_FLOOR,
+        "understood constructs fell to {n}, floor is {UNDERSTOOD_FLOOR} — \
+         something that used to work stopped working"
+    );
+}
 
 #[test]
 fn the_rate_never_falls() {
@@ -90,8 +121,12 @@ fn the_matrix_is_worth_having() {
     );
     assert!(
         CONFORMANCE.iter().any(|c| c.support == Support::Preserved),
-        "a matrix where everything is understood is a matrix that is \
-         not looking at what org has"
+        "a matrix where everything is understood — or understood and \
+         declined — is a matrix that is not looking at what org has. \
+         Declining a construct must not be a way to empty this list: \
+         `Declined` says closure will not do it, `Preserved` says it \
+         has not yet, and org is large enough that there is always \
+         something in the second column"
     );
 }
 
@@ -102,7 +137,7 @@ fn the_matrix_is_worth_having() {
 /// parsed and invisible. The gap is the point of two numbers: it was 91
 /// and 70 before the unwired parsers were wired up, and nothing about
 /// the first number would have shown that.
-const OFFERED_FLOOR: u32 = 95;
+const OFFERED_FLOOR: u32 = 88;
 
 #[test]
 fn what_a_shell_offers_never_falls_either() {
@@ -148,4 +183,67 @@ fn nothing_is_offered_that_is_not_understood() {
             );
         }
     }
+}
+
+#[test]
+fn a_construct_that_is_not_understood_says_why_or_says_what_is_missing() {
+    // `Preserved` conflates two different states: "not built yet" and
+    // "looked at, decided against, here is the reason". A matrix that
+    // cannot tell them apart reports a settled decision as a gap
+    // forever, and the number never finishes going up even when the
+    // work is done.
+    for c in CONFORMANCE {
+        match c.support {
+            Support::Understood => {}
+            Support::Preserved => assert!(
+                !c.missing.is_empty(),
+                "`{}` is preserved and does not say what is missing",
+                c.name
+            ),
+            Support::Declined { reason } => assert!(
+                reason.len() > 30,
+                "`{}` is declined with a reason too short to be one: {reason:?}",
+                c.name
+            ),
+        }
+    }
+}
+
+#[test]
+fn the_two_constructs_closure_will_not_do_are_recorded_as_decisions() {
+    // `#+ATTR_*` applies to export back-ends closure does not have, and
+    // a diary sexp is elisp — an evaluator for one language inside a
+    // notebook that is deliberately language-agnostic. Both are the
+    // right answer, and both used to read as unfinished work.
+    for name in ["#+ATTR_* export attributes", "diary sexp timestamp"] {
+        let c = CONFORMANCE
+            .iter()
+            .find(|c| c.name == name)
+            .unwrap_or_else(|| panic!("`{name}` is not in the matrix"));
+        assert!(
+            matches!(c.support, Support::Declined { .. }),
+            "`{name}` is still listed as an unfinished gap"
+        );
+    }
+}
+
+#[test]
+fn a_declined_construct_is_not_counted_against_the_rate() {
+    // The number should mean "of what closure set out to do", so a
+    // decision neither flatters it nor drags it down forever.
+    let declined = CONFORMANCE
+        .iter()
+        .filter(|c| matches!(c.support, Support::Declined { .. }))
+        .count();
+    assert!(declined > 0, "nothing is declined, so this proves nothing");
+    let attempted = CONFORMANCE.len() - declined;
+    let understood = CONFORMANCE
+        .iter()
+        .filter(|c| c.support == Support::Understood)
+        .count();
+    assert_eq!(
+        conformance_rate(),
+        u32::try_from(understood * 100 / attempted).unwrap_or(0),
+        "the rate still counts declined constructs as outstanding"
+    );
 }

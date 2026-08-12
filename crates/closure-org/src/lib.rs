@@ -9784,6 +9784,24 @@ pub enum Support {
     /// LaTeX fragment and an entity roundtrips byte-exact today while
     /// none of the four does anything.
     Preserved,
+    /// Looked at, decided against, and here is why.
+    ///
+    /// The bytes survive exactly as [`Self::Preserved`] — the
+    /// difference is not in the behaviour but in the claim. Without
+    /// this the matrix reports a settled decision as an outstanding
+    /// gap forever, and the rate can never finish going up even when
+    /// the work is finished. Two constructs are in this state and both
+    /// should be: `#+ATTR_*` applies to export back-ends closure does
+    /// not have, and a diary sexp is elisp — an evaluator for one
+    /// language, inside a notebook whose whole position on code is
+    /// that the user picks the language.
+    ///
+    /// This is not an escape hatch for work that is merely hard. The
+    /// reason has to say what closure would have to *become* to do it.
+    Declined {
+        /// Why, in a sentence somebody who disagrees can argue with.
+        reason: &'static str,
+    },
 }
 
 /// One row of the org conformance matrix.
@@ -10060,10 +10078,52 @@ pub const CONFORMANCE: &[Construct] = &[
         offered: "crates/closure-shell-core/tests/clocktable_preview.rs",
     },
     Construct {
-        name: "#+ATTR_* export attributes",
+        name: "#+PROPERTY: file-wide defaults",
         support: Support::Preserved,
         evidence: "",
-        missing: "carried through, never applied to anything",
+        missing: "a file-level default never reaches the headlines under it",
+        offered: "",
+    },
+    Construct {
+        name: "#+LINK: abbreviations",
+        support: Support::Preserved,
+        evidence: "",
+        missing: "[[gh:owner/repo]] is not expanded by its #+LINK: template",
+        offered: "",
+    },
+    Construct {
+        name: "description list (term :: definition)",
+        support: Support::Preserved,
+        evidence: "",
+        missing: "reads as an ordinary list item; the term is not a term",
+        offered: "",
+    },
+    Construct {
+        name: "list counter override [@3]",
+        support: Support::Preserved,
+        evidence: "",
+        missing: "a list that says it starts at 3 is still numbered from 1",
+        offered: "",
+    },
+    Construct {
+        name: "timestamp delay (-2d)",
+        support: Support::Preserved,
+        evidence: "",
+        missing: "DEADLINE: <2026-08-20 Thu -2d> warns on the same day as one without",
+        offered: "",
+    },
+    Construct {
+        name: "#+ATTR_* export attributes",
+        support: Support::Declined {
+            reason: "`#+ATTR_html: :width 300` is an instruction to an \
+                     export back-end. closure has one export (markdown) \
+                     and one renderer (its own panes), and neither has a \
+                     width to set. Supporting these would mean adopting \
+                     org's export layer, which is a second renderer with \
+                     its own idea of what a document looks like.",
+        },
+        evidence: "",
+        missing: "",
         offered: "",
     },
     Construct {
@@ -10075,9 +10135,17 @@ pub const CONFORMANCE: &[Construct] = &[
     },
     Construct {
         name: "diary sexp timestamp",
-        support: Support::Preserved,
+        support: Support::Declined {
+            reason: "`<%%(diary-float t 4 2)>` is elisp, so reading it \
+                     means an elisp evaluator in the kernel. closure's \
+                     position on code is that the user picks the \
+                     language and it runs in a block through the same \
+                     trust check as any other; one language privileged \
+                     inside timestamp syntax contradicts that. Repeaters \
+                     already cover the recurrences people actually write.",
+        },
         evidence: "",
-        missing: "<%%(diary-float t 4 2)> is not evaluated",
+        missing: "",
         offered: "",
     },
     Construct {
@@ -10124,7 +10192,10 @@ pub const CONFORMANCE: &[Construct] = &[
 /// construct can be parsed, tested and invisible.
 #[must_use]
 pub fn offered_rate() -> u32 {
-    let total = u32::try_from(CONFORMANCE.len()).unwrap_or(u32::MAX);
+    // Declined constructs are not outstanding work, so they are not in
+    // the denominator. A decision that dragged the number down forever
+    // would be a reason to stop making decisions.
+    let total = u32::try_from(attempted_constructs()).unwrap_or(u32::MAX);
     if total == 0 {
         return 0;
     }
@@ -10133,11 +10204,26 @@ pub fn offered_rate() -> u32 {
     offered * 100 / total
 }
 
+/// How many constructs closure set out to support — everything in the
+/// matrix that is not [`Support::Declined`].
+///
+/// The denominator of both published rates.
+#[must_use]
+pub fn attempted_constructs() -> usize {
+    CONFORMANCE
+        .iter()
+        .filter(|c| !matches!(c.support, Support::Declined { .. }))
+        .count()
+}
+
 /// What fraction of [`CONFORMANCE`] closure understands, as a
 /// percentage, rounded down.
 #[must_use]
 pub fn conformance_rate() -> u32 {
-    let total = u32::try_from(CONFORMANCE.len()).unwrap_or(u32::MAX);
+    // Declined constructs are not outstanding work, so they are not in
+    // the denominator. A decision that dragged the number down forever
+    // would be a reason to stop making decisions.
+    let total = u32::try_from(attempted_constructs()).unwrap_or(u32::MAX);
     if total == 0 {
         return 0;
     }
