@@ -142,3 +142,21 @@ fn a_widget_reference_is_not_touched_by_the_macro_pass() {
     let d = detail_of(&mut app, &shell, "Notes");
     assert!(d.body.contains("{{card}}"), "{}", d.body);
 }
+
+#[test]
+fn a_macro_from_a_setupfile_works_like_a_local_one() {
+    // The point of a setupfile: one file of shared definitions. A macro
+    // it brings in has to be as usable as one defined in the document.
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("theme.org"), "#+MACRO: project closure\n").unwrap();
+    std::fs::write(
+        dir.path().join("notes.org"),
+        "#+SETUPFILE: \"theme.org\"\n* Notes\n:PROPERTIES:\n:ID: 01ENTITY000000000000005\n:END:\n\
+         built with {{{project}}} today\n",
+    )
+    .unwrap();
+    let shell = Shell::new(Vault::open(dir.path()).unwrap());
+    let mut app = ModalApp::new(InputMode::Doom);
+    let d = detail_of(&mut app, &shell, "Notes");
+    assert!(d.body.contains("built with closure today"), "{}", d.body);
+}

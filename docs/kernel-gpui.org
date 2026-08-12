@@ -817,12 +817,28 @@ O(file).
 
 Conformance 91% -> 94%, understood and offered both.
 
-* TODO Org: #+SETUPFILE
+* DONE Org: #+SETUPFILE
 =#+SETUPFILE: "theme.org"= pulls another file's keywords in — the same
 shape as =#+INCLUDE=, and =resolve_includes= already exists, so this
 is about scoping to keywords rather than a second reader.
 
 Acceptance: =nix develop -c cargo test -p closure-org --test setupfile=
+
+Not =resolve_includes= with a different name, which was the tempting
+shortcut. An include pulls in content, a setupfile pulls in settings —
+=#+MACRO:=, =#+TODO:=, =#+COLUMNS:= — and nothing else, which is what
+lets a vault keep one file of shared definitions without every
+document referencing it inheriting its prose. There is a test that the
+prose stays behind.
+
+A missing setupfile is silence rather than an error, because it costs
+settings and not the document; a missing include fails because its
+content was meant to be read. Chains resolve, rings stop.
+
+Wired so a macro from a setupfile is as usable as a local one, which
+is the whole point of having one.
+
+Conformance 94% -> 97%.
 
 * TODO Org: radio targets
 =<<<name>>>= makes every later occurrence of "name" a link to it. The

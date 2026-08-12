@@ -15512,7 +15512,14 @@ impl ModalApp {
         let body = if body.contains("{{{") {
             shell.vault.document(path).map_or_else(
                 || body.clone(),
-                |d| closure_org::expand_org_macros(&body, &d.source()),
+                |d| {
+                    // A `#+SETUPFILE:` is how a vault keeps one file of
+                    // shared definitions, so a macro it brings in has to
+                    // be as usable as one defined here.
+                    let src = d.source();
+                    let settings = closure_org::setup_keywords(&src, shell.vault.root());
+                    closure_org::expand_org_macros(&body, &format!("{settings}{src}"))
+                },
             )
         } else {
             body

@@ -10042,10 +10042,10 @@ pub const CONFORMANCE: &[Construct] = &[
     },
     Construct {
         name: "#+SETUPFILE",
-        support: Support::Preserved,
-        evidence: "",
-        missing: "the referenced file is never read",
-        offered: "",
+        support: Support::Understood,
+        evidence: "crates/closure-org/tests/setupfile.rs",
+        missing: "",
+        offered: "crates/closure-shell-core/tests/entity_preview.rs",
     },
 ];
 
@@ -10528,6 +10528,81 @@ pub fn document_columns(doc: &OrgDoc) -> Option<Vec<ColumnSpec>> {
                 .or_else(|| t.strip_prefix("#+columns:"))
         })
         .and_then(columns_format)
+}
+
+/// How deep `#+SETUPFILE:` may chain.
+const SETUP_DEPTH_LIMIT: usize = 8;
+
+/// The keyword lines a document's `#+SETUPFILE:` brings in.
+///
+/// The same shape as `#+INCLUDE:` and deliberately not the same thing.
+/// An include pulls in *content* — whatever the file says, wherever the
+/// directive sits. A setupfile pulls in *settings*: `#+MACRO:`,
+/// `#+TODO:`, `#+COLUMNS:` and their like, and nothing else. That is
+/// what lets a vault keep one file of shared definitions without every
+/// document referencing it inheriting its prose.
+///
+/// Reusing `resolve_includes` and calling it done would have turned
+/// every setupfile into an include, and the difference would surface in
+/// somebody's document months later.
+///
+/// A file that is not there is silence rather than an error: a missing
+/// setupfile costs settings, not the document. An include that resolves
+/// to nothing fails because its content was meant to be read.
+#[must_use]
+pub fn setup_keywords(src: &str, root: &std::path::Path) -> String {
+    let mut out = String::new();
+    let mut seen: Vec<String> = Vec::new();
+    let mut queue: Vec<String> = setup_targets(src);
+    let mut depth = 0usize;
+    while let Some(file) = queue.pop() {
+        if depth >= SETUP_DEPTH_LIMIT {
+            break;
+        }
+        depth += 1;
+        if seen.contains(&file) {
+            continue;
+        }
+        seen.push(file.clone());
+        let Ok(body) = std::fs::read_to_string(root.join(&file)) else {
+            continue;
+        };
+        for line in body.lines() {
+            let t = line.trim_start();
+            // A keyword, and not a `#+BEGIN_`/`#+END_` delimiter: those
+            // open content, which is the thing a setupfile does not
+            // bring.
+            let lower = t.to_ascii_lowercase();
+            if t.starts_with("#+")
+                && !lower.starts_with("#+begin")
+                && !lower.starts_with("#+end")
+                && !lower.starts_with("#+setupfile")
+            {
+                out.push_str(line);
+                out.push('\n');
+            }
+        }
+        queue.extend(setup_targets(&body));
+    }
+    out
+}
+
+/// Every file a `#+SETUPFILE:` line in `src` names.
+fn setup_targets(src: &str) -> Vec<String> {
+    src.lines()
+        .filter_map(|line| {
+            let t = line.trim_start();
+            let rest = t
+                .strip_prefix("#+SETUPFILE:")
+                .or_else(|| t.strip_prefix("#+setupfile:"))?
+                .trim();
+            let file = rest
+                .strip_prefix('"')
+                .and_then(|r| r.split_once('"').map(|(f, _)| f))
+                .unwrap_or_else(|| rest.split_whitespace().next().unwrap_or(""));
+            (!file.is_empty()).then(|| file.to_owned())
+        })
+        .collect()
 }
 
 /// How many times a macro expansion may feed another.
