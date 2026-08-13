@@ -57,6 +57,11 @@ gates:
     # lines of it went unnoticed through ~200 commits and then failed
     # `nix flake check` *before* the tests and clippy ran, so the whole
     # push had no signal at all for the sake of an emphasis marker.
+    # The C ABI is held to 100% on its own, not just carried by the
+    # workspace floor. It is the one crate whose bugs are undefined
+    # behaviour rather than a wrong answer, so "mostly covered" is not
+    # a state it is allowed to be in.
+    cargo llvm-cov -p closure-ffi --fail-under-lines 100
     nix fmt -- --fail-on-change
 
 # One-command gate: lint + tests (mirrors CI).

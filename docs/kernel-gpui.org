@@ -1308,7 +1308,7 @@ and the shell =main.rs= files, and it should.
 Acceptance: this item's body records the decision, and =just coverage=
 names the target it is ratcheting toward.
 
-* TODO Flutter 1: a C ABI over closure-shell-core
+* DONE Flutter 1: a C ABI over closure-shell-core
 The hermetic half, and the half that has to be perfect. A new workspace
 crate — =closure-ffi= — exposing =closure-shell-core= over a C ABI, so
 a Dart app can call =rows=, =select=, =detail=, =capture= without
@@ -1329,6 +1329,32 @@ violating it is worse than a crash.
 Acceptance: =nix develop -c cargo test -p closure-ffi= passes, the
 crate is in =just gates=, and =nix develop -c cargo llvm-cov -p
 closure-ffi= is at 100 with no exclusions.
+
+100.00%, 87 lines, no exclusions — and =just gates= holds it there
+rather than letting the workspace floor carry it. This is the one crate
+whose bugs are undefined behaviour rather than a wrong answer, so
+"mostly covered" is not a state it may be in.
+
+=crate-type = ["cdylib", "rlib"]=: the first is what Dart loads, the
+second is what the tests link. Without the rlib none of this would be
+testable in the workspace, and an untestable FFI surface is exactly the
+kind of thing this project keeps finding.
+
+The panic guard needed =AssertUnwindSafe= because =ModalApp= holds
+memos behind =RefCell=. That is sound here for a specific reason rather
+than because the error was in the way: every memo in this codebase is
+guarded by the vault revision it was computed against, so one left
+half-filled by a panic is recomputed on the next read rather than
+trusted. Written into the source, because "assert" with no argument is
+how that gets wrong later.
+
+A path that is not UTF-8 is refused rather than guessed at — a lossy
+path is a *different directory*, and creating one would be worse than
+failing.
+
+Read-only on purpose. A mutating ABI has to answer where undo lives and
+who owns the write, and that deserves its own item rather than a guess
+made while wiring a list view.
 
 * DONE Flutter 2: the shells matrix says what the Flutter shell claims
 =FLUTTER_CAPABILITIES= currently claims Browse, Capture and Search, and

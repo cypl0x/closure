@@ -13,6 +13,7 @@ break.
                    closure-shell-web    closure-shell-tauri
                    closure-shell-gtk    closure-shell-qt
                    closure-shell-slint  closure-wasm
+                   closure-ffi
  ─────────────────────────────────────────────────────────────────────
  L4 Adapters (I8)  closure-llm   closure-mcp    closure-lsp
                    closure-acp   closure-a2a    closure-cron

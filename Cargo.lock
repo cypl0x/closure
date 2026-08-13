@@ -1413,6 +1413,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "closure-ffi"
+version = "0.0.0"
+dependencies = [
+ "closure-config",
+ "closure-shell-core",
+ "closure-store",
+ "tempfile",
+]
+
+[[package]]
 name = "closure-input"
 version = "0.0.0"
 dependencies = [

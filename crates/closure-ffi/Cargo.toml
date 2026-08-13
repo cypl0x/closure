@@ -1,0 +1,21 @@
+[package]
+name = "closure-ffi"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "C ABI over closure-shell-core, for shells that are not written in Rust"
+
+[lib]
+# Both: `cdylib` is what a Dart app loads, `rlib` is what the tests
+# here link against. Without the second, none of this is testable in
+# the workspace and the crate would be exactly the kind of surface this
+# project keeps finding untested.
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+closure-shell-core = { path = "../closure-shell-core" }
+closure-store = { path = "../closure-store" }
+closure-config = { path = "../closure-config" }
+
+[dev-dependencies]
+tempfile = "3"
