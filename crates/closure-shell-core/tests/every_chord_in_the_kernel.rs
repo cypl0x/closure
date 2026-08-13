@@ -102,7 +102,13 @@ fn split_stroke(stroke: &str) -> (String, bool, bool) {
         }
     }
     let key = match rest {
-        "SPC" => " ",
+        // The *name*, not the character. `modal_stroke` maps "space"
+        // to `SPC`; a literal " " falls through to the text branch and
+        // becomes a stroke called " ", so `SPC q r` never matched and
+        // the `q` was taken as the standalone quit binding. That was my
+        // harness, not the chord trie — which resolves exact match
+        // first, then prefix, and is correct.
+        "SPC" => "space",
         "RET" => "enter",
         "ESC" => "escape",
         "TAB" => "tab",
@@ -169,17 +175,9 @@ fn escape_gets_back_out_of_whatever_a_chord_opened() {
         if *cmd == "quit" {
             continue;
         }
-        // Single-stroke chords only, and the reason is a real question
-        // rather than convenience. Doom binds both `q` -> quit and
-        // `SPC q r` -> reload-shell, so only the leader state tells them
-        // apart. Fed through this harness, `SPC q r` sets `should_quit`
-        // — which is either a leader that does not engage on the kernel
-        // API the way it does through the window, or a harness that
-        // does not feed it the way the window does. Asserting either
-        // way would be claiming to know. It has its own queue item.
-        if chord.split_whitespace().count() > 1 {
-            continue;
-        }
+        // Multi-stroke chords included. They were skipped for a while
+        // because `SPC q r` appeared to quit; that was this harness
+        // sending a literal space rather than the key named "space".
         let (_dir, mut shell) = shell_for(Some(FULL));
         let mut app = ModalApp::new(InputMode::Doom);
         for stroke in chord.split_whitespace() {
@@ -195,4 +193,40 @@ fn escape_gets_back_out_of_whatever_a_chord_opened() {
             "`{chord}` ({cmd}) then escape asked to quit"
         );
     }
+}
+
+#[test]
+fn the_leader_disambiguates_a_chord_from_a_standalone_binding() {
+    // Doom binds both `q` -> quit and `SPC q r` -> reload-shell, so the
+    // leader state is the only thing telling them apart. Worth its own
+    // test because getting it wrong quits instead of reloading, which
+    // loses whatever was unsaved.
+    //
+    // It works. What did not was this file's own stroke encoding, which
+    // sent a literal space where `modal_stroke` wants the key named
+    // "space" — so `SPC q r` never matched and the `q` fell through to
+    // quit. Recorded here rather than quietly fixed, because for a
+    // while I believed the trie was broken and it was not.
+    let (_dir, mut shell) = shell_for(Some(FULL));
+    let mut app = ModalApp::new(InputMode::Doom);
+    for stroke in ["SPC", "q", "r"] {
+        let (key, ctrl, alt) = split_stroke(stroke);
+        let text =
+            (key.chars().count() == 1 && !ctrl && !alt).then(|| key.chars().next().unwrap_or(' '));
+        app.on_key(&mut shell, &key, ctrl, alt, text);
+    }
+    assert!(
+        !app.should_quit(),
+        "`SPC q r` quit instead of reloading — the leader did not engage"
+    );
+}
+
+#[test]
+fn the_standalone_binding_still_works_on_its_own() {
+    // The other half. A leader that swallowed `q` everywhere would make
+    // the chord work and the plain key dead.
+    let (_dir, mut shell) = shell_for(Some(FULL));
+    let mut app = ModalApp::new(InputMode::Doom);
+    app.on_key(&mut shell, "q", false, false, Some('q'));
+    assert!(app.should_quit(), "`q` on its own no longer quits");
 }

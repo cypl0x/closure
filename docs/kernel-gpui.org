@@ -1391,7 +1391,7 @@ already uses, so the two cannot disagree about a file again.
 What is genuinely left needs a socket or a terminal: =serve=, =sync=,
 =tui=, =gpui=, =egui=, =plugin=, =pkg=, =ask=, =chat=.
 
-* TODO Does the SPC leader engage on the kernel API as it does in the window?
+* DONE Does the SPC leader engage on the kernel API as it does in the window?
 Doom binds both =q= → quit and =SPC q r= → reload-shell, so only the
 leader state tells them apart. Fed as three =on_key= calls (=SPC=, =q=,
 =r=) the app ends up with =should_quit= set — so the =q= was taken as
@@ -1415,6 +1415,24 @@ asserts only single-stroke chords, which is stated in the test.
 Acceptance: a test that =SPC q r= reloads and does not quit — or, if the
 harness was wrong, the multi-stroke assertion restored with the fix to
 how strokes are fed.
+
+The harness was wrong. =modal_stroke= maps the key *named* ="space"= to
+=SPC=; my encoder sent a literal =" "=, which falls through to the text
+branch and becomes a stroke called =" "=. So =SPC q r= never matched
+anything, the pending chord cleared, and the =q= was taken as the
+standalone quit binding.
+
+The trie is correct and always was: push the stroke, try the whole
+chord as an exact match, then as a prefix, and clear only if it is
+neither.
+
+Two tests now say so directly rather than leaving it to the sweep —
+=SPC q r= reloads and does not quit, and =q= on its own still quits. A
+leader that swallowed =q= everywhere would make the chord work and the
+plain key dead, and only asserting one of those would miss it.
+
+The multi-stroke assertion is restored, so the sweep covers every chord
+in the keymap rather than the single-stroke half.
 
 * TODO Coverage: closure-shell-core, 1,407 missed
 Of 14,985 lines, so 90.6% — the absolute number is large because the
