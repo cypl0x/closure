@@ -1606,6 +1606,50 @@ tests, so its number is not the workspace number the parent item lists.
 Compare like with like or the ratchet will look like it moved when it
 did not.
 
+* TODO Coverage: where the last 5,918 lines are, measured 2026-08-13
+Written as a handoff rather than a summary: this is the state the next
+pass should start from, so it does not have to re-measure.
+
+Workspace 88.80%, 5,918 missed of 52,839. Started this run at 87.62%.
+
+| file                    | missed | of     |
+|-------------------------+--------+--------|
+| closure-shell-core      |   1395 |  15155 |
+| closure-tui             |    990 |   3316 |
+| closure-org             |    978 |   9812 |
+| closure-cli/main.rs     |    871 |   2725 |
+| closure-store           |    412 |   9615 |
+| closure-core            |    240 |   1638 |
+| closure-eval            |    148 |    663 |
+| closure-lsp             |    145 |   1034 |
+| closure-llm             |    127 |    516 |
+| closure-shell-gpui      |    102 |   1010 |
+| closure-sync            |     93 |    760 |
+| closure-config          |     67 |    545 |
+
+What worked, so the next pass reaches for it first: a table-driven sweep
+over a flat dispatch, run against several *shapes* of input rather than
+one. The CLI went 37.6% → 68.0% that way, the kernel's chord sweep took
+shell-core past 90%, and making =closure-tui='s =draw= public so
+ratatui's =TestBackend= can reach it took 200 lines in one commit. The
+shapes that find things are: empty, absent, and absurdly small.
+
+What is left is not more of that. The remaining lines are individually
+reasoned error arms — each needs a case somebody thought about, which
+is one test per arm rather than one test per fifty. Expect the rate to
+drop sharply from here, and expect the parent item's "delete or
+restructure what cannot be executed" to start applying: =closure-cli='s
+=serve=/=sync=/=tui=/=gpui= arms and the shell =main.rs= files are the
+first candidates.
+
+Three real bugs came out of writing these, which is the argument for
+continuing: undo duplicated a planning line, adding a property could not
+be undone at all, and a cron schedule under a headline was invisible to
+the CLI while the pane showed it.
+
+Acceptance: this item is a record; close it when the workspace gate
+reaches 100 or when the next pass supersedes the numbers.
+
 * TODO Coverage: raise the workspace gate to 100 and keep it there
 The last item of the group. =just coverage= currently reads
 =--fail-under-lines 86=; it becomes 100 when the crates above are done,
