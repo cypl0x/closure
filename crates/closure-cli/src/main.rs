@@ -2233,32 +2233,47 @@ fn cmd_where_is(name: &str) -> Result<(), String> {
 
 fn cmd_cron_tick(path: &Path, m: u8, h: u8, d: u8, mo: u8, dw: u8) -> Result<(), String> {
     let src = fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))?;
-    let doc = closure_org::parse(&src).map_err(|e| format!("{e}"))?;
-    for n in doc.preamble() {
-        if n.kind() == closure_org::NodeKind::CodeBlock
-            && let Some(cb) = n.as_code_block()
-            && cb.language == Some("closure-cron")
-        {
-            let jobs = closure_cron::parse_jobs(cb.content).map_err(|e| format!("{e}"))?;
-            for j in closure_cron::jobs_matching(&jobs, m, h, d, mo, dw) {
-                println!("{}", j.command);
-            }
+    for text in cron_blocks(&src) {
+        let jobs = closure_cron::parse_jobs(&text).map_err(|e| format!("{e}"))?;
+        for j in closure_cron::jobs_matching(&jobs, m, h, d, mo, dw) {
+            println!("{}", j.command);
         }
     }
     Ok(())
 }
 
+/// Every `closure-cron` block in `src`, wherever it sits.
+///
+/// Through the same reader the shell's cron pane uses, so the two
+/// cannot disagree about the same file — which they did. Both cron
+/// commands searched `doc.preamble()`, the nodes *before the first
+/// headline*, so a schedule written under `* Jobs` was invisible to
+/// them while the pane showed it. That is the same defect `config.org`
+/// had, in a second place, and the same fix.
+///
+/// Both spellings, because `segment_body` is where that decision lives
+/// and the vaults in this repo use `closure-cron` while `cron` is what
+/// anybody typing it fresh reaches for.
+fn cron_blocks(src: &str) -> Vec<String> {
+    closure_shell_core::segment_body(src)
+        .into_iter()
+        .filter_map(|seg| match seg {
+            closure_shell_core::BodySegment::Code { lang, text }
+                if lang.eq_ignore_ascii_case("cron")
+                    || lang.eq_ignore_ascii_case("closure-cron") =>
+            {
+                Some(text)
+            }
+            _ => None,
+        })
+        .collect()
+}
+
 fn cmd_cron_list(path: &Path) -> Result<(), String> {
     let src = fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))?;
-    let doc = closure_org::parse(&src).map_err(|e| format!("{e}"))?;
-    for n in doc.preamble() {
-        if n.kind() == closure_org::NodeKind::CodeBlock
-            && let Some(cb) = n.as_code_block()
-            && cb.language == Some("closure-cron")
-        {
-            for j in closure_cron::parse_jobs(cb.content).map_err(|e| format!("{e}"))? {
-                println!("{}", j.command);
-            }
+    for text in cron_blocks(&src) {
+        for j in closure_cron::parse_jobs(&text).map_err(|e| format!("{e}"))? {
+            println!("{}", j.command);
         }
     }
     Ok(())

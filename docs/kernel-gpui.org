@@ -1375,7 +1375,21 @@ org → md → org has to come back parseable, =tangle= has to write the
 file its =:tangle= header names, and =check-config= has to *reject* a
 bad config — a checker that accepts everything is not one.
 
-What is left is genuinely the network/subprocess/terminal set above.
+65.9% → 68.0%, and the "needs a network or a terminal" list turned out
+to be mostly wrong. =mcp=, =acp= and =lsp= read requests from *stdin*,
+so a closed stdin is a complete hermetic session: they must start,
+serve nothing and exit. That is a real claim — a server that hangs on
+EOF hangs the editor that launched it — and it was untested.
+
+Writing those found the same defect =config.org= had, in a second
+place: both cron commands searched =doc.preamble()=, so a schedule
+written under =* Jobs= was invisible to the CLI while the shell's cron
+pane showed it. One fact, two owners. They go through
+=closure_shell_core::segment_body= now, which is the reader the pane
+already uses, so the two cannot disagree about a file again.
+
+What is genuinely left needs a socket or a terminal: =serve=, =sync=,
+=tui=, =gpui=, =egui=, =plugin=, =pkg=, =ask=, =chat=.
 
 * TODO Coverage: closure-shell-core, 1,407 missed
 Of 14,985 lines, so 90.6% — the absolute number is large because the
