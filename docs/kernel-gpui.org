@@ -2169,6 +2169,23 @@ lose. Run here: 9.6G -> 16G, and the 6.4G it removed had accumulated
 during this session alone, which is the argument for the recipe
 existing rather than a comment somewhere.
 
+* TODO Bug: C-d in a read-only pane steps by the outline's height
+=half-page-down= computes =let step = (self.outline_view.height / 2)=
+and then, if a read-only pane is open, moves =pane_cursor= by it. That
+is half the *outline's* viewport — a count of single-line rows in a
+different list. Pane rows wrap, so the pane holds fewer, and the cursor
+moves further than the pane shows.
+
+Independent of the pane-measurement item above and much smaller: the
+pane needs to report its own page the way the outline reports
+=set_outline_viewport= and the body reports =set_body_viewport=. Even
+the current conservative =pane_view()= is the right number to report;
+it is simply not the one being used.
+
+Acceptance: =nix develop -c cargo test -p closure-shell-gpui --features gpui-test --test manual_scrolls=
+passes with a new case asserting that a pane's half-page differs from
+the outline's when the two lists are different lengths.
+
 * TODO Panes: lay rows out until the pane is full, instead of guessing
 =PANE_WRAP_GUESS= assumes a pane row takes two lines, because rows
 wrap and nothing here can know how many. Overshooting skips content,
@@ -2203,6 +2220,45 @@ selectors, and require the narrow pane to fit fewer. It fails today at
 
 What it probably needs is gpui's own measured list rather than a
 height computed ahead of layout.
+
+Second attempt 2026-08-13, also reverted. Further than the first, and
+the measurements below are the useful part — the next attempt should
+not have to re-derive them.
+
+*The proving test now exists and is sound.* Two windows, one per width,
+because =debug_bounds= keeps every selector it has ever seen: resizing
+one window and counting twice gives a running total, which is how my
+first run had the narrow pane fitting *more* rows than the wide one (24
+against 15, where the 24 was 15 wide rows plus 9 narrow). A window each
+gives 15 and 15 — width-independent, as the item said.
+
+*Row geometry, measured on a real frame*: an unwrapped row is 21.5px, a
+two-line row 41px, a five-line row 99px. So the first line costs 21.5
+and each one after it costs 19.5 — =n * PANE_ROW_H= overshoots by the
+padding a row pays once, and the error accumulates down the pane.
+
+*Pane chrome is 78.5px, not =BODY_CHROME='s 46.* The manual's first row
+is painted at y=78.5; a pane carries the hint line the editor does not.
+
+*=body_cols()= is the wrong width source here*, and this is what the
+first attempt tripped on: it reads =side_scroll.bounds()=, which is
+content-shaped. The window's own =viewport.0= minus the rail and the
+outline is not, and does vary with the window.
+
+*The blocker is =pane_window='s two reachable offsets.* It places the
+window ending at the cursor — except at the bottom of the list, where
+it clamps to the last =page= rows and the cursor sits somewhere inside
+them. A page that fits the first shape overflows the second (cursor at
+803px in a 720px window); taking the =min= of both fits everything and
+is so conservative that =half_a_page_scrolls_the_pane= stops moving.
+Sizing a window that has two shapes needs =pane_window= to have one —
+that is the next thing to change, not the arithmetic.
+
+*A real bug found on the way, and worth its own item*: =C-d= in a
+read-only pane steps by =outline_view.height / 2= — half the
+*outline's* height, a measurement of a different list whose rows do not
+wrap. That is independent of the guess and is why paging in the manual
+skips more than it looks like it should.
 
 * DONE Bug: the read-only panes clip long lines instead of wrapping
 Found 2026-08-11 in the same screenshot as the scroll fix. Manual
