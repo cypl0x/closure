@@ -1610,7 +1610,7 @@ did not.
 Written as a handoff rather than a summary: this is the state the next
 pass should start from, so it does not have to re-measure.
 
-Workspace 88.80%, 5,918 missed of 52,839. Started this run at 87.62%.
+Workspace 88.83%, 5,901 missed of 52,839. Started this run at 87.62%.
 
 | file                    | missed | of     |
 |-------------------------+--------+--------|
