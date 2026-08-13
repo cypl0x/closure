@@ -64,11 +64,32 @@ fn forged_frame_from_untrusted_key_is_rejected() {
 }
 
 #[test]
-fn empty_trust_set_accepts_any_valid_signature() {
-    // Integrity-only mode: no pinned peers, but the signature must still
-    // be self-consistent (tamper still caught by the previous test).
+fn an_empty_trust_set_trusts_nobody() {
+    // Rewritten 2026-08-13. This asserted the opposite — that an empty
+    // list accepts any valid signature — and called it "integrity-only
+    // mode: no pinned peers, but the signature must still be
+    // self-consistent".
+    //
+    // The intent is coherent and the default is wrong. A signature
+    // proves the sender holds *some* key, and an attacker generates
+    // their own, so integrity-only stops corruption in transit and
+    // nothing else. More to the point it was not chosen: `trusted` is
+    // the peer list, so a vault with nobody paired was in that mode
+    // without anyone deciding to be — and that is exactly the vault
+    // that has just been bound to a socket and not yet paired.
+    //
+    // Failing open on an empty allow-list is the classic shape. If a
+    // real integrity-only mode is wanted it should be a named argument
+    // somebody passes on purpose, not the emergent meaning of an empty
+    // slice.
     let bob = key(2);
     let a = session_with("a", "Alpha");
     let bytes = SyncMessage::from_session(&a).to_signed_bytes(&bob);
-    assert!(SyncMessage::from_signed_bytes(&bytes, &[]).is_ok());
+    assert!(
+        SyncMessage::from_signed_bytes(&bytes, &[]).is_err(),
+        "a frame from an unpaired peer was accepted because no peers were paired"
+    );
+    // …and the same frame is still accepted once bob is paired, so this
+    // is a membership check and not a refusal of everything.
+    assert!(SyncMessage::from_signed_bytes(&bytes, &[bob.verifying_key()]).is_ok());
 }

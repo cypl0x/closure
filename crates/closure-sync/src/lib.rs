@@ -472,7 +472,19 @@ impl SyncMessage {
         vk.verify(&signed, &signature)
             .map_err(|_| SyncError::Transport("signature verification failed".into()))?;
 
-        if !trusted.is_empty() && !trusted.contains(&vk) {
+        // An empty list trusts nobody. It used to trust *everybody* —
+        // `!trusted.is_empty() && !trusted.contains(&vk)` — which reads
+        // as "no list configured, so skip the check" and means a vault
+        // with no peers paired yet accepts edits from anything that can
+        // reach the socket. A valid signature only proves the sender
+        // holds some key, and anyone can generate one; it is the
+        // membership check that makes it *their* key.
+        //
+        // Failing open on an empty allow-list is the classic shape of
+        // this bug, and the moment it matters is exactly the moment
+        // there are no peers: a freshly bound vault, before anybody has
+        // paired with it.
+        if !trusted.contains(&vk) {
             return Err(SyncError::Transport("untrusted signing key".into()));
         }
         let replica = Replica::decode(payload).map_err(|e| SyncError::Transport(e.to_string()))?;

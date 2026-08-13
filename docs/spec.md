@@ -983,6 +983,16 @@ runtime-checkable is layout, and layout is what a screenshot is for.
 
 ## How far P2P sync goes, and where it stops
 
+**A frame is accepted only from a key the vault has paired with.** An
+empty peer list trusts nobody, which is worth stating because it used to
+mean the opposite: `!trusted.is_empty() && !trusted.contains(&vk)` reads
+as "no list configured, skip the check", and `trusted` _is_ the peer
+list — so a vault with nobody paired accepted any validly-signed frame.
+A signature proves the sender holds some key, and an attacker generates
+their own; the membership check is what makes it _their_ key. The moment
+it mattered was the moment there were no peers: a vault freshly bound to
+a socket, before anyone had paired with it.
+
 The wire protocol is real: length-prefixed `SyncMessage` frames, a
 `SyncSession` per peer, CRDT merge, ed25519 signatures, and
 `TcpSyncTransport` moving bytes over a real socket to any `SocketAddr`.
