@@ -120,7 +120,7 @@ check:
 # nobody tests is not a feature. The number below is the ratchet, not
 # the target — it rises as each queued coverage item lands.
 coverage:
-    cargo llvm-cov --workspace --fail-under-lines 87
+    cargo llvm-cov --workspace --fail-under-lines 88
 
 # Parser fuzz/replay + property gate (I1/I5/I6) on stable, for every
 # first-class format (org + markdown).
