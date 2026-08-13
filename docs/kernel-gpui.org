@@ -1308,6 +1308,68 @@ and the shell =main.rs= files, and it should.
 Acceptance: this item's body records the decision, and =just coverage=
 names the target it is ratcheting toward.
 
+* TODO Flutter 1: a C ABI over closure-shell-core
+The hermetic half, and the half that has to be perfect. A new workspace
+crate — =closure-ffi= — exposing =closure-shell-core= over a C ABI, so
+a Dart app can call =rows=, =select=, =detail=, =capture= without
+reaching into the kernel (I7).
+
+=docs/flutter-shell.md= already chose this over the webview option for
+a native UI, and already decided the Dart side stays outside the
+hermetic gate because the Dart toolchain is not reproducibly packaged
+(I10). Both decisions stand.
+
+The shape that makes this safe: every entry point takes and returns
+plain C types, every pointer closure hands out is owned by closure and
+freed by a =closure_*_free= of its own, and no panic crosses the
+boundary — a panic through FFI is undefined behaviour, so every entry
+point catches. That last one is I5 restated for a boundary where
+violating it is worse than a crash.
+
+Acceptance: =nix develop -c cargo test -p closure-ffi= passes, the
+crate is in =just gates=, and =nix develop -c cargo llvm-cov -p
+closure-ffi= is at 100 with no exclusions.
+
+* TODO Flutter 2: the shells matrix says what the Flutter shell claims
+=FLUTTER_CAPABILITIES= currently claims Browse, Capture and Search, and
+nothing enforces it — =shells_matrix_has_tauri_gpui_flutter_entries=
+asserts only that =Browse= is present, and its own comment admits it:
+"for now the presence + browse satisfies the matrix row".
+
+So the matrix is a claim with no test behind it, which is the same
+shape the org conformance matrix had before it got two numbers. gpui
+claims Browse, Edit, Capture, Search, Palette.
+
+Decide what the Flutter shell claims *before* building it, and make
+each claim mean a test the way "offered" does for org constructs.
+
+Acceptance: =nix develop -c cargo test -p closure-cli --test shells_matrix_is_true=,
+with one case per claimed capability.
+
+* TODO Flutter 3: the Dart app
+In =flutter/= at the repo root, over the ABI from item 1 via
+flutter_rust_bridge. Built and run by =just flutter=, never by =nix
+flake check= — that is the I10 boundary and crossing it is the one
+thing this item must not do.
+
+Verified the way the gpui window is: run it, look at it, and say what
+was on screen. A screenshot of a Flutter app that renders an empty list
+is not parity.
+
+Acceptance: =nix develop -c just flutter= exits 0, and the app shows
+the vault's headlines on :1.
+
+* TODO Flutter 4: what the Dart side cannot promise
+The gpui window has a startup notice about the rasteriser and an honest
+sentence about what does not work. The Flutter shell needs the
+equivalent, written from what is actually true of it rather than from
+optimism — and =docs/spec.md= needs a section saying where this shell
+sits relative to I10, so the next person does not discover the Dart
+toolchain is outside the gate by running =nix flake check= and finding
+it green while the app is broken.
+
+Acceptance: =grep -c "^## The Flutter shell" docs/spec.md= prints 1.
+
 * TODO Coverage: closure-cli is 37.6% covered
 1,697 missed lines of 2,721 — the single largest hole in the workspace,
 and the lowest-covered file in it by a wide margin.
