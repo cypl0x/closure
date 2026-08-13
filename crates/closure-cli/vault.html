@@ -1,0 +1,32 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<title>closure vault (self-contained single file)</title>
+<style>
+body { font-family: sans-serif; max-width: 48em; margin: 2em auto; padding: 0 1em; }
+details { margin-left: 1em; }
+.id { color: #888; font-size: 0.8em; font-family: monospace; }
+.todo { color: #c00; font-weight: bold; margin-right: 0.5em; }
+.tag { background: #eef; padding: 0 0.3em; border-radius: 0.2em; margin-left: 0.3em; }
+#search { width: 100%; padding: 0.5em; margin-bottom: 1em; font-size: 1em; }
+li.hidden { display: none; }
+</style>
+</head><body>
+<h1>closure vault (self-contained) — 1 file(s)</h1><input id="search" placeholder="fuzzy search (client-side JS)" autofocus>
+<ul id="list"><li><strong>/tmp/nix-shell.neumpS/.tmpdPwYB9/notes.org</strong><ul><li><span class="todo">TODO</span>Ship it<span class="tag">work</span> <span class="id">(01CLIARGS00000000001)</span></li><li>A child <span class="id">(01CLIARGS00000000002)</span></li></ul></li></ul>
+<script>
+// Client-side fuzzy/search (includes-based for portability; idea from the Rust fuzzy_score).
+const input = document.getElementById('search');
+const list = document.getElementById('list');
+input.addEventListener('input', () => {
+  const q = input.value.toLowerCase();
+  list.querySelectorAll('li').forEach(li => {
+    const text = li.textContent.toLowerCase();
+    li.classList.toggle('hidden', q && !text.includes(q));
+  });
+});
+console.log('self-contained closure export ready');
+</script>
+<!-- TODO (not implemented): inline a wasm32 build of closure-org so the
+     page can re-parse edited org client-side. Today the export is a
+     read-only browse+search snapshot; no wasm is embedded. -->
+</body></html>
