@@ -944,11 +944,19 @@ impl Edit {
             }
             Self::SetProperty { id, key, old, .. } => {
                 let path = doc.path_of(id).ok_or(CommandError::BlockNotFound)?;
+                // A property that was not there before is *removed*, not
+                // set to an empty string — undo has to leave the drawer
+                // as it found it (I3). This returned an error for that
+                // case, so adding a property could not be undone at
+                // all. The same reasoning is already written down where
+                // `:LAST_REPEAT:` is reversed; it was applied there and
+                // not here.
                 let org = old
                     .as_ref()
-                    .map_or(Err(closure_org::RewriteError::Parse), |prev| {
-                        rewrite_headline_set_property(doc.org(), &path, key, prev)
-                    })
+                    .map_or_else(
+                        || closure_org::rewrite_headline_remove_property(doc.org(), &path, key),
+                        |prev| rewrite_headline_set_property(doc.org(), &path, key, prev),
+                    )
                     .map_err(|_| CommandError::Rewrite)?;
                 doc.org = org;
                 doc.rebuild_index();
@@ -2292,11 +2300,17 @@ fn current_body(org: &OrgDoc, path: &[usize]) -> Result<String, CommandError> {
         node = current.children().get(i);
         current = node.ok_or(CommandError::BlockNotFound)?;
     }
-    let mut out = String::new();
-    for n in current.body() {
-        out.push_str(n.source());
-    }
-    Ok(out)
+    let _ = current;
+    // The span the rewriter will replace, asked of the crate that owns
+    // it. Concatenating the headline's body *nodes* is not the same
+    // thing: a `SCHEDULED:` line is a body node and sits *above* the
+    // property drawer, while `rewrite_headline_set_body` replaces from
+    // the drawer's end. So setting a body and undoing it wrote the
+    // planning line back a second time, below the drawer — undo losing
+    // the bytes it exists to restore (I3).
+    closure_org::headline_body_text(org, path)
+        .map(ToOwned::to_owned)
+        .ok_or(CommandError::BlockNotFound)
 }
 
 /// Command: move the subtree rooted at `id` to immediately after the

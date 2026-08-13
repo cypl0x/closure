@@ -1546,6 +1546,29 @@ the unsaved one is still in the editor.
 
 All twelve pass.
 
+closure-core next, and asserting I3 across *every* command rather than
+one at a time — apply, then undo, then require the source back to the
+byte — found two bugs that lose data.
+
+=set-body= undo duplicated the planning line. =current_body= captured
+"the body" by concatenating the headline's body *nodes*, and
+=rewrite_headline_set_body= replaces from the end of the property
+drawer — but a =SCHEDULED:= line is a body node sitting *above* that
+drawer. So it was inside what was captured and outside what was
+replaced, and undo wrote it back a second time. One fact, two owners,
+which is this codebase's recurring shape. =headline_body_text= is the
+one owner now and lives beside the rewriter so they cannot drift.
+
+=set-property= could not be undone at all when the property was new:
+the reverse returned =Err= for =old: None= instead of *removing* the
+property. The right reasoning was already written down where
+=:LAST_REPEAT:= is reversed — "a property that was not there before is
+cleared rather than set to an empty string, so undo leaves the drawer
+as it found it" — and applied in that one place only.
+
+Both are the kind that surface three edits later as a file that no
+longer roundtrips, by which time nobody can say which command did it.
+
 closure-eval first, and writing the tests found a hang rather than a
 gap. =Bounds= is what stands between a vault and a =while true= in
 somebody's note, and =run_bounded= enforced neither half against a

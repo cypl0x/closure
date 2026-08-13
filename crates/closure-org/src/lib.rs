@@ -8647,6 +8647,32 @@ pub fn rewrite_add_sibling_after(
     parse(&src).map_err(|_| RewriteError::Parse)
 }
 
+/// The text [`rewrite_headline_set_body`] would replace.
+///
+/// Defined beside the rewriter on purpose. `closure-core` captured "the
+/// current body" by concatenating the headline's body *nodes*, and the
+/// rewriter replaces from the end of the property drawer — so a
+/// headline with a `SCHEDULED:` line had that line inside what was
+/// captured and outside what was replaced. Setting a body and then
+/// undoing it wrote the planning line back a second time, below the
+/// drawer, and I3 says undo restores the bytes.
+///
+/// One fact with two owners is this codebase's recurring bug shape, so
+/// the span has one owner now and the other side asks.
+#[must_use]
+pub fn headline_body_text<'a>(doc: &'a OrgDoc, path: &[usize]) -> Option<&'a str> {
+    let target = navigate_headline(doc, path)?;
+    let start = target
+        .properties
+        .as_ref()
+        .map_or(target.header_span.end, |p| p.drawer_span.end);
+    let end = target
+        .children
+        .first()
+        .map_or_else(|| subtree_end(target), |c| c.header_span.start);
+    doc.source().get(start..end)
+}
+
 /// Replace a headline's body (the text between its `:PROPERTIES:`
 /// drawer and its first child or subtree end) with `new_body`.
 ///
