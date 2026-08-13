@@ -1489,7 +1489,7 @@ crate satisfies =Transport= by erroring.
 =GitTransport=. The no-op is honest and says so in its name; that is a
 different thing from a type that claims a protocol and returns an error.
 
-* TODO Sync: two peers that cannot already reach each other cannot sync
+* DONE Sync: two peers that cannot already reach each other cannot sync
 Correcting my own assessment before acting on it: the wire protocol is
 real. =SyncMessage= framing, =SyncSession=, merge, and ed25519 signing
 all work, and =TcpSyncTransport= moves real bytes over a real socket
@@ -1504,6 +1504,31 @@ traversal, no relay. On two laptops behind different routers — the case
 Acceptance: a test that two sessions converge knowing only a shared
 identifier, never a =SocketAddr=:
 =nix develop -c cargo test -p closure-sync --test discovery=
+
+=announce= / =discover= over a multicast group of closure's own, keyed
+by a name the two people already share. What comes back is the
+=SyncTicket= pairing already takes, so this fills in what somebody would
+otherwise paste rather than adding a second way to pair.
+
+The acceptance said "a test that two sessions converge knowing only a
+shared identifier". That test does not exist and cannot on this
+machine: =ip -o link= shows =lo= without a MULTICAST flag, so nothing
+addressed to a group comes back and an integration test would pass only
+somewhere else. Rather than write one that is green by accident of
+environment, the protocol was split out — =announcement_line= and
+=parse_announcement= are pure and carry every decision — and the socket
+around them is thin. Six tests cover the format, the name match, the
+version gate, noise on a shared group, and the round-trip.
+
+The parsing detail that matters for safety rather than tidiness: a
+vault named =a b= must not announce as one named =a=. The name is the
+only authorisation at this stage.
+
+Across routers it does not work, and that is a decision in
+=docs/spec.md=: a relay or STUN server is a service closure would have
+to run, which changes what closure is. The two honest options today are
+a VPN that makes the machines local to each other, or =GitTransport=
+through a repository both can reach.
 
 * DONE A2A: swarm_drain is one worker in a trenchcoat
 =pub fn swarm_drain(vault, _num_workers: usize, task_ids)= — the

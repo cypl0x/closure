@@ -981,6 +981,44 @@ window renders, so a view that is invalid _about the vault_ is already
 unrepresentable before the window sees it. What remains
 runtime-checkable is layout, and layout is what a screenshot is for.
 
+## How far P2P sync goes, and where it stops
+
+The wire protocol is real: length-prefixed `SyncMessage` frames, a
+`SyncSession` per peer, CRDT merge, ed25519 signatures, and
+`TcpSyncTransport` moving bytes over a real socket to any `SocketAddr`.
+What was missing was never the transport — it was that somebody had to
+_know_ the other machine's address.
+
+**On a local network, closure announces itself.** `announce(name,
+ticket)` broadcasts `closure-sync/1 <name> <ticket>` on a multicast
+group of its own; `discover(name, window)` listens for it. `name` is
+whatever the two people already share. What comes back is the same
+`SyncTicket` pairing already takes, so discovery fills in what somebody
+would otherwise paste rather than adding a second way to pair.
+
+The version leads the line so a future format is _ignored_ rather than
+half-understood, and the name is matched whole so a vault called `a b`
+cannot announce as one called `a`. At this stage the name is the only
+authorisation; the key check happens when the peers actually talk.
+
+**Across routers, it does not.** Two laptops behind different NATs need
+a relay or a STUN server — a service closure would have to run, and
+running one changes what closure _is_ from a local-first notebook into
+something with an operator. That is a product decision and not a missing
+feature, so it is recorded here rather than left as a gap in a queue.
+
+Anyone who needs it today has two honest options that require no service
+from us: a VPN that makes the two machines local to each other
+(Tailscale, WireGuard), or `GitTransport` through a repository both can
+reach.
+
+**The socket half is not covered by tests**, and that is stated rather
+than hidden: this machine's loopback interface carries no MULTICAST flag,
+so nothing addressed to a group comes back and a test asserting
+otherwise would pass only somewhere else. The line format, the name
+matching, the version gate and the ticket round-trip are pure functions
+with tests; the socket around them is thin on purpose.
+
 ## A gpui bug we do not own
 
 Recorded here because it is the kind of defect that gets re-diagnosed

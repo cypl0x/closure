@@ -1273,6 +1273,150 @@ impl SyncTicket {
     }
 }
 
+/// The multicast group peers announce themselves on.
+///
+/// `224.0.0.251` is the mDNS group and port 5353 is its port, and this
+/// is deliberately *not* that: closure speaks its own one-line format,
+/// and putting it on mDNS's port would mean answering questions from
+/// every resolver on the network. Same administratively-scoped range,
+/// a port of its own.
+const DISCOVERY_GROUP: std::net::Ipv4Addr = std::net::Ipv4Addr::new(239, 255, 42, 98);
+
+/// The port that group is joined on.
+const DISCOVERY_PORT: u16 = 47_432;
+
+/// How often a beacon repeats itself.
+const ANNOUNCE_EVERY: std::time::Duration = std::time::Duration::from_millis(150);
+
+/// The line a peer broadcasts: `closure-sync/1 <name> <ticket>`.
+///
+/// The version is first so a future format can be *ignored* rather than
+/// misread — a peer running a newer closure should be invisible to an
+/// older one, not half-understood by it.
+///
+/// Separated from the socket that sends it because the socket is the
+/// part that cannot be tested here: this machine's loopback interface
+/// has no MULTICAST flag, so nothing addressed to a group comes back.
+/// The format, the name matching and the round-trip are the parts with
+/// decisions in them, and they are testable anywhere.
+#[must_use]
+pub fn announcement_line(name: &str, ticket: &SyncTicket) -> String {
+    format!("closure-sync/1 {name} {}", ticket.encode())
+}
+
+/// Read an announcement, if it is one and it is for `name`.
+///
+/// `None` for another version, another vault's name, or anything that
+/// is not a ticket. Two people on one office wifi must not pair by
+/// accident, and the name is the whole authorisation at this stage —
+/// the key check happens when they actually talk.
+#[must_use]
+pub fn parse_announcement(line: &str, name: &str) -> Option<SyncTicket> {
+    let mut parts = line.trim_end_matches(char::is_whitespace).splitn(3, ' ');
+    if parts.next()? != "closure-sync/1" {
+        return None;
+    }
+    if parts.next()? != name {
+        return None;
+    }
+    SyncTicket::decode(parts.next()?.trim()).ok()
+}
+
+/// A running announcement. Dropping it stops the beacon.
+///
+/// Held by the caller rather than detached, because a peer that keeps
+/// announcing after the vault is closed is a peer other machines will
+/// try to reach and fail.
+#[derive(Debug)]
+pub struct Beacon {
+    stop: std::sync::Arc<std::sync::atomic::AtomicBool>,
+}
+
+impl Drop for Beacon {
+    fn drop(&mut self) {
+        self.stop.store(true, std::sync::atomic::Ordering::Relaxed);
+    }
+}
+
+/// Announce `ticket` on the local network under `name`, until the
+/// returned [`Beacon`] is dropped.
+///
+/// The gap this closes: the wire protocol was always real, and somebody
+/// still had to *know* the other machine's `SocketAddr`. On two laptops
+/// on one wifi — which is what P2P sync is for in practice — there is
+/// nothing to type. `name` is whatever the two people already share.
+///
+/// LAN only, and that is a decision rather than an oversight: reaching
+/// a peer behind a different router needs a relay or a STUN server,
+/// which is a service closure would have to run. See `docs/spec.md`.
+///
+/// # Errors
+///
+/// [`SyncError::Io`] if the socket cannot be opened or the group joined.
+pub fn announce(name: &str, ticket: &SyncTicket) -> Result<Beacon, SyncError> {
+    let socket =
+        std::net::UdpSocket::bind("0.0.0.0:0").map_err(|e| SyncError::Io(e.to_string()))?;
+    socket
+        .set_multicast_loop_v4(true)
+        .map_err(|e| SyncError::Io(e.to_string()))?;
+    let line = announcement_line(name, ticket);
+    let stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let flag = std::sync::Arc::clone(&stop);
+    std::thread::spawn(move || {
+        let to = std::net::SocketAddrV4::new(DISCOVERY_GROUP, DISCOVERY_PORT);
+        while !flag.load(std::sync::atomic::Ordering::Relaxed) {
+            let _ = socket.send_to(line.as_bytes(), to);
+            std::thread::sleep(ANNOUNCE_EVERY);
+        }
+    });
+    Ok(Beacon { stop })
+}
+
+/// Listen for `announce`d peers under `name` for `window`.
+///
+/// Returns the tickets heard, deduplicated. A ticket rather than an
+/// address on purpose: the pairing path is unchanged, so this fills in
+/// what somebody would otherwise paste rather than adding a second way
+/// to pair.
+///
+/// # Errors
+///
+/// [`SyncError::Io`] if the socket cannot be opened or the group joined.
+pub fn discover(name: &str, window: std::time::Duration) -> Result<Vec<SyncTicket>, SyncError> {
+    let socket = std::net::UdpSocket::bind(std::net::SocketAddrV4::new(
+        std::net::Ipv4Addr::UNSPECIFIED,
+        DISCOVERY_PORT,
+    ))
+    .map_err(|e| SyncError::Io(e.to_string()))?;
+    socket
+        .join_multicast_v4(&DISCOVERY_GROUP, &std::net::Ipv4Addr::LOCALHOST)
+        .map_err(|e| SyncError::Io(e.to_string()))?;
+    socket
+        .set_read_timeout(Some(std::time::Duration::from_millis(50)))
+        .map_err(|e| SyncError::Io(e.to_string()))?;
+    let deadline = std::time::Instant::now() + window;
+    let mut out: Vec<SyncTicket> = Vec::new();
+    let mut buf = [0u8; 512];
+    while std::time::Instant::now() < deadline {
+        let Ok((n, _)) = socket.recv_from(&mut buf) else {
+            continue;
+        };
+        let Ok(text) = std::str::from_utf8(&buf[..n]) else {
+            continue;
+        };
+        let Some(ticket) = parse_announcement(text, name) else {
+            continue;
+        };
+        if !out
+            .iter()
+            .any(|t| t.addr == ticket.addr && t.pubkey == ticket.pubkey)
+        {
+            out.push(ticket);
+        }
+    }
+    Ok(out)
+}
+
 /// Why there is no P2P transport here.
 ///
 /// There was an `IrohTransport` and it was an `impl Transport` whose
