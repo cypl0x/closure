@@ -80,6 +80,18 @@ fn out_string(s: &str) -> *mut c_char {
     CString::new(s).map_or(std::ptr::null_mut(), CString::into_raw)
 }
 
+/// The ABI version this library was built with.
+///
+/// A caller checks this against the `CLOSURE_ABI_VERSION` in its own
+/// copy of `closure.h` before calling anything else. A `.so` and a set
+/// of bindings that disagree is the one failure here that corrupts
+/// silently rather than erroring — every other mistake produces a null
+/// or a link error.
+#[must_use]
+pub const fn closure_ffi_abi_version() -> usize {
+    1
+}
+
 /// Open the vault at `path`. Returns null if it cannot be opened.
 ///
 /// # Safety

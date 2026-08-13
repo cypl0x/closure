@@ -131,3 +131,70 @@ fn a_vault_path_that_is_not_utf8_is_refused_rather_than_guessed() {
     let h = unsafe { closure_ffi::closure_open(bad.as_ptr().cast()) };
     assert!(h.is_null());
 }
+
+#[test]
+fn the_header_declares_every_exported_function() {
+    // The header is hand-written, so it can drift from the library —
+    // and a binding author reads the header, not the Rust. A function
+    // exported and undeclared is unreachable; one declared and absent
+    // is a link error at somebody else's build, which is worse because
+    // it happens on their machine.
+    let src = include_str!("../src/lib.rs");
+    let header = include_str!("../include/closure.h");
+    let exported: Vec<&str> = src
+        .lines()
+        .filter_map(|l| l.trim().strip_prefix("pub unsafe extern \"C\" fn "))
+        .filter_map(|l| l.split('(').next())
+        .collect();
+    assert!(exported.len() >= 6, "the scan is wrong: {exported:?}");
+    for name in exported {
+        assert!(
+            header.contains(name),
+            "`{name}` is exported and the header does not declare it"
+        );
+    }
+}
+
+#[test]
+fn the_abi_version_is_reported_and_matches_the_header() {
+    // The check a caller makes before anything else. A .so and a set of
+    // bindings that disagree is the failure that corrupts silently
+    // instead of erroring.
+    let header = include_str!("../include/closure.h");
+    let declared = header
+        .lines()
+        .find_map(|l| l.trim().strip_prefix("#define CLOSURE_ABI_VERSION "))
+        .and_then(|v| v.trim().parse::<usize>().ok())
+        .expect("the header declares a version");
+    assert_eq!(closure_ffi::closure_ffi_abi_version(), declared);
+}
+
+#[test]
+fn selecting_past_the_end_leaves_the_cursor_where_it_was() {
+    // The doc comment promises out-of-range is a no-op, and until
+    // coverage pointed at the skipped branch nothing on a live session
+    // proved it. A binding that computes an index badly must get the
+    // old body back, not a panic and not somebody else's row.
+    let d = vault_dir();
+    let path = c(&d.path().to_string_lossy());
+    let h = unsafe { closure_ffi::closure_open(path.as_ptr()) };
+    unsafe { closure_ffi::closure_select(h, 1) };
+    let before = unsafe { closure_ffi::closure_selected_body(h) };
+    let before_s = unsafe { std::ffi::CStr::from_ptr(before) }
+        .to_string_lossy()
+        .into_owned();
+
+    for absurd in [2usize, 99, usize::MAX] {
+        unsafe { closure_ffi::closure_select(h, absurd) };
+        let after = unsafe { closure_ffi::closure_selected_body(h) };
+        assert!(!after.is_null(), "index {absurd} unselected everything");
+        let after_s = unsafe { std::ffi::CStr::from_ptr(after) }
+            .to_string_lossy()
+            .into_owned();
+        assert_eq!(after_s, before_s, "index {absurd} moved the cursor");
+        unsafe { closure_ffi::closure_string_free(after) };
+    }
+
+    unsafe { closure_ffi::closure_string_free(before) };
+    unsafe { closure_ffi::closure_close(h) };
+}
