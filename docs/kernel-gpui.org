@@ -1363,6 +1363,20 @@ terminal: =serve=, =sync=, =tui=, =gpui=, =egui=, =mcp=, =acp=, =lsp=,
 be deleted or restructured rather than annotated if they cannot be
 reached — worth deciding one at a time rather than in a batch.
 
+57.5% → 65.9% with the commands that take an argument beyond the vault
+or the file — an id, a needle, a path, an index — which was most of what
+remained. Two claims each, and the second is the one worth having: it
+works on a real fixture, and it *fails* rather than panicking when the
+argument names something absent. Every one of these looks something up,
+and a wrong id is the ordinary typo.
+
+Three assert what the command is actually for rather than that it ran:
+org → md → org has to come back parseable, =tangle= has to write the
+file its =:tangle= header names, and =check-config= has to *reject* a
+bad config — a checker that accepts everything is not one.
+
+What is left is genuinely the network/subprocess/terminal set above.
+
 * TODO Coverage: closure-shell-core, 1,407 missed
 Of 14,985 lines, so 90.6% — the absolute number is large because the
 crate is. Likely concentrated in surfaces the tests reach through
