@@ -1464,6 +1464,30 @@ enters is a branch nobody has checked cannot panic.
 
 Acceptance: =nix develop -c cargo llvm-cov -p closure-org --fail-under-lines 97=
 
+A corpus of documents that are legal org and awkward to parse, each one
+something somebody actually writes rather than fuzz: CRLF, a byte-order
+mark, tabs for indent, seven-star headlines, an escaped =,*=, a drawer
+never closed, a block never closed, an =#+END_SRC= with no beginning,
+nested blocks, a colon inside a property value, a Windows path in one,
+tags with no title, a ragged table, mixed list markers, a footnote with
+no definition and a definition with no reference, a link with brackets
+inside it, RTL text, emoji, and a hundred-thousand-character line.
+
+Every one roundtrips byte-exact through =source()= *and* through
+=print()= — two different code paths, one returning what was read and
+one re-serialising — and every one is walked by every whole-document
+accessor and every free function a shell runs over a body, because I5
+says the kernel does not panic and this is where that gets tested
+cheaply.
+
+All of them pass, which is the useful finding: the parser is robust to
+things I expected to break it.
+
+One correction to my own test before believing it: the free-function
+half originally looped over the corpus inside the outer loop and broke
+after one iteration, so every one of those functions saw only the empty
+string. Coverage that looks broad and is not.
+
 * TODO Coverage: closure-tui is frozen and holds 1,279 missed lines
 38.6% of the crate is untested. Under the reading in the parent item a
 test is not a feature, so this is allowed and is the largest frozen-
