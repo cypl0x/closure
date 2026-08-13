@@ -1391,12 +1391,52 @@ already uses, so the two cannot disagree about a file again.
 What is genuinely left needs a socket or a terminal: =serve=, =sync=,
 =tui=, =gpui=, =egui=, =plugin=, =pkg=, =ask=, =chat=.
 
+* TODO Does the SPC leader engage on the kernel API as it does in the window?
+Doom binds both =q= → quit and =SPC q r= → reload-shell, so only the
+leader state tells them apart. Fed as three =on_key= calls (=SPC=, =q=,
+=r=) the app ends up with =should_quit= set — so the =q= was taken as
+the standalone binding rather than as the second stroke of a chord.
+
+Two possibilities and I do not know which:
+
+- the chord trie does not engage through =ModalApp::on_key= the way it
+  does through the window, which would be a real bug and a nasty one
+  (=SPC q r= quits instead of reloading);
+- or =every_chord_in_the_kernel.rs='s harness does not feed strokes the
+  way the window does — wrong =text=, or a mode the window sets first.
+
+The window path demonstrably works: =settings_and_chords.rs= presses
+=g= and the which-key popup lists =wk-chord-agenda=, so prefixes
+resolve there.
+
+Until this is answered, =escape_gets_back_out_of_whatever_a_chord_opened=
+asserts only single-stroke chords, which is stated in the test.
+
+Acceptance: a test that =SPC q r= reloads and does not quit — or, if the
+harness was wrong, the multi-stroke assertion restored with the fix to
+how strokes are fed.
+
 * TODO Coverage: closure-shell-core, 1,407 missed
 Of 14,985 lines, so 90.6% — the absolute number is large because the
 crate is. Likely concentrated in surfaces the tests reach through
 =ModalApp= but never in their error arms.
 
 Acceptance: =nix develop -c cargo llvm-cov -p closure-shell-core --fail-under-lines 97=
+
+89.5% → 90.4% by pressing every chord of every mode through =on_key= on
+four vaults: full, an empty file, no files at all, and a bare headline
+with no body, properties or id. The last three are the ones that find
+things — an arm that indexes the selected headline is fine until there
+is not one.
+
+Each chord gets a fresh app, so a chord cannot be judged by what the
+previous one left behind, and the assertion beyond "no panic" is that
+the cursor is still within its own row list: a command that leaves it
+past the end is a panic on the *next* frame rather than this one.
+
+Also turned up a question worth its own item — see above — about
+whether the leader engages through the kernel API the way it does
+through the window.
 
 * TODO Coverage: closure-org, 1,044 missed
 Of 9,659, so 89.2%. This is the kernel's parser and the one crate where
