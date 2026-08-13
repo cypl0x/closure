@@ -1530,6 +1530,22 @@ be hiding something.
 Acceptance: each of the six passes
 =nix develop -c cargo llvm-cov -p <crate> --fail-under-lines 95=
 
+closure-store next, and the tests are about the edges rather than the
+happy path, which is thoroughly covered already: a directory with no
+org in it, a nested one, a file that is not UTF-8, an id that is not
+there, and the statistics on an empty vault — every one of those
+divides by something, and empty is what makes the something zero.
+
+Four are about not losing data, which is what the store is for:
+=create_file= must not overwrite an existing note (the gesture is "new
+note", and silently replacing one is the worst reading of it),
+=rename_file= must not clobber its target, =delete_file= on a missing
+path must be an error rather than a panic, and =save= must leave a file
+that parses — a half-written file is worse than an unsaved one, because
+the unsaved one is still in the editor.
+
+All twelve pass.
+
 closure-eval first, and writing the tests found a hang rather than a
 gap. =Bounds= is what stands between a vault and a =while true= in
 somebody's note, and =run_bounded= enforced neither half against a
