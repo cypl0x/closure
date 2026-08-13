@@ -4911,6 +4911,12 @@ impl GpuiView {
         // knows how tall one is. The rows are the body's line height,
         // so the measurement is the same arithmetic.
         self.app.set_outline_viewport(self.body_view());
+        // …and the pane its own, which is a different number: its rows
+        // wrap, so it holds fewer than the outline holds of its
+        // single-line ones. Without this a half-page in a pane halved
+        // the outline's height, which on a 720px window came to the
+        // pane's whole page.
+        self.app.set_pane_page(self.pane_view());
         if self.app.surface_beneath().is_editor() {
             let view = self.body_view();
             // The kernel decides where the viewport sits and only the

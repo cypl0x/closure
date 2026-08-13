@@ -13505,6 +13505,33 @@ struct BodyView {
     recenter: Option<(u8, usize, usize)>,
 }
 
+/// Where a read-only pane is looking.
+///
+/// The third of these, after [`BodyView`] and [`OutlineView`], and
+/// named for the same reason: a second field wanted to join the first.
+/// The manual, the journal and the jobs list are one list with one
+/// cursor and one page, and both numbers are about that list rather
+/// than about the outline behind it — which is the whole bug this
+/// cluster was created by. `C-d` halved the *outline's* height while a
+/// pane was open, and on a 720px window that came to the pane's whole
+/// page, so every press skipped half the text.
+#[derive(Debug, Default)]
+struct PaneView {
+    /// Cursor row inside the pane.
+    ///
+    /// Their own, not the outline's. They used `selected`, so walking a
+    /// pane moved the outline underneath it and leaving reset the
+    /// outline to the top — "selection at top of outline headings list
+    /// when switching from any element to the Jobs panel and back".
+    cursor: usize,
+    /// How many rows the pane can show — what `C-d`/`C-u` take half of.
+    ///
+    /// Reported by the window, because pane rows wrap and how many fit
+    /// is a layout question. The same split [`BodyView`] and
+    /// [`OutlineView`] already make.
+    page: usize,
+}
+
 /// Where the outline is looking, and how much of it is open.
 ///
 /// The exact parallel of [`BodyView`] for the other pane, and named
@@ -13701,11 +13728,10 @@ pub struct ModalApp {
     outline_width: Option<u32>,
     /// Where the read-only panes (Jobs, Journal, Agenda…) are looking.
     ///
-    /// Their own, not the outline's. They used `selected`, so walking a
-    /// pane moved the outline underneath it and leaving reset the
-    /// outline to the top — "selection at top of outline headings list
-    /// when switching from any element to the Jobs panel and back".
-    pane_cursor: usize,
+    /// Where the outline pane is looking; see [`OutlineView`].
+    outline_view: OutlineView,
+    /// Where a read-only pane is looking; see [`PaneView`].
+    pane_view: PaneView,
     /// The setting whose value prompt is open, if one is.
     editing_setting: Option<&'static str>,
     /// Which of the four new-headline chords opened the title prompt.
@@ -13820,8 +13846,6 @@ pub struct ModalApp {
     command_args: String,
     status: String,
     quit: bool,
-    /// Where the outline pane is looking; see [`OutlineView`].
-    outline_view: OutlineView,
     /// A body-editor prefix key waiting for the rest of its chord.
     pending_body: Option<BodyPrefix>,
     /// The headline this session last opened a body on — what
@@ -14657,7 +14681,7 @@ impl ModalApp {
             settings_cursor: 0,
             dial_next: 0,
             outline_width: None,
-            pane_cursor: 0,
+            pane_view: PaneView::default(),
             editing_setting: None,
             new_heading: NewHeading {
                 child: false,
@@ -17396,12 +17420,12 @@ impl ModalApp {
         // The block list's own cursor — see [`Self::picker_cursor`].
         let Some(BlockRow {
             file: path, lang, ..
-        }) = rows.get(self.pane_cursor).cloned()
+        }) = rows.get(self.pane_view.cursor).cloned()
         else {
             self.say("edit-special: no source blocks in this vault");
             return;
         };
-        let index = rows[..self.pane_cursor]
+        let index = rows[..self.pane_view.cursor]
             .iter()
             .filter(|b| b.file == path)
             .count();
@@ -18152,7 +18176,7 @@ impl ModalApp {
                 self.query.clear();
                 self.block_out = None;
                 if Self::picker_has_own_cursor(self.surface) {
-                    self.pane_cursor = 0;
+                    self.pane_view.cursor = 0;
                 } else if self.surface != ModalSurface::UndoHistory {
                     self.selected = 0;
                 }
@@ -18202,7 +18226,7 @@ impl ModalApp {
         let own = Self::picker_has_own_cursor(self.surface);
         if let Some(step) = list_step(key, ctrl) {
             if own {
-                self.pane_cursor = step_wrapping(self.pane_cursor, last + 1, step);
+                self.pane_view.cursor = step_wrapping(self.pane_view.cursor, last + 1, step);
                 return;
             }
             self.selected = step_wrapping(self.selected, last + 1, step);
@@ -18216,7 +18240,7 @@ impl ModalApp {
             // Narrowing restarts the list at the top — the list this
             // surface is actually walking.
             if own {
-                self.pane_cursor = 0;
+                self.pane_view.cursor = 0;
             } else {
                 self.selected = 0;
             }
@@ -19818,13 +19842,13 @@ impl ModalApp {
     fn on_pane_key(&mut self, key: &str, len: usize) {
         match key {
             "j" | "down" => {
-                self.pane_cursor = (self.pane_cursor + 1).min(len.saturating_sub(1));
+                self.pane_view.cursor = (self.pane_view.cursor + 1).min(len.saturating_sub(1));
             }
-            "k" | "up" => self.pane_cursor = self.pane_cursor.saturating_sub(1),
+            "k" | "up" => self.pane_view.cursor = self.pane_view.cursor.saturating_sub(1),
             "escape" | "q" => {
                 // The pane's cursor is reset, not the outline's. Where
                 // you were in your notes is not the pane's to spend.
-                self.pane_cursor = 0;
+                self.pane_view.cursor = 0;
                 self.go_home();
             }
             _ => {}
@@ -19851,7 +19875,11 @@ impl ModalApp {
             return (0, rows);
         }
         let max_offset = rows.len() - page;
-        let offset = self.pane_cursor.saturating_sub(page - 1).min(max_offset);
+        let offset = self
+            .pane_view
+            .cursor
+            .saturating_sub(page - 1)
+            .min(max_offset);
         let slice = rows[offset..offset + page].to_vec();
         (offset, slice)
     }
@@ -19872,13 +19900,13 @@ impl ModalApp {
     /// Where the read-only panes are looking.
     /// Put the pane's cursor on row `i` — what a click on a row does.
     pub const fn select_pane_row(&mut self, i: usize) {
-        self.pane_cursor = i;
+        self.pane_view.cursor = i;
     }
 
     /// Which row of the current pane the cursor is on.
     #[must_use]
     pub const fn pane_cursor(&self) -> usize {
-        self.pane_cursor
+        self.pane_view.cursor
     }
 
     /// The body-search overlay: typing narrows, Enter jumps to the hit,
@@ -20094,7 +20122,11 @@ impl ModalApp {
     /// this line to the client that will spawn it, and a line you have
     /// to retype from a screenshot is a line you get wrong once.
     fn copy_bridge_command(&mut self, shell: &Shell) {
-        let Some(row) = self.bridge_rows(shell).into_iter().nth(self.pane_cursor) else {
+        let Some(row) = self
+            .bridge_rows(shell)
+            .into_iter()
+            .nth(self.pane_view.cursor)
+        else {
             return;
         };
         self.say(format!("copied: {}", row.command));
@@ -20108,7 +20140,7 @@ impl ModalApp {
     /// written a job: does it do what I think it does. Waiting a
     /// quarter of an hour to find out is how a job stays wrong.
     fn run_selected_job(&mut self, shell: &mut Shell) {
-        let Some(row) = self.cron_rows(shell).into_iter().nth(self.pane_cursor) else {
+        let Some(row) = self.cron_rows(shell).into_iter().nth(self.pane_view.cursor) else {
             self.say("no job here to run");
             return;
         };
@@ -20502,18 +20534,18 @@ impl ModalApp {
                 // Not `self.selected = 0`: that is the outline's
                 // cursor, and leaving a pane is not a reason to lose
                 // your place in the vault.
-                self.pane_cursor = 0;
+                self.pane_view.cursor = 0;
                 // Block output belongs to the pane that produced it.
                 self.block_out = None;
                 self.go_home();
             }
             "down" | "j" => {
                 self.block_out = None;
-                self.pane_cursor = (self.pane_cursor + 1).min(len.saturating_sub(1));
+                self.pane_view.cursor = (self.pane_view.cursor + 1).min(len.saturating_sub(1));
             }
             "up" | "k" => {
                 self.block_out = None;
-                self.pane_cursor = self.pane_cursor.saturating_sub(1);
+                self.pane_view.cursor = self.pane_view.cursor.saturating_sub(1);
             }
             "enter" => self.jump_list_row(shell, self.selected),
             _ => {}
@@ -20869,6 +20901,18 @@ impl ModalApp {
             return start;
         }
         if cl < viewport { 0 } else { cl + 1 - viewport }
+    }
+
+    /// Tell the core how many rows the open read-only pane shows.
+    ///
+    /// The window measures it — pane rows wrap, so how many fit is a
+    /// layout question and not arithmetic — and the core decides where
+    /// the cursor goes. The same split [`Self::set_outline_viewport`]
+    /// and `set_body_viewport` already make.
+    pub const fn set_pane_page(&mut self, rows: usize) {
+        if rows > 0 {
+            self.pane_view.page = rows;
+        }
     }
 
     /// Report how many body lines the pane can paint.
@@ -21395,7 +21439,7 @@ impl ModalApp {
         match key {
             "escape" => {
                 self.link_target = None;
-                self.pane_cursor = 0;
+                self.pane_view.cursor = 0;
                 // `go_home`, not `Browse`: a pane opened over a buffer
                 // goes back to that buffer, and this one was written
                 // before that rule existed. The registry-wide test
@@ -21405,7 +21449,7 @@ impl ModalApp {
             }
             "down" | "j" => {
                 let last = self.backlink_rows(shell).len().saturating_sub(1);
-                self.pane_cursor = (self.pane_cursor + 1).min(last);
+                self.pane_view.cursor = (self.pane_view.cursor + 1).min(last);
             }
             "up" | "k" => self.selected = self.selected.saturating_sub(1),
             "enter" => self.jump_to_selected_backlink(shell),
@@ -23000,7 +23044,7 @@ impl ModalApp {
         match self.surface {
             ModalSurface::Palette => self.palette_cursor,
             ModalSurface::UndoHistory => self.hist_cursor,
-            _ if Self::picker_has_own_cursor(self.surface) => self.pane_cursor,
+            _ if Self::picker_has_own_cursor(self.surface) => self.pane_view.cursor,
             _ => self.selected,
         }
     }
@@ -25365,7 +25409,7 @@ impl ModalApp {
                 self.query.clear();
                 // The log's own cursor starts at the top. Opening a
                 // list is not an edit to where you were reading.
-                self.pane_cursor = 0;
+                self.pane_view.cursor = 0;
                 self.surface = ModalSurface::Messages;
             }
             "toggle-wrap" => {
@@ -25435,7 +25479,7 @@ impl ModalApp {
                     // when switching from any element to the Jobs panel
                     // and back" was: a glance at another pane cost you
                     // your place in the vault.
-                    self.pane_cursor = 0;
+                    self.pane_view.cursor = 0;
                     self.surface = ModalSurface::Backlinks;
                 }
             }
@@ -25455,12 +25499,12 @@ impl ModalApp {
                 // when switching from any element to the Jobs panel
                 // and back" was: a glance at another pane cost you
                 // your place in the vault.
-                self.pane_cursor = 0;
+                self.pane_view.cursor = 0;
                 self.surface = ModalSurface::Agenda;
             }
             "list-blocks" => {
                 // The list's own cursor; the outline stays where it is.
-                self.pane_cursor = 0;
+                self.pane_view.cursor = 0;
                 self.surface = ModalSurface::Blocks;
             }
             // In a buffer, folding is about the buffer: the block or
@@ -25536,7 +25580,7 @@ impl ModalApp {
             // headline called "untitled" without asking, so the only
             // chord that existed was also one you had to undo.
             "manual" => {
-                self.pane_cursor = 0;
+                self.pane_view.cursor = 0;
                 self.surface = ModalSurface::Manual;
                 self.say("manual — generated from the keymap you are using · Esc back");
             }
@@ -25807,7 +25851,15 @@ impl ModalApp {
             // Half a screen: the step between one row at a time and
             // jumping to an end, and the one vim put on these chords.
             "half-page-down" | "half-page-up" => {
-                let step = (self.outline_view.height / 2).max(1);
+                // Whose half-page it is decides which height to halve.
+                // A pane's rows wrap, so it shows fewer than the outline
+                // does, and halving the outline's moved the pane cursor
+                // by a whole page.
+                let step = if self.in_read_only_pane() && self.pane_view.page > 0 {
+                    (self.pane_view.page / 2).max(1)
+                } else {
+                    (self.outline_view.height / 2).max(1)
+                };
                 let down = cmd == "half-page-down";
                 // Whose half-page it is depends on what is open. These
                 // chords only ever moved the outline's selection, so in
@@ -25815,10 +25867,10 @@ impl ModalApp {
                 // looking at while the pane itself stood still.
                 if self.in_read_only_pane() {
                     let last = self.pane_rows_len(shell).saturating_sub(1);
-                    self.pane_cursor = if down {
-                        (self.pane_cursor + step).min(last)
+                    self.pane_view.cursor = if down {
+                        (self.pane_view.cursor + step).min(last)
                     } else {
-                        self.pane_cursor.saturating_sub(step)
+                        self.pane_view.cursor.saturating_sub(step)
                     };
                     return;
                 }
@@ -25837,7 +25889,7 @@ impl ModalApp {
                 self.say("assistant — type a question, Enter sends, Esc back");
             }
             "bridges" => {
-                self.pane_cursor = 0;
+                self.pane_view.cursor = 0;
                 self.surface = ModalSurface::Bridges;
                 self.say("bridges — RET copies the command · Esc back");
             }
@@ -25845,7 +25897,7 @@ impl ModalApp {
                 // The pane's cursor starts at the top; the outline's
                 // does not move. Opening a pane is not an edit to where
                 // you were reading.
-                self.pane_cursor = 0;
+                self.pane_view.cursor = 0;
                 self.surface = match cmd {
                     "graph" => ModalSurface::Graph,
                     "journal" => ModalSurface::Journal,
@@ -25914,12 +25966,12 @@ impl ModalApp {
             }
             "list-headlines" => {
                 // The list's own cursor; the outline stays where it is.
-                self.pane_cursor = 0;
+                self.pane_view.cursor = 0;
                 self.surface = ModalSurface::Headlines;
                 self.say("headlines — type to filter · RET goes to it");
             }
             "db-view" => {
-                self.pane_cursor = 0;
+                self.pane_view.cursor = 0;
                 self.surface = ModalSurface::DbView;
                 self.say("database — RET jump, Esc back");
             }
@@ -26375,13 +26427,13 @@ impl ModalApp {
         // which surface is open, and by the time a command runs the
         // surface may already have been left. This is only ever reached
         // from the block list, so the list's cursor is the answer.
-        let Some(BlockRow { file: path, .. }) = rows.get(self.pane_cursor).cloned() else {
+        let Some(BlockRow { file: path, .. }) = rows.get(self.pane_view.cursor).cloned() else {
             self.say("no source blocks in this vault");
             return;
         };
         // `block_rows` is flat across files; `eval_block` counts within
         // one, so rebase the cursor onto the block's own file.
-        let index = rows[..self.pane_cursor]
+        let index = rows[..self.pane_view.cursor]
             .iter()
             .filter(|b| b.file == path)
             .count();

@@ -73,16 +73,35 @@ fn walking_down_scrolls_the_pane(cx: &mut gpui::TestAppContext) {
 fn half_a_page_scrolls_the_pane(cx: &mut gpui::TestAppContext) {
     // The chord in the report. It was bound, and it moved the outline's
     // selection behind the pane instead of the pane.
-    let (_dir, _view, vcx) = visual_window(cx, VAULT);
+    //
+    // Rewritten 2026-08-13. It asserted that five presses reach
+    // `manual-row-40`, and that threshold quietly encoded the defect
+    // beside it: `C-d` was halving the *outline's* height, which on a
+    // 720px window is the pane's whole page, so five presses covered
+    // seventy-five rows. With the pane halving its own page they cover
+    // half that, and row 40 is no longer in reach — which is the
+    // intended behaviour, not a regression.
+    //
+    // The claim the test is actually making is "the pane moves", so it
+    // now asks that directly and stays true whatever the step is.
+    let (_dir, view, vcx) = visual_window(cx, VAULT);
     open_manual(vcx);
-    assert!(vcx.debug_bounds("manual-row-40").is_none(), "see above");
+    let before = view.update(vcx, |v, _| v.app().pane_cursor());
     for _ in 0..5 {
         vcx.simulate_keystrokes("ctrl-d");
     }
     vcx.run_until_parked();
+    let after = view.update(vcx, |v, _| v.app().pane_cursor());
     assert!(
-        vcx.debug_bounds("manual-row-40").is_some(),
+        after > before,
         "`C-d` five times and the pane has not moved"
+    );
+    // …and it moved by pages, not by rows: five half-pages is a long
+    // way down a list this size.
+    assert!(
+        after - before >= 20,
+        "five `C-d` moved only {} rows — that is a line step, not a page",
+        after - before
     );
 }
 
@@ -165,4 +184,47 @@ fn the_cursor_stays_on_screen_as_the_pane_pages(cx: &mut gpui::TestAppContext) {
             viewport.height
         );
     }
+}
+
+#[gpui::test]
+fn a_pane_pages_by_its_own_height_not_the_outlines(cx: &mut gpui::TestAppContext) {
+    // `half-page-down` computes `outline_view.height / 2` and moves the
+    // *pane* cursor by it. That is half the outline's viewport — a count
+    // of single-line rows in a different list — while pane rows wrap and
+    // the pane holds far fewer.
+    //
+    // The distinguishing observable is the size of the step, not where
+    // the cursor lands: with a conservative page the cursor can still be
+    // on screen while having stepped by the wrong number. So this counts
+    // the rows the pane actually painted and requires the step to be
+    // about half of *that*.
+    let (_dir, view, vcx) = visual_window(cx, VAULT);
+    open_manual(vcx);
+
+    let mut painted = 0usize;
+    for i in 0..120 {
+        let selector: &'static str = Box::leak(format!("manual-row-{i}").into_boxed_str());
+        if vcx.debug_bounds(selector).is_some() {
+            painted += 1;
+        }
+    }
+    assert!(painted > 4, "only {painted} rows painted; nothing to halve");
+
+    let before = view.update(vcx, |v, _| v.app().pane_cursor());
+    vcx.simulate_keystrokes("ctrl-d");
+    vcx.run_until_parked();
+    let after = view.update(vcx, |v, _| v.app().pane_cursor());
+    let step = after - before;
+
+    assert!(step > 0, "`C-d` did not move the pane cursor");
+    // Half, not all. Measured before the fix: a pane painting 15 rows
+    // stepped 15 — `outline_view.height / 2` happened to equal the
+    // pane's whole page, so every `C-d` skipped half the manual. That
+    // is the user-visible half of this bug, and `step <= painted` is
+    // too weak to catch it: 15 <= 15 passes.
+    assert!(
+        step * 2 <= painted + 1,
+        "`C-d` stepped {step} rows in a pane showing {painted} — a half \
+         page is a whole one, so half the text is skipped each press"
+    );
 }

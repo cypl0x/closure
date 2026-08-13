@@ -2169,7 +2169,7 @@ lose. Run here: 9.6G -> 16G, and the 6.4G it removed had accumulated
 during this session alone, which is the argument for the recipe
 existing rather than a comment somewhere.
 
-* TODO Bug: C-d in a read-only pane steps by the outline's height
+* DONE Bug: C-d in a read-only pane steps by the outline's height
 =half-page-down= computes =let step = (self.outline_view.height / 2)=
 and then, if a read-only pane is open, moves =pane_cursor= by it. That
 is half the *outline's* viewport — a count of single-line rows in a
@@ -2185,6 +2185,39 @@ it is simply not the one being used.
 Acceptance: =nix develop -c cargo test -p closure-shell-gpui --features gpui-test --test manual_scrolls=
 passes with a new case asserting that a pane's half-page differs from
 the outline's when the two lists are different lengths.
+
+Measured before the fix: the manual painted 15 rows and one =C-d=
+stepped 15. So a "half page" was a whole one and every press skipped
+half the text — which is the user-visible half of the original report
+("the pane shows about half the text it has room for") and had nothing
+to do with the wrap guess.
+
+The assertion that catches it has to compare the step to what was
+*painted*. =step <= painted= is too weak: 15 <= 15 passes. =step * 2 <=
+painted + 1= is the claim.
+
+=set_pane_page= is the same split the outline and the body already
+make: the window measures, the core decides where the cursor goes. The
+pane was the one list without it.
+
+=half_a_page_scrolls_the_pane= had to be rewritten in place, dated,
+with the reason. It asserted that five presses reach =manual-row-40=,
+and that threshold quietly encoded the defect beside it — five whole
+pages is seventy-five rows. It asks "did the pane move, and by pages"
+now, which is the claim it was always making.
+
+The field ratchet refused =pane_page= and was right again: the pane had
+a cursor of its own with no home either. =PaneView= took both. The
+ceiling stays at 89 — a cluster that absorbs a new field is holding the
+number, not lowering it.
+
+Window check: the window opens and paints correctly. I could not drive
+=C-d= into it by synthetic keystroke — the display stopped accepting
+them, which is consistent with the auto-repeat wedge documented above
+and with the held-key bursts this session had already sent it. Said
+plainly rather than claimed: the behaviour is covered by seven passing
+window tests that drive the real element tree, and the step-versus-
+painted numbers above came from that harness.
 
 * TODO Panes: lay rows out until the pane is full, instead of guessing
 =PANE_WRAP_GUESS= assumes a pane row takes two lines, because rows

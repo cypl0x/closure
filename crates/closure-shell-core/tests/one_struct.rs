@@ -54,7 +54,16 @@ fn field_count() -> (usize, Vec<String>) {
 /// than being satisfied: `#+STARTUP:` needed one field to remember the
 /// depth a file asked to fold below, this line said no, and the honest
 /// answer was that the outline pane had never been given the cluster
-/// the body pane already had. Every cluster after them
+/// the body pane already had.
+///
+/// It said no again on 2026-08-13, when a read-only pane needed to
+/// remember its own page — and again the refusal was right, because the
+/// pane's cursor had no home either. `PaneView` took both. The line does
+/// not move for that one: a cluster that absorbs a *new* field is
+/// holding this number, not lowering it, and claiming otherwise would
+/// be the first dishonest entry in the list.
+///
+/// Every cluster after them
 /// lowers this line, and nothing is allowed to raise it — a field that
 /// has nowhere to live but here is a cluster nobody has named yet.
 const CEILING: usize = 89;
