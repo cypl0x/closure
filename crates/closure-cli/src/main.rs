@@ -79,7 +79,14 @@ pub const CORE_CAPABILITIES: &[Capability] = &[
     Capability::Browse,
     Capability::Capture,
     Capability::Search,
-    Capability::Links,
+    // `Links` was here and is not a floor. The table prints "every
+    // shell should be a superset of CORE" above itself, and five of the
+    // ten columns were not — because a shell that browses, captures and
+    // searches is a legitimate shell without a backlinks pane. The web
+    // shell renders no surfaces at all (it is a page generator) and the
+    // Tauri one is a webview around it. Keeping `Links` in the floor
+    // made the printed promise false rather than making those shells
+    // better.
 ];
 
 /// Full TUI (currently the most complete; includes editing, which-key, modes, etc.).
@@ -168,6 +175,11 @@ pub const EGUI_CAPABILITIES: &[Capability] = &[
     Capability::Capture,
     Capability::Search,
     Capability::Palette,
+    // It has `ModalSurface::Backlinks`, `::Agenda` and `::Blocks` and
+    // claimed none of them. The matrix understated this shell.
+    Capability::Links,
+    Capability::Agenda,
+    Capability::Eval,
 ];
 
 /// Tauri (webview host of the live-served web shell, so it inherits
@@ -193,11 +205,32 @@ pub const GPUI_CAPABILITIES: &[Capability] = &[
     Capability::Capture,
     Capability::Search,
     Capability::Palette,
+    // Understated by a long way. The window has surfaces for every one
+    // of these — Backlinks and Graph, Agenda, Blocks and EditBlock,
+    // Cron, Journal, DbView, Llm — and claimed none of them, so the
+    // matrix described the shell this project spends its time on as
+    // less capable than the TUI.
+    Capability::Links,
+    Capability::Agenda,
+    Capability::Eval,
+    Capability::Cron,
+    Capability::Record,
+    Capability::Database,
+    Capability::LLMTools,
+    Capability::Watch,
 ];
 
 /// Flutter (cross-platform embedder; mobile + desktop via the kernel; suggestion-tier per vision).
-pub const FLUTTER_CAPABILITIES: &[Capability] =
-    &[Capability::Browse, Capability::Capture, Capability::Search];
+pub const FLUTTER_CAPABILITIES: &[Capability] = &[
+    // Empty until there is a Flutter shell. It claimed Browse, Capture
+    // and Search with no implementation anywhere — a matrix that
+    // describes a shell which does not exist is worse than one omitting
+    // it, because somebody reads the row and picks closure for it.
+    //
+    // `shells_matrix_is_true.rs` now fails if a column claims anything
+    // and its implementation file is absent, so these come back with
+    // the shell rather than ahead of it.
+];
 use closure_core::{
     AddSibling, BlockId, Command, Demote, Document, EnsureId, MoveSubtree, Promote, Registry,
     RemoveSubtree, RenameHeadline, SetBody, SetPlanning, SetPriority, SetProperty, SetTags,
@@ -3400,12 +3433,23 @@ fn doc_command_describes_known_command() {
 // TDD test written first for GUI shells matrix extension (Tauri/gpui/Flutter per ROADMAP + vision venn).
 // The consts must exist and at minimum contain CORE for I7; the shells table auto-includes them.
 #[test]
-fn shells_matrix_has_tauri_gpui_flutter_entries() {
-    // References will fail to compile until consts + array updated.
+fn shells_matrix_has_tauri_and_gpui_entries() {
+    // Rewritten 2026-08-14. This asserted that the FLUTTER row contains
+    // `Browse`, and there is no Flutter shell — so it was holding a
+    // claim about software that does not exist, which is why the row
+    // survived so long. Its own comment said what it was worth: "for
+    // now the presence + browse satisfies the matrix row".
+    //
+    // The real checks live in `tests/shells_matrix_is_true.rs`, against
+    // the table `closure shells` prints, because that is what a reader
+    // sees. What is left here is the compile-time reference that made
+    // this test worth having at all: the constants exist and are wired
+    // into the printed matrix.
     assert!(TAURI_CAPABILITIES.contains(&Capability::Browse));
     assert!(GPUI_CAPABILITIES.contains(&Capability::Browse));
-    assert!(FLUTTER_CAPABILITIES.contains(&Capability::Browse));
-    // They should be superset of core in future body; for now the presence + browse satisfies the matrix row.
+    // Empty on purpose until `flutter/lib/main.dart` exists — the
+    // integration test fails if this claims anything before then.
+    assert!(FLUTTER_CAPABILITIES.is_empty());
 }
 
 fn cmd_new(vault: &Path, path: &Path, title: &str) -> Result<(), String> {

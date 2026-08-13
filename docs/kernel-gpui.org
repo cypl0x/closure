@@ -1330,7 +1330,7 @@ Acceptance: =nix develop -c cargo test -p closure-ffi= passes, the
 crate is in =just gates=, and =nix develop -c cargo llvm-cov -p
 closure-ffi= is at 100 with no exclusions.
 
-* TODO Flutter 2: the shells matrix says what the Flutter shell claims
+* DONE Flutter 2: the shells matrix says what the Flutter shell claims
 =FLUTTER_CAPABILITIES= currently claims Browse, Capture and Search, and
 nothing enforces it — =shells_matrix_has_tauri_gpui_flutter_entries=
 asserts only that =Browse= is present, and its own comment admits it:
@@ -1345,6 +1345,40 @@ each claim mean a test the way "offered" does for org constructs.
 
 Acceptance: =nix develop -c cargo test -p closure-cli --test shells_matrix_is_true=,
 with one case per claimed capability.
+
+Done first, because it decides what items 1 and 3 have to deliver — and
+because the matrix turned out to be wrong in both directions.
+
+*Understated.* gpui has surfaces for Backlinks, Graph, Agenda, Blocks,
+EditBlock, Cron, Journal, DbView and Llm, and claimed none of them. The
+published table described the shell this project spends its time on as
+less capable than the TUI. egui likewise had Backlinks, Agenda and
+Blocks and claimed none.
+
+*Overstated.* FLUTTER claimed Browse, Capture and Search with no
+implementation anywhere. A matrix describing a shell that does not
+exist is worse than one omitting it: somebody reads the row and picks
+closure for it. Empty now, and the test fails if a column claims
+anything while its implementation file is absent — so the claims come
+back *with* the shell rather than ahead of it.
+
+*Wrong floor.* The table prints "every shell should be a superset of
+CORE" directly above itself, and five of ten columns were not, because
+=Links= was in CORE. A shell that browses, captures and searches is a
+legitimate shell without a backlinks pane — the web shell renders no
+surfaces at all and the Tauri one is a webview around it. Keeping
+=Links= in the floor made the printed promise false rather than making
+those shells better, so it left the floor.
+
+The old test asserted the FLUTTER row contains =Browse= — holding a
+claim about software that does not exist, which is why the row survived.
+Rewritten in place, dated, with the reason; it now asserts the row is
+*empty* until =flutter/lib/main.dart= is there.
+
+Tested through the printed table rather than the constants, because
+=closure-cli= is a binary with no lib target and, more to the point, the
+table is what a reader sees — the same reason "offered" means a shell
+shows it.
 
 * TODO Flutter 3: the Dart app
 In =flutter/= at the repo root, over the ABI from item 1 via
