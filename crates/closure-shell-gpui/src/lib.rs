@@ -1958,14 +1958,26 @@ use gpui::{
 /// and it happens at an ordinary key-repeat rate rather than only under
 /// a synthetic burst. Somebody told only that frames are slow will
 /// watch the window stop and have no reason to connect the two.
+///
+/// Corrected 2026-08-13. It used to say "It is still running and still
+/// reading your keys; only the picture is stuck", and that was measured
+/// to be false: during X11 auto-repeat the application receives *one*
+/// event, not many. It also understated how narrow the problem is —
+/// thirty keystrokes at 20ms all land and all paint — which matters,
+/// because "the window may stop after the first keystrokes" reads as
+/// "this shell is unusable" when what is unusable is holding a key
+/// down.
 #[must_use]
 pub fn software_rasteriser_notice(icd: &str) -> String {
     format!(
         "closure: no Vulkan driver on this machine — rendering on the lavapipe software \
          rasteriser ({icd}).\n\
-         closure: on this renderer the window may stop repainting after the first \
-         keystrokes. It is still running and still reading your keys; only the picture \
-         is stuck. Use `closure tui`, which does not go through Vulkan at all."
+         closure: on this renderer, *holding* a key stops the window after the first \
+         repeat — it stops both repainting and reading, and stays that way. Typing \
+         works normally; only held-key repeat is affected, so scrolling by holding j \
+         or an arrow will not. This is a gpui bug, not a closure one (see \
+         `examples/wedge_repro.rs`). Use `closure tui`, which does not go through \
+         Vulkan at all."
     )
 }
 

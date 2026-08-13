@@ -101,3 +101,29 @@ fn the_warning_says_the_window_may_stop_updating() {
         "it does not say which driver it fell back to: {text}"
     );
 }
+
+#[test]
+fn the_warning_says_which_gesture_is_affected() {
+    // Added 2026-08-13, after measuring what actually happens. The
+    // notice used to say the window "is still running and still reading
+    // your keys; only the picture is stuck", and that is false: during
+    // X11 auto-repeat the application receives one event, not many.
+    //
+    // It also read as "this shell is unusable", when thirty keystrokes
+    // at 20ms all land and all paint. What is unusable is holding a key
+    // down. A warning that overstates gets ignored the same way one
+    // that understates does.
+    let text = closure_shell_gpui::software_rasteriser_notice("/nix/store/x/lvp_icd.json");
+    assert!(
+        text.contains("Typing works"),
+        "the warning does not say what still works: {text}"
+    );
+    assert!(
+        text.to_lowercase().contains("hold"),
+        "the warning does not name the gesture that breaks: {text}"
+    );
+    assert!(
+        !text.contains("still reading your keys"),
+        "the warning still claims input keeps arriving, which it does not: {text}"
+    );
+}

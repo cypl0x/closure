@@ -981,6 +981,52 @@ window renders, so a view that is invalid _about the vault_ is already
 unrepresentable before the window sees it. What remains
 runtime-checkable is layout, and layout is what a screenshot is for.
 
+## A gpui bug we do not own
+
+Recorded here because it is the kind of defect that gets re-diagnosed
+every few months by whoever next holds a key down, and because the
+reproduction is the useful artifact.
+
+**Symptom.** On the lavapipe software rasteriser, holding a key makes
+the closure window stop responding after the first keystroke. It is
+still running; the picture and the input both stop.
+
+**Not closure.** `crates/closure-shell-gpui/examples/wedge_repro.rs` is
+about eighty-five lines with no closure in it — one window, one counter,
+one key handler that increments it and calls `cx.notify()` — using the
+same `track_focus` / `on_key_down` shape the real root element uses. It
+wedges identically.
+
+**Measured** on X11, gpui 0.2.2, `VK_ICD_FILENAMES` pointed at
+`lvp_icd.x86_64.json`:
+
+| input                              | events the app saw |
+| ---------------------------------- | ------------------ |
+| 40 discrete press/release at 20 ms | 40 of 40           |
+| 12 discrete at 50, 100, 200 ms     | 12 of 12           |
+| 8 discrete at 400 ms               | 8 of 8             |
+| one key held for 3 s (auto-repeat) | 1                  |
+
+**So it is not a rate problem.** Forty keystrokes inside 800 ms are all
+delivered and all painted. It is specific to X11 auto-repeat, where
+KeyPress repeats arrive with no intervening KeyRelease and gpui's X11
+backend stops delivering after the first. That also corrects an earlier
+diagnosis of "input is processed, presentation is dead": during
+auto-repeat the application receives one event, not many.
+
+**Consequence for closure.** Typing works — 30 discrete keystrokes at
+20 ms move the cursor and repaint every time. Holding a key to scroll
+does not. The startup notice says so.
+
+To reproduce:
+
+```
+DISPLAY=:1 VK_ICD_FILENAMES=<path>/lvp_icd.x86_64.json \
+  nix develop -c cargo run -p closure-shell-gpui --features gpui --example wedge_repro
+xdotool keydown j; sleep 3; xdotool keyup j    # counter stops at 1
+xdotool key j                                   # counter advances again
+```
+
 ## Built-to-last kernel primitives (the "LISP-7" idea)
 
 The kernel is defined by a minimal set of primitives. Every feature (views,

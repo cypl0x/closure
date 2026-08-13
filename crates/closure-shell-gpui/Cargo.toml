@@ -54,3 +54,9 @@ closure-llm = { path = "../closure-llm" }
 
 [dev-dependencies]
 tempfile = "3"
+
+# The minimal wedge reproduction. Needs the real window, so it is gated
+# on the same feature and does not build in the default (hermetic) tree.
+[[example]]
+name = "wedge_repro"
+required-features = ["gpui"]
