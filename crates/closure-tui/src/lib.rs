@@ -4162,7 +4162,18 @@ fn apply_structure_requests(
     Ok(())
 }
 
-fn draw(f: &mut ratatui::Frame<'_>, app: &App, vault: &Vault) {
+/// Render one frame into `f`.
+///
+/// Public so a test can draw it into ratatui's `TestBackend` — a
+/// buffer, not a terminal — and read the cells back. This was private
+/// and therefore untested, which is most of why `closure-tui` carried
+/// 1,190 unexecuted lines: the entire render was reachable only from a
+/// loop that needs a TTY.
+///
+/// The parent coverage item says a line that cannot be executed gets
+/// restructured rather than annotated. This is the restructuring, and
+/// it costs one `pub`.
+pub fn draw(f: &mut ratatui::Frame<'_>, app: &App, vault: &Vault) {
     let area = f.area();
     let chunks = Layout::default()
         .direction(Direction::Horizontal)

@@ -1499,6 +1499,21 @@ against the biggest case than the smallest.
 
 Acceptance: =nix develop -c cargo llvm-cov -p closure-tui --fail-under-lines 90=
 
+The bulk of what was left is =draw=, and it did not need a terminal at
+all — it needed a =pub=. ratatui ships =TestBackend=, a buffer you draw
+into and read back, and =draw= was private and therefore reachable only
+from a loop that wants a TTY. That is the restructuring the parent item
+asks for and it cost one keyword.
+
+Every surface a chord opens is now rendered at four sizes: 80x24,
+200x60, 20x5 and 1x1. The absurd ones are the point — a render that
+divides by a width or subtracts a border has its bug at the small end,
+and it shows up on somebody's machine at whatever size their terminal
+happens to be.
+
+Beyond "did not panic", the browse surface has to actually contain the
+headline it opened.
+
 Every chord the keymap defines, in all five modes, against three shapes
 of vault — full, empty, and no files at all (=App::new(Vec::new())= is
 a shipped case with its own test, so every chord has to survive it).
