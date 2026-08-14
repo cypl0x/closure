@@ -1719,6 +1719,71 @@ plain key dead, and only asserting one of those would miss it.
 The multi-stroke assertion is restored, so the sweep covers every chord
 in the keymap rather than the single-stroke half.
 
+Four more passes, 76.81% → 86.50%, and the largest single jump was not
+from writing tests for commands.
+
+*The uncovered regions were mostly not functions.* They were the
+=.map_err(|e| format!(...))= closures hanging off lines that were
+already covered. A line-level reading calls those "never executed",
+which made it look like sixty-five commands had never run; what had
+never run was the error arm of a command that succeeded in every test
+written for it. Each of those closures is a sentence a user can be
+shown, and not one had ever been produced.
+
+So: a sweep that hands every command something it cannot use. The table
+is not written by hand — it asks the binary what shape each subcommand
+has, since =closure <cmd> --help= names its positionals, and feeds the
+first one something broken. A command added tomorrow is swept without
+anybody remembering. Four inputs, each reaching a different arm: a path
+that is not there, a directory where a file was wanted, a file that is
+not UTF-8 (the one input failing at =read_to_string= rather than at the
+parser, org being permissive enough that little else does), and an
+empty file. 83.30% from that one test file.
+
+Nothing panicked and nothing hung across a hundred-odd commands, which
+is the result I wanted and not the one I expected. A fifth test asserts
+what the others cannot: no command exits non-zero in silence.
+
+*The sweep has one blind spot, and it is worth writing down*: a command
+with no positional at all — =whichkey= — cannot be fed anything, so the
+sweep skips it. The answer is a direct test, not a cleverer sweep.
+
+*The LLM commands do not need a network.* =closure-llm= carries an
+=EchoProvider= selected by =llm_provider = echo=, so =ask= and =chat=
+run end to end locally: the agent loop, the tool registry, the
+transcript. =just llm-live= remains what checks a real model.
+
+*=edit-block= spawns =$EDITOR=*, which sounds untestable and is not. An
+editor is a program that changes a file and a three-line script is one.
+The test that matters is the failing editor: quitting with an error is
+how a person says "never mind", so the file must be byte-identical
+after.
+
+*A real defect, found while working out why =stream_to_stdout= cannot
+be covered.* =ask= built its provider two ways — through
+=build_llm_provider= with =--vault=, and by reading
+=ANTHROPIC_API_KEY= itself without one. From the same absent config
+those disagree: =provider_kind(None)= is Echo, so a vault with no
+=llm_provider= answers with a stub while the vault-less path demands an
+Anthropic key. One fact, two owners, again. Unified, with Anthropic
+named explicitly because the builder's default is Echo and the failure
+mode would be a real question answered by a stub.
+
+*Two more of my premises were wrong*, both instructive. A blank line in
+=chat= *ends the session* — it is a third quit alongside =/quit= and
+=/exit=, not an ignored keystroke — so the test now pins that, since a
+later change making it a no-op would silently remove a quit people use.
+And =block-args= reads the *preamble*, making it the third command with
+that assumption after =lists= and =toggle-checkbox=. None of the three
+says so at the call site.
+
+*Still short of 95.* What remains is concentrated in =cmd_chat=,
+=cmd_eval=, =run='s dispatch tail, and =stream_to_stdout= — the last of
+which is reachable only through a real provider at a real URL and is
+the clearest candidate for the parent item's "delete or restructure
+rather than annotate" rule, once somebody decides whether a vault-less
+=ask= should be configurable at all.
+
 * TODO Coverage: closure-shell-core, 1,407 missed
 Of 14,985 lines, so 90.6% — the absolute number is large because the
 crate is. Likely concentrated in surfaces the tests reach through
