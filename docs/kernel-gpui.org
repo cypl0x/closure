@@ -2063,9 +2063,22 @@ a =content_block_delta= (other events carry text-shaped fields), and a
 reply that is not the expected shape is refused rather than pasted into
 somebody's notes as HTML.
 
+*The kernel's own gaps were the two halves of undo.* closure-core went
+66.95% → 88.03% standalone from two files. =Edit::replay= — 127 lines,
+one arm per command — runs only when somebody presses redo, and nothing
+did. It is a *second* forward implementation, written from the recorded
+=Edit= rather than from the command's arguments, so it can drift from
+=Command::apply=; when it does, undo-then-redo produces a document
+different from the one the user had a moment ago, which looks like the
+edit worked. The other file covers =edit_label=, whose failure is
+subtler still: the undo pane is read by somebody already lost, and
+thirteen rows reading the same makes it useless for the only thing it
+is for.
+
 *Where the remaining work genuinely is not reachable*: closure-eval's
 python3/node/ruby backends and its LaTeX and diagram renderers are
-external programs. Its ceiling is roughly where it now sits without a
+external programs, and closure-lsp's embedded-server plumbing spawns a
+real language server and shakes hands over its stdio. Its ceiling is roughly where it now sits without a
 much larger dev shell, and that is a dev-shell decision rather than a
 testing one.
 
