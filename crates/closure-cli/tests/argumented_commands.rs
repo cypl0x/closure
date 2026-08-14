@@ -99,9 +99,19 @@ fn the_export_and_import_commands_run() {
     let d = vault();
     let file = d.path().join("notes.org").to_string_lossy().into_owned();
     let dir = d.path().to_string_lossy().into_owned();
+    // `--out` is not optional here even though the command has a
+    // default for it. The default is `vault.html` in the *current*
+    // directory, which under `cargo test` is the crate root — so this
+    // case wrote a file into the repository on every run, with the
+    // tempdir's random path baked into it. It was committed by an
+    // ordinary `git add -A` and then failed `nix fmt --fail-on-change`
+    // on the next run, because the path inside it had changed. A test
+    // that leaves an artifact behind is bad; one that leaves a
+    // *different* artifact each time is an I10 problem.
+    let html = d.path().join("out.html").to_string_lossy().into_owned();
     for args in [
         vec!["export-md", &file],
-        vec!["export-html", &dir],
+        vec!["export-html", &dir, "--out", &html],
         vec!["id", &file],
         vec!["ids", &file],
         vec!["db", &dir],

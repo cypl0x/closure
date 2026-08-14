@@ -1500,6 +1500,54 @@ dead. Both fixed, and =flutter analyze= now runs inside =just flutter=
 before the tests, so the Dart is held to the same bar it was already
 being compared against.
 
+* DONE Flutter 5: the matrix rule the new shell broke
+Not planned. =just gates= went red on =shells_matrix_is_true= the
+moment =flutter/lib/main.dart= existed, and the failure was correct:
+that test says anything listed in =closure shells= is a superset of
+CORE — Browse, Capture, Search — and the Dart app offered Browse alone.
+
+The interesting part is that both halves of the contradiction were
+written in this same session, hours apart, and both were defensible on
+their own. =FLUTTER_CAPABILITIES= was emptied because claiming a shell
+that does not exist is worse than omitting it. The superset rule was
+added because a shell that offers less than CORE is a viewer wearing
+the word "shell". Neither anticipated a shell that exists and offers
+one third of CORE.
+
+Two ways out, and the choice is the item: weaken the rule for one
+shell, or meet it. Met it. A row in that table is what somebody reads
+before choosing closure, and =Browse= alone in a column headed FLUTTER
+is a promise the row does not keep.
+
+So the ABI grew =closure_search=, =closure_search_clear= and
+=closure_capture=, and the window grew a search box and a capture bar.
+All three go through =ModalApp::run=, which is the door the mouse, a
+chord and the =:= line already use — deliberately, because a search
+implemented on the Dart side would be a second owner of what "matching"
+means, sitting on the unreproducible side of I10 where no gate can see
+it drift.
+
+Two claims are worth more than the lines they took:
+
+- A search matching nothing shows *nothing*. Falling back to the
+  unfiltered list is the failure that makes a filter useless, and it is
+  the same "an empty allow-list must deny" shape as the sync peer bug
+  earlier in this queue.
+- Capture refuses a blank title. A text box sends whatever is in it,
+  and Enter on an untouched field would file a TODO that says nothing
+  and that somebody then has to delete. Coverage found this line
+  uncovered; the assertion is worth more than the coverage was.
+
+=closure-ffi= is still 100% with no exclusions. 21 Dart tests, =flutter
+analyze= clean, and the window photographed again with both bars on it.
+
+What is *not* proven on screen: typing. Headless weston has no input
+seat (=gdk_seat_get_keyboard= fails), so search-as-you-type and the
+capture Enter are covered by widget tests driving the real .so and by
+the ABI tests underneath them, but no screenshot shows a filtered
+outline. The layout is photographed; the interaction is tested. Saying
+which is which is the point.
+
 * TODO Coverage: closure-cli is 37.6% covered
 1,697 missed lines of 2,721 — the single largest hole in the workspace,
 and the lowest-covered file in it by a wide margin.
