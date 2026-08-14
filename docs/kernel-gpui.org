@@ -2045,6 +2045,35 @@ should be approached:
    same effort spent on closure-shell-core moves the workspace by a
    tenth of a percent.
 
+*A structural reason some lines can never be covered, found 2026-08-14.*
+=closure_org::ParseError= is an *empty enum*, and deliberately so — its
+own doc says "the current parser is total — any byte sequence is valid
+org from this crate's point of view — but the =Result= return keeps the
+public signature stable as richer parsing lands."
+
+The consequence is workspace-wide. Every caller that writes
+=parse(src).map_err(...)= or =Document::load_str(src).map_err(...)= has
+written an arm the type system says cannot be taken, and there are
+about 95 such call sites across closure-wasm, closure-cli,
+closure-core and closure-store. Each is one or two uncovered lines that
+no test can reach, because reaching them would require org that does
+not parse and no such input exists.
+
+This is not a defect and the =Result= is not wrong — it is a deliberate
+bet on richer parsing later, and changing it now would be an API break
+across four crates to satisfy a metric. But it does mean *a literal
+100% is not reachable while that enum is empty*, and anyone taking this
+item to the end has to decide between three options rather than write
+more tests:
+
+1. Leave it, and accept a ceiling somewhere near 99.8%.
+2. Make =ParseError= inhabited by giving the parser something to reject
+   — which is the direction the doc comment anticipates anyway.
+3. Make =parse= infallible now and reintroduce the =Result= when there
+   is a reason for it, accepting the API break.
+
+Worth deciding deliberately rather than discovering at 99.8%.
+
 *Not reachable hermetically, and left alone deliberately*: the
 =run_stdio= / =serve_jsonrpc_stdio= wrappers in closure-acp and
 closure-a2a, and =stream_to_stdout= in closure-cli. Each is a
