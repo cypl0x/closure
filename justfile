@@ -321,3 +321,34 @@ pkg-net:
 # Q12-B2: release-mode latency numbers over the generated big vault.
 bench:
     cargo test --release -p closure-shell-core --test perf -- --nocapture
+
+# The Flutter shell (Q13). Deliberately NOT part of `gates`, `check` or
+# `ci`, and never reachable from `nix flake check`.
+#
+# I10 says every gate is hermetic and reproducible. `flutter pub get`
+# resolves against pub.dev at build time, so a Flutter build cannot be
+# either, and the honest options were to lie about the boundary or to
+# put the Dart side outside it. `docs/flutter-shell.md` chose outside.
+# What stays inside is `closure-ffi`: it is built, linted and held at
+# 100% coverage by `gates` like every other crate, and it is the only
+# thing the Dart can reach. So the unreproducible half can only ever be
+# a view — it cannot parse org, and it cannot decide anything.
+#
+# The flutter SDK is not in the dev shell for the same reason, which is
+# why this recipe reaches for it rather than assuming it on PATH. Run it
+# as `nix develop -c just flutter` like everything else; the inner
+# `nix shell` is what crosses the boundary, visibly, in one place.
+flutter:
+    cargo build -p closure-ffi --release
+    nix shell nixpkgs#flutter -c bash -c '\
+        cd flutter && \
+        CLOSURE_FFI_LIB="$PWD/../target/release/libclosure_ffi.so" \
+        flutter test && \
+        flutter build linux --release'
+    @echo "built: flutter/build/linux/x64/release/bundle/closure_shell"
+
+# Run the Flutter shell against a vault. `just run-flutter ~/notes`
+run-flutter vault: flutter
+    install -Dm644 target/release/libclosure_ffi.so \
+        flutter/build/linux/x64/release/bundle/lib/libclosure_ffi.so
+    flutter/build/linux/x64/release/bundle/closure_shell {{vault}}

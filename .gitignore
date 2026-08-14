@@ -32,3 +32,10 @@
 # treefmt reformatted 9,310 vendored files inside it once, which took
 # five minutes and failed the gate.
 /.flatpak-builder/
+
+# Flutter build output and pub state (the Dart side is outside the
+# hermetic gate; none of this is reproducible and none of it belongs
+# in the repo).
+flutter/build/
+flutter/.dart_tool/
+flutter/*.iml

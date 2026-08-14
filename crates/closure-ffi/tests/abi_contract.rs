@@ -146,11 +146,40 @@ fn the_header_declares_every_exported_function() {
         .filter_map(|l| l.trim().strip_prefix("pub unsafe extern \"C\" fn "))
         .filter_map(|l| l.split('(').next())
         .collect();
-    assert!(exported.len() >= 6, "the scan is wrong: {exported:?}");
-    for name in exported {
+    let safe: Vec<&str> = src
+        .lines()
+        .filter_map(|l| l.trim().strip_prefix("pub extern \"C\" fn "))
+        .filter_map(|l| l.split('(').next())
+        .collect();
+    let exported: Vec<&str> = exported.into_iter().chain(safe).collect();
+    assert!(exported.len() >= 7, "the scan is wrong: {exported:?}");
+    for name in &exported {
         assert!(
             header.contains(name),
             "`{name}` is exported and the header does not declare it"
+        );
+    }
+
+    // And the other direction, which is the one that bit. A header may
+    // declare a function the library does not export; nothing in Rust
+    // notices, because Rust never reads the header. It fails at the
+    // link or the dlopen on somebody else's machine — here, it took a
+    // `const fn` that was never `extern "C"` all the way to a Dart
+    // symbol lookup before anything complained.
+    for line in header.lines() {
+        let Some(rest) = line.split_once("closure_").map(|(_, r)| r) else {
+            continue;
+        };
+        if !line.contains('(') || line.trim_start().starts_with('*') {
+            continue;
+        }
+        let name = format!(
+            "closure_{}",
+            rest.split('(').next().unwrap_or_default().trim()
+        );
+        assert!(
+            exported.contains(&name.as_str()),
+            "`{name}` is declared in closure.h and the library does not export it"
         );
     }
 }

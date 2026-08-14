@@ -1406,7 +1406,7 @@ Tested through the printed table rather than the constants, because
 table is what a reader sees — the same reason "offered" means a shell
 shows it.
 
-* TODO Flutter 3: the Dart app
+* DONE Flutter 3: the Dart app
 In =flutter/= at the repo root, over the ABI from item 1 via
 flutter_rust_bridge. Built and run by =just flutter=, never by =nix
 flake check= — that is the I10 boundary and crossing it is the one
@@ -1418,6 +1418,50 @@ is not parity.
 
 Acceptance: =nix develop -c just flutter= exits 0, and the app shows
 the vault's headlines on :1.
+
+Done, with one substitution that has to be stated plainly: *not on :1,
+because :1 cannot run it.*
+
+Not flutter_rust_bridge. That plan predates item 1 — by the time the
+Dart went in there was already a hand-written C ABI with a hand-written
+header, and flutter_rust_bridge's job is to generate exactly that. It
+would have replaced a boundary with three written-down rules and 100%
+coverage with generated glue, and added a codegen step to a build that
+is already the unhermetic half. =dart:ffi= is in the SDK and reads the
+header directly. Recorded here rather than silently: the item asked for
+a named library and did not get it.
+
+The verification, in order:
+- =nix develop -c just flutter= exits 0: builds =closure-ffi= release,
+  runs 12 Dart tests, builds the Linux bundle.
+- The app on :1 opened a window and painted nothing but black, with
+  =fl_compositor_render: assertion 'FL_IS_COMPOSITOR(self)' failed=.
+- :1 advertises 22 X extensions and *GLX is not among them*. Flutter's
+  Linux embedder is GTK3, GDK3's X11 backend takes GL through GLX only
+  (its =epoxy_egl*= symbols belong to the Wayland backend), so there is
+  no GL for the engine to render into. Not a defect in this code, and
+  nothing in this code can fix it — =glxinfo -B= on :1 says "couldn't
+  find RGB GLX visual or fbconfig" for anything. Xvfb here has no GLX
+  either.
+- EGL *does* work on this host: =eglinfo= reports EGL 1.5 on the X11
+  and surfaceless platforms via swrast. So the missing piece is GDK3
+  refusing to use it on X11, which is a GTK3 fact and not ours.
+- So: headless weston (=--backend=headless --renderer=gl=), where GDK3
+  is on Wayland and does use EGL. Zero =fl_compositor= errors, and
+  =weston-screenshooter= (needs =--debug=; without it capture is
+  silently "unauthorized" and writes a blank white frame — that blank was
+  nearly taken for the app's own output) shows the outline listing
+  "Project closure", "The Flutter shell", "Reading list", the first row
+  selected in accent, and its body "A PKM system whose kernel is seven
+  primitives." in the right pane, in doom-vibrant.
+
+The screenshot is what the item asked for. The display it was taken on
+is not, and the acceptance line stays above unedited so the gap is
+visible rather than tidied away. What it costs: nothing about the app
+is unverified, but nobody has yet seen it on the machine the rest of
+this project is demonstrated on, and if :1 is the only display that
+matters then this shell does not run for the user today. That belongs
+in the limitations notice, which is item 4.
 
 * TODO Flutter 4: what the Dart side cannot promise
 The gpui window has a startup notice about the rasteriser and an honest

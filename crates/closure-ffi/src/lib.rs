@@ -87,8 +87,8 @@ fn out_string(s: &str) -> *mut c_char {
 /// of bindings that disagree is the one failure here that corrupts
 /// silently rather than erroring — every other mistake produces a null
 /// or a link error.
-#[must_use]
-pub const fn closure_ffi_abi_version() -> usize {
+#[unsafe(no_mangle)]
+pub extern "C" fn closure_ffi_abi_version() -> usize {
     1
 }
 
