@@ -2001,6 +2001,60 @@ Acceptance: this item is a record; close it when the workspace gate
 reaches 100 or when the next pass supersedes the numbers.
 
 * TODO Coverage: raise the workspace gate to 100 and keep it there
+The floor moved 88 → *90* on 2026-08-14, which is the first time it has
+moved at all. Workspace lines are 90.16–90.17% (52,971 lines, ~5,210
+missed); the run-to-run wobble of a couple of lines is why the number
+is 90 and not 90.1.
+
+The margin is about 90 lines of slack, deliberately. A ratchet with
+room in it lets coverage fall back quietly, which is the thing it
+exists to prevent — if it fails after an honest change the answer is a
+test, not a smaller number.
+
+Where the remaining ~5,200 lines are, measured the same day:
+
+| crate               | missed |     % |
+|---------------------+--------+-------|
+| closure-shell-core  |  1,331 | 91.22 |
+| closure-tui         |    990 | 70.14 |
+| closure-org         |    972 | 90.09 |
+| closure-store       |    385 | 96.00 |
+| closure-cli         |    365 | 86.61 |
+| closure-core        |    198 | 87.97 |
+| closure-eval        |    147 | 77.83 |
+| closure-lsp         |    145 | 85.98 |
+| closure-llm         |    127 | 75.39 |
+| everything else     |   ~550 |       |
+
+Three things learned getting here, all of which change how the rest
+should be approached:
+
+1. *Measuring a crate alone understates it badly.* =cargo llvm-cov -p
+   closure-undo= says 77.65% where the workspace run says 93.79%,
+   because most of that crate is exercised by its callers. Only the
+   workspace number matters, and per-crate numbers are useful for
+   *finding* gaps, never for judging them.
+2. *The long tail is error arms, not functions.* Past about 85% the
+   uncovered regions stop being whole features and become
+   =.map_err(...)= closures on lines that are already covered. They are
+   reached by giving the code something broken, not by writing more
+   feature tests — which is why one sweep took closure-cli from 76.8%
+   to 83.3% and a fortnight of feature tests would not have.
+3. *Finishing small crates beats nudging big ones.* closure-cron is at
+   100% and closure-jsonrpc at 100% of lines, from two afternoons; the
+   same effort spent on closure-shell-core moves the workspace by a
+   tenth of a percent.
+
+*Not reachable hermetically, and left alone deliberately*: the
+=run_stdio= / =serve_jsonrpc_stdio= wrappers in closure-acp and
+closure-a2a, and =stream_to_stdout= in closure-cli. Each is a
+three-to-five-line delegation around the real stdin/stdout or a real
+provider at a real URL. Covering them means depending on what the test
+harness attaches to stdin, or on a network — exactly the
+environment-dependent test I10 exists to keep out. They are the
+clearest candidates for the "delete or restructure rather than
+annotate" rule if this item is ever taken to a literal 100.
+
 The last item of the group. =just coverage= currently reads
 =--fail-under-lines 86=; it becomes 100 when the crates above are done,
 and =just gates= gains the coverage line so a drop fails the same

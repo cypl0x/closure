@@ -124,8 +124,20 @@ check:
 # `main.rs` files, and it should: a subcommand nobody can reach and
 # nobody tests is not a feature. The number below is the ratchet, not
 # the target — it rises as each queued coverage item lands.
+# The workspace coverage ratchet.
+#
+# It only ever moves up. 88 was where it sat while closure-cli was at
+# 37% and closure-shell-core had 1,400 unexercised lines; the work in
+# `docs/kernel-gpui.org` under the Coverage items took the workspace to
+# 90.17%, so the floor follows it to 90.
+#
+# The margin is deliberately thin — about 90 lines of slack out of
+# 52,971. A ratchet with room in it is a ratchet that lets coverage
+# fall back quietly, which is the thing it exists to prevent. If this
+# fails after an honest change, the answer is a test, not a smaller
+# number: the number has never gone down and should not start.
 coverage:
-    cargo llvm-cov --workspace --fail-under-lines 88
+    cargo llvm-cov --workspace --fail-under-lines 90
 
 # Parser fuzz/replay + property gate (I1/I5/I6) on stable, for every
 # first-class format (org + markdown).
