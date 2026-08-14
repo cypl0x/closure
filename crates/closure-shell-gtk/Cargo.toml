@@ -24,4 +24,8 @@ closure-shell-core = { path = "../closure-shell-core" }
 gtk4 = { version = "0.9", optional = true }
 
 [dev-dependencies]
+# `Action::new` takes an InputMode, so the tests that build a
+# palette node need it. Not a runtime dependency: the renderer is
+# handed nodes, it does not choose a keymap.
+closure-config = { path = "../closure-config" }
 tempfile = "3"

@@ -1578,6 +1578,7 @@ dependencies = [
 name = "closure-shell-gtk"
 version = "0.0.0"
 dependencies = [
+ "closure-config",
  "closure-shell-core",
  "closure-store",
  "gtk4",
@@ -1588,6 +1589,7 @@ dependencies = [
 name = "closure-shell-qt"
 version = "0.0.0"
 dependencies = [
+ "closure-config",
  "closure-shell-core",
  "closure-store",
  "qmetaobject",
