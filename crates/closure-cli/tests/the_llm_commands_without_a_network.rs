@@ -112,12 +112,22 @@ fn ask_offers_the_model_the_vault_tools_and_no_others() {
 
 #[test]
 fn ask_without_a_vault_and_without_a_key_names_the_key() {
+    // Also pins something structural. Without a vault there is no
+    // config to read, and the provider builder's default for an unset
+    // `llm_provider` is Echo — so routing this path through that
+    // builder without naming Anthropic would turn "no key" into a stub
+    // answer that looks like a real one. Failing here is the correct
+    // behaviour and the test that keeps it.
     let out = Command::new(BIN)
         .args(["ask", "hello"])
         .env_remove("ANTHROPIC_API_KEY")
         .output()
         .expect("spawn");
-    assert!(!out.status.success());
+    assert!(
+        !out.status.success(),
+        "answered without a key, so it fell back to a stub: {}",
+        text(&out)
+    );
     assert!(
         text(&out).contains("ANTHROPIC_API_KEY"),
         "it did not name the variable: {}",

@@ -3054,13 +3054,31 @@ const ASK_TOOLS_HELP: &str = "Vault tools (use via CALL): list-files | read <fil
 fn cmd_ask(prompt: &str, model: &str, vault: Option<&Path>) -> Result<(), String> {
     use std::io::Write as _;
     let Some(vault_dir) = vault else {
-        let key = std::env::var("ANTHROPIC_API_KEY")
-            .map_err(|_| "ANTHROPIC_API_KEY not set".to_owned())?;
-        let provider = closure_llm::anthropic(&key, model);
+        // Through the same builder the vault path uses. This read the
+        // key and constructed the provider itself, which made provider
+        // selection a thing with two owners: with a vault and no
+        // `llm_provider` set you get Echo, without a vault you got
+        // Anthropic — from the same absent configuration.
+        //
+        // They cannot be made to agree on more than this. There is no
+        // config.org to read when there is no vault, so `llm_endpoint`,
+        // `llm_model` and `llm_key_env` have nowhere to come from here.
+        // But there was no reason for two copies of the key-reading and
+        // the error wording either, and this is the copy that would
+        // have drifted, being the one nothing configures.
+        //
+        // Anthropic is named explicitly so today's behaviour is kept:
+        // the builder's default for an unset provider is Echo, which
+        // would answer a real question with a stub.
+        let cfg = closure_config::Config {
+            llm_provider: Some("anthropic".to_owned()),
+            ..Default::default()
+        };
+        let provider = build_llm_provider(&cfg, model)?;
         // Streamed: without a vault there are no tools to run, so the
         // answer is the whole of the wait, and watching it arrive is
         // the difference between a program thinking and one hung.
-        stream_to_stdout(&provider, prompt)?;
+        stream_to_stdout(provider.as_ref(), prompt)?;
         return Ok(());
     };
     let mut v = Vault::open(vault_dir).map_err(|e| format!("{e}"))?;
