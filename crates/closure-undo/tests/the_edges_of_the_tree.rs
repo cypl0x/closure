@@ -107,3 +107,72 @@ fn a_path_from_the_root_is_allowed_and_walks_down() {
     assert!(!steps.is_empty(), "no steps from the root to a grandchild");
     assert!(t.depth(a) < t.depth(b));
 }
+
+#[test]
+fn redo_at_a_leaf_has_nowhere_to_go() {
+    // The tip of the tree: an edit has been made and not undone, so
+    // there is no child to move forward into. This is the state the
+    // user is in almost all the time, and pressing redo there must be
+    // a refusal rather than a move to somewhere arbitrary.
+    let mut t: UndoTree<&str> = UndoTree::new();
+    t.apply("only");
+    assert!(matches!(t.redo(None), Err(UndoError::NotFound)));
+}
+
+#[test]
+fn redo_on_an_empty_tree_has_nowhere_to_go_either() {
+    let mut t: UndoTree<&str> = UndoTree::new();
+    assert!(matches!(t.redo(None), Err(UndoError::NotFound)));
+}
+
+#[test]
+fn redo_without_a_branch_takes_the_newest_one() {
+    // The documented "canonical redo": undo, make a second edit, and
+    // the tree now forks. Redo with no branch named follows the most
+    // recently created child, which is the one just made.
+    let mut t: UndoTree<&str> = UndoTree::new();
+    let first = t.apply("first");
+    t.apply("second");
+    t.undo().expect("back to first");
+    let third = t.apply("third");
+
+    // Back to the fork, then forward without naming a branch.
+    t.undo().expect("back to first again");
+    assert_eq!(t.redo(None).expect("redo"), third);
+    assert_eq!(t.depth(third), t.depth(first).map(|d| d + 1));
+}
+
+#[test]
+fn redo_can_be_told_which_branch_to_take() {
+    // The reason this is a tree rather than a stack: the older branch
+    // is still reachable by name, which a linear undo would have
+    // thrown away.
+    let mut t: UndoTree<&str> = UndoTree::new();
+    t.apply("first");
+    let second = t.apply("second");
+    t.undo().expect("back");
+    t.apply("third");
+    t.undo().expect("back again");
+
+    assert_eq!(
+        t.redo(Some(second)).expect("redo into the old branch"),
+        second
+    );
+}
+
+#[test]
+fn redo_into_a_branch_that_is_not_a_child_is_refused() {
+    // A node that exists but is not reachable from here in one step.
+    // Jumping to it would skip whatever lies between and leave the
+    // document in a state no sequence of edits produced.
+    let mut t: UndoTree<&str> = UndoTree::new();
+    let first = t.apply("first");
+    let second = t.apply("second");
+    let third = t.apply("third");
+    // Currently at `third`; `first` is an ancestor, not a child.
+    t.undo().expect("to second");
+    assert!(matches!(t.redo(Some(first)), Err(UndoError::NotFound)));
+    // And the cursor did not move.
+    assert_eq!(t.redo(Some(third)).expect("the real child"), third);
+    let _ = second;
+}

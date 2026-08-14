@@ -135,12 +135,20 @@ pub fn parse_candidate(frame: &[u8]) -> Option<String> {
     if eth_type != 0x0800 {
         return None;
     }
-    let ip = frame.get(14..)?;
-    let version = ip.first()? >> 4;
-    if version != 4 {
+    // `unwrap_or_default` rather than `?`: reading bytes 12 and 13
+    // above already proved the frame is at least 14 long, so this can
+    // never be None and the `?` was a branch nothing could take. An
+    // empty slice fails at `first()` on the next line, which is the
+    // same answer by the same route.
+    let ip = frame.get(14..).unwrap_or_default();
+    // One read of the first byte, not two. Version and IHL are two
+    // nibbles of it, and the second `?` could not fail once the first
+    // had succeeded.
+    let first = *ip.first()?;
+    if first >> 4 != 4 {
         return None;
     }
-    let ihl = (ip.first()? & 0x0f) as usize * 4;
+    let ihl = (first & 0x0f) as usize * 4;
     if ihl < 20 {
         return None;
     }
