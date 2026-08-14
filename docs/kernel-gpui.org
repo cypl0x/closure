@@ -2048,7 +2048,26 @@ should be approached:
 closure-sniffer, closure-shell-egui, closure-shell-tauri, and
 closure-ffi (held there by =gates=). Near it: closure-shell-qt 99.31%,
 closure-shell-gtk 99.08%, closure-undo 99.29%, closure-plugin-host
-95.53%.
+95.53%, closure-config 90.83%, closure-llm 90.12%, closure-tree-sitter
+88.86%, closure-shell-web 84.10%, closure-eval 78.58%.
+
+*The biggest single win came from a socket.* closure-llm went 75.39% →
+90.12% because the whole HTTP half was untested — it shells out to
+curl, so every test used the Echo provider and stopped at the boundary.
+A server on 127.0.0.1 is hermetic, which closure-sync's TCP tests and
+closure-plugin-host's registry fetch had already established; nobody
+had applied it here. Streaming is now exercised end to end, and the
+claims the source argues for are pinned: a delta of =" "= is a real
+space while =""= is an empty frame, an Anthropic token comes only from
+a =content_block_delta= (other events carry text-shaped fields), and a
+reply that is not the expected shape is refused rather than pasted into
+somebody's notes as HTML.
+
+*Where the remaining work genuinely is not reachable*: closure-eval's
+python3/node/ruby backends and its LaTeX and diagram renderers are
+external programs. Its ceiling is roughly where it now sits without a
+much larger dev shell, and that is a dev-shell decision rather than a
+testing one.
 
 Workspace lines 90.17% → *90.32%* over those, which is the honest
 scale: eleven crates finished or nearly so moves the total by a sixth
