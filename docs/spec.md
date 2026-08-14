@@ -1124,6 +1124,36 @@ nix develop -c just flutter              # .so, 12 Dart tests, Linux bundle
 nix develop -c just run-flutter ~/notes  # and open it
 ```
 
+**On Android.** `just apk` builds an arm64 APK. It is further outside
+the gate than the desktop build — Android SDK, NDK, JDK, and gradle's
+Maven downloads — and `nix flake check` never goes near any of it.
+
+Two things about that build are worth knowing before trusting it:
+
+_It is arm64 only, deliberately._ One Rust target is cross-compiled into
+`jniLibs`. An APK also carrying `armeabi-v7a` or `x86_64` would install
+happily on those devices and crash at the first FFI call, and a working
+install is a worse failure than none — it looks like the app is broken
+rather than unsupported.
+
+_Its vault is not your vault._ A desktop shell is told which notes to
+open; Android has no argv and no shell around the app, so it uses its
+own private documents directory and seeds it once with a real org file.
+Nothing on the phone reaches the notes on a laptop. Making it do so
+means either a sync transport or a shared-storage permission this shell
+has no way to justify yet, and pretending otherwise — pointing at some
+path under `/sdcard` and hoping — would be the kind of guess this
+document exists to prevent.
+
+Three NixOS-specific workarounds live in `just apk`, each of which was a
+failed build first: gradle _configures_ `flutter_tools/gradle` as a
+project and must be able to write there, so `FLUTTER_ROOT` points at a
+merged tree rather than the store; AGP's downloaded `aapt2` is a
+prebuilt ELF wanting `/lib64/ld-linux-x86-64.so.2` and cannot start, so
+`android.aapt2FromMavenOverride` points at the SDK's patched one; and a
+read-only SDK cannot install a missing component, so `nix/android-sdk.nix`
+names every version Flutter asks for.
+
 **What does not work: it needs a GL-capable display, and `:1` is not
 one.** Flutter's Linux embedder is GTK3. GDK3's X11 backend takes GL
 through GLX only — its `epoxy_egl*` symbols belong to the Wayland

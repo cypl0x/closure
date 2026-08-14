@@ -110,6 +110,14 @@ class Closure {
   /// profile it just built.
   static ffi.DynamicLibrary _load() {
     const name = 'libclosure_ffi.so';
+    // Android has no path to check. The .so is packaged in the APK and
+    // extracted by the installer into a directory the app is not
+    // supposed to know; the linker finds it by soname. Every candidate
+    // below is a filesystem probe, which would fail there for a library
+    // that is present and loadable.
+    if (Platform.isAndroid) {
+      return ffi.DynamicLibrary.open(name);
+    }
     final override = Platform.environment['CLOSURE_FFI_LIB'];
     final exeDir = File(Platform.resolvedExecutable).parent.path;
     final candidates = [

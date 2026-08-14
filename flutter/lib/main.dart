@@ -14,7 +14,10 @@
 // that guessed its own colours would drift from every other one. The
 // test below is what keeps the copy honest.
 
+import 'dart:io';
+
 import 'package:flutter/material.dart';
+import 'package:path_provider/path_provider.dart';
 
 import 'closure_ffi.dart';
 
@@ -28,12 +31,76 @@ class Palette {
   static const heading2 = Color(0xFFC57BDB);
 }
 
-void main(List<String> args) {
-  final path = args.isNotEmpty
-      ? args.first
-      : const String.fromEnvironment('CLOSURE_VAULT', defaultValue: '');
-  runApp(ClosureApp(vaultPath: path));
+void main(List<String> args) async {
+  WidgetsFlutterBinding.ensureInitialized();
+  runApp(ClosureApp(vaultPath: await resolveVault(args)));
 }
+
+/// Where this shell's vault is.
+///
+/// On a desktop the vault is an argument, because a desktop shell opens
+/// the notes you already have and there is a shell around it to name
+/// them. Android has no argv and no shell: an app is launched by
+/// tapping it, so a vault it cannot be told about is a vault it does
+/// not have — which is what an APK of this would have shown, an empty
+/// window saying "No vault".
+///
+/// So on Android it is the app's own documents directory, seeded once
+/// with a real org file. That is a different vault from the one on the
+/// desktop and deliberately so: the phone has no access to the
+/// desktop's files, and inventing a path into shared storage would ask
+/// for a permission this shell has no way to justify yet.
+Future<String> resolveVault(List<String> args) async {
+  if (args.isNotEmpty) {
+    return args.first;
+  }
+  const compiled = String.fromEnvironment('CLOSURE_VAULT', defaultValue: '');
+  if (compiled.isNotEmpty) {
+    return compiled;
+  }
+  if (!Platform.isAndroid && !Platform.isIOS) {
+    return '';
+  }
+  final docs = await getApplicationDocumentsDirectory();
+  final vault = Directory('${docs.path}/vault');
+  if (!vault.existsSync()) {
+    vault.createSync(recursive: true);
+  }
+  final notes = File('${vault.path}/notes.org');
+  if (!notes.existsSync()) {
+    notes.writeAsStringSync(SEED_NOTES);
+  }
+  return vault.path;
+}
+
+/// What a brand-new vault contains.
+///
+/// Not an empty file: an empty outline and a broken vault look
+/// identical, and the first thing this app shows a new user should
+/// demonstrate that it works rather than leave them wondering.
+// ignore: constant_identifier_names
+const SEED_NOTES = '''
+* Welcome to closure
+:PROPERTIES:
+:ID: 01SEEDNOTE0000000001
+:END:
+This vault lives in the app's own documents directory.
+It is plain org text — the same format every other closure shell reads.
+
+* What this shell can do
+:PROPERTIES:
+:ID: 01SEEDNOTE0000000002
+:END:
+Browse the outline, search it, and capture a TODO.
+No editing, no agenda, no keybindings — see the notice at the bottom.
+
+* Capture something
+:PROPERTIES:
+:ID: 01SEEDNOTE0000000003
+:END:
+Type into the bar at the bottom and press Enter.
+It is filed as a TODO by the same kernel every other shell uses.
+''';
 
 class ClosureApp extends StatelessWidget {
   final String vaultPath;

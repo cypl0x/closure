@@ -365,3 +365,67 @@ run-flutter vault: flutter
     install -Dm644 target/release/libclosure_ffi.so \
         flutter/build/linux/x64/release/bundle/lib/libclosure_ffi.so
     flutter/build/linux/x64/release/bundle/closure_shell {{vault}}
+
+# An Android APK of the Flutter shell (arm64).
+#
+# Further outside the hermetic gate than `just flutter`: it needs the
+# Android SDK, an NDK, a JDK and gradle's Maven downloads. `nix flake
+# check` never goes near it. See "The Flutter shell" in docs/spec.md.
+#
+# Three things here are workarounds for building Android on NixOS, and
+# each was a failed build before it was a line:
+#
+#   * FLUTTER_ROOT points at a merged SDK tree, because gradle
+#     *configures* flutter_tools/gradle as a project and must be able
+#     to write there — the nix store cannot.
+#   * android.aapt2FromMavenOverride (in android/gradle.properties)
+#     points at the SDK's patchelf'd aapt2. The one AGP downloads is a
+#     prebuilt ELF wanting /lib64/ld-linux-x86-64.so.2, which NixOS does
+#     not have; it fails as "AAPT2 Daemon startup failed".
+#   * The SDK carries every component by name (nix/android-sdk.nix),
+#     since a read-only SDK cannot install a missing one.
+#
+# arm64 only, matching the single Rust target cross-compiled below.
+apk:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    sdk="$(nix-build --impure --no-out-link nix/android-sdk.nix)/libexec/android-sdk"
+    ndk="$sdk/ndk/28.2.13676358/toolchains/llvm/prebuilt/linux-x86_64/bin"
+
+    # The kernel, for the phone. dart:ffi loads this out of the APK.
+    CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER="$ndk/aarch64-linux-android24-clang" \
+    CC_aarch64_linux_android="$ndk/aarch64-linux-android24-clang" \
+    AR_aarch64_linux_android="$ndk/llvm-ar" \
+    cargo build -p closure-ffi --release --target aarch64-linux-android
+    install -Dm644 target/aarch64-linux-android/release/libclosure_ffi.so \
+        flutter/android/app/src/main/jniLibs/arm64-v8a/libclosure_ffi.so
+
+    # Flutter is not in the dev shell — the same boundary `just flutter`
+    # crosses, in the same visible place.
+    nix shell nixpkgs#flutter nixpkgs#jdk17 -c bash -euo pipefail -c '
+        sdk="'"$sdk"'"
+        root="$HOME/.cache/closure-flutter-sdk"
+        wrapped="$(dirname "$(dirname "$(readlink -f "$(command -v flutter)")")")"
+
+        # A flutter root gradle can write into: everything symlinked
+        # from the store except flutter_tools/gradle, which is copied
+        # because gradle configures it as a project.
+        rm -rf "$root"; mkdir -p "$root/packages/flutter_tools"
+        for e in "$wrapped"/*; do
+            [ "$(basename "$e")" = packages ] || ln -s "$e" "$root/$(basename "$e")"
+        done
+        for e in "$wrapped"/packages/*; do
+            [ "$(basename "$e")" = flutter_tools ] || ln -s "$e" "$root/packages/$(basename "$e")"
+        done
+        for e in "$wrapped"/packages/flutter_tools/*; do
+            [ "$(basename "$e")" = gradle ] || ln -s "$e" "$root/packages/flutter_tools/$(basename "$e")"
+        done
+        cp -rL "$wrapped/packages/flutter_tools/gradle" "$root/packages/flutter_tools/gradle"
+        chmod -R u+w "$root/packages/flutter_tools/gradle"
+
+        printf "sdk.dir=%s\nflutter.sdk=%s\n" "$sdk" "$root" > flutter/android/local.properties
+        cd flutter
+        FLUTTER_ROOT="$root" ANDROID_HOME="$sdk" ANDROID_SDK_ROOT="$sdk" \
+            flutter build apk --release --target-platform android-arm64
+    '
+    echo "built: flutter/build/app/outputs/flutter-apk/app-release.apk"

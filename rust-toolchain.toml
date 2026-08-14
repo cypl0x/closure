@@ -1,5 +1,10 @@
 [toolchain]
 channel = "1.95.0"
 components = ["rustc", "cargo", "rustfmt", "clippy", "rust-src", "llvm-tools-preview"]
-targets = ["wasm32-wasip1", "wasm32-unknown-unknown"]
+# `aarch64-linux-android` is here for the APK: the Flutter shell loads
+# `libclosure_ffi.so` through dart:ffi, so an Android build needs the
+# kernel cross-compiled for the device. arm64 only — every Android
+# phone since 2017 is arm64, and the other ABIs would triple the build
+# for hardware nobody here has.
+targets = ["wasm32-wasip1", "wasm32-unknown-unknown", "aarch64-linux-android"]
 profile = "minimal"

@@ -43,3 +43,7 @@ flutter/*.iml
 # `closure export-html` defaults to ./vault.html; a test used to land
 # one here. Ignored so a stray run can never be committed again.
 vault.html
+flutter/android/local.properties
+flutter/android/.gradle/
+flutter/android/app/src/main/jniLibs/
+flutter/android/build/
