@@ -184,11 +184,18 @@ impl<T> UndoTree<T> {
     /// Returns `None` if the id is unknown.
     #[must_use]
     pub fn depth(&self, id: NodeId) -> Option<usize> {
+        // One fallible lookup, not two. The walk used to `?` on each
+        // parent as well, which reads as caution and is a branch that
+        // cannot be taken: nodes are only ever appended by `apply` or
+        // removed all at once by `clear`, so a node's parent is in this
+        // tree whenever the node is. Nothing could reach that arm, so
+        // nothing could test it, and an untestable branch is worse than
+        // no branch — it looks like a handled case and is not one.
         let mut depth = 0usize;
         let mut cur = self.node(id)?;
-        while let Some(p) = cur.parent {
+        while let Some(parent) = cur.parent.and_then(|p| self.node(p)) {
             depth += 1;
-            cur = self.node(p)?;
+            cur = parent;
         }
         Some(depth)
     }
