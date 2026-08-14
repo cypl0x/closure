@@ -2040,10 +2040,38 @@ should be approached:
    reached by giving the code something broken, not by writing more
    feature tests — which is why one sweep took closure-cli from 76.8%
    to 83.3% and a fortnight of feature tests would not have.
-3. *Finishing small crates beats nudging big ones.* closure-cron is at
-   100% and closure-jsonrpc at 100% of lines, from two afternoons; the
-   same effort spent on closure-shell-core moves the workspace by a
-   tenth of a percent.
+3. *Finishing small crates beats nudging big ones.* The same effort
+   spent on closure-shell-core moves the workspace by a tenth of a
+   percent.
+
+*Crates at 100% of lines*, 2026-08-14: closure-cron, closure-jsonrpc,
+closure-sniffer, closure-shell-egui, closure-shell-tauri, and
+closure-ffi (held there by =gates=). Near it: closure-shell-qt 99.31%,
+closure-shell-gtk 99.08%, closure-undo 99.29%, closure-plugin-host
+95.53%.
+
+Workspace lines 90.17% → *90.32%* over those, which is the honest
+scale: eleven crates finished or nearly so moves the total by a sixth
+of a percent, because the three big crates hold 3,300 of the ~5,100
+remaining lines between them. The small-crate work is worth doing for
+what it *finds* — a packet decoder never fed a malformed frame, four
+launcher binaries whose only behaviour is a message nobody had read,
+every write-failure arm in three protocol crates — not for the number.
+
+*Three recurring shapes, in case they are worth looking for elsewhere:*
+- *A `Vec<u8>` cannot fail.* Every crate that writes to a `W: Write`
+  had untested error arms because every test wrote into a vector. A
+  writer that always fails, and a reader that fails instead of reaching
+  EOF, covered them in closure-acp, closure-a2a and closure-mcp at once.
+- *The default build is the shipped build.* The gtk/qt/egui/tauri
+  launchers are feature-gated off by default (I10), so the binary the
+  workspace produces is the one that cannot open a window, and its only
+  behaviour is explaining that. None of those messages had ever been
+  read by a test.
+- *Renderers silently drop node kinds.* `Palette`, `Widget` and one
+  axis of `Split` were unrendered in both the GTK and QML mappings. The
+  failure is a window with something missing, which is exactly what a
+  hermetic test is for, since nobody is looking at the window.
 
 *A structural reason some lines can never be covered, found 2026-08-14.*
 =closure_org::ParseError= is an *empty enum*, and deliberately so — its
