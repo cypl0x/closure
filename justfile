@@ -342,6 +342,7 @@ flutter:
     cargo build -p closure-ffi --release
     nix shell nixpkgs#flutter -c bash -c '\
         cd flutter && \
+        flutter analyze && \
         CLOSURE_FFI_LIB="$PWD/../target/release/libclosure_ffi.so" \
         flutter test && \
         flutter build linux --release'

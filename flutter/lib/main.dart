@@ -117,7 +117,17 @@ class _VaultViewState extends State<VaultView> {
     final s = _session!;
     final count = s.rowCount;
     return Scaffold(
-      body: Row(
+      body: Column(
+        children: [
+          Expanded(child: _panes(s, count)),
+          const _Notice(),
+        ],
+      ),
+    );
+  }
+
+  Widget _panes(ClosureSession s, int count) {
+    return Row(
         children: [
           SizedBox(
             width: 320,
@@ -166,6 +176,30 @@ class _VaultViewState extends State<VaultView> {
             ),
           ),
         ],
+      );
+  }
+}
+
+/// What this shell does not do, said where the user is.
+///
+/// The gpui window carries the equivalent about the software rasteriser
+/// and held keys. The reasoning is the same: a shell offers a subset of
+/// what the kernel understands, and one that hides which subset teaches
+/// a wrong model of the system — the user concludes closure cannot edit,
+/// rather than that this window cannot.
+class _Notice extends StatelessWidget {
+  const _Notice();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      color: Palette.selection,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      child: const Text(
+        'Browse only — no editing, capture, agenda or keybindings. '
+        'Needs a GL-capable display; see "The Flutter shell" in docs/spec.md.',
+        style: TextStyle(color: Palette.muted, fontSize: 11),
       ),
     );
   }

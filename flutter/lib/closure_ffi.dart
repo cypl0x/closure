@@ -49,32 +49,44 @@ class Closure {
 
   static Closure? _instance;
 
-  final ffi.DynamicLibrary _lib;
-  final _AbiVersion abiVersionFn;
-  final _Open open;
-  final _Close closeSession;
-  final _RowCount rowCount;
-  final _RowTitle rowTitle;
-  final _Select select;
-  final _Body selectedBody;
-  final _StringFree stringFree;
+  // Private, and deliberately: these are raw pointers-in, pointers-out.
+  // Everything outside this file goes through [ClosureSession], which is
+  // where the rules about freeing and about closed handles live.
+  final _AbiVersion _abiVersion;
+  final _Open _open;
+  final _Close _close;
+  final _RowCount _rowCount;
+  final _RowTitle _rowTitle;
+  final _Select _select;
+  final _Body _selectedBody;
+  final _StringFree _stringFree;
 
-  Closure._(this._lib)
-      : abiVersionFn =
-            _lib.lookupFunction<_AbiVersionC, _AbiVersion>('closure_ffi_abi_version'),
-        open = _lib.lookupFunction<_OpenC, _Open>('closure_open'),
-        closeSession = _lib.lookupFunction<_CloseC, _Close>('closure_close'),
-        rowCount = _lib.lookupFunction<_RowCountC, _RowCount>('closure_row_count'),
-        rowTitle = _lib.lookupFunction<_RowTitleC, _RowTitle>('closure_row_title'),
-        select = _lib.lookupFunction<_SelectC, _Select>('closure_select'),
-        selectedBody = _lib.lookupFunction<_BodyC, _Body>('closure_selected_body'),
-        stringFree =
-            _lib.lookupFunction<_StringFreeC, _StringFree>('closure_string_free');
+  factory Closure._of(ffi.DynamicLibrary lib) => Closure._(
+        lib.lookupFunction<_AbiVersionC, _AbiVersion>('closure_ffi_abi_version'),
+        lib.lookupFunction<_OpenC, _Open>('closure_open'),
+        lib.lookupFunction<_CloseC, _Close>('closure_close'),
+        lib.lookupFunction<_RowCountC, _RowCount>('closure_row_count'),
+        lib.lookupFunction<_RowTitleC, _RowTitle>('closure_row_title'),
+        lib.lookupFunction<_SelectC, _Select>('closure_select'),
+        lib.lookupFunction<_BodyC, _Body>('closure_selected_body'),
+        lib.lookupFunction<_StringFreeC, _StringFree>('closure_string_free'),
+      );
+
+  Closure._(
+    this._abiVersion,
+    this._open,
+    this._close,
+    this._rowCount,
+    this._rowTitle,
+    this._select,
+    this._selectedBody,
+    this._stringFree,
+  );
 
   /// The library's own ABI version.
-  int get abiVersion => abiVersionFn();
+  int get abiVersion => _abiVersion();
 
-  static Closure get instance => _instance ??= Closure._(_load());
+  static Closure get instance => _instance ??= Closure._of(_load());
 
   /// Where the `.so` is.
   ///
@@ -130,7 +142,7 @@ class ClosureSession {
     }
     final p = path.toNativeUtf8();
     try {
-      final h = c.open(p.cast<ffi.Char>());
+      final h = c._open(p.cast<ffi.Char>());
       return h == ffi.nullptr ? null : ClosureSession._(c, h);
     } finally {
       malloc.free(p);
@@ -146,16 +158,16 @@ class ClosureSession {
   }
 
   /// How many outline rows the vault has.
-  int get rowCount => _c.rowCount(_live);
+  int get rowCount => _c._rowCount(_live);
 
   /// The title of row [index], or null if there is no such row.
-  String? rowTitle(int index) => _take(_c.rowTitle(_live, index));
+  String? rowTitle(int index) => _take(_c._rowTitle(_live, index));
 
   /// Move the cursor. Out of range does nothing, as on the C side.
-  void select(int index) => _c.select(_live, index);
+  void select(int index) => _c._select(_live, index);
 
   /// The selected headline's body as a reader should see it.
-  String? get selectedBody => _take(_c.selectedBody(_live));
+  String? get selectedBody => _take(_c._selectedBody(_live));
 
   /// Copy a returned string into Dart and hand the original back to the
   /// library that allocated it. Rule 1, in the one place it can be got
@@ -165,7 +177,7 @@ class ClosureSession {
       return null;
     }
     final s = p.cast<Utf8>().toDartString();
-    _c.stringFree(p);
+    _c._stringFree(p);
     return s;
   }
 
@@ -174,7 +186,7 @@ class ClosureSession {
     final h = _handle;
     if (h != null) {
       _handle = null;
-      _c.closeSession(h);
+      _c._close(h);
     }
   }
 }

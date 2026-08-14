@@ -1463,7 +1463,7 @@ this project is demonstrated on, and if :1 is the only display that
 matters then this shell does not run for the user today. That belongs
 in the limitations notice, which is item 4.
 
-* TODO Flutter 4: what the Dart side cannot promise
+* DONE Flutter 4: what the Dart side cannot promise
 The gpui window has a startup notice about the rasteriser and an honest
 sentence about what does not work. The Flutter shell needs the
 equivalent, written from what is actually true of it rather than from
@@ -1473,6 +1473,32 @@ toolchain is outside the gate by running =nix flake check= and finding
 it green while the app is broken.
 
 Acceptance: =grep -c "^## The Flutter shell" docs/spec.md= prints 1.
+
+Done. The section exists, and four tests in
+=closure-cli/tests/flutter_shell_is_documented.rs= keep it true rather
+than trusting it: that it is there exactly once, that the recipe it
+names is a recipe the justfile actually has, that it names the four
+things that are load-bearing (GLX, GTK3, Wayland, Browse), and — the
+one that is not about prose — that no file in =flutter/lib/= parses org.
+That last is the section's central claim, and it is the claim most
+likely to stop being true quietly, because adding a =startsWith('*')=
+in Dart is a two-line convenience nobody would think to question.
+
+The in-app notice is a bar across the bottom of the window, the
+equivalent of the gpui startup notice: "Browse only — no editing,
+capture, agenda or keybindings. Needs a GL-capable display; see 'The
+Flutter shell' in docs/spec.md." A widget test asserts it, and it was
+re-photographed under weston afterwards, because wrapping the panes in
+a =Column= is exactly the sort of layout change a passing widget test
+does not notice going wrong.
+
+One thing that came out of this rather than being planned: =flutter
+analyze= reported ten issues, which is a standard the Rust side would
+not tolerate for a moment — clippy runs at =-D warnings= three times in
+=gates=. The raw function handles were public API and one field was
+dead. Both fixed, and =flutter analyze= now runs inside =just flutter=
+before the tests, so the Dart is held to the same bar it was already
+being compared against.
 
 * TODO Coverage: closure-cli is 37.6% covered
 1,697 missed lines of 2,721 — the single largest hole in the workspace,

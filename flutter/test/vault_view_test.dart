@@ -8,7 +8,6 @@
 
 import 'dart:io';
 
-import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:closure_shell/main.dart';
 
@@ -80,6 +79,23 @@ void main() {
     await tester.pumpWidget(const ClosureApp(vaultPath: ''));
     await tester.pumpAndSettle();
     expect(find.textContaining('No vault'), findsOneWidget);
+  });
+
+  testWidgets('the window says what it does not do', (tester) async {
+    // The gpui window has a startup notice about the rasteriser and an
+    // honest sentence about held keys, because a shell that quietly
+    // offers less than the kernel understands teaches the user a wrong
+    // model of the system. This one offers Browse and nothing else, and
+    // it has to say so where the user is rather than in a document they
+    // will not read.
+    final d = vaultDir();
+    await tester.pumpWidget(ClosureApp(vaultPath: d.path));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('Browse only'), findsOneWidget);
+    expect(find.textContaining('no editing'), findsOneWidget);
+
+    d.deleteSync(recursive: true);
   });
 
   test('the palette is the one closure-shell-core declares', () {

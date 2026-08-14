@@ -1075,6 +1075,73 @@ xdotool keydown j; sleep 3; xdotool keyup j    # counter stops at 1
 xdotool key j                                   # counter advances again
 ```
 
+## The Flutter shell
+
+The one shell that `nix flake check` does not build, does not lint and
+does not test. Everything else in this repo is inside I10; this is not,
+and the reason is worth stating precisely because "outside the gate" is
+easy to read as "unfinished" and it is not that.
+
+**Why it is outside.** `flutter pub get` resolves against pub.dev when
+it builds. A build that reaches the network is neither hermetic nor
+reproducible, so it cannot be a gate under I10. The two honest options
+were to weaken the invariant for one shell or to put that shell outside
+it. This is the second. `nix flake check` stays exactly as strong as it
+was, and it is now also true that a green check says nothing about the
+Dart — which is the trade, written down.
+
+**What stays inside.** `crates/closure-ffi` is a normal member of the
+workspace: built, clippy'd with `-D warnings`, and held at **100% line
+coverage** by `just gates`, with no exclusions. It is a C ABI —
+`crates/closure-ffi/include/closure.h` is the contract, hand-written,
+and a test fails if the header and the exports drift in either
+direction. The Dart can reach nothing else. So the unreproducible half
+can only ever be a **view**: it cannot parse org, cannot apply an edit,
+cannot decide what a headline means. A test walks `flutter/lib/` looking
+for org parsing and fails if any appears.
+
+**What it offers.** Browse, in the sense the shells matrix uses:
+the vault's outline, and the selected headline's body as
+`closure-shell-core` renders it. No editing, no capture, no agenda, no
+keybindings. `closure shells` lists this honestly and a test checks the
+matrix against the implementations, so this paragraph cannot quietly
+become optimistic.
+
+**How to build and run it.**
+
+```
+nix develop -c just flutter              # .so, 12 Dart tests, Linux bundle
+nix develop -c just run-flutter ~/notes  # and open it
+```
+
+**What does not work: it needs a GL-capable display, and `:1` is not
+one.** Flutter's Linux embedder is GTK3. GDK3's X11 backend takes GL
+through GLX only — its `epoxy_egl*` symbols belong to the Wayland
+backend — and the VNC display this project is demonstrated on
+advertises 22 X extensions with GLX not among them. The result is a
+window that opens, paints black, and logs
+`fl_compositor_render: assertion 'FL_IS_COMPOSITOR(self)' failed`.
+No change to this code fixes that; `glxinfo -B` on `:1` finds no RGB
+GLX visual for anything, and the Xvfb available here has no GLX either.
+
+EGL does work on this host — `eglinfo` reports EGL 1.5 on the X11 and
+surfaceless platforms via swrast — so the shell renders correctly
+wherever GDK3 will use EGL, which on GTK3 means Wayland. Verified under
+headless weston:
+
+```
+weston --backend=headless --renderer=gl --socket=wayland-99 --debug
+GDK_BACKEND=wayland WAYLAND_DISPLAY=wayland-99 \
+  <bundle>/closure_shell /path/to/vault
+weston-screenshooter          # --debug above, or capture is "unauthorized"
+```
+
+That is where the outline, the selection and the body were seen. It has
+never been seen on `:1`, and on a machine whose only display is `:1` it
+does not run at all. The gpui window is the shell to use there; this one
+is the parity exercise for the ABI, and the ABI is the part that is
+gated.
+
 ## Built-to-last kernel primitives (the "LISP-7" idea)
 
 The kernel is defined by a minimal set of primitives. Every feature (views,
