@@ -227,3 +227,137 @@ fn selecting_past_the_end_leaves_the_cursor_where_it_was() {
     unsafe { closure_ffi::closure_string_free(before) };
     unsafe { closure_ffi::closure_close(h) };
 }
+
+#[test]
+fn searching_narrows_the_rows_to_the_matches() {
+    // Search is one of the three capabilities CORE requires of anything
+    // calling itself a shell, and until now this ABI could not do it —
+    // which meant the Flutter shell listed in `closure shells` was
+    // offering less than the word promises.
+    let d = vault_dir();
+    let path = c(&d.path().to_string_lossy());
+    let h = unsafe { closure_ffi::closure_open(path.as_ptr()) };
+    let all = unsafe { closure_ffi::closure_row_count(h) };
+
+    let needle = c("Second");
+    assert!(unsafe { closure_ffi::closure_search(h, needle.as_ptr()) });
+    let hits = unsafe { closure_ffi::closure_row_count(h) };
+    assert!(
+        hits < all,
+        "search did not narrow anything: {hits} of {all}"
+    );
+    assert!(hits >= 1, "search found nothing it should have");
+
+    let title = unsafe { closure_ffi::closure_row_title(h, 0) };
+    let s = unsafe { std::ffi::CStr::from_ptr(title) }
+        .to_string_lossy()
+        .into_owned();
+    assert!(s.contains("Second"), "a non-matching row survived: {s}");
+    unsafe { closure_ffi::closure_string_free(title) };
+    unsafe { closure_ffi::closure_close(h) };
+}
+
+#[test]
+fn a_search_that_matches_nothing_is_empty_rather_than_everything() {
+    // The failure that makes a filter useless: no matches falling back
+    // to the unfiltered list, so the user reads the whole vault as
+    // "results". An empty allow-list must deny.
+    let d = vault_dir();
+    let path = c(&d.path().to_string_lossy());
+    let h = unsafe { closure_ffi::closure_open(path.as_ptr()) };
+    let needle = c("zzz-nothing-has-this-in-it");
+    assert!(unsafe { closure_ffi::closure_search(h, needle.as_ptr()) });
+    assert_eq!(unsafe { closure_ffi::closure_row_count(h) }, 0);
+    unsafe { closure_ffi::closure_close(h) };
+}
+
+#[test]
+fn clearing_the_search_brings_every_row_back() {
+    let d = vault_dir();
+    let path = c(&d.path().to_string_lossy());
+    let h = unsafe { closure_ffi::closure_open(path.as_ptr()) };
+    let all = unsafe { closure_ffi::closure_row_count(h) };
+    let needle = c("Second");
+    unsafe { closure_ffi::closure_search(h, needle.as_ptr()) };
+    unsafe { closure_ffi::closure_search_clear(h) };
+    assert_eq!(unsafe { closure_ffi::closure_row_count(h) }, all);
+    unsafe { closure_ffi::closure_close(h) };
+}
+
+#[test]
+fn capturing_adds_a_headline_the_vault_can_read_back() {
+    // Capture is the one entry point here that writes, so it carries
+    // the claim the writing CLI tests carry: it succeeded, the vault
+    // changed, and what it wrote is readable — a capture closure cannot
+    // parse back is the failure that loses a thought rather than
+    // merely annoying somebody.
+    let d = vault_dir();
+    let path = c(&d.path().to_string_lossy());
+    let h = unsafe { closure_ffi::closure_open(path.as_ptr()) };
+    let before = unsafe { closure_ffi::closure_row_count(h) };
+
+    let title = c("A thought worth keeping");
+    assert!(unsafe { closure_ffi::closure_capture(h, title.as_ptr()) });
+
+    let after = unsafe { closure_ffi::closure_row_count(h) };
+    assert_eq!(after, before + 1, "capture did not add a row");
+
+    let found = (0..after).any(|i| {
+        let p = unsafe { closure_ffi::closure_row_title(h, i) };
+        if p.is_null() {
+            return false;
+        }
+        let s = unsafe { std::ffi::CStr::from_ptr(p) }
+            .to_string_lossy()
+            .into_owned();
+        unsafe { closure_ffi::closure_string_free(p) };
+        s.contains("A thought worth keeping")
+    });
+    assert!(found, "the captured headline is not in the outline");
+    unsafe { closure_ffi::closure_close(h) };
+}
+
+#[test]
+fn search_and_capture_survive_a_null_handle_and_a_null_string() {
+    // Same contract as everything else here: null in, defined nothing
+    // out, never a dereference.
+    let d = vault_dir();
+    let path = c(&d.path().to_string_lossy());
+    let h = unsafe { closure_ffi::closure_open(path.as_ptr()) };
+    let s = c("anything");
+    unsafe {
+        assert!(!closure_ffi::closure_search(
+            std::ptr::null_mut(),
+            s.as_ptr()
+        ));
+        assert!(!closure_ffi::closure_capture(
+            std::ptr::null_mut(),
+            s.as_ptr()
+        ));
+        closure_ffi::closure_search_clear(std::ptr::null_mut());
+        assert!(!closure_ffi::closure_search(h, std::ptr::null()));
+        assert!(!closure_ffi::closure_capture(h, std::ptr::null()));
+        closure_ffi::closure_close(h);
+    }
+}
+
+#[test]
+fn capturing_nothing_files_nothing() {
+    // A UI with a capture box will send whatever is in it, and what is
+    // in it is empty more often than not — an Enter on an untouched
+    // field. Filing a blank TODO is worse than refusing: it puts a row
+    // in the inbox that says nothing and that somebody has to delete.
+    let d = vault_dir();
+    let path = c(&d.path().to_string_lossy());
+    let h = unsafe { closure_ffi::closure_open(path.as_ptr()) };
+    let before = unsafe { closure_ffi::closure_row_count(h) };
+    for blank in ["", "   ", "\t\n "] {
+        let t = c(blank);
+        assert!(
+            !unsafe { closure_ffi::closure_capture(h, t.as_ptr()) },
+            "captured {blank:?}"
+        );
+    }
+    assert_eq!(unsafe { closure_ffi::closure_row_count(h) }, before);
+    unsafe { closure_ffi::closure_close(h) };
+}

@@ -222,14 +222,19 @@ pub const GPUI_CAPABILITIES: &[Capability] = &[
 
 /// Flutter (cross-platform embedder; mobile + desktop via the kernel; suggestion-tier per vision).
 pub const FLUTTER_CAPABILITIES: &[Capability] = &[
-    // Empty until there is a Flutter shell. It claimed Browse, Capture
-    // and Search with no implementation anywhere — a matrix that
-    // describes a shell which does not exist is worse than one omitting
-    // it, because somebody reads the row and picks closure for it.
+    // These were here once with no implementation anywhere, were
+    // emptied for it, and are back because `flutter/lib/main.dart` now
+    // exists and does all three: the outline, a search box that filters
+    // it, and a capture bar that files a TODO. Each is a widget test in
+    // `flutter/test/vault_view_test.dart` and an ABI test in
+    // `closure-ffi`, so the row is checked from both ends.
     //
-    // `shells_matrix_is_true.rs` now fails if a column claims anything
-    // and its implementation file is absent, so these come back with
-    // the shell rather than ahead of it.
+    // Nothing beyond CORE, and that is the whole list on purpose — no
+    // editing, no agenda, no keybindings. `shells_matrix_is_true.rs`
+    // fails if a column claims what its implementation does not have.
+    Capability::Browse,
+    Capability::Capture,
+    Capability::Search,
 ];
 use closure_core::{
     AddSibling, BlockId, Command, Demote, Document, EnsureId, MoveSubtree, Promote, Registry,
@@ -3447,9 +3452,10 @@ fn shells_matrix_has_tauri_and_gpui_entries() {
     // into the printed matrix.
     assert!(TAURI_CAPABILITIES.contains(&Capability::Browse));
     assert!(GPUI_CAPABILITIES.contains(&Capability::Browse));
-    // Empty on purpose until `flutter/lib/main.dart` exists — the
-    // integration test fails if this claims anything before then.
-    assert!(FLUTTER_CAPABILITIES.is_empty());
+    // No longer empty: the Dart shell exists. It claims CORE and
+    // nothing else, which is the claim `shells_matrix_is_true.rs`
+    // checks against the implementation.
+    assert!(FLUTTER_CAPABILITIES.contains(&Capability::Browse));
 }
 
 fn cmd_new(vault: &Path, path: &Path, title: &str) -> Result<(), String> {

@@ -213,6 +213,106 @@ pub unsafe extern "C" fn closure_selected_body(handle: *mut Session) -> *mut c_c
     })
 }
 
+/// Read a NUL-terminated argument, or `None` for null / not UTF-8.
+///
+/// Same refusal as [`closure_open`]'s path, for the same reason: a
+/// lossy conversion would search for or file away something other than
+/// what the caller asked for, and silently.
+unsafe fn in_str<'a>(p: *const c_char) -> Option<&'a str> {
+    if p.is_null() {
+        return None;
+    }
+    // SAFETY: non-null, and the caller's contract says NUL-terminated.
+    unsafe { CStr::from_ptr(p) }.to_str().ok()
+}
+
+/// Narrow the outline to headlines matching `needle`.
+///
+/// Afterwards [`closure_row_count`] and [`closure_row_title`] describe
+/// the matches and nothing else — including zero of them, which is the
+/// honest answer to a search that found nothing and not a reason to
+/// hand back the whole vault.
+///
+/// Returns false for a null handle or a needle that is null or not
+/// UTF-8.
+///
+/// Goes through [`ModalApp::run`], the same door a chord, the palette
+/// and a clicked which-key chip use. A search of its own here would be
+/// a second owner of what "matching" means, and this codebase's
+/// recurring defect is exactly that shape.
+///
+/// # Safety
+///
+/// `handle` must be null or a live pointer from [`closure_open`];
+/// `needle` must be null or NUL-terminated.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn closure_search(handle: *mut Session, needle: *const c_char) -> bool {
+    guard(false, || {
+        // SAFETY: the caller's contract, checked for null inside.
+        let Some(s) = (unsafe { session(handle) }) else {
+            return false;
+        };
+        // SAFETY: the caller's contract, checked for null inside.
+        let Some(text) = (unsafe { in_str(needle) }) else {
+            return false;
+        };
+        s.app.run(&mut s.shell, &format!("search {text}"));
+        true
+    })
+}
+
+/// Drop the filter, so every row comes back. Null is a no-op.
+///
+/// # Safety
+///
+/// `handle` must be null or a live pointer from [`closure_open`].
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn closure_search_clear(handle: *mut Session) {
+    guard((), || {
+        // SAFETY: the caller's contract, checked for null inside.
+        let Some(s) = (unsafe { session(handle) }) else {
+            return;
+        };
+        // Bare `search` is the same command with an empty needle, and
+        // an empty filter matches everything — so this is "show all"
+        // expressed in the kernel's own vocabulary rather than a second
+        // way of saying it.
+        s.app.run(&mut s.shell, "search");
+    });
+}
+
+/// File `title` as a new `TODO` in the capture file (I8).
+///
+/// The one entry point here that writes. It still writes nothing
+/// itself: the kernel decides where a capture lands and what it looks
+/// like, and this passes a line of text to it.
+///
+/// Returns false for a null handle or a title that is null or not
+/// UTF-8.
+///
+/// # Safety
+///
+/// `handle` must be null or a live pointer from [`closure_open`];
+/// `title` must be null or NUL-terminated.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn closure_capture(handle: *mut Session, title: *const c_char) -> bool {
+    guard(false, || {
+        // SAFETY: the caller's contract, checked for null inside.
+        let Some(s) = (unsafe { session(handle) }) else {
+            return false;
+        };
+        // SAFETY: the caller's contract, checked for null inside.
+        let Some(text) = (unsafe { in_str(title) }) else {
+            return false;
+        };
+        if text.trim().is_empty() {
+            return false;
+        }
+        s.app.run(&mut s.shell, &format!("capture {text}"));
+        true
+    })
+}
+
 /// Free a string this library handed out. Null is allowed.
 ///
 /// # Safety

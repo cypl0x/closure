@@ -1096,16 +1096,26 @@ coverage** by `just gates`, with no exclusions. It is a C ABI —
 `crates/closure-ffi/include/closure.h` is the contract, hand-written,
 and a test fails if the header and the exports drift in either
 direction. The Dart can reach nothing else. So the unreproducible half
-can only ever be a **view**: it cannot parse org, cannot apply an edit,
-cannot decide what a headline means. A test walks `flutter/lib/` looking
+can only ever be a **view**: it cannot parse org, cannot decide what
+a headline means, and cannot write anything except by asking the kernel
+to capture a line of text. A test walks `flutter/lib/` looking
 for org parsing and fails if any appears.
 
-**What it offers.** Browse, in the sense the shells matrix uses:
-the vault's outline, and the selected headline's body as
-`closure-shell-core` renders it. No editing, no capture, no agenda, no
-keybindings. `closure shells` lists this honestly and a test checks the
+**What it offers.** CORE, and exactly CORE: Browse, Search, Capture.
+The vault's outline and the selected headline's body as
+`closure-shell-core` renders it; a search box that filters the outline;
+a bar that files a TODO. No editing, no agenda, no keybindings, nothing
+beyond those three. `closure shells` lists this and a test checks the
 matrix against the implementations, so this paragraph cannot quietly
 become optimistic.
+
+CORE is the floor deliberately. A "shell" that can only read is a
+viewer, and listing it beside the others in `closure shells` would set
+an expectation the row does not meet — which is why this shell grew a
+search box and a capture bar rather than the matrix growing an
+exception. Search and Capture go through `ModalApp::run`, the same door
+a chord and the palette use, so what "matching" means and where a
+capture lands are decided in one place for every shell.
 
 **How to build and run it.**
 

@@ -8,6 +8,8 @@
 
 import 'dart:io';
 
+import 'package:flutter/material.dart';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:closure_shell/main.dart';
 
@@ -92,9 +94,81 @@ void main() {
     await tester.pumpWidget(ClosureApp(vaultPath: d.path));
     await tester.pumpAndSettle();
 
-    expect(find.textContaining('Browse only'), findsOneWidget);
+    expect(find.textContaining('Browse, search and capture only'),
+        findsOneWidget);
     expect(find.textContaining('no editing'), findsOneWidget);
 
+    d.deleteSync(recursive: true);
+  });
+
+  testWidgets('typing in the search box narrows the outline', (tester) async {
+    // Search is a CORE capability, and the reason this shell could not
+    // honestly claim to be one until now.
+    final d = vaultDir();
+    await tester.pumpWidget(ClosureApp(vaultPath: d.path));
+    await tester.pumpAndSettle();
+    expect(find.text('Alpha headline'), findsOneWidget);
+
+    await tester.enterText(find.byKey(const Key('search')), 'Beta');
+    await tester.pumpAndSettle();
+
+    expect(find.text('Beta headline'), findsOneWidget);
+    expect(find.text('Alpha headline'), findsNothing);
+
+    d.deleteSync(recursive: true);
+  });
+
+  testWidgets('emptying the search box brings the outline back',
+      (tester) async {
+    final d = vaultDir();
+    await tester.pumpWidget(ClosureApp(vaultPath: d.path));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const Key('search')), 'Beta');
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const Key('search')), '');
+    await tester.pumpAndSettle();
+    expect(find.text('Alpha headline'), findsOneWidget);
+    d.deleteSync(recursive: true);
+  });
+
+  testWidgets('a search matching nothing says so rather than looking broken',
+      (tester) async {
+    // An empty list and a broken pane look identical. The user needs to
+    // know which one they are looking at.
+    final d = vaultDir();
+    await tester.pumpWidget(ClosureApp(vaultPath: d.path));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const Key('search')), 'zzz-nothing');
+    await tester.pumpAndSettle();
+    expect(find.textContaining('No matches'), findsOneWidget);
+    d.deleteSync(recursive: true);
+  });
+
+  testWidgets('capturing from the bar adds the headline to the outline',
+      (tester) async {
+    final d = vaultDir();
+    await tester.pumpWidget(ClosureApp(vaultPath: d.path));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byKey(const Key('capture')), 'Captured here');
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('Captured here'), findsOneWidget);
+    d.deleteSync(recursive: true);
+  });
+
+  testWidgets('capturing a blank line files nothing', (tester) async {
+    final d = vaultDir();
+    await tester.pumpWidget(ClosureApp(vaultPath: d.path));
+    await tester.pumpAndSettle();
+    final before = find.byType(InkWell).evaluate().length;
+
+    await tester.enterText(find.byKey(const Key('capture')), '   ');
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pumpAndSettle();
+
+    expect(find.byType(InkWell).evaluate().length, equals(before));
     d.deleteSync(recursive: true);
   });
 

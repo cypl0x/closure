@@ -16,6 +16,7 @@
 #ifndef CLOSURE_H
 #define CLOSURE_H
 
+#include <stdbool.h>
 #include <stddef.h>
 
 #ifdef __cplusplus
@@ -48,6 +49,19 @@ void closure_select(ClosureSession *handle, size_t index);
 /* The selected body as a reader should see it, or NULL.
  * Free with closure_string_free. */
 char *closure_selected_body(ClosureSession *handle);
+
+/* Narrow the outline to headlines matching `needle`. Afterwards
+ * closure_row_count/closure_row_title describe the matches only — zero
+ * of them if nothing matched, never the whole vault. False for a NULL
+ * handle or a needle that is NULL or not UTF-8. */
+bool closure_search(ClosureSession *handle, const char *needle);
+
+/* Drop the filter. NULL is a no-op. */
+void closure_search_clear(ClosureSession *handle);
+
+/* File `title` as a new TODO in the capture file. False for a NULL
+ * handle, or a title that is NULL, not UTF-8, or blank. */
+bool closure_capture(ClosureSession *handle, const char *title);
 
 /* Free a string this library returned. NULL is allowed. */
 void closure_string_free(char *s);

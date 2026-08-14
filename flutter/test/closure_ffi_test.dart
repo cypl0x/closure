@@ -94,4 +94,37 @@ void main() {
     expect(() => s.close(), returnsNormally);
     d.deleteSync(recursive: true);
   });
+  test('search narrows the rows and clearing it brings them back', () {
+    final d = vaultDir();
+    final s = ClosureSession.open(d.path)!;
+    final all = s.rowCount;
+    expect(s.search('Second'), isTrue);
+    expect(s.rowCount, lessThan(all));
+    expect(s.rowTitle(0), contains('Second'));
+    expect(s.search(''), isTrue);
+    expect(s.rowCount, equals(all));
+    s.close();
+    d.deleteSync(recursive: true);
+  });
+
+  test('a search matching nothing shows nothing, not everything', () {
+    final d = vaultDir();
+    final s = ClosureSession.open(d.path)!;
+    expect(s.search('zzz-no-such-headline'), isTrue);
+    expect(s.rowCount, equals(0));
+    s.close();
+    d.deleteSync(recursive: true);
+  });
+
+  test('capture adds a headline and a blank one is refused', () {
+    final d = vaultDir();
+    final s = ClosureSession.open(d.path)!;
+    final before = s.rowCount;
+    expect(s.capture('A thought from Dart'), isTrue);
+    expect(s.rowCount, equals(before + 1));
+    expect(s.capture('   '), isFalse);
+    expect(s.rowCount, equals(before + 1));
+    s.close();
+    d.deleteSync(recursive: true);
+  });
 }

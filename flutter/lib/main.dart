@@ -2,8 +2,9 @@
 //
 // Deliberately small. `docs/spec.md` says a shell offers a subset of
 // what the kernel understands and must not invent behaviour of its own,
-// and this one offers Browse — the vault's headlines, and what a
-// headline says. Everything it shows comes back from `closure-shell-core`
+// and this one offers CORE and exactly CORE: the vault's headlines,
+// what a headline says, a search that filters them, and a bar that
+// files a TODO. Everything it shows comes back from `closure-shell-core`
 // through `closure-ffi`; there is no org parsing on this side of the
 // boundary and there must never be, because that is how two owners of
 // one fact get created.
@@ -71,6 +72,7 @@ class _VaultViewState extends State<VaultView> {
   ClosureSession? _session;
   String? _error;
   int _selected = 0;
+  final _captureController = TextEditingController();
 
   @override
   void initState() {
@@ -92,6 +94,7 @@ class _VaultViewState extends State<VaultView> {
 
   @override
   void dispose() {
+    _captureController.dispose();
     _session?.close();
     _session = null;
     super.dispose();
@@ -101,6 +104,35 @@ class _VaultViewState extends State<VaultView> {
     setState(() {
       _selected = i;
       _session?.select(i);
+    });
+  }
+
+  /// Filter as the user types. The kernel decides what matches; this
+  /// hands it the text and repaints.
+  void _search(String needle) {
+    setState(() {
+      _session?.search(needle);
+      // The old selection indexed the old list. Anything else would
+      // show one row highlighted and a different row's body.
+      _selected = 0;
+      if ((_session?.rowCount ?? 0) > 0) {
+        _session?.select(0);
+      }
+    });
+  }
+
+  void _capture(String title) {
+    final s = _session;
+    if (s == null) {
+      return;
+    }
+    // Refusal is the kernel's call, not a rule repeated here — a blank
+    // title comes straight back as false.
+    final filed = s.capture(title);
+    setState(() {
+      if (filed) {
+        _captureController.clear();
+      }
     });
   }
 
@@ -119,7 +151,18 @@ class _VaultViewState extends State<VaultView> {
     return Scaffold(
       body: Column(
         children: [
+          _Bar(
+            fieldKey: const Key('search'),
+            hint: 'Search headlines',
+            onChanged: _search,
+          ),
           Expanded(child: _panes(s, count)),
+          _Bar(
+            fieldKey: const Key('capture'),
+            hint: 'Capture a TODO, Enter to file it',
+            controller: _captureController,
+            onSubmitted: _capture,
+          ),
           const _Notice(),
         ],
       ),
@@ -133,7 +176,15 @@ class _VaultViewState extends State<VaultView> {
             width: 320,
             child: Container(
               color: Palette.bg,
-              child: ListView.builder(
+              child: count == 0
+                  ? const Padding(
+                      padding: EdgeInsets.all(12),
+                      child: Text(
+                        'No matches.',
+                        style: TextStyle(color: Palette.muted, fontSize: 13),
+                      ),
+                    )
+                  : ListView.builder(
                 itemCount: count,
                 itemBuilder: (context, i) {
                   final selected = i == _selected;
@@ -154,7 +205,7 @@ class _VaultViewState extends State<VaultView> {
                     ),
                   );
                 },
-              ),
+                    ),
             ),
           ),
           const VerticalDivider(width: 1, color: Palette.selection),
@@ -180,6 +231,50 @@ class _VaultViewState extends State<VaultView> {
   }
 }
 
+/// A one-line text field with a label, used for search and for capture.
+class _Bar extends StatelessWidget {
+  final Key fieldKey;
+  final String hint;
+  final TextEditingController? controller;
+  final ValueChanged<String>? onChanged;
+  final ValueChanged<String>? onSubmitted;
+
+  const _Bar({
+    required this.fieldKey,
+    required this.hint,
+    this.controller,
+    this.onChanged,
+    this.onSubmitted,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      color: Palette.bg,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      child: TextField(
+        key: fieldKey,
+        controller: controller,
+        onChanged: onChanged,
+        onSubmitted: onSubmitted,
+        style: const TextStyle(color: Palette.fg, fontSize: 13),
+        cursorColor: Palette.accent,
+        decoration: InputDecoration(
+          isDense: true,
+          hintText: hint,
+          hintStyle: const TextStyle(color: Palette.muted, fontSize: 13),
+          enabledBorder: const UnderlineInputBorder(
+            borderSide: BorderSide(color: Palette.selection),
+          ),
+          focusedBorder: const UnderlineInputBorder(
+            borderSide: BorderSide(color: Palette.accent),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 /// What this shell does not do, said where the user is.
 ///
 /// The gpui window carries the equivalent about the software rasteriser
@@ -197,7 +292,7 @@ class _Notice extends StatelessWidget {
       color: Palette.selection,
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       child: const Text(
-        'Browse only — no editing, capture, agenda or keybindings. '
+        'Browse, search and capture only — no editing, agenda or keybindings. '
         'Needs a GL-capable display; see "The Flutter shell" in docs/spec.md.',
         style: TextStyle(color: Palette.muted, fontSize: 11),
       ),

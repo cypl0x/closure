@@ -38,6 +38,11 @@ typedef _BodyC = ffi.Pointer<ffi.Char> Function(ffi.Pointer<ffi.Opaque>);
 typedef _Body = ffi.Pointer<ffi.Char> Function(ffi.Pointer<ffi.Opaque>);
 typedef _StringFreeC = ffi.Void Function(ffi.Pointer<ffi.Char>);
 typedef _StringFree = void Function(ffi.Pointer<ffi.Char>);
+typedef _SearchC = ffi.Bool Function(
+    ffi.Pointer<ffi.Opaque>, ffi.Pointer<ffi.Char>);
+typedef _Search = bool Function(ffi.Pointer<ffi.Opaque>, ffi.Pointer<ffi.Char>);
+typedef _SearchClearC = ffi.Void Function(ffi.Pointer<ffi.Opaque>);
+typedef _SearchClear = void Function(ffi.Pointer<ffi.Opaque>);
 
 /// The loaded library, and the version handshake.
 class Closure {
@@ -60,6 +65,9 @@ class Closure {
   final _Select _select;
   final _Body _selectedBody;
   final _StringFree _stringFree;
+  final _Search _search;
+  final _SearchClear _searchClear;
+  final _Search _capture;
 
   factory Closure._of(ffi.DynamicLibrary lib) => Closure._(
         lib.lookupFunction<_AbiVersionC, _AbiVersion>('closure_ffi_abi_version'),
@@ -70,6 +78,9 @@ class Closure {
         lib.lookupFunction<_SelectC, _Select>('closure_select'),
         lib.lookupFunction<_BodyC, _Body>('closure_selected_body'),
         lib.lookupFunction<_StringFreeC, _StringFree>('closure_string_free'),
+        lib.lookupFunction<_SearchC, _Search>('closure_search'),
+        lib.lookupFunction<_SearchClearC, _SearchClear>('closure_search_clear'),
+        lib.lookupFunction<_SearchC, _Search>('closure_capture'),
       );
 
   Closure._(
@@ -81,6 +92,9 @@ class Closure {
     this._select,
     this._selectedBody,
     this._stringFree,
+    this._search,
+    this._searchClear,
+    this._capture,
   );
 
   /// The library's own ABI version.
@@ -179,6 +193,34 @@ class ClosureSession {
     final s = p.cast<Utf8>().toDartString();
     _c._stringFree(p);
     return s;
+  }
+
+  /// Narrow the outline to headlines matching [needle].
+  ///
+  /// Afterwards [rowCount] and [rowTitle] describe the matches only —
+  /// zero of them if nothing matched. An empty needle clears the
+  /// filter, which is what a cleared search box should mean.
+  bool search(String needle) {
+    if (needle.isEmpty) {
+      _c._searchClear(_live);
+      return true;
+    }
+    return _withUtf8(needle, (p) => _c._search(_live, p));
+  }
+
+  /// File [title] as a new TODO. False if it was blank or refused.
+  bool capture(String title) =>
+      _withUtf8(title, (p) => _c._capture(_live, p));
+
+  /// Hand a Dart string to C as UTF-8 and free it afterwards, whatever
+  /// happens in between.
+  bool _withUtf8(String s, bool Function(ffi.Pointer<ffi.Char>) f) {
+    final p = s.toNativeUtf8();
+    try {
+      return f(p.cast<ffi.Char>());
+    } finally {
+      malloc.free(p);
+    }
   }
 
   /// Close the vault. Closing twice is allowed and does nothing.

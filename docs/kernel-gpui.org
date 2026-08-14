@@ -2718,6 +2718,19 @@ read-only pane steps by =outline_view.height / 2= — half the
 wrap. That is independent of the guess and is why paging in the manual
 skips more than it looks like it should.
 
+Fixed in =6a7ce29e=, "a pane's half-page is half the pane, not half the
+outline" — this note is left standing because it is what led there, but
+it is no longer open. Read =self.pane_view.page / 2= in the
+=half-page-down= arm.
+
+One piece of it survives, and it is small: the fallback when
+=pane_view.page= is still 0 — a pane that has not been painted yet —
+halves =outline_view.height=, the measurement this whole note argues is
+the wrong one. Nothing has been shown to reach it, and a guess with no
+frame to measure has to come from somewhere. Worth a test that either
+demonstrates the path or proves it unreachable before anyone changes
+it; not worth inventing a second wrong number for.
+
 * DONE Bug: the read-only panes clip long lines instead of wrapping
 Found 2026-08-11 in the same screenshot as the scroll fix. Manual
 rows run off the right edge mid-word — "Add a sibling headl" — so a
