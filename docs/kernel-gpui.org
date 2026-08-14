@@ -1631,6 +1631,51 @@ already uses, so the two cannot disagree about a file again.
 What is genuinely left needs a socket or a terminal: =serve=, =sync=,
 =tui=, =gpui=, =egui=, =plugin=, =pkg=, =ask=, =chat=.
 
+That list was wrong too, and in the same way it was wrong about
+=mcp=/=acp=/=lsp=. 68.0% → 76.81% across three passes:
+
+- *Sockets and registries.* =pkg= reads a directory, =plugin= runs a
+  program you name, =sync= shells out to a git that is already local,
+  and =serve= binds loopback — the same hermeticity argument
+  =closure-sync='s TCP tests already make. Port 0 throughout, because a
+  fixed port is a test that passes alone and fails in a suite.
+- *The seven that read or change one file*: =eval=, =info=, =random=,
+  =history=, =logbook-append=, =edit-block=, =cron=. Skipped earlier
+  because each wants its own fixture, which is a reason to write seven
+  fixtures.
+- *The reporting commands and the LLM door*: =view=, =rank=, =lists=,
+  =clock=, =validate=, =set-planning=, and what =ask=/=chat= do with no
+  key.
+
+Six of my premises were wrong and the code was right every time. Worth
+listing, because the pattern is one thing:
+
+- =eval= refuses everything until the vault is trusted, in a file the
+  vault's author cannot send you. The gate now has its own test so
+  trusting elsewhere cannot become the only thing those tests prove.
+- =cron --at= wants concrete numbers; =*= is "bad time field", rightly.
+- =history= found an empty journal because recording is off by default,
+  so =--grep= narrowed nothing and the comparison proved nothing. It
+  now asserts non-empty before comparing.
+- =lists= reads the *preamble* — the same assumption =toggle-checkbox=
+  has, which cost time twice now and is written at the call site.
+- =clock= walks LOGBOOK drawers, not bare =CLOCK:= lines.
+
+Every one of those was a test asserting something the command never
+claimed. The commands are more careful than the tests written against
+them, which is the opposite of the usual direction and worth
+remembering next time a sweep "finds a bug" on the first run.
+
+*And one real defect, found by the formatter rather than looked for.*
+=the_export_and_import_commands_run= called =export-html= with no
+=--out=, whose default is =vault.html= in the current directory — the
+crate root under =cargo test=. Every run wrote a file into the
+repository with the tempdir's random path inside it, so =nix fmt
+--fail-on-change= failed on the *next* run rather than that one. I
+committed one without noticing. A test that litters is untidy; one that
+litters differently each time breaks the invariant it exists to
+protect. Fixed, untracked, and =vault.html= is now ignored.
+
 * DONE Does the SPC leader engage on the kernel API as it does in the window?
 Doom binds both =q= → quit and =SPC q r= → reload-shell, so only the
 leader state tells them apart. Fed as three =on_key= calls (=SPC=, =q=,
