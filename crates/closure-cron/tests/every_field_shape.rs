@@ -242,3 +242,51 @@ fn the_scheduler_fires_only_what_is_due() {
     assert_eq!(morning.load(Ordering::SeqCst), 1);
     assert_eq!(evening.load(Ordering::SeqCst), 1);
 }
+
+#[test]
+fn a_bad_field_is_reported_wherever_it_sits() {
+    // `parse` propagates from five positions and only the first two
+    // had ever failed in a test. A parser that validated the minute
+    // and waved the month through would accept a schedule that can
+    // never fire.
+    for (line, which) in [
+        ("x 9 * * * c", "minute"),
+        ("0 x * * * c", "hour"),
+        ("0 9 x * * c", "day of month"),
+        ("0 9 * x * c", "month"),
+        ("0 9 * * x c", "day of week"),
+    ] {
+        assert!(
+            matches!(parse(line), Err(CronError::Number(_))),
+            "a bad {which} was accepted: {line}"
+        );
+    }
+}
+
+#[test]
+fn a_schedule_pinned_to_a_month_is_not_described_as_daily() {
+    // `daily` is dom-is-any AND month-is-any, and each half has to be
+    // able to say no on its own. With only one of them ever false, a
+    // parenthesis in the wrong place would go unnoticed and a June-only
+    // job would read as "every day at 09:00".
+    let month_only = parse("0 9 * 6 * x").expect("parse");
+    assert_eq!(describe(&month_only), expression(&month_only));
+
+    let dom_only = parse("0 9 1 * * x").expect("parse");
+    assert_eq!(describe(&dom_only), expression(&dom_only));
+}
+
+#[test]
+fn a_scheduler_says_how_many_jobs_it_holds_rather_than_printing_them() {
+    // The callbacks are boxed closures and cannot be shown, so Debug
+    // reports the count. Worth asserting because a Debug that tried to
+    // format the jobs would not compile, and one that said nothing at
+    // all would make a scheduler indistinguishable from an empty one
+    // in a log.
+    let mut s = Scheduler::new();
+    assert!(format!("{s:?}").contains('0'), "{s:?}");
+    s.add(parse("0 9 * * * x").expect("parse"), || {});
+    let shown = format!("{s:?}");
+    assert!(shown.contains("Scheduler"), "{shown}");
+    assert!(shown.contains('1'), "the job count is not in {shown}");
+}
