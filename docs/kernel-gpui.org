@@ -2020,6 +2020,22 @@ checked since. Two came out of that this window, both silent:
    no caller passes one — but a reader that swallows trailing input
    turns a caller's bug into a wrong date in an agenda. Fixed.
 
+*=just gates= is not reliably green on a loaded machine, and that is a
+real defect in the gate rather than in the code.*
+=closure-shell-core/tests/traversal_cost.rs=,
+=an_edit_does_not_recount_the_files_you_are_not_in=, compares two
+*durations* and fails above a ratio. On 2026-08-15 it failed at 2.1x
+(39.41µs → 82.01µs) during a run alongside other builds, and passed
+immediately on the same commit with the machine idle. Nothing about the
+code changed between the two.
+
+The claim it makes is right and worth keeping — "the counting pass is
+reading files nobody asked about" — but that claim is about a *count of
+files read*, not about elapsed time, and the test measures the wrong
+quantity. A timing ratio in a gate means the gate reports on how busy
+the machine is. Rewrite it to count reads rather than microseconds;
+until then a red gate deserves a second run before it is believed.
+
 *Two traps that have each cost time twice now.*
 - Measure after =cargo llvm-cov clean --workspace= or do not quote the
   number. A stale profile reported =entity_char= as 67 uncovered lines
