@@ -3683,10 +3683,11 @@ fn now_secs() -> u64 {
         .map_or(0, |d| d.as_secs())
 }
 
-/// Derive the read-only panes the GUI grew from the same vault. A
-/// feature that exists only in the window is a feature you cannot use
+/// Derive the read-only panes the GUI grew, from the same vault.
+///
+/// A feature that exists only in the window is a feature you cannot use
 /// over ssh, which is most of what a terminal shell is for.
-fn sync_panes(app: &mut App, vault: &Vault) {
+pub fn sync_panes(app: &mut App, vault: &Vault) {
     // The undo history belongs to the selected file, like undo itself.
     let history = app
         .selected_path()
@@ -3750,9 +3751,10 @@ fn sync_panes(app: &mut App, vault: &Vault) {
     app.set_bridges(closure_shell_core::bridge_rows_for(vault));
 }
 
-/// Refresh every vault-derived record in the app: paths, headline
-/// titles, file sources, and the backlink rows.
-fn sync_app(app: &mut App, vault: &Vault) {
+/// Refresh every vault-derived record in the app.
+///
+/// Paths, headline titles, file sources, and the backlink rows.
+pub fn sync_app(app: &mut App, vault: &Vault) {
     app.set_paths(vault.paths());
     // The cycles are the vault's, not the shell's (Q3-V5).
     let cfg = closure_config::Config::from_path(&vault.root().join(closure_config::CONFIG_FILE))
@@ -3895,15 +3897,15 @@ fn run_loop(
     }
 }
 
-/// Drain every pending vault-write request the last stroke produced,
-/// executing it through the kernel-backed vault methods and re-syncing
-/// the app on success. Soft errors (missing block, empty history) are
-/// no-ops; hard errors propagate.
 /// The Q3 org verbs that move a whole subtree: refile and archive.
 ///
 /// Split out of [`apply_requests`] for length, and because these two
 /// are the only requests that rewrite *two* files at once.
-fn apply_org_verb_requests(app: &mut App, vault: &mut Vault) -> Result<(), TuiError> {
+///
+/// # Errors
+///
+/// [`TuiError::Vault`] when the move cannot be carried out.
+pub fn apply_org_verb_requests(app: &mut App, vault: &mut Vault) -> Result<(), TuiError> {
     let vault_err = |e: closure_store::VaultError| TuiError::Vault(e.to_string());
     if let Some((source, target)) = app.take_refile_request() {
         vault
@@ -3969,7 +3971,16 @@ fn add_heading(
     vault.add_sibling(&bid, &line)
 }
 
-fn apply_requests(
+/// Drain every pending vault-write request the last stroke produced.
+///
+/// Executed through the kernel-backed vault methods, re-syncing the app
+/// on success. Soft errors (missing block, empty history) are no-ops;
+/// hard errors propagate.
+///
+/// # Errors
+///
+/// [`TuiError::Vault`] for a write the vault refused.
+pub fn apply_requests(
     app: &mut App,
     vault: &mut Vault,
     journal: &closure_record::Journal,
@@ -4073,7 +4084,7 @@ fn apply_requests(
 /// Drain the structural / history requests (promote, demote, move,
 /// cut, paste, eval, undo, redo). These tolerate soft errors —
 /// a missing block or empty history is a no-op, not a crash.
-fn apply_structure_requests(
+pub fn apply_structure_requests(
     app: &mut App,
     vault: &mut Vault,
     journal: &closure_record::Journal,
