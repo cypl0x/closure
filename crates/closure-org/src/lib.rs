@@ -9101,9 +9101,19 @@ pub fn rewrite_headline_remove_property(
             .rfind('\n')
             .map_or(0, |i| i + 1)
             .min(p.drawer_span.start);
-        let end = src[p.drawer_span.end..]
-            .find('\n')
-            .map_or(src.len(), |i| p.drawer_span.end + i + 1);
+        // Take the newline that ends the drawer, and only that one.
+        //
+        // This searched forward for the *next* newline instead. When
+        // `drawer_span` already runs past `:END:`'s own newline — which
+        // it does — the next one found is the one ending the line
+        // *after* the drawer, and removing the last property deleted
+        // the headline's body with it. Silently: the result still
+        // parses, so nothing downstream could tell.
+        let end = if src[p.drawer_span.end..].starts_with('\n') {
+            p.drawer_span.end + 1
+        } else {
+            p.drawer_span.end
+        };
         out.clone_from(&src);
         out.replace_range(drawer_start..end, "");
     }

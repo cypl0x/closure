@@ -168,3 +168,44 @@ fn a_command_against_an_id_that_is_not_there_leaves_the_file_alone() {
         );
     }
 }
+
+#[test]
+fn undoing_a_property_on_a_headline_that_had_no_drawer_keeps_the_body() {
+    // The shape the byte-exact sweep above cannot reach. Its fixture's
+    // headline already carries an :ID:, so `set-property` adds a second
+    // entry and undo removes one of two — the drawer stays either way.
+    //
+    // A headline with *no* drawer is the other case: the property
+    // creates the drawer, and undo has to take the whole drawer back
+    // out. `rewrite_headline_remove_property` was removing one line too
+    // many there and deleting the body with it, silently, because the
+    // result still parsed.
+    let src = "* Bare headline\nthe body that must survive\n";
+    let mut d = Document::load_str(src).expect("loads");
+    let bare = d.roots().first().expect("a root").id().clone();
+
+    closure_core::Command::apply(
+        &closure_core::SetProperty::new(bare, "CATEGORY".to_owned(), "build".to_owned()),
+        &mut d,
+    )
+    .expect("applies");
+    assert!(d.source().contains(":CATEGORY:"), "{}", d.source());
+
+    d.undo().expect("undoes");
+    let after = d.source();
+    assert!(
+        after.contains("the body that must survive"),
+        "undo ate the body: {after:?}"
+    );
+    assert!(
+        !after.contains(":CATEGORY:"),
+        "the property stayed: {after}"
+    );
+
+    // Not byte-exact, and that is correct rather than a second bug:
+    // addressing a headline gives it an `:ID:`, and an id once issued
+    // is never withdrawn (I2). So the drawer remains with the id in it
+    // — what must not remain is the property, and what must not vanish
+    // is the body.
+    assert!(after.contains(":ID:"), "the id was withdrawn: {after}");
+}
