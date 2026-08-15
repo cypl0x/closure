@@ -2029,6 +2029,14 @@ Where the remaining ~5,200 lines are, measured the same day:
 Three things learned getting here, all of which change how the rest
 should be approached:
 
+0. *Measure after `cargo llvm-cov clean --workspace`, or do not quote
+   the number.* This has now cost time twice. A profile left over from
+   a previous build reported closure-sniffer at 87.78% with eleven
+   lines that do not exist, and later reported =entity_char= as
+   sixty-seven uncovered lines in a function four existing tests
+   already reach. Both readings were confident and wrong. The stale
+   direction is not predictable — one was too low, one invented work.
+
 1. *Measuring a crate alone understates it badly.* =cargo llvm-cov -p
    closure-undo= says 77.65% where the workspace run says 93.79%,
    because most of that crate is exercised by its callers. Only the
