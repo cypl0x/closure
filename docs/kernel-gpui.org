@@ -1838,6 +1838,27 @@ half originally looped over the corpus inside the outer loop and broke
 after one iteration, so every one of those functions saw only the empty
 string. Coverage that looks broad and is not.
 
+
+*A data-loss bug, found 2026-08-15 by testing a documented rule.*
+=rewrite_headline_remove_property= says the drawer goes when its last
+entry does. It took one line too many: the drawer removal searched
+forward for the *next* newline from =drawer_span.end=, which already
+runs past =:END:='s own newline, so it swallowed the line after the
+drawer. Removing the only property deleted the headline's *body*, the
+result still parsed, and nothing downstream could tell.
+
+Reachable from the keyboard: this is how =Edit::SetProperty= reverses,
+so setting a property on a headline with no drawer and pressing undo
+ate its body. =every_command_undoes= missed it because its fixture
+headline already carries an =:ID:= — the property is then one of two,
+the drawer survives, and the bug cannot fire. *Test the shape where the
+bug would show, not the convenient one*, which was already on the rules
+list and is now on it for a reason.
+
+Worth generalising: the functions in this crate that carry a careful
+doc comment about an edge case are the ones to test next. The comment
+exists because somebody thought hard about it once; nothing has checked
+since.
 * TODO Coverage: closure-tui is frozen and holds 1,279 missed lines
 38.6% of the crate is untested. Under the reading in the parent item a
 test is not a feature, so this is allowed and is the largest frozen-
