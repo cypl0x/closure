@@ -129,7 +129,12 @@ check:
 # It only ever moves up. 88 was where it sat while closure-cli was at
 # 37% and closure-shell-core had 1,400 unexercised lines; the work in
 # `docs/kernel-gpui.org` under the Coverage items took the workspace to
-# 90.17%, so the floor follows it to 90.
+# 90.17%, so the floor followed to 90, and then to 91 at 91.03%.
+#
+# `-j 4` because this is the command that fills the disk. A full-parallel
+# run writes a .profraw per test binary per core and filled 78G of free
+# space, failing with "No space left on device" from cargo rather than
+# anything about coverage.
 #
 # The margin is deliberately thin — about 90 lines of slack out of
 # 52,971. A ratchet with room in it is a ratchet that lets coverage
@@ -137,7 +142,7 @@ check:
 # fails after an honest change, the answer is a test, not a smaller
 # number: the number has never gone down and should not start.
 coverage:
-    cargo llvm-cov --workspace --fail-under-lines 90
+    cargo llvm-cov --workspace --fail-under-lines 91 -j 4
 
 # Parser fuzz/replay + property gate (I1/I5/I6) on stable, for every
 # first-class format (org + markdown).

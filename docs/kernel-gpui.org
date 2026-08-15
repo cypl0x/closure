@@ -2022,8 +2022,13 @@ Acceptance: this item is a record; close it when the workspace gate
 reaches 100 or when the next pass supersedes the numbers.
 
 * TODO Coverage: raise the workspace gate to 100 and keep it there
-The floor moved 88 → *90* on 2026-08-14, which is the first time it has
-moved at all. Workspace lines are 90.16–90.17% (52,971 lines, ~5,210
+The floor moved 88 → *90* on 2026-08-14 and → *91* on 2026-08-15.
+
+*The full-parallel run is what fills the disk.* `just coverage` writes a
+`.profraw` per test binary per core; at full width it consumed 78G of
+free space and failed with "No space left on device" from cargo, which
+names nothing about coverage and sends you to `just reclaim`, where
+there is nothing to reclaim. The recipe carries `-j 4` now. Workspace lines are 90.16–90.17% (52,971 lines, ~5,210
 missed); the run-to-run wobble of a couple of lines is why the number
 is 90 and not 90.1.
 
