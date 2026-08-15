@@ -10468,6 +10468,14 @@ pub fn shift_date(date: &str, days: i64) -> Option<String> {
     let y: i64 = parts.next()?.parse().ok()?;
     let m: i64 = parts.next()?.parse().ok()?;
     let d: i64 = parts.next()?.parse().ok()?;
+    // Three fields and no more. `2026-06-20-01` parsed as the twentieth
+    // of June and threw the rest away, which is the doc's own "not a
+    // date" arriving as an answer. Nothing calls it with a fourth field
+    // today; a reader that quietly ignores trailing input is how a
+    // caller's bug becomes a wrong date instead of a None.
+    if parts.next().is_some() {
+        return None;
+    }
     let (y, m, d) = civil_from_days(days_from_civil(y, m, d) + days);
     Some(format!("{y:04}-{m:02}-{d:02}"))
 }
