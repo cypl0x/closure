@@ -1977,49 +1977,64 @@ tests, so its number is not the workspace number the parent item lists.
 Compare like with like or the ratchet will look like it moved when it
 did not.
 
-* TODO Coverage: where the last 5,918 lines are, measured 2026-08-13
-Written as a handoff rather than a summary: this is the state the next
-pass should start from, so it does not have to re-measure.
+* TODO Coverage: where the last 4,750 lines are, measured 2026-08-15
+Supersedes the 2026-08-13 measurement. Workspace *91.03%*, 4,750 missed
+of 52,973. =just gates= 0, =just coverage= 0 at floor *91*, =just
+flutter= 0. Queue still 8.
 
-Workspace 88.83%, 5,901 missed of 52,839. Started this run at 87.62%.
+| crate              | missed | crate %  |
+|--------------------+--------+----------|
+| closure-shell-core |  ~1300 |    ~91   |
+| closure-org        |  ~1000 |     89   |
+| closure-tui        |    765 |  76.93   |
+| closure-store      |   ~520 |  94.55   |
+| closure-cli        |   ~360 |  86.50   |
+| closure-eval       |    142 |  78.58   |
+| closure-lsp        |    244 |  76.40   |
+| closure-core       |    197 |  88.03   |
+| everything else    |   ~200 |          |
 
-| file                    | missed | of     |
-|-------------------------+--------+--------|
-| closure-shell-core      |   1395 |  15155 |
-| closure-tui             |    990 |   3316 |
-| closure-org             |    978 |   9812 |
-| closure-cli/main.rs     |    871 |   2725 |
-| closure-store           |    412 |   9615 |
-| closure-core            |    240 |   1638 |
-| closure-eval            |    148 |    663 |
-| closure-lsp             |    145 |   1034 |
-| closure-llm             |    127 |    516 |
-| closure-shell-gpui      |    102 |   1010 |
-| closure-sync            |     93 |    760 |
-| closure-config          |     67 |    545 |
+*Start here.* =closure-tui= is the one with a stated acceptance
+(=--fail-under-lines 90=) and the clearest remaining path. It went
+70.11% → 76.93% this window by making the *vault* half of the loop
+public, exactly as the item earlier did for =draw=: =sync_app=,
+=sync_panes=, =apply_requests=, =apply_structure_requests=,
+=apply_org_verb_requests= are now =pub= and need no terminal. What is
+left there is the stroke handlers — =apply_buffer_command= (37),
+=handle_refile_stroke= (30), =handle_planedit_stroke= (29),
+=handle_link_field_stroke= (24), =handle_link_type_stroke= (21) — all
+=&mut App= and all drivable with =handle_stroke=, plus =with_bindings=
+to name a chord without depending on a keymap.
 
-What worked, so the next pass reaches for it first: a table-driven sweep
-over a flat dispatch, run against several *shapes* of input rather than
-one. The CLI went 37.6% → 68.0% that way, the kernel's chord sweep took
-shell-core past 90%, and making =closure-tui='s =draw= public so
-ratatui's =TestBackend= can reach it took 200 lines in one commit. The
-shapes that find things are: empty, absent, and absurdly small.
+*The technique that is working, and it is not sweeps.* Read the doc
+comment. The functions carrying a careful sentence about an edge case
+are where the bugs are: somebody reasoned it out once and nothing has
+checked since. Two came out of that this window, both silent:
 
-What is left is not more of that. The remaining lines are individually
-reasoned error arms — each needs a case somebody thought about, which
-is one test per arm rather than one test per fifty. Expect the rate to
-drop sharply from here, and expect the parent item's "delete or
-restructure what cannot be executed" to start applying: =closure-cli='s
-=serve=/=sync=/=tui=/=gpui= arms and the shell =main.rs= files are the
-first candidates.
+1. =rewrite_headline_remove_property= deleted the headline's *body*
+   when removing the last property — it took the newline after the
+   drawer as well. Reachable from the keyboard through
+   =Edit::SetProperty='s undo. Fixed.
+2. =shift_date("2026-06-20-01", 1)= returned a date, ignoring the
+   fourth field, while its doc says =None= for a non-date. Not live —
+   no caller passes one — but a reader that swallows trailing input
+   turns a caller's bug into a wrong date in an agenda. Fixed.
 
-Three real bugs came out of writing these, which is the argument for
-continuing: undo duplicated a planning line, adding a property could not
-be undone at all, and a cron schedule under a headline was invisible to
-the CLI while the pane showed it.
+*Two traps that have each cost time twice now.*
+- Measure after =cargo llvm-cov clean --workspace= or do not quote the
+  number. A stale profile reported =entity_char= as 67 uncovered lines
+  in a function four tests already reach, and closure-sniffer at 87.78%
+  with eleven lines that do not exist.
+- =just coverage= at full parallelism fills the disk: a =.profraw= per
+  test binary per core ate 78G and failed as "No space left on device"
+  from cargo, which names nothing about coverage. The recipe carries
+  =-j 4= now.
 
-Acceptance: this item is a record; close it when the workspace gate
-reaches 100 or when the next pass supersedes the numbers.
+*Still capped below 100.* =closure_org::ParseError= is an empty enum by
+design, so ~95 =parse(..).map_err(..)= arms across four crates cannot be
+taken. Deciding between accepting ~99.8%, giving the parser something to
+reject, or making =parse= infallible is a spec decision and is written
+up under the gate item — it is not more tests.
 
 * TODO Coverage: raise the workspace gate to 100 and keep it there
 The floor moved 88 → *90* on 2026-08-14 and → *91* on 2026-08-15.
