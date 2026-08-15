@@ -346,19 +346,39 @@ bench:
 # thing the Dart can reach. So the unreproducible half can only ever be
 # a view — it cannot parse org, and it cannot decide anything.
 #
+# `flutter pub get` runs first because the resolution in `.dart_tool` is
+# not tracked and drifts: building the Android target rewrote it, and
+# the next `just flutter` failed with 242 analyzer errors about
+# `expect` and `testWidgets` being undefined — package resolution, not
+# code. A gate that only passes when somebody happened to run pub get
+# by hand is not a gate.
+#
 # The flutter SDK is not in the dev shell for the same reason, which is
 # why this recipe reaches for it rather than assuming it on PATH. Run it
 # as `nix develop -c just flutter` like everything else; the inner
 # `nix shell` is what crosses the boundary, visibly, in one place.
 flutter:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    # A CMake cache pins absolute paths into the nix store, and the
+    # store is garbage-collected. After a `nix-collect-garbage` the
+    # cached ninja is simply gone and the build dies with "no such file
+    # or directory" naming a path that looks perfectly valid.
+    # Reconfigure when that has happened, rather than leaving somebody
+    # to work out why a file that is right there does not exist.
+    cache=flutter/build/linux/x64/release/CMakeCache.txt
+    if [ -f "$cache" ] && ! grep -oE '/nix/store/[^;"]*/bin/ninja' "$cache" | head -1 | xargs -r test -x; then
+        echo "cmake cache points at a store path that is gone — reconfiguring"
+        rm -rf flutter/build/linux
+    fi
     cargo build -p closure-ffi --release
-    nix shell nixpkgs#flutter -c bash -c '\
-        cd flutter && \
-        flutter analyze && \
-        CLOSURE_FFI_LIB="$PWD/../target/release/libclosure_ffi.so" \
-        flutter test && \
+    nix shell nixpkgs#flutter -c bash -c '
+        cd flutter
+        flutter pub get
+        flutter analyze
+        CLOSURE_FFI_LIB="$PWD/../target/release/libclosure_ffi.so" flutter test
         flutter build linux --release'
-    @echo "built: flutter/build/linux/x64/release/bundle/closure_shell"
+    echo "built: flutter/build/linux/x64/release/bundle/closure_shell"
 
 # Run the Flutter shell against a vault. `just run-flutter ~/notes`
 run-flutter vault: flutter
@@ -425,6 +445,7 @@ apk:
 
         printf "sdk.dir=%s\nflutter.sdk=%s\n" "$sdk" "$root" > flutter/android/local.properties
         cd flutter
+        flutter pub get
         FLUTTER_ROOT="$root" ANDROID_HOME="$sdk" ANDROID_SDK_ROOT="$sdk" \
             flutter build apk --release --target-platform android-arm64
     '
